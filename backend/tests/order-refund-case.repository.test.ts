@@ -1,6 +1,6 @@
-import { BookingOrderStatus, ServicePaymentStatus, type PrismaClient } from "@prisma/client";
+import { AffiliateRewardStatus, BookingOrderStatus, ServicePaymentStatus, type PrismaClient } from "@prisma/client";
 import { OrderRefundCaseRepository } from "../src/repositories/order-refund-case.repository";
-import type { RequestRefundCommand } from "../src/services/order-refund-case.service";
+import type { ConfirmRefundReceiptCommand, MerchantRefundDecisionCommand, RequestRefundCommand } from "../src/services/order-refund-case.service";
 
 const now = new Date("2026-09-07T00:00:00.000Z");
 
@@ -76,5 +76,107 @@ describe("OrderRefundCaseRepository", () => {
     expect(tx.orderRefundCaseEvent.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ idempotencyKey: command.idempotencyKey, requestFingerprint: command.fingerprint })
     }));
+  });
+
+  it("rolls back customer confirmation when the required financial projection is absent", async () => {
+    const pendingCase = { ...refundCase, status: "CUSTOMER_CONFIRMATION_PENDING", version: 4, refundEvidence: { reference: "bank-123" } };
+    const tx = {
+      $queryRaw: jest.fn(async () => [{ id: 71 }]),
+      orderRefundCaseEvent: { findFirst: jest.fn(async () => null), create: jest.fn(async () => ({ id: 1 })) },
+      orderRefundCase: { findFirst: jest.fn(async () => pendingCase), update: jest.fn(async () => pendingCase) },
+      bookingOrder: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      orderFinancial: { updateMany: jest.fn(async () => ({ count: 0 })) },
+      affiliateReward: { findFirst: jest.fn(async () => null), findMany: jest.fn(async () => []) },
+      auditLog: { create: jest.fn(async () => ({ id: 1 })) },
+      notification: { create: jest.fn(async () => ({ id: 1 })) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const repository = new OrderRefundCaseRepository(client as unknown as PrismaClient);
+
+    const receiptCommand: ConfirmRefundReceiptCommand = { ...command, casePublicId: pendingCase.publicId, expectedVersion: 4, idempotencyKey: "refund-receipt-0001", payload: {} };
+    await expect(repository.confirmCustomerReceipt(receiptCommand)).resolves.toMatchObject({ kind: "invalid_state" });
+    expect(tx.orderRefundCase.update).not.toHaveBeenCalled();
+  });
+
+  it("recovers an active-case P2002 as an active conflict instead of returning a 500", async () => {
+    const tx = {
+      $queryRaw: jest.fn(async () => [{ id: 71 }]),
+      orderRefundCaseEvent: { findFirst: jest.fn(async () => null) },
+      bookingOrder: { findFirst: jest.fn(async () => ({
+        id: 71, shopId: 31, customerUserId: 11, status: BookingOrderStatus.COMPLETED,
+        paymentStatus: ServicePaymentStatus.CONFIRMED, paymentAmountJpy: 8800, paymentRefundedAt: null, currency: "JPY"
+      })) },
+      orderRefundCase: {
+        findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(refundCase),
+        create: jest.fn(async () => { throw { code: "P2002", meta: { target: "order_refund_cases_active_key_key" } }; })
+      },
+      affiliateReward: { findFirst: jest.fn(async () => null) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const repository = new OrderRefundCaseRepository(client as unknown as PrismaClient);
+
+    await expect(repository.request(command)).resolves.toMatchObject({ kind: "active_conflict", current: { publicId: refundCase.publicId } });
+  });
+
+  it.each([
+    ["exact event fingerprint", command.fingerprint, "replayed"],
+    ["different event fingerprint", "b".repeat(64), "idempotency_conflict"]
+  ])("recovers an idempotency P2002 as %s", async (_label, storedFingerprint, expectedKind) => {
+    const tx = {
+      $queryRaw: jest.fn(async () => [{ id: 71 }]),
+      orderRefundCaseEvent: { findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({ requestFingerprint: storedFingerprint, refundCase }) },
+      bookingOrder: { findFirst: jest.fn(async () => ({
+        id: 71, shopId: 31, customerUserId: 11, status: BookingOrderStatus.COMPLETED,
+        paymentStatus: ServicePaymentStatus.CONFIRMED, paymentAmountJpy: 8800, paymentRefundedAt: null, currency: "JPY"
+      })) },
+      orderRefundCase: { findFirst: jest.fn(async () => null), create: jest.fn(async () => { throw { code: "P2002", meta: { target: "order_refund_case_events_idempotency_key_key" } }; }) },
+      affiliateReward: { findFirst: jest.fn(async () => null) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const repository = new OrderRefundCaseRepository(client as unknown as PrismaClient);
+
+    await expect(repository.request(command)).resolves.toMatchObject({ kind: expectedKind });
+  });
+
+  it("rejects customer confirmation before touching payment when any locked Affiliate reward is not settled", async () => {
+    const pendingCase = { ...refundCase, status: "CUSTOMER_CONFIRMATION_PENDING", version: 4, refundEvidence: { reference: "bank-123" } };
+    const pendingReward = {
+      id: 1, status: AffiliateRewardStatus.PENDING, rewardNdp: 50, platformFeeNdp: 0,
+      reversalRequiredNdp: 0, reversedNdp: 0, outstandingRecoveryNdp: 0, claimantWalletId: 99,
+      claimantWallet: { id: 99, availableBalance: 50, frozenBalance: 0 }, transactions: []
+    };
+    const tx = {
+      $queryRaw: jest.fn(async () => [{ id: 1 }]),
+      orderRefundCaseEvent: { findFirst: jest.fn(async () => null) },
+      orderRefundCase: { findFirst: jest.fn(async () => pendingCase) },
+      affiliateReward: { findFirst: jest.fn(async () => null), findMany: jest.fn(async () => [pendingReward]) },
+      bookingOrder: { updateMany: jest.fn(async () => ({ count: 1 })) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const repository = new OrderRefundCaseRepository(client as unknown as PrismaClient);
+    const receiptCommand: ConfirmRefundReceiptCommand = { ...command, casePublicId: pendingCase.publicId, expectedVersion: 4, idempotencyKey: "refund-receipt-pending", payload: {} };
+
+    await expect(repository.confirmCustomerReceipt(receiptCommand)).resolves.toMatchObject({ kind: "affiliate_invariant_failed" });
+    expect(tx.bookingOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("locks the nested case before reading its current status and version for a merchant decision", async () => {
+    const currentCase = { ...refundCase, status: "MERCHANT_REVIEW_PENDING", version: 6 };
+    const updatedCase = { ...currentCase, status: "REFUND_PENDING", version: 7 };
+    const tx = {
+      $queryRaw: jest.fn(async () => [{ id: currentCase.id }]),
+      orderRefundCaseEvent: { findFirst: jest.fn(async () => null), create: jest.fn(async () => ({ id: 1 })) },
+      orderRefundCase: { findFirst: jest.fn(async () => currentCase), update: jest.fn(async () => updatedCase) },
+      affiliateReward: { findFirst: jest.fn(async () => null) },
+      auditLog: { create: jest.fn(async () => ({ id: 1 })) },
+      notification: { create: jest.fn(async () => ({ id: 1 })) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const repository = new OrderRefundCaseRepository(client as unknown as PrismaClient);
+    const decision: MerchantRefundDecisionCommand = { ...command, orderId: 71, casePublicId: currentCase.publicId, decision: "approve", shopId: 31, expectedVersion: 6, idempotencyKey: "refund-approve-0001", payload: { note: "approved" } };
+
+    await expect(repository.merchantDecision(decision)).resolves.toMatchObject({ kind: "updated", value: { status: "refund_pending", version: 7 } });
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.orderRefundCase.findFirst.mock.invocationCallOrder[0]);
+    expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ metadata: expect.objectContaining({ idempotencyKey: decision.idempotencyKey, fromStatus: "MERCHANT_REVIEW_PENDING", toStatus: "REFUND_PENDING", previousVersion: 6, nextVersion: 7, responsibility: "shop" }) }) }));
   });
 });
