@@ -997,6 +997,8 @@ describe("GET /api/v1/openapi.json", () => {
       expect(conflictResponse.description).toContain("OrderRefundCase");
       expect(conflictResponse.description).toContain("40913");
       expect(conflictResponse.description).toContain("error.payment.invalid_state");
+      expect(conflictResponse.description).toContain("40915");
+      expect(conflictResponse.description).toContain("error.payment.conflict");
       expect(conflictResponse.content["application/json"].schema).toEqual({
         $ref: "#/components/schemas/ApiError"
       });

@@ -204,6 +204,28 @@ describe("BookingService manual payment", () => {
     );
   });
 
+  it("maps a direct-refund compare-and-swap conflict without writing an audit", async () => {
+    const bookingRepository = repository({ outcome: "conflict" });
+    const audit = auditLogService();
+    const service = new BookingService(bookingRepository, undefined, undefined, audit);
+
+    await expect(
+      service.refundManualPayment(
+        backofficeActor,
+        91,
+        { reason: "cancelled before completion", reference: "REF-CAS-CONFLICT" },
+        requestContext
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.PAYMENT_CONFLICT,
+      message: "error.payment.conflict",
+      statusCode: 409
+    });
+
+    expect(bookingRepository.refundManualPayment).toHaveBeenCalledTimes(1);
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["merchant-admin", merchantActor],
     ["backoffice", backofficeActor]

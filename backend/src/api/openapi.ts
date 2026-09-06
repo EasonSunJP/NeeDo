@@ -1139,7 +1139,7 @@ const reviewConflictResponse = jsonErrorResponse(
   "40906 error.order.review_requires_completion — the order is not completed; 40961 error.order.review_already_submitted — this reviewer already submitted the directional review; 40961 error.idempotency.key_reused — the key's stored review is not equivalent; 40965 error.order.review_invalid_settlement — formal checkout settlement evidence is missing or inconsistent"
 );
 const manualPaymentRefundConflictResponse = jsonErrorResponse(
-  "40913 error.payment.invalid_state — direct payment refund is limited to cancelled REFUND_PENDING orders; COMPLETED + CONFIRMED paid orders must use OrderRefundCase and become REFUNDED only after the customer confirms receipt"
+  "40913 error.payment.invalid_state — direct payment refund is limited to cancelled REFUND_PENDING orders; COMPLETED + CONFIRMED paid orders must use OrderRefundCase and become REFUNDED only after the customer confirms receipt; 40915 error.payment.conflict — the refund compare-and-swap lost a race, or an already-refunded payment was retried with a different reason or reference"
 );
 const dependencyUnavailableResponse = (condition: string) =>
   jsonErrorResponse(`50301 error.dependency_unavailable — ${condition}`);

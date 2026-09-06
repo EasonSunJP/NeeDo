@@ -102,7 +102,9 @@ const makeOrder = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPa
   ...overrides
 });
 
-const createFixture = async (options: { refundSourceOrder?: BookingOrderPayload } = {}) => {
+const createFixture = async (
+  options: { refundSourceOrder?: BookingOrderPayload; refundConflict?: boolean } = {}
+) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const role = (code: string, permissionCodes: string[]) => ({
     code,
@@ -206,18 +208,21 @@ const createFixture = async (options: { refundSourceOrder?: BookingOrderPayload 
       })
     })),
     refundManualPayment: jest.fn(
-      async (input: { actorUserId: number; reference?: string | null; reason: string }) => ({
-        outcome: "ok" as const,
-        applied: true,
-        order: makeOrder({
-          status: "cancelled",
-          paymentStatus: "refunded",
-          paymentRefundedById: input.actorUserId,
-          paymentRefundedAt: now,
-          paymentRefundReference: input.reference ?? null,
-          paymentRefundReason: input.reason
-        })
-      })
+      async (input: { actorUserId: number; reference?: string | null; reason: string }) => {
+        if (options.refundConflict) return { outcome: "conflict" as const };
+        return {
+          outcome: "ok" as const,
+          applied: true,
+          order: makeOrder({
+            status: "cancelled",
+            paymentStatus: "refunded",
+            paymentRefundedById: input.actorUserId,
+            paymentRefundedAt: now,
+            paymentRefundReference: input.reference ?? null,
+            paymentRefundReason: input.reason
+          })
+        };
+      }
     )
   };
   const app = createApp(undefined, {
@@ -322,6 +327,27 @@ describe("manual payment API", () => {
       ).toBe(false);
     }
   );
+
+  it("maps a backoffice direct-refund CAS conflict without writing an audit", async () => {
+    const fixture = await createFixture({ refundConflict: true });
+    const token = await fixture.login("operator@example.com");
+
+    const response = await request(fixture.app)
+      .post("/api/v1/backoffice/orders/91/payment/refund")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ reason: "cancelled before completion", reference: "REF-CAS-CONFLICT" })
+      .expect(409);
+
+    expect(response.body).toEqual({
+      code: ERROR_CODES.PAYMENT_CONFLICT,
+      message: "error.payment.conflict",
+      data: null
+    });
+    expect(fixture.bookingRepository.refundManualPayment).toHaveBeenCalledTimes(1);
+    expect(
+      fixture.auditLogs.some((entry) => String(entry.action).endsWith(".order_payment.refund"))
+    ).toBe(false);
+  });
 
   it("rejects unsupported payment methods and customers without payment permissions", async () => {
     const fixture = await createFixture();
