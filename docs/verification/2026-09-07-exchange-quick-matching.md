@@ -61,3 +61,7 @@ For both posts, Booking count and `OrderFinancial` count were zero; the publicat
 - Service payment, external payment, and real settlement.
 - Remote push, staging or production migration/deployment, and staging authenticated acceptance.
 - Starting the next Exchange microstep.
+
+## Final local main integration
+
+Local `main` was fast-forwarded from `a6ae0e91` after the latest `main` had first been merged into the feature branch without conflicts. On the merged `main`, the same 55-suite backend Exchange gate passed with 50 suites/521 tests passing and only 5 suites/13 tests skipped behind their documented environment flags; all 13 frontend Exchange files and 107 tests passed. Frontend/backend lint and builds passed, and the explicitly enabled Quick checker and two-connection concurrency suite passed again with cleanup verified. The main worktree's pre-existing, unrelated identity-application edits were neither staged nor committed. The isolated 3012/5192 acceptance runtime was stopped, and no remote push or deployment followed.

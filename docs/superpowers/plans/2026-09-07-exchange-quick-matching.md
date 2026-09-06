@@ -533,6 +533,6 @@ git add README.md docs/ledger.md docs/verification/2026-09-07-exchange-quick-mat
 git commit -m "docs(exchange): record quick matching acceptance"
 ```
 
-- [ ] **Step 7: Integrate only after the finishing gate**
+- [x] **Step 7: Integrate only after the finishing gate**
 
 Run the full related suite again on the final branch tip, inspect `main` for movement, merge/rebase safely without force push, rerun the same tests on the merged `main`, and stop without push, deployment, staging migration, or starting the next Exchange microstep.
