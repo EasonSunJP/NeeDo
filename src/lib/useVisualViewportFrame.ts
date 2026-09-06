@@ -30,7 +30,12 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
 
     const updateFrame = () => {
       const viewport = window.visualViewport;
-      const keyboardOpen = Boolean(viewport && isKeyboardEditor(document.activeElement));
+      // Focus survives keyboard dismissal on iOS. Only constrain the frame when
+      // the software keyboard actually reduces the visible viewport.
+      const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+      const keyboardOpen = Boolean(
+        viewport && isKeyboardEditor(document.activeElement) && layoutHeight - viewport.height > 100
+      );
 
       if (keyboardOpen) {
         element.style.setProperty(
@@ -64,6 +69,8 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
 
     updateFrame();
     window.addEventListener("resize", updateFrame);
+    window.addEventListener("pageshow", updateFrame);
+    document.addEventListener("visibilitychange", updateFrame);
     document.addEventListener("focusin", updateFrame);
     document.addEventListener("focusout", updateFrame);
     window.visualViewport?.addEventListener("resize", updateFrame);
@@ -71,6 +78,8 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
 
     return () => {
       window.removeEventListener("resize", updateFrame);
+      window.removeEventListener("pageshow", updateFrame);
+      document.removeEventListener("visibilitychange", updateFrame);
       document.removeEventListener("focusin", updateFrame);
       document.removeEventListener("focusout", updateFrame);
       window.visualViewport?.removeEventListener("resize", updateFrame);

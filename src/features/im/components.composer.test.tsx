@@ -105,7 +105,7 @@ describe("ImChatComposer", () => {
   it("follows the live visual viewport only while the keyboard editor has focus", async () => {
     const visualViewport = new EventTarget() as VisualViewport;
     Object.defineProperties(visualViewport, {
-      height: { configurable: true, value: 690 },
+      height: { configurable: true, value: 480 },
       offsetTop: { configurable: true, value: 20 },
       width: { configurable: true, value: 390 },
       offsetLeft: { configurable: true, value: 5 }
@@ -133,7 +133,7 @@ describe("ImChatComposer", () => {
     });
 
     const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
-    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("690px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("480px");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("20px");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
 
