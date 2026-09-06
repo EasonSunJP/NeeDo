@@ -3339,6 +3339,7 @@ export const translations: TranslationMap = {
   "代表者：［請填入代表者姓名］": { "zh-Hant": "代表者：［請填入代表者姓名］", ja: "代表者：［代表者氏名を記入してください］", en: "Representative: [Please insert representative name]", ko: "대표자: [대표자 성명을 입력해 주십시오]" },
   "代官山": { "zh-Hant": "代官山", ja: "代官山", en: "Daikanyama", ko: "다이칸야마" },
   "代理": { "zh-Hant": "代理", ja: "代理", en: "Agent", ko: "대리" },
+  "代理商": { "zh-Hant": "代理商", ja: "代理店", en: "Agents", ko: "대리점" },
   "代理利润": { "zh-Hant": "代理利潤", ja: "代理店の利益", en: "Agency profits", ko: "대리점 수익" },
   "代理商管理": { "zh-Hant": "代理商管理", ja: "エージェント管理", en: "Agent Management", ko: "에이전트 관리" },
   "代理商列表": { "zh-Hant": "代理商列表", ja: "エージェント一覧", en: "List of agents", ko: "에이전트 목록" },
