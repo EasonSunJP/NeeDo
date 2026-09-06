@@ -20,6 +20,7 @@ import {
   ndpExperienceCampaignListQuerySchema,
   ndpExperienceCampaignParamSchema,
   userGlobalPolicyDraftBodySchema,
+  userGlobalPolicyPublishBodySchema,
   versionPublishBodySchema
 } from "../validators/user-global-policy.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
@@ -72,7 +73,7 @@ export const createUserGlobalPolicyRoutes = (
     "/backoffice/user-global-settings/publish",
     authenticate(),
     createAuthorizeMiddleware(USER_GLOBAL_POLICY_ROUTE_PERMISSIONS.policyPublish),
-    validateRequest({ body: versionPublishBodySchema }),
+    validateRequest({ body: userGlobalPolicyPublishBodySchema }),
     policyController.publishDraft
   );
   router.get(

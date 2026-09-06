@@ -2747,3 +2747,7 @@ Received service reviews in the operations and merchant user detail cards now in
 The follow-up removes repeated membership facts, places adjustment controls inside the membership tab, consolidates merchant names, removes scout presentation, and adds server-side numeric ordering. See [user-directory follow-up acceptance](docs/qa/2026-09-06-user-directory-followup.md).
 
 Managed-user lists and membership details now consume exact decimal `totalExp`, consistent with user experience summaries. See [EXP display correction and evidence](docs/qa/2026-09-06-experience-display.md).
+
+### Application review and configurable eKYC requirements
+
+Operations System Settings now exposes four versioned eKYC requirements, with only customer home bookings enabled by default. Merchant and technician applications restore review details and provide floating withdraw, retry or approved-identity switching actions. Technician shop selection uses formal shop IDs and standalone profile cards. See [implementation and local validation](docs/superpowers/plans/2026-09-07-ekyc-requirements.md).

@@ -27,6 +27,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
           select: {
             applicantKind: true,
             corporateLegalNameKana: true,
+            representativeNameKana: true,
             bankAccountId: true
           }
         },
@@ -35,6 +36,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
             ekycVerifications: {
               where: {
                 status: "verified",
+                verifiedAt: { not: null, lte: now },
                 deletedAt: null,
                 OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
               },
@@ -57,6 +59,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
       version: application.version,
       applicantKind: application.merchantDetail.applicantKind as "corporate" | "individual",
       corporateLegalNameKana: application.merchantDetail.corporateLegalNameKana,
+      representativeNameKana: application.merchantDetail.representativeNameKana,
       currentBankAccountId: application.merchantDetail.bankAccountId,
       verifiedEkycNameKanaEncrypted:
         application.applicant.ekycVerifications[0]?.verifiedNameKanaEncrypted ?? null
@@ -115,7 +118,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
             ownerUserId: input.userId,
             deletedAt: null
           },
-          data: { deletedAt: input.verifiedAt }
+          data: { deletedAt: input.boundAt }
         });
       }
 
@@ -128,7 +131,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
           ip: null,
           userAgent: null,
           metadata: input.auditMetadata as Prisma.InputJsonValue,
-          createdAt: input.verifiedAt
+          createdAt: input.boundAt
         }
       });
 

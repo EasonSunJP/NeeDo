@@ -43,6 +43,14 @@ const applicationRow = {
 };
 
 describe("IdentityApplicationRepository", () => {
+  it("searches and returns the formal shop ID instead of padding its database key", async () => {
+    const shop = { findMany: jest.fn().mockResolvedValue([{ id: 217, name: "麻布十番", city: "東京", address: "港区", publicIdentifier: { publicId: "shop1357924680" } }]), count: jest.fn().mockResolvedValue(1) };
+    const client = { shop, $transaction: (operations: Promise<unknown>[]) => Promise.all(operations) } as unknown as PrismaClient;
+    const result = await new IdentityApplicationRepository(client).searchEligibleShops({ query: "shop1357924680", page: 1, pageSize: 20 });
+    expect(result.list[0].merchantId).toBe("shop1357924680");
+    expect(shop.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ OR: expect.arrayContaining([{ publicIdentifier: { is: { publicId: "shop1357924680", deletedAt: null } } }]) }) }));
+  });
+
   it("filters active applications and deleted records", async () => {
     const identityApplication = {
       findFirst: jest.fn().mockResolvedValue(applicationRow)
@@ -253,7 +261,7 @@ describe("IdentityApplicationRepository", () => {
         where: { userId: 3, type: "technician", status: "draft", deletedAt: null },
         skip: 10,
         take: 10,
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       })
     );
   });
@@ -263,6 +271,7 @@ describe("IdentityApplicationRepository", () => {
       findMany: jest.fn().mockResolvedValue([
         {
           id: 21,
+          publicIdentifier: { publicId: "shop2468135790" },
           name: "GINZA Calm Body Lab",
           city: "东京",
           address: "东京都中央区银座3-4-12"
@@ -277,12 +286,13 @@ describe("IdentityApplicationRepository", () => {
     const repository = new IdentityApplicationRepository(client);
 
     await expect(
-      repository.searchEligibleShops({ page: 1, pageSize: 20, query: "s0000000021" })
+      repository.searchEligibleShops({ page: 1, pageSize: 20, query: "shop2468135790" })
     ).resolves.toEqual({
       list: [
         {
           id: 21,
-          merchantId: "s0000000021",
+          merchantId: "shop2468135790",
+          coverUrl: null, rating: null, reviewCount: 0, keywords: [],
           name: "GINZA Calm Body Lab",
           city: "东京",
           address: "东京都中央区银座3-4-12"
@@ -298,10 +308,10 @@ describe("IdentityApplicationRepository", () => {
           status: "published",
           deletedAt: null,
           OR: [
-            { id: 21 },
-            { name: { contains: "s0000000021" } },
-            { city: { contains: "s0000000021" } },
-            { address: { contains: "s0000000021" } }
+            { publicIdentifier: { is: { publicId: "shop2468135790", deletedAt: null } } },
+            { name: { contains: "shop2468135790" } },
+            { city: { contains: "shop2468135790" } },
+            { address: { contains: "shop2468135790" } }
           ]
         },
         skip: 0,

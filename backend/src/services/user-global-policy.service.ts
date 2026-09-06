@@ -57,6 +57,8 @@ export class UserGlobalPolicyService {
           requireEmail: draft.requireEmail,
           requireHomeServiceEkyc: draft.requireHomeServiceEkyc,
           requireStoreServiceEkyc: draft.requireStoreServiceEkyc,
+          requireMerchantApplicationEkyc: draft.requireMerchantApplicationEkyc,
+          requireTechnicianApplicationEkyc: draft.requireTechnicianApplicationEkyc,
           ndpPerBaseExp: draft.ndpPerBaseExp,
           baseExpUnitsPerThreshold: draft.baseExpUnitsPerThreshold
         }
@@ -68,7 +70,7 @@ export class UserGlobalPolicyService {
   public async publishDraft(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
-    input: { expectedVersion: number; expectedLockVersion: number }
+    input: { expectedVersion: number; expectedLockVersion: number; effectiveImmediately?: boolean }
   ): Promise<ResolvedUserGlobalPolicy> {
     this.assertOperationsIdentity(actor);
     this.assertVersion(input.expectedVersion, input.expectedLockVersion);
@@ -81,7 +83,7 @@ export class UserGlobalPolicyService {
     ) {
       throw this.versionConflict();
     }
-    if (draft.effectiveFrom.getTime() < publishedAt.getTime()) {
+    if (!input.effectiveImmediately && draft.effectiveFrom.getTime() < publishedAt.getTime()) {
       throw this.invalidState();
     }
     const result = await this.repository.publishDraftWithAudit({
@@ -89,6 +91,7 @@ export class UserGlobalPolicyService {
       expectedVersion: input.expectedVersion,
       expectedLockVersion: input.expectedLockVersion,
       publishedAt,
+      effectiveImmediately: input.effectiveImmediately,
       audit: this.requireAuditFactory().createInput({
         actor,
         context,
@@ -97,7 +100,8 @@ export class UserGlobalPolicyService {
         metadata: {
           versionPublicId: draft.versionPublicId,
           version: draft.version,
-          effectiveFrom: draft.effectiveFrom.toISOString(),
+          effectiveFrom: (input.effectiveImmediately ? publishedAt : draft.effectiveFrom).toISOString(),
+          effectiveImmediately: input.effectiveImmediately === true,
           publishedAt: publishedAt.toISOString()
         }
       })

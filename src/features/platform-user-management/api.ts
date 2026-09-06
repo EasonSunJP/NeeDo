@@ -251,6 +251,8 @@ const decodePolicy = (value: unknown): UserGlobalPolicy => {
     requireEmail: boolean(raw.requireEmail),
     requireHomeServiceEkyc: boolean(raw.requireHomeServiceEkyc),
     requireStoreServiceEkyc: boolean(raw.requireStoreServiceEkyc),
+    requireMerchantApplicationEkyc: boolean(raw.requireMerchantApplicationEkyc),
+    requireTechnicianApplicationEkyc: boolean(raw.requireTechnicianApplicationEkyc),
     ndpPerBaseExp: integer(raw.ndpPerBaseExp),
     baseExpUnitsPerThreshold: integer(raw.baseExpUnitsPerThreshold),
     effectiveFrom: timestamp(raw.effectiveFrom),
@@ -570,13 +572,15 @@ export const platformUserManagementApi = {
     requireEmail: boolean;
     requireHomeServiceEkyc: boolean;
     requireStoreServiceEkyc: boolean;
+    requireMerchantApplicationEkyc: boolean;
+    requireTechnicianApplicationEkyc: boolean;
     ndpPerBaseExp: number;
     baseExpUnitsPerThreshold: number;
     effectiveFrom: string;
   }) {
     return decodePolicy(await httpClient.request<unknown>("/backoffice/user-global-settings/draft", { method: "PUT", body }));
   },
-  async publishGlobalSettings(body: { expectedVersion: number; expectedLockVersion: number }) {
+  async publishGlobalSettings(body: { expectedVersion: number; expectedLockVersion: number; effectiveImmediately?: boolean }) {
     return decodePolicy(await httpClient.request<unknown>("/backoffice/user-global-settings/publish", { method: "POST", body }));
   },
   async listCampaigns(query: PageQuery = {}) {

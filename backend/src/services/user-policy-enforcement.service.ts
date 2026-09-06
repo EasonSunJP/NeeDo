@@ -1,6 +1,7 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   UserGlobalPolicyResolverPort,
+  ApplicationEkycDecision,
   UserPolicyAccountFacts,
   UserPolicyComplianceDecision,
   UserPolicyEnforcementRepositoryPort,
@@ -54,6 +55,15 @@ export class UserPolicyEnforcementService {
         effectiveAt: policy.effectiveFrom.toISOString()
       }
     });
+  }
+
+  public async evaluateApplicationEkyc(userId: number, type: "merchant" | "technician", occurredAt: Date): Promise<ApplicationEkycDecision> {
+    const { facts, policy } = await this.resolveContext(userId, occurredAt);
+    return {
+      required: type === "merchant" ? policy.requireMerchantApplicationEkyc : policy.requireTechnicianApplicationEkyc,
+      verified: facts.ekycVerified,
+      policyVersionPublicId: policy.versionPublicId
+    };
   }
 
   private async resolveContext(

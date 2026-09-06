@@ -271,6 +271,8 @@ export type UserGlobalPolicy = {
   requireEmail: boolean;
   requireHomeServiceEkyc: boolean;
   requireStoreServiceEkyc: boolean;
+  requireMerchantApplicationEkyc: boolean;
+  requireTechnicianApplicationEkyc: boolean;
   ndpPerBaseExp: number;
   baseExpUnitsPerThreshold: number;
   effectiveFrom: string;

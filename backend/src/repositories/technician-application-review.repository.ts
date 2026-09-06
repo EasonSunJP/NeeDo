@@ -164,6 +164,7 @@ export class TechnicianApplicationReviewRepository implements TechnicianApplicat
             applicationId: input.applicationId,
             targetShopId: input.targetShopId,
             technicianProfileId: profile.id,
+            ekycPolicy: input.ekycPolicy,
             identityId: identity.identityId,
             version: input.expectedVersion + 1
           },

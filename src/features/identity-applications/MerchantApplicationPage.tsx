@@ -1,3 +1,6 @@
+import { selectLatestApplication } from "./model";
+import { ApplicationReviewEvidence } from "./ApplicationReviewEvidence";
+import { ApplicationReviewActions } from "./ApplicationReviewActions";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
@@ -27,7 +30,7 @@ import {
   type ContractDefinition,
   type IdentityApplication
 } from "./api";
-import { getContractLanguage, merchantApplicationErrorMessage, normalizeBankDigits, validateMerchantBankAccount, validateMerchantShowcase, type MerchantShowcaseForm } from "./formModel";
+import { getContractLanguage, splitApplicantName, merchantApplicationErrorMessage, normalizeBankDigits, validateMerchantBankAccount, validateMerchantShowcase, type MerchantShowcaseForm } from "./formModel";
 import { formatMerchantPriceRange, parseMerchantPriceRange, validateMerchantPriceRange, type MerchantPriceRange } from "./merchantPriceRange";
 import { merchantApplicationDraftMemory } from "./merchantApplicationDraftMemory";
 
@@ -50,6 +53,8 @@ const emptyMerchantForm: MerchantForm = {
   stationAccess: "",
   contactPhone: "",
   responsiblePersonName: "",
+  responsibleFamilyName: "",
+  responsibleGivenName: "",
   description: "",
   serviceCategoryIds: [],
   businessKeywordIds: []
@@ -124,7 +129,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
     let active = true;
     identityApplicationsApi.listMine({ type: "merchant" }).then(({ list }) => {
       if (!active) return;
-      const existing = list.find((item) => !["withdrawn", "approved"].includes(item.status)) ?? null;
+      const existing = selectLatestApplication(list);
       if (retainedDraft) {
         const base = retainedDraft.baseApplication;
         if (existing?.id !== base?.id || existing?.version !== base?.version) {
@@ -150,13 +155,15 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
           stationAccess: readDraftString(detail.showcaseDraft, "stationAccess"),
           contactPhone: detail.contactPhone,
           responsiblePersonName: detail.responsiblePersonName,
+          responsibleFamilyName: readDraftString(detail.showcaseDraft, "responsibleFamilyName") || splitApplicantName(detail.responsiblePersonName).familyName,
+          responsibleGivenName: readDraftString(detail.showcaseDraft, "responsibleGivenName") || splitApplicantName(detail.responsiblePersonName).givenName,
           description: readDraftString(detail.showcaseDraft, "description"),
           serviceCategoryIds: detail.serviceCategoryIds ?? [],
           businessKeywordIds: detail.businessKeywordIds ?? []
         });
         setPriceRange(parseMerchantPriceRange(readDraftString(detail.showcaseDraft, "priceLabel")));
       }
-      if (existing.status === "submitted" || existing.status === "under_review") setStep(3);
+      if (["submitted", "under_review", "approved", "rejected"].includes(existing.status)) setStep(3);
     }).catch((caught: unknown) => {
       if (active) setError(merchantApplicationErrorMessage(caught));
     });
@@ -183,7 +190,11 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
   }, [contract, language, step]);
 
   const updateForm = <K extends keyof MerchantForm>(key: K, value: MerchantForm[K]) =>
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "responsibleFamilyName" || key === "responsibleGivenName") next.responsiblePersonName = [next.responsibleFamilyName?.trim(), next.responsibleGivenName?.trim()].filter(Boolean).join(" ");
+      return next;
+    });
   const updateBank = <K extends keyof BankAccountInput>(key: K, value: BankAccountInput[K]) => {
     setError("");
     setBank((current) => ({ ...current, [key]: key === "bankCode" || key === "branchCode" || key === "accountNumber" ? normalizeBankDigits(value) : value }));
@@ -261,6 +272,8 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
     serviceCategoryIds: form.serviceCategoryIds,
     businessKeywordIds: form.businessKeywordIds,
     showcaseDraft: {
+      responsibleFamilyName: form.responsibleFamilyName?.trim() ?? "",
+      responsibleGivenName: form.responsibleGivenName?.trim() ?? "",
       description: form.description.trim(),
       priceLabel,
       nearestStation: form.nearestStation.trim(),
@@ -364,7 +377,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
 
   return (
     <ApplicationShell hideNavigation error={error} onDismissError={() => setError("")} info="按店铺前端的服务展示结构填写，完成银行名义校验与有法律效力的合同确认后才可提交。" title="申请店铺身份">
-      <ApplicationSteps current={Math.min(step, 2)} labels={["服务展示", "银行与身份", "收费规则与合同"]} />
+      <ApplicationSteps current={step} labels={["服务展示", "银行与身份", "收费规则与合同", "审核"]} />
       {application?.status === "rejected" && application.rejectionReason ? <ApplicationNotice tone="error">{t("上次驳回原因")}：{application.rejectionReason}</ApplicationNotice> : null}
 
       {step === 0 ? (
@@ -377,14 +390,15 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
             </div>
           </ApplicationSection>
           <ApplicationSection info="填写申请人与店铺的正式联系资料。" title="基础信息">
-            <ApplicationField label="申请人" required>
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                <ApplicationInput onChange={(event) => updateForm("responsiblePersonName", event.target.value)} value={form.responsiblePersonName} />
-                <ApplicationButton disabled={busy} onClick={openVerification} tone={ekycVerified ? "secondary" : "primary"}>
-                  {t(ekycVerified ? "已本人确认" : "本人确认（eKYC）")}
-                </ApplicationButton>
+            <div className="space-y-3" data-testid="applicant-name-fields">
+              <div className="grid grid-cols-2 gap-3">
+                <ApplicationField label="姓" required><ApplicationInput autoComplete="family-name" onChange={(event) => updateForm("responsibleFamilyName", event.target.value)} value={form.responsibleFamilyName ?? ""} /></ApplicationField>
+                <ApplicationField label="名" required><ApplicationInput autoComplete="given-name" onChange={(event) => updateForm("responsibleGivenName", event.target.value)} value={form.responsibleGivenName ?? ""} /></ApplicationField>
               </div>
-            </ApplicationField>
+              <ApplicationButton className="w-full" disabled={busy} onClick={openVerification} tone={ekycVerified ? "secondary" : "primary"}>
+                {t(ekycVerified ? "已本人确认" : "本人确认（eKYC）")}
+              </ApplicationButton>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <ApplicationField label="法人或代表者姓名" required><ApplicationInput onChange={(event) => updateForm("representativeName", event.target.value)} value={form.representativeName} /></ApplicationField>
               <ApplicationField label="法人或代表者姓名片假名" required><ApplicationInput onChange={(event) => updateForm("representativeNameKana", event.target.value)} value={form.representativeNameKana} /></ApplicationField>
@@ -437,7 +451,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
       {step === 1 ? (
         <>
           <ApplicationCard className="space-y-4">
-            <ApplicationNotice>{t(form.applicantKind === "corporate" ? "法人名义申请时，银行账户名义必须与法人名称一致。" : "个人名义申请时，银行账户名义必须与 eKYC 姓名一致。")}</ApplicationNotice>
+            <ApplicationNotice>{t(form.applicantKind === "corporate" ? "法人名义申请时，银行账户名义必须与法人名称一致。" : "银行账户名义必须与申请资料中的姓名片假名一致；要求 eKYC 时，以认证姓名为准。")}</ApplicationNotice>
             {form.applicantKind === "individual" ? <ApplicationNotice>{t("如尚未完成 eKYC，请先在用户设置的验证与资质页面完成认证。")}</ApplicationNotice> : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <ApplicationField as="div" label="银行名称" required>
@@ -487,12 +501,16 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
         <ApplicationCard className="space-y-4">
           <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[color:var(--client-primary)] text-3xl font-black text-[color:var(--client-primary-contrast)]">✓</div>
           <div className="text-center">
-            <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("店铺申请已提交")}</h2>
+            <h2 className="text-xl font-black text-[color:var(--client-text)]">{t(application?.status === "approved" ? "审核通过" : application?.status === "rejected" ? "审核未通过" : "审核中")}</h2>
             <p className="mt-2 text-sm leading-7 text-[color:var(--client-muted)]">{t("运营后台批准后会开启店铺身份，并发送系统消息。")}</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <ApplicationReadOnlyField label="申请名义" value={t(form.applicantKind === "corporate" ? "法人名义" : "个人名义")} />
             <ApplicationReadOnlyField label="申请人" value={form.responsiblePersonName} />
+            {form.applicantKind === "corporate" ? <>
+              <ApplicationReadOnlyField label="法人名称" value={form.corporateLegalName} />
+              <ApplicationReadOnlyField label="法人名称片假名" value={form.corporateLegalNameKana} />
+            </> : null}
             <ApplicationReadOnlyField label="法人或代表者姓名" value={form.representativeName} />
             <ApplicationReadOnlyField label="法人或代表者姓名片假名" value={form.representativeNameKana} />
             <ApplicationReadOnlyField label="店铺名称" value={form.shopName} />
@@ -504,11 +522,13 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
             <ApplicationReadOnlyField label="费用区间" value={priceLabel} />
             <ApplicationReadOnlyField label="店铺简介" value={form.description} />
             <ApplicationReadOnlyField label="eKYC" value={t(application?.merchantDetail?.eKycVerified ? "已验证" : "未验证")} />
-            <ApplicationReadOnlyField label="银行账户" value={t(application?.merchantDetail?.bankVerificationStatus === "verified" ? "已验证" : "未验证")} />
+            <ApplicationReadOnlyField label="银行账户" value={t(application?.merchantDetail?.bankVerificationStatus === "verified" ? "已验证" : application?.merchantDetail?.bankVerificationStatus === "declared" ? "已登记" : "未验证")} />
           </div>
           <ApplicationNotice>{t("申请结束 30 天后，服务器会删除申请资料和图片；合同回执及批准后用于结算的银行账户按法务和业务要求继续保存。")}</ApplicationNotice>
-          <ApplicationButton className="w-full" disabled tone="secondary">{t("审核中")}</ApplicationButton>
-          <ApplicationButton className="w-full" onClick={() => window.location.assign("/me/settings/portal")}>{t("返回身份设置")}</ApplicationButton>
+          {application?.purgedAt ? <ApplicationNotice>{t("申请资料已按保留期限清理。")}</ApplicationNotice> : null}
+          {application ? <ApplicationReviewEvidence application={application} /> : null}
+          {application?.rejectionReason ? <ApplicationNotice tone="error">{application.rejectionReason}</ApplicationNotice> : null}
+          {application ? <ApplicationReviewActions application={application} onError={setError} onReapply={() => { if (application.purgedAt || !application.merchantDetail) setApplication(null); setStep(0); } } onWithdrawn={() => { setApplication(null); setStep(0); }} /> : null}
         </ApplicationCard>
       ) : null}
     </ApplicationShell>

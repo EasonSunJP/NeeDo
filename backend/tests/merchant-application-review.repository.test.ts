@@ -92,7 +92,7 @@ describe("MerchantApplicationReviewRepository", () => {
     );
   });
 
-  it("creates merchant, shop, membership, identity, billing periods, notification, and audits atomically", async () => {
+  it.each(["verified", "declared"])("creates all approval records atomically for %s bank evidence", async status => {
     const tx = {
       identityApplication: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       protectedBankAccount: { findFirst: jest.fn().mockResolvedValue({ id: 81 }) },
@@ -157,6 +157,8 @@ describe("MerchantApplicationReviewRepository", () => {
         serviceCategoryIds: [1],
         businessKeywordIds: [10],
         bankAccountId: 81,
+        bankVerification: { status, source: status === "declared" ? "applicant_declaration" : "corporate_registration" },
+        ekycPolicy: { required: false, verified: false, policyVersionPublicId: "policy-v2" },
         contractAcceptanceId: 91,
         reviewedAt,
         purgeAt: new Date("2026-09-15T15:00:00.000Z"),
@@ -179,6 +181,7 @@ describe("MerchantApplicationReviewRepository", () => {
       billingProfileId: 81
     });
 
+    expect(tx.protectedBankAccount.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ verificationStatus: status, verificationSource: status === "declared" ? "applicant_declaration" : "corporate_registration" }) }));
     expect(tx.identityApplication.updateMany).toHaveBeenCalledWith({
       where: {
         id: 41,

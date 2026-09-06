@@ -1,3 +1,4 @@
+import { createApplicationEkycPolicy } from "./application-ekyc-policy.factory";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { IdentityApplicationRepository } from "../repositories/identity-application.repository";
@@ -7,11 +8,13 @@ import { ProtectedBankAccountService } from "../services/protected-bank-account.
 import { SensitiveFieldCipherService } from "../services/sensitive-field-cipher.service";
 
 export const createIdentityApplicationServiceForRoutes = (
+  config: AppConfig,
   dependencies: AppDependencies
 ): IdentityApplicationService =>
   dependencies.identityApplicationService ??
   new IdentityApplicationService(
-    dependencies.identityApplicationRepository ?? new IdentityApplicationRepository()
+    dependencies.identityApplicationRepository ?? new IdentityApplicationRepository(undefined, new SensitiveFieldCipherService(config.SENSITIVE_DATA_ENCRYPTION_KEY)),
+    createApplicationEkycPolicy(dependencies)
   );
 
 export const createProtectedBankAccountServiceForRoutes = (
@@ -21,5 +24,6 @@ export const createProtectedBankAccountServiceForRoutes = (
   dependencies.protectedBankAccountService ??
   new ProtectedBankAccountService(
     dependencies.protectedBankAccountRepository ?? new ProtectedBankAccountRepository(),
-    new SensitiveFieldCipherService(config.SENSITIVE_DATA_ENCRYPTION_KEY)
+    new SensitiveFieldCipherService(config.SENSITIVE_DATA_ENCRYPTION_KEY),
+    createApplicationEkycPolicy(dependencies)
   );

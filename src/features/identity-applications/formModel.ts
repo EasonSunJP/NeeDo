@@ -36,12 +36,20 @@ export type MerchantShowcaseForm = {
   stationAccess: string;
   contactPhone: string;
   responsiblePersonName: string;
+  responsibleFamilyName?: string;
+  responsibleGivenName?: string;
   description: string;
   serviceCategoryIds: number[];
   businessKeywordIds: number[];
 };
 
+export function splitApplicantName(name: string) {
+  const [familyName = "", ...given] = name.trim().split(/[\s\u3000]+/u);
+  return { familyName, givenName: given.join(" ") };
+}
+
 export function validateMerchantShowcase(input: MerchantShowcaseForm) {
+  if (input.responsibleFamilyName !== undefined && (!input.responsibleFamilyName.trim() || !input.responsibleGivenName?.trim())) return "请填写申请人的姓和名";
   if (input.stationTravelMinutes && (!/^\d+$/u.test(input.stationTravelMinutes) || !Number.isSafeInteger(Number(input.stationTravelMinutes)))) {
     return "到店时间请输入非负整数（分钟）";
   }

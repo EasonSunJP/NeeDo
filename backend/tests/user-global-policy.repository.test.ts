@@ -44,6 +44,8 @@ describe("UserGlobalPolicyRepository", () => {
           requireEmail: false,
           requireHomeServiceEkyc: false,
           requireStoreServiceEkyc: false,
+          requireMerchantApplicationEkyc: false,
+          requireTechnicianApplicationEkyc: false,
           ndpPerBaseExp: 100,
           baseExpUnitsPerThreshold: 10_000,
           effectiveFrom: new Date("2026-09-02T00:00:00Z"),

@@ -1,3 +1,4 @@
+import { applicationEkycPolicy } from "./helpers/application-ekyc-policy";
 import {
   MerchantApplicationReviewService,
   type MerchantApplicationReviewRecord,
@@ -105,9 +106,17 @@ const createRepository = (): jest.Mocked<MerchantApplicationReviewRepositoryPort
 });
 
 describe("MerchantApplicationReviewService", () => {
+  it.each([false, true])("permits a declared individual bank only when eKYC is not required (%s)", async required => {
+    const repository = createRepository();
+    repository.findById.mockResolvedValue(corporateApplication({ applicantKind: "individual", eKycVerified: false, bankAccount: { ...corporateApplication().bankAccount!, verificationSource: "applicant_declaration", verificationStatus: "declared", verifiedAt: null } }));
+    const result = new MerchantApplicationReviewService(repository, applicationEkycPolicy(required, false)).approve({ applicationId: 41, reviewerUserId: 9, expectedVersion: 3, now: exactFifteenDays });
+    if (required) { await expect(result).rejects.toMatchObject({ statusCode: 409 }); expect(repository.approveInTransaction).not.toHaveBeenCalled(); }
+    else { await result; expect(repository.approveInTransaction).toHaveBeenCalledWith(expect.objectContaining({ bankVerification: { status: "declared", source: "applicant_declaration" }, ekycPolicy: { required: false, verified: false, policyVersionPublicId: "policy-test" } })); }
+  });
+
   it("paginates applications and forwards sensitive-document authorization", async () => {
     const repository = createRepository();
-    const service = new MerchantApplicationReviewService(repository);
+    const service = new MerchantApplicationReviewService(repository, applicationEkycPolicy());
 
     await expect(
       service.list({ page: 1, pageSize: 20, status: "submitted" }, false)
@@ -125,7 +134,7 @@ describe("MerchantApplicationReviewService", () => {
       media: applicantKind === "corporate" ? corporateApplication().media.slice(0, 1) : [],
       bankAccount: { ...corporateApplication().bankAccount!, verificationSource: applicantKind === "corporate" ? "corporate_registration" : "ekyc" }
     }));
-    await new MerchantApplicationReviewService(repository).approve({
+    await new MerchantApplicationReviewService(repository, applicationEkycPolicy()).approve({
       applicationId: 41, reviewerUserId: 9, expectedVersion: 3, now: exactFifteenDays
     });
     expect(repository.approveInTransaction).toHaveBeenCalled();
@@ -150,7 +159,7 @@ describe("MerchantApplicationReviewService", () => {
     repository.findById.mockResolvedValue(corporateApplication(overrides));
 
     await expect(
-      new MerchantApplicationReviewService(repository).approve({
+      new MerchantApplicationReviewService(repository, applicationEkycPolicy()).approve({
         applicationId: 41,
         reviewerUserId: 9,
         expectedVersion: 3,
@@ -179,7 +188,7 @@ describe("MerchantApplicationReviewService", () => {
     );
 
     await expect(
-      new MerchantApplicationReviewService(repository).approve({
+      new MerchantApplicationReviewService(repository, applicationEkycPolicy(true, false)).approve({
         applicationId: 41,
         reviewerUserId: 9,
         expectedVersion: 3,
@@ -194,7 +203,7 @@ describe("MerchantApplicationReviewService", () => {
     ["14 remaining days", new Date("2026-08-17T15:00:00.000Z"), 14, "2026-11-30T15:00:00.000Z"]
   ])("approves atomically with the %s trial boundary", async (_label, now, bonus, endsAt) => {
     const repository = createRepository();
-    const service = new MerchantApplicationReviewService(repository);
+    const service = new MerchantApplicationReviewService(repository, applicationEkycPolicy());
 
     await expect(
       service.approve({
@@ -221,7 +230,7 @@ describe("MerchantApplicationReviewService", () => {
   it("is idempotent after approval and rejects only with a non-empty reason", async () => {
     const approvedRepository = createRepository();
     approvedRepository.findById.mockResolvedValue(corporateApplication({ status: "approved" }));
-    const approvedService = new MerchantApplicationReviewService(approvedRepository);
+    const approvedService = new MerchantApplicationReviewService(approvedRepository, applicationEkycPolicy());
     await expect(
       approvedService.approve({
         applicationId: 41,
@@ -233,7 +242,7 @@ describe("MerchantApplicationReviewService", () => {
     expect(approvedRepository.approveInTransaction).not.toHaveBeenCalled();
 
     const repository = createRepository();
-    const service = new MerchantApplicationReviewService(repository);
+    const service = new MerchantApplicationReviewService(repository, applicationEkycPolicy());
     await expect(
       service.reject({
         applicationId: 41,

@@ -5,7 +5,7 @@ describe("system settings localization", () => {
   it("defines every workspace label in all five UI languages", () => {
     expect(Object.keys(adminSystemSettingsCopy).sort()).toEqual(["en", "ja", "ko", "zh", "zh-Hant"].sort());
     for (const copy of Object.values(adminSystemSettingsCopy)) {
-      expect(copy.tabs).toHaveLength(4);
+      expect(copy.tabs).toHaveLength(5);
       expect(copy.title).toBeTruthy();
       expect(copy.save).toBeTruthy();
     }

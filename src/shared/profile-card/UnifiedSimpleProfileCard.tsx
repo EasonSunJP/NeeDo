@@ -4,6 +4,7 @@ import type { InfoCardData, InfoCardVariant } from "../info-card/types";
 import { SocialProfileMiniCard } from "./SocialProfileMiniCard";
 
 type CommonCardProps = {
+  showRating?: boolean;
   variant: InfoCardVariant;
   dark?: boolean;
   className?: string;
@@ -23,7 +24,7 @@ type UnifiedSimpleProfileCardProps =
 
 export function UnifiedSimpleProfileCard(props: UnifiedSimpleProfileCardProps) {
   const { dark, className, detailTo, onOpenDetails, actionSlot } = props;
-  const sharedProps = { actionSlot, className, dark, detailTo, onOpenDetails };
+  const sharedProps = { footerSlot: props.footerSlot, showRating: props.showRating, actionSlot, className, dark, detailTo, onOpenDetails };
 
   if ("data" in props) {
     return <SocialProfileMiniCard data={props.data} {...sharedProps} />;

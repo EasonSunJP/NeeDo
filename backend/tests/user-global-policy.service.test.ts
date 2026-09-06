@@ -18,6 +18,8 @@ const defaults = {
   requireEmail: false,
   requireHomeServiceEkyc: false,
   requireStoreServiceEkyc: false,
+  requireMerchantApplicationEkyc: false,
+  requireTechnicianApplicationEkyc: false,
   ndpPerBaseExp: 100,
   baseExpUnitsPerThreshold: 10_000
 };
@@ -52,6 +54,19 @@ const makeRepository = () =>
   }) as unknown as jest.Mocked<UserGlobalPolicyRepositoryPort>;
 
 describe("UserGlobalPolicyService", () => {
+  it("publishes a saved draft immediately using server time after its intended time has elapsed", async () => {
+    const repository = makeRepository();
+    const now = new Date("2026-09-03T00:00:00Z");
+    const snapshot = await repository.getCurrentAndDraft(now);
+    repository.publishDraftWithAudit.mockResolvedValue({ kind: "published", value: { ...snapshot.draft!, status: "published", effectiveFrom: now, publishedAt: now } });
+    const auditFactory = { createInput: jest.fn(input => input) };
+    const service = new UserGlobalPolicyService(repository, auditFactory as never, () => now);
+    await expect(service.publishDraft(actor, context, { expectedVersion: 2, expectedLockVersion: 1 })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.publishDraft(actor, context, { expectedVersion: 2, expectedLockVersion: 1, effectiveImmediately: true })).resolves.toMatchObject({ effectiveFrom: now });
+    expect(repository.publishDraftWithAudit).toHaveBeenCalledWith(expect.objectContaining({ publishedAt: now, effectiveImmediately: true }));
+    expect(auditFactory.createInput).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ effectiveFrom: now.toISOString(), effectiveImmediately: true }) }));
+  });
+
   it("resolves the published V1 default policy at an arbitrary timestamp", async () => {
     const repository = makeRepository();
     const service = new UserGlobalPolicyService(repository);

@@ -23,7 +23,7 @@ describe("identity application page chrome", () => {
     expect(stepZero).not.toContain("<ApplicationCard");
     expect(stepZero).not.toContain('type="file"');
     expect(merchantApplicationSource).not.toContain('label="负责人姓名"');
-    expect(merchantApplicationSource.indexOf('label="申请人"')).toBeLessThan(merchantApplicationSource.indexOf('label="法人或代表者姓名"'));
+    expect(merchantApplicationSource.indexOf('label="姓"')).toBeLessThan(merchantApplicationSource.indexOf('label="法人或代表者姓名"'));
   });
 
   it("uses formal eKYC status and the existing verification route", () => {
@@ -48,8 +48,8 @@ describe("identity application page chrome", () => {
   it("validates the normalized corporate payload without adding unapproved form fields", () => {
     expect(merchantApplicationSource).toContain("corporateLegalName: payload.corporateLegalName ?? \"\"");
     expect(merchantApplicationSource).toContain("corporateLegalNameKana: payload.corporateLegalNameKana ?? \"\"");
-    expect(merchantApplicationSource).not.toContain('label="法人名称"');
-    expect(merchantApplicationSource).not.toContain('label="法人名称片假名"');
+    expect(merchantApplicationSource.split("{step === 3 ? (")[0]).not.toContain('label="法人名称"');
+    expect(merchantApplicationSource.split("{step === 3 ? (")[0]).not.toContain('label="法人名称片假名"');
   });
 
   it("hides the regular user navigation throughout the merchant application flow", () => {
@@ -96,8 +96,8 @@ describe("identity application page chrome", () => {
     for (const marker of ['label="申请名义"', 'label="店铺名称"', 'label="银行账户"']) {
       expect(merchantPending).toContain(marker);
     }
-    expect(technicianPending).toContain('<ApplicationButton className="w-full" disabled tone="secondary">{t("审核中")}</ApplicationButton>');
-    expect(merchantPending).toContain('<ApplicationButton className="w-full" disabled tone="secondary">{t("审核中")}</ApplicationButton>');
+    expect(technicianPending).toContain("<ApplicationReviewActions application={application}");
+    expect(merchantPending).toContain("<ApplicationReviewActions application={application}");
     expect(technicianPending).not.toContain("ApplicationInput");
     expect(merchantPending).not.toContain("ApplicationInput");
   });

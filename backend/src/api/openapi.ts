@@ -9005,6 +9005,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "requireEmail",
           "requireHomeServiceEkyc",
           "requireStoreServiceEkyc",
+          "requireMerchantApplicationEkyc",
+          "requireTechnicianApplicationEkyc",
           "ndpPerBaseExp",
           "baseExpUnitsPerThreshold",
           "effectiveFrom",
@@ -9017,8 +9019,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           lockVersion: { type: "integer", minimum: 1 },
           requirePhone: { type: "boolean" },
           requireEmail: { type: "boolean" },
-          requireHomeServiceEkyc: { type: "boolean" },
-          requireStoreServiceEkyc: { type: "boolean" },
+          requireHomeServiceEkyc: { type: "boolean", default: true },
+          requireStoreServiceEkyc: { type: "boolean", default: false },
+          requireMerchantApplicationEkyc: { type: "boolean", default: false },
+          requireTechnicianApplicationEkyc: { type: "boolean", default: false },
           ndpPerBaseExp: { type: "integer", minimum: 1 },
           baseExpUnitsPerThreshold: { type: "integer", minimum: 1 },
           effectiveFrom: { type: "string", format: "date-time" },
@@ -9035,6 +9039,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "requireEmail",
           "requireHomeServiceEkyc",
           "requireStoreServiceEkyc",
+          "requireMerchantApplicationEkyc",
+          "requireTechnicianApplicationEkyc",
           "ndpPerBaseExp",
           "baseExpUnitsPerThreshold",
           "effectiveFrom"
@@ -9044,8 +9050,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           expectedDraftLockVersion: { type: ["integer", "null"], minimum: 1 },
           requirePhone: { type: "boolean" },
           requireEmail: { type: "boolean" },
-          requireHomeServiceEkyc: { type: "boolean" },
-          requireStoreServiceEkyc: { type: "boolean" },
+          requireHomeServiceEkyc: { type: "boolean", default: true },
+          requireStoreServiceEkyc: { type: "boolean", default: false },
+          requireMerchantApplicationEkyc: { type: "boolean", default: false },
+          requireTechnicianApplicationEkyc: { type: "boolean", default: false },
           ndpPerBaseExp: { type: "integer", minimum: 1 },
           baseExpUnitsPerThreshold: { type: "integer", minimum: 1 },
           effectiveFrom: {
@@ -24562,7 +24570,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           required: true,
           content: {
             "application/json": {
-              schema: { $ref: "#/components/schemas/VersionPublishInput" }
+              schema: { type: "object", additionalProperties: false, required: ["expectedVersion", "expectedLockVersion"], properties: { expectedVersion: { type: "integer", minimum: 1 }, expectedLockVersion: { type: "integer", minimum: 1 }, effectiveImmediately: { type: "boolean", default: false, description: "Publish with the server current timestamp instead of the scheduled effectiveFrom" } } }
             }
           }
         },
@@ -26564,7 +26572,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/identity-applications/mine`]: {
-      get: identityWorkflowOperation("List the authenticated user's identity applications", {
+      get: identityWorkflowOperation("List the authenticated user's identity applications with owner-only reviewEvidence: masked bank fields, accepted contract snapshot, protected media IDs, target shop public ID/name and taxonomy labels", {
         parameters: [
           {
             name: "type",
@@ -26585,7 +26593,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       })
     },
     [`${config.API_PREFIX}/merchants/search`]: {
-      get: identityWorkflowOperation("Search eligible shops by address, merchant ID, or name", {
+      get: identityWorkflowOperation("Search eligible shops by address, formal shop public ID, or name; returns merchantId as the formal shop public ID, coverUrl, rating, reviewCount and keywords", {
         parameters: [
           {
             name: "query",

@@ -1,3 +1,5 @@
+import { selectLatestApplication } from "./model";
+import type { IdentityApplication } from "./api";
 import { describe, expect, it } from "vitest";
 import {
   buildIdentityRows,
@@ -38,5 +40,14 @@ describe("identity application settings model", () => {
     expect(getIdentityPortal("technician")).toBe("technician");
     expect(getIdentityPortal("merchant")).toBe("merchant");
     expect(getIdentityPortal("affiliate")).toBe("business");
+  });
+});
+
+describe("application restoration", () => {
+  it("prioritizes the active application over recently purged older decisions", () => {
+    const application = (id: number, status: IdentityApplication["status"]) => ({ id, status } as IdentityApplication);
+    expect(selectLatestApplication([application(1, "approved"), application(4, "rejected"), application(3, "submitted")])?.id).toBe(3);
+    expect(selectLatestApplication([application(1, "approved"), application(4, "rejected")])?.id).toBe(4);
+    expect(selectLatestApplication([application(5, "withdrawn")])).toBeNull();
   });
 });

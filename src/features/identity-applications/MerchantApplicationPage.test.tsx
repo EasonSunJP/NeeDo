@@ -29,9 +29,9 @@ const corporateDraft: IdentityApplication = {
   technicianDetail: null,
   merchantDetail: {
     applicantKind: "corporate", corporateLegalName: "株式会社さくら", corporateLegalNameKana: "カブシキガイシャサクラ",
-    representativeName: "山田太郎", representativeNameKana: "ヤマダタロウ", responsiblePersonName: "佐藤花子",
+    representativeName: "山田太郎", representativeNameKana: "ヤマダタロウ", responsiblePersonName: "佐藤 花子",
     shopName: "さくら銀座店", businessAddress: "東京都中央区銀座", contactPhone: "0312345678",
-    showcaseDraft: { description: "地域の皆様のためのお店", priceLabel: "￥8,800 ~ ￥12,800" },
+    showcaseDraft: { responsibleFamilyName: "佐藤", responsibleGivenName: "花子", description: "地域の皆様のためのお店", priceLabel: "￥8,800 ~ ￥12,800" },
     serviceCategoryIds: [1], businessKeywordIds: [10], bankAccountId: 8, contractAcceptanceId: null,
     mediaPurposes: [], bankVerificationStatus: "verified", eKycVerified: false
   }
@@ -115,7 +115,7 @@ describe("MerchantApplicationPage behavior", () => {
   async function enterNewCorporateDraft() {
     await act(async () => button("法人名义").click());
     for (const [label, value] of [
-      ["申请人", "佐藤花子"], ["法人或代表者姓名片假名", "カブシキガイシャシンテン"],
+      ["姓", "佐藤"], ["名", "花子"], ["法人或代表者姓名片假名", "カブシキガイシャシンテン"],
       ["法人或代表者姓名", "株式会社新店"], ["店铺名称", "新店"], ["店铺地址", "東京都千代田区"], ["联系电话", "0398765432"]
     ]) await enter(label, value);
     await act(async () => {
@@ -340,7 +340,7 @@ describe("MerchantApplicationPage behavior", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:shop-cover");
     await act(async () => button("Return to application").click());
 
-    expect(input("申请人").value).toBe("佐藤花子");
+    expect(input("姓").value).toBe("佐藤");
     expect(input("法人或代表者姓名").value).toBe("株式会社新店");
     expect(input("法人或代表者姓名片假名").value).toBe("カブシキガイシャシンテン");
     expect(input("店铺名称").value).toBe("新店");
@@ -359,7 +359,7 @@ describe("MerchantApplicationPage behavior", () => {
     await act(async () => button("下一步：银行与身份").click());
     expect(identityApplicationsApi.createMerchantDraft).toHaveBeenCalledWith(expect.objectContaining({
       applicantKind: "corporate", serviceCategoryIds: [1], businessKeywordIds: [10],
-      showcaseDraft: { description: "新しいお店の紹介", priceLabel: "￥8,800 ~ ￥12,800", nearestStation: "", stationAccess: "", stationTravelMinutes: null }
+      showcaseDraft: { responsibleFamilyName: "佐藤", responsibleGivenName: "花子", description: "新しいお店の紹介", priceLabel: "￥8,800 ~ ￥12,800", nearestStation: "", stationAccess: "", stationTravelMinutes: null }
     }));
     expect(vi.mocked(identityApplicationsApi.uploadMedia).mock.calls[0]?.[3]).toBe(file);
   });
@@ -445,7 +445,7 @@ describe("MerchantApplicationPage behavior", () => {
     await act(async () => button("本人确认（eKYC）").click());
     context.accountId += 1;
     await act(async () => button("Return to application").click());
-    expect(input("申请人").value).toBe("");
+    expect(input("姓").value).toBe("");
     expect(input("店铺名称").value).toBe("");
     expect(input("最低费用").value).toBe("");
     expect(input("最高费用").value).toBe("");
@@ -455,7 +455,7 @@ describe("MerchantApplicationPage behavior", () => {
     expect(context.preview?.tags).toEqual([]);
     context.accountId = originalAccountId;
     await render();
-    expect(input("申请人").value).toBe("佐藤花子");
+    expect(input("姓").value).toBe("佐藤");
     expect(input("最低费用").value).toBe("5000");
     expect(container.textContent).toContain("first-shop.png");
     context.accountId += 1;
@@ -463,32 +463,32 @@ describe("MerchantApplicationPage behavior", () => {
 
   it("consumes the retained draft on restoration and does not replay it on a later ordinary remount", async () => {
     await render();
-    await enter("申请人", "一次限りの申請者");
+    await enter("姓", "一次限りの申請者");
     await act(async () => button("本人确认（eKYC）").click());
     await act(async () => button("Return to application").click());
-    expect(input("申请人").value).toBe("一次限りの申請者");
+    expect(input("姓").value).toBe("一次限りの申請者");
     await act(async () => root.unmount());
     root = createRoot(container);
     await render();
-    expect(input("申请人").value).toBe("");
+    expect(input("姓").value).toBe("");
   });
 
   it("preserves the detour draft through StrictMode mount replay without writing browser storage", async () => {
     const storageWrite = vi.spyOn(Storage.prototype, "setItem");
     await render(true);
-    await enter("申请人", "StrictMode の申請者");
+    await enter("姓", "StrictMode の申請者");
     await act(async () => button("本人确认（eKYC）").click());
     await act(async () => button("Return to application").click());
-    expect(input("申请人").value).toBe("StrictMode の申請者");
+    expect(input("姓").value).toBe("StrictMode の申請者");
     expect(storageWrite).not.toHaveBeenCalled();
   });
 
   it("resets the mounted form when the authenticated account changes", async () => {
     await render();
-    await enter("申请人", "前のアカウント");
+    await enter("姓", "前のアカウント");
     context.accountId += 1;
     await render();
-    expect(input("申请人").value).toBe("");
+    expect(input("姓").value).toBe("");
   });
 
   it("disables the eKYC detour during a pending save so it cannot create or replace a snapshot", async () => {
@@ -530,7 +530,7 @@ describe("MerchantApplicationPage behavior", () => {
     await act(async () => root.unmount());
     root = createRoot(container);
     await render();
-    await enter("申请人", "新しい申請者");
+    await enter("姓", "新しい申請者");
     await enter("店铺名称", "再マウント後の新しい名称");
     await enter("最低费用", "9500");
     await enter("最高费用", "15500");
@@ -548,7 +548,7 @@ describe("MerchantApplicationPage behavior", () => {
     expect.soft(merchantApplicationDraftMemory.read(context.accountId)).toBe(newerSnapshot);
     vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [savedOldApplication], total: 1, page: 1, page_size: 20 });
     await act(async () => button("Return to application").click());
-    expect.soft(input("申请人").value).toBe("新しい申請者");
+    expect.soft(input("姓").value).toBe("新しい申請者");
     expect.soft(input("店铺名称").value).toBe("再マウント後の新しい名称");
     expect.soft(input("最低费用").value).toBe("9500");
     expect.soft(input("最高费用").value).toBe("15500");

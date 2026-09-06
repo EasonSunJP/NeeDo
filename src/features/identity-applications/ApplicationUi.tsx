@@ -115,7 +115,7 @@ export function ApplicationBottomAction({ children }: { children: ReactNode }) {
 export function ApplicationSteps({ current, labels }: { current: number; labels: string[] }) {
   const { language } = useI18n();
   return (
-    <ol className="grid grid-cols-3 gap-2" aria-label={translateText("申请进度", language)}>
+    <ol className="grid gap-2" style={{ gridTemplateColumns: `repeat(${labels.length}, minmax(0, 1fr))` }} aria-label={translateText("申请进度", language)}>
       {labels.map((label, index) => (
         <li className="min-w-0" key={label}>
           <div className={cn("h-1.5 rounded-full", index <= current ? "bg-[color:var(--client-primary)]" : "bg-[color:var(--client-line)]")} />

@@ -1,3 +1,4 @@
+import { createApplicationEkycPolicy } from "./application-ekyc-policy.factory";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { prisma } from "../prisma/client";
@@ -15,5 +16,6 @@ export const createMerchantApplicationReviewServiceForRoutes = (
       new MerchantApplicationReviewRepository(
         prisma,
         new SensitiveFieldCipherService(config.SENSITIVE_DATA_ENCRYPTION_KEY)
-      )
+      ),
+    createApplicationEkycPolicy(dependencies)
   );

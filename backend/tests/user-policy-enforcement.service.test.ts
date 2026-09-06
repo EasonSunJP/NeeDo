@@ -17,6 +17,8 @@ const policy = (overrides: Partial<ResolvedUserGlobalPolicy> = {}): ResolvedUser
   requireEmail: false,
   requireHomeServiceEkyc: false,
   requireStoreServiceEkyc: false,
+  requireMerchantApplicationEkyc: false,
+  requireTechnicianApplicationEkyc: false,
   ndpPerBaseExp: 100,
   baseExpUnitsPerThreshold: 10_000,
   effectiveFrom: occurredAt,
@@ -47,6 +49,14 @@ const resolver = (value: ResolvedUserGlobalPolicy = policy()) => ({
 });
 
 describe("UserPolicyEnforcementService", () => {
+  it.each(["merchant", "technician"] as const)("resolves the %s application toggle independently", async type => {
+    for (const required of [false, true]) for (const verified of [false, true]) {
+      const effectivePolicy = policy({ requireMerchantApplicationEkyc: type === "merchant" ? required : !required, requireTechnicianApplicationEkyc: type === "technician" ? required : !required });
+      const service = new UserPolicyEnforcementService(repository(facts({ ekycVerified: verified })), resolver(effectivePolicy));
+      await expect(service.evaluateApplicationEkyc(41, type, occurredAt)).resolves.toEqual({ required, verified, policyVersionPublicId: "policy-v1" });
+    }
+  });
+
   it("returns only the enabled missing account-binding requirements", async () => {
     const service = new UserPolicyEnforcementService(
       repository(facts({ phoneBound: false, emailVerified: false })),
