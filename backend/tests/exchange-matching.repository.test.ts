@@ -661,6 +661,60 @@ describe("ExchangeMatchingRepository", () => {
     });
   });
 
+  it("notifies the Quick owner with only the exact budget-decision fields and audits it", async () => {
+    const client = {
+      notification: { create: jest.fn(async () => ({ id: 91 })) },
+      auditLog: { create: jest.fn(async () => ({ id: 92 })) }
+    };
+    const repository = new ExchangeMatchingRepository(client as unknown as PrismaClient);
+
+    await repository.notifyQuickBudgetDecisionRequired({
+      matchingId: 51,
+      exchangePostId: 41,
+      ownerUserId: 7,
+      ownerIdentityId: 17,
+      activeClaimCount: 2,
+      effectiveBudgetMaxJpy: 30_000,
+      requiredBudgetMaxJpy: 31_000,
+      requiredBudgetIncreaseJpy: 1_000,
+      at
+    });
+
+    expect(client.notification.create).toHaveBeenCalledWith({
+      data: {
+        recipientUserId: 7,
+        recipientIdentityId: 17,
+        actorUserId: null,
+        actorIdentityId: null,
+        type: "SYSTEM",
+        title: "exchange.matching.quick_budget_decision_required.title",
+        body: "exchange.matching.quick_budget_decision_required.body",
+        payload: {
+          exchangePostId: 41,
+          activeClaimCount: 2,
+          effectiveBudgetMaxJpy: 30_000,
+          requiredBudgetMaxJpy: 31_000,
+          requiredBudgetIncreaseJpy: 1_000
+        },
+        createdAt: at
+      }
+    });
+    const notificationInput = (client.notification.create as jest.Mock).mock.calls[0]?.[0] as {
+      data: { payload: unknown };
+    };
+    expect(JSON.stringify(notificationInput.data.payload)).not.toMatch(
+      /address|phone|email|token|wallet|identityId/ui
+    );
+    expect(client.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorId: null,
+        action: "exchange.matching.quick.budget_decision_required",
+        targetType: "exchange_request_matching",
+        targetId: 51
+      })
+    });
+  });
+
   it("persists budget and target adjustments as one linked atomic event chain", async () => {
     const createdEvents: Array<Record<string, unknown>> = [];
     const client = {

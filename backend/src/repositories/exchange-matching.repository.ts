@@ -140,6 +140,18 @@ export interface CompleteExchangeMatchInput {
   audit: AuditLogCreateInput;
 }
 
+export interface NotifyQuickBudgetDecisionRequiredInput {
+  matchingId: number;
+  exchangePostId: number;
+  ownerUserId: number;
+  ownerIdentityId: number;
+  activeClaimCount: number;
+  effectiveBudgetMaxJpy: number;
+  requiredBudgetMaxJpy: number;
+  requiredBudgetIncreaseJpy: number;
+  at: Date;
+}
+
 export class ExchangeMatchingRepository {
   public constructor(private readonly client: ExchangeMatchingPrismaClient = prisma) {}
 
@@ -475,6 +487,45 @@ export class ExchangeMatchingRepository {
     await this.client.auditLog.create({ data: toAuditLogCreateData(input.audit) });
     const result = await this.findForViewer(input.exchangePostId, input.viewerIdentityId);
     return result?.payload ?? null;
+  }
+
+  public async notifyQuickBudgetDecisionRequired(
+    input: NotifyQuickBudgetDecisionRequiredInput
+  ): Promise<void> {
+    await this.client.notification.create({
+      data: {
+        recipientUserId: input.ownerUserId,
+        recipientIdentityId: input.ownerIdentityId,
+        actorUserId: null,
+        actorIdentityId: null,
+        type: NotificationType.SYSTEM,
+        title: "exchange.matching.quick_budget_decision_required.title",
+        body: "exchange.matching.quick_budget_decision_required.body",
+        payload: {
+          exchangePostId: input.exchangePostId,
+          activeClaimCount: input.activeClaimCount,
+          effectiveBudgetMaxJpy: input.effectiveBudgetMaxJpy,
+          requiredBudgetMaxJpy: input.requiredBudgetMaxJpy,
+          requiredBudgetIncreaseJpy: input.requiredBudgetIncreaseJpy
+        },
+        createdAt: input.at
+      }
+    });
+    await this.client.auditLog.create({
+      data: toAuditLogCreateData({
+        actorId: null,
+        action: "exchange.matching.quick.budget_decision_required",
+        targetType: "exchange_request_matching",
+        targetId: input.matchingId,
+        metadata: {
+          exchangePostId: input.exchangePostId,
+          activeClaimCount: input.activeClaimCount,
+          effectiveBudgetMaxJpy: input.effectiveBudgetMaxJpy,
+          requiredBudgetMaxJpy: input.requiredBudgetMaxJpy,
+          requiredBudgetIncreaseJpy: input.requiredBudgetIncreaseJpy
+        }
+      })
+    });
   }
 
   private mapMatching(row: MatchingRow, viewerIdentityId: number): ExchangeMatchingRecord | null {

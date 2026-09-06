@@ -175,7 +175,7 @@ Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange-m
 
 Expected: both suites pass and Selective behavior is unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/repositories/exchange-matching.repository.ts backend/tests/exchange-matching.repository.test.ts backend/tests/exchange-matching.service.test.ts
@@ -199,7 +199,7 @@ git commit -m "refactor(exchange): share atomic match completion"
 - Consumes: the transaction-bound repository after `claim_added` has advanced matching version.
 - Produces: refreshed claim status (`active` or `matched`) from the create endpoint.
 
-- [ ] **Step 1: Write failing coordinator and claim-service tests**
+- [x] **Step 1: Write failing coordinator and claim-service tests**
 
 Cover these independent cases:
 
@@ -213,13 +213,13 @@ it("never invokes quick matching for selective claims", ...);
 
 Assert the success input includes `selectedClaimIds` equal to every locked active claim, `unselectedClaimIds: []`, `matchEventType: "quick_matched"`, `versionBefore` equal to the post-`CLAIM_ADDED` version, a system actor (`null`), and no financial calls.
 
-- [ ] **Step 2: Run the focused service tests and verify RED**
+- [x] **Step 2: Run the focused service tests and verify RED**
 
 Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange-quick-matching.service.test.ts tests/exchange-claim.service.test.ts`
 
 Expected: FAIL because Quick claims are rejected and the coordinator does not exist.
 
-- [ ] **Step 3: Implement the coordinator with exact threshold rules**
+- [x] **Step 3: Implement the coordinator with exact threshold rules**
 
 Implement the decision core:
 
@@ -242,15 +242,15 @@ return { kind: "matched", matching: await repository.completeMatch(...) };
 
 The notification contains only post ID, active count, effective budget, required budget, and required increase. It contains no address, message, phone, email, token, wallet ID, or internal identity ID.
 
-- [ ] **Step 4: Admit Quick claims and invoke the coordinator before commit**
+- [x] **Step 4: Admit Quick claims and invoke the coordinator before commit**
 
 Change `assertRequestClaimable` to accept `quick | selective`. Extend the locked matching record to include match mode, owner, effective target/budget, and version. After the existing `CLAIM_ADDED` version update and claim audit, invoke the coordinator only for Quick mode, then re-read the created claim so automatic success returns `status: "matched"`.
 
-- [ ] **Step 5: Reuse the matching repository from the same transaction client**
+- [x] **Step 5: Reuse the matching repository from the same transaction client**
 
 Add explicit delegate methods on `ExchangeClaimRepository` that construct `ExchangeMatchingRepository` with the transaction-bound Prisma client. The service sees only declared repository ports; it never receives Prisma and never writes database rows directly.
 
-- [ ] **Step 6: Run service and repository tests and verify GREEN**
+- [x] **Step 6: Run service and repository tests and verify GREEN**
 
 Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange-quick-matching.service.test.ts tests/exchange-claim.service.test.ts tests/exchange-claim.repository.test.ts tests/exchange-matching.repository.test.ts`
 

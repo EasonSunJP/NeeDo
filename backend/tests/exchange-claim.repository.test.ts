@@ -167,7 +167,13 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     const repository = new ExchangeClaimRepository({
       $queryRaw: jest.fn(async () => [{ id: 51 }]),
       exchangeRequestMatching: {
-        findUnique: jest.fn(async () => ({ id: 51, status: "OPEN", version: 3 })),
+        findUnique: jest.fn(async () => ({
+          id: 51,
+          status: "OPEN",
+          version: 3,
+          effectiveTargetProviderCount: 2,
+          effectiveBudgetMaxJpy: 30_000
+        })),
         updateMany
       },
       exchangeMatchEvent: { create: eventCreate }
@@ -176,7 +182,9 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     await expect(repository.lockMatching(41)).resolves.toEqual({
       id: 51,
       status: "open",
-      version: 3
+      version: 3,
+      effectiveTargetProviderCount: 2,
+      effectiveBudgetMaxJpy: 30_000
     });
     await expect(
       repository.advanceMatchingForClaimEvent({
