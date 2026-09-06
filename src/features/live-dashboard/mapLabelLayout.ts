@@ -35,6 +35,9 @@ export interface MapLabelLayoutInput {
   viewport: MapLabelViewport;
   selectedCode?: string | null;
   orderCountByCode?: Readonly<Record<string, number>>;
+  /** Screen-space label dimensions when rendering into a measured SVG viewport. */
+  fontSize?: number;
+  capacity?: "complete" | "partial";
 }
 
 const EDGE_CLEARANCE = 8;
@@ -132,13 +135,13 @@ function findCallout(anchor: Point, size: Pick<LabelBox, "width" | "height">, vi
 }
 
 /** Pure layout over the supplied visible-level regions; no nationwide index lookup. */
-export function layoutMapLabels({ regions, viewBox, viewport, selectedCode, orderCountByCode = {} }: MapLabelLayoutInput): MapLabelPlacement[] {
+export function layoutMapLabels({ regions, viewBox, viewport, selectedCode, orderCountByCode = {}, fontSize, capacity = "complete" }: MapLabelLayoutInput): MapLabelPlacement[] {
   const [x, y, width, height] = viewBox;
   const candidates = regions.flatMap((region) => region.labelPoint === null ? [] : [{
     code: region.code,
     anchor: [region.labelPoint[0] * viewport.scale + viewport.x, region.labelPoint[1] * viewport.scale + viewport.y] as Point,
-    width: Math.max(48, region.nameJa.length * 15 + 16),
-    height: 28
+    width: fontSize ? region.nameJa.length * fontSize + 8 : Math.max(48, region.nameJa.length * 15 + 16),
+    height: fontSize ? fontSize + 6 : 28
   }]);
   candidates.sort((a, b) => Number(b.code === selectedCode) - Number(a.code === selectedCode)
     || Number((orderCountByCode[b.code] ?? 0) > 0) - Number((orderCountByCode[a.code] ?? 0) > 0)
@@ -148,6 +151,7 @@ export function layoutMapLabels({ regions, viewBox, viewport, selectedCode, orde
   const accepted: MapLabelPlacement[] = [];
   for (const candidate of candidates) {
     if (candidate.width + EDGE_CLEARANCE * 2 > width || candidate.height + EDGE_CLEARANCE * 2 > height) {
+      if (capacity === "partial") continue;
       throw new RangeError("map_label_layout_capacity_exceeded");
     }
     const centered = { ...candidate, label: candidate.anchor };
@@ -156,7 +160,13 @@ export function layoutMapLabels({ regions, viewBox, viewport, selectedCode, orde
       && centered.label[1] - centered.height / 2 >= y + EDGE_CLEARANCE
       && centered.label[1] + centered.height / 2 <= y + height - EDGE_CLEARANCE
       && !accepted.some((other) => boxesOverlap(centered, other, LABEL_GAP));
-    const label = internal ? candidate.anchor : findCallout(candidate.anchor, candidate, viewBox, accepted, anchorBoxes);
+    let label: Point;
+    try {
+      label = internal ? candidate.anchor : findCallout(candidate.anchor, candidate, viewBox, accepted, anchorBoxes);
+    } catch (error) {
+      if (capacity === "partial" && error instanceof RangeError) continue;
+      throw error;
+    }
     const box = { ...candidate, label };
     accepted.push({ ...box, external: !internal, leader: internal ? [] : leaderToBox(candidate.anchor, box) });
   }

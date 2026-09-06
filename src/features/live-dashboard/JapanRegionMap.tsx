@@ -115,6 +115,8 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   const [error, setError] = useState("");
   const [activeCode, setActiveCode] = useState<string | null>(scope.admin2 ?? null);
   const [viewport, setViewport] = useState(IDENTITY_VIEWPORT);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null);
   const drag = useRef<{ id: number; x: number; y: number; moved: boolean; target: SVGSVGElement; viewport: MapViewport } | null>(null);
   const dragFrame = useRef<number | null>(null);
   const suppressClick = useRef(false);
@@ -140,6 +142,15 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
 
   useEffect(() => setActiveCode(scope.admin2 ?? null), [scope.admin2]);
   useEffect(() => {
+    if (!stageRef.current || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setStageSize((current) => current?.width === width && current.height === height ? current : { width, height });
+    });
+    observer.observe(stageRef.current);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
     setViewport(IDENTITY_VIEWPORT);
     return () => {
       if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
@@ -154,10 +165,24 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   const maximumOrders = Math.max(1, ...children.map((item) => item.orderCount));
   const activeRegion = asset?.regions.find((region) => region.code === activeCode) ?? null;
   const activeData = activeCode ? childByCode.get(activeCode) : null;
+  const projection = useMemo(() => {
+    if (!asset || !stageSize) return { scale: 1, x: 0, y: 0 };
+    const scale = Math.min(stageSize.width / asset.viewBox[2], stageSize.height / asset.viewBox[3]);
+    return { scale, x: (stageSize.width - asset.viewBox[2] * scale) / 2 - asset.viewBox[0] * scale, y: (stageSize.height - asset.viewBox[3] * scale) / 2 - asset.viewBox[1] * scale };
+  }, [asset, stageSize]);
   const placements = useMemo(() => asset ? layoutMapLabels({
-    regions: asset.regions, viewBox: asset.viewBox, viewport, selectedCode: activeCode,
+    regions: stageSize && viewport.scale > 1 ? asset.regions.filter((region) => {
+      if (region.code === activeCode) return true;
+      if (!region.labelPoint) return false;
+      const x = (region.labelPoint[0] * viewport.scale + viewport.x) * projection.scale + projection.x;
+      const y = (region.labelPoint[1] * viewport.scale + viewport.y) * projection.scale + projection.y;
+      return x >= 0 && x <= stageSize.width && y >= 0 && y <= stageSize.height;
+    }) : asset.regions,
+    viewBox: stageSize ? [0, 0, stageSize.width, stageSize.height] : asset.viewBox,
+    viewport: { scale: viewport.scale * projection.scale, x: viewport.x * projection.scale + projection.x, y: viewport.y * projection.scale + projection.y },
+    selectedCode: activeCode, fontSize: stageSize ? 11 : undefined, capacity: stageSize ? "partial" : "complete",
     orderCountByCode: Object.fromEntries(children.map((item) => [item.code, item.orderCount]))
-  }) : [], [asset, viewport, activeCode, children]);
+  }) : [], [asset, viewport, activeCode, children, stageSize, projection]);
   const nameByCode = useMemo(() => new Map(asset?.regions.map((item) => [item.code, item.nameJa])), [asset]);
   const zoom = (direction: "in" | "out") => {
     if (!asset) return;
@@ -214,7 +239,10 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
         <strong>{activeRegion?.nameJa ?? t("选择地图中的行政区域")}</strong>
         {activeData ? <span>{t("订单")} {activeData.orderCount} · {formatJpy(activeData.confirmedPayments.jpy, locale)}</span> : null}
       </div>
-      <div className="live-dashboard-map-stage" data-loading={loading ? "true" : "false"}>
+      {asset && placements.length < asset.regions.filter((region) => region.labelPoint).length ? <p className="live-dashboard-map-label-status" role="status">
+        {t("已显示地区名称")} {placements.length} / {asset.regions.length} · {t("空间有限，放大或搜索查看其余地区")}
+      </p> : null}
+      <div ref={stageRef} className="live-dashboard-map-stage" data-loading={loading ? "true" : "false"}>
         {asset ? (
           <svg
             aria-label={t(scope.admin1 ? "市区町村运营分布图" : "日本都道府县运营分布图")}
@@ -253,8 +281,9 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
             onClickCapture={(event) => {
               if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; }
             }}
-            viewBox={asset.viewBox.join(" ")}
+            viewBox={stageSize ? `0 0 ${stageSize.width} ${stageSize.height}` : asset.viewBox.join(" ")}
           >
+            <g data-map-projection transform={mapViewportTransform(projection)}>
             <g data-map-geometry transform={mapViewportTransform(viewport)}>
             {asset.insets?.map((inset) => (
               <rect
@@ -311,10 +340,11 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
               </text>
             ))}
             </g>
+            </g>
             <g aria-hidden="true" className="live-dashboard-map-leaders" pointerEvents="none">
               {placements.filter((item) => item.external).map((item) => <polyline data-map-leader={item.code} key={item.code} points={item.leader.map((point) => point.join(",")).join(" ")} />)}
             </g>
-            <g aria-hidden="true" className="live-dashboard-map-labels" pointerEvents="none">
+            <g aria-hidden="true" className="live-dashboard-map-labels" pointerEvents="none" style={stageSize ? { fontSize: 11, strokeWidth: 2 } : undefined}>
               {placements.map((item) => (
                 <text
                   data-map-label={item.code}

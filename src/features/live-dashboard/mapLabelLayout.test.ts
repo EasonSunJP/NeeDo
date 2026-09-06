@@ -19,6 +19,33 @@ function expectContained(placements: MapLabelPlacement[], bounds: typeof viewBox
 }
 
 describe("layoutMapLabels", () => {
+  it.each([[880, 220], [640, 390], [600, 250]])("keeps all Japan, Tokyo and Okinawa labels readable at %ix%i", (width, height) => {
+    for (const name of ["country", "prefectures/13", "prefectures/47"]) {
+      const asset = JSON.parse(fs.readFileSync(path.join(process.cwd(), `public/maps/jp/2026/${name}.json`), "utf8"));
+      const scale = Math.min(width / asset.viewBox[2], height / asset.viewBox[3]);
+      const bounds = [0, 0, width, height] as typeof viewBox;
+      const placements = layoutMapLabels({ regions: asset.regions, viewBox: bounds, fontSize: 11, viewport: { scale, x: (width - asset.viewBox[2] * scale) / 2, y: (height - asset.viewBox[3] * scale) / 2 } });
+      expect(placements).toHaveLength(asset.regions.length);
+      expect(overlappingPairs(placements)).toEqual([]);
+      expectContained(placements, bounds);
+      placements.forEach((item) => {
+        expect(item.height).toBe(17);
+        if (item.external) expect(item.leader).toHaveLength(2);
+      });
+    }
+  });
+  it("explicitly permits deterministic partial disclosure at physical pixel capacity", () => {
+    const regions = Array.from({ length: 80 }, (_, index) => region(String(index), [150, 100]));
+    const input = { regions, viewBox: [0, 0, 300, 200] as typeof viewBox, viewport: identityViewport, selectedCode: "79", fontSize: 11, capacity: "partial" as const };
+    const placements = layoutMapLabels(input);
+    expect(placements.length).toBeGreaterThan(0);
+    expect(placements.length).toBeLessThan(regions.length);
+    expect(placements[0].code).toBe("79");
+    expect(placements[0].height).toBe(17);
+    expect(overlappingPairs(placements)).toEqual([]);
+    expectContained(placements, input.viewBox);
+    expect(layoutMapLabels(input)).toEqual(placements);
+  });
   it("retains separated internal labels and estimates boxes in viewBox units", () => {
     const placements = layoutMapLabels({ regions: [region("01", [200, 200]), region("02", [500, 500], "村")], viewBox, viewport: identityViewport });
     expect(placements.find((item) => item.code === "01")).toMatchObject({ label: [200, 200], width: 61, height: 28, external: false, leader: [] });

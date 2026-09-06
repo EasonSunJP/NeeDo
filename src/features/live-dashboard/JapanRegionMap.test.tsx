@@ -43,6 +43,51 @@ describe("JapanRegionMap", () => {
     window.localStorage.clear();
   });
 
+  it("lays labels out in physical viewport pixels after resize without fetching", async () => {
+    let resize: ResizeObserverCallback = () => {};
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: ResizeObserverCallback) { resize = callback; }
+      observe() {} disconnect() {}
+    });
+    const fetcher = vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : country }));
+    vi.stubGlobal("fetch", fetcher);
+    await act(async () => root.render(<JapanRegionMap children={childrenFor(country)} onSelectRegion={vi.fn()} scope={{ country: "JP", period: "today" }} />));
+    await act(async () => resize([{ contentRect: { width: 880, height: 220 } } as ResizeObserverEntry], {} as ResizeObserver));
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("viewBox")).toBe("0 0 880 220");
+    expect(svg.querySelector("[data-map-projection]")).toBeTruthy();
+    expect(svg.querySelector("[data-map-projection] [data-map-label]")).toBeNull();
+    expect(svg.querySelectorAll("[data-map-label]")).toHaveLength(47);
+    const labels = [...svg.querySelectorAll("[data-map-label]")];
+    labels.forEach((label) => {
+      expect(Number(label.getAttribute("x"))).toBeGreaterThan(0);
+      expect(Number(label.getAttribute("y"))).toBeGreaterThan(0);
+      expect(Number(label.getAttribute("y"))).toBeLessThan(220);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("explains dense label capacity and retains every region with focus disclosure", async () => {
+    const hokkaido = readAsset("public/maps/jp/2026/prefectures/01.json");
+    let resize: ResizeObserverCallback = () => {};
+    vi.stubGlobal("ResizeObserver", class { constructor(callback: ResizeObserverCallback) { resize = callback; } observe() {} disconnect() {} });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : hokkaido })));
+    await act(async () => root.render(<JapanRegionMap children={childrenFor(hokkaido)} onSelectRegion={vi.fn()} scope={{ country: "JP", admin1: "01", period: "today" }} />));
+    await act(async () => resize([{ contentRect: { width: 880, height: 220 } } as ResizeObserverEntry], {} as ResizeObserver));
+    expect(container.querySelectorAll("[data-map-region]")).toHaveLength(195);
+    const labels = [...container.querySelectorAll("[data-map-label]")].map((label) => label.getAttribute("data-map-label"));
+    expect(labels.length).toBeLessThan(195);
+    expect(container.querySelector(".live-dashboard-map-label-status")?.textContent).toContain(`${labels.length} / 195`);
+    const undisclosed = [...container.querySelectorAll<SVGPathElement>("[data-map-region]")].find((item) => !labels.includes(item.getAttribute("data-region-code")))!;
+    await act(async () => undisclosed.dispatchEvent(new FocusEvent("focusin", { bubbles: true })));
+    expect(container.querySelector(`[data-map-label="${undisclosed.getAttribute("data-region-code")}"]`)).toBeTruthy();
+    const beforeZoom = [...container.querySelectorAll("[data-map-label]")].map((label) => label.getAttribute("data-map-label"));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="放大地图"]')!.click());
+    const afterZoom = [...container.querySelectorAll("[data-map-label]")].map((label) => label.getAttribute("data-map-label"));
+    expect(afterZoom.some((code) => !beforeZoom.includes(code))).toBe(true);
+    expect(container.querySelectorAll("[data-map-region]")).toHaveLength(195);
+  });
+
   it("loads the local country asset and exposes all 47 prefectures", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => country }));
     const onSelect = vi.fn();

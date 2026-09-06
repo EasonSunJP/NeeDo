@@ -776,6 +776,8 @@ export const translations: TranslationMap = {
   "放大地图": fourLanguageTranslation("放大地圖", "地図を拡大", "Zoom in on map", "지도 확대"),
   "缩小地图": fourLanguageTranslation("縮小地圖", "地図を縮小", "Zoom out on map", "지도 축소"),
   "还原地图": fourLanguageTranslation("還原地圖", "地図をリセット", "Reset map", "지도 초기화"),
+  "已显示地区名称": fourLanguageTranslation("已顯示地區名稱", "表示中の地域名", "Region labels shown", "표시된 지역 이름"),
+  "空间有限，放大或搜索查看其余地区": fourLanguageTranslation("空間有限，放大或搜尋查看其餘地區", "表示領域に限りがあります。拡大または検索で他の地域を確認できます", "Space is limited. Zoom in or search to see other regions", "공간이 제한되어 있습니다. 확대하거나 검색하여 다른 지역을 확인하세요"),
   "正在读取实时经营数据": fourLanguageTranslation("正在讀取即時營運數據", "リアルタイム運営データを読み込んでいます", "Loading live operations data", "실시간 운영 데이터를 불러오는 중"),
   "地图数据已就绪": fourLanguageTranslation("地圖數據已就緒", "地図データの準備ができました", "Map data is ready", "지도 데이터 준비 완료"),
   "地图暂时无法显示": fourLanguageTranslation("地圖暫時無法顯示", "地図を一時的に表示できません", "Map temporarily unavailable", "지도를 일시적으로 표시할 수 없습니다"),

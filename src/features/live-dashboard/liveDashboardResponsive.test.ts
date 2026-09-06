@@ -6,6 +6,15 @@ const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8"
 const block = (selector: string) => styles.slice(styles.indexOf(`${selector} {`)).split("}")[0];
 
 describe("live dashboard responsive layout contract", () => {
+  it("uses theme text for new controls and one-row desktop region controls", () => {
+    for (const selector of [".live-dashboard-region-navigator input, .live-dashboard-region-navigator select", ".live-dashboard-region-results li", ".live-dashboard-map-viewport-controls button"]) {
+      expect(block(selector)).toContain("var(--admin-text,");
+    }
+    expect(block(".live-dashboard-region-navigator")).toContain("repeat(2, minmax(0, 1fr))");
+    expect(block(".live-dashboard-region-search")).not.toContain("grid-column: 1 / -1");
+    expect(block(".live-dashboard-map-tooltip")).toContain("min-height: 0");
+    expect(block(".live-dashboard-map-stage")).toContain("grid-column: 1 / -1");
+  });
   it("allocates the desktop viewport without a scaled minimum canvas", () => {
     expect(pageSource).not.toContain("viewportScale");
     expect(pageSource).not.toContain("--live-dashboard-scale");

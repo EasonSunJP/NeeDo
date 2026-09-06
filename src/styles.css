@@ -8950,18 +8950,19 @@ html.im-conversation-scroll-lock #root {
   padding: 4px var(--live-padding);
 }
 
-.live-dashboard-map-graphic { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0; }
-.live-dashboard-region-navigator { display: grid; grid-template-columns: minmax(0, .6fr) repeat(2, minmax(0, 1fr)); gap: 6px; padding: var(--live-padding) var(--live-padding) 4px; min-width: 0; }
+.live-dashboard-map-graphic { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
+.live-dashboard-region-navigator { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, .5fr) repeat(2, minmax(0, 1fr)); gap: 6px; padding: var(--live-padding) var(--live-padding) 4px; min-width: 0; }
+.live-dashboard-region-navigator > nav { display: none; }
 .live-dashboard-region-navigator nav, .live-dashboard-region-status { grid-column: 1 / -1; margin: 0; color: var(--admin-muted, #64748b); font-size: 11px; overflow-wrap: anywhere; }
 .live-dashboard-region-navigator label { display: grid; gap: 4px; min-width: 0; font-size: 11px; color: var(--admin-muted, #64748b); }
-.live-dashboard-region-navigator input, .live-dashboard-region-navigator select { min-width: 0; width: 100%; min-height: 36px; padding: 6px 9px; border: 1px solid var(--admin-line, rgba(15, 23, 42, .12)); border-radius: 10px; background: var(--admin-surface, #fff); color: var(--admin-ink, #172034); font: inherit; }
-.live-dashboard-region-search { grid-column: 1 / -1; grid-row: 2; position: relative; }
+.live-dashboard-region-navigator input, .live-dashboard-region-navigator select { min-width: 0; width: 100%; min-height: 36px; padding: 6px 9px; border: 1px solid var(--admin-line, rgba(15, 23, 42, .12)); border-radius: 10px; background: var(--admin-surface, #fff); color: var(--admin-text, #172034); font: inherit; }
+.live-dashboard-region-search { grid-column: 1; grid-row: 1; position: relative; }
 .live-dashboard-region-results { position: absolute; z-index: 5; top: 100%; left: 0; right: 0; max-height: 220px; overflow-y: auto; margin: 4px 0 0; padding: 4px; list-style: none; border: 1px solid var(--admin-line, rgba(15, 23, 42, .12)); border-radius: 10px; background: var(--admin-surface, #fff); box-shadow: var(--admin-shadow-panel); }
-.live-dashboard-region-results li { padding: 8px; border-radius: 6px; cursor: pointer; color: var(--admin-ink, #172034); }
+.live-dashboard-region-results li { padding: 8px; border-radius: 6px; cursor: pointer; color: var(--admin-text, #172034); }
 .live-dashboard-region-results li:hover, .live-dashboard-region-results li[aria-selected="true"] { background: color-mix(in srgb, var(--admin-accent, #315f4a) 14%, transparent); }
 .live-dashboard-region-result-count { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .live-dashboard-map-viewport-controls { display: flex; gap: 4px; margin-left: auto; }
-.live-dashboard-map-viewport-controls button { min-width: 32px; min-height: 32px; padding: 4px 8px; border: 1px solid var(--admin-line, rgba(15, 23, 42, .12)); border-radius: 8px; background: var(--admin-surface, #fff); color: var(--admin-ink, #172034); font: inherit; cursor: pointer; }
+.live-dashboard-map-viewport-controls button { min-width: 32px; min-height: 32px; padding: 4px 8px; border: 1px solid var(--admin-line, rgba(15, 23, 42, .12)); border-radius: 8px; background: var(--admin-surface, #fff); color: var(--admin-text, #172034); font: inherit; cursor: pointer; }
 .live-dashboard-map-viewport-controls button:disabled { opacity: .4; cursor: default; }
 .live-dashboard-region-navigator :focus-visible, .live-dashboard-map-viewport-controls :focus-visible { outline: 2px solid var(--admin-accent, #315f4a); outline-offset: 2px; }
 .live-dashboard-map-svg[data-zoomed="true"] { touch-action: none; cursor: grab; }
@@ -8990,7 +8991,7 @@ html.im-conversation-scroll-lock #root {
   cursor: pointer;
 }
 
-.live-dashboard-map-breadcrumbs strong { color: var(--admin-ink, currentColor); }
+.live-dashboard-map-breadcrumbs strong { color: var(--admin-text, currentColor); }
 
 .live-dashboard-map-source {
   flex: 0 0 auto;
@@ -9008,22 +9009,28 @@ html.im-conversation-scroll-lock #root {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  min-height: 44px;
-  margin: 0 16px;
-  padding: 10px 12px;
+  grid-row: 1;
+  grid-column: 1;
+  min-height: 0;
+  min-width: 0;
+  margin: 4px 0 4px var(--live-padding);
+  padding: 4px 8px;
   border-radius: 12px;
   background: color-mix(in srgb, var(--admin-accent, #315f4a) 7%, transparent);
 }
 
-.live-dashboard-map-tooltip strong { font-size: 14px; }
+.live-dashboard-map-tooltip strong { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-dashboard-map-tooltip span { color: var(--admin-muted, #64748b); font-size: 11px; font-weight: 800; }
 
 .live-dashboard-map-stage {
   position: relative;
+  grid-column: 1 / -1;
   min-height: 0;
   overflow: hidden;
-  padding: 4px 10px 10px;
+  margin: 4px 8px 8px;
 }
+.live-dashboard-map-graphic:has(> .live-dashboard-map-label-status) { grid-template-rows: auto auto minmax(0, 1fr); }
+.live-dashboard-map-label-status { grid-column: 1 / -1; margin: 0 8px; font-size: 10px; color: var(--admin-muted, #64748b); }
 
 .live-dashboard-map-svg {
   display: block;
@@ -9343,9 +9350,10 @@ html.im-conversation-scroll-lock #root {
   .live-dashboard-map-card { order: 0; display: block; }
   .live-dashboard-map-graphic { display: none; }
   .live-dashboard-region-navigator { padding: 12px; gap: 8px; }
+  .live-dashboard-region-navigator > nav { display: block; }
   .live-dashboard-region-navigator input, .live-dashboard-region-navigator select { min-height: 44px; font-size: 16px; }
   .live-dashboard-region-navigator label { grid-column: 1 / -1; }
-  .live-dashboard-region-search { grid-row: 2; }
+  .live-dashboard-region-search { grid-row: 2; grid-column: 1 / -1; }
   .live-dashboard-panel.is-headline { order: 1; }
   .live-dashboard-panel.is-order-overview { order: 2; }
   .live-dashboard-confirmed-payments { order: 3; flex-wrap: wrap; }
