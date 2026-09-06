@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { spawnSync } from "node:child_process";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -99,7 +100,7 @@ test("staging web preserves an existing TLS edge for deploy and rollback", () =>
   const releaseScript = read("./deploy-release.sh");
   assert.match(releaseScript, /nginx_config_for\(\)/);
   assert.match(releaseScript, /fullchain\.pem[\s\S]*privkey\.pem[\s\S]*nginx-https\.conf/);
-  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$previous_release"\)"[\s\S]{0,220}up -d --no-deps --force-recreate --wait web/);
+  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$previous_release"\)"[\s\S]{0,240}up -d --build --no-deps --force-recreate --wait web/);
   assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$release_dir"\)"[\s\S]{0,2400}up -d --no-deps --force-recreate --wait web/);
   assert.match(releaseScript, /edge_base_url="https:\/\/\$hostname"/);
   assert.match(releaseScript, /--resolve "\$\{hostname\}:443:127\.0\.0\.1"/);
@@ -124,4 +125,28 @@ test("deployment acceptance follows the exact staging HTTPS redirect with TLS SN
   assert.match(deployer, /import https from "node:https"/);
   assert.match(deployer, /servername:\s*hostname/);
   assert.match(deployer, /location !== `https:\/\/\$\{hostname\}\/api\/v1\/ready`/);
+});
+
+test("split APIs share the explicit live-dashboard Redis connection", () => {
+  const compose = read("./docker-compose.yml");
+  const shared = compose.slice(compose.indexOf("environment: &api-environment"), compose.indexOf("  depends_on:"));
+  const redis = shared.match(/^    REDIS_URL: (.+)$/m)?.[1];
+  const liveRedis = shared.match(/^    LIVE_DASHBOARD_REDIS_URL: (.+)$/m)?.[1];
+  assert.ok(redis);
+  assert.equal(liveRedis, redis);
+});
+
+test("a command failure inside a deployment function reaches the rollback trap", () => {
+  const flags = read("./deploy-release.sh").match(/^set -[^\n]+$/m)?.[0];
+  assert.ok(flags);
+  const result = spawnSync("bash", ["-c", `${flags}\ntrap 'printf rollback-invoked' ERR\ncompose_for() { false; }\ncompose_for`], {encoding:"utf8"});
+  assert.notEqual(result.status,0);
+  assert.equal(result.stdout,"rollback-invoked");
+});
+
+
+test("rollback restores applications without rerunning data initialization", () => {
+  const rollback = read("./deploy-release.sh").split("rollback_application() {")[1].split("trap cleanup EXIT")[0];
+  assert.match(rollback, /up -d --build --no-deps --wait backend ops-api merchant-api/);
+  assert.match(rollback, /up -d --build --no-deps --force-recreate --wait web/);
 });

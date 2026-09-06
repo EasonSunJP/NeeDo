@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 umask 077
 
 region=""
@@ -74,8 +74,8 @@ rollback_application() {
   trap - ERR
   if [[ "$deployment_complete" != true && -n "$previous_release" && -d "$previous_release" ]]; then
     install -m 0644 "$(nginx_config_for "$previous_release")" /srv/needo/config/nginx.conf
-    compose_for "$previous_release" up -d --build --wait backend ops-api merchant-api web || true
-    compose_for "$previous_release" up -d --no-deps --force-recreate --wait web || true
+    compose_for "$previous_release" up -d --build --no-deps --wait backend ops-api merchant-api || true
+    compose_for "$previous_release" up -d --build --no-deps --force-recreate --wait web || true
     ln -sfn "$previous_release" /srv/needo/current.rollback
     mv -Tf /srv/needo/current.rollback /srv/needo/current
   fi

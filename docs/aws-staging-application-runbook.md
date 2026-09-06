@@ -196,3 +196,12 @@ do not run the general account/simulation seed. Keep application release,
 reference-data initialization, authenticated API smoke and browser acceptance
 as separate evidence gates. Immutable package and deployment identifiers are
 recorded in ignored `outputs/aws-staging/` evidence files.
+
+The first activation attempt applied all five migrations but could not start
+the split APIs because `LIVE_DASHBOARD_REDIS_URL` was absent. The release
+configuration now explicitly points all API services at the same authenticated
+Redis domain. The release shell enables ERR-trap inheritance so a failure in
+`compose_for` reaches application rollback. Rollback restores API and web services with `--no-deps`, so an existing
+database does not rerun bootstrap initialization. Regression tests failed before
+these corrections and passed afterward. The previous application was restored
+before retrying; the five additive migrations remain forward-applied.
