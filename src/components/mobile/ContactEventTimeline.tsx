@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import { TimelineBubbleDisclosure } from "./TimelineBubbleDisclosure";
 
 export type ContactEventTimelineTone = "neutral" | "red" | "green" | "accent";
 
@@ -22,6 +23,7 @@ export type ContactEventTimelineEntry = {
 };
 
 export function ContactEventTimeline({
+  bubbleMaxLines,
   className,
   commentAuthorAvatarSrc,
   commentAuthorName = "我",
@@ -35,6 +37,7 @@ export function ContactEventTimeline({
   onCommentSubmit,
   showCommentComposer = true
 }: {
+  bubbleMaxLines?: number;
   className?: string;
   commentAuthorAvatarSrc?: string;
   commentAuthorName?: string;
@@ -175,10 +178,15 @@ export function ContactEventTimeline({
                         : "bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,var(--client-primary)_8%)]"
                     )}
                   >
-                    <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
+                    {bubbleMaxLines ? <TimelineBubbleDisclosure maxLines={bubbleMaxLines}>
+                      <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
+                        <span>{actorName}（{actorRole}）：</span>
+                        {message ? <span>{message}</span> : null}
+                      </p>
+                    </TimelineBubbleDisclosure> : <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
                       <span>{actorName}（{actorRole}）：</span>
                       {message ? <span>{message}</span> : null}
-                    </p>
+                    </p>}
                   </div>
                 </div>
               </div>
@@ -339,6 +347,7 @@ function ContactEventTimelineCommentRow({
 }
 
 export function ContactEventTimelinePanel({
+  bubbleMaxLines,
   className,
   commentAuthorAvatarSrc,
   commentAuthorName,
@@ -355,6 +364,7 @@ export function ContactEventTimelinePanel({
   timelineClassName,
   title
 }: {
+  bubbleMaxLines?: number;
   className?: string;
   commentAuthorAvatarSrc?: string;
   commentAuthorName?: string;
@@ -385,6 +395,7 @@ export function ContactEventTimelinePanel({
         <p className="text-sm font-black text-[color:var(--client-text)]">{title}</p>
       )}
       <ContactEventTimeline
+        bubbleMaxLines={bubbleMaxLines}
         className={cn(headerVariant === "bar" ? "px-4 py-4" : "mt-4", timelineClassName)}
         commentAuthorAvatarSrc={commentAuthorAvatarSrc}
         commentAuthorName={commentAuthorName}

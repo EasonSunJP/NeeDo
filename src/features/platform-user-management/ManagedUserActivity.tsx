@@ -34,10 +34,10 @@ export function ManagedUserActivity({ scope, user }: { scope: UserDirectoryScope
     return () => { active = false; };
   }, [scope, user.id, query]);
   return <section aria-busy={loading} className="min-w-0 space-y-3">
-    <FormalTimelinePagination ariaLabel="用户动态翻页" disabled={loading} page={audit.page ?? 1} pageSize={audit.page_size ?? 10} total={audit.total} pageSizes={[10, 50]}
+    <FormalTimelinePagination ariaLabel="用户LOG翻页" disabled={loading} page={audit.page ?? 1} pageSize={audit.page_size ?? 10} total={audit.total} pageSizes={[10, 50]}
       onPageChange={(page) => setQuery((value) => ({ ...value, page, pageSize: audit.page_size === 50 ? 50 : 10, revision: value.revision + 1 }))}
       onPageSizeChange={(pageSize) => { if (pageSize === 10 || pageSize === 50) setQuery((value) => ({ page: 1, pageSize, revision: value.revision + 1 })); }} />
-    {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-coral"><span>{t("用户动态读取失败，请重试")}</span><Button size="sm" variant="secondary" onClick={() => setQuery((value) => ({ ...value, revision: value.revision + 1 }))}>{t("重试")}</Button></div> : null}
-    <AuditTimeline events={audit.list.map((event) => ({ ...event, metadata: event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata) ? event.metadata as Record<string, unknown> : null }))} localization={{ language, locale: languageLocales[language], t }} title="用户动态" />
+    {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-coral"><span>{t("用户LOG读取失败，请重试")}</span><Button size="sm" variant="secondary" onClick={() => setQuery((value) => ({ ...value, revision: value.revision + 1 }))}>{t("重试")}</Button></div> : null}
+    <AuditTimeline events={audit.list.map((event) => ({ ...event, metadata: event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata) ? event.metadata as Record<string, unknown> : null }))} localization={{ language, locale: languageLocales[language], t }} title="用户LOG" />
   </section>;
 }

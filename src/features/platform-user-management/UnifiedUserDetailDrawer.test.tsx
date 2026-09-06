@@ -93,7 +93,7 @@ describe("UnifiedUserDetailDrawer", () => {
     act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope={scope} userId={41} />));
     await waitForText(container, "Mia");
     expect(state.getUser).toHaveBeenCalledWith(scope, 41);
-    for (const tab of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户动态"]) {
+    for (const tab of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG"]) {
       expect([...container.querySelectorAll('[role="tab"]')].some((node) => node.textContent === tab)).toBe(true);
     }
     expect(container.textContent).toContain("900");
@@ -105,7 +105,7 @@ describe("UnifiedUserDetailDrawer", () => {
     state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 1, page_size: 10, list: [] } });
     act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
     await waitForText(container, "Mia");
-    const nav = () => container.querySelector('nav[aria-label="用户动态翻页"]')!;
+    const nav = () => container.querySelector('nav[aria-label="用户LOG翻页"]')!;
     expect(nav()).not.toBeNull();
     const select = nav().querySelector("select")!;
     expect([...select.options].map((option) => option.value)).toEqual(["10", "50"]);
@@ -127,7 +127,7 @@ describe("UnifiedUserDetailDrawer", () => {
     state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 1, page_size: 10, list: [] } });
     act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
     await waitForText(container, "Mia");
-    const nav = container.querySelector('nav[aria-label="用户动态翻页"]')!;
+    const nav = container.querySelector('nav[aria-label="用户LOG翻页"]')!;
     state.getUser.mockRejectedValueOnce(new Error("offline"));
     await act(async () => { const select = nav.querySelector("select")!; select.value = "50"; select.dispatchEvent(new Event("change", { bubbles: true })); });
     await waitForText(container, "重试");

@@ -48,7 +48,7 @@ type TechnicianDetailTab =
   | "权限与账号"
   | "时间线";
 
-export type CustomerDetailTab = "基础资料" | "会员等级" | "预约与消费" | "评价" | "权限与账号" | "用户动态";
+export type CustomerDetailTab = "基础资料" | "会员等级" | "预约与消费" | "评价" | "权限与账号" | "用户LOG";
 
 export type FormalLocalization = {
   language: Language;
@@ -72,7 +72,7 @@ const technicianTabs: TechnicianDetailTab[] = [
   "时间线"
 ];
 
-const customerTabs: CustomerDetailTab[] = ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户动态"];
+const customerTabs: CustomerDetailTab[] = ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG"];
 
 export function resolveFormalTabKeyboardIndex(
   key: string,
@@ -245,7 +245,7 @@ export function FormalCustomerDetailPanel({
             editContent,
             membershipEditContent,
             localization,
-            tab === "用户动态" ? (
+            tab === "用户LOG" ? (
               <CustomerTimelinePanel
                 detail={detail}
                 error={timelineError}
@@ -383,7 +383,7 @@ function renderManagedUserTab(
   return <>{usageContent}{activityContent ?? <AuditTimeline events={detail.audit.list.map((event) => ({
     ...event,
     metadata: event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata) ? event.metadata as Record<string, unknown> : null
-  }))} localization={localization} title="用户动态" />}</>;
+  }))} localization={localization} title="用户LOG" />}</>;
 }
 
 function useFormalLocalization(): FormalLocalization {
@@ -831,7 +831,7 @@ function CustomerTimelinePanel({
   if (loading && !timeline) {
     return (
       <div className="rounded-[18px] border border-line bg-white p-6 text-sm font-black text-ink/50">
-        {localization.t("正在读取用户动态...")}
+        {localization.t("正在读取用户LOG...")}
       </div>
     );
   }
@@ -856,10 +856,10 @@ function CustomerTimelinePanel({
   const events = timeline?.list ?? detail.timeline;
   return (
     <div>
-      <AuditTimeline events={events} localization={localization} title="用户动态" />
+      <AuditTimeline events={events} localization={localization} title="用户LOG" />
       {timeline && onPageChange && onPageSizeChange ? (
         <FormalTimelinePagination
-          ariaLabel="用户动态翻页"
+          ariaLabel="用户LOG翻页"
           disabled={loading}
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}

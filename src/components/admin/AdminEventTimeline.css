@@ -19,6 +19,7 @@
   border: 0;
   background: color-mix(in srgb, var(--client-bg) 38%, transparent);
   font-weight: 500;
+  line-height: inherit;
 }
 .admin-event-timeline .contact-event-row > :first-child {
   font-weight: 500;
