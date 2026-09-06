@@ -911,6 +911,20 @@ export const SYSTEM_PERMISSIONS = [
     "发放、续费、升级、降级或终止用户平台会员资格"
   ),
   createPermission(
+    "backoffice:user-usage:comment",
+    "用户履约评论管理",
+    "api",
+    "backoffice",
+    "在用户履约时间线追加不可删除的运营评论"
+  ),
+  createPermission(
+    "backoffice:user-refund:amend",
+    "用户退款信息修订",
+    "api",
+    "backoffice",
+    "以理由和审计记录修订用户履约退款信息"
+  ),
+  createPermission(
     "backoffice:user-experience:read",
     "用户经验明细读取",
     "api",
@@ -2321,6 +2335,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:service-taxonomy:write",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
+  "backoffice:user-usage:comment",
+  "backoffice:user-refund:amend",
   "backoffice:user-group:write",
   "backoffice:user-policy:publish",
   "backoffice:ndp-experience-campaign:publish",
