@@ -26454,7 +26454,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             bankName: { type: "string", minLength: 1, maxLength: 120 },
             branchCode: { type: "string", pattern: "^\\d{3}$" },
             branchName: { type: "string", minLength: 1, maxLength: 120 },
-            accountType: { type: "string", enum: ["ordinary", "current"] },
+            accountType: { type: "string", enum: ["ordinary", "current", "savings", "other"] },
             accountNumber: { type: "string", pattern: "^\\d{4,12}$" },
             accountHolderName: { type: "string", minLength: 1, maxLength: 191 }
           },

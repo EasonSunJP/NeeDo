@@ -93,7 +93,7 @@ export const bindMerchantBankAccountBodySchema = z
       .trim()
       .regex(/^\d{3}$/u),
     branchName: z.string().trim().min(1).max(120),
-    accountType: z.enum(["ordinary", "current"]),
+    accountType: z.enum(["ordinary", "current", "savings", "other"]),
     accountNumber: z
       .string()
       .trim()

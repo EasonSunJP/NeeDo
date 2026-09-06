@@ -22,7 +22,7 @@ export interface BindMerchantBankAccountInput {
   bankName: string;
   branchCode: string;
   branchName: string;
-  accountType: "ordinary" | "current";
+  accountType: "ordinary" | "current" | "savings" | "other";
   accountNumber: string;
   accountHolderName: string;
   now: Date;
@@ -37,7 +37,7 @@ export interface BindVerifiedMerchantBankAccountRepositoryInput {
   bankName: string;
   branchCode: string;
   branchName: string;
-  accountType: "ordinary" | "current";
+  accountType: "ordinary" | "current" | "savings" | "other";
   accountNumberEncrypted: string;
   accountHolderEncrypted: string;
   accountHolderNormalizedEncrypted: string;
