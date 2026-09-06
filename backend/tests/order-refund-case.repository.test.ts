@@ -81,12 +81,17 @@ describe("OrderRefundCaseRepository", () => {
   it("rolls back customer confirmation when the required financial projection is absent", async () => {
     const pendingCase = { ...refundCase, status: "CUSTOMER_CONFIRMATION_PENDING", version: 4, refundEvidence: { reference: "bank-123" } };
     const tx = {
-      $queryRaw: jest.fn(async () => [{ id: 71 }]),
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: 71 }])
+        .mockResolvedValueOnce([{ id: pendingCase.id }])
+        .mockResolvedValueOnce([{ id: 1, status: "SETTLED", rewardNdp: 50, platformFeeNdp: 0, reversalRequiredNdp: 0, reversedNdp: 0, outstandingRecoveryNdp: 0, claimantWalletId: 99 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 99, availableBalance: 50, frozenBalance: 0 }]),
       orderRefundCaseEvent: { findFirst: jest.fn(async () => null), create: jest.fn(async () => ({ id: 1 })) },
       orderRefundCase: { findFirst: jest.fn(async () => pendingCase), update: jest.fn(async () => pendingCase) },
       bookingOrder: { updateMany: jest.fn(async () => ({ count: 1 })) },
       orderFinancial: { updateMany: jest.fn(async () => ({ count: 0 })) },
-      affiliateReward: { findFirst: jest.fn(async () => null), findMany: jest.fn(async () => []) },
+      affiliateReward: { findFirst: jest.fn(async () => null) },
       auditLog: { create: jest.fn(async () => ({ id: 1 })) },
       notification: { create: jest.fn(async () => ({ id: 1 })) }
     };
@@ -118,6 +123,31 @@ describe("OrderRefundCaseRepository", () => {
     await expect(repository.request(command)).resolves.toMatchObject({ kind: "active_conflict", current: { publicId: refundCase.publicId } });
   });
 
+  it("recognizes a refund active-key P2002 reported only by the Prisma driver adapter", async () => {
+    const tx = {
+      $queryRaw: jest.fn(async () => [{ id: 71 }]),
+      orderRefundCaseEvent: { findFirst: jest.fn(async () => null) },
+      bookingOrder: { findFirst: jest.fn(async () => ({ id: 71, shopId: 31, customerUserId: 11, status: BookingOrderStatus.COMPLETED, paymentStatus: ServicePaymentStatus.CONFIRMED, paymentAmountJpy: 8800, paymentRefundedAt: null, currency: "JPY" })) },
+      orderRefundCase: { findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(refundCase), create: jest.fn(async () => { throw { code: "P2002", meta: { driverAdapterError: { cause: { constraint: { index: "order_refund_cases_active_key_key" } } } } }; }) },
+      affiliateReward: { findFirst: jest.fn(async () => null) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    await expect(new OrderRefundCaseRepository(client as unknown as PrismaClient).request(command)).resolves.toMatchObject({ kind: "active_conflict" });
+  });
+
+  it("does not swallow unrelated P2002 failures", async () => {
+    const failure = { code: "P2002", meta: { target: ["users_email_key"] } };
+    const tx = {
+      $queryRaw: jest.fn(async () => [{ id: 71 }]),
+      orderRefundCaseEvent: { findFirst: jest.fn(async () => null) },
+      bookingOrder: { findFirst: jest.fn(async () => ({ id: 71, shopId: 31, customerUserId: 11, status: BookingOrderStatus.COMPLETED, paymentStatus: ServicePaymentStatus.CONFIRMED, paymentAmountJpy: 8800, paymentRefundedAt: null, currency: "JPY" })) },
+      orderRefundCase: { findFirst: jest.fn(async () => null), create: jest.fn(async () => { throw failure; }) },
+      affiliateReward: { findFirst: jest.fn(async () => null) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    await expect(new OrderRefundCaseRepository(client as unknown as PrismaClient).request(command)).rejects.toBe(failure);
+  });
+
   it.each([
     ["exact event fingerprint", command.fingerprint, "replayed"],
     ["different event fingerprint", "b".repeat(64), "idempotency_conflict"]
@@ -146,10 +176,15 @@ describe("OrderRefundCaseRepository", () => {
       claimantWallet: { id: 99, availableBalance: 50, frozenBalance: 0 }, transactions: []
     };
     const tx = {
-      $queryRaw: jest.fn(async () => [{ id: 1 }]),
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: 71 }])
+        .mockResolvedValueOnce([{ id: pendingCase.id }])
+        .mockResolvedValueOnce([pendingReward])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 99, availableBalance: 50, frozenBalance: 0 }]),
       orderRefundCaseEvent: { findFirst: jest.fn(async () => null) },
       orderRefundCase: { findFirst: jest.fn(async () => pendingCase) },
-      affiliateReward: { findFirst: jest.fn(async () => null), findMany: jest.fn(async () => [pendingReward]) },
+      affiliateReward: { findFirst: jest.fn(async () => null) },
       bookingOrder: { updateMany: jest.fn(async () => ({ count: 1 })) }
     };
     const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
@@ -178,5 +213,27 @@ describe("OrderRefundCaseRepository", () => {
     await expect(repository.merchantDecision(decision)).resolves.toMatchObject({ kind: "updated", value: { status: "refund_pending", version: 7 } });
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.orderRefundCase.findFirst.mock.invocationCallOrder[0]);
     expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ metadata: expect.objectContaining({ idempotencyKey: decision.idempotencyKey, fromStatus: "MERCHANT_REVIEW_PENDING", toStatus: "REFUND_PENDING", previousVersion: 6, nextVersion: 7, responsibility: "shop" }) }) }));
+  });
+
+  it("aborts confirmation when a second locked reward snapshot changes", async () => {
+    const pendingCase = { ...refundCase, status: "CUSTOMER_CONFIRMATION_PENDING", version: 4, refundEvidence: { reference: "bank-123" } };
+    const reward = (rewardNdp: number) => ({ id: 1, status: "SETTLED", rewardNdp, platformFeeNdp: 0, reversalRequiredNdp: 0, reversedNdp: 0, outstandingRecoveryNdp: 0, claimantWalletId: 99 });
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: 71 }]).mockResolvedValueOnce([{ id: pendingCase.id }])
+        .mockResolvedValueOnce([reward(50)]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 99, availableBalance: 50, frozenBalance: 0 }])
+        .mockResolvedValueOnce([reward(51)]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 99, availableBalance: 50, frozenBalance: 0 }]),
+      orderRefundCaseEvent: { findFirst: jest.fn(async () => null) },
+      orderRefundCase: { findFirst: jest.fn(async () => pendingCase), update: jest.fn(async () => ({ ...pendingCase, status: "REFUNDED", version: 5 })) },
+      bookingOrder: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      orderFinancial: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      affiliateReward: { findFirst: jest.fn(async () => null) },
+      auditLog: { create: jest.fn(async () => ({ id: 1 })) },
+      notification: { create: jest.fn(async () => ({ id: 1 })) }
+    };
+    const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const receiptCommand: ConfirmRefundReceiptCommand = { ...command, casePublicId: pendingCase.publicId, expectedVersion: 4, idempotencyKey: "refund-receipt-changed", payload: {} };
+
+    await expect(new OrderRefundCaseRepository(client as unknown as PrismaClient).confirmCustomerReceipt(receiptCommand)).rejects.toThrow("error.order_refund.affiliate_invariant_failed");
   });
 });
