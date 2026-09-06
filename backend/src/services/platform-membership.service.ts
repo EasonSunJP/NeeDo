@@ -42,6 +42,14 @@ export interface PlatformMembershipExperienceRecorderPort {
   ) => Promise<unknown>;
 }
 
+export interface PlatformMembershipBenefitResolverPort {
+  hasEffectiveBenefitAt: (
+    userId: number,
+    benefitCode: "traceless_recall",
+    occurredAt: Date
+  ) => Promise<boolean>;
+}
+
 export type PlatformMembershipTierDraftInput = PlatformMembershipTierDraftPersistenceInput;
 
 export type MembershipBenefitLocale = "zh" | "zh-Hant" | "ja" | "en" | "ko";
@@ -179,6 +187,21 @@ export class PlatformMembershipService {
         };
       })
     };
+  }
+
+  public async hasEffectiveBenefitAt(
+    userId: number,
+    benefitCode: "traceless_recall",
+    occurredAt: Date
+  ): Promise<boolean> {
+    const membership = await this.resolveMembershipAt(userId, occurredAt);
+    const benefit = membership.benefitCatalog?.find((item) => item.code === benefitCode);
+    return Boolean(
+      benefit &&
+        benefit.configuredEnabled &&
+        benefit.globallyEnabled &&
+        this.benefitCapabilities.resolve(benefitCode) === "available"
+    );
   }
 
   public async listTiersForAdministration(

@@ -27714,7 +27714,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": {
-            description: "Content-free standard recall tombstone",
+            description: "Content-free recall result; the server selects standard or traceless mode from the effective membership benefit",
             content: {
               "application/json": {
                 schema: {
@@ -27727,7 +27727,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       type: "object",
                       required: ["action", "conversationId", "messageId", "message"],
                       properties: {
-                        action: { type: "string", enum: ["standard_recall"] },
+                        action: {
+                          type: "string",
+                          enum: ["standard_recall", "traceless_recall"]
+                        },
                         conversationId: { type: "integer" },
                         messageId: { type: "integer" },
                         message: { $ref: "#/components/schemas/RealtimeMessage" }

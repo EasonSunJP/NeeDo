@@ -135,8 +135,8 @@ describe("current membership benefits", () => {
     expect(result.list.find((item) => item.code === "traceless_recall")).toMatchObject({
       configuredEnabled: true,
       globallyEnabled: true,
-      deliveryCapability: "unavailable",
-      effective: false,
+      deliveryCapability: "available",
+      effective: true,
       name: "traceless-ja",
       description: "traceless-description-ja"
     });
@@ -152,4 +152,28 @@ describe("current membership benefits", () => {
     ).resolves.toMatchObject({ tierCode: "free" });
     expect(repo.findPublishedTierAt).toHaveBeenCalledWith("free", now);
   });
+
+  it.each([
+    [true, true, "available", true],
+    [false, true, "available", false],
+    [true, false, "available", false],
+    [true, true, "unavailable", false]
+  ] as const)(
+    "resolves traceless recall only when tier, global, and delivery switches are all effective",
+    async (configuredEnabled, globallyEnabled, capability, expected) => {
+      const resolved = membership("gold");
+      const traceless = resolved.benefitCatalog!.find((item) => item.code === "traceless_recall")!;
+      traceless.configuredEnabled = configuredEnabled;
+      traceless.globallyEnabled = globallyEnabled;
+      const service = new PlatformMembershipService(
+        repository(resolved),
+        undefined,
+        () => now,
+        undefined,
+        new MembershipBenefitCapabilityService({ traceless_recall: { capability } })
+      );
+
+      await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).resolves.toBe(expected);
+    }
+  );
 });

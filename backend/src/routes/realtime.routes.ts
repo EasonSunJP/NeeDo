@@ -7,9 +7,11 @@ import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { RealtimeRepository } from "../repositories/realtime.repository";
 import { AuthRepository } from "../repositories/auth.repository";
+import { PlatformMembershipRepository } from "../repositories/platform-membership.repository";
 import { SseRealtimeEventGateway } from "../services/realtime-event.gateway";
 import { RealtimeService } from "../services/realtime.service";
 import { PersonalIdentityScopeService } from "../services/personal-identity-scope.service";
+import { PlatformMembershipService } from "../services/platform-membership.service";
 import {
   contactIdParamSchema,
   contactCardCandidateListQuerySchema,
@@ -94,7 +96,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
       dependencies.realtimeRepository ?? new RealtimeRepository(),
       dependencies.realtimeEventGateway ?? new SseRealtimeEventGateway(),
       dependencies.personalIdentityScopeService ??
-        new PersonalIdentityScopeService(dependencies.authRepository ?? new AuthRepository())
+        new PersonalIdentityScopeService(dependencies.authRepository ?? new AuthRepository()),
+      undefined,
+      undefined,
+      dependencies.platformMembershipResolverService ??
+        new PlatformMembershipService(
+          dependencies.platformMembershipRepository ?? new PlatformMembershipRepository()
+        )
     );
   const controller = new RealtimeController(service);
 
