@@ -58,7 +58,7 @@ function leaderToBox(anchor: Point, box: LabelBox): Point[] {
   ]];
 }
 
-function findCallout(anchor: Point, size: Pick<LabelBox, "width" | "height">, viewBox: ViewBox, accepted: MapLabelPlacement[]): Point {
+function findCallout(anchor: Point, size: Pick<LabelBox, "width" | "height">, viewBox: ViewBox, accepted: MapLabelPlacement[], anchorBoxes: LabelBox[]): Point {
   const [x, y, width, height] = viewBox;
   const left = x + EDGE_CLEARANCE + size.width / 2;
   const right = x + width - EDGE_CLEARANCE - size.width / 2;
@@ -81,13 +81,14 @@ function findCallout(anchor: Point, size: Pick<LabelBox, "width" | "height">, vi
 
   let best: Point | undefined;
   let bestDistance = Infinity;
-  const consider = (label: Point) => {
+  const consider = (label: Point, inward = false) => {
     const distance = (label[0] - anchor[0]) ** 2 + (label[1] - anchor[1]) ** 2;
     if (distance >= bestDistance) return;
     const box = { ...size, label };
     if (Math.abs(label[0] - anchor[0]) < size.width / 2 + LABEL_GAP
       && Math.abs(label[1] - anchor[1]) < size.height / 2 + LABEL_GAP) return;
     if (accepted.some((other) => boxesOverlap(box, other, LABEL_GAP))) return;
+    if (inward && anchorBoxes.some((other) => boxesOverlap(box, other, LABEL_GAP))) return;
     best = label;
     bestDistance = distance;
   };
@@ -100,10 +101,25 @@ function findCallout(anchor: Point, size: Pick<LabelBox, "width" | "height">, vi
   for (const slotX of sortedXs) consider([slotX, bottom]);
   if (best) return best;
 
-  // When all four perimeter rails fill, use free inner slots at occupied edges.
-  for (const slotY of sortedYs) for (const slotX of sortedXs) consider([slotX, slotY]);
-  if (!best) throw new RangeError("map_label_layout_capacity_exceeded");
-  return best;
+  // Additional rows stay parallel to their original edge, in its outer third.
+  // A common column width aligns mixed-length labels and bounds the row count.
+  const columnStride = Math.max(...anchorBoxes.map((box) => box.width)) + LABEL_GAP;
+  const rowStride = size.height + LABEL_GAP;
+  for (let row = 1; ; row += 1) {
+    const verticalFits = EDGE_CLEARANCE + row * columnStride + size.width <= width / 3;
+    const horizontalFits = EDGE_CLEARANCE + row * rowStride + size.height <= height / 3;
+    if (!verticalFits && !horizontalFits) break;
+    if (verticalFits) {
+      for (const slotY of sortedYs) consider([left + row * columnStride, slotY], true);
+      for (const slotY of sortedYs) consider([right - row * columnStride, slotY], true);
+    }
+    if (horizontalFits) {
+      for (const slotX of sortedXs) consider([slotX, top + row * rowStride], true);
+      for (const slotX of sortedXs) consider([slotX, bottom - row * rowStride], true);
+    }
+    if (best) return best;
+  }
+  throw new RangeError("map_label_layout_capacity_exceeded");
 }
 
 /** Pure layout over the supplied visible-level regions; no nationwide index lookup. */
@@ -119,6 +135,7 @@ export function layoutMapLabels({ regions, viewBox, viewport, selectedCode, orde
     || Number((orderCountByCode[b.code] ?? 0) > 0) - Number((orderCountByCode[a.code] ?? 0) > 0)
     || a.width - b.width
     || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
+  const anchorBoxes = candidates.map((candidate) => ({ ...candidate, label: candidate.anchor }));
   const accepted: MapLabelPlacement[] = [];
   for (const candidate of candidates) {
     if (candidate.width + EDGE_CLEARANCE * 2 > width || candidate.height + EDGE_CLEARANCE * 2 > height) {
@@ -130,7 +147,7 @@ export function layoutMapLabels({ regions, viewBox, viewport, selectedCode, orde
       && centered.label[1] - centered.height / 2 >= y + EDGE_CLEARANCE
       && centered.label[1] + centered.height / 2 <= y + height - EDGE_CLEARANCE
       && !accepted.some((other) => boxesOverlap(centered, other, LABEL_GAP));
-    const label = internal ? candidate.anchor : findCallout(candidate.anchor, candidate, viewBox, accepted);
+    const label = internal ? candidate.anchor : findCallout(candidate.anchor, candidate, viewBox, accepted, anchorBoxes);
     const box = { ...candidate, label };
     accepted.push({ ...box, external: !internal, leader: internal ? [] : leaderToBox(candidate.anchor, box) });
   }

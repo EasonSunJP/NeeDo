@@ -26,7 +26,7 @@ describe("layoutMapLabels", () => {
     expect(overlappingPairs(placements)).toEqual([]);
   });
 
-  it.each(["country.json", "prefectures/13.json"])("lays out every real region in %s without overlap", (file) => {
+  it.each(["country.json", "prefectures/13.json", "prefectures/01.json"])("lays out every real region in %s without overlap", (file) => {
     const asset = JSON.parse(fs.readFileSync(path.join(process.cwd(), "public/maps/jp/2026", file), "utf8")) as { regions: MapLabelRegion[]; viewBox: typeof viewBox };
     const input = { ...asset, viewport: identityViewport, selectedCode: "13104", orderCountByCode: { "13104": 12, "13101": 8 } };
     const placements = layoutMapLabels(input);
@@ -89,5 +89,69 @@ describe("layoutMapLabels", () => {
     expect(boxesOverlap(a, { ...a, label: [40, 20] })).toBe(false);
     expect(boxesOverlap(a, { ...a, label: [39, 20] })).toBe(true);
     expect(boxesOverlap(a, { ...a, width: 10, height: 10 })).toBe(true);
+  });
+
+  it("throws the explicit capacity RangeError when a label is oversized", () => {
+    const layout = () => layoutMapLabels({ regions: [region("01", [40, 40], "非常に長い行政区域の名前")], viewBox: [0, 0, 80, 80], viewport: identityViewport });
+    expect(layout).toThrow(RangeError);
+    expect(layout).toThrow("map_label_layout_capacity_exceeded");
+  });
+
+  it("throws the explicit capacity RangeError when available slots are exhausted", () => {
+    const layout = () => layoutMapLabels({ regions: [region("01", [40, 25]), region("02", [40, 25])], viewBox: [0, 0, 80, 50], viewport: identityViewport });
+    expect(layout).toThrow(RangeError);
+    expect(layout).toThrow("map_label_layout_capacity_exceeded");
+  });
+
+  it("preserves ordinary non-null region anchors, input order, viewport and order counts", () => {
+    const input = {
+      regions: [region("03", [505, 401]), region("01", [500, 400]), region("02", [503, 402])],
+      viewBox,
+      viewport: { scale: 2, x: -500, y: -400 },
+      selectedCode: "02",
+      orderCountByCode: { "03": 4 }
+    };
+    const before = structuredClone(input);
+    for (const item of input.regions) {
+      Object.freeze(item.labelPoint);
+      Object.freeze(item);
+    }
+    Object.freeze(input.regions);
+    Object.freeze(input.viewport);
+    Object.freeze(input.orderCountByCode);
+    Object.freeze(input);
+    expect(layoutMapLabels(input)).toHaveLength(3);
+    expect(input).toEqual(before);
+  });
+
+  it("extends exhausted perimeter rails in aligned edge rows outside the anchor cluster", () => {
+    const bounds: typeof viewBox = [100, 200, 1000, 800];
+    const regions = Array.from({ length: 100 }, (_, index) => region(String(13000 + index), [600 + index % 3, 600 + index % 4]));
+    const placements = layoutMapLabels({ regions, viewBox: bounds, viewport: identityViewport });
+    const external = placements.filter((item) => item.external);
+    const insets = (item: MapLabelPlacement) => [
+      item.label[0] - item.width / 2 - bounds[0],
+      bounds[0] + bounds[2] - item.label[0] - item.width / 2,
+      item.label[1] - item.height / 2 - bounds[1],
+      bounds[1] + bounds[3] - item.label[1] - item.height / 2
+    ];
+    const inner = external.filter((item) => insets(item).every((inset) => inset > 8));
+    expect(placements).toHaveLength(regions.length);
+    expect(inner.length).toBeGreaterThan(0);
+    expect(overlappingPairs(placements)).toEqual([]);
+    expectContained(placements, bounds);
+    for (const item of inner) {
+      // Each additional row advances by one full box and the existing four-unit gap.
+      expect(insets(item).some((inset, side) => {
+        const size = side < 2 ? item.width : item.height;
+        const dimension = side < 2 ? bounds[2] : bounds[3];
+        return (inset - 8) % (size + 4) === 0 && inset + size <= dimension / 3;
+      })).toBe(true);
+      expect(boxesOverlap(item, { label: [601, 601], width: 220, height: 180 })).toBe(false);
+      expect(item.external).toBe(true);
+      expect(item.leader).toHaveLength(2);
+      expect(item.leader[0]).toEqual(item.anchor);
+    }
+    expect(layoutMapLabels({ regions: [...regions].reverse(), viewBox: bounds, viewport: identityViewport })).toEqual(placements);
   });
 });
