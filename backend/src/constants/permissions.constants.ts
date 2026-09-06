@@ -191,6 +191,10 @@ export const EXCHANGE_REQUEST_FEE_PERMISSIONS = {
 } as const;
 
 export const SYSTEM_PERMISSIONS = [
+  { code: "sos:create", name: "发送求救", type: "api", module: "sos", description: "Booking SOS create", isSystem: true },
+  { code: "sos:list", name: "查看求救", type: "api", module: "sos", description: "Booking SOS list", isSystem: true },
+  { code: "sos:resolve", name: "处理求救", type: "api", module: "sos", description: "Booking SOS resolve", isSystem: true },
+
   createPermission("auth:me", "查看当前账号", "api", "auth", "读取当前登录账号、身份、角色和权限"),
   createPermission(
     "auth:me:read",
@@ -2524,6 +2528,7 @@ export const buildRolePermissionAssignments = (): Record<
 > => ({
   admin: [...SYSTEM_PERMISSION_CODES],
   operator: [
+    "sos:list", "sos:resolve",
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
     ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
@@ -2565,6 +2570,7 @@ export const buildRolePermissionAssignments = (): Record<
     "page:admin-settings"
   ],
   support: [
+    "sos:list", "sos:resolve",
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     "ops:merchant-application:read",
@@ -2577,6 +2583,7 @@ export const buildRolePermissionAssignments = (): Record<
     "button:user:update"
   ],
   merchant_owner: [
+    "sos:list", "sos:resolve",
     "merchant-profile:read",
     "merchant-profile:write",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
@@ -2596,6 +2603,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
   ],
   merchant_staff: [
+    "sos:list", "sos:resolve",
     "merchant-profile:read",
     "merchant-profile:write",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
@@ -2611,6 +2619,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
   ],
   technician: [
+    "sos:create",
     "menu:technician-app",
     "menu:technician-schedule",
     "technician-profile:read",
@@ -2637,6 +2646,7 @@ export const buildRolePermissionAssignments = (): Record<
     "technician:payout-record:confirm"
   ],
   customer: [
+    "sos:create",
     ...CUSTOMER_BOOKING_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_PUBLISHER_PERMISSION_CODES,

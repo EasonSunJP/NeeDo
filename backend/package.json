@@ -19,6 +19,7 @@
     "check:friendship-conversation-pairs": "tsx scripts/check-friendship-conversation-pairs.ts",
     "check:social-reply-relations": "ENV_FILE=.env.dev tsx scripts/check-social-reply-relations.ts",
     "check:finance-request-flow": "node --import tsx scripts/check-finance-request-flow.ts",
+    "check:sos-flow": "node --import tsx scripts/check-sos-flow.ts",
     "check:master-data-flow": "tsx scripts/check-master-data-flow.ts",
     "check:official-notice-flow": "tsx scripts/check-official-notice-flow.ts",
     "check:merchant-notice-flow": "tsx scripts/check-merchant-notice-flow.ts",

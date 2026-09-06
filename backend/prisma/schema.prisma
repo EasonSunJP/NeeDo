@@ -1357,6 +1357,8 @@ model User {
   @@index([isTestAccount, deletedAt], map: "users_test_account_deleted_idx")
   @@index([deletedAt])
   @@map("users")
+  sentSosAlerts SosAlert[] @relation("SosSenderUser")
+  resolvedSosAlerts SosAlert[] @relation("SosResolverUser")
 }
 
 model ExternalAuthAccount {
@@ -1752,6 +1754,7 @@ model Shop {
   @@index([pricingModeUpdatedBy])
   @@index([deletedAt])
   @@map("shops")
+  sosAlerts SosAlert[]
 }
 
 model PlatformPartnerProfile {
@@ -4047,6 +4050,8 @@ model BookingOrder {
   @@index([status, paymentStatus, deletedAt, paymentConfirmedAt, shopId, id], map: "booking_orders_ranking_window_idx")
   @@index([deletedAt])
   @@map("booking_orders")
+  sosAlerts SosAlert[]
+  sosCommands SosCommand[]
 }
 
 model OrderServiceSession {
@@ -5290,6 +5295,9 @@ model UserIdentity {
   @@index([isActive])
   @@index([deletedAt])
   @@map("user_identities")
+  sentSosAlerts SosAlert[] @relation("SosSenderIdentity")
+  resolvedSosAlerts SosAlert[] @relation("SosResolverIdentity")
+  sosCommands SosCommand[]
 }
 
 model ExchangePost {
@@ -7669,4 +7677,55 @@ model AffiliateRiskEvent {
   @@index([reviewedById])
   @@index([deletedAt])
   @@map("affiliate_risk_events")
+}
+
+model SosAlert {
+  id Int @id @default(autoincrement())
+  orderId Int @map("order_id")
+  shopId Int @map("shop_id")
+  senderUserId Int @map("sender_user_id")
+  senderIdentityId Int @map("sender_identity_id")
+  senderType String @map("sender_type") @db.VarChar(20)
+  status String @default("pending") @db.VarChar(20)
+  activeKey String? @unique @map("active_key") @db.VarChar(100)
+  resolvedByUserId Int? @map("resolved_by_user_id")
+  resolvedByIdentityId Int? @map("resolved_by_identity_id")
+  resolvedAt DateTime? @map("resolved_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  order BookingOrder @relation(fields:[orderId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  shop Shop @relation(fields:[shopId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  sender User @relation("SosSenderUser",fields:[senderUserId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  senderIdentity UserIdentity @relation("SosSenderIdentity",fields:[senderIdentityId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  resolvedBy User? @relation("SosResolverUser",fields:[resolvedByUserId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  resolvedByIdentity UserIdentity? @relation("SosResolverIdentity",fields:[resolvedByIdentityId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  commands SosCommand[]
+  @@index([orderId])
+  @@index([senderUserId])
+  @@index([senderIdentityId])
+  @@index([resolvedByUserId])
+  @@index([resolvedByIdentityId])
+  @@index([shopId,status,deletedAt,createdAt])
+  @@index([status,deletedAt,createdAt])
+  @@map("sos_alerts")
+}
+
+model SosCommand {
+  id Int @id @default(autoincrement())
+  senderIdentityId Int @map("sender_identity_id")
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  orderId Int @map("order_id")
+  alertId Int @map("alert_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  senderIdentity UserIdentity @relation(fields:[senderIdentityId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  order BookingOrder @relation(fields:[orderId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  alert SosAlert @relation(fields:[alertId],references:[id],onDelete:Restrict,onUpdate:Restrict)
+  @@unique([senderIdentityId,idempotencyKey])
+  @@index([orderId])
+  @@index([alertId])
+  @@index([deletedAt])
+  @@map("sos_commands")
 }

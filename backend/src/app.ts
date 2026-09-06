@@ -1,3 +1,5 @@
+import { createSosRoutes } from "./routes/sos.routes";
+import type { SosService, SosRepositoryPort } from "./services/sos.service";
 import express, { Router, type Express } from "express";
 import { compatibilityApiRouteManifest, type ApiRouteOwnership } from "./apps/api-route-manifest";
 import { createOpenApiRoutes } from "./api/openapi";
@@ -512,6 +514,8 @@ export interface AppDependencies {
   affiliateCheckoutService?: AffiliateCheckoutService;
   realtimeRepository?: RealtimeRepositoryPort;
   realtimeEventGateway?: RealtimeEventGatewayPort;
+  sosService?: SosService;
+  sosRepository?: SosRepositoryPort;
   realtimeService?: RealtimeService;
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
@@ -766,6 +770,7 @@ export const createApp = (
   mount("shared", createImChatRecordRoutes(config, resolvedDependencies));
   mount("shared", createImMessageTranslationRoutes(config, resolvedDependencies));
   mount("shared", createRealtimeRoutes(config, resolvedDependencies));
+  mount("shared", createSosRoutes(config, resolvedDependencies));
   mount("shared", createExchangeRoutes(config, resolvedDependencies));
   mount("shared", createExchangeClaimRoutes(config, resolvedDependencies));
   mount("shared", createExchangeMatchingRoutes(config, resolvedDependencies));
