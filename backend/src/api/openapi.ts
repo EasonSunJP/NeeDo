@@ -21949,7 +21949,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: {
               type: "string",
-              enum: ["displayName", "email", "city", "createdAt"],
+              enum: ["displayName", "email", "city", "createdAt", "ndpBalance", "bookingCount"],
               default: "createdAt"
             }
           },
@@ -25348,7 +25348,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: {
               type: "string",
-              enum: ["displayName", "email", "city", "createdAt"],
+              enum: ["displayName", "email", "city", "createdAt", "ndpBalance", "bookingCount"],
               default: "createdAt"
             }
           },

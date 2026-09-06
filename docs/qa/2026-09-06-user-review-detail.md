@@ -17,7 +17,7 @@ The current local frontend/backend run from `.worktrees/dashboard-remaining-acce
 
 ## Separate XP finding
 
-Read-only lookup of `u4083532147` found 40,000 fixed-point units, four sign-in entries of 10,000 units each, and stored level 1. The approved conversion is 10,000 units = 1 EXP and level 2 starts at 5 EXP: the correct presentation is **4 EXP / Lv.1**. The current operations presentation incorrectly labels raw units as EXP. Level resolution and experience account writes already use the formal threshold rule. This requested confirmation does not include changing XP display or account data.
+Read-only lookup of `u4083532147` found 40,000 fixed-point units, four sign-in entries of 10,000 units each, and stored level 1. The current implementation uses 10,000 units = 1 EXP and level 2 starts at 5 EXP, which resolves this account to 4 EXP / Lv.1. This storage precision was a suggestion in the September 1 design document, not a user-confirmed business rule; the user explicitly disputed that approval on September 6. Display conversion and rule changes require resolving that distinction. The current operations presentation incorrectly labels raw units as EXP. Level resolution and experience account writes already use the formal threshold rule. This requested confirmation does not include changing XP display or account data.
 
 ## Validation commands
 

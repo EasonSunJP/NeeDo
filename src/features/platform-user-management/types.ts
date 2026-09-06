@@ -236,7 +236,7 @@ export type UserListQuery = {
   privacyScopes?: Array<"enabled" | "disabled" | UserPrivacyScope>;
   minBookings?: number;
   maxBookings?: number;
-  sortBy?: "displayName" | "email" | "city" | "createdAt";
+  sortBy?: "displayName" | "email" | "city" | "createdAt" | "ndpBalance" | "bookingCount";
   sortDirection?: "asc" | "desc";
   registeredFrom?: string;
   registeredTo?: string;

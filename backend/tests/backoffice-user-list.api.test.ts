@@ -74,6 +74,11 @@ describe("backoffice all-user API", () => {
       expect.any(Date)
     );
 
+    for (const sortBy of ["ndpBalance", "bookingCount"]) {
+      await request(fixture.app).get(`/api/v1/backoffice/users?sortBy=${sortBy}&sortDirection=desc&page=2`)
+        .set("Authorization", `Bearer ${token}`).expect(200);
+      expect(listManagedUsers).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy, sortDirection: "desc", page: 2 }), expect.any(Date));
+    }
     await request(fixture.app)
       .get("/api/v1/backoffice/users?minLevel=101")
       .set("Authorization", `Bearer ${token}`)
