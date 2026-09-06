@@ -510,6 +510,61 @@ async function sendRequest<TData>(
   return assertSuccess(envelope, response.status);
 }
 
+async function sendStreamRequest(
+  path: string,
+  options: HttpClientRequestOptions,
+  canRetry: boolean
+): Promise<Response> {
+  await alignAccessTokenWithExpectedUser(options);
+  const captured = getCoordinatorSnapshot();
+  const method = resolveRequestMethod(options);
+  const previewShopId = getPreviewShopId(path, options);
+  assertMerchantPreviewAllows(method, previewShopId);
+  const response = await fetch(buildApiUrl(path, options.query, options.baseUrl), {
+    body: createRequestBody(options.body),
+    headers: await createRequestHeaders(options, previewShopId, captured.accessToken),
+    method,
+    signal: options.signal
+  });
+
+  if (response.status === 401 && options.auth !== false && options.unauthorizedPolicy !== "caller") {
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current) && canRetry && current.accessToken) {
+      return sendStreamRequest(path, options, false);
+    }
+  }
+  if (
+    response.status === 401 &&
+    canRetry &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    options.retryOnUnauthorized !== false &&
+    captured.refreshToken
+  ) {
+    try {
+      await refreshStoredAccessToken();
+      return sendStreamRequest(path, options, false);
+    } catch (error) {
+      if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
+        terminateAuthImmediately();
+        await awaitAuthExpired();
+      }
+      throw error;
+    }
+  }
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    isSameCredentialState(getCoordinatorSnapshot(), captured)
+  ) {
+    terminateAuthImmediately();
+    await awaitAuthExpired();
+  }
+  return response;
+}
+
 function parseCsvFilename(contentDisposition: string | null) {
   if (!contentDisposition) {
     return "export.csv";
@@ -872,5 +927,8 @@ export const httpClient = {
   requestBinary(path: string, options: HttpClientRequestOptions = {}) { return sendBinaryRequest(path, options, true); },
   requestDataUrl(path: string, options: HttpClientRequestOptions = {}) {
     return sendDataUrlRequest(path, options, true);
+  },
+  openStream(path: string, options: HttpClientRequestOptions = {}) {
+    return sendStreamRequest(path, options, true);
   }
 };

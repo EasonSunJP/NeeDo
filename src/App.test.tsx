@@ -156,6 +156,9 @@ describe("production route chunk boundaries", () => {
       'path="/admin/analytics" element={protectPermission("admin", "page:dashboard", <Navigate replace to="/admin" />)}'
     );
     expect(appSource).not.toContain("<AnalyticsPage />");
+    expect(appSource).toContain(
+      'path="/admin/live-screen" element={protectPermission("admin", "page:dashboard", <Suspense fallback={null}><LiveDashboardPage /></Suspense>)}'
+    );
   });
 
   it("mounts one merchant data dashboard and redirects the legacy analytics route", () => {
