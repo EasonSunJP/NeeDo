@@ -351,4 +351,20 @@ describe("OrderRefundCaseRepository", () => {
     expect(tx.orderFinancial.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { settlementStatus: "refunded" } }));
     expect(tx.orderRefundCaseEvent.create).toHaveBeenCalled(); expect(tx.auditLog.create).toHaveBeenCalled(); expect(tx.notification.create).toHaveBeenCalled();
   });
+
+  it.each(["merchantDecision", "openComplaint", "submitEvidence", "confirmCustomerReceipt"])("fails closed with no writes when the nested order lock is missing: %s", async (method) => {
+    const tx = { $queryRaw: jest.fn(async () => []), orderRefundCase: { findFirst: jest.fn(), update: jest.fn() }, orderRefundCaseEvent: { findFirst: jest.fn(), create: jest.fn() }, orderRefundDispute: { findFirst: jest.fn(), create: jest.fn() }, bookingOrder: { updateMany: jest.fn() } };
+    const client = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const repository = new OrderRefundCaseRepository(client as unknown as PrismaClient);
+    const inputs = {
+      merchantDecision: { ...command, casePublicId: refundCase.publicId, decision: "approve", shopId: 31, expectedVersion: 1, idempotencyKey: "missing-order-decision", payload: { note: "x" } },
+      openComplaint: { ...command, casePublicId: refundCase.publicId, expectedVersion: 1, idempotencyKey: "missing-order-complaint", payload: { reason: "x" } },
+      submitEvidence: { ...command, casePublicId: refundCase.publicId, shopId: 31, expectedVersion: 1, idempotencyKey: "missing-order-evidence", payload: { reference: "x" } },
+      confirmCustomerReceipt: { ...command, casePublicId: refundCase.publicId, expectedVersion: 1, idempotencyKey: "missing-order-receipt", payload: {} }
+    } as const;
+    const key = method as keyof typeof inputs;
+    const operation = (repository as unknown as Record<string, (input: never) => Promise<unknown>>)[key];
+    await expect(operation.call(repository, inputs[key] as never)).resolves.toMatchObject({ kind: "not_found" });
+    expect(tx.orderRefundCase.update).not.toHaveBeenCalled(); expect(tx.orderRefundDispute.create).not.toHaveBeenCalled(); expect(tx.bookingOrder.updateMany).not.toHaveBeenCalled();
+  });
 });
