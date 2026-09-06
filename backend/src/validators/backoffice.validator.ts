@@ -72,7 +72,7 @@ export const backofficeManagedUserListQuerySchema = z
     ),
     minBookings: z.coerce.number().int().nonnegative().optional(),
     maxBookings: z.coerce.number().int().nonnegative().optional(),
-    sortBy: z.enum(["displayName", "email", "city", "createdAt"]).default("createdAt"),
+    sortBy: z.enum(["displayName", "email", "city", "createdAt", "ndpBalance", "bookingCount"]).default("createdAt"),
     sortDirection: z.enum(["asc", "desc"]).default("desc"),
     minLevel: z.coerce.number().int().min(1).max(100).optional(),
     maxLevel: z.coerce.number().int().min(1).max(100).optional(),

@@ -306,6 +306,7 @@ export type RefundManualPaymentRepositoryInput = ManualPaymentScope & {
 };
 
 export interface OrderListInput extends PaginationInput {
+  dateMode?: "startsWithin" | "overlaps";
   customerUserId?: number;
   shopId?: number;
   technicianProfileId?: number;
@@ -1888,7 +1889,9 @@ export class BookingRepository implements BookingRepositoryPort {
       ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {}),
       ...(input.status ? { status: bookingOrderStatusToDb(input.status) } : {}),
-      ...(input.from && input.to ? { startsAt: { gte: input.from, lt: input.to } } : {})
+      ...(input.from && input.to ? input.dateMode === "overlaps"
+        ? { startsAt: { lt: input.to }, endsAt: { gt: input.from } }
+        : { startsAt: { gte: input.from, lt: input.to } } : {})
     };
     const [list, total] = await Promise.all([
       this.client.bookingOrder.findMany({

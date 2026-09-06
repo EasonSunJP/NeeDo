@@ -25,6 +25,8 @@ import type {
   DashboardHeadlineSeriesPoint
 } from "../domain/dashboard";
 import { DashboardRepository } from "./dashboard.repository";
+import { formatExperienceUnits } from "../domain/user-experience-levels";
+import { buildManagedUserNumericPageQuery } from "./managed-user-numeric-sort";
 import {
   AdministrativeRegionRepository,
   type AdministrativeRegionRepositoryPort,
@@ -522,14 +524,30 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
     const pagination = toPrismaPagination(input);
     const where = await this.managedUserWhere(input, occurredAt);
-    const [rows, total] = await Promise.all([
-      this.client.user.findMany({
+    const loadRows = async () => {
+      if (input.sortBy === "ndpBalance" || input.sortBy === "bookingCount") {
+        const ordered = await this.client.$queryRaw<Array<{ id: number }>>(
+          buildManagedUserNumericPageQuery(where, input, pagination.skip, pagination.take)
+        );
+        if (!ordered.length) return [];
+        const pageRows = await this.client.user.findMany({
+          where: { AND: [where, { id: { in: ordered.map((row) => row.id) } }] },
+          select: buildManagedUserSelect(occurredAt, input),
+          take: pagination.take
+        });
+        const positions = new Map(ordered.map((row, index) => [row.id, index]));
+        return pageRows.sort((left, right) => positions.get(left.id)! - positions.get(right.id)!);
+      }
+      return this.client.user.findMany({
         where,
         select: buildManagedUserSelect(occurredAt, input),
         skip: pagination.skip,
         take: pagination.take,
         orderBy: this.managedUserOrderBy(input)
-      }),
+      });
+    };
+    const [rows, total] = await Promise.all([
+      loadRows(),
       this.client.user.count({ where })
     ]);
     const balances = await this.managedUserBalances(rows.map((row) => row.id));
@@ -2456,6 +2474,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         customerProfile && user.experienceAccount && !user.experienceAccount.deletedAt
           ? {
               currentLevel: user.experienceAccount.currentLevel,
+              totalExp: formatExperienceUnits(user.experienceAccount.totalExpUnits),
               totalExpUnits: user.experienceAccount.totalExpUnits.toString()
             }
           : null,
@@ -2478,12 +2497,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         type === "technician" ? identity.type === type : ["merchant", "merchant_owner", "merchant_staff", "merchant_organization"].includes(identity.type)
       ));
       if (identities.length) {
-        for (const identity of identities) {
-          const displayName = type === "technician"
-            ? (user.technicianProfile?.deletedAt ? null : user.technicianProfile?.displayName) ?? null
-            : (identity.merchantIdentityProfile?.deletedAt ? null : identity.merchantIdentityProfile?.displayName) ?? null;
-          profiles.push({ type, status: "active", displayName });
-        }
+        const personalProfiles = identities.filter((identity) =>
+          identity.merchantIdentityProfile && !identity.merchantIdentityProfile.deletedAt
+        );
+        const merchantIdentity = personalProfiles.find((identity) => identity.type === "merchant") ?? personalProfiles[0];
+        const displayName = type === "technician"
+          ? (user.technicianProfile?.deletedAt ? null : user.technicianProfile?.displayName) ?? null
+          : merchantIdentity?.merchantIdentityProfile?.displayName ?? null;
+        profiles.push({ type, status: "active", displayName });
       } else {
         const application = user.identityApplications?.find((item) => item.type === type);
         const status = application?.status === "submitted" || application?.status === "under_review"

@@ -109,6 +109,24 @@ const publishedTechnicianWithoutServices = {
   }
 };
 
+describe("shop detail affiliated technician roster", () => {
+  it("includes active partner technicians with real avatars once alongside primary staff", async () => {
+    const partner = { ...publishedTechnicianWithoutServices, id: 42, displayName: "合作技师", user: { ...publishedTechnicianWithoutServices.user, avatarBootstrapUrl: "/media/partner.jpg" } };
+    const findFirst = jest.fn(async () => ({
+      ...publishedShopWithoutServices, services: [], technicians: [publishedTechnicianWithoutServices],
+      technicianShopAffiliations: [{ technicianProfile: publishedTechnicianWithoutServices }, { technicianProfile: partner }],
+      description: null, phone: null, latitude: null, longitude: null, createdAt: now, updatedAt: now
+    }));
+    const repository = new CoreReadRepository({ shop: { findFirst } } as never);
+    const result = await repository.findShopDetail(21);
+    expect(result?.technicians.map(t => t.id)).toEqual([41, 42]);
+    expect(result?.technicians[1]?.avatarUrl).toBe("/media/partner.jpg");
+    expect(findFirst.mock.calls[0]).toEqual([expect.objectContaining({ include: expect.objectContaining({
+      technicianShopAffiliations: expect.objectContaining({ where: expect.objectContaining({ deletedAt: null, workStatus: "ACTIVE", startsAt: { lte: expect.any(Date) }, OR: [{ endsAt: null }, { endsAt: { gt: expect.any(Date) } }] }) })
+    }) })]);
+  });
+});
+
 function createRepositoryFixture() {
   const shopFindMany = jest.fn(async () => [publishedShopWithoutServices]);
   const shopCount = jest.fn(async () => 1);

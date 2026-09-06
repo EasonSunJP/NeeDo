@@ -43,6 +43,12 @@ describe("shared schedule frame layout", () => {
     expect(cycleBoardSource).not.toContain("<UnifiedCalendarMultiDayTimeline");
   });
 
+  it("lets a formal merchant adapter provide the cycle window and matching day grids", () => {
+    expect(cycleBoardSource).toContain("dataOverride?.cycle");
+    expect(cycleBoardSource).toContain("formalGridByDate");
+    expect(cycleBoardSource).toContain("period.dates.map((date)");
+  });
+
   it("keeps merchant matrix technician headers as square avatar plus name buttons", () => {
     expect(cycleBoardSource).toContain("function CyclePeriodTechnicianHeader(");
     expect(cycleBoardSource).toContain('shape="roundedSquare"');

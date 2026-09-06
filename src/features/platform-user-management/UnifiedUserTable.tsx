@@ -6,6 +6,14 @@ import { TableColumnHeader, type TableSortDirection } from "../../components/ui/
 import { membershipTierText, platformUserManagementCopy, privacyModeText, privacyScopeText } from "./i18n";
 import type { PlatformIdentityType, PlatformManagedUser, UserListQuery } from "./types";
 
+const numericSortLabels: Record<Language, { asc: string; desc: string }> = {
+  zh: { asc: "从小到大", desc: "从大到小" },
+  "zh-Hant": { asc: "從小到大", desc: "從大到小" },
+  ja: { asc: "小さい順", desc: "大きい順" },
+  en: { asc: "Smallest first", desc: "Largest first" },
+  ko: { asc: "작은 순", desc: "큰 순" }
+};
+
 type FilterOption = { label: string; value: string };
 
 export type UnifiedUserTableProps = {
@@ -19,10 +27,10 @@ export type UnifiedUserTableProps = {
 function UserIdentityBadges({ row, language }: { row: PlatformManagedUser; language: Language }) {
   const profiles = row.identityProfiles;
   if (!profiles) return <div className="flex max-w-[220px] flex-wrap gap-1">
-    {row.identities.map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`}>{identity.displayName || identity.type}</Badge>)}
+    {row.identities.filter((identity) => identity.type !== "scout").map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`}>{identity.displayName || identity.type}</Badge>)}
   </div>;
   const statusText = { not_enabled: "未开启", under_review: "审核中", rejected: "拒绝" };
-  const otherTypes: Record<string, string> = { platform: "运营", broker: "经纪人", scout: "星探" };
+  const otherTypes: Record<string, string> = { platform: "运营", broker: "经纪人" };
   return <div className="flex max-w-[220px] flex-col items-start gap-1">
     {profiles?.map((profile, index) => <Badge key={`${profile.type}-${index}`}>
       {translateText(profile.type === "technician" ? "技师" : "商户", language)}：{profile.status === "active" ? profile.displayName || "—" : translateText(statusText[profile.status], language)}
@@ -179,6 +187,7 @@ function ServerColumnHeader({
       onToggleValue={toggleValue}
       searchValue={searchValue}
       selectedValues={selectedLabels}
+      sortLabels={sortKey === "ndpBalance" || sortKey === "bookingCount" ? numericSortLabels[language] : undefined}
       sortDirection={query.sortBy === sortKey ? query.sortDirection : undefined}
       title={title}
       uiLanguage={language}
@@ -213,12 +222,12 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
           <ServerColumnHeader {...headerProps} columnKey="user" searchPatch={(keyword) => ({ keyword: keyword.trim() || undefined })} searchValue={query.keyword ?? ""} sortKey="displayName" title={copy.user} />
           <ServerColumnHeader {...headerProps} columnKey="email" multiFilterPatch={(emailStates) => ({ emailStates: emailStates as UserListQuery["emailStates"] })} options={[{ value: "set", label: copy.bound }, { value: "unset", label: copy.unbound }]} sortKey="email" title={translateText("邮箱", language)} values={query.emailStates} />
           <ServerColumnHeader {...headerProps} columnKey="city" searchPatch={(city) => ({ city: city.trim() || undefined, cities: undefined })} searchValue={query.city ?? ""} sortKey="city" title={translateText("城市", language)} />
-          <ServerColumnHeader {...headerProps} columnKey="identities" multiFilterPatch={(identityTypes) => ({ identityTypes: identityTypes as PlatformIdentityType[] | undefined })} options={[{ value: "customer", label: copy.user }, { value: "technician", label: translateText("技师", language) }, { value: "merchant", label: translateText("商户", language) }, { value: "platform", label: translateText("运营", language) }, { value: "broker", label: translateText("经纪人", language) }, { value: "scout", label: translateText("星探", language) }]} title={copy.identities} values={query.identityTypes} />
+          <ServerColumnHeader {...headerProps} columnKey="identities" multiFilterPatch={(identityTypes) => ({ identityTypes: identityTypes as PlatformIdentityType[] | undefined })} options={[{ value: "customer", label: copy.user }, { value: "technician", label: translateText("技师", language) }, { value: "merchant", label: translateText("商户", language) }, { value: "platform", label: translateText("运营", language) }, { value: "broker", label: translateText("经纪人", language) }]} title={copy.identities} values={query.identityTypes} />
           <ServerColumnHeader {...headerProps} columnKey="membership" multiFilterPatch={(tiers) => ({ tiers: tiers as UserListQuery["tiers"] })} options={tierOptions} title={copy.membership} values={query.tiers} />
-          <ServerColumnHeader {...headerProps} columnKey="bookings" filterPatch={(range) => ({ minBookings: range ? bookingRanges[range]?.minBookings : undefined, maxBookings: range ? bookingRanges[range]?.maxBookings : undefined })} options={Object.keys(bookingRanges).map((value) => ({ value, label: value }))} title={copy.bookings} value={activeBookingRange(query)} />
+          <ServerColumnHeader {...headerProps} columnKey="bookings" sortKey="bookingCount" filterPatch={(range) => ({ minBookings: range ? bookingRanges[range]?.minBookings : undefined, maxBookings: range ? bookingRanges[range]?.maxBookings : undefined })} options={Object.keys(bookingRanges).map((value) => ({ value, label: value }))} title={copy.bookings} value={activeBookingRange(query)} />
           <ServerColumnHeader {...headerProps} columnKey="privacy" multiFilterPatch={(privacyScopes) => ({ privacyScopes: privacyScopes as UserListQuery["privacyScopes"] })} options={privacyOptions} title={translateText("隐私模式", language)} values={query.privacyScopes} />
           <ServerColumnHeader {...headerProps} columnKey="ekyc" multiFilterPatch={(ekycStates) => ({ ekycStates: ekycStates as UserListQuery["ekycStates"] })} options={[{ value: "verified", label: copy.verified }, { value: "unverified", label: copy.unverified }]} title={copy.ekyc} values={query.ekycStates} />
-          <ServerColumnHeader {...headerProps} columnKey="ndp" filterPatch={(range) => ({ minNdpBalance: range ? ndpRanges[range]?.minNdpBalance : undefined, maxNdpBalance: range ? ndpRanges[range]?.maxNdpBalance : undefined })} options={Object.keys(ndpRanges).map((value) => ({ value, label: value }))} title={copy.ndpBalance} value={activeRange(ndpRanges, "minNdpBalance", "maxNdpBalance")} />
+          <ServerColumnHeader {...headerProps} columnKey="ndp" sortKey="ndpBalance" filterPatch={(range) => ({ minNdpBalance: range ? ndpRanges[range]?.minNdpBalance : undefined, maxNdpBalance: range ? ndpRanges[range]?.maxNdpBalance : undefined })} options={Object.keys(ndpRanges).map((value) => ({ value, label: value }))} title={copy.ndpBalance} value={activeRange(ndpRanges, "minNdpBalance", "maxNdpBalance")} />
           <ServerColumnHeader {...headerProps} columnKey="state" multiFilterPatch={(states) => ({ states: states as UserListQuery["states"] })} options={[{ value: "active", label: copy.active }, { value: "inactive", label: copy.inactive }]} title={copy.status} values={query.states} />
           <ServerColumnHeader {...headerProps} columnKey="createdAt" dateFrom={query.registeredFrom?.slice(0, 10) ?? ""} datePatch={(from, to) => ({ registeredFrom: from ? `${from}T00:00:00.000Z` : undefined, registeredTo: to ? `${to}T23:59:59.999Z` : undefined })} dateTo={query.registeredTo?.slice(0, 10) ?? ""} sortKey="createdAt" title={copy.registeredAt} />
           <th className="table-frozen-action px-4 py-3 font-black">{copy.details}</th>
@@ -229,7 +238,7 @@ export function UnifiedUserTable({ language, rows, query, onQueryChange, onSelec
             <td className="max-w-[220px] truncate px-4 py-3 font-bold">{row.email || "—"}</td>
             <td className="px-4 py-3">{row.city || "—"}</td>
             <td className="px-4 py-3"><UserIdentityBadges language={language} row={row} /></td>
-            <td className="px-4 py-3"><p className="font-bold">{membershipTierText(row.membership.tierCode, language)}</p>{row.experience ? <p className="mt-1 text-xs text-ink/50">Lv.{row.experience.currentLevel} · {row.experience.totalExpUnits} EXP</p> : null}</td>
+            <td className="px-4 py-3"><p className="font-bold">{membershipTierText(row.membership.tierCode, language)}</p>{row.experience ? <p className="mt-1 text-xs text-ink/50">Lv.{row.experience.currentLevel} · {row.experience.totalExp} EXP</p> : null}</td>
             <td className="px-4 py-3 font-bold">{row.bookingCount}</td>
             <td className="px-4 py-3"><Badge tone={row.privacyMode ? "yellow" : "green"}>{privacyModeText(row.privacyMode, language)}</Badge>{row.privacyScope ? <p className="mt-1 text-xs text-ink/45">{privacyScopeText(row.privacyScope, language)}</p> : null}</td>
             <td className="px-4 py-3"><Badge tone={row.ekycVerified ? "green" : "neutral"}>{row.ekycVerified ? copy.verified : copy.unverified}</Badge></td>

@@ -512,6 +512,16 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       });
   });
 
+  it("passes validated overlap bounds through the authenticated order route", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login();
+    await request(fixture.app).get("/api/v1/orders?from=2026-09-06T15:00:00.000Z&to=2026-09-07T15:00:00.000Z&dateMode=overlaps")
+      .set("Authorization", `Bearer ${token}`).expect(200);
+    expect(fixture.bookingRepository.listOrders).toHaveBeenCalledWith(expect.objectContaining({
+      dateMode: "overlaps", from: new Date("2026-09-06T15:00:00.000Z"), to: new Date("2026-09-07T15:00:00.000Z")
+    }));
+  });
+
   it("rejects unknown fields on the order confirmation endpoint", async () => {
     const fixture = await createFixture();
     const token = await fixture.login();

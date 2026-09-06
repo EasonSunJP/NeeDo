@@ -235,6 +235,12 @@ describe("bookingApi", () => {
     expect(requestInit).toEqual(expect.objectContaining({ method: "GET" }));
   });
 
+  it("serializes overlapping order windows for the merchant calendar", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { list: [], total: 0, page: 1, page_size: 100 } }));
+    await bookingApi.listOrders({ from: "2026-09-06T15:00:00.000Z", to: "2026-09-07T15:00:00.000Z", dateMode: "overlaps" });
+    expect(String(vi.mocked(fetch).mock.calls.at(-1)?.[0])).toContain("dateMode=overlaps");
+  });
+
   it("calls the scoped manual-payment confirmation and refund endpoints", async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")))

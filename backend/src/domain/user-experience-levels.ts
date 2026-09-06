@@ -34,3 +34,14 @@ export const resolveLevel = (totalUnitsInput: bigint | number): number => {
   }
   return Math.min(Math.max(high + 1, 1), 100);
 };
+
+export const formatExperienceUnits = (units: bigint): string => {
+  const negative = units < 0n;
+  const absolute = negative ? -units : units;
+  const whole = absolute / USER_EXPERIENCE_UNITS_PER_EXP;
+  const fraction = (absolute % USER_EXPERIENCE_UNITS_PER_EXP)
+    .toString()
+    .padStart(4, "0")
+    .replace(/0+$/, "");
+  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+};

@@ -144,7 +144,7 @@ export type PlatformManagedUser = {
     experienceMultiplier: number;
     lockVersion: number | null;
   };
-  experience: { currentLevel: number; totalExpUnits: string } | null;
+  experience: { currentLevel: number; totalExp: string } | null;
   ndpBalance: { available: number; frozen: number };
   testNdpBalance?: { available: number; frozen: number } | null;
   bookingCount: number;
@@ -236,7 +236,7 @@ export type UserListQuery = {
   privacyScopes?: Array<"enabled" | "disabled" | UserPrivacyScope>;
   minBookings?: number;
   maxBookings?: number;
-  sortBy?: "displayName" | "email" | "city" | "createdAt";
+  sortBy?: "displayName" | "email" | "city" | "createdAt" | "ndpBalance" | "bookingCount";
   sortDirection?: "asc" | "desc";
   registeredFrom?: string;
   registeredTo?: string;

@@ -1,4 +1,5 @@
 import { BackofficeRepository } from "../src/repositories/backoffice.repository";
+import { backofficeManagedUserListQuerySchema } from "../src/validators/backoffice.validator";
 
 const now = new Date("2026-09-01T12:00:00.000Z");
 
@@ -55,6 +56,25 @@ const managedUserRow = () => ({
 });
 
 describe("BackofficeRepository managed users", () => {
+  it.each(["ndpBalance", "bookingCount"])("accepts the formal numeric sort %s", (sortBy) => {
+    expect(backofficeManagedUserListQuerySchema.safeParse({ sortBy, sortDirection: "desc" }).success).toBe(true);
+  });
+  it("hydrates only the SQL-ordered page while retaining the same scope and total", async () => {
+    const findMany = jest.fn(async () => [managedUserRow(), { ...managedUserRow(), id: 42 }]);
+    const count = jest.fn(async () => 80);
+    const queryRaw = jest.fn(async () => [{ id: 42 }, { id: 41 }]);
+    const repository = new BackofficeRepository({
+      user: { findMany, count }, $queryRaw: queryRaw, wallet: { findMany: jest.fn(async () => []) }
+    } as never);
+    const page = await repository.listManagedUsers({ scope: "merchant", shopId: 7, page: 2, pageSize: 2, sortBy: "ndpBalance", sortDirection: "desc" } as never, now);
+    expect(page.list.map((row) => row.id)).toEqual([42,41]);
+    expect(page.total).toBe(80);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 2, where: { AND: [
+      { deletedAt: null, AND: [{ bookingOrders: { some: { shopId: 7, deletedAt: null } } }] },
+      { id: { in: [42,41] } }
+    ] } }));
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+  });
   it("paginates all users with one aggregate user query and one wallet query", async () => {
     const findMany = jest.fn(async () => [managedUserRow()]);
     const count = jest.fn(async () => 1);
@@ -76,7 +96,7 @@ describe("BackofficeRepository managed users", () => {
       needoId: "u0000000041",
       identities: [expect.objectContaining({ type: "customer" })],
       membership: expect.objectContaining({ tierCode: "gold" }),
-      experience: { currentLevel: 12, totalExpUnits: "345600" },
+      experience: { currentLevel: 12, totalExpUnits: "345600", totalExp: "34.56" },
       phoneBound: true,
       emailBound: true,
       displayName: "Mia",
@@ -124,6 +144,21 @@ describe("BackofficeRepository managed users", () => {
     expect(page.list[0].identityProfiles).toEqual([
       { type: "technician", status: expected, displayName: null },
       { type: "merchant", status: "not_enabled", displayName: null }
+    ]);
+  });
+
+  it("projects one merchant name from the personal merchant identity across portal roles", async () => {
+    const base = managedUserRow();
+    const repository = new BackofficeRepository({ user: {
+      findMany: jest.fn(async () => [{ ...base, identities: [
+        { type: "merchant_owner", isActive: true, merchantIdentityProfile: { displayName: "旧后台名称", deletedAt: null } },
+        { type: "merchant", isActive: true, merchantIdentityProfile: { displayName: "佐藤 美咲", deletedAt: null } },
+        { type: "merchant_staff", isActive: true, merchantIdentityProfile: { displayName: "佐藤 美咲", deletedAt: null } }
+      ] }]), count: jest.fn(async () => 1)
+    }, wallet: { findMany: jest.fn(async () => []) } } as never);
+    const page = await repository.listManagedUsers({ scope: "platform", page: 1, pageSize: 20 } as never, now);
+    expect(page.list[0].identityProfiles?.filter((profile) => profile.type === "merchant")).toEqual([
+      { type: "merchant", status: "active", displayName: "佐藤 美咲" }
     ]);
   });
 

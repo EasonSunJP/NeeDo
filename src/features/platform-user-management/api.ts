@@ -126,7 +126,7 @@ const decodeUser = (value: unknown): PlatformManagedUser => {
     experience: experience
       ? {
           currentLevel: integer(experience.currentLevel),
-          totalExpUnits: string(experience.totalExpUnits)
+          totalExp: typeof experience.totalExp === "string" && /^(0|[1-9][0-9]*)(\.[0-9]{1,4})?$/.test(experience.totalExp) ? experience.totalExp : invalid()
         }
       : null,
     ndpBalance: { available: integer(balance.available), frozen: integer(balance.frozen) },

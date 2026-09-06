@@ -7084,10 +7084,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       BackofficeManagedUserExperience: {
         type: "object",
-        required: ["currentLevel", "totalExpUnits"],
+        required: ["currentLevel", "totalExp", "totalExpUnits"],
         properties: {
           currentLevel: { type: "integer", minimum: 1, maximum: 100 },
-          totalExpUnits: { type: "string", pattern: "^[0-9]+$" }
+          totalExp: { type: "string", pattern: "^[0-9]+(\\.[0-9]{1,4})?$", description: "Exact decimal EXP amount for display, consistent with the user experience summary." },
+          totalExpUnits: { type: "string", pattern: "^[0-9]+$", deprecated: true, description: "Legacy storage precision; use totalExp for experience amounts." }
         }
       },
       BackofficeManagedUser: {
@@ -20221,6 +20222,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Paginated Booking order list",
         security: [{ bearerAuth: [] }],
         parameters: [
+          {
+            name: "dateMode",
+            in: "query",
+            description: "startsWithin (default) matches order starts; overlaps matches startsAt < to and endsAt > from and requires both bounds. Identity scope is unchanged.",
+            schema: { type: "string", enum: ["startsWithin", "overlaps"], default: "startsWithin" }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           {
@@ -22379,7 +22386,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: {
               type: "string",
-              enum: ["displayName", "email", "city", "createdAt"],
+              enum: ["displayName", "email", "city", "createdAt", "ndpBalance", "bookingCount"],
               default: "createdAt"
             }
           },
@@ -25778,7 +25785,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: {
               type: "string",
-              enum: ["displayName", "email", "city", "createdAt"],
+              enum: ["displayName", "email", "city", "createdAt", "ndpBalance", "bookingCount"],
               default: "createdAt"
             }
           },

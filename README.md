@@ -2708,6 +2708,14 @@ ENV_FILE=.env.dev npm --prefix backend run check:sos-flow
 
 The technician status controls now persist audited work events. Merchant and operations projections use the same formal status. Monthly lateness/early-departure counts open paginated incident timelines with Tokyo date filters. Zero grace is applied to precise server timestamps. See [implementation and acceptance](docs/qa/technician-work-status-20260906/main-integration.md) for migrations, API routes, checks and runtime boundaries.
 
+### Admin test contacts and six-month staffing
+
+The local-first, audited two-account dataset and formal calendar acceptance are documented in [administrator contacts and six-month staffing](docs/qa/2026-09-06-admin-contacts-six-month-schedule.md). Appointment overview reads persisted scoped BookingOrders; staffing slots remain separate and display their actual availability state.
+
 ### User detail review facts and capsule tabs
 
 Received service reviews in the operations and merchant user detail cards now include formal payment method/status, checkout ledger currency, accepted extra service time, separated tag groups, and review/booking notes. Detail categories share one capsule tab container. See [local review-card acceptance and XP unit finding](docs/qa/2026-09-06-user-review-detail.md).
+
+The follow-up removes repeated membership facts, places adjustment controls inside the membership tab, consolidates merchant names, removes scout presentation, and adds server-side numeric ordering. See [user-directory follow-up acceptance](docs/qa/2026-09-06-user-directory-followup.md).
+
+Managed-user lists and membership details now consume exact decimal `totalExp`, consistent with user experience summaries. See [EXP display correction and evidence](docs/qa/2026-09-06-experience-display.md).
