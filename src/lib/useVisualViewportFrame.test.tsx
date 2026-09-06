@@ -12,6 +12,7 @@ import { useVisualViewportFrame } from "./useVisualViewportFrame";
 afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("useVisualViewportFrame", () => {
@@ -128,6 +129,76 @@ describe("useVisualViewportFrame", () => {
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("0px");
 
+    await act(async () => root.unmount());
+  });
+});
+
+
+describe("iPhone standalone viewport", () => {
+  async function mountIphoneFrame(standalone = true) {
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)", standalone });
+    vi.stubGlobal("screen", { width: 393, height: 852 });
+    vi.stubGlobal("innerWidth", 393);
+    vi.stubGlobal("innerHeight", 759);
+    const viewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(viewport, {
+      height: { configurable: true, value: 759 },
+      width: { configurable: true, value: 393 },
+      offsetTop: { configurable: true, value: 0 },
+      offsetLeft: { configurable: true, value: 0 }
+    });
+    vi.stubGlobal("visualViewport", viewport);
+    function Harness() {
+      const ref = useRef<HTMLDivElement | null>(null);
+      useVisualViewportFrame(ref);
+      return <div ref={ref}><textarea /></div>;
+    }
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<Harness />));
+    return { root, viewport, frame: container.firstElementChild as HTMLElement };
+  }
+
+  it("fills the iPhone display when standalone inset sizing excludes safe areas", async () => {
+    const { root, frame } = await mountIphoneFrame();
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("852px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    await act(async () => root.unmount());
+  });
+
+  it("uses the keyboard viewport, then restores the full display after dismissal", async () => {
+    const { root, frame, viewport } = await mountIphoneFrame();
+    Object.defineProperty(viewport, "height", { value: 420, configurable: true });
+    await act(async () => frame.querySelector("textarea")!.focus());
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("420px");
+    Object.defineProperty(viewport, "height", { value: 759, configurable: true });
+    await act(async () => viewport.dispatchEvent(new Event("resize")));
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("852px");
+    await act(async () => root.unmount());
+  });
+
+  it("resolves landscape from the matching screen width without retaining portrait height", async () => {
+    const { root, frame } = await mountIphoneFrame();
+    vi.stubGlobal("innerWidth", 852);
+    vi.stubGlobal("innerHeight", 393);
+    await act(async () => window.dispatchEvent(new Event("resize")));
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("393px");
+    await act(async () => root.unmount());
+  });
+
+  it("keeps ordinary Safari constrained to the browser viewport", async () => {
+    const { root, frame } = await mountIphoneFrame(false);
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+    await act(async () => root.unmount());
+  });
+
+  it("does not use physical screen height for a window narrower than the display", async () => {
+    const { root, frame } = await mountIphoneFrame();
+    vi.stubGlobal("innerWidth", 320);
+    await act(async () => window.dispatchEvent(new Event("resize")));
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
     await act(async () => root.unmount());
   });
 });
