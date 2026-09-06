@@ -1013,15 +1013,15 @@ export class BookingRepository implements BookingRepositoryPort {
     return uniqueIds.flatMap((id) => {
       const order = byId.get(id);
       const location = order?.serviceLocation;
-      if (!order || !location || location.deletedAt || location.countryCode !== "JP") return [];
-      const verified = location.resolutionStatus === "VERIFIED";
+      if (!order || (location && (location.deletedAt || location.countryCode !== "JP"))) return [];
+      const verified = location?.resolutionStatus === "VERIFIED";
       return [
         {
           orderId: order.id,
           scope: {
             countryCode: "JP" as const,
-            admin1Code: verified ? location.admin1RegionCode : null,
-            admin2Code: verified ? location.admin2RegionCode : null
+            admin1Code: verified ? location!.admin1RegionCode : null,
+            admin2Code: verified ? location!.admin2RegionCode : null
           },
           orderNo: order.orderNo,
           status: bookingOrderStatusFromDb(order.status),
@@ -1529,12 +1529,25 @@ export class BookingRepository implements BookingRepositoryPort {
               return null;
             }
 
+            const serviceLocation = await this.resolveBookingServiceLocation(tx, slot, input);
             let travelEstimate: BookingTravelEstimateRecord | null = null;
             let normalizedFulfillmentAddress: JapaneseRouteAddress | null = null;
             if (input.fulfillmentMode === "home") {
               if (!input.travelEstimatePublicId || !input.fulfillmentAddress) {
                 throw new BookingTravelEstimateAbort("invalid");
               }
+              normalizedFulfillmentAddress = normalizeJapaneseRouteAddress(input.fulfillmentAddress);
+              const canonicalAddress = normalizeJapaneseRouteAddress({
+                ...normalizedFulfillmentAddress,
+                prefecture: serviceLocation.admin1NameJa,
+                city: serviceLocation.admin2NameJa
+              });
+              if (normalizedFulfillmentAddress.prefecture !== canonicalAddress.prefecture ||
+                  normalizedFulfillmentAddress.city !== canonicalAddress.city) {
+                throw new AppError({ code: ERROR_CODES.VALIDATION, statusCode: 400,
+                  message: "error.administrative_region.address_mismatch" });
+              }
+              normalizedFulfillmentAddress = canonicalAddress;
               await tx.$queryRaw`
                 SELECT id FROM route_estimates
                 WHERE public_id = ${input.travelEstimatePublicId} AND deleted_at IS NULL
@@ -1564,9 +1577,6 @@ export class BookingRepository implements BookingRepositoryPort {
                 orderBy: [{ effectiveFrom: "desc" }, { version: "desc" }]
               });
               const serviceId = serviceSource.affiliateServiceId;
-              normalizedFulfillmentAddress = normalizeJapaneseRouteAddress(
-                input.fulfillmentAddress
-              );
               if (
                 !serviceId ||
                 travelEstimate.customerUserId !== input.customerUserId ||
@@ -1589,7 +1599,6 @@ export class BookingRepository implements BookingRepositoryPort {
             } else if (input.travelEstimatePublicId || input.fulfillmentAddress) {
               throw new BookingTravelEstimateAbort("invalid");
             }
-            const serviceLocation = await this.resolveBookingServiceLocation(tx, slot, input);
 
             const conflict = await tx.bookingOrder.findFirst({
               where: {

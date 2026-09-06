@@ -16,6 +16,7 @@ const createRepositoryHarness = (options?: {
   softDeletedAdmin2?: boolean;
   missingJaOfficialName?: boolean;
   infrastructureError?: Error;
+  otherValidRegion?: boolean;
 }) => {
   const now = new Date("2026-09-06T01:00:00.000Z");
   const shopServiceLocation = options?.missingShopLocation
@@ -76,14 +77,22 @@ const createRepositoryHarness = (options?: {
     routeEstimate: { findUnique: jest.fn(async () => ({
       id: 1, customerUserId: 5, shopId: 7, serviceId: 12, scheduleSlotId: 33,
       policyVersionId: 1, expiresAt: new Date(Date.now() + 60_000),
+      policyVersion: { publicId: "00000000-0000-4000-8000-000000000002" },
+      matchedBandId: 1, matchedBand: { maximumDistanceMeters: 10000 },
+      providerCode: "test-contract", providerRequestId: null, distanceMeters: 1000, durationSeconds: 300, fareAmountJpy: 0,
       originAddressHash: hashRouteAddress(shopAddressToJapaneseRouteAddress(shop)),
       destinationAddressHash: hashRouteAddress(fulfillmentAddress)
-    })) },
+    })), updateMany: jest.fn(async () => ({ count: 1 })) },
+    bookingTravelFareSnapshot: { create: jest.fn(async () => ({ id: 1 })) },
     shopTravelFarePolicyVersion: { findFirst: jest.fn(async () => ({ id: 1 })) },
     $queryRaw: jest.fn(async () => {
       const call = tx.$queryRaw.mock.calls.length;
       if (call === 1) return [{ id: 5 }];
       if (options?.infrastructureError) throw options.infrastructureError;
+      if (options?.otherValidRegion) return [
+        { id: 2700, official_code: "27", level: "ADMIN1", parent_id: null, deleted_at: null },
+        { id: 27128, official_code: "27128", level: "ADMIN2", parent_id: 2700, deleted_at: null }
+      ];
       return [
         { id: 1300, official_code: "13", level: "ADMIN1", parent_id: null, deleted_at: null },
         {
@@ -97,6 +106,9 @@ const createRepositoryHarness = (options?: {
     }),
     administrativeRegionLocale: {
       findMany: jest.fn(async () =>
+        options?.otherValidRegion
+          ? [{ regionId: 2700, name: "大阪府" }, { regionId: 27128, name: "大阪市中央区" }]
+          :
         options?.missingJaOfficialName
           ? [{ regionId: 1300, name: "東京都" }]
           : [
@@ -194,6 +206,33 @@ const createRepositoryHarness = (options?: {
 };
 
 describe("booking service-location snapshots", () => {
+  it("persists matching official Japanese names with the accepted normalized address", async () => {
+    const harness = createRepositoryHarness();
+    const result = await harness.repository.createBooking({
+      customerUserId: 5, serviceId: 12, scheduleSlotId: 33, fulfillmentMode: "home",
+      fulfillmentAddress: { ...fulfillmentAddress, prefecture: " 東京都 ", city: " 新宿区 " }, travelEstimatePublicId,
+      serviceLocation: { source: "CUSTOMER_SERVICE_LOCATION", countryCode: "JP", admin1Code: "13", admin2Code: "13104" }
+    });
+    expect(result).toHaveProperty("order.id", 91);
+    expect(harness.state.locations[0]).toMatchObject({ admin1Name: "東京都", admin2Name: "新宿区", resolutionStatus: "VERIFIED" });
+    expect(harness.tx.routeEstimate.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a valid but unrelated region before reserving capacity or consuming the accepted address estimate", async () => {
+    const harness = createRepositoryHarness({ otherValidRegion: true });
+    await expect(harness.repository.createBooking({
+      customerUserId: 5, serviceId: 12, scheduleSlotId: 33, fulfillmentMode: "home",
+      fulfillmentAddress, travelEstimatePublicId,
+      serviceLocation: { source: "CUSTOMER_SERVICE_LOCATION", countryCode: "JP", admin1Code: "27", admin2Code: "27128" }
+    })).rejects.toMatchObject({ statusCode: 400, message: "error.administrative_region.address_mismatch" });
+    expect(harness.state.bookings).toEqual([]);
+    expect(harness.state.locations).toEqual([]);
+    expect(harness.state.bookedCount).toBe(0);
+    expect(harness.tx.scheduleSlot.updateMany).not.toHaveBeenCalled();
+    expect(harness.tx.routeEstimate.updateMany).not.toHaveBeenCalled();
+    expect(harness.tx.bookingTravelFareSnapshot.create).not.toHaveBeenCalled();
+  });
+
   it("maps the discriminated API input to repository-owned location sources", async () => {
     const repository = {
       findScheduleSlotShopId: jest.fn(async () => 7),

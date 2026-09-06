@@ -132,14 +132,10 @@ const locationScope = (scope: LiveDashboardScope, alias = "location"): Prisma.Sq
   AND ${Prisma.raw(alias)}.deleted_at IS NULL
 `;
 
-const scopedLocation = (scope: LiveDashboardScope, alias = "location"): Prisma.Sql => Prisma.sql`
-  ${locationScope(scope, alias)}
-  ${
-    scope.admin1Code || scope.admin2Code
-      ? Prisma.sql`AND ${Prisma.raw(alias)}.resolution_status = ${"VERIFIED"}`
-      : Prisma.empty
-  }
-`;
+const scopedLocation = (scope: LiveDashboardScope, alias = "location"): Prisma.Sql =>
+  scope.admin1Code || scope.admin2Code
+    ? Prisma.sql`${locationScope(scope, alias)} AND ${Prisma.raw(alias)}.resolution_status = ${"VERIFIED"}`
+    : Prisma.sql`(${Prisma.raw(alias)}.booking_order_id IS NULL OR (${locationScope(scope, alias)}))`;
 
 export interface LiveDashboardRepositoryPort {
   getSnapshotFacts(input: LiveDashboardInput): Promise<LiveDashboardSnapshotFacts>;
@@ -277,14 +273,15 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       WITH child_order_counts AS (
         SELECT ${childRegionCode} AS child_code, COUNT(booking.id) AS order_count
         FROM booking_orders AS booking
-        INNER JOIN booking_service_locations AS location
-          ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+        LEFT JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id
         INNER JOIN shops AS shop
-          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
         WHERE booking.starts_at >= ${window.fromInclusive}
           AND booking.starts_at < ${window.toExclusive}
           AND booking.created_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
+          AND location.resolution_status = ${"VERIFIED"}
         GROUP BY ${childRegionCode}
       ), child_confirmed_payments AS (
         SELECT ${childRegionCode} AS child_code,
@@ -294,10 +291,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
                COALESCE(SUM(CASE WHEN ledger.currency = ${"TEST_NDP"}
                  THEN checkout.payable_ndp ELSE 0 END), 0) AS confirmed_payment_test_ndp
         FROM booking_orders AS booking
-        INNER JOIN booking_service_locations AS location
-          ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+        LEFT JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id
         INNER JOIN shops AS shop
-          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
         INNER JOIN order_checkouts AS checkout
           ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
         LEFT JOIN ledger_transactions AS ledger
@@ -307,6 +304,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.payment_confirmed_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
           AND ${formalConfirmedPaymentEvidence()}
+          AND location.resolution_status = ${"VERIFIED"}
         GROUP BY ${childRegionCode}
       )
       SELECT child.official_code AS code,
@@ -349,10 +347,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.payment_status NOT IN (${"refund_pending"}, ${"refunded"})), 0)
           AS completedOrders
       FROM booking_orders AS booking
-      INNER JOIN booking_service_locations AS location
-        ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+      LEFT JOIN booking_service_locations AS location
+        ON location.booking_order_id = booking.id
       INNER JOIN shops AS shop
-        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
       WHERE booking.created_at <= ${input.evaluatedAt}
         AND booking.deleted_at IS NULL
         AND (
@@ -374,10 +372,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
                  booking.deleted_at AS booking_deleted_at,
                  location.id AS location_id, location.deleted_at AS location_deleted_at
           FROM booking_orders AS booking
-          INNER JOIN booking_service_locations AS location
-            ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+          LEFT JOIN booking_service_locations AS location
+            ON location.booking_order_id = booking.id
           INNER JOIN shops AS shop
-            ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+            ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
           WHERE booking.created_at <= ${input.evaluatedAt}
             AND booking.deleted_at IS NULL
             AND location.deleted_at IS NULL
@@ -437,10 +435,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       WITH scoped_orders AS (
         SELECT booking.id, booking.status, booking.payment_status, booking.price_amount
         FROM booking_orders AS booking
-        INNER JOIN booking_service_locations AS location
-          ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+        LEFT JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id
         INNER JOIN shops AS shop
-          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
         WHERE booking.starts_at >= ${window.fromInclusive}
           AND booking.starts_at < ${window.toExclusive}
           AND booking.created_at <= ${input.evaluatedAt}
@@ -449,10 +447,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
         SELECT booking.id, checkout.checkout_amount_jpy, checkout.payable_ndp,
                ledger.currency AS ndp_currency
         FROM booking_orders AS booking
-        INNER JOIN booking_service_locations AS location
-          ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+        LEFT JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id
         INNER JOIN shops AS shop
-          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
         INNER JOIN order_checkouts AS checkout
           ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
         LEFT JOIN ledger_transactions AS ledger
@@ -469,10 +467,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
                COALESCE(SUM(financial.c_request_fee_actual_ndp), 0)
                  AS request_fee_actual_ndp
         FROM booking_orders AS booking
-        INNER JOIN booking_service_locations AS location
-          ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+        LEFT JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id
         INNER JOIN shops AS shop
-          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
         INNER JOIN order_financials AS financial
           ON financial.booking_order_id = booking.id AND financial.shop_id = booking.shop_id
           AND financial.deleted_at IS NULL
@@ -489,10 +487,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           ON booking.id = financial.booking_order_id
           AND financial.shop_id = booking.shop_id
           AND booking.deleted_at IS NULL
-        INNER JOIN booking_service_locations AS location
-          ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+        LEFT JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id
         INNER JOIN shops AS shop
-          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
         WHERE financial.user_reward_granted_at >= ${window.fromInclusive}
           AND financial.user_reward_granted_at < ${window.toExclusive}
           AND financial.user_reward_granted_at <= ${input.evaluatedAt}
@@ -534,10 +532,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
              CAST(booking.price_amount AS DECIMAL(65, 0)) AS amountJpy,
              booking.created_at AS createdAt
       FROM booking_orders AS booking
-      INNER JOIN booking_service_locations AS location
-        ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+      LEFT JOIN booking_service_locations AS location
+        ON location.booking_order_id = booking.id
       INNER JOIN shops AS shop
-        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
       WHERE booking.created_at >= ${window.fromInclusive}
         AND booking.created_at < ${window.toExclusive}
         AND booking.created_at <= ${input.evaluatedAt}
@@ -561,10 +559,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       FROM order_status_histories AS history
       INNER JOIN booking_orders AS booking
         ON booking.id = history.booking_order_id AND booking.deleted_at IS NULL
-      INNER JOIN booking_service_locations AS location
-        ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+      LEFT JOIN booking_service_locations AS location
+        ON location.booking_order_id = booking.id
       INNER JOIN shops AS shop
-        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
       WHERE history.created_at >= ${window.fromInclusive}
         AND history.created_at < ${window.toExclusive}
         AND history.created_at <= ${input.evaluatedAt}
@@ -587,10 +585,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
                checkout.checkout_amount_jpy, checkout.payable_ndp,
                ledger.currency AS ndp_currency
         FROM booking_orders AS booking
-        INNER JOIN booking_service_locations AS location
-          ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+        LEFT JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id
         INNER JOIN shops AS shop
-          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
         INNER JOIN order_checkouts AS checkout
           ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
         LEFT JOIN ledger_transactions AS ledger
@@ -603,10 +601,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       SELECT bucket.bucket_key AS bucketKey, bucket.label,
              (SELECT COUNT(booking.id)
               FROM booking_orders AS booking
-              INNER JOIN booking_service_locations AS location
-                ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+              LEFT JOIN booking_service_locations AS location
+                ON location.booking_order_id = booking.id
               INNER JOIN shops AS shop
-                ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+                ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
               WHERE booking.starts_at >= bucket.from_inclusive
                 AND booking.starts_at < bucket.to_exclusive
                 AND booking.created_at <= ${input.evaluatedAt}
@@ -686,7 +684,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
 
   private rankingEvidenceScope(scope: LiveDashboardScope) {
     return {
-      candidateJoins: Prisma.sql`INNER JOIN booking_service_locations AS location
+      candidateJoins: Prisma.sql`LEFT JOIN booking_service_locations AS location
         ON location.booking_order_id = booking.id`,
       candidatePredicate: scopedLocation(scope),
       entityPredicate: Prisma.sql`candidate.customer_is_test = FALSE
@@ -703,12 +701,12 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       /* live_dashboard_coverage */
       SELECT COUNT(booking.id) AS total,
              COALESCE(SUM(location.resolution_status IN (${"VERIFIED"})), 0) AS attributed,
-             COALESCE(SUM(location.resolution_status IN (${"UNRESOLVED"})), 0) AS unresolved
+             COALESCE(SUM(COALESCE(location.resolution_status, ${"UNRESOLVED"}) IN (${"UNRESOLVED"})), 0) AS unresolved
       FROM booking_orders AS booking
-      INNER JOIN booking_service_locations AS location
-        ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+      LEFT JOIN booking_service_locations AS location
+        ON location.booking_order_id = booking.id
       INNER JOIN shops AS shop
-        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
       WHERE booking.starts_at >= ${window.fromInclusive}
         AND booking.starts_at < ${window.toExclusive}
         AND booking.created_at <= ${input.evaluatedAt}

@@ -1,6 +1,15 @@
 import { BookingRepository } from "../src/repositories/booking.repository";
 
 describe("Live dashboard order projection", () => {
+  it("keeps historical missing snapshots visible nationally without inventing a narrow region", async () => {
+    const repository = new BookingRepository({ bookingOrder: { findMany: jest.fn().mockResolvedValue([
+      { id: 703, orderNo: "ND703", status: "PENDING", serviceNameSnapshot: "Care", priceAmount: 9000, serviceLocation: null }
+    ]) } } as never);
+    await expect(repository.findLiveDashboardOrderEvents([703])).resolves.toEqual([
+      expect.objectContaining({ orderId: 703, scope: { countryCode: "JP", admin1Code: null, admin2Code: null } })
+    ]);
+  });
+
   it("reads only immutable service-location codes and compact allowlisted order fields", async () => {
     const findMany = jest.fn().mockResolvedValue([
       {

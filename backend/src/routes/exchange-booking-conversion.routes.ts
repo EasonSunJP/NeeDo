@@ -10,6 +10,8 @@ import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AffiliateCheckoutRepository } from "../repositories/affiliate-checkout.repository";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { ExchangeBookingConversionRepository } from "../repositories/exchange-booking-conversion.repository";
+import { BookingRepository } from "../repositories/booking.repository";
+import { LiveDashboardOrderChangePublisher } from "../services/live-dashboard-order-change.publisher";
 import { UserGlobalPolicyRepository } from "../repositories/user-global-policy.repository";
 import { UserPolicyEnforcementRepository } from "../repositories/user-policy-enforcement.repository";
 import { AffiliateCheckoutService } from "../services/affiliate-checkout.service";
@@ -50,6 +52,9 @@ export const createExchangeBookingConversionRoutes = (
         dependencies.userGlobalPolicyRepository ?? new UserGlobalPolicyRepository()
       )
     );
+  const orderProjectionRepository = dependencies.bookingRepository?.findLiveDashboardOrderEvents
+    ? { findLiveDashboardOrderEvents: dependencies.bookingRepository.findLiveDashboardOrderEvents.bind(dependencies.bookingRepository) }
+    : new BookingRepository();
   const service =
     dependencies.exchangeBookingConversionService ??
     new ExchangeBookingConversionService(
@@ -57,7 +62,11 @@ export const createExchangeBookingConversionRoutes = (
       audit,
       affiliate,
       policy,
-      dependencies.realtimeService
+      dependencies.realtimeService,
+      undefined,
+      dependencies.liveDashboardEventGateway ? new LiveDashboardOrderChangePublisher(
+        orderProjectionRepository, dependencies.liveDashboardEventGateway
+      ) : undefined
     );
   const controller = new ExchangeBookingConversionController(service);
 

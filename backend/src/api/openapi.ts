@@ -20153,7 +20153,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           },
-          "400": { description: "Validation failure or travel estimate fields on store service" },
+          "400": { description: "Validation failure, travel estimate fields on store service, or error.administrative_region.address_mismatch when home codes disagree with the accepted normalized address" },
           "401": { description: "Authentication required" },
           "403": {
             description:

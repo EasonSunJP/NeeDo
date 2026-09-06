@@ -53,13 +53,7 @@ import { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import { UserPolicyEnforcementService } from "./services/user-policy-enforcement.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
-import { LiveDashboardCache } from "./services/live-dashboard-cache.service";
-import {
-  LIVE_DASHBOARD_EVENT_CHANNEL,
-  LIVE_DASHBOARD_EVENT_STREAM_KEY,
-  LiveDashboardEventGateway
-} from "./services/live-dashboard-event.gateway";
-import { RedisLiveDashboardEventStream } from "./services/redis-live-dashboard-event-stream";
+import { createLiveDashboardRuntime } from "./services/live-dashboard-runtime";
 import { LiveDashboardOrderChangePublisher } from "./services/live-dashboard-order-change.publisher";
 import { createShutdownHandler } from "./server-shutdown";
 import { LedgerService } from "./services/ledger.service";
@@ -90,25 +84,8 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
     logger.error({ error, operation }, "Realtime event delivery error");
   }
 });
-const liveDashboardCache = new LiveDashboardCache();
-const liveDashboardEventGateway = new LiveDashboardEventGateway({
-  cache: liveDashboardCache,
-  eventStream: new RedisLiveDashboardEventStream({
-    key: LIVE_DASHBOARD_EVENT_STREAM_KEY,
-    client: createRedisClient(),
-    eventBus: new RedisRealtimeEventBus({
-      channel: LIVE_DASHBOARD_EVENT_CHANNEL,
-      publisher: createRedisClient(),
-      subscriber: createRedisClient(),
-      onError: (error, connection) => {
-        logger.error({ connection, error }, "Live dashboard Redis connection error");
-      }
-    })
-  }),
-  onError: (error, operation) => {
-    logger.error({ error, operation }, "Live dashboard event delivery error");
-  }
-});
+const liveDashboard = createLiveDashboardRuntime(env);
+const { cache: liveDashboardCache, gateway: liveDashboardEventGateway } = liveDashboard;
 const authRepository = new AuthRepository();
 const officialNoticeRepository = new OfficialNoticeRepository(
   undefined,
@@ -367,7 +344,7 @@ const shutdown = createShutdownHandler({
       disconnectPrisma(),
       disconnectRedis(),
       realtimeEventGateway.close(),
-      liveDashboardEventGateway.close()
+      liveDashboard.close()
     ]);
   },
   exit: (code) => process.exit(code),
@@ -378,7 +355,7 @@ const shutdown = createShutdownHandler({
     void realtimeEventGateway.close().catch((error) => {
       logger.error({ error }, "Realtime gateway shutdown failed");
     });
-    void liveDashboardEventGateway.close().catch((error) => {
+    void liveDashboard.close().catch((error) => {
       logger.error({ error }, "Live dashboard gateway shutdown failed");
     });
     bookingUserRewardExpiryWorker.stop();

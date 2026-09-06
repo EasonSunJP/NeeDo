@@ -869,7 +869,7 @@ const createFixture = async (
 };
 
 const scopePredicate = (admin1: string | null, admin2: string | null): Prisma.Sql =>
-  Prisma.sql`
+  !admin1 && !admin2 ? Prisma.sql`(location.booking_order_id IS NULL OR (location.country_code = ${"JP"} AND location.deleted_at IS NULL))` : Prisma.sql`
     location.country_code = ${"JP"}
     AND location.deleted_at IS NULL
     ${
@@ -958,10 +958,12 @@ const independentConfirmedPaymentEvidence = (): Prisma.Sql => Prisma.sql`
   AND booking.payment_amount_jpy = checkout.checkout_amount_jpy
   AND checkout.base_amount_jpy >= 0
   AND checkout.add_on_amount_jpy >= 0
+  AND checkout.travel_fare_amount_jpy >= 0
   AND checkout.discount_amount_jpy >= 0
   AND checkout.checkout_amount_jpy >= 0
   AND checkout.payable_ndp >= 0
-  AND checkout.base_amount_jpy + checkout.add_on_amount_jpy - checkout.discount_amount_jpy
+  AND checkout.base_amount_jpy + checkout.add_on_amount_jpy
+    + checkout.travel_fare_amount_jpy - checkout.discount_amount_jpy
     = checkout.checkout_amount_jpy
   AND checkout.payment_method = booking.payment_method
   AND checkout.payment_selected_at IS NOT NULL
@@ -1032,17 +1034,15 @@ const directAggregate = async (
     WITH scoped_orders AS (
       SELECT booking.id, booking.status, booking.payment_status, booking.price_amount
       FROM booking_orders AS booking
-      INNER JOIN booking_service_locations AS location
-        ON location.booking_order_id = booking.id AND ${scopePredicate(admin1, admin2)}
-      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+      LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(admin1, admin2)}
       WHERE booking.starts_at >= ${window.fromInclusive} AND booking.starts_at < ${window.toExclusive}
         AND booking.created_at <= ${EVALUATED_AT} AND booking.deleted_at IS NULL
     ), eligible_payments AS (
       SELECT checkout.checkout_amount_jpy, checkout.payable_ndp, ledger.currency
       FROM booking_orders AS booking
-      INNER JOIN booking_service_locations AS location
-        ON location.booking_order_id = booking.id AND ${scopePredicate(admin1, admin2)}
-      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+      LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(admin1, admin2)}
       INNER JOIN order_checkouts AS checkout
         ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
       LEFT JOIN ledger_transactions AS ledger
@@ -1056,9 +1056,8 @@ const directAggregate = async (
         COALESCE(SUM(financial.b_platform_fee_actual_ndp), 0) AS platform_fee,
         COALESCE(SUM(financial.c_request_fee_actual_ndp), 0) AS request_fee
       FROM booking_orders AS booking
-      INNER JOIN booking_service_locations AS location
-        ON location.booking_order_id = booking.id AND ${scopePredicate(admin1, admin2)}
-      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+      LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(admin1, admin2)}
       INNER JOIN order_financials AS financial
         ON financial.booking_order_id = booking.id AND financial.shop_id = booking.shop_id
         AND financial.deleted_at IS NULL
@@ -1070,9 +1069,8 @@ const directAggregate = async (
       FROM order_financials AS financial
       INNER JOIN booking_orders AS booking
         ON booking.id = financial.booking_order_id AND booking.deleted_at IS NULL
-      INNER JOIN booking_service_locations AS location
-        ON location.booking_order_id = booking.id AND ${scopePredicate(admin1, admin2)}
-      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+      LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(admin1, admin2)}
       WHERE financial.user_reward_granted_at >= ${window.fromInclusive}
         AND financial.user_reward_granted_at < ${window.toExclusive}
         AND financial.user_reward_granted_at <= ${EVALUATED_AT}
@@ -1206,13 +1204,12 @@ const independentDirectSnapshot = async (
         WITH order_counts AS (
           SELECT ${childCode} AS child_code, COUNT(booking.id) AS order_count
           FROM booking_orders AS booking
-          INNER JOIN booking_service_locations AS location
-            ON location.booking_order_id = booking.id
-            AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
-          INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+          LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+          INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
           WHERE booking.starts_at >= ${window.fromInclusive}
             AND booking.starts_at < ${window.toExclusive}
             AND booking.created_at <= ${EVALUATED_AT} AND booking.deleted_at IS NULL
+          AND location.resolution_status = ${"verified"}
           GROUP BY ${childCode}
         ), payments AS (
           SELECT ${childCode} AS child_code,
@@ -1222,10 +1219,8 @@ const independentDirectSnapshot = async (
             COALESCE(SUM(CASE WHEN ledger.currency = ${"TEST_NDP"}
               THEN checkout.payable_ndp ELSE 0 END), 0) AS confirmed_test_ndp
           FROM booking_orders AS booking
-          INNER JOIN booking_service_locations AS location
-            ON location.booking_order_id = booking.id
-            AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
-          INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+          LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+          INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
           INNER JOIN order_checkouts AS checkout
             ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
           LEFT JOIN ledger_transactions AS ledger
@@ -1234,6 +1229,7 @@ const independentDirectSnapshot = async (
             AND booking.payment_confirmed_at < ${window.toExclusive}
             AND booking.payment_confirmed_at <= ${EVALUATED_AT}
             AND booking.deleted_at IS NULL AND ${independentConfirmedPaymentEvidence()}
+          AND location.resolution_status = ${"verified"}
           GROUP BY ${childCode}
         )
         SELECT child.official_code AS code, locale.name AS name,
@@ -1263,9 +1259,8 @@ const independentDirectSnapshot = async (
         AND booking.payment_status NOT IN (${"refund_pending"}, ${"refunded"})), 0)
         AS completedOrders
     FROM booking_orders AS booking
-    INNER JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
-      AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
-    INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+    LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+    INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
     WHERE booking.created_at <= ${EVALUATED_AT} AND booking.deleted_at IS NULL
       AND ((booking.created_at >= ${window.fromInclusive} AND booking.created_at < ${window.toExclusive})
         OR (booking.starts_at >= ${window.fromInclusive} AND booking.starts_at < ${window.toExclusive}))
@@ -1324,9 +1319,8 @@ const independentDirectSnapshot = async (
       CAST(booking.price_amount AS DECIMAL(65, 0)) AS amountJpy,
       booking.created_at AS occurredAt
     FROM booking_orders AS booking
-    INNER JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
-      AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
-    INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+    LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+    INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
     WHERE booking.created_at >= ${window.fromInclusive}
       AND booking.created_at < ${window.toExclusive}
       AND booking.created_at <= ${EVALUATED_AT} AND booking.deleted_at IS NULL
@@ -1348,9 +1342,8 @@ const independentDirectSnapshot = async (
     FROM order_status_histories AS history
     INNER JOIN booking_orders AS booking ON booking.id = history.booking_order_id
       AND booking.deleted_at IS NULL
-    INNER JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
-      AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
-    INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+    LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+    INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
     WHERE history.created_at >= ${window.fromInclusive}
       AND history.created_at < ${window.toExclusive}
       AND history.created_at <= ${EVALUATED_AT} AND history.deleted_at IS NULL
@@ -1378,9 +1371,8 @@ const independentDirectSnapshot = async (
       SELECT booking.payment_confirmed_at, checkout.checkout_amount_jpy,
         checkout.payable_ndp, ledger.currency
       FROM booking_orders AS booking
-      INNER JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
-        AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
-      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+      LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+      INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
       INNER JOIN order_checkouts AS checkout
         ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
       LEFT JOIN ledger_transactions AS ledger
@@ -1391,9 +1383,8 @@ const independentDirectSnapshot = async (
     )
     SELECT bucket.bucket_key AS \`key\`, bucket.label,
       (SELECT COUNT(booking.id) FROM booking_orders AS booking
-       INNER JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
-         AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
-       INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+       LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+       INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
        WHERE booking.starts_at >= bucket.from_inclusive
          AND booking.starts_at < bucket.to_exclusive
          AND booking.created_at <= ${EVALUATED_AT} AND booking.deleted_at IS NULL) AS orderCount,
@@ -1430,7 +1421,7 @@ const independentDirectSnapshot = async (
       }>
     >(Prisma.sql`
       WITH ${runtime.AnalyticsRankingRepository.formalRankingCtes(input, {
-        candidateJoins: Prisma.sql`INNER JOIN booking_service_locations AS location
+        candidateJoins: Prisma.sql`LEFT JOIN booking_service_locations AS location
           ON location.booking_order_id = booking.id`,
         candidatePredicate: scopePredicate(scope.admin1Code, scope.admin2Code),
         entityPredicate: Prisma.sql`candidate.customer_is_test = FALSE
@@ -1451,11 +1442,10 @@ const independentDirectSnapshot = async (
       Prisma.sql`
         SELECT COUNT(booking.id) AS total,
           COALESCE(SUM(location.resolution_status = ${"verified"}), 0) AS attributed,
-          COALESCE(SUM(location.resolution_status = ${"unresolved"}), 0) AS unresolved
+          COALESCE(SUM(COALESCE(location.resolution_status, ${"unresolved"}) = ${"unresolved"}), 0) AS unresolved
         FROM booking_orders AS booking
-        INNER JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
-          AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
-        INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+        LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+        INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
         WHERE booking.starts_at >= ${window.fromInclusive}
           AND booking.starts_at < ${window.toExclusive}
           AND booking.created_at <= ${EVALUATED_AT} AND booking.deleted_at IS NULL

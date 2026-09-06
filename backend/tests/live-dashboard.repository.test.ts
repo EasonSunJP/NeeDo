@@ -183,6 +183,26 @@ const createHarness = () => {
 };
 
 describe("LiveDashboardRepository", () => {
+  it("includes missing historical snapshots in national order facts and unresolved coverage, never narrow scopes", async () => {
+    const national = createHarness();
+    await national.repository.getSnapshotFacts({ scope: { countryCode: "JP", admin1Code: null, admin2Code: null }, period: "today", evaluatedAt });
+    for (const marker of ["headline_orders", "money_orders", "realtime_orders", "activity", "trend", "service_ranking", "technician_ranking", "coverage"]) {
+      const query = national.queries.find((item) => queryText(item).includes(`live_dashboard_${marker}`))!;
+      expect(queryText(query)).toContain("LEFT JOIN booking_service_locations AS location");
+      expect(queryText(query)).toContain("location.booking_order_id IS NULL OR");
+    }
+    const coverage = queryText(national.queries.find((item) => queryText(item).includes("live_dashboard_coverage"))!);
+    expect(coverage).toContain("SUM(COALESCE(location.resolution_status,");
+    const children = national.queries.find((item) => queryText(item).includes("live_dashboard_children"))!;
+    expect(children.values).toContain("VERIFIED");
+    const narrow = createHarness();
+    await narrow.repository.getSnapshotFacts({ scope: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" }, period: "today", evaluatedAt });
+    for (const query of narrow.queries) {
+      expect(queryText(query)).not.toContain("location.booking_order_id IS NULL OR");
+      expect(query.values).toContain("VERIFIED");
+    }
+  });
+
   it("composes nationwide, Tokyo, and Shinjuku facts at one evaluation boundary", async () => {
     const harness = createHarness();
     const jp = await harness.repository.getSnapshotFacts({
@@ -507,7 +527,8 @@ describe("LiveDashboardRepository", () => {
     const tokyo = harness.queries.filter((query) => scopeCode(query) === "13");
     expect(national.some((query) => query.values?.includes("UNRESOLVED"))).toBe(true);
     expect(
-      national.every((query) => !queryText(query).includes("location.resolution_status ="))
+      national.filter((query) => !queryText(query).includes("live_dashboard_children"))
+        .every((query) => !queryText(query).includes("location.resolution_status ="))
     ).toBe(true);
     expect(tokyo.every((query) => query.values?.includes("VERIFIED"))).toBe(true);
     expect(tokyo.every((query) => queryText(query).includes("location.resolution_status ="))).toBe(

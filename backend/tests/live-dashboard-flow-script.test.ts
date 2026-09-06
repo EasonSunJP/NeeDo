@@ -91,6 +91,9 @@ describe("live dashboard formal-flow checker contract", () => {
     expect(source).toContain("travelEstimatePublicId: homeTravelEstimate.publicId");
     expect(source).toContain('"order" in storeResult && "order" in homeResult');
     expect(source).toContain('entityPredicate: Prisma.sql`candidate.customer_is_test = FALSE');
+    expect(source).toContain("LEFT JOIN booking_service_locations AS location");
+    expect(source).toContain("location.booking_order_id IS NULL OR");
+    expect(source).toContain("SUM(COALESCE(location.resolution_status,");
   });
 
   it("checks complete snapshot parity, all cache periods, and failure-path cleanup", () => {
@@ -399,6 +402,13 @@ describe("live dashboard formal-flow checker contract", () => {
     expect(source).toContain("independentDashboardWindow");
     expect(source).toContain("independentConfirmedPaymentEvidence");
     expect(source).toContain("AnalyticsRankingRepository.formalRankingCtes");
+  });
+
+  it("independently includes nonnegative travel fares in confirmed-payment arithmetic", () => {
+    const source = fs.readFileSync(scriptPath, "utf8");
+    const oracle = source.slice(source.indexOf("const independentConfirmedPaymentEvidence ="), source.indexOf("const direct", source.indexOf("const independentConfirmedPaymentEvidence ="))).replace(/\s+/g, " ");
+    expect(oracle).toContain("AND checkout.travel_fare_amount_jpy >= 0");
+    expect(oracle).toContain("checkout.base_amount_jpy + checkout.add_on_amount_jpy + checkout.travel_fare_amount_jpy - checkout.discount_amount_jpy = checkout.checkout_amount_jpy");
   });
 
   it("measures cache age only after population and before direct-SQL work", () => {

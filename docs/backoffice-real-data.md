@@ -500,6 +500,10 @@ microstep A contains no live-screen page。这个微步骤只交付正式数据�
 - 事件：`GET /api/v1/backoffice/dashboard/live-events` 使用与快照相同的查询参数和 `backoffice:dashboard:read` 权限。客户端以 `Last-Event-ID` 续传；服务端发送 `retry: 5000`、每 30 秒 heartbeat，并只发送白名单化的 `order.changed` 和 `metrics.invalidate` 字段。事件不得包含客户姓名、邮箱、电话、地址、备注或内部数字关联 ID。游标已过保留窗口或不再存在时返回 `409 error.live_dashboard.cursor_reset_required`，客户端必须丢弃旧游标、重新取快照后重连，不能静默跳过事件。
 - Redis 快照 key 使用 `dashboard:live:v1:{country}:{admin1|-}:{admin2|-}:{period}`，TTL 为 300 秒；订单变化触发 country → admin1 → admin2 的 generation-fenced 失效。Stream 最多保留 100 条且保留窗口为 5 分钟；发布、回放、排序、背压断开和隐私白名单均由正式 Redis 测试覆盖。
 
+补充运行时与归属合同：compatibility backend、operations API、merchant API 必须使用同一个 `LIVE_DASHBOARD_REDIS_URL` 共享快照、generation 与 Stream；各端 `REDIS_URL` 继续隔离认证/session。拆分 API 缺少共享配置时拒绝启动，退出时关闭专属 live Redis clients。`dev:formal` 从 `FORMAL_LIVE_DASHBOARD_REDIS_URL` 向三个进程传入同一目标。
+
+全国总量与 unresolved 覆盖率包括符合既有资格条件但尚无服务地点快照的历史订单；区域子级指标和下钻仍只使用 verified 快照。普通 home Booking 将官方行政名称与 estimate 接受的规范地址绑定，错配在容量预占与 estimate 消耗前拒绝。Exchange 转单在同一事务创建地点快照：可靠店铺地点为 verified，自由文本 home 地址或未核验店铺为 unresolved；只在事务提交后发布新订单和被替代订单的变化。
+
 Booking 历史服务地点回填默认只预览，不写库：
 
 ```bash
