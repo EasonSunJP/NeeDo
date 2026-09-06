@@ -1,7 +1,7 @@
 # 运营实时数据大屏本地验收记录
 
-验收时间：2026-09-06 23:37–23:49 JST  
-代码分支：`codex/operations-live-screen-frontend`  
+验收时间：2026-09-06 23:37–23:49 JST
+代码分支：`codex/operations-live-screen-frontend`
 验收提交：`ee22ea68314761e22cd2823430f57294e57aad55`
 
 ## 验收边界
