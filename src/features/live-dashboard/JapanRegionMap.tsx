@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import type { LiveDashboardScope, LiveDashboardSnapshot } from "../../api/liveDashboard";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateTextForContext } from "../../i18n/translations";
+import { RegionNavigator } from "./RegionNavigator";
+import { layoutMapLabels } from "./mapLabelLayout";
+import { IDENTITY_VIEWPORT, mapViewportTransform, panMapGesture, zoomMapViewport, type MapViewport } from "./mapViewport";
 
 type MapRegion = {
   code: string;
@@ -111,12 +114,21 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeCode, setActiveCode] = useState<string | null>(scope.admin2 ?? null);
+  const [viewport, setViewport] = useState(IDENTITY_VIEWPORT);
+  // Geography previews each drag frame; labels settle only when the gesture ends.
+  const [labelViewport, setLabelViewport] = useState(IDENTITY_VIEWPORT);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; moved: boolean; target: SVGSVGElement; intent: MapViewport; viewport: MapViewport } | null>(null);
+  const dragFrame = useRef<number | null>(null);
+  const suppressClick = useRef(false);
   const locale = language === "ja" ? "ja-JP" : language === "ko" ? "ko-KR" : language === "en" ? "en-US" : "zh-CN";
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError("");
+    setAsset(null);
     void loadMapAsset(scope, controller.signal)
       .then((next) => {
         if (!controller.signal.aborted) setAsset(next);
@@ -131,13 +143,89 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   }, [scope.admin1]);
 
   useEffect(() => setActiveCode(scope.admin2 ?? null), [scope.admin2]);
+  useEffect(() => {
+    if (!stageRef.current || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setStageSize((current) => current?.width === width && current.height === height ? current : { width, height });
+    });
+    observer.observe(stageRef.current);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    setViewport(IDENTITY_VIEWPORT);
+    setLabelViewport(IDENTITY_VIEWPORT);
+    return () => {
+      if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
+      dragFrame.current = null;
+      const current = drag.current;
+      drag.current = null;
+      if (current?.target.hasPointerCapture?.(current.id)) current.target.releasePointerCapture(current.id);
+    };
+  }, [asset?.parentCode, asset?.level, scope.admin1, scope.admin2]);
 
   const childByCode = useMemo(() => new Map(children.map((item) => [item.code, item])), [children]);
+  const contentPoints = useMemo(() => asset?.regions.flatMap((region) => region.labelPoint ? [region.labelPoint] : []) ?? [], [asset]);
   const maximumOrders = Math.max(1, ...children.map((item) => item.orderCount));
   const activeRegion = asset?.regions.find((region) => region.code === activeCode) ?? null;
   const activeData = activeCode ? childByCode.get(activeCode) : null;
+  const projection = useMemo(() => {
+    if (!asset || !stageSize) return { scale: 1, x: 0, y: 0 };
+    const scale = Math.min(stageSize.width / asset.viewBox[2], stageSize.height / asset.viewBox[3]);
+    return { scale, x: (stageSize.width - asset.viewBox[2] * scale) / 2 - asset.viewBox[0] * scale, y: (stageSize.height - asset.viewBox[3] * scale) / 2 - asset.viewBox[1] * scale };
+  }, [asset, stageSize]);
+  const placements = useMemo(() => asset ? layoutMapLabels({
+    regions: stageSize && labelViewport.scale > 1 ? asset.regions.filter((region) => {
+      if (region.code === activeCode || region.code === scope.admin2) return true;
+      if (!region.labelPoint) return false;
+      const x = (region.labelPoint[0] * labelViewport.scale + labelViewport.x) * projection.scale + projection.x;
+      const y = (region.labelPoint[1] * labelViewport.scale + labelViewport.y) * projection.scale + projection.y;
+      return x >= 0 && x <= stageSize.width && y >= 0 && y <= stageSize.height;
+    }) : asset.regions,
+    viewBox: stageSize ? [0, 0, stageSize.width, stageSize.height] : asset.viewBox,
+    viewport: { scale: labelViewport.scale * projection.scale, x: labelViewport.x * projection.scale + projection.x, y: labelViewport.y * projection.scale + projection.y },
+    selectedCode: scope.admin2, focusedCode: activeCode, fontSize: stageSize ? 11 : undefined, capacity: stageSize ? "partial" : "complete",
+    orderCountByCode: Object.fromEntries(children.map((item) => [item.code, item.orderCount]))
+  }) : [], [asset, labelViewport, activeCode, children, stageSize, projection, scope.admin2]);
+  const nameByCode = useMemo(() => new Map(asset?.regions.map((item) => [item.code, item.nameJa])), [asset]);
+  const clearDrag = () => {
+    if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
+    dragFrame.current = null;
+    const current = drag.current;
+    drag.current = null;
+    if (current?.target.hasPointerCapture?.(current.id)) current.target.releasePointerCapture(current.id);
+  };
+  const zoom = (direction: "in" | "out") => {
+    if (!asset) return;
+    clearDrag();
+    const point = asset.regions.find((item) => item.code === scope.admin2)?.labelPoint;
+    const center: [number, number] = point ? [point[0] * viewport.scale + viewport.x, point[1] * viewport.scale + viewport.y]
+      : [asset.viewBox[0] + asset.viewBox[2] / 2, asset.viewBox[1] + asset.viewBox[3] / 2];
+    const next = zoomMapViewport(viewport, direction, center, asset.viewBox, contentPoints);
+    setViewport(next);
+    setLabelViewport(next);
+  };
+  const endDrag = (event: PointerEvent<SVGSVGElement>) => {
+    const current = drag.current;
+    if (current?.id !== event.pointerId) return;
+    if (current.moved && event.type === "pointerup" && asset) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const ratio = Math.min(rect.width / asset.viewBox[2], rect.height / asset.viewBox[3]);
+      if (ratio > 0) Object.assign(current, panMapGesture(current.intent, [(event.clientX - current.x) / ratio, (event.clientY - current.y) / ratio], asset.viewBox, contentPoints));
+    }
+    suppressClick.current = current.moved;
+    if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
+    dragFrame.current = null;
+    drag.current = null;
+    if (current.moved) {
+      setViewport(current.viewport);
+      setLabelViewport(current.viewport);
+    }
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
 
   const selectRegion = (code: string) => {
+    if (scope.admin2 === code) return;
     setActiveCode(code);
     onSelectRegion(scope.admin1
       ? { country: "JP", admin1: scope.admin1, admin2: code, period: scope.period }
@@ -147,26 +235,10 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   const goCountry = () => onSelectRegion({ country: "JP", period: scope.period });
   const goPrefecture = () => scope.admin1 && onSelectRegion({ country: "JP", admin1: scope.admin1, period: scope.period });
 
-  if (error && !asset) {
-    return (
-      <section className="live-dashboard-map-card is-fallback" aria-label={t("日本运营地图")}>
-        <div className="live-dashboard-map-fallback">
-          <strong>{t("地图暂时无法显示")}</strong>
-          <p>{t("请使用行政区域选择器继续查看正式数据")}</p>
-          <label>
-            <span>{t(scope.admin1 ? "市区町村" : "都道府县")}</span>
-            <select defaultValue="" onChange={(event) => event.target.value && selectRegion(event.target.value)}>
-              <option value="">{t("请选择行政区域")}</option>
-              {children.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
-            </select>
-          </label>
-        </div>
-      </section>
-    );
-  }
-
   return (
     <section className="live-dashboard-map-card" aria-label={t("日本运营地图")}>
+      <RegionNavigator breadcrumbs={breadcrumbs} fallbackChildren={children} onSelectRegion={onSelectRegion} scope={scope} />
+      <div className="live-dashboard-map-graphic">
       <div className="live-dashboard-map-toolbar">
         <nav aria-label={t("行政区域层级")} className="live-dashboard-map-breadcrumbs">
           <button disabled={!scope.admin1} onClick={goCountry} type="button">日本</button>
@@ -174,20 +246,62 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
           {scope.admin2 ? <><span>/</span><strong>{activeRegion?.nameJa ?? scope.admin2}</strong></> : null}
         </nav>
         <span className="live-dashboard-map-source">N03 2026</span>
+        <div className="live-dashboard-map-viewport-controls">
+          <button aria-label={t("放大地图")} disabled={!asset || viewport.scale >= 4} onClick={() => zoom("in")} type="button">＋</button>
+          <button aria-label={t("缩小地图")} disabled={!asset || viewport.scale <= 1} onClick={() => zoom("out")} type="button">−</button>
+          <button aria-label={t("还原地图")} disabled={!asset || viewport.scale === 1} onClick={() => { clearDrag(); setViewport(IDENTITY_VIEWPORT); setLabelViewport(IDENTITY_VIEWPORT); }} type="button">{t("还原")}</button>
+        </div>
       </div>
       <div className="live-dashboard-map-tooltip" role="tooltip">
         <strong>{activeRegion?.nameJa ?? t("选择地图中的行政区域")}</strong>
         {activeData ? <span>{t("订单")} {activeData.orderCount} · {formatJpy(activeData.confirmedPayments.jpy, locale)}</span> : null}
       </div>
-      <div className="live-dashboard-map-stage" data-loading={loading ? "true" : "false"}>
+      {asset && placements.length < asset.regions.filter((region) => region.labelPoint).length ? <p className="live-dashboard-map-label-status" role="status">
+        {t("已显示地区名称")} {placements.length} / {asset.regions.length} · {t("空间有限，放大或搜索查看其余地区")}
+      </p> : null}
+      <div ref={stageRef} className="live-dashboard-map-stage" data-loading={loading ? "true" : "false"}>
         {asset ? (
           <svg
             aria-label={t(scope.admin1 ? "市区町村运营分布图" : "日本都道府县运营分布图")}
             className="live-dashboard-map-svg"
             preserveAspectRatio="xMidYMid meet"
             role="img"
-            viewBox={asset.viewBox.join(" ")}
+            data-zoomed={viewport.scale > 1}
+            onPointerDown={(event) => {
+              suppressClick.current = false;
+              if (viewport.scale <= 1 || event.button !== 0 || drag.current) return;
+              drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, target: event.currentTarget, intent: viewport, viewport };
+            }}
+            onPointerMove={(event) => {
+              const current = drag.current;
+              if (!current || current.id !== event.pointerId) return;
+              const rect = event.currentTarget.getBoundingClientRect();
+              const ratio = Math.min(rect.width / asset.viewBox[2], rect.height / asset.viewBox[3]);
+              if (!(ratio > 0)) return;
+              const dx = event.clientX - current.x; const dy = event.clientY - current.y;
+              if (!current.moved && Math.hypot(dx, dy) < 4) return;
+              if (!current.moved) event.currentTarget.setPointerCapture(event.pointerId);
+              current.moved = true;
+              current.x = event.clientX; current.y = event.clientY;
+              Object.assign(current, panMapGesture(current.intent, [dx / ratio, dy / ratio], asset.viewBox, contentPoints));
+              if (dragFrame.current === null) {
+                dragFrame.current = requestAnimationFrame(() => {
+                  dragFrame.current = null;
+                  if (drag.current) setViewport(drag.current.viewport);
+                });
+              }
+            }}
+            onPointerLeave={() => { if (drag.current && !drag.current.moved) drag.current = null; }}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onLostPointerCapture={endDrag}
+            onClickCapture={(event) => {
+              if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; }
+            }}
+            viewBox={stageSize ? `0 0 ${stageSize.width} ${stageSize.height}` : asset.viewBox.join(" ")}
           >
+            <g data-map-projection transform={mapViewportTransform(projection)}>
+            <g data-map-geometry transform={mapViewportTransform(viewport)}>
             {asset.insets?.map((inset) => (
               <rect
                 aria-hidden="true"
@@ -207,7 +321,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
                 const intensity = data ? Math.ceil((data.orderCount / maximumOrders) * 4) : 0;
                 const macroRegion = region.macroRegion ?? prefectureMacroRegion(scope.admin1 ?? region.code);
                 const selected = region.code === scope.admin2;
-                const label = `${region.nameJa} ${t("都道府县")} · ${t("订单")} ${data?.orderCount ?? 0} · ${formatJpy(data?.confirmedPayments.jpy ?? 0, locale)}`;
+                const label = `${region.nameJa} ${t(scope.admin1 ? "市区町村" : "都道府县")} · ${t("订单")} ${data?.orderCount ?? 0} · ${formatJpy(data?.confirmedPayments.jpy ?? 0, locale)}`;
                 return (
                   <path
                     aria-label={label}
@@ -227,8 +341,8 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
                         selectRegion(region.code);
                       }
                     }}
-                    onMouseEnter={() => setActiveCode(region.code)}
-                    onMouseLeave={() => setActiveCode(scope.admin2 ?? null)}
+                    onMouseEnter={() => { if (!drag.current?.moved) setActiveCode(region.code); }}
+                    onMouseLeave={() => { if (!drag.current?.moved) setActiveCode(scope.admin2 ?? null); }}
                     role="button"
                     style={{ fill: macroRegionColors[macroRegion] ?? macroRegionColors.kanto }}
                     tabIndex={0}
@@ -237,24 +351,31 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
                 );
               })}
             </g>
-            <g aria-hidden="true" className="live-dashboard-map-labels">
-              {asset.regions.map((region) => region.labelPoint ? (
-                <text
-                  data-label-region={region.code}
-                  key={region.code}
-                  textAnchor="middle"
-                  x={region.labelPoint[0]}
-                  y={region.labelPoint[1]}
-                >{region.nameJa}</text>
-              ) : null)}
-            </g>
             {asset.insets?.map((inset) => (
               <text aria-hidden="true" className="live-dashboard-map-inset-label" key={`${inset.name}-label`} pointerEvents="none" x={inset.bounds[0] + 16} y={inset.bounds[1] + 28}>
                 {inset.name === "Okinawa" ? "沖縄" : "東京都島しょ部"}
               </text>
             ))}
+            </g>
+            </g>
+            <g aria-hidden="true" className="live-dashboard-map-leaders" pointerEvents="none">
+              {placements.filter((item) => item.external).map((item) => <polyline data-map-leader={item.code} key={item.code} points={item.leader.map((point) => point.join(",")).join(" ")} />)}
+            </g>
+            <g aria-hidden="true" className="live-dashboard-map-labels" pointerEvents="none" style={stageSize ? { fontSize: 11, strokeWidth: 2 } : undefined}>
+              {placements.map((item) => (
+                <text
+                  data-map-label={item.code}
+                  key={item.code}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  x={item.label[0]}
+                  y={item.label[1]}
+                >{nameByCode.get(item.code)}</text>
+              ))}
+            </g>
           </svg>
-        ) : <div className="live-dashboard-map-loading">{t("正在加载行政地图")}</div>}
+        ) : error ? <div className="live-dashboard-map-fallback" role="status"><strong>{t("地图暂时无法显示")}</strong><p>{t("请使用行政区域选择器继续查看正式数据")}</p></div> : <div className="live-dashboard-map-loading">{t("正在加载行政地图")}</div>}
+      </div>
       </div>
     </section>
   );

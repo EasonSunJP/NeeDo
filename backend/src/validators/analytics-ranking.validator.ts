@@ -25,7 +25,7 @@ export const analyticsRankingQuerySchema = dashboardQueryBaseSchema
     metric: z.enum(["gmv", "completedCount"]).default("gmv"),
     categoryId: canonicalPositiveInteger(2_147_483_647).optional(),
     page: canonicalPositiveInteger(MAX_ANALYTICS_RANKING_PAGE).default(1),
-    pageSize: canonicalPositiveInteger(10).default(10)
+    pageSize: canonicalPositiveInteger(100).default(10)
   })
   .strict()
   .superRefine(refineDashboardQuery);

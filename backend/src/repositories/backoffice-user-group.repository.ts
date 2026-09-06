@@ -24,6 +24,7 @@ import {
 
 const operationsRoleCodes = ["admin", "operator", "finance", "support", "viewer"];
 const memberSelect = Prisma.validator<Prisma.UserSelect>()({
+  id: true,
   needoId: true,
   username: true,
   avatarUrl: true,
@@ -340,6 +341,7 @@ export class BackofficeUserGroupRepository implements BackofficeUserGroupReposit
   }
 
   private mapMember(member: {
+    id: number;
     needoId: string;
     username: string;
     avatarUrl: string | null;

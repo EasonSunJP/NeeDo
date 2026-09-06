@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "maps:jp:build": "node --max-old-space-size=4096 scripts/build-jp-admin-map.mjs",
+    "maps:jp:search-index": "node scripts/build-jp-region-search-index.mjs",
     "maps:jp:check": "node scripts/check-jp-admin-map.mjs",
     "dev": "npm run dev:formal",
     "dev:formal": "node scripts/dev-formal.mjs",

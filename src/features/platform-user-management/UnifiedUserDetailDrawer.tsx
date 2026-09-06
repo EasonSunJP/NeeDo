@@ -22,11 +22,13 @@ type DetailState = {
 export function UnifiedUserDetailDrawer({
   scope,
   userId,
-  onClose
+  onClose,
+  layer = "base"
 }: {
   scope: UserDirectoryScope;
   userId: number | null;
   onClose: () => void;
+  layer?: "base" | "overlay";
 }) {
   const { language } = useOptionalI18n();
   const [reloadToken, setReloadToken] = useState(0);
@@ -48,6 +50,7 @@ export function UnifiedUserDetailDrawer({
   const user = state.user;
   return (
     <Drawer
+      layer={layer}
       defaultWidth={920}
       maxWidth={1180}
       onClose={onClose}
@@ -59,6 +62,7 @@ export function UnifiedUserDetailDrawer({
       {!state.loading && state.error ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700"><span>{state.error}</span><Button onClick={() => setReloadToken((value) => value + 1)} size="sm" variant="secondary">{translateText("重试", language)}</Button></div> : null}
       {!state.loading && !state.error && user ? <div className="space-y-4">
         <FormalManagedUserDetailPanel
+          directoryScope={scope}
           detail={user}
           activityContent={<ManagedUserActivity key={`${scope}-${user.id}`} scope={scope} user={user} />}
           accountContent={<div className="space-y-4">
