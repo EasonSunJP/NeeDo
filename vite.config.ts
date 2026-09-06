@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
 import { loadEnv, type ProxyOptions } from "vite";
@@ -314,7 +315,7 @@ export default defineConfig(({ command, mode }) => {
       port: 5180,
       proxy: apiProxy,
       watch: {
-        ignored: ["**/.worktrees/**", "**/worktrees/**"]
+        ignored: [resolve(process.cwd(), ".worktrees", "**"), resolve(process.cwd(), "worktrees", "**")]
       }
     },
     preview: {

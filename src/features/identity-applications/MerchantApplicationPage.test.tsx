@@ -278,7 +278,7 @@ describe("MerchantApplicationPage behavior", () => {
     await chooseBank("0009");
     for (const [label, value] of [["支店代码", "001"], ["支店名称", "本店"], ["账号", "1234567"], ["账户名义人", "ヤマダタロウ"]]) await enter(label, value);
     await act(async () => button("下一步：收费规则与合同").click());
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("个人名义申请需要完成本人确认（eKYC）");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("未找到可用于银行账户核验的 eKYC 认证资料");
     expect(container.querySelector('[role="alert"]')?.textContent).not.toContain("error.");
     expect(input("账号").value).toBe("1234567");
     expect(input("账户名义人").value).toBe("ヤマダタロウ");

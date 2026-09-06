@@ -15,6 +15,7 @@ export function ApplicationShell({
   info,
   children,
   backTo = "/me/settings/portal",
+  closeTo = "/me/settings/portal",
   onBack,
   error,
   onDismissError,
@@ -24,6 +25,7 @@ export function ApplicationShell({
   info: string;
   children: ReactNode;
   backTo?: string;
+  closeTo?: string;
   onBack?: () => void;
   error?: string;
   onDismissError?: () => void;
@@ -36,7 +38,7 @@ export function ApplicationShell({
     <SettingsDetailPage
       backTo={backTo}
       closeLabel={t("关闭")}
-      closeTo="/me/settings/portal"
+      closeTo={closeTo}
       contentClassName="pb-[calc(env(safe-area-inset-bottom)+10.5rem)]"
       headerFrameClassName="!z-[140]"
       headerOverlay={error ? (

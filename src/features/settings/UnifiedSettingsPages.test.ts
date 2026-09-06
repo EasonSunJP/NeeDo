@@ -602,3 +602,19 @@ describe("UnifiedSettingsProfilePage", () => {
     expect(profileRouteSource).toContain("SettingsProfileResourceState");
   });
 });
+
+
+describe("formal personal verification", () => {
+  it("does not advertise completion on the settings entry before checking records", () => {
+    const summary = source.slice(source.indexOf("function getVerificationStatusLabel"), source.indexOf("function getThemeCaption"));
+    expect(summary).toContain('if (portal === "user")');
+    expect(summary).toContain('return "查看状态"');
+  });
+  it("does not label personal identity and credit verified without records", () => {
+    const verification = source.slice(source.indexOf("export function UnifiedSettingsVerificationPage"), source.indexOf("export function UnifiedSettingsServiceRangePage"));
+    expect(verification).not.toContain("已通过基础实名校验。");
+    expect(verification).not.toContain("头像、昵称与预约资料一致性正常。");
+    expect(verification).toContain("EkycProfileForm");
+    expect(verification).not.toContain("PersonalVerificationStatus");
+  });
+});
