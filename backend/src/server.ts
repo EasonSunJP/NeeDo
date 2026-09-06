@@ -52,6 +52,11 @@ import { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import { UserPolicyEnforcementService } from "./services/user-policy-enforcement.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
+import { LiveDashboardCache } from "./services/live-dashboard-cache.service";
+import {
+  LIVE_DASHBOARD_EVENT_CHANNEL,
+  LiveDashboardEventGateway
+} from "./services/live-dashboard-event.gateway";
 import { createShutdownHandler } from "./server-shutdown";
 import { LedgerService } from "./services/ledger.service";
 import { AffiliateAllianceInvitationExpiryWorker } from "./workers/affiliate-alliance-invitation-expiry.worker";
@@ -79,6 +84,21 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
   }),
   onError: (error, operation) => {
     logger.error({ error, operation }, "Realtime event delivery error");
+  }
+});
+const liveDashboardCache = new LiveDashboardCache();
+const liveDashboardEventGateway = new LiveDashboardEventGateway({
+  cache: liveDashboardCache,
+  eventBus: new RedisRealtimeEventBus({
+    channel: LIVE_DASHBOARD_EVENT_CHANNEL,
+    publisher: createRedisClient(),
+    subscriber: createRedisClient(),
+    onError: (error, connection) => {
+      logger.error({ connection, error }, "Live dashboard Redis connection error");
+    }
+  }),
+  onError: (error, operation) => {
+    logger.error({ error, operation }, "Live dashboard event delivery error");
   }
 });
 const authRepository = new AuthRepository();
@@ -186,6 +206,8 @@ const merchantShopAuditOutboxWorker = new MerchantShopAuditOutboxWorker(
 const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
   realtimeEventGateway,
+  liveDashboardCache,
+  liveDashboardEventGateway,
   exchangeService,
   exchangeClaimService,
   exchangeRequestFeeService,
@@ -332,7 +354,12 @@ const server = app.listen(env.PORT, () => {
 const shutdown = createShutdownHandler({
   closeServer: (callback) => server.close(callback),
   disconnect: async () => {
-    await Promise.all([disconnectPrisma(), disconnectRedis(), realtimeEventGateway.close()]);
+    await Promise.all([
+      disconnectPrisma(),
+      disconnectRedis(),
+      realtimeEventGateway.close(),
+      liveDashboardEventGateway.close()
+    ]);
   },
   exit: (code) => process.exit(code),
   logger,
@@ -341,6 +368,9 @@ const shutdown = createShutdownHandler({
   stopWorker: async () => {
     void realtimeEventGateway.close().catch((error) => {
       logger.error({ error }, "Realtime gateway shutdown failed");
+    });
+    void liveDashboardEventGateway.close().catch((error) => {
+      logger.error({ error }, "Live dashboard gateway shutdown failed");
     });
     bookingUserRewardExpiryWorker.stop();
     orderServiceExpiryWorker.stop();

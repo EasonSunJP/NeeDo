@@ -59,6 +59,8 @@ import type { NdpExchangeRateService } from "./ndp-exchange-rate.service";
 import type { UserExperienceService } from "./user-experience.service";
 import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
 import type { PlatformPaymentMethod } from "../domain/platform-settings";
+import type { LiveDashboardEventPublisher } from "./live-dashboard-event.gateway";
+import type { LiveDashboardEventDraft } from "../domain/live-dashboard";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -163,7 +165,8 @@ export class BookingService {
     experienceOrNow?: Pick<UserExperienceService, "recordEvent"> | (() => Date),
     nowOrPolicy?: (() => Date) | Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
     policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
-    platformPaymentPolicy?: PlatformPaymentPolicyPort
+    platformPaymentPolicy?: PlatformPaymentPolicyPort,
+    private readonly liveDashboardEventPublisher?: LiveDashboardEventPublisher
   ) {
     if (rateOrExperience && "resolveEffectiveRate" in rateOrExperience) {
       this.ndpExchangeRateService = rateOrExperience;
@@ -396,6 +399,7 @@ export class BookingService {
       throw new AppError({ code: details[0], message: details[1], statusCode: details[2] });
     }
     if (!("order" in result) || !("supersededOrders" in result)) {
+      await this.publishLiveDashboardChangeBestEffort(result.id);
       return result;
     }
 
@@ -409,6 +413,7 @@ export class BookingService {
         serviceName: superseded.order.serviceName,
         recipientUserIds: superseded.recipientUserIds
       });
+      await this.publishLiveDashboardChangeBestEffort(superseded.order.id);
     }
     await this.notifyOrderStatusChangedBestEffort({
       actorUserId: actor.userId,
@@ -419,6 +424,7 @@ export class BookingService {
       serviceName: result.order.serviceName,
       recipientUserIds: result.recipientUserIds
     });
+    await this.publishLiveDashboardChangeBestEffort(result.order.id);
     return result.order;
   }
 
@@ -498,6 +504,7 @@ export class BookingService {
         recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
       });
       await this.notifyOrderChangedBestEffort(actor, mutation.order, "status");
+      await this.publishLiveDashboardChangeBestEffort(mutation.order.id);
     }
     return mutation.order;
   }
@@ -520,6 +527,7 @@ export class BookingService {
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
       await this.notifyOrderChangedBestEffort(actor, mutation.order, "add_on");
+      await this.publishLiveDashboardChangeBestEffort(mutation.order.id);
     }
     return mutation.order;
   }
@@ -571,6 +579,7 @@ export class BookingService {
         recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
       });
       await this.notifyOrderChangedBestEffort(actor, mutation.order, "status");
+      await this.publishLiveDashboardChangeBestEffort(mutation.order.id);
     }
     return mutation.order;
   }
@@ -836,6 +845,7 @@ export class BookingService {
 
     if (result.outcome === "ok" && result.applied) {
       await this.recordManualPaymentMutation(actor, context, scope, "confirm", order);
+      await this.publishLiveDashboardChangeBestEffort(order.id);
     }
 
     return order;
@@ -993,6 +1003,7 @@ export class BookingService {
         "Checkout completion notification lookup failed after booking commit"
       );
     }
+    await this.publishLiveDashboardChangeBestEffort(checkout.orderId);
   }
 
   public async refundManualPayment(
@@ -1013,6 +1024,7 @@ export class BookingService {
 
     if (result.outcome === "ok" && result.applied) {
       await this.recordManualPaymentMutation(actor, context, scope, "refund", order);
+      await this.publishLiveDashboardChangeBestEffort(order.id);
     }
 
     return order;
@@ -1121,6 +1133,7 @@ export class BookingService {
       recipientUserIds: this.resolveOrderNotificationRecipients(actor, next)
     });
     await this.notifyOrderChangedBestEffort(actor, next, "status");
+    await this.publishLiveDashboardChangeBestEffort(next.id);
 
     return next;
   }
@@ -1146,6 +1159,7 @@ export class BookingService {
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
       await this.notifyOrderChangedBestEffort(actor, mutation.order, "add_on");
+      await this.publishLiveDashboardChangeBestEffort(mutation.order.id);
     }
     return mutation.order;
   }
@@ -1321,6 +1335,50 @@ export class BookingService {
         { error, orderId: order.id, changeType },
         "Order realtime change delivery failed after booking commit"
       );
+    }
+  }
+
+  private async publishLiveDashboardChangeBestEffort(orderId: number): Promise<void> {
+    if (!this.liveDashboardEventPublisher || !this.repository.findLiveDashboardOrderEvent) return;
+    let projection: Awaited<
+      ReturnType<NonNullable<BookingRepositoryPort["findLiveDashboardOrderEvent"]>>
+    >;
+    try {
+      projection = await this.repository.findLiveDashboardOrderEvent(orderId);
+    } catch (error) {
+      logger.error(
+        { error, orderId },
+        "Live dashboard order projection failed after booking commit"
+      );
+      return;
+    }
+    if (!projection) return;
+    const events: LiveDashboardEventDraft[] = [
+      {
+        type: "order.changed" as const,
+        scope: projection.scope,
+        payload: {
+          orderNo: projection.orderNo,
+          status: projection.status,
+          serviceName: projection.serviceName,
+          amountJpy: projection.amountJpy
+        }
+      },
+      {
+        type: "metrics.invalidate" as const,
+        scope: projection.scope,
+        payload: { sections: ["headline", "orders", "trend", "rankings"] }
+      }
+    ];
+    for (const event of events) {
+      try {
+        await this.liveDashboardEventPublisher.publish(event);
+      } catch (error) {
+        logger.error(
+          { error, orderId, eventType: event.type },
+          "Live dashboard event publish failed after booking commit"
+        );
+      }
     }
   }
 

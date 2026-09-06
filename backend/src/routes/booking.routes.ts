@@ -117,7 +117,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     createUserExperienceServiceForRoutes(dependencies),
     undefined,
     dependencies.userPolicyEnforcementService,
-    dependencies.platformAccessPolicyService
+    dependencies.platformAccessPolicyService,
+    dependencies.liveDashboardEventGateway
   );
   const controller = new BookingController(bookingService);
 

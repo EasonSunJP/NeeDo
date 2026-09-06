@@ -549,7 +549,8 @@ describe("BookingRepository order list scope", () => {
           customerUserId: 7,
           serviceId: 1,
           scheduleSlotId: 11,
-          fulfillmentMode: "store"
+          fulfillmentMode: "store",
+          serviceLocation: { source: "SHOP_LOCATION" }
         },
         {
           prepareAffiliate: jest.fn()

@@ -21539,6 +21539,60 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/backoffice/dashboard/live-events`]: {
+      get: {
+        operationId: "streamBackofficeLiveDashboardEvents",
+        tags: ["Step 12 Backoffice"],
+        summary: "Stream compact regional dashboard changes",
+        description:
+          "Bearer-header-only SSE stream for active platform identities. Events are region-filtered, limited to compact allowlisted order fields or cache invalidation sections, replay at most 100 events from the last five minutes using Last-Event-ID, emit 30-second heartbeats, and disconnect slow clients.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "backoffice:dashboard:read",
+        parameters: [
+          { name: "country", in: "query", required: true, schema: { type: "string", const: "JP" } },
+          {
+            name: "admin1",
+            in: "query",
+            required: false,
+            schema: { type: "string", pattern: "^\\d{2}$" }
+          },
+          {
+            name: "admin2",
+            in: "query",
+            required: false,
+            description: "Requires admin1 and must be its persisted N03 municipality child.",
+            schema: { type: "string", pattern: "^\\d{5}$" }
+          },
+          {
+            name: "period",
+            in: "query",
+            required: false,
+            schema: { type: "string", enum: ["today", "last7days", "last30days"], default: "today" }
+          },
+          {
+            name: "Last-Event-ID",
+            in: "header",
+            required: false,
+            schema: { type: "string", pattern: "^\\d{13}-\\d+$", maxLength: 80 }
+          }
+        ],
+        responses: {
+          "200": {
+            description:
+              "SSE stream with retry: 5000, connected event, compact regional events, and heartbeat comments",
+            content: { "text/event-stream": { schema: { type: "string" } } }
+          },
+          "400": {
+            description: "Strict query, Last-Event-ID, or persisted hierarchy validation failed"
+          },
+          "401": { description: "Missing or invalid Bearer access token" },
+          "403": {
+            description: "Missing active platform identity or backoffice:dashboard:read permission"
+          },
+          "503": { description: "Shared live event transport is unavailable" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/dashboard/live-snapshot`]: {
       get: {
         operationId: "getBackofficeLiveDashboardSnapshot",

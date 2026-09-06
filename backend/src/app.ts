@@ -264,6 +264,7 @@ import { createUserExperienceRoutes } from "./routes/user-experience.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
 import type { LiveDashboardCachePort } from "./services/live-dashboard-cache.service";
+import type { LiveDashboardEventGatewayPort } from "./services/live-dashboard-event.gateway";
 import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
@@ -352,6 +353,7 @@ export interface AppDependencies {
   administrativeRegionRepository?: AdministrativeRegionRepositoryPort;
   liveDashboardRepository?: LiveDashboardRepositoryPort;
   liveDashboardCache?: LiveDashboardCachePort;
+  liveDashboardEventGateway?: LiveDashboardEventGatewayPort;
   liveDashboardClock?: () => Date;
   analyticsRankingClock?: () => Date;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;

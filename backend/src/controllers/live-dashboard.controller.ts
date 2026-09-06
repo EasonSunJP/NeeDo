@@ -2,7 +2,10 @@ import type { NextFunction, Request, Response } from "express";
 import type { LiveDashboardLocale, LiveDashboardService } from "../services/live-dashboard.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
-import { liveDashboardQuerySchema } from "../validators/live-dashboard.validator";
+import {
+  liveDashboardLastEventIdSchema,
+  liveDashboardQuerySchema
+} from "../validators/live-dashboard.validator";
 
 const supportedLocales = new Set<LiveDashboardLocale>(["zh-CN", "zh-TW", "ja", "en", "ko"]);
 const canonicalLocale = (value: string): LiveDashboardLocale | null => {
@@ -44,6 +47,24 @@ export class LiveDashboardController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public events = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      await this.service.subscribe(
+        getAuthenticatedAccess(response),
+        getRequestContext(request),
+        liveDashboardQuerySchema.parse(request.query),
+        liveDashboardLastEventIdSchema.parse(request.get("Last-Event-ID") ?? null),
+        response
+      );
     } catch (error) {
       next(error);
     }

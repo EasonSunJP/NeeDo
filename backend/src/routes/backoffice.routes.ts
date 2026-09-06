@@ -114,7 +114,8 @@ export const createBackofficeRoutes = (
       dependencies.administrativeRegionRepository ?? new AdministrativeRegionRepository(),
       dependencies.liveDashboardCache ?? new LiveDashboardCache(),
       auditLogService,
-      dependencies.liveDashboardClock
+      dependencies.liveDashboardClock,
+      dependencies.liveDashboardEventGateway
     )
   );
 
@@ -138,6 +139,13 @@ export const createBackofficeRoutes = (
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
     validateRequest({ query: liveDashboardQuerySchema }),
     liveDashboardController.snapshot
+  );
+  router.get(
+    "/backoffice/dashboard/live-events",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
+    validateRequest({ query: liveDashboardQuerySchema }),
+    liveDashboardController.events
   );
   router.get(
     "/backoffice/dashboard/metrics/:metricKey",

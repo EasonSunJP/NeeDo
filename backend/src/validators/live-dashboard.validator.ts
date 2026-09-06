@@ -26,6 +26,12 @@ export const liveDashboardQuerySchema = z
 
 export type LiveDashboardQuery = z.infer<typeof liveDashboardQuerySchema>;
 
+export const liveDashboardLastEventIdSchema = z
+  .string()
+  .max(80)
+  .regex(/^\d{13}-\d+$/)
+  .nullable();
+
 const safeNonNegativeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const safeSignedInteger = z
   .number()

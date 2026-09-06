@@ -91,3 +91,36 @@ export interface LiveDashboardSnapshotFacts {
   technicianRanking: LiveDashboardRankingItem[];
   coverage: LiveDashboardCoverage;
 }
+
+export type LiveDashboardInvalidationSection = "headline" | "orders" | "trend" | "rankings";
+
+export type LiveDashboardEvent =
+  | {
+      id: string;
+      type: "order.changed";
+      scope: LiveDashboardScope;
+      payload: {
+        orderNo: string;
+        status: string;
+        serviceName: string;
+        amountJpy: number;
+      };
+      createdAt: string;
+    }
+  | {
+      id: string;
+      type: "metrics.invalidate";
+      scope: LiveDashboardScope;
+      payload: { sections: LiveDashboardInvalidationSection[] };
+      createdAt: string;
+    };
+
+export type LiveDashboardEventDraft =
+  | (Omit<Extract<LiveDashboardEvent, { type: "order.changed" }>, "id" | "createdAt"> & {
+      id?: string;
+      createdAt?: string;
+    })
+  | (Omit<Extract<LiveDashboardEvent, { type: "metrics.invalidate" }>, "id" | "createdAt"> & {
+      id?: string;
+      createdAt?: string;
+    });

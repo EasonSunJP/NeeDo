@@ -46,6 +46,7 @@ import {
   type AdministrativeRegionRepositoryPort,
   type VerifiedAdministrativeRegionScope
 } from "./administrative-region.repository";
+import type { LiveDashboardScope } from "../domain/live-dashboard";
 
 const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
@@ -723,6 +724,13 @@ export const fulfillmentAddressSnapshotFromRouteAddress = (
     line3: normalized.building ?? null
   };
 };
+export interface LiveDashboardOrderEventProjection {
+  scope: LiveDashboardScope;
+  orderNo: string;
+  status: BookingOrderStatusPayload;
+  serviceName: string;
+  amountJpy: number;
+}
 
 export interface FulfillmentRequestContext {
   ip: string;
@@ -812,6 +820,7 @@ export interface BookingRepositoryPort {
     body: string;
     orderId: number;
   }) => Promise<BookingOrderPayload | null>;
+  findLiveDashboardOrderEvent?: (id: number) => Promise<LiveDashboardOrderEventProjection | null>;
   getServiceVerificationCode: (orderId: number) => Promise<string>;
   startService: (input: StartServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
   createOrderAddOn: (input: CreateOrderAddOnRepositoryInput) => Promise<FulfillmentMutationResult>;
@@ -971,6 +980,46 @@ export class BookingRepository implements BookingRepositoryPort {
   ) {
     this.administrativeRegionRepository =
       administrativeRegionRepository ?? new AdministrativeRegionRepository(client);
+  }
+
+  public async findLiveDashboardOrderEvent(
+    id: number
+  ): Promise<LiveDashboardOrderEventProjection | null> {
+    const order = await this.client.bookingOrder.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        orderNo: true,
+        status: true,
+        serviceNameSnapshot: true,
+        priceAmount: true,
+        service: { select: { name: true } },
+        technicianService: { select: { name: true } },
+        serviceLocation: {
+          select: {
+            countryCode: true,
+            admin1RegionCode: true,
+            admin2RegionCode: true,
+            resolutionStatus: true,
+            deletedAt: true
+          }
+        }
+      }
+    });
+    const location = order?.serviceLocation;
+    if (!order || !location || location.deletedAt || location.countryCode !== "JP") return null;
+    const verified = location.resolutionStatus === "VERIFIED";
+    return {
+      scope: {
+        countryCode: "JP",
+        admin1Code: verified ? location.admin1RegionCode : null,
+        admin2Code: verified ? location.admin2RegionCode : null
+      },
+      orderNo: order.orderNo,
+      status: bookingOrderStatusFromDb(order.status),
+      serviceName:
+        order.serviceNameSnapshot ?? order.service?.name ?? order.technicianService?.name ?? "-",
+      amountJpy: Number(this.formatDecimal(order.priceAmount, 0))
+    };
   }
 
   public async listAvailableSlots(

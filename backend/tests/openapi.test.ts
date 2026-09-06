@@ -5,6 +5,52 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents the protected Bearer-only regional live event stream", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<
+        string,
+        {
+          get: {
+            operationId?: string;
+            security?: unknown;
+            "x-required-permission"?: string;
+            parameters: Array<Record<string, unknown>>;
+            responses: Record<string, { content?: Record<string, unknown> }>;
+          };
+        }
+      >;
+    };
+    const operation = document.paths["/api/v1/backoffice/dashboard/live-events"]?.get;
+
+    expect(operation).toMatchObject({
+      operationId: "streamBackofficeLiveDashboardEvents",
+      security: [{ bearerAuth: [] }],
+      "x-required-permission": "backoffice:dashboard:read"
+    });
+    expect(operation.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "country", in: "query", required: true }),
+        expect.objectContaining({ name: "admin1", in: "query" }),
+        expect.objectContaining({ name: "admin2", in: "query" }),
+        expect.objectContaining({ name: "period", in: "query" }),
+        expect.objectContaining({ name: "Last-Event-ID", in: "header" })
+      ])
+    );
+    expect(operation.parameters).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ in: "query", name: expect.stringMatching(/token/i) })
+      ])
+    );
+    expect(operation.responses["200"]?.content?.["text/event-stream"]).toBeDefined();
+    expect(operation.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object)
+      })
+    );
+  });
+
   it("uses a root server when versioned paths already include the API prefix", () => {
     const document = createOpenApiDocument(env) as unknown as {
       servers: Array<{ url: string }>;

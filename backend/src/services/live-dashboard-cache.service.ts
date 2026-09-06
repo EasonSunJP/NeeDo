@@ -1,4 +1,5 @@
 import { getRedisClient } from "../config/redis";
+import type { LiveDashboardScope } from "../domain/live-dashboard";
 import type { LiveDashboardQuery } from "../validators/live-dashboard.validator";
 
 const LIVE_DASHBOARD_CACHE_PREFIX = "dashboard:live:v1";
@@ -9,6 +10,7 @@ export interface LiveDashboardRedisClient {
   connect(): Promise<unknown>;
   get(key: string): Promise<string | null>;
   set(key: string, value: string, options: { EX: number }): Promise<unknown>;
+  del?(keys: string[]): Promise<unknown>;
 }
 
 export type LiveDashboardCacheStatus = "hit" | "miss" | "degraded";
@@ -25,6 +27,7 @@ export interface LiveDashboardCachePort {
     factory: () => Promise<T>,
     decode?: (value: unknown) => T
   ): Promise<LiveDashboardCacheResult<T>>;
+  invalidateScope?(scope: LiveDashboardScope): Promise<void>;
 }
 
 interface StoredLiveDashboardSnapshot<T> {
@@ -64,6 +67,31 @@ export class LiveDashboardCache implements LiveDashboardCachePort {
     });
     this.inFlight.set(key, operation as Promise<LiveDashboardCacheResult<unknown>>);
     return operation;
+  }
+
+  public async invalidateScope(scope: LiveDashboardScope): Promise<void> {
+    const client = this.getClient();
+    if (!client.isOpen) await client.connect();
+    const scopeLevels = [
+      { country: scope.countryCode },
+      ...(scope.admin1Code ? [{ country: scope.countryCode, admin1: scope.admin1Code }] : []),
+      ...(scope.admin1Code && scope.admin2Code
+        ? [
+            {
+              country: scope.countryCode,
+              admin1: scope.admin1Code,
+              admin2: scope.admin2Code
+            }
+          ]
+        : [])
+    ];
+    const keys = scopeLevels.flatMap((level) =>
+      (["today", "last7days", "last30days"] as const).map((period) =>
+        liveDashboardCacheKey({ ...level, period })
+      )
+    );
+    if (!client.del) throw new Error("Redis cache invalidation is unavailable");
+    await client.del(keys);
   }
 
   private async readOrCreate<T>(

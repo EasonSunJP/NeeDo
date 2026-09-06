@@ -210,6 +210,158 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("publishes compact regional order and invalidation events only after booking commit", async () => {
+    const order = makeOrder("pending");
+    const repository = createRepository(order);
+    repository.findLiveDashboardOrderEvent = jest.fn(async () => ({
+      scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+      orderNo: order.orderNo,
+      status: order.status,
+      serviceName: order.serviceName,
+      amountJpy: 8800
+    }));
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await expect(
+      service.createBooking(actor, {
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toBe(order);
+
+    expect(repository.createBooking).toHaveBeenCalledTimes(1);
+    expect(repository.findLiveDashboardOrderEvent).toHaveBeenCalledWith(order.id);
+    expect(publisher.publish).toHaveBeenNthCalledWith(1, {
+      type: "order.changed",
+      scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+      payload: {
+        orderNo: order.orderNo,
+        status: "pending",
+        serviceName: order.serviceName,
+        amountJpy: 8800
+      }
+    });
+    expect(publisher.publish).toHaveBeenNthCalledWith(2, {
+      type: "metrics.invalidate",
+      scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+      payload: { sections: ["headline", "orders", "trend", "rankings"] }
+    });
+    expect(JSON.stringify(publisher.publish.mock.calls)).not.toMatch(
+      /customer|address|phone|email|note|actorId|shopId|technicianId/i
+    );
+  });
+
+  it("keeps a committed booking successful when event projection or publishing fails", async () => {
+    const order = makeOrder("pending");
+    const projectionFailureRepository = createRepository(order);
+    projectionFailureRepository.findLiveDashboardOrderEvent = jest.fn(async () => {
+      throw new Error("projection unavailable");
+    });
+    const publisher = { publish: jest.fn(async () => null) };
+    const projectionFailureService = new BookingService(
+      projectionFailureRepository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+    await expect(
+      projectionFailureService.createBooking(actor, {
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toBe(order);
+    expect(publisher.publish).not.toHaveBeenCalled();
+
+    const publishFailureRepository = createRepository(order);
+    publishFailureRepository.findLiveDashboardOrderEvent = jest.fn(async () => ({
+      scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+      orderNo: order.orderNo,
+      status: order.status,
+      serviceName: order.serviceName,
+      amountJpy: 8800
+    }));
+    const failingPublisher = {
+      publish: jest.fn(async () => {
+        throw new Error("redis unavailable");
+      })
+    };
+    const publishFailureService = new BookingService(
+      publishFailureRepository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      failingPublisher
+    );
+    await expect(
+      publishFailureService.createBooking(actor, {
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toBe(order);
+    expect(failingPublisher.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("publishes only after an applied add-on mutation changes the compact order projection", async () => {
+    const order = makeOrder("inService");
+    const repository = createRepository(order);
+    repository.findLiveDashboardOrderEvent = jest.fn(async () => ({
+      scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+      orderNo: order.orderNo,
+      status: order.status,
+      serviceName: order.serviceName,
+      amountJpy: 9800
+    }));
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await service.createOrderAddOn(
+      actor,
+      order.id,
+      { serviceId: 2, idempotencyKey: "add-on-live-event-0001" },
+      { ip: "127.0.0.1", userAgent: "jest" }
+    );
+
+    expect(repository.createOrderAddOn).toHaveBeenCalledTimes(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps legacy creation/manual payment inputs narrower than order projections", () => {
     expect(bookingCreationPaymentBoundary).toBe(true);
     expect(manualConfirmationPaymentBoundary).toBe(true);

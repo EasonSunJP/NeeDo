@@ -21,6 +21,8 @@ import type {
   LiveDashboardCachePort,
   LiveDashboardCacheStatus
 } from "./live-dashboard-cache.service";
+import type { LiveDashboardEventGatewayPort } from "./live-dashboard-event.gateway";
+import type { Response } from "express";
 import { assertActivePlatformIdentity } from "./platform-identity-scope";
 
 export type LiveDashboardLocale = "zh-CN" | "zh-TW" | "ja" | "en" | "ko";
@@ -65,8 +67,50 @@ export class LiveDashboardService {
     private readonly regions: AdministrativeRegionRepositoryPort,
     private readonly cache: LiveDashboardCachePort,
     private readonly auditLog: LiveDashboardAudit,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly eventGateway?: LiveDashboardEventGatewayPort
   ) {}
+
+  public async subscribe(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    query: LiveDashboardQuery,
+    lastEventId: string | null,
+    response: Response
+  ): Promise<void> {
+    assertActivePlatformIdentity(actor);
+    await this.resolveHierarchy(query, "ja");
+    if (!this.eventGateway) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency_unavailable",
+        statusCode: 503
+      });
+    }
+    await this.auditLog.record({
+      actor,
+      context,
+      action: "backoffice.dashboard.live_events.connect",
+      targetType: "live_dashboard_event_stream",
+      targetId: null,
+      metadata: {
+        country: query.country,
+        admin1: query.admin1 ?? null,
+        admin2: query.admin2 ?? null,
+        period: query.period,
+        resumed: lastEventId !== null
+      }
+    });
+    await this.eventGateway.subscribe(
+      {
+        countryCode: query.country,
+        admin1Code: query.admin1 ?? null,
+        admin2Code: query.admin2 ?? null
+      },
+      lastEventId,
+      response
+    );
+  }
 
   public async getSnapshot(
     actor: AuthenticatedAccessContext,

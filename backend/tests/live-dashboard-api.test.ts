@@ -107,6 +107,14 @@ const createFixture = (options: { failAudit?: boolean } = {}) => {
       cacheStatus: "miss"
     }))
   };
+  const liveDashboardEventGateway = {
+    publish: jest.fn(),
+    subscribe: jest.fn(async (_scope, _lastEventId, response) => {
+      response.status(200).end();
+      return () => undefined;
+    }),
+    close: jest.fn()
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     testOnlyAllowLegacyAuthAdapters: true,
@@ -118,6 +126,7 @@ const createFixture = (options: { failAudit?: boolean } = {}) => {
     administrativeRegionRepository,
     liveDashboardRepository,
     liveDashboardCache,
+    liveDashboardEventGateway,
     liveDashboardClock: () => now,
     backofficeRepository: {}
   } as never);
@@ -138,6 +147,7 @@ const createFixture = (options: { failAudit?: boolean } = {}) => {
     administrativeRegionRepository,
     liveDashboardRepository,
     liveDashboardCache,
+    liveDashboardEventGateway,
     tokens
   };
 };
@@ -242,5 +252,64 @@ describe("GET /api/v1/backoffice/dashboard/live-snapshot", () => {
     expect(source.indexOf('"/backoffice/dashboard/live-snapshot"')).toBeLessThan(
       source.indexOf('"/backoffice/dashboard/metrics/:metricKey"')
     );
+  });
+});
+
+describe("GET /api/v1/backoffice/dashboard/live-events", () => {
+  it("is Bearer-header only and enforces the dashboard permission", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .get(`/api/v1/backoffice/dashboard/live-events?country=JP&access_token=${fixture.tokens[1]}`)
+      .expect(401);
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard/live-events?country=JP")
+      .set("Authorization", `Bearer ${fixture.tokens[2]}`)
+      .expect(403);
+    expect(fixture.liveDashboardEventGateway.subscribe).not.toHaveBeenCalled();
+  });
+
+  it.each([3, 4, 5])(
+    "rejects non-platform active identity %s before opening the stream",
+    async (userId) => {
+      const fixture = createFixture();
+      await request(fixture.app)
+        .get("/api/v1/backoffice/dashboard/live-events?country=JP")
+        .set("Authorization", `Bearer ${fixture.tokens[userId]}`)
+        .expect(403);
+      expect(fixture.liveDashboardEventGateway.subscribe).not.toHaveBeenCalled();
+    }
+  );
+
+  it("validates Last-Event-ID and passes the strict regional scope to the shared gateway", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard/live-events?country=JP")
+      .set("Authorization", `Bearer ${fixture.tokens[1]}`)
+      .set("Last-Event-ID", "invalid-identifier")
+      .expect(400);
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard/live-events?country=JP&admin1=13&period=today")
+      .set("Authorization", `Bearer ${fixture.tokens[1]}`)
+      .set("Last-Event-ID", "1700000000000-4")
+      .expect(200);
+
+    expect(fixture.liveDashboardEventGateway.subscribe).toHaveBeenCalledWith(
+      { countryCode: "JP", admin1Code: "13", admin2Code: null },
+      "1700000000000-4",
+      expect.anything()
+    );
+    expect(fixture.auditLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "backoffice.dashboard.live_events.connect" })
+    );
+  });
+
+  it("does not open the stream when the connection audit fails", async () => {
+    const fixture = createFixture({ failAudit: true });
+    await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard/live-events?country=JP")
+      .set("Authorization", `Bearer ${fixture.tokens[1]}`)
+      .expect(500);
+    expect(fixture.liveDashboardEventGateway.subscribe).not.toHaveBeenCalled();
   });
 });
