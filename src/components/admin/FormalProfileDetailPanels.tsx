@@ -1,3 +1,6 @@
+import { WorkStatusMetrics } from "../../features/technician-work-status/WorkStatusMetrics";
+import { WorkTimeline } from "../../features/technician-work-status/WorkTimeline";
+import type { WorkStatusTarget } from "../../features/technician-work-status/api";
 import {
   useId,
   useRef,
@@ -128,12 +131,14 @@ export function FormalTechnicianDetailPanel({
   actionContent,
   detail,
   editContent,
-  initialTab = "基础资料"
+  initialTab = "基础资料",
+  workStatusScope = "backoffice"
 }: {
   actionContent?: ReactNode;
   detail: BackofficeTechnicianDetailPayload;
   editContent?: ReactNode;
   initialTab?: TechnicianDetailTab;
+  workStatusScope?: "backoffice" | "merchant-admin";
 }) {
   const localization = useFormalLocalization();
   const [activeTab, setActiveTab] = useState<TechnicianDetailTab>(initialTab);
@@ -168,7 +173,7 @@ export function FormalTechnicianDetailPanel({
       />
 
       <FormalTabPanels active={activeTab} idPrefix={panelId} items={technicianTabs}>
-        {(tab) => renderTechnicianTab(tab, detail, editContent, localization)}
+        {(tab) => renderTechnicianTab(tab, detail, editContent, localization, { scope: workStatusScope, technicianProfileId: detail.id })}
       </FormalTabPanels>
     </article>
   );
@@ -582,7 +587,8 @@ function renderTechnicianTab(
   tab: TechnicianDetailTab,
   detail: BackofficeTechnicianDetailPayload,
   editContent: ReactNode | undefined,
-  localization: FormalLocalization
+  localization: FormalLocalization,
+  workStatusTarget: WorkStatusTarget
 ) {
   if (tab === "基础资料") {
     return (
@@ -620,11 +626,11 @@ function renderTechnicianTab(
             { id: "today-schedule", label: localization.t("今日排班"), value: formatFormalScheduleMinutes(detail.statistics.todayScheduleMinutes, localization.language) },
             { id: "week-schedule", label: localization.t("本周排班"), value: formatFormalScheduleMinutes(detail.statistics.weekScheduleMinutes, localization.language) },
             { id: "month-schedule", label: localization.t("本月排班"), value: formatFormalScheduleMinutes(detail.statistics.monthScheduleMinutes, localization.language) }
-          ]} />
+          ]}><div className="min-w-0"><WorkStatusMetrics target={workStatusTarget} /></div></MetricGrid>
         </FormalSectionCard>
         <ReviewSummaryCard localization={localization} review={detail.reviewSummary} />
         <UnavailableCard localization={localization} title="接单率" />
-        <UnavailableCard localization={localization} title="迟到情况" />
+
       </>
     );
   }
@@ -671,7 +677,7 @@ function renderTechnicianTab(
     return <AccountAccessCards account={detail.account} localization={localization} />;
   }
 
-  return <AuditTimeline events={detail.timeline} localization={localization} />;
+  return <WorkTimeline target={workStatusTarget} />;
 }
 
 function renderCustomerTab(
@@ -895,7 +901,7 @@ function FormalSectionCard({
   );
 }
 
-function MetricGrid({ items }: { items: MetricItem[] }) {
+function MetricGrid({ items, children }: { items: MetricItem[]; children?: ReactNode }) {
   return (
     <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
       {items.map((item) => (
@@ -904,6 +910,7 @@ function MetricGrid({ items }: { items: MetricItem[] }) {
           <dd className="mt-1 break-words text-lg font-black tracking-tight text-ink tabular-nums">{item.value}</dd>
         </div>
       ))}
+      {children}
     </dl>
   );
 }

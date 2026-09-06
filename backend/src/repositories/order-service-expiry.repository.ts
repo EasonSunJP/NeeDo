@@ -1,3 +1,5 @@
+import { recordBookingWorkTransition } from '../domain/work-status-booking';
+import { WorkStatusSession } from './work-status.repository';
 import {
   BookingOrderStatus,
   OrderServiceEventType,
@@ -48,7 +50,8 @@ class OrderServiceExpirySnapshotError extends Error {}
 export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
-    private readonly reportFailure?: OrderServiceExpiryFailureReporter
+    private readonly reportFailure?: OrderServiceExpiryFailureReporter,
+    private readonly onWorkStatusCommitted?:(orderId:number)=>Promise<void>
   ) {}
 
   public async moveDueSessionsToCheckout(input: { now: Date; batchSize: number }): Promise<number> {
@@ -70,7 +73,7 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
     let advanced = 0;
     for (const candidate of candidates) {
       try {
-        if (await this.advanceCandidate(candidate.bookingOrderId, input.now)) advanced += 1;
+        if (await this.advanceCandidate(candidate.bookingOrderId, input.now)) {advanced += 1;await this.onWorkStatusCommitted?.(candidate.bookingOrderId);}
       } catch {
         await this.reportCandidateFailure(candidate.bookingOrderId);
       }
@@ -154,6 +157,7 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
           data: { status: BookingOrderStatus.AWAITING_CHECKOUT, updatedAt: dueAt }
         });
         if (orderUpdate.count !== 1) throw new OrderServiceExpirySnapshotError();
+        await recordBookingWorkTransition(new WorkStatusSession(transaction),{technicianProfileId:order.technicianProfileId,orderId:order.id,shopId:order.shopId,actorId:null,at:dueAt,started:false});
 
         await transaction.orderStatusHistory.create({
           data: {

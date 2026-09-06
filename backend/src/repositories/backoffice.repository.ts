@@ -1,3 +1,4 @@
+import { projectWorkStatuses } from './work-status.repository';
 import {
   BookingOrderStatus,
   OrderServiceEventType,
@@ -887,8 +888,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       this.client.technicianProfile.count({ where })
     ]);
 
+    const statuses = await projectWorkStatuses(this.client, list.map(row => row.id));
     return buildPaginatedResponse(
-      list.map((technician) => this.mapTechnician(technician)),
+      list.map((technician) => ({...this.mapTechnician(technician),workStatus:statuses.get(technician.id)!})),
       total,
       input
     );
@@ -1175,6 +1177,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
     return {
       ...this.mapTechnician(profile),
+      workStatus:(await projectWorkStatuses(this.client,[profile.id])).get(profile.id)!,
       bio: profile.bio,
       yearsExperience: profile.yearsExperience,
       isRecommended: profile.isRecommended,

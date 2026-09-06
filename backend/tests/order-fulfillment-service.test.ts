@@ -514,10 +514,15 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     ...dbOrder,
     serviceSession: session ? { ...session, addOns: [...addOns] } : null
   });
+  const workState={technicianProfileId:702,status:'on_duty',version:0,syncedAt:null as Date|null};
+  const workEvents:Record<string,unknown>[]=[];
   const tx = {
+    technicianWorkState:{upsert:jest.fn(async()=>workState),update:jest.fn(async()=>workState),findFirst:jest.fn(async()=>({...workState})),updateMany:jest.fn(async({where,data}:{where:{version:number};data:{status:string;version:{increment:number};syncedAt:Date}})=>{if(where.version!==workState.version)return {count:0};workState.status=data.status;workState.version+=data.version.increment;workState.syncedAt=data.syncedAt;return {count:1}})},
+    technicianWorkEvent:{create:jest.fn(async({data}:{data:Record<string,unknown>})=>{workEvents.push(data);return data})},
+    auditLog:{create:jest.fn(async()=>({}))},
     $queryRaw: jest.fn(async () => [{ id: dbOrder.id }]),
     bookingOrder: {
-      findFirst: jest.fn(async () => projectedOrder()),
+      findFirst: jest.fn(async (input?:{where?:{status?:string}}) => input?.where?.status&&input.where.status!==dbOrder.status?null:projectedOrder()),
       updateMany: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         Object.assign(dbOrder, data);
         return { count: options.guardedOrderUpdateCount ?? 1 };
@@ -616,10 +621,11 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
       const sessionSnapshot = session ? { ...session } : null;
       const eventSnapshot = events.map((event) => ({ ...event }));
       const addOnSnapshot = addOns.map((addOn) => ({ ...addOn }));
+      const workSnapshot={...workState};const workEventCount=workEvents.length;
       try {
         return await callback(tx);
       } catch (error) {
-        Object.assign(dbOrder, orderSnapshot);
+        Object.assign(dbOrder, orderSnapshot);Object.assign(workState,workSnapshot);workEvents.splice(workEventCount);
         dbOrder.statusHistory.splice(
           0,
           dbOrder.statusHistory.length,
@@ -634,6 +640,7 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
   };
   return {
     repository: new BookingRepository(client as never),
+    workState,workEvents,
     dbOrder,
     events,
     addOns,
@@ -1083,4 +1090,21 @@ describe("formal order fulfillment repository transactions", () => {
     ).resolves.toBeNull();
     expect(transaction).not.toHaveBeenCalled();
   });
+});
+
+describe('work status post-commit notification',()=>{
+ it('notifies assigned technician after an applied start and end, but never on failed mutation',async()=>{
+  const notifier={notifyTechnician:jest.fn(async()=>undefined)};
+  const repository=createRepository(makeOrder('confirmed'),ok(makeOrder('inService')));
+  const service=new BookingService(repository,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,notifier);
+  await service.startService(customer,41,{actor:'customer',idempotencyKey:'work-start-1'},context);
+  expect(notifier.notifyTechnician).toHaveBeenCalledWith(702);
+  repository.findOrderById.mockResolvedValue(makeOrder('inService'));
+  repository.endService.mockResolvedValue(ok(makeOrder('awaitingCheckout')));
+  await service.endService(customer,41,{reason:'customer_completed',idempotencyKey:'work-end-1'},context);
+  expect(notifier.notifyTechnician).toHaveBeenCalledTimes(2);
+  repository.endService.mockResolvedValue({outcome:'invalid_transition'});
+  await expect(service.endService(customer,41,{reason:'customer_completed',idempotencyKey:'work-end-2'},context)).rejects.toThrow();
+  expect(notifier.notifyTechnician).toHaveBeenCalledTimes(2);
+ });
 });

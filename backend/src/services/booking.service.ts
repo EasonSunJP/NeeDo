@@ -151,7 +151,8 @@ export class BookingService {
     experienceOrNow?: Pick<UserExperienceService, "recordEvent"> | (() => Date),
     nowOrPolicy?: (() => Date) | Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
     policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
-    platformPaymentPolicy?: PlatformPaymentPolicyPort
+    platformPaymentPolicy?: PlatformPaymentPolicyPort,
+    private readonly workStatusNotifier?: {notifyTechnician:(id:number)=>Promise<void>}
   ) {
     if (rateOrExperience && "resolveEffectiveRate" in rateOrExperience) {
       this.ndpExchangeRateService = rateOrExperience;
@@ -467,6 +468,7 @@ export class BookingService {
     });
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
+      if(mutation.order.technicianProfileId)await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
       await this.notifyOrderStatusChangedBestEffort({
         actorUserId: actor.userId,
         orderId: mutation.order.id,
@@ -540,6 +542,7 @@ export class BookingService {
     });
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
+      if(mutation.order.technicianProfileId)await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
       await this.notifyOrderStatusChangedBestEffort({
         actorUserId: actor.userId,
         orderId: mutation.order.id,

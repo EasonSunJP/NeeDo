@@ -1,3 +1,5 @@
+import { subscribeWorkStatusRefresh } from "../../features/technician-work-status/refresh";
+import type { WorkStatus } from "../../features/technician-work-status/api";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -85,7 +87,7 @@ type MerchantView = "dashboard" | "orders" | "messages" | "schedule" | "staff" |
 type MerchantMeTab = "info" | "service" | "data";
 type MerchantSchedulePrimaryTab = "current" | "appointments" | "planning";
 type MerchantStaffTab = "all" | "fullTime" | "partTime";
-type StaffStatus = "出勤" | "休息" | "服务中" | "可指派";
+type StaffStatus = "出勤" | "休息" | "服务中" | "可指派" | "移动中" | "退勤" | "未同步";
 type MerchantEmployeeRoleDraft = (typeof merchantStaffRoleQuickOptions)[number] | "custom";
 type MerchantManualEmployeeStatus = "在岗" | "休息" | "待入职";
 type MerchantManualEmployee = {
@@ -452,6 +454,10 @@ function getMerchantStaffStatus(technician: Technician): StaffStatus {
   }
 
   return "可指派";
+}
+
+function formalMerchantWorkLabel(status?: WorkStatus): StaffStatus {
+  return status === "on_duty" ? "可指派" : status === "in_service" ? "服务中" : status === "traveling" ? "移动中" : status === "resting" ? "休息" : status === "off_duty" ? "退勤" : "未同步";
 }
 
 function getMerchantStaffStatusTopTag(status: StaffStatus) {
@@ -1140,7 +1146,7 @@ export function MerchantStaffDetailRoutePage() {
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+124px)] pt-[calc(env(safe-area-inset-top)+86px)]">
         {formalDetail ? (
-          <FormalTechnicianDetailPanel detail={formalDetail} />
+          <FormalTechnicianDetailPanel detail={formalDetail} workStatusScope="merchant-admin" />
         ) : technician ? (
           <div className="space-y-3">
             <SocialProfileMiniCard
@@ -1658,6 +1664,8 @@ export function MerchantPortalContent({
   const [formalStaffById, setFormalStaffById] = useState<Map<number, BackofficeTechnicianPayload>>(() => new Map());
   const [formalStaffEmploymentLoaded, setFormalStaffEmploymentLoaded] = useState(false);
   const [formalStaffEmploymentError, setFormalStaffEmploymentError] = useState("");
+  const [workRevision, setWorkRevision] = useState(0);
+  useEffect(() => subscribeWorkStatusRefresh(() => setWorkRevision(value => value + 1)), []);
   const technicianRoleName = getResolvedMerchantStaffRoleName(merchantTechnicianRoleName, staffRoleNameOverrides);
 
   useEffect(() => {
@@ -1690,7 +1698,7 @@ export function MerchantPortalContent({
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [session, workRevision]);
   const pendingOrders = useMemo(() => orders.filter((order) => ["pending", "confirmed", "scheduled"].includes(order.status)), []);
   const storeOrders = useMemo(() => orders.slice(0, 10), []);
   const filteredStoreOrders = useMemo(
@@ -1763,7 +1771,7 @@ export function MerchantPortalContent({
         missingTechnicianIds.push(technician.id);
         return [];
       }
-      return [{ employmentType, status: staffStatuses[technician.id] ?? getMerchantStaffStatus(technician), technician }];
+      return [{ employmentType, status: formalMerchantWorkLabel(technicianApiId === null ? undefined : formalStaffById.get(technicianApiId)?.workStatus), technician }];
     });
     return { entries, missingTechnicianIds };
   }, [formalStaffById, staffStatuses, storeTechnicians]);
@@ -2530,7 +2538,8 @@ export function MerchantPortalContent({
               </SectionTitle>
               <div className="mt-3 space-y-3">
                 {storeTechnicians.slice(0, 4).map((technician) => {
-                  const staffStatus = staffStatuses[technician.id];
+                  const technicianApiId = getMerchantTechnicianApiId(technician.id);
+                  const staffStatus = formalMerchantWorkLabel(technicianApiId === null ? undefined : formalStaffById.get(technicianApiId)?.workStatus);
 
                   return (
                     <SocialProfileMiniCard

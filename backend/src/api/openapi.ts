@@ -1,3 +1,4 @@
+import { workStatusOpenApiPaths } from './work-status.openapi';
 import { sosOpenApiPaths } from "./sos.openapi";
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
@@ -15169,6 +15170,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   },
   paths: {
     ...sosOpenApiPaths,
+    ...workStatusOpenApiPaths,
     ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),

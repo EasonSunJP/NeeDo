@@ -1,3 +1,5 @@
+import { subscribeWorkStatusRefresh } from "../../features/technician-work-status/refresh";
+import { WorkStatusBadge } from "../../features/technician-work-status/WorkStatusMetrics";
 import {
   useCallback,
   useEffect,
@@ -175,8 +177,10 @@ export function MerchantAdminPeoplePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const listRequest = useRef(0);
   const load = useCallback(
     async (rejectOnError = false) => {
+      const requestId = ++listRequest.current;
       if (module !== "staff") {
         setEmployees([]);
         setTotal(0);
@@ -193,14 +197,15 @@ export function MerchantAdminPeoplePage() {
           const result = await loadCoreReadWithTransientRetry(() =>
             merchantEmployeeApi.list(query),
           );
+          if (requestId !== listRequest.current) return;
           setEmployees(result.list);
           setTotal(result.total);
         }
       } catch (loadError) {
-        setError(describeMerchantReadError(loadError, languageRef.current));
+        if (requestId === listRequest.current) setError(describeMerchantReadError(loadError, languageRef.current));
         if (rejectOnError) throw loadError;
       } finally {
-        setLoading(false);
+        if (requestId === listRequest.current) setLoading(false);
       }
     },
     [keyword, module, page],
@@ -400,6 +405,8 @@ export function MerchantAdminPeoplePage() {
 
   useEffect(() => {
     void load();
+    const unsubscribe = subscribeWorkStatusRefresh(() => void load());
+    return () => { ++listRequest.current; unsubscribe(); };
   }, [load]);
 
   const submitSearch = (event: FormEvent) => {
@@ -707,6 +714,11 @@ export function MerchantAdminPeoplePage() {
                       )}
                     </Badge>
                   ),
+                },
+                {
+                  key: "actualWorkStatus",
+                  title: "状态同步",
+                  render: (row) => <WorkStatusBadge status={row.workStatus} />,
                 },
                 {
                   key: "contact",

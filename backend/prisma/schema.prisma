@@ -1131,6 +1131,8 @@ enum AgentSettlementLineType {
 }
 
 model User {
+  workEvents TechnicianWorkEvent[]
+
   id                   Int                  @id @default(autoincrement())
   needoId              String               @unique @map("needo_id") @db.VarChar(32)
   accountNo            String?              @unique @map("account_no") @db.Char(10)
@@ -1666,6 +1668,10 @@ model MerchantApplicationBusinessKeyword {
 }
 
 model Shop {
+  attendanceAffectedOrders TechnicianAttendanceAffectedOrder[]
+  workEvents TechnicianWorkEvent[]
+  attendanceIncidents TechnicianAttendanceIncident[]
+
   id                           Int             @id @default(autoincrement())
   shopNo                       String?         @unique @map("shop_no") @db.Char(10)
   ownerUserId                  Int?            @map("owner_user_id")
@@ -2061,6 +2067,9 @@ model TechnicianCompensationProfile {
 }
 
 model TechnicianProfile {
+  workState TechnicianWorkState?
+  workEvents TechnicianWorkEvent[]
+  attendanceIncidents TechnicianAttendanceIncident[]
   id                  Int                      @id @default(autoincrement())
   userId              Int                      @unique @map("user_id")
   shopId              Int?                     @map("shop_id")
@@ -3897,6 +3906,7 @@ model ReviewSummary {
 }
 
 model Availability {
+  attendanceIncidents TechnicianAttendanceIncident[]
   id                  Int                    @id @default(autoincrement())
   shopId              Int                    @map("shop_id")
   technicianProfileId Int?                   @map("technician_profile_id")
@@ -3962,6 +3972,10 @@ model ScheduleSlot {
 }
 
 model BookingOrder {
+  attendanceAffectedOrders TechnicianAttendanceAffectedOrder[]
+  workEvents TechnicianWorkEvent[]
+  attendanceIncidents TechnicianAttendanceIncident[]
+
   id                      Int                  @id @default(autoincrement())
   orderNo                 String               @unique @map("order_no") @db.VarChar(40)
   orderType               OrderType            @default(BOOKING) @map("order_type")
@@ -7728,4 +7742,111 @@ model SosCommand {
   @@index([alertId])
   @@index([deletedAt])
   @@map("sos_commands")
+}
+
+model TechnicianWorkState {
+  id Int @id @default(autoincrement())
+  technicianProfileId Int @unique @map("technician_profile_id")
+  status String @default("unsynced") @db.VarChar(20)
+  version Int @default(0)
+  syncedAt DateTime? @map("synced_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  technicianProfile TechnicianProfile @relation(fields:[technicianProfileId], references:[id], onDelete:Restrict)
+  @@index([deletedAt])
+  @@map("technician_work_states")
+}
+
+model TechnicianWorkEvent {
+  id String @id @default(uuid()) @db.Char(36)
+  technicianProfileId Int @map("technician_profile_id")
+  shopId Int? @map("shop_id")
+  orderId Int? @map("order_id")
+  incidentId String? @map("incident_id") @db.Char(36)
+  actorId Int? @map("actor_id")
+  kind String @db.VarChar(20)
+  fromStatus String? @map("from_status") @db.VarChar(20)
+  toStatus String? @map("to_status") @db.VarChar(20)
+  at DateTime
+  actualAt DateTime? @map("actual_at")
+  reason String? @db.VarChar(1000)
+  commandKey String? @unique @map("command_key") @db.VarChar(191)
+  commandHash String? @map("command_hash") @db.Char(64)
+  result Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  technicianProfile TechnicianProfile @relation(fields:[technicianProfileId],references:[id],onDelete:Restrict)
+  shop Shop? @relation(fields:[shopId],references:[id],onDelete:Restrict)
+  order BookingOrder? @relation(fields:[orderId],references:[id],onDelete:Restrict)
+  actor User? @relation(fields:[actorId],references:[id],onDelete:Restrict)
+  incident TechnicianAttendanceIncident? @relation(fields:[incidentId],references:[id],onDelete:Restrict)
+  @@index([technicianProfileId,at,deletedAt])
+  @@index([shopId,at,deletedAt])
+  @@index([orderId])
+  @@index([actorId])
+  @@index([incidentId,createdAt])
+  @@map("technician_work_events")
+}
+
+model TechnicianAttendanceIncident {
+  attendanceAffectedOrders TechnicianAttendanceAffectedOrder[]
+  id String @id @default(uuid()) @db.Char(36)
+  incidentKey String @unique @map("incident_key") @db.VarChar(191)
+  technicianProfileId Int @map("technician_profile_id")
+  shopId Int @map("shop_id")
+  orderId Int? @map("order_id")
+  availabilityId Int? @map("availability_id")
+  kind String @db.VarChar(20)
+  basis String @db.VarChar(20)
+  plannedAt DateTime @map("planned_at")
+  plannedEndAt DateTime @map("planned_end_at")
+  occurredAt DateTime @map("occurred_at")
+  actualAt DateTime? @map("actual_at")
+  ruleVersion Int @default(1) @map("rule_version")
+  reason String? @db.VarChar(1000)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  technicianProfile TechnicianProfile @relation(fields:[technicianProfileId],references:[id],onDelete:Restrict)
+  shop Shop @relation(fields:[shopId],references:[id],onDelete:Restrict)
+  order BookingOrder? @relation(fields:[orderId],references:[id],onDelete:Restrict)
+  availability Availability? @relation(fields:[availabilityId],references:[id],onDelete:Restrict)
+  events TechnicianWorkEvent[]
+  @@index([technicianProfileId,kind,occurredAt,deletedAt])
+  @@index([shopId,kind,occurredAt,deletedAt])
+  @@index([orderId])
+  @@index([availabilityId])
+  @@map("technician_attendance_incidents")
+}
+
+model TechnicianAttendanceEpoch {
+  id Int @id
+  activatedAt DateTime @default(now()) @map("activated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  @@map("technician_attendance_epochs")
+}
+
+model TechnicianAttendanceAffectedOrder {
+  id String @id @default(uuid()) @db.Char(36)
+  incidentId String @map("incident_id") @db.Char(36)
+  orderId Int @map("order_id")
+  shopId Int @map("shop_id")
+  orderNo String @map("order_no") @db.VarChar(40)
+  serviceName String? @map("service_name") @db.VarChar(160)
+  startsAt DateTime @map("starts_at")
+  endsAt DateTime @map("ends_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  incident TechnicianAttendanceIncident @relation(fields:[incidentId],references:[id],onDelete:Restrict)
+  order BookingOrder @relation(fields:[orderId],references:[id],onDelete:Restrict)
+  shop Shop @relation(fields:[shopId],references:[id],onDelete:Restrict)
+  @@unique([incidentId,orderId],map:"attendance_affected_incident_order_key")
+  @@index([orderId])
+  @@index([shopId,deletedAt])
+  @@map("technician_attendance_affected_orders")
 }

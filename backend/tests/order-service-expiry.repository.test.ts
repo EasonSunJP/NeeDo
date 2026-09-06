@@ -479,3 +479,14 @@ describe("OrderServiceExpiryRepository", () => {
     expect(reportFailure).toHaveBeenCalledTimes(1);
   });
 });
+
+it('publishes work-status only after automatic expiry commits and skips rolled-back candidates',async()=>{
+ const h=createHarness({orders:[makeOrder(41)]});
+ const committed=jest.fn(async()=>{expect(h.orders[0]!.status).toBe('AWAITING_CHECKOUT');expect(h.checkouts.size).toBe(1)});
+ const repository=new OrderServiceExpiryRepository(h.client,undefined,committed);
+ expect(await repository.moveDueSessionsToCheckout({now,batchSize:100})).toBe(1);
+ expect(committed).toHaveBeenCalledWith(41);
+ const failed=createHarness({orders:[makeOrder(42)],failCheckoutForOrderId:42});
+ await new OrderServiceExpiryRepository(failed.client,undefined,committed).moveDueSessionsToCheckout({now,batchSize:100});
+ expect(committed).toHaveBeenCalledTimes(1);
+});

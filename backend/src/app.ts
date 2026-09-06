@@ -1,3 +1,5 @@
+import { createWorkStatusRoutes } from './routes/work-status.routes';
+import type { WorkStatusService } from './services/work-status.service';
 import { createSosRoutes } from "./routes/sos.routes";
 import type { SosService, SosRepositoryPort } from "./services/sos.service";
 import express, { Router, type Express } from "express";
@@ -310,6 +312,7 @@ import {
 } from "./services/observability.service";
 
 export interface AppDependencies {
+  workStatusService?: WorkStatusService;
   redisHealthCheck: () => Promise<RedisHealthStatus>;
   databaseHealthCheck?: () => Promise<DatabaseHealthStatus>;
   metricsService?: ObservabilityMetricsPort;
@@ -770,6 +773,7 @@ export const createApp = (
   mount("shared", createImChatRecordRoutes(config, resolvedDependencies));
   mount("shared", createImMessageTranslationRoutes(config, resolvedDependencies));
   mount("shared", createRealtimeRoutes(config, resolvedDependencies));
+  mount("shared", createWorkStatusRoutes(config, resolvedDependencies));
   mount("shared", createSosRoutes(config, resolvedDependencies));
   mount("shared", createExchangeRoutes(config, resolvedDependencies));
   mount("shared", createExchangeClaimRoutes(config, resolvedDependencies));

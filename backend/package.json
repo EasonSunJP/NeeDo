@@ -101,7 +101,8 @@
     "prisma:status": "prisma migrate status",
     "prisma:seed": "prisma db seed",
     "seed": "prisma db seed",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "check:work-status-flow": "tsx scripts/check-work-status-flow.ts"
   },
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.8.0",

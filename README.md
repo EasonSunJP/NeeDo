@@ -2695,3 +2695,7 @@ ENV_FILE=.env.dev npm --prefix backend run check:sos-flow
 ```
 
 真实数据库检查仅接受已验证的本机开发环境，使用独立测试记录验证权限、并发幂等、审计事务与跨端通知，完成后自动清理。
+
+### Technician work status and attendance
+
+The technician status controls now persist audited work events. Merchant and operations projections use the same formal status. Monthly lateness/early-departure counts open paginated incident timelines with Tokyo date filters. Zero grace is applied to precise server timestamps. See [implementation and acceptance](docs/qa/technician-work-status-20260906/main-integration.md) for migrations, API routes, checks and runtime boundaries.

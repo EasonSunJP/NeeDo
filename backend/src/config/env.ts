@@ -274,6 +274,8 @@ const envSchema = z
     CONTENT_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/content-media"),
     FRIEND_REQUEST_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(60_000),
     FRIEND_REQUEST_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
+    WORK_STATUS_INTERVAL_MS: z.coerce.number().int().min(1000).default(10000),
+    WORK_STATUS_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
     CONTENT_PUBLICATION_INTERVAL_MS: z.coerce.number().int().min(60_000).default(60_000),
     CONTENT_PUBLICATION_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
     CONTENT_PUBLICATION_MAX_ACTIVATION_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(3),

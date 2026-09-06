@@ -1,3 +1,5 @@
+import { recordBookingWorkTransition } from '../domain/work-status-booking';
+import { WorkStatusSession } from './work-status.repository';
 import {
   BookingOrderStatus as DatabaseBookingOrderStatus,
   OrderPerformanceOutcome,
@@ -1969,6 +1971,7 @@ export class BookingRepository implements BookingRepositoryPort {
         data: { status: DatabaseBookingOrderStatus.IN_SERVICE, updatedAt: now }
       });
       if (updated.count !== 1) throw new FulfillmentTransactionAbort();
+      await recordBookingWorkTransition(new WorkStatusSession(tx), {technicianProfileId:current.technicianProfileId,orderId:current.id,shopId:current.shopId,actorId:input.actorUserId,at:now,started:true});
       await tx.orderStatusHistory.create({
         data: {
           bookingOrderId: current.id,
@@ -2229,6 +2232,7 @@ export class BookingRepository implements BookingRepositoryPort {
         data: { status: DatabaseBookingOrderStatus.AWAITING_CHECKOUT, updatedAt: now }
       });
       if (updated.count !== 1) throw new FulfillmentTransactionAbort();
+      await recordBookingWorkTransition(new WorkStatusSession(tx), {technicianProfileId:current.technicianProfileId,orderId:current.id,shopId:current.shopId,actorId:input.actorUserId,at:now,started:false});
       await tx.orderStatusHistory.create({
         data: {
           bookingOrderId: current.id,

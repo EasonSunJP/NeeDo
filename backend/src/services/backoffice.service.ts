@@ -1,3 +1,4 @@
+import type { WorkStatus } from '../domain/work-status';
 import { hash } from "bcryptjs";
 import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import { ERROR_CODES } from "../constants/error-codes";
@@ -551,6 +552,7 @@ export type BackofficeManagedUserDetailRecord = Omit<
 >;
 
 export interface BackofficeTechnicianPayload {
+  workStatus?: WorkStatus;
   id: number;
   userId: number;
   needoId: string;
