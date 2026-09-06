@@ -1,6 +1,4 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
 
 const createdAt = new Date("2026-08-28T00:00:00.000Z");
@@ -40,7 +38,8 @@ const recalledMessage = {
 };
 
 const createFixture = (
-  candidate: typeof activeMessage | typeof recalledMessage | null = activeMessage
+  candidate: typeof activeMessage | typeof recalledMessage | null = activeMessage,
+  senderParticipantCreatedAt: Date = createdAt
 ) => {
   const messageFindFirst = jest.fn(async () => candidate);
   const messageUpdateMany = jest.fn(async () => ({ count: 1 }));
@@ -64,7 +63,7 @@ const createFixture = (
   const conversationUpdate = jest.fn(async () => ({ id: 3 }));
   const transaction = {
     conversationParticipant: {
-      findFirst: jest.fn(async () => ({ createdAt })),
+      findFirst: jest.fn(async () => ({ createdAt: senderParticipantCreatedAt })),
       updateMany: jest.fn(async () => ({ count: 1 }))
     },
     message: {
@@ -240,6 +239,7 @@ describe("RealtimeRepository standard recall", () => {
         conversationId: 3,
         identityId: { not: 7 },
         deletedAt: null,
+        createdAt: { lte: createdAt },
         unreadCount: { gt: 0 },
         OR: [{ lastReadMessageId: null }, { lastReadMessageId: { lt: 41 } }]
       },
@@ -247,12 +247,48 @@ describe("RealtimeRepository standard recall", () => {
     });
   });
 
-  it("keeps traceless recalls out of shared history and conversation last-message queries", () => {
-    const source = readFileSync(resolve(process.cwd(), "src/repositories/realtime.repository.ts"), "utf8");
+  it("builds a shared visible-message query that includes null and standard recalls but excludes traceless", () => {
+    const repository = createFixture().repository as unknown as {
+      availableMessageWhere: (at: Date) => Prisma.MessageWhereInput;
+    };
 
-    expect(source).toContain("recallMode: { not: MessageRecallMode.TRACELESS }");
-    expect(source).toContain("...this.availableMessageWhere(new Date())");
-    expect(source).not.toContain("recallMode: { not: MessageRecallMode.STANDARD }");
+    expect(repository.availableMessageWhere(recalledAt)).toEqual({
+      deletedAt: null,
+      expiredAt: null,
+      AND: [
+        {
+          OR: [{ recallMode: null }, { recallMode: "STANDARD" }]
+        },
+        {
+          OR: [{ expiresAt: null }, { expiresAt: { gt: recalledAt } }]
+        }
+      ]
+    });
+  });
+
+  it("does not decrement an unread counter for a recipient who joined after the recalled message", async () => {
+    const preJoinMessage = {
+      ...activeMessage,
+      createdAt: new Date(createdAt.getTime() - 1_000)
+    };
+    const fixture = createFixture(
+      preJoinMessage,
+      new Date(preJoinMessage.createdAt.getTime() - 1_000)
+    );
+
+    await fixture.repository.recallMessage({
+      conversationId: 3,
+      messageId: 41,
+      senderUserId: 7,
+      mode: "traceless",
+      now: recalledAt
+    });
+
+    expect(fixture.conversationParticipantUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ createdAt: { lte: preJoinMessage.createdAt } })
+      })
+    );
   });
 
   it("rejects one millisecond after the deadline without writes", async () => {

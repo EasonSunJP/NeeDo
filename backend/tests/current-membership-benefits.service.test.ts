@@ -69,13 +69,14 @@ const membership = (tierCode: "free" | "gold"): ResolvedPlatformMembership => ({
 
 const repository = (
   current: ResolvedPlatformMembership | null,
-  free = membership("free")
+  free = membership("free"),
+  hasActiveCustomerProfile = true
 ): jest.Mocked<PlatformMembershipRepositoryPort> => ({
   listTiersForAdministration: jest.fn(),
   listBenefitsForAdministration: jest.fn(),
   hasActiveCustomerProfile: jest.fn(async (userId: number) => {
     void userId;
-    return true;
+    return hasActiveCustomerProfile;
   }),
   hasVerifiedEkycAt: jest.fn(async (userId: number, occurredAt: Date) => {
     void userId;
@@ -176,4 +177,33 @@ describe("current membership benefits", () => {
       await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).resolves.toBe(expected);
     }
   );
+
+  it("returns standard-only eligibility for a legitimate non-customer without resolving membership", async () => {
+    const repo = repository(membership("gold"), membership("free"), false);
+    const service = new PlatformMembershipService(repo, undefined, () => now);
+
+    await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).resolves.toBe(false);
+    expect(repo.findActiveEntitlementAt).not.toHaveBeenCalled();
+    expect(repo.findPublishedTierAt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["benefit catalog is absent", (resolved: ResolvedPlatformMembership) => {
+      delete resolved.benefitCatalog;
+    }],
+    ["traceless recall entry is absent", (resolved: ResolvedPlatformMembership) => {
+      resolved.benefitCatalog = resolved.benefitCatalog!.filter(
+        (item) => item.code !== "traceless_recall"
+      );
+    }]
+  ] as const)("fails closed with a stable internal error when %s", async (_scenario, mutate) => {
+    const resolved = membership("gold");
+    mutate(resolved);
+    const service = new PlatformMembershipService(repository(resolved), undefined, () => now);
+
+    await expect(service.hasEffectiveBenefitAt(41, "traceless_recall", now)).rejects.toMatchObject({
+      message: "error.platform_membership.benefit_catalog_unavailable",
+      statusCode: 500
+    });
+  });
 });

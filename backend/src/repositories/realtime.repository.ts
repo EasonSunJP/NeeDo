@@ -1930,6 +1930,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             conversationId: input.conversationId,
             identityId: { not: input.senderIdentityId ?? input.senderUserId },
             deletedAt: null,
+            createdAt: { lte: candidate.createdAt },
             unreadCount: { gt: 0 },
             OR: [{ lastReadMessageId: null }, { lastReadMessageId: { lt: input.messageId } }]
           },
@@ -5252,8 +5253,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return {
       deletedAt: null,
       expiredAt: null,
-      recallMode: { not: MessageRecallMode.TRACELESS },
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+      AND: [
+        {
+          OR: [{ recallMode: null }, { recallMode: MessageRecallMode.STANDARD }]
+        },
+        {
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+        }
+      ]
     };
   }
 

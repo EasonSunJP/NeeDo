@@ -194,13 +194,29 @@ export class PlatformMembershipService {
     benefitCode: "traceless_recall",
     occurredAt: Date
   ): Promise<boolean> {
+    if (!(await this.repository.hasActiveCustomerProfile(userId))) {
+      return false;
+    }
     const membership = await this.resolveMembershipAt(userId, occurredAt);
+    if (!membership.benefitCatalog) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.platform_membership.benefit_catalog_unavailable",
+        statusCode: 500
+      });
+    }
     const benefit = membership.benefitCatalog?.find((item) => item.code === benefitCode);
-    return Boolean(
-      benefit &&
-        benefit.configuredEnabled &&
-        benefit.globallyEnabled &&
-        this.benefitCapabilities.resolve(benefitCode) === "available"
+    if (!benefit) {
+      throw new AppError({
+        code: ERROR_CODES.INTERNAL,
+        message: "error.platform_membership.benefit_catalog_unavailable",
+        statusCode: 500
+      });
+    }
+    return (
+      benefit.configuredEnabled &&
+      benefit.globallyEnabled &&
+      this.benefitCapabilities.resolve(benefitCode) === "available"
     );
   }
 

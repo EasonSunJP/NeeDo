@@ -90,3 +90,53 @@
 - No database migration was applied; this task relies on the existing `TRACELESS` enum/schema groundwork and intentionally does not modify it.
 - `backend/src/app.ts` already mounted `createPlatformSettingsRoutes` without its import and dependency types, which prevented the required API/OpenAPI suites from compiling. I added the missing import and injectable dependency declarations in the same app-wiring file; this is a compile repair, not a behavior expansion.
 - Real browser cross-account validation, database migration application, staging, and deployment remain outside this task.
+
+## Review follow-up — 2026-09-06
+
+### Corrections
+
+- Replaced nullable enum `not TRACELESS` filtering with explicit `(recallMode IS NULL OR recallMode = STANDARD)` visibility alongside the existing expiry predicate. This keeps active and standard-tombstone rows visible while excluding traceless rows in both history and last-message queries.
+- Added the recipient join-time boundary to the traceless unread decrement: only participants present at or before the recalled message's creation time can be decremented.
+- Made missing benefit catalogs and missing `traceless_recall` catalog entries stable internal failures (`error.platform_membership.benefit_catalog_unavailable`) rather than silently disabled benefits.
+- Made a missing active customer profile a valid non-member outcome (`false`) before membership resolution. No broad catch is used, so repository/catalog/infrastructure failures still reject before the realtime repository mutation.
+
+### RED evidence
+
+```sh
+npm --prefix backend test -- --runTestsByPath tests/current-membership-benefits.service.test.ts tests/im-standard-recall.repository.test.ts --runInBand
+```
+
+Result: FAIL as expected — the query still contained `recallMode: { not: "TRACELESS" }`, the unread decrement lacked `createdAt <= candidate.createdAt`, non-customer eligibility rejected with `error.platform_membership.customer_required`, and absent catalog/entry cases resolved `false`.
+
+### GREEN evidence
+
+```sh
+npm --prefix backend test -- --runTestsByPath tests/current-membership-benefits.service.test.ts tests/im-standard-recall.repository.test.ts --runInBand
+```
+
+Result: PASS — 2 suites, 16 tests.
+
+```sh
+npm --prefix backend test -- --runTestsByPath tests/current-membership-benefits.service.test.ts tests/realtime-service.test.ts tests/im-standard-recall.repository.test.ts tests/realtime-api.test.ts tests/openapi.test.ts --runInBand
+```
+
+Result: PASS — 5 suites, 109 tests.
+
+```sh
+npm --prefix backend run build
+```
+
+Result: PASS.
+
+```sh
+npm --prefix backend run lint
+```
+
+Result: PASS.
+
+### Follow-up self-review
+
+- The API request remains client-standard-only; the service still selects the terminal mode.
+- `RealtimeService` resolves membership before `repository.recallMessage`; its existing resolution-failure test proves the repository mutation is not reached.
+- The predicate test invokes the shared repository query builder directly instead of matching source text, and asserts null/standard/traceless and expiry composition.
+- The platform-settings app-wiring repair from the first Task 1 commit is retained locally for this branch but is expected to be dropped during rebase because newer main includes richer wiring.
