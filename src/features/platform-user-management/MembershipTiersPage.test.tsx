@@ -28,6 +28,11 @@ describe("fixed platform membership tier editor", () => {
     expect(editorSource).toContain("有效期");
   });
 
+  it("uses the operations switch so enabled benefits inherit the admin accent", () => {
+    expect(editorSource).toContain("<AdminToggleSwitch");
+    expect(editorSource).not.toContain("<ToggleSwitch");
+  });
+
   it("loads formal benefit copy and does not render raw benefit fields", () => {
     expect(pageSource).toContain("platformUserManagementApi.listBenefits");
     expect(pageSource).toContain("benefits={benefits}");
