@@ -17989,6 +17989,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         parameters: [
           {
+            name: "roleId",
+            in: "query",
+            required: false,
+            description: "Filter users by an active assignment to this role",
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
             name: "isTestAccount",
             in: "query",
             required: false,

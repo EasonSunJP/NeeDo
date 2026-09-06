@@ -664,23 +664,34 @@ export const createStep06Fixture = async (dependencyOverrides: Partial<AppDepend
       async ({
         page,
         pageSize,
-        isTestAccount
+        isTestAccount,
+        roleId
       }: {
         page: number;
         pageSize: number;
         isTestAccount?: boolean;
+        roleId?: number;
       }) => ({
         list: users
           .filter(
             (user) =>
               user.deletedAt === null &&
-              (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount)
+              (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount) &&
+              (!roleId ||
+                user.userRoles.some(
+                  (assignment) =>
+                    assignment.roleId === roleId && assignment.deletedAt === null
+                ))
           )
           .slice((page - 1) * pageSize, page * pageSize),
         total: users.filter(
           (user) =>
             user.deletedAt === null &&
-            (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount)
+            (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount) &&
+            (!roleId ||
+              user.userRoles.some(
+                (assignment) => assignment.roleId === roleId && assignment.deletedAt === null
+              ))
         ).length,
         page,
         page_size: pageSize
