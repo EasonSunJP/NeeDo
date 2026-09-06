@@ -80,7 +80,7 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
 
   public request(input: RequestRefundCommand): Promise<OrderRefundMutationResult> {
     return this.mutate(async (tx) => {
-      await this.lockOrder(tx, input.orderId);
+      if (!(await this.lockOrder(tx, input.orderId))) return { kind: "not_found" };
       const replay = await this.replayCaseEvent(tx, input.idempotencyKey, input.fingerprint);
       if (replay) return replay;
       const order = await tx.bookingOrder.findFirst({
@@ -110,12 +110,12 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
       await this.event(tx, created.id, order.id, caseAction("request"), null, created.status, input, { reason: input.payload.reason });
       await this.audit(tx, input, created.id, { refundAmountJpy: created.refundAmountJpy, currency: created.currency, fromStatus: null, toStatus: created.status, previousVersion: 0, nextVersion: created.version });
       return { kind: "created", value: await this.view(tx, created) };
-    }, () => this.recoverCaseP2002(input, `booking:${input.orderId}`));
+    }, () => this.recoverCaseP2002(input, `booking:${input.orderId}`), ["order_refund_cases_active_key", "order_refund_case_events_idempotency_key", "active_key", "idempotency_key"]);
   }
 
   public merchantDecision(input: MerchantRefundDecisionCommand): Promise<OrderRefundMutationResult> {
     return this.mutate(async (tx) => {
-      await this.lockOrder(tx, input.orderId);
+      if (!(await this.lockOrder(tx, input.orderId))) return { kind: "not_found" };
       const found = await this.lockCaseForOrder(tx, input.casePublicId, input.orderId);
       if (!found) return { kind: "not_found" };
       const replay = await this.replayCaseEvent(tx, input.idempotencyKey, input.fingerprint);
@@ -137,12 +137,12 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
       await this.audit(tx, input, found.id, { refundAmountJpy: found.refundAmountJpy, currency: found.currency, fromStatus: found.status, toStatus: updated.status, previousVersion: found.version, nextVersion: updated.version, responsibility: "shop" });
       await this.notify(tx, found.customerUserId, found.requestedByIdentityId, input, "order_refund.merchant_decision.title", "order_refund.merchant_decision.body", { casePublicId: updated.publicId, status: this.status(updated.status) });
       return { kind: "updated", value: await this.view(tx, updated) };
-    }, () => this.recoverCaseP2002(input));
+    }, () => this.recoverCaseP2002(input), ["order_refund_case_events_idempotency_key", "idempotency_key"]);
   }
 
   public openComplaint(input: OpenRefundComplaintCommand): Promise<OrderRefundMutationResult> {
     return this.mutate(async (tx) => {
-      await this.lockOrder(tx, input.orderId);
+      if (!(await this.lockOrder(tx, input.orderId))) return { kind: "not_found" };
       const found = await this.lockCaseForOrder(tx, input.casePublicId, input.orderId);
       if (!found) return { kind: "not_found" };
       const replay = await this.replayCaseEvent(tx, input.idempotencyKey, input.fingerprint);
@@ -171,7 +171,7 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
         await this.notify(tx, found.merchantDecidedByUserId, found.merchantDecidedByIdentityId, input, "order_refund.complaint.title", "order_refund.complaint.body", { casePublicId: updated.publicId });
       }
       return { kind: "updated", value: await this.view(tx, updated) };
-    }, () => this.recoverComplaintP2002(input));
+    }, () => this.recoverComplaintP2002(input), ["order_refund_disputes_active_key", "order_refund_case_events_idempotency_key", "active_key", "idempotency_key"]);
   }
 
   public async resolveDispute(input: ResolveRefundDisputeCommand): Promise<OrderRefundMutationResult> {
@@ -184,7 +184,7 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
     if (!target) return { kind: "not_found" };
     return this.mutate(async (tx) => {
       // Keep every multi-row command in the same deterministic order.
-      await this.lockOrder(tx, target.bookingOrderId);
+      if (!(await this.lockOrder(tx, target.bookingOrderId))) return { kind: "not_found" };
       await this.lockCase(tx, target.orderRefundCaseId);
       await this.lockDispute(tx, target.id);
       const replay = await this.replayDisputeRevision(tx, input.idempotencyKey, input.fingerprint);
@@ -193,6 +193,7 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
         where: { id: target.id, deletedAt: null }, select: { id: true, orderRefundCaseId: true, bookingOrderId: true, status: true, version: true }
       });
       if (!dispute) return { kind: "not_found" };
+      if (dispute.bookingOrderId !== target.bookingOrderId || dispute.orderRefundCaseId !== target.orderRefundCaseId) return { kind: "not_found" };
       const caseRow = await tx.orderRefundCase.findFirst({ where: { id: dispute.orderRefundCaseId, deletedAt: null }, include: refundCaseInclude });
       if (!caseRow) return { kind: "not_found" };
       if (dispute.version !== input.expectedVersion) return { kind: "version_conflict", current: await this.view(tx, caseRow) };
@@ -221,12 +222,12 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
       await this.audit(tx, input, dispute.id, { refundAmountJpy: caseRow.refundAmountJpy, currency: caseRow.currency, fromStatus: caseRow.status, toStatus: updated.status, previousCaseVersion: caseRow.version, nextCaseVersion: updated.version, previousDisputeVersion: dispute.version, nextDisputeVersion: nextVersion, resolution: input.resolution });
       await this.notify(tx, caseRow.customerUserId, caseRow.requestedByIdentityId, input, "order_refund.dispute_resolved.title", "order_refund.dispute_resolved.body", { casePublicId: updated.publicId, resolution: input.resolution });
       return { kind: "updated", value: await this.view(tx, updated) };
-    }, () => this.recoverDisputeP2002(input));
+    }, () => this.recoverDisputeP2002(input), ["order_refund_dispute_revisions_idempotency_key", "order_refund_case_events_idempotency_key", "idempotency_key"]);
   }
 
   public submitEvidence(input: SubmitRefundEvidenceCommand): Promise<OrderRefundMutationResult> {
     return this.mutate(async (tx) => {
-      await this.lockOrder(tx, input.orderId);
+      if (!(await this.lockOrder(tx, input.orderId))) return { kind: "not_found" };
       const found = await this.lockCaseForOrder(tx, input.casePublicId, input.orderId);
       if (!found) return { kind: "not_found" };
       const replay = await this.replayCaseEvent(tx, input.idempotencyKey, input.fingerprint);
@@ -243,12 +244,12 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
       await this.audit(tx, input, found.id, { refundAmountJpy: found.refundAmountJpy, currency: found.currency, fromStatus: found.status, toStatus: updated.status, previousVersion: found.version, nextVersion: updated.version, refundReference: input.payload.reference });
       await this.notify(tx, found.customerUserId, found.requestedByIdentityId, input, "order_refund.evidence_submitted.title", "order_refund.evidence_submitted.body", { casePublicId: updated.publicId });
       return { kind: "updated", value: await this.view(tx, updated) };
-    }, () => this.recoverCaseP2002(input));
+    }, () => this.recoverCaseP2002(input), ["order_refund_case_events_idempotency_key", "idempotency_key"]);
   }
 
   public confirmCustomerReceipt(input: ConfirmRefundReceiptCommand): Promise<OrderRefundMutationResult> {
     return this.mutate(async (tx) => {
-      await this.lockOrder(tx, input.orderId);
+      if (!(await this.lockOrder(tx, input.orderId))) return { kind: "not_found" };
       const found = await this.lockCaseForOrder(tx, input.casePublicId, input.orderId);
       if (!found) return { kind: "not_found" };
       const replay = await this.replayCaseEvent(tx, input.idempotencyKey, input.fingerprint);
@@ -279,7 +280,7 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
         await this.notify(tx, found.merchantDecidedByUserId, found.merchantDecidedByIdentityId, input, "order_refund.customer_confirmed.title", "order_refund.customer_confirmed.body", { casePublicId: updated.publicId });
       }
       return { kind: "updated", value: await this.view(tx, updated) };
-    }, () => this.recoverCaseP2002(input));
+    }, () => this.recoverCaseP2002(input), ["order_refund_case_events_idempotency_key", "idempotency_key"]);
   }
 
   public async listDisputes(input: ListRefundDisputesInput): Promise<PaginatedRefundDisputes> {
@@ -291,12 +292,12 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
     return { list: await Promise.all(rows.map((row) => this.view(this.client, row.refundCase))), total, page: input.page, page_size: input.page_size };
   }
 
-  private async mutate(operation: (tx: Tx) => Promise<OrderRefundMutationResult>, recoverP2002?: () => Promise<OrderRefundMutationResult | null>): Promise<OrderRefundMutationResult> {
+  private async mutate(operation: (tx: Tx) => Promise<OrderRefundMutationResult>, recoverP2002?: () => Promise<OrderRefundMutationResult | null>, allowedP2002Targets: readonly string[] = []): Promise<OrderRefundMutationResult> {
     try {
       return await runWithTransactionConflictRetry(() => this.client.$transaction((tx) => operation(tx)));
     } catch (error) {
       if (error instanceof RefundMutationAbort) return error.result;
-      if (recoverP2002 && this.isRelevantP2002(error)) {
+      if (recoverP2002 && this.isRelevantP2002(error, allowedP2002Targets)) {
         const recovered = await recoverP2002();
         if (recovered) return recovered;
       }
@@ -304,7 +305,7 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
     }
   }
 
-  private async lockOrder(tx: Tx, id: number): Promise<void> { await tx.$queryRaw(Prisma.sql`SELECT id FROM booking_orders WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`); }
+  private async lockOrder(tx: Tx, id: number): Promise<boolean> { return (await tx.$queryRaw<Array<{ id: number }>>(Prisma.sql`SELECT id FROM booking_orders WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`)).length === 1; }
   private async lockCase(tx: Tx, id: number): Promise<void> { await tx.$queryRaw(Prisma.sql`SELECT id FROM order_refund_cases WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`); }
   private async lockDispute(tx: Tx, id: number): Promise<void> { await tx.$queryRaw(Prisma.sql`SELECT id FROM order_refund_disputes WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`); }
 
@@ -360,12 +361,15 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
     return rewards.map((reward) => ({ ...reward, claimantWallet: byWallet.get(reward.claimantWalletId) ?? null, transactions: byReward.get(reward.id) ?? [] }));
   }
 
-  private isRelevantP2002(error: unknown): boolean {
+  private isRelevantP2002(error: unknown, allowedTargets: readonly string[]): boolean {
     if (!error || typeof error !== "object" || (error as { code?: unknown }).code !== "P2002") return false;
     const meta = (error as { meta?: { target?: unknown; driverAdapterError?: { cause?: { constraint?: { index?: unknown; fields?: unknown } } } } }).meta;
     return [meta?.target, meta?.driverAdapterError?.cause?.constraint?.index, meta?.driverAdapterError?.cause?.constraint?.fields]
       .flatMap((value) => Array.isArray(value) ? value : [value])
-      .some((value) => /order_refund_(case_events.*idempotency|dispute_revisions.*idempotency|cases.*active_key|disputes.*active_key)/iu.test(String(value ?? "")));
+      .some((value) => {
+        const normalized = String(value ?? "").toLowerCase();
+        return allowedTargets.some((allowed) => normalized.includes(allowed));
+      });
   }
 
   private async recoverCaseP2002(input: { idempotencyKey: string; fingerprint: string }, activeKey?: string): Promise<OrderRefundMutationResult | null> {
@@ -402,7 +406,7 @@ export class OrderRefundCaseRepository implements OrderRefundCaseRepositoryPort 
   }
 
   private async view(client: Pick<PrismaClient, "affiliateReward"> | Tx, row: RefundCaseRecord): Promise<OrderRefundCaseView> {
-    const reward = await client.affiliateReward.findFirst({ where: { bookingOrderId: row.bookingOrderId, deletedAt: null }, select: { status: true, rewardNdp: true } });
+    const reward = await client.affiliateReward.findFirst({ where: { bookingOrderId: row.bookingOrderId, deletedAt: null }, orderBy: { id: "asc" }, select: { status: true, rewardNdp: true } });
     const dispute = row.disputes[0] ?? null;
     return {
       publicId: row.publicId, orderNo: row.bookingOrder.orderNo, shop: { shopNo: row.shop.shopNo, name: row.shop.name },
