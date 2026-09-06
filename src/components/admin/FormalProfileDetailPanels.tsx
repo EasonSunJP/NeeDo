@@ -1,5 +1,7 @@
 import { WorkStatusMetrics } from "../../features/technician-work-status/WorkStatusMetrics";
-import { WorkTimeline } from "../../features/technician-work-status/WorkTimeline";
+import { AccountUserLog } from "../../features/platform-user-management/AccountUserLog";
+import { UserPublishedPosts } from "../../features/platform-user-management/UserPublishedPosts";
+import "../../features/platform-user-management/userLogTranslations";
 import type { WorkStatusTarget } from "../../features/technician-work-status/api";
 import {
   useId,
@@ -49,9 +51,10 @@ type TechnicianDetailTab =
   | "排班偏好"
   | "薪酬设置"
   | "权限与账号"
-  | "时间线";
+  | "时间线"
+  | "动态";
 
-export type CustomerDetailTab = "基础资料" | "会员等级" | "预约与消费" | "评价" | "权限与账号" | "用户LOG";
+export type CustomerDetailTab = "基础资料" | "会员等级" | "预约与消费" | "评价" | "权限与账号" | "用户LOG" | "动态";
 
 export type FormalLocalization = {
   language: Language;
@@ -72,10 +75,11 @@ const technicianTabs: TechnicianDetailTab[] = [
   "排班偏好",
   "薪酬设置",
   "权限与账号",
-  "时间线"
+  "时间线",
+  "动态"
 ];
 
-const customerTabs: CustomerDetailTab[] = ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG"];
+const customerTabs: CustomerDetailTab[] = ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG", "动态"];
 
 export function resolveFormalTabKeyboardIndex(
   key: string,
@@ -173,13 +177,14 @@ export function FormalTechnicianDetailPanel({
       />
 
       <FormalTabPanels active={activeTab} idPrefix={panelId} items={technicianTabs}>
-        {(tab) => renderTechnicianTab(tab, detail, editContent, localization, { scope: workStatusScope, technicianProfileId: detail.id })}
+        {(tab) => tab === "动态" ? (activeTab === tab ? <UserPublishedPosts key={detail.userId} account={{ scope: workStatusScope === "backoffice" ? "operations" : "merchant", subject: "technicians", id: detail.id }} /> : null) : tab === "时间线" ? (activeTab === tab ? <AccountUserLog key={detail.userId} scope={workStatusScope === "backoffice" ? "operations" : "merchant"} technicianId={detail.id} /> : null) : renderTechnicianTab(tab, detail, editContent, localization, { scope: workStatusScope, technicianProfileId: detail.id })}
       </FormalTabPanels>
     </article>
   );
 }
 
 export function FormalCustomerDetailPanel({
+  directoryScope = "operations",
   actionContent,
   detail,
   editContent,
@@ -193,6 +198,7 @@ export function FormalCustomerDetailPanel({
   timelineLoading = false,
 }: {
   actionContent?: ReactNode;
+  directoryScope?: "operations" | "merchant";
   detail: BackofficeCustomerDetailPayload;
   editContent?: ReactNode;
   membershipEditContent?: ReactNode;
@@ -244,7 +250,7 @@ export function FormalCustomerDetailPanel({
 
       <FormalTabPanels active={activeTab} idPrefix={panelId} items={customerTabs}>
         {(tab) =>
-          renderCustomerTab(
+          tab === "动态" ? (activeTab === tab ? <UserPublishedPosts key={detail.userId} account={{ scope: directoryScope, subject: "users", id: detail.userId }} /> : null) : renderCustomerTab(
             tab,
             detail,
             editContent,
@@ -269,6 +275,7 @@ export function FormalCustomerDetailPanel({
 }
 
 export function FormalManagedUserDetailPanel({
+  directoryScope = "operations",
   actionContent,
   detail,
   initialTab = "基础资料",
@@ -279,6 +286,7 @@ export function FormalManagedUserDetailPanel({
   activityContent
 }: {
   actionContent?: ReactNode;
+  directoryScope?: "operations" | "merchant";
   detail: PlatformManagedUserDetail;
   initialTab?: CustomerDetailTab;
   membershipActions?: { tier?: ReactNode; multiplier?: ReactNode };
@@ -329,7 +337,7 @@ export function FormalManagedUserDetailPanel({
 
       <FormalTabs active={activeTab} idPrefix={panelId} items={customerTabs} localization={localization} onChange={setActiveTab} />
       <FormalTabPanels active={activeTab} idPrefix={panelId} items={customerTabs}>
-        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent, accountContent, activityContent, membershipActions)}
+        {(tab) => tab === "动态" ? (activeTab === tab ? <UserPublishedPosts key={detail.id} account={{ scope: directoryScope, subject: "users", id: detail.id }} /> : null) : renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent, accountContent, activityContent, membershipActions)}
       </FormalTabPanels>
     </article>
   );
@@ -668,7 +676,7 @@ function renderTechnicianTab(
     return <AccountAccessCards account={detail.account} localization={localization} />;
   }
 
-  return <WorkTimeline target={workStatusTarget} />;
+  return null;
 }
 
 function renderCustomerTab(
@@ -1169,6 +1177,9 @@ function AuditMetadata({
 
 function auditActionMessage(action: string, localization: FormalLocalization) {
   const messages: Record<string, string> = {
+    "account.created": "账号已生成",
+    "auth.logout": "账号已退出登录",
+    "auth.login": "账号已登录",
     "customer.created": "用户档案已创建",
     "profile.created": "用户档案已创建",
     "customer.profile.updated": "用户基础资料已更新",
@@ -1300,6 +1311,9 @@ function identityTypeLabel(type: string, localization: FormalLocalization) {
 
 function auditAction(action: string, localization: FormalLocalization): { label: string; tone: ContactEventTimelineEntry["tone"] } {
   const labels: Record<string, string> = {
+    "account.created": "账号生成",
+    "auth.logout": "退出登录",
+    "auth.login": "登录",
     "technician.created": "技师档案创建",
     "technician.approved": "技师审核通过",
     "technician.profile.updated": "技师资料更新",

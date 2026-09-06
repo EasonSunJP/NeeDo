@@ -49,7 +49,7 @@ import { SocialEmptyState, SocialPostItem } from "../../features/social/componen
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
-import type { Language } from "../../i18n/translations";
+import { translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
 import { buildStoreCheckoutRoute } from "../../lib/storeBookingRoute";
@@ -4255,12 +4255,14 @@ function buildFormalStorePresentation(shop: CoreShopDetail, store: Store): Store
   };
 }
 
-function UnifiedFormalStoreDetail({
+export function UnifiedFormalStoreDetail({
   scope,
+  embedded = false,
   shopId
 }: {
   scope: "user" | "merchant";
   shopId: number | string;
+  embedded?: boolean;
 }) {
   const { language } = useI18n();
   const [revision, setRevision] = useState(0);
@@ -4270,15 +4272,23 @@ function UnifiedFormalStoreDetail({
   );
 
   if (query.loading) {
+    if (embedded) return <p role="status">{translateText("正在加载正式店铺资料", language)}</p>;
     return <StoreDetailStatus description="正在同步数据库正式资料。" scope={scope} title="正在加载店铺资料" />;
   }
   if (query.error || !query.data) {
     const unavailableCopy = formalStoreLinkCopy[language];
+    if (embedded) return (
+      <EmptyStatePanel
+        action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{translateText("重新加载", language)}</PrimaryButton>}
+        caption={query.error ?? unavailableCopy.description}
+        title={unavailableCopy.title}
+      />
+    );
     return (
       <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "merchant" ? [] : undefined}>
         <AppTopBar subtitle="真实 API 数据源" title="店铺详情" />
         <EmptyStatePanel
-          action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>重新加载</PrimaryButton>}
+          action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{translateText("重新加载", language)}</PrimaryButton>}
           caption={query.error ?? unavailableCopy.description}
           title={unavailableCopy.title}
         />
@@ -4294,6 +4304,7 @@ function UnifiedFormalStoreDetail({
 
   return (
     <StoreDetailExperience
+      embedded={embedded}
       formalApiOnly={true}
       hideUnavailableReviewDetails
       presentationOverride={buildFormalStorePresentation(query.data, store)}

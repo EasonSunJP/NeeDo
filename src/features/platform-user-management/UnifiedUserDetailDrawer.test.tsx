@@ -8,6 +8,7 @@ import { UnifiedUserDetailDrawer } from "./UnifiedUserDetailDrawer";
 
 const state = vi.hoisted(() => ({
   getUser: vi.fn(),
+  listAccountPosts: vi.fn(async () => ({ list: [], total: 0, page: 1, page_size: 10 })),
   listReceivedReviews: vi.fn(),
   amendReview: vi.fn(),
   listUsage: vi.fn(),
@@ -93,12 +94,24 @@ describe("UnifiedUserDetailDrawer", () => {
     act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope={scope} userId={41} />));
     await waitForText(container, "Mia");
     expect(state.getUser).toHaveBeenCalledWith(scope, 41);
-    for (const tab of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG"]) {
+    for (const tab of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG", "动态"]) {
       expect([...container.querySelectorAll('[role="tab"]')].some((node) => node.textContent === tab)).toBe(true);
     }
     expect(container.textContent).toContain("900");
     expect(container.textContent).toContain("4.8");
     expect(container.textContent).toContain("已开启");
+  });
+
+  it("renders the server-projected account origin and queries dates on the server", async () => {
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 1, page: 1, page_size: 10, list: [{ id: "account-created-41", action: "account.created", actorName: "Mia", actorAvatarUrl: null, createdAt: detail.createdAt, metadata: null }] } });
+    await act(async () => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "账号生成");
+    const log = container.querySelector(".admin-event-timeline")!;
+    expect(log.textContent).toContain("账号已生成");
+    expect(log.textContent).toContain("2026");
+    expect(log.textContent).not.toContain("尚未接入正式数据");
+    await act(async () => [...log.closest("section[aria-busy]")!.querySelectorAll("button")].find((button) => button.textContent === "近7天")!.click());
+    expect(state.getUser).toHaveBeenLastCalledWith("operations", 41, expect.objectContaining({ audit_page: 1, audit_from: expect.any(String), audit_to: expect.any(String) }));
   });
 
   it("paginates actual user activity and resets to the first page at 50 rows", async () => {
@@ -198,7 +211,7 @@ describe("UnifiedUserDetailDrawer", () => {
     expect(container.textContent).not.toContain("backoffice:users:read");
   });
 
-  it("shows partner marks only inside the account tab across all six tabs", async () => {
+  it("shows partner marks only inside the account tab across all seven tabs", async () => {
     act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
     await waitForText(container, "平台合作方标记");
     const headings = [...container.querySelectorAll("h3")].filter((node) => node.textContent === "平台合作方标记");

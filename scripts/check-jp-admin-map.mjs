@@ -27,6 +27,21 @@ const country = await readJson(path.join(ROOT, "country.json"));
 if (country.level !== "admin1" || country.parentCode !== "JP" || country.regions.length !== 47) throw new Error("Country asset must contain 47 prefectures");
 if (new Set(country.regions.map((region) => region.code)).size !== 47) throw new Error("Country asset contains duplicate prefecture codes");
 if (country.regions.some((region) => !region.path.startsWith("M"))) throw new Error("Invalid country SVG path");
+const searchIndex = await readJson(path.join(ROOT, "search-index.json"));
+if (searchIndex.countryCode !== "JP" || searchIndex.sourceVersion !== "N03-20260101") throw new Error("Unexpected search index source version");
+const admin1Regions = searchIndex.regions.filter((region) => region.level === "admin1");
+const admin2Regions = searchIndex.regions.filter((region) => region.level === "admin2");
+if (searchIndex.regions.length !== 1965 || admin1Regions.length !== 47 || admin2Regions.length !== 1918) throw new Error("Search index must contain 47 prefectures and 1918 municipalities");
+if (new Set(searchIndex.regions.map((region) => region.code)).size !== searchIndex.regions.length) throw new Error("Search index contains duplicate region codes");
+const indexedRegions = new Map(searchIndex.regions.map((region) => [region.code, region]));
+for (const region of searchIndex.regions) {
+  const parent = region.level === "admin2" ? indexedRegions.get(region.parentCode) : null;
+  if (region.level === "admin1" && region.parentCode !== "JP") throw new Error(`Invalid parent for ${region.code}`);
+  if (region.level === "admin2" && (!parent || parent.level !== "admin1")) throw new Error(`Broken parent path for ${region.code}`);
+  const expectedBreadcrumb = ["日本", ...(parent ? [parent.nameJa] : []), region.nameJa];
+  if (region.breadcrumbJa.join("/") !== expectedBreadcrumb.join("/")) throw new Error(`Broken breadcrumb for ${region.code}`);
+}
+if (indexedRegions.get("13104")?.breadcrumbJa.join("/") !== "日本/東京都/新宿区") throw new Error("Unexpected Shinjuku breadcrumb");
 let municipalityCount = 0;
 for (let index = 1; index <= 47; index += 1) {
   const admin1Code = String(index).padStart(2, "0");

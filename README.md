@@ -2,6 +2,8 @@
 
 面向日本市场的本地生活服务平台与商家管理系统，覆盖上门服务、门店预约、餐饮预约和 SaaS 后台运营。
 
+分组成员、后台账号 LOG 与动态插页的接口及本地验证记录见 [Step 12 抽屉改进](docs/superpowers/plans/2026-09-07-operations-member-create.md)。
+
 ## Run
 
 ```bash
@@ -38,6 +40,8 @@ npm run dev:frontend
 - Chrome 直接双击打开 `dist/*.html` 时，`file://` 模式通常不会正常执行 Vite 的 ES module 入口，表现就是白屏、进入页/聊天页/错误页背景都像“没了”。请改用 `npm run dev` 或 `npm run preview` 通过本地 HTTP 服务访问。
 
 ## Build
+
+运营排行服务类型筛选、完整详情、时间/城市查询和 10/50/100 分页的本地 main 集成范围与验收命令见 [排行集成记录](docs/qa/2026-09-07-ranking-main-integration.md)。
 
 ```bash
 npm run build
@@ -2102,6 +2106,8 @@ npm test
 
 ## Backoffice IA Refactor
 
+店铺列表的详情抽屉包含「店铺 SaaS 情报」和「店铺展示」；展示复用用户端正式店铺组件，集团账户可选择旗下店铺。实现与验证说明见 [店铺详情抽屉](docs/shop-detail-drawer-tabs.md)。
+
 2026-04 这一轮对后台职责边界做了重构，目标是把平台运营能力和单店经营能力拆清楚。
 
 ### 调整原则
@@ -2163,6 +2169,8 @@ Home booking codes must resolve to the official Japanese prefecture/municipality
 历史 Booking 地点脚本默认 preview；apply 必须追加 `--apply --confirm-count=<preview-planned-count>`，恢复使用 `--restore-run=<run-id>`。最终本地 checker 必须同时显式传入 `FORMAL_BACKEND_ENV_FILE`、`LIVE_DASHBOARD_CHECK_ROLLBACK=true` 与本次运行唯一、可复现的小写 `LIVE_DASHBOARD_CHECK_RUN_ID`：`FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK=true LIVE_DASHBOARD_CHECK_RUN_ID=task8-local-a npm --prefix backend run check:live-dashboard`。microstep A contains no live-screen page；本地 commit、remote push、deployment、migration application、形式化 DB/Redis 验收与页面验收是互相独立的事实，本步骤不执行 push、部署或生产 migration。
 
 运营实时数据大屏 microstep B 已增加受保护的 `/pf-admin.html#/admin/live-screen` 独立页面，通过正式 snapshot/SSE 展示 JP、都道府县与市区町村范围数据，并使用本地版本化 N03 2026 地图资源。入口从现有运营数据大盘以 `noopener,noreferrer` 新标签页打开，不传递 token；页面支持日间/深色运营主题、全屏、低频对账、自动滚动暂停、地图键盘下钻和正式区域选择回退。完整的本地 migration、MySQL/Redis checker、浏览器与自动化证据见 [运营实时数据大屏本地验收记录](docs/live-dashboard-acceptance.md)。该记录不代表远端 push、部署或生产 migration。
+
+2026-09-07 响应式补充已完成本地验收：桌面流式单屏、手机竖屏隐藏地图但保留搜索/级联选择、全国本地搜索、可读引导线标签、缩放拖动还原及独立日期轴；20 个桌面与 3 个手机样本、正式 API 请求频率和密集区域证据见上述验收记录的“响应式地图与日期轴复验”。北海道等容量超限区域采用可访问的渐进名称披露，完整区域路径和搜索选择保持可用。
 
 “数据管理中心”已改为正式数据只读入口，通过后端分页和关键词过滤读取订单、客户、技师、店铺、服务、排班与结算。库存、评价及历史全屏图表在正式表结构、RBAC、审计和分页合同完成前保持禁用，不再回退到浏览器 mock 或本地资料覆盖层。
 

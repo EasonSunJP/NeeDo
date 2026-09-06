@@ -1633,9 +1633,9 @@ export const backofficeRealDataApi = {
     }
     if (
       !isPositiveSafeInteger(query.page) ||
-      query.page > Math.floor(Number.MAX_SAFE_INTEGER / 10) ||
+      query.page > Math.floor(Number.MAX_SAFE_INTEGER / 100) ||
       !isPositiveSafeInteger(query.pageSize) ||
-      query.pageSize > 10
+      query.pageSize > 100
     ) {
       throw new Error("error.pagination.invalid");
     }

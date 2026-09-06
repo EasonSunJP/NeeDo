@@ -1,3 +1,4 @@
+import { UserLogDateFilter, type UserLogRange } from "./UserLogDateFilter";
 import { useEffect, useState } from "react";
 import { AuditTimeline } from "../../components/admin/FormalProfileDetailPanels";
 import { FormalTimelinePagination } from "../../components/admin/FormalTimelinePagination";
@@ -5,11 +6,12 @@ import { Button } from "../../components/ui/Button";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { languageLocales, translateText } from "../../i18n/translations";
 import { platformUserManagementApi } from "./api";
-import type { PlatformManagedUserDetail, UserDirectoryScope } from "./types";
+import type { AccountUserLogDetail, UserDirectoryScope } from "./types";
 
-export function ManagedUserActivity({ scope, user }: { scope: UserDirectoryScope; user: PlatformManagedUserDetail }) {
+export function ManagedUserActivity({ scope, user, technicianId }: { scope: UserDirectoryScope; user: AccountUserLogDetail; technicianId?: number }) {
   const { language } = useOptionalI18n();
   const t = (source: string) => translateText(source, language);
+  const [range, setRange] = useState<UserLogRange>({});
   const [audit, setAudit] = useState(user.audit);
   const [query, setQuery] = useState({ page: 1, pageSize: 10 as 10 | 50, revision: 0 });
   const [loading, setLoading] = useState(false);
@@ -19,7 +21,7 @@ export function ManagedUserActivity({ scope, user }: { scope: UserDirectoryScope
     let active = true;
     setLoading(true);
     setError(false);
-    platformUserManagementApi.getUser(scope, user.id, { audit_page: query.page, audit_page_size: query.pageSize })
+    (technicianId ? platformUserManagementApi.getTechnicianUserLog(scope, technicianId, { audit_page: query.page, audit_page_size: query.pageSize, ...range }) : platformUserManagementApi.getUser(scope, user.id, { audit_page: query.page, audit_page_size: query.pageSize, ...range }))
       .then((detail) => {
         if (!active) return;
         const lastPage = Math.max(1, Math.ceil(detail.audit.total / query.pageSize));
@@ -32,8 +34,9 @@ export function ManagedUserActivity({ scope, user }: { scope: UserDirectoryScope
       .catch(() => { if (active) setError(true); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [scope, user.id, query]);
+  }, [scope, user.id, technicianId, query, range]);
   return <section aria-busy={loading} className="min-w-0 space-y-3">
+    <UserLogDateFilter disabled={loading} onChange={(next) => { setRange(next); setQuery((value) => ({ ...value, page: 1, revision: value.revision + 1 })); }} />
     <FormalTimelinePagination ariaLabel="用户LOG翻页" disabled={loading} page={audit.page ?? 1} pageSize={audit.page_size ?? 10} total={audit.total} pageSizes={[10, 50]}
       onPageChange={(page) => setQuery((value) => ({ ...value, page, pageSize: audit.page_size === 50 ? 50 : 10, revision: value.revision + 1 }))}
       onPageSizeChange={(pageSize) => { if (pageSize === 10 || pageSize === 50) setQuery((value) => ({ page: 1, pageSize, revision: value.revision + 1 })); }} />

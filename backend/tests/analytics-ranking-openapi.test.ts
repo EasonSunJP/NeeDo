@@ -63,7 +63,7 @@ describe("analytics ranking OpenAPI", () => {
       maximum: MAX_ANALYTICS_RANKING_PAGE,
       default: 1
     });
-    expect(parameters.pageSize.schema).toMatchObject({ maximum: 10, default: 10 });
+    expect(parameters.pageSize.schema).toMatchObject({ maximum: 100, default: 10 });
     expect(path.get.description).toContain("custom requires both from and to");
     expect(path.get.description).toContain("non-custom periods reject from and to");
     expect(path.get.description).toContain("to must be on or after from");
