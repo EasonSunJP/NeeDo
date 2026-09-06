@@ -82,3 +82,29 @@ Other commands: backend `npm run lint`, `npm run build`, `npm run prisma:generat
 The two documented frontend baseline failures are intentionally unchanged. Their files and `src/pages/merchant-admin/MerchantAdminPeoplePage.tsx` were verified byte-identical to `0d9f8d7d` with an empty `git diff --exit-code` result. No unrelated dirty files were taken into this fix.
 
 This is local implementation-integration evidence, ready for a fresh review of the three remedies. It is not approval of migration application, catalogue import/regeneration, backfill, real MySQL/Redis rollback checker execution, authenticated browser/SSE acceptance, frontend live-screen plan B, main merge, remote push, staging/production deployment or production migration. Those actions remain unperformed and need their own authority and evidence. A deployment must explicitly provision one shared live Redis target for all processes while preserving portal auth/session isolation.
+
+## Rereview I1 follow-up — explicit identity at actual split entrypoints
+
+Starting point: `6d4e7376af7fba9b05e5232a3cf2a615bf23954c`. Fully read `live-screen-main-integration-rereview.md`; its remaining Important finding was reproduced before implementation. The earlier explicit-role runtime test did not cover standalone entrypoint imports with the default environment label. This follow-up closes that exact gap; the prior home/Exchange/checker fixes are untouched.
+
+`ops-server.ts` and `merchant-server.ts` now pass a copied environment with their explicit `SERVICE_NAME` to `startApiServer`. Thus the existing shared-live-target guard sees the split identity before any Redis client, worker, application or listener is constructed, regardless of a `needo-backend` label in the environment file. No global environment mutation is made. Portal Redis URLs and application auth audience behavior are unchanged. The monolith code and its intentional fallback are unchanged.
+
+The new `live-dashboard-entrypoints.test.ts` imports both actual entrypoint modules, executing real `startApiServer` and real `createLiveDashboardRuntime`, under the default `needo-backend` environment label and absent parsed shared setting. Test-only Redis/application boundary seams prevent all external I/O. Each split import must reject with the shared-target configuration error and must create zero Redis clients, proving it cannot fall back to a portal Redis target. A third regression verifies that the monolith still constructs its four dedicated live clients from its ordinary Redis target when the shared setting is absent, without mutating the environment.
+
+RED: `npm test -- --runInBand tests/live-dashboard-entrypoints.test.ts` produced **2 failed / 1 passed**: both actual split imports reached the private application-boundary sentinel instead of throwing `LIVE_DASHBOARD_REDIS_URL is required`. An initial test-only type error referenced `SERVICE_NAME` on the narrower Redis config port; corrected before this meaningful RED. After the two entrypoint changes, the startup/runtime/notice focused group passed **3 suites / 7 tests**, 4.996 s. Lint then rejected the test's CommonJS `require`; the test now uses asynchronous module imports, and the final expanded matrix below verifies that final form.
+
+Fresh follow-up gates (2026-09-06):
+
+| Gate | Final result |
+| --- | --- |
+| Exact Task 7 matrix | 25 suites / 273 tests passed; 15.224 s |
+| Exact Task 8 matrix | 14 suites / 153 tests passed; 9.382 s |
+| Expanded current-main matrix | 23 suites / 199 tests passed; 45.899 s |
+| Frontend/config matrix | 9 files / 69 tests passed; 7.97 s |
+| Backend lint/build | Both passed after the test import correction |
+| Prisma generation/validation | Both passed; generated Prisma Client 7.8.0, `npx --no-install prisma validate` |
+| Diff and scope checks | Whitespace checks pass; no Prisma/migration delta; baseline files byte-identical to original base |
+
+Commands and exact Task 7/8/frontend lists are the same as above. Expanded current-main uses the previous 22-suite list plus `backend/tests/live-dashboard-entrypoints.test.ts`, with `npm test -- --runInBand <paths>` from backend. Backend gate command: `npm run lint && npm run build && npm run prisma:generate && npx --no-install prisma validate`. Matrix API tests used permitted local ephemeral listeners; the new entrypoint tests themselves use none. The two known unrelated root frontend baseline failures were not repaired or rerun in this small follow-up; their source/test files were verified unchanged against `0d9f8d7d`.
+
+Only the two split entrypoints, this regression test and this report change in the follow-up commit. No main merge, push, deployment, DB/Redis access, migration/backfill or formal checker execution occurred. Prior runtime-acceptance boundaries remain in force; this commit requests rereview rather than claiming reviewer approval.
