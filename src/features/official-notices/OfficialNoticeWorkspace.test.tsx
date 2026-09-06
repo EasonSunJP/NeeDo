@@ -507,4 +507,33 @@ describe("official notice formal API interactions", () => {
     await waitFor(() => expect(state.markRead).toHaveBeenCalledWith("notice-1"));
     expect(container.textContent).toContain("已读");
   });
+
+  it("reloads an inbox opened before a newly delivered official notice", async () => {
+    state.listInbox
+      .mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 20 })
+      .mockResolvedValue({
+        list: [{
+          publicId: "notice-1",
+          level: "important",
+          title: "営業時間変更",
+          summary: "営業時間のお知らせ",
+          blocks: notice.translations.ja.blocks,
+          targetSummary: notice.targetSummary,
+          sentAt: "2026-09-05T03:00:00.000Z",
+          readAt: null
+        }],
+        total: 1,
+        page: 1,
+        page_size: 20
+      });
+
+    act(() => root.render(<MemoryRouter><OfficialNoticeInbox /></MemoryRouter>));
+    await waitFor(() => expect(container.textContent).toContain("暂无通知"));
+    expect(state.listInbox).toHaveBeenCalledTimes(1);
+
+    act(() => window.dispatchEvent(new Event("official-notice:changed")));
+
+    await waitFor(() => expect(container.textContent).toContain("営業時間変更"));
+    expect(state.listInbox).toHaveBeenCalledTimes(2);
+  });
 });

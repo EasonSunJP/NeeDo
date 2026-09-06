@@ -1222,6 +1222,11 @@ export function OfficialNoticeInbox() {
   const [error, setError] = useState("");
   const load = useCallback(async () => { setLoading(true); setError(""); try { const result = await officialNoticesApi.listInbox({ locale, unreadOnly, page, pageSize }); setItems(result.list); setTotal(result.total); } catch (nextError) { setError(describeOfficialNoticeError(nextError, language)); } finally { setLoading(false); } }, [language, locale, page, unreadOnly]);
   useEffect(() => void load(), [load]);
+  useEffect(() => {
+    const handleChange = () => { void load(); };
+    window.addEventListener(OFFICIAL_NOTICE_CHANGED_EVENT, handleChange);
+    return () => window.removeEventListener(OFFICIAL_NOTICE_CHANGED_EVENT, handleChange);
+  }, [load]);
   const markRead = async (item: RecipientOfficialNotice) => { if (item.readAt) return; try { const result = await officialNoticesApi.markRead(item.publicId); setItems((current) => current.map((candidate) => candidate.publicId === item.publicId ? { ...candidate, readAt: result.readAt } : candidate)); window.dispatchEvent(new Event(OFFICIAL_NOTICE_CHANGED_EVENT)); } catch (nextError) { setError(describeOfficialNoticeError(nextError, language)); } };
   return <ModuleShell title="通知收件箱" description="这里只展示当前登录身份实际收到的通知及其阅读状态。" actions={<label className="flex items-center gap-2 text-sm font-black"><input checked={unreadOnly} onChange={(event) => { setPage(1); setUnreadOnly(event.target.checked); }} type="checkbox" />只看未读</label>}>
     {error ? <p className="rounded-lg bg-coral/10 p-3 text-sm font-bold text-coral">{error}</p> : null}
