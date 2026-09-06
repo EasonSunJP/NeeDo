@@ -154,4 +154,30 @@ describe("layoutMapLabels", () => {
     }
     expect(layoutMapLabels({ regions: [...regions].reverse(), viewBox: bounds, viewport: identityViewport })).toEqual(placements);
   });
+
+  it("retains every Hokkaido label at the reported 2x downward pan boundary", () => {
+    const asset = JSON.parse(fs.readFileSync(path.join(process.cwd(), "public/maps/jp/2026/prefectures/01.json"), "utf8")) as { regions: MapLabelRegion[] };
+    const placements = layoutMapLabels({ ...asset, viewBox, viewport: { scale: 2, x: 0, y: -400 } });
+    expect(placements).toHaveLength(195);
+    expect(overlappingPairs(placements)).toEqual([]);
+    expectContained(placements, viewBox);
+  });
+
+  it.each(["country.json", ...fs.readdirSync(path.join(process.cwd(), "public/maps/jp/2026/prefectures")).map((file) => `prefectures/${file}`)])(
+    "retains every %s label across the complete supported zoom and pan boundary matrix", (file) => {
+      const asset = JSON.parse(fs.readFileSync(path.join(process.cwd(), "public/maps/jp/2026", file), "utf8")) as { regions: MapLabelRegion[]; viewBox: typeof viewBox };
+      for (const scale of [1, 1.5, 2, 2.5, 3, 3.5, 4]) {
+        for (const xFraction of scale === 1 ? [0] : [-1, 0, 1]) {
+          for (const yFraction of scale === 1 ? [0] : [-1, 0, 1]) {
+            const viewport = { scale, x: (scale - 1) * asset.viewBox[2] / 2 * xFraction, y: (scale - 1) * asset.viewBox[3] / 2 * yFraction };
+            let placements: MapLabelPlacement[] = [];
+            expect(() => { placements = layoutMapLabels({ ...asset, viewport }); }, JSON.stringify(viewport)).not.toThrow();
+            expect(placements).toHaveLength(asset.regions.filter((item) => item.labelPoint !== null).length);
+            expect(overlappingPairs(placements)).toEqual([]);
+            expectContained(placements, asset.viewBox);
+          }
+        }
+      }
+    }
+  );
 });

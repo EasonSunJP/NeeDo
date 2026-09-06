@@ -102,16 +102,25 @@ function findCallout(anchor: Point, size: Pick<LabelBox, "width" | "height">, vi
   if (best) return best;
 
   // Additional rows stay parallel to their original edge, in its outer third.
-  // A common column width aligns mixed-length labels and bounds the row count.
-  const columnStride = Math.max(...anchorBoxes.map((box) => box.width)) + LABEL_GAP;
+  // Mixed-length labels can continue a rail after any supplied box width. Using
+  // only the longest width strands usable gaps when the viewport is panned.
+  const columnStrides = [...new Set(anchorBoxes.map((box) => box.width + LABEL_GAP))];
+  const columnOffsets = new Set([0]);
+  for (const offset of columnOffsets) {
+    for (const stride of columnStrides) {
+      if (EDGE_CLEARANCE + offset + stride + size.width <= width / 3) columnOffsets.add(offset + stride);
+    }
+  }
+  const columnRows = [...columnOffsets].sort((a, b) => a - b).slice(1);
   const rowStride = size.height + LABEL_GAP;
   for (let row = 1; ; row += 1) {
-    const verticalFits = EDGE_CLEARANCE + row * columnStride + size.width <= width / 3;
+    const columnOffset = columnRows[row - 1];
+    const verticalFits = columnOffset !== undefined;
     const horizontalFits = EDGE_CLEARANCE + row * rowStride + size.height <= height / 3;
     if (!verticalFits && !horizontalFits) break;
     if (verticalFits) {
-      for (const slotY of sortedYs) consider([left + row * columnStride, slotY], true);
-      for (const slotY of sortedYs) consider([right - row * columnStride, slotY], true);
+      for (const slotY of sortedYs) consider([left + columnOffset, slotY], true);
+      for (const slotY of sortedYs) consider([right - columnOffset, slotY], true);
     }
     if (horizontalFits) {
       for (const slotX of sortedXs) consider([slotX, top + row * rowStride], true);
