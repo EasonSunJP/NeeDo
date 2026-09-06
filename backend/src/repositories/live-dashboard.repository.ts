@@ -11,9 +11,11 @@ import {
   type LiveMoney
 } from "../domain/live-dashboard";
 import { resolveDashboardWindow, type DashboardWindow } from "../domain/dashboard-period";
+import type { AnalyticsRankingInput, RankingKind } from "../domain/analytics-ranking";
+import { AnalyticsRankingRepository } from "./analytics-ranking.repository";
 
 type QueryClient = Pick<PrismaClient, "$queryRaw">;
-type LiveDashboardClient = QueryClient & Partial<Pick<PrismaClient, "$transaction">>;
+type LiveDashboardClient = QueryClient & Pick<PrismaClient, "$transaction">;
 type NumericValue = bigint | number | string | { toString(): string } | null | undefined;
 
 interface ChildRow {
@@ -139,8 +141,9 @@ const scopedLocation = (scope: LiveDashboardScope, alias = "location"): Prisma.S
 `;
 
 /**
- * Mirrors the existing operations-finance and analytics-ranking evidence boundary.
- * It deliberately accepts Test NDP only as a distinct ledger/financial currency.
+ * Mirrors the existing operations-finance confirmed-payment boundary.
+ * Rankings consume AnalyticsRankingRepository's stricter shared formal evidence CTEs below.
+ * Test NDP remains an explicitly separate ledger/financial currency.
  */
 const confirmedPaymentEvidence = (): Prisma.Sql => Prisma.sql`
   booking.status = ${"completed"}
@@ -163,13 +166,6 @@ const confirmedPaymentEvidence = (): Prisma.Sql => Prisma.sql`
   AND checkout.payment_method = booking.payment_method
   AND checkout.payment_selected_at IS NOT NULL
   AND checkout.payment_selected_at <= booking.payment_confirmed_at
-  AND NOT EXISTS (
-    SELECT 1
-    FROM fee_calculation_logs AS reversal
-    WHERE reversal.booking_order_id = booking.id
-      AND reversal.calculation_stage = ${"reversal"}
-      AND reversal.deleted_at IS NULL
-  )
   AND (
     (
       checkout.payment_method = ${"ndp"}
@@ -238,13 +234,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
     const window = resolveDashboardWindow({ period: input.period }, input.evaluatedAt);
     const trendWindow = resolveDashboardWindow({ period: "last7days" }, input.evaluatedAt);
 
-    if (typeof this.client.$transaction === "function") {
-      return this.client.$transaction(
-        (transaction) => this.readSnapshot(transaction, input, window, trendWindow),
-        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
-      );
-    }
-    return this.readSnapshot(this.client, input, window, trendWindow);
+    return this.client.$transaction(
+      (transaction) => this.readSnapshot(transaction, input, window, trendWindow),
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+    );
   }
 
   private async readSnapshot(
@@ -357,52 +350,69 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND parent.level = ${"COUNTRY"}
           AND parent.deleted_at IS NULL
           AND child.parent_id = parent.id`;
+    const childRegionCode = input.scope.admin1Code
+      ? Prisma.sql`location.admin2_region_code`
+      : Prisma.sql`location.admin1_region_code`;
     return client.$queryRaw<ChildRow[]>(Prisma.sql`
       /* live_dashboard_children */
+      WITH child_order_counts AS (
+        SELECT ${childRegionCode} AS child_code, COUNT(booking.id) AS order_count
+        FROM booking_orders AS booking
+        INNER JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+        INNER JOIN shops AS shop
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+        WHERE booking.starts_at >= ${window.fromInclusive}
+          AND booking.starts_at < ${window.toExclusive}
+          AND booking.created_at <= ${input.evaluatedAt}
+          AND booking.deleted_at IS NULL
+        GROUP BY ${childRegionCode}
+      ), child_confirmed_payments AS (
+        SELECT ${childRegionCode} AS child_code,
+               COALESCE(SUM(checkout.checkout_amount_jpy), 0) AS confirmed_payment_jpy,
+               COALESCE(SUM(CASE WHEN financial.ndp_currency = ${"NDP"}
+                 THEN checkout.payable_ndp ELSE 0 END), 0) AS confirmed_payment_ndp,
+               COALESCE(SUM(CASE WHEN financial.ndp_currency = ${"TEST_NDP"}
+                 THEN checkout.payable_ndp ELSE 0 END), 0) AS confirmed_payment_test_ndp
+        FROM booking_orders AS booking
+        INNER JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
+        INNER JOIN shops AS shop
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
+        INNER JOIN order_checkouts AS checkout
+          ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
+        INNER JOIN order_financials AS financial
+          ON financial.booking_order_id = booking.id AND financial.shop_id = booking.shop_id
+          AND financial.deleted_at IS NULL
+        LEFT JOIN ledger_transactions AS ledger
+          ON ledger.id = checkout.ledger_transaction_id AND ledger.deleted_at IS NULL
+        WHERE booking.payment_confirmed_at >= ${window.fromInclusive}
+          AND booking.payment_confirmed_at < ${window.toExclusive}
+          AND booking.payment_confirmed_at <= ${input.evaluatedAt}
+          AND booking.deleted_at IS NULL
+          AND ${confirmedPaymentEvidence()}
+        GROUP BY ${childRegionCode}
+      )
       SELECT child.official_code AS code,
              COALESCE(locale.name, child.official_code) AS name,
-             COUNT(DISTINCT booking.id) AS orderCount,
-             COALESCE(SUM(CASE WHEN ${confirmedPaymentEvidence()}
-               THEN checkout.checkout_amount_jpy ELSE 0 END), 0) AS confirmedPaymentJpy,
-             COALESCE(SUM(CASE WHEN ${confirmedPaymentEvidence()}
-               AND financial.ndp_currency = ${"NDP"} THEN checkout.payable_ndp ELSE 0 END), 0)
-               AS confirmedPaymentNdp,
-             COALESCE(SUM(CASE WHEN ${confirmedPaymentEvidence()}
-               AND financial.ndp_currency = ${"TEST_NDP"} THEN checkout.payable_ndp ELSE 0 END), 0)
-               AS confirmedPaymentTestNdp
+             COALESCE(order_counts.order_count, 0) AS orderCount,
+             COALESCE(payments.confirmed_payment_jpy, 0) AS confirmedPaymentJpy,
+             COALESCE(payments.confirmed_payment_ndp, 0) AS confirmedPaymentNdp,
+             COALESCE(payments.confirmed_payment_test_ndp, 0) AS confirmedPaymentTestNdp
       FROM administrative_regions AS child
-      LEFT JOIN administrative_regions AS parent
+      INNER JOIN administrative_regions AS parent
         ON parent.id = child.parent_id AND parent.deleted_at IS NULL
       LEFT JOIN administrative_region_locales AS locale
         ON locale.region_id = child.id AND locale.locale = ${"ja"}
         AND locale.deleted_at IS NULL
-      LEFT JOIN booking_service_locations AS location
-        ON ${
-          input.scope.admin1Code
-            ? Prisma.sql`location.admin2_region_code = child.official_code`
-            : Prisma.sql`location.admin1_region_code = child.official_code`
-        }
-        AND ${scopedLocation(input.scope)}
-      LEFT JOIN booking_orders AS booking
-        ON booking.id = location.booking_order_id
-        AND booking.starts_at >= ${window.fromInclusive}
-        AND booking.starts_at < ${window.toExclusive}
-        AND booking.created_at <= ${input.evaluatedAt}
-        AND booking.deleted_at IS NULL
-      LEFT JOIN shops AS shop
-        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
-      LEFT JOIN order_checkouts AS checkout
-        ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
-      LEFT JOIN order_financials AS financial
-        ON financial.booking_order_id = booking.id AND financial.shop_id = booking.shop_id
-        AND financial.deleted_at IS NULL
-      LEFT JOIN ledger_transactions AS ledger
-        ON ledger.id = checkout.ledger_transaction_id AND ledger.deleted_at IS NULL
+      LEFT JOIN child_order_counts AS order_counts
+        ON order_counts.child_code = child.official_code
+      LEFT JOIN child_confirmed_payments AS payments
+        ON payments.child_code = child.official_code
       WHERE child.country_code = ${input.scope.countryCode}
         AND child.level = ${childLevel}
         AND child.deleted_at IS NULL
         ${parentScope}
-      GROUP BY child.id, child.official_code, locale.name
       ORDER BY child.official_code ASC
     `);
   }
@@ -698,7 +708,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       LEFT JOIN eligible_payments AS eligible
         ON eligible.payment_confirmed_at >= bucket.from_inclusive
         AND eligible.payment_confirmed_at < bucket.to_exclusive
-      GROUP BY bucket.bucket_key, bucket.label
+      GROUP BY bucket.bucket_key, bucket.label, bucket.from_inclusive
       ORDER BY bucket.from_inclusive ASC
     `);
   }
@@ -708,43 +718,18 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
     input: LiveDashboardInput,
     window: DashboardWindow
   ): Promise<RankingRow[]> {
+    const rankingInput = this.rankingInput("service", input, window);
     return client.$queryRaw<RankingRow[]>(Prisma.sql`
       /* live_dashboard_service_ranking */
-      WITH eligible_orders AS (${this.rankingEligibleOrders(input, window)}),
-      service_lines AS (
-        SELECT eligible.id AS booking_order_id,
-               JSON_UNQUOTE(JSON_EXTRACT(eligible.service_snapshot_json, ${"$.publicId"}))
-                 AS entity_public_id,
-               COALESCE(eligible.service_name_snapshot, ${"-"}) AS display_name,
-               eligible.checkout_amount_jpy - eligible.add_on_amount_jpy AS line_gmv_jpy,
-               eligible.created_at AS registered_at
-        FROM eligible_orders AS eligible
-        WHERE eligible.service_snapshot_json IS NOT NULL
-        UNION ALL
-        SELECT eligible.id, JSON_UNQUOTE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.publicId"})),
-               add_on.service_name_snapshot, add_on.price_amount_jpy, add_on.created_at
-        FROM eligible_orders AS eligible
-        INNER JOIN order_add_ons AS add_on
-          ON add_on.booking_order_id = eligible.id
-          AND add_on.status = ${"accepted"}
-          AND add_on.deleted_at IS NULL
-      ), aggregates AS (
-        SELECT entity_public_id, MIN(display_name) AS display_name,
-               SUM(line_gmv_jpy) AS gmv_jpy,
-               COUNT(DISTINCT booking_order_id) AS completed_count,
-               MIN(registered_at) AS registered_at
-        FROM service_lines
-        WHERE entity_public_id IS NOT NULL AND entity_public_id <> ${"null"}
-        GROUP BY entity_public_id
-      )
-      SELECT ROW_NUMBER() OVER (
-               ORDER BY gmv_jpy DESC, completed_count DESC, registered_at ASC,
-                        BINARY entity_public_id ASC
-             ) AS rank,
-             entity_public_id AS entityPublicId, display_name AS displayName,
-             NULL AS avatarUrl, gmv_jpy AS gmvJpy, completed_count AS completedCount
-      FROM aggregates
-      ORDER BY rank ASC
+      WITH ${AnalyticsRankingRepository.formalRankingCtes(
+        rankingInput,
+        this.rankingEvidenceScope(input.scope)
+      )}, ${AnalyticsRankingRepository.rankingCtes(rankingInput)}
+      SELECT ranking_position AS rank, entity_public_id AS entityPublicId,
+             display_name AS displayName, avatar_url AS avatarUrl,
+             gmv_jpy AS gmvJpy, completed_count AS completedCount
+      FROM ranked_entities
+      ORDER BY ranking_position ASC
       LIMIT 10
     `);
   }
@@ -754,80 +739,45 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
     input: LiveDashboardInput,
     window: DashboardWindow
   ): Promise<RankingRow[]> {
+    const rankingInput = this.rankingInput("technician", input, window);
     return client.$queryRaw<RankingRow[]>(Prisma.sql`
       /* live_dashboard_technician_ranking */
-      WITH eligible_orders AS (${this.rankingEligibleOrders(input, window)}), aggregates AS (
-        SELECT technician_user.needo_id AS entity_public_id,
-               technician.display_name,
-               technician_user.avatar_url,
-               SUM(eligible.checkout_amount_jpy) AS gmv_jpy,
-               COUNT(DISTINCT eligible.id) AS completed_count,
-               technician.created_at AS registered_at,
-               technician.id AS numeric_id
-        FROM eligible_orders AS eligible
-        INNER JOIN technician_profiles AS technician
-          ON technician.id = eligible.technician_profile_id
-          AND technician.deleted_at IS NULL
-        INNER JOIN users AS technician_user
-          ON technician_user.id = technician.user_id
-          AND technician_user.is_active = TRUE
-          AND technician_user.is_test_account = FALSE
-          AND technician_user.deleted_at IS NULL
-        GROUP BY technician_user.needo_id, technician.display_name,
-                 technician_user.avatar_url, technician.created_at, technician.id
-      )
-      SELECT ROW_NUMBER() OVER (
-               ORDER BY gmv_jpy DESC, completed_count DESC, registered_at ASC, numeric_id ASC
-             ) AS rank,
-             entity_public_id AS entityPublicId, display_name AS displayName,
-             avatar_url AS avatarUrl, gmv_jpy AS gmvJpy, completed_count AS completedCount
-      FROM aggregates
-      ORDER BY rank ASC
+      WITH ${AnalyticsRankingRepository.formalRankingCtes(
+        rankingInput,
+        this.rankingEvidenceScope(input.scope)
+      )}, ${AnalyticsRankingRepository.rankingCtes(rankingInput)}
+      SELECT ranking_position AS rank, entity_public_id AS entityPublicId,
+             display_name AS displayName, avatar_url AS avatarUrl,
+             gmv_jpy AS gmvJpy, completed_count AS completedCount
+      FROM ranked_entities
+      ORDER BY ranking_position ASC
       LIMIT 10
     `);
   }
 
-  private rankingEligibleOrders(input: LiveDashboardInput, window: DashboardWindow): Prisma.Sql {
-    return Prisma.sql`
-      SELECT booking.id, booking.technician_profile_id, booking.service_name_snapshot,
-             booking.service_snapshot_json, booking.created_at,
-             checkout.checkout_amount_jpy, checkout.add_on_amount_jpy
-      FROM booking_orders AS booking
-      INNER JOIN booking_service_locations AS location
-        ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
-      INNER JOIN shops AS shop
-        ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
-      INNER JOIN users AS customer_user
-        ON customer_user.id = booking.customer_user_id
-        AND customer_user.is_active = TRUE
-        AND customer_user.is_test_account = FALSE
-        AND customer_user.deleted_at IS NULL
-      INNER JOIN technician_profiles AS ranked_technician
-        ON ranked_technician.id = booking.technician_profile_id
-        AND ranked_technician.deleted_at IS NULL
-      INNER JOIN users AS technician_user
-        ON technician_user.id = ranked_technician.user_id
-        AND technician_user.is_active = TRUE
-        AND technician_user.is_test_account = FALSE
-        AND technician_user.deleted_at IS NULL
-      INNER JOIN order_service_sessions AS session
-        ON session.booking_order_id = booking.id
-        AND session.ended_at IS NOT NULL
-        AND session.ended_at <= booking.payment_confirmed_at
-        AND session.deleted_at IS NULL
-      INNER JOIN order_checkouts AS checkout
-        ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
-      INNER JOIN order_financials AS financial
-        ON financial.booking_order_id = booking.id AND financial.shop_id = booking.shop_id
-        AND financial.deleted_at IS NULL
-      LEFT JOIN ledger_transactions AS ledger
-        ON ledger.id = checkout.ledger_transaction_id AND ledger.deleted_at IS NULL
-      WHERE booking.payment_confirmed_at >= ${window.fromInclusive}
-        AND booking.payment_confirmed_at < ${window.toExclusive}
-        AND booking.payment_confirmed_at <= ${input.evaluatedAt}
-        AND booking.deleted_at IS NULL
-        AND ${confirmedPaymentEvidence()}
-    `;
+  private rankingInput(
+    kind: Extract<RankingKind, "service" | "technician">,
+    input: LiveDashboardInput,
+    window: DashboardWindow
+  ): AnalyticsRankingInput {
+    return {
+      kind,
+      metric: "gmv",
+      window,
+      evaluatedAt: input.evaluatedAt,
+      city: null,
+      categoryId: null,
+      page: 1,
+      pageSize: MAX_RANKING_ITEMS
+    };
+  }
+
+  private rankingEvidenceScope(scope: LiveDashboardScope) {
+    return {
+      candidateJoins: Prisma.sql`INNER JOIN booking_service_locations AS location
+        ON location.booking_order_id = booking.id`,
+      candidatePredicate: scopedLocation(scope)
+    };
   }
 
   private queryCoverage(

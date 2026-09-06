@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { LiveDashboardRepository } from "../src/repositories/live-dashboard.repository";
 
 type SqlQuery = Prisma.Sql & {
@@ -215,6 +215,35 @@ describe("LiveDashboardRepository", () => {
     expect(nationwideChildrenQuery?.values).toContain("JP");
     expect(queryText(nationwideChildrenQuery!)).not.toContain("child.parent_id IS NULL");
     expect(harness.transaction).toHaveBeenCalledTimes(3);
+    expect(harness.transaction).toHaveBeenLastCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead
+    });
+  });
+
+  it("keeps child order-start and confirmed-payment fixture axes independent", async () => {
+    const harness = createHarness();
+    const snapshot = await harness.repository.getSnapshotFacts({
+      scope: { countryCode: "JP", admin1Code: null, admin2Code: null },
+      period: "today",
+      evaluatedAt
+    });
+
+    expect(snapshot.children[0]).toMatchObject({
+      orderCount: 2,
+      confirmedPayments: { jpy: 12_000, ndp: 500, testNdp: 40 }
+    });
+    const query = harness.queries.find((candidate) =>
+      queryText(candidate).includes("live_dashboard_children")
+    );
+    const sql = queryText(query!);
+    expect(sql).toMatch(/child_order_counts AS \([\s\S]*booking\.starts_at >=/u);
+    expect(sql).toMatch(/child_confirmed_payments AS \([\s\S]*booking\.payment_confirmed_at >=/u);
+    expect(sql).toContain("booking.payment_confirmed_at <=");
+    expect(sql).not.toContain("LEFT JOIN shops AS shop");
+    expect(sql.match(/INNER JOIN shops AS shop/gu) ?? []).toHaveLength(2);
+    expect(query?.values?.filter((value) => value === evaluatedAt).length).toBeGreaterThanOrEqual(
+      2
+    );
   });
 
   it("keeps JPY, NDP, and Test NDP separate and bounds every scrolling page", async () => {
@@ -257,7 +286,10 @@ describe("LiveDashboardRepository", () => {
       expect(sql).toContain("location.deleted_at IS NULL");
       expect(query.values).toEqual(expect.arrayContaining(["JP", "13", "13104", "VERIFIED"]));
       expect(query.values).toContain(evaluatedAt);
-      expect(sql).not.toMatch(/profile\.city|shop\.city/u);
+      expect(sql).not.toContain("profile.city");
+      expect(sql).not.toContain("TRIM(shop.city)");
+      expect(sql).not.toContain("BINARY shop.city =");
+      expect(sql).not.toContain("fee_calculation_logs");
     }
 
     const money = harness.queries.find((query) =>
@@ -276,6 +308,7 @@ describe("LiveDashboardRepository", () => {
     expect(moneySql).toContain("checkout.deleted_at IS NULL");
     expect(moneySql).toContain("financial.deleted_at IS NULL");
     expect(moneySql).toContain("ledger.deleted_at IS NULL");
+    expect(moneySql).not.toContain("fee_calculation_logs");
     expect(money?.values).toEqual(
       expect.arrayContaining([
         "completed",
@@ -291,7 +324,7 @@ describe("LiveDashboardRepository", () => {
     for (const marker of ["live_dashboard_service_ranking", "live_dashboard_technician_ranking"]) {
       const ranking = harness.queries.find((query) => queryText(query).includes(marker));
       expect(queryText(ranking!)).toContain("LIMIT 10");
-      expect(queryText(ranking!)).toContain("booking.payment_refunded_at IS NULL");
+      expect(queryText(ranking!)).toContain("candidate.payment_refunded_at IS NOT NULL");
     }
     const realtime = harness.queries.find((query) =>
       queryText(query).includes("live_dashboard_realtime_orders")
@@ -307,10 +340,56 @@ describe("LiveDashboardRepository", () => {
       queryText(query).includes("live_dashboard_service_ranking")
     );
     expect(queryText(serviceRanking!)).toContain(
-      "session.ended_at <= booking.payment_confirmed_at"
+      "candidate.session_ended_at > candidate.payment_confirmed_at"
     );
-    expect(queryText(serviceRanking!)).toContain("customer_user.is_test_account = FALSE");
-    expect(queryText(serviceRanking!)).toContain("technician_user.is_test_account = FALSE");
+    expect(queryText(serviceRanking!)).toContain("candidate.customer_is_test = FALSE");
+    expect(queryText(serviceRanking!)).toContain("candidate.technician_user_is_test = FALSE");
+    for (const evidence of [
+      "candidate.calculation_snapshot_json",
+      "COALESCE(add_ons.accepted_amount, 0) <> candidate.add_on_amount_jpy",
+      "SUM(BINARY add_on.currency <> BINARY",
+      "candidate.receipt_confirmed_by_id = candidate.technician_user_id"
+    ]) {
+      expect(queryText(serviceRanking!)).toContain(evidence);
+    }
+    expect(serviceRanking?.values).toEqual(
+      expect.arrayContaining([
+        "booking_complete_settlement",
+        "ndp_payment_applied",
+        "receipt_confirmed",
+        "backoffice.order.checkout.receipt_override"
+      ])
+    );
+    expect(queryText(serviceRanking!)).not.toContain("fee_calculation_logs");
+  });
+
+  it("groups the trend by its explicit MySQL ordering expression", async () => {
+    const harness = createHarness();
+    await harness.repository.getSnapshotFacts({
+      scope: { countryCode: "JP", admin1Code: "13", admin2Code: null },
+      period: "last7days",
+      evaluatedAt
+    });
+    const trend = harness.queries.find((query) =>
+      queryText(query).includes("live_dashboard_trend")
+    );
+    expect(queryText(trend!)).toContain(
+      "GROUP BY bucket.bucket_key, bucket.label, bucket.from_inclusive"
+    );
+    expect(queryText(trend!)).toContain("ORDER BY bucket.from_inclusive ASC");
+  });
+
+  it("fails closed when no interactive transaction boundary is available", async () => {
+    const queryRaw = jest.fn();
+    const repository = new LiveDashboardRepository({ $queryRaw: queryRaw } as never);
+    await expect(
+      repository.getSnapshotFacts({
+        scope: { countryCode: "JP", admin1Code: null, admin2Code: null },
+        period: "today",
+        evaluatedAt
+      })
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(queryRaw).not.toHaveBeenCalled();
   });
 
   it("attributes newly-created customers and technicians through service occurrence only", async () => {
