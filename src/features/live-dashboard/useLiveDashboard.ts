@@ -92,6 +92,10 @@ export function useLiveDashboard(scope: LiveDashboardScope) {
       query: serializeLiveDashboardQuery(scopeRef.current),
       signal: controller.signal,
       lastEventId: lastEventIdRef.current,
+      onOpen: () => {
+        reconnectAttemptRef.current = 0;
+        dispatch({ type: "realtimeStatusChanged", status: "connected" });
+      },
       onEvent: (event) => {
         reconnectAttemptRef.current = 0;
         dispatch({ type: "realtimeStatusChanged", status: "connected" });

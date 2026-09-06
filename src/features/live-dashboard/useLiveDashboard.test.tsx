@@ -58,6 +58,14 @@ describe("useLiveDashboard", () => {
     expect(liveDashboardApi.snapshot).toHaveBeenCalledTimes(2);
   });
 
+  it("marks a quiet stream connected as soon as its response opens", async () => {
+    const result = await renderDashboardHook();
+    expect(result.current.state.realtimeStatus).toBe("connecting");
+    const onOpen = vi.mocked(openAuthenticatedSseStream).mock.calls[0]?.[0].onOpen;
+    await act(async () => onOpen?.());
+    expect(result.current.state.realtimeStatus).toBe("connected");
+  });
+
   it("pauses while hidden and performs exactly one recovery read", async () => {
     await renderDashboardHook();
     expect(liveDashboardApi.snapshot).toHaveBeenCalledTimes(1);

@@ -49,6 +49,8 @@ describe("JapanRegionMap", () => {
     await act(async () => Promise.resolve());
     const paths = container.querySelectorAll('[data-map-region][role="button"]');
     expect(paths).toHaveLength(47);
+    expect(container.querySelector(".live-dashboard-map-inset")?.getAttribute("pointer-events"))
+      .toBe("none");
     const tokyoPath = container.querySelector<SVGPathElement>('[data-region-code="13"]')!;
     expect(tokyoPath.getAttribute("aria-label")).toContain("東京都");
     await act(async () => tokyoPath.dispatchEvent(new MouseEvent("click", { bubbles: true })));

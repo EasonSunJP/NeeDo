@@ -1,13 +1,29 @@
 import { ApiClientError, httpClient, type ApiQueryValue } from "./httpClient";
 import { requireLiveDashboardEvent, type LiveDashboardEvent } from "./liveDashboard";
+import { z } from "zod";
 
 const MAX_EVENT_BYTES = 64 * 1024;
+const connectedFrameSchema = z.strictObject({
+  type: z.literal("connected"),
+  scope: z.strictObject({
+    countryCode: z.literal("JP"),
+    admin1Code: z.string().regex(/^\d{2}$/u).nullable(),
+    admin2Code: z.string().regex(/^\d{5}$/u).nullable()
+  }).superRefine((scope, context) => {
+    if (scope.admin2Code && !scope.admin1Code) {
+      context.addIssue({ code: "custom", message: "admin1 required" });
+    }
+  }),
+  payload: z.strictObject({}),
+  createdAt: z.string().datetime({ offset: true })
+});
 
 export interface AuthenticatedSseOptions {
   path: string;
   query: Record<string, ApiQueryValue>;
   signal: AbortSignal;
   lastEventId?: string | null;
+  onOpen?: () => void;
   onEvent: (event: LiveDashboardEvent) => void;
 }
 
@@ -23,6 +39,7 @@ export async function openAuthenticatedSseStream(options: AuthenticatedSseOption
   if (!response.ok || !response.body) {
     throw new ApiClientError("error.dashboard.stream_unavailable", response.status || 502, response.status || 502);
   }
+  options.onOpen?.();
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -48,6 +65,13 @@ export async function openAuthenticatedSseStream(options: AuthenticatedSseOption
       parsed = JSON.parse(dataLines.join("\n"));
     } catch {
       throw new Error("error.dashboard.invalid_event");
+    }
+    if (eventType === "connected") {
+      if (eventId || !connectedFrameSchema.safeParse(parsed).success) {
+        throw new Error("error.dashboard.invalid_event");
+      }
+      reset();
+      return;
     }
     const event = requireLiveDashboardEvent(parsed);
     if ((eventType && event.type !== eventType) || (eventId && event.id !== eventId)) {

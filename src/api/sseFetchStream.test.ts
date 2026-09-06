@@ -28,12 +28,14 @@ describe("authenticated SSE stream", () => {
       bytes.slice(0, 7), bytes.slice(7, 53), bytes.slice(53)
     ]));
     const onEvent = vi.fn();
+    const onOpen = vi.fn();
 
     await openAuthenticatedSseStream({
       path: "/backoffice/dashboard/live-events",
       query: { country: "JP", period: "today" },
       lastEventId: "1699999999999-1",
       signal: new AbortController().signal,
+      onOpen,
       onEvent
     });
 
@@ -43,6 +45,7 @@ describe("authenticated SSE stream", () => {
         headers: expect.objectContaining({ Accept: "text/event-stream", "Last-Event-ID": "1699999999999-1" })
       })
     );
+    expect(onOpen).toHaveBeenCalledTimes(1);
     expect(onEvent).toHaveBeenCalledWith(event);
   });
 
@@ -56,6 +59,46 @@ describe("authenticated SSE stream", () => {
       .rejects.toThrow("error.dashboard.invalid_event");
     await expect(openAuthenticatedSseStream({ path: "/events", query: {}, signal: new AbortController().signal, onEvent: vi.fn() }))
       .rejects.toThrow("error.dashboard.event_too_large");
+  });
+
+  it("accepts the strict connected control frame without emitting a business event", async () => {
+    const encoder = new TextEncoder();
+    vi.spyOn(httpClient, "openStream").mockResolvedValueOnce(streamResponse([
+      encoder.encode(`event: connected\ndata: ${JSON.stringify({
+        type: "connected",
+        scope: { countryCode: "JP", admin1Code: null, admin2Code: null },
+        payload: {},
+        createdAt: "2026-09-06T03:04:05.000Z"
+      })}\n\n`)
+    ]));
+    const onEvent = vi.fn();
+
+    await expect(openAuthenticatedSseStream({
+      path: "/events",
+      query: { country: "JP", period: "today" },
+      signal: new AbortController().signal,
+      onEvent
+    })).resolves.toBeUndefined();
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed connected control frame", async () => {
+    const encoder = new TextEncoder();
+    vi.spyOn(httpClient, "openStream").mockResolvedValueOnce(streamResponse([
+      encoder.encode(`event: connected\ndata: ${JSON.stringify({
+        type: "connected",
+        scope: { countryCode: "JP", admin1Code: null, admin2Code: null },
+        payload: { unexpected: true },
+        createdAt: "2026-09-06T03:04:05.000Z"
+      })}\n\n`)
+    ]));
+
+    await expect(openAuthenticatedSseStream({
+      path: "/events",
+      query: { country: "JP", period: "today" },
+      signal: new AbortController().signal,
+      onEvent: vi.fn()
+    })).rejects.toThrow("error.dashboard.invalid_event");
   });
 
   it("stops cleanly when the caller aborts", async () => {

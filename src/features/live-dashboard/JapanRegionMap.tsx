@@ -194,6 +194,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
                 className="live-dashboard-map-inset"
                 height={inset.bounds[3]}
                 key={inset.name}
+                pointerEvents="none"
                 rx="10"
                 width={inset.bounds[2]}
                 x={inset.bounds[0]}
@@ -248,7 +249,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
               ) : null)}
             </g>
             {asset.insets?.map((inset) => (
-              <text aria-hidden="true" className="live-dashboard-map-inset-label" key={`${inset.name}-label`} x={inset.bounds[0] + 16} y={inset.bounds[1] + 28}>
+              <text aria-hidden="true" className="live-dashboard-map-inset-label" key={`${inset.name}-label`} pointerEvents="none" x={inset.bounds[0] + 16} y={inset.bounds[1] + 28}>
                 {inset.name === "Okinawa" ? "沖縄" : "東京都島しょ部"}
               </text>
             ))}
