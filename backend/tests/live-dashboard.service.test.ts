@@ -4,6 +4,8 @@ import { LiveDashboardCache } from "../src/services/live-dashboard-cache.service
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { AppError } from "../src/utils/app-error";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
+import type { LiveDashboardQuery } from "../src/validators/live-dashboard.validator";
+import type { CachedLiveDashboardFacts } from "../src/validators/live-dashboard.validator";
 
 const evaluatedAt = new Date("2026-09-06T03:04:05.000Z");
 const actor = {
@@ -51,6 +53,35 @@ const facts = (): LiveDashboardSnapshotFacts => ({
   technicianRanking: [],
   coverage: { total: 2, attributed: 2, unresolved: 0, completenessPercent: 100 }
 });
+
+const admin1Regions = [
+  { code: "13", name: "Tokyo", level: "admin1" as const, parentCode: "JP", centroid: null },
+  { code: "27", name: "Osaka", level: "admin1" as const, parentCode: "JP", centroid: null }
+];
+const admin2Regions = [
+  {
+    code: "13103",
+    name: "Minato City",
+    level: "admin2" as const,
+    parentCode: "13",
+    centroid: null
+  },
+  {
+    code: "13104",
+    name: "Shinjuku City",
+    level: "admin2" as const,
+    parentCode: "13",
+    centroid: null
+  }
+];
+const childFact = (code: string, name: string) => ({
+  code,
+  name,
+  orderCount: 0,
+  confirmedPayments: { jpy: 0, ndp: 0, testNdp: 0 }
+});
+const serializedFacts = (value: LiveDashboardSnapshotFacts): CachedLiveDashboardFacts =>
+  JSON.parse(JSON.stringify(value)) as CachedLiveDashboardFacts;
 
 describe("LiveDashboardService", () => {
   it.each(["customer", "technician", "merchant"])(
@@ -333,4 +364,107 @@ describe("LiveDashboardService", () => {
     expect(repository.getSnapshotFacts).toHaveBeenCalledTimes(1);
     expect(redis.set).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      label: "nationwide unknown ADMIN1",
+      query: { country: "JP", period: "today" } as LiveDashboardQuery,
+      corruptChildren: [childFact("99", "Invented Prefecture")],
+      expectedChildren: admin1Regions.map((region) => childFact(region.code, region.name))
+    },
+    {
+      label: "nationwide ADMIN2 at the wrong level",
+      query: { country: "JP", period: "today" } as LiveDashboardQuery,
+      corruptChildren: [childFact("13104", "Wrong Level")],
+      expectedChildren: admin1Regions.map((region) => childFact(region.code, region.name))
+    },
+    {
+      label: "nationwide duplicate code",
+      query: { country: "JP", period: "today" } as LiveDashboardQuery,
+      corruptChildren: [childFact("13", "Tokyo"), childFact("13", "Duplicate Tokyo")],
+      expectedChildren: admin1Regions.map((region) => childFact(region.code, region.name))
+    },
+    {
+      label: "nationwide incomplete set",
+      query: { country: "JP", period: "today" } as LiveDashboardQuery,
+      corruptChildren: [childFact("13", "Tokyo")],
+      expectedChildren: admin1Regions.map((region) => childFact(region.code, region.name))
+    },
+    {
+      label: "admin1 child with the wrong parent",
+      query: { country: "JP", admin1: "13", period: "today" } as LiveDashboardQuery,
+      corruptChildren: [childFact("27127", "Osaka City")],
+      expectedChildren: admin2Regions.map((region) => childFact(region.code, region.name))
+    },
+    {
+      label: "admin2 non-empty child set",
+      query: {
+        country: "JP",
+        admin1: "13",
+        admin2: "13104",
+        period: "today"
+      } as LiveDashboardQuery,
+      corruptChildren: [childFact("13103", "Minato City")],
+      expectedChildren: []
+    }
+  ])(
+    "rejects $label cached children and recomputes once",
+    async ({ query, corruptChildren, expectedChildren }) => {
+      const scope = {
+        countryCode: "JP" as const,
+        admin1Code: query.admin1 ?? null,
+        admin2Code: query.admin2 ?? null
+      };
+      const freshFacts: LiveDashboardSnapshotFacts = {
+        ...facts(),
+        scope,
+        children: expectedChildren
+      };
+      const corrupt = { ...serializedFacts(freshFacts), children: corruptChildren };
+      const redis = {
+        isOpen: true,
+        connect: jest.fn(async () => undefined),
+        get: jest.fn(async () =>
+          JSON.stringify({ cachedAt: evaluatedAt.toISOString(), value: corrupt })
+        ),
+        set: jest.fn(async () => "OK")
+      };
+      const cache = new LiveDashboardCache(
+        () => redis,
+        () => evaluatedAt
+      );
+      const repository = { getSnapshotFacts: jest.fn(async () => freshFacts) };
+      const regions = {
+        listChildren: jest.fn(async ({ parent }: { parent?: string }) =>
+          parent ? admin2Regions : admin1Regions
+        ),
+        resolveVerifiedScope: jest.fn(async () => ({
+          countryCode: "JP" as const,
+          admin1Code: "13",
+          admin2Code: "13104",
+          admin1RegionId: 13,
+          admin1NameJa: "東京都",
+          admin2RegionId: 13104,
+          admin2NameJa: "新宿区",
+          datasetVersion: "N03-20260101" as const
+        }))
+      };
+      const audit = { record: jest.fn(async () => undefined) };
+      const service = new LiveDashboardService(
+        repository,
+        regions,
+        cache,
+        audit,
+        () => evaluatedAt
+      );
+
+      const result = await service.getSnapshot(actor, context, query, "en");
+
+      expect(result.cacheStatus).toBe("degraded");
+      expect(result.children).toEqual(expectedChildren);
+      expect(JSON.stringify(result)).not.toMatch(/Invented|Wrong Level|Duplicate|Osaka City/);
+      expect(repository.getSnapshotFacts).toHaveBeenCalledTimes(1);
+      expect(redis.set).not.toHaveBeenCalled();
+    }
+  );
 });

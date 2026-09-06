@@ -97,6 +97,7 @@ export class LiveDashboardService {
       (value) => {
         const decoded = decodeCachedLiveDashboardFacts(value);
         this.assertScope(decoded.scope, requestedScope);
+        this.assertCachedChildren(decoded.children, hierarchy.children, query);
         return decoded;
       }
     );
@@ -295,6 +296,34 @@ export class LiveDashboardService {
         statusCode: 409
       });
     }
+  }
+
+  private assertCachedChildren(
+    actual: CachedLiveDashboardFacts["children"],
+    expected: AdministrativeRegionListItem[],
+    query: LiveDashboardQuery
+  ): void {
+    if (query.admin2) {
+      if (actual.length === 0) return;
+      throw new Error("Invalid live dashboard cached children");
+    }
+
+    const expectedLevel = query.admin1 ? "admin2" : "admin1";
+    const expectedParentCode = query.admin1 ?? query.country;
+    const expectedCodes = expected
+      .filter(
+        (region) => region.level === expectedLevel && region.parentCode === expectedParentCode
+      )
+      .map((region) => region.code);
+    const actualCodes = actual.map((child) => child.code);
+    if (
+      new Set(actualCodes).size === actualCodes.length &&
+      actualCodes.length === expectedCodes.length &&
+      actualCodes.every((code) => expectedCodes.includes(code))
+    ) {
+      return;
+    }
+    throw new Error("Invalid live dashboard cached children");
   }
 
   private invalidHierarchyError(): AppError {

@@ -146,6 +146,26 @@ describe("LiveDashboardCache", () => {
     expect(factory).not.toHaveBeenCalled();
   });
 
+  it("accepts an empty ranking avatar from the Task 5 domain as a valid hit", async () => {
+    const value: CachedLiveDashboardFacts = {
+      ...cachedFacts(),
+      serviceRanking: cachedFacts().serviceRanking.map((item) => ({ ...item, avatarUrl: "" }))
+    };
+    const redis = createRedis({
+      get: JSON.stringify({ cachedAt: now.toISOString(), value })
+    });
+    const cache = new LiveDashboardCache(
+      () => redis,
+      () => now
+    );
+    const factory = jest.fn(async () => cachedFacts());
+
+    await expect(
+      cache.getOrCreate("JP:-:-:today", factory, decodeCachedLiveDashboardFacts)
+    ).resolves.toEqual({ value, cachedAt: now, cacheStatus: "hit" });
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["null", null],
     ["partial", { evaluatedAt: now.toISOString() }],

@@ -85,7 +85,7 @@ const cachedRankingItemSchema = z
     rank: safeNonNegativeInteger.min(1).max(10),
     entityPublicId: requiredText,
     displayName: requiredText,
-    avatarUrl: z.string().min(1).nullable(),
+    avatarUrl: z.string().nullable(),
     gmvJpy: safeNonNegativeInteger,
     completedCount: safeNonNegativeInteger
   })
