@@ -79,6 +79,25 @@ describe("UnifiedUserTable", () => {
     expect(container.textContent).not.toContain("gold");
   });
 
+  it("shows technician and merchant personal names without duplicating the customer or shop name", () => {
+    act(() => root.render(<UnifiedUserTable language="zh" onQueryChange={vi.fn()} onSelect={vi.fn()} query={{}} rows={[{ ...row,
+      identities: [...row.identities, { type: "merchant", displayName: "SHOP NAME", scopeType: "shop", scopeId: 1 }],
+      identityProfiles: [ { type: "technician", status: "active", displayName: "林 小雨" }, { type: "merchant", status: "active", displayName: "佐藤 美咲" } ]
+    }]} />));
+    const cells = container.querySelectorAll("tbody td");
+    expect(cells[0].textContent).toContain(row.displayName);
+    expect(cells[3].textContent).toBe("技师：林 小雨商户：佐藤 美咲");
+    expect(container.textContent).not.toContain("SHOP NAME");
+    expect(container.textContent).not.toContain(row.username);
+  });
+
+  it.each([ ["not_enabled", "未开启"], ["under_review", "审核中"], ["rejected", "拒绝"] ] as const)("shows identity status %s", (status, label) => {
+    act(() => root.render(<UnifiedUserTable language="zh" onQueryChange={vi.fn()} onSelect={vi.fn()} query={{}} rows={[{ ...row,
+      identityProfiles: [ { type: "technician", status, displayName: null }, { type: "merchant", status, displayName: null } ]
+    }]} />));
+    expect(container.querySelectorAll("tbody td")[3].textContent).toBe(`技师：${label}商户：${label}`);
+  });
+
   it("turns booking header ranges into a server query and resets pagination", () => {
     expect(bookingRangeQuery({ page: 4, page_size: 20 }, "10-50")).toEqual({
       page: 1,
@@ -86,6 +105,17 @@ describe("UnifiedUserTable", () => {
       minBookings: 10,
       maxBookings: 50
     });
+  });
+
+  it.each([2500, 0, null])("shows a separate secondary TestNDP balance only when nonzero: %s", (amount) => {
+    act(() => root.render(<UnifiedUserTable language="zh" onQueryChange={vi.fn()} onSelect={vi.fn()} query={{}}
+      rows={[{ ...row, testNdpBalance: amount === null ? null : { available: amount, frozen: 0 } }]} />));
+    const balanceCell = container.querySelectorAll("tbody td")[8];
+    expect(balanceCell.textContent).toContain("400");
+    if (amount) {
+      expect(balanceCell.querySelector("p")?.textContent).toBe("TestNDP 2,500");
+      expect(balanceCell.querySelector("p")?.className).toContain("text-xs");
+    } else expect(balanceCell.textContent).not.toContain("TestNDP");
   });
 
   it("does not offer sorting for columns without a supported server sort key", () => {

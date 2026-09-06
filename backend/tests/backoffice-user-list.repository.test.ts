@@ -59,7 +59,8 @@ describe("BackofficeRepository managed users", () => {
     const findMany = jest.fn(async () => [managedUserRow()]);
     const count = jest.fn(async () => 1);
     const walletFindMany = jest.fn(async () => [
-      { ownerId: 41, currency: "NDP", availableBalance: 900, frozenBalance: 100 }
+      { ownerId: 41, currency: "NDP", availableBalance: 900, frozenBalance: 100 },
+      { ownerId: 41, currency: "TEST_NDP", availableBalance: 2500, frozenBalance: 20 }
     ]);
     const repository = new BackofficeRepository({
       user: { findMany, count },
@@ -82,11 +83,48 @@ describe("BackofficeRepository managed users", () => {
       city: "Tokyo",
       privacyMode: true,
       privacyScope: "limited",
-      ndpBalance: { available: 900, frozen: 100 }
+      ndpBalance: { available: 900, frozen: 100 },
+      testNdpBalance: { available: 2500, frozen: 20 }
     });
     expect(findMany).toHaveBeenCalledTimes(1);
     expect(walletFindMany).toHaveBeenCalledTimes(1);
+    expect(walletFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { ownerType: "USER", ownerId: { in: [41] }, currency: { in: ["NDP", "TEST_NDP"] }, deletedAt: null },
+      select: expect.objectContaining({ currency: true })
+    }));
     expect(JSON.stringify(page)).not.toMatch(/passwordHash|otp|accessToken|refreshToken/);
+  });
+
+  it("uses identity personal names instead of shop labels and keeps active identities ahead of applications", async () => {
+    const base = managedUserRow();
+    const findMany = jest.fn(async () => [{ ...base,
+      identities: [...base.identities,
+        { type: "technician", displayName: "old technician", isActive: true, scopeType: "technician_profile", scopeId: 8 },
+        { type: "merchant", displayName: "SHOP NAME", isActive: true, scopeType: "shop", scopeId: 11,
+          merchantIdentityProfile: { displayName: "佐藤 美咲", deletedAt: null } }],
+      technicianProfile: { id: 8, displayName: "林 小雨", deletedAt: null },
+      identityApplications: [{ type: "merchant", status: "rejected" }]
+    }]);
+    const repository = new BackofficeRepository({ user: { findMany, count: jest.fn(async () => 1) }, wallet: { findMany: jest.fn(async () => []) } } as never);
+    const page = await repository.listManagedUsers({ scope: "platform", page: 1, pageSize: 20 } as never, now);
+    expect(page.list[0].identityProfiles).toEqual([
+      { type: "technician", status: "active", displayName: "林 小雨" },
+      { type: "merchant", status: "active", displayName: "佐藤 美咲" }
+    ]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({
+      identityApplications: expect.objectContaining({ where: { deletedAt: null, type: { in: ["technician", "merchant"] } }, distinct: ["type"], take: 2 })
+    }) }));
+  });
+
+  it.each([ ["draft", "not_enabled"], ["submitted", "under_review"], ["under_review", "under_review"], ["rejected", "rejected"], ["withdrawn", "not_enabled"] ])("projects the formal application status %s", async (status, expected) => {
+    const repository = new BackofficeRepository({ user: {
+      findMany: jest.fn(async () => [{ ...managedUserRow(), identityApplications: [{ type: "technician", status }] }]), count: jest.fn(async () => 1)
+    }, wallet: { findMany: jest.fn(async () => []) } } as never);
+    const page = await repository.listManagedUsers({ scope: "platform", page: 1, pageSize: 20 } as never, now);
+    expect(page.list[0].identityProfiles).toEqual([
+      { type: "technician", status: expected, displayName: null },
+      { type: "merchant", status: "not_enabled", displayName: null }
+    ]);
   });
 
   it("filters merchant managed users by authenticated shop before pagination", async () => {
@@ -244,7 +282,7 @@ describe("BackofficeRepository managed users", () => {
     const auditFindMany = jest.fn(async () => []);
     const repository = new BackofficeRepository({
       user: { findFirst },
-      wallet: { findMany: jest.fn(async () => [{ ownerId: 41, availableBalance: 900, frozenBalance: 0 }]) },
+      wallet: { findMany: jest.fn(async () => [{ ownerId: 41, currency: "NDP", availableBalance: 900, frozenBalance: 0 }]) },
       bookingOrder: {
         count: bookingCount,
         aggregate: jest.fn(async () => ({ _sum: { paymentAmountJpy: 18000 } }))

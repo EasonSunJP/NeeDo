@@ -137,8 +137,18 @@ const buildManagedUserSelect = (occurredAt: Date, scope: BackofficeScope) =>
             }
           : { deletedAt: null },
       orderBy: [{ isDefault: "desc" }, { id: "asc" }],
-      select: { type: true, displayName: true, scopeType: true, scopeId: true }
+      select: {
+        type: true, displayName: true, scopeType: true, scopeId: true, isActive: true,
+        merchantIdentityProfile: { select: { displayName: true, deletedAt: true } }
+      }
     },
+    identityApplications: scope.scope === "platform" ? {
+      where: { deletedAt: null, type: { in: ["technician", "merchant"] } },
+      distinct: ["type"],
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: { type: true, status: true }
+    } : false,
     userRoles: {
       where: {
         deletedAt: null,
@@ -499,7 +509,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     ]);
     const balances = await this.managedUserBalances(rows.map((row) => row.id));
     return buildPaginatedResponse(
-      rows.map((row) => this.mapManagedUser(row, balances.get(row.id), input)),
+      rows.map((row) => this.mapManagedUser(row, balances.get(`${row.id}:NDP`), input, balances.get(`${row.id}:TEST_NDP`))),
       total,
       input
     );
@@ -605,7 +615,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }]
         })
       ]);
-    const summary = this.mapManagedUser(user, balances.get(userId), input);
+    const summary = this.mapManagedUser(user, balances.get(`${userId}:NDP`), input, balances.get(`${userId}:TEST_NDP`));
     const effectiveRatings = credit.map((review) => review.amendments[0]?.rating ?? review.rating);
     const latestReviewAt = credit.reduce<Date | null>(
       (latest, review) => (!latest || review.createdAt > latest ? review.createdAt : latest),
@@ -2262,20 +2272,20 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   private async managedUserBalances(
     userIds: number[]
-  ): Promise<Map<number, { available: number; frozen: number }>> {
+  ): Promise<Map<string, { available: number; frozen: number }>> {
     if (userIds.length === 0) return new Map();
     const wallets = await this.client.wallet.findMany({
       where: {
         ownerType: "USER",
         ownerId: { in: userIds },
-        currency: "NDP",
+        currency: { in: ["NDP", "TEST_NDP"] },
         deletedAt: null
       },
-      select: { ownerId: true, availableBalance: true, frozenBalance: true }
+      select: { ownerId: true, currency: true, availableBalance: true, frozenBalance: true }
     });
     return new Map(
       wallets.map((wallet) => [
-        wallet.ownerId,
+        `${wallet.ownerId}:${wallet.currency}`,
         { available: wallet.availableBalance, frozen: wallet.frozenBalance }
       ])
     );
@@ -2284,7 +2294,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   private mapManagedUser(
     user: ManagedUserRecord,
     ndpBalance: { available: number; frozen: number } | undefined,
-    scope: BackofficeScope
+    scope: BackofficeScope,
+    testNdpBalance?: { available: number; frozen: number }
   ): BackofficeManagedUserPayload {
     const customerProfile = user.customerProfile?.deletedAt ? null : user.customerProfile;
     const technicianProfile = user.technicianProfile?.deletedAt ? null : user.technicianProfile;
@@ -2336,7 +2347,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       isActive: user.isActive,
       isTestAccount: user.isTestAccount,
       source: providers.length > 0 ? providers : ["password"],
-      identities: visibleIdentities,
+      identities: visibleIdentities.map(({ type, displayName, scopeType, scopeId }) => ({ type, displayName, scopeType, scopeId })),
+      ...(scope.scope === "platform" ? { identityProfiles: this.managedIdentityProfiles(user) } : {}),
       roles: visibleRoles.map((assignment) => ({
         code: assignment.role.code,
         name: assignment.role.name
@@ -2367,6 +2379,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             }
           : null,
       ndpBalance: ndpBalance ?? { available: 0, frozen: 0 },
+      testNdpBalance: testNdpBalance ?? null,
       bookingCount: user._count.bookingOrders,
       city: customerProfile?.city ?? technicianProfile?.city ?? null,
       privacyMode: privacyScope !== null && privacyScope !== "public",
@@ -2375,6 +2388,29 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString()
     };
+  }
+
+  private managedIdentityProfiles(user: ManagedUserRecord): NonNullable<BackofficeManagedUserPayload["identityProfiles"]> {
+    const profiles: NonNullable<BackofficeManagedUserPayload["identityProfiles"]> = [];
+    for (const type of ["technician", "merchant"] as const) {
+      const identities = user.identities.filter((identity) => identity.isActive && (
+        type === "technician" ? identity.type === type : ["merchant", "merchant_owner", "merchant_staff", "merchant_organization"].includes(identity.type)
+      ));
+      if (identities.length) {
+        for (const identity of identities) {
+          const displayName = type === "technician"
+            ? (user.technicianProfile?.deletedAt ? null : user.technicianProfile?.displayName) ?? null
+            : (identity.merchantIdentityProfile?.deletedAt ? null : identity.merchantIdentityProfile?.displayName) ?? null;
+          profiles.push({ type, status: "active", displayName });
+        }
+      } else {
+        const application = user.identityApplications?.find((item) => item.type === type);
+        const status = application?.status === "submitted" || application?.status === "under_review"
+          ? "under_review" : application?.status === "rejected" ? "rejected" : "not_enabled";
+        profiles.push({ type, status, displayName: null });
+      }
+    }
+    return profiles;
   }
 
   private visibleRoleAssignments(user: ManagedUserRecord, scope: BackofficeScope) {
