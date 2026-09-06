@@ -43,6 +43,89 @@ describe("JapanRegionMap", () => {
     window.localStorage.clear();
   });
 
+  it.each([["47", undefined], ["47357", "47"], ["47358", "47"]] as const)("reaches island %s through small pointer moves while deferring labels and keeping content visible", async (code, admin1) => {
+    const asset = admin1 ? readAsset("public/maps/jp/2026/prefectures/47.json") : country;
+    const fetcher = vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : asset }));
+    vi.stubGlobal("fetch", fetcher);
+    let frame: FrameRequestCallback = () => {};
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => { frame = callback; return 1; }));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const layout = vi.spyOn(labelLayout, "layoutMapLabels");
+    await act(async () => root.render(<JapanRegionMap children={childrenFor(asset)} onSelectRegion={vi.fn()} scope={{ country: "JP", admin1, period: "today" }} />));
+    for (let step = 0; step < 6; step++) await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="放大地图"]')!.click());
+    const svg = container.querySelector("svg")!;
+    const [, , width, height] = asset.viewBox;
+    Object.assign(svg, { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn(), hasPointerCapture: () => true });
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ width, height } as DOMRect);
+    const transform = () => container.querySelector("[data-map-geometry]")!.getAttribute("transform")!;
+    const readViewport = () => {
+      const [, x, y, scale] = /translate\(([^ ]+) ([^)]+)\) scale\(([^)]+)\)/.exec(transform())!;
+      return { x: Number(x), y: Number(y), scale: Number(scale) };
+    };
+    const start = readViewport();
+    const anchor = asset.regions.find((region: { code: string }) => region.code === code).labelPoint;
+    const target = { x: Math.max(-3 * width, Math.min(0, width / 2 - 4 * anchor[0])), y: Math.max(-3 * height, Math.min(0, height / 2 - 4 * anchor[1])) };
+    const steps = Math.ceil(Math.max(Math.abs(target.x - start.x), Math.abs(target.y - start.y)) / 10);
+    const pointer = async (type: string, step: number) => act(async () => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: 100 + (target.x - start.x) * step / steps, clientY: 100 + (target.y - start.y) * step / steps });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      svg.dispatchEvent(event);
+    });
+    const layoutsBefore = layout.mock.calls.length;
+    const fetchesBefore = fetcher.mock.calls.length;
+    const transforms = new Set<string>();
+    await pointer("pointerdown", 0);
+    for (let step = 1; step <= steps; step++) {
+      await pointer("pointermove", step);
+      await act(async () => frame(0));
+      transforms.add(transform());
+      const viewport = readViewport();
+      expect(asset.regions.some((region: { labelPoint: [number, number] }) => {
+        const x = region.labelPoint[0] * viewport.scale + viewport.x;
+        const y = region.labelPoint[1] * viewport.scale + viewport.y;
+        return x >= 0 && x <= width && y >= 0 && y <= height;
+      })).toBe(true);
+      expect(layout).toHaveBeenCalledTimes(layoutsBefore);
+    }
+    await pointer("pointerup", steps);
+    expect(layout).toHaveBeenCalledTimes(layoutsBefore + 1);
+    expect(fetcher).toHaveBeenCalledTimes(fetchesBefore);
+    expect(transforms.size).toBeGreaterThan(8);
+    const final = readViewport();
+    expect(anchor[0] * final.scale + final.x).toBeGreaterThanOrEqual(0);
+    expect(anchor[0] * final.scale + final.x).toBeLessThanOrEqual(width);
+    expect(anchor[1] * final.scale + final.y).toBeGreaterThanOrEqual(0);
+    expect(anchor[1] * final.scale + final.y).toBeLessThanOrEqual(height);
+  });
+
+  it.each(["还原地图", "放大地图", "缩小地图"])("clears pending drag intent when pressing %s", async (button) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes("search-index") ? searchIndex : country })));
+    let frame: FrameRequestCallback = () => {};
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => { frame = callback; return 1; }));
+    const cancel = vi.fn();
+    vi.stubGlobal("cancelAnimationFrame", cancel);
+    await act(async () => root.render(<JapanRegionMap children={childrenFor(country)} onSelectRegion={vi.fn()} scope={{ country: "JP", period: "today" }} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="放大地图"]')!.click());
+    const svg = container.querySelector("svg")!;
+    const release = vi.fn();
+    Object.assign(svg, { setPointerCapture: vi.fn(), releasePointerCapture: release, hasPointerCapture: () => true });
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ width: 1000, height: 1200 } as DOMRect);
+    const pointer = async (type: string, x: number) => act(async () => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: 100 });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      svg.dispatchEvent(event);
+    });
+    await pointer("pointerdown", 100);
+    await pointer("pointermove", 200);
+    await act(async () => container.querySelector<HTMLButtonElement>(`button[aria-label="${button}"]`)!.click());
+    const after = container.querySelector("[data-map-geometry]")!.getAttribute("transform");
+    await act(async () => frame(0));
+    await pointer("pointerup", 300);
+    expect(container.querySelector("[data-map-geometry]")!.getAttribute("transform")).toBe(after);
+    expect(cancel).toHaveBeenCalledWith(1);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   it("lays labels out in physical viewport pixels after resize without fetching", async () => {
     let resize: ResizeObserverCallback = () => {};
     vi.stubGlobal("ResizeObserver", class {

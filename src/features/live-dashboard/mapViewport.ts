@@ -109,6 +109,13 @@ export function panMapViewport(current: MapViewport, delta: Point, viewBox: View
   }, viewBox, contentPoints);
 }
 
+// Accumulate pointer movement independently of the nearest-visible-content
+// correction so a continuous gesture can cross disconnected islands.
+export function panMapGesture(intent: MapViewport, delta: Point, viewBox: ViewBox, contentPoints: readonly Point[] = []): { intent: MapViewport; viewport: MapViewport } {
+  const nextIntent = panMapViewport(intent, delta, viewBox);
+  return { intent: nextIntent, viewport: panMapViewport(nextIntent, [0, 0], viewBox, contentPoints) };
+}
+
 export function mapViewportTransform(viewport: MapViewport): string {
   return `translate(${cleanZero(viewport.x)} ${cleanZero(viewport.y)}) scale(${viewport.scale})`;
 }

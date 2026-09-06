@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   IDENTITY_VIEWPORT,
   mapViewportTransform,
+  panMapGesture,
   panMapViewport,
   zoomMapViewport,
   type MapViewport
@@ -15,6 +16,7 @@ type MapAsset = { viewBox: [number, number, number, number]; regions: { code: st
 const readAsset = (file: string): MapAsset => JSON.parse(fs.readFileSync(path.join(process.cwd(), "public/maps/jp/2026", file), "utf8"));
 const country = readAsset("country.json");
 const tokyo = readAsset("prefectures/13.json");
+const okinawa = readAsset("prefectures/47.json");
 const screenPoint = (point: readonly [number, number], viewport: MapViewport) =>
   [point[0] * viewport.scale + viewport.x, point[1] * viewport.scale + viewport.y] as const;
 
@@ -26,6 +28,32 @@ function repeatZoom(viewport: MapViewport, direction: "in" | "out", count: numbe
 }
 
 describe("mapViewport", () => {
+  it.each([["47", country], ["47357", okinawa], ["47358", okinawa]] as const)("crosses empty sea with continuous small deltas to region %s", (code, asset) => {
+    const [, , width, height] = asset.viewBox;
+    const points = asset.regions.map((region) => region.labelPoint);
+    const anchor = asset.regions.find((region) => region.code === code)!.labelPoint;
+    let viewport: MapViewport = { scale: 4, x: -width * 1.5, y: -height * 1.5 };
+    let intent = viewport;
+    const target = panMapViewport(viewport, [width / 2 - screenPoint(anchor, viewport)[0], height / 2 - screenPoint(anchor, viewport)[1]], asset.viewBox);
+    const steps = Math.ceil(Math.max(Math.abs(target.x - viewport.x), Math.abs(target.y - viewport.y)) / 10);
+    const delta = [(target.x - viewport.x) / steps, (target.y - viewport.y) / steps] as const;
+    const transforms = new Set<string>();
+    for (let step = 0; step < steps; step++) {
+      ({ intent, viewport } = panMapGesture(intent, delta, asset.viewBox, points));
+      transforms.add(mapViewportTransform(viewport));
+      expect(points.some((point) => {
+        const [x, y] = screenPoint(point, viewport);
+        return x >= 0 && x <= width && y >= 0 && y <= height;
+      })).toBe(true);
+    }
+    expect(transforms.size).toBeGreaterThan(8);
+    const [x, y] = screenPoint(anchor, viewport);
+    expect(x).toBeGreaterThanOrEqual(0);
+    expect(x).toBeLessThanOrEqual(width);
+    expect(y).toBeGreaterThanOrEqual(0);
+    expect(y).toBeLessThanOrEqual(height);
+  });
+
   it("zooms around the selected anchor without moving it and clamps at 1x and 4x", () => {
     const zoomed = zoomMapViewport(IDENTITY_VIEWPORT, "in", [320, 180], viewBox);
 

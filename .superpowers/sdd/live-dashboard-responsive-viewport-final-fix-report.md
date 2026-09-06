@@ -66,3 +66,37 @@ this report. No RegionNavigator, progress, general docs, API, data, migration,
 push, deployment, or authenticated browser acceptance is included. The content
 constraint uses the existing geometry-derived region label anchors; assets
 without valid anchors retain standard viewBox behavior.
+
+## Continuous gesture follow-up
+
+Review identified that a safe displayed viewport must not become the next
+pointer event's accumulated intent: disconnected islands create disjoint
+regions of allowable display translations. Small moves could repeatedly snap
+to the same boundary and never reach an island even though a single large
+delta could reach it.
+
+Before this follow-up implementation, three pure sequence regressions and
+three real pointer sequence integrations failed. Country Okinawa remained at
+y=1251.4 beyond height 1200; Okinawa municipalities 47357/47358 remained at
+x=1396.8/1421.32 beyond width 1000. All tests used deltas at most 10 units per
+axis and verified real content remained visible on every intermediate frame.
+
+`panMapGesture` now returns separate standard-clamped intent and safe display
+viewports. The drag ref accumulates intent independently and commits only the
+safe display/label viewport on pointerup. Reset and zoom clear the gesture and
+pending frame; the existing scope cleanup also clears it. The pure regressions
+now exercise this exported gesture helper, while pointer integrations retain
+the same events and assertions as their failing runs.
+
+Final checks for this follow-up:
+
+- mapViewport, JapanRegionMap, mapLabelLayout, liveDashboardResponsive, and
+  LiveDashboardShell: 5 files / 108 tests passed. This includes actual geometry
+  movement, every-frame content visibility, final target-island reachability,
+  deferred label calculations, zero drag fetches, and reset/zoom cancellation.
+- Independent continuous probe across all 48 assets: 153,065 safe display
+  frames, 1,965 reachable targets, and 384 direction probes passed.
+- TypeScript lint and diff whitespace checks passed.
+- Production build passed with the existing Zod annotation, mixed static /
+  dynamic import, and large-chunk warnings. Legacy auth variables were cleared
+  only in the build subprocess.

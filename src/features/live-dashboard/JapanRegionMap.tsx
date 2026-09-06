@@ -4,7 +4,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateTextForContext } from "../../i18n/translations";
 import { RegionNavigator } from "./RegionNavigator";
 import { layoutMapLabels } from "./mapLabelLayout";
-import { IDENTITY_VIEWPORT, mapViewportTransform, panMapViewport, zoomMapViewport, type MapViewport } from "./mapViewport";
+import { IDENTITY_VIEWPORT, mapViewportTransform, panMapGesture, zoomMapViewport, type MapViewport } from "./mapViewport";
 
 type MapRegion = {
   code: string;
@@ -119,7 +119,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
   const [labelViewport, setLabelViewport] = useState(IDENTITY_VIEWPORT);
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null);
-  const drag = useRef<{ id: number; x: number; y: number; moved: boolean; target: SVGSVGElement; viewport: MapViewport } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; moved: boolean; target: SVGSVGElement; intent: MapViewport; viewport: MapViewport } | null>(null);
   const dragFrame = useRef<number | null>(null);
   const suppressClick = useRef(false);
   const locale = language === "ja" ? "ja-JP" : language === "ko" ? "ko-KR" : language === "en" ? "en-US" : "zh-CN";
@@ -188,8 +188,16 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
     orderCountByCode: Object.fromEntries(children.map((item) => [item.code, item.orderCount]))
   }) : [], [asset, labelViewport, activeCode, children, stageSize, projection, scope.admin2]);
   const nameByCode = useMemo(() => new Map(asset?.regions.map((item) => [item.code, item.nameJa])), [asset]);
+  const clearDrag = () => {
+    if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
+    dragFrame.current = null;
+    const current = drag.current;
+    drag.current = null;
+    if (current?.target.hasPointerCapture?.(current.id)) current.target.releasePointerCapture(current.id);
+  };
   const zoom = (direction: "in" | "out") => {
     if (!asset) return;
+    clearDrag();
     const point = asset.regions.find((item) => item.code === scope.admin2)?.labelPoint;
     const center: [number, number] = point ? [point[0] * viewport.scale + viewport.x, point[1] * viewport.scale + viewport.y]
       : [asset.viewBox[0] + asset.viewBox[2] / 2, asset.viewBox[1] + asset.viewBox[3] / 2];
@@ -203,7 +211,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
     if (current.moved && event.type === "pointerup" && asset) {
       const rect = event.currentTarget.getBoundingClientRect();
       const ratio = Math.min(rect.width / asset.viewBox[2], rect.height / asset.viewBox[3]);
-      if (ratio > 0) current.viewport = panMapViewport(current.viewport, [(event.clientX - current.x) / ratio, (event.clientY - current.y) / ratio], asset.viewBox, contentPoints);
+      if (ratio > 0) Object.assign(current, panMapGesture(current.intent, [(event.clientX - current.x) / ratio, (event.clientY - current.y) / ratio], asset.viewBox, contentPoints));
     }
     suppressClick.current = current.moved;
     if (dragFrame.current !== null) cancelAnimationFrame(dragFrame.current);
@@ -241,7 +249,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
         <div className="live-dashboard-map-viewport-controls">
           <button aria-label={t("放大地图")} disabled={!asset || viewport.scale >= 4} onClick={() => zoom("in")} type="button">＋</button>
           <button aria-label={t("缩小地图")} disabled={!asset || viewport.scale <= 1} onClick={() => zoom("out")} type="button">−</button>
-          <button aria-label={t("还原地图")} disabled={!asset || viewport.scale === 1} onClick={() => { setViewport(IDENTITY_VIEWPORT); setLabelViewport(IDENTITY_VIEWPORT); }} type="button">{t("还原")}</button>
+          <button aria-label={t("还原地图")} disabled={!asset || viewport.scale === 1} onClick={() => { clearDrag(); setViewport(IDENTITY_VIEWPORT); setLabelViewport(IDENTITY_VIEWPORT); }} type="button">{t("还原")}</button>
         </div>
       </div>
       <div className="live-dashboard-map-tooltip" role="tooltip">
@@ -262,7 +270,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
             onPointerDown={(event) => {
               suppressClick.current = false;
               if (viewport.scale <= 1 || event.button !== 0 || drag.current) return;
-              drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, target: event.currentTarget, viewport };
+              drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, target: event.currentTarget, intent: viewport, viewport };
             }}
             onPointerMove={(event) => {
               const current = drag.current;
@@ -275,7 +283,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, onSelectRegion, sco
               if (!current.moved) event.currentTarget.setPointerCapture(event.pointerId);
               current.moved = true;
               current.x = event.clientX; current.y = event.clientY;
-              current.viewport = panMapViewport(current.viewport, [dx / ratio, dy / ratio], asset.viewBox, contentPoints);
+              Object.assign(current, panMapGesture(current.intent, [dx / ratio, dy / ratio], asset.viewBox, contentPoints));
               if (dragFrame.current === null) {
                 dragFrame.current = requestAnimationFrame(() => {
                   dragFrame.current = null;
