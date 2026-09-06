@@ -82,6 +82,7 @@ import { cn, statusLabel, yen } from "../../lib/utils";
 import type { Order, Store, Technician } from "../../types/domain";
 import { StoreDetailExperience } from "../user/StoreDetailPage";
 import { loadEveryScopedOrder } from "../../features/scheduling/window-loader";
+import { buildFormalMerchantStaffCard } from "../../features/shop-analytics/formal-merchant-staff-card";
 import { loadFormalMerchantHome } from "../../features/shop-analytics/merchant-home-data";
 import { mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { ShopAnalyticsDashboard } from "../../features/shop-analytics/ShopAnalyticsDashboard";
@@ -1154,7 +1155,9 @@ export function MerchantStaffDetailRoutePage() {
           <div className="space-y-3">
             <SocialProfileMiniCard
               showAction={false}
-              technician={technician}
+              data={buildFormalMerchantStaffCard(technician)}
+              showLevel={false}
+              showSocialStats={false}
               topTags={[getMerchantStaffStatusTopTag(getMerchantStaffStatus(technician))]}
             />
             <TechnicianProfilePanel context="merchant" showSummaryCard={false} technician={technician} />
@@ -2544,7 +2547,9 @@ export function MerchantPortalContent({
                       detailTo={getMerchantStaffDetailPath(technician.id)}
                       key={technician.id}
                       showAction={false}
-                      technician={technician}
+                      data={buildFormalMerchantStaffCard(technician)}
+                      showLevel={false}
+                      showSocialStats={false}
                       topTags={[getMerchantStaffStatusTopTag(staffStatus)]}
                     />
                   );
@@ -2655,7 +2660,9 @@ export function MerchantPortalContent({
                             className="cursor-pointer"
                             detailTo={getMerchantStaffDetailPath(technician.id)}
                             key={technician.id}
-                            technician={technician}
+                            data={buildFormalMerchantStaffCard(technician)}
+                            showLevel={false}
+                            showSocialStats={false}
                             topTags={[getMerchantEmploymentTopTag(employmentType), getMerchantStaffStatusTopTag(staffStatus)]}
                           />
                         ))
