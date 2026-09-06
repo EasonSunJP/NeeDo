@@ -12,7 +12,8 @@ const matching: ExchangeMatchingPayload = {
   selectedQuoteTotalJpy: 0,
   matchedAt: null,
   participants: [],
-  viewer: { canSelect: true, canCreateBookings: false }
+  quickBudgetDecision: null,
+  viewer: { canSelect: true, canConfirmQuickBudget: false, canCreateBookings: false }
 };
 
 describe("formal Exchange matching routes", () => {

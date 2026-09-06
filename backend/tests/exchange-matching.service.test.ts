@@ -57,7 +57,8 @@ const openPayload: ExchangeMatchingPayload = {
   selectedQuoteTotalJpy: 0,
   matchedAt: null,
   participants: [],
-  viewer: { canSelect: true, canCreateBookings: false }
+  quickBudgetDecision: null,
+  viewer: { canSelect: true, canConfirmQuickBudget: false, canCreateBookings: false }
 };
 
 const matchingRecord: ExchangeMatchingRecord = {
@@ -76,6 +77,19 @@ const matchingRecord: ExchangeMatchingRecord = {
   version: 3,
   matchedAt: null,
   payload: openPayload
+};
+
+const quickBudgetPayload: ExchangeMatchingPayload = {
+  ...openPayload,
+  quickBudgetDecision: {
+    action: "increase_to_selected_total",
+    activeClaimCount: 2,
+    selectedQuoteTotalJpy: 31_000,
+    effectiveBudgetMaxJpy: 30_000,
+    requiredBudgetMaxJpy: 31_000,
+    requiredBudgetIncreaseJpy: 1_000
+  },
+  viewer: { canSelect: false, canConfirmQuickBudget: true, canCreateBookings: false }
 };
 
 const claim = (
@@ -119,7 +133,8 @@ const matchedPayload: ExchangeMatchingPayload = {
   selectedQuoteTotalJpy: 29_000,
   matchedAt: now.toISOString(),
   participants: [participant(301, 81, 15_000), participant(302, 82, 14_000)],
-  viewer: { canSelect: false, canCreateBookings: true }
+  quickBudgetDecision: null,
+  viewer: { canSelect: false, canConfirmQuickBudget: false, canCreateBookings: true }
 };
 
 const createRepository = (
@@ -151,6 +166,20 @@ describe("ExchangeMatchingService", () => {
     await expect(
       new ExchangeMatchingService(hidden, () => now).getMatching(access, 41)
     ).rejects.toMatchObject({ code: 40423 });
+  });
+
+  it("returns the repository-owned exact Quick budget decision unchanged", async () => {
+    const repository = createRepository({
+      findForViewer: jest.fn(async () => ({
+        ...matchingRecord,
+        matchMode: "quick" as const,
+        payload: quickBudgetPayload
+      }))
+    });
+
+    await expect(
+      new ExchangeMatchingService(repository, () => now).getMatching(access, 41)
+    ).resolves.toEqual(quickBudgetPayload);
   });
 
   it("matches the exact selected count and budget in one repository transaction", async () => {

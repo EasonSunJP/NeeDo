@@ -4942,6 +4942,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "selectedQuoteTotalJpy",
           "matchedAt",
           "participants",
+          "quickBudgetDecision",
           "viewer"
         ],
         properties: {
@@ -4956,12 +4957,38 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "array",
             items: { $ref: "#/components/schemas/ExchangeMatchParticipant" }
           },
+          quickBudgetDecision: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "action",
+                  "activeClaimCount",
+                  "selectedQuoteTotalJpy",
+                  "effectiveBudgetMaxJpy",
+                  "requiredBudgetMaxJpy",
+                  "requiredBudgetIncreaseJpy"
+                ],
+                properties: {
+                  action: { type: "string", enum: ["increase_to_selected_total"] },
+                  activeClaimCount: { type: "integer", minimum: 1 },
+                  selectedQuoteTotalJpy: { type: "integer", minimum: 1 },
+                  effectiveBudgetMaxJpy: { type: "integer", minimum: 1 },
+                  requiredBudgetMaxJpy: { type: "integer", minimum: 1 },
+                  requiredBudgetIncreaseJpy: { type: "integer", minimum: 1 }
+                }
+              },
+              { type: "null" }
+            ]
+          },
           viewer: {
             type: "object",
             additionalProperties: false,
-            required: ["canSelect", "canCreateBookings"],
+            required: ["canSelect", "canConfirmQuickBudget", "canCreateBookings"],
             properties: {
               canSelect: { type: "boolean" },
+              canConfirmQuickBudget: { type: "boolean" },
               canCreateBookings: { type: "boolean" }
             }
           }

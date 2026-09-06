@@ -28,7 +28,12 @@ const matchingInclude = {
       type: true,
       status: true,
       expiresAt: true,
-      demand: { select: { matchMode: true } }
+      demand: { select: { matchMode: true } },
+      claims: {
+        where: { status: DatabaseExchangeClaimStatus.ACTIVE, deletedAt: null },
+        select: { id: true, quoteAmountJpy: true },
+        orderBy: { id: "asc" as const }
+      }
     }
   },
   participants: {
@@ -477,6 +482,30 @@ export class ExchangeMatchingRepository {
     if (!isOwner && visibleParticipants.length === 0) return null;
     const participants = visibleParticipants.map((participant) => this.mapParticipant(participant));
     const status = row.status.toLowerCase() as ExchangeMatchingRecord["status"];
+    const matchMode =
+      (row.exchangePost.demand?.matchMode.toLowerCase() as ExchangeMatchingRecord["matchMode"]) ??
+      null;
+    const activeClaims = row.exchangePost.claims ?? [];
+    const activeClaimCount = activeClaims.length;
+    const activeQuoteTotalJpy = activeClaims.reduce(
+      (total, claim) => total + claim.quoteAmountJpy,
+      0
+    );
+    const quickBudgetDecision =
+      isOwner &&
+      status === "open" &&
+      matchMode === "quick" &&
+      activeClaimCount === row.effectiveTargetProviderCount &&
+      activeQuoteTotalJpy > row.effectiveBudgetMaxJpy
+        ? {
+            action: "increase_to_selected_total" as const,
+            activeClaimCount,
+            selectedQuoteTotalJpy: activeQuoteTotalJpy,
+            effectiveBudgetMaxJpy: row.effectiveBudgetMaxJpy,
+            requiredBudgetMaxJpy: activeQuoteTotalJpy,
+            requiredBudgetIncreaseJpy: activeQuoteTotalJpy - row.effectiveBudgetMaxJpy
+          }
+        : null;
     const payload: ExchangeMatchingPayload = {
       exchangePostId: row.exchangePostId,
       status,
@@ -486,8 +515,10 @@ export class ExchangeMatchingRepository {
       selectedQuoteTotalJpy: row.selectedQuoteTotalJpy,
       matchedAt: row.matchedAt?.toISOString() ?? null,
       participants,
+      quickBudgetDecision,
       viewer: {
-        canSelect: isOwner && status === "open",
+        canSelect: isOwner && status === "open" && matchMode === "selective",
+        canConfirmQuickBudget: quickBudgetDecision !== null,
         canCreateBookings:
           isOwner &&
           status === "matched" &&
@@ -502,9 +533,7 @@ export class ExchangeMatchingRepository {
       ownerIdentityId: row.exchangePost.ownerIdentityId,
       postType: row.exchangePost.type.toLowerCase() as ExchangeMatchingRecord["postType"],
       postStatus: row.exchangePost.status.toLowerCase() as ExchangeMatchingRecord["postStatus"],
-      matchMode:
-        (row.exchangePost.demand?.matchMode.toLowerCase() as ExchangeMatchingRecord["matchMode"]) ??
-        null,
+      matchMode,
       expiresAt: row.exchangePost.expiresAt,
       status,
       effectiveTargetProviderCount: row.effectiveTargetProviderCount,

@@ -60,7 +60,7 @@
 - Produces: `viewer.canConfirmQuickBudget: boolean`.
 - Produces: `ExchangeMatchingRepository.lockActiveClaims(exchangePostId)` as the only authoritative source for Quick count and quote total.
 
-- [ ] **Step 1: Write failing payload-projection tests**
+- [x] **Step 1: Write failing payload-projection tests**
 
 Add repository/service assertions for an owner viewing an open Quick matching with two active claims totaling `31_000` against `30_000`:
 
@@ -82,13 +82,13 @@ expect(payload.viewer).toEqual({
 
 Also assert participant/non-owner projections receive `quickBudgetDecision: null` and `canConfirmQuickBudget: false`.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange-matching.repository.test.ts tests/exchange-matching.service.test.ts`
 
 Expected: FAIL because the payload does not yet expose Quick decision state.
 
-- [ ] **Step 3: Add the exact public types and repository projection**
+- [x] **Step 3: Add the exact public types and repository projection**
 
 Add:
 
@@ -105,7 +105,7 @@ export interface ExchangeQuickBudgetDecision {
 
 Extend `matchingInclude.exchangePost` with active-claim IDs and quote amounts. In `mapMatching`, derive the preview only when the viewer is the owner, mode is `quick`, status is `open`, active count exactly equals the effective target, and total exceeds the effective budget. Set `canSelect` only for open Selective matching and `canConfirmQuickBudget` only when the preview exists.
 
-- [ ] **Step 4: Run the focused tests and verify GREEN**
+- [x] **Step 4: Run the focused tests and verify GREEN**
 
 Run the command from Step 2.
 

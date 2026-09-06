@@ -10,6 +10,54 @@ import { ExchangeMatchingRepository } from "../src/repositories/exchange-matchin
 const at = new Date("2026-09-01T01:00:00.000Z");
 
 describe("ExchangeMatchingRepository", () => {
+  it("projects an exact quick budget decision only to the Request owner", async () => {
+    const matching = {
+      id: 51,
+      exchangePostId: 41,
+      status: ExchangeMatchingStatus.OPEN,
+      effectiveTargetProviderCount: 2,
+      effectiveBudgetMaxJpy: 30_000,
+      selectedQuoteTotalJpy: 0,
+      version: 3,
+      matchedAt: null,
+      exchangePost: {
+        id: 41,
+        authorUserId: 7,
+        ownerIdentityId: 17,
+        type: ExchangePostType.DEMAND,
+        status: ExchangePostStatus.PUBLISHED,
+        expiresAt: new Date("2026-09-01T12:00:00.000Z"),
+        demand: { matchMode: ExchangeMatchMode.QUICK },
+        claims: [
+          { id: 301, quoteAmountJpy: 15_000 },
+          { id: 302, quoteAmountJpy: 16_000 }
+        ]
+      },
+      participants: []
+    };
+    const repository = new ExchangeMatchingRepository({
+      exchangeRequestMatching: { findFirst: jest.fn(async () => matching) }
+    } as unknown as PrismaClient);
+
+    const owner = await repository.findForViewer(41, 17);
+
+    expect(owner?.payload).toMatchObject({
+      quickBudgetDecision: {
+        action: "increase_to_selected_total",
+        activeClaimCount: 2,
+        selectedQuoteTotalJpy: 31_000,
+        effectiveBudgetMaxJpy: 30_000,
+        requiredBudgetMaxJpy: 31_000,
+        requiredBudgetIncreaseJpy: 1_000
+      },
+      viewer: {
+        canSelect: false,
+        canConfirmQuickBudget: true,
+        canCreateBookings: false
+      }
+    });
+  });
+
   it("projects immutable snapshots and booking state only to the owner or selected provider", async () => {
     const matching = {
       id: 51,
@@ -116,6 +164,10 @@ describe("ExchangeMatchingRepository", () => {
     ).toBe(false);
     expect(providerPayload?.payload.participants).toHaveLength(1);
     expect(providerPayload?.payload.participants[0]?.exchangeClaimId).toBe(301);
+    expect(providerPayload?.payload).toMatchObject({
+      quickBudgetDecision: null,
+      viewer: { canConfirmQuickBudget: false }
+    });
     expect(nonSelectedPayload).toBeNull();
   });
 
