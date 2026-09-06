@@ -7153,6 +7153,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           },
+          identityProfiles: {
+            type: "array",
+            description: "Operations-only personal identity names and latest application states. Merchant names come from MerchantIdentityProfile, never shop labels. Draft or withdrawn applications are not enabled.",
+            items: {
+              type: "object",
+              required: ["type", "status", "displayName"],
+              properties: {
+                type: { type: "string", enum: ["technician", "merchant"] },
+                status: { type: "string", enum: ["active", "not_enabled", "under_review", "rejected"] },
+                displayName: { type: ["string", "null"] }
+              }
+            }
+          },
           roles: { type: "array", items: { type: "object" } },
           groups: { type: "array", items: { type: "string" } },
           ekycVerified: { type: "boolean" },
@@ -7193,6 +7206,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           bookingCount: { type: "integer", minimum: 0 },
+          testNdpBalance: {
+            type: ["object", "null"],
+            description: "Separate TEST_NDP wallet balance. Null when no test wallet exists; never included in ndpBalance or NDP balance filters.",
+            required: ["available", "frozen"],
+            properties: {
+              available: { type: "integer" },
+              frozen: { type: "integer" }
+            }
+          },
           city: { type: ["string", "null"] },
           privacyMode: { type: "boolean" },
           privacyScope: {

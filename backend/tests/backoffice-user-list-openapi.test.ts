@@ -43,5 +43,10 @@ describe("backoffice all-user OpenAPI", () => {
     expect(
       response.body.components.schemas.BackofficeManagedUser.properties.experience.nullable
     ).toBe(true);
+    expect(response.body.components.schemas.BackofficeManagedUser.properties.testNdpBalance).toMatchObject({
+      type: ["object", "null"],
+      required: ["available", "frozen"],
+      properties: { available: { type: "integer" }, frozen: { type: "integer" } }
+    });
   });
 });

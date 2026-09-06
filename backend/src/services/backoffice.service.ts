@@ -484,12 +484,18 @@ export interface BackofficeManagedUserPayload {
   isTestAccount: boolean;
   source: string[];
   identities: BackofficeManagedUserIdentityPayload[];
+  identityProfiles?: Array<{
+    type: "technician" | "merchant";
+    status: "active" | "not_enabled" | "under_review" | "rejected";
+    displayName: string | null;
+  }>;
   roles: Array<{ code: string; name: string }>;
   groups: string[];
   ekycVerified: boolean;
   membership: BackofficeManagedUserMembershipPayload;
   experience: BackofficeManagedUserExperiencePayload | null;
   ndpBalance: { available: number; frozen: number };
+  testNdpBalance?: { available: number; frozen: number } | null;
   bookingCount: number;
   city: string | null;
   privacyMode: boolean;
