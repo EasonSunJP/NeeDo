@@ -1,4 +1,4 @@
-import { PlatformMembershipTierCode, Prisma } from "@prisma/client";
+import { PlatformMembershipTierCode, type Prisma } from "@prisma/client";
 
 const PAID_PLATFORM_TIER_CODES = [
   PlatformMembershipTierCode.SILVER,
