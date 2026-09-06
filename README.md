@@ -2,6 +2,8 @@
 
 面向日本市场的本地生活服务平台与商家管理系统，覆盖上门服务、门店预约、餐饮预约和 SaaS 后台运营。
 
+分组成员、后台账号 LOG 与动态插页的接口及本地验证记录见 [Step 12 抽屉改进](docs/superpowers/plans/2026-09-07-operations-member-create.md)。
+
 ## Run
 
 ```bash
@@ -38,6 +40,8 @@ npm run dev:frontend
 - Chrome 直接双击打开 `dist/*.html` 时，`file://` 模式通常不会正常执行 Vite 的 ES module 入口，表现就是白屏、进入页/聊天页/错误页背景都像“没了”。请改用 `npm run dev` 或 `npm run preview` 通过本地 HTTP 服务访问。
 
 ## Build
+
+运营排行服务类型筛选、完整详情、时间/城市查询和 10/50/100 分页的本地 main 集成范围与验收命令见 [排行集成记录](docs/qa/2026-09-07-ranking-main-integration.md)。
 
 ```bash
 npm run build

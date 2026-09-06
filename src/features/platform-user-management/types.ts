@@ -255,6 +255,7 @@ export type UserGroup = {
 };
 
 export type UserGroupMember = {
+  id: number;
   needoId: string;
   username: string;
   avatarUrl: string | null;
@@ -368,3 +369,6 @@ export type UserExperienceEntry = {
   campaignVersionId: string | null;
   occurredAt: string;
 };
+
+export type AccountUserLogDetail = Pick<PlatformManagedUserDetail, "id" | "displayName" | "avatarUrl" | "createdAt" | "audit">;
+export type AccountActivitySubject = { scope: UserDirectoryScope; subject: "users" | "technicians"; id: number };

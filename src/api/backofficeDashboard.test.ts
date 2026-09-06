@@ -200,7 +200,7 @@ describe("formal dashboard frontend API contract", () => {
     expect(httpClient.request).not.toHaveBeenCalled();
   });
 
-  it("serializes the formal Top10 ranking metric, category and dashboard filter", async () => {
+  it.each([10, 11, 50, 100])("serializes ranking filters with %i records per page", async (pageSize) => {
     vi.mocked(httpClient.request).mockResolvedValueOnce({
       dataStatus: "ready",
       filter: {
@@ -217,7 +217,7 @@ describe("formal dashboard frontend API contract", () => {
       list: [],
       total: 0,
       page: 1,
-      page_size: 10
+      page_size: pageSize
     });
 
     await backofficeRealDataApi.analyticsRankings("technician", {
@@ -228,7 +228,7 @@ describe("formal dashboard frontend API contract", () => {
       city: "东京",
       categoryId: 7,
       page: 1,
-      pageSize: 10
+      pageSize
     });
 
     expect(httpClient.request).toHaveBeenCalledWith(
@@ -242,7 +242,7 @@ describe("formal dashboard frontend API contract", () => {
           city: "东京",
           categoryId: 7,
           page: 1,
-          pageSize: 10
+          pageSize
         }
       }
     );
@@ -296,7 +296,7 @@ describe("formal dashboard frontend API contract", () => {
       metric: "gmv", period: "last7days", page: 1, pageSize: 10
     })).rejects.toThrow("error.analytics_ranking.invalid");
     await expect(backofficeRealDataApi.analyticsRankings("service", {
-      metric: "gmv", period: "last7days", page: 1, pageSize: 11
+      metric: "gmv", period: "last7days", page: 1, pageSize: 101
     })).rejects.toThrow("error.pagination.invalid");
     expect(httpClient.request).not.toHaveBeenCalled();
   });
