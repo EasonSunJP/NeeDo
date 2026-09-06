@@ -174,3 +174,7 @@ Chrome skill 所需 `scripts/browser-client.mjs` 在本机缺失，因此本次�
 - 1366×768 搜索“市”并按 12 次 ArrowDown，第 12 候选完整进入结果弹层：弹层 scrollTop338，活动项 y425.95–465.95，弹层 y246.95–466.95。document scrollX/scrollY均 0，页面宽度等于1366，键盘移动请求增量 0。
 
 本补充 JSON：`/private/tmp/needo-responsive-qa/final-targeted-report.json`；脚本：`/private/tmp/needo-responsive-final-targeted.py`；截图：`final-country-okinawa-pan.png`、`final-okinawa-daito-pan.png`、`final-ime-popup.png`（同截图目录）。本补充仍未执行 main 合并、push、部署或 migration。
+
+### 本地 main 集成
+
+2026-09-07 04:01–04:04 JST 在共享集成锁释放后，从干净的本地 `main` `7a22a450` 合并功能分支 `codex/live-dashboard-responsive-map-controls` `07003294`，生成合并提交 `99520235`；既有排行榜、运营成员和店铺详情抽屉提交均被保留。合并后的地图检查通过，计划影响范围 16 文件、201 tests 通过，前端 lint、生产 build 与 `git diff --check` 通过；旧 `main` 与功能分支 HEAD 均为合并结果祖先。本次仍未 push、部署或执行 migration。
