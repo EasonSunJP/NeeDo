@@ -667,12 +667,16 @@ ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
 
 - 前端 `npm test`：354 个测试文件、2,473 项测试全部通过。
 - 前端 `npm run lint`、`npm run i18n:quality`、`npm run verify:production-build`：全部通过；正式生产包审计通过 8 个 HTML 入口和 36 个资源。
-- 后端系统设置定向测试：15 个套件、60 项测试全部通过。
+- 后端系统设置定向测试：18 个套件、75 项测试全部通过；前端系统设置、公开投影、登录和 NDP 汇率聚焦回归另有 14 个文件、230 项测试通过。
 - 后端 `npm --prefix backend run lint` 与 `npm --prefix backend run build`：全部通过。
 - 后端全量基线运行暴露三个与本切片无关的既存问题：会员卡调整倒计时断言为 0、会员分析测试仍使用已不允许的 `operator` 身份类型，以及串行全量测试在约 4 GB 堆上最终 OOM；单独复跑 OpenAPI 超时项通过。本切片引入的两个 Auth repository 测试夹具已补齐登录证据端口并单独通过。
 
 数据库与浏览器验收状态：
 
-- 只读 `prisma migrate status` 确认本仓库有 120 个迁移，当前正式本地库尚未应用上述两个系统设置迁移；数据库还包含多条当前 checkout 不具备的历史迁移。由于不满足计划中“目标迁移是唯一待应用仓库迁移”的安全条件，本次没有执行 `prisma migrate deploy`、回填或任何数据库写入。
-- 因目标表尚未安全迁移，本次没有启动服务冒充正式运行验收，也没有声称浏览器、真实 MySQL 持久化或跨页面生效已验收。迁移历史先完成独立对账后，才可执行 `backfill:system-settings`、`check:system-settings-flow` 和认证浏览器验收。
+- 共享正式本地库 `needo_dev` 只执行了迁移状态读取，没有写入。系统设置分支只有 120 个历史迁移，而当前本地 `main` 已有 137 个；直接在临时库回放旧分支时，历史迁移 `20260902110000_agent_commission_operating_cost` 因已在 `main` 修正的外键规则失败。因此本次没有篡改已应用迁移，也没有把旧分支迁移历史写入共享库。
+- 为完成可回滚验收，使用当前 `main` 的 137 个迁移与本分支两个加法迁移组成 139 个迁移的临时只读并集，部署到独立本地库 `needo_system_settings_qa_20260906`。139 个迁移全部成功，`prisma migrate status` 返回 schema up to date；两个功能迁移的 SHA-256 与分支文件逐字节一致。
+- 在该隔离库运行 `backfill:system-settings` 成功，随后 `check:system-settings-flow` 通过真实 `/api/v1`、真实 Prisma/MySQL、RBAC、版本、审计和回滚校验；脚本结束时 `residue: 0`，没有把检查数据遗留到被测正式表。正式 seed 也在该隔离库成功完成，`admin`/`operator` 获得 10 项系统设置写入与发布权限，`viewer` 只有 4 项读取权限。
+- 隔离服务分别监听后端 `3012`、前端 `5182`，进程 cwd 均指向当前功能 worktree；`/api/v1/health`、`/api/v1/ready`、运营后台入口与前端代理健康接口均返回 200。共享 `3000`/`5180` 服务没有停止或替换。
+- 认证浏览器验收确认系统设置四个插页可以独立切换，`/admin/roles` 仍是独立角色管理页面。政策页新建了带公开链接的 QA 文档，中日文草稿切换时互不覆盖，并分别保存、发布为独立 v1；公开接口按 `zh-CN` 与 `ja` 返回相应标题、正文、发布日期、版本和显示位置。基础设置把验证码临时发布为“开启 + 每月初次 + 新 IP”，数据库生成 v2 和审计记录；随后经同一 UI 恢复为“关闭 + 仅初次 + 非新 IP”，生成 v3，字段与初始 v1 完全一致，历史版本未被覆盖。
+- 储存页在浏览器显示默认 30/3 天和“只影响服务器前瞻保留、不删除设备本地记录/缓存”的边界；支付页显示当前线下/NDP 开关与 PayPay、PayPal、Stripe、Apple、LINE 的未接入项目入口。支付启停与 IM 保留期的真实写入/恢复由上述 checker 覆盖，本次浏览器没有重复制造额外版本。
 - 角色卡片人员列表与权限树/API 最新性对账不在本系统设置微步骤内，未修改；它们必须作为独立的小步骤，以最新 User Management、权限常量、路由声明和数据库授权为共同依据实施。
