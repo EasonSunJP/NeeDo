@@ -74,6 +74,50 @@ describe("GET /api/v1/openapi.json", () => {
     expect(updateShop.responses["400"].description).toContain("error.shop.public_number_required");
   });
 
+  it("documents the booking service-identifier XOR and unresolved store-location conflict", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: {
+        "/api/v1/bookings": {
+          post: {
+            requestBody: {
+              content: { "application/json": { schema: object } };
+            };
+            responses: Record<string, { description: string }>;
+          };
+        };
+      };
+    };
+    const operation = document.paths["/api/v1/bookings"].post;
+    const validate = new Ajv({ allErrors: true }).compile(
+      operation.requestBody.content["application/json"].schema
+    );
+    const homeLocation = {
+      countryCode: "JP",
+      admin1Code: "13",
+      admin2Code: "13104"
+    };
+
+    for (const fulfillment of [
+      { fulfillmentMode: "store" },
+      { fulfillmentMode: "home", serviceLocation: homeLocation }
+    ]) {
+      expect(validate({ ...fulfillment, scheduleSlotId: 33, serviceId: 12 })).toBe(true);
+      expect(validate({ ...fulfillment, scheduleSlotId: 33, technicianServiceId: 21 })).toBe(true);
+      expect(validate({ ...fulfillment, scheduleSlotId: 33 })).toBe(false);
+      expect(
+        validate({
+          ...fulfillment,
+          scheduleSlotId: 33,
+          serviceId: 12,
+          technicianServiceId: 21
+        })
+      ).toBe(false);
+    }
+    expect(operation.responses["409"].description).toContain(
+      "error.booking.service_location_unresolved"
+    );
+  });
+
   it("documents Exchange matching adjustment confirmations and previews", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, { post: { responses: Record<string, { description: string }> } }>;

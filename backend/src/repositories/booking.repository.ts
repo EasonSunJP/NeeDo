@@ -3616,14 +3616,27 @@ export class BookingRepository implements BookingRepositoryPort {
     ) {
       throw this.serviceLocationUnresolvedError();
     }
-    const resolved = await this.administrativeRegionRepository.resolveVerifiedScope(
-      {
-        countryCode: "JP",
-        admin1Code: assignment.admin1Region.officialCode,
-        admin2Code: assignment.admin2Region.officialCode
-      },
-      transaction
-    );
+    let resolved: VerifiedAdministrativeRegionScope;
+    try {
+      resolved = await this.administrativeRegionRepository.resolveVerifiedScope(
+        {
+          countryCode: "JP",
+          admin1Code: assignment.admin1Region.officialCode,
+          admin2Code: assignment.admin2Region.officialCode
+        },
+        transaction
+      );
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        error.code === ERROR_CODES.VALIDATION &&
+        error.statusCode === 400 &&
+        error.message === "error.administrative_region.invalid_hierarchy"
+      ) {
+        throw this.serviceLocationUnresolvedError();
+      }
+      throw error;
+    }
     if (
       resolved.admin1RegionId !== assignment.admin1RegionId ||
       resolved.admin2RegionId !== assignment.admin2RegionId ||

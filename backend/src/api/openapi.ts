@@ -19964,6 +19964,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     type: "object",
                     additionalProperties: false,
                     required: ["scheduleSlotId", "fulfillmentMode"],
+                    oneOf: [
+                      { required: ["serviceId"] },
+                      { required: ["technicianServiceId"] }
+                    ],
                     properties: {
                       serviceId: { type: "integer", minimum: 1 },
                       technicianServiceId: { type: "integer", minimum: 1 },
@@ -19984,6 +19988,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     type: "object",
                     additionalProperties: false,
                     required: ["scheduleSlotId", "fulfillmentMode", "serviceLocation", "fulfillmentAddress", "travelEstimatePublicId"],
+                    oneOf: [
+                      { required: ["serviceId"] },
+                      { required: ["technicianServiceId"] }
+                    ],
                     properties: {
                       serviceId: { type: "integer", minimum: 1 },
                       technicianServiceId: { type: "integer", minimum: 1 },
@@ -20041,7 +20049,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "Account policy rejected the action, including error.user_policy.ekyc_required with safe policy metadata"
           },
           "409": {
-            description: "Slot unavailable, estimate expired, or estimate already consumed"
+            description: "Slot unavailable, estimate expired, estimate already consumed, or error.booking.service_location_unresolved when a store location cannot be verified"
           },
           "422": { description: "Home estimate required, invalid, or mismatched" }
         }

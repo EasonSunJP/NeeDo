@@ -9,6 +9,9 @@ const decimal = (value: string) => ({
 const createRepositoryHarness = (options?: {
   missingShopLocation?: boolean;
   invalidHierarchy?: boolean;
+  softDeletedAdmin2?: boolean;
+  missingJaOfficialName?: boolean;
+  infrastructureError?: Error;
 }) => {
   const now = new Date("2026-09-06T01:00:00.000Z");
   const shopServiceLocation = options?.missingShopLocation
@@ -67,6 +70,7 @@ const createRepositoryHarness = (options?: {
     $queryRaw: jest.fn(async () => {
       const call = tx.$queryRaw.mock.calls.length;
       if (call === 1) return [{ id: 5 }];
+      if (options?.infrastructureError) throw options.infrastructureError;
       return [
         { id: 1300, official_code: "13", level: "ADMIN1", parent_id: null, deleted_at: null },
         {
@@ -74,15 +78,19 @@ const createRepositoryHarness = (options?: {
           official_code: "13104",
           level: "ADMIN2",
           parent_id: options?.invalidHierarchy ? 2700 : 1300,
-          deleted_at: null
+          deleted_at: options?.softDeletedAdmin2 ? now : null
         }
       ];
     }),
     administrativeRegionLocale: {
-      findMany: jest.fn(async () => [
-        { regionId: 1300, name: "東京都" },
-        { regionId: 13104, name: "新宿区" }
-      ])
+      findMany: jest.fn(async () =>
+        options?.missingJaOfficialName
+          ? [{ regionId: 1300, name: "東京都" }]
+          : [
+              { regionId: 1300, name: "東京都" },
+              { regionId: 13104, name: "新宿区" }
+            ]
+      )
     },
     customerProfile: { findFirst: jest.fn(async () => ({ membershipLevel: "regular" })) },
     scheduleSlot: {
@@ -258,7 +266,10 @@ describe("booking service-location snapshots", () => {
           admin2Code: "13104"
         }
       } as never)
-    ).rejects.toMatchObject({ message: "error.administrative_region.invalid_hierarchy" });
+    ).rejects.toMatchObject({
+      message: "error.administrative_region.invalid_hierarchy",
+      statusCode: 400
+    });
 
     expect(harness.state.bookings).toHaveLength(0);
     expect(harness.state.locations).toHaveLength(0);
@@ -280,6 +291,65 @@ describe("booking service-location snapshots", () => {
       message: "error.booking.service_location_unresolved",
       statusCode: 409
     });
+  });
+
+  it.each([
+    ["soft-deleted linked region", { softDeletedAdmin2: true }],
+    ["broken linked hierarchy", { invalidHierarchy: true }]
+  ])("maps a store-owned %s to the stable booking conflict", async (_label, options) => {
+    const harness = createRepositoryHarness(options);
+
+    await expect(
+      harness.repository.createBooking({
+        customerUserId: 5,
+        serviceId: 12,
+        scheduleSlotId: 33,
+        fulfillmentMode: "store",
+        serviceLocation: { source: "SHOP_LOCATION" }
+      } as never)
+    ).rejects.toMatchObject({
+      message: "error.booking.service_location_unresolved",
+      statusCode: 409
+    });
+    expect(harness.state.bookings).toHaveLength(0);
+    expect(harness.state.locations).toHaveLength(0);
+    expect(harness.state.bookedCount).toBe(0);
+  });
+
+  it("maps a missing store-owned Japanese official name to the stable booking conflict", async () => {
+    const harness = createRepositoryHarness({ missingJaOfficialName: true });
+
+    await expect(
+      harness.repository.createBooking({
+        customerUserId: 5,
+        serviceId: 12,
+        scheduleSlotId: 33,
+        fulfillmentMode: "store",
+        serviceLocation: { source: "SHOP_LOCATION" }
+      } as never)
+    ).rejects.toMatchObject({
+      message: "error.booking.service_location_unresolved",
+      statusCode: 409
+    });
+    expect(harness.state.bookings).toHaveLength(0);
+    expect(harness.state.locations).toHaveLength(0);
+    expect(harness.state.bookedCount).toBe(0);
+  });
+
+  it("propagates unexpected store location infrastructure failures", async () => {
+    const infrastructureError = new Error("administrative region database unavailable");
+    const harness = createRepositoryHarness({ infrastructureError });
+
+    await expect(
+      harness.repository.createBooking({
+        customerUserId: 5,
+        serviceId: 12,
+        scheduleSlotId: 33,
+        fulfillmentMode: "store",
+        serviceLocation: { source: "SHOP_LOCATION" }
+      } as never)
+    ).rejects.toBe(infrastructureError);
+    expect(harness.state.locations).toHaveLength(0);
   });
 
   it("keeps the booking snapshot immutable after the shop assignment changes", async () => {
