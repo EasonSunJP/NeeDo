@@ -25,6 +25,35 @@ describe("official notice OpenAPI", () => {
     expect(response.body.components.schemas.OfficialNoticeCreate.required).toContain("translations");
     expect(response.body.components.schemas.OfficialNoticeCreate.required).not.toContain("title");
     expect(response.body.components.schemas.OfficialNoticeCreate.properties.title).toBeUndefined();
+    expect(response.body.components.schemas.OfficialNoticeBlock.properties.fontSize.enum).toEqual([
+      "small", "medium", "large", "xlarge"
+    ]);
+    expect(paths["/api/v1/backoffice/official-notices/drafts"].post["x-permission"]).toBe(
+      "button:backoffice-official-notice-create"
+    );
+    expect(paths["/api/v1/backoffice/official-notices/{publicId}"].get["x-permission"]).toBe(
+      "page:backoffice-official-notice"
+    );
+    expect(paths["/api/v1/backoffice/official-notices/{publicId}/draft"].put["x-permission"]).toBe(
+      "button:backoffice-official-notice-create"
+    );
+    expect(paths["/api/v1/backoffice/official-notices/{publicId}/plan"].post["x-permission"]).toEqual([
+      "button:backoffice-official-notice-create",
+      "button:backoffice-official-notice-send"
+    ]);
+    expect(response.body.components.schemas.OfficialNoticeDraftCreate).toBeDefined();
+    expect(response.body.components.schemas.OfficialNoticeDraftUpdate).toBeDefined();
+    expect(response.body.components.schemas.OfficialNoticePlanDraft).toBeDefined();
+    expect(response.body.components.schemas.OfficialNoticeMediaUpload).toBeDefined();
+    expect(paths["/api/v1/backoffice/official-notices/media"].post).toMatchObject({
+      "x-permission": "button:backoffice-official-notice-create",
+      requestBody: { required: true }
+    });
+    expect(response.body.components.schemas.OfficialNoticeDraftUpdate).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: expect.arrayContaining(["expectedLockVersion", "translations", "audience"])
+    });
   });
 
   it("documents strict merchant notice routes with dedicated permissions and audience schema", async () => {
@@ -89,6 +118,16 @@ describe("official notice OpenAPI", () => {
     expect(response.body.components.schemas.MerchantOfficialNoticeCreate.properties.audience).toEqual({
       $ref: "#/components/schemas/MerchantOfficialNoticeAudience"
     });
+    expect(paths["/api/v1/merchant-admin/official-notices/drafts"].post["x-permission"]).toBe(
+      "merchant-admin:notice:create"
+    );
+    expect(paths["/api/v1/merchant-admin/official-notices/{publicId}/plan"].post["x-permission"]).toEqual([
+      "merchant-admin:notice:create",
+      "merchant-admin:notice:send"
+    ]);
+    expect(paths["/api/v1/merchant-admin/official-notices/media"].post["x-permission"]).toBe(
+      "merchant-admin:notice:create"
+    );
   });
 
   it("documents the same bounded server search on operations notice management", async () => {

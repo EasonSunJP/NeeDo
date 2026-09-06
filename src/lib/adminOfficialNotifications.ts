@@ -1,3 +1,5 @@
+import type { OfficialNoticeFontSize } from "../api/officialNotices";
+
 export type NoticeLevel = "紧急" | "重要" | "一般";
 export type NoticeStatus = "未读" | "已读" | "已归档";
 
@@ -22,6 +24,7 @@ export type OfficialNoticeBlock = {
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
+  fontSize?: OfficialNoticeFontSize;
   source?: "url" | "upload";
 };
 

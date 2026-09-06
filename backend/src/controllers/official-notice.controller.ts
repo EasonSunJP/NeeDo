@@ -4,10 +4,15 @@ import type { OfficialNoticeService } from "../services/official-notice.service"
 import { successResponse } from "../utils/api-response";
 import { getRequestContext } from "../utils/request-context";
 import type {
+  MerchantNoticeDraftCreateBody,
+  MerchantNoticeDraftUpdateBody,
   MerchantNoticeCreateBody,
   OfficialNoticeCreateBody,
+  OfficialNoticeDraftCreateBody,
+  OfficialNoticeDraftUpdateBody,
   OfficialNoticeLifecycleBody,
   OfficialNoticeListQuery,
+  OfficialNoticePlanBody,
   OfficialNoticeReadQuery
 } from "../validators/official-notice.validator";
 
@@ -41,6 +46,39 @@ export class OfficialNoticeController {
       );
   });
 
+  public createDraft = this.handle(async (request, response) => {
+    response.status(201).json(successResponse(await this.service.createDraft(
+      this.actor(response),
+      getRequestContext(request),
+      request.body as OfficialNoticeDraftCreateBody
+    )));
+  });
+
+  public getDraft = this.handle(async (request, response) => {
+    response.status(200).json(successResponse(await this.service.getDraft(
+      this.actor(response),
+      request.params.publicId
+    )));
+  });
+
+  public updateDraft = this.handle(async (request, response) => {
+    response.status(200).json(successResponse(await this.service.updateDraft(
+      this.actor(response),
+      getRequestContext(request),
+      request.params.publicId,
+      request.body as OfficialNoticeDraftUpdateBody
+    )));
+  });
+
+  public planDraft = this.handle(async (request, response) => {
+    response.status(200).json(successResponse(await this.service.planDraft(
+      this.actor(response),
+      getRequestContext(request),
+      request.params.publicId,
+      request.body as OfficialNoticePlanBody
+    )));
+  });
+
   public listMerchant = this.handle(async (request, response) => {
     response
       .status(200)
@@ -66,6 +104,39 @@ export class OfficialNoticeController {
           )
         )
       );
+  });
+
+  public createDraftMerchant = this.handle(async (request, response) => {
+    response.status(201).json(successResponse(await this.service.createDraftMerchant(
+      this.actor(response),
+      getRequestContext(request),
+      request.body as MerchantNoticeDraftCreateBody
+    )));
+  });
+
+  public getMerchantDraft = this.handle(async (request, response) => {
+    response.status(200).json(successResponse(await this.service.getMerchantDraft(
+      this.actor(response),
+      request.params.publicId
+    )));
+  });
+
+  public updateDraftMerchant = this.handle(async (request, response) => {
+    response.status(200).json(successResponse(await this.service.updateDraftMerchant(
+      this.actor(response),
+      getRequestContext(request),
+      request.params.publicId,
+      request.body as MerchantNoticeDraftUpdateBody
+    )));
+  });
+
+  public planDraftMerchant = this.handle(async (request, response) => {
+    response.status(200).json(successResponse(await this.service.planDraftMerchant(
+      this.actor(response),
+      getRequestContext(request),
+      request.params.publicId,
+      request.body as OfficialNoticePlanBody
+    )));
   });
 
   public cancelMerchant = this.handle(async (request, response) => {
