@@ -219,7 +219,7 @@ export function ReceivedReviewFacts({
   const customTags = review.tags.filter(
     (tag) => !serviceReviewSpecialLabelSet.has(tag) && !standardTags.has(tag),
   );
-  const ordinaryTags = review.tags.filter((tag) => standardTags.has(tag));
+  const ordinaryTags = review.tags.filter((tag) => standardTags.has(tag) && tag !== "支付顺利");
   const tagGroup = (
     title: string,
     tags: string[],
@@ -291,7 +291,7 @@ export function ReceivedReviewFacts({
         {tagGroup(custom, customTags, noCustom)}
         {ordinaryTags.length > 0 ? tagGroup(standard, ordinaryTags, "") : null}
       </div>
-      <div className="mt-5 space-y-4 border-t border-line pt-4">
+      <div className="mt-5 grid gap-4 border-t border-line pt-4 sm:grid-cols-2">
         <div>
           <h4 className="text-xs font-bold text-ink/50">{notes}</h4>
           <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-ink/80">

@@ -127,6 +127,7 @@ describe("UserReceivedReviews", () => {
     const payment = container.querySelector('[aria-label="支付信息"]');
     expect(payment?.textContent).toContain("Test NDP");
     expect(payment?.textContent).not.toContain("支付顺利");
+    expect(container.textContent).not.toContain("支付顺利");
   });
 
   it("renders pending offline payment and explicit absent tags, add-ons and comment", async () => {

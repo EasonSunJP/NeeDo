@@ -2699,3 +2699,7 @@ ENV_FILE=.env.dev npm --prefix backend run check:sos-flow
 ### Technician work status and attendance
 
 The technician status controls now persist audited work events. Merchant and operations projections use the same formal status. Monthly lateness/early-departure counts open paginated incident timelines with Tokyo date filters. Zero grace is applied to precise server timestamps. See [implementation and acceptance](docs/qa/technician-work-status-20260906/main-integration.md) for migrations, API routes, checks and runtime boundaries.
+
+### User detail review facts and capsule tabs
+
+Received service reviews in the operations and merchant user detail cards now include formal payment method/status, checkout ledger currency, accepted extra service time, separated tag groups, and review/booking notes. Detail categories share one capsule tab container. See [local review-card acceptance and XP unit finding](docs/qa/2026-09-06-user-review-detail.md).
