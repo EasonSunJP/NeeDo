@@ -32,12 +32,15 @@ function fixture() {
     },
     shopEmployee: { findFirst: jest.fn(async () => null) },
     noticeDelivery: {
+      findFirst: jest.fn<Promise<unknown>, unknown[]>(async () => null),
       findMany: jest.fn(async (): Promise<Array<{ id: number; attemptCount: number }>> => []),
       findUnique: jest.fn(async () => ({ noticeId: 1, status: "DELIVERED" })),
+      update: jest.fn(async () => ({})),
       updateMany: jest.fn(async () => ({ count: 1 })),
       count: jest.fn(async () => 1),
       groupBy: jest.fn(async () => [])
     },
+    notification: { updateMany: jest.fn(async () => ({ count: 1 })) },
     noticeAudience: { groupBy: jest.fn(async () => []) },
     auditLog: { findFirst: jest.fn(async (): Promise<unknown> => null), create: jest.fn() },
     $queryRaw: jest.fn(async () => [{ id: 1 }]),
@@ -198,6 +201,75 @@ describe("official notice transaction regression", () => {
         data: expect.objectContaining({ status: "SENDING" })
       })
     );
+  });
+
+  it("publishes the committed official-notice read event for other tabs and devices", async () => {
+    const { client } = fixture();
+    const gateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const repository = new OfficialNoticeRepository(client as never, 3, gateway as never);
+    let inTransaction = false;
+    client.noticeDelivery.findFirst
+      .mockResolvedValueOnce({ id: 55 })
+      .mockResolvedValueOnce({
+        id: 55,
+        readAt: null,
+        notificationId: 77,
+        noticeId: 1
+      });
+    client.$transaction.mockImplementation(async (operation) => {
+      inTransaction = true;
+      try {
+        return await operation(client);
+      } finally {
+        inTransaction = false;
+      }
+    });
+    gateway.publish.mockImplementation(() => {
+      expect(inTransaction).toBe(false);
+    });
+
+    await expect(
+      repository.markRead({
+        publicId,
+        recipientIdentityId: 17,
+        actorUserId: 7,
+        context: { ip: "127.0.0.1" },
+        now
+      })
+    ).resolves.toEqual({ publicId, readAt: now });
+
+    expect(gateway.publish).toHaveBeenCalledWith({
+      id: `official-notice-read:55:${now.getTime()}`,
+      type: "notification.read",
+      recipientUserId: 7,
+      recipientIdentityId: 17,
+      payload: { kind: "official_notice", publicId },
+      createdAt: now.toISOString()
+    });
+  });
+
+  it("does not republish an official-notice read replay", async () => {
+    const { client } = fixture();
+    const gateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const repository = new OfficialNoticeRepository(client as never, 3, gateway as never);
+    client.noticeDelivery.findFirst
+      .mockResolvedValueOnce({ id: 55 })
+      .mockResolvedValueOnce({
+        id: 55,
+        readAt: now,
+        notificationId: 77,
+        noticeId: 1
+      });
+
+    await repository.markRead({
+      publicId,
+      recipientIdentityId: 17,
+      actorUserId: 7,
+      context: { ip: "127.0.0.1" },
+      now
+    });
+
+    expect(gateway.publish).not.toHaveBeenCalled();
   });
 
   it("checks active shop employment before looking up an idempotency replay", async () => {
