@@ -367,4 +367,27 @@ describe("OrderRefundCaseRepository", () => {
     await expect(operation.call(repository, inputs[key] as never)).resolves.toMatchObject({ kind: "not_found" });
     expect(tx.orderRefundCase.update).not.toHaveBeenCalled(); expect(tx.orderRefundDispute.create).not.toHaveBeenCalled(); expect(tx.bookingOrder.updateMany).not.toHaveBeenCalled();
   });
+
+  it("rolls back stateful order/payment changes when the sole financial projection is absent", async () => {
+    const state: { order: { paymentStatus: string; paymentRefundedAt: Date | null }; case: { status: string; activeKey: string | null }; events: number; audits: number; notifications: number } = { order: { paymentStatus: "CONFIRMED", paymentRefundedAt: null }, case: { status: "CUSTOMER_CONFIRMATION_PENDING", activeKey: "booking:71" }, events: 0, audits: 0, notifications: 0 };
+    const pendingCase = { ...refundCase, status: "CUSTOMER_CONFIRMATION_PENDING", version: 4, activeKey: "booking:71", refundEvidence: { reference: "bank-123" } };
+    const reward = [{ id: 1, status: "SETTLED", rewardNdp: 50, platformFeeNdp: 0, reversalRequiredNdp: 0, reversedNdp: 0, outstandingRecoveryNdp: 0, claimantWalletId: 99 }];
+    const transaction = [{ id: 7, rewardId: 1, kind: "SETTLEMENT", ledgerTransactionId: 70, amountNdp: 50 }];
+    const client = { $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => {
+      const draft = structuredClone(state);
+      const tx = { $queryRaw: jest.fn().mockResolvedValueOnce([{ id: 71 }]).mockResolvedValueOnce([{ id: 81 }]).mockResolvedValueOnce(reward).mockResolvedValueOnce(transaction).mockResolvedValueOnce([{ id: 99, availableBalance: 50, frozenBalance: 0 }]), orderRefundCaseEvent: { findFirst: jest.fn(async () => null), create: jest.fn(async () => { draft.events += 1; }) }, orderRefundCase: { findFirst: jest.fn(async () => pendingCase), update: jest.fn(async () => { draft.case = { status: "REFUNDED", activeKey: null }; return { ...pendingCase, status: "REFUNDED", version: 5, activeKey: null }; }) }, bookingOrder: { updateMany: jest.fn(async () => { draft.order = { paymentStatus: "REFUNDED", paymentRefundedAt: now }; return { count: 1 }; }) }, orderFinancial: { updateMany: jest.fn(async () => ({ count: 0 })) }, affiliateReward: { findFirst: jest.fn(async () => null) }, auditLog: { create: jest.fn(async () => { draft.audits += 1; }) }, notification: { create: jest.fn(async () => { draft.notifications += 1; }) } };
+      try { const result = await callback(tx); Object.assign(state, draft); return result; } catch (error) { throw error; }
+    }) };
+    const receipt: ConfirmRefundReceiptCommand = { ...command, casePublicId: pendingCase.publicId, expectedVersion: 4, idempotencyKey: "refund-stateful-rollback", payload: {} };
+    await expect(new OrderRefundCaseRepository(client as unknown as PrismaClient).confirmCustomerReceipt(receipt)).resolves.toMatchObject({ kind: "invalid_state" });
+    expect(state).toEqual(expect.objectContaining({ order: { paymentStatus: "CONFIRMED", paymentRefundedAt: null }, case: { status: "CUSTOMER_CONFIRMATION_PENDING", activeKey: "booking:71" }, events: 0, audits: 0, notifications: 0 }));
+  });
+
+  it("returns not_found without writes when the locked dispute no longer matches preflight foreign keys", async () => {
+    const tx = { $queryRaw: jest.fn(async () => [{ id: 1 }]), orderRefundDisputeRevision: { findFirst: jest.fn(), create: jest.fn() }, orderRefundDispute: { findFirst: jest.fn(async () => ({ id: 91, orderRefundCaseId: 82, bookingOrderId: 72, status: "OPEN", version: 3 })), update: jest.fn() }, orderRefundCase: { findFirst: jest.fn(), update: jest.fn() }, orderRefundCaseEvent: { create: jest.fn() }, auditLog: { create: jest.fn() }, notification: { create: jest.fn() } };
+    const client = { orderRefundDispute: { findFirst: jest.fn(async () => ({ id: 91, orderRefundCaseId: 81, bookingOrderId: 71 })) }, $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const resolution: ResolveRefundDisputeCommand = { ...command, disputePublicId: "e0a2d0ac-7445-426a-9f29-1f4820463955", expectedVersion: 3, idempotencyKey: "refund-fk-mismatch", resolution: "refund", payload: { publicReason: "x" } };
+    await expect(new OrderRefundCaseRepository(client as unknown as PrismaClient).resolveDispute(resolution)).resolves.toMatchObject({ kind: "not_found" });
+    expect(tx.orderRefundDispute.update).not.toHaveBeenCalled(); expect(tx.orderRefundDisputeRevision.create).not.toHaveBeenCalled(); expect(tx.orderRefundCase.update).not.toHaveBeenCalled(); expect(tx.orderRefundCaseEvent.create).not.toHaveBeenCalled(); expect(tx.auditLog.create).not.toHaveBeenCalled(); expect(tx.notification.create).not.toHaveBeenCalled();
+  });
 });
