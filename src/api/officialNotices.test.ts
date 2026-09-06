@@ -51,6 +51,57 @@ describe("officialNoticesApi", () => {
     expect(JSON.stringify(input)).not.toMatch(/shopId|userIds|issuer/);
   });
 
+  it("uses scoped formal endpoints for draft save, reload, update, and plan", async () => {
+    const draft = {
+      sourceLocale: "ja" as const,
+      level: "general" as const,
+      translations: {
+        "zh-CN": { title: "", summary: "", blocks: [], isInitialCopy: true },
+        "zh-TW": { title: "", summary: "", blocks: [], isInitialCopy: true },
+        en: { title: "", summary: "", blocks: [], isInitialCopy: true },
+        ja: { title: "編集中", summary: "", blocks: [], isInitialCopy: false },
+        ko: { title: "", summary: "", blocks: [], isInitialCopy: true }
+      },
+      audience: { type: "shop_card_holders" as const },
+      idempotencyKey: "draft-ui-create"
+    };
+    const plan = {
+      expectedLockVersion: 2,
+      sendMode: "now" as const,
+      scheduledAt: null,
+      idempotencyKey: "draft-ui-plan"
+    };
+
+    await officialNoticesApi.createDraft("merchant", draft);
+    await officialNoticesApi.getManaged("merchant", "notice-draft");
+    await officialNoticesApi.updateDraft("merchant", "notice-draft", {
+      ...draft,
+      expectedLockVersion: 1,
+      idempotencyKey: "draft-ui-update"
+    });
+    await officialNoticesApi.planDraft("merchant", "notice-draft", plan);
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/merchant-admin/official-notices/drafts",
+      { method: "POST", body: draft }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/merchant-admin/official-notices/notice-draft"
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      3,
+      "/merchant-admin/official-notices/notice-draft/draft",
+      { method: "PUT", body: expect.objectContaining({ expectedLockVersion: 1 }) }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      4,
+      "/merchant-admin/official-notices/notice-draft/plan",
+      { method: "POST", body: plan }
+    );
+  });
+
   it("uses scoped lifecycle and current-identity inbox endpoints", async () => {
     const command = {
       expectedLockVersion: 3,

@@ -13,6 +13,13 @@ const noticeTranslations = {
   ja: { title: "メンテナンス", summary: "サービス保守", blocks: [{ id: "paragraph-ja", type: "paragraph", content: "本文" }] },
   ko: { title: "유지 보수", summary: "서비스 점검", blocks: [{ id: "paragraph-ko", type: "paragraph", content: "본문" }] }
 };
+const draftTranslations = {
+  "zh-CN": { title: "", summary: "", blocks: [], isInitialCopy: true },
+  "zh-TW": { title: "", summary: "", blocks: [], isInitialCopy: true },
+  en: { title: "", summary: "", blocks: [], isInitialCopy: true },
+  ja: { title: "編集中", summary: "", blocks: [], isInitialCopy: false },
+  ko: { title: "", summary: "", blocks: [], isInitialCopy: true }
+};
 
 const notice = {
   publicId,
@@ -81,9 +88,17 @@ const createFixture = () => {
       "button:backoffice-official-notice-send"
     ]),
     createUser(8, "platform", ["page:backoffice-official-notice"]),
-    createUser(9, "customer", [])
+    createUser(9, "customer", []),
+    createUser(10, "platform", [
+      "page:backoffice-official-notice",
+      "button:backoffice-official-notice-create"
+    ])
   ];
   const service = {
+    createDraft: jest.fn(async () => ({ ...notice, status: "draft", scheduledAt: null })),
+    getDraft: jest.fn(async () => ({ ...notice, status: "draft", scheduledAt: null })),
+    updateDraft: jest.fn(async () => ({ ...notice, status: "draft", scheduledAt: null, lockVersion: 2 })),
+    planDraft: jest.fn(async () => ({ ...notice, status: "sent" })),
     createAndPlan: jest.fn(async () => notice),
     listBackoffice: jest.fn(async () => ({ list: [notice], total: 1, page: 1, page_size: 20 })),
     cancel: jest.fn(async () => ({ ...notice, status: "cancelled" })),
@@ -132,6 +147,60 @@ const createFixture = () => {
 };
 
 describe("official notice HTTP API", () => {
+  it("lets creators save and continue drafts without granting send permission", async () => {
+    const fixture = createFixture();
+    const draftBody = {
+      sourceLocale: "ja",
+      level: "general",
+      translations: draftTranslations,
+      audience: { type: "all" },
+      idempotencyKey: "draft-api-create"
+    };
+
+    await request(fixture.app)
+      .post("/api/v1/backoffice/official-notices/drafts")
+      .set("Authorization", `Bearer ${fixture.tokens[10]}`)
+      .send(draftBody)
+      .expect(201);
+    await request(fixture.app)
+      .get(`/api/v1/backoffice/official-notices/${publicId}`)
+      .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+      .expect(200);
+    await request(fixture.app)
+      .put(`/api/v1/backoffice/official-notices/${publicId}/draft`)
+      .set("Authorization", `Bearer ${fixture.tokens[10]}`)
+      .send({
+        ...draftBody,
+        expectedLockVersion: 1,
+        idempotencyKey: "draft-api-update"
+      })
+      .expect(200);
+    await request(fixture.app)
+      .post(`/api/v1/backoffice/official-notices/${publicId}/plan`)
+      .set("Authorization", `Bearer ${fixture.tokens[10]}`)
+      .send({
+        expectedLockVersion: 2,
+        sendMode: "now",
+        scheduledAt: null,
+        idempotencyKey: "draft-api-plan"
+      })
+      .expect(403);
+
+    expect(fixture.service.createDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 10 }),
+      expect.any(Object),
+      expect.objectContaining({ translations: draftTranslations })
+    );
+    expect(fixture.service.getDraft).toHaveBeenCalledWith(expect.objectContaining({ userId: 8 }), publicId);
+    expect(fixture.service.updateDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 10 }),
+      expect.any(Object),
+      publicId,
+      expect.objectContaining({ expectedLockVersion: 1 })
+    );
+    expect(fixture.service.planDraft).not.toHaveBeenCalled();
+  });
+
   it("creates an immediate formal notice with the dedicated create permission", async () => {
     const fixture = createFixture();
     await request(fixture.app)

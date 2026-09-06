@@ -13,6 +13,10 @@ const noticeTranslations = {
   ja: { title: "営業時間変更", summary: "お知らせ", blocks: [{ id: "p-ja", type: "paragraph", content: "本文" }] },
   ko: { title: "영업시간 변경", summary: "알림", blocks: [{ id: "p-ko", type: "paragraph", content: "본문" }] }
 };
+const draftTranslations = Object.fromEntries(Object.entries(noticeTranslations).map(([locale, value]) => [
+  locale,
+  { ...value, isInitialCopy: locale !== "ja" }
+]));
 const notice = {
   publicId,
   level: "important",
@@ -95,6 +99,10 @@ const operationsUser = {
 
 const createFixture = (user: typeof merchantUser | typeof operationsUser = merchantUser) => {
   const service = {
+    createDraftMerchant: jest.fn(async () => ({ ...notice, status: "draft", scheduledAt: null })),
+    getMerchantDraft: jest.fn(async () => ({ ...notice, status: "draft", scheduledAt: null })),
+    updateDraftMerchant: jest.fn(async () => ({ ...notice, status: "draft", scheduledAt: null, lockVersion: 2 })),
+    planDraftMerchant: jest.fn(async () => ({ ...notice, status: "scheduled", lockVersion: 3 })),
     createAndPlanMerchant: jest.fn(async () => notice),
     listMerchant: jest.fn(async () => ({ list: [notice], total: 1, page: 1, page_size: 20 })),
     cancelMerchant: jest.fn(async () => ({ ...notice, status: "cancelled" })),
@@ -119,6 +127,53 @@ const createFixture = (user: typeof merchantUser | typeof operationsUser = merch
 };
 
 describe("merchant notice HTTP API", () => {
+  it("creates, reloads, updates, and plans a draft only through merchant-scoped methods", async () => {
+    const fixture = createFixture();
+    const draftBody = {
+      sourceLocale: "ja",
+      level: "important",
+      translations: draftTranslations,
+      audience: { type: "shop_technicians" },
+      idempotencyKey: "merchant-draft-create"
+    };
+
+    await request(fixture.app)
+      .post("/api/v1/merchant-admin/official-notices/drafts")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send(draftBody)
+      .expect(201);
+    await request(fixture.app)
+      .get(`/api/v1/merchant-admin/official-notices/${publicId}`)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .expect(200);
+    await request(fixture.app)
+      .put(`/api/v1/merchant-admin/official-notices/${publicId}/draft`)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ ...draftBody, expectedLockVersion: 1, idempotencyKey: "merchant-draft-update" })
+      .expect(200);
+    await request(fixture.app)
+      .post(`/api/v1/merchant-admin/official-notices/${publicId}/plan`)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({
+        expectedLockVersion: 2,
+        sendMode: "scheduled",
+        scheduledAt: "2026-09-08T10:00:00.000Z",
+        idempotencyKey: "merchant-draft-plan"
+      })
+      .expect(200);
+
+    expect(fixture.service.createDraftMerchant).toHaveBeenCalled();
+    expect(fixture.service.getMerchantDraft).toHaveBeenCalled();
+    expect(fixture.service.updateDraftMerchant).toHaveBeenCalled();
+    expect(fixture.service.planDraftMerchant).toHaveBeenCalled();
+
+    await request(fixture.app)
+      .post("/api/v1/merchant-admin/official-notices/drafts")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ ...draftBody, audience: { type: "all" } })
+      .expect(400);
+  });
+
   it("publishes only a strict server-derived shop audience", async () => {
     const fixture = createFixture();
     const body = {

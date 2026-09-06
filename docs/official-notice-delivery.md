@@ -18,6 +18,13 @@ retains its existing combined manifest.
 - `GET /backoffice/official-notices`: paginated, server-searched and filtered list, read permission.
 - `POST /backoffice/official-notices`: immediate or scheduled publication,
   both create and send permissions.
+- `POST /backoffice/official-notices/drafts`: persist incomplete five-locale
+  editing state without creating audience or delivery rows, create permission.
+- `GET /backoffice/official-notices/{publicId}` and
+  `PUT /backoffice/official-notices/{publicId}/draft`: reload and update a
+  scope-owned draft with optimistic locking.
+- `POST /backoffice/official-notices/{publicId}/plan`: validate all five
+  locales, freeze the current audience and plan delivery, create and send permissions.
 - `POST /backoffice/official-notices/{publicId}/cancel`: pre-dispatch cancellation,
   review permission, expected version and idempotency key.
 - `POST /backoffice/official-notices/{publicId}/archive`: terminal archival,
@@ -25,8 +32,9 @@ retains its existing combined manifest.
 - `POST /backoffice/official-notices/{publicId}/retry-failures`: retry failed
   recipients only, send permission, expected version and idempotency key.
 
-The merchant route manifest owns the equivalent paginated create/list and
-cancel/archive/retry operations under `/merchant-admin/official-notices`.
+The merchant route manifest owns the equivalent paginated create/list,
+draft create/read/update/plan and cancel/archive/retry operations under
+`/merchant-admin/official-notices`.
 Both management list endpoints accept the same bounded `search` query and match
 persisted notice public IDs, audience summaries, and locale titles/summaries on
 the server; the browser never filters only the currently loaded page.
@@ -49,12 +57,16 @@ platform publishing permission. All route contracts are registered in OpenAPI.
 
 ## Persistence and delivery
 
-Publication requires five explicit locale payloads and creates the notice, all
-five locale records, immutable audience snapshots, queued delivery rows and an
-audit record in one transaction. The editor may copy one locale to the others as
-an explicit operator action, but every tab remains independently editable. The
-server never fabricates missing translations and records all supplied locales as
-authored content rather than automatic translation copies.
+Draft save requires five explicit locale slots but permits incomplete titles,
+summaries and content blocks. It creates only the notice, translations and audit
+record. It does not freeze recipients or enqueue delivery. Planning a draft
+revalidates complete strict content, locks the current version, freezes recipients,
+creates delivery rows and records the plan audit in one transaction. The editor
+initially keeps the other four locales synchronized with the selected source
+language; editing a locale independently clears its initial-copy flag so later
+source edits do not overwrite it. All five locale records are sent as one notice.
+Text content blocks may persist one of four validated font-size values, rendered
+consistently in management preview, inbox and homepage notice presentation.
 Merchant publication supports only server-derived current-shop audiences:
 active issued membership-card holders, current shop employees, and current shop
 technicians linked through their active affiliation, employee record and role.
@@ -124,9 +136,8 @@ idempotency and zero persistent fixtures.
 - Staging operations-to-user/technician/merchant delivery and read reception acceptance.
 - Staging same-shop database/API/page parity and update propagation acceptance.
 - Formal merchant media upload and server-side ownership binding for notice assets.
-- Complete five-locale UI-label coverage, source-language quick buttons, draft editing,
-  merchant exact-account targeting and font-size controls.
+- Complete five-locale coverage for the remaining legacy editor labels.
 
-Draft editing and a separate approval workflow are not enabled by the immediate/
-scheduled publication endpoint; schema statuses alone must not be presented as
-completed product capabilities. GitHub upload and deployment are outside this run.
+A separate approval workflow is not enabled by this slice; schema review statuses
+alone must not be presented as completed product capabilities. GitHub upload and
+deployment are outside this run.

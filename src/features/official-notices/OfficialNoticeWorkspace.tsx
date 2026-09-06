@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   OFFICIAL_NOTICE_CHANGED_EVENT,
   officialNoticesApi,
+  type ManagedNoticeDraftInput,
   type OfficialNotice,
   type OfficialNoticeBlock,
   type OfficialNoticeLevel,
@@ -106,6 +107,9 @@ const noticeUiTranslations: Record<string, Partial<Record<Language, string>>> = 
   "标准": { "zh-Hant": "標準", ja: "標準", en: "Standard", ko: "표준" },
   "大": { "zh-Hant": "大", ja: "大", en: "Large", ko: "크게" },
   "超大": { "zh-Hant": "特大", ja: "特大", en: "Extra large", ko: "매우 크게" },
+  "保存草稿": { "zh-Hant": "儲存草稿", ja: "下書きを保存", en: "Save draft", ko: "초안 저장" },
+  "正在保存草稿": { "zh-Hant": "正在儲存草稿…", ja: "下書きを保存中…", en: "Saving draft…", ko: "초안 저장 중…" },
+  "继续编辑": { "zh-Hant": "繼續編輯", ja: "編集を続ける", en: "Continue editing", ko: "계속 편집" },
   "全体用户": { "zh-Hant": "全體用戶", ja: "全ユーザー", en: "All users", ko: "전체 사용자" },
   "复制当前内容到全部语言": { "zh-Hant": "將目前內容複製到所有語言", ja: "現在の内容を全言語へコピー", en: "Copy current content to all languages", ko: "현재 내용을 모든 언어로 복사" },
   "每个语言标签都可独立编辑；复制后仍可逐项修改，发送时五份内容会一起保存。": { "zh-Hant": "每個語言頁籤皆可獨立編輯；複製後仍可逐項修改，傳送時會一併儲存五份內容。", ja: "各言語タブは個別に編集できます。コピー後も個別に変更でき、送信時に5言語すべてを保存します。", en: "Each language tab is independently editable. Copies remain editable, and all five versions are saved together.", ko: "각 언어 탭은 독립적으로 편집할 수 있습니다. 복사 후에도 개별 수정할 수 있으며 전송 시 5개 언어를 함께 저장합니다." },
@@ -120,8 +124,15 @@ function createNoticeBlock(type: OfficialNoticeBlock["type"] = "paragraph"): Off
   return { id: makeKey("block"), type, content: "" };
 }
 
-function createTranslationDraft() {
-  return { title: "", summary: "", blocks: [createNoticeBlock()] };
+type NoticeTranslationDraft = {
+  title: string;
+  summary: string;
+  blocks: OfficialNoticeBlock[];
+  isInitialCopy: boolean;
+};
+
+function createTranslationDraft(isInitialCopy = true): NoticeTranslationDraft {
+  return { title: "", summary: "", blocks: [createNoticeBlock()], isInitialCopy };
 }
 
 function normalizeNoticeBlocks(blocks: OfficialNoticeBlock[]) {
@@ -198,6 +209,7 @@ function NoticeBlocks({ blocks }: { blocks: OfficialNoticeBlock[] | undefined })
 }
 
 export function OfficialNoticeManagement({ scope, composePath }: { scope: OfficialNoticeScope; composePath: string }) {
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const { language } = useOptionalI18n();
   const [items, setItems] = useState<OfficialNotice[]>([]);
@@ -212,8 +224,9 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   const [error, setError] = useState("");
-  const canCreate = hasPermission(scope === "merchant" ? "merchant-admin:notice:create" : "button:backoffice-official-notice-create")
-    && hasPermission(scope === "merchant" ? "merchant-admin:notice:send" : "button:backoffice-official-notice-send");
+  const canCreate = hasPermission(
+    scope === "merchant" ? "merchant-admin:notice:create" : "button:backoffice-official-notice-create"
+  );
   const canReview = hasPermission(scope === "merchant" ? "merchant-admin:notice:review" : "button:backoffice-official-notice-review");
   const canRetry = hasPermission(scope === "merchant" ? "merchant-admin:notice:send" : "button:backoffice-official-notice-send");
 
@@ -325,6 +338,14 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
           <dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="font-bold text-ink/45">受众</dt><dd className="font-black">{selected.targetSummary}</dd></div><div><dt className="font-bold text-ink/45">受众快照</dt><dd className="font-black">{selected.audienceCount}</dd></div><div><dt className="font-bold text-ink/45">投递/失败</dt><dd className="font-black">{selected.delivery.delivered}/{selected.delivery.failed}</dd></div><div><dt className="font-bold text-ink/45">阅读</dt><dd className="font-black">{selected.delivery.read}</dd></div></dl>
           <label className="block text-sm font-black">操作理由<input className={`${inputClass} mt-2`} onChange={(event) => setReason(event.target.value)} value={reason} /></label>
           <div className="flex flex-wrap gap-2">
+            {canCreate && selected.status === "draft" ? (
+              <Button
+                onClick={() => navigate(`${composePath}/${selected.publicId}`)}
+                variant="secondary"
+              >
+                {translateNoticeText("继续编辑", language)}
+              </Button>
+            ) : null}
             {canReview && canCancelOfficialNotice(selected.status) ? <Button disabled={mutating || !isOfficialNoticeReasonValid(reason)} onClick={() => void mutate("cancel")} variant="danger">取消发送</Button> : null}
             {canReview && ["sent", "cancelled"].includes(selected.status) ? <Button disabled={mutating || !isOfficialNoticeReasonValid(reason)} onClick={() => void mutate("archive")} variant="secondary">归档</Button> : null}
             {canRetry && canRetryOfficialNotice(selected.status, selected.delivery.failed) ? <Button disabled={mutating || !isOfficialNoticeReasonValid(reason)} onClick={() => void mutate("retry")} variant="secondary">重试失败投递</Button> : null}
@@ -337,14 +358,16 @@ export function OfficialNoticeManagement({ scope, composePath }: { scope: Offici
 
 export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialNoticeScope; returnPath: string }) {
   const navigate = useNavigate();
+  const { publicId: draftPublicId } = useParams<{ publicId: string }>();
+  const { hasPermission } = useAuth();
   const { language } = useOptionalI18n();
   const [sourceLocale, setSourceLocale] = useState<OfficialNoticeLocale>("ja");
   const [activeLocale, setActiveLocale] = useState<OfficialNoticeLocale>("ja");
   const [level, setLevel] = useState<OfficialNoticeLevel>("general");
   const [translationDrafts, setTranslationDrafts] = useState<
-    Record<OfficialNoticeLocale, { title: string; summary: string; blocks: OfficialNoticeBlock[] }>
+    Record<OfficialNoticeLocale, NoticeTranslationDraft>
   >(() => ({
-    ja: createTranslationDraft(),
+    ja: createTranslationDraft(false),
     "zh-CN": createTranslationDraft(),
     "zh-TW": createTranslationDraft(),
     en: createTranslationDraft(),
@@ -358,31 +381,47 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
   const [accountSearching, setAccountSearching] = useState(false);
   const [accountSearchError, setAccountSearchError] = useState("");
   const [uploadingBlockId, setUploadingBlockId] = useState<string | null>(null);
+  const [draftVersion, setDraftVersion] = useState<number | null>(null);
+  const [draftLoading, setDraftLoading] = useState(Boolean(draftPublicId));
+  const [savingDraft, setSavingDraft] = useState(false);
   const [sendMode, setSendMode] = useState<"now" | "scheduled">("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [idempotencyKey] = useState(() => makeKey("create"));
+  const [draftCreateIdempotencyKey] = useState(() => makeKey("draft-create"));
+  const [planIdempotencyKey] = useState(() => makeKey("draft-plan"));
   const activeTranslation = translationDrafts[activeLocale];
   const title = activeTranslation.title;
   const summary = activeTranslation.summary;
   const blocks = activeTranslation.blocks;
-  const setTitle = (value: string) => setTranslationDrafts((current) => ({
+  const updateActiveTranslation = (
+    update: (current: NoticeTranslationDraft) => NoticeTranslationDraft
+  ) => setTranslationDrafts((current) => {
+    const nextActive = { ...update(current[activeLocale]), isInitialCopy: false };
+    if (activeLocale !== sourceLocale) {
+      return { ...current, [activeLocale]: nextActive };
+    }
+    return Object.fromEntries(noticeLocales.map((locale) => {
+      if (locale === sourceLocale) return [locale, nextActive];
+      if (!current[locale].isInitialCopy) return [locale, current[locale]];
+      return [locale, {
+        title: nextActive.title,
+        summary: nextActive.summary,
+        blocks: nextActive.blocks.map((block) => ({ ...block })),
+        isInitialCopy: true
+      }];
+    })) as Record<OfficialNoticeLocale, NoticeTranslationDraft>;
+  });
+  const setTitle = (value: string) => updateActiveTranslation((current) => ({
     ...current,
-    [activeLocale]: { ...current[activeLocale], title: value }
+    title: value
   }));
-  const setSummary = (value: string) => setTranslationDrafts((current) => ({
+  const setSummary = (value: string) => updateActiveTranslation((current) => ({
     ...current,
-    [activeLocale]: { ...current[activeLocale], summary: value }
+    summary: value
   }));
   const setBlocks = (update: (current: OfficialNoticeBlock[]) => OfficialNoticeBlock[]) => {
-    setTranslationDrafts((current) => ({
-      ...current,
-      [activeLocale]: {
-        ...current[activeLocale],
-        blocks: update(current[activeLocale].blocks)
-      }
-    }));
+    updateActiveTranslation((current) => ({ ...current, blocks: update(current.blocks) }));
   };
   const normalizedTranslations = useMemo(
     () => Object.fromEntries(noticeLocales.map((locale) => [
@@ -390,9 +429,10 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
       {
         title: translationDrafts[locale].title.trim(),
         summary: translationDrafts[locale].summary.trim(),
-        blocks: normalizeNoticeBlocks(translationDrafts[locale].blocks)
+        blocks: normalizeNoticeBlocks(translationDrafts[locale].blocks),
+        isInitialCopy: translationDrafts[locale].isInitialCopy
       }
-    ])) as Record<OfficialNoticeLocale, { title: string; summary: string; blocks: OfficialNoticeBlock[] }>,
+    ])) as Record<OfficialNoticeLocale, NoticeTranslationDraft>,
     [translationDrafts]
   );
   const normalizedBlocks = useMemo(
@@ -402,14 +442,81 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
 
   const copyCurrentTranslationToAll = () => {
     const source = translationDrafts[activeLocale];
+    setSourceLocale(activeLocale);
     setTranslationDrafts(Object.fromEntries(noticeLocales.map((locale) => [
       locale,
       {
         title: source.title,
         summary: source.summary,
-        blocks: source.blocks.map((block) => ({ ...block }))
+        blocks: source.blocks.map((block) => ({ ...block })),
+        isInitialCopy: locale !== activeLocale
       }
-    ])) as Record<OfficialNoticeLocale, { title: string; summary: string; blocks: OfficialNoticeBlock[] }>);
+    ])) as Record<OfficialNoticeLocale, NoticeTranslationDraft>);
+  };
+
+  useEffect(() => {
+    if (!draftPublicId) {
+      setDraftLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDraftLoading(true);
+    setError("");
+    void officialNoticesApi.getManaged(scope, draftPublicId)
+      .then((draft) => {
+        if (cancelled) return;
+        if (draft.status !== "draft") throw new Error("error.official_notice.not_draft");
+        setDraftVersion(draft.lockVersion);
+        setSourceLocale(draft.sourceLocale);
+        setActiveLocale(draft.sourceLocale);
+        setLevel(draft.level);
+        setTranslationDrafts(Object.fromEntries(noticeLocales.map((locale) => {
+          const translation = draft.translations[locale];
+          return [locale, translation ? {
+            title: translation.title,
+            summary: translation.summary,
+            blocks: translation.blocks.length > 0
+              ? translation.blocks.map((block) => ({ ...block }))
+              : [createNoticeBlock()],
+            isInitialCopy: locale === draft.sourceLocale ? false : translation.isInitialCopy
+          } : createTranslationDraft(locale !== draft.sourceLocale)];
+        })) as Record<OfficialNoticeLocale, NoticeTranslationDraft>);
+        if (draft.audience) {
+          setAudienceType(draft.audience.type);
+          if (draft.audience.type === "identity_types") {
+            setIdentityTypes([...draft.audience.identityTypes]);
+          }
+          if (draft.audience.type === "exact_users") {
+            setSelectedAccounts(draft.audience.needoIds.map((needoId) => ({
+              id: 0,
+              needoId,
+              username: needoId,
+              displayName: needoId,
+              email: "",
+              phone: null,
+              isActive: true
+            } as PlatformManagedUser)));
+          }
+        }
+      })
+      .catch((nextError) => {
+        if (!cancelled) setError(describeOfficialNoticeError(nextError, language));
+      })
+      .finally(() => {
+        if (!cancelled) setDraftLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftPublicId, language, scope]);
+
+  const selectSourceLocale = (locale: OfficialNoticeLocale) => {
+    setSourceLocale(locale);
+    setActiveLocale(locale);
+    setTranslationDrafts((current) => ({
+      ...current,
+      [locale]: { ...current[locale], isInitialCopy: false }
+    }));
   };
 
   const updateBlock = (id: string, patch: Partial<OfficialNoticeBlock>) => {
@@ -494,34 +601,67 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
     }
   };
 
+  const selectedAudience = (): ManagedNoticeDraftInput["audience"] => scope === "merchant"
+    ? { type: audienceType as "shop_card_holders" | "shop_employees" | "shop_technicians" }
+    : audienceType === "all"
+      ? { type: "all" }
+      : audienceType === "exact_users"
+        ? { type: "exact_users", needoIds: selectedAccounts.map((account) => account.needoId) }
+        : { type: "identity_types", identityTypes: identityTypes as Array<"customer" | "technician" | "merchant_owner" | "merchant_staff" | "platform" | "platform_admin" | "scout"> };
+
+  const persistDraft = async () => {
+    const base = {
+      sourceLocale,
+      level,
+      translations: normalizedTranslations,
+      audience: selectedAudience()
+    };
+    if (draftPublicId) {
+      if (draftVersion === null) throw new Error("error.official_notice.version_conflict");
+      return officialNoticesApi.updateDraft(scope, draftPublicId, {
+        ...base,
+        expectedLockVersion: draftVersion,
+        idempotencyKey: makeKey("draft-update")
+      });
+    }
+    return officialNoticesApi.createDraft(scope, {
+      ...base,
+      idempotencyKey: draftCreateIdempotencyKey
+    });
+  };
+
+  const saveDraft = async () => {
+    if (!audienceReady || draftLoading) return;
+    setSavingDraft(true);
+    setError("");
+    try {
+      const saved = await persistDraft();
+      setDraftVersion(saved.lockVersion);
+      if (!draftPublicId) {
+        navigate(`${returnPath}/compose/${saved.publicId}`, { replace: true });
+      }
+    } catch (nextError) {
+      setError(describeOfficialNoticeError(nextError, language));
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const allLocalesComplete = noticeLocales.every((locale) => {
-      const translation = normalizedTranslations[locale];
-      return translation.title && translation.summary && translation.blocks.some((block) => block.type !== "divider");
-    });
-    if (!allLocalesComplete || (sendMode === "scheduled" && !scheduledAt)) {
+    if (!allLocalesComplete || !audienceReady || (sendMode === "scheduled" && !scheduledAt)) {
       setError(translateNoticeText("请补齐五种语言的标题、摘要和正文", language));
       return;
     }
     setSubmitting(true);
     setError("");
     try {
-      const audience = scope === "merchant"
-        ? { type: audienceType as "shop_card_holders" | "shop_employees" | "shop_technicians" }
-        : audienceType === "all"
-          ? { type: "all" as const }
-          : audienceType === "exact_users"
-            ? { type: "exact_users" as const, needoIds: selectedAccounts.map((account) => account.needoId) }
-            : { type: "identity_types" as const, identityTypes: identityTypes as Array<"customer" | "technician" | "merchant_owner" | "merchant_staff" | "platform" | "platform_admin" | "scout"> };
-      await officialNoticesApi.createManaged(scope, {
-        sourceLocale,
-        level,
-        translations: normalizedTranslations,
-        audience,
+      const saved = await persistDraft();
+      await officialNoticesApi.planDraft(scope, saved.publicId, {
+        expectedLockVersion: saved.lockVersion,
         sendMode,
         scheduledAt: sendMode === "scheduled" ? new Date(scheduledAt).toISOString() : null,
-        idempotencyKey
+        idempotencyKey: planIdempotencyKey
       });
       navigate(returnPath);
     } catch (nextError) {
@@ -547,7 +687,10 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
     || (audienceType === "identity_types" && identityTypes.length > 0)
     || (audienceType === "exact_users" && selectedAccounts.length > 0);
   const hasSchedule = sendMode === "now" || Boolean(scheduledAt);
-  const canSubmit = allLocalesComplete && audienceReady && hasSchedule && !submitting;
+  const canSend = hasPermission(scope === "merchant"
+    ? "merchant-admin:notice:send"
+    : "button:backoffice-official-notice-send");
+  const canSubmit = canSend && allLocalesComplete && audienceReady && hasSchedule && !submitting && !draftLoading;
   const targetSummary = scope === "merchant"
     ? audienceOptions.find(([value]) => value === audienceType)?.[1]
     : audienceType === "all"
@@ -567,6 +710,14 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
       actions={(
         <div className="flex flex-wrap gap-2">
           <Button to={returnPath} variant="secondary">返回列表</Button>
+          <Button
+            disabled={!audienceReady || savingDraft || draftLoading}
+            onClick={() => void saveDraft()}
+            type="button"
+            variant="secondary"
+          >
+            {translateNoticeText(savingDraft ? "正在保存草稿" : "保存草稿", language)}
+          </Button>
           <Button disabled={!canSubmit} form="official-notice-compose-form" type="submit">
             {submitting ? "提交中…" : "确认创建"}
           </Button>
@@ -581,6 +732,11 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
         {error ? (
           <p className="rounded-lg border border-coral/25 bg-coral/10 px-4 py-3 text-sm font-bold text-coral">
             {error}
+          </p>
+        ) : null}
+        {draftLoading ? (
+          <p className="rounded-lg border border-line bg-paper px-4 py-3 text-sm font-bold text-ink/55">
+            正在读取草稿…
           </p>
         ) : null}
 
@@ -622,10 +778,7 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
                     className={`h-10 rounded-lg border px-3 text-xs font-black transition ${sourceLocale === locale ? "border-moss bg-moss text-white" : "border-line bg-paper text-ink/65 hover:border-moss"}`}
                     data-source-locale={locale}
                     key={locale}
-                    onClick={() => {
-                      setSourceLocale(locale);
-                      setActiveLocale(locale);
-                    }}
+                    onClick={() => selectSourceLocale(locale)}
                     type="button"
                   >
                     {noticeLocaleLabels[language][locale]}

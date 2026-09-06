@@ -13,11 +13,16 @@ import { OfficialNoticeRepository } from "../repositories/official-notice.reposi
 import { OfficialNoticeService } from "../services/official-notice.service";
 import {
   officialNoticeCreateBodySchema,
+  officialNoticeDraftCreateBodySchema,
+  officialNoticeDraftUpdateBodySchema,
   officialNoticeLifecycleBodySchema,
   officialNoticeListQuerySchema,
   officialNoticePublicIdParamSchema,
+  officialNoticePlanBodySchema,
   officialNoticeReadQuerySchema,
-  merchantNoticeCreateBodySchema
+  merchantNoticeCreateBodySchema,
+  merchantNoticeDraftCreateBodySchema,
+  merchantNoticeDraftUpdateBodySchema
 } from "../validators/official-notice.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -70,6 +75,35 @@ export const createOfficialNoticeManagementRoutes = (
     createAuthorizeMiddleware(OFFICIAL_NOTICE_PERMISSIONS.send),
     validate({ body: officialNoticeCreateBodySchema }),
     controller.createAndPlan
+  );
+  router.post(
+    "/backoffice/official-notices/drafts",
+    authenticate(),
+    createAuthorizeMiddleware(OFFICIAL_NOTICE_PERMISSIONS.create),
+    validate({ body: officialNoticeDraftCreateBodySchema }),
+    controller.createDraft
+  );
+  router.get(
+    "/backoffice/official-notices/:publicId",
+    authenticate(),
+    createAuthorizeMiddleware(OFFICIAL_NOTICE_PERMISSIONS.read),
+    validate({ params: officialNoticePublicIdParamSchema }),
+    controller.getDraft
+  );
+  router.put(
+    "/backoffice/official-notices/:publicId/draft",
+    authenticate(),
+    createAuthorizeMiddleware(OFFICIAL_NOTICE_PERMISSIONS.create),
+    validate({ params: officialNoticePublicIdParamSchema, body: officialNoticeDraftUpdateBodySchema }),
+    controller.updateDraft
+  );
+  router.post(
+    "/backoffice/official-notices/:publicId/plan",
+    authenticate(),
+    createAuthorizeMiddleware(OFFICIAL_NOTICE_PERMISSIONS.create),
+    createAuthorizeMiddleware(OFFICIAL_NOTICE_PERMISSIONS.send),
+    validate({ params: officialNoticePublicIdParamSchema, body: officialNoticePlanBodySchema }),
+    controller.planDraft
   );
   router.post(
     "/backoffice/official-notices/:publicId/cancel",
@@ -147,6 +181,35 @@ export const createMerchantOfficialNoticeManagementRoutes = (
     createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.send),
     validate({ body: merchantNoticeCreateBodySchema }),
     controller.createAndPlanMerchant
+  );
+  router.post(
+    "/merchant-admin/official-notices/drafts",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.create),
+    validate({ body: merchantNoticeDraftCreateBodySchema }),
+    controller.createDraftMerchant
+  );
+  router.get(
+    "/merchant-admin/official-notices/:publicId",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.read),
+    validate({ params: officialNoticePublicIdParamSchema }),
+    controller.getMerchantDraft
+  );
+  router.put(
+    "/merchant-admin/official-notices/:publicId/draft",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.create),
+    validate({ params: officialNoticePublicIdParamSchema, body: merchantNoticeDraftUpdateBodySchema }),
+    controller.updateDraftMerchant
+  );
+  router.post(
+    "/merchant-admin/official-notices/:publicId/plan",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.create),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.send),
+    validate({ params: officialNoticePublicIdParamSchema, body: officialNoticePlanBodySchema }),
+    controller.planDraftMerchant
   );
   router.post(
     "/merchant-admin/official-notices/:publicId/cancel",

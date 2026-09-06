@@ -1,6 +1,9 @@
 import {
   officialNoticeCreateBodySchema,
+  officialNoticeDraftCreateBodySchema,
+  officialNoticeDraftUpdateBodySchema,
   officialNoticeListQuerySchema,
+  officialNoticePlanBodySchema,
   officialNoticeReadQuerySchema
 } from "../src/validators/official-notice.validator";
 
@@ -149,6 +152,49 @@ describe("official notice validation", () => {
         scheduledAt: "2026-09-03T10:00:00.000Z"
       })
     ).toThrow();
+  });
+
+  it("accepts incomplete multilingual content for a persisted draft", () => {
+    const draft = {
+      sourceLocale: "ja",
+      level: "general",
+      translations: {
+        "zh-CN": { title: "", summary: "", blocks: [], isInitialCopy: true },
+        "zh-TW": { title: "", summary: "", blocks: [], isInitialCopy: true },
+        en: { title: "", summary: "", blocks: [], isInitialCopy: true },
+        ja: {
+          title: "編集中",
+          summary: "",
+          blocks: [{ id: "draft-body", type: "paragraph", content: "" }],
+          isInitialCopy: false
+        },
+        ko: { title: "", summary: "", blocks: [], isInitialCopy: true }
+      },
+      audience: { type: "all" },
+      idempotencyKey: "draft-create-0001"
+    } as const;
+
+    expect(officialNoticeDraftCreateBodySchema.parse(draft)).toEqual(draft);
+    expect(officialNoticeDraftUpdateBodySchema.parse({
+      ...draft,
+      expectedLockVersion: 2,
+      idempotencyKey: "draft-update-0001"
+    })).toMatchObject({ expectedLockVersion: 2 });
+  });
+
+  it("requires optimistic locking and a valid delivery mode when planning a draft", () => {
+    expect(officialNoticePlanBodySchema.parse({
+      expectedLockVersion: 3,
+      sendMode: "scheduled",
+      scheduledAt: "2026-09-08T10:00:00.000Z",
+      idempotencyKey: "draft-plan-0001"
+    })).toMatchObject({ expectedLockVersion: 3, sendMode: "scheduled" });
+    expect(() => officialNoticePlanBodySchema.parse({
+      expectedLockVersion: 0,
+      sendMode: "scheduled",
+      scheduledAt: null,
+      idempotencyKey: "draft-plan-0002"
+    })).toThrow();
   });
 
   it("bounds exact targets and list pagination", () => {

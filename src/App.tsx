@@ -1380,7 +1380,8 @@ export default function App() {
               <Route path="/merchant-admin/finance" element={protect("merchant", <MerchantAdminFinancePage />)} />
               <Route path="/merchant-admin/people" element={protect("merchant", <MerchantAdminPeoplePage />)} />
               <Route path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read", <MerchantAdminNotificationsPage view="list" />)} />
-              <Route path="/merchant-admin/notifications/compose" element={protectPermissions("merchant", ["merchant-admin:notice:create", "merchant-admin:notice:send"], <MerchantAdminNotificationsPage view="compose" />)} />
+              <Route path="/merchant-admin/notifications/compose" element={protectPermission("merchant", "merchant-admin:notice:create", <MerchantAdminNotificationsPage view="compose" />)} />
+              <Route path="/merchant-admin/notifications/compose/:publicId" element={protectPermission("merchant", "merchant-admin:notice:create", <MerchantAdminNotificationsPage view="compose" />)} />
               <Route path="/merchant-admin/notifications/inbox" element={protect("merchant", <MerchantAdminNotificationsPage view="inbox" />)} />
               <Route path="/merchant-admin/docs" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
@@ -1451,7 +1452,8 @@ export default function App() {
               <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="backoffice" /></Suspense>)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
-              <Route path="/admin/notifications/compose" element={protectPermissions("admin", ["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"], <AdminNotificationComposePage />)} />
+              <Route path="/admin/notifications/compose" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />
+              <Route path="/admin/notifications/compose/:publicId" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />
               <Route path="/admin/notifications/inbox" element={protect("admin", <AdminNotificationsPage view="inbox" />)} />
               <Route path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice", <AdminNotificationsPage />)} />
               <Route path="/admin/support" element={protect("admin", <AdminSupportPage />)} />
