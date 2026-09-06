@@ -78,6 +78,31 @@ describe("official notice validation", () => {
       }).translations["zh-CN"].blocks[0]
     ).toMatchObject({ mediaAssetId: 41, source: "media" });
 
+    for (const [type, extension, mimeType] of [
+      ["video", "mp4", "video/mp4"],
+      ["video", "webm", "video/webm"],
+      ["file", "pdf", "application/pdf"],
+      ["file", "txt", "text/plain"]
+    ] as const) {
+      expect(() => officialNoticeCreateBodySchema.parse({
+        ...base,
+        translations: {
+          ...base.translations,
+          "zh-CN": {
+            ...base.translations["zh-CN"],
+            blocks: [{
+              id: `${type}-${extension}`,
+              type,
+              content: `/media/content/${"b".repeat(64)}.${extension}`,
+              source: "media",
+              mediaAssetId: 42,
+              mimeType
+            }]
+          }
+        }
+      })).not.toThrow();
+    }
+
     for (const content of ["data:image/png;base64,AAAA", "blob:http://localhost/file"]) {
       expect(() =>
         officialNoticeCreateBodySchema.parse({

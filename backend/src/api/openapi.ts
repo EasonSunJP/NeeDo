@@ -14006,6 +14006,39 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           mediaAssetId: { type: "integer", minimum: 1 }
         }
       },
+      OfficialNoticeMediaUpload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "mediaAssetId",
+          "url",
+          "mimeType",
+          "width",
+          "height",
+          "checksumSha256"
+        ],
+        properties: {
+          publicId: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          mediaAssetId: { type: "integer", minimum: 1 },
+          url: { type: "string", format: "uri-reference" },
+          mimeType: {
+            type: "string",
+            enum: [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "video/mp4",
+              "video/webm",
+              "application/pdf",
+              "text/plain"
+            ]
+          },
+          width: { type: ["integer", "null"], minimum: 1 },
+          height: { type: ["integer", "null"], minimum: 1 },
+          checksumSha256: { type: "string", pattern: "^[a-f0-9]{64}$" }
+        }
+      },
       OfficialNoticeAudience: {
         oneOf: [
           {
@@ -26454,6 +26487,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         )
       })
     },
+    [`${config.API_PREFIX}/merchant-admin/official-notices/media`]: {
+      post: {
+        tags: ["Merchant Official Notices"],
+        summary: "Upload a current-shop official notice image, video, or file",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:notice:create",
+        parameters: [
+          { name: "file_name", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 255 } },
+          { name: "caption", in: "query", schema: { type: "string", minLength: 1, maxLength: 255 } }
+        ],
+        requestBody: {
+          required: true,
+          content: Object.fromEntries([
+            "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "application/pdf", "text/plain"
+          ].map((mimeType) => [mimeType, { schema: { type: "string", format: "binary" } }]))
+        },
+        responses: {
+          "201": jsonDataResponse("Current-shop notice media uploaded", { $ref: "#/components/schemas/OfficialNoticeMediaUpload" }),
+          "400": jsonErrorResponse("error.official_notice.media_invalid"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "413": jsonErrorResponse("error.official_notice.media_too_large"),
+          "415": jsonErrorResponse("error.official_notice.media_invalid")
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/official-notices/drafts`]: {
       post: {
         tags: ["Merchant Official Notices"],
@@ -26672,6 +26731,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.official_notice.not_found"),
           "409": jsonErrorResponse("State, failure-count, or lock-version conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/official-notices/media`]: {
+      post: {
+        tags: ["Official Notices"],
+        summary: "Upload an official notice image, video, or file",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "button:backoffice-official-notice-create",
+        parameters: [
+          { name: "file_name", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 255 } },
+          { name: "caption", in: "query", schema: { type: "string", minLength: 1, maxLength: 255 } }
+        ],
+        requestBody: {
+          required: true,
+          content: Object.fromEntries([
+            "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "application/pdf", "text/plain"
+          ].map((mimeType) => [mimeType, { schema: { type: "string", format: "binary" } }]))
+        },
+        responses: {
+          "201": jsonDataResponse("Official notice media uploaded", { $ref: "#/components/schemas/OfficialNoticeMediaUpload" }),
+          "400": jsonErrorResponse("error.official_notice.media_invalid"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "413": jsonErrorResponse("error.official_notice.media_too_large"),
+          "415": jsonErrorResponse("error.official_notice.media_invalid")
         }
       }
     },

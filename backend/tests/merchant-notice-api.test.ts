@@ -109,6 +109,18 @@ const createFixture = (user: typeof merchantUser | typeof operationsUser = merch
     archiveMerchant: jest.fn(async () => ({ ...notice, status: "archived" })),
     retryMerchantFailures: jest.fn(async () => notice)
   };
+  const mediaService = {
+    uploadPlatform: jest.fn(),
+    uploadMerchant: jest.fn(async () => ({
+      publicId: "d".repeat(64),
+      mediaAssetId: 72,
+      url: `/media/content/${"d".repeat(64)}.mp4`,
+      mimeType: "video/mp4",
+      width: null,
+      height: null,
+      checksumSha256: "d".repeat(64)
+    }))
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     testOnlyAllowLegacyAuthAdapters: true,
@@ -116,17 +128,37 @@ const createFixture = (user: typeof merchantUser | typeof operationsUser = merch
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     merchantShopContextRepository: createDirectShopContextRepository(),
-    officialNoticeService: service
+    officialNoticeService: service,
+    officialNoticeMediaService: mediaService
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,
     email: user.email,
     currentIdentityId: user.identities[0].id
   }).token;
-  return { app, service, token };
+  return { app, service, mediaService, token };
 };
 
 describe("merchant notice HTTP API", () => {
+  it("uploads merchant notice media only through the merchant-scoped endpoint", async () => {
+    const fixture = createFixture();
+    const bytes = Buffer.concat([Buffer.alloc(4), Buffer.from("ftypisom"), Buffer.alloc(12)]);
+    await request(fixture.app)
+      .post("/api/v1/merchant-admin/official-notices/media?file_name=hours.mp4")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .set("Content-Type", "video/mp4")
+      .send(bytes)
+      .expect(201)
+      .expect((response) => expect(response.body.data.mediaAssetId).toBe(72));
+
+    expect(fixture.mediaService.uploadMerchant).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, currentIdentityId: 17 }),
+      expect.any(Object),
+      expect.objectContaining({ bytes, mimeType: "video/mp4", fileName: "hours.mp4" })
+    );
+    expect(fixture.mediaService.uploadPlatform).not.toHaveBeenCalled();
+  });
+
   it("creates, reloads, updates, and plans a draft only through merchant-scoped methods", async () => {
     const fixture = createFixture();
     const draftBody = {

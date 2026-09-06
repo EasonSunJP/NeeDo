@@ -20,6 +20,8 @@ retains its existing combined manifest.
   both create and send permissions.
 - `POST /backoffice/official-notices/drafts`: persist incomplete five-locale
   editing state without creating audience or delivery rows, create permission.
+- `POST /backoffice/official-notices/media`: upload a signature-verified image,
+  MP4/WebM video, PDF or UTF-8 text attachment under the notice create permission.
 - `GET /backoffice/official-notices/{publicId}` and
   `PUT /backoffice/official-notices/{publicId}/draft`: reload and update a
   scope-owned draft with optimistic locking.
@@ -35,6 +37,8 @@ retains its existing combined manifest.
 The merchant route manifest owns the equivalent paginated create/list,
 draft create/read/update/plan and cancel/archive/retry operations under
 `/merchant-admin/official-notices`.
+The merchant namespace has its own `POST /merchant-admin/official-notices/media`
+endpoint and permission check; it does not call the operations route.
 Both management list endpoints accept the same bounded `search` query and match
 persisted notice public IDs, audience summaries, and locale titles/summaries on
 the server; the browser never filters only the currently loaded page.
@@ -67,6 +71,12 @@ language; editing a locale independently clears its initial-copy flag so later
 source edits do not overwrite it. All five locale records are sent as one notice.
 Text content blocks may persist one of four validated font-size values, rendered
 consistently in management preview, inbox and homepage notice presentation.
+Uploaded notice media is content-addressed on the server and recorded as an
+audited `MediaAsset`. Platform drafts may reference only active assets uploaded
+by their authenticated platform account. Merchant drafts may reuse only active
+assets belonging to the same server-derived shop. The stored URL, declared MIME
+type and block family (image/video/file) are rechecked on draft create/update and
+again before delivery planning; browser `blob:` and `data:` URLs remain invalid.
 Merchant publication supports only server-derived current-shop audiences:
 active issued membership-card holders, current shop employees, and current shop
 technicians linked through their active affiliation, employee record and role.
@@ -135,7 +145,6 @@ idempotency and zero persistent fixtures.
 - Real browser multi-portal login/logout acceptance beyond the local portal checks.
 - Staging operations-to-user/technician/merchant delivery and read reception acceptance.
 - Staging same-shop database/API/page parity and update propagation acceptance.
-- Formal merchant media upload and server-side ownership binding for notice assets.
 - Complete five-locale coverage for the remaining legacy editor labels.
 
 A separate approval workflow is not enabled by this slice; schema review statuses

@@ -1,4 +1,5 @@
-import { Router } from "express";
+import express, { Router } from "express";
+import { z } from "zod";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import {
@@ -6,11 +7,19 @@ import {
   OFFICIAL_NOTICE_PERMISSIONS
 } from "../constants/permissions.constants";
 import { OfficialNoticeController } from "../controllers/official-notice.controller";
+import { OfficialNoticeMediaController } from "../controllers/official-notice-media.controller";
+import { createContentImageBodyErrorHandler } from "../middlewares/content-image-upload.middleware";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { OfficialNoticeRepository } from "../repositories/official-notice.repository";
+import { ContentMediaRepository } from "../repositories/content-media.repository";
 import { OfficialNoticeService } from "../services/official-notice.service";
+import {
+  OFFICIAL_NOTICE_MEDIA_MIME_TYPES,
+  OfficialNoticeMediaFileStorage
+} from "../services/official-notice-media.storage";
+import { OfficialNoticeMediaService } from "../services/official-notice-media.service";
 import {
   officialNoticeCreateBodySchema,
   officialNoticeDraftCreateBodySchema,
@@ -36,6 +45,31 @@ const validate = (schemas: Parameters<typeof validateRequest>[0]) =>
     validationErrorMessage
   });
 
+const noticeMediaUploadQuerySchema = z.object({
+  file_name: z.string().trim().min(1, "error.official_notice.media_invalid").max(255),
+  caption: z.string().trim().min(1, "error.official_notice.media_invalid").max(255).optional()
+}).strict("error.official_notice.media_invalid");
+
+const createNoticeMediaController = (config: AppConfig, dependencies: AppDependencies) => {
+  if (dependencies.officialNoticeMediaService) {
+    return new OfficialNoticeMediaController(dependencies.officialNoticeMediaService);
+  }
+  const repository = dependencies.officialNoticeMediaRepository ?? new ContentMediaRepository();
+  const storage = dependencies.officialNoticeMediaStorage ??
+    new OfficialNoticeMediaFileStorage(config.CONTENT_MEDIA_STORAGE_DIR);
+  return new OfficialNoticeMediaController(new OfficialNoticeMediaService(repository, storage));
+};
+
+const noticeMediaBodyParser = express.raw({
+  type: [...OFFICIAL_NOTICE_MEDIA_MIME_TYPES],
+  limit: "50mb"
+});
+
+const noticeMediaBodyErrorHandler = createContentImageBodyErrorHandler({
+  invalid: "error.official_notice.media_invalid",
+  tooLarge: "error.official_notice.media_too_large"
+});
+
 const createNoticeController = (config: AppConfig, dependencies: AppDependencies) => {
   const authenticate = createAuthenticateMiddleware(
     createAuthServiceForRoutes(config, dependencies)
@@ -60,6 +94,17 @@ export const createOfficialNoticeManagementRoutes = (
 ): Router => {
   const router = Router();
   const { controller, authenticate } = createNoticeController(config, dependencies);
+  const mediaController = createNoticeMediaController(config, dependencies);
+
+  router.post(
+    "/backoffice/official-notices/media",
+    authenticate(),
+    createAuthorizeMiddleware(OFFICIAL_NOTICE_PERMISSIONS.create),
+    validate({ query: noticeMediaUploadQuerySchema }),
+    noticeMediaBodyParser,
+    noticeMediaBodyErrorHandler,
+    mediaController.uploadPlatform
+  );
 
   router.get(
     "/backoffice/official-notices",
@@ -166,6 +211,17 @@ export const createMerchantOfficialNoticeManagementRoutes = (
 ): Router => {
   const router = Router();
   const { controller, authenticate } = createNoticeController(config, dependencies);
+  const mediaController = createNoticeMediaController(config, dependencies);
+
+  router.post(
+    "/merchant-admin/official-notices/media",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_NOTICE_PERMISSIONS.create),
+    validate({ query: noticeMediaUploadQuerySchema }),
+    noticeMediaBodyParser,
+    noticeMediaBodyErrorHandler,
+    mediaController.uploadMerchant
+  );
 
   router.get(
     "/merchant-admin/official-notices",

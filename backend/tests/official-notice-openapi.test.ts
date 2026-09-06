@@ -44,6 +44,11 @@ describe("official notice OpenAPI", () => {
     expect(response.body.components.schemas.OfficialNoticeDraftCreate).toBeDefined();
     expect(response.body.components.schemas.OfficialNoticeDraftUpdate).toBeDefined();
     expect(response.body.components.schemas.OfficialNoticePlanDraft).toBeDefined();
+    expect(response.body.components.schemas.OfficialNoticeMediaUpload).toBeDefined();
+    expect(paths["/api/v1/backoffice/official-notices/media"].post).toMatchObject({
+      "x-permission": "button:backoffice-official-notice-create",
+      requestBody: { required: true }
+    });
     expect(response.body.components.schemas.OfficialNoticeDraftUpdate).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -120,6 +125,9 @@ describe("official notice OpenAPI", () => {
       "merchant-admin:notice:create",
       "merchant-admin:notice:send"
     ]);
+    expect(paths["/api/v1/merchant-admin/official-notices/media"].post["x-permission"]).toBe(
+      "merchant-admin:notice:create"
+    );
   });
 
   it("documents the same bounded server search on operations notice management", async () => {

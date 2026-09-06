@@ -123,6 +123,18 @@ const createFixture = () => {
     })),
     markRead: jest.fn(async () => ({ publicId, readAt: now }))
   };
+  const mediaService = {
+    uploadPlatform: jest.fn(async () => ({
+      publicId: "c".repeat(64),
+      mediaAssetId: 71,
+      url: `/media/content/${"c".repeat(64)}.pdf`,
+      mimeType: "application/pdf",
+      width: null,
+      height: null,
+      checksumSha256: "c".repeat(64)
+    })),
+    uploadMerchant: jest.fn()
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     testOnlyAllowLegacyAuthAdapters: true,
@@ -131,7 +143,8 @@ const createFixture = () => {
     },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    officialNoticeService: service
+    officialNoticeService: service,
+    officialNoticeMediaService: mediaService
   } as never);
   const tokens = Object.fromEntries(
     users.map((user) => [
@@ -143,10 +156,28 @@ const createFixture = () => {
       }).token
     ])
   ) as Record<number, string>;
-  return { app, service, tokens };
+  return { app, service, mediaService, tokens };
 };
 
 describe("official notice HTTP API", () => {
+  it("uploads platform notice attachments through the dedicated create permission", async () => {
+    const fixture = createFixture();
+    const bytes = Buffer.from("%PDF-1.7\nnotice attachment");
+    await request(fixture.app)
+      .post("/api/v1/backoffice/official-notices/media?file_name=guide.pdf&caption=Guide")
+      .set("Authorization", `Bearer ${fixture.tokens[7]}`)
+      .set("Content-Type", "application/pdf")
+      .send(bytes)
+      .expect(201)
+      .expect((response) => expect(response.body.data.mediaAssetId).toBe(71));
+
+    expect(fixture.mediaService.uploadPlatform).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7 }),
+      expect.any(Object),
+      expect.objectContaining({ bytes, mimeType: "application/pdf", fileName: "guide.pdf", caption: "Guide" })
+    );
+  });
+
   it("lets creators save and continue drafts without granting send permission", async () => {
     const fixture = createFixture();
     const draftBody = {

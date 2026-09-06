@@ -102,6 +102,33 @@ describe("officialNoticesApi", () => {
     );
   });
 
+  it("uploads raw notice media through the selected portal namespace", async () => {
+    const file = new File(["%PDF-1.7"], "guide.pdf", { type: "application/pdf" });
+    await officialNoticesApi.uploadMedia("platform", file, "Guide");
+    await officialNoticesApi.uploadMedia("merchant", file);
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/backoffice/official-notices/media",
+      {
+        method: "POST",
+        body: file,
+        headers: { "Content-Type": "application/pdf" },
+        query: { file_name: "guide.pdf", caption: "Guide" }
+      }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/merchant-admin/official-notices/media",
+      {
+        method: "POST",
+        body: file,
+        headers: { "Content-Type": "application/pdf" },
+        query: { file_name: "guide.pdf", caption: undefined }
+      }
+    );
+  });
+
   it("uses scoped lifecycle and current-identity inbox endpoints", async () => {
     const command = {
       expectedLockVersion: 3,

@@ -156,6 +156,16 @@ export type NoticeLifecycleInput = {
   idempotencyKey: string;
 };
 
+export type OfficialNoticeMediaUpload = {
+  publicId: string;
+  mediaAssetId: number;
+  url: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  checksumSha256: string;
+};
+
 const managementBase = (scope: OfficialNoticeScope) =>
   scope === "platform" ? "/backoffice/official-notices" : "/merchant-admin/official-notices";
 
@@ -207,6 +217,14 @@ export const officialNoticesApi = {
     return httpClient.request<OfficialNotice>(`${managementBase(scope)}/${publicId}/plan`, {
       method: "POST",
       body: input
+    });
+  },
+  uploadMedia(scope: OfficialNoticeScope, file: File, caption?: string) {
+    return httpClient.request<OfficialNoticeMediaUpload>(`${managementBase(scope)}/media`, {
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": file.type },
+      query: { file_name: file.name, caption }
     });
   },
   cancelManaged(scope: OfficialNoticeScope, publicId: string, input: NoticeLifecycleInput) {

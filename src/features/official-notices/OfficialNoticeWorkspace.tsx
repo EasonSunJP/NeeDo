@@ -23,7 +23,6 @@ import { useAuth } from "../../auth/AuthProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { platformUserManagementApi } from "../platform-user-management/api";
 import type { PlatformManagedUser } from "../platform-user-management/types";
-import { contentPublicationApi } from "../../api/contentPublication";
 import {
   defaultOfficialNoticeFontSize,
   isTextualOfficialNoticeBlock,
@@ -113,7 +112,10 @@ const noticeUiTranslations: Record<string, Partial<Record<Language, string>>> = 
   "全体用户": { "zh-Hant": "全體用戶", ja: "全ユーザー", en: "All users", ko: "전체 사용자" },
   "复制当前内容到全部语言": { "zh-Hant": "將目前內容複製到所有語言", ja: "現在の内容を全言語へコピー", en: "Copy current content to all languages", ko: "현재 내용을 모든 언어로 복사" },
   "每个语言标签都可独立编辑；复制后仍可逐项修改，发送时五份内容会一起保存。": { "zh-Hant": "每個語言頁籤皆可獨立編輯；複製後仍可逐項修改，傳送時會一併儲存五份內容。", ja: "各言語タブは個別に編集できます。コピー後も個別に変更でき、送信時に5言語すべてを保存します。", en: "Each language tab is independently editable. Copies remain editable, and all five versions are saved together.", ko: "각 언어 탭은 독립적으로 편집할 수 있습니다. 복사 후에도 개별 수정할 수 있으며 전송 시 5개 언어를 함께 저장합니다." },
-  "请补齐五种语言的标题、摘要和正文": { "zh-Hant": "請補齊五種語言的標題、摘要和正文", ja: "5言語すべてのタイトル、概要、本文を入力してください", en: "Complete the title, summary, and body in all five languages", ko: "5개 언어의 제목, 요약, 본문을 모두 입력하세요" }
+  "请补齐五种语言的标题、摘要和正文": { "zh-Hant": "請補齊五種語言的標題、摘要和正文", ja: "5言語すべてのタイトル、概要、本文を入力してください", en: "Complete the title, summary, and body in all five languages", ko: "5개 언어의 제목, 요약, 본문을 모두 입력하세요" },
+  "上传到正式媒体库": { "zh-Hant": "上傳到正式媒體庫", ja: "正式メディアライブラリへアップロード", en: "Upload to media library", ko: "정식 미디어 라이브러리에 업로드" },
+  "上传中": { "zh-Hant": "上傳中…", ja: "アップロード中…", en: "Uploading…", ko: "업로드 중…" },
+  "文件类型不符合当前内容块": { "zh-Hant": "檔案類型不符合目前內容區塊", ja: "ファイル形式が現在のブロックと一致しません", en: "The file type does not match this block", ko: "파일 형식이 현재 블록과 일치하지 않습니다" }
 };
 
 function translateNoticeText(source: string, language: Language) {
@@ -552,18 +554,23 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
     });
   };
 
-  const uploadImage = async (block: OfficialNoticeBlock, event: ChangeEvent<HTMLInputElement>) => {
+  const uploadMedia = async (block: OfficialNoticeBlock, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0] ?? null;
     event.currentTarget.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("请选择图片文件");
+    const validType = block.type === "image"
+      ? ["image/jpeg", "image/png", "image/webp"].includes(file.type)
+      : block.type === "video"
+        ? ["video/mp4", "video/webm"].includes(file.type)
+        : block.type === "file" && ["application/pdf", "text/plain"].includes(file.type);
+    if (!validType) {
+      setError(translateNoticeText("文件类型不符合当前内容块", language));
       return;
     }
     setUploadingBlockId(block.id);
     setError("");
     try {
-      const media = await contentPublicationApi.uploadContentImage(file, block.caption || file.name);
+      const media = await officialNoticesApi.uploadMedia(scope, file, block.caption || file.name);
       updateBlock(block.id, {
         content: media.url,
         caption: block.caption || file.name,
@@ -579,6 +586,12 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
       setUploadingBlockId(null);
     }
   };
+
+  const mediaAccept = (type: OfficialNoticeBlock["type"]) => type === "image"
+    ? "image/jpeg,image/png,image/webp"
+    : type === "video"
+      ? "video/mp4,video/webm"
+      : "application/pdf,text/plain";
 
   const searchAccounts = async () => {
     const keyword = accountQuery.trim();
@@ -1085,20 +1098,18 @@ export function OfficialNoticeComposer({ scope, returnPath }: { scope: OfficialN
                           />
                         </label>
                       </div>
-                      {block.type === "image" && scope === "platform" ? (
-                        <label className="inline-flex cursor-pointer items-center rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black">
-                          {uploadingBlockId === block.id ? "上传中…" : "上传图片到正式媒体库"}
-                          <input
-                            accept="image/jpeg,image/png,image/webp"
-                            className="hidden"
-                            disabled={uploadingBlockId === block.id}
-                            onChange={(event) => void uploadImage(block, event)}
-                            type="file"
-                          />
-                        </label>
-                      ) : (
-                        <p className="text-xs font-bold text-ink/50">当前只保存正式 HTTPS 媒体地址，不会把文件写入浏览器缓存。</p>
-                      )}
+                      <label className="inline-flex cursor-pointer items-center rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black">
+                        {uploadingBlockId === block.id
+                          ? translateNoticeText("上传中", language)
+                          : translateNoticeText("上传到正式媒体库", language)}
+                        <input
+                          accept={mediaAccept(block.type)}
+                          className="hidden"
+                          disabled={uploadingBlockId === block.id}
+                          onChange={(event) => void uploadMedia(block, event)}
+                          type="file"
+                        />
+                      </label>
                     </div>
                   ) : (
                     <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px]">

@@ -122,6 +122,70 @@ interface DeliveryCounts {
   read: number;
 }
 
+export interface OfficialNoticeMediaBindingRecord {
+  id: number;
+  entityType: string;
+  ownerUserId: number | null;
+  shopId: number | null;
+  url: string;
+  mimeType: string;
+  isActive: boolean;
+  deletedAt: Date | null;
+}
+
+const mediaMimeMatchesBlock = (type: string, mimeType: string): boolean =>
+  type === "image"
+    ? ["image/jpeg", "image/png", "image/webp"].includes(mimeType)
+    : type === "video"
+      ? ["video/mp4", "video/webm"].includes(mimeType)
+      : type === "file" && ["application/pdf", "text/plain"].includes(mimeType);
+
+export function assertOfficialNoticeMediaBindings(
+  assets: readonly OfficialNoticeMediaBindingRecord[],
+  translations:
+    | Readonly<Record<string, { blocks: unknown }>>
+    | ReadonlyArray<{ blocks: unknown }>,
+  issuerScope: NoticeIssuerScope,
+  actorUserId: number
+): void {
+  const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+  const values = Array.isArray(translations) ? translations : Object.values(translations);
+  for (const translation of values) {
+    const blocks = Array.isArray(translation.blocks) ? translation.blocks : [];
+    for (const rawBlock of blocks) {
+      if (typeof rawBlock !== "object" || rawBlock === null || !("mediaAssetId" in rawBlock)) continue;
+      const block = rawBlock as {
+        type?: string;
+        content?: string;
+        mimeType?: string;
+        mediaAssetId?: unknown;
+      };
+      if (typeof block.mediaAssetId !== "number") continue;
+      const asset = assetById.get(block.mediaAssetId);
+      const scoped = issuerScope.type === "platform"
+        ? asset?.ownerUserId === actorUserId && asset.shopId === null
+        : asset?.shopId === issuerScope.shopId;
+      if (
+        !asset ||
+        asset.entityType !== "official_notice_upload" ||
+        !asset.isActive ||
+        asset.deletedAt !== null ||
+        !scoped ||
+        asset.url !== block.content ||
+        !block.type ||
+        !mediaMimeMatchesBlock(block.type, asset.mimeType) ||
+        (block.mimeType !== undefined && block.mimeType !== asset.mimeType)
+      ) {
+        throw new AppError({
+          code: ERROR_CODES.VALIDATION,
+          message: "error.official_notice.media_invalid",
+          statusCode: 400
+        });
+      }
+    }
+  }
+}
+
 type SnapshotAudienceInput = Pick<
   CreateAndPlanOfficialNoticeInput,
   "publicId" | "issuerScope" | "audience" | "now" | "scheduledAt"
@@ -193,6 +257,12 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
 
     await this.client.$transaction(async (transaction) => {
       await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
+      await this.assertMediaBindings(
+        transaction,
+        input.translations,
+        input.issuerScope,
+        input.actorUserId
+      );
       const notice = await transaction.officialNotice.create({
         data: {
           publicId: input.publicId,
@@ -298,6 +368,12 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       if (notice.status !== OfficialNoticeStatus.DRAFT)
         throw this.conflict("error.official_notice.not_draft");
       this.assertVersion(notice.lockVersion, input.expectedLockVersion);
+      await this.assertMediaBindings(
+        transaction,
+        input.translations,
+        input.issuerScope,
+        input.actorUserId
+      );
       await transaction.officialNotice.update({
         where: { id: notice.id },
         data: {
@@ -361,6 +437,12 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
           });
         }
         this.assertDraftComplete(notice.translations);
+        await this.assertMediaBindings(
+          transaction,
+          notice.translations,
+          input.issuerScope,
+          input.actorUserId
+        );
         await transaction.officialNotice.update({
           where: { id: notice.id },
           data: {
@@ -425,6 +507,12 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       .$transaction(
         async (transaction) => {
           await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
+          await this.assertMediaBindings(
+            transaction,
+            input.translations,
+            input.issuerScope,
+            input.actorUserId
+          );
           const notice = await transaction.officialNotice.create({
             data: {
               publicId: input.publicId,
@@ -1462,6 +1550,44 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
         statusCode: 403
       });
     }
+  }
+
+  private async assertMediaBindings(
+    client: PrismaClient | Prisma.TransactionClient,
+    translations:
+      | Readonly<Record<string, { blocks: unknown }>>
+      | ReadonlyArray<{ blocks: unknown }>,
+    issuerScope: NoticeIssuerScope,
+    actorUserId: number
+  ): Promise<void> {
+    const values = Array.isArray(translations) ? translations : Object.values(translations);
+    const mediaAssetIds = [...new Set(values.flatMap((translation) => {
+      const blocks = Array.isArray(translation.blocks) ? translation.blocks : [];
+      return blocks.flatMap((rawBlock: unknown) => {
+        if (
+          typeof rawBlock !== "object" ||
+          rawBlock === null ||
+          !("mediaAssetId" in rawBlock) ||
+          typeof rawBlock.mediaAssetId !== "number"
+        ) return [];
+        return [rawBlock.mediaAssetId];
+      });
+    }))];
+    if (mediaAssetIds.length === 0) return;
+    const assets = await client.mediaAsset.findMany({
+      where: { id: { in: mediaAssetIds } },
+      select: {
+        id: true,
+        entityType: true,
+        ownerUserId: true,
+        shopId: true,
+        url: true,
+        mimeType: true,
+        isActive: true,
+        deletedAt: true
+      }
+    });
+    assertOfficialNoticeMediaBindings(assets, translations, issuerScope, actorUserId);
   }
 
   private errorName(error: unknown): string {

@@ -30,7 +30,7 @@ const state = vi.hoisted(() => ({
   listInbox: vi.fn(),
   markRead: vi.fn(),
   listUsers: vi.fn(),
-  uploadContentImage: vi.fn()
+  uploadMedia: vi.fn()
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({
@@ -52,14 +52,12 @@ vi.mock("../../api/officialNotices", async (importOriginal) => ({
     archiveManaged: state.archiveManaged,
     retryManaged: state.retryManaged,
     listInbox: state.listInbox,
-    markRead: state.markRead
+    markRead: state.markRead,
+    uploadMedia: state.uploadMedia
   }
 }));
 vi.mock("../platform-user-management/api", () => ({
   platformUserManagementApi: { listUsers: state.listUsers }
-}));
-vi.mock("../../api/contentPublication", () => ({
-  contentPublicationApi: { uploadContentImage: state.uploadContentImage }
 }));
 
 const notice = {
@@ -173,7 +171,7 @@ describe("official notice formal API interactions", () => {
       page: 1,
       page_size: 20
     });
-    state.uploadContentImage.mockResolvedValue({
+    state.uploadMedia.mockResolvedValue({
       publicId: "a".repeat(64),
       mediaAssetId: 41,
       url: `/media/content/${"a".repeat(64)}.webp`,
@@ -403,7 +401,7 @@ describe("official notice formal API interactions", () => {
     expect(container.textContent).not.toMatch(/merchant_owner|merchant_staff|platform_admin|customer/);
   });
 
-  it("uploads image blocks through the formal content media API", async () => {
+  it("uploads image blocks through the scope-specific formal notice media API", async () => {
     act(() => root.render(<MemoryRouter><OfficialNoticeComposer returnPath="/done" scope="platform" /></MemoryRouter>));
     await click("图片");
     const input = document.querySelector<HTMLInputElement>('input[type="file"][accept*="image/jpeg"]');
@@ -414,9 +412,28 @@ describe("official notice formal API interactions", () => {
       input?.dispatchEvent(new Event("change", { bubbles: true }));
       await Promise.resolve();
     });
-    await waitFor(() => expect(state.uploadContentImage).toHaveBeenCalledWith(file, "notice.webp"));
+    await waitFor(() => expect(state.uploadMedia).toHaveBeenCalledWith("platform", file, "notice.webp"));
     expect(container.querySelector("img")?.getAttribute("src")).toBe(`/media/content/${"a".repeat(64)}.webp`);
     expect(container.innerHTML).not.toMatch(/data:image|blob:/);
+  });
+
+  it("uploads video and file blocks from the merchant composer through the merchant endpoint", async () => {
+    act(() => root.render(<MemoryRouter><OfficialNoticeComposer returnPath="/done" scope="merchant" /></MemoryRouter>));
+    await click("视频");
+    const videoInput = document.querySelector<HTMLInputElement>('input[type="file"][accept*="video/mp4"]');
+    expect(videoInput).not.toBeNull();
+    const video = new File(["formal-video"], "hours.mp4", { type: "video/mp4" });
+    Object.defineProperty(videoInput, "files", { configurable: true, value: [video] });
+    await act(async () => {
+      videoInput?.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(state.uploadMedia).toHaveBeenCalledWith("merchant", video, "hours.mp4"));
+
+    await click("文件");
+    const fileInputs = [...document.querySelectorAll<HTMLInputElement>('input[type="file"]')];
+    const documentInput = fileInputs.find((input) => input.accept.includes("application/pdf"));
+    expect(documentInput).not.toBeNull();
   });
 
   it("searches the formal global account directory and submits selected public NeeDo IDs", async () => {

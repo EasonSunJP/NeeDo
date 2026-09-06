@@ -45,7 +45,7 @@ const textualBlockTypes = new Set<string>([
   "quote",
   "callout"
 ]);
-const safeResourceUrl = /^(?:https:\/\/[^\s]+|\/media\/content\/[a-f0-9]{64}\.(?:jpg|png|webp))$/u;
+const safeResourceUrl = /^(?:https:\/\/[^\s]+|\/media\/content\/[a-f0-9]{64}\.(?:jpg|png|webp|mp4|webm|pdf|txt))$/u;
 
 const createOfficialNoticeBlockSchema = (allowIncomplete: boolean) =>
   z.object({
