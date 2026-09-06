@@ -83,6 +83,9 @@ describe("analytics ranking OpenAPI", () => {
       "categoryId",
       "gmvJpy",
       "completedCount",
+      "testGmvJpy",
+      "testCompletedCount",
+      "dataComposition",
       "registeredAt"
     ]);
     expect(schemas.AnalyticsRankingItem.properties.entityType.enum).toEqual([
@@ -90,6 +93,19 @@ describe("analytics ranking OpenAPI", () => {
       "technician_service",
       "technician",
       "customer"
+    ]);
+    expect(schemas.AnalyticsRankingItem.properties.testGmvJpy).toEqual({
+      type: "integer",
+      minimum: 0
+    });
+    expect(schemas.AnalyticsRankingItem.properties.testCompletedCount).toEqual({
+      type: "integer",
+      minimum: 0
+    });
+    expect(schemas.AnalyticsRankingItem.properties.dataComposition.enum).toEqual([
+      "formal",
+      "test",
+      "mixed"
     ]);
     expect(schemas.AnalyticsRankingItem.properties).not.toHaveProperty("checkoutId");
     expect(path.get.description).toContain("global one-based rank");

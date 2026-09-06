@@ -48,7 +48,8 @@ const merchantIdentity = {
   publicId: "o0000000051",
   scopeId: 41,
   scopeType: "merchant_account",
-  type: "merchant_organization"
+  type: "merchant_organization",
+  displayName: "店铺负责人"
 };
 
 const merchantMe = {
@@ -62,6 +63,7 @@ const merchantMe = {
   hasPassword: true,
   username: "Merchant",
   avatarUrl: null,
+  profileDisplayName: "Merchant",
   isActive: true,
   isTestAccount: false,
   currentIdentity: merchantIdentity,
@@ -92,7 +94,7 @@ describe("formal auth API", () => {
   it("always logs in by email or NeeDo ID through the formal endpoint", async () => {
     vi.stubEnv("PROD", false);
     vi.stubEnv("VITE_LEGACY_AUTH_BASE_URL", "/legacy-auth");
-    vi.mocked(httpClient.request).mockResolvedValueOnce(tokenPair);
+    vi.mocked(httpClient.request).mockResolvedValueOnce({ status: "authenticated", ...tokenPair });
 
     await authApi.login("u0000000042", "Password.2026!");
 
@@ -111,7 +113,7 @@ describe("formal auth API", () => {
   it.each([0, 600, 900.5, 901])(
     "rejects an invalid authenticated login TTL before persisting (%s)",
     async (expiresIn) => {
-      vi.mocked(httpClient.request).mockResolvedValueOnce({ ...tokenPair, expiresIn });
+      vi.mocked(httpClient.request).mockResolvedValueOnce({ status: "authenticated", ...tokenPair, expiresIn });
 
       await expect(authApi.login("u0000000042", "Password.2026!")).rejects.toThrow("error.api");
       expect(setAuthTokens).not.toHaveBeenCalled();
@@ -119,7 +121,7 @@ describe("formal auth API", () => {
   );
 
   it("rejects a login payload that tries to inject an inline privileged me", async () => {
-    vi.mocked(httpClient.request).mockResolvedValueOnce({ ...tokenPair, me: merchantMe });
+    vi.mocked(httpClient.request).mockResolvedValueOnce({ status: "authenticated", ...tokenPair, me: merchantMe });
 
     await expect(authApi.login("u0000000042", "Password.2026!")).rejects.toThrow("error.api");
   });
@@ -671,6 +673,33 @@ describe("formal auth API", () => {
       expect(setAuthTokens).not.toHaveBeenCalled();
     }
   );
+
+  it("returns a password-login verification challenge without persisting secrets", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      status: "verification_required",
+      ...challenge
+    });
+
+    await expect(authApi.login("user@example.com", "Password.2026!")).resolves.toEqual({
+      status: "verification_required",
+      ...challenge
+    });
+    expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it("verifies a password-login challenge through the dedicated endpoint", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce(tokenPair);
+
+    await expect(
+      authApi.verifyPasswordLogin({ challengeId: challenge.challengeId, otp: "123456" })
+    ).resolves.toEqual(tokenPair);
+    expect(httpClient.request).toHaveBeenCalledWith("/auth/login/verify", {
+      auth: false,
+      body: { challengeId: challenge.challengeId, otp: "123456" },
+      method: "POST",
+      retryOnUnauthorized: false
+    });
+  });
 
   it("rejects switched me for another user or merchant identity", async () => {
     vi.mocked(httpClient.request)

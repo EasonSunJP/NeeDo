@@ -212,6 +212,8 @@ describe("UserCenterPage inline profile editing", () => {
       theme: {
         detailAccentColor: "#A8FF2F",
         detailSurfaceColor: "#10212A",
+        detailSurfaceMiddleColor: "#183A32",
+        detailSurfaceBottomColor: "#24314B",
         detailItemSurfaceColor: "#0A151C",
         detailOuterBorderColor: "#5B7D3A",
         detailItemBorderColor: "#263E48",
@@ -462,6 +464,22 @@ describe("UserCenterPage inline profile editing", () => {
     await renderUserCenter();
 
     await click(findIconButton("编辑资料"));
+    await click(findButton("保存并退出编辑模式"));
+
+    await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));
+  });
+
+  it("refreshes the authoritative account session when only the display name changes", async () => {
+    testState.updateMine.mockResolvedValue({
+      ...savedProfile,
+      displayName: "服务端新姓名"
+    });
+    await renderUserCenter();
+
+    await click(findIconButton("编辑资料"));
+    const nickname = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]');
+    expect(nickname).not.toBeNull();
+    await inputValue(nickname!, "服务端新姓名");
     await click(findButton("保存并退出编辑模式"));
 
     await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));

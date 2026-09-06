@@ -7,6 +7,7 @@ import type {
   BackofficeDashboardQuery,
   BackofficeListQuery,
   BackofficeManagedUserListQuery,
+  BackofficeManagedUserDetailQuery,
   BackofficeNdpSummaryQuery,
   BackofficeTimelineQuery,
   BackofficeServiceCreateBody,
@@ -40,6 +41,7 @@ import type {
   BackofficeDashboardPayload,
   DashboardAggregateFacts,
   DashboardAggregateInput,
+  DashboardHeadlineSeriesPoint,
   DashboardMetricComparison,
   DashboardNdpPair,
   DashboardPlatformGlobalNdpPair
@@ -470,6 +472,7 @@ export interface BackofficeManagedUserPayload {
   id: number;
   needoId: string;
   username: string;
+  displayName: string;
   email: string;
   phone: string | null;
   emailBound: boolean;
@@ -486,6 +489,9 @@ export interface BackofficeManagedUserPayload {
   experience: BackofficeManagedUserExperiencePayload | null;
   ndpBalance: { available: number; frozen: number };
   bookingCount: number;
+  city: string | null;
+  privacyMode: boolean;
+  privacyScope: "public" | "privateAll" | "limited" | "network" | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -515,11 +521,34 @@ export interface BackofficeManagedUserDetailPayload extends BackofficeManagedUse
     completedBookings: number;
     completedSpendJpy: number;
   };
+  metrics: {
+    ndpAvailable: number;
+    usageCount: number;
+    credit: {
+      ratingAverage: number;
+      reviewCount: number;
+      latestReviewAt: string | null;
+    };
+  };
+  capabilities: {
+    membershipWrite: boolean;
+    reviewAmend: boolean;
+    refundAmend: boolean;
+    partnerWrite: boolean;
+    timelineCommentWrite: boolean;
+  };
   audit: {
+    page?: number;
+    page_size?: number;
     total: number;
     list: BackofficeAuditEventPayload[];
   };
 }
+
+export type BackofficeManagedUserDetailRecord = Omit<
+  BackofficeManagedUserDetailPayload,
+  "capabilities"
+>;
 
 export interface BackofficeTechnicianPayload {
   id: number;
@@ -814,14 +843,17 @@ export interface BackofficeNdpSummaryPayload {
 
 export interface BackofficeRepositoryPort {
   getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
+  getHeadlineSeries3d: (
+    input: DashboardAggregateInput
+  ) => Promise<DashboardHeadlineSeriesPoint[]>;
   listManagedUsers: (
-    input: BackofficeManagedUserListQuery,
+    input: BackofficeScope & BackofficeManagedUserListQuery,
     occurredAt: Date
   ) => Promise<PaginatedResponse<BackofficeManagedUserPayload>>;
   getManagedUser: (
-    userId: number,
+    input: BackofficeScope & { userId: number } & Partial<BackofficeManagedUserDetailQuery>,
     occurredAt: Date
-  ) => Promise<BackofficeManagedUserDetailPayload | null>;
+  ) => Promise<BackofficeManagedUserDetailRecord | null>;
   listOrders: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeOrderPayload>>;
@@ -1027,6 +1059,14 @@ export class BackofficeService {
   ): Promise<BackofficeDashboardPayload> {
     const evaluatedAt = this.now();
     const window = resolveDashboardWindow(query, evaluatedAt);
+    const headlineWindow = resolveDashboardWindow(
+      {
+        period: "custom",
+        from: shiftCalendarDate(window.toDate, -2),
+        to: window.toDate
+      },
+      evaluatedAt
+    );
     const city = query.city ?? null;
     await this.record(actor, context, "backoffice.dashboard.read", "backoffice_dashboard", {
       period: window.period,
@@ -1035,13 +1075,25 @@ export class BackofficeService {
       city,
       shopId: null
     });
-    const aggregate = await this.repository.getDashboard({
-      scope: { kind: "platform" },
-      city,
+    const scope = { kind: "platform" } as const;
+    const [aggregate, headlineBuckets] = await Promise.all([
+      this.repository.getDashboard({ scope, city, window, evaluatedAt }),
+      this.repository.getHeadlineSeries3d({
+        scope,
+        city,
+        window: headlineWindow,
+        evaluatedAt
+      })
+    ]);
+    return this.composeDashboard(
+      aggregate,
       window,
+      headlineWindow,
+      headlineBuckets,
+      city,
+      null,
       evaluatedAt
-    });
-    return this.composeDashboard(aggregate, window, city, null, evaluatedAt);
+    );
   }
 
   public async listManagedUsers(
@@ -1052,19 +1104,71 @@ export class BackofficeService {
     await this.record(actor, context, "backoffice.users.list", "User", {
       filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
     });
-    return this.repository.listManagedUsers(input, this.now());
+    return this.repository.listManagedUsers({ ...input, scope: "platform" }, this.now());
+  }
+
+  public async listMerchantManagedUsers(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeManagedUserListQuery
+  ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.users.list", "User", {
+      shopId: scope.shopId,
+      filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
+    });
+    return this.repository.listManagedUsers({ ...input, ...scope }, this.now());
   }
 
   public async getManagedUser(
     userId: number,
     actor: AuthenticatedAccessContext,
-    context: AuthRequestContext
+    context: AuthRequestContext,
+    query: BackofficeManagedUserDetailQuery = { audit_page: 1, audit_page_size: 10 }
   ): Promise<BackofficeManagedUserDetailPayload> {
     await this.record(actor, context, "backoffice.user.read", "User", { userId });
-    return this.requireResult(
-      await this.repository.getManagedUser(userId, this.now()),
+    const detail = this.requireResult(
+      await this.repository.getManagedUser({ scope: "platform", userId, ...query }, this.now()),
       "error.user.not_found"
     );
+    return this.withManagedUserCapabilities(detail, actor, "platform");
+  }
+
+  public async getMerchantManagedUser(
+    userId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    query: BackofficeManagedUserDetailQuery = { audit_page: 1, audit_page_size: 10 }
+  ): Promise<BackofficeManagedUserDetailPayload> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.user.read", "User", {
+      userId,
+      shopId: scope.shopId
+    });
+    const detail = this.requireResult(
+      await this.repository.getManagedUser({ ...scope, userId, ...query }, this.now()),
+      "error.user.not_found"
+    );
+    return this.withManagedUserCapabilities(detail, actor, "merchant");
+  }
+
+  private withManagedUserCapabilities(
+    detail: BackofficeManagedUserDetailRecord,
+    actor: AuthenticatedAccessContext,
+    scope: "platform" | "merchant"
+  ): BackofficeManagedUserDetailPayload {
+    const permits = (permission: string) =>
+      scope === "platform" && actor.permissions.includes(permission);
+    return {
+      ...detail,
+      capabilities: {
+        membershipWrite: permits("backoffice:user-membership:write"),
+        reviewAmend: permits("backoffice:customers:write"),
+        refundAmend: permits("backoffice:user-refund:amend"),
+        partnerWrite: permits("backoffice:partner-profile:write"),
+        timelineCommentWrite: permits("backoffice:user-usage:comment")
+      }
+    };
   }
 
   public async getMerchantDashboard(
@@ -1075,6 +1179,14 @@ export class BackofficeService {
     const scope = this.getMerchantScope(actor);
     const evaluatedAt = this.now();
     const window = resolveDashboardWindow(query, evaluatedAt);
+    const headlineWindow = resolveDashboardWindow(
+      {
+        period: "custom",
+        from: shiftCalendarDate(window.toDate, -2),
+        to: window.toDate
+      },
+      evaluatedAt
+    );
     await this.record(actor, context, "merchant_admin.dashboard.read", "merchant_admin_dashboard", {
       period: window.period,
       from: window.fromDate,
@@ -1082,13 +1194,30 @@ export class BackofficeService {
       city: null,
       shopId: scope.shopId
     });
-    const aggregate = await this.repository.getDashboard({
-      scope: { kind: "shop", shopId: scope.shopId },
-      city: null,
+    const dashboardScope = { kind: "shop", shopId: scope.shopId } as const;
+    const [aggregate, headlineBuckets] = await Promise.all([
+      this.repository.getDashboard({
+        scope: dashboardScope,
+        city: null,
+        window,
+        evaluatedAt
+      }),
+      this.repository.getHeadlineSeries3d({
+        scope: dashboardScope,
+        city: null,
+        window: headlineWindow,
+        evaluatedAt
+      })
+    ]);
+    return this.composeDashboard(
+      aggregate,
       window,
+      headlineWindow,
+      headlineBuckets,
+      null,
+      scope.shopId,
       evaluatedAt
-    });
-    return this.composeDashboard(aggregate, window, null, scope.shopId, evaluatedAt);
+    );
   }
 
   public async listManageableMerchantShops(
@@ -1250,6 +1379,8 @@ export class BackofficeService {
   private composeDashboard(
     aggregate: DashboardAggregateFacts,
     window: ReturnType<typeof resolveDashboardWindow>,
+    headlineWindow: ReturnType<typeof resolveDashboardWindow>,
+    headlineBuckets: DashboardHeadlineSeriesPoint[],
     city: string | null,
     shopId: number | null,
     evaluatedAt: Date
@@ -1330,6 +1461,12 @@ export class BackofficeService {
           shopEstimatedGrossProfitJpy:
             aggregate.finance.bucketShopEstimatedGrossProfitJpy.get(bucket.key) ?? 0
         }))
+      },
+      headlineSeries3d: {
+        from: headlineWindow.fromDate,
+        to: headlineWindow.toDate,
+        timeZone: "Asia/Tokyo",
+        buckets: headlineBuckets
       },
       finance: {
         platformNetRevenue: aggregate.finance.platformNetRevenue,

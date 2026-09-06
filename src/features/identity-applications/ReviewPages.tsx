@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { SettingsDetailPage } from "../../components/client-ui/SettingsDirectory";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -11,6 +12,7 @@ import {
   ProtectedApplicationImage
 } from "./ApplicationUi";
 import { identityApplicationsApi, type MerchantReview, type TechnicianReview } from "./api";
+import { mergePendingMerchantReviews } from "../../components/admin/adminOperatorSummaryModel";
 
 const reviewableStatus = (status: string) => status === "submitted" || status === "under_review";
 
@@ -168,7 +170,19 @@ export function TechnicianApplicationsReviewPage() {
 export function MerchantApplicationsReviewPage() {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingOnly = searchParams.get("status") === "pending";
+  const concreteStatuses = new Set(["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"]);
+  const requestedStatus = searchParams.get("status");
+  const concreteStatus = requestedStatus && concreteStatuses.has(requestedStatus)
+    ? requestedStatus as NonNullable<Parameters<typeof identityApplicationsApi.listMerchantReviews>[0]>["status"]
+    : undefined;
+  const applicationIdValue = searchParams.get("applicationId");
+  const applicationId = applicationIdValue && /^\d+$/.test(applicationIdValue) && Number(applicationIdValue) > 0
+    ? Number(applicationIdValue)
+    : null;
   const [items, setItems] = useState<MerchantReview[]>([]);
+  const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<MerchantReview | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -177,26 +191,66 @@ export function MerchantApplicationsReviewPage() {
   const load = async () => {
     setError("");
     try {
-      const result = await identityApplicationsApi.listMerchantReviews();
-      setItems(result.list);
+      if (pendingOnly) {
+        const [submitted, underReview] = await Promise.all([
+          identityApplicationsApi.listMerchantReviews({ page: 1, pageSize: 20, status: "submitted" }),
+          identityApplicationsApi.listMerchantReviews({ page: 1, pageSize: 20, status: "under_review" })
+        ]);
+        const merged = mergePendingMerchantReviews(submitted, underReview, 20);
+        setItems(merged.list);
+        setTotal(merged.total);
+      } else {
+        const result = await identityApplicationsApi.listMerchantReviews({
+          page: 1,
+          pageSize: 20,
+          status: concreteStatus
+        });
+        setItems(result.list);
+        setTotal(result.total);
+      }
     } catch (caught) {
+      setItems([]);
+      setTotal(0);
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   };
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [concreteStatus, pendingOnly]);
 
-  const open = async (id: number) => {
-    setBusy(true);
-    try {
-      setSelected(await identityApplicationsApi.getMerchantReview(id));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setBusy(false);
+  useEffect(() => {
+    if (applicationId === null) {
+      setSelected(null);
+      setRejectionReason("");
+      return;
     }
+    let current = true;
+    setBusy(true);
+    setError("");
+    identityApplicationsApi.getMerchantReview(applicationId)
+      .then((result) => {
+        if (current) setSelected(result);
+      })
+      .catch((caught: unknown) => {
+        if (current) {
+          setSelected(null);
+          setError(caught instanceof Error ? caught.message : String(caught));
+        }
+      })
+      .finally(() => {
+        if (current) setBusy(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [applicationId]);
+
+  const setApplicationId = (id: number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (id === null) next.delete("applicationId");
+    else next.set("applicationId", String(id));
+    setSearchParams(next, { replace: true });
   };
 
   const review = async (approved: boolean) => {
@@ -207,7 +261,7 @@ export function MerchantApplicationsReviewPage() {
       if (approved) await identityApplicationsApi.approveMerchantApplication(selected.applicationId, selected.version);
       else await identityApplicationsApi.rejectMerchantApplication(selected.applicationId, selected.version, rejectionReason.trim());
       await load();
-      setSelected(null);
+      setApplicationId(null);
       setRejectionReason("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -221,7 +275,8 @@ export function MerchantApplicationsReviewPage() {
       {error ? <ApplicationNotice tone="error">{t(error)}</ApplicationNotice> : null}
       {!selected ? (
         <ApplicationCard className="space-y-2">
-          {items.length === 0 ? <ApplicationNotice>{t("暂无店铺身份申请")}</ApplicationNotice> : items.map((item) => <button className="flex w-full items-center justify-between rounded-[20px] border border-[color:var(--client-line)] p-4 text-left" key={item.applicationId} onClick={() => void open(item.applicationId)} type="button"><span><span className="block text-sm font-black text-[color:var(--client-text)]">{item.shopName}</span><span className="mt-1 block text-xs text-[color:var(--client-muted)]">#{item.applicationId} · {t(item.status)}</span></span><span className="text-xl text-[color:var(--client-primary)]">›</span></button>)}
+          {pendingOnly && !error ? <p className="px-1 text-xs font-black text-[color:var(--client-muted)]">{t("待审核共")} {total} {t("条")}</p> : null}
+          {items.length === 0 ? <ApplicationNotice>{t("暂无店铺身份申请")}</ApplicationNotice> : items.map((item) => <button className="flex w-full items-center justify-between rounded-[20px] border border-[color:var(--client-line)] p-4 text-left" key={item.applicationId} onClick={() => setApplicationId(item.applicationId)} type="button"><span><span className="block text-sm font-black text-[color:var(--client-text)]">{item.shopName}</span><span className="mt-1 block text-xs text-[color:var(--client-muted)]">#{item.applicationId} · {t(item.status)}</span></span><span className="text-xl text-[color:var(--client-primary)]">›</span></button>)}
         </ApplicationCard>
       ) : (
         <>
@@ -250,7 +305,7 @@ export function MerchantApplicationsReviewPage() {
           <ApplicationCard className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2"><ApplicationButton disabled={busy || !reviewableStatus(selected.status)} onClick={() => void review(true)}>OK</ApplicationButton><ApplicationButton disabled={busy || !rejectionReason.trim() || !reviewableStatus(selected.status)} onClick={() => void review(false)} tone="danger">{t("驳回")}</ApplicationButton></div>
             {reviewableStatus(selected.status) ? <ApplicationField label="驳回原因" required><ApplicationInput onChange={(event) => setRejectionReason(event.target.value)} value={rejectionReason} /></ApplicationField> : null}
-            <ApplicationButton className="w-full" onClick={() => setSelected(null)} tone="secondary">{t("返回申请列表")}</ApplicationButton>
+            <ApplicationButton className="w-full" onClick={() => setApplicationId(null)} tone="secondary">{t("返回申请列表")}</ApplicationButton>
           </ApplicationCard>
         </>
       )}

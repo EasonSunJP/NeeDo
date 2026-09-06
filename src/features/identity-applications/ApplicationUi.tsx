@@ -33,7 +33,7 @@ export function ApplicationShell({
       closeLabel={t("关闭")}
       closeTo="/me/settings/portal"
       contentClassName="pb-[calc(env(safe-area-inset-bottom)+10.5rem)]"
-      headerFrameClassName="z-[140]"
+      headerFrameClassName="!z-[140]"
       info={t(info)}
       navItems={hideNavigation ? [] : undefined}
       onBack={onBack}
@@ -126,6 +126,19 @@ export function ApplicationField({ label, hint, required, children }: { label: s
       {children}
       {hint ? <span className="block text-[11px] leading-5 text-[color:var(--client-muted)]">{t(hint)}</span> : null}
     </label>
+  );
+}
+
+export function ApplicationReadOnlyField({ label, value }: { label: string; value: ReactNode }) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+  const isEmpty = value === null || value === undefined || value === "";
+
+  return (
+    <div className="min-w-0 rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 py-3 text-left">
+      <p className="text-[11px] font-black text-[color:var(--client-muted)]">{t(label)}</p>
+      <p className="mt-1 break-words whitespace-pre-wrap text-sm font-bold text-[color:var(--client-text)]">{isEmpty ? "—" : value}</p>
+    </div>
   );
 }
 

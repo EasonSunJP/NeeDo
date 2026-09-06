@@ -3,15 +3,25 @@ import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i
 import { contentPublicationTranslations } from "../features/content-publication/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { translateImUiText } from "../features/im/ui-copy";
-import { pricingModeTranslations } from "../features/pricing-mode/i18n";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
-  it("resolves every pricing-mode feature translation through the global lookup", () => {
-    for (const [source, entry] of Object.entries(pricingModeTranslations)) {
-      expect(translations[source]).toEqual(entry);
+  it("localizes the admin operator pending summaries in all five App languages", () => {
+    for (const source of [
+      "运营后台成员",
+      "暂无待处理订单",
+      "暂无待审核申请",
+      "待审核共",
+      "正在加载…",
+      "加载失败，请重试",
+      "权限已变化，请刷新页面",
+      "待确认",
+      "申请编号"
+    ]) {
       for (const { code } of languages) {
-        expect(translateText(source, code)).toBe(code === "zh" ? source : entry[code]);
+        const localized = translateText(source, code);
+        expect(localized, `${source}:${code}`).toBeTruthy();
+        if (code !== "zh") expect(localized, `${source}:${code}`).not.toBe(source);
       }
     }
   });

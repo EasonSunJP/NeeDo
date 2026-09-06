@@ -108,6 +108,8 @@ export type MerchantReview = {
   applicantUserId: number;
   status: IdentityApplicationStatus;
   version: number;
+  submittedAt: string | null;
+  createdAt: string;
   applicantKind: "corporate" | "individual";
   corporateLegalName: string | null;
   corporateLegalNameKana: string | null;

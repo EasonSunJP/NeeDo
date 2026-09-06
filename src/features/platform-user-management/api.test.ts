@@ -19,7 +19,7 @@ describe("platformUserManagementApi", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 20 });
 
-    await platformUserManagementApi.listUsers({ page: 2, page_size: 25, tier: "gold" });
+    await platformUserManagementApi.listUsers("operations", { page: 2, page_size: 25, tier: "gold" });
     await platformUserManagementApi.listGroups({ page: 1, page_size: 20 });
     await platformUserManagementApi.getGlobalSettings();
     await platformUserManagementApi.listTiers();
@@ -42,10 +42,126 @@ describe("platformUserManagementApi", () => {
     );
   });
 
+  it("uses the canonical scoped user route and serializes server filters", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({ list: [], total: 0, page: 2, page_size: 20 });
+
+    await platformUserManagementApi.listUsers("merchant", {
+      page: 2,
+      page_size: 20,
+      city: "Tokyo",
+      privacyScopes: ["enabled"],
+      tiers: ["silver", "gold"],
+      minBookings: 10,
+      maxBookings: 50,
+      sortBy: "city",
+      sortDirection: "desc",
+      registeredFrom: "2026-09-01T00:00:00.000Z",
+      registeredTo: "2026-09-30T23:59:59.999Z"
+    });
+
+    expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/users", {
+      query: {
+        page: 2,
+        pageSize: 20,
+        city: "Tokyo",
+        privacyScopes: ["enabled"],
+        tiers: ["silver", "gold"],
+        minBookings: 10,
+        maxBookings: 50,
+        sortBy: "city",
+        sortDirection: "desc",
+        registeredFrom: "2026-09-01T00:00:00.000Z",
+        registeredTo: "2026-09-30T23:59:59.999Z"
+      }
+    });
+  });
+
+  it("uses the canonical scoped detail route", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    await expect(platformUserManagementApi.getUser("merchant", 41)).rejects.toThrow("Invalid user management response");
+    expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/users/41");
+  });
+
+  it("sends a reasoned membership adjustment without a level field", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    await platformUserManagementApi.adjustMembership(41, {
+      tierCode: "gold",
+      reason: "Approved retention adjustment",
+      expectedLockVersion: 2
+    });
+    expect(httpClient.request).toHaveBeenCalledWith(
+      "/backoffice/users/41/membership-adjustment",
+      {
+        method: "PATCH",
+        body: {
+          tierCode: "gold",
+          reason: "Approved retention adjustment",
+          expectedLockVersion: 2
+        }
+      }
+    );
+  });
+
+  it("uses scoped ten-row review reads and append-only amendments", async () => {
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({ list: [], total: 0, page: 2, page_size: 10 })
+      .mockResolvedValueOnce({ reviewId: 77, version: 2 });
+
+    await platformUserManagementApi.listReceivedReviews("merchant", 41, {
+      page: 2,
+      page_size: 10
+    });
+    await platformUserManagementApi.amendReview(77, {
+      rating: 3,
+      reason: "Refund evidence confirmed",
+      expectedVersion: 1
+    });
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/merchant-admin/users/41/received-reviews",
+      { query: { page: 2, page_size: 10 } }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/backoffice/reviews/77/amendments",
+      {
+        method: "POST",
+        body: {
+          rating: 3,
+          reason: "Refund evidence confirmed",
+          expectedVersion: 1
+        }
+      }
+    );
+  });
+
+  it("uses scoped ten-row usage reads, timeline, comments and refund amendments", async () => {
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 10 })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ commentId: 201 })
+      .mockResolvedValueOnce({ orderId: 88, version: 1 });
+    await platformUserManagementApi.listUsage("merchant", 41, { page: 1, page_size: 10, period: "thisMonth" });
+    await expect(platformUserManagementApi.getUsageTimeline("merchant", 41, 88)).rejects.toThrow("Invalid user management response");
+    await platformUserManagementApi.appendUsageComment(41, 88, "Customer contacted");
+    await platformUserManagementApi.amendUsageRefund(41, 88, { note: "Confirmed", reason: "Evidence", expectedVersion: 0 });
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/merchant-admin/users/41/usages", {
+      query: { page: 1, page_size: 10, period: "thisMonth" }
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/merchant-admin/users/41/usages/88");
+    expect(httpClient.request).toHaveBeenNthCalledWith(3, "/backoffice/users/41/usages/88/comments", {
+      method: "POST", body: { body: "Customer contacted" }
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(4, "/backoffice/users/41/usages/88/refund-amendments", {
+      method: "POST", body: { note: "Confirmed", reason: "Evidence", expectedVersion: 0 }
+    });
+  });
+
   it("rejects malformed responses instead of accepting legacy local data", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({ list: [{ id: "not-an-id" }], total: 1, page: 1, page_size: 20 });
 
-    await expect(platformUserManagementApi.listUsers()).rejects.toThrow("Invalid user management response");
+    await expect(platformUserManagementApi.listUsers("operations")).rejects.toThrow("Invalid user management response");
   });
 
   it("preserves 409 conflicts for the workspace recovery UI", async () => {

@@ -322,6 +322,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
         statusCode: 403
       });
     }
+    if (outcome.status === "media_invalid") {
+      throw this.validationError("error.im.media_invalid");
+    }
     const { message } = outcome;
 
     try {

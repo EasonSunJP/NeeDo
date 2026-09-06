@@ -155,7 +155,10 @@ describe("formal order checkout service", () => {
         { idempotencyKey: "checkout-service-best-effort-1" },
         { ip: "127.0.0.1", userAgent: "jest" }
       )
-    ).resolves.toBe(checkout);
+    ).resolves.toMatchObject({
+      ...checkout,
+      availablePaymentMethods: ["cash", "ndp"]
+    });
     expect(repository.findOrderById).toHaveBeenCalledWith(41);
   });
 });

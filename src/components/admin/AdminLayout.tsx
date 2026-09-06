@@ -10,6 +10,9 @@ import { LanguageSwitcher } from "../ui/LanguageSwitcher";
 import { OfficialNoticeBell } from "../ui/OfficialNoticeBell";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { contentPublicationEditorText } from "../../features/content-publication/i18n";
+import { translateText } from "../../i18n/translations";
+import { AdminOperatorSummary } from "./AdminOperatorSummary";
+import { resolveAdminDisplayName, resolveAdminRoleLabel } from "./adminOperatorSummaryModel";
 
 const themeStorageKey = "needo.admin.theme";
 const themePreferenceModeStorageKey = "needo.admin.theme.mode";
@@ -119,7 +122,7 @@ const navSections: AdminNavSection[] = [
       { label: "用户分组", to: "/admin/user-groups", icon: "组", permission: "backoffice:user-group:read", children: ["系统分组", "自定义分组", "成员"] },
       { label: "用户全局设置", to: "/admin/user-global-settings", icon: "全", permission: "backoffice:user-policy:read", children: ["账号绑定", "eKYC", "NDP经验活动"] },
       { label: "会员等级设置", to: "/admin/membership-tiers", icon: "级", permission: "backoffice:membership-tier:read", children: ["四种会员", "卡面", "草稿发布"] },
-      { label: "会员权益说明", to: "/admin/membership-benefits", icon: "益", permission: "backoffice:membership-benefit:read", children: ["七项权益", "启停", "交付能力"] }
+      { label: "会员权益说明", to: "/admin/membership-benefits", icon: "益", permission: "backoffice:membership-benefit:read", children: ["八项权益", "启停", "交付能力"] }
     ]
   },
   {
@@ -155,7 +158,7 @@ const navSections: AdminNavSection[] = [
     key: "settings",
     title: "设置",
     items: [
-      { label: "系统设置", to: "/admin/roles?module=system", icon: "系", permission: "menu:admin-settings", children: ["储存设置", "支付设置"] },
+      { label: "系统设置", to: "/admin/settings/system", icon: "系", permission: "menu:admin-settings", children: ["基础设置", "政策和协议", "储存设置", "支付设置"] },
       { label: "NDP 汇率", to: "/admin/settings/ndp-exchange-rate", icon: "率", permission: "backoffice:ndp-exchange-rate:read", children: ["当前汇率", "计划汇率", "版本历史"] },
       { label: "运营服务类型设置", to: "/admin/settings/service-search", icon: "搜", permission: "backoffice:service-taxonomy:read", children: ["服务类型", "搜索标签", "关键词趋势"] },
       { label: "城市设置", to: "/admin/cities", icon: "城", children: ["城市管理", "城市投票"] },
@@ -276,8 +279,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const [{ theme, preferenceMode }, setThemeState] = useState<AdminThemeState>(getInitialAdminThemeState);
   const location = useLocation();
   const navigate = useNavigate();
-  const { canAccessMenu } = useAuth();
+  const { canAccessMenu, hasPermission, session } = useAuth();
   const { language } = useOptionalI18n();
+  const accountName = session ? resolveAdminDisplayName(session) : "—";
+  const roleLabel = session
+    ? resolveAdminRoleLabel(session, translateText("运营后台成员", language))
+    : translateText("运营后台成员", language);
   const visibleNavSections = useMemo(
     () =>
       navSections
@@ -333,7 +340,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         <div className="flex h-full flex-col">
           <div className="admin-brand rounded-lg p-4 text-white">
             <div className="flex items-center gap-3">
-              <AdminAccountMenu accountName="David Stainberry" fallbackEmail="admin@needo.jp" loginPath="/login/admin" portal="admin" roleLabel="平台运营管理员" />
+              <AdminAccountMenu accountName={accountName} loginPath="/login/admin" portal="admin" roleLabel={roleLabel} />
               <NavLink className="min-w-0 flex-1 text-white" to="/">
                 <p className="text-xs font-bold text-mint">NeeDo 运营后台</p>
                 <h1 className="mt-1 text-lg font-black">运营后台</h1>
@@ -341,29 +348,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <section className="admin-profile mt-4 rounded-lg border border-line bg-paper p-3">
-            <div className="flex items-center gap-3">
-              <img
-                alt="运营管理员头像"
-                className="avatar-shape h-11 w-11 object-cover"
-                src="/images/generated/profiles/profile-03.jpg"
-              />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black">David Stainberry</p>
-                <p className="mt-1 text-xs text-ink/45">平台运营管理员</p>
-              </div>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-md bg-white px-2 py-2">
-                <p className="text-[11px] text-ink/45">待处理</p>
-                <strong className="text-sm">36</strong>
-              </div>
-              <div className="rounded-md bg-white px-2 py-2">
-                <p className="text-[11px] text-ink/45">审核</p>
-                <strong className="text-sm">19</strong>
-              </div>
-            </div>
-          </section>
+          <AdminOperatorSummary hasPermission={hasPermission} language={language} session={session} />
 
           <section className="admin-sidebar-search mt-4 rounded-lg border border-line bg-paper p-3">
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-ink/40">全局搜索</p>
@@ -526,7 +511,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               <div className="flex items-center gap-2 text-sm">
                 <LanguageSwitcher className="shrink-0" iconOnly />
                 <AdminThemeMenu onThemeChange={setTheme} options={platformAdminThemeOptions} theme={theme} />
-                <OfficialNoticeBell to="/admin/notifications" />
+                <OfficialNoticeBell to="/admin/notifications/inbox" />
                 <NavLink
                   aria-label="客服台"
                   className="focus-ring grid h-10 w-10 place-items-center rounded-lg border border-line bg-white text-ink/70 transition hover:text-moss"

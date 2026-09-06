@@ -21,6 +21,7 @@ import {
   loginBodySchema,
   logoutBodySchema,
   passwordSetupBodySchema,
+  passwordLoginVerifyBodySchema,
   registerBodySchema,
   registerVerifyBodySchema,
   refreshBodySchema,
@@ -71,6 +72,12 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
 
   router.post("/login", validateRequest({ body: legacyLoginBodySchema }), controller.login);
   router.post("/auth/login", validateRequest({ body: loginBodySchema }), controller.login);
+  router.post(
+    "/auth/login/verify",
+    verificationRateLimit,
+    validateRequest({ body: passwordLoginVerifyBodySchema }),
+    controller.verifyPasswordLogin
+  );
   router.post(
     "/auth/register",
     requireRegistrationEnabled,

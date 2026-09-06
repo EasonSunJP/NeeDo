@@ -1,7 +1,7 @@
 import { compare, hash } from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
-import { createApp } from "../src/app";
+import { createApp, type AppDependencies } from "../src/app";
 import { env } from "../src/config/env";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { UserBootstrapKeyAllocationExhaustedError } from "../src/services/user-bootstrap-key.service";
@@ -205,7 +205,10 @@ class InMemoryVerificationChallengeStore {
     if (challenge.purpose !== input.purpose) {
       return { ok: false as const, reason: "purpose_mismatch" as const };
     }
-    if ((challenge.userId ?? undefined) !== (input.userId ?? undefined)) {
+    if (
+      challenge.purpose !== "password_login" &&
+      (challenge.userId ?? undefined) !== (input.userId ?? undefined)
+    ) {
       return { ok: false as const, reason: "user_mismatch" as const };
     }
     if (challenge.otp !== input.otp) {
@@ -225,6 +228,7 @@ class InMemoryVerificationChallengeStore {
     return {
       ok: true as const,
       email: challenge.email,
+      userId: challenge.userId,
       metadata: challenge.metadata ?? {},
       reservationToken
     };
@@ -294,7 +298,10 @@ class InMemoryVerificationChallengeStore {
   }
 }
 
-const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
+const createAuthFixture = async (
+  config?: Parameters<typeof createApp>[0],
+  dependencyOverrides: Partial<AppDependencies> = {}
+) => {
   const sessionStore = new InMemoryAuthSessionStore();
   const deliveredOtps: Array<{ email: string; otp: string }> = [];
   const loginLogs: unknown[] = [];
@@ -310,12 +317,17 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
     passwordHash,
     username: "admin",
     avatarUrl: null,
+    customerProfile: {
+      displayName: "运营者用户端姓名",
+      deletedAt: null as Date | null
+    },
     isActive: true,
     isTestAccount: true,
     sessionGeneration: 0,
     accessState: { disabled: false, restricted: false },
     lastLoginAt: null as Date | null,
     deletedAt: null,
+    loginIdentityId: 10,
     identities: [
       {
         id: 10,
@@ -655,7 +667,8 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
     authRepository: repository,
     authSessionStore: sessionStore,
     otpDeliveryClient,
-    verificationChallengeStore: challengeStore
+    verificationChallengeStore: challengeStore,
+    ...dependencyOverrides
   } as never);
 
   return {
@@ -1181,6 +1194,106 @@ describe("verified email registration and formal password authentication", () =>
     expect(fixture.sessionStore.refreshTokens.size).toBe(0);
   });
 
+  it("exposes a strict one-time password-login verification endpoint", async () => {
+    const fixture = await createAuthFixture(undefined, {
+      platformAccessPolicyService: {
+        assertPublicBusinessAccess: jest.fn(async () => undefined),
+        assertAuthenticatedAccess: jest.fn(async () => undefined),
+        assertSelfRegistrationEnabled: jest.fn(async () => undefined),
+        assertGoogleLoginEnabled: jest.fn(async () => undefined),
+        getPasswordLoginVerificationPolicy: jest.fn(async () => ({
+          platformSettingsVersion: 3,
+          enabled: true,
+          rule: "every_login" as const,
+          onNewIp: false
+        }))
+      }
+    });
+
+    const started = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
+      .expect(200);
+    expect(started.body.data).toMatchObject({
+      status: "verification_required",
+      challengeId: expect.any(String),
+      maskedEmail: expect.any(String)
+    });
+    expect(fixture.sessionStore.storedRefreshTokens).toHaveLength(0);
+
+    await request(fixture.app)
+      .post("/api/v1/auth/login/verify")
+      .send({
+        challengeId: started.body.data.challengeId,
+        otp: fixture.deliveredOtps[0]?.otp,
+        extra: true
+      })
+      .expect(400);
+
+    const verified = await request(fixture.app)
+      .post("/api/v1/auth/login/verify")
+      .send({
+        challengeId: started.body.data.challengeId,
+        otp: fixture.deliveredOtps[0]?.otp
+      })
+      .expect(200);
+    expect(verified.body.data).toEqual({
+      accessToken: expect.any(String),
+      refreshToken: expect.any(String),
+      expiresIn: 900
+    });
+  });
+
+  it("enforces registration and Google availability before starting either flow", async () => {
+    const assertSelfRegistrationEnabled = jest.fn(async () => {
+      throw new AppError({
+        code: ERROR_CODES.REGISTRATION_DISABLED,
+        message: "error.auth.registration_disabled",
+        statusCode: 403
+      });
+    });
+    const assertGoogleLoginEnabled = jest.fn(async () => {
+      throw new AppError({
+        code: ERROR_CODES.GOOGLE_LOGIN_DISABLED,
+        message: "error.auth.google_disabled",
+        statusCode: 503
+      });
+    });
+    const fixture = await createAuthFixture(undefined, {
+      platformAccessPolicyService: {
+        assertPublicBusinessAccess: jest.fn(async () => undefined),
+        assertAuthenticatedAccess: jest.fn(async () => undefined),
+        assertSelfRegistrationEnabled,
+        assertGoogleLoginEnabled,
+        getPasswordLoginVerificationPolicy: jest.fn(async () => ({
+          platformSettingsVersion: 3,
+          enabled: false,
+          rule: "first_login" as const,
+          onNewIp: false
+        }))
+      }
+    });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/register")
+      .send({ email: "closed@example.com", password: "Abcd@1234" })
+      .expect(403)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.auth.registration_disabled");
+      });
+    await request(fixture.app)
+      .post("/api/v1/auth/google/init")
+      .send({})
+      .expect(503)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.auth.google_disabled");
+      });
+
+    expect(assertSelfRegistrationEnabled).toHaveBeenCalledTimes(1);
+    expect(assertGoogleLoginEnabled).toHaveBeenCalledTimes(1);
+    expect(fixture.repository.findUserByEmail).not.toHaveBeenCalledWith("closed@example.com");
+  });
+
   it("exposes strict Google initialization and action-bound verification contracts", async () => {
     const fixture = await createAuthFixture();
 
@@ -1455,6 +1568,7 @@ describe("verified email registration and formal password authentication", () =>
       code: 0,
       message: "success",
       data: {
+        status: "authenticated",
         accessToken: expect.any(String),
         refreshToken: expect.any(String),
         expiresIn: 900
@@ -1679,8 +1793,10 @@ describe("verified email registration and formal password authentication", () =>
         type: "platform",
         scopeType: "global",
         scopeId: null,
-        publicId: "needo1234567890"
+        publicId: "needo1234567890",
+        displayName: "admin"
       },
+      profileDisplayName: "运营者用户端姓名",
       activeIdentityId: 10,
       activePublicId: "needo1234567890",
       primaryPublicId: "needo1234567890",
@@ -1693,7 +1809,8 @@ describe("verified email registration and formal password authentication", () =>
       expect.objectContaining({
         id: 10,
         type: "platform",
-        publicId: "needo1234567890"
+        publicId: "needo1234567890",
+        displayName: "admin"
       })
     ]);
     expect(meResponse.body.data.identities).not.toEqual(
@@ -1735,6 +1852,23 @@ describe("verified email registration and formal password authentication", () =>
       .expect((response) => {
         expect(response.body.code).toBe(ERROR_CODES.TOKEN_BLACKLISTED);
       });
+  });
+
+  it("does not project a soft-deleted customer profile through /auth/me", async () => {
+    const fixture = await createAuthFixture();
+    fixture.user.customerProfile.displayName = "不应返回的软删除姓名";
+    fixture.user.customerProfile.deletedAt = new Date("2026-08-27T00:00:00.000Z");
+    const loginResponse = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
+      .expect(200);
+
+    const response = await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`)
+      .expect(200);
+
+    expect(response.body.data.profileDisplayName).toBeNull();
   });
 
   it("exposes and switches to a platform account customer identity with the shared NeeDo ID", async () => {

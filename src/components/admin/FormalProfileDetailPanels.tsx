@@ -25,9 +25,11 @@ import {
   translateText,
   type Language
 } from "../../i18n/translations";
+import { AdminEventTimeline } from "./AdminEventTimeline";
 import { cn } from "../../lib/utils";
+import type { PlatformManagedUserDetail } from "../../features/platform-user-management/types";
+import { membershipTierText, privacyModeText, privacyScopeText } from "../../features/platform-user-management/i18n";
 import {
-  ContactEventTimelinePanel,
   type ContactEventTimelineEntry
 } from "../mobile/ContactEventTimeline";
 import { Badge, type BadgeTone } from "../ui/Badge";
@@ -46,7 +48,7 @@ type TechnicianDetailTab =
   | "权限与账号"
   | "时间线";
 
-type CustomerDetailTab = "基础资料" | "会员等级" | "预约与消费" | "权限与账号" | "用户动态";
+export type CustomerDetailTab = "基础资料" | "会员等级" | "预约与消费" | "评价" | "权限与账号" | "用户LOG";
 
 export type FormalLocalization = {
   language: Language;
@@ -70,7 +72,7 @@ const technicianTabs: TechnicianDetailTab[] = [
   "时间线"
 ];
 
-const customerTabs: CustomerDetailTab[] = ["基础资料", "会员等级", "预约与消费", "权限与账号", "用户动态"];
+const customerTabs: CustomerDetailTab[] = ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG"];
 
 export function resolveFormalTabKeyboardIndex(
   key: string,
@@ -243,7 +245,7 @@ export function FormalCustomerDetailPanel({
             editContent,
             membershipEditContent,
             localization,
-            tab === "用户动态" ? (
+            tab === "用户LOG" ? (
               <CustomerTimelinePanel
                 detail={detail}
                 error={timelineError}
@@ -259,6 +261,129 @@ export function FormalCustomerDetailPanel({
       </FormalTabPanels>
     </article>
   );
+}
+
+export function FormalManagedUserDetailPanel({
+  actionContent,
+  detail,
+  initialTab = "基础资料",
+  membershipActions,
+  reviewContent,
+  usageContent,
+  accountContent,
+  activityContent
+}: {
+  actionContent?: ReactNode;
+  detail: PlatformManagedUserDetail;
+  initialTab?: CustomerDetailTab;
+  membershipActions?: { tier?: ReactNode; multiplier?: ReactNode };
+  reviewContent?: ReactNode;
+  usageContent?: ReactNode;
+  accountContent?: ReactNode;
+  activityContent?: ReactNode;
+}) {
+  const localization = useFormalLocalization();
+  const [activeTab, setActiveTab] = useState<CustomerDetailTab>(initialTab);
+  const panelId = useId();
+  const credit = detail.metrics.credit;
+  const review = credit.reviewCount > 0 ? {
+    ratingAverage: credit.ratingAverage,
+    reviewCount: credit.reviewCount,
+    latestReviewAt: credit.latestReviewAt,
+    highlights: []
+  } : null;
+
+  return (
+    <article className="min-w-0 overflow-hidden rounded-[22px] border border-line bg-paper shadow-panel">
+      <FormalIdentityHeader
+        accountActive={detail.isActive}
+        actionContent={actionContent}
+        avatarUrl={detail.avatarUrl}
+        badges={[
+          { label: localization.t(detail.isActive ? "账号启用" : "账号停用"), tone: detail.isActive ? "green" : "red" },
+          { label: membershipTierText(detail.membership.tierCode, localization.language), tone: "yellow" },
+          { label: privacyModeText(detail.privacyMode, localization.language), tone: detail.privacyMode ? "neutral" : "blue" }
+        ]}
+        city={detail.city ?? localization.t("城市未设置")}
+        displayName={detail.displayName}
+        identityLabel={localization.t("用户账号")}
+        localization={localization}
+        needoId={detail.needoId}
+        rating={review}
+        shopLabel={localization.t("平台用户")}
+      />
+
+      <section className="border-b border-line bg-white px-4 py-4 sm:px-5">
+        <MetricGrid items={[
+          { id: "ndp", label: localization.t("积分"), value: formatInteger(detail.metrics.ndpAvailable, localization) },
+          { id: "usage", label: localization.t("利用次数"), value: formatInteger(detail.metrics.usageCount, localization) },
+          { id: "credit", label: localization.t("信用值"), value: `${formatDecimal(credit.ratingAverage, localization)} / 5` },
+          { id: "privacy", label: localization.t("隐私模式"), value: detail.privacyScope ? privacyScopeText(detail.privacyScope, localization.language) : privacyModeText(false, localization.language) }
+        ]} />
+        <div className="mt-3 grid gap-2 rounded-lg border border-line bg-paper p-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ManagedHeaderFact action={membershipActions?.tier} label={localization.t("会员类型")} value={membershipTierText(detail.membership.tierCode, localization.language)} />
+          <ManagedHeaderFact action={membershipActions?.multiplier} label={localization.t("会员倍率")} value={`×${formatDecimal(detail.membership.experienceMultiplier, localization)}`} />
+          <ManagedHeaderFact label={localization.t("当前等级")} value={detail.experience ? `Lv.${formatInteger(detail.experience.currentLevel, localization)}` : "—"} />
+          <ManagedHeaderFact label={localization.t("累计经验")} value={detail.experience ? `${formatInteger(Number(detail.experience.totalExpUnits), localization)} EXP` : "—"} />
+        </div>
+      </section>
+
+      <FormalTabs active={activeTab} idPrefix={panelId} items={customerTabs} localization={localization} onChange={setActiveTab} />
+      <FormalTabPanels active={activeTab} idPrefix={panelId} items={customerTabs}>
+        {(tab) => renderManagedUserTab(tab, detail, review, localization, reviewContent, usageContent, accountContent, activityContent)}
+      </FormalTabPanels>
+    </article>
+  );
+}
+
+function ManagedHeaderFact({ action, label, value }: { action?: ReactNode; label: string; value: ReactNode }) {
+  return <div className="flex min-w-0 items-center justify-between gap-2"><div className="min-w-0"><p className="text-[11px] font-black text-ink/45">{label}</p><p className="mt-1 truncate text-sm font-black text-ink">{value}</p></div>{action}</div>;
+}
+
+function renderManagedUserTab(
+  tab: CustomerDetailTab,
+  detail: PlatformManagedUserDetail,
+  review: BackofficeReviewSummaryPayload | null,
+  localization: FormalLocalization,
+  reviewContent?: ReactNode,
+  usageContent?: ReactNode,
+  accountContent?: ReactNode,
+  activityContent?: ReactNode
+) {
+  if (tab === "基础资料") return <FormalSectionCard localization={localization} title="基础资料"><DetailGrid items={localizeDetailItems([
+    { label: "用户名", value: detail.username },
+    { label: "邮箱", value: detail.email },
+    { label: "手机号", value: detail.phone ?? localization.t("未设置") },
+    { label: "所在城市", value: detail.city ?? localization.t("未设置") },
+    { label: "eKYC", value: localization.t(detail.ekycVerified ? "已验证" : "未验证") },
+    { label: "注册时间", value: formatDateTime(detail.createdAt, localization) }
+  ], localization)} /></FormalSectionCard>;
+
+  if (tab === "会员等级") return <FormalSectionCard localization={localization} title="会员等级"><DetailGrid items={localizeDetailItems([
+    { label: "当前会员等级", value: membershipTierText(detail.membership.tierCode, localization.language) },
+    { label: "会员倍率", value: `×${formatDecimal(detail.membership.experienceMultiplier, localization)}` },
+    { label: "当前等级", value: detail.experience ? `Lv.${detail.experience.currentLevel}` : "—" },
+    { label: "累计经验", value: detail.experience ? `${detail.experience.totalExpUnits} EXP` : "—" },
+    { label: "到期时间", value: formatDateTime(detail.membership.expiresAt, localization) }
+  ], localization)} /></FormalSectionCard>;
+
+  if (tab === "预约与消费") return <FormalSectionCard localization={localization} title="预约与消费"><MetricGrid items={[
+    { id: "all", label: localization.t("预约总数"), value: formatInteger(detail.bookingSpend.totalBookings, localization) },
+    { id: "completed", label: localization.t("已完成"), value: formatInteger(detail.bookingSpend.completedBookings, localization) },
+    { id: "spend", label: localization.t("已完成消费"), value: formatMoney(detail.bookingSpend.completedSpendJpy, "JPY", localization) }
+  ]} /></FormalSectionCard>;
+
+  if (tab === "评价") return reviewContent ?? <ReviewSummaryCard localization={localization} review={review} />;
+
+  if (tab === "权限与账号") return accountContent ?? <>
+    <FormalSectionCard localization={localization} title="角色"><div className="flex flex-wrap gap-2">{detail.account.roles.flatMap((role) => [<Badge key={`${role.code}-role`} tone="dark">{role.name}</Badge>, ...role.permissions.map((permission) => <Badge key={`${role.code}-${permission}`}>{permission}</Badge>)])}</div></FormalSectionCard>
+    <FormalSectionCard localization={localization} title="身份"><div className="flex flex-wrap gap-2">{detail.identities.map((identity, index) => <Badge key={`${identity.type}-${identity.scopeId ?? index}`} tone="blue">{identity.displayName ?? identity.type}</Badge>)}</div></FormalSectionCard>
+  </>;
+
+  return <>{usageContent}{activityContent ?? <AuditTimeline events={detail.audit.list.map((event) => ({
+    ...event,
+    metadata: event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata) ? event.metadata as Record<string, unknown> : null
+  }))} localization={localization} title="用户LOG" />}</>;
 }
 
 function useFormalLocalization(): FormalLocalization {
@@ -674,6 +799,10 @@ function renderCustomerTab(
     );
   }
 
+  if (tab === "评价") {
+    return <ReviewSummaryCard localization={localization} review={detail.reviewSummary} />;
+  }
+
   if (tab === "权限与账号") {
     return <AccountAccessCards account={detail.account} localization={localization} />;
   }
@@ -702,7 +831,7 @@ function CustomerTimelinePanel({
   if (loading && !timeline) {
     return (
       <div className="rounded-[18px] border border-line bg-white p-6 text-sm font-black text-ink/50">
-        {localization.t("正在读取用户动态...")}
+        {localization.t("正在读取用户LOG...")}
       </div>
     );
   }
@@ -727,10 +856,10 @@ function CustomerTimelinePanel({
   const events = timeline?.list ?? detail.timeline;
   return (
     <div>
-      <AuditTimeline events={events} localization={localization} title="用户动态" />
+      <AuditTimeline events={events} localization={localization} title="用户LOG" />
       {timeline && onPageChange && onPageSizeChange ? (
         <FormalTimelinePagination
-          ariaLabel="用户动态翻页"
+          ariaLabel="用户LOG翻页"
           disabled={loading}
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
@@ -967,10 +1096,10 @@ function BookingRow({ booking, localization }: { booking: BackofficeOrderPayload
   );
 }
 
-function AuditTimeline({ events, localization, title = "正式审计时间线" }: { events: BackofficeAuditEventPayload[]; localization: FormalLocalization; title?: string }) {
+export function AuditTimeline({ events, localization, title = "正式审计时间线" }: { events: BackofficeAuditEventPayload[]; localization: FormalLocalization; title?: string }) {
   return (
-    <ContactEventTimelinePanel
-      className="rounded-[18px] border-line bg-white text-ink shadow-[0_8px_24px_rgba(22,23,26,0.05)]"
+    <AdminEventTimeline
+      className="rounded-[18px]"
       emptyLabel={localization.t("暂无正式审计记录")}
       events={events.map((event) => mapAuditEvent(event, localization))}
       showCommentComposer={false}
@@ -979,13 +1108,19 @@ function AuditTimeline({ events, localization, title = "正式审计时间线" }
   );
 }
 
+function formatAuditTimestamp(value: string, localization: FormalLocalization) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${new Intl.DateTimeFormat(localization.locale, { dateStyle: "medium" }).format(date)}\n${new Intl.DateTimeFormat(localization.locale, { timeStyle: "medium" }).format(date)}`;
+}
+
 function mapAuditEvent(event: BackofficeAuditEventPayload, localization: FormalLocalization): ContactEventTimelineEntry {
   const action = auditAction(event.action, localization);
   return {
     actorAvatarSrc: event.actorAvatarUrl ?? undefined,
     actorName: event.actorName,
     actorRole: action.label,
-    atLabel: formatDateTime(event.createdAt, localization),
+    atLabel: formatAuditTimestamp(event.createdAt, localization),
     icon: event.actorAvatarUrl ? undefined : <NeutralProfileIcon />,
     id: event.id,
     message: (
@@ -1020,7 +1155,7 @@ function AuditMetadata({
     <span className="grid gap-2">
       {message ? <span>{message}</span> : null}
       {entries.length > 0 ? (
-        <span className="grid gap-1.5 rounded-lg border border-current/15 px-2.5 py-2 text-[11px] leading-4">
+        <span className="audit-event-metadata grid gap-1.5 rounded-lg px-2.5 py-2 text-[11px] leading-4">
           {entries.map(([key, value]) => (
             <span className="grid grid-cols-[minmax(72px,auto),minmax(0,1fr)] gap-2" key={key}>
               <strong>{auditMetadataLabel(key, localization)}</strong>
@@ -1182,7 +1317,7 @@ function auditAction(action: string, localization: FormalLocalization): { label:
   const danger = /deleted|disabled|rejected|cancelled|failed/i.test(action);
   return {
     label: labels[action] ? localization.t(labels[action]) : action,
-    tone: danger ? "red" : labels[action] ? "green" : "neutral"
+    tone: danger ? "red" : "green"
   };
 }
 

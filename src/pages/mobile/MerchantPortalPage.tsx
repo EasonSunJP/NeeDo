@@ -2456,7 +2456,6 @@ export function MerchantPortalContent({
           <>
             <section className="client-feature-panel overflow-hidden rounded-[28px] border text-white">
               <div className="relative min-h-[228px] p-5">
-                <img alt={store.name} className="absolute inset-0 h-full w-full object-cover opacity-24" src={imageBank.salon} />
                 <div className="client-feature-aura absolute inset-0" />
                 <div className="relative flex min-h-[188px] flex-col justify-between">
                   <div>

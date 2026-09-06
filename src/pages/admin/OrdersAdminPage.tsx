@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
   type BackofficeOrderDetailPayload,
@@ -33,6 +34,21 @@ const statusFilters: Array<{ label: string; value: StatusFilter }> = [
   { label: "已完成", value: "completed" },
   { label: "已取消", value: "cancelled" }
 ];
+const statusFilterValues = new Set<StatusFilter>(statusFilters.map(({ value }) => value));
+
+function readStatusFilter(searchParams: URLSearchParams): StatusFilter {
+  const status = searchParams.get("status");
+  return status && statusFilterValues.has(status as StatusFilter)
+    ? (status as StatusFilter)
+    : "all";
+}
+
+function readOrderId(searchParams: URLSearchParams) {
+  const value = searchParams.get("orderId");
+  if (!value || !/^\d+$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
 
 function describeOperationsOrderError(error: unknown) {
   if (error instanceof ApiClientError) {
@@ -152,8 +168,9 @@ function createPerformanceIdempotencyKey() {
 }
 
 export function OrdersAdminPage() {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => readStatusFilter(searchParams));
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(() => readOrderId(searchParams));
   const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderDetailPayload | null>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [detailRevision, setDetailRevision] = useState(0);
@@ -174,6 +191,13 @@ export function OrdersAdminPage() {
   const [performanceInternalNote, setPerformanceInternalNote] = useState("");
   const [performanceConflictReviewRequired, setPerformanceConflictReviewRequired] = useState(false);
   const performanceIntentRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+
+  const writeRouteState = (status: StatusFilter, orderId: number | null) => {
+    const next = new URLSearchParams();
+    if (status !== "all") next.set("status", status);
+    if (orderId !== null) next.set("orderId", String(orderId));
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     let current = true;
@@ -234,6 +258,7 @@ export function OrdersAdminPage() {
     setPerformanceInternalNote("");
     setPerformanceConflictReviewRequired(false);
     performanceIntentRef.current = null;
+    writeRouteState(statusFilter, order.id);
   };
   const closeOrder = () => {
     if (mutationStatus === "saving") return;
@@ -242,6 +267,7 @@ export function OrdersAdminPage() {
     setDetailStatus("idle");
     setMutationError("");
     setConfirmIntent(null);
+    writeRouteState(statusFilter, null);
   };
   const finishMutation = () => {
     setSelectedOrderId(null);
@@ -249,6 +275,7 @@ export function OrdersAdminPage() {
     setConfirmIntent(null);
     setMutationError("");
     setRevision((value) => value + 1);
+    writeRouteState(statusFilter, null);
   };
 
   const runTransition = async (action: "confirm" | "start" | "complete" | "cancel") => {
@@ -397,7 +424,12 @@ export function OrdersAdminPage() {
   const changeFilter = (value: StatusFilter) => {
     setStatusFilter(value);
     setPage(1);
-    closeOrder();
+    setSelectedOrderId(null);
+    setSelectedOrder(null);
+    setDetailStatus("idle");
+    setMutationError("");
+    setConfirmIntent(null);
+    writeRouteState(value, null);
   };
 
   return (

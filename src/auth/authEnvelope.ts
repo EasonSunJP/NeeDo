@@ -116,6 +116,7 @@ const sessionRequiredKeys = [
   "emailVerifiedAt",
   "hasPassword",
   "avatarUrl",
+  "profileDisplayName",
   "portal",
   "allowedPortals",
   "loginMethod",
@@ -142,7 +143,7 @@ const complianceRequirements = new Set<UserPolicyComplianceRequirement>([
   "email_binding_required",
   "ekyc_required"
 ]);
-const identityKeys = ["id", "publicId", "scopeId", "scopeType", "type"] as const;
+const identityKeys = ["id", "publicId", "scopeId", "scopeType", "type", "displayName"] as const;
 const availabilityKeys = [
   "kind",
   "state",
@@ -238,7 +239,8 @@ function isIdentity(value: unknown): value is AuthIdentityPayload {
     (value.scopeType === null ||
       (typeof value.scopeType === "string" && value.scopeType.length > 0)) &&
     typeof value.type === "string" &&
-    value.type.length > 0
+    value.type.length > 0 &&
+    (value.displayName === null || typeof value.displayName === "string")
   );
 }
 
@@ -274,7 +276,8 @@ export function isStrictAuthSession(value: unknown): value is AuthSession {
         identity.publicId === currentIdentity.publicId &&
         identity.scopeId === currentIdentity.scopeId &&
         identity.scopeType === currentIdentity.scopeType &&
-        identity.type === currentIdentity.type
+        identity.type === currentIdentity.type &&
+        identity.displayName === currentIdentity.displayName
     ).length !== 1 ||
     !Array.isArray(availability) ||
     !availability.every(isAvailability)
@@ -310,6 +313,7 @@ export function isStrictAuthSession(value: unknown): value is AuthSession {
     (value.emailVerifiedAt === null || isRfc3339(value.emailVerifiedAt)) &&
     typeof value.hasPassword === "boolean" &&
     (value.avatarUrl === null || typeof value.avatarUrl === "string") &&
+    (value.profileDisplayName === null || typeof value.profileDisplayName === "string") &&
     typeof value.portal === "string" &&
     isPortalScope(value.portal) &&
     Array.isArray(value.allowedPortals) &&
@@ -416,10 +420,48 @@ export function createAnonymousAuthEnvelope(input: {
   };
 }
 
+function upgradePersistedProfileFields(value: unknown): unknown {
+  if (!isRecord(value) || value.schemaVersion !== 8 || value.state !== "committed") {
+    return value;
+  }
+
+  const upgradeIdentity = (identity: unknown) => {
+    if (!isRecord(identity) || Object.hasOwn(identity, "displayName")) return identity;
+    return { ...identity, displayName: null };
+  };
+  const upgradeSession = (session: unknown) => {
+    if (!isRecord(session)) return session;
+    return {
+      ...session,
+      ...(!Object.hasOwn(session, "profileDisplayName") ? { profileDisplayName: null } : {}),
+      currentIdentity: upgradeIdentity(session.currentIdentity),
+      identities: Array.isArray(session.identities)
+        ? session.identities.map(upgradeIdentity)
+        : session.identities
+    };
+  };
+  const rememberedByPortal = isRecord(value.rememberedByPortal)
+    ? Object.fromEntries(
+        Object.entries(value.rememberedByPortal).map(([portal, remembered]) => [
+          portal,
+          isRecord(remembered)
+            ? { ...remembered, session: upgradeSession(remembered.session) }
+            : remembered
+        ])
+      )
+    : value.rememberedByPortal;
+
+  return {
+    ...value,
+    session: upgradeSession(value.session),
+    rememberedByPortal
+  };
+}
+
 export function parsePersistedAuthEnvelopeRaw(raw: string | null) {
   if (!raw) return null;
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = upgradePersistedProfileFields(JSON.parse(raw));
     return isPersistedAuthEnvelopeV8(parsed) ? parsed : null;
   } catch {
     return null;

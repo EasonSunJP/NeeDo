@@ -16,6 +16,7 @@ export const userIdParamSchema = z.object({
 export const userListQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().max(100).optional(),
+  roleId: z.coerce.number().int().positive().optional(),
   keyword: z.string().trim().max(100).optional(),
   isActive: z
     .enum(["true", "false"])

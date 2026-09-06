@@ -664,6 +664,7 @@ enum PlatformMembershipBenefitCode {
   EXCLUSIVE_DISCOUNT @map("exclusive_discount")
   MEMBER_DAY         @map("member_day")
   BIRTHDAY_GIFT      @map("birthday_gift")
+  TRACELESS_RECALL   @map("traceless_recall")
 
   @@map("platform_membership_benefit_code")
 }
@@ -891,6 +892,14 @@ enum ContentLocale {
   KO    @map("ko")
 
   @@map("content_locale")
+}
+
+enum PlatformLoginVerificationRule {
+  FIRST_LOGIN   @map("first_login")
+  MONTHLY_FIRST @map("monthly_first")
+  EVERY_LOGIN   @map("every_login")
+
+  @@map("platform_login_verification_rule")
 }
 
 enum TaxonomyLocale {
@@ -1169,6 +1178,8 @@ model User {
   bookingOrders                         BookingOrder[]                      @relation("BookingOrderCustomer")
   orderHistories                        OrderStatusHistory[]                @relation("OrderStatusHistoryActor")
   orderReviewsGiven                     OrderReview[]                       @relation("OrderReviewReviewer")
+  revisedOrderReviewAmendments          OrderReviewAmendment[]              @relation("OrderReviewAmendmentReviser")
+  revisedOrderRefundAmendments          OrderRefundAmendment[]              @relation("OrderRefundAmendmentReviser")
   assignedBackofficeTags                BackofficeProfileTag[]              @relation("BackofficeProfileTagAssigner")
   orderTimelineComments                 OrderTimelineComment[]              @relation("OrderTimelineCommentActor")
   pricingModeUpdates                    Shop[]                              @relation("ShopPricingModeUpdatedBy")
@@ -1296,6 +1307,8 @@ model User {
   ndpExperienceAccumulators               UserNdpExperienceAccumulator[]
   platformMembershipEntitlements          PlatformMembershipEntitlement[]       @relation("PlatformMembershipEntitlementOwner")
   createdPlatformMembershipEntitlements   PlatformMembershipEntitlement[]       @relation("PlatformMembershipEntitlementCreator")
+  membershipAdjustments                   UserMembershipAdjustment[]            @relation("UserMembershipAdjustmentOwner")
+  createdMembershipAdjustments            UserMembershipAdjustment[]            @relation("UserMembershipAdjustmentCreator")
   createdPlatformMembershipTierVersions   PlatformMembershipTierVersion[]       @relation("PlatformMembershipTierVersionCreator")
   publishedPlatformMembershipTierVersions PlatformMembershipTierVersion[]       @relation("PlatformMembershipTierVersionPublisher")
   createdBackofficeUserGroups             BackofficeUserGroup[]                 @relation("BackofficeUserGroupCreator")
@@ -1304,6 +1317,11 @@ model User {
   backofficeUserGroupMemberships          BackofficeUserGroupMembership[]       @relation("BackofficeUserGroupMembershipUser")
   createdUserGlobalPolicies               UserGlobalPolicyVersion[]             @relation("UserGlobalPolicyCreator")
   publishedUserGlobalPolicies             UserGlobalPolicyVersion[]             @relation("UserGlobalPolicyPublisher")
+  createdPlatformSettingVersions          PlatformSettingVersion[]              @relation("PlatformSettingVersionCreator")
+  createdLegalDocuments                   LegalDocument[]                       @relation("LegalDocumentCreator")
+  updatedLegalDocuments                   LegalDocument[]                       @relation("LegalDocumentUpdater")
+  updatedLegalDocumentDrafts              LegalDocumentDraft[]                  @relation("LegalDocumentDraftUpdater")
+  publishedLegalDocumentReleases          LegalDocumentRelease[]                @relation("LegalDocumentReleasePublisher")
   createdNdpExperienceCampaigns           NdpExperienceCampaign[]               @relation("NdpExperienceCampaignCreator")
   publishedNdpExperienceCampaigns         NdpExperienceCampaign[]               @relation("NdpExperienceCampaignPublisher")
   sentImContactCardCommands               ImContactCardSendCommand[]            @relation("ImContactCardSendActor")
@@ -1742,9 +1760,9 @@ model PlatformPartnerProfile {
   userId           Int                 @map("user_id")
   partnerType      PlatformPartnerType @map("partner_type")
   activatedAt      DateTime            @map("activated_at")
+  endsAt           DateTime?           @map("ends_at")
   markedById       Int                 @map("marked_by_id")
   reason           String              @db.VarChar(500)
-  activePartnerKey String?             @unique(map: "platform_partner_profiles_active_partner_key") @default(dbgenerated()) @map("active_partner_key") @db.VarChar(191)
   createdAt        DateTime            @default(now()) @map("created_at")
   updatedAt        DateTime            @updatedAt @map("updated_at")
   deletedAt        DateTime?           @map("deleted_at")
@@ -1756,6 +1774,7 @@ model PlatformPartnerProfile {
   settlements     AgentSettlement[]
 
   @@index([userId, deletedAt], map: "platform_partner_profiles_user_deleted_idx")
+  @@index([userId, partnerType, activatedAt, endsAt, deletedAt], map: "platform_partner_profiles_validity_idx")
   @@index([partnerType, activatedAt, deletedAt], map: "platform_partner_profiles_type_activated_deleted_idx")
   @@index([markedById], map: "platform_partner_profiles_marked_by_id_idx")
   @@index([deletedAt], map: "platform_partner_profiles_deleted_at_idx")
@@ -2548,6 +2567,8 @@ model PlatformMembershipTierVersion {
   experienceMultiplier    Decimal                         @map("experience_multiplier") @db.Decimal(8, 4)
   detailAccentColor       String                          @map("detail_accent_color") @db.Char(7)
   detailSurfaceColor      String                          @map("detail_surface_color") @db.Char(7)
+  detailSurfaceMiddleColor String                         @map("detail_surface_middle_color") @db.Char(7)
+  detailSurfaceBottomColor String                         @map("detail_surface_bottom_color") @db.Char(7)
   detailItemSurfaceColor  String                          @map("detail_item_surface_color") @db.Char(7)
   detailOuterBorderColor  String                          @map("detail_outer_border_color") @db.Char(7)
   detailItemBorderColor   String                          @map("detail_item_border_color") @db.Char(7)
@@ -2570,6 +2591,7 @@ model PlatformMembershipTierVersion {
   publishedBy  User?                           @relation("PlatformMembershipTierVersionPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
   benefits     PlatformMembershipTierBenefit[]
   entitlements PlatformMembershipEntitlement[]
+  userAdjustments UserMembershipAdjustment[]
 
   @@unique([tierId, version], map: "platform_membership_tier_version_key")
   @@index([tierId, status, effectiveFrom, effectiveTo, deletedAt], map: "platform_membership_tier_version_resolution_idx")
@@ -2653,6 +2675,33 @@ model PlatformMembershipEntitlement {
   @@map("platform_membership_entitlements")
 }
 
+model UserMembershipAdjustment {
+  id                  Int       @id @default(autoincrement())
+  publicId            String    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  userId              Int       @map("user_id")
+  tierVersionId       Int?      @map("tier_version_id")
+  multiplierBps       Int?      @map("multiplier_bps")
+  reason              String    @db.VarChar(500)
+  expectedLockVersion Int?      @map("expected_lock_version")
+  lockVersion         Int       @default(1) @map("lock_version")
+  effectiveFrom       DateTime  @default(now()) @map("effective_from")
+  supersededAt        DateTime? @map("superseded_at")
+  createdById         Int       @map("created_by_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
+
+  user        User                               @relation("UserMembershipAdjustmentOwner", fields: [userId], references: [id], onDelete: Restrict)
+  tierVersion PlatformMembershipTierVersion?     @relation(fields: [tierVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy   User                               @relation("UserMembershipAdjustmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([userId, effectiveFrom, supersededAt, deletedAt], map: "user_membership_adjustments_active_idx")
+  @@index([tierVersionId])
+  @@index([createdById])
+  @@index([deletedAt])
+  @@map("user_membership_adjustments")
+}
+
 model BackofficeUserGroup {
   id            Int                       @id @default(autoincrement())
   publicId      String                    @unique @default(uuid()) @map("public_id") @db.Char(36)
@@ -2698,6 +2747,113 @@ model BackofficeUserGroupMembership {
   @@index([assignedById])
   @@index([deletedAt])
   @@map("backoffice_user_group_memberships")
+}
+
+model PlatformSettingVersion {
+  id                           Int                           @id @default(autoincrement())
+  publicId                     String                        @unique @default(uuid()) @map("public_id") @db.Char(36)
+  version                      Int                           @unique(map: "platform_setting_versions_version_key")
+  activeKey                    String?                       @unique(map: "platform_setting_versions_active_key") @map("active_key") @db.VarChar(20)
+  siteEnabled                  Boolean                       @default(true) @map("site_enabled")
+  selfRegistrationEnabled      Boolean                       @default(true) @map("self_registration_enabled")
+  googleLoginEnabled           Boolean                       @default(true) @map("google_login_enabled")
+  passwordLoginOtpEnabled      Boolean                       @default(false) @map("password_login_otp_enabled")
+  passwordLoginOtpRule         PlatformLoginVerificationRule @default(FIRST_LOGIN) @map("password_login_otp_rule")
+  passwordLoginOtpOnNewIp      Boolean                       @default(false) @map("password_login_otp_on_new_ip")
+  loginLogoMediaAssetId        Int?                          @map("login_logo_media_asset_id")
+  requestButtonMediaAssetId    Int?                          @map("request_button_media_asset_id")
+  offlinePaymentEnabled        Boolean                       @default(true) @map("offline_payment_enabled")
+  ndpPaymentEnabled            Boolean                       @default(true) @map("ndp_payment_enabled")
+  createdByUserId              Int?                          @map("created_by_user_id")
+  createdAt                    DateTime                      @default(now()) @map("created_at")
+  updatedAt                    DateTime                      @updatedAt @map("updated_at")
+  deletedAt                    DateTime?                     @map("deleted_at")
+
+  loginLogoMediaAsset     MediaAsset? @relation("PlatformSettingLoginLogo", fields: [loginLogoMediaAssetId], references: [id], onDelete: Restrict)
+  requestButtonMediaAsset MediaAsset? @relation("PlatformSettingRequestButton", fields: [requestButtonMediaAssetId], references: [id], onDelete: Restrict)
+  createdBy               User?       @relation("PlatformSettingVersionCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([loginLogoMediaAssetId])
+  @@index([requestButtonMediaAssetId])
+  @@index([createdByUserId])
+  @@index([deletedAt])
+  @@map("platform_setting_versions")
+}
+
+model LegalDocument {
+  id                 Int       @id @default(autoincrement())
+  publicId           String    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  slug               String    @unique @db.VarChar(120)
+  name               String    @db.VarChar(160)
+  internalPath       String    @map("internal_path") @db.VarChar(500)
+  displayLocations   Json      @map("display_locations")
+  isEnabled          Boolean   @default(false) @map("is_enabled")
+  lockVersion        Int       @default(1) @map("lock_version")
+  createdByUserId    Int?      @map("created_by_user_id")
+  updatedByUserId    Int?      @map("updated_by_user_id")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  createdBy User?                  @relation("LegalDocumentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedBy User?                  @relation("LegalDocumentUpdater", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  drafts    LegalDocumentDraft[]
+  releases  LegalDocumentRelease[]
+
+  @@index([isEnabled, name, deletedAt], map: "legal_documents_list_idx")
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+  @@index([deletedAt])
+  @@map("legal_documents")
+}
+
+model LegalDocumentDraft {
+  id              Int           @id @default(autoincrement())
+  documentId      Int           @map("document_id")
+  locale          ContentLocale
+  title           String        @db.VarChar(240)
+  body            String        @db.LongText
+  lockVersion     Int           @default(1) @map("lock_version")
+  updatedByUserId Int?          @map("updated_by_user_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  document LegalDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  updatedBy User?         @relation("LegalDocumentDraftUpdater", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([documentId, locale], map: "legal_document_drafts_document_locale_key")
+  @@index([documentId, locale, deletedAt], map: "legal_document_drafts_lookup_idx")
+  @@index([updatedByUserId])
+  @@index([deletedAt])
+  @@map("legal_document_drafts")
+}
+
+model LegalDocumentRelease {
+  id                Int           @id @default(autoincrement())
+  publicId          String        @unique @default(uuid()) @map("public_id") @db.Char(36)
+  documentId        Int           @map("document_id")
+  locale            ContentLocale
+  version           Int
+  activeKey         String?       @map("active_key") @db.VarChar(20)
+  title             String        @db.VarChar(240)
+  body              String        @db.LongText
+  contentHash       String        @map("content_hash") @db.Char(64)
+  publishedAt       DateTime      @map("published_at")
+  publishedByUserId Int?          @map("published_by_user_id")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  deletedAt         DateTime?     @map("deleted_at")
+
+  document  LegalDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  publishedBy User?         @relation("LegalDocumentReleasePublisher", fields: [publishedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([documentId, locale, version], map: "legal_document_releases_version_key")
+  @@unique([documentId, locale, activeKey], map: "legal_document_releases_active_key")
+  @@index([documentId, locale, publishedAt, deletedAt], map: "legal_document_releases_history_idx")
+  @@index([publishedByUserId])
+  @@index([deletedAt])
+  @@map("legal_document_releases")
 }
 
 model UserGlobalPolicyVersion {
@@ -3331,6 +3487,8 @@ model MediaAsset {
   identityApplications      IdentityApplicationMedia[]
   carouselSlides            CarouselSlide[]
   carouselSlideTranslations CarouselSlideTranslation[] @relation("CarouselSlideTranslationMedia")
+  platformSettingLoginLogos PlatformSettingVersion[]   @relation("PlatformSettingLoginLogo")
+  platformSettingRequests   PlatformSettingVersion[]   @relation("PlatformSettingRequestButton")
 
   @@index([entityType, entityId])
   @@index([categoryId])
@@ -3868,6 +4026,7 @@ model BookingOrder {
   membershipCardRedemptionRefund ShopMembershipCardRedemptionRefund?
   performanceAssessment          OrderPerformanceAssessment?          @relation("OrderPerformanceAssessmentBookingOrder")
   performanceRevisions           OrderPerformanceAssessmentRevision[] @relation("OrderPerformanceRevisionBookingOrder")
+  refundAmendments               OrderRefundAmendment[]
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -4273,6 +4432,7 @@ model OrderReview {
   customerProfile   CustomerProfile?   @relation("OrderReviewCustomer", fields: [customerProfileId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation("OrderReviewTechnician", fields: [technicianProfileId], references: [id], onDelete: Restrict)
   tags              OrderReviewTag[]
+  amendments        OrderReviewAmendment[]
 
   @@unique([bookingOrderId, reviewerUserId, targetType])
   @@index([bookingOrderId])
@@ -4300,6 +4460,46 @@ model OrderReviewTag {
   @@index([label])
   @@index([deletedAt])
   @@map("order_review_tags")
+}
+
+model OrderReviewAmendment {
+  id            Int       @id @default(autoincrement())
+  publicId      String    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  orderReviewId Int       @map("order_review_id")
+  version       Int
+  rating        Int?
+  comment       String?   @db.Text
+  reason        String    @db.VarChar(500)
+  revisedById   Int       @map("revised_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  orderReview OrderReview                 @relation(fields: [orderReviewId], references: [id], onDelete: Restrict)
+  revisedBy   User                        @relation("OrderReviewAmendmentReviser", fields: [revisedById], references: [id], onDelete: Restrict)
+  tags        OrderReviewAmendmentTag[]
+
+  @@unique([orderReviewId, version], map: "order_review_amendments_review_version_key")
+  @@index([orderReviewId, createdAt, deletedAt], map: "order_review_amendments_review_created_idx")
+  @@index([revisedById])
+  @@index([deletedAt])
+  @@map("order_review_amendments")
+}
+
+model OrderReviewAmendmentTag {
+  id          Int       @id @default(autoincrement())
+  amendmentId Int       @map("amendment_id")
+  label       String    @db.VarChar(40)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  amendment OrderReviewAmendment @relation(fields: [amendmentId], references: [id], onDelete: Restrict)
+
+  @@unique([amendmentId, label], map: "order_review_amendment_tags_key")
+  @@index([label])
+  @@index([deletedAt])
+  @@map("order_review_amendment_tags")
 }
 
 model BackofficeProfileTag {
@@ -4358,6 +4558,29 @@ model OrderTimelineComment {
   @@index([createdAt])
   @@index([deletedAt])
   @@map("order_timeline_comments")
+}
+
+model OrderRefundAmendment {
+  id               Int       @id @default(autoincrement())
+  publicId         String    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  bookingOrderId   Int       @map("booking_order_id")
+  version          Int
+  displayReference String?   @map("display_reference") @db.VarChar(120)
+  note             String?   @db.VarChar(500)
+  reason           String    @db.VarChar(500)
+  revisedById      Int       @map("revised_by_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  bookingOrder BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  revisedBy   User         @relation("OrderRefundAmendmentReviser", fields: [revisedById], references: [id], onDelete: Restrict)
+
+  @@unique([bookingOrderId, version], map: "order_refund_amendments_order_version_key")
+  @@index([bookingOrderId, createdAt, deletedAt], map: "order_refund_amendments_order_created_idx")
+  @@index([revisedById])
+  @@index([deletedAt])
+  @@map("order_refund_amendments")
 }
 
 model OrderStatusHistory {

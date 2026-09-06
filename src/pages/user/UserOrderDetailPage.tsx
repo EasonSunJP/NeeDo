@@ -63,7 +63,7 @@ function formalStatusLabel(status: BookingOrder["status"]) {
 }
 
 function paymentMethodLabel(method: OrderCheckout["paymentMethod"]) {
-  if (method === "cash") return "现金支付";
+  if (method === "cash") return "线下支付";
   if (method === "ndp") return "NDP 支付";
   if (method === "other") return "其他方式支付";
   return "尚未选择";
@@ -397,10 +397,11 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       setProjectionError("订单状态读取失败，支付结果已经保存，请重新读取订单状态。");
     }
   };
-  const selectPayment = (method: "cash" | "other") => {
-    void runMutation(`payment-${method}`, (idempotencyKey) => bookingApi.selectPaymentMethod(orderId, method === "cash"
-      ? { method: "cash", idempotencyKey }
-      : { method: "other", otherMethodCode: "other_manual", otherMethodLabel: "其他方式", idempotencyKey }), async (value) => {
+  const selectOfflinePayment = () => {
+    void runMutation("payment-cash", (idempotencyKey) => bookingApi.selectPaymentMethod(orderId, {
+      method: "cash",
+      idempotencyKey
+    }), async (value) => {
       await applyCheckoutMutation(value);
     });
   };
@@ -631,7 +632,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
             ["支付凭证", paymentEvidenceLabel(checkout.paymentEvidence)]
           ]} /> : null}
 
-          {order.status === "awaitingPaymentConfirmation" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center"><h2 className="text-lg font-black">等待技师确认收款</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">订单会在技师确认现金或其他方式收款后完成。</p></section> : null}
+          {order.status === "awaitingPaymentConfirmation" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center"><h2 className="text-lg font-black">等待线下收款确认</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">线下支付由现场人员、技师或店铺确认收款后完成。</p></section> : null}
           {order.status === "completed" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center"><h2 className="text-lg font-black">服务与结算已完成</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkout ? paymentEvidenceLabel(checkout.paymentEvidence) : "正在读取支付凭证"}</p></section> : null}
 
           {projectionError ? <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert"><p>{projectionError}</p><button className="mt-3 h-10 w-full rounded-full border border-red-400/40" disabled={projectionPending} onClick={() => void retryOrderProjection()} type="button">{projectionPending ? "正在读取订单状态" : "重新读取订单状态"}</button></section> : null}
@@ -641,7 +642,8 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           {order.status === "confirmed" ? <button className="h-12 w-full rounded-[20px] bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-50" disabled={Boolean(pendingAction)} onClick={() => setStartConfirmOpen(true)} type="button">开始服务</button> : null}
           {order.status === "inService" && remaining > 0 ? <button className="h-12 w-full rounded-[20px] bg-red-500 text-sm font-black text-white" disabled={Boolean(pendingAction)} onClick={() => setEndConfirmOpen(true)} type="button">提前结束服务</button> : null}
           {order.status === "inService" && remaining === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black">服务时间已到，等待系统完成结算准备</p> : null}
-          {canChoosePayment ? <div className="grid grid-cols-3 gap-2"><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("cash")} type="button">现金支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void runMutation("payment-ndp", (idempotencyKey) => bookingApi.payWithNdp(orderId, { idempotencyKey }), applyCheckoutMutation)} type="button">NDP 支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("other")} type="button">其他方式</button></div> : null}
+          {canChoosePayment && checkout.availablePaymentMethods.length === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black text-[color:var(--client-muted)]">当前暂无可用支付方式</p> : null}
+          {canChoosePayment && checkout.availablePaymentMethods.length > 0 ? <div className="grid grid-cols-2 gap-2">{checkout.availablePaymentMethods.includes("cash") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={selectOfflinePayment} type="button">线下支付</button> : null}{checkout.availablePaymentMethods.includes("ndp") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void runMutation("payment-ndp", (idempotencyKey) => bookingApi.payWithNdp(orderId, { idempotencyKey }), applyCheckoutMutation)} type="button">NDP 支付</button> : null}</div> : null}
           {exchangeOrderLinked === false && canCancel ? <button className="h-12 w-full rounded-[20px] border border-red-400/40 text-sm font-black text-red-500" disabled={Boolean(pendingAction)} onClick={() => void runOrderMutation("cancel", async () => bookingApi.cancelOrder(orderId, "客户从预约详情取消"))} type="button">取消预约</button> : null}
         </>
       ) : null}

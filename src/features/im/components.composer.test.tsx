@@ -7,7 +7,8 @@ import { resolve } from "node:path";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider, I18nRuntime } from "../../i18n/I18nProvider";
-import { ImChatComposer, ImReturnToLatestButton } from "./components";
+import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import { ImChatComposer, ImReturnToLatestButton, ImStandaloneShell } from "./components";
 import type { ImChatComposerPanel } from "./components";
 import { getRecentImReactionSnapshot } from "./reaction-catalog";
 import { encodeImComposerJudgement } from "./reaction-policy";
@@ -16,6 +17,7 @@ import { encodeImComposerJudgement } from "./reaction-policy";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   window.localStorage.clear();
   document.body.replaceChildren();
   vi.restoreAllMocks();
@@ -65,6 +67,79 @@ async function waitForRuntimeTranslation() {
 }
 
 describe("ImChatComposer", () => {
+  it("anchors the closed-keyboard chat frame to the same viewport bottom as home navigation", async () => {
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 690 },
+      offsetTop: { configurable: true, value: 20 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 5 }
+    });
+    vi.stubGlobal("visualViewport", visualViewport);
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ClientThemeProvider>
+            <ImStandaloneShell>
+              <div data-testid="chat-content" />
+            </ImStandaloneShell>
+          </ClientThemeProvider>
+        </MemoryRouter>
+      );
+    });
+
+    const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+    expect(stylesSource).toContain("bottom: var(--im-visual-viewport-bottom, 0px)");
+
+    await act(async () => root.unmount());
+  });
+
+  it("follows the live visual viewport only while the keyboard editor has focus", async () => {
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 690 },
+      offsetTop: { configurable: true, value: 20 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 5 }
+    });
+    vi.stubGlobal("visualViewport", visualViewport);
+
+    const editor = document.createElement("input");
+    document.body.append(editor);
+    editor.focus();
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ClientThemeProvider>
+            <ImStandaloneShell>
+              <div data-testid="chat-content" />
+            </ImStandaloneShell>
+          </ClientThemeProvider>
+        </MemoryRouter>
+      );
+    });
+
+    const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("690px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("20px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+
+    await act(async () => root.unmount());
+  });
+
   it("keeps the authoritative composer draft raw while localizing its placeholder", async () => {
     window.localStorage.setItem("needo.language", "ja");
     window.localStorage.setItem("needo.language.mode", "manual");

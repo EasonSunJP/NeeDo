@@ -262,6 +262,43 @@ const createFixture = async () => {
   const page = <T>(row: T) => ({ list: [row], total: 1, page: 1, page_size: 20 });
   const backofficeRepository = {
     getDashboard: jest.fn(),
+    listManagedUsers: jest.fn(async () =>
+      page({
+        id: 41,
+        needoId: "u0000000041",
+        username: "Customer One",
+        displayName: "Customer One",
+        email: "customer@example.com",
+        phone: null,
+        emailBound: true,
+        phoneBound: false,
+        avatarUrl: null,
+        isActive: true,
+        isTestAccount: false,
+        source: ["password"],
+        identities: [],
+        roles: [],
+        groups: ["system:free"],
+        ekycVerified: false,
+        membership: {
+          tierCode: "free",
+          tierVersionPublicId: null,
+          entitlementPublicId: null,
+          expiresAt: null,
+          experienceMultiplier: 1,
+          lockVersion: null
+        },
+        experience: { currentLevel: 1, totalExpUnits: "0" },
+        ndpBalance: { available: 0, frozen: 0 },
+        bookingCount: 3,
+        city: "Tokyo",
+        privacyMode: true,
+        privacyScope: "limited",
+        lastLoginAt: null,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      })
+    ),
     listOrders: jest.fn(),
     listSchedule: jest.fn(),
     listFinanceSettlements: jest.fn(),
@@ -337,6 +374,36 @@ const createFixture = async () => {
 };
 
 describe("master data write APIs", () => {
+  it("lists the canonical user aggregate inside the authenticated merchant shop", async () => {
+    const fixture = await createFixture();
+    const merchantToken = await fixture.login("merchant@example.com");
+
+    const response = await request(fixture.app)
+      .get(
+        "/api/v1/merchant-admin/users?page=1&pageSize=20&city=Tokyo&privacy=enabled&sortBy=city&sortDirection=desc"
+      )
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200);
+
+    expect(response.body.data.list[0]).toMatchObject({
+      email: "customer@example.com",
+      city: "Tokyo",
+      bookingCount: 3,
+      privacyMode: true
+    });
+    expect(fixture.backofficeRepository.listManagedUsers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "merchant",
+        shopId: 11,
+        city: "Tokyo",
+        privacy: "enabled",
+        sortBy: "city",
+        sortDirection: "desc"
+      }),
+      expect.any(Date)
+    );
+  });
+
   it("reads platform and authenticated-shop profile details", async () => {
     const fixture = await createFixture();
     const adminToken = await fixture.login("admin@example.com");

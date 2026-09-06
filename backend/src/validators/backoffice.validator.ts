@@ -11,6 +11,19 @@ const paginationQuerySchema = {
 };
 
 const isoDateSchema = z.coerce.date();
+const repeated = <TSchema extends z.ZodTypeAny>(schema: TSchema) =>
+  z.preprocess(
+    (value) => (value === undefined ? undefined : Array.isArray(value) ? value : [value]),
+    z.array(schema).min(1).max(20).optional()
+  );
+const managedIdentityTypeSchema = z.enum([
+  "platform",
+  "customer",
+  "technician",
+  "merchant",
+  "broker",
+  "scout"
+]);
 
 export const manageableMerchantShopsQuerySchema = z
   .object({
@@ -37,11 +50,29 @@ export const backofficeManagedUserListQuerySchema = z
     pageSize: z.coerce.number().int().positive().max(100).default(20),
     keyword: z.string().trim().max(100).optional(),
     tier: z.enum(["free", "silver", "gold", "black_diamond"]).optional(),
+    tiers: repeated(z.enum(["free", "silver", "gold", "black_diamond"])),
     groupCode: z.string().trim().min(1).max(80).optional(),
-    identityType: z.string().trim().min(1).max(50).optional(),
+    identityType: managedIdentityTypeSchema.optional(),
+    identityTypes: repeated(managedIdentityTypeSchema),
     source: z.string().trim().min(1).max(32).optional(),
     state: z.enum(["active", "inactive"]).optional(),
+    states: repeated(z.enum(["active", "inactive"])),
     ekyc: z.enum(["verified", "unverified"]).optional(),
+    ekycStates: repeated(z.enum(["verified", "unverified"])),
+    city: z.string().trim().min(1).max(100).optional(),
+    cities: repeated(z.string().trim().min(1).max(100)),
+    emailState: z.enum(["set", "unset"]).optional(),
+    emailStates: repeated(z.enum(["set", "unset"])),
+    privacy: z
+      .enum(["enabled", "disabled", "public", "privateAll", "limited", "network"])
+      .optional(),
+    privacyScopes: repeated(
+      z.enum(["enabled", "disabled", "public", "privateAll", "limited", "network"])
+    ),
+    minBookings: z.coerce.number().int().nonnegative().optional(),
+    maxBookings: z.coerce.number().int().nonnegative().optional(),
+    sortBy: z.enum(["displayName", "email", "city", "createdAt"]).default("createdAt"),
+    sortDirection: z.enum(["asc", "desc"]).default("desc"),
     minLevel: z.coerce.number().int().min(1).max(100).optional(),
     maxLevel: z.coerce.number().int().min(1).max(100).optional(),
     minExpUnits: z.coerce.bigint().nonnegative().optional(),
@@ -57,6 +88,7 @@ export const backofficeManagedUserListQuerySchema = z
       [value.minLevel, value.maxLevel, "maxLevel"],
       [value.minExpUnits, value.maxExpUnits, "maxExpUnits"],
       [value.minNdpBalance, value.maxNdpBalance, "maxNdpBalance"],
+      [value.minBookings, value.maxBookings, "maxBookings"],
       [value.registeredFrom?.getTime(), value.registeredTo?.getTime(), "registeredTo"]
     ] as const;
     for (const [minimum, maximum, path] of ranges) {
@@ -71,6 +103,12 @@ export const backofficeManagedUserListQuerySchema = z
   });
 
 export type BackofficeManagedUserListQuery = z.infer<typeof backofficeManagedUserListQuerySchema>;
+
+export const backofficeManagedUserDetailQuerySchema = z.object({
+  audit_page: z.coerce.number().int().positive().default(1),
+  audit_page_size: z.coerce.number().refine((value) => value === 10 || value === 50).default(10)
+}).strict();
+export type BackofficeManagedUserDetailQuery = z.infer<typeof backofficeManagedUserDetailQuerySchema>;
 
 export const backofficeManagedUserParamSchema = z
   .object({ userId: z.coerce.number().int().positive() })

@@ -1,4 +1,6 @@
 import {
+  LEGAL_DOCUMENT_PERMISSIONS,
+  PLATFORM_SETTINGS_PERMISSIONS,
   SYSTEM_PERMISSIONS,
   SYSTEM_ROLE_CODES,
   buildRolePermissionAssignments
@@ -62,6 +64,30 @@ describe("user management seed contract", () => {
     const assignments = buildRolePermissionAssignments();
 
     expect(assignments.admin).toEqual(SYSTEM_PERMISSIONS.map((permission) => permission.code));
+  });
+
+  it("assigns system settings writes to operators and reads to viewers", () => {
+    const assignments = buildRolePermissionAssignments();
+    const readPermissions = [
+      PLATFORM_SETTINGS_PERMISSIONS.read,
+      PLATFORM_SETTINGS_PERMISSIONS.imRetentionRead,
+      LEGAL_DOCUMENT_PERMISSIONS.read,
+      PLATFORM_SETTINGS_PERMISSIONS.paymentRead
+    ];
+    const writePermissions = [
+      PLATFORM_SETTINGS_PERMISSIONS.write,
+      PLATFORM_SETTINGS_PERMISSIONS.brandMediaActivate,
+      PLATFORM_SETTINGS_PERMISSIONS.imRetentionWrite,
+      LEGAL_DOCUMENT_PERMISSIONS.write,
+      LEGAL_DOCUMENT_PERMISSIONS.publish,
+      PLATFORM_SETTINGS_PERMISSIONS.paymentWrite
+    ];
+
+    expect(assignments.operator).toEqual(
+      expect.arrayContaining([...readPermissions, ...writePermissions])
+    );
+    expect(assignments.viewer).toEqual(expect.arrayContaining(readPermissions));
+    for (const permission of writePermissions) expect(assignments.viewer).not.toContain(permission);
   });
 
   it("uses the correct password source for admin and required test accounts", () => {

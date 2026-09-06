@@ -36,6 +36,9 @@ const response = (kind: "service" | "technician" | "customer", metric = "gmv") =
     categoryId: 7,
     gmvJpy: 12800,
     completedCount: 4,
+    testGmvJpy: kind === "service" ? 12800 : kind === "technician" ? 6400 : 0,
+    testCompletedCount: kind === "service" ? 4 : kind === "technician" ? 2 : 0,
+    dataComposition: kind === "service" ? "test" as const : kind === "technician" ? "mixed" as const : "formal" as const,
     registeredAt: "2026-01-01T00:00:00.000Z"
   }],
   total: 1,
@@ -64,10 +67,12 @@ describe("AnalyticsRankingPanel", () => {
   });
 
   it("switches technician ranking between GMV and completed count using the formal API", async () => {
+    const onOpenDetail = vi.fn();
     await act(async () => root.render(
       <AnalyticsRankingPanel
         categories={[{ id: 7, name: "放松休闲" }]}
         kind="technician"
+        onOpenDetail={onOpenDetail}
         query={{ period: "last7days" }}
         title="技师排行 TOP10"
       />
@@ -79,6 +84,17 @@ describe("AnalyticsRankingPanel", () => {
     expect(container.textContent).toContain("美咲");
     expect(container.textContent).toContain("¥12,800");
     expect(container.textContent).toContain("4 单");
+    expect(
+      container.querySelector('[data-ranking-header-row="primary"]')?.classList.contains("min-h-9")
+    ).toBe(true);
+    expect(container.querySelector('[data-dashboard-test-badge="true"]')?.textContent).toBe("TEST");
+    const detail = container.querySelector<HTMLButtonElement>(
+      '[data-ranking-detail-control="true"]'
+    );
+    expect(detail).not.toBeNull();
+    expect(detail?.getAttribute("aria-label")).toContain("美咲");
+    await act(async () => detail?.click());
+    expect(onOpenDetail).toHaveBeenCalledWith(response("technician").list[0]);
 
     await act(async () => {
       container.querySelector<HTMLButtonElement>('button[aria-label="技师排行 TOP10按完成次数排序"]')?.click();
@@ -88,11 +104,29 @@ describe("AnalyticsRankingPanel", () => {
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
+  it.each([
+    ["service", true],
+    ["technician", true],
+    ["customer", false]
+  ] as const)("renders test composition for %s without labelling formal rows", async (kind, expected) => {
+    await act(async () => root.render(
+      <AnalyticsRankingPanel
+        kind={kind}
+        onOpenDetail={() => undefined}
+        query={{ period: "last7days" }}
+        title="排行榜 TOP10"
+      />
+    ));
+
+    expect(Boolean(container.querySelector('[data-dashboard-test-badge="true"]'))).toBe(expected);
+  });
+
   it("applies the selected formal service category without client-side ranking", async () => {
     await act(async () => root.render(
       <AnalyticsRankingPanel
         categories={[{ id: 7, name: "放松休闲" }]}
         kind="customer"
+        onOpenDetail={() => undefined}
         query={{ period: "last7days", city: "东京" }}
         title="用户消费排行 TOP10"
       />
@@ -112,6 +146,7 @@ describe("AnalyticsRankingPanel", () => {
       <AnalyticsRankingPanel
         categories={[{ id: 7, name: "放松休闲" }]}
         kind="technician"
+        onOpenDetail={() => undefined}
         query={{ period: "last7days" }}
         title="技师排行 TOP10"
       />
@@ -129,6 +164,7 @@ describe("AnalyticsRankingPanel", () => {
       <AnalyticsRankingPanel
         categories={[{ id: 8, name: "宠物相关" }]}
         kind="technician"
+        onOpenDetail={() => undefined}
         query={{ period: "last7days" }}
         title="技师排行 TOP10"
       />

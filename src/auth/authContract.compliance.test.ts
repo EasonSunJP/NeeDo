@@ -12,6 +12,7 @@ const me = {
   hasPassword: true,
   username: "User",
   avatarUrl: null,
+  profileDisplayName: "运营者用户端姓名",
   isActive: true,
   isTestAccount: false,
   currentIdentity: {
@@ -19,14 +20,16 @@ const me = {
     publicId: "u0000000011",
     scopeId: 41,
     scopeType: "customer_profile",
-    type: "customer"
+    type: "customer",
+    displayName: "用户身份"
   },
   identities: [{
     id: 11,
     publicId: "u0000000011",
     scopeId: 41,
     scopeType: "customer_profile",
-    type: "customer"
+    type: "customer",
+    displayName: "用户身份"
   }],
   roles: ["customer"],
   permissions: ["auth:me"],

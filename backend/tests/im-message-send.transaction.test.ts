@@ -141,4 +141,123 @@ describe("persistImMessageInTransaction", () => {
       })
     );
   });
+
+  it("snapshots the active global retention policy without rewriting older messages", async () => {
+    const createdMessage = { id: 802 };
+    const tx = {
+      conversationParticipant: {
+        findFirst: jest.fn(async () => ({
+          id: 1,
+          conversation: {
+            type: ConversationType.DIRECT,
+            accessPolicy: "BUSINESS_CONTEXT",
+            privacyModeEnabled: false,
+            disappearingTtlSeconds: null,
+            privacyPolicyVersion: 1,
+            participants: [
+              { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+              { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+            ]
+          }
+        })),
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn() },
+      imPolicy: {
+        findFirst: jest.fn(async () => ({
+          textRetentionSeconds: 3_888_000,
+          imageRetentionSeconds: 604_800,
+          videoRetentionSeconds: 604_800,
+          recallWindowSeconds: 180,
+          version: 8
+        }))
+      },
+      mediaAsset: { findFirst: jest.fn(), updateMany: jest.fn() },
+      message: { create: jest.fn(async () => createdMessage) },
+      conversation: { update: jest.fn() }
+    };
+
+    await persistImMessageInTransaction(tx as never, {
+      content: "after update",
+      conversationId: 91,
+      metadata: null,
+      senderIdentityId: 71,
+      senderUserId: 41,
+      transactionNow,
+      type: MessageType.TEXT
+    });
+
+    expect(tx.message.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        expiresAt: new Date(transactionNow.getTime() + 3_888_000_000),
+        lifecycleVersion: 8,
+        privacyPolicyVersionAtSend: null
+      })
+    }));
+  });
+
+  it("binds same-conversation uploaded media to the message retention snapshot", async () => {
+    const tx = {
+      conversationParticipant: {
+        findFirst: jest.fn(async () => ({
+          id: 1,
+          conversation: {
+            type: ConversationType.DIRECT,
+            accessPolicy: "BUSINESS_CONTEXT",
+            privacyModeEnabled: false,
+            disappearingTtlSeconds: null,
+            privacyPolicyVersion: 1,
+            participants: [
+              { userId: 41, identityId: 71, identity: { ownedContacts: [] } },
+              { userId: 52, identityId: 82, identity: { ownedContacts: [] } }
+            ]
+          }
+        })),
+        updateMany: jest.fn()
+      },
+      contact: { count: jest.fn() },
+      imPolicy: {
+        findFirst: jest.fn(async () => ({
+          textRetentionSeconds: 2_592_000,
+          imageRetentionSeconds: 604_800,
+          videoRetentionSeconds: 604_800,
+          recallWindowSeconds: 180,
+          version: 9
+        }))
+      },
+      mediaAsset: {
+        findFirst: jest.fn(async () => ({ id: 33 })),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
+      message: { create: jest.fn(async () => ({ id: 803 })) },
+      conversation: { update: jest.fn() }
+    };
+    const url = "https://media.needo.test/media/im/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png";
+
+    await expect(persistImMessageInTransaction(tx as never, {
+      content: url,
+      conversationId: 91,
+      metadata: { needoMessageType: "image", needoMessageExt: { url } },
+      senderIdentityId: 71,
+      senderUserId: 41,
+      transactionNow,
+      type: MessageType.TEXT
+    })).resolves.toMatchObject({ status: "created" });
+    expect(tx.mediaAsset.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        entityType: "im_media_upload",
+        entityId: 91,
+        ownerUserId: 41,
+        ownerIdentityId: 71,
+        url
+      })
+    }));
+    expect(tx.mediaAsset.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: {
+        entityType: "message",
+        entityId: 803,
+        purgeAt: new Date(transactionNow.getTime() + 604_800_000)
+      }
+    }));
+  });
 });

@@ -9,8 +9,8 @@ import { AnalyticsRankingsSection } from "./AnalyticsRankingsSection";
 const coreMocks = vi.hoisted(() => ({ listCategories: vi.fn() }));
 vi.mock("../core-read/api", () => ({ coreReadApi: coreMocks }));
 vi.mock("./AnalyticsRankingPanel", () => ({
-  AnalyticsRankingPanel: ({ kind, title, categories }: { kind: string; title: string; categories?: unknown[] }) => (
-    <div data-categories={categories?.length ?? 0} data-kind={kind}>{title}</div>
+  AnalyticsRankingPanel: ({ kind, title, categories, onOpenDetail }: { kind: string; title: string; categories?: unknown[]; onOpenDetail?: unknown }) => (
+    <div data-categories={categories?.length ?? 0} data-has-detail={typeof onOpenDetail === "function"} data-kind={kind}>{title}</div>
   )
 }));
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
@@ -41,7 +41,10 @@ describe("AnalyticsRankingsSection", () => {
   });
 
   it("renders the three requested Top10 panels with active formal service categories", async () => {
-    await act(async () => root.render(<AnalyticsRankingsSection query={{ period: "last7days" }} />));
+    const onOpenDetail = vi.fn();
+    await act(async () => root.render(
+      <AnalyticsRankingsSection onOpenDetail={onOpenDetail} query={{ period: "last7days" }} />
+    ));
     expect(coreMocks.listCategories).toHaveBeenCalledWith({ page: 1, pageSize: 100 });
     expect([...container.querySelectorAll("[data-kind]")].map((node) => node.getAttribute("data-kind")))
       .toEqual(["service", "technician", "customer"]);
@@ -49,6 +52,9 @@ describe("AnalyticsRankingsSection", () => {
     expect(container.textContent).toContain("技师排行 TOP10");
     expect(container.textContent).toContain("用户消费排行 TOP10");
     expect(container.querySelector('[data-kind="technician"]')?.getAttribute("data-categories")).toBe("1");
+    expect([...container.querySelectorAll("[data-kind]")].every(
+      (node) => node.getAttribute("data-has-detail") === "true"
+    )).toBe(true);
   });
 
   it("loads every formal category page before exposing the ranking filters", async () => {
@@ -66,7 +72,9 @@ describe("AnalyticsRankingsSection", () => {
         page_size: 100
       });
 
-    await act(async () => root.render(<AnalyticsRankingsSection query={{ period: "last7days" }} />));
+    await act(async () => root.render(
+      <AnalyticsRankingsSection onOpenDetail={() => undefined} query={{ period: "last7days" }} />
+    ));
 
     expect(coreMocks.listCategories).toHaveBeenNthCalledWith(1, { page: 1, pageSize: 100 });
     expect(coreMocks.listCategories).toHaveBeenNthCalledWith(2, { page: 2, pageSize: 100 });

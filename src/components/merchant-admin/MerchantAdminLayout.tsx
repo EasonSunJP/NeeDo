@@ -612,7 +612,6 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
             <div className="flex items-center gap-3">
               <AdminAccountMenu
                 accountName={accountName}
-                fallbackEmail={session?.email}
                 loginPath="/login/merchant-admin"
                 portal="merchant"
                 roleLabel="店铺管理员"

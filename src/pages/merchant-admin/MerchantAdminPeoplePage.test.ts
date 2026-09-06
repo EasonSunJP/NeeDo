@@ -6,13 +6,16 @@ const source = readFileSync(
   new URL("./MerchantAdminPeoplePage.tsx", import.meta.url),
   "utf8",
 );
+const unifiedUserDetailSource = readFileSync(
+  new URL("../../features/platform-user-management/UnifiedUserDetailDrawer.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("MerchantAdminPeoplePage formal scoped data", () => {
-  it("uses the canonical employee API for staff and keeps customers on the scoped formal API", () => {
+  it("uses the canonical employee API for staff and the shared scoped user directory", () => {
     expect(source).toContain("merchantEmployeeApi.list(");
-    expect(source).toContain(
-      'backofficeRealDataApi.customers("merchant-admin"',
-    );
+    expect(source).toContain("UnifiedUserDirectory");
+    expect(source).toContain('scope="merchant"');
     expect(source).toContain("pageSize");
     expect(source).toContain("keyword:");
     expect(source).not.toContain(
@@ -28,16 +31,14 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toMatch(
       /loadCoreReadWithTransientRetry\(\s*\(\) =>\s*merchantEmployeeApi\.list\(query\),?\s*\)/,
     );
-    expect(source).toMatch(
-      /loadCoreReadWithTransientRetry\(\s*\(\) =>\s*backofficeRealDataApi\.customers\("merchant-admin", query\),?\s*\)/,
-    );
+    expect(source).not.toContain('backofficeRealDataApi.customers("merchant-admin"');
     expect(source).toContain(
       "describeMerchantReadError(loadError, languageRef.current)",
     );
     expect(source).toContain('!loading && !error && module === "staff"');
-    expect(source).toContain('!loading && !error && module === "users"');
+    expect(source).toContain('module === "users"');
     expect(source).toMatch(
-      /!loading\s*&&\s*!error\s*&&\s*module !== "reviews"\s*&&\s*total > 0/,
+      /!loading\s*&&\s*!error\s*&&\s*module === "staff"\s*&&\s*total > 0/,
     );
   });
 
@@ -71,11 +72,12 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).not.toContain("getMerchantStaffEmploymentLabel");
   });
 
-  it("loads the employee card by NeeDoID while preserving the customer formal panel", () => {
+  it("loads the employee card by NeeDoID while using the unified customer panel", () => {
     expect(source).toContain("merchantEmployeeApi.detail(needoId)");
-    expect(source).toContain('backofficeRealDataApi.customer("merchant-admin"');
+    expect(source).toContain("UnifiedUserDetailDrawer");
+    expect(source).toContain('scope="merchant"');
     expect(source).toContain("EmployeeDetailCard");
-    expect(source).toContain("FormalCustomerDetailPanel");
+    expect(source).not.toContain("FormalCustomerDetailPanel");
     expect(source).not.toContain("FormalTechnicianDetailPanel");
     expect(source).toContain("selectedEmployeeNeedoId");
     expect(source).toContain("selectedCustomerId");
@@ -102,8 +104,7 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain("employeeDetailRequest.invalidate()");
     expect(source).toContain("employeeDetailRequest.activate()");
     expect(source).toContain("employeeDetailRequest.dispose()");
-    expect(source).toContain("customerDetailRequest.load(customer.id)");
-    expect(source).toContain("customerDetailRequest.retry()");
+    expect(source).not.toContain("customerDetailRequest.load(customerId)");
   });
 
   it("routes drawer status labels through the current language", () => {
@@ -113,12 +114,12 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     );
     expect(source).toContain('"员工详细信息卡读取失败"');
     expect(source).toContain("translateText(fallback, language)");
-    expect(source).toContain(
+    expect(unifiedUserDetailSource).toContain(
       'translateText("正在读取用户详细信息...", language)',
     );
-    expect(source).toContain('"用户详细信息读取失败"');
-    expect(source).toContain('translateText("重试", language)');
-    expect(source).not.toContain(">重试</Button>");
+    expect(unifiedUserDetailSource).toContain('"用户详细信息读取失败"');
+    expect(unifiedUserDetailSource).toContain('translateText("重试", language)');
+    expect(unifiedUserDetailSource).not.toContain(">重试</Button>");
   });
 
   it("does not invent reviews, full payroll amounts, or customer analytics and uses the formal employee schedule", () => {

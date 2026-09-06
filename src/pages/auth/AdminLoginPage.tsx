@@ -9,6 +9,7 @@ import {
 } from "../../auth/browserPasswordSave";
 import type { PortalScope } from "../../auth/portal";
 import { useAuth } from "../../auth/AuthProvider";
+import type { VerificationChallengePayload } from "../../api/auth";
 import { purgeLegacyRememberedCredentials } from "../../auth/rememberCredentials";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
 import { AdminToggleSwitch } from "../../components/admin/AdminToggleSwitch";
@@ -411,7 +412,8 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     logout,
     sendVerificationCode,
     session,
-    switchPortal
+    switchPortal,
+    verifyPasswordLogin
   } = useAuth();
   const { language } = useI18n();
   const copy = adminLoginCopy[language];
@@ -428,6 +430,8 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [codeEmail, setCodeEmail] = useState<string>(config.defaultEmail);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
+  const [passwordChallenge, setPasswordChallenge] = useState<VerificationChallengePayload | null>(null);
+  const [passwordOtp, setPasswordOtp] = useState("");
   const [error, setError] = useState("");
   const redirectPath = searchParams.get("redirect");
   const nextPath = redirectPath || config.entryPath;
@@ -509,6 +513,14 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
+    if (!("session" in result)) {
+      setAccount(loginAccount);
+      setPassword(loginPassword);
+      setPasswordChallenge(result.challenge);
+      setPasswordOtp("");
+      return;
+    }
+
     if (savePassword && result.session.portal === config.authPortal) {
       await requestBrowserPasswordSave({
         id: loginAccount,
@@ -517,6 +529,32 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       });
     }
 
+    navigateToBackendSession(result.session.portal);
+  };
+
+  const submitPasswordVerification = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!passwordChallenge || passwordOtp.length !== 6) {
+      setError(copy.requiredError);
+      return;
+    }
+    setError("");
+    const result = await verifyPasswordLogin(
+      { challengeId: passwordChallenge.challengeId, otp: passwordOtp },
+      config.authPortal
+    );
+    if (!result.ok) {
+      setError(result.message || copy.accountError);
+      return;
+    }
+    if (savePassword && result.session.portal === config.authPortal) {
+      await requestBrowserPasswordSave({
+        id: account,
+        name: copy.portalName[portal],
+        password
+      });
+    }
+    setPasswordChallenge(null);
     navigateToBackendSession(result.session.portal);
   };
 
@@ -599,6 +637,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       key={item.mode}
                       onClick={() => {
                         setMode(item.mode);
+                        setPasswordChallenge(null);
                         setError("");
                       }}
                       type="button"
@@ -627,7 +666,46 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                   </div>
                 ) : null}
 
-                {!hasAccess && mode === "account" ? (
+                {!hasAccess && mode === "account" && passwordChallenge ? (
+                  <form className="space-y-5" data-testid="password-login-verification" onSubmit={submitPasswordVerification}>
+                    <div>
+                      <h2 className="admin-login-title text-xl font-black">{copy.codeLabel}</h2>
+                      <p className="admin-login-muted mt-2 text-sm font-semibold">
+                        {copy.codeSent} {passwordChallenge.maskedEmail}
+                      </p>
+                    </div>
+                    <label className="block">
+                      <span className="admin-login-label mb-2 block text-sm font-black">{copy.codeLabel}</span>
+                      <div className="admin-login-field">
+                        <span className="admin-login-field-icon">K</span>
+                        <input
+                          autoComplete="one-time-code"
+                          data-testid="password-login-otp"
+                          inputMode="numeric"
+                          maxLength={6}
+                          onChange={(event) => setPasswordOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                          placeholder={copy.codePlaceholder}
+                          value={passwordOtp}
+                        />
+                      </div>
+                    </label>
+                    {error ? <p className="admin-login-error px-4 py-3 text-sm font-bold">{error}</p> : null}
+                    <button className="admin-login-primary w-full text-base" type="submit">{copy.login}</button>
+                    <button
+                      className="admin-login-secondary w-full px-4 text-sm"
+                      onClick={() => {
+                        setPasswordChallenge(null);
+                        setPasswordOtp("");
+                        setError("");
+                      }}
+                      type="button"
+                    >
+                      {copy.tabs.account}
+                    </button>
+                  </form>
+                ) : null}
+
+                {!hasAccess && mode === "account" && !passwordChallenge ? (
                   <form
                     action="/api/v1/auth/login"
                     autoComplete="on"

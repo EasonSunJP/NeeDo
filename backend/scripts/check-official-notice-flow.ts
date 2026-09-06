@@ -45,12 +45,14 @@ async function main(): Promise<void> {
             isTestAccount: true,
             isActive: true,
             deletedAt: null,
+            needoId: { startsWith: "u" },
             identities: { some: { isActive: true, deletedAt: null } }
           },
           orderBy: { id: "asc" },
           take: 2,
           select: {
             id: true,
+            needoId: true,
             identities: {
               where: { isActive: true, deletedAt: null },
               take: 1,
@@ -59,6 +61,10 @@ async function main(): Promise<void> {
           }
         });
         assert.equal(accounts.length, 2, "two existing formal test accounts are required");
+        assert.ok(
+          accounts.every((account) => /^u[0-9]{10}$/u.test(account.needoId)),
+          "formal test accounts must expose current U identifiers"
+        );
         const sender = accounts[0];
         const outsider = accounts[1];
         // Every fixture and every nested repository operation stays inside this rollback boundary.
@@ -341,11 +347,13 @@ async function checkConcurrentDelivery() {
         isTestAccount: true,
         isActive: true,
         deletedAt: null,
+        needoId: { startsWith: "u" },
         identities: { some: { isActive: true, deletedAt: null } }
       },
       select: { id: true, needoId: true },
       orderBy: { id: "asc" }
     });
+    assert.match(user.needoId, /^u[0-9]{10}$/u);
     const now = new Date();
     // Future scheduling prevents the ordinary local workers from consuming this fixture.
     const dueAt = new Date(now.getTime() + 3_600_000);

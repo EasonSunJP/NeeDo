@@ -33,4 +33,14 @@ describe("userManagementApi", () => {
       query: { isTestAccount: true, page: 2, pageSize: 20 }
     });
   });
+
+  it("passes the role filter to the paginated formal user list", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await userManagementApi.listUsers({ roleId: 7, page: 2, pageSize: 20 });
+
+    expect(httpClient.request).toHaveBeenCalledWith("/users", {
+      query: { roleId: 7, page: 2, pageSize: 20 }
+    });
+  });
 });

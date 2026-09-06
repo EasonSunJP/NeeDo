@@ -105,7 +105,13 @@ export async function persistImMessageInTransaction(
 
   const policy = await transaction.imPolicy.findFirst({
     where: { activeKey: "active", deletedAt: null },
-    select: { textRetentionSeconds: true, recallWindowSeconds: true, version: true }
+    select: {
+      textRetentionSeconds: true,
+      imageRetentionSeconds: true,
+      videoRetentionSeconds: true,
+      recallWindowSeconds: true,
+      version: true
+    }
   });
   const privacyTtlSeconds = conversation.disappearingTtlSeconds;
   const usesPrivacyExpiry =
@@ -117,11 +123,27 @@ export async function persistImMessageInTransaction(
     privacyTtlSeconds <= IM_PRIVACY_TTL_MAX_SECONDS;
   const retentionSeconds = usesPrivacyExpiry
     ? privacyTtlSeconds
-    : (policy?.textRetentionSeconds ?? null);
-  const expiresAt =
-    retentionSeconds === null
-      ? null
-      : new Date(input.transactionNow.getTime() + retentionSeconds * 1_000);
+    : (policy?.textRetentionSeconds ?? 30 * 86_400);
+  const expiresAt = new Date(input.transactionNow.getTime() + retentionSeconds * 1_000);
+  const mediaReference = imMediaReference(input.metadata, input.content);
+  if (mediaReference === "invalid") throw new ImMediaBindingError();
+  const mediaAsset = mediaReference
+    ? await transaction.mediaAsset.findFirst({
+        where: {
+          entityType: "im_media_upload",
+          entityId: input.conversationId,
+          ownerUserId: input.senderUserId,
+          ownerIdentityId: input.senderIdentityId,
+          url: mediaReference.url,
+          mimeType: { startsWith: mediaReference.kind },
+          isActive: true,
+          purgedAt: null,
+          deletedAt: null
+        },
+        select: { id: true }
+      })
+    : null;
+  if (mediaReference && !mediaAsset) throw new ImMediaBindingError();
   const message = await transaction.message.create({
     data: {
       conversationId: input.conversationId,
@@ -140,6 +162,30 @@ export async function persistImMessageInTransaction(
     },
     include: imMessageInclude
   });
+
+  if (mediaReference && mediaAsset) {
+    const mediaRetentionSeconds =
+      mediaReference.kind === "video"
+        ? (policy?.videoRetentionSeconds ?? 3 * 86_400)
+        : (policy?.imageRetentionSeconds ?? 3 * 86_400);
+    const bound = await transaction.mediaAsset.updateMany({
+      where: {
+        id: mediaAsset.id,
+        entityType: "im_media_upload",
+        entityId: input.conversationId,
+        ownerUserId: input.senderUserId,
+        ownerIdentityId: input.senderIdentityId,
+        purgedAt: null,
+        deletedAt: null
+      },
+      data: {
+        entityType: "message",
+        entityId: message.id,
+        purgeAt: new Date(input.transactionNow.getTime() + mediaRetentionSeconds * 1_000)
+      }
+    });
+    if (bound.count !== 1) throw new Error("IM media binding conflict");
+  }
 
   await transaction.conversation.update({
     where: { id: input.conversationId },
@@ -180,4 +226,20 @@ export async function persistImMessageInTransaction(
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
   return value === null || value === undefined ? Prisma.JsonNull : (value as Prisma.InputJsonValue);
+}
+
+export class ImMediaBindingError extends Error {}
+
+function imMediaReference(
+  metadata: unknown,
+  content: string
+): { kind: "image" | "video"; url: string } | "invalid" | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const value = metadata as Record<string, unknown>;
+  if (value.needoMessageType !== "image" && value.needoMessageType !== "video") return null;
+  const ext = value.needoMessageExt;
+  if (!ext || typeof ext !== "object" || Array.isArray(ext)) return "invalid";
+  const url = (ext as Record<string, unknown>).url;
+  if (typeof url !== "string" || url !== content) return "invalid";
+  return { kind: value.needoMessageType, url };
 }

@@ -28,7 +28,10 @@ import {
   MembershipBenefitCapabilityService,
   type MembershipBenefitDeliveryCapability
 } from "./membership-benefit-capability.service";
-import type { PlatformMembershipBenefitUpdateBody } from "../validators/platform-membership.validator";
+import type {
+  PlatformMembershipBenefitUpdateBody,
+  UserMembershipAdjustmentBody
+} from "../validators/platform-membership.validator";
 
 type AuditInputFactory = Pick<AuditLogService, "createInput">;
 
@@ -60,6 +63,8 @@ const hexColorPattern = /^#[0-9A-Fa-f]{6}$/;
 const themeKeys = [
   "detailAccentColor",
   "detailSurfaceColor",
+  "detailSurfaceMiddleColor",
+  "detailSurfaceBottomColor",
   "detailItemSurfaceColor",
   "detailOuterBorderColor",
   "detailItemBorderColor",
@@ -94,11 +99,21 @@ export class PlatformMembershipService {
       });
     }
 
-    const entitlement = await this.repository.findActiveEntitlementAt(userId, occurredAt);
-    if (entitlement) return entitlement;
-
-    const freeTier = await this.repository.findPublishedTierAt("free", occurredAt);
-    if (freeTier) return freeTier;
+    const [entitlement, adjustment] = await Promise.all([
+      this.repository.findActiveEntitlementAt(userId, occurredAt),
+      this.repository.findActiveAdjustmentAt?.(userId, occurredAt) ?? Promise.resolve(null)
+    ]);
+    const baseMembership =
+      adjustment?.tierMembership ??
+      entitlement ??
+      (await this.repository.findPublishedTierAt("free", occurredAt));
+    if (baseMembership) {
+      return {
+        ...baseMembership,
+        multiplier: adjustment?.multiplier ?? baseMembership.multiplier,
+        adjustmentLockVersion: adjustment?.lockVersion ?? null
+      };
+    }
 
     throw new AppError({
       code: ERROR_CODES.INTERNAL,
@@ -307,6 +322,68 @@ export class PlatformMembershipService {
     return this.unwrapEntitlementMutation(result);
   }
 
+  public async adjustUserMembership(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    userId: number,
+    input: UserMembershipAdjustmentBody
+  ) {
+    this.assertOperationsIdentity(actor);
+    if (!Number.isInteger(userId) || userId <= 0) throw this.validationError();
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (
+      reason.length < 1 ||
+      reason.length > 500 ||
+      (input.tierCode === undefined && input.multiplier === undefined) ||
+      (input.multiplier !== undefined &&
+        (!Number.isFinite(input.multiplier) || input.multiplier <= 0 || input.multiplier > 100)) ||
+      (input.expectedLockVersion !== null &&
+        (!Number.isInteger(input.expectedLockVersion) || input.expectedLockVersion < 1))
+    ) {
+      throw this.validationError();
+    }
+    const tierCode =
+      input.tierCode === undefined ? undefined : this.normalizeTierCode(input.tierCode);
+    const multiplierBps =
+      input.multiplier === undefined ? undefined : Math.round(input.multiplier * 10_000);
+    const effectiveFrom = this.now();
+    const adjust = this.repository.adjustUserMembershipWithAudit;
+    if (!adjust) throw this.invalidState();
+    const result = await adjust.call(this.repository, {
+      actorId: actor.userId,
+      userId,
+      ...(tierCode === undefined ? {} : { tierCode }),
+      ...(multiplierBps === undefined ? {} : { multiplierBps }),
+      reason,
+      expectedLockVersion: input.expectedLockVersion,
+      effectiveFrom,
+      audit: this.requireAuditFactory().createInput({
+        actor,
+        context,
+        action: "platform.user_membership.adjust",
+        targetType: "UserMembershipAdjustment",
+        metadata: {
+          userId,
+          tierCode: tierCode ?? null,
+          multiplierBps: multiplierBps ?? null,
+          reason,
+          expectedLockVersion: input.expectedLockVersion,
+          effectiveFrom: effectiveFrom.toISOString()
+        }
+      })
+    });
+    if ("value" in result) return result.value;
+    if (result.kind === "not_found") {
+      throw new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.platform_membership.adjustment_target_not_found",
+        statusCode: 404
+      });
+    }
+    if (result.kind === "version_conflict") throw this.versionConflict();
+    throw this.invalidState();
+  }
+
   public async saveTierDraft(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
@@ -352,8 +429,6 @@ export class PlatformMembershipService {
     ) {
       throw this.versionConflict();
     }
-    this.assertThemeContrast(draft.theme.detailAccentColor, draft.theme.detailSurfaceColor);
-
     const result = await this.repository.publishTierDraftWithAudit({
       actorId: actor.userId,
       tierCode: normalizedTierCode,
@@ -426,6 +501,8 @@ export class PlatformMembershipService {
     const theme: PlatformMembershipTierDraftPersistenceInput["theme"] = {
       detailAccentColor: normalizeColor("detailAccentColor"),
       detailSurfaceColor: normalizeColor("detailSurfaceColor"),
+      detailSurfaceMiddleColor: normalizeColor("detailSurfaceMiddleColor"),
+      detailSurfaceBottomColor: normalizeColor("detailSurfaceBottomColor"),
       detailItemSurfaceColor: normalizeColor("detailItemSurfaceColor"),
       detailOuterBorderColor: normalizeColor("detailOuterBorderColor"),
       detailItemBorderColor: normalizeColor("detailItemBorderColor"),
@@ -521,29 +598,6 @@ export class PlatformMembershipService {
       throw this.validationError();
     }
     return { extraThresholdNdp: threshold, extraAwardExpUnits: award };
-  }
-
-  private assertThemeContrast(accentColor: string, surfaceColor: string): void {
-    if (this.contrastRatio(accentColor, surfaceColor) >= 3) return;
-    throw new AppError({
-      code: ERROR_CODES.VALIDATION,
-      message: "error.platform_membership.theme_contrast",
-      statusCode: 400
-    });
-  }
-
-  private contrastRatio(first: string, second: string): number {
-    const luminance = (value: string): number => {
-      const channels = [1, 3, 5].map(
-        (offset) => parseInt(value.slice(offset, offset + 2), 16) / 255
-      );
-      const linear = channels.map((channel) =>
-        channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
-      );
-      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
-    };
-    const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a);
-    return (lighter + 0.05) / (darker + 0.05);
   }
 
   private assertVersion(expectedVersion: number, expectedLockVersion: number): void {

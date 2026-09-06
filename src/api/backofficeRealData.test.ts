@@ -24,6 +24,111 @@ describe("backofficeRealDataApi master data writes", () => {
     });
   });
 
+  it("strictly accepts formal, test, and mixed analytics ranking composition", async () => {
+    const query = {
+      metric: "gmv" as const,
+      period: "last7days" as const,
+      page: 1,
+      pageSize: 10
+    };
+    const row = {
+      rank: 1,
+      entityType: "service",
+      entityPublicId: "00000000-0000-4000-8000-000000000001",
+      entityNumericId: 1,
+      displayName: "Service",
+      avatarUrl: null,
+      categoryId: 8,
+      gmvJpy: 12_300,
+      completedCount: 2,
+      testGmvJpy: 0,
+      testCompletedCount: 0,
+      dataComposition: "formal",
+      registeredAt: "2026-01-01T00:00:00.000Z"
+    };
+    const payload = (item: Record<string, unknown>) => ({
+      dataStatus: "ready",
+      filter: {
+        kind: "service",
+        metric: "gmv",
+        period: "last7days",
+        from: "2026-08-26",
+        to: "2026-09-01",
+        timeZone: "Asia/Tokyo",
+        city: null,
+        categoryId: null,
+        evaluatedAt: "2026-09-01T05:30:00.000Z"
+      },
+      list: [item],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    for (const item of [
+      row,
+      { ...row, testGmvJpy: 12_300, testCompletedCount: 2, dataComposition: "test" },
+      { ...row, testGmvJpy: 6_000, testCompletedCount: 1, dataComposition: "mixed" }
+    ]) {
+      vi.mocked(httpClient.request).mockResolvedValueOnce(payload(item));
+      await expect(backofficeRealDataApi.analyticsRankings("service", query)).resolves.toMatchObject({
+        list: [expect.objectContaining({ dataComposition: item.dataComposition })]
+      });
+    }
+  });
+
+  it("rejects contradictory analytics ranking composition", async () => {
+    const query = {
+      metric: "gmv" as const,
+      period: "last7days" as const,
+      page: 1,
+      pageSize: 10
+    };
+    const row = {
+      rank: 1,
+      entityType: "service",
+      entityPublicId: "00000000-0000-4000-8000-000000000001",
+      entityNumericId: 1,
+      displayName: "Service",
+      avatarUrl: null,
+      categoryId: 8,
+      gmvJpy: 12_300,
+      completedCount: 2,
+      testGmvJpy: 6_000,
+      testCompletedCount: 1,
+      dataComposition: "mixed",
+      registeredAt: "2026-01-01T00:00:00.000Z"
+    };
+    const payload = (item: Record<string, unknown>) => ({
+      dataStatus: "ready",
+      filter: {
+        kind: "service",
+        metric: "gmv",
+        period: "last7days",
+        from: "2026-08-26",
+        to: "2026-09-01",
+        timeZone: "Asia/Tokyo",
+        city: null,
+        categoryId: null,
+        evaluatedAt: "2026-09-01T05:30:00.000Z"
+      },
+      list: [item],
+      total: 1,
+      page: 1,
+      page_size: 10
+    });
+    for (const item of [
+      { ...row, dataComposition: "unknown" },
+      { ...row, testGmvJpy: row.gmvJpy + 1 },
+      { ...row, testCompletedCount: row.completedCount + 1 },
+      { ...row, dataComposition: "formal", testCompletedCount: 1 }
+    ]) {
+      vi.mocked(httpClient.request).mockResolvedValueOnce(payload(item));
+      await expect(backofficeRealDataApi.analyticsRankings("service", query)).rejects.toThrow(
+        "error.api"
+      );
+    }
+  });
+
   it("uses protected operations endpoints for shops and technician approval", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
     const api = backofficeRealDataApi as typeof backofficeRealDataApi & Record<string, (...args: never[]) => Promise<unknown>>;

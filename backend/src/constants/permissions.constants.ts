@@ -138,6 +138,22 @@ export const TRAVEL_FARE_PERMISSIONS = {
   estimateCreate: "booking:travel-estimate:create"
 } as const;
 
+export const PLATFORM_SETTINGS_PERMISSIONS = {
+  read: "backoffice:system-settings:read",
+  write: "backoffice:system-settings:write",
+  brandMediaActivate: "backoffice:system-brand-media:activate",
+  imRetentionRead: "backoffice:im-retention:read",
+  imRetentionWrite: "backoffice:im-retention:write",
+  paymentRead: "backoffice:payment-settings:read",
+  paymentWrite: "backoffice:payment-settings:write"
+} as const;
+
+export const LEGAL_DOCUMENT_PERMISSIONS = {
+  read: "backoffice:legal-documents:read",
+  write: "backoffice:legal-documents:write",
+  publish: "backoffice:legal-documents:publish"
+} as const;
+
 export const ENTITY_FAVORITE_PERMISSIONS = {
   read: "entity-favorite:read",
   write: "entity-favorite:write"
@@ -706,6 +722,76 @@ export const SYSTEM_PERMISSIONS = [
     "发布经过版本与审计保护的 NDP 对日元汇率"
   ),
   createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.read,
+    "系统设置读取",
+    "api",
+    "backoffice",
+    "读取当前平台基础设置与能力状态"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.write,
+    "系统设置管理",
+    "api",
+    "backoffice",
+    "创建经过版本与审计保护的平台基础设置"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.brandMediaActivate,
+    "系统品牌媒体启用",
+    "api",
+    "backoffice",
+    "将经过验证的公开媒体设为登录 LOGO 或 Request 按钮图片"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.imRetentionRead,
+    "IM 保留策略读取",
+    "api",
+    "backoffice",
+    "读取服务器端 IM 消息与媒体保留策略"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.imRetentionWrite,
+    "IM 保留策略管理",
+    "api",
+    "backoffice",
+    "发布仅对新内容生效的服务器端 IM 保留策略"
+  ),
+  createPermission(
+    LEGAL_DOCUMENT_PERMISSIONS.read,
+    "政策协议读取",
+    "api",
+    "backoffice",
+    "分页读取政策协议目录、语言草稿与发布历史"
+  ),
+  createPermission(
+    LEGAL_DOCUMENT_PERMISSIONS.write,
+    "政策协议编辑",
+    "api",
+    "backoffice",
+    "创建政策协议目录并分别保存各语言草稿"
+  ),
+  createPermission(
+    LEGAL_DOCUMENT_PERMISSIONS.publish,
+    "政策协议发布",
+    "api",
+    "backoffice",
+    "将指定语言草稿发布为不可变版本"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.paymentRead,
+    "支付设置读取",
+    "api",
+    "backoffice",
+    "读取平台支持与未配置的支付能力状态"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.paymentWrite,
+    "支付设置管理",
+    "api",
+    "backoffice",
+    "启用或停用已正式支持的线下与 NDP 支付"
+  ),
+  createPermission(
     "backoffice:membership-tier:read",
     "平台会员等级读取",
     "api",
@@ -823,6 +909,20 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "backoffice",
     "发放、续费、升级、降级或终止用户平台会员资格"
+  ),
+  createPermission(
+    "backoffice:user-usage:comment",
+    "用户履约评论管理",
+    "api",
+    "backoffice",
+    "在用户履约时间线追加不可删除的运营评论"
+  ),
+  createPermission(
+    "backoffice:user-refund:amend",
+    "用户退款信息修订",
+    "api",
+    "backoffice",
+    "以理由和审计记录修订用户履约退款信息"
   ),
   createPermission(
     "backoffice:user-experience:read",
@@ -1983,6 +2083,22 @@ export type SystemPermissionCode = (typeof SYSTEM_PERMISSIONS)[number]["code"];
 
 export const SYSTEM_PERMISSION_CODES = SYSTEM_PERMISSIONS.map((permission) => permission.code);
 
+const SYSTEM_SETTINGS_READ_PERMISSION_CODES = [
+  PLATFORM_SETTINGS_PERMISSIONS.read,
+  PLATFORM_SETTINGS_PERMISSIONS.imRetentionRead,
+  LEGAL_DOCUMENT_PERMISSIONS.read,
+  PLATFORM_SETTINGS_PERMISSIONS.paymentRead
+] as const satisfies readonly SystemPermissionCode[];
+
+const SYSTEM_SETTINGS_WRITE_PERMISSION_CODES = [
+  PLATFORM_SETTINGS_PERMISSIONS.write,
+  PLATFORM_SETTINGS_PERMISSIONS.brandMediaActivate,
+  PLATFORM_SETTINGS_PERMISSIONS.imRetentionWrite,
+  LEGAL_DOCUMENT_PERMISSIONS.write,
+  LEGAL_DOCUMENT_PERMISSIONS.publish,
+  PLATFORM_SETTINGS_PERMISSIONS.paymentWrite
+] as const satisfies readonly SystemPermissionCode[];
+
 const EXCHANGE_COMMON_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.postList,
   EXCHANGE_PERMISSIONS.postDetail,
@@ -2083,7 +2199,8 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "backoffice:user-group:read",
   "backoffice:user-policy:read",
   "backoffice:ndp-experience-campaign:read",
-  TRAVEL_FARE_PERMISSIONS.backofficeRead
+  TRAVEL_FARE_PERMISSIONS.backofficeRead,
+  ...SYSTEM_SETTINGS_READ_PERMISSION_CODES
 ] as const satisfies readonly SystemPermissionCode[];
 
 const CUSTOMER_BOOKING_PERMISSION_CODES = [
@@ -2218,9 +2335,12 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:service-taxonomy:write",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
+  "backoffice:user-usage:comment",
+  "backoffice:user-refund:amend",
   "backoffice:user-group:write",
   "backoffice:user-policy:publish",
   "backoffice:ndp-experience-campaign:publish",
+  ...SYSTEM_SETTINGS_WRITE_PERMISSION_CODES,
   "backoffice:order-acceptance-pause:read",
   "backoffice:order-acceptance-pause:write",
   "backoffice:order-performance:write",

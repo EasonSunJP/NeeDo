@@ -24,7 +24,7 @@ export const platformMembershipSelfApi = {
     return {
       tierCode: tierCode as MyPlatformMembership["tierCode"], tierVersionPublicId: text(raw.tierVersionPublicId), multiplier: number(raw.multiplier), expiresAt: raw.expiresAt === null ? null : text(raw.expiresAt), ekycVerified: boolean(raw.ekycVerified),
       benefits: Array.isArray(raw.benefits) ? raw.benefits.map((value) => { const benefit = record(value); return { code: text(benefit.code), configuration: record(benefit.configuration) }; }) : invalid(),
-      theme: { detailAccentColor: color(rawTheme.detailAccentColor), detailSurfaceColor: color(rawTheme.detailSurfaceColor), detailItemSurfaceColor: color(rawTheme.detailItemSurfaceColor), detailOuterBorderColor: color(rawTheme.detailOuterBorderColor), detailItemBorderColor: color(rawTheme.detailItemBorderColor), detailAvatarBorderColor: color(rawTheme.detailAvatarBorderColor), simpleTopColor: color(rawTheme.simpleTopColor), simpleBottomColor: color(rawTheme.simpleBottomColor) }
+      theme: { detailAccentColor: color(rawTheme.detailAccentColor), detailSurfaceColor: color(rawTheme.detailSurfaceColor), detailSurfaceMiddleColor: color(rawTheme.detailSurfaceMiddleColor), detailSurfaceBottomColor: color(rawTheme.detailSurfaceBottomColor), detailItemSurfaceColor: color(rawTheme.detailItemSurfaceColor), detailOuterBorderColor: color(rawTheme.detailOuterBorderColor), detailItemBorderColor: color(rawTheme.detailItemBorderColor), detailAvatarBorderColor: color(rawTheme.detailAvatarBorderColor), simpleTopColor: color(rawTheme.simpleTopColor), simpleBottomColor: color(rawTheme.simpleBottomColor) }
     };
   }
 };

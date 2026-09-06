@@ -25,13 +25,17 @@ import {
   hasFormalDetailRefreshFailure,
   runFormalDetailMutationSequence
 } from "./formalDetailRequest";
+import { readPositiveIntegerSearchParam } from "./adminSearchParams";
 
 const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
-export function TechniciansPage() {
+export function TechniciansPage({ embeddedDetail }: {
+  embeddedDetail?: { id: number; onClose: () => void };
+} = {}) {
   const { language } = useOptionalI18n();
   const translate = useCallback((text: string) => translateText(text, language), [language]);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const detailTechnicianId = embeddedDetail?.id ?? readPositiveIntegerSearchParam(searchParams, "detailTechnicianId");
   const isReviewMode = searchParams.get("module") === "review";
   const isRankingMode = searchParams.get("module") === "ranking";
   const languageRef = useRef(language);
@@ -53,7 +57,7 @@ export function TechniciansPage() {
     setLoading(true);
     setError("");
     try {
-      if (isRankingMode) {
+      if (isRankingMode || embeddedDetail) {
         const shopPage = await backofficeRealDataApi.shops("backoffice", {
           page: 1,
           pageSize: 100
@@ -78,7 +82,7 @@ export function TechniciansPage() {
     } finally {
       setLoading(false);
     }
-  }, [isRankingMode, isReviewMode]);
+  }, [isRankingMode, isReviewMode, embeddedDetail?.id]);
 
   const technicianDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeTechnicianDetailPayload>({
     onError: (detailError) => {
@@ -108,6 +112,14 @@ export function TechniciansPage() {
     return () => technicianDetailRequest.dispose();
   }, [technicianDetailRequest]);
 
+  useEffect(() => {
+    if (detailTechnicianId === null) return;
+    setSelectedTechnicianId(detailTechnicianId);
+    setSelectedRanking(null);
+    setDraft({ displayName: "", city: "", serviceArea: "", shopId: "" });
+    void technicianDetailRequest.load(detailTechnicianId);
+  }, [detailTechnicianId, technicianDetailRequest]);
+
   const closeTechnician = useCallback(() => {
     technicianDetailRequest.invalidate();
     setSelectedTechnicianId(null);
@@ -115,7 +127,11 @@ export function TechniciansPage() {
     setTechnicianDetail(null);
     setTechnicianDetailLoading(false);
     setTechnicianDetailError("");
-  }, [technicianDetailRequest]);
+    if (embeddedDetail) { embeddedDetail.onClose(); return; }
+    const params = new URLSearchParams(searchParams);
+    params.delete("detailTechnicianId");
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams, technicianDetailRequest, embeddedDetail]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -188,6 +204,45 @@ export function TechniciansPage() {
     }
   };
 
+  const detailDrawer = (
+      <Drawer open={selectedTechnicianId !== null} title={translate("技师集中详情")} onClose={closeTechnician}>
+        {embeddedDetail && error ? <p role="alert" className="text-sm font-bold text-coral">{error}</p> : null}
+        {selectedRanking ? (
+          <section className="mb-4 rounded-xl border border-line bg-paper p-4 shadow-panel">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-moss">{translate("榜单期间")}</p>
+            <p className="mt-1 text-sm font-bold text-ink/55">{selectedRanking.period.from && selectedRanking.period.to ? `${selectedRanking.period.from} — ${selectedRanking.period.to}` : translate("历史累计")} · Asia/Tokyo</p>
+            <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {[["名次", `#${selectedRanking.row.rank}`], ["服务金额", rankingCurrencyFormatter.format(selectedRanking.row.completedServiceAmountJpy)], ["完成订单", rankingNumberFormatter.format(selectedRanking.row.completedOrderCount)], ["工作天数", rankingNumberFormatter.format(selectedRanking.row.workingDayCount)], ["平均客单价", rankingCurrencyFormatter.format(selectedRankingAverageOrderValue)]].map(([label, value]) => <div className="min-w-0" key={label}><dt className="text-xs font-black text-ink/45">{translate(label)}</dt><dd className="mt-1 truncate text-sm font-black text-ink">{value}</dd></div>)}
+            </dl>
+          </section>
+        ) : null}
+        {technicianDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">{translateText("正在读取技师正式详情...", language)}</p> : null}
+        {!technicianDetailLoading && technicianDetailError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+            <span>{technicianDetailError}</span>
+            <Button onClick={() => void technicianDetailRequest.retry()} size="sm" variant="secondary">{translateText("重试", language)}</Button>
+          </div>
+        ) : null}
+        {!technicianDetailLoading && !technicianDetailError && technicianDetail ? (
+          <>
+            <FormalTechnicianDetailPanel
+            actionContent={<>
+              {technicianDetail.status !== "published" ? <Button disabled={saving || !draft.shopId} onClick={() => void mutate(technicianDetail.id, () => backofficeRealDataApi.approveTechnician("backoffice", technicianDetail.id, { ...(draft.shopId ? { shopId: Number(draft.shopId) } : {}) }))} variant="secondary">审核通过</Button> : <Badge tone="green">已审核</Badge>}
+              <Button disabled={saving} onClick={() => void deleteTechnician(technicianDetail.id)} variant="danger">软删除</Button>
+            </>}
+            detail={technicianDetail}
+            editContent={<div className="space-y-4">
+              {(["displayName", "city", "serviceArea"] as const).map((field) => <label className="block" key={field}><span className="mb-2 block text-sm font-black">{field}</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))} value={draft[field]} /></label>)}
+              <label className="block"><span className="mb-2 block text-sm font-black">所属店铺</span><select className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, shopId: event.target.value }))} value={draft.shopId}><option value="">未分配</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select></label>
+              <Button disabled={saving} onClick={() => void mutate(technicianDetail.id, () => backofficeRealDataApi.updateTechnician("backoffice", technicianDetail.id, { displayName: draft.displayName, city: draft.city, serviceArea: draft.serviceArea || null, shopId: draft.shopId ? Number(draft.shopId) : null }))}>保存资料</Button>
+            </div>}
+          />
+          </>
+        ) : null}
+      </Drawer>
+  );
+  if (embeddedDetail) return detailDrawer;
+
   return (
     <AdminLayout>
       <ModuleShell
@@ -239,40 +294,7 @@ export function TechniciansPage() {
         )}
       </ModuleShell>
 
-      <Drawer open={selectedTechnicianId !== null} title={translate("技师集中详情")} onClose={closeTechnician}>
-        {selectedRanking ? (
-          <section className="mb-4 rounded-xl border border-line bg-paper p-4 shadow-panel">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-moss">{translate("榜单期间")}</p>
-            <p className="mt-1 text-sm font-bold text-ink/55">{selectedRanking.period.from && selectedRanking.period.to ? `${selectedRanking.period.from} — ${selectedRanking.period.to}` : translate("历史累计")} · Asia/Tokyo</p>
-            <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-              {[["名次", `#${selectedRanking.row.rank}`], ["服务金额", rankingCurrencyFormatter.format(selectedRanking.row.completedServiceAmountJpy)], ["完成订单", rankingNumberFormatter.format(selectedRanking.row.completedOrderCount)], ["工作天数", rankingNumberFormatter.format(selectedRanking.row.workingDayCount)], ["平均客单价", rankingCurrencyFormatter.format(selectedRankingAverageOrderValue)]].map(([label, value]) => <div className="min-w-0" key={label}><dt className="text-xs font-black text-ink/45">{translate(label)}</dt><dd className="mt-1 truncate text-sm font-black text-ink">{value}</dd></div>)}
-            </dl>
-          </section>
-        ) : null}
-        {technicianDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">{translateText("正在读取技师正式详情...", language)}</p> : null}
-        {!technicianDetailLoading && technicianDetailError ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
-            <span>{technicianDetailError}</span>
-            <Button onClick={() => void technicianDetailRequest.retry()} size="sm" variant="secondary">{translateText("重试", language)}</Button>
-          </div>
-        ) : null}
-        {!technicianDetailLoading && !technicianDetailError && technicianDetail ? (
-          <>
-            <FormalTechnicianDetailPanel
-            actionContent={<>
-              {technicianDetail.status !== "published" ? <Button disabled={saving || !draft.shopId} onClick={() => void mutate(technicianDetail.id, () => backofficeRealDataApi.approveTechnician("backoffice", technicianDetail.id, { ...(draft.shopId ? { shopId: Number(draft.shopId) } : {}) }))} variant="secondary">审核通过</Button> : <Badge tone="green">已审核</Badge>}
-              <Button disabled={saving} onClick={() => void deleteTechnician(technicianDetail.id)} variant="danger">软删除</Button>
-            </>}
-            detail={technicianDetail}
-            editContent={<div className="space-y-4">
-              {(["displayName", "city", "serviceArea"] as const).map((field) => <label className="block" key={field}><span className="mb-2 block text-sm font-black">{field}</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))} value={draft[field]} /></label>)}
-              <label className="block"><span className="mb-2 block text-sm font-black">所属店铺</span><select className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, shopId: event.target.value }))} value={draft.shopId}><option value="">未分配</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select></label>
-              <Button disabled={saving} onClick={() => void mutate(technicianDetail.id, () => backofficeRealDataApi.updateTechnician("backoffice", technicianDetail.id, { displayName: draft.displayName, city: draft.city, serviceArea: draft.serviceArea || null, shopId: draft.shopId ? Number(draft.shopId) : null }))}>保存资料</Button>
-            </div>}
-          />
-          </>
-        ) : null}
-      </Drawer>
+      {detailDrawer}
     </AdminLayout>
   );
 }

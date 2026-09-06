@@ -8,6 +8,7 @@ import {
   ApplicationField,
   ApplicationInput,
   ApplicationNotice,
+  ApplicationReadOnlyField,
   ApplicationSelect,
   ApplicationShell,
   ApplicationSteps,
@@ -153,6 +154,9 @@ export function TechnicianApplicationPage() {
   };
 
   const shopSummary = useMemo(() => selectedShop ? `${selectedShop.name}${selectedShop.address ? ` · ${selectedShop.address}` : ""}` : "", [selectedShop]);
+  const genderLabel = form.gender
+    ? t({ male: "男", female: "女", other: "其他", undisclosed: "不公开" }[form.gender])
+    : "—";
 
   return (
     <ApplicationShell info="申请资料仅供目标店铺审核，服务器会在申请结束 30 天后删除资料与图片。" title="申请技师身份">
@@ -217,11 +221,26 @@ export function TechnicianApplicationPage() {
       ) : null}
 
       {step === 2 ? (
-        <ApplicationCard className="space-y-4 text-center">
+        <ApplicationCard className="space-y-4">
           <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[color:var(--client-primary)] text-3xl font-black text-[color:var(--client-primary-contrast)]">✓</div>
-          <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("申请已提交")}</h2>
-          <p className="text-sm leading-7 text-[color:var(--client-muted)]">{t("店铺审核后会通过系统消息通知你。店铺也可以点击联系，与该账号自动建立好友关系并开启聊天。")}</p>
+          <div className="text-center">
+            <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("申请已提交")}</h2>
+            <p className="mt-2 text-sm leading-7 text-[color:var(--client-muted)]">{t("店铺审核后会通过系统消息通知你。店铺也可以点击联系，与该账号自动建立好友关系并开启聊天。")}</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ApplicationReadOnlyField label="申请店铺" value={shopSummary} />
+            <ApplicationReadOnlyField label="本人姓名" value={form.applicantName} />
+            <ApplicationReadOnlyField label="性别" value={genderLabel} />
+            <ApplicationReadOnlyField label="生日" value={form.birthDate} />
+            <ApplicationReadOnlyField label="联系电话" value={form.phone} />
+            <ApplicationReadOnlyField label="所在城市" value={form.city} />
+            <ApplicationReadOnlyField label="从业年数" value={form.yearsExperience ? `${form.yearsExperience} ${t("年")}` : ""} />
+            <ApplicationReadOnlyField label="可服务区域" value={form.serviceAreas} />
+            <ApplicationReadOnlyField label="擅长项目" value={form.skills} />
+            <ApplicationReadOnlyField label="自我介绍" value={form.bio} />
+          </div>
           <ApplicationNotice>{t("申请结束 30 天后，服务器会删除申请资料和图片；店铺主动下载的简历副本会保存在店铺设备中。")}</ApplicationNotice>
+          <ApplicationButton className="w-full" disabled tone="secondary">{t("审核中")}</ApplicationButton>
           <ApplicationButton className="w-full" onClick={() => window.location.assign("/me/settings/portal")}>{t("返回身份设置")}</ApplicationButton>
         </ApplicationCard>
       ) : null}

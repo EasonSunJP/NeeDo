@@ -133,6 +133,9 @@ describe("NdpExchangeRatePage", () => {
     expect(container.textContent).toContain("当前生效");
     expect(container.textContent).toContain("下一计划");
     expect(container.textContent).toContain("3 NDP = 5 JPY");
+    expect(container.querySelector('[data-admin-surface="summary"]')).not.toBeNull();
+    expect(container.querySelector('[data-admin-surface="history"]')).not.toBeNull();
+    expect(container.querySelector('[data-admin-layout="responsive"]')).not.toBeNull();
     expect(container.querySelectorAll('[data-temporal-state="scheduled"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-temporal-state="current"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-temporal-state="historical"]')).toHaveLength(1);

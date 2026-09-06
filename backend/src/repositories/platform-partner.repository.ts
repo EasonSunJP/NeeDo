@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
   AgentListInput,
@@ -13,12 +13,14 @@ import type {
   PlatformPartnerTypeRecord
 } from "../services/platform-partner.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
 const profileSelect = {
   id: true,
   publicId: true,
   partnerType: true,
   activatedAt: true,
+  endsAt: true,
   markedById: true,
   reason: true,
   createdAt: true,
@@ -138,38 +140,99 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
   public async markPartnerProfile(input: {
     userId: number;
     partnerType: PlatformPartnerTypeRecord;
-    activatedAt: Date;
+    startsAt: Date;
+    endsAt: Date | null;
     markedById: number;
     reason: string;
+    audit: AuditLogCreateInput;
   }): Promise<MarkPartnerProfileRepositoryResult> {
-    try {
-      return await this.client.$transaction(async (transaction) => {
-        const user = await transaction.user.findFirst({
-          where: { id: input.userId, deletedAt: null },
-          select: { id: true }
-        });
-        if (!user) return { kind: "user_not_found" as const };
-
-        const duplicate = await transaction.platformPartnerProfile.findFirst({
-          where: {
-            userId: input.userId,
-            partnerType: input.partnerType,
-            deletedAt: null
-          },
-          select: { id: true }
-        });
-        if (duplicate) return { kind: "duplicate" as const };
-
-        const profile = await transaction.platformPartnerProfile.create({
-          data: input,
-          select: profileSelect
-        });
-        return { kind: "created" as const, profile: this.mapProfile(profile) };
+    return this.client.$transaction(async (transaction) => {
+      const user = await transaction.user.findFirst({
+        where: { id: input.userId, deletedAt: null },
+        select: { id: true }
       });
-    } catch (error) {
-      if (isUniqueConflict(error)) return { kind: "duplicate" };
-      throw error;
-    }
+      if (!user) return { kind: "user_not_found" as const };
+
+      await transaction.$queryRaw(
+        Prisma.sql`SELECT id FROM users WHERE id = ${input.userId} AND deleted_at IS NULL FOR UPDATE`
+      );
+
+      const overlap = await transaction.platformPartnerProfile.findFirst({
+        where: {
+          userId: input.userId,
+          partnerType: input.partnerType,
+          deletedAt: null,
+          activatedAt: input.endsAt ? { lt: input.endsAt } : undefined,
+          OR: [{ endsAt: null }, { endsAt: { gt: input.startsAt } }]
+        },
+        select: { id: true }
+      });
+      if (overlap) return { kind: "overlap" as const };
+
+      const profile = await transaction.platformPartnerProfile.create({
+        data: {
+          userId: input.userId,
+          partnerType: input.partnerType,
+          activatedAt: input.startsAt,
+          endsAt: input.endsAt,
+          markedById: input.markedById,
+          reason: input.reason
+        },
+        select: profileSelect
+      });
+      const auditMetadata =
+        input.audit.metadata &&
+        typeof input.audit.metadata === "object" &&
+        !Array.isArray(input.audit.metadata)
+          ? input.audit.metadata
+          : {};
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          ...input.audit,
+          targetId: profile.id,
+          metadata: {
+            ...auditMetadata,
+            userId: input.userId,
+            before: null,
+            after: {
+              publicId: profile.publicId,
+              userId: input.userId,
+              partnerType: profile.partnerType.toLowerCase(),
+              startsAt: profile.activatedAt.toISOString(),
+              endsAt: profile.endsAt?.toISOString() ?? null,
+              permanent: profile.endsAt === null
+            },
+            reason: input.reason
+          }
+        })
+      });
+      return { kind: "created" as const, profile: this.mapProfile(profile) };
+    });
+  }
+
+  public async listUserProfiles(input: {
+    userId: number;
+    page?: number;
+    pageSize?: number;
+    partnerType?: PlatformPartnerTypeRecord;
+  }) {
+    const pagination = toPrismaPagination(input);
+    const where = {
+      userId: input.userId,
+      deletedAt: null,
+      ...(input.partnerType ? { partnerType: input.partnerType } : {})
+    } satisfies Prisma.PlatformPartnerProfileWhereInput;
+    const [rows, total] = await Promise.all([
+      this.client.platformPartnerProfile.findMany({
+        where,
+        select: profileSelect,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ activatedAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.platformPartnerProfile.count({ where })
+    ]);
+    return buildPaginatedResponse(rows.map((row) => this.mapProfile(row)), total, pagination);
   }
 
   public async listAgents(
@@ -180,6 +243,8 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
     const where: Prisma.PlatformPartnerProfileWhereInput = {
       partnerType: "AGENT",
       deletedAt: null,
+      activatedAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
       user: {
         deletedAt: null,
         ...(input.status ? { isActive: input.status === "active" } : {}),
@@ -214,11 +279,14 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
   public async listAgentShopReferrals(
     input: AgentShopReferralListInput
   ): Promise<AgentShopReferralListRepositoryResult> {
+    const now = new Date();
     const agent = await this.client.platformPartnerProfile.findFirst({
       where: {
         publicId: input.agentPublicId,
         partnerType: "AGENT",
         deletedAt: null,
+        activatedAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
         user: { deletedAt: null }
       },
       select: { id: true }
@@ -274,6 +342,8 @@ export class PlatformPartnerRepository implements PlatformPartnerRepositoryPort 
             publicId: input.agentPublicId,
             partnerType: "AGENT",
             deletedAt: null,
+            activatedAt: { lte: input.confirmedAt },
+            OR: [{ endsAt: null }, { endsAt: { gt: input.confirmedAt } }],
             user: { deletedAt: null, isActive: true }
           },
           select: { id: true }

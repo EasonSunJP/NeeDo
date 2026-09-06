@@ -1,8 +1,12 @@
+import { useEffect, useState } from "react";
 import type {
   AnalyticsMetricSeries,
   DashboardBucketPayload
 } from "../../api/backofficeRealData";
+import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useI18n } from "../../i18n/I18nProvider";
+import { translateTextForContext } from "../../i18n/translations";
+import { createDashboardAxis, type DashboardAxis } from "./dashboardChartScale";
 import { formatDashboardNumber, normalizeDashboardNumber } from "./dashboardFormat";
 
 export type DashboardChartMetricKey = Exclude<keyof DashboardBucketPayload, "key" | "label">;
@@ -34,22 +38,6 @@ function getValue(bucket: DashboardBucketPayload, series: DashboardChartSeries) 
   return normalizeDashboardNumber(bucket[series.key]);
 }
 
-function getScale(values: number[]) {
-  const minimum = Math.min(0, ...values);
-  const maximum = Math.max(0, ...values);
-
-  return {
-    minimum,
-    maximum: maximum === minimum ? minimum + 1 : maximum
-  };
-}
-
-function getY(value: number, values: number[]) {
-  const scale = getScale(values);
-  const ratio = (value - scale.minimum) / (scale.maximum - scale.minimum);
-  return plot.top + plotHeight - ratio * plotHeight;
-}
-
 function getX(index: number, count: number) {
   if (count <= 1) {
     return plot.left + plotWidth / 2;
@@ -58,34 +46,66 @@ function getX(index: number, count: number) {
   return plot.left + (index / Math.max(1, count - 1)) * plotWidth;
 }
 
-function linePath(buckets: DashboardBucketPayload[], series: DashboardChartSeries) {
-  const values = buckets.map((bucket) => getValue(bucket, series));
+function getY(value: number, values: number[]) {
+  return createDashboardAxis(values).y(value, plot.top, plotHeight);
+}
 
+function linePath(
+  buckets: DashboardBucketPayload[],
+  series: DashboardChartSeries,
+  axis: DashboardAxis
+) {
   return buckets
     .map((bucket, index) => {
       const x = getX(index, buckets.length);
-      const y = getY(getValue(bucket, series), values);
+      const y = axis.y(getValue(bucket, series), plot.top, plotHeight);
       return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
     })
     .join(" ");
 }
 
-function Grid({ buckets }: { buckets: Array<Pick<DashboardBucketPayload, "key" | "label">> }) {
+function Grid({
+  buckets,
+  leftAxis,
+  rightAxis,
+  language
+}: {
+  buckets: Array<Pick<DashboardBucketPayload, "key" | "label">>;
+  leftAxis?: DashboardAxis;
+  rightAxis?: DashboardAxis;
+  language: Parameters<typeof formatDashboardNumber>[1];
+}) {
   return (
     <>
-      {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-        const y = plot.top + ratio * plotHeight;
+      {(leftAxis?.ticks ?? [0, 0.25, 0.5, 0.75, 1]).map((tick, index) => {
+        const y = leftAxis
+          ? leftAxis.y(tick, plot.top, plotHeight)
+          : plot.top + index * (plotHeight / 4);
         return (
-          <line
-            key={ratio}
-            stroke="var(--admin-line, rgba(148, 163, 184, 0.25))"
-            strokeDasharray="4 6"
-            vectorEffect="non-scaling-stroke"
-            x1={plot.left}
-            x2={chartWidth - plot.right}
-            y1={y}
-            y2={y}
-          />
+          <g key={tick}>
+            <line
+              stroke="var(--admin-line, rgba(148, 163, 184, 0.25))"
+              strokeDasharray="4 6"
+              vectorEffect="non-scaling-stroke"
+              x1={plot.left}
+              x2={chartWidth - plot.right}
+              y1={y}
+              y2={y}
+            />
+            {leftAxis ? (
+              <text data-axis-side="left" data-no-i18n fill="currentColor" fontSize="10" textAnchor="end" x={plot.left - 8} y={y + 4}>
+                {formatDashboardNumber(tick, language)}
+              </text>
+            ) : null}
+          </g>
+        );
+      })}
+      {rightAxis?.ticks.map((tick) => {
+        const y = rightAxis.y(tick, plot.top, plotHeight);
+        return (
+          <text data-axis-side="right" data-no-i18n fill="currentColor" fontSize="10" key={tick} textAnchor="start" x={chartWidth - plot.right + 8} y={y + 4}>
+            {formatDashboardNumber(tick, language)}
+          </text>
         );
       })}
       {buckets.map((bucket, index) => (
@@ -111,6 +131,10 @@ function ChartFrame({
   buckets,
   series,
   children,
+  leftAxis,
+  rightAxis,
+  overlay,
+  onKeyDown,
   empty
 }: {
   title: string;
@@ -118,15 +142,31 @@ function ChartFrame({
   buckets: DashboardBucketPayload[];
   series: readonly DashboardChartSeries[];
   children: React.ReactNode;
+  leftAxis?: DashboardAxis;
+  rightAxis?: DashboardAxis;
+  overlay?: React.ReactNode;
+  onKeyDown?: React.KeyboardEventHandler<HTMLElement>;
   empty: boolean;
 }) {
   const { language } = useI18n();
+  const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
 
   return (
-    <figure className="min-w-0 overflow-hidden rounded-2xl border border-line bg-white p-4 shadow-panel">
-      <figcaption>
-        <h3 className="text-base font-black text-ink">{title}</h3>
-        <p className="mt-1 text-xs font-bold text-ink/45">{description}</p>
+    <figure
+      className="min-w-0 overflow-hidden rounded-2xl border border-line bg-white p-4 shadow-panel"
+      data-dashboard-chart-frame="true"
+      onKeyDown={onKeyDown}
+    >
+      <figcaption data-dashboard-chart-info="true">
+        <TitleWithInfo
+          as="h3"
+          info={<p>{description}</p>}
+          infoPanelMode="tooltip"
+          label={`${t("查看")}${title}${t("说明")}`}
+          title={title}
+          titleClassName="text-base font-black text-ink"
+          variant="paper"
+        />
       </figcaption>
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2" aria-label="图例">
         {series.map((item, index) => (
@@ -142,15 +182,16 @@ function ChartFrame({
       </div>
       <div className="relative mt-3 min-w-0 overflow-hidden">
         <svg
-          aria-hidden="true"
+          aria-label={title}
           className="dashboard-chart h-auto w-full text-ink/45"
           data-dashboard-chart-empty={empty ? "true" : undefined}
           role="img"
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
         >
-          <Grid buckets={buckets} />
+          <Grid buckets={buckets} language={language} leftAxis={leftAxis} rightAxis={rightAxis} />
           {children}
         </svg>
+        {overlay}
         {empty ? (
           <p className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-black text-ink/45">
             当前范围暂无数据
@@ -211,15 +252,66 @@ export function DualAxisLineChart({
   left: DashboardChartSeries;
   right?: DashboardChartSeries;
 }) {
+  const { language } = useI18n();
+  const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
   const series = right ? [left, right] : [left];
   const leftValues = buckets.map((bucket) => getValue(bucket, left));
   const rightValues = right ? buckets.map((bucket) => getValue(bucket, right)) : [];
+  const leftAxis = createDashboardAxis(leftValues);
+  const rightAxis = right ? createDashboardAxis(rightValues) : undefined;
+  const bucketKey = buckets.map((bucket) => bucket.key).join("|");
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  useEffect(() => setSelectedIndex(null), [bucketKey]);
+  const selectOnKeyboard = (event: React.KeyboardEvent<SVGElement>, index: number) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setSelectedIndex(index);
+    }
+  };
+  const selectedBucket = selectedIndex === null ? null : buckets[selectedIndex] ?? null;
+  const anchorPercent = selectedIndex === null
+    ? 50
+    : Math.min(85, Math.max(15, (getX(selectedIndex, buckets.length) / chartWidth) * 100));
 
   return (
     <ChartFrame
       buckets={buckets}
       description={description}
       empty={buckets.length === 0}
+      leftAxis={leftAxis}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setSelectedIndex(null);
+      }}
+      overlay={selectedBucket ? (
+        <div
+          aria-label={t("节点详细数据")}
+          className="absolute top-3 z-10 min-w-44 -translate-x-1/2 rounded-xl border border-line bg-white p-3 text-xs font-bold text-ink shadow-panel"
+          data-dashboard-point-detail="true"
+          role="status"
+          style={{ left: `${anchorPercent}%` }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <strong data-no-i18n>{selectedBucket.label}</strong>
+            <button
+              aria-label={t("关闭数据提示")}
+              className="rounded-md px-1.5 text-ink/45 hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"
+              onClick={() => setSelectedIndex(null)}
+              type="button"
+            >
+              ×
+            </button>
+          </div>
+          <ul className="mt-2 space-y-1.5">
+            {series.map((item) => (
+              <li className="flex items-center justify-between gap-4" key={item.key}>
+                <span>{item.label}</span>
+                <span data-no-i18n>{formatDashboardNumber(getValue(selectedBucket, item), language)} {item.unit}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : undefined}
+      rightAxis={rightAxis}
       series={series}
       title={title}
     >
@@ -229,7 +321,7 @@ export function DualAxisLineChart({
             {left.label} · {left.unit}
           </text>
           <path
-            d={linePath(buckets, left)}
+            d={linePath(buckets, left, leftAxis)}
             fill="none"
             stroke={left.color ?? lineColors[0]}
             strokeLinecap="round"
@@ -240,13 +332,29 @@ export function DualAxisLineChart({
           {buckets.map((bucket, index) => (
             <circle
               cx={getX(index, buckets.length)}
-              cy={getY(getValue(bucket, left), leftValues)}
+              cy={leftAxis.y(getValue(bucket, left), plot.top, plotHeight)}
+              data-chart-series-node="true"
               fill="var(--admin-surface, white)"
               key={bucket.key}
               r="4"
               stroke={left.color ?? lineColors[0]}
               strokeWidth="2.5"
               vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          {buckets.map((bucket, index) => (
+            <circle
+              aria-label={`${bucket.label} ${left.label} ${formatDashboardNumber(getValue(bucket, left), language)} ${left.unit}`}
+              cx={getX(index, buckets.length)}
+              cy={leftAxis.y(getValue(bucket, left), plot.top, plotHeight)}
+              data-chart-point-control="true"
+              fill="transparent"
+              key={`left-control-${bucket.key}`}
+              onClick={() => setSelectedIndex(index)}
+              onKeyDown={(event) => selectOnKeyboard(event, index)}
+              r="12"
+              role="button"
+              tabIndex={0}
             />
           ))}
           {right ? (
@@ -262,7 +370,7 @@ export function DualAxisLineChart({
                 {right.label} · {right.unit}
               </text>
               <path
-                d={linePath(buckets, right)}
+                d={linePath(buckets, right, rightAxis as DashboardAxis)}
                 fill="none"
                 stroke={right.color ?? lineColors[1]}
                 strokeLinecap="round"
@@ -272,10 +380,15 @@ export function DualAxisLineChart({
               />
               {buckets.map((bucket, index) => {
                 const x = getX(index, buckets.length);
-                const y = getY(getValue(bucket, right), rightValues);
+                const y = (rightAxis as DashboardAxis).y(
+                  getValue(bucket, right),
+                  plot.top,
+                  plotHeight
+                );
                 const radius = 5;
                 return (
                   <polygon
+                    data-chart-series-node="true"
                     fill="var(--admin-surface, white)"
                     key={bucket.key}
                     points={`${x},${y - radius} ${x + radius},${y} ${x},${y + radius} ${x - radius},${y}`}
@@ -285,6 +398,25 @@ export function DualAxisLineChart({
                   />
                 );
               })}
+              {buckets.map((bucket, index) => (
+                <circle
+                  aria-label={`${bucket.label} ${right.label} ${formatDashboardNumber(getValue(bucket, right), language)} ${right.unit}`}
+                  cx={getX(index, buckets.length)}
+                  cy={(rightAxis as DashboardAxis).y(
+                    getValue(bucket, right),
+                    plot.top,
+                    plotHeight
+                  )}
+                  data-chart-point-control="true"
+                  fill="transparent"
+                  key={`right-control-${bucket.key}`}
+                  onClick={() => setSelectedIndex(index)}
+                  onKeyDown={(event) => selectOnKeyboard(event, index)}
+                  r="12"
+                  role="button"
+                  tabIndex={0}
+                />
+              ))}
             </>
           ) : null}
         </>
@@ -388,7 +520,7 @@ export function FixedAnalyticsSeriesChart({
         data-analytics-detail-chart="true"
         viewBox={`0 0 ${chartWidth} ${chartHeight}`}
       >
-        <Grid buckets={pointLabels} />
+        <Grid buckets={pointLabels} language={language} />
         {series.map((item, seriesIndex) => {
           const color = seriesColors?.[item.seriesKey] ?? getAnalyticsSeriesColor(seriesIndex);
           return (

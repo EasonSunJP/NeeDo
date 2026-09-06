@@ -4,7 +4,10 @@ This Step 13 slice restores the existing platform notice API and adds a formally
 scoped merchant publication API. Migration
 `20260905120000_merchant_official_notice_scope` adds immutable platform/shop
 issuer scope, merchant audiences and dedicated merchant notice permissions. It
-does not restore the announcement pages or merchant notification UI.
+also restores the operations management/composer/inbox pages and the equivalent
+merchant management/composer/inbox surfaces. Both portal headers use the shared
+official-notice bell, whose badge is derived from the recipient inbox rather than
+the generic realtime notification count.
 
 ## Ownership and API
 
@@ -117,10 +120,12 @@ idempotency and zero persistent fixtures.
 
 ## Still pending in the overall task
 
-- Restore the approved operations UI and shared merchant notification surfaces.
-- Real browser multi-portal login/logout acceptance.
-- Operations-to-user/technician/merchant delivery and read reception acceptance.
-- Same-shop database/API/page parity and update propagation acceptance.
+- Real browser multi-portal login/logout acceptance beyond the local portal checks.
+- Staging operations-to-user/technician/merchant delivery and read reception acceptance.
+- Staging same-shop database/API/page parity and update propagation acceptance.
+- Formal merchant media upload and server-side ownership binding for notice assets.
+- Complete five-locale UI-label coverage, source-language quick buttons, draft editing,
+  merchant exact-account targeting and font-size controls.
 
 Draft editing and a separate approval workflow are not enabled by the immediate/
 scheduled publication endpoint; schema statuses alone must not be presented as

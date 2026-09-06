@@ -348,6 +348,7 @@ describe("bookingApi", () => {
         discountAmountJpy: 0,
         checkoutAmountJpy: 10000,
         payableNdp: 10000,
+        availablePaymentMethods: ["cash", "ndp"],
         rate: {
           ruleId: 7,
           publicId: "rate-7",
@@ -394,7 +395,7 @@ describe("bookingApi", () => {
     await bookingApi.rejectAddOn(88, 302, { idempotencyKey: "idem-reject-000001" });
     await bookingApi.endService(88, { reason: "客户确认提前结束服务", idempotencyKey: "idem-ending-000001" });
     await bookingApi.getCheckout(88);
-    await bookingApi.selectPaymentMethod(88, { method: "other", otherMethodCode: "paypay", otherMethodLabel: "PayPay", idempotencyKey: "idem-method-000001" });
+    await bookingApi.selectPaymentMethod(88, { method: "cash", idempotencyKey: "idem-method-000001" });
     await bookingApi.payWithNdp(88, { idempotencyKey: "idem-ndp-pay-00001" });
     await bookingApi.confirmReceipt(88, { reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
 
@@ -415,7 +416,7 @@ describe("bookingApi", () => {
     expect(requestBodyAt(3)).toEqual({ idempotencyKey: "idem-reject-000001" });
     expect(requestBodyAt(4)).toEqual({ reason: "客户确认提前结束服务", idempotencyKey: "idem-ending-000001" });
     expect(requestBodyAt(5)).toEqual({});
-    expect(requestBodyAt(6)).toEqual({ method: "other", otherMethodCode: "paypay", otherMethodLabel: "PayPay", idempotencyKey: "idem-method-000001" });
+    expect(requestBodyAt(6)).toEqual({ method: "cash", idempotencyKey: "idem-method-000001" });
     expect(requestBodyAt(7)).toEqual({ idempotencyKey: "idem-ndp-pay-00001" });
     expect(requestBodyAt(8)).toEqual({ reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
   });

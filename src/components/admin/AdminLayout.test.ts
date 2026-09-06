@@ -4,7 +4,7 @@ import { routeMatches } from "./AdminLayout";
 
 describe("AdminLayout navigation", () => {
   it("uses the shared formal notice bell without a hard-coded unread count", () => {
-    expect(source).toContain("<OfficialNoticeBell to=\"/admin/notifications\"");
+    expect(source).toContain("<OfficialNoticeBell to=\"/admin/notifications/inbox\"");
     expect(source).not.toContain("count={12}");
   });
 
@@ -66,6 +66,17 @@ describe("AdminLayout navigation", () => {
     expect(source).not.toContain("东京城市组");
     expect(source).not.toContain("19 个待审核商家，36 个工单需要运营介入。");
     expect(source).not.toContain("admin-sidebar-note");
+  });
+
+  it("renders the formal operator summary without demo profile constants", () => {
+    expect(source).toContain("<AdminOperatorSummary");
+    expect(source).toContain("resolveAdminDisplayName");
+    expect(source).toContain("resolveAdminRoleLabel");
+    expect(source).not.toContain("David Stainberry");
+    expect(source).not.toContain("profile-03.jpg");
+    expect(source).not.toContain("admin@needo.jp");
+    expect(source).not.toContain(">36<");
+    expect(source).not.toContain(">19<");
   });
 
   it("does not expose the removed operations design module", () => {

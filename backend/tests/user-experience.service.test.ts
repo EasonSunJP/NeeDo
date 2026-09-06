@@ -54,6 +54,8 @@ const membership = (multiplier = 1, benefitCodes: PlatformMembershipBenefitCodeV
       theme: {
         detailAccentColor: "#00FF00",
         detailSurfaceColor: "#000000",
+        detailSurfaceMiddleColor: "#101820",
+        detailSurfaceBottomColor: "#202838",
         detailItemSurfaceColor: "#111111",
         detailOuterBorderColor: "#222222",
         detailItemBorderColor: "#333333",

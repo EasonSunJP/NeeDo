@@ -905,9 +905,11 @@ function CompleteUserCenterPage({
         visibility: activeProfilePrivacy.enabled ? activeProfilePrivacy.visibility : "public"
       });
 
-      const avatarChanged = updated.avatarUrl !== formalData.profile.avatarUrl;
+      const profileChanged =
+        updated.displayName !== formalData.profile.displayName ||
+        updated.avatarUrl !== formalData.profile.avatarUrl;
       onFormalProfileUpdated(updated);
-      if (avatarChanged) {
+      if (profileChanged) {
         await refreshSession();
       }
       setProfileNameOverride("");

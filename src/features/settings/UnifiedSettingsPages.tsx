@@ -56,8 +56,7 @@ import {
   type TechnicianPortalSettingsState,
   type UnifiedSettingsPortal
 } from "./portalSettingsState";
-import { getLegalPrivacyDocument, getLegalPrivacyUiCopy, type LegalPrivacyBlock } from "./legalPrivacyContent";
-import { getLegalTermsDocument, getLegalTermsUiCopy } from "./legalTermsContent";
+import { usePublicLegalDocument } from "../platform-settings/publicLegalDocuments";
 import { TestOnlyBackendPortalEntries } from "./TestOnlyBackendPortalEntries";
 import { buildIdentityRows, defaultIdentityAvailability, type IdentityKind } from "../identity-applications/model";
 import { AuthVerificationPanel, type AuthVerificationLabels } from "../../pages/auth/AuthVerificationPanel";
@@ -2016,7 +2015,7 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
                         : row.kind === "affiliate"
                           ? t("确认并开启")
                           : t("申请");
-            const disabled = row.action === "current" || row.action === "pending" || switchingPortal !== null;
+            const disabled = row.action === "current" || switchingPortal !== null;
 
             return (
               <SettingsPortalActionRow
@@ -3721,188 +3720,30 @@ export function UnifiedSettingsAboutPage({ portal }: { portal: UnifiedSettingsPo
 
 type LegalDocumentKind = "terms" | "privacy";
 
-function NoI18nText({ children, className }: { children: ReactNode; className?: string }) {
+function PersistedLegalDocumentPage({ portal, slug }: { portal: UnifiedSettingsPortal; slug: "terms-of-use" | "privacy-policy" }) {
+  const { language } = useI18n();
+  const state = usePublicLegalDocument(slug, language);
+  const fallbackTitle = translateText(slug === "terms-of-use" ? "利用规约" : "个人信息保护方针", language);
   return (
-    <span className={className} data-no-i18n>
-      {children}
-    </span>
-  );
-}
-
-function splitLegalMetaItem(item: string) {
-  const separatorIndex = item.search(/[：:]/);
-
-  if (separatorIndex === -1) {
-    return {
-      label: "",
-      value: item
-    };
-  }
-
-  return {
-    label: item.slice(0, separatorIndex).trim(),
-    value: item.slice(separatorIndex + 1).trim()
-  };
-}
-
-function LegalDocumentMetaRows({
-  rows
-}: {
-  rows: Array<{
-    label: string;
-    value: string;
-  }>;
-}) {
-  return (
-    <div className="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" data-no-i18n>
-      {rows.map((item) => (
-        <div className="grid gap-1 px-4 py-3.5 sm:grid-cols-[9rem,1fr] sm:gap-4" key={`${item.label}-${item.value}`}>
-          {item.label ? <p className="text-[12px] font-black text-[color:var(--client-muted)]">{item.label}</p> : null}
-          <p className={cn("break-words text-[13px] font-semibold leading-6 text-[color:var(--client-text)]", item.label ? "" : "sm:col-span-2")}>
-            {item.value}
-          </p>
-        </div>
-      ))}
-    </div>
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage backTo={getSettingsBasePath(portal)} contentClassName="pb-28" info={translateText("只显示运营后台已发布的当前语言版本。", language)} navItems={getSettingsNavItems(portal)} title={state.document?.title ?? fallbackTitle}>
+        {state.status === "loading" ? <SettingsSection title={translateText("正在读取政策文档…", language)}><p className="text-sm text-[color:var(--client-muted)]">{translateText("请稍候。", language)}</p></SettingsSection> : null}
+        {state.status === "unavailable" ? <SettingsSection title={fallbackTitle}><p className="text-sm font-semibold leading-7 text-[color:var(--client-muted)]">{translateText("当前语言尚无已发布版本，请联系 NeeDo 客服。", language)}</p></SettingsSection> : null}
+        {state.document ? <>
+          <SettingsSection title={translateText("文档信息", language)}><div className="space-y-2 text-sm font-semibold text-[color:var(--client-muted)]" data-no-i18n><p>{state.document.locale} · v{state.document.version}</p><p>{new Date(state.document.publishedAt).toLocaleString()}</p></div></SettingsSection>
+          <SettingsSection title={translateText("正文", language)}><article className="whitespace-pre-wrap break-words text-[13px] leading-7 text-[color:var(--client-muted)]" data-no-i18n>{state.document.body}</article></SettingsSection>
+        </> : null}
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
   );
 }
 
 function UnifiedSettingsTermsDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  const { language } = useI18n();
-  const termsDocument = getLegalTermsDocument(language);
-  const copy = getLegalTermsUiCopy(language);
-  const metaRows = [
-    {
-      label: copy.languageLabel,
-      value: termsDocument.languageName
-    },
-    ...termsDocument.meta.map(splitLegalMetaItem),
-    {
-      label: copy.sectionCountLabel,
-      value: copy.sectionCountValue
-    }
-  ];
-
-  return (
-    <PortalScopedSettingsPage portal={portal}>
-      <SettingsDetailPage
-        backTo={getSettingsBasePath(portal)}
-        contentClassName="pb-28"
-        info={<NoI18nText>{copy.pageInfo}</NoI18nText>}
-        navItems={getSettingsNavItems(portal)}
-        title={<NoI18nText>{termsDocument.title}</NoI18nText>}
-      >
-        <SettingsSection
-          description={<NoI18nText>{copy.documentInfoDescription}</NoI18nText>}
-          panelClassName="p-0"
-          title={<NoI18nText>{copy.documentInfoTitle}</NoI18nText>}
-        >
-          <LegalDocumentMetaRows rows={metaRows} />
-        </SettingsSection>
-
-        <SettingsSection
-          description={<NoI18nText>{copy.bodyDescription}</NoI18nText>}
-          panelClassName="p-0"
-          title={<NoI18nText>{copy.bodyTitle}</NoI18nText>}
-        >
-          <div className="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" data-no-i18n>
-            {termsDocument.sections.map((section) => (
-              <article className="px-4 py-4 sm:px-5" key={section.title}>
-                <h3 className="break-words text-[15px] font-black leading-6 text-[color:var(--client-text)]">{section.title}</h3>
-                <div className="mt-3 space-y-2.5">
-                  {section.paragraphs.map((paragraph, paragraphIndex) => (
-                    <p className="break-words text-[13px] leading-7 text-[color:var(--client-muted)]" key={`${section.title}-${paragraphIndex}`}>
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        </SettingsSection>
-      </SettingsDetailPage>
-    </PortalScopedSettingsPage>
-  );
-}
-
-function PrivacyBlock({ block }: { block: LegalPrivacyBlock }) {
-  if (block.kind === "bullet") {
-    return (
-      <li className="break-words text-[13px] leading-7 text-[color:var(--client-muted)]">
-        {block.text}
-      </li>
-    );
-  }
-
-  return <p className="break-words text-[13px] leading-7 text-[color:var(--client-muted)]">{block.text}</p>;
+  return <PersistedLegalDocumentPage portal={portal} slug="terms-of-use" />;
 }
 
 function UnifiedSettingsPrivacyDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  const { language } = useI18n();
-  const privacyDocument = getLegalPrivacyDocument(language);
-  const copy = getLegalPrivacyUiCopy(language);
-  const metaRows = [
-    {
-      label: copy.languageLabel,
-      value: privacyDocument.languageName
-    },
-    ...privacyDocument.meta.map(splitLegalMetaItem),
-    {
-      label: copy.sectionCountLabel,
-      value: copy.sectionCountValue
-    }
-  ];
-
-  return (
-    <PortalScopedSettingsPage portal={portal}>
-      <SettingsDetailPage
-        backTo={getSettingsBasePath(portal)}
-        contentClassName="pb-28"
-        info={<NoI18nText>{copy.pageInfo}</NoI18nText>}
-        navItems={getSettingsNavItems(portal)}
-        title={<NoI18nText>{privacyDocument.title}</NoI18nText>}
-      >
-        <SettingsSection
-          description={<NoI18nText>{copy.documentInfoDescription}</NoI18nText>}
-          panelClassName="p-0"
-          title={<NoI18nText>{copy.documentInfoTitle}</NoI18nText>}
-        >
-          <LegalDocumentMetaRows rows={metaRows} />
-        </SettingsSection>
-
-        <SettingsSection
-          description={<NoI18nText>{copy.bodyDescription}</NoI18nText>}
-          panelClassName="p-0"
-          title={<NoI18nText>{copy.bodyTitle}</NoI18nText>}
-        >
-          <div className="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" data-no-i18n>
-            {privacyDocument.sections.map((section) => (
-              <article className="px-4 py-4 sm:px-5" key={section.title}>
-                <h3 className="break-words text-[15px] font-black leading-6 text-[color:var(--client-text)]">{section.title}</h3>
-                <div className="mt-3 space-y-2.5">
-                  {section.blocks.some((block) => block.kind === "bullet") ? (
-                    <div className="space-y-2.5">
-                      {section.blocks.map((block, blockIndex) =>
-                        block.kind === "bullet" ? (
-                          <ul className="list-disc space-y-2.5 pl-5" key={`${section.title}-${blockIndex}`}>
-                            <PrivacyBlock block={block} />
-                          </ul>
-                        ) : (
-                          <PrivacyBlock block={block} key={`${section.title}-${blockIndex}`} />
-                        )
-                      )}
-                    </div>
-                  ) : (
-                    section.blocks.map((block, blockIndex) => <PrivacyBlock block={block} key={`${section.title}-${blockIndex}`} />)
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
-        </SettingsSection>
-      </SettingsDetailPage>
-    </PortalScopedSettingsPage>
-  );
+  return <PersistedLegalDocumentPage portal={portal} slug="privacy-policy" />;
 }
 
 function UnifiedSettingsLegalDocumentPage({

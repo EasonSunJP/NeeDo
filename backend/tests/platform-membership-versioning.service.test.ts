@@ -9,6 +9,8 @@ const now = new Date("2026-09-01T12:00:00.000Z");
 const theme = {
   detailAccentColor: "#F4C967",
   detailSurfaceColor: "#302818",
+  detailSurfaceMiddleColor: "#253026",
+  detailSurfaceBottomColor: "#17243A",
   detailItemSurfaceColor: "#201A10",
   detailOuterBorderColor: "#A98645",
   detailItemBorderColor: "#66552F",
@@ -27,7 +29,8 @@ const benefits: PlatformMembershipTierDraftInput["benefits"] = [
   { code: "support_service", isEnabled: false, configuration: {} },
   { code: "exclusive_discount", isEnabled: false, configuration: {} },
   { code: "member_day", isEnabled: false, configuration: {} },
-  { code: "birthday_gift", isEnabled: false, configuration: {} }
+  { code: "birthday_gift", isEnabled: false, configuration: {} },
+  { code: "traceless_recall", isEnabled: true, configuration: {} }
 ];
 const draft: PlatformMembershipTierDraftInput = {
   expectedVersion: 1,
@@ -149,7 +152,7 @@ describe("PlatformMembershipService tier versioning", () => {
     expect(repo.saveTierDraftWithAudit).not.toHaveBeenCalled();
   });
 
-  it("requires readable accent contrast before publishing", async () => {
+  it("allows publishing valid colors without a contrast-ratio gate", async () => {
     const repo = repository({
       findTierDraft: jest.fn(async (tierCode) => {
         void tierCode;
@@ -166,11 +169,8 @@ describe("PlatformMembershipService tier versioning", () => {
         expectedVersion: 2,
         expectedLockVersion: 1
       })
-    ).rejects.toMatchObject({
-      message: "error.platform_membership.theme_contrast",
-      statusCode: 400
-    });
-    expect(repo.publishTierDraftWithAudit).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ status: "published" });
+    expect(repo.publishTierDraftWithAudit).toHaveBeenCalledTimes(1);
   });
 
   it("publishes the expected draft and surfaces optimistic conflicts", async () => {

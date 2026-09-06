@@ -621,7 +621,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       select: { id: true }
     });
     if (!candidate) throw this.notFound();
-    return this.client.$transaction(async (transaction) => {
+    const result = await this.client.$transaction(async (transaction) => {
       await transaction.$queryRaw(Prisma.sql`SELECT id FROM notice_deliveries
         WHERE id = ${candidate.id}
         AND recipient_identity_id = ${input.recipientIdentityId} AND recipient_user_id = ${input.actorUserId}
@@ -662,8 +662,23 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
           }
         });
       }
-      return { publicId: input.publicId, readAt };
+      return { publicId: input.publicId, readAt, changed: !delivery.readAt, deliveryId: delivery.id };
     });
+    if (result.changed) {
+      try {
+        this.eventGateway?.publish({
+          id: `official-notice-read:${result.deliveryId}:${result.readAt.getTime()}`,
+          type: "notification.read",
+          recipientUserId: input.actorUserId,
+          recipientIdentityId: input.recipientIdentityId,
+          payload: { kind: "official_notice", publicId: input.publicId },
+          createdAt: result.readAt.toISOString()
+        });
+      } catch {
+        // The read is committed; reconnecting clients recover it through the inbox API.
+      }
+    }
+    return { publicId: result.publicId, readAt: result.readAt };
   }
 
   private async deliverOne(deliveryId: number, noticeId: number, now: Date): Promise<void> {

@@ -31,6 +31,9 @@ const row = {
   categoryId: 8n,
   gmvJpy: 12300n,
   completedCount: 2n,
+  testGmvJpy: 12300n,
+  testCompletedCount: 2n,
+  dataComposition: "test",
   registeredAt: new Date("2026-01-01T00:00:00.000Z")
 };
 
@@ -82,6 +85,9 @@ describe("AnalyticsRankingRepository", () => {
           categoryId: 8,
           gmvJpy: 12300,
           completedCount: 2,
+          testGmvJpy: 12300,
+          testCompletedCount: 2,
+          dataComposition: "test",
           registeredAt: "2026-01-01T00:00:00.000Z"
         }
       ],
@@ -125,7 +131,7 @@ describe("AnalyticsRankingRepository", () => {
     );
   });
 
-  it("validates evidence only for identities that are eligible to enter rankings", async () => {
+  it("validates eligible identities while classifying test evidence separately", async () => {
     const test = fixture([[{ anomalyCount: 0n }], [{ total: 0n }]]);
 
     await expect(
@@ -134,6 +140,25 @@ describe("AnalyticsRankingRepository", () => {
 
     const validationSql = queryText(test.queryRaw.mock.calls[0]?.[0] as SqlQuery);
     expect(validationSql).toMatch(/FROM formal_order_evidence\s+WHERE entity_eligible = 1/u);
+    expect(validationSql).toContain(
+      "candidate.customer_is_test = TRUE OR candidate.technician_user_is_test = TRUE"
+    );
+    expect(validationSql).toContain(
+      "WHEN candidate.customer_is_test = TRUE OR candidate.technician_user_is_test = TRUE"
+    );
+    expect(validationSql).toMatch(/THEN \?\s+ELSE \?\s+END/u);
+    expect(test.queryRaw.mock.calls[0]?.[0].values).toEqual(
+      expect.arrayContaining(["TEST_NDP", "NDP"])
+    );
+    expect(validationSql).not.toContain("candidate.customer_is_test = FALSE");
+    expect(validationSql).not.toContain("candidate.technician_user_is_test = FALSE");
+
+    const pageFixture = fixture([[{ anomalyCount: 0n }], [{ total: 1n }], [row]]);
+    await pageFixture.repository.listRankings(input);
+    const pageSql = queryText(pageFixture.queryRaw.mock.calls[2]?.[0] as SqlQuery);
+    expect(pageSql).toContain("test_gmv_jpy AS testGmvJpy");
+    expect(pageSql).toContain("test_completed_count AS testCompletedCount");
+    expect(pageSql).toContain("data_composition AS dataComposition");
   });
 
   it("uses a non-reserved SQL name for the window-function ranking position", async () => {
@@ -169,7 +194,10 @@ describe("AnalyticsRankingRepository", () => {
       [[{ anomalyCount: 0 }], [{ total: "1.5" }], []],
       [[{ anomalyCount: 0 }], [{ total: 2 }], [row]],
       [[{ anomalyCount: 0 }], [{ total: 2 }], [row, row]],
-      [[{ anomalyCount: 0 }], [{ total: 1 }], [{ ...row, gmvJpy: -1 }]]
+      [[{ anomalyCount: 0 }], [{ total: 1 }], [{ ...row, gmvJpy: -1 }]],
+      [[{ anomalyCount: 0 }], [{ total: 1 }], [{ ...row, testGmvJpy: 12301n }]],
+      [[{ anomalyCount: 0 }], [{ total: 1 }], [{ ...row, testCompletedCount: 3n }]],
+      [[{ anomalyCount: 0 }], [{ total: 1 }], [{ ...row, dataComposition: "formal" }]]
     ].map((responses) => [responses] as const)
   )(
     "rejects corrupt evidence, totals, duplicates and non-canonical aggregates",
@@ -196,6 +224,8 @@ describe("AnalyticsRankingRepository", () => {
     await test.repository.listRankings({ ...input, kind: "customer", categoryId: null });
     const sql = queryText(test.queryRaw.mock.calls[0]?.[0] as SqlQuery);
     expect(sql).toContain("candidate.payment_selected_at = candidate.payment_confirmed_at");
+    expect(sql).toContain("THEN candidate.session_ended_at");
+    expect(sql).toContain("ELSE candidate.payment_selected_at");
     expect(sql).toMatch(
       /JSON_LENGTH\(event\.metadata\)[\s\S]*?= 0[\s\S]*?booking_order_id = candidate\.id[\s\S]*?= 0\)/u
     );

@@ -16,11 +16,19 @@ import {
   createRateLimitMiddleware
 } from "./middlewares/security.middleware";
 import { createTracingMiddleware } from "./middlewares/tracing.middleware";
-import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
+import { createPlatformMaintenanceMiddleware } from "./middlewares/platform-maintenance.middleware";
+import {
+  AuditLogRepository,
+  type AuditLogRepositoryPort
+} from "./repositories/audit-log.repository";
 import type { AffiliateProfileRepositoryPort } from "./repositories/affiliate-profile.repository";
 import { AuthRepository, type AuthRepositoryPort } from "./repositories/auth.repository";
 import type { MerchantShopContextRepositoryPort } from "./repositories/merchant-shop-context.repository";
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
+import type { BackofficeUserReviewRepositoryPort } from "./repositories/backoffice-user-review.repository";
+import type { BackofficeUserReviewService } from "./services/backoffice-user-review.service";
+import type { BackofficeUserUsageRepositoryPort } from "./repositories/backoffice-user-usage.repository";
+import type { BackofficeUserUsageService } from "./services/backoffice-user-usage.service";
 import type {
   AffiliateTaskRepositoryPort,
   AffiliateTaskService
@@ -46,6 +54,22 @@ import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.re
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
+import {
+  PlatformSettingsRepository,
+  type PlatformSettingsRepositoryPort
+} from "./repositories/platform-settings.repository";
+import {
+  ImServerRetentionRepository,
+  type ImMediaLifecycleRepositoryPort
+} from "./repositories/im-server-retention.repository";
+import {
+  ImPolicyRepository,
+  type ImPolicyRepositoryPort
+} from "./repositories/im-policy.repository";
+import {
+  LegalDocumentRepository,
+  type LegalDocumentRepositoryPort
+} from "./repositories/legal-document.repository";
 import type { UserExperienceRepositoryPort } from "./domain/user-experience";
 import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
 import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
@@ -150,6 +174,8 @@ import { createAffiliateMarketplaceRoutes } from "./routes/affiliate-marketplace
 import { createAffiliateProfileRoutes } from "./routes/affiliate-profile.routes";
 import { createAffiliateAllianceRoutes } from "./routes/affiliate-alliance.routes";
 import { createBackofficeRoutes } from "./routes/backoffice.routes";
+import { createBackofficeUserReviewRoutes } from "./routes/backoffice-user-review.routes";
+import { createBackofficeUserUsageRoutes } from "./routes/backoffice-user-usage.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
 import { createCoreReadRoutes } from "./routes/core-read.routes";
@@ -173,8 +199,11 @@ import { createShopTravelFarePolicyRoutes } from "./routes/shop-travel-fare-poli
 import { createRouteEstimateRoutes } from "./routes/route-estimate.routes";
 import { createTravelOperationsRoutes } from "./routes/travel-operations.routes";
 import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
+import { createPlatformSettingsRoutes } from "./routes/platform-settings.routes";
 import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
 import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
+import { createImPolicyRoutes } from "./routes/im-policy.routes";
+import { createLegalDocumentRoutes } from "./routes/legal-document.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
 import { createOrderPerformanceRoutes } from "./routes/order-performance.routes";
 import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
@@ -240,6 +269,13 @@ import type { UserExperienceService } from "./services/user-experience.service";
 import type { BackofficeUserGroupService } from "./services/backoffice-user-group.service";
 import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import type { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
+import { AuditLogService } from "./services/audit-log.service";
+import {
+  PlatformAccessPolicyService,
+  type PlatformAccessPolicyPort
+} from "./services/platform-access-policy.service";
+import { PlatformSettingsResolver } from "./services/platform-settings.resolver";
+import { PlatformSettingsService } from "./services/platform-settings.service";
 import type { ExchangeService } from "./services/exchange.service";
 import type { ExchangeClaimService } from "./services/exchange-claim.service";
 import type { ExchangeMatchingService } from "./services/exchange-matching.service";
@@ -253,6 +289,8 @@ import {
 import { RealtimeService } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
+import { ImPolicyService } from "./services/im-policy.service";
+import { LegalDocumentService } from "./services/legal-document.service";
 import type { ImChatRecordMediaStoragePort } from "./services/im-chat-record-media.storage";
 import type { ImChatRecordService } from "./services/im-chat-record.service";
 import type { ImMessageTranslationService } from "./services/im-message-translation.service";
@@ -374,6 +412,21 @@ export interface AppDependencies {
   merchantApplicationReviewRepository?: MerchantApplicationReviewRepositoryPort;
   merchantApplicationReviewService?: MerchantApplicationReviewService;
   backofficeRepository?: BackofficeRepositoryPort;
+  backofficeUserReviewRepository?: BackofficeUserReviewRepositoryPort;
+  backofficeUserReviewService?: Pick<
+    BackofficeUserReviewService,
+    "listForOperations" | "listForMerchant" | "amend"
+  >;
+  backofficeUserUsageRepository?: BackofficeUserUsageRepositoryPort;
+  backofficeUserUsageService?: Pick<
+    BackofficeUserUsageService,
+    | "listForOperations"
+    | "listForMerchant"
+    | "getTimelineForOperations"
+    | "getTimelineForMerchant"
+    | "appendComment"
+    | "amendRefund"
+  >;
   platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
   platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
   userExperienceService?: Pick<
@@ -395,10 +448,32 @@ export interface AppDependencies {
     | "listBenefitsForAdministration"
     | "updateBenefit"
     | "changeEntitlement"
+    | "adjustUserMembership"
     | "getMyMembership"
     | "getMyMembershipBenefits"
   >;
   platformMembershipRepository?: PlatformMembershipRepositoryPort;
+  platformSettingsRepository?: PlatformSettingsRepositoryPort;
+  platformSettingsResolver?: PlatformSettingsResolver;
+  platformSettingsService?: Pick<
+    PlatformSettingsService,
+    "getPublic" | "getForOperations" | "updateBasic" | "updatePayment"
+  >;
+  platformAccessPolicyService?: PlatformAccessPolicyPort;
+  imPolicyRepository?: ImPolicyRepositoryPort;
+  imPolicyService?: Pick<ImPolicyService, "get" | "update">;
+  legalDocumentRepository?: LegalDocumentRepositoryPort;
+  legalDocumentService?: Pick<
+    LegalDocumentService,
+    | "list"
+    | "create"
+    | "updateMetadata"
+    | "getLocale"
+    | "saveDraft"
+    | "publish"
+    | "listReleases"
+    | "getPublicCurrent"
+  >;
   backofficeUserGroupService?: Pick<
     BackofficeUserGroupService,
     | "listGroups"
@@ -435,6 +510,7 @@ export interface AppDependencies {
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
+  imMediaLifecycleRepository?: ImMediaLifecycleRepositoryPort;
   imChatRecordRepository?: ImChatRecordRepositoryPort;
   imChatRecordMediaStorage?: ImChatRecordMediaStoragePort;
   imChatRecordService?: ImChatRecordService;
@@ -507,6 +583,40 @@ export const createApp = (
   const personalIdentityScopeService =
     dependencies.personalIdentityScopeService ?? new PersonalIdentityScopeService(authRepository);
   const userExperienceService = createUserExperienceServiceForRoutes(dependencies);
+  const platformSettingsRepository =
+    dependencies.platformSettingsRepository ?? new PlatformSettingsRepository();
+  const platformSettingsResolver =
+    dependencies.platformSettingsResolver ??
+    new PlatformSettingsResolver(platformSettingsRepository);
+  const platformSettingsService =
+    dependencies.platformSettingsService ??
+    new PlatformSettingsService(
+      platformSettingsRepository,
+      platformSettingsResolver,
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
+  const platformAccessPolicyService =
+    dependencies.platformAccessPolicyService ??
+    (config.NODE_ENV === "test"
+      ? undefined
+      : new PlatformAccessPolicyService(platformSettingsResolver));
+  const imPolicyRepository = dependencies.imPolicyRepository ?? new ImPolicyRepository();
+  const imPolicyService =
+    dependencies.imPolicyService ??
+    new ImPolicyService(
+      imPolicyRepository,
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
+  const imMediaLifecycleRepository =
+    dependencies.imMediaLifecycleRepository ?? new ImServerRetentionRepository();
+  const legalDocumentRepository =
+    dependencies.legalDocumentRepository ?? new LegalDocumentRepository();
+  const legalDocumentService =
+    dependencies.legalDocumentService ??
+    new LegalDocumentService(
+      legalDocumentRepository,
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
   const realtimeService =
     dependencies.realtimeService ??
     new RealtimeService(
@@ -524,7 +634,16 @@ export const createApp = (
     realtimeEventGateway,
     realtimeService,
     userExperienceService,
-    personalIdentityScopeService
+    personalIdentityScopeService,
+    platformSettingsRepository,
+    platformSettingsResolver,
+    platformSettingsService,
+    imPolicyRepository,
+    imPolicyService,
+    imMediaLifecycleRepository,
+    legalDocumentRepository,
+    legalDocumentService,
+    ...(platformAccessPolicyService ? { platformAccessPolicyService } : {})
   };
 
   apiRouter.use((request, response, next) => {
@@ -540,7 +659,13 @@ export const createApp = (
 
   mount("shared", createHealthRoutes(config, resolvedDependencies));
   mount("shared", createObservabilityRoutes(config, metricsService));
+  mount("shared", createPlatformSettingsRoutes(config, resolvedDependencies));
+  mount("shared", createImPolicyRoutes(config, resolvedDependencies));
+  mount("shared", createLegalDocumentRoutes(config, resolvedDependencies));
   mount("shared", createAuthRoutes(config, resolvedDependencies));
+  if (platformAccessPolicyService) {
+    apiRouter.use(createPlatformMaintenanceMiddleware(platformAccessPolicyService));
+  }
   mount("backoffice", createPermissionRoutes(config, resolvedDependencies));
   mount("backoffice", createRoleRoutes(config, resolvedDependencies));
   mount("backoffice", createUserRoutes(config, resolvedDependencies));
@@ -611,6 +736,14 @@ export const createApp = (
   mount("shared", createAffiliateMarketplaceRoutes(config, resolvedDependencies));
   mount(["backoffice", "merchant-admin"], createBookingRoutes(config, resolvedDependencies));
   mount(["backoffice", "merchant-admin"], createBackofficeRoutes(config, resolvedDependencies));
+  mount(
+    ["backoffice", "merchant-admin"],
+    createBackofficeUserReviewRoutes(config, resolvedDependencies)
+  );
+  mount(
+    ["backoffice", "merchant-admin"],
+    createBackofficeUserUsageRoutes(config, resolvedDependencies)
+  );
   mount("backoffice", createMerchantSaasBillingRoutes(config, resolvedDependencies));
   mount("shared", createImMediaRoutes(config, resolvedDependencies));
   mount("shared", createImVoiceMessageRoutes(config, resolvedDependencies));

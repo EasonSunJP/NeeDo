@@ -1,8 +1,32 @@
 import { createHash } from "node:crypto";
 import { NeedoContractCatalogService } from "../src/services/needo-contract-catalog.service";
+import {
+  AFFILIATE_CONTRACT_TEXT,
+  LEGAL_CONTRACT_EFFECTIVE_AT,
+  MERCHANT_CONTRACT_TEXT
+} from "../src/bootstrap/legal-document-bootstrap";
 
 describe("NeedoContractCatalogService", () => {
-  const catalog = new NeedoContractCatalogService();
+  const catalog = new NeedoContractCatalogService({
+    getCurrentBySlug: jest.fn(async (slug: string, locale: "zh-CN" | "ja" | "en") => {
+      const type = slug === "merchant-agreement" ? "merchant" : "affiliate";
+      const body = type === "merchant" ? MERCHANT_CONTRACT_TEXT[locale] : AFFILIATE_CONTRACT_TEXT[locale];
+      return {
+        publicId: "11111111-1111-4111-8111-111111111111",
+        documentId: 1,
+        slug,
+        internalPath: `/me/settings/${slug}`,
+        displayLocations: [],
+        locale,
+        version: 1,
+        title: body.split("\n", 1)[0],
+        body,
+        contentHash: "stored-release-hash",
+        publishedAt: LEGAL_CONTRACT_EFFECTIVE_AT,
+        publishedByUserId: 1
+      };
+    })
+  });
 
   it("serves a complete affiliate rules-and-contract snapshot with a stable content hash", async () => {
     const contract = await catalog.getCurrent("affiliate", "zh-CN");
@@ -40,6 +64,16 @@ describe("NeedoContractCatalogService", () => {
     await expect(catalog.getCurrent("affiliate", "fr")).rejects.toMatchObject({
       message: "error.contract.language_not_supported",
       statusCode: 400
+    });
+  });
+
+  it("fails closed when the requested persisted release is unavailable", async () => {
+    const unavailable = new NeedoContractCatalogService({
+      getCurrentBySlug: jest.fn(async () => null)
+    });
+    await expect(unavailable.getCurrent("merchant", "ja")).rejects.toMatchObject({
+      message: "error.contract.unavailable",
+      statusCode: 404
     });
   });
 });

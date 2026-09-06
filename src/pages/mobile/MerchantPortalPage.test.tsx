@@ -193,4 +193,16 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(storeDetailSource).toContain("{pricingControl ? <div>{pricingControl}</div> : <div />}");
     expect(storeDetailSource).toContain("{privacyControl ? <div>{privacyControl}</div> : <div />}");
   });
+
+  it("uses the active UI theme colors instead of an image for the dashboard background", () => {
+    const dashboardHeroSource = merchantSource.slice(
+      merchantSource.indexOf('<section className="client-feature-panel overflow-hidden rounded-[28px] border text-white">'),
+      merchantSource.indexOf("<MerchantPrimaryNavCarousel />")
+    );
+
+    expect(dashboardHeroSource).toContain('className="client-feature-panel overflow-hidden rounded-[28px] border text-white"');
+    expect(dashboardHeroSource).toContain('className="client-feature-aura absolute inset-0"');
+    expect(dashboardHeroSource).not.toContain("<img");
+    expect(dashboardHeroSource).not.toContain("imageBank.salon");
+  });
 });

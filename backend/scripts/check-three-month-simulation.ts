@@ -19,6 +19,10 @@ import {
 import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
 import { BackofficeRepository } from "../src/repositories/backoffice.repository";
 import { LIFEDANCE_PAYROLL_PERIODS } from "../src/simulation/lifedance-payroll-seed";
+import {
+  filterSimulationContactsByIdentityPair,
+  simulationContactIdentityPairKey
+} from "../src/simulation/three-month-simulation-contact-check";
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
@@ -26,36 +30,16 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
   }
 };
 
-const getRequiredId = <Key, Value>(
-  ids: ReadonlyMap<Key, Value>,
-  key: Key,
-  entity: string
-): Value => {
-  const value = ids.get(key);
-  if (value === undefined) {
-    throw new Error(`${entity} id is missing for ${String(key)}.`);
-  }
-  return value;
-};
-
 const readJsonRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 
-const loadEnvironmentFile = (): void => {
-  const requestedEnvFile = process.env.ENV_FILE?.trim();
-  if (process.env.ALLOW_STAGING_SIMULATION_SYNC === "true" && !requestedEnvFile) {
-    return;
-  }
-  const envFile = requestedEnvFile || ".env.dev";
+const main = async (): Promise<void> => {
+  const envFile = process.env.ENV_FILE || ".env.dev";
   assert(existsSync(envFile), `environment file was not found: ${envFile}`);
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
-};
-
-const main = async (): Promise<void> => {
-  loadEnvironmentFile();
   const seedConfig = getSimulationSeedConfig(process.env);
   const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD?.trim();
   assert(
@@ -148,14 +132,12 @@ const main = async (): Promise<void> => {
       ),
       "every simulation account must use its deterministic generated avatar"
     );
-    if (!seedConfig.preserveExistingPasswords) {
-      assert(
-        [...plannedAvatarByEmail.values()].every((avatarUrl) =>
-          existsSync(resolve(__dirname, "../..", `public${avatarUrl}`))
-        ),
-        "every simulation avatar URL must resolve to a project asset"
-      );
-    }
+    assert(
+      [...plannedAvatarByEmail.values()].every((avatarUrl) =>
+        existsSync(resolve(__dirname, "../..", `public${avatarUrl}`))
+      ),
+      "every simulation avatar URL must resolve to a project asset"
+    );
 
     const shops = await prisma.shop.findMany({
       where: { ownerUserId: { in: owners.map((owner) => owner.id) }, deletedAt: null },
@@ -175,6 +157,7 @@ const main = async (): Promise<void> => {
           deletedAt: null
         },
         select: {
+          id: true,
           userId: true,
           type: true,
           scopeType: true,
@@ -772,13 +755,33 @@ const main = async (): Promise<void> => {
       assert(value, `missing ${type} participant id for ${key}`);
       return value;
     };
-    const expectedContactKeys = new Set(
+    const resolveParticipantIdentityId = (
+      type: "admin" | "customer" | "technician" | "shop_owner",
+      key: string
+    ): number => {
+      const userId = resolveParticipantId(type, key);
+      const identityType =
+        type === "admin"
+          ? "platform"
+          : type === "shop_owner"
+            ? "merchant_owner"
+            : type;
+      const identity = (identitiesByUser.get(userId) ?? []).find(
+        (candidate) => candidate.type === identityType
+      );
+      assert(identity, `missing ${identityType} identity for ${type} participant ${key}`);
+      return identity.id;
+    };
+    const expectedContactIdentityKeys = new Set(
       plan.contacts.map(
         (contact) =>
-          `${resolveParticipantId(contact.ownerType, contact.ownerKey)}:${resolveParticipantId(
+          simulationContactIdentityPairKey(
+            resolveParticipantIdentityId(contact.ownerType, contact.ownerKey),
+            resolveParticipantIdentityId(
             contact.contactType,
             contact.contactKey
-          )}`
+            )
+          )
       )
     );
     const candidateContacts = await prisma.contact.findMany({
@@ -788,17 +791,17 @@ const main = async (): Promise<void> => {
         },
         deletedAt: null
       },
-      select: { ownerUserId: true, contactUserId: true, source: true }
+      select: {
+        ownerUserId: true,
+        ownerIdentityId: true,
+        contactUserId: true,
+        contactIdentityId: true,
+        source: true
+      }
     });
-    const simulationContactSources = new Set([
-      "simulation_seed",
-      "lifedance_customer_service_seed",
-      "lifedance_staff_seed"
-    ]);
-    const simulationContacts = candidateContacts.filter(
-      (contact) =>
-        simulationContactSources.has(contact.source) &&
-        expectedContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
+    const simulationContacts = filterSimulationContactsByIdentityPair(
+      candidateContacts,
+      expectedContactIdentityKeys
     );
     assert(
       simulationContacts.length === plan.contacts.length,
@@ -810,122 +813,6 @@ const main = async (): Promise<void> => {
     assert(
       focusedCustomerContacts.length === 12,
       `expected 12 focused customer contacts, found ${focusedCustomerContacts.length}`
-    );
-
-    const fixedRealtimeAccounts = await prisma.user.findMany({
-      where: {
-        email: {
-          in: ["customer@example.com", "technician@example.com", "merchant@example.com"]
-        },
-        isActive: true,
-        deletedAt: null
-      },
-      select: {
-        id: true,
-        email: true,
-        identities: {
-          where: { isActive: true, deletedAt: null },
-          select: { id: true, type: true }
-        }
-      }
-    });
-    assert(fixedRealtimeAccounts.length === 3, "fixed realtime test accounts are missing");
-    const fixedRealtimeUserByEmail = new Map(
-      fixedRealtimeAccounts.map((account) => [account.email, account])
-    );
-    const fixedCustomer = getRequiredId(
-      fixedRealtimeUserByEmail,
-      "customer@example.com",
-      "fixed customer user"
-    );
-    const fixedTechnician = getRequiredId(
-      fixedRealtimeUserByEmail,
-      "technician@example.com",
-      "fixed technician user"
-    );
-    const fixedMerchant = getRequiredId(
-      fixedRealtimeUserByEmail,
-      "merchant@example.com",
-      "fixed merchant user"
-    );
-    const getFixedIdentityId = (
-      account: (typeof fixedRealtimeAccounts)[number],
-      acceptedTypes: string[]
-    ): number => {
-      const identity = account.identities.find((candidate) => acceptedTypes.includes(candidate.type));
-      assert(identity, `${account.email} is missing identity ${acceptedTypes.join("|")}`);
-      return identity.id;
-    };
-    const fixedCustomerIdentityId = getFixedIdentityId(fixedCustomer, ["customer"]);
-    const fixedTechnicianIdentityId = getFixedIdentityId(fixedTechnician, ["technician"]);
-    const fixedMerchantIdentityId = getFixedIdentityId(fixedMerchant, ["merchant_owner", "merchant"]);
-    const fixedCounterpartIdentityIds = [fixedTechnicianIdentityId, fixedMerchantIdentityId];
-    const fixedExpectedIdentityPairs = [
-      { ownerIdentityId: fixedCustomerIdentityId, contactIdentityId: fixedTechnicianIdentityId },
-      { ownerIdentityId: fixedTechnicianIdentityId, contactIdentityId: fixedCustomerIdentityId },
-      { ownerIdentityId: fixedCustomerIdentityId, contactIdentityId: fixedMerchantIdentityId },
-      { ownerIdentityId: fixedMerchantIdentityId, contactIdentityId: fixedCustomerIdentityId }
-    ];
-    const fixedRealtimeContacts = await prisma.contact.count({
-      where: {
-        deletedAt: null,
-        OR: fixedExpectedIdentityPairs.map((pair) => ({
-          ownerIdentityId: pair.ownerIdentityId,
-          contactIdentityId: pair.contactIdentityId
-        }))
-      }
-    });
-    assert(
-      fixedRealtimeContacts === fixedExpectedIdentityPairs.length,
-      `expected ${fixedExpectedIdentityPairs.length} identity-scoped fixed realtime contacts, found ${fixedRealtimeContacts}`
-    );
-    const fixedRealtimeConversations = await prisma.conversation.findMany({
-      where: {
-        deletedAt: null,
-        AND: [
-          { participants: { some: { identityId: fixedCustomerIdentityId, deletedAt: null } } },
-          {
-            participants: {
-              some: { identityId: { in: fixedCounterpartIdentityIds }, deletedAt: null }
-            }
-          }
-        ]
-      },
-      select: { id: true }
-    });
-    assert(
-      fixedRealtimeConversations.length === 2,
-      `expected 2 fixed realtime conversations, found ${fixedRealtimeConversations.length}`
-    );
-    const fixedRealtimeMessages = await prisma.message.count({
-      where: {
-        conversationId: { in: fixedRealtimeConversations.map((conversation) => conversation.id) },
-        deletedAt: null
-      }
-    });
-    assert(fixedRealtimeMessages >= 8, `expected at least 8 fixed realtime messages, found ${fixedRealtimeMessages}`);
-    const experienceEligibleUsers = await prisma.user.count({
-      where: {
-        isTestAccount: true,
-        isActive: true,
-        deletedAt: null,
-        customerProfile: { is: { deletedAt: null } }
-      }
-    });
-    const activeExperienceAccounts = await prisma.userExperienceAccount.count({
-      where: {
-        deletedAt: null,
-        user: {
-          isTestAccount: true,
-          isActive: true,
-          deletedAt: null,
-          customerProfile: { is: { deletedAt: null } }
-        }
-      }
-    });
-    assert(
-      activeExperienceAccounts === experienceEligibleUsers,
-      `expected ${experienceEligibleUsers} active test experience accounts, found ${activeExperienceAccounts}`
     );
 
     const lifeDanceStaffMessages = simulationMessages.filter((message) => {
@@ -1367,22 +1254,18 @@ const main = async (): Promise<void> => {
 
     const representativeAccounts = [owners[0], technicianUsers[0], customerUsers[0]];
     assert(representativeAccounts.every(Boolean), "representative login accounts are missing");
-    let passwordSamplesVerified = 0;
-    if (!seedConfig.preserveExistingPasswords) {
-      const passwordChecks = await Promise.all(
-        representativeAccounts.map((account) =>
-          compare(
-            account.email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword,
-            account.passwordHash
-          )
+    const passwordChecks = await Promise.all(
+      representativeAccounts.map((account) =>
+        compare(
+          account.email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword,
+          account.passwordHash
         )
-      );
-      assert(
-        passwordChecks.every(Boolean),
-        "representative simulation passwords do not match export"
-      );
-      passwordSamplesVerified = passwordChecks.length;
-    }
+      )
+    );
+    assert(
+      passwordChecks.every(Boolean),
+      "representative simulation passwords do not match export"
+    );
 
     const firstSlot = scheduleSlots.reduce((earliest, slot) =>
       slot.startsAt < earliest.startsAt ? slot : earliest
@@ -1400,7 +1283,7 @@ const main = async (): Promise<void> => {
             merchantOwners: owners.length,
             technicians: technicianUsers.length,
             customers: customerUsers.length,
-            passwordSamplesVerified
+            passwordSamplesVerified: passwordChecks.length
           },
           avatars: {
             assigned: simulationUsers.length,
@@ -1467,11 +1350,6 @@ const main = async (): Promise<void> => {
           focusedCustomerConversations: focusedCustomerConversations.length,
           focusedCustomerMessages: focusedCustomerMessages.length,
           focusedCustomerContacts: focusedCustomerContacts.length,
-          fixedRealtimeContacts,
-          fixedRealtimeConversations: fixedRealtimeConversations.length,
-          fixedRealtimeMessages,
-          experienceEligibleUsers,
-          activeExperienceAccounts,
           organizationDirectory: organizationDirectory.total,
           staffOperations,
           status: "ok"

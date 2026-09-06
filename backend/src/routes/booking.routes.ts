@@ -115,7 +115,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     ndpExchangeRateService,
     createUserExperienceServiceForRoutes(dependencies),
     undefined,
-    dependencies.userPolicyEnforcementService
+    dependencies.userPolicyEnforcementService,
+    dependencies.platformAccessPolicyService
   );
   const controller = new BookingController(bookingService);
 

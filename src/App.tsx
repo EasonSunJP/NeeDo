@@ -4,7 +4,9 @@ import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
 import { getMerchantAdminPreview } from "./auth/merchantAdminPreview";
 import { isSessionAlignedWithPortal } from "./auth/rbac";
-import { I18nProvider, I18nRuntime } from "./i18n/I18nProvider";
+import { I18nProvider, I18nRuntime, useI18n } from "./i18n/I18nProvider";
+import { translateText } from "./i18n/translations";
+import { PlatformSettingsProvider, usePlatformSettings } from "./features/platform-settings/PlatformSettingsProvider";
 import { ClientThemeProvider, getClientThemeClassName, getClientThemeModeClassName, getInitialClientThemeState, isNightClientTheme, useClientTheme } from "./theme/ClientThemeProvider";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, isDarkAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, sharedAdminThemeOptions, type AdminTheme, type AdminThemeOption } from "./theme/AdminTheme";
 import { AdminLoginPage } from "./pages/auth/AdminLoginPage";
@@ -19,10 +21,6 @@ import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
 import { AvatarBadgesPage } from "./pages/admin/AvatarBadgesPage";
 import { CarouselPage } from "./pages/admin/CarouselPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
-import { DashboardPage } from "./pages/admin/DashboardPage";
-import { DashboardMetricDetailPage } from "./pages/admin/DashboardMetricDetailPage";
-import { MembershipAnalyticsPage } from "./pages/admin/MembershipAnalyticsPage";
-import { DataCenterPage } from "./pages/admin/DataCenterPage";
 import { FieldJobsPage } from "./pages/admin/FieldJobsPage";
 import { FinancePage } from "./pages/admin/FinancePage";
 import { FloorplanPage } from "./pages/admin/FloorplanPage";
@@ -56,7 +54,6 @@ import { MomentsPage } from "./pages/mobile/MomentsPage";
 import { NeedoExchangePage } from "./pages/mobile/NeedoExchangePage";
 import { NeedoPostDetailRoutePage } from "./pages/mobile/NeedoRoutePages";
 import { TechnicianPayrollPage } from "./pages/mobile/TechnicianPayrollPage";
-import { MerchantAdminDashboardPage } from "./pages/merchant-admin/MerchantAdminDashboardPage";
 import {
   MerchantAdminDispatchCenterAutomationPage,
   MerchantAdminDispatchCenterAppointmentsPage,
@@ -213,6 +210,11 @@ import {
 } from "./assets/runtime/images";
 
 const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalPage").then((module) => ({ default: module.TechnicianPortalPage })));
+const DashboardPage = lazy(() => import("./pages/admin/DashboardPage").then((module) => ({ default: module.DashboardPage })));
+const DashboardMetricDetailPage = lazy(() => import("./pages/admin/DashboardMetricDetailPage").then((module) => ({ default: module.DashboardMetricDetailPage })));
+const MerchantAdminDashboardPage = lazy(() => import("./pages/merchant-admin/MerchantAdminDashboardPage").then((module) => ({ default: module.MerchantAdminDashboardPage })));
+const MembershipAnalyticsPage = lazy(() => import("./pages/admin/MembershipAnalyticsPage").then((module) => ({ default: module.MembershipAnalyticsPage })));
+const DataCenterPage = lazy(() => import("./pages/admin/DataCenterPage").then((module) => ({ default: module.DataCenterPage })));
 const AgentsPage = lazy(() => import("./pages/admin/AgentsPage").then((module) => ({ default: module.AgentsPage })));
 const OperatingCostsPage = lazy(() => import("./pages/admin/OperatingCostsPage").then((module) => ({ default: module.OperatingCostsPage })));
 const ServiceSearchAnalyticsPage = lazy(() => import("./pages/admin/ServiceSearchAnalyticsPage").then((module) => ({ default: module.ServiceSearchAnalyticsPage })));
@@ -221,6 +223,7 @@ const UserGroupsPage = lazy(() => import("./features/platform-user-management/Us
 const UserGlobalSettingsPage = lazy(() => import("./features/platform-user-management/UserGlobalSettingsPage").then((module) => ({ default: module.UserGlobalSettingsPage })));
 const MembershipTiersPage = lazy(() => import("./features/platform-user-management/MembershipTiersPage").then((module) => ({ default: module.MembershipTiersPage })));
 const MembershipBenefitsPage = lazy(() => import("./features/platform-user-management/MembershipBenefitsPage").then((module) => ({ default: module.MembershipBenefitsPage })));
+const SystemSettingsPage = lazy(() => import("./features/admin-system-settings/SystemSettingsPage").then((module) => ({ default: module.SystemSettingsPage })));
 const AccountCompliancePage = lazy(() => import("./features/auth/AccountCompliancePage").then((module) => ({ default: module.AccountCompliancePage })));
 const AdminNotificationComposePage = lazy(() => import("./pages/admin/AdminNotificationComposePage").then((module) => ({ default: module.AdminNotificationComposePage })));
 const AdminNotificationsPage = lazy(() => import("./pages/admin/AdminNotificationsPage").then((module) => ({ default: module.AdminNotificationsPage })));
@@ -1036,6 +1039,32 @@ function RequirePermission({
   return children;
 }
 
+function PlatformAvailabilityGate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const { language } = useI18n();
+  const { settings, status } = usePlatformSettings();
+  const isOperationsRoute =
+    location.pathname === "/login/admin" ||
+    location.pathname === "/admin" ||
+    location.pathname.startsWith("/admin/");
+
+  if (status === "ready" && !settings.siteEnabled && !isOperationsRoute) {
+    return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-slate-950 px-6 text-white">
+        <section className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl">
+          <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-400">NeeDo</p>
+          <h1 className="mt-4 text-2xl font-black">{translateText("系统维护中", language)}</h1>
+          <p className="mt-3 text-sm font-semibold leading-6 text-slate-300">
+            {translateText("服务暂时停止开放，请稍后再试。", language)}
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  return children;
+}
+
 export default function App() {
   const location = useLocation();
   const currentPortal = getSplashPortal(location.pathname);
@@ -1084,11 +1113,13 @@ export default function App() {
 
   return (
     <RootErrorBoundary>
+      <PlatformSettingsProvider>
       <AuthProvider>
         <RealtimeUnreadCountsProvider>
           <I18nProvider>
           <ClientThemeProvider>
             <I18nRuntime>
+              <PlatformAvailabilityGate>
               <EntityStoreBootstrap />
               <NeedoPetAssetBootstrap />
               <SocialProvider>
@@ -1303,9 +1334,9 @@ export default function App() {
               <Route path="/merchant/settings/privacy" element={protect("merchant", <UnifiedSettingsPrivacyPage portal="merchant" />)} />
               <Route path="/merchant/settings/delete-account" element={protect("merchant", <UnifiedSettingsDeleteAccountPage portal="merchant" />)} />
               <Route path="/merchant/:view" element={protect("merchant", <MerchantPortalPage />)} />
-              <Route path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)} />
+              <Route path="/merchant-admin" element={protect("merchant", <Suspense fallback={null}><MerchantAdminDashboardPage /></Suspense>)} />
               <Route path="/merchant-admin/analytics" element={protect("merchant", <Navigate replace to="/merchant-admin" />)} />
-              <Route path="/merchant-admin/analytics/members" element={protectPermission("merchant", "shop.member.analytics.view", <MembershipAnalyticsPage scope="merchant-admin" />)} />
+              <Route path="/merchant-admin/analytics/members" element={protectPermission("merchant", "shop.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="merchant-admin" /></Suspense>)} />
               <Route path="/merchant-admin/orders" element={protect("merchant", <MerchantAdminOrdersPage />)} />
               <Route path="/merchant-admin/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />
               <Route path="/merchant-admin/dine" element={protectFeature("merchant", "store.dine-in.order.view", <Navigate replace to="/merchant-admin/dine/orders" />, "/merchant-admin")} />
@@ -1412,18 +1443,19 @@ export default function App() {
               <Route path="/technician/settings/delete-account" element={protect("technician", <UnifiedSettingsDeleteAccountPage portal="technician" />)} />
               <Route path="/technician/:view" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
 
-              <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
+              <Route path="/admin" element={protectPermission("admin", "page:dashboard", <Suspense fallback={null}><DashboardPage /></Suspense>)} />
               <Route path="/admin/analytics" element={protectPermission("admin", "page:dashboard", <Navigate replace to="/admin" />)} />
-              <Route path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <DashboardMetricDetailPage />)} />
-              <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <MembershipAnalyticsPage scope="backoffice" />)} />
+              <Route path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <Suspense fallback={null}><DashboardMetricDetailPage /></Suspense>)} />
+              <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="backoffice" /></Suspense>)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
               <Route path="/admin/notifications/compose" element={protectPermissions("admin", ["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"], <AdminNotificationComposePage />)} />
+              <Route path="/admin/notifications/inbox" element={protect("admin", <AdminNotificationsPage view="inbox" />)} />
               <Route path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice", <AdminNotificationsPage />)} />
               <Route path="/admin/support" element={protect("admin", <AdminSupportPage />)} />
               <Route path="/admin/docs" element={protect("admin", <AdminDocsPage />)} />
               <Route path="/admin/docs/api" element={protect("admin", <AdminDocsPage />)} />
-              <Route path="/admin/data" element={protect("admin", <LegacyUserManagementRedirect source="data"><DataCenterPage /></LegacyUserManagementRedirect>)} />
+              <Route path="/admin/data" element={protect("admin", <LegacyUserManagementRedirect source="data"><Suspense fallback={null}><DataCenterPage /></Suspense></LegacyUserManagementRedirect>)} />
               <Route path="/admin/cities" element={protect("admin", <CitySettingsPage />)} />
               <Route path="/admin/badges" element={protect("admin", <AvatarBadgesPage />)} />
               <Route path="/admin/technicians" element={protect("admin", <TechniciansPage />)} />
@@ -1456,6 +1488,7 @@ export default function App() {
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
               <Route path="/admin/travel-settings" element={protectPermission("admin", "backoffice:travel-fare:read", <TravelSettingsPage />)} />
+              <Route path="/admin/settings/system" element={protectPermission("admin", "backoffice:system-settings:read", <Suspense fallback={null}><SystemSettingsPage /></Suspense>)} />
               <Route path="/admin/settings/ndp-exchange-rate" element={protectPermission("admin", "backoffice:ndp-exchange-rate:read", <NdpExchangeRatePage />)} />
               <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)} />
 
@@ -1463,11 +1496,13 @@ export default function App() {
                 </Routes>
                 </AccountComplianceGate>
               </SocialProvider>
+              </PlatformAvailabilityGate>
             </I18nRuntime>
           </ClientThemeProvider>
           </I18nProvider>
         </RealtimeUnreadCountsProvider>
       </AuthProvider>
+      </PlatformSettingsProvider>
     </RootErrorBoundary>
   );
 }

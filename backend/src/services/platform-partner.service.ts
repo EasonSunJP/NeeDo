@@ -2,6 +2,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
+import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
 export type PlatformPartnerType = "agent" | "franchisee" | "supplier";
@@ -22,6 +23,7 @@ export interface PlatformPartnerProfileRecord {
   publicId: string;
   partnerType: PlatformPartnerTypeRecord;
   activatedAt: Date;
+  endsAt: Date | null;
   markedById: number;
   reason: string;
   createdAt: Date;
@@ -77,7 +79,9 @@ export interface AgentShopReferralRecord {
 export interface PlatformPartnerProfilePayload {
   publicId: string;
   partnerType: PlatformPartnerType;
-  activatedAt: string;
+  startsAt: string;
+  endsAt: string | null;
+  permanent: boolean;
   markedAt: string;
   reason: string;
   user: {
@@ -131,13 +135,19 @@ export interface AgentShopReferralPayload {
 
 export interface MarkPartnerProfileInput {
   partnerType: PlatformPartnerType;
-  activatedAt: Date;
+  startsAt: Date;
+  endsAt: Date | null;
+  permanent: boolean;
   reason: string;
 }
 
 export interface AgentListInput extends PaginationInput {
   keyword?: string;
   status?: PlatformPartnerStatus;
+}
+
+export interface PlatformPartnerHistoryInput extends PaginationInput {
+  partnerType?: PlatformPartnerType;
 }
 
 export interface LinkAgentShopInput {
@@ -155,7 +165,7 @@ export interface AgentShopReferralListInput extends PaginationInput {
 export type MarkPartnerProfileRepositoryResult =
   | { kind: "created"; profile: PlatformPartnerProfileRecord }
   | { kind: "user_not_found" }
-  | { kind: "duplicate" };
+  | { kind: "overlap" };
 
 export type LinkAgentShopRepositoryResult =
   | { kind: "created"; referral: AgentShopReferralRecord }
@@ -171,10 +181,13 @@ export interface PlatformPartnerRepositoryPort {
   markPartnerProfile: (input: {
     userId: number;
     partnerType: PlatformPartnerTypeRecord;
-    activatedAt: Date;
+    startsAt: Date;
+    endsAt: Date | null;
     markedById: number;
     reason: string;
+    audit: AuditLogCreateInput;
   }) => Promise<MarkPartnerProfileRepositoryResult>;
+  listUserProfiles: (input: PaginationInput & { userId: number; partnerType?: PlatformPartnerTypeRecord }) => Promise<PaginatedResponse<PlatformPartnerProfileRecord>>;
   listAgents: (input: AgentListInput) => Promise<PaginatedResponse<AgentProfileListRecord>>;
   listAgentShopReferrals: (
     input: AgentShopReferralListInput
@@ -210,7 +223,7 @@ const referralStatusFromRecord = {
 export class PlatformPartnerService {
   public constructor(
     private readonly repository: PlatformPartnerRepositoryPort,
-    private readonly auditLogService: Pick<AuditLogService, "record">
+    private readonly auditLogService: Pick<AuditLogService, "record" | "createInput">
   ) {}
 
   public async markPartnerProfile(
@@ -222,9 +235,17 @@ export class PlatformPartnerService {
     const result = await this.repository.markPartnerProfile({
       userId,
       partnerType: partnerTypeToRecord[input.partnerType],
-      activatedAt: input.activatedAt,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
       markedById: actor.userId,
-      reason: input.reason
+      reason: input.reason,
+      audit: this.auditLogService.createInput({
+        actor,
+        action: "backoffice.partner_profile.create",
+        targetType: "platform_partner_profile",
+        context,
+        metadata: { reason: input.reason }
+      })
     });
 
     if (result.kind === "user_not_found") {
@@ -234,34 +255,28 @@ export class PlatformPartnerService {
         statusCode: 404
       });
     }
-    if (result.kind === "duplicate") {
+    if (result.kind === "overlap") {
       throw new AppError({
         code: ERROR_CODES.PLATFORM_PARTNER_CONFLICT,
-        message: "error.platform_partner.duplicate",
+        message: "error.platform_partner.validity_overlap",
         statusCode: 409
       });
     }
 
-    const payload = this.serializeProfile(result.profile);
-    await this.auditLogService.record({
-      actor,
-      action: "backoffice.partner_profile.create",
-      targetType: "platform_partner_profile",
-      targetId: result.profile.id,
-      context,
-      metadata: {
-        before: null,
-        after: {
-          publicId: payload.publicId,
-          userId: payload.user.id,
-          partnerType: payload.partnerType,
-          activatedAt: payload.activatedAt
-        },
-        reason: input.reason
-      }
-    });
+    return this.serializeProfile(result.profile);
+  }
 
-    return payload;
+  public async listUserProfiles(
+    userId: number,
+    input: PlatformPartnerHistoryInput
+  ): Promise<PaginatedResponse<PlatformPartnerProfilePayload>> {
+    const page = await this.repository.listUserProfiles({
+      userId,
+      page: input.page,
+      pageSize: input.pageSize,
+      ...(input.partnerType ? { partnerType: partnerTypeToRecord[input.partnerType] } : {})
+    });
+    return { ...page, list: page.list.map((record) => this.serializeProfile(record)) };
   }
 
   public async listAgents(
@@ -411,7 +426,9 @@ export class PlatformPartnerService {
     return {
       publicId: record.publicId,
       partnerType: partnerTypeFromRecord[record.partnerType],
-      activatedAt: record.activatedAt.toISOString(),
+      startsAt: record.activatedAt.toISOString(),
+      endsAt: record.endsAt?.toISOString() ?? null,
+      permanent: record.endsAt === null,
       markedAt: record.createdAt.toISOString(),
       reason: record.reason,
       user: {

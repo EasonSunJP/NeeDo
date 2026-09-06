@@ -79,7 +79,7 @@ export type PermissionTreePayload = {
 };
 
 export const userManagementApi = {
-  listUsers(query: { isActive?: boolean; isTestAccount?: boolean; keyword?: string; page?: number; pageSize?: number } = {}) {
+  listUsers(query: { isActive?: boolean; isTestAccount?: boolean; keyword?: string; page?: number; pageSize?: number; roleId?: number } = {}) {
     return httpClient.request<PaginatedData<UserPayload>>("/users", { query });
   },
 

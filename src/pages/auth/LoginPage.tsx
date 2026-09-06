@@ -14,6 +14,8 @@ import { openPortalEntry } from "../../auth/portalEntry";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { DEFAULT_LOGIN_LOGO_URL } from "../../features/platform-settings/defaultBrandMedia";
+import { usePlatformSettings } from "../../features/platform-settings/PlatformSettingsProvider";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -25,7 +27,7 @@ import {
 import { AuthVerificationPanel, type AuthVerificationLabels } from "./AuthVerificationPanel";
 
 type LoginPanelMode = "welcome" | "account" | "register" | "verification" | "needo-id";
-type VerificationKind = "google" | "registration";
+type VerificationKind = "google" | "registration" | "password_login";
 
 type VerificationState = {
   challenge: VerificationChallengePayload;
@@ -37,7 +39,6 @@ type GeneratedNeedoIdState = {
   session: AuthSession;
 };
 
-const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
 const loginCopyrightText = "Copyright © 2026 LifeDance Co., Ltd. All rights reserved.";
 
 const portalEntryRoute: Record<PortalScope, string> = {
@@ -240,17 +241,7 @@ export function requiresFormalFrontendLogin(_portal: PortalScope, _redirectPath:
   return true;
 }
 
-export function isGoogleAuthEnabled(value = import.meta.env.VITE_AUTH_GOOGLE_ENABLED) {
-  return value?.trim().toLowerCase() !== "false";
-}
-
-export function isRegistrationEnabled(
-  value = import.meta.env.VITE_AUTH_REGISTRATION_ENABLED
-) {
-  return value?.trim().toLowerCase() !== "false";
-}
-
-function AppMark() {
+function AppMark({ url }: { url: string }) {
   return (
     <div className="needo-login-logo mx-auto h-[92px] w-[92px] overflow-hidden rounded-[26px]">
       <img
@@ -258,25 +249,22 @@ function AppMark() {
         aria-hidden="true"
         className="needo-login-logo__mark h-full w-full object-cover"
         draggable="false"
-        src={loginIconMarkUrl}
+        src={url}
       />
     </div>
   );
 }
 
 export function LoginPage({
-  googleAuthEnabled = isGoogleAuthEnabled(),
-  registrationEnabled = isRegistrationEnabled(),
   navigateToPortal = openPortalEntry
 }: {
-  googleAuthEnabled?: boolean;
-  registrationEnabled?: boolean;
   navigateToPortal?: (portal: PortalScope, route: string) => void;
 }) {
   const { portal } = useParams();
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
   const { theme, isNight } = useClientTheme();
+  const { settings: platformSettings } = usePlatformSettings();
   const {
     authenticateWithGoogleCredential,
     canAccess,
@@ -288,6 +276,7 @@ export function LoginPage({
     startRegistration,
     switchPortal,
     verifyGoogleRegistrationOrLink,
+    verifyPasswordLogin,
     verifyRegistration
   } = useAuth();
   const requestedPortal = normalizePortal(portal);
@@ -371,7 +360,7 @@ export function LoginPage({
   useEffect(() => {
     const container = googleContainerRef.current;
     if (
-      !googleAuthEnabled ||
+      !platformSettings.loginMethods.google ||
       !container ||
       panelMode !== "welcome" ||
       hasActiveAccess ||
@@ -442,12 +431,12 @@ export function LoginPage({
     activePortal,
     generatedNeedoId,
     googleFlowKey,
-    googleAuthEnabled,
     hasActiveAccess,
     language,
     authenticateWithGoogleCredential,
     navigateToPortal,
     panelMode,
+    platformSettings.loginMethods.google,
     redirectPath
   ]);
 
@@ -472,6 +461,14 @@ export function LoginPage({
       const result = await login(activePortal, identifier, password);
       if (!result.ok) {
         setFeedback(resolveLoginErrorMessage(result.message, language));
+        return;
+      }
+      if (!("session" in result)) {
+        setLoginIdentifier(identifier);
+        setLoginPassword(password);
+        setVerification({ challenge: result.challenge, kind: "password_login" });
+        setVerificationError("");
+        setPanelMode("verification");
         return;
       }
       if (savePassword && result.session.portal === activePortal) {
@@ -527,12 +524,21 @@ export function LoginPage({
       const result =
         verification.kind === "registration"
           ? await verifyRegistration(input)
-          : await verifyGoogleRegistrationOrLink(input, activePortal);
+          : verification.kind === "password_login"
+            ? await verifyPasswordLogin(input, activePortal)
+            : await verifyGoogleRegistrationOrLink(input, activePortal);
       if (!result.ok) {
         setVerificationError(resolveLoginErrorMessage(result.message, language));
         return;
       }
-      if (result.needoId) {
+      if (verification.kind === "password_login" && savePassword) {
+        await requestBrowserPasswordSave({
+          id: loginIdentifier,
+          name: "NeeDo",
+          password: loginPassword
+        });
+      }
+      if ("needoId" in result && typeof result.needoId === "string" && result.needoId) {
         setGeneratedNeedoId({
           needoId: result.needoId,
           session: result.session
@@ -561,6 +567,28 @@ export function LoginPage({
       return;
     }
 
+    if (verification.kind === "password_login") {
+      setPending(true);
+      try {
+        const result = await login(activePortal, loginIdentifier, loginPassword);
+        if (!result.ok) {
+          setVerificationError(resolveLoginErrorMessage(result.message, language));
+          return;
+        }
+        if ("session" in result) {
+          navigateToPortal(
+            result.session.portal,
+            getPostLoginRoute(result.session.portal, redirectPath)
+          );
+          return;
+        }
+        setVerification({ challenge: result.challenge, kind: "password_login" });
+      } finally {
+        setPending(false);
+      }
+      return;
+    }
+
     setPending(true);
     try {
       const result = await startRegistration({
@@ -579,7 +607,11 @@ export function LoginPage({
 
   const handleVerificationBack = () => {
     const returningFromGoogle = verification?.kind === "google";
-    const priorMode = returningFromGoogle ? "welcome" : "register";
+    const priorMode = returningFromGoogle
+      ? "welcome"
+      : verification?.kind === "password_login"
+        ? "account"
+        : "register";
     setVerification(null);
     setVerificationError("");
     setPanelMode(priorMode);
@@ -645,7 +677,7 @@ export function LoginPage({
         </header>
 
         <section className="flex flex-1 flex-col justify-center py-8 text-center">
-          <AppMark />
+          <AppMark url={platformSettings.loginLogo?.url ?? DEFAULT_LOGIN_LOGO_URL} />
           <h1 className="mt-7 text-[32px] font-black leading-tight tracking-normal text-[color:var(--client-text)]">
             {copy.welcomeTitle}
           </h1>
@@ -737,7 +769,7 @@ export function LoginPage({
                   {copy.logout}
                 </button>
               </div>
-            ) : panelMode === "register" && registrationEnabled ? (
+            ) : panelMode === "register" ? (
               <form
                 className="space-y-5 text-left"
                 data-testid="registration-form"
@@ -876,7 +908,7 @@ export function LoginPage({
                 >
                   {copy.accountLogin}
                 </button>
-                {activePortal === "user" && registrationEnabled ? (
+                {activePortal === "user" && platformSettings.selfRegistrationEnabled ? (
                   <button
                     className="inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
                     data-testid="show-registration"
@@ -889,36 +921,32 @@ export function LoginPage({
               </div>
             )}
 
-            {googleAuthEnabled ? (
-              <div
-                className={
-                  panelMode === "welcome" && !hasActiveAccess && !generatedNeedoId
-                    ? "mt-4"
-                    : "hidden"
-                }
-              >
-                <div className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-3">
-                  <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">
-                    {copy.googlePrompt}
-                  </p>
-                  <div
-                    aria-label={copy.googleLogin}
-                    className="flex min-h-11 items-center justify-center"
-                    data-testid="google-identity-button"
-                    ref={googleContainerRef}
-                  />
-                  {googleState === "error" ? (
-                    <button
-                      className="mt-2 min-h-11 rounded-full px-4 text-sm font-black text-[color:var(--client-primary)]"
-                      onClick={() => setGoogleFlowKey((current) => current + 1)}
-                      type="button"
-                    >
-                      {copy.googleRestart}
-                    </button>
-                  ) : null}
-                </div>
+            {platformSettings.loginMethods.google ? <div
+              className={
+                panelMode === "welcome" && !hasActiveAccess && !generatedNeedoId ? "mt-4" : "hidden"
+              }
+            >
+              <div className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-3">
+                <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">
+                  {copy.googlePrompt}
+                </p>
+                <div
+                  aria-label={copy.googleLogin}
+                  className="flex min-h-11 items-center justify-center"
+                  data-testid="google-identity-button"
+                  ref={googleContainerRef}
+                />
+                {googleState === "error" ? (
+                  <button
+                    className="mt-2 min-h-11 rounded-full px-4 text-sm font-black text-[color:var(--client-primary)]"
+                    onClick={() => setGoogleFlowKey((current) => current + 1)}
+                    type="button"
+                  >
+                    {copy.googleRestart}
+                  </button>
+                ) : null}
               </div>
-            ) : null}
+            </div> : null}
 
             {feedback ? (
               <p

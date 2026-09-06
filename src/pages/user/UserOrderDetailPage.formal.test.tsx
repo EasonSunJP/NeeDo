@@ -190,6 +190,7 @@ const checkout: OrderCheckout = {
   discountAmountJpy: 500,
   checkoutAmountJpy: 9500,
   payableNdp: 19000,
+  availablePaymentMethods: ["cash", "ndp"],
   rate: { ruleId: 7, publicId: "rate-7", version: 3, ndpUnits: 2, jpyUnits: 1, effectiveFrom: "2026-09-01T00:00:00.000Z" },
   calculation: {
     formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
@@ -375,12 +376,12 @@ describe("formal user order detail", () => {
     expect(container.textContent).toContain("等待结账");
     expect(container.textContent).not.toContain("服务已完成");
     expect(container.textContent).toContain("2 NDP = 1 JPY");
-    expect(button("现金支付")).toBeTruthy();
+    expect(button("线下支付")).toBeTruthy();
     expect(button("NDP 支付")).toBeTruthy();
-    expect(button("其他方式")).toBeTruthy();
-    await click("现金支付");
+    expect(container.textContent).not.toContain("其他方式");
+    await click("线下支付");
     await waitFor(() => expect(mocks.selectPaymentMethod).toHaveBeenCalledWith(88, { method: "cash", idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/) }));
-    await waitFor(() => expect(container.textContent).toContain("等待技师确认收款"));
+    await waitFor(() => expect(container.textContent).toContain("等待线下收款确认"));
     expect(container.textContent).not.toContain("服务与结算已完成");
   });
 
@@ -390,10 +391,10 @@ describe("formal user order detail", () => {
     mocks.getCheckout.mockReturnValue(pendingCheckout.promise);
     await render();
     expect(container.textContent).toContain("正在加载正式结算");
-    expect(container.textContent).not.toContain("现金支付");
+    expect(container.textContent).not.toContain("线下支付");
     expect(container.textContent).not.toContain("NDP 支付");
     pendingCheckout.resolve(checkout);
-    await waitFor(() => expect(button("现金支付")).toBeTruthy());
+    await waitFor(() => expect(button("线下支付")).toBeTruthy());
   });
 
   it("shows checkout failure with a read-only retry and no payment actions", async () => {
@@ -401,9 +402,9 @@ describe("formal user order detail", () => {
     mocks.getCheckout.mockRejectedValueOnce(new ApiClientError("error.order.checkout_unavailable", 50301, 503)).mockResolvedValueOnce(checkout);
     await render();
     await waitFor(() => expect(container.textContent).toContain("正式结算加载失败"));
-    expect(container.textContent).not.toContain("现金支付");
+    expect(container.textContent).not.toContain("线下支付");
     await click("重新加载正式结算");
-    await waitFor(() => expect(button("现金支付")).toBeTruthy());
+    await waitFor(() => expect(button("线下支付")).toBeTruthy());
     expect(mocks.getCheckout).toHaveBeenCalledTimes(2);
   });
 
@@ -412,13 +413,13 @@ describe("formal user order detail", () => {
     mocks.getCheckout.mockResolvedValue(checkout);
     mocks.selectPaymentMethod.mockResolvedValue({ ...checkout, status: "awaitingPaymentConfirmation", paymentMethod: "cash" });
     await render();
-    await waitFor(() => expect(button("现金支付")).toBeTruthy());
-    await click("现金支付");
+    await waitFor(() => expect(button("线下支付")).toBeTruthy());
+    await click("线下支付");
     await waitFor(() => expect(container.textContent).toContain("订单状态读取失败"));
     expect(container.textContent).not.toContain("NDP 支付");
     expect(mocks.selectPaymentMethod).toHaveBeenCalledTimes(1);
     await click("重新读取订单状态");
-    await waitFor(() => expect(container.textContent).toContain("等待技师确认收款"));
+    await waitFor(() => expect(container.textContent).toContain("等待线下收款确认"));
     expect(mocks.selectPaymentMethod).toHaveBeenCalledTimes(1);
   });
 
@@ -587,20 +588,23 @@ describe("formal user order detail", () => {
     expect(container.textContent).not.toContain("提交评价");
   });
 
-  it("selects other payment as a formal waiting method without fake completion", async () => {
-    mocks.getOrder.mockResolvedValueOnce(makeOrder("awaitingCheckout")).mockResolvedValueOnce(makeOrder("awaitingPaymentConfirmation"));
-    mocks.selectPaymentMethod.mockResolvedValue({ ...checkout, status: "awaitingPaymentConfirmation", paymentMethod: "other", otherMethod: { code: "other_manual", label: "其他方式" } });
+  it("renders only the payment methods enabled by the authoritative checkout projection", async () => {
+    mocks.getOrder.mockResolvedValue(makeOrder("awaitingCheckout"));
+    mocks.getCheckout.mockResolvedValue({ ...checkout, availablePaymentMethods: ["ndp"] });
     await render();
-    await waitFor(() => expect(container.textContent).toContain("其他方式"));
-    await click("其他方式");
-    await waitFor(() => expect(mocks.selectPaymentMethod).toHaveBeenCalledWith(88, {
-      method: "other",
-      otherMethodCode: "other_manual",
-      otherMethodLabel: "其他方式",
-      idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
-    }));
-    await waitFor(() => expect(container.textContent).toContain("等待技师确认收款"));
-    expect(container.textContent).not.toContain("服务与结算已完成");
+    await waitFor(() => expect(container.textContent).toContain("NDP 支付"));
+    expect(container.textContent).not.toContain("线下支付");
+    expect(container.textContent).not.toContain("其他方式");
+    expect(mocks.selectPaymentMethod).not.toHaveBeenCalled();
+  });
+
+  it("shows an explicit unavailable state when operations disables every payment method", async () => {
+    mocks.getOrder.mockResolvedValue(makeOrder("awaitingCheckout"));
+    mocks.getCheckout.mockResolvedValue({ ...checkout, availablePaymentMethods: [] });
+    await render();
+    await waitFor(() => expect(container.textContent).toContain("当前暂无可用支付方式"));
+    expect(container.textContent).not.toContain("线下支付");
+    expect(container.textContent).not.toContain("NDP 支付");
   });
 
   it("keeps the displayed formal state unchanged when a mutation is rejected", async () => {

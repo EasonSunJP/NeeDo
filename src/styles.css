@@ -229,14 +229,6 @@ img {
   padding-top: calc(env(safe-area-inset-top) + 12px);
 }
 
-html[data-needo-display-mode="standalone"] .client-shell .client-floating-header-host {
-  top: calc(env(safe-area-inset-top, 0px) + 12px);
-}
-
-html[data-needo-display-mode="standalone"] .client-shell .client-floating-header-host .safe-header-top {
-  padding-top: 12px;
-}
-
 .safe-shell-bottom {
   padding-bottom: calc(84px + env(safe-area-inset-bottom));
 }
@@ -1067,6 +1059,29 @@ html[data-needo-display-mode="standalone"] .client-shell .client-floating-header
   position: sticky;
   top: 0;
   z-index: 15;
+}
+
+/* Keep directory details reachable while the remaining columns scroll. */
+.table-frozen-action {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  width: 104px;
+  min-width: 104px;
+  white-space: nowrap;
+  background:
+    linear-gradient(var(--admin-surface, #ffffff), var(--admin-surface, #ffffff)),
+    var(--admin-bg, #ffffff);
+  box-shadow: -8px 0 12px -10px var(--admin-line, #dce6df);
+}
+
+thead .table-frozen-action,
+.table-sticky th.table-frozen-action {
+  z-index: 16;
+  background:
+    linear-gradient(var(--admin-muted-surface, #f4f7f4), var(--admin-muted-surface, #f4f7f4)),
+    linear-gradient(var(--admin-surface, #ffffff), var(--admin-surface, #ffffff)),
+    var(--admin-bg, #ffffff);
 }
 
 .horizontal-scroll-area {
@@ -5746,6 +5761,15 @@ body:has(.admin-theme-dark),
   color: var(--admin-ink-fill) !important;
 }
 
+.admin-shell .analytics-ranking-detail-control:is(:hover, :focus-visible) {
+  background-color: color-mix(in srgb, var(--admin-accent) 16%, var(--admin-surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--admin-accent) 38%, transparent);
+}
+
+.admin-shell .analytics-ranking-detail-control:active {
+  background-color: color-mix(in srgb, var(--admin-accent) 24%, var(--admin-surface));
+}
+
 .admin-shell .bg-paper {
   background-color: var(--admin-muted-surface) !important;
 }
@@ -8095,13 +8119,13 @@ html.im-conversation-scroll-lock #root {
   height: 100vh;
   height: 100svh;
   height: 100dvh;
-  height: var(--im-visual-viewport-height, 100dvh);
-  max-height: var(--im-visual-viewport-height, 100dvh);
+  height: var(--im-visual-viewport-height, auto);
+  max-height: none;
   top: var(--im-visual-viewport-top, 0px);
-  bottom: auto;
+  bottom: var(--im-visual-viewport-bottom, 0px);
   left: var(--im-visual-viewport-left, 0px);
   right: var(--im-visual-viewport-right, 0px);
-  width: var(--im-visual-viewport-width, 100vw);
+  width: var(--im-visual-viewport-width, auto);
   overscroll-behavior: none;
   overflow: hidden;
 }

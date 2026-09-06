@@ -249,12 +249,12 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "dashboard-i18n";
   }
 
-  if (normalizedId.endsWith("/src/features/service-search/i18n.ts")) {
-    return "service-search-i18n";
+  if (normalizedId.endsWith("/src/features/travel-fare/i18n.ts")) {
+    return "travel-fare-i18n";
   }
 
-  if (normalizedId.endsWith("/src/features/pricing-mode/i18n.ts")) {
-    return "pricing-mode-i18n";
+  if (normalizedId.endsWith("/src/features/operations-analytics/i18n.ts")) {
+    return "operations-analytics-i18n";
   }
 
   if (normalizedId.endsWith("/src/features/order-performance/i18n.ts")) {

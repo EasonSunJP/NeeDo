@@ -45,6 +45,10 @@ import type {
   UserPolicyComplianceRequirement
 } from "../domain/user-policy-enforcement";
 import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
+import type {
+  PasswordLoginVerificationPolicy,
+  PlatformAccessPolicyPort
+} from "./platform-access-policy.service";
 
 export interface AuthRequestContext {
   ip: string;
@@ -60,6 +64,10 @@ export interface TokenPairPayload {
   refreshToken: string;
   expiresIn: number;
 }
+
+export type PasswordLoginResult =
+  | ({ status: "authenticated" } & TokenPairPayload)
+  | ({ status: "verification_required" } & RegistrationChallengePayload);
 
 export interface RefreshPayload {
   accessToken: string;
@@ -105,6 +113,7 @@ export interface AuthIdentityPayload {
   scopeType: string | null;
   scopeId: number | null;
   publicId: string | null;
+  displayName: string | null;
 }
 
 export type AuthIdentityAvailabilityKind = "customer" | "technician" | "merchant" | "affiliate";
@@ -134,6 +143,7 @@ export interface AuthMePayload {
   hasPassword: boolean;
   username: string;
   avatarUrl: string | null;
+  profileDisplayName: string | null;
   isActive: boolean;
   isTestAccount: boolean;
   currentIdentity: AuthIdentityPayload;
@@ -236,13 +246,15 @@ export class AuthService {
     private readonly userPolicyEnforcementService?: Pick<
       UserPolicyEnforcementService,
       "evaluateAccountCompliance"
-    >
+    >,
+    private readonly platformAccessPolicy?: PlatformAccessPolicyPort,
+    private readonly clock: () => Date = () => new Date()
   ) {
     this.tokenService = new AuthTokenService(config);
   }
 
   public async initializeGoogleLogin(): Promise<GoogleLoginInitializationPayload> {
-    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const nonce = await this.verificationChallengeStore.createGoogleNonce({});
     return {
       clientId: this.config.GOOGLE_AUTH_CLIENT_ID,
@@ -255,7 +267,6 @@ export class AuthService {
   public async getGoogleLinkStatus(
     auth: AuthenticatedAccessContext
   ): Promise<GoogleLinkStatusPayload> {
-    this.assertGoogleAuthEnabled();
     const user = await this.getActiveAccountSecurityUser(auth);
     const status = await this.accountSecurityRepository().getGoogleBindingStatus(user.id);
     return {
@@ -269,7 +280,7 @@ export class AuthService {
   public async initializeAuthenticatedGoogleLink(
     auth: AuthenticatedAccessContext
   ): Promise<GoogleLoginInitializationPayload> {
-    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     await this.getActiveAccountSecurityUser(auth);
     const nonce = await this.verificationChallengeStore.createGoogleNonce({ userId: auth.userId });
     return {
@@ -285,7 +296,7 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleAccountSecurityChallengePayload> {
-    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     void context;
     const user = await this.getActiveAccountSecurityUser(auth);
     const nonce = await this.verificationChallengeStore.readGoogleNonce({
@@ -329,7 +340,7 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<AuthenticatedGoogleLinkVerificationPayload> {
-    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
       challengeId,
       otp,
@@ -436,7 +447,6 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleAccountSecurityChallengePayload> {
-    this.assertGoogleAuthEnabled();
     void context;
     const user = await this.getActiveAccountSecurityUser(auth);
     const status = await this.accountSecurityRepository().getGoogleBindingStatus(user.id);
@@ -454,7 +464,6 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleUnlinkVerificationPayload> {
-    this.assertGoogleAuthEnabled();
     if (
       this.sessionStore.getGoogleUnlinkCompletion &&
       (await this.sessionStore.getGoogleUnlinkCompletion({
@@ -511,7 +520,7 @@ export class AuthService {
     input: { credential: string; nonceChallengeId: string },
     context: AuthRequestContext
   ): Promise<GoogleCredentialResult> {
-    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const nonce = await this.verificationChallengeStore.readGoogleNonce({
       challengeId: input.nonceChallengeId
     });
@@ -590,7 +599,7 @@ export class AuthService {
     otp: string,
     context: AuthRequestContext
   ): Promise<VerifiedGoogleRegistrationPayload> {
-    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
       challengeId,
       otp,
@@ -669,7 +678,7 @@ export class AuthService {
     loginIdentifierInput: string,
     password: string,
     context: AuthRequestContext
-  ): Promise<TokenPairPayload> {
+  ): Promise<PasswordLoginResult> {
     const loginIdentifier = this.normalizeLoginIdentifier(loginIdentifierInput);
 
     const user = await this.repository.findUserByLoginIdentifier(loginIdentifier);
@@ -736,10 +745,94 @@ export class AuthService {
       });
     }
 
-    return this.completeSuccessfulLogin(user, context, user.loginIdentityId);
+    const verificationPolicy = await this.platformAccessPolicy?.getPasswordLoginVerificationPolicy();
+    if (
+      verificationPolicy?.enabled &&
+      (await this.requiresPasswordLoginVerification(user.id, context.ip, verificationPolicy))
+    ) {
+      return this.createPasswordLoginChallenge(user, context, verificationPolicy);
+    }
+
+    return {
+      status: "authenticated",
+      ...(await this.completeSuccessfulLogin(user, context, user.loginIdentityId))
+    };
+  }
+
+  public async verifyPasswordLogin(
+    challengeId: string,
+    otp: string,
+    context: AuthRequestContext
+  ): Promise<TokenPairPayload> {
+    const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
+      challengeId,
+      otp,
+      purpose: "password_login"
+    });
+    if (!reserved.ok) this.throwVerificationChallengeError(reserved.reason);
+    const metadata = reserved.metadata as {
+      loginIdentityId?: unknown;
+      platformSettingsVersion?: unknown;
+    };
+    if (
+      !Number.isInteger(reserved.userId) ||
+      !Number.isInteger(metadata.loginIdentityId) ||
+      Number(metadata.loginIdentityId) < 1 ||
+      !Number.isInteger(metadata.platformSettingsVersion) ||
+      Number(metadata.platformSettingsVersion) < 1
+    ) {
+      await this.releasePasswordLoginChallenge(challengeId, reserved.reservationToken);
+      this.throwVerificationChallengeError("missing");
+    }
+
+    let loginReceipt: { payload: TokenPairPayload; refreshJti: string; userId: number } | undefined;
+    try {
+      const user = await this.repository.findUserById(Number(reserved.userId));
+      this.assertActiveUser(user);
+      if (
+        user.email !== reserved.email ||
+        !user.identities.some(
+          (identity) =>
+            identity.id === Number(metadata.loginIdentityId) &&
+            identity.isActive &&
+            identity.deletedAt === null
+        )
+      ) {
+        this.throwVerificationChallengeError("missing");
+      }
+      loginReceipt = await this.completeSuccessfulLoginWithReceipt(
+        user,
+        context,
+        Number(metadata.loginIdentityId)
+      );
+      if (
+        !(await this.verificationChallengeStore.finalizeEmailChallenge({
+          challengeId,
+          reservationToken: reserved.reservationToken
+        }))
+      ) {
+        throw this.redisUnavailableError();
+      }
+      return loginReceipt.payload;
+    } catch (error) {
+      const originalError = error;
+      try {
+        if (loginReceipt) {
+          await this.revokeRefreshTokenAfterFailedLogin(
+            loginReceipt.userId,
+            loginReceipt.refreshJti
+          );
+        }
+      } catch {
+        // Preserve the original challenge completion failure.
+      }
+      await this.releasePasswordLoginChallenge(challengeId, reserved.reservationToken);
+      throw originalError;
+    }
   }
 
   public async startRegistration(input: RegistrationInput): Promise<RegistrationChallengePayload> {
+    await this.platformAccessPolicy?.assertSelfRegistrationEnabled();
     const email = this.normalizeEmail(input.email);
     if (await this.repository.findUserByEmail(email)) {
       throw this.emailAlreadyExistsError();
@@ -802,6 +895,7 @@ export class AuthService {
 
     let loginReceipt: { payload: TokenPairPayload; refreshJti: string; userId: number } | undefined;
     try {
+      await this.platformAccessPolicy?.assertSelfRegistrationEnabled();
       let user = await this.repository.findVerifiedRegistrationByChallenge(
         challengeId,
         reserved.email
@@ -988,7 +1082,6 @@ export class AuthService {
     token: string,
     challengeId: string
   ): Promise<GoogleUnlinkVerificationPayload> {
-    this.assertGoogleAuthEnabled();
     const payload = this.tokenService.verifyAccessToken(token);
     const userId = this.getUserIdFromToken(payload);
     const user = await this.repository.findUserById(userId);
@@ -1304,17 +1397,7 @@ export class AuthService {
       throw this.accountComplianceRequired(compliance);
     }
 
-    if (requiredPermission && !me.permissions.includes(requiredPermission)) {
-      throw new AppError({
-        code: ERROR_CODES.FORBIDDEN,
-        message: "error.forbidden",
-        statusCode: 403
-      });
-    }
-
-    this.merchantShopAuditOutboxTrigger?.trigger();
-
-    return {
+    const authenticated: AuthenticatedAccessContext = {
       userId,
       email: user.email,
       accessTokenJti: payload.jti,
@@ -1335,6 +1418,18 @@ export class AuthService {
       permissions: me.permissions,
       ...(compliance ? { complianceRequirements: compliance.requirements } : {})
     };
+    await this.platformAccessPolicy?.assertAuthenticatedAccess(authenticated);
+
+    if (requiredPermission && !authenticated.permissions.includes(requiredPermission)) {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.forbidden",
+        statusCode: 403
+      });
+    }
+
+    this.merchantShopAuditOutboxTrigger?.trigger();
+    return authenticated;
   }
 
   private async evaluateAccountCompliance(
@@ -1394,6 +1489,103 @@ export class AuthService {
       .payload;
   }
 
+  private async requiresPasswordLoginVerification(
+    userId: number,
+    ip: string,
+    policy: PasswordLoginVerificationPolicy
+  ): Promise<boolean> {
+    if (policy.rule === "every_login") return true;
+    const { periodStart, periodEnd } = this.tokyoMonthBounds(this.clock());
+    const evidence = await this.repository.getSuccessfulLoginEvidence({
+      userId,
+      ip,
+      periodStart,
+      periodEnd
+    });
+    const timeRuleRequiresVerification =
+      policy.rule === "first_login"
+        ? !evidence.hasAnySuccessfulLogin
+        : !evidence.hasSuccessfulLoginInPeriod;
+    return (
+      timeRuleRequiresVerification ||
+      (policy.onNewIp && !evidence.hasSuccessfulLoginFromIp)
+    );
+  }
+
+  private async createPasswordLoginChallenge(
+    user: AuthUserRecord,
+    context: AuthRequestContext,
+    policy: PasswordLoginVerificationPolicy
+  ): Promise<Extract<PasswordLoginResult, { status: "verification_required" }>> {
+    if (!Number.isInteger(user.loginIdentityId) || Number(user.loginIdentityId) < 1) {
+      throw this.invalidCredentialsError();
+    }
+    try {
+      const otp = String(randomInt(0, 1_000_000)).padStart(6, "0");
+      const challenge = await this.verificationChallengeStore.createEmailChallenge({
+        email: user.email,
+        otp,
+        purpose: "password_login",
+        userId: user.id,
+        metadata: {
+          loginIdentityId: user.loginIdentityId,
+          platformSettingsVersion: policy.platformSettingsVersion
+        }
+      });
+      try {
+        await this.otpDeliveryClient.sendOtp(user.email, otp);
+      } catch (error) {
+        await this.verificationChallengeStore.cancelEmailChallenge({
+          challengeId: challenge.challengeId,
+          email: user.email,
+          purpose: "password_login"
+        });
+        throw error;
+      }
+      return {
+        status: "verification_required",
+        challengeId: challenge.challengeId,
+        maskedEmail: challenge.maskedEmail,
+        expiresIn: challenge.expiresInSeconds,
+        cooldownSeconds: 60
+      };
+    } catch (error) {
+      if (error instanceof VerificationChallengeCooldownError) {
+        throw new AppError({
+          code: ERROR_CODES.OTP_COOLDOWN,
+          message: "error.auth.otp_cooldown",
+          statusCode: 429
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async releasePasswordLoginChallenge(
+    challengeId: string,
+    reservationToken: string
+  ): Promise<void> {
+    try {
+      await this.verificationChallengeStore.releaseEmailChallenge({
+        challengeId,
+        reservationToken
+      });
+    } catch {
+      // Preserve the original verification failure without exposing challenge state.
+    }
+  }
+
+  private tokyoMonthBounds(now: Date): { periodStart: Date; periodEnd: Date } {
+    const tokyoOffsetMs = 9 * 60 * 60 * 1_000;
+    const tokyo = new Date(now.getTime() + tokyoOffsetMs);
+    const year = tokyo.getUTCFullYear();
+    const month = tokyo.getUTCMonth();
+    return {
+      periodStart: new Date(Date.UTC(year, month, 1) - tokyoOffsetMs),
+      periodEnd: new Date(Date.UTC(year, month + 1, 1) - tokyoOffsetMs)
+    };
+  }
+
   private accountSecurityRepository(): AuthRepositoryPort & GoogleAuthRepositoryPort {
     const repository = this.repository as AuthRepositoryPort & Partial<GoogleAuthRepositoryPort>;
     if (
@@ -1411,16 +1603,6 @@ export class AuthService {
       });
     }
     return repository as AuthRepositoryPort & GoogleAuthRepositoryPort;
-  }
-
-  private assertGoogleAuthEnabled(): void {
-    if (this.config.AUTH_GOOGLE_ENABLED === false) {
-      throw new AppError({
-        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
-        message: "error.dependency.google_auth_unavailable",
-        statusCode: 503
-      });
-    }
   }
 
   private async getActiveAccountSecurityUser(
@@ -1653,6 +1835,7 @@ export class AuthService {
     }
 
     try {
+      await this.platformAccessPolicy?.assertSelfRegistrationEnabled();
       const user = await this.repository.createVerifiedBaselineCustomer({
         email: googleIdentity.email,
         passwordHash: null,
@@ -1689,6 +1872,14 @@ export class AuthService {
     return new AppError({
       code: ERROR_CODES.INVALID_CREDENTIALS,
       message: "error.auth.google_credential_invalid",
+      statusCode: 401
+    });
+  }
+
+  private invalidCredentialsError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.INVALID_CREDENTIALS,
+      message: "error.auth.invalid_credentials",
       statusCode: 401
     });
   }
@@ -2028,6 +2219,7 @@ export class AuthService {
         type: identity.type,
         scopeType: identity.scopeType,
         scopeId: identity.scopeId,
+        displayName: identity.displayName,
         publicId:
           identity.publicIdentifier?.status === "ACTIVE" &&
           identity.publicIdentifier.deletedAt === null
@@ -2114,6 +2306,10 @@ export class AuthService {
       hasPassword: Boolean(user.passwordHash),
       username: user.username,
       avatarUrl: user.avatarUrl,
+      profileDisplayName:
+        user.customerProfile?.deletedAt === null
+          ? user.customerProfile.displayName
+          : null,
       isActive: user.isActive,
       isTestAccount: user.isTestAccount,
       currentIdentity,

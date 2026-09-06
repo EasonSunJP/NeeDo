@@ -58,6 +58,7 @@ import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-sco
 import type { NdpExchangeRateService } from "./ndp-exchange-rate.service";
 import type { UserExperienceService } from "./user-experience.service";
 import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
+import type { PlatformPaymentMethod } from "../domain/platform-settings";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -96,6 +97,14 @@ export interface OrderConfirmInput {
   };
 }
 
+export type OrderCheckoutViewPayload = OrderCheckoutPayload & {
+  availablePaymentMethods: PlatformPaymentMethod[];
+};
+
+export interface PlatformPaymentPolicyPort {
+  getAvailablePaymentMethods(): Promise<PlatformPaymentMethod[]>;
+}
+
 type OrderAction = "confirm" | "cancel";
 
 const ORDER_TRANSITIONS = {
@@ -120,6 +129,7 @@ export class BookingService {
     UserPolicyEnforcementService,
     "assertServiceEkyc"
   >;
+  private readonly platformPaymentPolicy?: PlatformPaymentPolicyPort;
 
   public constructor(
     private readonly repository: BookingRepositoryPort,
@@ -140,7 +150,8 @@ export class BookingService {
       | Pick<UserExperienceService, "recordEvent">,
     experienceOrNow?: Pick<UserExperienceService, "recordEvent"> | (() => Date),
     nowOrPolicy?: (() => Date) | Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
-    policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">
+    policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
+    platformPaymentPolicy?: PlatformPaymentPolicyPort
   ) {
     if (rateOrExperience && "resolveEffectiveRate" in rateOrExperience) {
       this.ndpExchangeRateService = rateOrExperience;
@@ -155,6 +166,7 @@ export class BookingService {
     }
     this.userPolicyEnforcementService =
       policy ?? (typeof nowOrPolicy === "function" ? undefined : nowOrPolicy);
+    this.platformPaymentPolicy = platformPaymentPolicy;
   }
 
   public listAvailableSlots(input: AvailabilityListInput) {
@@ -639,11 +651,16 @@ export class BookingService {
   public async getCheckout(
     actor: AuthenticatedBookingActor,
     orderId: number
-  ): Promise<OrderCheckoutPayload> {
+  ): Promise<OrderCheckoutViewPayload> {
+    const availablePaymentMethods = await this.getAvailablePaymentMethods();
     const actorInput = this.checkoutActorInput(actor, orderId);
     const existing = await this.repository.getOrCreateCheckout({ ...actorInput, rate: null });
-    if (existing.outcome !== "rate_required")
-      return this.requireCheckoutMutation(existing).checkout;
+    if (existing.outcome !== "rate_required") {
+      return this.withAvailablePaymentMethods(
+        this.requireCheckoutMutation(existing).checkout,
+        availablePaymentMethods
+      );
+    }
     if (!this.ndpExchangeRateService) throw this.dependencyUnavailableError();
     const resolvedAt = this.now();
     const rate = await this.ndpExchangeRateService.resolveEffectiveRate(resolvedAt);
@@ -651,7 +668,10 @@ export class BookingService {
       ...actorInput,
       rate: { ...rate, resolvedAt }
     });
-    return this.requireCheckoutMutation(created).checkout;
+    return this.withAvailablePaymentMethods(
+      this.requireCheckoutMutation(created).checkout,
+      availablePaymentMethods
+    );
   }
 
   public async selectCheckoutPaymentMethod(
@@ -659,8 +679,17 @@ export class BookingService {
     orderId: number,
     input: SelectPaymentMethodInput,
     context: AuthRequestContext
-  ): Promise<OrderCheckoutPayload> {
+  ): Promise<OrderCheckoutViewPayload> {
     this.assertOwningCustomerIdentity(actor);
+    if (input.method === "other") {
+      throw new AppError({
+        code: ERROR_CODES.PAYMENT_PROVIDER_UNCONFIGURED,
+        message: "error.payment.provider_unconfigured",
+        statusCode: 503
+      });
+    }
+    const availablePaymentMethods = await this.getAvailablePaymentMethods();
+    this.assertPaymentMethodEnabled(input.method, availablePaymentMethods);
     const result = await this.repository.selectCheckoutPaymentMethod({
       ...this.checkoutActorInput(actor, orderId),
       ...input
@@ -669,7 +698,7 @@ export class BookingService {
     if (mutation.applied) {
       await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, false);
     }
-    return mutation.checkout;
+    return this.withAvailablePaymentMethods(mutation.checkout, availablePaymentMethods);
   }
 
   public async payCheckoutWithNdp(
@@ -677,8 +706,10 @@ export class BookingService {
     orderId: number,
     input: PayWithNdpInput,
     context: AuthRequestContext
-  ): Promise<OrderCheckoutPayload> {
+  ): Promise<OrderCheckoutViewPayload> {
     this.assertOwningCustomerIdentity(actor);
+    const availablePaymentMethods = await this.getAvailablePaymentMethods();
+    this.assertPaymentMethodEnabled("ndp", availablePaymentMethods);
     if (!this.ledgerService?.debitCheckoutPayment) throw this.dependencyUnavailableError();
     const result = await this.repository.payCheckoutWithNdp(
       { ...this.checkoutActorInput(actor, orderId), idempotencyKey: input.idempotencyKey },
@@ -704,7 +735,7 @@ export class BookingService {
     if (mutation.applied) {
       await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, true);
     }
-    return mutation.checkout;
+    return this.withAvailablePaymentMethods(mutation.checkout, availablePaymentMethods);
   }
 
   public async confirmCheckoutReceipt(
@@ -713,7 +744,7 @@ export class BookingService {
     input: ConfirmReceiptInput,
     context: AuthRequestContext,
     operationsOverride = false
-  ): Promise<OrderCheckoutPayload> {
+  ): Promise<OrderCheckoutViewPayload> {
     if (operationsOverride) {
       if (
         actor.currentIdentityScopeType !== "global" &&
@@ -729,6 +760,7 @@ export class BookingService {
     ) {
       throw this.notFoundError();
     }
+    const availablePaymentMethods = await this.getAvailablePaymentMethods();
     const actorInput = this.checkoutActorInput(actor, orderId);
     const repositoryInput = operationsOverride
       ? {
@@ -760,7 +792,7 @@ export class BookingService {
     if (mutation.applied) {
       await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, true);
     }
-    return mutation.checkout;
+    return this.withAvailablePaymentMethods(mutation.checkout, availablePaymentMethods);
   }
 
   public async confirmManualPayment(
@@ -786,6 +818,29 @@ export class BookingService {
     }
 
     return order;
+  }
+
+  private async getAvailablePaymentMethods(): Promise<PlatformPaymentMethod[]> {
+    return this.platformPaymentPolicy?.getAvailablePaymentMethods() ?? ["cash", "ndp"];
+  }
+
+  private assertPaymentMethodEnabled(
+    method: PlatformPaymentMethod,
+    availablePaymentMethods: PlatformPaymentMethod[]
+  ): void {
+    if (availablePaymentMethods.includes(method)) return;
+    throw new AppError({
+      code: ERROR_CODES.PLATFORM_PAYMENT_METHOD_DISABLED,
+      message: "error.payment.method_disabled",
+      statusCode: 409
+    });
+  }
+
+  private withAvailablePaymentMethods(
+    checkout: OrderCheckoutPayload,
+    availablePaymentMethods: PlatformPaymentMethod[]
+  ): OrderCheckoutViewPayload {
+    return { ...checkout, availablePaymentMethods: [...availablePaymentMethods] };
   }
 
   private checkoutActorInput(

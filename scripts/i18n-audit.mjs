@@ -25,13 +25,9 @@ const dashboardTranslationsPath = path.join(
   workspaceRoot,
   "src/features/dashboard/dashboardTranslations.ts",
 );
-const serviceSearchTranslationsPath = path.join(
+const operationsAnalyticsTranslationsPath = path.join(
   workspaceRoot,
-  "src/features/service-search/i18n.ts",
-);
-const pricingModeTranslationsPath = path.join(
-  workspaceRoot,
-  "src/features/pricing-mode/i18n.ts",
+  "src/features/operations-analytics/i18n.ts",
 );
 const orderPerformanceTranslationsPath = path.join(
   workspaceRoot,
@@ -40,6 +36,10 @@ const orderPerformanceTranslationsPath = path.join(
 const platformUserManagementTranslationsPath = path.join(
   workspaceRoot,
   "src/features/platform-user-management/i18n.ts",
+);
+const travelFareTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/travel-fare/i18n.ts",
 );
 const sourceDirectories = [
   path.join(workspaceRoot, "src"),
@@ -50,7 +50,9 @@ const codeFileExtensions = new Set([".ts", ".tsx", ".mjs"]);
 const excludedFilePatterns = [
   /src\/i18n\/translations\.ts$/u,
   /src\/features\/dashboard\/dashboardTranslations\.ts$/u,
+  /src\/features\/operations-analytics\/i18n\.ts$/u,
   /src\/features\/platform-user-management\/i18n\.ts$/u,
+  /src\/features\/travel-fare\/i18n\.ts$/u,
 ];
 
 function normalizeText(value) {
@@ -143,10 +145,10 @@ let identityTranslationsPromise;
 let affiliateProfileTranslationsPromise;
 let affiliateMarketplaceTranslationsPromise;
 let dashboardTranslationsPromise;
-let serviceSearchTranslationsPromise;
-let pricingModeTranslationsPromise;
+let operationsAnalyticsTranslationsPromise;
 let orderPerformanceTranslationsPromise;
 let platformUserManagementTranslationsPromise;
+let travelFareTranslationsPromise;
 
 async function loadIdentityTranslations() {
   identityTranslationsPromise ??= (async () => {
@@ -219,9 +221,9 @@ async function loadDashboardTranslations() {
   return dashboardTranslationsPromise;
 }
 
-async function loadServiceSearchTranslations() {
-  serviceSearchTranslationsPromise ??= (async () => {
-    const source = await fs.readFile(serviceSearchTranslationsPath, "utf8");
+async function loadOperationsAnalyticsTranslations() {
+  operationsAnalyticsTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(operationsAnalyticsTranslationsPath, "utf8");
     const transpiled = ts.transpileModule(source, {
       compilerOptions: {
         module: ts.ModuleKind.ES2022,
@@ -230,27 +232,10 @@ async function loadServiceSearchTranslations() {
     }).outputText;
     const encoded = Buffer.from(transpiled, "utf8").toString("base64");
     const loaded = await import(`data:text/javascript;base64,${encoded}`);
-    return loaded.serviceSearchTranslations ?? {};
+    return loaded.operationsAnalyticsTranslations ?? {};
   })();
 
-  return serviceSearchTranslationsPromise;
-}
-
-async function loadPricingModeTranslations() {
-  pricingModeTranslationsPromise ??= (async () => {
-    const source = await fs.readFile(pricingModeTranslationsPath, "utf8");
-    const transpiled = ts.transpileModule(source, {
-      compilerOptions: {
-        module: ts.ModuleKind.ES2022,
-        target: ts.ScriptTarget.ES2022,
-      },
-    }).outputText;
-    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
-    const loaded = await import(`data:text/javascript;base64,${encoded}`);
-    return loaded.pricingModeTranslations ?? {};
-  })();
-
-  return pricingModeTranslationsPromise;
+  return operationsAnalyticsTranslationsPromise;
 }
 
 async function loadOrderPerformanceTranslations() {
@@ -287,16 +272,33 @@ async function loadPlatformUserManagementTranslations() {
   return platformUserManagementTranslationsPromise;
 }
 
+async function loadTravelFareTranslations() {
+  travelFareTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(travelFareTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.travelFareTranslations ?? {};
+  })();
+
+  return travelFareTranslationsPromise;
+}
+
 async function loadTranslationsFromSource(sourceCode) {
   const identityTranslations = await loadIdentityTranslations();
   const affiliateProfileTranslations = await loadAffiliateProfileTranslations();
   const affiliateMarketplaceTranslations =
     await loadAffiliateMarketplaceTranslations();
   const dashboardTranslations = await loadDashboardTranslations();
-  const serviceSearchTranslations = await loadServiceSearchTranslations();
-  const pricingModeTranslations = await loadPricingModeTranslations();
+  const operationsAnalyticsTranslations = await loadOperationsAnalyticsTranslations();
   const orderPerformanceTranslations = await loadOrderPerformanceTranslations();
   const platformUserManagementTranslations = await loadPlatformUserManagementTranslations();
+  const travelFareTranslations = await loadTravelFareTranslations();
   const standaloneSource = sourceCode.replace(
     /import\s+\{\s*identityApplicationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const identityApplicationTranslations = ${JSON.stringify(identityTranslations)};`,
@@ -310,17 +312,17 @@ async function loadTranslationsFromSource(sourceCode) {
     /import\s+\{\s*dashboardTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const dashboardTranslations = ${JSON.stringify(dashboardTranslations)};`,
   ).replace(
-    /import\s+\{\s*serviceSearchTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
-    `const serviceSearchTranslations = ${JSON.stringify(serviceSearchTranslations)};`,
-  ).replace(
-    /import\s+\{\s*pricingModeTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
-    `const pricingModeTranslations = ${JSON.stringify(pricingModeTranslations)};`,
+    /import\s+\{\s*operationsAnalyticsTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const operationsAnalyticsTranslations = ${JSON.stringify(operationsAnalyticsTranslations)};`,
   ).replace(
     /import\s+\{\s*orderPerformanceTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const orderPerformanceTranslations = ${JSON.stringify(orderPerformanceTranslations)};`,
   ).replace(
     /import\s+\{\s*platformUserManagementTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const platformUserManagementTranslations = ${JSON.stringify(platformUserManagementTranslations)};`,
+  ).replace(
+    /import\s+\{\s*travelFareTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const travelFareTranslations = ${JSON.stringify(travelFareTranslations)};`,
   );
   const tempFile = path.join(
     workspaceRoot,
@@ -341,7 +343,9 @@ async function loadTranslationsFromSource(sourceCode) {
   try {
     const loaded = await import(`file://${tempFile}`);
     return {
+      ...operationsAnalyticsTranslations,
       ...platformUserManagementTranslations,
+      ...travelFareTranslations,
       ...(loaded.translations ?? {}),
     };
   } finally {

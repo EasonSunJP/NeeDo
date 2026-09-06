@@ -3,6 +3,7 @@ import {
   AnalyticsRankingIncompleteEvidenceError,
   MAX_ANALYTICS_RANKING_PAGE,
   type AnalyticsRankingInput,
+  type AnalyticsRankingDataComposition,
   type AnalyticsRankingItem,
   type AnalyticsRankingPage,
   type RankingEntityType
@@ -39,6 +40,12 @@ interface RankingRow {
   gmv_jpy?: NumericValue;
   completedCount?: NumericValue;
   completed_count?: NumericValue;
+  testGmvJpy?: NumericValue;
+  test_gmv_jpy?: NumericValue;
+  testCompletedCount?: NumericValue;
+  test_completed_count?: NumericValue;
+  dataComposition?: unknown;
+  data_composition?: unknown;
   registeredAt?: unknown;
   registered_at?: unknown;
 }
@@ -54,6 +61,7 @@ const entityTypes = new Set<RankingEntityType>([
   "technician",
   "customer"
 ]);
+const dataCompositions = new Set<AnalyticsRankingDataComposition>(["formal", "test", "mixed"]);
 
 export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPort {
   public constructor(private readonly client: AnalyticsRankingClient) {}
@@ -110,7 +118,9 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
              entity_type AS entityType, entity_public_id AS entityPublicId,
              entity_numeric_id AS entityNumericId, display_name AS displayName,
              avatar_url AS avatarUrl, category_id AS categoryId, gmv_jpy AS gmvJpy,
-             completed_count AS completedCount, registered_at AS registeredAt
+             completed_count AS completedCount, test_gmv_jpy AS testGmvJpy,
+             test_completed_count AS testCompletedCount,
+             data_composition AS dataComposition, registered_at AS registeredAt
       FROM ranked_entities
       WHERE ranking_position > ${offset} AND ranking_position <= ${offset + input.pageSize}
       ORDER BY ranking_position ASC
@@ -312,13 +322,14 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
             OR COALESCE(NOT (${this.paymentEvidencePredicate()}), TRUE)
           ), TRUE)
           THEN 1 ELSE 0 END AS incomplete_evidence,
-          CASE WHEN candidate.customer_is_active = TRUE AND candidate.customer_is_test = FALSE
+          CASE WHEN candidate.customer_is_active = TRUE
                      AND candidate.customer_deleted_at IS NULL
                      AND candidate.technician_deleted_at IS NULL
                      AND candidate.technician_user_is_active = TRUE
-                     AND candidate.technician_user_is_test = FALSE
                      AND candidate.technician_user_deleted_at IS NULL
-               THEN 1 ELSE 0 END AS entity_eligible
+               THEN 1 ELSE 0 END AS entity_eligible,
+          CASE WHEN candidate.customer_is_test = TRUE OR candidate.technician_user_is_test = TRUE
+               THEN 1 ELSE 0 END AS is_test_order
         FROM ranking_candidate_orders AS candidate
         LEFT JOIN accepted_add_on_projection AS add_ons
           ON add_ons.booking_order_id = candidate.id
@@ -348,12 +359,24 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
         AND (SELECT COUNT(*) FROM ledger_transactions AS ledger
              WHERE ledger.id = candidate.ledger_transaction_id
                AND ledger.type = ${"booking_complete_settlement"}
-               AND ledger.status = ${"applied"} AND BINARY ledger.currency = BINARY ${"NDP"}
+               AND ledger.status = ${"applied"}
+               AND BINARY ledger.currency = BINARY CASE
+                 WHEN candidate.customer_is_test = TRUE OR candidate.technician_user_is_test = TRUE
+                 THEN ${"TEST_NDP"} ELSE ${"NDP"}
+               END
                AND ledger.reference_type = ${"order_checkout_payment"}
                AND ledger.reference_id = candidate.checkout_id
                AND ledger.amount = candidate.payable_ndp
                AND ledger.actor_user_id = candidate.payment_confirmed_by_id
-               AND ledger.created_at >= candidate.payment_selected_at
+               AND ledger.created_at >= CASE
+                 WHEN candidate.payment_selected_at = candidate.payment_confirmed_at
+                   AND (SELECT COUNT(*) FROM order_service_events AS direct_event
+                        WHERE direct_event.event_type = ${"payment_method_selected"}
+                          AND direct_event.booking_order_id = candidate.id
+                          AND direct_event.deleted_at IS NULL) = 0
+                 THEN candidate.session_ended_at
+                 ELSE candidate.payment_selected_at
+               END
                AND ledger.created_at <= candidate.payment_confirmed_at
                AND ledger.deleted_at IS NULL) = 1
         AND candidate.payment_reference = CONCAT('checkout:', candidate.checkout_id,
@@ -494,7 +517,18 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                      : Prisma.sql`${input.categoryId}`
                  } AS category_id,
                  MIN(line.registered_at) AS registered_at,
-                 SUM(line.line_gmv_jpy) AS gmv_jpy, COUNT(*) AS completed_count
+                 SUM(line.line_gmv_jpy) AS gmv_jpy, COUNT(*) AS completed_count,
+                 SUM(CASE WHEN line.is_test_order = 1 THEN line.line_gmv_jpy ELSE 0 END)
+                   AS test_gmv_jpy,
+                 SUM(CASE WHEN line.is_test_order = 1 THEN 1 ELSE 0 END)
+                   AS test_completed_count,
+                 CASE
+                   WHEN SUM(CASE WHEN line.is_test_order = 1 THEN 1 ELSE 0 END) = 0
+                     THEN ${"formal"}
+                   WHEN SUM(CASE WHEN line.is_test_order = 0 THEN 1 ELSE 0 END) = 0
+                     THEN ${"test"}
+                   ELSE ${"mixed"}
+                 END AS data_composition
           FROM eligible_lines AS line WHERE ${categoryFilter}
           GROUP BY line.entity_type, line.entity_public_id, line.entity_numeric_id
         `
@@ -506,7 +540,21 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                  evidence.technician_avatar_url AS avatar_url,
                  ${input.categoryId} AS category_id, evidence.technician_created_at AS registered_at,
                  ${input.categoryId === null ? Prisma.sql`SUM(evidence.checkout_amount_jpy)` : Prisma.sql`SUM(line.line_gmv_jpy)`} AS gmv_jpy,
-                 COUNT(DISTINCT evidence.id) AS completed_count
+                 COUNT(DISTINCT evidence.id) AS completed_count,
+                 ${
+                   input.categoryId === null
+                     ? Prisma.sql`SUM(CASE WHEN evidence.is_test_order = 1 THEN evidence.checkout_amount_jpy ELSE 0 END)`
+                     : Prisma.sql`SUM(CASE WHEN evidence.is_test_order = 1 THEN line.line_gmv_jpy ELSE 0 END)`
+                 } AS test_gmv_jpy,
+                 COUNT(DISTINCT CASE WHEN evidence.is_test_order = 1 THEN evidence.id END)
+                   AS test_completed_count,
+                 CASE
+                   WHEN COUNT(DISTINCT CASE WHEN evidence.is_test_order = 1 THEN evidence.id END) = 0
+                     THEN ${"formal"}
+                   WHEN COUNT(DISTINCT CASE WHEN evidence.is_test_order = 0 THEN evidence.id END) = 0
+                     THEN ${"test"}
+                   ELSE ${"mixed"}
+                 END AS data_composition
           FROM formal_order_evidence AS evidence
           ${input.categoryId === null ? Prisma.empty : Prisma.sql`JOIN eligible_lines AS line ON line.booking_order_id = evidence.id AND ${categoryFilter}`}
           WHERE evidence.incomplete_evidence = 0 AND evidence.entity_eligible = 1
@@ -521,7 +569,21 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                  evidence.customer_avatar_url AS avatar_url,
                  ${input.categoryId} AS category_id, evidence.customer_created_at AS registered_at,
                  ${input.categoryId === null ? Prisma.sql`SUM(evidence.checkout_amount_jpy)` : Prisma.sql`SUM(line.line_gmv_jpy)`} AS gmv_jpy,
-                 COUNT(DISTINCT evidence.id) AS completed_count
+                 COUNT(DISTINCT evidence.id) AS completed_count,
+                 ${
+                   input.categoryId === null
+                     ? Prisma.sql`SUM(CASE WHEN evidence.is_test_order = 1 THEN evidence.checkout_amount_jpy ELSE 0 END)`
+                     : Prisma.sql`SUM(CASE WHEN evidence.is_test_order = 1 THEN line.line_gmv_jpy ELSE 0 END)`
+                 } AS test_gmv_jpy,
+                 COUNT(DISTINCT CASE WHEN evidence.is_test_order = 1 THEN evidence.id END)
+                   AS test_completed_count,
+                 CASE
+                   WHEN COUNT(DISTINCT CASE WHEN evidence.is_test_order = 1 THEN evidence.id END) = 0
+                     THEN ${"formal"}
+                   WHEN COUNT(DISTINCT CASE WHEN evidence.is_test_order = 0 THEN evidence.id END) = 0
+                     THEN ${"test"}
+                   ELSE ${"mixed"}
+                 END AS data_composition
           FROM formal_order_evidence AS evidence
           ${input.categoryId === null ? Prisma.empty : Prisma.sql`JOIN eligible_lines AS line ON line.booking_order_id = evidence.id AND ${categoryFilter}`}
           WHERE evidence.incomplete_evidence = 0 AND evidence.entity_eligible = 1
@@ -538,6 +600,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
     return Prisma.sql`
       ranking_lines AS (
         SELECT evidence.id AS booking_order_id,
+               evidence.is_test_order,
                CASE WHEN evidence.service_id IS NOT NULL THEN ${"service"}
                     ELSE ${"technician_service"} END AS entity_type,
                COALESCE(
@@ -564,7 +627,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
           ON technician_service.id = evidence.technician_service_id
         WHERE evidence.incomplete_evidence = 0 AND evidence.entity_eligible = 1
         UNION ALL
-        SELECT evidence.id, ${"service"},
+        SELECT evidence.id, evidence.is_test_order, ${"service"},
                COALESCE(
                  NULLIF(JSON_UNQUOTE(JSON_EXTRACT(add_on.service_snapshot_json, ${"$.publicId"})), ${"null"}),
                  service.public_id
@@ -615,6 +678,26 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
           : null;
     if (!registeredAt || Number.isNaN(registeredAt.getTime())) this.incomplete();
     const category = row.categoryId ?? row.category_id;
+    const gmvJpy = this.safeInteger(row.gmvJpy ?? row.gmv_jpy);
+    const completedCount = this.safeInteger(row.completedCount ?? row.completed_count);
+    const testGmvJpy = this.safeInteger(row.testGmvJpy ?? row.test_gmv_jpy);
+    const testCompletedCount = this.safeInteger(
+      row.testCompletedCount ?? row.test_completed_count
+    );
+    const dataComposition = this.string(row.dataComposition ?? row.data_composition);
+    if (
+      testGmvJpy > gmvJpy ||
+      testCompletedCount > completedCount ||
+      !dataCompositions.has(dataComposition as AnalyticsRankingDataComposition)
+    )
+      this.incomplete();
+    const expectedComposition: AnalyticsRankingDataComposition =
+      testCompletedCount === 0
+        ? "formal"
+        : testCompletedCount === completedCount
+          ? "test"
+          : "mixed";
+    if (dataComposition !== expectedComposition) this.incomplete();
     return {
       rank: this.safeInteger(row.rankingPosition ?? row.ranking_position ?? row.rank),
       entityType: entityType as RankingEntityType,
@@ -623,8 +706,11 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
       displayName,
       avatarUrl: (avatar ?? null) as string | null,
       categoryId: category === null || category === undefined ? null : this.safeInteger(category),
-      gmvJpy: this.safeInteger(row.gmvJpy ?? row.gmv_jpy),
-      completedCount: this.safeInteger(row.completedCount ?? row.completed_count),
+      gmvJpy,
+      completedCount,
+      testGmvJpy,
+      testCompletedCount,
+      dataComposition: dataComposition as AnalyticsRankingDataComposition,
       registeredAt: registeredAt.toISOString()
     };
   }
