@@ -185,8 +185,22 @@ export class ExchangeClaimRepository {
       Prisma.sql`post.\`status\` = 'published'`,
       Prisma.sql`post.\`expires_at\` > ${input.now}`,
       Prisma.sql`post.\`deleted_at\` IS NULL`,
-      Prisma.sql`demand.\`match_mode\` = 'selective'`,
       Prisma.sql`demand.\`deleted_at\` IS NULL`,
+      Prisma.sql`matching.\`status\` = 'open'`,
+      Prisma.sql`matching.\`deleted_at\` IS NULL`,
+      Prisma.sql`(
+        demand.\`match_mode\` = 'selective'
+        OR (
+          demand.\`match_mode\` = 'quick'
+          AND (
+            SELECT COUNT(*)
+            FROM \`exchange_claims\` AS capacity_claim
+            WHERE capacity_claim.\`exchange_post_id\` = post.\`id\`
+              AND capacity_claim.\`status\` = 'active'
+              AND capacity_claim.\`deleted_at\` IS NULL
+          ) < matching.\`effective_target_provider_count\`
+        )
+      )`,
       Prisma.sql`slot.\`status\` = 'available'`,
       Prisma.sql`slot.\`booked_count\` < slot.\`capacity\``,
       Prisma.sql`slot.\`technician_profile_id\` IS NOT NULL`,
@@ -293,6 +307,8 @@ export class ExchangeClaimRepository {
     const from = Prisma.sql`
       FROM \`exchange_posts\` AS post
       JOIN \`exchange_demands\` AS demand ON demand.\`post_id\` = post.\`id\`
+      JOIN \`exchange_request_matchings\` AS matching
+        ON matching.\`exchange_post_id\` = post.\`id\`
       JOIN \`schedule_slots\` AS slot
         ON slot.\`starts_at\` >= post.\`service_start_at\`
        AND slot.\`ends_at\` <= post.\`service_end_at\`

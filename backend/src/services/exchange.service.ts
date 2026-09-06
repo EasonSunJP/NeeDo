@@ -926,20 +926,20 @@ export class ExchangeService {
     post: ExchangePostPayload,
     actor: ExchangeActorRecord
   ): ExchangePostPayload {
-    const selectiveDemand = post.type === "demand" && post.demand?.matchMode === "selective";
-    const selectiveLiveDemand = selectiveDemand && post.status === "published";
+    const demandPost = post.type === "demand" && Boolean(post.demand);
+    const liveDemand = demandPost && post.status === "published";
     const ownerView = post.viewer.canWithdraw || post.viewer.canViewClaims;
     return {
       ...post,
       viewer: {
         ...post.viewer,
         canClaim:
-          selectiveLiveDemand &&
+          liveDemand &&
           CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) &&
           !ownerView &&
           post.viewer.canClaim,
         canViewClaims:
-          selectiveDemand && (post.status === "published" || post.status === "matched") && ownerView
+          demandPost && (post.status === "published" || post.status === "matched") && ownerView
       }
     };
   }

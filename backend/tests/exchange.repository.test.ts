@@ -44,9 +44,14 @@ const demandRow = {
     publisherIdentityPublic: false
   },
   intelligence: null,
+  matching: {
+    status: "OPEN",
+    effectiveTargetProviderCount: 1,
+    deletedAt: null
+  },
   matchParticipants: [],
   likes: [{ id: 91 }],
-  _count: { comments: 4, likes: 21, shares: 5 }
+  _count: { comments: 4, likes: 21, shares: 5, claims: 0 }
 };
 
 describe("ExchangePostRepository", () => {
@@ -361,7 +366,7 @@ describe("ExchangePostRepository", () => {
             liked: true,
             canWithdraw: true,
             canClaim: false,
-            canViewClaims: false,
+            canViewClaims: true,
             canViewMatching: true
           },
           demand: {
@@ -416,7 +421,15 @@ describe("ExchangePostRepository", () => {
             select: {
               comments: { where: { deletedAt: null } },
               likes: { where: { deletedAt: null } },
-              shares: { where: { deletedAt: null } }
+              shares: { where: { deletedAt: null } },
+              claims: { where: { status: "ACTIVE", deletedAt: null } }
+            }
+          },
+          matching: {
+            select: {
+              status: true,
+              effectiveTargetProviderCount: true,
+              deletedAt: true
             }
           }
         })
@@ -589,6 +602,46 @@ describe("ExchangePostRepository", () => {
     });
     await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
       viewer: { canClaim: true }
+    });
+  });
+
+  it("publishes capacity-aware Quick claim and owner claim-list capabilities", async () => {
+    const quickBelowTarget = {
+      ...demandRow,
+      matching: {
+        status: "OPEN",
+        effectiveTargetProviderCount: 2,
+        deletedAt: null
+      },
+      _count: { ...demandRow._count, claims: 1 }
+    };
+    const quickAtTarget = {
+      ...quickBelowTarget,
+      _count: { ...demandRow._count, claims: 2 }
+    };
+    const selective = {
+      ...quickAtTarget,
+      demand: { ...demandRow.demand, matchMode: "SELECTIVE" }
+    };
+    const findFirst = jest
+      .fn()
+      .mockResolvedValueOnce(quickBelowTarget)
+      .mockResolvedValueOnce(quickAtTarget)
+      .mockResolvedValueOnce(selective)
+      .mockResolvedValueOnce(quickAtTarget);
+    const repository = new ExchangePostRepository({ exchangePost: { findFirst } } as never);
+
+    await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
+      viewer: { canClaim: true, canViewClaims: false }
+    });
+    await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
+      viewer: { canClaim: false, canViewClaims: false }
+    });
+    await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
+      viewer: { canClaim: true, canViewClaims: false }
+    });
+    await expect(repository.findPostById(41, 17, now, 7)).resolves.toMatchObject({
+      viewer: { canClaim: false, canViewClaims: true }
     });
   });
 

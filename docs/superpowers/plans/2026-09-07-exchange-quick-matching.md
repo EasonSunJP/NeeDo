@@ -317,7 +317,7 @@ Run the command from Step 2 plus `tests/exchange-matching.repository.test.ts`.
 
 Expected: all suites pass and Selective selection remains green.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/src/validators/exchange-matching.validators.ts backend/src/services/exchange-matching.service.ts backend/src/controllers/exchange-matching.controller.ts backend/src/routes/exchange-matching.routes.ts backend/src/api/openapi.ts backend/tests/exchange-matching.validators.test.ts backend/tests/exchange-matching.service.test.ts backend/tests/exchange-matching.routes.test.ts backend/tests/exchange-matching.openapi.test.ts backend/tests/exchange-matching.repository.test.ts
@@ -339,21 +339,21 @@ git commit -m "feat(exchange): confirm quick match budget"
 - Produces: owner `viewer.canViewClaims=true` for Quick and Selective matching.
 - Produces: claim-options pagination returning zero choices when Quick capacity is already full.
 
-- [ ] **Step 1: Write failing projection and query tests**
+- [x] **Step 1: Write failing projection and query tests**
 
 Add cases for Quick below target, Quick exactly at target with over-budget decision pending, Quick matched, Request owner, same-user alternate identity, and Selective regression. Assert no provider sees a claim button at/after capacity and the owner continues to see the received-claims/matching panel.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run: `npm --prefix backend test -- --runInBand --runTestsByPath tests/exchange.repository.test.ts tests/exchange.service.test.ts tests/exchange-claim.repository.test.ts`
 
 Expected: FAIL because current projections hard-code Selective mode.
 
-- [ ] **Step 3: Implement capacity-aware projections**
+- [x] **Step 3: Implement capacity-aware projections**
 
 Select matching status/effective target and count active claims in `postInclude`. Set `canClaim` only when matching is open and either mode is Selective or Quick has active count below target. Allow owners to view claims for both modes. Update the claim-options SQL to accept both match modes and reject Quick rows whose active count has reached the effective target.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run the command from Step 2.
 

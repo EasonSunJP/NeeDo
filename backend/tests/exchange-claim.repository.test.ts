@@ -74,7 +74,7 @@ const claimRow = {
 describe("ExchangeClaimRepository option projection", () => {
   it("paginates merchant options through formal affiliation, schedule and overlap authorities", async () => {
     const queryRaw = jest.fn(async (query: SqlQuery) =>
-      query.sql?.includes("COUNT(*)") ? [{ total: 1n }] : [optionRow]
+      query.sql?.includes("SELECT COUNT(*) AS total") ? [{ total: 1n }] : [optionRow]
     );
     const repository = new ExchangeClaimRepository({
       $queryRaw: queryRaw
@@ -111,6 +111,11 @@ describe("ExchangeClaimRepository option projection", () => {
     const sql = queryRaw.mock.calls.map(([query]) => query.sql ?? "").join("\n");
     expect(sql).toContain("FROM `exchange_posts` AS post");
     expect(sql).toContain("JOIN `exchange_demands` AS demand");
+    expect(sql).toContain("JOIN `exchange_request_matchings` AS matching");
+    expect(sql).toContain("matching.`status` = 'open'");
+    expect(sql).toContain("demand.`match_mode` = 'quick'");
+    expect(sql).toContain("capacity_claim.`status` = 'active'");
+    expect(sql).toContain("matching.`effective_target_provider_count`");
     expect(sql).toContain("JOIN `technician_shop_affiliations` AS affiliation");
     expect(sql).toContain("slot.`booked_count` < slot.`capacity`");
     expect(sql).toContain("affiliation.`work_status` = 'active'");
@@ -130,7 +135,7 @@ describe("ExchangeClaimRepository option projection", () => {
 
   it("scopes technician options to the current technician profile and optional formal filters", async () => {
     const queryRaw = jest.fn(async (query: SqlQuery) =>
-      query.sql?.includes("COUNT(*)")
+      query.sql?.includes("SELECT COUNT(*) AS total")
         ? [{ total: 1n }]
         : [{ ...optionRow, serviceId: null, technicianServiceId: 701 }]
     );
