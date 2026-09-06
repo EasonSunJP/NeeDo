@@ -9,6 +9,7 @@ import {
 } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import type { ImRoleType } from "../../features/im/model";
+import { DEFAULT_REQUEST_BUTTON_URL } from "../../features/platform-settings/defaultBrandMedia";
 import { useRealtimeUnreadCounts } from "../../features/realtime/useRealtimeUnreadCounts";
 import { usePlatformSettings } from "../../features/platform-settings/PlatformSettingsProvider";
 import type { SocialPortalScope } from "../../features/social/types";
@@ -119,7 +120,7 @@ function NeedoFeaturedNavButton({ className }: { className?: string }) {
       aria-hidden="true"
       className={cn("client-featured-nav-image", className)}
       draggable={false}
-      src={settings.requestButton?.url ?? "/icons/needo-green-button-light.png"}
+      src={settings.requestButton?.url ?? DEFAULT_REQUEST_BUTTON_URL}
     />
   );
 }

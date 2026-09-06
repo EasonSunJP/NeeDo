@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => ({
-  hasPermission: vi.fn(() => false),
+  hasPermission: vi.fn((_permission?: string) => false),
   getSettings: vi.fn(),
   getRetention: vi.fn(),
   updateBasic: vi.fn(),
@@ -106,5 +106,32 @@ describe("SystemSettingsPage interactions", () => {
     await act(async () => basic.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })));
     const selected = container.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]');
     expect(selected?.textContent).toContain("政策和协议");
+  });
+
+  it("shows the effective default brand images and styled image pickers", async () => {
+    mocked.hasPermission.mockImplementation((permission?: string) =>
+      [
+        "backoffice:system-settings:write",
+        "backoffice:system-brand-media:activate",
+        "button:backoffice-content-media-upload"
+      ].includes(permission ?? "")
+    );
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=basic"] }, createElement(SystemSettingsPage)));
+    });
+
+    const loginLogo = container.querySelector<HTMLImageElement>('img[alt="登录页 LOGO"]');
+    const requestButton = container.querySelector<HTMLImageElement>('img[alt="Request 中央按钮图片"]');
+    expect(loginLogo?.getAttribute("src")).toBe("/icons/needo-login-check-mark-white.png");
+    expect(requestButton?.getAttribute("src")).toBe("/icons/needo-green-button-light.png");
+    expect(loginLogo?.classList.contains("needo-login-logo__mark")).toBe(true);
+    expect(requestButton?.classList.contains("client-featured-nav-image")).toBe(true);
+    expect(loginLogo?.parentElement?.parentElement?.getAttribute("style")).toContain("place-items: center");
+    expect(requestButton?.parentElement?.getAttribute("style")).toContain("justify-content: center");
+    expect(container.textContent).toContain("颜色会跟随每位用户的 UI 主题自动适配");
+    expect(container.textContent).not.toContain("尚未设置");
+    expect(container.textContent?.match(/系统默认 · 当前启用/g)).toHaveLength(2);
+    expect(Array.from(container.querySelectorAll('input[type="file"]')).every((input) => input.classList.contains("sr-only"))).toBe(true);
+    expect(Array.from(container.querySelectorAll("label")).filter((label) => label.textContent?.includes("选择新图片"))).toHaveLength(2);
   });
 });

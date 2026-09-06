@@ -4,6 +4,7 @@ import { PermissionGate } from "../../auth/PermissionGate";
 import { AdminToggleSwitch } from "../../components/admin/AdminToggleSwitch";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { DEFAULT_LOGIN_LOGO_URL, DEFAULT_REQUEST_BUTTON_URL } from "../platform-settings/defaultBrandMedia";
 import { useI18n } from "../../i18n/I18nProvider";
 import { adminSystemSettingsApi } from "./api";
 import { adminSystemSettingsText } from "./i18n";
@@ -91,8 +92,8 @@ export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMed
   };
 
   const mediaRows = [
-    { key: "loginLogo" as const, title: t("登录页 LOGO"), current: settings.loginLogo, publicIdKey: "loginLogoMediaPublicId" as const },
-    { key: "requestButton" as const, title: t("Request 中央按钮图片"), current: settings.requestButton, publicIdKey: "requestButtonMediaPublicId" as const }
+    { key: "loginLogo" as const, title: t("登录页 LOGO"), description: t("当前图片显示在登录页中央标识。"), current: settings.loginLogo, defaultUrl: DEFAULT_LOGIN_LOGO_URL, publicIdKey: "loginLogoMediaPublicId" as const },
+    { key: "requestButton" as const, title: t("Request 中央按钮图片"), description: t("当前图片显示在主导航中央；颜色会跟随每位用户的 UI 主题自动适配。"), current: settings.requestButton, defaultUrl: DEFAULT_REQUEST_BUTTON_URL, publicIdKey: "requestButtonMediaPublicId" as const }
   ];
 
   return (
@@ -134,16 +135,46 @@ export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMed
 
       <section className="grid gap-4 xl:grid-cols-2">
         {mediaRows.map((row) => {
-          const media = uploaded[row.key] ?? row.current;
+          const pendingMedia = uploaded[row.key];
+          const previewUrl = pendingMedia?.url ?? row.current?.url ?? row.defaultUrl;
+          const status = pendingMedia ? t("待发布") : row.current ? t("当前启用") : t("系统默认 · 当前启用");
           return (
-            <div className="rounded-2xl border border-line bg-paper p-5" key={row.key}>
-              <div className="flex items-center justify-between"><h2 className="font-black">{row.title}</h2>{draft[row.publicIdKey] !== initial[row.publicIdKey] ? <Badge tone="yellow">{labels.dirty}</Badge> : null}</div>
-              <div className="mt-4 grid min-h-36 place-items-center overflow-hidden rounded-xl border border-dashed border-line bg-white p-4">
-                {media ? <img alt={row.title} className="max-h-28 max-w-full object-contain" src={media.url} /> : <span className="text-sm font-bold text-ink/40">{t("尚未设置")}</span>}
+            <div className="overflow-hidden rounded-xl border border-line bg-white shadow-sm" key={row.key}>
+              <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+                <div>
+                  <h2 className="font-black text-ink">{row.title}</h2>
+                  <p className="mt-1 text-xs font-bold text-ink/45">{row.description}</p>
+                </div>
+                <Badge tone={pendingMedia ? "yellow" : "green"}>{status}</Badge>
               </div>
-              <input accept="image/jpeg,image/png,image/webp" className="mt-4 block w-full text-sm" disabled={!canUpload} onChange={(event) => void upload(row.key, event)} type="file" />
-              {!canUpload ? <p className="mt-2 text-xs font-bold text-coral">{t("缺少媒体上传权限")}</p> : null}
-              {mediaChanged && !canActivateMedia ? <p className="mt-2 text-xs font-bold text-coral">{t("缺少品牌媒体启用权限，当前图片不能发布。")}</p> : null}
+              <div className="bg-paper p-5">
+                <div className="grid min-h-40 place-items-center overflow-hidden rounded-lg border border-line bg-white p-5 shadow-inner">
+                  {row.key === "loginLogo" ? (
+                    <div className="client-shell client-theme-dark-green !min-h-0 bg-transparent p-3" style={{ display: "grid", placeItems: "center", width: "100%" }}>
+                      <div className="needo-login-logo h-[92px] w-[92px] overflow-hidden rounded-[26px]">
+                        <img alt={row.title} className="needo-login-logo__mark h-full w-full object-cover" src={previewUrl} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="client-shell client-theme-cool-black-gray !min-h-0 bg-transparent p-3" style={{ display: "grid", placeItems: "center", width: "100%" }}>
+                      <div className="client-bottom-nav !w-[280px] max-w-full rounded-[24px] bg-[color:var(--client-surface)] py-2" style={{ display: "flex", justifyContent: "center" }}>
+                        <img alt={row.title} className="client-featured-nav-image" src={previewUrl} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <label aria-disabled={!canUpload} className={`focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-full border border-line bg-white px-4 text-sm font-semibold text-ink transition ${canUpload ? "cursor-pointer hover:border-moss hover:text-moss" : "cursor-not-allowed opacity-60"}`}>
+                    <span aria-hidden="true">↑</span>
+                    {t("选择新图片")}
+                    <input accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!canUpload} onChange={(event) => void upload(row.key, event)} type="file" />
+                  </label>
+                  <p className="text-xs font-bold text-ink/45">{t("支持 PNG、JPG、WebP；发布后生效。")}</p>
+                </div>
+                {pendingMedia ? <p className="mt-3 rounded-lg bg-lemon/20 px-3 py-2 text-xs font-bold text-ink/65">{t("新图片已上传；当前线上图片会保持到发布完成。")}</p> : null}
+                {!canUpload ? <p className="mt-2 text-xs font-bold text-coral">{t("缺少媒体上传权限")}</p> : null}
+                {mediaChanged && !canActivateMedia ? <p className="mt-2 text-xs font-bold text-coral">{t("缺少品牌媒体启用权限，当前图片不能发布。")}</p> : null}
+              </div>
             </div>
           );
         })}
