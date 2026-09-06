@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import formalSource from "./FormalCheckoutPage.tsx?raw";
 import checkoutSource from "./CheckoutPage.tsx?raw";
 import progressSource from "./formal-checkout/CheckoutProgressNav.tsx?raw";
+import { translations } from "../../i18n/translations";
 
 describe("formal customer checkout", () => {
   it("routes numeric services into an isolated API-only checkout", () => {
@@ -131,5 +132,45 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("超出店铺的上门服务范围");
     expect(formalSource).toContain("路线供应商尚未配置");
     expect(formalSource).toContain("重新估算交通费");
+  });
+
+  it("requires all checkout submission gates", () => {
+    expect(formalSource).toContain("disabled={!canSubmitBooking || submitting}");
+  });
+
+  it("uses formal JP prefecture and municipality selectors for home service", () => {
+    expect(formalSource).toMatch(/bookingApi\s*\.\s*listAdministrativeRegions/);
+    expect(formalSource).toContain('country: "JP"');
+    expect(formalSource).toContain("parent: selectedAdmin1Code");
+    expect(formalSource).toContain('aria-label="都道府县"');
+    expect(formalSource).toContain('aria-label="市区町村"');
+    expect(formalSource).toContain('? { fulfillmentMode: "home" as const, serviceLocation:');
+    expect(formalSource).toContain('countryCode: "JP"');
+    expect(formalSource).toContain("admin1Code: selectedAdmin1Code");
+    expect(formalSource).toContain("admin2Code: selectedAdmin2Code");
+    expect(formalSource).toContain("Boolean(address.trim() && selectedAdmin1Code && selectedAdmin2Code)");
+  });
+
+  it("keeps the typed home address while excluding structured home codes in store mode", () => {
+    expect(formalSource).toContain("onClick={() => setFulfillmentMode(mode)}");
+    expect(formalSource).not.toContain('setAddress("")');
+    expect(formalSource).toContain(': { fulfillmentMode: "store" as const }');
+  });
+
+  it("provides every Task 3 selector message in each supported target locale", () => {
+    const taskThreeKeys = [
+      "请选择都道府县",
+      "请选择市区町村",
+      "正在加载市区町村",
+      "行政区域加载失败，请重试",
+      "请先选择都道府县和市区町村，再提交预约",
+    ];
+
+    for (const key of taskThreeKeys) {
+      expect(translations[key]).toBeDefined();
+      for (const locale of ["zh-Hant", "ja", "en", "ko"] as const) {
+        expect(translations[key]?.[locale]?.trim()).toBeTruthy();
+      }
+    }
   });
 });

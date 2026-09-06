@@ -10,7 +10,12 @@ import {
   SecondaryButton,
   SurfacePanel
 } from "../../components/client-ui/AppScaffold";
-import { bookingApi, type BookingScheduleSlot, type ManualPaymentMethod } from "../../features/booking/api";
+import {
+  bookingApi,
+  type AdministrativeRegionReference,
+  type BookingScheduleSlot,
+  type ManualPaymentMethod
+} from "../../features/booking/api";
 import {
   coreReadApi,
   type CoreServiceDetail,
@@ -133,6 +138,12 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [estimateStatus, setEstimateStatus] = useState<EstimateStatus>("idle");
   const [estimateError, setEstimateError] = useState("");
   const estimateRequestVersionRef = useRef(0);
+  const [prefectures, setPrefectures] = useState<AdministrativeRegionReference[]>([]);
+  const [municipalities, setMunicipalities] = useState<AdministrativeRegionReference[]>([]);
+  const [selectedAdmin1Code, setSelectedAdmin1Code] = useState("");
+  const [selectedAdmin2Code, setSelectedAdmin2Code] = useState("");
+  const [regionLoadError, setRegionLoadError] = useState("");
+  const [municipalitiesLoading, setMunicipalitiesLoading] = useState(false);
   const [note, setNote] = useState(searchParams.get("remark") ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -219,6 +230,57 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   }, [checkoutNowMs, selectedSlotId, slots]);
 
   useEffect(() => {
+    let active = true;
+    setRegionLoadError("");
+    void bookingApi
+      .listAdministrativeRegions({ country: "JP", locale: "ja" })
+      .then(({ list }) => {
+        if (active) setPrefectures(list);
+      })
+      .catch(() => {
+        if (active) {
+          setPrefectures([]);
+          setRegionLoadError("行政区域加载失败，请重试");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAdmin1Code) {
+      setMunicipalities([]);
+      setMunicipalitiesLoading(false);
+      return;
+    }
+    let active = true;
+    setMunicipalitiesLoading(true);
+    setRegionLoadError("");
+    void bookingApi
+      .listAdministrativeRegions({
+        country: "JP",
+        locale: "ja",
+        parent: selectedAdmin1Code
+      })
+      .then(({ list }) => {
+        if (active) setMunicipalities(list);
+      })
+      .catch(() => {
+        if (active) {
+          setMunicipalities([]);
+          setRegionLoadError("行政区域加载失败，请重试");
+        }
+      })
+      .finally(() => {
+        if (active) setMunicipalitiesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedAdmin1Code]);
+
+  useEffect(() => {
     const updateProgressByScroll = () => {
       const progressBottom = progressBarRef.current?.getBoundingClientRect().bottom ?? 138;
       const sectionTops = sectionRefs.current.map(
@@ -289,6 +351,10 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   }, [estimate]);
 
   const supportsBothModes = service?.serviceMode === "both";
+  const canSubmitBooking = Boolean(selectedSlot) && (
+    fulfillmentMode === "store" ||
+    Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")
+  );
   const people = searchParams.get("people") ?? "1名";
   const formattedHomeAddress = [homeAddress.postalCode, homeAddress.prefecture, homeAddress.city, homeAddress.addressLine1, homeAddress.addressLine2, homeAddress.building].map((value) => value?.trim()).filter(Boolean).join(" ");
   const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : formattedHomeAddress;
@@ -429,12 +495,22 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
       setSubmitError("请先取得有效的正式交通费估价，再提交预约");
       return;
     }
+    if (fulfillmentMode === "home") {
+      if (!selectedAdmin1Code || !selectedAdmin2Code) {
+        setSubmitError("请先选择都道府县和市区町村，再提交预约");
+        return;
+      }
+      if (!homeAddress.addressLine1.trim()) {
+        setSubmitError("请先填写完整上门地址，再提交预约");
+        return;
+      }
+    }
 
     setSubmitting(true);
     setSubmitError("");
     try {
       const fulfillment = fulfillmentMode === "home"
-        ? { fulfillmentMode: "home" as const, fulfillmentAddress: Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress, travelEstimatePublicId: estimate!.publicId }
+        ? { fulfillmentMode: "home" as const, serviceLocation: { countryCode: "JP" as const, admin1Code: selectedAdmin1Code, admin2Code: selectedAdmin2Code }, fulfillmentAddress: Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress, travelEstimatePublicId: estimate!.publicId }
         : { fulfillmentMode: "store" as const };
       const order = await bookingApi.createBooking({
         serviceId,
@@ -541,10 +617,42 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
               ) : (
                 <div className="mt-3 space-y-3">
                   <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">上门服务</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <select
+                      aria-label="都道府县"
+                      className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
+                      onChange={(event) => {
+                        setSelectedAdmin1Code(event.target.value);
+                        setSelectedAdmin2Code("");
+                        updateHomeAddress("prefecture", prefectures.find((region) => region.code === event.target.value)?.name ?? "");
+                        updateHomeAddress("city", "");
+                      }}
+                      value={selectedAdmin1Code}
+                    >
+                      <option value="">请选择都道府县</option>
+                      {prefectures.map((region) => (
+                        <option key={region.code} value={region.code}>{region.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="市区町村"
+                      className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)] disabled:opacity-50"
+                      disabled={!selectedAdmin1Code || municipalitiesLoading}
+                      onChange={(event) => {
+                        setSelectedAdmin2Code(event.target.value);
+                        updateHomeAddress("city", municipalities.find((region) => region.code === event.target.value)?.name ?? "");
+                      }}
+                      value={selectedAdmin2Code}
+                    >
+                      <option value="">{municipalitiesLoading ? "正在加载市区町村" : "请选择市区町村"}</option>
+                      {municipalities.map((region) => (
+                        <option key={region.code} value={region.code}>{region.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {regionLoadError ? <p className="text-xs font-bold text-red-500">{regionLoadError}</p> : null}
                   <div className="grid grid-cols-2 gap-2">
                     <input aria-label="邮政编码" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("postalCode", event.target.value)} placeholder="邮编 104-0061" value={homeAddress.postalCode} />
-                    <input aria-label="都道府县" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("prefecture", event.target.value)} placeholder="東京都" value={homeAddress.prefecture} />
-                    <input aria-label="市区町村" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("city", event.target.value)} placeholder="中央区" value={homeAddress.city} />
                     <input aria-label="街道地址" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("addressLine1", event.target.value)} placeholder="銀座1-2-3" value={homeAddress.addressLine1} />
                     <input aria-label="地址补充" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("addressLine2", event.target.value)} placeholder="丁目、番地（可选）" value={homeAddress.addressLine2} />
                     <input aria-label="建筑物与房间" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("building", event.target.value)} placeholder="建筑物、房间号（可选）" value={homeAddress.building} />
@@ -764,7 +872,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                 <SecondaryButton className="w-full" onClick={() => navigate(`/stores/${service.shop.id}`)}>联系</SecondaryButton>
                 <button
                   className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!selectedSlot || submitting || (fulfillmentMode === "home" && estimateStatus !== "success")}
+                  disabled={!canSubmitBooking || submitting}
                   onClick={() => void submitBooking()}
                   type="button"
                 >

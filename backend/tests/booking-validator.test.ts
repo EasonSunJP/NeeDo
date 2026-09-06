@@ -1,5 +1,6 @@
 import {
   availabilityListQuerySchema,
+  bookingCreateBodySchema,
   orderListQuerySchema
 } from "../src/validators/booking.validator";
 
@@ -26,6 +27,61 @@ describe("availabilityListQuerySchema", () => {
     ).toBe(false);
     expect(
       availabilityListQuerySchema.safeParse({ ...base, includeUnavailable: "yes" }).success
+    ).toBe(false);
+  });
+});
+
+describe("bookingCreateBodySchema", () => {
+  it("keeps store bookings server-authoritative for service location", () => {
+    const parsed = bookingCreateBodySchema.parse({
+      serviceId: 1,
+      scheduleSlotId: 2,
+      fulfillmentMode: "store",
+      paymentMethod: "onsite"
+    });
+
+    expect(parsed).not.toHaveProperty("serviceLocation");
+    expect(
+      bookingCreateBodySchema.safeParse({
+        serviceId: 1,
+        scheduleSlotId: 2,
+        fulfillmentMode: "store",
+        paymentMethod: "onsite",
+        serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" }
+      }).success
+    ).toBe(false);
+  });
+
+  it("requires a verified Japanese administrative pair for home bookings", () => {
+    const parsed = bookingCreateBodySchema.parse({
+      serviceId: 1,
+      scheduleSlotId: 2,
+      fulfillmentMode: "home",
+      paymentMethod: "onsite",
+      fulfillmentAddress: { postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+      travelEstimatePublicId: "00000000-0000-4000-8000-000000000001",
+      serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" }
+    });
+
+    expect(
+      (parsed as unknown as { serviceLocation: { admin2Code: string } }).serviceLocation.admin2Code
+    ).toBe("13104");
+    expect(
+      bookingCreateBodySchema.safeParse({
+        serviceId: 1,
+        scheduleSlotId: 2,
+        fulfillmentMode: "home",
+        paymentMethod: "onsite"
+      }).success
+    ).toBe(false);
+    expect(
+      bookingCreateBodySchema.safeParse({
+        serviceId: 1,
+        scheduleSlotId: 2,
+        fulfillmentMode: "home",
+        paymentMethod: "onsite",
+        serviceLocation: { countryCode: "JP", admin1Code: "1", admin2Code: "1310" }
+      }).success
     ).toBe(false);
   });
 });

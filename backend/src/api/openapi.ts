@@ -19937,9 +19937,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           content: {
             "application/json": {
               schema: {
-                type: "object",
-                additionalProperties: false,
-                required: ["scheduleSlotId", "fulfillmentMode"],
+                discriminator: { propertyName: "fulfillmentMode" },
                 properties: {
                   serviceId: { type: "integer", minimum: 1 },
                   technicianServiceId: { type: "integer", minimum: 1 },
@@ -19961,26 +19959,57 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     maxLength: 512
                   }
                 },
-                allOf: [
+                oneOf: [
                   {
-                    if: {
-                      properties: { fulfillmentMode: { const: "home" } },
-                      required: ["fulfillmentMode"]
-                    },
-                    then: { required: ["fulfillmentAddress", "travelEstimatePublicId"] }
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["scheduleSlotId", "fulfillmentMode"],
+                    properties: {
+                      serviceId: { type: "integer", minimum: 1 },
+                      technicianServiceId: { type: "integer", minimum: 1 },
+                      scheduleSlotId: { type: "integer", minimum: 1 },
+                      orderType: { type: "string", enum: ["booking", "request"] },
+                      fulfillmentMode: { type: "string", enum: ["store"] },
+                      paymentMethod: {
+                        type: "string",
+                        enum: ["onsite", "bank_transfer"],
+                        default: "onsite"
+                      },
+                      note: { type: "string", maxLength: 500 },
+                      affiliateCode: { type: "string", minLength: 1, maxLength: 40 },
+                      affiliatePublicToken: { type: "string", minLength: 1, maxLength: 512 }
+                    }
                   },
                   {
-                    if: {
-                      properties: { fulfillmentMode: { const: "store" } },
-                      required: ["fulfillmentMode"]
-                    },
-                    then: {
-                      not: {
-                        anyOf: [
-                          { required: ["fulfillmentAddress"] },
-                          { required: ["travelEstimatePublicId"] }
-                        ]
-                      }
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["scheduleSlotId", "fulfillmentMode", "serviceLocation", "fulfillmentAddress", "travelEstimatePublicId"],
+                    properties: {
+                      serviceId: { type: "integer", minimum: 1 },
+                      technicianServiceId: { type: "integer", minimum: 1 },
+                      scheduleSlotId: { type: "integer", minimum: 1 },
+                      orderType: { type: "string", enum: ["booking", "request"] },
+                      fulfillmentMode: { type: "string", enum: ["home"] },
+                      fulfillmentAddress: { $ref: "#/components/schemas/JapaneseRouteAddress" },
+                      travelEstimatePublicId: { type: "string", format: "uuid" },
+                      serviceLocation: {
+                        type: "object",
+                        additionalProperties: false,
+                        required: ["countryCode", "admin1Code", "admin2Code"],
+                        properties: {
+                          countryCode: { type: "string", enum: ["JP"] },
+                          admin1Code: { type: "string", pattern: "^[0-9]{2}$" },
+                          admin2Code: { type: "string", pattern: "^[0-9]{5}$" }
+                        }
+                      },
+                      paymentMethod: {
+                        type: "string",
+                        enum: ["onsite", "bank_transfer"],
+                        default: "onsite"
+                      },
+                      note: { type: "string", maxLength: 500 },
+                      affiliateCode: { type: "string", minLength: 1, maxLength: 40 },
+                      affiliatePublicToken: { type: "string", minLength: 1, maxLength: 512 }
                     }
                   }
                 ]

@@ -99,7 +99,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
       auditLogService
     );
   const bookingService = new BookingService(
-    dependencies.bookingRepository ?? new BookingRepository(),
+    dependencies.bookingRepository ??
+      new BookingRepository(undefined, dependencies.administrativeRegionRepository),
     ledgerService,
     dependencies.realtimeService,
     auditLogService,

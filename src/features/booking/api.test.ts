@@ -96,6 +96,40 @@ describe("bookingApi", () => {
     });
   });
 
+  it("loads official Japanese administrative children and submits home region codes", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({
+        code: 0,
+        message: "success",
+        data: {
+          list: [{ code: "13", name: "東京都", level: "admin1", parentCode: null, centroid: null }]
+        }
+      }))
+      .mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
+
+    await bookingApi.listAdministrativeRegions({ country: "JP", locale: "ja", parent: "13" });
+    await bookingApi.createBooking({
+      fulfillmentMode: "home",
+      scheduleSlotId: 33,
+      serviceId: 12,
+      serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" }
+    });
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/reference/administrative-regions?country=JP&locale=ja&parent=13",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(requestBodyAt(1)).toEqual({
+      fulfillmentMode: "home",
+      orderType: "booking",
+      paymentMethod: "onsite",
+      scheduleSlotId: 33,
+      serviceId: 12,
+      serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" }
+    });
+  });
+
   it("generates distinct opaque idempotency keys within the formal contract bounds", () => {
     const first = createBookingIdempotencyKey();
     const second = createBookingIdempotencyKey();

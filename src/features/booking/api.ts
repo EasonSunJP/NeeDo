@@ -188,6 +188,20 @@ export type BookingScheduleSlot = {
   durationMinutes: number;
 };
 
+export type AdministrativeRegionReference = {
+  code: string;
+  name: string;
+  level: "country" | "admin1" | "admin2";
+  parentCode: string | null;
+  centroid: { lat: number; lng: number } | null;
+};
+
+export type AdministrativeRegionListInput = {
+  country: "JP";
+  locale?: "zh-CN" | "zh-TW" | "ja" | "en" | "ko";
+  parent?: string;
+};
+
 export type BookingOrder = {
   id: number;
   orderNo: string;
@@ -301,16 +315,24 @@ export type UpdateManagedScheduleSlotInput = {
   status?: "available" | "blocked";
 };
 
-type BookingFulfillmentInput =
-  | { fulfillmentMode: "store"; fulfillmentAddress?: never; travelEstimatePublicId?: never }
-  | { fulfillmentMode: "home"; fulfillmentAddress: import("../../api/travelFare").JapaneseRouteAddress; travelEstimatePublicId: string };
-
-export type CreateBookingInput = BookingFulfillmentInput & {
+type CreateBookingBaseInput = {
   note?: string;
   orderType?: "booking" | "request";
   paymentMethod?: ManualPaymentMethod;
   scheduleSlotId: number;
-} & ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
+} &
+  ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
+
+export type CreateBookingInput = CreateBookingBaseInput &
+  (
+    | { fulfillmentMode: "store"; serviceLocation?: never; fulfillmentAddress?: never; travelEstimatePublicId?: never }
+    | {
+        fulfillmentMode: "home";
+        fulfillmentAddress: import("../../api/travelFare").JapaneseRouteAddress;
+        travelEstimatePublicId: string;
+        serviceLocation: { countryCode: "JP"; admin1Code: string; admin2Code: string };
+      }
+  );
 
 export function isBookingApiId(value: string | number | null | undefined) {
   return typeof value === "number" ? Number.isInteger(value) && value > 0 : Boolean(value && /^[1-9]\d*$/.test(value));
@@ -375,6 +397,19 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
 }
 
 export const bookingApi = {
+  listAdministrativeRegions(input: AdministrativeRegionListInput) {
+    return httpClient.request<{ list: AdministrativeRegionReference[] }>(
+      "/reference/administrative-regions",
+      {
+        auth: false,
+        query: {
+          country: input.country,
+          locale: input.locale ?? "ja",
+          parent: input.parent
+        }
+      }
+    );
+  },
   listAvailability(query: AvailabilityQuery) {
     return httpClient.request<PaginatedBookingData<BookingScheduleSlot>>("/schedule/availability", {
       auth: false,

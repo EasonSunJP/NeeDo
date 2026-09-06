@@ -10,7 +10,9 @@ import {
 } from "@prisma/client";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env";
+import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
+import { AppError } from "../utils/app-error";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import type { JapaneseRouteAddress } from "../services/route-distance.provider";
@@ -39,6 +41,11 @@ import {
   classifyAdverseOutcomeInTransaction,
   recalculateTechnicianSummaryInTransaction
 } from "./order-performance.repository";
+import {
+  AdministrativeRegionRepository,
+  type AdministrativeRegionRepositoryPort,
+  type VerifiedAdministrativeRegionScope
+} from "./administrative-region.repository";
 
 const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
@@ -95,6 +102,14 @@ export type BookingOrderStatusPayload =
 export type BookingOrderTypePayload = "booking" | "request";
 export type ScheduleSlotStatusPayload = "available" | "booked" | "blocked";
 export type BookingFulfillmentMode = "home" | "store";
+export type BookingServiceLocationInput =
+  | { source: "SHOP_LOCATION" }
+  | {
+      source: "CUSTOMER_SERVICE_LOCATION";
+      countryCode: "JP";
+      admin1Code: string;
+      admin2Code: string;
+    };
 export type LegacyServicePaymentMethodPayload = "onsite" | "bank_transfer";
 export type ServicePaymentMethodPayload =
   | LegacyServicePaymentMethodPayload
@@ -205,6 +220,7 @@ export interface BookingCreateRepositoryInput {
   technicianServiceId?: number;
   scheduleSlotId: number;
   fulfillmentMode: BookingFulfillmentMode;
+  serviceLocation: BookingServiceLocationInput;
   paymentMethod?: LegacyServicePaymentMethodPayload;
   note?: string | null;
   fulfillmentAddress?: JapaneseRouteAddress;
@@ -847,7 +863,13 @@ type SlotRecord = Prisma.ScheduleSlotGetPayload<{
   include: {
     service: true;
     technicianService: true;
-    shop: true;
+    shop: {
+      include: {
+        serviceLocation: {
+          include: { admin1Region: true; admin2Region: true };
+        };
+      };
+    };
     technicianProfile: true;
   };
 }>;
@@ -941,7 +963,15 @@ const ACTIVE_ORDER_DB_STATUSES = ["PENDING", "CONFIRMED", "IN_SERVICE"] as const
 const HARD_LOCK_ORDER_DB_STATUSES = ["CONFIRMED", "IN_SERVICE"] as const;
 
 export class BookingRepository implements BookingRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  private readonly administrativeRegionRepository: AdministrativeRegionRepositoryPort;
+
+  public constructor(
+    private readonly client: PrismaClient = prisma,
+    administrativeRegionRepository?: AdministrativeRegionRepositoryPort
+  ) {
+    this.administrativeRegionRepository =
+      administrativeRegionRepository ?? new AdministrativeRegionRepository(client);
+  }
 
   public async listAvailableSlots(
     input: AvailabilityListInput
@@ -1496,6 +1526,7 @@ export class BookingRepository implements BookingRepositoryPort {
             } else if (input.travelEstimatePublicId || input.fulfillmentAddress) {
               throw new BookingTravelEstimateAbort("invalid");
             }
+            const serviceLocation = await this.resolveBookingServiceLocation(tx, slot, input);
 
             const conflict = await tx.bookingOrder.findFirst({
               where: {
@@ -1674,6 +1705,20 @@ export class BookingRepository implements BookingRepositoryPort {
                 }
               });
             }
+            await tx.bookingServiceLocation.create({
+              data: {
+                bookingOrderId: order.id,
+                countryCode: serviceLocation.countryCode,
+                admin1RegionCode: serviceLocation.admin1Code,
+                admin1Name: serviceLocation.admin1NameJa,
+                admin2RegionCode: serviceLocation.admin2Code,
+                admin2Name: serviceLocation.admin2NameJa,
+                source: input.serviceLocation.source,
+                resolutionStatus: "VERIFIED",
+                datasetVersion: serviceLocation.datasetVersion,
+                resolvedAt: new Date()
+              }
+            });
 
             if (supersededOrderIds.length > 0) {
               await tx.orderStatusHistory.createMany({
@@ -3532,9 +3577,69 @@ export class BookingRepository implements BookingRepositoryPort {
     return {
       service: true,
       technicianService: true,
-      shop: true,
+      shop: {
+        include: {
+          serviceLocation: {
+            include: { admin1Region: true, admin2Region: true }
+          }
+        }
+      },
       technicianProfile: true
     };
+  }
+
+  private async resolveBookingServiceLocation(
+    transaction: Prisma.TransactionClient,
+    slot: SlotRecord,
+    input: BookingCreateRepositoryInput
+  ): Promise<VerifiedAdministrativeRegionScope> {
+    if (input.fulfillmentMode === "home") {
+      if (input.serviceLocation.source !== "CUSTOMER_SERVICE_LOCATION") {
+        throw this.serviceLocationUnresolvedError();
+      }
+      return this.administrativeRegionRepository.resolveVerifiedScope(
+        {
+          countryCode: input.serviceLocation.countryCode,
+          admin1Code: input.serviceLocation.admin1Code,
+          admin2Code: input.serviceLocation.admin2Code
+        },
+        transaction
+      );
+    }
+
+    const assignment = slot.shop.serviceLocation;
+    if (
+      input.serviceLocation.source !== "SHOP_LOCATION" ||
+      !assignment ||
+      assignment.deletedAt !== null ||
+      assignment.countryCode !== "JP"
+    ) {
+      throw this.serviceLocationUnresolvedError();
+    }
+    const resolved = await this.administrativeRegionRepository.resolveVerifiedScope(
+      {
+        countryCode: "JP",
+        admin1Code: assignment.admin1Region.officialCode,
+        admin2Code: assignment.admin2Region.officialCode
+      },
+      transaction
+    );
+    if (
+      resolved.admin1RegionId !== assignment.admin1RegionId ||
+      resolved.admin2RegionId !== assignment.admin2RegionId ||
+      resolved.datasetVersion !== assignment.datasetVersion
+    ) {
+      throw this.serviceLocationUnresolvedError();
+    }
+    return resolved;
+  }
+
+  private serviceLocationUnresolvedError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
+      message: "error.booking.service_location_unresolved",
+      statusCode: 409
+    });
   }
 
   private async runFulfillmentTransaction(

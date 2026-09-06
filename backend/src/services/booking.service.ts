@@ -72,10 +72,22 @@ export interface AuthenticatedBookingActor {
   isReadOnlyMerchantPreview?: boolean;
   merchantPreviewShopId?: number;
 }
-export interface BookingCreateInput
-  extends Omit<BookingCreateRepositoryInput, "customerUserId">, AffiliatePromotionInput {
+type BookingCreateBaseInput = Omit<
+  BookingCreateRepositoryInput,
+  "customerUserId" | "fulfillmentMode" | "serviceLocation"
+> &
+  AffiliatePromotionInput & {
   orderType?: "booking" | "request";
-}
+};
+
+export type BookingCreateInput = BookingCreateBaseInput &
+  (
+    | { fulfillmentMode: "store"; serviceLocation?: never }
+    | {
+        fulfillmentMode: "home";
+        serviceLocation: { countryCode: "JP"; admin1Code: string; admin2Code: string };
+      }
+  );
 
 export interface ManualPaymentConfirmInput {
   method: "onsite" | "bank_transfer";
@@ -302,6 +314,15 @@ export class BookingService {
       technicianServiceId: input.technicianServiceId,
       scheduleSlotId: input.scheduleSlotId,
       fulfillmentMode: input.fulfillmentMode,
+      serviceLocation:
+        input.fulfillmentMode === "store"
+          ? { source: "SHOP_LOCATION" }
+          : {
+              source: "CUSTOMER_SERVICE_LOCATION",
+              countryCode: input.serviceLocation.countryCode,
+              admin1Code: input.serviceLocation.admin1Code,
+              admin2Code: input.serviceLocation.admin2Code
+            },
       paymentMethod: input.paymentMethod,
       note: input.note,
       fulfillmentAddress: input.fulfillmentAddress,
