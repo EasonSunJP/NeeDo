@@ -1,0 +1,73 @@
+# 预约 SOS 本地验收记录
+
+日期：2026-09-06。范围：Step 13 单一预约 SOS 闭环及该入口的共用后台工具栏。
+
+## 最终行为
+
+- 用户追加要求优先：用户端、技师端正式预约详情始终显示红色渐变 SOS 胶囊，不判断服务开始/结束时间或预约状态。
+- 点击立即通过正式 API 写入求救。本人用户/当前分配技师、当前身份、RBAC、店铺权限在服务端校验；商户和运营只能查看其范围内记录。
+- 同预约同发起身份最多一条待处理记录；并发及不确定网络失败使用持久化幂等记录。已处理后允许再次发送。
+- 两端后台共用“求救通知、语言、UI 主题、消息、客服”工具栏。存在待处理记录时点亮并显示数量。打开抽屉不消除提醒，显式标记已处理后同步刷新。
+- 列表服务端分页、五语言文案、SSE 失效刷新及 20 秒补偿刷新。断线不会错误展示零条，身份切换不沿用上一身份的数据。
+
+## 自动化证据
+
+- UI：`npx vitest run src/features/sos src/pages/user/UserOrderDetailPage.formal.test.tsx src/features/technician-schedule/route-pages.formal.test.tsx src/components/merchant-admin/MerchantAdminLayout.test.ts src/components/admin/AdminLayout.test.ts src/components/mobile/MobileFullscreenHeader.test.tsx src/features/platform-user-management/AdminLayoutIntegration.test.ts`：9 文件、95 项通过。
+- 增补状态查询失败后成功发送、按钮禁用及重复点击防重断言后，`src/features/sos/sos-ui.test.tsx` 12 项再次通过。
+- 后端最终 service/API 两套共 15 项通过（其中 service 12 项），覆盖缺失会话、尚未开始、未来开始、很久前结束仍允许发送，以及归属、作用域、幂等、显式处理、审计失败与推送故障。
+- TDD：始终显示需求修改后，旧实现明确触发 4 项 UI 失败、5 项后端失败；实现改动后转绿。独立前端与后端审查通过；前端审查发现的筛选重复点击、旧幂等键、旧查询覆盖提交结果均已补回归并修复。
+
+## 本地真实 MySQL
+
+目标：本机 `127.0.0.1:3307/needo_dev`，检查脚本拒绝未识别或非本地环境。
+
+最终检查：`ENV_FILE=.env.dev npm --prefix backend run check:sos-flow`，marker `sos-check-ef718132-4620-41cb-ac0c-755a64c61b2f`。
+
+- 6 个并发发送合并；并发处理仅产生一次处理审计。
+- 永久幂等键绑定、处理后新求救；客户与技师均成功发送。
+- 无服务会话的 PENDING、CONFIRMED、CANCELLED、COMPLETED 均成功发送；结束后新键仍可发送。
+- 正确商户和运营身份收到最小 SSE 事件；其他商户计数为空且无法处理（404）。
+- 强制审计失败时，创建和处理事务均回滚。
+- 该轮创建 8 条 alert、13 条 command；检查脚本已验证清理。
+
+本地已应用 `20260906100000_booking_sos` migration 并生成 Prisma Client，未应用任何远程 migration。初次本地执行遇到 MySQL CHECK 与外键 ON UPDATE CASCADE 不兼容，曾错误登记完成；已备份并确认两张新增表为空、SOS 权限未写入后，仅移除本次空表和本次登记，改用 RESTRICT 后完整应用成功。其他任务的 migration 与既有业务数据保持原状。
+
+## 浏览器与运行环境
+
+- 09:50 JST 延迟复核：5181 Vite PID 79427、正式后端 3000 PID 82974；带允许 Origin 的代理 `/api/v1/ready` 返回 200，MySQL 与 Redis 均 ready。
+- 本任务预览：`http://127.0.0.1:5181/`，Vite 工作目录为本仓库；后端 API 代理指向正式后端。5180 属于其他任务工作树，本次未重启或覆盖。
+- 用户临时测试账号通过正式登录；430 × 932 视口确认预约详情头部右侧 SOS 胶囊在关闭按钮前，符合用户参考图。
+- 18:23–18:34 JST：用户明确授权继续后，四角色使用新建本地测试账号完成正式登录。首次后台身份恢复曾出现 503，重试后恢复；本机后端 watch 期间存在自动重启，未改鉴权/CORS 来绕过错误。
+- 本轮 marker：`sos-browser-7d3a4008-937a-435c-a299-c9134c4f1505`，预约 `50487`。
+- 用户单击 SOS，商户与运营列表均出现相同预约、发起人和时间，入口显示红色及待处理数 1。打开列表不改变状态。商户点击“标记已处理”后，两端 `data-active=false`，运营历史列表显示商户处理者。
+- 将仅本轮测试预约设为 CANCELLED 且 `startedAt=null`，用户和技师详情仍显示 SOS；技师单击发送成功，两端列表均出现技师求救，红色入口和数值 1 均已观察。运营标记已处理后，两端再次熄灭。
+- 数据库对应记录：SOS 14（customer）由临时商户 1573 处理；SOS 15（technician）由临时运营 1572 处理；均为 resolved。两次创建和两次处理共 4 条正式审计，发起与处理 actor 均符合四角色操作。
+- 桌面截图确认两端右上角功能顺序、位置与设计一致；技师 430 × 932 手机详情胶囊与参考一致。商户浅色主题可读，并已恢复原经典蓝黑主题。
+- 430px 商户后台检查发现搜索栏挤压功能按钮，已增加共享窄屏规则：首行保留菜单及功能按钮；栏目通过菜单和下方导航进入。修复后同一手机视口截图确认无重叠，SOS 可点击打开列表。
+- 本轮浏览器账号、预约、求救、审计及关联临时数据已清理；刷新令牌已撤销。清理脚本核验账号/预约/求救均无残留，manifest 写入 cleanedAt。测试标签页已关闭、视口恢复默认。
+- 上一轮 `sos-browser-cd37efed-*` 也已于 09:49 JST 清理（4 个账号及 21 类关联记录计数均为 0）。
+
+## 构建与发布边界
+
+首次完整前后端 lint/build 均通过。根目录默认生产构建因既有 `.env.production` 中遗留认证配置被安全检查拦截；显式清空两个遗留认证变量并使用 formal 模式构建成功，生产产物审计通过（8 HTML、35 assets）。既有 SocialProfilePage 混合导入和分块大小警告不属于本改动。
+
+最后需求调整后根目录 `npm run lint` 与 `VITE_LEGACY_AUTHORIZATION= VITE_LEGACY_AUTH_BASE_URL= npm run build -- --mode formal` 均通过，产物审计再次通过；后端最终 `npm --prefix backend run build` 也已通过。本地代码尚未提交或推送，未部署至 staging/生产，也未执行安装版 PWA 验收。
+
+补充回归：窄屏 CSS 调整后 SOS 与两端布局共 5 个文件、41 项测试通过。本轮最终前端 formal 构建通过（618 modules，8.38s）；但 18:34 JST 的产物审计失败：主包 `main-KhBgwaNY.js` 为 4,012,699 bytes，超过 4,000,000 bytes 限额 12,699 bytes。早上产物审计通过不代表当前共享工作区的最新产物仍满足限制；未提高预算或修改其他模块规避检查。此项是发布前待解决项，本轮不发布。
+
+18:34 JST 延迟健康复核：Vite 5181 PID 48132 cwd 为本仓库，后端 3000 PID 49297 cwd 为本仓库 backend，带允许 Origin 的代理 ready 返回 200，MySQL 与 Redis 正常。本轮唯一产品代码增量是共用 SOS CSS 的窄屏布局修正。
+
+
+## 最新主线集成回归（2026-09-06 19:38–20:00 JST）
+
+- 隔离工作树 `booking-sos-integration` 基于正式通知已合入的 `3fcabc57`；旧 `/private/tmp` 补丁已经不存在，因此从仍在根目录的 SOS 源码逐块重建范围，只移植 SOS 文件与必要调用点。未移植根目录的官方通知、技师状态等脏改。
+- 主线已使用 API namespace guard 和按门户挂载方式；SOS 在 guard 之后作为 shared 路由挂载，继续由认证、RBAC、当前身份及订单/店铺范围独立控制。
+- 两个后台通过共享工具栏的 `messageAction` 插槽原样使用 `OfficialNoticeBell`，分别连接 `/admin/notifications/inbox`、`/merchant-admin/notifications/inbox`，保留正式未读机制，不复制通知实现。
+- 新增工具栏行为测试先失败（正式收件箱动作/徽标被丢弃），加入插槽后通过。SOS、两端布局、正式铃铛共 7 文件 49 项；客户详情、技师详情、共享头部另 3 文件 54 项；总计 103 项前端专项测试通过。后端 2 suites / 15 tests、前后端 lint/build 均通过。
+- 当前正式构建产物审计通过：8 HTML / 55 assets，main JS 3,867,500 bytes 左右，未提高体积预算。前述 18:34 共享脏目录超限记录保留为历史，不能代表本次隔离集成结果。
+- 使用旧本地 env 时主线新增的 `AUTH_TOKEN_AUDIENCE` 缺失；通过提供正确环境变量解决，不改认证规则。真实 MySQL checker marker `sos-check-ba246c6e-54b0-4652-a93d-1ed4160be460`：6 并发、8 alert / 13 command、权限隔离、事务审计回滚、所有订单状态和清理再次通过。
+- 专用前端 5290 PID 11543、后端 3190 PID 11400，cwd 均为本次隔离工作树。三门户代理均指向该后端；没有占用 main 的 5180/3000，也未改其他任务的 5181。
+- 一次性浏览器 fixture：`sos-integration-154b5403-dd47-4c6d-99db-e9e07422e0d8`，订单 50491。商户正式密码登录成功，求救 25 可见并能标记已处理；运营正式 HTTP 登录后能读取相同处理历史。客户正式 HTTP 发送求救 26，运营计数为 1，商户 SSE 实时红灯/数量 1；运营正式 HTTP 处理后，商户抽屉自动清空、按钮熄灭。商户消息按钮打开真实通知收件箱。
+- 桌面与 430px 窄屏商户工具栏可见且对齐；窄屏五个按钮 y=12，最右边界 414px，无重叠。测试视口已复原，测试标签页已关闭。
+- 本轮运营浏览器复验有限制：一次性 operator 账号登录后，主线 Social 全局初始化调用 `/social/posts`、`/notifications` 返回 403，触发全局恢复页；这并非 SOS API 失败。自动审批拒绝将该账号提升为 admin，因此未改角色，也未夹带 Social 修复。运营 SOS 的真实 HTTP 收发、计数和处理均通过；上文旧实现阶段的四角色浏览器结果不可当作最新主线运营页面复验。
+- 两条求救均由正式处理接口完成。本轮用户、店铺、求救、幂等记录、审计、登录日志、角色、身份清理计数均为零，登录 refresh 会话撤销；记录见 `2026-09-06-booking-sos-integration-cleanup.json`。未写 staging，未推送、部署或执行远程迁移。

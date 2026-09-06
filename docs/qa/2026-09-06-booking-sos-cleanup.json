@@ -1,0 +1,62 @@
+{
+  "verifiedAt": "2026-09-06T09:38:49.571Z",
+  "target": "mysql://127.0.0.1:3307/needo_dev",
+  "results": [
+    {
+      "marker": "sos-browser-cd37efed-ee9c-4e19-9013-d7dcff353796",
+      "cleanedAt": "2026-09-06T00:49:29.778Z",
+      "counts": {
+        "users": 0,
+        "identities": 0,
+        "roles": 0,
+        "customerProfiles": 0,
+        "technicianProfiles": 0,
+        "publicIdentifiers": 0,
+        "shop": 0,
+        "category": 0,
+        "service": 0,
+        "slot": 0,
+        "order": 0,
+        "session": 0,
+        "serviceEvents": 0,
+        "statusHistory": 0,
+        "sosAlerts": 0,
+        "sosCommands": 0,
+        "audit": 0,
+        "loginLogs": 0,
+        "experienceAccounts": 0,
+        "experienceEntries": 0,
+        "shopAffiliations": 0,
+        "redisSessionKeys": 0
+      }
+    },
+    {
+      "marker": "sos-browser-7d3a4008-937a-435c-a299-c9134c4f1505",
+      "cleanedAt": "2026-09-06T09:33:41.842Z",
+      "counts": {
+        "users": 0,
+        "identities": 0,
+        "roles": 0,
+        "customerProfiles": 0,
+        "technicianProfiles": 0,
+        "publicIdentifiers": 0,
+        "shop": 0,
+        "category": 0,
+        "service": 0,
+        "slot": 0,
+        "order": 0,
+        "session": 0,
+        "serviceEvents": 0,
+        "statusHistory": 0,
+        "sosAlerts": 0,
+        "sosCommands": 0,
+        "audit": 0,
+        "loginLogs": 0,
+        "experienceAccounts": 0,
+        "experienceEntries": 0,
+        "shopAffiliations": 0,
+        "redisSessionKeys": 0
+      }
+    }
+  ]
+}

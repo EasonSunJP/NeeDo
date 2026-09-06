@@ -1,3 +1,4 @@
+import { BookingSosButton } from "../../features/sos/BookingSosButton";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
@@ -488,7 +489,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
 
   return (
     <PageScaffold contentClassName="space-y-4 pb-36" navItems={[]}>
-      <AppTopBar closeLabel="关闭预约详情" onBack={handleBack} onClose={closeDetail} title="预约详情" />
+      <AppTopBar actions={order ? <BookingSosButton orderId={order.id} revision={`${order.status}:${order.serviceSession?.endedAt ?? ""}`} /> : null} closeLabel="关闭预约详情" onBack={handleBack} onClose={closeDetail} title="预约详情" />
       {routeState?.notice ? <section className="rounded-[20px] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black">{routeState.notice}</section> : null}
       {queryStatus === "loading" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-6 text-center font-black">正在加载预约详情</section> : null}
       {queryStatus === "error" ? (
