@@ -1061,6 +1061,29 @@ img {
   z-index: 15;
 }
 
+/* Keep directory details reachable while the remaining columns scroll. */
+.table-frozen-action {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  width: 104px;
+  min-width: 104px;
+  white-space: nowrap;
+  background:
+    linear-gradient(var(--admin-surface, #ffffff), var(--admin-surface, #ffffff)),
+    var(--admin-bg, #ffffff);
+  box-shadow: -8px 0 12px -10px var(--admin-line, #dce6df);
+}
+
+thead .table-frozen-action,
+.table-sticky th.table-frozen-action {
+  z-index: 16;
+  background:
+    linear-gradient(var(--admin-muted-surface, #f4f7f4), var(--admin-muted-surface, #f4f7f4)),
+    linear-gradient(var(--admin-surface, #ffffff), var(--admin-surface, #ffffff)),
+    var(--admin-bg, #ffffff);
+}
+
 .horizontal-scroll-area {
   cursor: grab;
   overscroll-behavior-x: contain;

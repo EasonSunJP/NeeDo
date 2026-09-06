@@ -742,6 +742,7 @@ export function MerchantAdminPeoplePage() {
                 },
               ]}
               footerPlacement="inline"
+              frozenDetailLabel={translateText("详情", language)}
               onView={openEmployee}
               pageSize={pageSize}
               rows={employees}
