@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { formalConfirmedPaymentEvidence } from "../src/repositories/formal-confirmed-payment-evidence";
 import { LiveDashboardRepository } from "../src/repositories/live-dashboard.repository";
 
 type SqlQuery = Prisma.Sql & {
@@ -9,6 +10,9 @@ type SqlQuery = Prisma.Sql & {
 
 const queryText = (query: SqlQuery): string => query.sql ?? query.strings?.join(" ") ?? "";
 const evaluatedAt = new Date("2026-09-06T03:04:05.000Z");
+
+const cteSlice = (sql: string, from: string, to: string): string =>
+  sql.slice(sql.indexOf(from), sql.indexOf(to, sql.indexOf(from)));
 
 const scopeCode = (query: SqlQuery): "JP" | "13" | "13104" => {
   if (query.values?.includes("13104")) return "13104";
@@ -139,12 +143,14 @@ const createHarness = () => {
     }
 
     if (sql.includes("live_dashboard_trend")) {
+      const includesSnapshotPaymentCutoff = sql.includes("booking.payment_confirmed_at <=");
       return [
         {
           bucketKey: "2026-09-06",
           label: "09-06",
           orderCount: 4n,
-          confirmedPaymentJpy: 19_000n,
+          // A 03:30 confirmation is inside the current bucket but after evaluatedAt 03:04:05.
+          confirmedPaymentJpy: includesSnapshotPaymentCutoff ? 19_000n : 1_019_000n,
           confirmedPaymentNdp: 800n,
           confirmedPaymentTestNdp: 40n
         }
@@ -268,6 +274,55 @@ describe("LiveDashboardRepository", () => {
     expect(result.serviceRanking.at(-1)?.rank).toBe(10);
   });
 
+  it("reuses formal payment authority and accepts manual receipts without OrderFinancial", async () => {
+    const harness = createHarness();
+    const result = await harness.repository.getSnapshotFacts({
+      scope: { countryCode: "JP", admin1Code: null, admin2Code: null },
+      period: "today",
+      evaluatedAt
+    });
+    const authoritySql = queryText(formalConfirmedPaymentEvidence() as SqlQuery);
+    const children = queryText(
+      harness.queries.find((query) => queryText(query).includes("live_dashboard_children"))!
+    );
+    const moneyQuery = harness.queries.find((query) =>
+      queryText(query).includes("live_dashboard_money_orders")
+    )!;
+    const money = queryText(moneyQuery);
+    const trend = queryText(
+      harness.queries.find((query) => queryText(query).includes("live_dashboard_trend"))!
+    );
+    const eligibleSegments = [
+      cteSlice(children, "child_confirmed_payments AS (", ")\n      SELECT child"),
+      cteSlice(money, "eligible_payments AS (", "), revenue AS ("),
+      cteSlice(trend, "eligible_payments AS (", ")\n      SELECT bucket")
+    ];
+
+    expect(result.confirmedPayments).toEqual({ jpy: 19_000, ndp: 800, testNdp: 40 });
+    for (const eligible of eligibleSegments) {
+      expect(eligible).toContain(authoritySql);
+      expect(eligible).toContain("formal_confirmed_payment_evidence");
+      expect(eligible).not.toContain("order_financials");
+      expect(eligible).not.toContain("financial.");
+    }
+    expect(eligibleSegments[0]).toContain("CASE WHEN ledger.currency =");
+    expect(eligibleSegments[1]).toContain("ledger.currency AS ndp_currency");
+    expect(eligibleSegments[2]).toContain("ledger.currency AS ndp_currency");
+    expect(moneyQuery.values).toEqual(
+      expect.arrayContaining([
+        "ndp",
+        "cash",
+        "other",
+        "booking_complete_settlement",
+        "applied",
+        ":technician-receipt",
+        ":operations-receipt",
+        "NDP",
+        "TEST_NDP"
+      ])
+    );
+  });
+
   it("uses formal payment evidence, excludes refunds/reversals, and scopes every business read by booking location", async () => {
     const harness = createHarness();
     await harness.repository.getSnapshotFacts({
@@ -365,7 +420,7 @@ describe("LiveDashboardRepository", () => {
 
   it("groups the trend by its explicit MySQL ordering expression", async () => {
     const harness = createHarness();
-    await harness.repository.getSnapshotFacts({
+    const snapshot = await harness.repository.getSnapshotFacts({
       scope: { countryCode: "JP", admin1Code: "13", admin2Code: null },
       period: "last7days",
       evaluatedAt
@@ -373,8 +428,13 @@ describe("LiveDashboardRepository", () => {
     const trend = harness.queries.find((query) =>
       queryText(query).includes("live_dashboard_trend")
     );
+    expect(
+      snapshot.trend.find((bucket) => bucket.key === "2026-09-06")?.confirmedPayments.jpy
+    ).toBe(19_000);
+    expect(queryText(trend!)).toContain("booking.payment_confirmed_at <=");
+    expect(trend?.values).toContain(evaluatedAt);
     expect(queryText(trend!)).toContain(
-      "GROUP BY bucket.bucket_key, bucket.label, bucket.from_inclusive"
+      "GROUP BY bucket.bucket_key, bucket.label, bucket.from_inclusive, bucket.to_exclusive"
     );
     expect(queryText(trend!)).toContain("ORDER BY bucket.from_inclusive ASC");
   });

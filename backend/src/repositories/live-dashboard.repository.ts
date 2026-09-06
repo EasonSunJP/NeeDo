@@ -13,6 +13,7 @@ import {
 import { resolveDashboardWindow, type DashboardWindow } from "../domain/dashboard-period";
 import type { AnalyticsRankingInput, RankingKind } from "../domain/analytics-ranking";
 import { AnalyticsRankingRepository } from "./analytics-ranking.repository";
+import { formalConfirmedPaymentEvidence } from "./formal-confirmed-payment-evidence";
 
 type QueryClient = Pick<PrismaClient, "$queryRaw">;
 type LiveDashboardClient = QueryClient & Pick<PrismaClient, "$transaction">;
@@ -138,88 +139,6 @@ const scopedLocation = (scope: LiveDashboardScope, alias = "location"): Prisma.S
       ? Prisma.sql`AND ${Prisma.raw(alias)}.resolution_status = ${"VERIFIED"}`
       : Prisma.empty
   }
-`;
-
-/**
- * Mirrors the existing operations-finance confirmed-payment boundary.
- * Rankings consume AnalyticsRankingRepository's stricter shared formal evidence CTEs below.
- * Test NDP remains an explicitly separate ledger/financial currency.
- */
-const confirmedPaymentEvidence = (): Prisma.Sql => Prisma.sql`
-  booking.status = ${"completed"}
-  AND booking.payment_status = ${"confirmed"}
-  AND booking.currency = ${"JPY"}
-  AND booking.payment_confirmed_by_id IS NOT NULL
-  AND booking.payment_confirmed_at IS NOT NULL
-  AND booking.payment_refunded_at IS NULL
-  AND booking.payment_refunded_by_id IS NULL
-  AND booking.payment_refund_reference IS NULL
-  AND booking.payment_refund_reason IS NULL
-  AND booking.payment_amount_jpy = checkout.checkout_amount_jpy
-  AND checkout.base_amount_jpy >= 0
-  AND checkout.add_on_amount_jpy >= 0
-  AND checkout.discount_amount_jpy >= 0
-  AND checkout.checkout_amount_jpy >= 0
-  AND checkout.payable_ndp >= 0
-  AND checkout.base_amount_jpy + checkout.add_on_amount_jpy - checkout.discount_amount_jpy
-    = checkout.checkout_amount_jpy
-  AND checkout.payment_method = booking.payment_method
-  AND checkout.payment_selected_at IS NOT NULL
-  AND checkout.payment_selected_at <= booking.payment_confirmed_at
-  AND (
-    (
-      checkout.payment_method = ${"ndp"}
-      AND checkout.ledger_transaction_id IS NOT NULL
-      AND ledger.id = checkout.ledger_transaction_id
-      AND ledger.type = ${"booking_complete_settlement"}
-      AND ledger.status = ${"applied"}
-      AND ledger.reference_type = ${"order_checkout_payment"}
-      AND ledger.reference_id = checkout.id
-      AND ledger.amount = checkout.payable_ndp
-      AND ledger.actor_user_id = booking.payment_confirmed_by_id
-      AND ledger.currency IN (${"NDP"}, ${"TEST_NDP"})
-      AND financial.ndp_currency = ledger.currency
-      AND ledger.deleted_at IS NULL
-      AND checkout.payment_selected_at <= ledger.created_at
-      AND ledger.created_at <= booking.payment_confirmed_at
-      AND booking.payment_reference = CONCAT(
-        ${"checkout:"}, checkout.id, ${":ledger:"}, ledger.id
-      )
-      AND booking.payment_note IS NULL
-      AND checkout.receipt_confirmed_by_id IS NULL
-      AND checkout.receipt_confirmed_at IS NULL
-      AND checkout.receipt_confirmation_reason IS NULL
-    )
-    OR
-    (
-      checkout.payment_method IN (${"cash"}, ${"other"})
-      AND checkout.ledger_transaction_id IS NULL
-      AND ledger.id IS NULL
-      AND checkout.receipt_confirmed_by_id IS NOT NULL
-      AND checkout.receipt_confirmed_at IS NOT NULL
-      AND checkout.payment_selected_at <= checkout.receipt_confirmed_at
-      AND checkout.receipt_confirmed_at <= booking.payment_confirmed_at
-      AND checkout.receipt_confirmation_reason IS NOT NULL
-      AND TRIM(checkout.receipt_confirmation_reason) <> ${""}
-      AND booking.payment_confirmed_by_id = checkout.receipt_confirmed_by_id
-      AND booking.payment_note = checkout.receipt_confirmation_reason
-      AND booking.payment_reference IN (
-        CONCAT(${"checkout:"}, checkout.id, ${":technician-receipt"}),
-        CONCAT(${"checkout:"}, checkout.id, ${":operations-receipt"})
-      )
-      AND (
-        (checkout.payment_method = ${"cash"}
-          AND checkout.other_method_code IS NULL
-          AND checkout.other_method_label IS NULL)
-        OR
-        (checkout.payment_method = ${"other"}
-          AND checkout.other_method_code IS NOT NULL
-          AND TRIM(checkout.other_method_code) <> ${""}
-          AND checkout.other_method_label IS NOT NULL
-          AND TRIM(checkout.other_method_label) <> ${""})
-      )
-    )
-  )
 `;
 
 export interface LiveDashboardRepositoryPort {
@@ -370,9 +289,9 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       ), child_confirmed_payments AS (
         SELECT ${childRegionCode} AS child_code,
                COALESCE(SUM(checkout.checkout_amount_jpy), 0) AS confirmed_payment_jpy,
-               COALESCE(SUM(CASE WHEN financial.ndp_currency = ${"NDP"}
+               COALESCE(SUM(CASE WHEN ledger.currency = ${"NDP"}
                  THEN checkout.payable_ndp ELSE 0 END), 0) AS confirmed_payment_ndp,
-               COALESCE(SUM(CASE WHEN financial.ndp_currency = ${"TEST_NDP"}
+               COALESCE(SUM(CASE WHEN ledger.currency = ${"TEST_NDP"}
                  THEN checkout.payable_ndp ELSE 0 END), 0) AS confirmed_payment_test_ndp
         FROM booking_orders AS booking
         INNER JOIN booking_service_locations AS location
@@ -381,16 +300,13 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
         INNER JOIN order_checkouts AS checkout
           ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
-        INNER JOIN order_financials AS financial
-          ON financial.booking_order_id = booking.id AND financial.shop_id = booking.shop_id
-          AND financial.deleted_at IS NULL
         LEFT JOIN ledger_transactions AS ledger
           ON ledger.id = checkout.ledger_transaction_id AND ledger.deleted_at IS NULL
         WHERE booking.payment_confirmed_at >= ${window.fromInclusive}
           AND booking.payment_confirmed_at < ${window.toExclusive}
           AND booking.payment_confirmed_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
-          AND ${confirmedPaymentEvidence()}
+          AND ${formalConfirmedPaymentEvidence()}
         GROUP BY ${childRegionCode}
       )
       SELECT child.official_code AS code,
@@ -531,7 +447,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.deleted_at IS NULL
       ), eligible_payments AS (
         SELECT booking.id, checkout.checkout_amount_jpy, checkout.payable_ndp,
-               financial.ndp_currency
+               ledger.currency AS ndp_currency
         FROM booking_orders AS booking
         INNER JOIN booking_service_locations AS location
           ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
@@ -539,16 +455,13 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
         INNER JOIN order_checkouts AS checkout
           ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
-        INNER JOIN order_financials AS financial
-          ON financial.booking_order_id = booking.id AND financial.shop_id = booking.shop_id
-          AND financial.deleted_at IS NULL
         LEFT JOIN ledger_transactions AS ledger
           ON ledger.id = checkout.ledger_transaction_id AND ledger.deleted_at IS NULL
         WHERE booking.payment_confirmed_at >= ${window.fromInclusive}
           AND booking.payment_confirmed_at < ${window.toExclusive}
           AND booking.payment_confirmed_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
-          AND ${confirmedPaymentEvidence()}
+          AND ${formalConfirmedPaymentEvidence()}
       ), revenue AS (
         SELECT financial.ndp_currency,
                COALESCE(SUM(financial.b_platform_fee_actual_ndp), 0)
@@ -671,7 +584,8 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       /* live_dashboard_trend */
       WITH buckets AS (${buckets}), eligible_payments AS (
         SELECT booking.id, booking.created_at, booking.payment_confirmed_at,
-               checkout.checkout_amount_jpy, checkout.payable_ndp, financial.ndp_currency
+               checkout.checkout_amount_jpy, checkout.payable_ndp,
+               ledger.currency AS ndp_currency
         FROM booking_orders AS booking
         INNER JOIN booking_service_locations AS location
           ON location.booking_order_id = booking.id AND ${scopedLocation(input.scope)}
@@ -679,14 +593,12 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           ON shop.id = booking.shop_id AND shop.deleted_at IS NULL
         INNER JOIN order_checkouts AS checkout
           ON checkout.booking_order_id = booking.id AND checkout.deleted_at IS NULL
-        INNER JOIN order_financials AS financial
-          ON financial.booking_order_id = booking.id AND financial.shop_id = booking.shop_id
-          AND financial.deleted_at IS NULL
         LEFT JOIN ledger_transactions AS ledger
           ON ledger.id = checkout.ledger_transaction_id AND ledger.deleted_at IS NULL
         WHERE booking.created_at <= ${input.evaluatedAt}
+          AND booking.payment_confirmed_at <= ${input.evaluatedAt}
           AND booking.deleted_at IS NULL
-          AND ${confirmedPaymentEvidence()}
+          AND ${formalConfirmedPaymentEvidence()}
       )
       SELECT bucket.bucket_key AS bucketKey, bucket.label,
              (SELECT COUNT(booking.id)
@@ -708,7 +620,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       LEFT JOIN eligible_payments AS eligible
         ON eligible.payment_confirmed_at >= bucket.from_inclusive
         AND eligible.payment_confirmed_at < bucket.to_exclusive
-      GROUP BY bucket.bucket_key, bucket.label, bucket.from_inclusive
+      GROUP BY bucket.bucket_key, bucket.label, bucket.from_inclusive, bucket.to_exclusive
       ORDER BY bucket.from_inclusive ASC
     `);
   }
