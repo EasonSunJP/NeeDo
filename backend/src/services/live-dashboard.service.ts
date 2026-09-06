@@ -8,7 +8,11 @@ import type {
   AdministrativeRegionRepositoryPort
 } from "../repositories/administrative-region.repository";
 import type { LiveDashboardRepositoryPort } from "../repositories/live-dashboard.repository";
-import type { LiveDashboardQuery } from "../validators/live-dashboard.validator";
+import {
+  decodeCachedLiveDashboardFacts,
+  type CachedLiveDashboardFacts,
+  type LiveDashboardQuery
+} from "../validators/live-dashboard.validator";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { AuditLogService } from "./audit-log.service";
@@ -17,6 +21,7 @@ import type {
   LiveDashboardCachePort,
   LiveDashboardCacheStatus
 } from "./live-dashboard-cache.service";
+import { assertActivePlatformIdentity } from "./platform-identity-scope";
 
 export type LiveDashboardLocale = "zh-CN" | "zh-TW" | "ja" | "en" | "ko";
 
@@ -35,17 +40,6 @@ interface LiveDashboardResponseScope {
 
 interface SerializedOrderSummary extends Omit<LiveDashboardOrderSummary, "occurredAt"> {
   occurredAt: string;
-}
-
-interface CachedLiveDashboardFacts extends Omit<
-  LiveDashboardSnapshotFacts,
-  "evaluatedAt" | "realtimeOrders" | "activity"
-> {
-  evaluatedAt: string;
-  realtimeOrders: Omit<LiveDashboardSnapshotFacts["realtimeOrders"], "list"> & {
-    list: SerializedOrderSummary[];
-  };
-  activity: SerializedOrderSummary[];
 }
 
 export interface LiveDashboardSnapshotResponse extends Omit<CachedLiveDashboardFacts, "scope"> {
@@ -80,6 +74,7 @@ export class LiveDashboardService {
     query: LiveDashboardQuery,
     locale: LiveDashboardLocale
   ): Promise<LiveDashboardSnapshotResponse> {
+    assertActivePlatformIdentity(actor);
     const hierarchy = await this.resolveHierarchy(query, locale);
     const requestedScope: LiveDashboardScope = {
       countryCode: query.country,
@@ -87,16 +82,24 @@ export class LiveDashboardService {
       admin2Code: query.admin2 ?? null
     };
     const scopeKey = `${query.country}:${query.admin1 ?? "-"}:${query.admin2 ?? "-"}:${query.period}`;
-    const cached = await this.cache.getOrCreate<CachedLiveDashboardFacts>(scopeKey, async () => {
-      const evaluatedAt = this.now();
-      const repositoryFacts = await this.repository.getSnapshotFacts({
-        scope: requestedScope,
-        period: query.period,
-        evaluatedAt
-      });
-      this.assertScope(repositoryFacts.scope, requestedScope);
-      return this.serializeFacts(repositoryFacts);
-    });
+    const cached = await this.cache.getOrCreate<CachedLiveDashboardFacts>(
+      scopeKey,
+      async () => {
+        const evaluatedAt = this.now();
+        const repositoryFacts = await this.repository.getSnapshotFacts({
+          scope: requestedScope,
+          period: query.period,
+          evaluatedAt
+        });
+        this.assertScope(repositoryFacts.scope, requestedScope);
+        return this.serializeFacts(repositoryFacts);
+      },
+      (value) => {
+        const decoded = decodeCachedLiveDashboardFacts(value);
+        this.assertScope(decoded.scope, requestedScope);
+        return decoded;
+      }
+    );
     this.assertScope(cached.value.scope, requestedScope);
 
     const now = this.now();

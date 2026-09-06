@@ -8,7 +8,11 @@ import { AuthTokenService } from "../src/services/auth-token.service";
 
 const now = new Date("2026-09-06T03:04:05.000Z");
 
-const createUser = (id: number, permissions: string[]) => ({
+const createUser = (
+  id: number,
+  permissions: string[],
+  identity: { type: string; scopeType: string } = { type: "platform_admin", scopeType: "global" }
+) => ({
   id,
   email: `live-${id}@example.test`,
   phone: null,
@@ -25,8 +29,8 @@ const createUser = (id: number, permissions: string[]) => ({
     {
       id: 100 + id,
       userId: id,
-      type: "platform_admin",
-      scopeType: "global",
+      type: identity.type,
+      scopeType: identity.scopeType,
       scopeId: null,
       displayName: `Live ${id}`,
       isDefault: true,
@@ -76,8 +80,14 @@ const facts: LiveDashboardSnapshotFacts = {
   coverage: { total: 1, attributed: 1, unresolved: 0, completenessPercent: 100 }
 };
 
-const createFixture = () => {
-  const users = [createUser(1, ["backoffice:dashboard:read"]), createUser(2, [])];
+const createFixture = (options: { failAudit?: boolean } = {}) => {
+  const users = [
+    createUser(1, ["backoffice:dashboard:read"]),
+    createUser(2, []),
+    createUser(3, ["backoffice:dashboard:read"], { type: "customer", scopeType: "global" }),
+    createUser(4, ["backoffice:dashboard:read"], { type: "technician", scopeType: "global" }),
+    createUser(5, ["backoffice:dashboard:read"], { type: "merchant", scopeType: "global" })
+  ];
   const liveDashboardRepository = { getSnapshotFacts: jest.fn(async () => facts) };
   const administrativeRegionRepository = {
     listChildren: jest.fn(async () => [
@@ -85,7 +95,18 @@ const createFixture = () => {
     ]),
     resolveVerifiedScope: jest.fn()
   };
-  const auditLogRepository = { create: jest.fn(async () => undefined) };
+  const auditLogRepository = {
+    create: jest.fn(async () => {
+      if (options.failAudit) throw new Error("audit unavailable");
+    })
+  };
+  const liveDashboardCache = {
+    getOrCreate: jest.fn(async (_key: string, factory: () => Promise<unknown>) => ({
+      value: await factory(),
+      cachedAt: now,
+      cacheStatus: "miss"
+    }))
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     testOnlyAllowLegacyAuthAdapters: true,
@@ -96,13 +117,7 @@ const createFixture = () => {
     auditLogRepository,
     administrativeRegionRepository,
     liveDashboardRepository,
-    liveDashboardCache: {
-      getOrCreate: jest.fn(async (_key: string, factory: () => Promise<unknown>) => ({
-        value: await factory(),
-        cachedAt: now,
-        cacheStatus: "miss"
-      }))
-    },
+    liveDashboardCache,
     liveDashboardClock: () => now,
     backofficeRepository: {}
   } as never);
@@ -122,6 +137,7 @@ const createFixture = () => {
     auditLogRepository,
     administrativeRegionRepository,
     liveDashboardRepository,
+    liveDashboardCache,
     tokens
   };
 };
@@ -135,6 +151,38 @@ describe("GET /api/v1/backoffice/dashboard/live-snapshot", () => {
       .set("Authorization", `Bearer ${fixture.tokens[2]}`)
       .expect(403);
     expect(fixture.liveDashboardRepository.getSnapshotFacts).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["customer", 3],
+    ["technician", 4],
+    ["merchant", 5]
+  ])(
+    "rejects active %s identity even when its account retains dashboard permission",
+    async (_identityType, userId) => {
+      const fixture = createFixture();
+      await request(fixture.app)
+        .get("/api/v1/backoffice/dashboard/live-snapshot?country=JP")
+        .set("Authorization", `Bearer ${fixture.tokens[userId]}`)
+        .expect(403);
+      expect(fixture.administrativeRegionRepository.resolveVerifiedScope).not.toHaveBeenCalled();
+      expect(fixture.administrativeRegionRepository.listChildren).not.toHaveBeenCalled();
+      expect(fixture.liveDashboardCache.getOrCreate).not.toHaveBeenCalled();
+      expect(fixture.liveDashboardRepository.getSnapshotFacts).not.toHaveBeenCalled();
+      expect(fixture.auditLogRepository.create).not.toHaveBeenCalled();
+    }
+  );
+
+  it("does not send a successful snapshot when the formal read audit fails", async () => {
+    const fixture = createFixture({ failAudit: true });
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard/live-snapshot?country=JP")
+      .set("Authorization", `Bearer ${fixture.tokens[1]}`)
+      .expect(500);
+
+    expect(response.body).toMatchObject({ code: expect.any(Number), data: null });
+    expect(response.body.code).not.toBe(0);
+    expect(fixture.auditLogRepository.create).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an illegal hierarchy before formal snapshot access", async () => {

@@ -20,7 +20,11 @@ export interface LiveDashboardCacheResult<T> {
 }
 
 export interface LiveDashboardCachePort {
-  getOrCreate<T>(scopeKey: string, factory: () => Promise<T>): Promise<LiveDashboardCacheResult<T>>;
+  getOrCreate<T>(
+    scopeKey: string,
+    factory: () => Promise<T>,
+    decode?: (value: unknown) => T
+  ): Promise<LiveDashboardCacheResult<T>>;
 }
 
 interface StoredLiveDashboardSnapshot<T> {
@@ -48,13 +52,14 @@ export class LiveDashboardCache implements LiveDashboardCachePort {
 
   public getOrCreate<T>(
     scopeKey: string,
-    factory: () => Promise<T>
+    factory: () => Promise<T>,
+    decode: (value: unknown) => T = (value) => value as T
   ): Promise<LiveDashboardCacheResult<T>> {
     const key = normalizeScopeKey(scopeKey);
     const existing = this.inFlight.get(key);
     if (existing) return existing as Promise<LiveDashboardCacheResult<T>>;
 
-    const operation = this.readOrCreate(key, factory).finally(() => {
+    const operation = this.readOrCreate(key, factory, decode).finally(() => {
       this.inFlight.delete(key);
     });
     this.inFlight.set(key, operation as Promise<LiveDashboardCacheResult<unknown>>);
@@ -63,14 +68,15 @@ export class LiveDashboardCache implements LiveDashboardCachePort {
 
   private async readOrCreate<T>(
     key: string,
-    factory: () => Promise<T>
+    factory: () => Promise<T>,
+    decode: (value: unknown) => T
   ): Promise<LiveDashboardCacheResult<T>> {
     let client: LiveDashboardRedisClient;
     try {
       client = this.getClient();
       if (!client.isOpen) await client.connect();
       const stored = await client.get(key);
-      if (stored !== null) return this.parseStored<T>(stored);
+      if (stored !== null) return this.parseStored(stored, decode);
     } catch {
       return this.compute(factory, "degraded");
     }
@@ -96,17 +102,29 @@ export class LiveDashboardCache implements LiveDashboardCachePort {
     return { value, cachedAt: this.now(), cacheStatus };
   }
 
-  private parseStored<T>(stored: string): LiveDashboardCacheResult<T> {
-    const parsed = JSON.parse(stored) as Partial<StoredLiveDashboardSnapshot<T>>;
-    if (typeof parsed.cachedAt !== "string" || !("value" in parsed)) {
+  private parseStored<T>(
+    stored: string,
+    decode: (value: unknown) => T
+  ): LiveDashboardCacheResult<T> {
+    const parsed = JSON.parse(stored) as Partial<StoredLiveDashboardSnapshot<unknown>>;
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed) ||
+      Object.keys(parsed).length !== 2 ||
+      typeof parsed.cachedAt !== "string" ||
+      !("value" in parsed)
+    ) {
       throw new Error("Invalid live dashboard cache entry");
     }
     const cachedAt = new Date(parsed.cachedAt);
-    if (Number.isNaN(cachedAt.getTime())) throw new Error("Invalid live dashboard cache timestamp");
+    if (Number.isNaN(cachedAt.getTime()) || parsed.cachedAt !== cachedAt.toISOString()) {
+      throw new Error("Invalid live dashboard cache timestamp");
+    }
     const ageMs = this.now().getTime() - cachedAt.getTime();
     if (ageMs < 0 || ageMs > LIVE_DASHBOARD_CACHE_TTL_SECONDS * 1_000) {
       throw new Error("Stale live dashboard cache entry");
     }
-    return { value: parsed.value as T, cachedAt, cacheStatus: "hit" };
+    return { value: decode(parsed.value), cachedAt, cacheStatus: "hit" };
   }
 }

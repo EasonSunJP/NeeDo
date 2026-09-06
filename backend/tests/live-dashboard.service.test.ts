@@ -1,7 +1,9 @@
 import type { LiveDashboardSnapshotFacts } from "../src/domain/live-dashboard";
 import { LiveDashboardService } from "../src/services/live-dashboard.service";
+import { LiveDashboardCache } from "../src/services/live-dashboard-cache.service";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { AppError } from "../src/utils/app-error";
+import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 
 const evaluatedAt = new Date("2026-09-06T03:04:05.000Z");
 const actor = {
@@ -14,7 +16,7 @@ const actor = {
   roles: ["admin"],
   isReadOnlyMerchantPreview: false,
   merchantPreviewShopId: null
-} as never;
+} as unknown as AuthenticatedAccessContext;
 const context = { ip: "127.0.0.1", userAgent: "service-test" };
 
 const facts = (): LiveDashboardSnapshotFacts => ({
@@ -51,6 +53,41 @@ const facts = (): LiveDashboardSnapshotFacts => ({
 });
 
 describe("LiveDashboardService", () => {
+  it.each(["customer", "technician", "merchant"])(
+    "rejects active %s identity before every downstream dependency",
+    async (currentIdentityType) => {
+      const repository = { getSnapshotFacts: jest.fn() };
+      const regions = { listChildren: jest.fn(), resolveVerifiedScope: jest.fn() };
+      const cache = { getOrCreate: jest.fn() };
+      const audit = { record: jest.fn() };
+      const service = new LiveDashboardService(
+        repository,
+        regions,
+        cache,
+        audit,
+        () => evaluatedAt
+      );
+
+      await expect(
+        service.getSnapshot(
+          { ...actor, currentIdentityType, currentIdentityScopeType: "global" },
+          context,
+          { country: "JP", admin1: "13", admin2: "13104", period: "today" },
+          "ja"
+        )
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        statusCode: 403,
+        message: "error.identity.forbidden"
+      });
+      expect(regions.resolveVerifiedScope).not.toHaveBeenCalled();
+      expect(regions.listChildren).not.toHaveBeenCalled();
+      expect(cache.getOrCreate).not.toHaveBeenCalled();
+      expect(repository.getSnapshotFacts).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
   it("validates the hierarchy before reading facts and returns stable localized breadcrumbs", async () => {
     const calls: string[] = [];
     const regions = {
@@ -207,5 +244,93 @@ describe("LiveDashboardService", () => {
     expect(repository.getSnapshotFacts).not.toHaveBeenCalled();
     expect(cache.getOrCreate).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects when formal read audit fails instead of returning a successful payload", async () => {
+    const regions = {
+      listChildren: jest.fn(async () => []),
+      resolveVerifiedScope: jest.fn()
+    };
+    const repository = {
+      getSnapshotFacts: jest.fn(async () => ({
+        ...facts(),
+        scope: {
+          countryCode: "JP" as const,
+          admin1Code: null,
+          admin2Code: null
+        }
+      }))
+    };
+    const cache = {
+      getOrCreate: jest.fn(async (_key: string, factory: () => Promise<unknown>) => ({
+        value: await factory(),
+        cachedAt: evaluatedAt,
+        cacheStatus: "miss" as const
+      }))
+    };
+    const audit = {
+      record: jest.fn(async () => {
+        throw new Error("audit unavailable");
+      })
+    };
+    const service = new LiveDashboardService(
+      repository,
+      regions,
+      cache as never,
+      audit,
+      () => evaluatedAt
+    );
+
+    await expect(
+      service.getSnapshot(actor, context, { country: "JP", period: "today" }, "ja")
+    ).rejects.toThrow("audit unavailable");
+    expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a valid-shaped cached snapshot for another scope as degraded and recomputes", async () => {
+    const wrongScopeFacts = {
+      ...facts(),
+      evaluatedAt: evaluatedAt.toISOString(),
+      scope: { countryCode: "JP", admin1Code: "13", admin2Code: null },
+      headline: { ...facts().headline, newOrders: 999 },
+      realtimeOrders: {
+        ...facts().realtimeOrders,
+        list: facts().realtimeOrders.list.map((order) => ({
+          ...order,
+          occurredAt: order.occurredAt.toISOString()
+        }))
+      },
+      activity: []
+    };
+    const redis = {
+      isOpen: true,
+      connect: jest.fn(async () => undefined),
+      get: jest.fn(async () =>
+        JSON.stringify({ cachedAt: evaluatedAt.toISOString(), value: wrongScopeFacts })
+      ),
+      set: jest.fn(async () => "OK")
+    };
+    const cache = new LiveDashboardCache(
+      () => redis,
+      () => evaluatedAt
+    );
+    const freshFacts = {
+      ...facts(),
+      scope: { countryCode: "JP" as const, admin1Code: null, admin2Code: null }
+    };
+    const repository = { getSnapshotFacts: jest.fn(async () => freshFacts) };
+    const regions = { listChildren: jest.fn(async () => []), resolveVerifiedScope: jest.fn() };
+    const audit = { record: jest.fn(async () => undefined) };
+    const service = new LiveDashboardService(repository, regions, cache, audit, () => evaluatedAt);
+
+    await expect(
+      service.getSnapshot(actor, context, { country: "JP", period: "today" }, "ja")
+    ).resolves.toMatchObject({
+      scope: { country: "JP", admin1: null, admin2: null },
+      headline: { newOrders: 2 },
+      cacheStatus: "degraded"
+    });
+    expect(repository.getSnapshotFacts).toHaveBeenCalledTimes(1);
+    expect(redis.set).not.toHaveBeenCalled();
   });
 });

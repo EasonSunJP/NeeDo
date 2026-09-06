@@ -2,8 +2,68 @@ import {
   LiveDashboardCache,
   liveDashboardCacheKey
 } from "../src/services/live-dashboard-cache.service";
+import {
+  decodeCachedLiveDashboardFacts,
+  type CachedLiveDashboardFacts
+} from "../src/validators/live-dashboard.validator";
 
 const now = new Date("2026-09-06T03:04:05.000Z");
+
+const cachedFacts = (): CachedLiveDashboardFacts => ({
+  evaluatedAt: now.toISOString(),
+  scope: { countryCode: "JP", admin1Code: null, admin2Code: null },
+  children: [
+    {
+      code: "13",
+      name: "Tokyo",
+      orderCount: 2,
+      confirmedPayments: { jpy: 12000, ndp: 100, testNdp: 0 }
+    }
+  ],
+  headline: { newOrders: 2, completedOrders: 1, newCustomers: 1, onboardedTechnicians: 1 },
+  confirmedPayments: { jpy: 12000, ndp: 100, testNdp: 0 },
+  orders: {
+    total: 2,
+    serviceGmv: { jpy: 12000, ndp: 0, testNdp: 0 },
+    platformNetRevenue: { jpy: -500, ndp: 100, testNdp: 0 },
+    agentCommission: null
+  },
+  realtimeOrders: {
+    list: [
+      {
+        orderNo: "BO-1",
+        status: "confirmed",
+        serviceName: "Hair",
+        amountJpy: 12000,
+        occurredAt: now.toISOString()
+      }
+    ],
+    total: 1,
+    page: 1,
+    page_size: 20
+  },
+  activity: [],
+  trend: [
+    {
+      key: "2026-09-06",
+      label: "09/06",
+      orderCount: 2,
+      confirmedPayments: { jpy: 12000, ndp: 100, testNdp: 0 }
+    }
+  ],
+  serviceRanking: [
+    {
+      rank: 1,
+      entityPublicId: "svc_1",
+      displayName: "Hair",
+      avatarUrl: null,
+      gmvJpy: 12000,
+      completedCount: 1
+    }
+  ],
+  technicianRanking: [],
+  coverage: { total: 2, attributed: 2, unresolved: 0, completenessPercent: 100 }
+});
 
 const createRedis = (
   options: { get?: string | null; failGet?: boolean; failSet?: boolean } = {}
@@ -66,21 +126,87 @@ describe("LiveDashboardCache", () => {
   });
 
   it("returns a valid cached value without recomputing it", async () => {
+    const value = cachedFacts();
     const redis = createRedis({
-      get: JSON.stringify({ cachedAt: now.toISOString(), value: { total: 7 } })
+      get: JSON.stringify({ cachedAt: now.toISOString(), value })
     });
     const cache = new LiveDashboardCache(
       () => redis,
       () => new Date("2026-09-06T03:05:05Z")
     );
-    const factory = jest.fn(async () => ({ total: 8 }));
+    const factory = jest.fn(async () => cachedFacts());
 
-    await expect(cache.getOrCreate("JP:-:-:today", factory)).resolves.toEqual({
-      value: { total: 7 },
+    await expect(
+      cache.getOrCreate("JP:-:-:today", factory, decodeCachedLiveDashboardFacts)
+    ).resolves.toEqual({
+      value,
       cachedAt: now,
       cacheStatus: "hit"
     });
     expect(factory).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["null", null],
+    ["partial", { evaluatedAt: now.toISOString() }],
+    [
+      "wrong nested type",
+      { ...cachedFacts(), headline: { ...cachedFacts().headline, newOrders: "2" } }
+    ],
+    ["invalid fact date", { ...cachedFacts(), evaluatedAt: "2026-09-06" }],
+    [
+      "extra PII-shaped key",
+      { ...cachedFacts(), headline: { ...cachedFacts().headline, customerEmail: "leak@test" } }
+    ],
+    [
+      "fully shaped invalid facts",
+      { ...cachedFacts(), coverage: { ...cachedFacts().coverage, completenessPercent: 101 } }
+    ],
+    [
+      "oversized ranking",
+      {
+        ...cachedFacts(),
+        serviceRanking: Array.from({ length: 11 }, (_, index) => ({
+          ...cachedFacts().serviceRanking[0],
+          rank: index + 1
+        }))
+      }
+    ],
+    [
+      "wrong realtime pagination",
+      { ...cachedFacts(), realtimeOrders: { ...cachedFacts().realtimeOrders, page_size: 50 } }
+    ]
+  ])("rejects %s cached facts and returns only fresh formal facts", async (_label, invalid) => {
+    const redis = createRedis({
+      get: JSON.stringify({ cachedAt: now.toISOString(), value: invalid })
+    });
+    const cache = new LiveDashboardCache(
+      () => redis,
+      () => now
+    );
+    const fresh = cachedFacts();
+    const factory = jest.fn(async () => fresh);
+
+    await expect(
+      cache.getOrCreate("JP:-:-:today", factory, decodeCachedLiveDashboardFacts)
+    ).resolves.toEqual({ value: fresh, cachedAt: now, cacheStatus: "degraded" });
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a future cachedAt and computes fresh formal facts", async () => {
+    const redis = createRedis({
+      get: JSON.stringify({ cachedAt: "2026-09-06T03:04:05.001Z", value: cachedFacts() })
+    });
+    const cache = new LiveDashboardCache(
+      () => redis,
+      () => now
+    );
+    const factory = jest.fn(async () => cachedFacts());
+
+    await expect(
+      cache.getOrCreate("JP:-:-:today", factory, decodeCachedLiveDashboardFacts)
+    ).resolves.toMatchObject({ cacheStatus: "degraded", value: cachedFacts() });
+    expect(factory).toHaveBeenCalledTimes(1);
   });
 
   it("never returns a stale or corrupt Redis entry as formal facts", async () => {
@@ -132,6 +258,51 @@ describe("LiveDashboardCache", () => {
     expect(redis.set).not.toHaveBeenCalled();
 
     await cache.getOrCreate("JP:-:-:today", factory);
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
+  it("single-flights a concurrent write failure and returns equal degraded facts", async () => {
+    const redis = createRedis({ failSet: true });
+    const cache = new LiveDashboardCache(
+      () => redis,
+      () => now
+    );
+    let releaseFactory!: () => void;
+    const factory = jest.fn(
+      () =>
+        new Promise<{ total: number }>((resolve) => {
+          releaseFactory = () => resolve({ total: 12 });
+        })
+    );
+
+    const leftPromise = cache.getOrCreate("JP:-:-:today", factory);
+    const rightPromise = cache.getOrCreate("JP:-:-:today", factory);
+    await Promise.resolve();
+    releaseFactory();
+    const [left, right] = await Promise.all([leftPromise, rightPromise]);
+
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(left).toEqual(right);
+    expect(left).toEqual({ value: { total: 12 }, cachedAt: now, cacheStatus: "degraded" });
+  });
+
+  it("cleans up a rejected factory so a later request can retry", async () => {
+    const redis = createRedis();
+    const cache = new LiveDashboardCache(
+      () => redis,
+      () => now
+    );
+    const factory = jest
+      .fn<Promise<{ total: number }>, []>()
+      .mockRejectedValueOnce(new Error("formal query failed"))
+      .mockResolvedValueOnce({ total: 13 });
+
+    await expect(cache.getOrCreate("JP:-:-:today", factory)).rejects.toThrow("formal query failed");
+    await expect(cache.getOrCreate("JP:-:-:today", factory)).resolves.toEqual({
+      value: { total: 13 },
+      cachedAt: now,
+      cacheStatus: "miss"
+    });
     expect(factory).toHaveBeenCalledTimes(2);
   });
 });
