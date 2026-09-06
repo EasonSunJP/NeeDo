@@ -40,6 +40,17 @@ describe("completed-order refund case real MySQL checker", () => {
     expect(source).toContain("ledgerTransaction.findMany");
     expect(source).toContain("afterEvidenceOrder");
     expect(source).toContain("afterReceiptOrder");
+    expect(source).toContain("transaction.financeReconciliation.deleteMany");
+    expect(source).toContain("transaction.walletLedger.deleteMany");
+    expect(source).toContain("where: { transactionId: { in: ledgerTransactionIds } }");
+    const financeReconciliationCleanup = source.indexOf(
+      "transaction.financeReconciliation.deleteMany"
+    );
+    const walletLedgerCleanup = source.indexOf("transaction.walletLedger.deleteMany");
+    const ledgerCleanup = source.indexOf("transaction.ledgerTransaction.deleteMany");
+    expect(financeReconciliationCleanup).toBeGreaterThan(-1);
+    expect(walletLedgerCleanup).toBeGreaterThan(financeReconciliationCleanup);
+    expect(ledgerCleanup).toBeGreaterThan(walletLedgerCleanup);
 
     const dangerousStatements = [/DROP\s+TABLE/i, /TRUNCATE\s+TABLE/i];
     expect(dangerousStatements.some((pattern) => pattern.test("DROP TABLE refund_cases"))).toBe(

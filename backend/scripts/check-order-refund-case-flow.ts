@@ -747,6 +747,12 @@ const main = async (): Promise<void> => {
       });
       await transaction.affiliateReward.deleteMany({ where: { id: { in: rewardIds } } });
       await transaction.affiliateAttribution.deleteMany({ where: { id: { in: attributionIds } } });
+      await transaction.financeReconciliation.deleteMany({
+        where: { transactionId: { in: ledgerTransactionIds } }
+      });
+      await transaction.walletLedger.deleteMany({
+        where: { transactionId: { in: ledgerTransactionIds } }
+      });
       await transaction.ledgerTransaction.deleteMany({
         where: { id: { in: ledgerTransactionIds } }
       });
