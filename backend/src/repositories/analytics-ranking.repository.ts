@@ -58,6 +58,7 @@ export interface AnalyticsRankingRepositoryPort {
 export interface AnalyticsRankingEvidenceScope {
   candidateJoins: Prisma.Sql;
   candidatePredicate: Prisma.Sql;
+  entityPredicate?: Prisma.Sql;
 }
 
 const entityTypes = new Set<RankingEntityType>([
@@ -330,6 +331,7 @@ export class AnalyticsRankingRepository implements AnalyticsRankingRepositoryPor
                      AND candidate.technician_deleted_at IS NULL
                      AND candidate.technician_user_is_active = TRUE
                      AND candidate.technician_user_deleted_at IS NULL
+                     AND (${evidenceScope?.entityPredicate ?? Prisma.sql`TRUE`})
                THEN 1 ELSE 0 END AS entity_eligible,
           CASE WHEN candidate.customer_is_test = TRUE OR candidate.technician_user_is_test = TRUE
                THEN 1 ELSE 0 END AS is_test_order

@@ -82,6 +82,17 @@ describe("live dashboard formal-flow checker contract", () => {
     expect(source).toContain('redis: "clean"');
   });
 
+  it("uses current-main future slots and bound travel evidence for the home fixture", () => {
+    const source = fs.readFileSync(scriptPath, "utf8");
+    expect(source).toContain("const fixtureBookingTime = Date.now();");
+    expect(source).toContain("fixtureBookingTime + (120 + index * 90) * 60_000");
+    expect(source).toContain("transaction.shopTravelFarePolicyVersion.create");
+    expect(source).toContain("transaction.routeEstimate.create");
+    expect(source).toContain("travelEstimatePublicId: homeTravelEstimate.publicId");
+    expect(source).toContain('"order" in storeResult && "order" in homeResult');
+    expect(source).toContain('entityPredicate: Prisma.sql`candidate.customer_is_test = FALSE');
+  });
+
   it("checks complete snapshot parity, all cache periods, and failure-path cleanup", () => {
     const source = fs.readFileSync(scriptPath, "utf8");
 

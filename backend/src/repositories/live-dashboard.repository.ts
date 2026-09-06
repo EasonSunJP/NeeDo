@@ -688,7 +688,9 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
     return {
       candidateJoins: Prisma.sql`INNER JOIN booking_service_locations AS location
         ON location.booking_order_id = booking.id`,
-      candidatePredicate: scopedLocation(scope)
+      candidatePredicate: scopedLocation(scope),
+      entityPredicate: Prisma.sql`candidate.customer_is_test = FALSE
+        AND candidate.technician_user_is_test = FALSE`
     };
   }
 

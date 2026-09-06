@@ -625,7 +625,9 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store",
-        serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" }
+        serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+        fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+        travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
       })
       .expect(400);
     expect(storeFixture.bookingRepository.createBooking).not.toHaveBeenCalled();
@@ -639,7 +641,9 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "home",
-        serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" }
+        serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+        fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+        travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
       })
       .expect(201);
     expect(homeFixture.bookingRepository.createBooking).toHaveBeenCalledWith(

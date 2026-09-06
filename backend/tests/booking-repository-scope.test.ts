@@ -212,7 +212,9 @@ const makeReplacementSlot = (id: number, bookedCount: number, status: "AVAILABLE
     createdAt: new Date("2026-09-01T00:00:00.000Z")
   },
   technicianService: null,
-  shop: { id: 16, name: "LifeDance", ownerUserId: 202, pricingMode: "MERCHANT" },
+  shop: { id: 16, name: "LifeDance", ownerUserId: 202, pricingMode: "MERCHANT",
+    serviceLocation: { countryCode: "JP", admin1RegionId: 13, admin2RegionId: 13104, datasetVersion: "N03-20260101", deletedAt: null,
+      admin1Region: { officialCode: "13" }, admin2Region: { officialCode: "13104" } } },
   technicianProfile: null
 });
 
@@ -235,7 +237,12 @@ const createPendingReplacementHarness = (options: { linkAfterSelection?: boolean
   let concurrentLinkApplied = false;
 
   const transactionClient = (working: PendingReplacementHarnessState) => ({
-    $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
+    $queryRaw: jest.fn().mockResolvedValueOnce([{ id: 101 }]).mockResolvedValue([
+      { id: 13, official_code: "13", level: "ADMIN1", parent_id: null, deleted_at: null },
+      { id: 13104, official_code: "13104", level: "ADMIN2", parent_id: 13, deleted_at: null }
+    ]),
+    administrativeRegionLocale: { findMany: jest.fn().mockResolvedValue([{ regionId: 13, name: "東京都" }, { regionId: 13104, name: "新宿区" }]) },
+    bookingServiceLocation: { create: jest.fn().mockResolvedValue({ id: 1 }) },
     customerProfile: {
       findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" })
     },
@@ -605,7 +612,8 @@ describe("BookingRepository order list scope", () => {
           customerUserId: 101,
           serviceId: 31,
           scheduleSlotId: 701,
-          fulfillmentMode: "store"
+fulfillmentMode: "store",
+serviceLocation: { source: "SHOP_LOCATION" }
         })
       ).resolves.toBeNull();
 
@@ -640,7 +648,8 @@ describe("BookingRepository order list scope", () => {
         customerUserId: 101,
         serviceId: 11,
         scheduleSlotId: 603,
-        fulfillmentMode: "store"
+fulfillmentMode: "store",
+serviceLocation: { source: "SHOP_LOCATION" }
       },
       { invalidateSupersededAffiliate }
     );
@@ -691,7 +700,8 @@ describe("BookingRepository order list scope", () => {
           customerUserId: 101,
           serviceId: 11,
           scheduleSlotId: 603,
-          fulfillmentMode: "store"
+fulfillmentMode: "store",
+serviceLocation: { source: "SHOP_LOCATION" }
         },
         {
           invalidateSupersededAffiliate,

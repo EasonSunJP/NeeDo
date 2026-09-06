@@ -111,7 +111,8 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("pointer-events-none fixed inset-x-0 bottom-0");
     expect(formalSource).toContain("paymentMethod");
     expect(formalSource).toContain("void submitBooking()");
-    expect(formalSource).toContain('fulfillmentMode === "home" && estimateStatus !== "success"');
+    expect(formalSource).toContain('estimateStatus === "success"');
+    expect(formalSource).toContain('(!estimate || estimateStatus !== "success" || Date.parse(estimate.expiresAt) <= Date.now())');
   });
 
   it("requires a structured Japanese address and valid server estimate for home checkout", () => {
@@ -148,7 +149,7 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain('countryCode: "JP"');
     expect(formalSource).toContain("admin1Code: selectedAdmin1Code");
     expect(formalSource).toContain("admin2Code: selectedAdmin2Code");
-    expect(formalSource).toContain("Boolean(address.trim() && selectedAdmin1Code && selectedAdmin2Code)");
+    expect(formalSource).toContain('Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")');
   });
 
   it("keeps the typed home address while excluding structured home codes in store mode", () => {

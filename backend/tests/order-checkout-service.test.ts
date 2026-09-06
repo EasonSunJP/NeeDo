@@ -196,6 +196,7 @@ describe("formal order checkout service", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       publisher
     );
 
@@ -206,7 +207,7 @@ describe("formal order checkout service", () => {
         { idempotencyKey: "checkout-null-notification-order-1" },
         { ip: "127.0.0.1", userAgent: "jest" }
       )
-    ).resolves.toBe(checkout);
+    ).resolves.toEqual({ ...checkout, availablePaymentMethods: ["cash", "ndp"] });
 
     expect(publisher.publish).toHaveBeenCalledTimes(2);
   });
@@ -285,6 +286,7 @@ describe("formal order checkout service", () => {
       ledger as never,
       undefined,
       audit as never,
+      undefined,
       undefined,
       undefined,
       undefined,

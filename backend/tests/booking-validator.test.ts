@@ -58,7 +58,7 @@ describe("bookingCreateBodySchema", () => {
       scheduleSlotId: 2,
       fulfillmentMode: "home",
       paymentMethod: "onsite",
-      fulfillmentAddress: { postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+      fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
       travelEstimatePublicId: "00000000-0000-4000-8000-000000000001",
       serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" }
     });

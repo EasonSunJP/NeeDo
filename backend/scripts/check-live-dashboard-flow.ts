@@ -256,7 +256,8 @@ const loadRuntime = async () => {
     eventGatewayModule,
     eventStreamModule,
     eventBusModule,
-    rankingRepositoryModule
+    rankingRepositoryModule,
+    routeEstimateModule
   ] = await Promise.all([
     import("../src/prisma/client"),
     import("../src/config/redis"),
@@ -270,7 +271,8 @@ const loadRuntime = async () => {
     import("../src/services/live-dashboard-event.gateway"),
     import("../src/services/redis-live-dashboard-event-stream"),
     import("../src/services/redis-realtime-event.bus"),
-    import("../src/repositories/analytics-ranking.repository")
+    import("../src/repositories/analytics-ranking.repository"),
+    import("../src/services/route-estimate.service")
   ]);
   return {
     ...prismaModule,
@@ -285,7 +287,8 @@ const loadRuntime = async () => {
     ...eventGatewayModule,
     ...eventStreamModule,
     ...eventBusModule,
-    ...rankingRepositoryModule
+    ...rankingRepositoryModule,
+    ...routeEstimateModule
   };
 };
 
@@ -625,6 +628,9 @@ const createFixture = async (
       verifiedById: operator!.id
     }
   });
+  // Booking admission uses wall-clock freshness; the orders below are subsequently
+  // projected into the fixed reporting window inside this rollback transaction.
+  const fixtureBookingTime = Date.now();
   const slots = await Promise.all(
     [1, 2, 3].map((index) =>
       transaction.scheduleSlot.create({
@@ -632,8 +638,8 @@ const createFixture = async (
           serviceId: service.id,
           shopId: shop.id,
           technicianProfileId: technician.id,
-          startsAt: new Date(WINDOW_START.getTime() + (120 + index * 90) * 60_000),
-          endsAt: new Date(WINDOW_START.getTime() + (180 + index * 90) * 60_000),
+          startsAt: new Date(fixtureBookingTime + (120 + index * 90) * 60_000),
+          endsAt: new Date(fixtureBookingTime + (180 + index * 90) * 60_000),
           capacity: 1
         }
       })
@@ -641,6 +647,31 @@ const createFixture = async (
   );
   const regionRepository = new runtime.AdministrativeRegionRepository(facade);
   const bookingRepository = new runtime.BookingRepository(facade, regionRepository);
+  const homeAddress = runtime.normalizeJapaneseRouteAddress({
+    countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区",
+    addressLine1: `${marker}-private-address`
+  });
+  const travelPolicy = await transaction.shopTravelFarePolicyVersion.create({
+    data: {
+      publicId: deterministicUuid(marker, "travel-policy"), shopId: shop.id,
+      version: 1, effectiveFrom: new Date(fixtureBookingTime - 60_000),
+      publishedByUserId: operator!.id, reason: "Rollback-only live dashboard acceptance fixture",
+      bands: { create: { ordinal: 1, maximumDistanceMeters: 10_000, fareAmountJpy: 0 } }
+    },
+    include: { bands: true }
+  });
+  // Explicit transaction-local evidence, not a claim of live routing-provider acceptance.
+  const homeTravelEstimate = await transaction.routeEstimate.create({
+    data: {
+      publicId: deterministicUuid(marker, "travel-estimate"), customerUserId: homeCustomer!.id,
+      shopId: shop.id, serviceId: service.id, scheduleSlotId: slots[1]!.id,
+      policyVersionId: travelPolicy.id, matchedBandId: travelPolicy.bands[0]!.id,
+      providerCode: "rollback_fixture", distanceMeters: 1_000, durationSeconds: 300,
+      originAddressHash: runtime.hashRouteAddress(runtime.shopAddressToJapaneseRouteAddress(shop)),
+      destinationAddressHash: runtime.hashRouteAddress(homeAddress), fareAmountJpy: 0,
+      expiresAt: new Date(fixtureBookingTime + 60 * 60_000)
+    }
+  });
   const storeResult = await bookingRepository.createBooking({
     customerUserId: storeCustomer!.id,
     serviceId: service.id,
@@ -655,6 +686,8 @@ const createFixture = async (
     serviceId: service.id,
     scheduleSlotId: slots[1]!.id,
     fulfillmentMode: "home",
+    fulfillmentAddress: homeAddress,
+    travelEstimatePublicId: homeTravelEstimate.publicId,
     serviceLocation: {
       source: "CUSTOMER_SERVICE_LOCATION",
       countryCode: "JP",
@@ -663,7 +696,7 @@ const createFixture = async (
     },
     paymentMethod: "onsite"
   });
-  assertCondition(storeResult && homeResult, "Formal booking fixture creation failed");
+  assertCondition(storeResult && homeResult && "order" in storeResult && "order" in homeResult, "Formal booking fixture creation failed");
   const deterministicOrders = [
     { id: storeResult.order.id, orderNo: `${marker}-store`, status: "COMPLETED" as const },
     { id: homeResult.order.id, orderNo: `${marker}-home`, status: "COMPLETED" as const }
@@ -1399,7 +1432,9 @@ const independentDirectSnapshot = async (
       WITH ${runtime.AnalyticsRankingRepository.formalRankingCtes(input, {
         candidateJoins: Prisma.sql`INNER JOIN booking_service_locations AS location
           ON location.booking_order_id = booking.id`,
-        candidatePredicate: scopePredicate(scope.admin1Code, scope.admin2Code)
+        candidatePredicate: scopePredicate(scope.admin1Code, scope.admin2Code),
+        entityPredicate: Prisma.sql`candidate.customer_is_test = FALSE
+          AND candidate.technician_user_is_test = FALSE`
       })}, ${runtime.AnalyticsRankingRepository.rankingCtes(input)}
       SELECT ranking_position AS rank, entity_public_id AS entityPublicId,
         display_name AS displayName, avatar_url AS avatarUrl,

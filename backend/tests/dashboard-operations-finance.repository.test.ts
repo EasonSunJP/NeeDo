@@ -42,7 +42,7 @@ const createReader = (rows: unknown[]) => {
 describe("DashboardOperationsFinanceRepository", () => {
   it("exports the shared payment authority without requiring optional OrderFinancial", async () => {
     const fixture = createReader([
-      { periodKey: "current", grossRevenueJpy: 12_000n, discountAmountJpy: 1_500n }
+      { periodKey: "current", grossRevenueJpy: 12_000n, discountAmountJpy: 1_500n, travelFareJpy: 0n }
     ]);
 
     await fixture.reader.getOperationsFinance(platformInput);

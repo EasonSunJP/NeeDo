@@ -258,6 +258,7 @@ describe("BookingService manual payment", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       publisher
     );
 

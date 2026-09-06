@@ -1,5 +1,9 @@
 import { BookingRepository } from "../src/repositories/booking.repository";
 import { BookingService } from "../src/services/booking.service";
+import { hashRouteAddress, shopAddressToJapaneseRouteAddress } from "../src/services/route-estimate.service";
+
+const fulfillmentAddress = { countryCode: "JP" as const, postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" };
+const travelEstimatePublicId = "00000000-0000-4000-8000-000000000001";
 
 const decimal = (value: string) => ({
   toFixed: () => value,
@@ -30,6 +34,8 @@ const createRepositoryHarness = (options?: {
     name: "新宿ケア",
     ownerUserId: 71,
     pricingMode: "MERCHANT",
+    city: "新宿区",
+    address: "新宿1-1-1",
     serviceLocation: shopServiceLocation
   };
   const service = {
@@ -67,6 +73,13 @@ const createRepositoryHarness = (options?: {
   };
 
   const tx = {
+    routeEstimate: { findUnique: jest.fn(async () => ({
+      id: 1, customerUserId: 5, shopId: 7, serviceId: 12, scheduleSlotId: 33,
+      policyVersionId: 1, expiresAt: new Date(Date.now() + 60_000),
+      originAddressHash: hashRouteAddress(shopAddressToJapaneseRouteAddress(shop)),
+      destinationAddressHash: hashRouteAddress(fulfillmentAddress)
+    })) },
+    shopTravelFarePolicyVersion: { findFirst: jest.fn(async () => ({ id: 1 })) },
     $queryRaw: jest.fn(async () => {
       const call = tx.$queryRaw.mock.calls.length;
       if (call === 1) return [{ id: 5 }];
@@ -202,6 +215,8 @@ describe("booking service-location snapshots", () => {
       serviceId: 12,
       scheduleSlotId: 34,
       fulfillmentMode: "home",
+      fulfillmentAddress,
+      travelEstimatePublicId,
       serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" }
     });
 
@@ -259,6 +274,8 @@ describe("booking service-location snapshots", () => {
         serviceId: 12,
         scheduleSlotId: 33,
         fulfillmentMode: "home",
+        fulfillmentAddress,
+        travelEstimatePublicId,
         serviceLocation: {
           source: "CUSTOMER_SERVICE_LOCATION",
           countryCode: "JP",

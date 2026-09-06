@@ -148,7 +148,10 @@ describe("GET /api/v1/openapi.json", () => {
       };
     };
     const operation = document.paths["/api/v1/bookings"].post;
-    const validate = new Ajv({ allErrors: true }).compile(
+    const ajv = new Ajv({ allErrors: true });
+    const schemas = (createOpenApiDocument(env).components as { schemas: Record<string, object> }).schemas;
+    ajv.addSchema(schemas.JapaneseRouteAddress, "#/components/schemas/JapaneseRouteAddress");
+    const validate = ajv.compile(
       operation.requestBody.content["application/json"].schema
     );
     const homeLocation = {
@@ -159,7 +162,9 @@ describe("GET /api/v1/openapi.json", () => {
 
     for (const fulfillment of [
       { fulfillmentMode: "store" },
-      { fulfillmentMode: "home", serviceLocation: homeLocation }
+      { fulfillmentMode: "home", serviceLocation: homeLocation,
+        fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+        travelEstimatePublicId: "00000000-0000-4000-8000-000000000001" }
     ]) {
       expect(validate({ ...fulfillment, scheduleSlotId: 33, serviceId: 12 })).toBe(true);
       expect(validate({ ...fulfillment, scheduleSlotId: 33, technicianServiceId: 21 })).toBe(true);
