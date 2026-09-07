@@ -105,6 +105,7 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "bootstrap:staging-admin": "node dist/staging/staging-admin-bootstrap.cli.js",
+    "provision:staging-test-super-admins": "node dist/staging/staging-test-super-admin-provisioning.cli.js",
     "export:staging-test-accounts": "tsx src/staging/selective-account-export.cli.ts",
     "import:staging-test-accounts": "node dist/staging/selective-account-import.cli.js",
     "prisma:status": "prisma migrate status",
