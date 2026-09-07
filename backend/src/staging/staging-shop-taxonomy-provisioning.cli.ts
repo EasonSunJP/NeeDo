@@ -1,6 +1,6 @@
-import { disconnectPrisma, prisma } from "../src/prisma/client";
-import { parseStagingShopTaxonomyProvisioningConfig } from "../src/staging/staging-shop-taxonomy-provisioning";
-import { seedShopServiceTaxonomyCatalog } from "../prisma/seed";
+import { seedShopServiceTaxonomyCatalog } from "../bootstrap/shop-service-taxonomy-bootstrap";
+import { disconnectPrisma, prisma } from "../prisma/client";
+import { parseStagingShopTaxonomyProvisioningConfig } from "./staging-shop-taxonomy-provisioning";
 
 const main = async (): Promise<void> => {
   const config = parseStagingShopTaxonomyProvisioningConfig(process.env);

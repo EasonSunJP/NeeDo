@@ -2,7 +2,7 @@ import {
   SHOP_SERVICE_TAXONOMY,
   TAXONOMY_LOCALES,
   type TaxonomyLocaleCode
-} from "../prisma/catalogs/shop-service-taxonomy";
+} from "../src/catalogs/shop-service-taxonomy";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -99,15 +99,20 @@ describe("approved shop service taxonomy catalog", () => {
 
   it("seeds the catalog idempotently without recreating categories or granting qualifications", () => {
     const seedSource = readFileSync(resolve(process.cwd(), "prisma/seed.ts"), "utf8");
+    const bootstrapSource = readFileSync(
+      resolve(process.cwd(), "src/bootstrap/shop-service-taxonomy-bootstrap.ts"),
+      "utf8"
+    );
 
-    expect(seedSource).toContain("SHOP_SERVICE_TAXONOMY");
-    expect(seedSource).toContain("tx.category.upsert");
-    expect(seedSource).toContain("tx.categoryTranslation.upsert");
-    expect(seedSource).toContain("tx.businessKeyword.upsert");
-    expect(seedSource).toContain("tx.businessKeywordTranslation.upsert");
-    expect(seedSource).not.toContain("tx.shopServiceQualification.create");
-    expect(seedSource).not.toContain("tx.shopServiceCategory.create");
-    expect(seedSource).not.toContain("tx.shopBusinessKeyword.create");
+    expect(seedSource).toContain("seedShopServiceTaxonomyCatalog(tx)");
+    expect(bootstrapSource).toContain("SHOP_SERVICE_TAXONOMY");
+    expect(bootstrapSource).toContain("tx.category.upsert");
+    expect(bootstrapSource).toContain("tx.categoryTranslation.upsert");
+    expect(bootstrapSource).toContain("tx.businessKeyword.upsert");
+    expect(bootstrapSource).toContain("tx.businessKeywordTranslation.upsert");
+    expect(bootstrapSource).not.toContain("tx.shopServiceQualification.create");
+    expect(bootstrapSource).not.toContain("tx.shopServiceCategory.create");
+    expect(bootstrapSource).not.toContain("tx.shopBusinessKeyword.create");
   });
 
   it("closes the Redis pool after the command-line seed completes", () => {
