@@ -105,6 +105,7 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "repair:staging-shop-public-identifier": "node dist/staging/staging-shop-public-identifier-repair.cli.js",
+    "provision:staging-test-super-admins": "node dist/staging/staging-test-super-admin-provisioning.cli.js",
     "prisma:status": "prisma migrate status",
     "prisma:seed": "prisma db seed",
     "seed": "prisma db seed",
