@@ -205,3 +205,29 @@ Redis domain. The release shell enables ERR-trap inheritance so a failure in
 database does not rerun bootstrap initialization. Regression tests failed before
 these corrections and passed afterward. The previous application was restored
 before retrying; the five additive migrations remain forward-applied.
+
+### Serial application build and exact-image rollback
+
+The release script starts/checks MySQL and Redis, completes the existing schema's
+logical backup and S3 upload, then records the exact deployed API/web image IDs.
+Only after the backup gate and rollback trap are ready does it stop the previous
+three API containers. MySQL, Redis and the web container remain running; API
+requests may receive an unavailable response during this planned build outage.
+
+Builds run one target at a time: migrate, bootstrap-admin, backend, ops-api,
+merchant-api, web. Every subsequent `up` uses `--no-build` so Compose cannot restart
+parallel builds implicitly. This keeps resource use predictable and preserves a
+single failing target in the SSM output. The staging instance was upgraded from
+`t4g.small` to `t4g.large` after the original host became unresponsive under the
+parallel build. The release does not add an artificial Node heap limit; the 8 GiB
+host supplies the build headroom while serialization avoids repeating the same
+concurrency peak.
+
+On a trapped command failure after the stop, rollback uses a temporary Compose
+image override containing the captured image IDs, with `--no-build --no-deps`.
+It restores the previous API and web images even if the new build already
+replaced their usual Compose tags. It never reruns migration/bootstrap or rolls
+back database data. A failure before backup/image capture completes leaves the
+previous APIs running. Kernel OOM termination, forced process kill or host loss
+can prevent shell traps; those conditions still require host recovery and the
+existing separately controlled application/data recovery checks.

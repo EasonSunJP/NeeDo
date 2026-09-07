@@ -25,18 +25,23 @@ describe("staging administrator bootstrap CLI", () => {
       })
     };
 
+    let receivedAllowPublicKeyRetrieval: boolean | undefined;
     await runStagingAdminBootstrapCli({
-      env,
-      createRepository: () => ({
+      env: { ...env, DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL: "true" },
+      createRepository: (_databaseUrl, allowPublicKeyRetrieval) => {
+        receivedAllowPublicKeyRetrieval = allowPublicKeyRetrieval;
+        return {
         repository,
         disconnect: async () => {
           disconnected = true;
         }
-      }),
+        };
+      },
       writeOutput: (value) => writes.push(value)
     });
 
     expect(disconnected).toBe(true);
+    expect(receivedAllowPublicKeyRetrieval).toBe(true);
     expect(writes).toHaveLength(1);
     expect(JSON.parse(writes[0])).toEqual({
       gate: "staging-admin-bootstrap",

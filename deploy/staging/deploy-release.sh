@@ -48,9 +48,12 @@ env_candidate="$(mktemp /srv/needo/config/staging-env.XXXXXX)"
 previous_release="$(readlink -f /srv/needo/current 2>/dev/null || true)"
 previous_revision="$(python3 -c 'import json,os; p="/srv/needo/active-release.json"; print(json.load(open(p)).get("sourceRevision", "") if os.path.isfile(p) else "")' )"
 deployment_complete=false
+application_transition_started=false
+backup_complete=false
+rollback_images_file="$(mktemp /srv/needo/config/rollback-images.XXXXXX.yml)"
 
 cleanup() {
-  rm -f "$secret_json" "$env_candidate"
+  rm -f "$secret_json" "$env_candidate" "$rollback_images_file"
 }
 
 compose_for() {
@@ -61,6 +64,29 @@ compose_for() {
     --project-name needo-staging \
     --file "$target_release/deploy/staging/docker-compose.yml" \
     "$@"
+}
+
+# One compose target per invocation keeps staging build resource use predictable.
+build_application_images() {
+  local target_release="$1"
+  local service
+  for service in migrate bootstrap-admin backend ops-api merchant-api web; do
+    compose_for "$target_release" build "$service"
+  done
+}
+
+# Keep exact deployed image IDs: shared compose tags are overwritten by the new build.
+capture_rollback_images() {
+  local target_release="$1"
+  local service container_id image_id
+  printf 'services:\n' >"$rollback_images_file"
+  for service in backend ops-api merchant-api web; do
+    container_id="$(compose_for "$target_release" ps -a -q "$service")"
+    [[ -n "$container_id" && "$container_id" != *$'\n'* ]]
+    image_id="$(docker inspect --format '{{.Image}}' "$container_id")"
+    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]
+    printf '  %s:\n    image: %s\n' "$service" "$image_id" >>"$rollback_images_file"
+  done
 }
 
 nginx_config_for() {
@@ -75,10 +101,10 @@ nginx_config_for() {
 rollback_application() {
   local status=$?
   trap - ERR
-  if [[ "$deployment_complete" != true && -n "$previous_release" && -d "$previous_release" ]]; then
+  if [[ "$deployment_complete" != true && "$application_transition_started" == true && -n "$previous_release" && -d "$previous_release" ]]; then
     install -m 0644 "$(nginx_config_for "$previous_release")" /srv/needo/config/nginx.conf
-    compose_for "$previous_release" up -d --build --no-deps --wait backend ops-api merchant-api || true
-    compose_for "$previous_release" up -d --build --no-deps --force-recreate --wait web || true
+    compose_for "$previous_release" --file "$rollback_images_file" up -d --no-build --no-deps --wait backend ops-api merchant-api || true
+    compose_for "$previous_release" --file "$rollback_images_file" up -d --no-build --no-deps --force-recreate --wait web || true
     ln -sfn "$previous_release" /srv/needo/current.rollback
     mv -Tf /srv/needo/current.rollback /srv/needo/current
   fi
@@ -140,8 +166,7 @@ chmod 0600 "$env_file"
 install -m 0644 "$(nginx_config_for "$release_dir")" /srv/needo/config/nginx.conf
 
 compose_for "$release_dir" config --quiet
-compose_for "$release_dir" build migrate bootstrap-admin backend ops-api merchant-api web
-compose_for "$release_dir" up -d --build --wait mysql redis
+compose_for "$release_dir" up -d --no-build --wait mysql redis
 
 has_existing_schema="$(compose_for "$release_dir" exec -T mysql sh -c \
   'MYSQL_PWD="$MYSQL_PASSWORD" mysql --batch --skip-column-names -u"$MYSQL_USER" information_schema -e "SELECT COUNT(*) FROM tables WHERE table_schema=0x6e6565646f5f73746167696e67 AND table_name=0x5f707269736d615f6d6967726174696f6e73"')"
@@ -156,11 +181,21 @@ if [[ "$has_existing_schema" == "1" ]]; then
     "s3://${backup_bucket}/staging/pre-migration/${revision}/${backup_timestamp}-${backup_sha256}.sql.gz" \
     --region "$region" --only-show-errors
   rm -f "$backup_path"
+  backup_complete=true
 fi
+
+# Only enter the build outage once backup upload and exact-image rollback preparation succeed.
+if [[ -n "$previous_release" && -d "$previous_release" ]]; then
+  [[ "$backup_complete" == true ]]
+  capture_rollback_images "$previous_release"
+  application_transition_started=true
+  compose_for "$previous_release" stop backend ops-api merchant-api
+fi
+build_application_images "$release_dir"
 
 compose_for "$release_dir" run --rm migrate
 compose_for "$release_dir" run --rm bootstrap-admin
-compose_for "$release_dir" up -d --build --wait backend ops-api merchant-api web
+compose_for "$release_dir" up -d --no-build --wait backend ops-api merchant-api web
 compose_for "$release_dir" up -d --no-deps --force-recreate --wait web
 
 edge_base_url="http://127.0.0.1"

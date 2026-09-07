@@ -14,12 +14,33 @@ interface StagingAdminBootstrapRuntime {
 
 interface RunStagingAdminBootstrapCliOptions {
   env?: NodeJS.ProcessEnv;
-  createRepository?: (databaseUrl: string) => StagingAdminBootstrapRuntime;
+  createRepository?: (
+    databaseUrl: string,
+    allowPublicKeyRetrieval: boolean
+  ) => StagingAdminBootstrapRuntime;
   writeOutput?: (value: string) => void;
 }
 
-const createPrismaRepository = (databaseUrl: string): StagingAdminBootstrapRuntime => {
-  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl), log: ["error"] });
+const createPrismaRepository = (
+  databaseUrl: string,
+  allowPublicKeyRetrieval: boolean
+): StagingAdminBootstrapRuntime => {
+  const parsedUrl = new URL(databaseUrl);
+  const database = decodeURIComponent(parsedUrl.pathname.replace(/^\//, ""));
+  const prisma = new PrismaClient({
+    adapter: new PrismaMariaDb(
+      {
+        host: parsedUrl.hostname,
+        port: parsedUrl.port ? Number(parsedUrl.port) : undefined,
+        user: parsedUrl.username ? decodeURIComponent(parsedUrl.username) : undefined,
+        password: parsedUrl.password ? decodeURIComponent(parsedUrl.password) : undefined,
+        database,
+        allowPublicKeyRetrieval
+      },
+      { database }
+    ),
+    log: ["error"]
+  });
   return {
     repository: new StagingAdminBootstrapRepository(prisma),
     disconnect: () => prisma.$disconnect()
@@ -33,7 +54,12 @@ export const runStagingAdminBootstrapCli = async (
   const config = parseStagingAdminBootstrapConfig(environment);
   const databaseUrl = environment.DATABASE_URL;
   if (!databaseUrl) throw new Error("STAGING_ADMIN_BOOTSTRAP_DATABASE_URL_MISSING");
-  const runtime = (options.createRepository ?? createPrismaRepository)(databaseUrl);
+  const allowPublicKeyRetrieval =
+    environment.DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL?.trim().toLowerCase() === "true";
+  const runtime = (options.createRepository ?? createPrismaRepository)(
+    databaseUrl,
+    allowPublicKeyRetrieval
+  );
 
   try {
     const result = await new StagingAdminBootstrapService(runtime.repository).bootstrap(config);

@@ -100,8 +100,8 @@ test("staging web preserves an existing TLS edge for deploy and rollback", () =>
   const releaseScript = read("./deploy-release.sh");
   assert.match(releaseScript, /nginx_config_for\(\)/);
   assert.match(releaseScript, /fullchain\.pem[\s\S]*privkey\.pem[\s\S]*nginx-https\.conf/);
-  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$previous_release"\)"[\s\S]{0,240}up -d --build --no-deps --force-recreate --wait web/);
-  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$release_dir"\)"[\s\S]{0,2400}up -d --no-deps --force-recreate --wait web/);
+  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$previous_release"\)"[\s\S]{0,420}up -d --no-build --no-deps --force-recreate --wait web/);
+  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$release_dir"\)"[\s\S]{0,3400}up -d --no-deps --force-recreate --wait web/);
   assert.match(releaseScript, /edge_base_url="https:\/\/\$hostname"/);
   assert.match(releaseScript, /--resolve "\$\{hostname\}:443:127\.0\.0\.1"/);
 });
@@ -136,6 +136,11 @@ test("split APIs share the explicit live-dashboard Redis connection", () => {
   assert.equal(liveRedis, redis);
 });
 
+test("staging MySQL 8 services explicitly allow RSA public-key retrieval", () => {
+  const compose = read("./docker-compose.yml");
+  assert.match(compose, /DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL: "true"/);
+});
+
 test("a command failure inside a deployment function reaches the rollback trap", () => {
   const flags = read("./deploy-release.sh").match(/^set -[^\n]+$/m)?.[0];
   assert.ok(flags);
@@ -147,6 +152,64 @@ test("a command failure inside a deployment function reaches the rollback trap",
 
 test("rollback restores applications without rerunning data initialization", () => {
   const rollback = read("./deploy-release.sh").split("rollback_application() {")[1].split("trap cleanup EXIT")[0];
-  assert.match(rollback, /up -d --build --no-deps --wait backend ops-api merchant-api/);
-  assert.match(rollback, /up -d --build --no-deps --force-recreate --wait web/);
+  assert.match(rollback, /up -d --no-build --no-deps --wait backend ops-api merchant-api/);
+  assert.match(rollback, /up -d --no-build --no-deps --force-recreate --wait web/);
+});
+
+test("staging backs up and snapshots rollback images before stopping APIs and serial builds", () => {
+  const script = read("./deploy-release.sh");
+  const backupComplete = script.indexOf('rm -f "$backup_path"');
+  const snapshot = script.indexOf('capture_rollback_images "$previous_release"');
+  const stop = script.indexOf('compose_for "$previous_release" stop backend ops-api merchant-api');
+  const build = script.indexOf('build_application_images "$release_dir"');
+  const migrate = script.indexOf('compose_for "$release_dir" run --rm migrate');
+  assert.ok(backupComplete > 0 && snapshot > backupComplete && stop > snapshot && build > stop && migrate > build);
+  assert.ok(script.indexOf('trap rollback_application ERR') < stop);
+  assert.ok(script.indexOf('application_transition_started=true') < stop);
+  assert.ok(script.indexOf('[[ "$backup_complete" == true ]]') > backupComplete);
+  assert.ok(script.indexOf('[[ "$backup_complete" == true ]]') < snapshot);
+  assert.doesNotMatch(script, /build migrate bootstrap-admin backend ops-api merchant-api web/);
+  assert.doesNotMatch(script, /up -d --build/);
+  assert.match(script, /for service in migrate bootstrap-admin backend ops-api merchant-api web; do[\s\S]*?compose_for "\$target_release" build "\$service"/);
+});
+
+test("serial build stops at the first failure and reaches rollback", () => {
+  const script = read("./deploy-release.sh");
+  const helper = script.match(/build_application_images\(\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(helper);
+  const shell = `set -Eeuo pipefail\n${helper}\ncompose_for() { printf '%s\\n' "$3"; [[ "$3" != ops-api ]]; }\ntrap 'printf rollback-invoked' ERR\nbuild_application_images release`;
+  const result = spawnSync("bash", ["-c", shell], { encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.equal(result.stdout, "migrate\nbootstrap-admin\nbackend\nops-api\nrollback-invoked");
+});
+
+test("rollback uses captured deployed images without resource-intensive rebuilds", () => {
+  const script = read("./deploy-release.sh");
+  const rollback = script.split("rollback_application() {")[1].split("trap cleanup EXIT")[0];
+  assert.match(script, /docker inspect --format '\{\{\.Image\}\}'/);
+  assert.match(script, /image: %s/);
+  assert.match(rollback, /application_transition_started.*true/);
+  assert.match(rollback, /--file "\$rollback_images_file" up -d --no-build --no-deps --wait backend ops-api merchant-api/);
+  assert.doesNotMatch(rollback, /--build|\brun\b.*migrate|bootstrap-admin/);
+});
+
+test("an application failure restores all captured previous images with no builds or data jobs", () => {
+  const script = read("./deploy-release.sh");
+  const rollback = script.match(/rollback_application\(\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(rollback);
+  const result = spawnSync("bash", ["-c", `set -Eeuo pipefail
+${rollback}
+deployment_complete=false
+application_transition_started=true
+previous_release=.
+rollback_images_file=captured-images.yml
+nginx_config_for() { printf old-nginx; }
+install() { :; }
+ln() { :; }
+mv() { :; }
+compose_for() { printf '%s\\n' "$*"; }
+trap rollback_application ERR
+false`], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, ". --file captured-images.yml up -d --no-build --no-deps --wait backend ops-api merchant-api\n. --file captured-images.yml up -d --no-build --no-deps --force-recreate --wait web\n");
 });

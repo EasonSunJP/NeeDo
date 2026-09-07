@@ -14,6 +14,7 @@ x-api-service: &api-service
     PORT: "3000"
     API_PREFIX: /api/v1
     DATABASE_URL: mysql://needo:${MYSQL_PASSWORD}@mysql:3306/needo_staging
+    DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL: "true"
     REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
     LIVE_DASHBOARD_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
     IM_MEDIA_STORAGE_DIR: /app/runtime/im-media
