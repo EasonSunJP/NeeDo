@@ -1,4 +1,3 @@
-import { hash } from "bcryptjs";
 import { z } from "zod";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
@@ -28,7 +27,7 @@ const configSchema = z.object({
   ALLOW_STAGING_TEST_SUPER_ADMIN_PROVISIONING: z.literal("true"),
   DATABASE_URL: z.string().trim().min(1),
   ADMIN_DEFAULT_EMAIL: z.string().trim().email(),
-  TEST_USER_DEFAULT_PASSWORD: z.string().min(16).max(200),
+  STAGING_TEST_PASSWORD_SOURCE_EMAIL: z.string().trim().email(),
   STAGING_TEST_SUPER_ADMIN_SHOP_NO: z.string().regex(/^\d{10}$/)
 });
 
@@ -36,7 +35,7 @@ export interface StagingTestSuperAdminProvisioningConfig {
   databaseHost: "mysql";
   databaseName: "needo_staging";
   actorEmail: string;
-  password: string;
+  passwordSourceEmail: string;
   shopNo: string;
 }
 
@@ -53,7 +52,7 @@ export const parseStagingTestSuperAdminProvisioningConfig = (
     databaseHost: "mysql",
     databaseName: "needo_staging",
     actorEmail: parsed.ADMIN_DEFAULT_EMAIL.toLowerCase(),
-    password: parsed.TEST_USER_DEFAULT_PASSWORD,
+    passwordSourceEmail: parsed.STAGING_TEST_PASSWORD_SOURCE_EMAIL.toLowerCase(),
     shopNo: parsed.STAGING_TEST_SUPER_ADMIN_SHOP_NO
   };
 };
@@ -198,7 +197,7 @@ export class StagingTestSuperAdminProvisioningRepository {
   public async provision(input: {
     actorEmail: string;
     shopNo: string;
-    passwordHash: string;
+    passwordSourceEmail: string;
   }): Promise<StagingTestSuperAdminProvisioningResult> {
     const existingCount = await this.client.user.count({
       where: { email: { in: [...STAGING_TEST_SUPER_ADMIN_EMAILS] } }
@@ -221,6 +220,18 @@ export class StagingTestSuperAdminProvisioningRepository {
             select: { id: true }
           });
           assert(actor, "STAGING_TEST_SUPER_ADMIN_ACTOR_NOT_FOUND");
+
+          const passwordSource = await tx.user.findFirst({
+            where: {
+              email: input.passwordSourceEmail,
+              isActive: true,
+              isTestAccount: true,
+              deletedAt: null,
+              passwordHash: { not: null }
+            },
+            select: { id: true, passwordHash: true }
+          });
+          assert(passwordSource?.passwordHash, "STAGING_TEST_SUPER_ADMIN_PASSWORD_SOURCE_NOT_FOUND");
 
           const shop = await tx.shop.findFirst({
             where: { shopNo: input.shopNo, status: "published", deletedAt: null },
@@ -248,7 +259,7 @@ export class StagingTestSuperAdminProvisioningRepository {
                   where: { id: existing.id },
                   data: {
                     emailVerifiedAt: new Date(),
-                    passwordHash: input.passwordHash,
+                    passwordHash: passwordSource.passwordHash,
                     username: displayName,
                     isActive: true,
                     isTestAccount: true,
@@ -261,7 +272,7 @@ export class StagingTestSuperAdminProvisioningRepository {
                     needoId: bootstrapKey,
                     email,
                     emailVerifiedAt: new Date(),
-                    passwordHash: input.passwordHash,
+                    passwordHash: passwordSource.passwordHash,
                     username: displayName,
                     isActive: true,
                     isTestAccount: true
@@ -426,6 +437,7 @@ export class StagingTestSuperAdminProvisioningRepository {
                   shopNo: shop.shopNo,
                   identityTypes: portalPlan.identities.map((identity) => identity.type),
                   roleCodes: portalPlan.roles.map((role) => role.code),
+                  passwordSourceUserId: passwordSource.id,
                   sharedTestPasswordApplied: true
                 }
               }
@@ -457,7 +469,7 @@ export class StagingTestSuperAdminProvisioningService {
     const result = await this.repository.provision({
       actorEmail: config.actorEmail,
       shopNo: config.shopNo,
-      passwordHash: await hash(config.password, 12)
+      passwordSourceEmail: config.passwordSourceEmail
     });
     assert(result.accounts.length === STAGING_TEST_SUPER_ADMIN_EMAILS.length, "STAGING_TEST_SUPER_ADMIN_POSTCONDITION_FAILED");
     for (const account of result.accounts) {

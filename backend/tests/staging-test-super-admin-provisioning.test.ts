@@ -11,7 +11,7 @@ describe("staging test super administrator provisioning", () => {
     ALLOW_STAGING_TEST_SUPER_ADMIN_PROVISIONING: "true",
     DATABASE_URL: "mysql://needo:secret@mysql:3306/needo_staging",
     ADMIN_DEFAULT_EMAIL: "admin@lifedance.com",
-    TEST_USER_DEFAULT_PASSWORD: "shared-test-password-value",
+    STAGING_TEST_PASSWORD_SOURCE_EMAIL: "customer@example.com",
     STAGING_TEST_SUPER_ADMIN_SHOP_NO: "6333731099"
   } as NodeJS.ProcessEnv;
 
@@ -31,7 +31,7 @@ describe("staging test super administrator provisioning", () => {
       databaseName: "needo_staging",
       actorEmail: "admin@lifedance.com",
       shopNo: "6333731099",
-      password: "shared-test-password-value"
+      passwordSourceEmail: "customer@example.com"
     });
 
     for (const override of [
@@ -39,7 +39,7 @@ describe("staging test super administrator provisioning", () => {
       { DEPLOY_ENV: "prod" },
       { ALLOW_STAGING_TEST_SUPER_ADMIN_PROVISIONING: "false" },
       { DATABASE_URL: "mysql://needo:secret@mysql:3306/needo_prod" },
-      { TEST_USER_DEFAULT_PASSWORD: undefined },
+      { STAGING_TEST_PASSWORD_SOURCE_EMAIL: undefined },
       { STAGING_TEST_SUPER_ADMIN_SHOP_NO: "" }
     ]) {
       expect(() =>
