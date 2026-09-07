@@ -20,6 +20,18 @@ import componentsSource from "./components.tsx?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
+  it("renders the header quick menu outside the glass header clipping context", () => {
+    const componentStart = pagesSource.indexOf("function ImHeaderQuickMenu");
+    const componentEnd = pagesSource.indexOf("export function ImMessagesEntryPage", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+
+    expect(componentStart).toBeGreaterThan(-1);
+    expect(componentSource).toContain("createPortal(");
+    expect(componentSource).toContain('anchorRef.current?.closest(".client-shell")');
+    expect(componentSource).toContain('data-im-header-quick-menu="true"');
+    expect(componentSource).toContain('className="fixed z-[120]');
+  });
+
   it("binds the chat-list delete swipe action to full conversation deletion", () => {
     const pageStart = pagesSource.indexOf("export function ImConversationListPage");
     const pageEnd = pagesSource.indexOf("export function ImContactsListPage", pageStart);

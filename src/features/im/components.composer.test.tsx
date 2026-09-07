@@ -103,6 +103,7 @@ describe("ImChatComposer", () => {
   });
 
   it("follows the live visual viewport only while the keyboard editor has focus", async () => {
+    vi.stubGlobal("innerHeight", 844);
     const visualViewport = new EventTarget() as VisualViewport;
     Object.defineProperties(visualViewport, {
       height: { configurable: true, value: 480 },
@@ -136,6 +137,44 @@ describe("ImChatComposer", () => {
     expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("480px");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("20px");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+
+    await act(async () => root.unmount());
+  });
+
+  it("returns to the CSS viewport when iOS keeps the editor focused after the keyboard closes", async () => {
+    vi.stubGlobal("innerHeight", 690);
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 690 },
+      offsetTop: { configurable: true, value: 0 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 0 }
+    });
+    vi.stubGlobal("visualViewport", visualViewport);
+
+    const editor = document.createElement("input");
+    document.body.append(editor);
+    editor.focus();
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ClientThemeProvider>
+            <ImStandaloneShell>
+              <div data-testid="chat-content" />
+            </ImStandaloneShell>
+          </ClientThemeProvider>
+        </MemoryRouter>
+      );
+    });
+
+    const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
 
     await act(async () => root.unmount());
   });
