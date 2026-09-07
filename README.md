@@ -58,6 +58,7 @@ Step 07 has added the frontend side of formal Auth / RBAC while keeping the exis
 Auth behavior:
 
 - Development and production frontends use the same formal password or Google login chain. There is no passwordless or static-demo login path.
+- The client login page has no portal selector. Email, bare ten-digit account IDs, and `u` IDs enter the user portal; `s` IDs enter the technician portal and `b` IDs enter the merchant portal after formal identity authorization. Google login and registration enter the user portal. Other identities remain available through the user settings identity switch. Legacy client login entries redirect to `user.html` before accepting credentials so the session stays in the same persistence scope.
 - Access Token is kept in memory only.
 - Refresh Token is persisted under `needo.auth.refresh-token` so a page refresh can restore the session through `/api/v1/auth/refresh` and `/api/v1/auth/me`.
 - User / Role / Permission admin pages are backed by real APIs and gated by `menu:*`, `page:*`, and `button:*` permissions.

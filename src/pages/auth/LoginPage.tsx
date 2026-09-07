@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { authApi, type VerificationChallengePayload } from "../../api/auth";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../../auth/browserPasswordSave";
 import { requestGoogleCredential } from "../../auth/googleIdentity";
 import { type AuthSession } from "../../auth/rbac";
+import { resolveAuthPersistenceScope } from "../../auth/authPersistenceScope";
 import { openPortalEntry } from "../../auth/portalEntry";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
@@ -100,7 +101,7 @@ function buildLoginCopy(language: Language) {
     signedInAs: text("当前账号"),
     useAccountSubtitle: text("使用已验证的邮箱或 NeeDo ID 登录。"),
     useAccountTitle: text("账号登录"),
-    welcomeSubtitle: text("先确认你的 NeeDo 身份，再进入预约、消息或工作空间。"),
+    welcomeSubtitle: text("登录后即可预约服务、查看消息，并切换其他身份。"),
     welcomeTitle: text("欢迎使用 NeeDo"),
     portals: {
       admin: { shortLabel: text("后台"), title: text("NeeDo 运营后台") },
@@ -169,15 +170,10 @@ export function resolveLoginErrorMessage(message: string | undefined, language: 
   return translateText(source ?? "登录服务暂时不可用，请稍后重试。", language);
 }
 
-function normalizePortal(value?: string | null): PortalScope {
-  if (value === "merchant" || value === "technician" || value === "business") {
-    return value;
-  }
-
-  if (value === "cps" || value === "afirieito") {
-    return "business";
-  }
-
+function resolvePasswordLoginPortal(identifier: string): PortalScope {
+  const normalized = identifier.trim().toLowerCase();
+  if (/^s\d{10}$/.test(normalized)) return "technician";
+  if (/^b\d{10}$/.test(normalized)) return "merchant";
   return "user";
 }
 
@@ -255,12 +251,29 @@ function AppMark({ url }: { url: string }) {
   );
 }
 
-export function LoginPage({
-  navigateToPortal = openPortalEntry
-}: {
+type LoginPageProps = {
   navigateToPortal?: (portal: PortalScope, route: string) => void;
-}) {
-  const { portal } = useParams();
+};
+
+function navigateFromLogin(_portal: PortalScope, route: string) {
+  // Keep the authenticated session in the unified entry's persistence scope.
+  openPortalEntry("user", route);
+}
+
+export function LoginPage({ navigateToPortal = navigateFromLogin }: LoginPageProps) {
+  const [searchParams] = useSearchParams();
+  const needsUserEntry = resolveAuthPersistenceScope() !== "user";
+  const redirect = searchParams.get("redirect");
+  const loginRoute = `/login/user${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ""}`;
+
+  useEffect(() => {
+    if (needsUserEntry) navigateToPortal("user", loginRoute);
+  }, [loginRoute, navigateToPortal, needsUserEntry]);
+
+  return needsUserEntry ? null : <UserLoginPage navigateToPortal={navigateToPortal} />;
+}
+
+function UserLoginPage({ navigateToPortal = navigateFromLogin }: LoginPageProps) {
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
   const { theme, isNight } = useClientTheme();
@@ -279,12 +292,11 @@ export function LoginPage({
     verifyPasswordLogin,
     verifyRegistration
   } = useAuth();
-  const requestedPortal = normalizePortal(portal);
+  const activePortal: PortalScope = "user";
   const redirectPath = searchParams.get("redirect");
-  const [activePortal, setActivePortal] = useState<PortalScope>(requestedPortal);
   const passwordSaveScope = `frontend:${activePortal}` as BrowserPasswordSaveScope;
   const [savePassword, setSavePassword] = useState(() =>
-    readBrowserPasswordSavePreference(`frontend:${requestedPortal}` as BrowserPasswordSaveScope)
+    readBrowserPasswordSavePreference(`frontend:${activePortal}` as BrowserPasswordSaveScope)
   );
   const [panelMode, setPanelMode] = useState<LoginPanelMode>("welcome");
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -317,7 +329,6 @@ export function LoginPage({
     if (!result.ok) setFeedback(resolveLoginErrorMessage(result.message, language));
   };
 
-  useEffect(() => setActivePortal(requestedPortal), [requestedPortal]);
   useEffect(() => {
     setSavePassword(readBrowserPasswordSavePreference(passwordSaveScope));
   }, [passwordSaveScope]);
@@ -458,7 +469,8 @@ export function LoginPage({
 
     setPending(true);
     try {
-      const result = await login(activePortal, identifier, password);
+      const loginPortal = resolvePasswordLoginPortal(identifier);
+      const result = await login(loginPortal, identifier, password);
       if (!result.ok) {
         setFeedback(resolveLoginErrorMessage(result.message, language));
         return;
@@ -471,7 +483,7 @@ export function LoginPage({
         setPanelMode("verification");
         return;
       }
-      if (savePassword && result.session.portal === activePortal) {
+      if (savePassword && result.session.portal === loginPortal) {
         await requestBrowserPasswordSave({
           id: identifier,
           name: "NeeDo",
@@ -525,7 +537,7 @@ export function LoginPage({
         verification.kind === "registration"
           ? await verifyRegistration(input)
           : verification.kind === "password_login"
-            ? await verifyPasswordLogin(input, activePortal)
+            ? await verifyPasswordLogin(input, resolvePasswordLoginPortal(loginIdentifier))
             : await verifyGoogleRegistrationOrLink(input, activePortal);
       if (!result.ok) {
         setVerificationError(resolveLoginErrorMessage(result.message, language));
@@ -570,7 +582,7 @@ export function LoginPage({
     if (verification.kind === "password_login") {
       setPending(true);
       try {
-        const result = await login(activePortal, loginIdentifier, loginPassword);
+        const result = await login(resolvePasswordLoginPortal(loginIdentifier), loginIdentifier, loginPassword);
         if (!result.ok) {
           setVerificationError(resolveLoginErrorMessage(result.message, language));
           return;
@@ -669,9 +681,7 @@ export function LoginPage({
               {copy.back}
             </button>
           ) : (
-            <span className="text-sm font-black text-[color:var(--client-soft-muted)]">
-              {activePortalCopy.shortLabel}
-            </span>
+            <span aria-hidden="true" />
           )}
           <LanguageSwitcher dark={isNight} iconOnly />
         </header>
