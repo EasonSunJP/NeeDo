@@ -104,7 +104,7 @@ export const authTrustGatewayTranslations: TranslationMap = {
   "重新使用 Google 验证": fourLanguageTranslation("重新使用 Google 驗證", "Google でもう一度確認", "Verify again with Google", "Google로 다시 인증"),
   "至少 8 位，并包含大写字母、小写字母、数字和符号。": fourLanguageTranslation("至少 8 位，並包含大寫字母、小寫字母、數字和符號。", "8文字以上で、大文字・小文字・数字・記号を含めてください。", "Use at least 8 characters with uppercase, lowercase, a number, and a symbol.", "8자 이상이며 대문자, 소문자, 숫자, 기호를 포함하세요."),
   "验证码将发送到此邮箱。验证后会生成你的 NeeDo ID。": fourLanguageTranslation("驗證碼將傳送到此電子郵件。驗證後會產生你的 NeeDo ID。", "確認コードをこのメールアドレスへ送信します。確認後に NeeDo ID が発行されます。", "We'll email you a verification code. Your NeeDo ID is created after verification.", "이 이메일로 인증 코드를 보냅니다. 인증 후 NeeDo ID가 생성됩니다."),
-  "先确认你的 NeeDo 身份，再进入预约、消息或工作空间。": fourLanguageTranslation("先確認你的 NeeDo 身分，再進入預約、訊息或工作空間。", "NeeDo ID を確認してから、予約・メッセージ・ワークスペースへ進みます。", "Verify your NeeDo identity before entering bookings, messages, or workspaces.", "NeeDo 신원을 확인한 후 예약, 메시지 또는 업무 공간으로 이동하세요."),
+  "登录后即可预约服务、查看消息，并切换其他身份。": fourLanguageTranslation("登入後即可預約服務、查看訊息，並切換其他身分。", "ログイン後、サービスの予約やメッセージの確認、他の利用者区分への切り替えができます。", "Sign in to book services, view messages, and switch identities.", "로그인 후 서비스를 예약하고 메시지를 확인하며 다른 이용자 유형으로 전환할 수 있습니다."),
   "请输入邮箱或 NeeDo ID 和密码。": fourLanguageTranslation("請輸入電子郵件或 NeeDo ID 和密碼。", "メールアドレスまたは NeeDo ID とパスワードを入力してください。", "Enter your email or NeeDo ID and password.", "이메일 또는 NeeDo ID와 비밀번호를 입력하세요."),
   "请输入邮箱和密码。": fourLanguageTranslation("請輸入電子郵件和密碼。", "メールアドレスとパスワードを入力してください。", "Enter your email and password.", "이메일과 비밀번호를 입력하세요."),
   "使用已验证的邮箱或 NeeDo ID 登录。": fourLanguageTranslation("使用已驗證的電子郵件或 NeeDo ID 登入。", "確認済みのメールアドレスまたは NeeDo ID でログインしてください。", "Sign in with your verified email or NeeDo ID.", "인증된 이메일 또는 NeeDo ID로 로그인하세요."),
