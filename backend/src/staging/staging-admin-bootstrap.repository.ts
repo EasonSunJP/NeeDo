@@ -45,6 +45,16 @@ const assertExactDefinitions = <
   }
 };
 
+export const assertAdminPermissionCoverage = (
+  actualCodes: readonly string[],
+  requiredCodes: readonly string[]
+): void => {
+  const actual = new Set(actualCodes);
+  if (requiredCodes.some((code) => !actual.has(code))) {
+    throw new Error("STAGING_ADMIN_BOOTSTRAP_ADMIN_PERMISSION_CONFLICT");
+  }
+};
+
 export class StagingAdminBootstrapRepository implements StagingAdminBootstrapRepositoryPort {
   public constructor(private readonly prisma: PrismaClient) {}
 
@@ -195,12 +205,14 @@ export class StagingAdminBootstrapRepository implements StagingAdminBootstrapRep
 
     const adminRole = roleByCode.get("admin");
     if (!adminRole) throw new Error("STAGING_ADMIN_BOOTSTRAP_ADMIN_ROLE_MISSING");
-    const adminPermissionCount = await tx.rolePermission.count({
-      where: { roleId: adminRole.id, deletedAt: null }
+    const adminPermissions = await tx.rolePermission.findMany({
+      where: { roleId: adminRole.id, deletedAt: null },
+      select: { permission: { select: { code: true } } }
     });
-    if (adminPermissionCount !== SYSTEM_PERMISSIONS.length) {
-      throw new Error("STAGING_ADMIN_BOOTSTRAP_ADMIN_PERMISSION_CONFLICT");
-    }
+    assertAdminPermissionCoverage(
+      adminPermissions.map(({ permission }) => permission.code),
+      SYSTEM_PERMISSIONS.map(({ code }) => code)
+    );
     return adminRole;
   }
 
