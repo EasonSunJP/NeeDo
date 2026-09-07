@@ -1688,6 +1688,61 @@ function ImQuickMenuItem({
   );
 }
 
+function ImHeaderQuickMenu({
+  anchorRef,
+  children
+}: {
+  anchorRef: { current: HTMLDivElement | null };
+  children: ReactNode;
+}) {
+  const [position, setPosition] = useState<CSSProperties>({ opacity: 0 });
+
+  useLayoutEffect(() => {
+    const updatePosition = () => {
+      const anchor = anchorRef.current;
+
+      if (!anchor) {
+        return;
+      }
+
+      const rect = anchor.getBoundingClientRect();
+      setPosition({
+        opacity: 1,
+        right: Math.max(12, window.innerWidth - rect.right),
+        top: rect.bottom + 10
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("scroll", updatePosition, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.visualViewport?.removeEventListener("resize", updatePosition);
+      window.visualViewport?.removeEventListener("scroll", updatePosition);
+    };
+  }, [anchorRef]);
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const portalHost = anchorRef.current?.closest(".client-shell") ?? document.body;
+
+  return createPortal(
+    <div
+      className="fixed z-[120] w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl"
+      data-im-header-quick-menu="true"
+      style={position}
+    >
+      {children}
+    </div>,
+    portalHost
+  );
+}
+
 export function ImMessagesEntryPage() {
   const [searchParams] = useSearchParams();
   const compatConversationId = searchParams.get("chat");
@@ -1813,7 +1868,11 @@ export function ImConversationListPage() {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
 
-      if (target instanceof Node && quickMenuRef.current?.contains(target)) {
+      if (
+        target instanceof Node &&
+        (quickMenuRef.current?.contains(target) ||
+          (target instanceof Element && target.closest('[data-im-header-quick-menu="true"]')))
+      ) {
         return;
       }
 
@@ -2070,13 +2129,13 @@ export function ImConversationListPage() {
               <ImIcon name="add" />
             </UnifiedChatHeaderAction>
             {quickMenuOpen ? (
-              <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl">
+              <ImHeaderQuickMenu anchorRef={quickMenuRef}>
                 <ImQuickMenuItem icon="group" label="发起群聊" onClick={() => openQuickEntry("group")} />
                 <ImQuickMenuItem icon="friend" label="添加好友" onClick={() => openQuickEntry("friend")} />
                 <ImQuickMenuItem icon="tag" label="群发" onClick={() => openTagCampaign()} />
                 <ImQuickMenuItem icon="payment" label="发起收款" onClick={() => openQuickEntry("collect")} />
                 <ImQuickMenuItem icon="scan" label="扫一扫" onClick={() => openQuickEntry("scan")} />
-              </div>
+              </ImHeaderQuickMenu>
             ) : null}
           </div>
         }
@@ -2333,7 +2392,11 @@ export function ImContactsListPage() {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
 
-      if (target instanceof Node && quickMenuRef.current?.contains(target)) {
+      if (
+        target instanceof Node &&
+        (quickMenuRef.current?.contains(target) ||
+          (target instanceof Element && target.closest('[data-im-header-quick-menu="true"]')))
+      ) {
         return;
       }
 
@@ -2488,12 +2551,12 @@ export function ImContactsListPage() {
               <ImIcon name="add" />
             </UnifiedChatHeaderAction>
             {quickMenuOpen ? (
-              <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl">
+              <ImHeaderQuickMenu anchorRef={quickMenuRef}>
                 <ImQuickMenuItem icon="group" label="发起群聊" onClick={() => openQuickEntry("group")} />
                 <ImQuickMenuItem icon="friend" label="添加好友" onClick={() => openQuickEntry("friend")} />
                 <ImQuickMenuItem icon="payment" label="发起收款" onClick={() => openQuickEntry("collect")} />
                 <ImQuickMenuItem icon="scan" label="扫一扫" onClick={() => openQuickEntry("scan")} />
-              </div>
+              </ImHeaderQuickMenu>
             ) : null}
           </div>
         )}
