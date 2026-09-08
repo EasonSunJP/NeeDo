@@ -35,6 +35,7 @@ import {
 } from "../../features/pricing-mode/api";
 import { TechnicianServiceCoverField } from "../../features/pricing-mode/TechnicianServiceCoverField";
 import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { cn, yen } from "../../lib/utils";
 import {
   mapTechnicianServiceToUnifiedData as fromTechnicianServicePayload,
@@ -140,13 +141,26 @@ function TechnicianPortalDataGate() {
   const { session } = useAuth();
   const [revision, setRevision] = useState(0);
   const formalTechnicianProfileId = getFormalTechnicianProfileId(session);
+  const persistentCacheScope = getAuthenticatedPersistentCacheScope();
   const formalTechnicianSelfProfileQuery = useCoreReadQuery(
     () => formalTechnicianProfileId ? technicianProfileApi.getMine() : null,
-    [formalTechnicianProfileId, revision]
+    [formalTechnicianProfileId, revision],
+    {
+      enabled: Boolean(formalTechnicianProfileId),
+      force: revision > 0,
+      key: `technician:self-profile:${formalTechnicianProfileId ?? "missing"}`,
+      scope: persistentCacheScope
+    }
   );
   const formalTechnicianProfileQuery = useCoreReadQuery(
     () => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null,
-    [formalTechnicianProfileId, revision]
+    [formalTechnicianProfileId, revision],
+    {
+      enabled: Boolean(formalTechnicianProfileId),
+      force: revision > 0,
+      key: `core:technician:${formalTechnicianProfileId ?? "missing"}`,
+      scope: persistentCacheScope
+    }
   );
   const technician = formalTechnicianProfileQuery.data;
   const selfProfile = formalTechnicianSelfProfileQuery.data;

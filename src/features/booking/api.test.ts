@@ -81,6 +81,7 @@ describe("bookingApi", () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
 
     await bookingApi.createBooking({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       scheduleSlotId: 33,
       serviceId: 12
@@ -88,6 +89,7 @@ describe("bookingApi", () => {
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/bookings", expect.objectContaining({ method: "POST" }));
     expect(lastRequestBody()).toEqual({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       orderType: "booking",
       paymentMethod: "onsite",
@@ -111,11 +113,12 @@ describe("bookingApi", () => {
     );
   });
 
-  it("submits Intelligence source evidence and idempotency without accepting a client price", async () => {
+  it("submits Intelligence source evidence, displayed price confirmation, and idempotency", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
 
     await bookingApi.createBooking({
       exchangeIntelligencePostId: 61,
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       scheduleSlotId: 33,
       serviceId: 12
@@ -124,6 +127,7 @@ describe("bookingApi", () => {
     const [, init] = vi.mocked(fetch).mock.calls[0]!;
     expect(lastRequestBody()).toEqual({
       exchangeIntelligencePostId: 61,
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       orderType: "booking",
       paymentMethod: "onsite",
@@ -147,6 +151,7 @@ describe("bookingApi", () => {
 
     await bookingApi.listAdministrativeRegions({ country: "JP", locale: "ja", parent: "13" });
     await bookingApi.createBooking({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "home",
       scheduleSlotId: 33,
       serviceId: 12,
@@ -161,6 +166,7 @@ describe("bookingApi", () => {
       expect.objectContaining({ method: "GET" })
     );
     expect(requestBodyAt(1)).toEqual({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "home",
       orderType: "booking",
       paymentMethod: "onsite",
@@ -207,6 +213,7 @@ describe("bookingApi", () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("request")));
 
     await bookingApi.createBooking({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       orderType: "request",
       scheduleSlotId: 33,
@@ -215,6 +222,7 @@ describe("bookingApi", () => {
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/bookings", expect.objectContaining({ method: "POST" }));
     expect(lastRequestBody()).toEqual({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       orderType: "request",
       paymentMethod: "onsite",

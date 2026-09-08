@@ -384,6 +384,7 @@ describe("order fulfillment validators", () => {
       (paymentMethod) => {
         expect(() =>
           bookingCreateBodySchema.parse({
+            expectedPriceAmountJpy: 8_800,
             serviceId: 1,
             scheduleSlotId: 11,
             fulfillmentMode: "store",
@@ -393,9 +394,10 @@ describe("order fulfillment validators", () => {
       }
     );
 
-    it("accepts an Intelligence source id and keeps client-owned prices closed", () => {
+    it("accepts an Intelligence source id and keeps server-owned price fields closed", () => {
       expect(
         bookingCreateBodySchema.parse({
+          expectedPriceAmountJpy: 8_800,
           serviceId: 1,
           scheduleSlotId: 11,
           exchangeIntelligencePostId: 91,
@@ -405,6 +407,7 @@ describe("order fulfillment validators", () => {
 
       expect(() =>
         bookingCreateBodySchema.parse({
+          expectedPriceAmountJpy: 8_800,
           serviceId: 1,
           scheduleSlotId: 11,
           exchangeIntelligencePostId: 0,
@@ -415,6 +418,7 @@ describe("order fulfillment validators", () => {
       for (const priceField of ["priceAmount", "campaignPriceJpy", "paymentAmountJpy"] as const) {
         expect(() =>
           bookingCreateBodySchema.parse({
+            expectedPriceAmountJpy: 8_800,
             serviceId: 1,
             scheduleSlotId: 11,
             exchangeIntelligencePostId: 91,

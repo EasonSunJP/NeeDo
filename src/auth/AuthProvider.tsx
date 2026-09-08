@@ -74,6 +74,7 @@ import {
   type LoginMethod
 } from "./rbac";
 import { purgeLegacyRememberedCredentials } from "./rememberCredentials";
+import { persistentResourceCache } from "../lib/persistentResourceCache";
 import {
   getImOpenedMediaCacheService,
   transitionImOpenedMediaCacheAccount,
@@ -274,6 +275,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ) => {
     const previousAccountId = sessionRef.current ? String(sessionRef.current.id) : null;
     const nextAccountId = nextSession ? String(nextSession.id) : null;
+    if (
+      previousAccountId &&
+      previousAccountId !== nextAccountId &&
+      !previousAccountAlreadyLocked
+    ) {
+      persistentResourceCache.lockScopePrefix(`account:${previousAccountId}`);
+    }
     void transitionImOpenedMediaCacheAccount(
       previousAccountAlreadyLocked ? null : previousAccountId,
       nextAccountId,
@@ -290,7 +298,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const terminateLocalSession = useCallback(() => {
     const previousAccountId = sessionRef.current ? String(sessionRef.current.id) : null;
-    if (previousAccountId) getImOpenedMediaCacheService().lock(previousAccountId);
+    if (previousAccountId) {
+      getImOpenedMediaCacheService().lock(previousAccountId);
+      persistentResourceCache.lockScopePrefix(`account:${previousAccountId}`);
+    }
     const credentials = terminateAuthImmediately();
     publishAnonymous(Boolean(previousAccountId));
     setIsRestoring(false);

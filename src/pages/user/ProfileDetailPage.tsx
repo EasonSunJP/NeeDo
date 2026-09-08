@@ -161,7 +161,11 @@ function ProfileStatus({
 }
 
 function CustomerApiProfilePage({ id }: { id: number }) {
-  const query = useCoreReadQuery(() => coreReadApi.getCustomerProfile(id), [id]);
+  const query = useCoreReadQuery(
+    () => coreReadApi.getCustomerProfile(id),
+    [id],
+    { key: `core:customer-profile:${id}` }
+  );
 
   if (query.loading) {
     return <ProfileStatus description="正在从 /api/v1/profiles/customers 读取用户资料。" title="正在载入用户" />;
@@ -188,7 +192,11 @@ function CustomerApiProfilePage({ id }: { id: number }) {
 }
 
 function ShopApiProfilePage({ id }: { id: number }) {
-  const query = useCoreReadQuery(() => coreReadApi.getShopDetail(id), [id]);
+  const query = useCoreReadQuery(
+    () => coreReadApi.getShopDetail(id),
+    [id],
+    { key: `core:shop:${id}` }
+  );
 
   if (query.loading) {
     return <ProfileStatus description="正在从 /api/v1/shops 读取店铺资料。" title="正在载入店铺" />;

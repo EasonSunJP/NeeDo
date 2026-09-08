@@ -8,6 +8,8 @@ import { loadManagedScheduleWindow } from "../../features/scheduling/window-load
 import type { BookingScheduleSlot } from "../../features/booking/api";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 
 type FormalScheduleInventoryPanelProps = {
   scope: SchedulingScope;
@@ -24,6 +26,12 @@ type ServiceChoice = {
 type TechnicianChoice = {
   id: number;
   name: string;
+};
+
+type ScheduleInventoryCacheValue = {
+  services: ServiceChoice[];
+  slots: BookingScheduleSlot[];
+  technicians: TechnicianChoice[];
 };
 
 const scheduleConflictMessage = "该时段与现有排班冲突，请调整开始时间";
@@ -82,20 +90,25 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
     date.setHours(23, 59, 59, 999);
     return date;
   }, [today]);
-  const [services, setServices] = useState<ServiceChoice[]>([]);
-  const [technicians, setTechnicians] = useState<TechnicianChoice[]>([]);
-  const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
+  const cacheScope = getAuthenticatedPersistentCacheScope();
+  const cacheKey = `schedule:inventory:${scope}:${shopId ?? "self"}:${today.toISOString()}:${rangeEnd.toISOString()}`;
+  const cachedInventory = cacheScope
+    ? persistentResourceCache.peek<ScheduleInventoryCacheValue>(cacheScope, cacheKey)
+    : undefined;
+  const [services, setServices] = useState<ServiceChoice[]>(() => cachedInventory?.services ?? []);
+  const [technicians, setTechnicians] = useState<TechnicianChoice[]>(() => cachedInventory?.technicians ?? []);
+  const [slots, setSlots] = useState<BookingScheduleSlot[]>(() => cachedInventory?.slots ?? []);
   const [selectedServiceKey, setSelectedServiceKey] = useState("");
   const [selectedTechnicianId, setSelectedTechnicianId] = useState("");
   const [selectedDate, setSelectedDate] = useState(toLocalDateInput(today));
   const [selectedTime, setSelectedTime] = useState("10:00");
   const [capacity, setCapacity] = useState("1");
-  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [inventoryLoading, setInventoryLoading] = useState(() => cachedInventory === undefined);
   const [inventorySaving, setInventorySaving] = useState(false);
   const [inventoryError, setInventoryError] = useState("");
   const [pendingDeleteSlotId, setPendingDeleteSlotId] = useState<number | null>(null);
 
-  const loadInventory = useCallback(async () => {
+  const loadInventory = useCallback(async (force = false) => {
     if (scope === "technician" && !shopId) {
       setServices([]);
       setTechnicians([]);
@@ -105,56 +118,91 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
       return;
     }
 
-    setInventoryLoading(true);
+    const cached = cacheScope
+      ? persistentResourceCache.peek<ScheduleInventoryCacheValue>(cacheScope, cacheKey)
+      : undefined;
+    if (cached) {
+      setSlots(cached.slots);
+      setServices(cached.services);
+      setTechnicians(cached.technicians);
+    }
+    setInventoryLoading(cached === undefined);
     setInventoryError("");
 
     try {
-      const slotPromise = loadManagedScheduleWindow(scope, {
-        from: today,
-        to: rangeEnd
-      });
-
-      if (scope === "merchant-admin") {
-        const [slotResult, serviceResult, technicianResult] = await Promise.all([
-          slotPromise,
-          backofficeRealDataApi.services("merchant-admin", { page: 1, pageSize: 100 }),
-          backofficeRealDataApi.technicians("merchant-admin", { page: 1, pageSize: 100 })
-        ]);
-        setSlots(slotResult);
-        setServices(serviceResult.list.map((service) => ({
-          durationMinutes: service.durationMinutes,
-          id: service.id,
-          name: service.name,
-          source: "shop" as const
-        })));
-        setTechnicians(technicianResult.list.map((technician) => ({ id: technician.id, name: technician.displayName })));
-      } else {
+      const loadFromServer = async (): Promise<ScheduleInventoryCacheValue> => {
+        const slotPromise = loadManagedScheduleWindow(scope, { from: today, to: rangeEnd });
+        if (scope === "merchant-admin") {
+          const [slotResult, serviceResult, technicianResult] = await Promise.all([
+            slotPromise,
+            backofficeRealDataApi.services("merchant-admin", { page: 1, pageSize: 100 }),
+            backofficeRealDataApi.technicians("merchant-admin", { page: 1, pageSize: 100 })
+          ]);
+          return {
+            slots: slotResult,
+            services: serviceResult.list.map((service) => ({
+              durationMinutes: service.durationMinutes,
+              id: service.id,
+              name: service.name,
+              source: "shop" as const
+            })),
+            technicians: technicianResult.list.map((technician) => ({ id: technician.id, name: technician.displayName }))
+          };
+        }
         const [slotResult, serviceResult] = await Promise.all([
           slotPromise,
           pricingModeApi.listTechnicianServices(shopId as number, { activeOnly: true, page: 1, pageSize: 100 })
         ]);
-        setSlots(slotResult);
-        setServices(serviceResult.list.filter((service) => service.isBookable).map((service) => ({
-          durationMinutes: service.durationMinutes,
-          id: service.id,
-          name: service.name,
-          source: "technician" as const
-        })));
-        setTechnicians([]);
-      }
+        return {
+          slots: slotResult,
+          services: serviceResult.list.filter((service) => service.isBookable).map((service) => ({
+            durationMinutes: service.durationMinutes,
+            id: service.id,
+            name: service.name,
+            source: "technician" as const
+          })),
+          technicians: []
+        };
+      };
+      const result = cacheScope
+        ? await persistentResourceCache.load({ force, key: cacheKey, load: loadFromServer, scope: cacheScope })
+        : await loadFromServer();
+      setSlots(result.slots);
+      setServices(result.services);
+      setTechnicians(result.technicians);
     } catch (error) {
-      setSlots([]);
-      setServices([]);
-      setTechnicians([]);
-      setInventoryError(t(getScheduleFailureMessage(error)));
+      const fallback = cacheScope
+        ? persistentResourceCache.peek<ScheduleInventoryCacheValue>(cacheScope, cacheKey)
+        : undefined;
+      if (fallback) {
+        setSlots(fallback.slots);
+        setServices(fallback.services);
+        setTechnicians(fallback.technicians);
+      } else {
+        setSlots([]);
+        setServices([]);
+        setTechnicians([]);
+        setInventoryError(t(getScheduleFailureMessage(error)));
+      }
     } finally {
       setInventoryLoading(false);
     }
-  }, [rangeEnd, scope, shopId, t, today]);
+  }, [cacheKey, cacheScope, rangeEnd, scope, shopId, t, today]);
 
   useEffect(() => {
     void loadInventory();
   }, [loadInventory]);
+
+  useEffect(() => {
+    if (!cacheScope) return;
+    return persistentResourceCache.subscribe<ScheduleInventoryCacheValue>(cacheScope, cacheKey, (inventory) => {
+      setSlots(inventory.slots);
+      setServices(inventory.services);
+      setTechnicians(inventory.technicians);
+      setInventoryError("");
+      setInventoryLoading(false);
+    });
+  }, [cacheKey, cacheScope]);
 
   useEffect(() => {
     if (!services.some((service) => `${service.source}:${service.id}` === selectedServiceKey)) {
@@ -200,7 +248,7 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
           ? { technicianProfileId: Number(selectedTechnicianId) }
           : {})
       });
-      await loadInventory();
+      await loadInventory(true);
     } catch (error) {
       setInventoryError(t(getScheduleFailureMessage(error)));
     } finally {
@@ -216,7 +264,7 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
       await schedulingApi.updateSlot(scope, slot.id, {
         status: slot.status === "blocked" ? "available" : "blocked"
       });
-      await loadInventory();
+      await loadInventory(true);
     } catch (error) {
       setInventoryError(t(getScheduleFailureMessage(error)));
     } finally {
@@ -236,7 +284,7 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
     try {
       await schedulingApi.deleteSlot(scope, slotId);
       setPendingDeleteSlotId(null);
-      await loadInventory();
+      await loadInventory(true);
     } catch (error) {
       setInventoryError(t(getScheduleFailureMessage(error)));
     } finally {
@@ -251,7 +299,7 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
           <p className="text-base font-black text-[color:var(--client-text)]">{t("正式可预约时段")}</p>
           <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">{t("保存后会实时同步到用户预约页、商户端和技师端")}</p>
         </div>
-        <button className="rounded-full border border-[color:var(--client-line)] px-3 py-2 text-xs font-black text-[color:var(--client-text)] disabled:opacity-50" disabled={inventoryLoading || inventorySaving} onClick={() => void loadInventory()} type="button">
+        <button className="rounded-full border border-[color:var(--client-line)] px-3 py-2 text-xs font-black text-[color:var(--client-text)] disabled:opacity-50" disabled={inventoryLoading || inventorySaving} onClick={() => void loadInventory(true)} type="button">
           {t("刷新")}
         </button>
       </div>

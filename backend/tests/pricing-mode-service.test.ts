@@ -421,4 +421,34 @@ describe("PricingModeService", () => {
     expect(result).toEqual({ list: [], total: 0, page: 1, page_size: 20 });
     expect(repository.listPublicTechnicianServices).not.toHaveBeenCalled();
   });
+
+  it("resolves the same technician independently for two shops with different pricing modes", async () => {
+    const repository = createRepository();
+    repository.findShopPricingMode.mockImplementation(async (shopId) => ({
+      shopId,
+      pricingMode: shopId === 1 ? "merchant" : "technician",
+      technicianPricingRatePercent: 100,
+      updatedAt: now,
+      updatedBy: 7
+    }));
+    const service = new PricingModeService(repository, { record: jest.fn() });
+
+    const shopA = await service.getBookingNavigation(1, { page: 1, pageSize: 20 });
+    const shopATechnicianServices = await service.listPublicTechnicianServices(1, 3, { page: 1, pageSize: 20 });
+    const shopB = await service.getBookingNavigation(2, { page: 1, pageSize: 20 });
+    const shopBTechnicianServices = await service.listPublicTechnicianServices(2, 3, { page: 1, pageSize: 20 });
+
+    expect(shopA).toMatchObject({ shopId: 1, pricingMode: "merchant", entry: "service_menu" });
+    expect(shopATechnicianServices.list).toEqual([]);
+    expect(shopB).toMatchObject({ shopId: 2, pricingMode: "technician", entry: "technician_list" });
+    expect(shopBTechnicianServices.list).toEqual([expect.objectContaining({ technicianId: 3 })]);
+    expect(repository.listBookingNavigationShopServices).toHaveBeenCalledWith({ shopId: 1, page: 1, pageSize: 20 });
+    expect(repository.listBookingNavigationTechnicians).toHaveBeenCalledWith({ shopId: 2, page: 1, pageSize: 20 });
+    expect(repository.listPublicTechnicianServices).toHaveBeenCalledWith({
+      shopId: 2,
+      technicianId: 3,
+      page: 1,
+      pageSize: 20
+    });
+  });
 });

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PublishedCarouselPayload } from "../../api/contentPublication";
 import type { BookingOrder } from "../../features/booking/api";
 import { translateText, type Language } from "../../i18n/translations";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { HomePage } from "./HomePage";
 import homePageSource from "./HomePage.tsx?raw";
 
@@ -264,7 +265,8 @@ describe("HomePage formal carousel integration", () => {
     });
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await persistentResourceCache.clearScope("public");
     vi.resetAllMocks();
     apiMocks.listOrders.mockResolvedValue({ list: [], page: 1, page_size: 100, total: 0 });
     homeMocks.language = "zh";

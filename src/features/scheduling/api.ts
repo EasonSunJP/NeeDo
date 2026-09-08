@@ -1,5 +1,7 @@
 import { httpClient } from "../../api/httpClient";
 import type { BookingScheduleSlot, PaginatedBookingData } from "../booking/api";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 
 export type SchedulingScope = "merchant-admin" | "technician";
 export type ScheduleSlotStatus = BookingScheduleSlot["status"];
@@ -50,6 +52,11 @@ export type FormalScheduleCalendarItem = {
 const prefix = (scope: SchedulingScope) => `/${scope}/schedule/slots`;
 const pad = (value: number) => String(value).padStart(2, "0");
 
+async function invalidateScheduleCache() {
+  const scope = getAuthenticatedPersistentCacheScope();
+  if (scope) await persistentResourceCache.invalidate(scope, "calendar:");
+}
+
 export function mapScheduleSlotToCalendarItem(slot: BookingScheduleSlot): FormalScheduleCalendarItem {
   const start = new Date(slot.startsAt);
   const end = new Date(slot.endsAt);
@@ -80,8 +87,8 @@ export const schedulingApi = {
       }
     });
   },
-  createSlot(scope: SchedulingScope, input: ScheduleSlotCreateInput) {
-    return httpClient.request<BookingScheduleSlot>(prefix(scope), {
+  async createSlot(scope: SchedulingScope, input: ScheduleSlotCreateInput) {
+    const slot = await httpClient.request<BookingScheduleSlot>(prefix(scope), {
       body: {
         ...input,
         startsAt: input.startsAt.toISOString(),
@@ -89,9 +96,11 @@ export const schedulingApi = {
       },
       method: "POST"
     });
+    await invalidateScheduleCache();
+    return slot;
   },
-  updateSlot(scope: SchedulingScope, id: number, input: ScheduleSlotUpdateInput) {
-    return httpClient.request<BookingScheduleSlot>(`${prefix(scope)}/${id}`, {
+  async updateSlot(scope: SchedulingScope, id: number, input: ScheduleSlotUpdateInput) {
+    const slot = await httpClient.request<BookingScheduleSlot>(`${prefix(scope)}/${id}`, {
       body: {
         ...input,
         ...(input.startsAt ? { startsAt: input.startsAt.toISOString() } : {}),
@@ -99,8 +108,12 @@ export const schedulingApi = {
       },
       method: "PATCH"
     });
+    await invalidateScheduleCache();
+    return slot;
   },
-  deleteSlot(scope: SchedulingScope, id: number) {
-    return httpClient.request<BookingScheduleSlot>(`${prefix(scope)}/${id}`, { method: "DELETE" });
+  async deleteSlot(scope: SchedulingScope, id: number) {
+    const slot = await httpClient.request<BookingScheduleSlot>(`${prefix(scope)}/${id}`, { method: "DELETE" });
+    await invalidateScheduleCache();
+    return slot;
   }
 };

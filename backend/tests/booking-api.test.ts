@@ -604,6 +604,7 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       .post("/api/v1/bookings")
       .set("Authorization", `Bearer ${token}`)
       .send({
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store",
@@ -615,10 +616,27 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       });
   });
 
+  it("requires the price shown on the final confirmation page", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login();
+
+    await request(fixture.app)
+      .post("/api/v1/bookings")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ serviceId: 1, scheduleSlotId: 11, fulfillmentMode: "store" })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body.code).toBe(ERROR_CODES.VALIDATION);
+      });
+
+    expect(fixture.bookingRepository.createBooking).not.toHaveBeenCalled();
+  });
+
   it("requires and forwards an idempotency key for Intelligence booking creation", async () => {
     const fixture = await createFixture();
     const token = await fixture.login();
     const body = {
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 11,
       exchangeIntelligencePostId: 61,
@@ -659,7 +677,7 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
     await request(missingLocationFixture.app)
       .post("/api/v1/bookings")
       .set("Authorization", `Bearer ${missingLocationToken}`)
-      .send({ serviceId: 1, scheduleSlotId: 11, fulfillmentMode: "home" })
+      .send({ expectedPriceAmountJpy: 8_800, serviceId: 1, scheduleSlotId: 11, fulfillmentMode: "home" })
       .expect(400);
     expect(missingLocationFixture.bookingRepository.createBooking).not.toHaveBeenCalled();
 
@@ -669,6 +687,7 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       .post("/api/v1/bookings")
       .set("Authorization", `Bearer ${storeToken}`)
       .send({
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store",
@@ -685,6 +704,7 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       .post("/api/v1/bookings")
       .set("Authorization", `Bearer ${homeToken}`)
       .send({
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "home",
@@ -756,6 +776,7 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       .post("/api/v1/bookings")
       .set("Authorization", `Bearer ${token}`)
       .send({
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store",
@@ -792,7 +813,7 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
     await request(fixture.app)
       .post("/api/v1/bookings")
       .set("Authorization", `Bearer ${token}`)
-      .send({ serviceId: 1, scheduleSlotId: 11, fulfillmentMode: "store" })
+      .send({ expectedPriceAmountJpy: 8_800, serviceId: 1, scheduleSlotId: 11, fulfillmentMode: "store" })
       .expect(409)
       .expect((response) => {
         expect(response.body).toMatchObject({

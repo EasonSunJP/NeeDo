@@ -281,12 +281,13 @@ describe("GET /api/v1/openapi.json", () => {
         fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
         travelEstimatePublicId: "00000000-0000-4000-8000-000000000001" }
     ]) {
-      expect(validate({ ...fulfillment, scheduleSlotId: 33, serviceId: 12 })).toBe(true);
-      expect(validate({ ...fulfillment, scheduleSlotId: 33, technicianServiceId: 21 })).toBe(true);
-      expect(validate({ ...fulfillment, scheduleSlotId: 33 })).toBe(false);
+      expect(validate({ ...fulfillment, expectedPriceAmountJpy: 8_800, scheduleSlotId: 33, serviceId: 12 })).toBe(true);
+      expect(validate({ ...fulfillment, expectedPriceAmountJpy: 8_800, scheduleSlotId: 33, technicianServiceId: 21 })).toBe(true);
+      expect(validate({ ...fulfillment, expectedPriceAmountJpy: 8_800, scheduleSlotId: 33 })).toBe(false);
       expect(
         validate({
           ...fulfillment,
+          expectedPriceAmountJpy: 8_800,
           scheduleSlotId: 33,
           serviceId: 12,
           technicianServiceId: 21

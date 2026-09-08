@@ -227,6 +227,7 @@ export interface AvailabilityListInput extends PaginationInput {
 }
 export interface BookingCreateRepositoryInput {
   customerUserId: number;
+  expectedPriceAmountJpy?: number;
   orderType?: BookingOrderTypePayload;
   serviceId?: number;
   technicianServiceId?: number;
@@ -282,6 +283,13 @@ class BookingPendingReplacementUnavailableError extends Error {
   }
 }
 
+class BookingPriceChangedError extends Error {
+  public constructor(public readonly currentPriceAmountJpy: number) {
+    super("error.booking.price_changed");
+    this.name = "BookingPriceChangedError";
+  }
+}
+
 export interface BookingSupersededOrderNotification {
   order: BookingOrderPayload;
   recipientUserIds: number[];
@@ -306,6 +314,11 @@ export type BookingIntelligenceFailure =
 export interface BookingIntelligenceFailureResult {
   intelligenceBookingError: BookingIntelligenceFailure;
 }
+
+export type BookingPriceChangedResult = {
+  outcome: "price_changed";
+  currentPriceAmountJpy: number;
+};
 
 export type ManualPaymentScope = { scope: "merchant"; shopId: number } | { scope: "backoffice" };
 
@@ -834,6 +847,7 @@ export interface BookingRepositoryPort {
     | BookingOrderPayload
     | BookingTravelEstimateFailureResult
     | BookingIntelligenceFailureResult
+    | BookingPriceChangedResult
     | null
   >;
   findScheduleSlotShopId?: (scheduleSlotId: number) => Promise<number | null>;
@@ -1393,6 +1407,7 @@ export class BookingRepository implements BookingRepositoryPort {
     | BookingCreateMutationResult
     | BookingTravelEstimateFailureResult
     | BookingIntelligenceFailureResult
+    | BookingPriceChangedResult
     | null
   > {
     if (Boolean(options.prepareAffiliate) !== Boolean(options.persistAffiliate)) {
@@ -1763,6 +1778,12 @@ export class BookingRepository implements BookingRepositoryPort {
             const originalPriceJpy = intelligenceSource
               ? intelligenceSource.campaignPriceJpy
               : Math.round(Number(serviceSource.priceAmount.toString()));
+            if (
+              input.expectedPriceAmountJpy !== undefined &&
+              input.expectedPriceAmountJpy !== originalPriceJpy
+            ) {
+              throw new BookingPriceChangedError(originalPriceJpy);
+            }
             const affiliateContext: BookingCreateAffiliatePreparationContext = {
               transactionClient: tx,
               customerUserId: input.customerUserId,
@@ -2006,6 +2027,12 @@ export class BookingRepository implements BookingRepositoryPort {
       }
       if (error instanceof BookingIntelligenceAbort) {
         return { intelligenceBookingError: error.reason };
+      }
+      if (error instanceof BookingPriceChangedError) {
+        return {
+          outcome: "price_changed",
+          currentPriceAmountJpy: error.currentPriceAmountJpy
+        };
       }
       throw error;
     }

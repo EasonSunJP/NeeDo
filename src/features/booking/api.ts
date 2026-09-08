@@ -326,6 +326,7 @@ export type UpdateManagedScheduleSlotInput = {
 
 type CreateBookingBaseInput = {
   exchangeIntelligencePostId?: number;
+  expectedPriceAmountJpy: number;
   note?: string;
   orderType?: "booking" | "request";
   paymentMethod?: ManualPaymentMethod;

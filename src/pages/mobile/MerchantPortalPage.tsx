@@ -1586,7 +1586,8 @@ function MerchantPortalDataGate() {
   const storeApiId = getMerchantStoreApiId(session?.linkedStoreId);
   const formalStoreQuery = useCoreReadQuery(
     () => storeApiId ? coreReadApi.getShopDetail(storeApiId) : null,
-    [storeApiId]
+    [storeApiId],
+    { enabled: Boolean(storeApiId), key: `core:shop:${storeApiId ?? "missing"}` }
   );
 
   if (!storeApiId || !formalStoreQuery.data) {

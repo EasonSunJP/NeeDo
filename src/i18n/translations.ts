@@ -683,6 +683,7 @@ export const translations: TranslationMap = {
   "技师服务资料与预约链接不一致，请返回后重试": { "zh-Hant": "技師服務資料與預約連結不一致，請返回後再試", ja: "技術者サービス情報と予約リンクが一致しません。戻って再試行してください", en: "The technician service data does not match this booking link. Go back and try again", ko: "기술자 서비스 자료와 예약 링크가 일치하지 않습니다. 돌아가 다시 시도해 주세요" },
   "来源情报": { "zh-Hant": "來源情報", ja: "参照元サービス情報", en: "Source service post", ko: "출처 서비스 정보" },
   "活动价与可预约时段已按正式情报锁定": { "zh-Hant": "活動價與可預約時段已依正式情報鎖定", ja: "キャンペーン価格と予約枠は正式なサービス情報に基づいて固定されています", en: "Campaign price and available times are locked to the formal source post", ko: "캠페인 가격과 예약 가능 시간은 정식 서비스 정보에 따라 고정됩니다" },
+  "价格已更新，请确认最新金额后重新提交": { "zh-Hant": "價格已更新，請確認最新金額後重新提交", ja: "価格が更新されました。最新の金額を確認してから、もう一度送信してください", en: "The price has changed. Review the latest amount and submit again", ko: "가격이 변경되었습니다. 최신 금액을 확인한 후 다시 제출하세요" },
   "正在加载正式预约信息": { "zh-Hant": "正在載入正式預約資訊", ja: "予約情報を読み込み中", en: "Loading reservation information", ko: "예약 정보 불러오는 중" },
   "预约页加载失败": { "zh-Hant": "預約頁載入失敗", ja: "予約画面を読み込めませんでした", en: "Reservation page failed to load", ko: "예약 화면을 불러오지 못했습니다" },
   "重新加载预约页": { "zh-Hant": "重新載入預約頁", ja: "予約画面を再読み込み", en: "Reload reservation page", ko: "예약 화면 다시 불러오기" },

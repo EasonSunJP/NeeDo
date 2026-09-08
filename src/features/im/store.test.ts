@@ -60,6 +60,7 @@ import {
   mergeConversationMessageHistory,
   preferTerminalMessage,
   resolveImOpenedMediaCacheFetchSource,
+  sanitizeImMessageForPersistentCache,
   selectLatestFriendRequestsByCounterpart,
   upsertConversationMessage,
   useImStore,
@@ -191,7 +192,9 @@ async function renderStore() {
   await act(async () => {
     root?.render(createElement(StoreProbe));
   });
-  await act(async () => Promise.resolve());
+  await vi.waitFor(() => {
+    expect(store?.status).toBe("ready");
+  });
 }
 
 afterEach(async () => {
@@ -241,6 +244,65 @@ const recalled = message({
   recalledAt: "2026-08-25T10:01:00.000Z",
   serverState: "recalled",
   availableRecallModes: [],
+});
+
+describe("formal IM persistent cache policy", () => {
+  it("keeps recall tombstones and stable media references but excludes optimistic rows", () => {
+    expect(sanitizeImMessageForPersistentCache(recalled)).toMatchObject({
+      id: recalled.id,
+      serverState: "recalled",
+      status: "recalled"
+    });
+    expect(sanitizeImMessageForPersistentCache(message({ id: "local-1", status: "sending" }))).toBeNull();
+    expect(sanitizeImMessageForPersistentCache(message({
+      content: "https://private.example/image.jpg",
+      ext: {
+        mimeType: "image/jpeg",
+        thumbnailUrl: "https://private.example/thumb.jpg",
+        url: "https://private.example/image.jpg"
+      },
+      type: "image"
+    }))).toMatchObject({
+      content: "https://private.example/image.jpg",
+      ext: {
+        mimeType: "image/jpeg",
+        thumbnailUrl: "https://private.example/thumb.jpg",
+        url: "https://private.example/image.jpg"
+      }
+    });
+  });
+
+  it("does not reload an already cached first message page on route re-entry", async () => {
+    mocked.session = {
+      activePublicId: "u0000000777",
+      avatarUrl: null,
+      id: 777,
+      primaryPublicId: "u0000000777",
+      username: "缓存测试用户"
+    };
+    const listMessages = vi.fn().mockResolvedValue({ messages: [message()], nextCursor: null, hasMore: false });
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "100",
+        config: {},
+        users: [],
+        contacts: [],
+        friendRequests: [],
+        conversations: [conversation()],
+        members: []
+      }),
+      listMessages
+    };
+
+    await renderStore();
+    await act(async () => {
+      await store?.loadMessages("91", { reset: true });
+      await store?.loadMessages("91", { reset: true });
+    });
+
+    expect(listMessages).toHaveBeenCalledTimes(1);
+    expect(store?.messagesByConversation["91"]).toEqual([expect.objectContaining({ id: "700" })]);
+  });
 });
 
 function deferred<T>() {

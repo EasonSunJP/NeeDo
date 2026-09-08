@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PublishedCarouselPayload } from "../../api/contentPublication";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { PublishedCarousel } from "./PublishedCarousel";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -87,7 +88,8 @@ async function renderCarousel(
 }
 
 describe("PublishedCarousel", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await persistentResourceCache.clearScope("public");
     vi.resetAllMocks();
     i18nMock.language = "zh";
     container = document.createElement("div");
@@ -112,6 +114,23 @@ describe("PublishedCarousel", () => {
     expect(container.querySelector('[data-testid="published-carousel-loading"]')).not.toBeNull();
     expect(container.textContent).toContain("正在读取轮播内容");
     expect(apiMocks.getUserHomeCarousel).toHaveBeenCalledWith("zh-CN");
+  });
+
+  it("renders the cached carousel immediately after a route remount without another server read", async () => {
+    apiMocks.getUserHomeCarousel.mockResolvedValue(
+      payload("USER_HOME", { type: "service", publicId: "service-cached" })
+    );
+    await renderCarousel("user-home");
+    await waitFor(() => expect(container.textContent).toContain("东京护理"));
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    apiMocks.getUserHomeCarousel.mockReturnValue(new Promise(() => undefined));
+    await renderCarousel("user-home");
+
+    expect(container.textContent).toContain("东京护理");
+    expect(container.querySelector('[data-testid="published-carousel-loading"]')).toBeNull();
+    expect(apiMocks.getUserHomeCarousel).toHaveBeenCalledTimes(1);
   });
 
   it("preserves the requested height while the formal request is loading", async () => {

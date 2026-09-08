@@ -4287,7 +4287,8 @@ export function UnifiedFormalStoreDetail({
   const [revision, setRevision] = useState(0);
   const query = useCoreReadQuery(
     () => coreReadApi.getShopDetail(shopId),
-    [shopId, revision]
+    [shopId, revision],
+    { force: revision > 0, key: `core:shop:${shopId}` }
   );
 
   if (query.loading) {

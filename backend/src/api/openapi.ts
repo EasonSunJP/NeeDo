@@ -21141,6 +21141,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               schema: {
                 discriminator: { propertyName: "fulfillmentMode" },
                 properties: {
+                  expectedPriceAmountJpy: { type: "integer", minimum: 0 },
                   serviceId: { type: "integer", minimum: 1 },
                   technicianServiceId: { type: "integer", minimum: 1 },
                   exchangeIntelligencePostId: { type: "integer", minimum: 1 },
@@ -21166,9 +21167,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   {
                     type: "object",
                     additionalProperties: false,
-                    required: ["scheduleSlotId", "fulfillmentMode"],
+                    required: ["expectedPriceAmountJpy", "scheduleSlotId", "fulfillmentMode"],
                     oneOf: [{ required: ["serviceId"] }, { required: ["technicianServiceId"] }],
                     properties: {
+                      expectedPriceAmountJpy: { type: "integer", minimum: 0 },
                       serviceId: { type: "integer", minimum: 1 },
                       technicianServiceId: { type: "integer", minimum: 1 },
                       scheduleSlotId: { type: "integer", minimum: 1 },
@@ -21187,12 +21189,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   {
                     type: "object",
                     additionalProperties: false,
-                    required: ["scheduleSlotId", "fulfillmentMode", "serviceLocation", "fulfillmentAddress", "travelEstimatePublicId"],
+                    required: ["expectedPriceAmountJpy", "scheduleSlotId", "fulfillmentMode", "serviceLocation", "fulfillmentAddress", "travelEstimatePublicId"],
                     oneOf: [
                       { required: ["serviceId"] },
                       { required: ["technicianServiceId"] }
                     ],
                     properties: {
+                      expectedPriceAmountJpy: { type: "integer", minimum: 0 },
                       serviceId: { type: "integer", minimum: 1 },
                       technicianServiceId: { type: "integer", minimum: 1 },
                       scheduleSlotId: { type: "integer", minimum: 1 },
@@ -21250,7 +21253,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           "409": {
             description:
-              "Slot unavailable, estimate expired/consumed, Intelligence unavailable/mismatched, idempotency conflict, or error.booking.service_location_unresolved when a store location cannot be verified"
+              "Slot unavailable, estimate expired/consumed, Intelligence unavailable/mismatched, idempotency conflict, error.booking.price_changed, or error.booking.service_location_unresolved when a store location cannot be verified"
           },
           "422": { description: "Home estimate required, invalid, or mismatched" }
         }

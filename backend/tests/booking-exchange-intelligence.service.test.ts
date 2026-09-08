@@ -29,6 +29,7 @@ describe("BookingService Intelligence source", () => {
       service.createBooking(
         actor,
         {
+          expectedPriceAmountJpy: 8_800,
           serviceId: 41,
           scheduleSlotId: 51,
           exchangeIntelligencePostId: 61,
@@ -55,6 +56,7 @@ describe("BookingService Intelligence source", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 41,
         scheduleSlotId: 51,
         exchangeIntelligencePostId: 61,

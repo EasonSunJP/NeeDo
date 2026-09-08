@@ -328,6 +328,7 @@ export class BookingService {
     );
     const repositoryInput: BookingCreateRepositoryInput = {
       customerUserId: actor.userId,
+      expectedPriceAmountJpy: input.expectedPriceAmountJpy,
       orderType: input.orderType ?? "booking",
       serviceId: input.serviceId,
       technicianServiceId: input.technicianServiceId,
@@ -431,6 +432,14 @@ export class BookingService {
         ]
       }[result.intelligenceBookingError] as [number, string];
       throw new AppError({ code: details[0], message: details[1], statusCode: 409 });
+    }
+    if ("outcome" in result) {
+      throw new AppError({
+        code: ERROR_CODES.BOOKING_PRICE_CHANGED,
+        message: "error.booking.price_changed",
+        statusCode: 409,
+        data: { currentPriceAmountJpy: result.currentPriceAmountJpy }
+      });
     }
     if (!("order" in result) || !("supersededOrders" in result)) {
       await this.publishLiveDashboardChangesBestEffort([result.id]);

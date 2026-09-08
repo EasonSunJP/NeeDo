@@ -618,7 +618,8 @@ export function HomePage() {
   const [homeRecommendationsRevision, setHomeRecommendationsRevision] = useState(0);
   const homeRecommendationsQuery = useCoreReadQuery(
     () => loadCoreReadWithTransientRetry(() => coreReadApi.getHomeRecommendations({ limit: 20 })),
-    [homeRecommendationsRevision]
+    [homeRecommendationsRevision],
+    { force: homeRecommendationsRevision > 0, key: "core:home-recommendations:limit-20" }
   );
   const apiServices = useMemo(
     () => homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? [],

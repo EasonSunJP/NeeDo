@@ -322,7 +322,11 @@ export function CategoryPage() {
     deviceLocation: homeLocationPreference
   });
   const { scrollRef: tagRailRef, dragScrollProps: tagRailDragProps } = useHorizontalDragScroll({});
-  const categoryQuery = useCoreReadQuery(() => coreReadApi.listCategories({ pageSize: 100 }), []);
+  const categoryQuery = useCoreReadQuery(
+    () => coreReadApi.listCategories({ pageSize: 100 }),
+    [],
+    { key: "core:categories:page-size-100" }
+  );
   const availableCategories = useMemo(
     () => uniqueById((categoryQuery.data?.list ?? []).map(mapCoreCategoryToServiceCategory)),
     [categoryQuery.data]
@@ -398,7 +402,12 @@ export function CategoryPage() {
   });
   const shopSearchQuery = useCoreReadQuery(
     () => loadShops && searchFiltersReady ? coreReadApi.searchShops(coreSearchQuery) : null,
-    [loadShops, searchFiltersReady, searchTermsKey, shopRetryKey]
+    [loadShops, searchFiltersReady, searchTermsKey, shopRetryKey],
+    {
+      enabled: loadShops && searchFiltersReady,
+      force: shopRetryKey > 0,
+      key: `core:shop-search:${searchTermsKey}`
+    }
   );
   const technicianSearchQuery = useCoreReadQuery(
     () => loadTechnicians && searchFiltersReady ? coreReadApi.searchTechnicians(technicianCoreSearchQuery) : null,
@@ -409,11 +418,21 @@ export function CategoryPage() {
       searchOrigin?.latitude,
       searchOrigin?.longitude,
       technicianRetryKey
-    ]
+    ],
+    {
+      enabled: loadTechnicians && searchFiltersReady,
+      force: technicianRetryKey > 0,
+      key: `core:technician-search:${searchTermsKey}:${searchOrigin?.latitude ?? ""}:${searchOrigin?.longitude ?? ""}`
+    }
   );
   const serviceSearchQuery = useCoreReadQuery(
     () => loadServices && searchFiltersReady ? coreReadApi.searchServices(coreSearchQuery) : null,
-    [loadServices, searchFiltersReady, searchTermsKey, serviceRetryKey]
+    [loadServices, searchFiltersReady, searchTermsKey, serviceRetryKey],
+    {
+      enabled: loadServices && searchFiltersReady,
+      force: serviceRetryKey > 0,
+      key: `core:service-search:${searchTermsKey}`
+    }
   );
   const apiServices = useMemo(
     () => serviceSearchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? [],

@@ -577,6 +577,7 @@ describe("BookingRepository order list scope", () => {
       repository.createBooking(
         {
           customerUserId: 7,
+          expectedPriceAmountJpy: 8_800,
           serviceId: 1,
           scheduleSlotId: 11,
           fulfillmentMode: "store",
@@ -588,6 +589,95 @@ describe("BookingRepository order list scope", () => {
       )
     ).rejects.toThrow("error.affiliate.checkout_hook_invalid");
     expect(client.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("returns the transaction-current database price before reserving a slot", async () => {
+    const startsAt = new Date("2026-09-10T03:00:00.000Z");
+    const endsAt = new Date("2026-09-10T04:00:00.000Z");
+    const slot = {
+      id: 611,
+      availabilityId: 511,
+      serviceId: 21,
+      technicianServiceId: null,
+      shopId: 16,
+      technicianProfileId: null,
+      startsAt,
+      endsAt,
+      capacity: 1,
+      bookedCount: 0,
+      status: "AVAILABLE",
+      createdAt: startsAt,
+      updatedAt: startsAt,
+      deletedAt: null,
+      service: {
+        id: 21,
+        publicId: "SVC-000021",
+        categoryId: 3,
+        name: "数据库最新价格服务",
+        description: "",
+        priceAmount: 9_800,
+        currency: "JPY",
+        durationMinutes: 60,
+        createdAt: startsAt
+      },
+      technicianService: null,
+      shop: {
+        id: 16,
+        name: "LifeDance",
+        pricingMode: "MERCHANT",
+        serviceLocation: {
+          countryCode: "JP",
+          admin1RegionId: 13,
+          admin2RegionId: 13104,
+          datasetVersion: "2026-09",
+          deletedAt: null,
+          admin1Region: { officialCode: "13" },
+          admin2Region: { officialCode: "13104" }
+        }
+      },
+      technicianProfile: null
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 7 }]),
+      customerProfile: { findFirst: jest.fn().mockResolvedValue(null) },
+      scheduleSlot: { findFirst: jest.fn().mockResolvedValue(slot), updateMany: jest.fn() },
+      shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      },
+      exchangeMatchParticipant: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+    (repository as unknown as {
+      administrativeRegionRepository: { resolveVerifiedScope: jest.Mock };
+    }).administrativeRegionRepository = {
+      resolveVerifiedScope: jest.fn().mockResolvedValue({
+        countryCode: "JP",
+        admin1Code: "13",
+        admin1NameJa: "東京都",
+        admin1RegionId: 13,
+        admin2Code: "13104",
+        admin2NameJa: "新宿区",
+        admin2RegionId: 13104,
+        datasetVersion: "2026-09"
+      })
+    };
+
+    await expect(repository.createBooking({
+      customerUserId: 7,
+      expectedPriceAmountJpy: 8_800,
+      serviceId: 21,
+      scheduleSlotId: 611,
+      fulfillmentMode: "store",
+      serviceLocation: { source: "SHOP_LOCATION" }
+    })).resolves.toEqual({ outcome: "price_changed", currentPriceAmountJpy: 9_800 });
+    expect(tx.scheduleSlot.updateMany).not.toHaveBeenCalled();
+    expect(tx.bookingOrder.create).not.toHaveBeenCalled();
   });
 
   it("rejects a slot at the current server time during transactional revalidation and aborts pending replacement", async () => {

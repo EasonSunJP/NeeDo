@@ -23,6 +23,8 @@ import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserS
 import { getJapaneseHoliday } from "../../lib/japaneseHolidays";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getScheduleOrderDetailRoute, type ScheduleDetailTargetType } from "../../lib/scheduleDetailTarget";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { getScopedTechnicianDynamicPath } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -140,6 +142,12 @@ export type UnifiedCalendarEvent = {
   creatorEntityType?: ImUser["entityType"];
   creatorEntityId?: string;
   participants?: UnifiedCalendarParticipant[];
+};
+
+type FormalCalendarCacheValue = {
+  orders: Order[];
+  merchantOrders: BookingOrder[];
+  scheduleSlots: BookingScheduleSlot[];
 };
 
 type LocalCalendarEvent = {
@@ -4921,6 +4929,20 @@ export function UnifiedUserCalendar({
   const [anchorDate, setAnchorDate] = useState(initialDate);
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [agendaDateWindow, setAgendaDateWindow] = useState<AgendaDateWindow>(() => createAgendaDateWindow(initialDate));
+  const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
+  const formalCacheScope = getAuthenticatedPersistentCacheScope();
+  const formalCacheKey = [
+    "calendar",
+    activeScope,
+    currentStore?.id ?? currentTechnician?.id ?? currentCustomer?.id ?? "self",
+    formalOnly ? "formal" : "combined",
+    isMerchantAppointmentStatusMode ? "appointments" : "schedule",
+    period.startDate,
+    period.endDate
+  ].join(":");
+  const cachedFormalData = formalCacheScope
+    ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
+    : undefined;
   const [agendaScrollRequestId, setAgendaScrollRequestId] = useState(0);
   const [sourceVisibility, setSourceVisibility] = useState(defaultSourceVisibility);
   const [sourceDrawerOpen, setSourceDrawerOpen] = useState(false);
@@ -4932,14 +4954,13 @@ export function UnifiedUserCalendar({
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
   const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<MerchantAppointmentStatusFilter>("all");
-  const [formalOrders, setFormalOrders] = useState<Order[]>([]);
-  const [formalMerchantOrders, setFormalMerchantOrders] = useState<BookingOrder[]>([]);
-  const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>([]);
-  const [formalDataLoading, setFormalDataLoading] = useState(false);
+  const [formalOrders, setFormalOrders] = useState<Order[]>(() => cachedFormalData?.orders ?? []);
+  const [formalMerchantOrders, setFormalMerchantOrders] = useState<BookingOrder[]>(() => cachedFormalData?.merchantOrders ?? []);
+  const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>(() => cachedFormalData?.scheduleSlots ?? []);
+  const [formalDataLoading, setFormalDataLoading] = useState(() => cachedFormalData === undefined);
   const [formalDataError, setFormalDataError] = useState("");
   const [formalDataReloadKey, setFormalDataReloadKey] = useState(0);
   const formalDataRequestId = useRef(0);
-  const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
   const googleCalendarActorId = getGoogleCalendarActorId(activeScope, currentCustomer, currentTechnician, currentStore);
   const appointmentStatusFilterLabel =
     merchantAppointmentStatusFilterOptions.find((option) => option.value === appointmentStatusFilter)?.label ?? "全预约";
@@ -4954,59 +4975,78 @@ export function UnifiedUserCalendar({
     formalDataRequestId.current = requestId;
     let alive = true;
     const isCurrentRequest = () => alive && formalDataRequestId.current === requestId;
-    const loadFormalData = async () => {
-      setFormalDataLoading(true);
+    const loadFormalDataFromServer = async (): Promise<FormalCalendarCacheValue> => {
+      if (activeScope === "user") {
+        if (formalOnly) {
+          const from = parseDateKey(period.startDate);
+          const to = parseDateKey(addDays(period.endDate, 1));
+          const orders = await loadFormalCustomerOrderPeriod(from, to);
+          return { orders: orders.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [] };
+        }
+        const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
+        return { orders: response.list.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [] };
+      }
+      const from = parseDateKey(period.startDate);
+      const to = parseDateKey(period.endDate);
+      to.setDate(to.getDate() + 1);
+      if (isMerchantAppointmentStatusMode) {
+        const orders = await loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" });
+        return { orders: [], merchantOrders: orders, scheduleSlots: [] };
+      }
+      const slots = await loadManagedScheduleWindow(activeScope === "merchant" ? "merchant-admin" : "technician", { from, to });
+      return { orders: [], merchantOrders: [], scheduleSlots: slots };
+    };
+    const applyFormalData = (data: FormalCalendarCacheValue) => {
+      if (!isCurrentRequest()) return;
+      setFormalOrders(data.orders);
+      setFormalMerchantOrders(data.merchantOrders);
+      setFormalScheduleSlots(data.scheduleSlots);
       setFormalDataError("");
-      setFormalMerchantOrders([]);
-      setFormalScheduleSlots([]);
+      setFormalDataLoading(false);
+    };
+    const unsubscribe = formalCacheScope
+      ? persistentResourceCache.subscribe<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey, applyFormalData)
+      : () => undefined;
+    const loadFormalData = async () => {
+      const cached = formalCacheScope
+        ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
+        : undefined;
+      if (cached) applyFormalData(cached);
+      else setFormalDataLoading(true);
+      setFormalDataError("");
       try {
-        if (activeScope === "user") {
-          if (formalOnly) {
-            const from = parseDateKey(period.startDate);
-            const to = parseDateKey(addDays(period.endDate, 1));
-            const orders = await loadFormalCustomerOrderPeriod(from, to);
-            if (isCurrentRequest()) {
-              setFormalOrders(orders.map(mapBookingOrderToDomainOrder));
-              setFormalScheduleSlots([]);
-            }
-            return;
-          }
-          const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
-          if (isCurrentRequest()) {
-            setFormalOrders(response.list.map(mapBookingOrderToDomainOrder));
-            setFormalScheduleSlots([]);
-          }
-          return;
-        }
-        const from = parseDateKey(period.startDate);
-        const to = parseDateKey(period.endDate);
-        to.setDate(to.getDate() + 1);
-        if (isMerchantAppointmentStatusMode) {
-          const orders = await loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" });
-          if (isCurrentRequest()) {
-            setFormalMerchantOrders(orders);
-            setFormalOrders([]);
-          }
-          return;
-        }
-        const slots = await loadManagedScheduleWindow(activeScope === "merchant" ? "merchant-admin" : "technician", { from, to });
-        if (isCurrentRequest()) {
-          setFormalScheduleSlots(slots);
-          setFormalOrders([]);
-        }
+        const data = formalCacheScope
+          ? await persistentResourceCache.load({
+              force: formalDataReloadKey > 0,
+              key: formalCacheKey,
+              load: loadFormalDataFromServer,
+              scope: formalCacheScope
+            })
+          : await loadFormalDataFromServer();
+        applyFormalData(data);
       } catch (error) {
         if (isCurrentRequest()) {
-          setFormalDataError(error instanceof Error ? error.message : String(error));
-          setFormalOrders([]);
-          setFormalScheduleSlots([]);
+          const fallback = formalCacheScope
+            ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
+            : undefined;
+          if (fallback) applyFormalData(fallback);
+          else {
+            setFormalDataError(error instanceof Error ? error.message : String(error));
+            setFormalOrders([]);
+            setFormalMerchantOrders([]);
+            setFormalScheduleSlots([]);
+          }
         }
       } finally {
         if (isCurrentRequest()) setFormalDataLoading(false);
       }
     };
     void loadFormalData();
-    return () => { alive = false; };
-  }, [activeScope, currentStore?.id, currentTechnician?.id, formalDataReloadKey, formalOnly, isMerchantAppointmentStatusMode, period.endDate, period.startDate]);
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, [activeScope, formalCacheKey, formalCacheScope, formalDataReloadKey, formalOnly, isMerchantAppointmentStatusMode, period.endDate, period.startDate]);
 
   useEffect(() => {
     if (!formalOnly) {

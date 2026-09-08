@@ -34,6 +34,7 @@ describe("availabilityListQuerySchema", () => {
 describe("bookingCreateBodySchema", () => {
   it("keeps store bookings server-authoritative for service location", () => {
     const parsed = bookingCreateBodySchema.parse({
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 2,
       fulfillmentMode: "store",
@@ -43,6 +44,7 @@ describe("bookingCreateBodySchema", () => {
     expect(parsed).not.toHaveProperty("serviceLocation");
     expect(
       bookingCreateBodySchema.safeParse({
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 2,
         fulfillmentMode: "store",
@@ -54,6 +56,7 @@ describe("bookingCreateBodySchema", () => {
 
   it("requires a verified Japanese administrative pair for home bookings", () => {
     const parsed = bookingCreateBodySchema.parse({
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 2,
       fulfillmentMode: "home",
@@ -68,6 +71,7 @@ describe("bookingCreateBodySchema", () => {
     ).toBe("13104");
     expect(
       bookingCreateBodySchema.safeParse({
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 2,
         fulfillmentMode: "home",
@@ -76,6 +80,7 @@ describe("bookingCreateBodySchema", () => {
     ).toBe(false);
     expect(
       bookingCreateBodySchema.safeParse({
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 2,
         fulfillmentMode: "home",
@@ -83,6 +88,18 @@ describe("bookingCreateBodySchema", () => {
         serviceLocation: { countryCode: "JP", admin1Code: "1", admin2Code: "1310" }
       }).success
     ).toBe(false);
+  });
+
+  it("requires a non-negative integer price confirmation", () => {
+    const base = {
+      expectedPriceAmountJpy: 8_800,
+      serviceId: 1,
+      scheduleSlotId: 2,
+      fulfillmentMode: "store"
+    };
+    expect(bookingCreateBodySchema.parse(base)).toMatchObject({ expectedPriceAmountJpy: 8_800 });
+    expect(bookingCreateBodySchema.safeParse({ ...base, expectedPriceAmountJpy: undefined }).success).toBe(false);
+    expect(bookingCreateBodySchema.safeParse({ ...base, expectedPriceAmountJpy: 8_800.5 }).success).toBe(false);
   });
 });
 

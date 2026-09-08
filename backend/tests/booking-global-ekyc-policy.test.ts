@@ -62,8 +62,8 @@ describe("booking global eKYC policy", () => {
       const state = fixture();
       const input =
         fulfillmentMode === "home"
-          ? { scheduleSlotId: 11, fulfillmentMode: "home" as const, ...homeTravelInput }
-          : { scheduleSlotId: 11, fulfillmentMode: "store" as const };
+          ? { expectedPriceAmountJpy: 8_800, scheduleSlotId: 11, fulfillmentMode: "home" as const, ...homeTravelInput }
+          : { expectedPriceAmountJpy: 8_800, scheduleSlotId: 11, fulfillmentMode: "store" as const };
       await state.service.createBooking(actor, input);
       expect(state.enforcement.assertServiceEkyc).toHaveBeenCalledWith(
         41,
@@ -78,6 +78,7 @@ describe("booking global eKYC policy", () => {
     const state = fixture(true);
     await expect(
       state.service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         scheduleSlotId: 11,
         fulfillmentMode: "home",
         ...homeTravelInput

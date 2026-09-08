@@ -241,6 +241,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"
@@ -292,6 +293,7 @@ describe("BookingService state machine", () => {
     );
     await expect(
       projectionFailureService.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"
@@ -331,6 +333,7 @@ describe("BookingService state machine", () => {
     );
     await expect(
       publishFailureService.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"
@@ -424,6 +427,7 @@ describe("BookingService state machine", () => {
     );
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 11,
       fulfillmentMode: "store"
@@ -666,6 +670,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"
@@ -673,6 +678,29 @@ describe("BookingService state machine", () => {
     ).rejects.toMatchObject({
       code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
       message: "error.booking.slot_unavailable"
+    });
+  });
+
+  it("rejects a stale displayed price and returns the current authoritative amount", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.createBooking.mockResolvedValue({
+      outcome: "price_changed",
+      currentPriceAmountJpy: 9_800
+    });
+    const service = new BookingService(repository);
+
+    await expect(
+      service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.BOOKING_PRICE_CHANGED,
+      message: "error.booking.price_changed",
+      statusCode: 409,
+      data: { currentPriceAmountJpy: 9_800 }
     });
   });
 
@@ -723,6 +751,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"
@@ -750,6 +779,7 @@ describe("BookingService state machine", () => {
     const service = new BookingService(repository);
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 12_000,
       technicianServiceId: 21,
       scheduleSlotId: 11,
       fulfillmentMode: "store"
@@ -772,6 +802,7 @@ describe("BookingService state machine", () => {
     const service = new BookingService(repository);
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       orderType: "request",
       serviceId: 1,
       scheduleSlotId: 11,
@@ -829,6 +860,7 @@ describe("BookingService state machine", () => {
     );
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 11,
       fulfillmentMode: "store",
@@ -894,6 +926,7 @@ describe("BookingService state machine", () => {
     );
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 11,
       fulfillmentMode: "store"
@@ -1358,6 +1391,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
 import type { BookingScheduleSlot } from "../../features/booking/api";
 import type { Customer, Store, Technician } from "../../types/domain";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedUserCalendar } from "./UnifiedUserCalendar";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -56,6 +57,10 @@ vi.mock("../../state/technicianScheduleStore", () => ({
 
 vi.mock("../../features/dispatch-center/store", () => ({
   useDispatchCenterStore: () => ({ arrangements: [] })
+}));
+
+vi.mock("../../lib/persistentCacheScope", () => ({
+  getAuthenticatedPersistentCacheScope: () => "account:7"
 }));
 
 vi.mock("../../features/im/store", () => ({
@@ -126,7 +131,8 @@ let container: HTMLDivElement;
 let root: Root;
 
 describe("UnifiedUserCalendar formal-only mode", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await persistentResourceCache.clearScope("account:7");
     vi.clearAllMocks();
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
@@ -330,5 +336,37 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(query.to.getTime() - query.from.getTime()).toBeLessThanOrEqual(2 * 24 * 60 * 60 * 1000);
     expect(container.textContent).toContain("搜索「山崎」");
     expect(container.textContent).toContain("00:00");
+  });
+
+  it("restores a cached formal schedule immediately after route remount", async () => {
+    testState.listScheduleSlots.mockResolvedValue({
+      list: [{
+        id: 1001,
+        startsAt: `${todayKey()}T10:00:00`,
+        endsAt: `${todayKey()}T11:00:00`,
+        status: "available",
+        serviceName: "缓存排班",
+        technicianProfileId: 48
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+    const view = (
+      <MemoryRouter>
+        <I18nProvider>
+          <UnifiedUserCalendar currentTechnician={technicianFixture} formalOnly scope="technician" />
+        </I18nProvider>
+      </MemoryRouter>
+    );
+    await act(async () => root.render(view));
+    await waitFor(() => expect(container.textContent).toContain("缓存排班"));
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => root.render(view));
+
+    expect(container.textContent).toContain("缓存排班");
+    expect(testState.listScheduleSlots).toHaveBeenCalledTimes(1);
   });
 });

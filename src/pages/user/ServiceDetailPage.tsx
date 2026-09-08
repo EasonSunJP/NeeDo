@@ -122,7 +122,8 @@ function ServiceDetailContent() {
   const apiId = coreReadIdFromRoute(id, { allowUuid: true });
   const serviceQuery = useCoreReadQuery(
     () => (apiId ? coreReadApi.getServiceDetail(apiId) : null),
-    [apiId]
+    [apiId],
+    { enabled: Boolean(apiId), key: `core:service:${apiId ?? "invalid"}` }
   );
   const service = useMemo(
     () => (serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : null),

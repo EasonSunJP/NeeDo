@@ -119,6 +119,7 @@ export const availabilityListQuerySchema = z
   });
 
 const bookingBaseSchema = z.object({
+  expectedPriceAmountJpy: z.coerce.number().int().nonnegative(),
   serviceId: z.coerce.number().int().positive().optional(),
   technicianServiceId: z.coerce.number().int().positive().optional(),
   exchangeIntelligencePostId: z.coerce.number().int().positive().optional(),

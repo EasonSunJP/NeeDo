@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import type { Language } from "../../i18n/translations";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
 import {
   getImOpenedMediaCacheService,
@@ -360,8 +361,74 @@ type ScopedStoreBackend = {
   subscribeUpdates: (onUpdate: (update: ImStoreUpdate) => void) => () => void;
 };
 
+type CachedImState = Pick<
+  ImSnapshot,
+  | "config"
+  | "contacts"
+  | "conversations"
+  | "currentUserId"
+  | "friendRequests"
+  | "members"
+  | "messagesByConversation"
+  | "organizationContacts"
+  | "paginationByConversation"
+  | "users"
+>;
+
+const maxCachedImConversations = 50;
+const maxCachedImMessagesPerConversation = 200;
+
+export function sanitizeImMessageForPersistentCache(message: ConversationMessage): ConversationMessage | null {
+  if (
+    message.id.startsWith("local-") ||
+    message.status === "sending" ||
+    message.status === "failed"
+  ) {
+    return null;
+  }
+  return { ...message, ext: message.ext ? { ...message.ext } : undefined };
+}
+
+function toCachedImState(snapshot: ImSnapshot): CachedImState {
+  const conversations = sortConversations(snapshot.conversations).slice(0, maxCachedImConversations);
+  const conversationIds = new Set(conversations.map((conversation) => conversation.id));
+  const messagesByConversation = Object.fromEntries(
+    Object.entries(snapshot.messagesByConversation)
+      .filter(([conversationId]) => conversationIds.has(conversationId))
+      .map(([conversationId, messages]) => [
+        conversationId,
+        messages
+          .map(sanitizeImMessageForPersistentCache)
+          .filter((message): message is ConversationMessage => message !== null)
+          .slice(-maxCachedImMessagesPerConversation)
+      ])
+  );
+  const paginationByConversation = Object.fromEntries(
+    Object.entries(snapshot.paginationByConversation)
+      .filter(([conversationId]) => conversationIds.has(conversationId))
+      .map(([conversationId, pagination]) => [
+        conversationId,
+        { ...pagination, loading: false }
+      ])
+  );
+  return {
+    config: snapshot.config,
+    contacts: snapshot.contacts,
+    conversations,
+    currentUserId: snapshot.currentUserId,
+    friendRequests: snapshot.friendRequests,
+    members: snapshot.members.filter((member) => conversationIds.has(member.conversationId)),
+    messagesByConversation,
+    organizationContacts: snapshot.organizationContacts,
+    paginationByConversation,
+    users: snapshot.users
+  };
+}
+
 function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   const { accountId, api, localCache } = backend;
+  const persistentCacheKey = `im:state:${scope}`;
+  const persistentCacheScope = `account:${accountId}`;
   const historyGenerations = new Map<string, number>();
   const listeners = new Set<() => void>();
   let realtimeUnsubscribe: (() => void) | null = null;
@@ -369,12 +436,49 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   let hydrating: Promise<void> | null = null;
   let entityRefresh: Promise<void> | null = null;
   let entityRefreshGeneration = 0;
+  let persistScheduled = false;
   let snapshot = createInitialSnapshot();
   const failedTerminalMediaPurges = new Set<string>();
   const pendingTerminalMediaPurges = new Map<string, PendingTerminalMediaPurge>();
   const tracelessMessageIdsByConversation = new Map<string, Set<string>>();
 
+  function applyCachedState(cached: CachedImState) {
+    snapshot = {
+      ...snapshot,
+      status: "ready",
+      error: undefined,
+      currentUserId: cached.currentUserId,
+      config: cached.config,
+      users: cached.users,
+      usersById: toUserRecord(cached.users),
+      contacts: cached.contacts,
+      organizationContacts: cached.organizationContacts,
+      friendRequests: cached.friendRequests,
+      conversations: sortConversations(applyDraftsToConversations(
+        cached.conversations.map(sanitizeTracelessConversation),
+        snapshot.ui.drafts,
+      )),
+      members: cached.members,
+      messagesByConversation: cached.messagesByConversation,
+      paginationByConversation: cached.paginationByConversation
+    };
+  }
+
+  function schedulePersistentStateWrite() {
+    if (!hydrated || snapshot.status !== "ready" || persistScheduled) return;
+    persistScheduled = true;
+    globalThis.queueMicrotask(() => {
+      persistScheduled = false;
+      void persistentResourceCache.write(
+        persistentCacheScope,
+        persistentCacheKey,
+        toCachedImState(snapshot)
+      ).catch(() => undefined);
+    });
+  }
+
   function emit() {
+    schedulePersistentStateWrite();
     listeners.forEach((listener) => listener());
   }
 
@@ -752,20 +856,40 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       }));
 
       try {
-        const bootstrap = await api.bootstrap();
-        snapshot = {
-          ...snapshot,
-          status: "ready",
-          currentUserId: bootstrap.currentUserId,
-          config: bootstrap.config,
-          users: bootstrap.users,
-          usersById: toUserRecord(bootstrap.users),
-          contacts: bootstrap.contacts,
-          organizationContacts: bootstrap.organizationContacts,
-          friendRequests: bootstrap.friendRequests,
-          conversations: sortConversations(applyDraftsToConversations(bootstrap.conversations, snapshot.ui.drafts)),
-          members: bootstrap.members
+        let pendingRefreshedState: CachedImState | null = null;
+        const loadBootstrapState = async (): Promise<CachedImState> => {
+          const bootstrap = await api.bootstrap();
+          const retained = persistentResourceCache.peek<CachedImState>(
+            persistentCacheScope,
+            persistentCacheKey
+          );
+          return {
+            config: bootstrap.config,
+            contacts: bootstrap.contacts,
+            conversations: bootstrap.conversations.map(sanitizeTracelessConversation),
+            currentUserId: bootstrap.currentUserId,
+            friendRequests: bootstrap.friendRequests,
+            members: bootstrap.members,
+            messagesByConversation: retained?.messagesByConversation ?? snapshot.messagesByConversation,
+            organizationContacts: bootstrap.organizationContacts,
+            paginationByConversation: retained?.paginationByConversation ?? snapshot.paginationByConversation,
+            users: bootstrap.users
+          };
         };
+        const cachedState = await persistentResourceCache.load({
+          key: persistentCacheKey,
+          load: loadBootstrapState,
+          onRefresh: (refreshedState) => {
+            if (!hydrated) {
+              pendingRefreshedState = refreshedState;
+              return;
+            }
+            applyCachedState(refreshedState);
+            emit();
+          },
+          scope: persistentCacheScope
+        });
+        applyCachedState(cachedState);
 
         if (!realtimeUnsubscribe) {
           realtimeUnsubscribe = backend.subscribeUpdates((update) => {
@@ -780,7 +904,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
                 () => {
                   void refreshBootstrap();
                   if (snapshot.activeConversationId === update.conversationId) {
-                    void loadMessages(update.conversationId, { reset: true, limit: 40 });
+                    void loadMessages(update.conversationId, { force: true, reset: true, limit: 40 });
                   }
                 },
               );
@@ -795,7 +919,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
               // After clearing, only server-filtered history may repopulate this conversation.
               if (historyGenerations.has(update.message.conversationId)) {
                 void refreshBootstrap();
-                void loadMessages(update.message.conversationId, { reset: true, limit: 40 });
+                void loadMessages(update.message.conversationId, { force: true, reset: true, limit: 40 });
                 return;
               }
               upsertMessage(update.message);
@@ -824,11 +948,12 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
             void refreshBootstrap();
             if (snapshot.activeConversationId) {
-              void loadMessages(snapshot.activeConversationId, { reset: true, limit: 40 });
+              void loadMessages(snapshot.activeConversationId, { force: true, reset: true, limit: 40 });
             }
           });
         }
 
+        if (pendingRefreshedState) applyCachedState(pendingRefreshedState);
         hydrated = true;
         emit();
       } catch (error) {
@@ -900,6 +1025,14 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   async function loadConversation(conversationId: string) {
     await hydrateStore();
+    const cachedConversation = snapshot.conversations.find((item) => item.id === conversationId);
+    if (
+      cachedConversation &&
+      !cachedConversation.isDeleted &&
+      snapshot.members.some((member) => member.conversationId === conversationId)
+    ) {
+      return cachedConversation;
+    }
     const response = await api.getConversation(conversationId);
     mergeUsers(response.users);
     snapshot = {
@@ -914,11 +1047,14 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response.conversation;
   }
 
-  async function loadMessages(conversationId: string, options?: { reset?: boolean; limit?: number }) {
+  async function loadMessages(conversationId: string, options?: { force?: boolean; reset?: boolean; limit?: number }) {
     await hydrateStore();
     const generation = historyGenerations.get(conversationId) ?? 0;
     const pagination = snapshot.paginationByConversation[conversationId];
 
+    if (options?.reset && pagination?.loaded && !options.force) {
+      return;
+    }
     if (pagination?.loading) {
       return;
     }

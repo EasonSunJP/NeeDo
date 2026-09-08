@@ -30,6 +30,9 @@ describe("Exchange Intelligence booking OpenAPI", () => {
     expect(
       operation.requestBody.content["application/json"].schema.properties
     ).toHaveProperty("exchangeIntelligencePostId");
+    expect(
+      operation.requestBody.content["application/json"].schema.properties
+    ).toHaveProperty("expectedPriceAmountJpy");
     expect(operation.responses["409"].description).toContain("Intelligence");
     expect(document.components.schemas.BookingOrder.required).toContain(
       "exchangeIntelligencePostId"

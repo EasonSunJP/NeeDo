@@ -100,6 +100,7 @@ function persistedCheckoutScheduleSlotId(value: unknown) {
 function describeCheckoutError(error: unknown) {
   if (error instanceof CheckoutSourceError) return error.message;
   if (error instanceof ApiClientError) {
+    if (error.code === 41038) return "价格已更新，请确认最新金额后重新提交";
     if (error.status === 401) return "登录状态已失效，请重新登录";
     if (error.status === 403) return "当前身份没有创建预约的权限";
     if (error.status === 404) return "服务不存在或已停止预约";
@@ -785,6 +786,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           ? { serviceId: catalogRef.id }
           : { technicianServiceId: catalogRef.id }),
         ...(exchangePostId ? { exchangeIntelligencePostId: exchangePostId } : {}),
+        expectedPriceAmountJpy: Number(displayServiceInfo?.priceAmount ?? freshSelectedSlot.priceAmount),
         scheduleSlotId: freshSelectedSlot.id,
         ...fulfillment,
         paymentMethod,
@@ -804,6 +806,9 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       });
     } catch (error) {
       setSubmitError(describeCheckoutError(error));
+      if (error instanceof ApiClientError && error.code === 41038) {
+        setRevision((current) => current + 1);
+      }
     } finally {
       setSubmitting(false);
     }

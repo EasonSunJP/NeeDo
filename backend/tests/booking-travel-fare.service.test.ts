@@ -6,7 +6,7 @@ const actor = {
   currentIdentityScopeType: "user", currentIdentityScopeId: 9
 };
 const address = { countryCode: "JP" as const, postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-2-3" };
-const base = { serviceId: 21, scheduleSlotId: 31, fulfillmentMode: "home" as const, paymentMethod: "onsite" as const, note: "" };
+const base = { expectedPriceAmountJpy: 8_800, serviceId: 21, scheduleSlotId: 31, fulfillmentMode: "home" as const, paymentMethod: "onsite" as const, note: "" };
 const order = { id: 51, orderNo: "46493" };
 const home = { ...base, serviceLocation: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" } };
 

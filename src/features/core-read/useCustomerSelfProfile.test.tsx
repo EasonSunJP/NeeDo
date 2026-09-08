@@ -5,9 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { customerProfileApi, type CustomerSelfProfile } from "./customerProfileApi";
 import { platformMembershipSelfApi, type MyPlatformMembership } from "../platform-membership/api";
 import { getCustomerMembershipIcon } from "../../shared/profile-card/customerMembership";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { useCustomerSelfProfile } from "./useCustomerSelfProfile";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock("../../lib/persistentCacheScope", () => ({
+  getAuthenticatedPersistentCacheScope: () => "account:70"
+}));
 
 const profile: CustomerSelfProfile = {
   id: 7,
@@ -69,7 +74,8 @@ let container: HTMLDivElement;
 let root: Root;
 
 describe("useCustomerSelfProfile", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await persistentResourceCache.clearScope("account:70");
     vi.spyOn(platformMembershipSelfApi, "getMine").mockResolvedValue({ tierCode: "free" } as MyPlatformMembership);
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -125,6 +131,20 @@ describe("useCustomerSelfProfile", () => {
     await act(async () => root.render(<StrictMode><ResourceProbe /></StrictMode>));
     await waitFor(() => expect(container.querySelector('[data-testid="customer"]')?.textContent).toBe(profile.publicId));
 
+    expect(getMine).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the cached profile on route remount without another profile request", async () => {
+    const getMine = vi.spyOn(customerProfileApi, "getMine").mockResolvedValue(profile);
+    await act(async () => root.render(<ResourceProbe />));
+    await waitFor(() => expect(container.querySelector('[data-testid="customer"]')?.textContent).toBe(profile.publicId));
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => root.render(<ResourceProbe />));
+
+    expect(container.querySelector('[data-testid="customer"]')?.textContent).toBe(profile.publicId);
+    expect(container.querySelector('[data-testid="loading"]')?.textContent).toBe("false");
     expect(getMine).toHaveBeenCalledTimes(1);
   });
 
