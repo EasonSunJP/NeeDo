@@ -2182,7 +2182,7 @@ function UserProfileSettingsPage({
       nickname: draft.nickname.trim() || customer.name,
       age: draft.age.trim(),
       height: draft.height.trim(),
-      languages: draft.languages.length ? [...draft.languages] : [...initialDraft.languages],
+      languages: [...draft.languages],
       bio: draft.bio.trim()
     };
 

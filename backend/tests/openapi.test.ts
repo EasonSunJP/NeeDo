@@ -5,6 +5,32 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents shop creator, platform commission, and the protected SaaS detail endpoint", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { schemas: Record<string, { required?: string[]; properties?: Record<string, unknown> }> };
+    };
+    const detail = document.paths["/api/v1/backoffice/shops/{id}/saas-account"]?.get;
+
+    expect(detail).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      "x-permission": "backoffice:merchant-accounts:read",
+      responses: {
+        "200": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object)
+      }
+    });
+    expect(document.components.schemas.ShopBillingCard).toMatchObject({
+      required: expect.arrayContaining(["createdBy", "platformCommissionRatePercent"]),
+      properties: {
+        createdBy: expect.any(Object),
+        platformCommissionRatePercent: { type: "number", minimum: 0, maximum: 100 }
+      }
+    });
+  });
+
   it("documents every authenticated completed-order refund command with strict public contracts", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, Record<string, Record<string, unknown>>>;

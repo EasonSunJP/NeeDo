@@ -53,6 +53,8 @@ const BASELINE_TABLES = [
   "schedule_slots",
   "booking_orders",
   "order_status_histories",
+  "technician_work_events",
+  "technician_work_states",
   "order_financials",
   "wallets",
   "ledger_transactions",
@@ -286,6 +288,7 @@ async function cleanupConcurrentFixture(
     await tx.walletHold.deleteMany({ where: { bookingOrderId: fixture.orderId } });
     await tx.feeCalculationLog.deleteMany({ where: { bookingOrderId: fixture.orderId } });
     await tx.orderStatusHistory.deleteMany({ where: { bookingOrderId: fixture.orderId } });
+    await tx.technicianWorkEvent.deleteMany({ where: { orderId: fixture.orderId } });
     await tx.orderFinancial.deleteMany({ where: { bookingOrderId: fixture.orderId } });
     await tx.bookingOrder.deleteMany({ where: { id: fixture.orderId } });
     if (ledgerTransactionIds.length > 0) {
@@ -298,6 +301,9 @@ async function cleanupConcurrentFixture(
     await tx.wallet.deleteMany({ where: { id: fixture.walletId } });
     await tx.scheduleSlot.deleteMany({ where: { id: fixture.scheduleSlotId } });
     await tx.service.deleteMany({ where: { id: fixture.serviceId } });
+    await tx.technicianWorkState.deleteMany({
+      where: { technicianProfileId: fixture.technicianProfileId }
+    });
     await tx.technicianProfile.deleteMany({ where: { id: fixture.technicianProfileId } });
     await tx.customerProfile.deleteMany({ where: { id: fixture.customerProfileId } });
     await tx.shop.deleteMany({ where: { id: fixture.shopId } });
@@ -532,7 +538,14 @@ async function runConcurrentCheckoutCheck(): Promise<void> {
     if (fixture) await cleanupConcurrentFixture(primary, fixture);
     const baselineAfter = await captureExternalBaseline(primary);
     if (serializeBaseline(baselineAfter) !== serializeBaseline(baselineBefore)) {
-      cleanupFailure = new Error("External database baseline changed after concurrency cleanup");
+      const changedKeys = Array.from(
+        new Set([...Object.keys(baselineBefore), ...Object.keys(baselineAfter)])
+      ).filter(
+        (key) => serializeBaseline(baselineBefore[key]) !== serializeBaseline(baselineAfter[key])
+      );
+      cleanupFailure = new Error(
+        `External database baseline changed after concurrency cleanup: ${changedKeys.join(", ")}`
+      );
     }
   } catch (error) {
     cleanupFailure = error;

@@ -4,6 +4,8 @@
 
 分组成员、后台账号 LOG 与动态插页的接口及本地验证记录见 [Step 12 抽屉改进](docs/superpowers/plans/2026-09-07-operations-member-create.md)。
 
+正式运营发布时间线、手动维护、日期搜索和审计规则见 [运营发布时间线](docs/operations-release-timeline.md)。
+
 ## Run
 
 ```bash

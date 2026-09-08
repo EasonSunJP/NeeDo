@@ -64,6 +64,7 @@ const fixture = (permissions: string[]) => {
   const row = {
     id: 11,
     userId: 7,
+    userPublicId: "u0000000007",
     status: "submitted",
     version: 1,
     profileEncrypted: cipher.seal(JSON.stringify(profile)),

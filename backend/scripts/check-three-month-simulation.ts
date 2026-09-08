@@ -30,6 +30,18 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
   }
 };
 
+const getRequiredId = <Key, Value>(
+  ids: ReadonlyMap<Key, Value>,
+  key: Key,
+  entity: string
+): Value => {
+  const value = ids.get(key);
+  if (value === undefined) {
+    throw new Error(`${entity} id is missing for ${String(key)}.`);
+  }
+  return value;
+};
+
 const readJsonRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -815,6 +827,92 @@ const main = async (): Promise<void> => {
       `expected 12 focused customer contacts, found ${focusedCustomerContacts.length}`
     );
 
+    const fixedRealtimeAccounts = await prisma.user.findMany({
+      where: {
+        email: {
+          in: ["customer@example.com", "technician@example.com", "merchant@example.com"]
+        },
+        isActive: true,
+        deletedAt: null
+      },
+      select: { id: true, email: true }
+    });
+    assert(fixedRealtimeAccounts.length === 3, "fixed realtime test accounts are missing");
+    const fixedRealtimeUserIdByEmail = new Map(
+      fixedRealtimeAccounts.map((account) => [account.email, account.id])
+    );
+    const fixedCustomerUserId = getRequiredId(
+      fixedRealtimeUserIdByEmail,
+      "customer@example.com",
+      "fixed customer user"
+    );
+    const fixedCounterpartUserIds = [
+      getRequiredId(
+        fixedRealtimeUserIdByEmail,
+        "technician@example.com",
+        "fixed technician user"
+      ),
+      getRequiredId(
+        fixedRealtimeUserIdByEmail,
+        "merchant@example.com",
+        "fixed merchant user"
+      )
+    ];
+    const fixedRealtimeContacts = await prisma.contact.count({
+      where: {
+        deletedAt: null,
+        OR: fixedCounterpartUserIds.flatMap((counterpartUserId) => [
+          { ownerUserId: fixedCustomerUserId, contactUserId: counterpartUserId },
+          { ownerUserId: counterpartUserId, contactUserId: fixedCustomerUserId }
+        ])
+      }
+    });
+    assert(fixedRealtimeContacts === 4, `expected 4 fixed realtime contacts, found ${fixedRealtimeContacts}`);
+    const fixedRealtimeConversations = await prisma.conversation.findMany({
+      where: {
+        deletedAt: null,
+        AND: [
+          { participants: { some: { userId: fixedCustomerUserId, deletedAt: null } } },
+          { participants: { some: { userId: { in: fixedCounterpartUserIds }, deletedAt: null } } }
+        ]
+      },
+      select: { id: true }
+    });
+    assert(
+      fixedRealtimeConversations.length === 2,
+      `expected 2 fixed realtime conversations, found ${fixedRealtimeConversations.length}`
+    );
+    const fixedRealtimeMessages = await prisma.message.count({
+      where: {
+        conversationId: { in: fixedRealtimeConversations.map((conversation) => conversation.id) },
+        deletedAt: null
+      }
+    });
+    assert(fixedRealtimeMessages >= 8, `expected at least 8 fixed realtime messages, found ${fixedRealtimeMessages}`);
+    const experienceEligibleUsers = await prisma.user.count({
+      where: {
+        isTestAccount: true,
+        isActive: true,
+        deletedAt: null,
+        customerProfile: { is: { deletedAt: null } }
+      }
+    });
+    const activeExperienceAccounts = await prisma.userExperienceAccount.count({
+      where: {
+        deletedAt: null,
+        user: {
+          isTestAccount: true,
+          isActive: true,
+          deletedAt: null,
+          customerProfile: { is: { deletedAt: null } }
+        }
+      }
+    });
+    assert(
+      activeExperienceAccounts === experienceEligibleUsers,
+      `expected ${experienceEligibleUsers} active test experience accounts, found ${activeExperienceAccounts}`
+    );
+
     const lifeDanceStaffMessages = simulationMessages.filter((message) => {
       const metadata = readJsonRecord(message.metadata);
       return metadata?.purpose === "staff_operations";
@@ -1350,6 +1448,11 @@ const main = async (): Promise<void> => {
           focusedCustomerConversations: focusedCustomerConversations.length,
           focusedCustomerMessages: focusedCustomerMessages.length,
           focusedCustomerContacts: focusedCustomerContacts.length,
+          fixedRealtimeContacts,
+          fixedRealtimeConversations: fixedRealtimeConversations.length,
+          fixedRealtimeMessages,
+          experienceEligibleUsers,
+          activeExperienceAccounts,
           organizationDirectory: organizationDirectory.total,
           staffOperations,
           status: "ok"

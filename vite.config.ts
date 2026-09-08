@@ -325,9 +325,11 @@ export default defineConfig(({ command, mode }) => {
     test: {
       exclude: [
         "backend/**",
+        "deploy/staging/release-publication-contract.test.mjs",
         "dist/**",
         "node_modules/**",
         "**/node_modules/**",
+        "scripts/release-notes.test.mjs",
         ".codex-*/**",
         ".worktrees/**",
         "worktrees/**"

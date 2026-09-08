@@ -76,4 +76,4 @@
 - [x] Add a failing test requiring a wide logical viewBox and `preserveAspectRatio="none"` only on chart geometry, with labels rendered in a non-stretched HTML axis.
 - [x] Expand plot geometry to the available width while keeping dates, legend text, and numbers as normal HTML/SVG text with unchanged proportions.
 - [x] Run focused frontend and backend tests, then lint, typecheck/build, and `git diff --check`.
-- [ ] Commit the complete batch, merge it into local main without disturbing unrelated dirty worktrees, remove this completed worktree and branch, and confirm no push or deployment occurred.
+- [x] Commit the complete batch, merge it into local main without disturbing unrelated dirty worktrees, remove this completed worktree and branch, and confirm no push or deployment occurred.

@@ -44,3 +44,11 @@ VITE_LEGACY_AUTHORIZATION='' VITE_LEGACY_AUTH_BASE_URL='' npm run build
 - 抽屉新增“打开该店铺后台”。集团详情使用当前选择的旗下店铺，独立店铺使用自身 ID；新标签页进入现有只读代看，前端阻止非 GET 请求，后端再次按预览店铺 ID 校验并拒绝所有写入。
 - Chrome 在隔离的本地运营和商户 API 代理上验收：新标签页保留运营页，Roppongi Recovery Lounge 的正式数据大盘加载成功；只读提示和写入拦截提示可见。另以 `390×844` 验证列表自动转为字段卡片，没有出现已排除字段。
 - 本地接口实测向只读预览发送店铺 PATCH 返回 `40301 / error.merchant_preview.read_only`，未发生写入。
+
+### 正式字段和单店详情补充
+
+- `shops.created_by_id` 记录新增店铺的实际操作人；运营新增写当前运营用户，商家申请审核通过写审核人。历史店铺不做猜测性回填，空值显示“未记录”。
+- SaaS 列表和详情接口正式返回 `createdBy` 与 `platformCommissionRatePercent`。当前产品规则为 `0%`，数值由后端合同返回，前端不再硬编码。
+- 新增 `GET /api/v1/backoffice/shops/:id/saas-account`。单店详情使用该接口，集团使用原集团详情接口；均要求 `backoffice:merchant-accounts:read` 并写读取审计。
+- 抽屉先显示列表快照，同时刷新正式详情；失败时保留内容并提供重试，快速切换时旧请求不会覆盖当前店铺。
+- 本地 `needo_dev` 已通过标准 Prisma 流程应用 `20260908193000_shop_creator_contract`；物理字段、索引、外键和 migration 记录核对通过。隔离运营 API 的正式登录、账单列表与单店 SaaS 详情均返回 200，字段合同一致，详情读取审计已落库。

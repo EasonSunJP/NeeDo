@@ -1825,6 +1825,7 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
 
     expect(fixture.backofficeRepository.createShop).toHaveBeenCalledWith(
       expect.objectContaining({
+        createdById: 1,
         verifiedById: 1,
         serviceLocationAudit: expect.objectContaining({
           actorId: 1,

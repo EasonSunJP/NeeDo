@@ -21,9 +21,12 @@ const profile = {
 };
 
 const mocks = vi.hoisted(() => ({
+  copyTextToClipboard: vi.fn(),
   getMine: vi.fn(),
   updateMine: vi.fn()
 }));
+
+vi.mock("../../lib/share", () => ({ copyTextToClipboard: mocks.copyTextToClipboard }));
 
 vi.mock("../../features/core-read/merchantProfileApi", () => ({
   merchantProfileApi: {
@@ -41,6 +44,7 @@ describe("MerchantIdentityInfoCard", () => {
   let root: Root;
 
   beforeEach(() => {
+    mocks.copyTextToClipboard.mockReset().mockResolvedValue(true);
     mocks.getMine.mockReset().mockResolvedValue(profile);
     mocks.updateMine.mockReset().mockResolvedValue(profile);
     container = document.createElement("div");
@@ -78,5 +82,15 @@ describe("MerchantIdentityInfoCard", () => {
     await act(async () => save?.click());
 
     await waitFor(() => expect(mocks.updateMine).toHaveBeenCalledWith(expect.objectContaining({ languages: [] })));
+  });
+
+  it("copies the formal merchant ID through the PWA-safe clipboard helper", async () => {
+    await act(async () => root.render(<MerchantIdentityInfoCard />));
+    await waitFor(() => expect(container.textContent).toContain("ID b0000000109"));
+
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="复制 NeeDo ID"]')?.click());
+
+    expect(mocks.copyTextToClipboard).toHaveBeenCalledWith("b0000000109");
+    await waitFor(() => expect(container.textContent).toContain("已复制"));
   });
 });

@@ -48,8 +48,9 @@ describe("booking expiry rollback checker contract", () => {
     const disconnectClients = Array.from({ length: 4 }, () => jest.fn(async () => undefined));
     let continuedAfterLock = false;
 
-    await expect(
-      checker.runBookingExpiryRollbackLifecycle({
+    let observedError: unknown;
+    try {
+      await checker.runBookingExpiryRollbackLifecycle({
         execute: async () => {
           await checker.awaitOldSlotLockOrThrow!(
             new Promise<void>(() => undefined),
@@ -60,8 +61,12 @@ describe("booking expiry rollback checker contract", () => {
         settle,
         cleanupMarker: markerCleanup,
         disconnectClients
-      })
-    ).rejects.toBe(lockFailure);
+      });
+    } catch (error) {
+      observedError = error;
+    }
+
+    expect(observedError).toBe(lockFailure);
 
     expect(continuedAfterLock).toBe(false);
     expect(settle).toHaveBeenCalledTimes(1);

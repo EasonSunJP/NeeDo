@@ -46,11 +46,11 @@ const navSections: AdminNavSection[] = [
     title: "运营",
     items: [
       { label: "数据大盘", to: "/admin", icon: "◆", permission: "menu:dashboard" },
-      { label: "运营时间线", to: "/admin/operation-timeline", icon: "线", children: ["搜索筛选", "城市跟进", "异常观察"] },
       { label: "数据中心", to: "/admin/data", icon: "▥" },
       { label: "动态管理", to: "/admin/data?module=moments", icon: "◎" },
       { label: "用户端首页轮播图", to: "/admin/carousel", icon: "播", permission: "page:backoffice-user-home-carousel", children: ["五语言", "草稿与发布", "版本回滚"] },
-      { label: "官方通知", to: "/admin/notifications", icon: "通", permission: "page:backoffice-official-notice", children: ["通知列表", "定时发送", "投递回执"] }
+      { label: "官方通知", to: "/admin/notifications", icon: "通", permission: "page:backoffice-official-notice", children: ["通知列表", "定时发送", "投递回执"] },
+      { label: "运营时间线", to: "/admin/operation-timeline", icon: "线", permission: "backoffice:dashboard:read" }
     ]
   },
   {

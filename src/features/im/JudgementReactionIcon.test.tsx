@@ -47,6 +47,10 @@ describe("JudgementReactionIcon", () => {
     expect(image?.getAttribute("src")).toMatch(/(?:\.svg|^data:image\/svg\+xml)/);
     expect(image?.getAttribute("alt")).toBe(value);
     expect(image?.className).toContain("max-h-[26px]");
+    expect(image?.getAttribute("draggable")).toBe("false");
+    expect(image?.getAttribute("data-im-judgement-icon")).toBe("true");
+    expect(image?.className).toContain("pointer-events-none");
+    expect(image?.className).toContain("[-webkit-touch-callout:none]");
     expect(container.innerHTML).not.toContain("bg-black");
 
     await act(async () => root.unmount());

@@ -902,9 +902,11 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     rateSnapshot.ndpUnits === 1 && rateSnapshot.jpyUnits === 1 &&
     rateSnapshot.effectiveFrom === fixture.rateEffectiveFrom.toISOString(),
   "NDP exchange-rate snapshot is not exact");
-  assert(calculationSnapshot.formula === "base_plus_accepted_add_ons_minus_discount" &&
+  assert(calculationSnapshot.formula === "base_plus_accepted_add_ons_plus_travel_fare_minus_discount" &&
     calculationSnapshot.baseAmountJpy === 8_800 && calculationSnapshot.addOnAmountJpy === 2_200 &&
+    calculationSnapshot.travelFareAmountJpy === 0 &&
     calculationSnapshot.discountAmountJpy === 0 && calculationSnapshot.checkoutAmountJpy === 11_000 &&
+    calculationSnapshot.rateFormula === "ceil(jpy_times_ndp_units_divided_by_jpy_units)" &&
     Array.isArray(calculationSnapshot.acceptedAddOnIds) &&
     calculationSnapshot.acceptedAddOnIds.length === 1 &&
     calculationSnapshot.acceptedAddOnIds[0] === addOnId,
@@ -1027,7 +1029,12 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
           orderAddOnId: null, orderCheckoutId: persistedCheckout.id,
           eventType: "CHECKOUT_CREATED", actorUserId: fixture.customer.id,
           idempotencyKey: `checkout:${ndpOrder.id}:created`, reason: null,
-          metadata: { checkoutAmountJpy: 11_000, payableNdp: 11_000, rateRuleId: fixture.rateId }
+          metadata: {
+            checkoutAmountJpy: 11_000,
+            travelFareAmountJpy: 0,
+            payableNdp: 11_000,
+            rateRuleId: fixture.rateId
+          }
         },
         {
           bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
@@ -1300,7 +1307,12 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
           orderAddOnId: null, orderCheckoutId: cashCheckout.id,
           eventType: "CHECKOUT_CREATED", actorUserId: fixture.customer.id,
           idempotencyKey: `checkout:${cashOrder.id}:created`, reason: null,
-          metadata: { checkoutAmountJpy: 11_000, payableNdp: 11_000, rateRuleId: fixture.rateId }
+          metadata: {
+            checkoutAmountJpy: 11_000,
+            travelFareAmountJpy: 0,
+            payableNdp: 11_000,
+            rateRuleId: fixture.rateId
+          }
         },
         {
           bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,

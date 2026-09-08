@@ -25,17 +25,30 @@ const presentationStyle = {
 
 export function MerchantAccountDetailDrawer({
   card,
+  error = "",
+  loading = false,
   onClose,
   onOpenMerchantAdminPreview,
+  onRetry,
 }: {
   card: MerchantAccountCard | null;
+  error?: string;
+  loading?: boolean;
   onClose: () => void;
   onOpenMerchantAdminPreview?: (card: MerchantAccountCard, selectedShopId?: number) => void;
+  onRetry?: () => void;
 }) {
   const { language } = useI18n();
   const t = (source: string) => translateMerchantBillingText(source, language);
   return (
     <Drawer open={Boolean(card)} title={t("商家 / 门店详情")} onClose={onClose}>
+      {loading ? <p className="mb-3 text-sm font-bold text-ink/55" role="status">{t("正在刷新详情…")}</p> : null}
+      {error ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-coral/30 bg-coral/5 p-3 text-sm font-bold text-coral" role="alert">
+          <span>{t("详情读取失败")}：{error}</span>
+          {onRetry ? <Button onClick={onRetry} size="sm" variant="secondary">{t("重新读取")}</Button> : null}
+        </div>
+      ) : null}
       {card ? <MerchantAccountDetailContent key={`${card.type}-${card.id}`} card={card} onOpenMerchantAdminPreview={onOpenMerchantAdminPreview} /> : null}
     </Drawer>
   );

@@ -20,6 +20,7 @@ import { LedgerService } from "../src/services/ledger.service";
 
 const backendRoot = resolve(__dirname, "..");
 const scriptPath = resolve(backendRoot, "scripts/check-order-fulfillment-checkout-flow.ts");
+const concurrencyScriptPath = resolve(backendRoot, "scripts/check-order-checkout-concurrency.ts");
 
 describe("rollback-only formal order fulfillment flow checker", () => {
   it("is wired as the explicit package command", () => {
@@ -45,6 +46,15 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     expect(source.match(/runExpectedFailureRollbackTransaction\(/g)).toHaveLength(1);
     expect(source).not.toContain("needoId: `${marker}-customer`");
     expect(source).not.toContain("needoId: `${marker}-technician`");
+  });
+
+  it("tracks and removes technician work events created by the concurrency fixture", () => {
+    const source = readFileSync(concurrencyScriptPath, "utf8");
+
+    expect(source).toContain('"technician_work_events"');
+    expect(source).toContain('"technician_work_states"');
+    expect(source).toContain("tx.technicianWorkEvent.deleteMany");
+    expect(source).toContain("tx.technicianWorkState.deleteMany");
   });
 
   it("keeps technician review fixtures inside the formal special-tag plus one-custom-tag contract", () => {

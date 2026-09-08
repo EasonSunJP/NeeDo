@@ -33,7 +33,8 @@ describe("agent commission and operating cost schema contract", () => {
     }
     expect(schema).toContain('@relation("PlatformPartnerProfileUser"');
     expect(schema).toContain('@relation("PlatformPartnerProfileMarker"');
-    expect(schema).toContain("activePartnerKey");
+    expect(schema).not.toContain("activePartnerKey");
+    expect(schema).toContain("platform_partner_profiles_validity_idx");
     expect(schema).toContain("activeShopKey");
     expect(schema).toContain("@@unique([agentProfileId, version]");
   });

@@ -29,6 +29,14 @@ import {
 
 export type BillingSubjectType = "merchant_account" | "shop";
 export type PaymentProviderType = "manual" | "stripe";
+export const SHOP_PLATFORM_COMMISSION_RATE_PERCENT = 0;
+
+export interface ShopCreatorPayload {
+  userId: number;
+  needoId: string;
+  displayName: string;
+  email: string;
+}
 
 export interface SaasFreePeriodRecord {
   id: number;
@@ -74,6 +82,7 @@ export interface ShopAccountRecord {
   phone: string | null;
   status: string;
   ownerEmail: string | null;
+  createdBy: ShopCreatorPayload | null;
   coverUrl: string | null;
   ratingAverage: number;
   reviewCount: number;
@@ -164,6 +173,8 @@ export interface ShopBillingCardPayload {
   phone: string | null;
   status: string;
   ownerEmail: string | null;
+  createdBy: ShopCreatorPayload | null;
+  platformCommissionRatePercent: number;
   coverUrl: string | null;
   ratingAverage: number;
   reviewCount: number;
@@ -290,6 +301,7 @@ export interface MerchantSaasBillingRepositoryPort {
     input: MerchantAccountListQuery
   ) => Promise<PaginatedResponse<MerchantAccountListRecord>>;
   getMerchantAccount: (id: number) => Promise<MerchantAccountAggregateRecord | null>;
+  getShopAccount: (id: number) => Promise<ShopAccountRecord | null>;
   createMerchantAccount: (
     input: CreateMerchantAccountRepositoryInput
   ) => Promise<MerchantAccountAggregateRecord>;
@@ -448,6 +460,33 @@ export class MerchantSaasBillingService {
 
     await this.record(actor, context, "backoffice.merchant_accounts.read", "merchant_account", id);
     return this.mapMerchant(record);
+  }
+
+  public async getShopAccount(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    id: number
+  ): Promise<ShopBillingCardPayload> {
+    let record = await this.repository.getShopAccount(id);
+    if (!record) {
+      throw this.notFound("error.shop.not_found");
+    }
+
+    const transitions = await this.repository.reconcileShopBillingProfiles({
+      shopIds: [id],
+      now: this.now(),
+      actorUserId: actor.userId
+    });
+    if (transitions.length > 0) {
+      record = await this.repository.getShopAccount(id);
+      if (!record) {
+        throw this.notFound("error.shop.not_found");
+      }
+      await this.recordReconciliationTransitions(actor, context, transitions);
+    }
+
+    await this.record(actor, context, "backoffice.shop_saas_account.read", "shop", id);
+    return this.mapShop(record);
   }
 
   public async createMerchantAccount(
@@ -987,6 +1026,8 @@ export class MerchantSaasBillingService {
       phone: record.phone,
       status: record.status,
       ownerEmail: record.ownerEmail,
+      createdBy: record.createdBy,
+      platformCommissionRatePercent: SHOP_PLATFORM_COMMISSION_RATE_PERCENT,
       coverUrl: record.coverUrl,
       ratingAverage: record.ratingAverage,
       reviewCount: record.reviewCount,

@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
@@ -7,7 +7,7 @@ import {
   type BackofficeShopCreateInput,
   type BackofficeShopPayload
 } from "../../api/backofficeRealData";
-import { merchantSaasBillingApi } from "../../api/merchantSaasBilling";
+import { merchantSaasBillingApi, refreshMerchantAccountCard } from "../../api/merchantSaasBilling";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { MerchantAccountDetailDrawer } from "../../components/admin/MerchantAccountDetailDrawer";
@@ -71,6 +71,9 @@ export function MerchantsPage({ embeddedDetail }: {
   const [billingEditorCard, setBillingEditorCard] = useState<MerchantAccountCard | null>(null);
   const [businessSettingsCard, setBusinessSettingsCard] = useState<MerchantAccountCard | null>(null);
   const [billingDetailCard, setBillingDetailCard] = useState<MerchantAccountCard | null>(null);
+  const [billingDetailLoading, setBillingDetailLoading] = useState(false);
+  const [billingDetailError, setBillingDetailError] = useState("");
+  const billingDetailRequestRef = useRef(0);
   const [selectedShop, setSelectedShop] = useState<BackofficeShopPayload | null>(null);
   const [selectedService, setSelectedService] = useState<BackofficeServicePayload | null>(null);
   const [shopForm, setShopForm] = useState(emptyShopForm);
@@ -131,6 +134,34 @@ export function MerchantsPage({ embeddedDetail }: {
     } finally {
       setSaving(false);
     }
+  };
+
+  const refreshBillingDetails = useCallback(async (card: MerchantAccountCard) => {
+    const requestId = ++billingDetailRequestRef.current;
+    setBillingDetailLoading(true);
+    setBillingDetailError("");
+    try {
+      const refreshed = await refreshMerchantAccountCard(card);
+      if (billingDetailRequestRef.current === requestId) setBillingDetailCard(refreshed);
+    } catch (detailError) {
+      if (billingDetailRequestRef.current === requestId) {
+        setBillingDetailError(detailError instanceof Error ? detailError.message : String(detailError));
+      }
+    } finally {
+      if (billingDetailRequestRef.current === requestId) setBillingDetailLoading(false);
+    }
+  }, []);
+
+  const openBillingDetails = useCallback((card: MerchantAccountCard) => {
+    setBillingDetailCard(card);
+    void refreshBillingDetails(card);
+  }, [refreshBillingDetails]);
+
+  const closeBillingDetails = () => {
+    billingDetailRequestRef.current += 1;
+    setBillingDetailCard(null);
+    setBillingDetailLoading(false);
+    setBillingDetailError("");
   };
 
   const openShop = (shop: BackofficeShopPayload) => {
@@ -261,7 +292,7 @@ export function MerchantsPage({ embeddedDetail }: {
             onEditBilling={setBillingEditorCard}
             onOpenBusinessSettings={setBusinessSettingsCard}
             onOpenMerchantAdminPreview={openMerchantAdminPreview}
-            onViewDetails={setBillingDetailCard}
+            onViewDetails={openBillingDetails}
           />
         ) : null}
 
@@ -297,7 +328,14 @@ export function MerchantsPage({ embeddedDetail }: {
         onClose={() => setBusinessSettingsCard(null)}
       />
 
-      <MerchantAccountDetailDrawer card={billingDetailCard} onClose={() => setBillingDetailCard(null)} onOpenMerchantAdminPreview={openMerchantAdminPreview} />
+      <MerchantAccountDetailDrawer
+        card={billingDetailCard}
+        error={billingDetailError}
+        loading={billingDetailLoading}
+        onClose={closeBillingDetails}
+        onOpenMerchantAdminPreview={openMerchantAdminPreview}
+        onRetry={billingDetailCard ? () => void refreshBillingDetails(billingDetailCard) : undefined}
+      />
 
       <Drawer open={createShopOpen} title="创建店铺与负责人账号" onClose={() => setCreateShopOpen(false)}>
         <form className="space-y-4" onSubmit={createShop}>

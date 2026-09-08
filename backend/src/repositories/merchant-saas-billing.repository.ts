@@ -60,6 +60,7 @@ type InvoiceRow = Prisma.SaasInvoiceGetPayload<{ include: typeof invoiceInclude 
 
 const shopInclude = {
   owner: { select: { email: true } },
+  creator: { select: { id: true, needoId: true, username: true, email: true } },
   mediaAssets: {
     where: { deletedAt: null, isActive: true, usageType: "cover" },
     orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
@@ -168,6 +169,11 @@ export class MerchantSaasBillingRepository implements MerchantSaasBillingReposit
 
     const [hydrated] = await this.hydrateAccounts([merchant], [], this.client);
     return hydrated?.kind === "merchant_group" ? hydrated : null;
+  }
+
+  public async getShopAccount(id: number): Promise<ShopAccountRecord | null> {
+    const [record] = await this.hydrateAccounts([], [id], this.client);
+    return record?.kind === "shop" ? record : null;
   }
 
   public async createMerchantAccount(
@@ -1938,6 +1944,14 @@ export class MerchantSaasBillingRepository implements MerchantSaasBillingReposit
       phone: shop.phone,
       status: shop.status,
       ownerEmail: shop.owner?.email ?? null,
+      createdBy: shop.creator
+        ? {
+            userId: shop.creator.id,
+            needoId: shop.creator.needoId,
+            displayName: shop.creator.username,
+            email: shop.creator.email
+          }
+        : null,
       coverUrl: shop.mediaAssets[0]?.url ?? null,
       ratingAverage: Number(shop.reviewSummary?.ratingAverage?.toString() ?? 0),
       reviewCount: shop.reviewSummary?.reviewCount ?? 0,

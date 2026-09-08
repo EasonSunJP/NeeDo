@@ -806,6 +806,7 @@ export interface BackofficeServicePayload {
 
 export interface BackofficeShopCreateData extends Omit<BackofficeShopCreateBody, "ownerPassword"> {
   ownerPasswordHash: string;
+  createdById: number;
   verifiedById: number;
   serviceLocationAudit?: AuditLogCreateInput;
 }
@@ -1923,6 +1924,7 @@ export class BackofficeService {
       shop = await this.repository.createShop({
         ...input,
         ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS),
+        createdById: actor.userId,
         verifiedById: actor.userId,
         serviceLocationAudit: this.createVerifiedServiceLocationAudit(input, actor, context)
       });

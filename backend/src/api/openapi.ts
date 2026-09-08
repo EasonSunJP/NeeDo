@@ -1,6 +1,7 @@
 import { ekycApplicationOpenApiPaths } from "./ekyc-application.openapi";
 import { accountActivityOpenApiPaths } from "./account-activity.openapi";
 import { operationsMemberOpenApiPaths } from "./operations-member.openapi";
+import { releasePublicationOpenApiPaths } from "./release-publication.openapi";
 import { workStatusOpenApiPaths } from './work-status.openapi';
 import { sosOpenApiPaths } from "./sos.openapi";
 import { Router } from "express";
@@ -6144,6 +6145,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "city",
           "address",
           "status",
+          "createdBy",
+          "platformCommissionRatePercent",
           "technicianCount",
           "billing",
           "createdAt"
@@ -6157,6 +6160,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           phone: { type: ["string", "null"] },
           status: { type: "string" },
           ownerEmail: { type: ["string", "null"], format: "email" },
+          createdBy: {
+            oneOf: [
+              { type: "null" },
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["userId", "needoId", "displayName", "email"],
+                properties: {
+                  userId: { type: "integer", minimum: 1 },
+                  needoId: { type: "string" },
+                  displayName: { type: "string" },
+                  email: { type: "string", format: "email" }
+                }
+              }
+            ]
+          },
+          platformCommissionRatePercent: { type: "number", minimum: 0, maximum: 100 },
           coverUrl: { type: ["string", "null"] },
           ratingAverage: { type: "number" },
           reviewCount: { type: "integer" },
@@ -16272,6 +16292,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    ...releasePublicationOpenApiPaths(config.API_PREFIX),
     ...operationsMemberOpenApiPaths(config.API_PREFIX),
     ...ekycApplicationOpenApiPaths(config.API_PREFIX),
     ...accountActivityOpenApiPaths(config.API_PREFIX),
@@ -18489,6 +18510,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             properties: { deleted: { type: "boolean", enum: [true] } }
           }),
           "409": { description: "A child shop has active orders or no promotable admin" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{id}/saas-account`]: {
+      get: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Standalone or group shop SaaS billing detail",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:merchant-accounts:read",
+        parameters: [idPathParameter()],
+        responses: {
+          "200": jsonDataResponse("Shop SaaS account detail", {
+            $ref: "#/components/schemas/ShopBillingCard"
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Missing merchant account read permission" },
+          "404": { description: "Shop account not found" }
         }
       }
     },

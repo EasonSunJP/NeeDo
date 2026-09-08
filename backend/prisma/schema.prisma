@@ -1218,6 +1218,7 @@ model User {
   userRoles                             UserRole[]
   loginLogs                             LoginLog[]                          @relation("LoginLogUser")
   auditLogs                             AuditLog[]                          @relation("AuditLogActor")
+  releasePublicationRevisions           ReleasePublicationRevision[]       @relation("ReleasePublicationRevisionActor")
   grantedCustomerMemberships            CustomerProfile[]                   @relation("CustomerMembershipGrantedBy")
   createdShopCustomerMemberships        ShopCustomerMembership[]            @relation("ShopMembershipCreatedBy")
   updatedShopCustomerMemberships        ShopCustomerMembership[]            @relation("ShopMembershipUpdatedBy")
@@ -1232,6 +1233,7 @@ model User {
   requestedWalletAdjustments            WalletAdjustmentRequest[]           @relation("WalletAdjustmentRequestedBy")
   reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
   ownedShops                            Shop[]                              @relation("ShopOwner")
+  createdShops                          Shop[]                              @relation("ShopCreatedBy")
   technicianProfile                     TechnicianProfile?
   customerProfile                       CustomerProfile?
   affiliateProfile                      AffiliateProfile?
@@ -1747,6 +1749,7 @@ model Shop {
   id                           Int             @id @default(autoincrement())
   shopNo                       String?         @unique @map("shop_no") @db.Char(10)
   ownerUserId                  Int?            @map("owner_user_id")
+  createdById                  Int?            @map("created_by_id")
   name                         String          @db.VarChar(160)
   description                  String?         @db.Text
   city                         String          @db.VarChar(100)
@@ -1765,6 +1768,7 @@ model Shop {
   deletedAt                    DateTime?       @map("deleted_at")
 
   owner                      User?                                 @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  creator                    User?                                 @relation("ShopCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   pricingModeUpdater         User?                                 @relation("ShopPricingModeUpdatedBy", fields: [pricingModeUpdatedBy], references: [id], onDelete: SetNull)
   services                   Service[]
   technicianServices         TechnicianService[]
@@ -1827,6 +1831,7 @@ model Shop {
   serviceLocation            ShopServiceLocation?
 
   @@index([ownerUserId])
+  @@index([createdById], map: "shops_created_by_id_idx")
   @@index([city])
   @@index([latitude, longitude], map: "shops_coordinates_idx")
   @@index([status])
@@ -8222,4 +8227,47 @@ model EkycApplication {
   @@index([status, createdAt])
   @@index([deletedAt])
   @@map("ekyc_applications")
+}
+
+model ReleasePublication {
+  id               Int       @id @default(autoincrement())
+  deploymentId     String    @unique @map("deployment_id") @db.Char(36)
+  environment      String    @db.VarChar(16)
+  version          String    @db.VarChar(100)
+  sourceRevision   String?   @map("source_revision") @db.Char(40)
+  previousRevision String?   @map("previous_revision") @db.Char(40)
+  kind             String    @db.VarChar(16)
+  changes          Json
+  publishedAt      DateTime  @map("published_at") @db.DateTime(3)
+  payloadHash      String    @map("payload_hash") @db.Char(64)
+  origin           String    @default("deployment") @db.VarChar(16)
+  lockVersion      Int       @default(1) @map("lock_version")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt        DateTime? @map("deleted_at") @db.DateTime(3)
+  revisions        ReleasePublicationRevision[]
+
+  @@index([environment, deletedAt, publishedAt, id])
+  @@map("release_publications")
+}
+
+model ReleasePublicationRevision {
+  id                   Int                @id @default(autoincrement())
+  releasePublicationId Int                @map("release_publication_id")
+  revisionVersion      Int                @map("revision_version")
+  action               String             @db.VarChar(32)
+  reason               String             @db.VarChar(500)
+  beforeSnapshot       Json?              @map("before_snapshot")
+  afterSnapshot        Json               @map("after_snapshot")
+  actorUserId          Int?               @map("actor_user_id")
+  createdAt            DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt            DateTime?          @map("deleted_at") @db.DateTime(3)
+  releasePublication   ReleasePublication @relation(fields: [releasePublicationId], references: [id], onDelete: Restrict, map: "release_pub_revision_release_fkey")
+  actor                User?              @relation("ReleasePublicationRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull, map: "release_pub_revision_actor_fkey")
+
+  @@unique([releasePublicationId, revisionVersion], map: "release_pub_revision_version_key")
+  @@index([releasePublicationId, deletedAt, revisionVersion], map: "release_pub_revision_lookup_idx")
+  @@index([actorUserId], map: "release_pub_revision_actor_idx")
+  @@map("release_publication_revisions")
 }

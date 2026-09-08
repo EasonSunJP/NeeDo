@@ -6,6 +6,15 @@ import type { UserPolicyComplianceDecision } from "../src/domain/user-policy-enf
 import type { AuthUserRecord } from "../src/repositories/auth.repository";
 import { AuthService } from "../src/services/auth.service";
 
+const requireAuthenticatedLogin = (
+  result: Awaited<ReturnType<AuthService["login"]>>
+): Extract<Awaited<ReturnType<AuthService["login"]>>, { status: "authenticated" }> => {
+  if (result.status !== "authenticated") {
+    throw new Error("fixture password login unexpectedly required verification");
+  }
+  return result;
+};
+
 const nowIso = "2026-09-01T10:00:00.000Z";
 const allowedRoutes = [
   "/api/v1/auth/me",
@@ -92,6 +101,11 @@ async function fixture() {
     findUserById: jest.fn(async () => account),
     createVerifiedBaselineCustomer: jest.fn(),
     findVerifiedRegistrationByChallenge: jest.fn(),
+    getSuccessfulLoginEvidence: jest.fn(async () => ({
+      hasAnySuccessfulLogin: true,
+      hasSuccessfulLoginInPeriod: true,
+      hasSuccessfulLoginFromIp: true
+    })),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
     createAuditLog: jest.fn(async () => undefined),
@@ -172,7 +186,9 @@ describe("auth global-policy enforcement", () => {
 
   it("issues a limited existing-user session and exposes only safe compliance data", async () => {
     const { service } = await fixture();
-    const tokens = await service.login("member@example.com", "Abcd@1234", { ip: "127.0.0.1" });
+    const tokens = requireAuthenticatedLogin(
+      await service.login("member@example.com", "Abcd@1234", { ip: "127.0.0.1" })
+    );
 
     await expect(service.authenticateAccessToken(tokens.accessToken)).rejects.toMatchObject({
       code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
@@ -197,9 +213,11 @@ describe("auth global-policy enforcement", () => {
   it("re-evaluates a published policy on the next protected action without revoking refresh", async () => {
     const state = await fixture();
     state.setDecision(compliantDecision());
-    const tokens = await state.service.login("member@example.com", "Abcd@1234", {
-      ip: "127.0.0.1"
-    });
+    const tokens = requireAuthenticatedLogin(
+      await state.service.login("member@example.com", "Abcd@1234", {
+        ip: "127.0.0.1"
+      })
+    );
     await expect(state.service.authenticateAccessToken(tokens.accessToken)).resolves.toMatchObject({
       userId: 41,
       complianceRequirements: []
