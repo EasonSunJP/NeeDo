@@ -211,6 +211,42 @@ describe("production route chunk boundaries", () => {
     );
   });
 
+  it("loads the operations timeline only after entering its protected route", () => {
+    expect(appSource).not.toContain(
+      'import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";',
+    );
+    expect(appSource).toContain(
+      'const OperationTimelinePage = lazy(() => import("./pages/admin/OperationTimelinePage")',
+    );
+    expect(appSource).toContain(
+      'path="/admin/operation-timeline" element={protectPermission("admin", "backoffice:dashboard:read", <Suspense fallback={null}><OperationTimelinePage /></Suspense>)}',
+    );
+  });
+
+  it("loads the carousel editor only after entering its protected route", () => {
+    expect(appSource).not.toContain(
+      'import { CarouselPage } from "./pages/admin/CarouselPage";',
+    );
+    expect(appSource).toContain(
+      'const CarouselPage = lazy(() => import("./pages/admin/CarouselPage")',
+    );
+    expect(appSource).toContain(
+      'path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <Suspense fallback={null}><CarouselPage /></Suspense>)}',
+    );
+  });
+
+  it("loads the operations order workspace only after entering its route", () => {
+    expect(appSource).not.toContain(
+      'import { OrdersAdminPage } from "./pages/admin/OrdersAdminPage";',
+    );
+    expect(appSource).toContain(
+      'const OrdersAdminPage = lazy(() => import("./pages/admin/OrdersAdminPage")',
+    );
+    expect(appSource).toContain(
+      'path="/admin/orders" element={protect("admin", <Suspense fallback={null}><OrdersAdminPage /></Suspense>)}',
+    );
+  });
+
   it("routes the accepted technician schedule index directly to the formal-only page", () => {
     expect(appSource).toContain(
       'path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)}'

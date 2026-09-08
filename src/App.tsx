@@ -20,7 +20,6 @@ import { AdminDocsPage } from "./pages/admin/AdminDocsPage";
 import { AdminDispatchPage } from "./pages/admin/AdminDispatchPage";
 import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
 import { AvatarBadgesPage } from "./pages/admin/AvatarBadgesPage";
-import { CarouselPage } from "./pages/admin/CarouselPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
 import { FieldJobsPage } from "./pages/admin/FieldJobsPage";
 import { FinancePage } from "./pages/admin/FinancePage";
@@ -31,8 +30,6 @@ import { MembershipRewardFeePage } from "./pages/admin/MembershipRewardFeePage";
 import { NdpExchangeRatePage } from "./pages/admin/NdpExchangeRatePage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
-import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";
-import { OrdersAdminPage } from "./pages/admin/OrdersAdminPage";
 import { ReviewsPage } from "./pages/admin/ReviewsPage";
 import { RolesPage } from "./pages/admin/RolesPage";
 import { PermissionsPage } from "./pages/admin/PermissionsPage";
@@ -233,6 +230,9 @@ const MerchantAdminNotificationsPage = lazy(() => import("./pages/merchant-admin
 const EkycReviewPage = lazy(() => import("./features/settings/EkycReviewPage").then((module) => ({ default: module.EkycReviewPage })));
 const MerchantBackofficeApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages").then((module) => ({ default: module.MerchantBackofficeApplicationReviewPage })));
 const OperationsShopApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages").then((module) => ({ default: module.OperationsShopApplicationReviewPage })));
+const OperationTimelinePage = lazy(() => import("./pages/admin/OperationTimelinePage").then((module) => ({ default: module.OperationTimelinePage })));
+const OrdersAdminPage = lazy(() => import("./pages/admin/OrdersAdminPage").then((module) => ({ default: module.OrdersAdminPage })));
+const CarouselPage = lazy(() => import("./pages/admin/CarouselPage").then((module) => ({ default: module.CarouselPage })));
 
 type SplashPortal = "user" | "business" | "businessAdmin" | "merchant" | "technician" | "admin" | "merchantAdmin";
 
@@ -1446,8 +1446,8 @@ export default function App() {
               <Route path="/admin/analytics" element={protectPermission("admin", "page:dashboard", <Navigate replace to="/admin" />)} />
               <Route path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <Suspense fallback={null}><DashboardMetricDetailPage /></Suspense>)} />
               <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="backoffice" /></Suspense>)} />
-              <Route path="/admin/operation-timeline" element={protectPermission("admin", "backoffice:dashboard:read", <OperationTimelinePage />)} />
-              <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
+              <Route path="/admin/operation-timeline" element={protectPermission("admin", "backoffice:dashboard:read", <Suspense fallback={null}><OperationTimelinePage /></Suspense>)} />
+              <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <Suspense fallback={null}><CarouselPage /></Suspense>)} />
               <Route path="/admin/notifications/compose" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />
               <Route path="/admin/notifications/compose/:publicId" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />
               <Route path="/admin/notifications/inbox" element={protect("admin", <AdminNotificationsPage view="inbox" />)} />
@@ -1459,7 +1459,7 @@ export default function App() {
               <Route path="/admin/cities" element={protect("admin", <CitySettingsPage />)} />
               <Route path="/admin/badges" element={protect("admin", <AvatarBadgesPage />)} />
               <Route path="/admin/technicians" element={protect("admin", <TechniciansPage />)} />
-              <Route path="/admin/orders" element={protect("admin", <OrdersAdminPage />)} />
+              <Route path="/admin/orders" element={protect("admin", <Suspense fallback={null}><OrdersAdminPage /></Suspense>)} />
               <Route path="/admin/orders/demands" element={protect("admin", <NeedoDemandAdminPage />)} />
               <Route path="/admin/orders/info" element={protect("admin", <NeedoInfoAdminPage />)} />
               <Route path="/admin/dispatch" element={protect("admin", <AdminDispatchPage />)} />

@@ -231,6 +231,6 @@ it("places the operations timeline after official notifications", () => {
   );
   const app = readFileSync(`${process.cwd()}/src/App.tsx`, "utf8");
   expect(app).toContain(
-    'path="/admin/operation-timeline" element={protectPermission("admin", "backoffice:dashboard:read", <OperationTimelinePage />)}',
+    'path="/admin/operation-timeline" element={protectPermission("admin", "backoffice:dashboard:read", <Suspense fallback={null}><OperationTimelinePage /></Suspense>)}',
   );
 });

@@ -184,7 +184,7 @@ describe("platform content and media production capability gates", () => {
 describe("localized carousel backoffice routes", () => {
   it("registers two independently permissioned routes", () => {
     expect(appSource).toContain(
-      'path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)}'
+      'path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <Suspense fallback={null}><CarouselPage /></Suspense>)}'
     );
     expect(appSource).toContain(
       'path="/admin/afirieito/announcements/carousel" element={protectPermission("admin", "page:backoffice-affiliate-notice-carousel", <AffiliateNoticeCarouselPage />)}'
