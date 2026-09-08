@@ -59,6 +59,61 @@ describe("chat visual viewport lifecycle", () => {
     expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
   });
 
+  it("bounds an installed Android PWA room to the visible viewport when the keyboard is closed", async () => {
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
+    });
+    const { viewport, setViewport, frame } = await setup();
+
+    await act(async () => {
+      setViewport(876);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+
+    expect(heightOf(frame)).toBe("876px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+  });
+
+  it("restores an installed Android PWA room after the keyboard closes", async () => {
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(540);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(heightOf(frame)).toBe("540px");
+
+    await act(async () => {
+      editor.blur();
+      setViewport(876);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(heightOf(frame)).toBe("876px");
+  });
+
+  it("keeps Android browser tabs on the dynamic CSS viewport", async () => {
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
+    });
+    const { viewport, setViewport, frame } = await setup();
+
+    await act(async () => {
+      setViewport(876);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+
+    expect(heightOf(frame)).toBe("100dvh");
+  });
+
   it("keeps the room inside a keyboard viewport even when focus pans its top edge", async () => {
     const { viewport, setViewport, frame, editor } = await setup();
     await act(async () => {
