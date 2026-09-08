@@ -71,7 +71,15 @@ export function UnifiedUserDirectory({ scope, onSelect }: { scope: UserDirectory
   const [searchParams, setSearchParams] = useSearchParams();
   const { language } = useOptionalI18n();
   const copy = platformUserManagementCopy[language];
-  const query = useMemo(() => userDirectoryQuery(searchParams), [searchParams]);
+  const queryKey = JSON.stringify(userDirectoryQuery(searchParams));
+  const query = useMemo<UserListQuery>(() => JSON.parse(queryKey), [queryKey]);
+  const filterValue = useMemo(() => ({
+    keyword: query.keyword,
+    tier: query.tiers?.[0],
+    identityType: query.identityTypes?.[0],
+    state: query.states?.[0],
+    ekyc: query.ekycStates?.[0],
+  }), [query]);
   const [reloadToken, setReloadToken] = useState(0);
   const [state, setState] = useState<{ loading: boolean; error: string | null; data: Paginated<PlatformManagedUser> | null }>({ loading: true, error: null, data: null });
 
@@ -109,13 +117,7 @@ export function UnifiedUserDirectory({ scope, onSelect }: { scope: UserDirectory
       language={language}
       onReset={reset}
       onSubmit={(filters, changedFields) => updateQuery(canonicalTopFilterQuery(query, filters, changedFields))}
-      value={{
-        keyword: query.keyword,
-        tier: query.tiers?.[0],
-        identityType: query.identityTypes?.[0],
-        state: query.states?.[0],
-        ekyc: query.ekycStates?.[0]
-      }}
+      value={filterValue}
     />
     <section className="overflow-hidden rounded-xl border border-line bg-white shadow-sm">
       {state.loading ? <div className="p-10 text-center text-sm font-bold text-ink/50">{copy.loading}</div> : null}

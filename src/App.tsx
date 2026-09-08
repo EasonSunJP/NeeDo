@@ -1,5 +1,6 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { RouteScrollReset } from "./components/ui/RouteScrollReset";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
 import { getMerchantAdminPreview } from "./auth/merchantAdminPreview";
@@ -515,16 +516,6 @@ function getSplashPortal(pathname: string): SplashPortal | null {
   }
 
   return "user";
-}
-
-function ScrollToTop() {
-  const location = useLocation();
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [location.pathname, location.search, location.hash]);
-
-  return null;
 }
 
 function EntityStoreBootstrap() {
@@ -1128,7 +1119,7 @@ export default function App() {
               <NeedoPetAssetBootstrap />
               <SocialProvider>
                 {splashPortal ? <SplashScreen onDone={completeSplash} portal={splashPortal} /> : null}
-                <ScrollToTop />
+                <RouteScrollReset />
                 <ShareFeedbackViewport />
                 <NeedoPet disabled={Boolean(splashPortal)} />
                 <AccountComplianceGate>
