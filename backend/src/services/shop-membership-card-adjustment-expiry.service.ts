@@ -27,11 +27,7 @@ export class ShopMembershipCardAdjustmentExpiryService {
   public async expireDue(
     input: ShopMembershipCardAdjustmentExpiryInput
   ): Promise<ShopMembershipCardAdjustmentExpirySummary> {
-    if (
-      !Number.isSafeInteger(input.batchSize) ||
-      input.batchSize < 1 ||
-      input.batchSize > 500
-    ) {
+    if (!Number.isSafeInteger(input.batchSize) || input.batchSize < 1 || input.batchSize > 500) {
       throw new AppError({
         code: ERROR_CODES.VALIDATION,
         message: "error.validation",

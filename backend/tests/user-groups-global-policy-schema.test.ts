@@ -19,6 +19,8 @@ describe("user groups and global policy persistence", () => {
       "requireEmail",
       "requireHomeServiceEkyc",
       "requireStoreServiceEkyc",
+      "requireMerchantApplicationEkyc",
+      "requireTechnicianApplicationEkyc",
       "ndpPerBaseExp",
       "baseExpUnitsPerThreshold",
       "effectiveFrom",

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import pageSource from "./MembershipBenefitsPage.tsx?raw";
+import typesSource from "./types.ts?raw";
 import editorSource from "./MembershipBenefitEditor.tsx?raw";
 
 describe("fixed platform membership benefit catalog", () => {
-  it("renders exactly seven immutable system benefit codes", () => {
-    for (const code of ["ndp_experience", "member_sign_in", "priority_request", "support_service", "exclusive_discount", "member_day", "birthday_gift"]) expect(pageSource).toContain(code);
+  it("renders exactly eight immutable system benefit codes", () => {
+    for (const code of ["ndp_experience", "member_sign_in", "priority_request", "support_service", "exclusive_discount", "member_day", "birthday_gift", "traceless_recall"]) expect(typesSource).toContain(code);
     expect(pageSource).not.toMatch(/添加权益|删除权益|editCode/);
     expect(pageSource).toContain("全局停用优先于各会员等级中的点亮状态");
   });
@@ -18,8 +19,17 @@ describe("fixed platform membership benefit catalog", () => {
   });
 
   it("separates configured status from unconnected delivery capability", () => {
-    for (const code of ["support_service", "exclusive_discount", "member_day", "birthday_gift"]) expect(pageSource).toContain(code);
+    for (const code of ["support_service", "exclusive_discount", "member_day", "birthday_gift", "traceless_recall"]) expect(typesSource).toContain(code);
     expect(pageSource).toContain("能力未接通");
+    expect(pageSource).toContain('benefit.deliveryCapability === "available"');
+    expect(pageSource).not.toContain("capabilityConnected");
     expect(pageSource).not.toMatch(/已发放|模拟发放|synthetic/i);
+  });
+
+  it("uses current-language formal copy instead of showing storage fields", () => {
+    expect(pageSource).toContain("useI18n");
+    expect(pageSource).toContain("resolvePlatformBenefitLocalizedText");
+    expect(pageSource).not.toContain("{benefit.code}</p>");
+    expect(editorSource).toContain("resolvePlatformBenefitLocalizedText");
   });
 });

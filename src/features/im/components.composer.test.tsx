@@ -7,7 +7,8 @@ import { resolve } from "node:path";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider, I18nRuntime } from "../../i18n/I18nProvider";
-import { ImChatComposer, ImReturnToLatestButton } from "./components";
+import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import { ImChatComposer, ImReturnToLatestButton, ImStandaloneShell } from "./components";
 import type { ImChatComposerPanel } from "./components";
 import { getRecentImReactionSnapshot } from "./reaction-catalog";
 import { encodeImComposerJudgement } from "./reaction-policy";
@@ -16,6 +17,7 @@ import { encodeImComposerJudgement } from "./reaction-policy";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   window.localStorage.clear();
   document.body.replaceChildren();
   vi.restoreAllMocks();
@@ -65,6 +67,132 @@ async function waitForRuntimeTranslation() {
 }
 
 describe("ImChatComposer", () => {
+  it("bounds the closed-keyboard chat frame to the dynamic viewport despite stale iOS window dimensions", async () => {
+    vi.stubGlobal("innerHeight", 1018);
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 690 },
+      offsetTop: { configurable: true, value: 20 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 5 }
+    });
+    vi.stubGlobal("visualViewport", visualViewport);
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ClientThemeProvider>
+            <ImStandaloneShell>
+              <div data-testid="chat-content" />
+            </ImStandaloneShell>
+          </ClientThemeProvider>
+        </MemoryRouter>
+      );
+    });
+
+    const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(stylesSource).toContain("height: var(--im-visual-viewport-height, 100dvh)");
+
+    await act(async () => root.unmount());
+  });
+
+  it("follows the live visual viewport only while the keyboard editor has focus", async () => {
+    vi.stubGlobal("innerHeight", 844);
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 480 },
+      offsetTop: { configurable: true, value: 20 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 5 }
+    });
+    vi.stubGlobal("visualViewport", visualViewport);
+
+    const editor = document.createElement("input");
+    document.body.append(editor);
+    editor.focus();
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ClientThemeProvider>
+            <ImStandaloneShell>
+              <div data-testid="chat-content" />
+            </ImStandaloneShell>
+          </ClientThemeProvider>
+        </MemoryRouter>
+      );
+    });
+
+    const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("480px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("20px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+
+    // iOS can keep focus in the composer when the keyboard is dismissed.
+    await act(async () => {
+      Object.defineProperties(visualViewport, {
+        height: { configurable: true, value: 844 },
+        offsetTop: { configurable: true, value: 0 }
+      });
+      visualViewport.dispatchEvent(new Event("resize"));
+    });
+    expect(document.activeElement).toBe(editor);
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+
+    await act(async () => root.unmount());
+  });
+
+  it("returns to the CSS viewport when iOS keeps the editor focused after the keyboard closes", async () => {
+    vi.stubGlobal("innerHeight", 690);
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 690 },
+      offsetTop: { configurable: true, value: 0 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 0 }
+    });
+    vi.stubGlobal("visualViewport", visualViewport);
+
+    const editor = document.createElement("input");
+    document.body.append(editor);
+    editor.focus();
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ClientThemeProvider>
+            <ImStandaloneShell>
+              <div data-testid="chat-content" />
+            </ImStandaloneShell>
+          </ClientThemeProvider>
+        </MemoryRouter>
+      );
+    });
+
+    const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+
+    await act(async () => root.unmount());
+  });
+
   it("keeps the authoritative composer draft raw while localizing its placeholder", async () => {
     window.localStorage.setItem("needo.language", "ja");
     window.localStorage.setItem("needo.language.mode", "manual");
@@ -116,6 +244,23 @@ describe("ImChatComposer", () => {
     expect.soft(onSend).toHaveBeenCalledWith("测试测试!");
     expect.soft(actualVisualPlaceholder).toBe("メッセージを送信");
     expect.soft(actualAriaPlaceholder).toBe("メッセージを送信");
+  });
+
+  it("keeps the editable composer at the iOS no-zoom font size", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
+    const placeholder = editor?.parentElement?.querySelector("span");
+    expect(editor?.classList.contains("text-[16px]")).toBe(true);
+    expect(placeholder?.classList.contains("text-[16px]")).toBe(true);
+
+    await act(async () => root.unmount());
   });
 
   it("opens voice recording directly with caller copy and a ref without entering a gesture mode", async () => {
@@ -373,6 +518,7 @@ describe("ImChatComposer", () => {
     });
 
     const inputShell = container.querySelector<HTMLElement>("[data-im-composer-input-shell='true']");
+    const composerRoot = container.querySelector<HTMLElement>("[data-im-composer-root='true']");
     const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
     const controls = [
       container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']"),
@@ -381,6 +527,9 @@ describe("ImChatComposer", () => {
     ];
 
     expect(inputShell?.classList.contains("items-end")).toBe(true);
+    expect(composerRoot?.classList.contains("safe-nav-bottom")).toBe(true);
+    expect(composerRoot?.classList.contains("px-3")).toBe(true);
+    expect(composerRoot?.className).not.toContain("pb-[max(12px,env(safe-area-inset-bottom))]");
     expect(editor?.parentElement?.parentElement?.classList.contains("min-h-[40px]")).toBe(true);
     expect(editor?.classList.contains("block")).toBe(true);
     for (const control of controls) {
@@ -654,7 +803,7 @@ describe("ImChatComposer", () => {
     expect(stylesSource).toContain(".im-chat-composer-stack");
     expect(stylesSource).toContain("gap: 8px");
     expect(stylesSource).toContain(".im-composer-panel");
-    expect(stylesSource).toContain("max-height: 42dvh");
+    expect(stylesSource).toContain("max-height: min(42dvh, calc(var(--im-visual-viewport-height, 100dvh) * 0.42))");
     expect(stylesSource).toContain("overflow-y: auto");
     expect(stylesSource).toContain("@media (pointer: coarse)");
     expect(stylesSource).toContain("@media (prefers-reduced-motion: reduce)");
@@ -665,5 +814,37 @@ describe("ImChatComposer", () => {
     expect(stylesSource).toContain("margin-bottom: calc(-1 * var(--im-composer-overlay-height, 85px))");
     expect(stylesSource).toContain("padding-bottom: calc(var(--im-composer-overlay-height, 85px) + 12px)");
     expect(stylesSource).toContain("min-width: 36px");
+  });
+
+  it("keeps tall drafts and media scrollable inside a height-constrained composer", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          actions={[{ icon: "photo", key: "image", label: "相册", run: vi.fn() }]}
+          draft={Array.from({ length: 7 }, () => "输入窗口检查").join("\n")}
+          isNight
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel="emoji"
+          pendingImage={{ fileName: "layout.png", previewUrl: "blob:layout" }}
+        />
+      );
+    });
+
+    const editorShell = container.querySelector<HTMLElement>("[data-im-composer-editor-shell='true']");
+    expect(editorShell).not.toBeNull();
+    expect(editorShell?.classList.contains("max-h-full")).toBe(true);
+    expect(editorShell?.classList.contains("overflow-y-auto")).toBe(true);
+    expect(stylesSource).toMatch(/\.im-chat-composer-root \{[^}]*max-height: 100%;[^}]*flex: 0 1 auto;/s);
+    expect(stylesSource).toMatch(/\.im-composer-input-shell \{[^}]*flex: 0 1 auto;[^}]*overflow: hidden;/s);
+    expect(stylesSource).toMatch(/\.im-chat-composer-root:has\(\.im-composer-panel\) \.im-chat-composer-stack \{[^}]*gap: 4px;/s);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: 42px;/s);
+
+    await act(async () => root.unmount());
   });
 });

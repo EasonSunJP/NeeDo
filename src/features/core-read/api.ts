@@ -17,6 +17,15 @@ export type CoreReviewSummary = {
   highlights: string[];
 };
 
+export type TechnicianReviewTagSummary = {
+  special: Array<{
+    code: "appeal_max" | "service_max" | "emotion_max" | "energy_max";
+    label: string;
+    count: number;
+  }>;
+  custom: Array<{ label: string; count: number }>;
+};
+
 export type CoreMediaAsset = {
   id: number;
   url: string;
@@ -84,6 +93,7 @@ export type CoreTechnicianCard = {
 
 export type CoreServiceCard = {
   id: number;
+  publicId: string;
   name: string;
   description: string | null;
   category: CoreCategory;
@@ -93,6 +103,7 @@ export type CoreServiceCard = {
   priceAmount: string;
   currency: string;
   durationMinutes: number;
+  usageCount: number;
   coverUrl: string | null;
   reviewSummary: CoreReviewSummary;
 };
@@ -120,7 +131,11 @@ export type CoreTechnicianDetail = CoreTechnicianCard & {
   shop: CoreShopCard | null;
   bio: string | null;
   serviceArea: string | null;
+  gender: "female" | "male" | "private";
+  heightCm: number | null;
+  languages: string[];
   yearsExperience: number;
+  reviewTagSummary: TechnicianReviewTagSummary;
   mediaAssets: CoreMediaAsset[];
   services: CoreServiceCard[];
   createdAt: string;
@@ -341,7 +356,7 @@ export function mapCoreServiceToServiceItem(service: CoreServiceCard | CoreServi
     mode: serviceModeToFulfillmentMode(service),
     priceFrom: price,
     rating: parseRating(service.reviewSummary),
-    sales: service.reviewSummary.reviewCount,
+    sales: service.usageCount,
     summary: description,
     tags: tags.length > 0 ? tags : [categoryName],
     fastestArrival: "可预约",
@@ -359,7 +374,15 @@ export function mapCoreServiceToServiceItem(service: CoreServiceCard | CoreServi
       }
     ],
     notice: ["预约前请确认服务时间、地址与付款方式。"],
-    flow: ["选择服务", "确认时间", "到店/上门", "完成服务", "评价反馈"]
+    flow: ["选择服务", "确认时间", "到店/上门", "完成服务", "评价反馈"],
+    formal: {
+      publicId: service.publicId,
+      usageCount: service.usageCount,
+      currency: service.currency,
+      durationMinutes: service.durationMinutes,
+      shopPublicId: service.shop.publicId,
+      shopAddress: service.shop.address
+    }
   };
 }
 
@@ -397,6 +420,7 @@ export function mapCoreTechnicianToTechnician(technician: CoreTechnicianCard | C
   const firstService = detail?.services[0];
   const serviceAreas = splitServiceArea(detail?.serviceArea, technician.city);
   const skills = uniqueStrings([
+    technician.primaryService?.name ?? "",
     ...(detail?.services.map((service) => service.category.nameJa ?? service.category.name) ?? []),
     ...technician.reviewSummary.highlights
   ]).slice(0, 5);
@@ -422,7 +446,8 @@ export function mapCoreTechnicianToTechnician(technician: CoreTechnicianCard | C
     identityLabel: "店铺所属技师",
     profileTags: skills.length > 0 ? skills : ["预约服务"],
     gallery: mediaGallery(detail?.mediaAssets, technician.avatarUrl ?? fallbackTechnicianAvatar),
-    paymentMethods: ["platform", "offline"]
+    paymentMethods: ["platform", "offline"],
+    primaryService: technician.primaryService
   };
 }
 
@@ -446,7 +471,7 @@ export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): 
     gender: customer.gender,
     age: customer.age === null || customer.age === undefined ? undefined : String(customer.age),
     height: customer.heightCm === null || customer.heightCm === undefined ? undefined : `${customer.heightCm}cm`,
-    languages: customer.languages?.length ? customer.languages : ["日本語"],
+    languages: customer.languages ? [...customer.languages] : [],
     bio: customer.bio ?? undefined,
     creditRating: reviewCount > 0 ? "A" : undefined,
     points: 0,
@@ -463,10 +488,23 @@ export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): 
 }
 
 function searchEntity<TItem>(entityType: "service" | "shop" | "technician", query: CoreSearchListQuery) {
+  const searchSessionId = getSearchSessionId();
   return httpClient.request<PaginatedCoreReadData<TItem>>("/search", {
     auth: false,
+    ...(searchSessionId ? { headers: { "X-Search-Session": searchSessionId } } : {}),
     query: { ...query, entityType }
   });
+}
+
+export function getSearchSessionId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const key = "needo.search.session.v1";
+  const existing = window.sessionStorage.getItem(key)?.trim();
+  if (existing && /^[A-Za-z0-9_-]{8,128}$/u.test(existing)) return existing;
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const created = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  window.sessionStorage.setItem(key, created);
+  return created;
 }
 
 export const coreReadApi = {
@@ -506,7 +544,7 @@ export const coreReadApi = {
     return httpClient.request<CoreShopDetail>(`/shops/${id}`, { auth: false });
   },
 
-  getTechnicianDetail(id: number) {
+  getTechnicianDetail(id: number | string) {
     return httpClient.request<CoreTechnicianDetail>(`/technicians/${id}`, { auth: false });
   },
 

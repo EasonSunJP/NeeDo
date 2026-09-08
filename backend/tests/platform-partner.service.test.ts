@@ -6,6 +6,7 @@ import {
   type PlatformPartnerRepositoryPort
 } from "../src/services/platform-partner.service";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
+import type { AuditLogRecordInput } from "../src/services/audit-log.service";
 
 const actor: AuthenticatedAccessContext = {
   userId: 1,
@@ -35,6 +36,7 @@ const profile = (
   publicId: "11111111-1111-4111-8111-111111111111",
   partnerType: "AGENT",
   activatedAt,
+  endsAt: null,
   markedById: 1,
   reason: "线下代理协议已审核",
   createdAt,
@@ -48,9 +50,7 @@ const profile = (
   ...overrides
 });
 
-const referral = (
-  overrides: Partial<AgentShopReferralRecord> = {}
-): AgentShopReferralRecord => ({
+const referral = (overrides: Partial<AgentShopReferralRecord> = {}): AgentShopReferralRecord => ({
   id: 51,
   publicId: "22222222-2222-4222-8222-222222222222",
   agentProfileId: 41,
@@ -74,15 +74,16 @@ const referral = (
 const setup = () => {
   const repository: jest.Mocked<PlatformPartnerRepositoryPort> = {
     markPartnerProfile: jest.fn().mockResolvedValue({ kind: "created", profile: profile() }),
+    listUserProfiles: jest.fn().mockResolvedValue({
+      list: [profile()], total: 1, page: 1, page_size: 20
+    }),
     listAgents: jest.fn().mockResolvedValue({
       list: [
         {
           ...profile(),
           administration: {
             referralCount: 1,
-            referredShops: [
-              { publicId: "shop0000000019", name: "LifeDance 涩谷", city: "东京都" }
-            ],
+            referredShops: [{ publicId: "shop0000000019", name: "LifeDance 涩谷", city: "东京都" }],
             currentRule: {
               version: 2,
               fixedSuccessRewardJpy: 50_000,
@@ -113,7 +114,17 @@ const setup = () => {
     }),
     linkAgentShop: jest.fn().mockResolvedValue({ kind: "created", referral: referral() })
   };
-  const audit = { record: jest.fn().mockResolvedValue(undefined) };
+  const audit = {
+    record: jest.fn().mockResolvedValue(undefined),
+    createInput: jest.fn((input: AuditLogRecordInput) => ({
+      actorId: input.actor.userId,
+      action: input.action,
+      targetType: input.targetType,
+      ip: input.context.ip,
+      userAgent: input.context.userAgent,
+      metadata: input.metadata
+    }))
+  };
   const service = new PlatformPartnerService(repository, audit);
   return { service, repository, audit };
 };
@@ -125,7 +136,7 @@ describe("PlatformPartnerService", () => {
     await expect(
       service.markPartnerProfile(
         88,
-        { partnerType: "agent", activatedAt, reason: "线下代理协议已审核" },
+        { partnerType: "agent", startsAt: activatedAt, endsAt: null, permanent: true, reason: "线下代理协议已审核" },
         actor,
         context
       )
@@ -133,7 +144,9 @@ describe("PlatformPartnerService", () => {
       expect.objectContaining({
         publicId: "11111111-1111-4111-8111-111111111111",
         partnerType: "agent",
-        activatedAt: "2026-09-01T00:00:00.000Z",
+        startsAt: "2026-09-01T00:00:00.000Z",
+        endsAt: null,
+        permanent: true,
         user: expect.objectContaining({ needoId: "u0000000088", nickname: "山田代理" })
       })
     );
@@ -141,39 +154,30 @@ describe("PlatformPartnerService", () => {
     expect(repository.markPartnerProfile).toHaveBeenCalledWith({
       userId: 88,
       partnerType: "AGENT",
-      activatedAt,
+      startsAt: activatedAt,
+      endsAt: null,
       markedById: 1,
-      reason: "线下代理协议已审核"
-    });
-    expect(audit.record).toHaveBeenCalledWith(
-      expect.objectContaining({
+      reason: "线下代理协议已审核",
+      audit: expect.objectContaining({
+        actorId: 1,
         action: "backoffice.partner_profile.create",
         targetType: "platform_partner_profile",
-        targetId: 41,
-        metadata: {
-          before: null,
-          after: {
-            publicId: "11111111-1111-4111-8111-111111111111",
-            userId: 88,
-            partnerType: "agent",
-            activatedAt: "2026-09-01T00:00:00.000Z"
-          },
-          reason: "线下代理协议已审核"
-        }
+        metadata: { reason: "线下代理协议已审核" }
       })
-    );
+    });
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects missing users and duplicate active partner markers", async () => {
     const missing = setup();
     missing.repository.markPartnerProfile.mockResolvedValue({ kind: "user_not_found" });
     const duplicate = setup();
-    duplicate.repository.markPartnerProfile.mockResolvedValue({ kind: "duplicate" });
+    duplicate.repository.markPartnerProfile.mockResolvedValue({ kind: "overlap" });
 
     await expect(
       missing.service.markPartnerProfile(
         999,
-        { partnerType: "agent", activatedAt, reason: "资料确认" },
+        { partnerType: "agent", startsAt: activatedAt, endsAt: null, permanent: true, reason: "资料确认" },
         actor,
         context
       )
@@ -181,7 +185,7 @@ describe("PlatformPartnerService", () => {
     await expect(
       duplicate.service.markPartnerProfile(
         88,
-        { partnerType: "agent", activatedAt, reason: "重复标记" },
+        { partnerType: "agent", startsAt: activatedAt, endsAt: null, permanent: true, reason: "重复标记" },
         actor,
         context
       )
@@ -335,7 +339,10 @@ describe("PlatformPartnerService", () => {
 
     await expect(
       absentAgent.service.linkAgentShop(profile().publicId, input, actor, context)
-    ).rejects.toMatchObject({ code: ERROR_CODES.PLATFORM_PARTNER_PROFILE_NOT_FOUND, statusCode: 404 });
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.PLATFORM_PARTNER_PROFILE_NOT_FOUND,
+      statusCode: 404
+    });
     await expect(
       absentShop.service.linkAgentShop(profile().publicId, input, actor, context)
     ).rejects.toMatchObject({ code: ERROR_CODES.PLATFORM_PARTNER_SHOP_NOT_FOUND, statusCode: 404 });

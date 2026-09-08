@@ -1,6 +1,4 @@
-import {
-  getSimulationSeedConfig
-} from "../src/simulation/simulation-seed-config";
+import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
 
 const localEnv = {
   NODE_ENV: "development",
@@ -19,12 +17,12 @@ describe("simulation seed safety", () => {
   });
 
   it("requires the explicit simulation flag and password", () => {
-    expect(() =>
-      getSimulationSeedConfig({ ...localEnv, ALLOW_SIMULATION_SEED: "false" })
-    ).toThrow("ALLOW_SIMULATION_SEED=true");
-    expect(() =>
-      getSimulationSeedConfig({ ...localEnv, SIMULATION_DEFAULT_PASSWORD: "" })
-    ).toThrow("SIMULATION_DEFAULT_PASSWORD");
+    expect(() => getSimulationSeedConfig({ ...localEnv, ALLOW_SIMULATION_SEED: "false" })).toThrow(
+      "ALLOW_SIMULATION_SEED=true"
+    );
+    expect(() => getSimulationSeedConfig({ ...localEnv, SIMULATION_DEFAULT_PASSWORD: "" })).toThrow(
+      "SIMULATION_DEFAULT_PASSWORD"
+    );
   });
 
   it("can reuse the configured local test-account password without hardcoding a secret", () => {

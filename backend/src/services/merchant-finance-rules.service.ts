@@ -173,6 +173,8 @@ export class MerchantFinanceRulesService {
       nextRuleSetId: next.id,
       previousWageMode: previous.wageMode,
       nextWageMode: next.wageMode,
+      previousCommissionRatePercent: previous.commissionRatePercent,
+      nextCommissionRatePercent: next.commissionRatePercent,
       previousNdpFeeBearer: previous.ndpFeeBearer,
       nextNdpFeeBearer: next.ndpFeeBearer
     });

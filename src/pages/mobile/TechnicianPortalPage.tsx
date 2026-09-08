@@ -1,29 +1,28 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
 import { AppIcon, FeatureSegmentedTabs, IconButton, PrimaryButton, StickyBottomBar } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
-import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
-import type { ContactEventTimelineEntry } from "../../components/mobile/ContactEventTimeline";
+import { WorkStatusControls } from "../../features/technician-work-status/WorkStatusControls";
+import { WorkTimeline } from "../../features/technician-work-status/WorkTimeline";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { roleBasedTabConfig, technicianNavItems } from "../../components/mobile/navItems";
 import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalTechnicianOrdersPanel";
 import { TechnicianDataCenterPanel } from "../../components/technician/TechnicianDataCenterPanel";
-import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read/api";
+import { coreReadApi, type CoreCategory, type CoreTechnicianDetail } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import type { BookingOrder, BookingScheduleSlot } from "../../features/booking/api";
 import {
   technicianProfileApi,
-  type TechnicianProfilePaymentMethod,
+  type TechnicianPersonalCenterUpdate,
   type TechnicianProfileVisibility,
   type TechnicianSelfProfile
 } from "../../features/core-read/technicianProfileApi";
@@ -34,23 +33,23 @@ import {
   type ShopPricingMode,
   type TechnicianServicePayload
 } from "../../features/pricing-mode/api";
+import { TechnicianServiceCoverField } from "../../features/pricing-mode/TechnicianServiceCoverField";
 import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { cn, yen } from "../../lib/utils";
+import {
+  mapTechnicianServiceToUnifiedData as fromTechnicianServicePayload,
+  UnifiedServiceInfoCard
+} from "../../shared/service-card";
+import {
+  fromTechnicianSelfProfile,
+  TechnicianProfileInfoView,
+  TechnicianReviewTagSummaryView
+} from "../../shared/technician-profile";
 
 type TechnicianPortalView = "tasks" | "me";
 type TechnicianMeTab = "info" | "data";
 
-const languageOptions = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
-const paymentOptions: Array<{ value: TechnicianProfilePaymentMethod; label: string }> = [
-  { value: "platform", label: "平台支付" },
-  { value: "offline", label: "线下支付" },
-  { value: "cash", label: "现金" },
-  { value: "prepay", label: "需要预付" },
-  { value: "paypay", label: "PayPay" },
-  { value: "paypal", label: "PayPal" },
-  { value: "wechatpay", label: "WeChat Pay" },
-  { value: "alipay", label: "Alipay" }
-];
 const visibilityOptions: Array<{
   value: Exclude<TechnicianProfileVisibility, "public">;
   label: string;
@@ -111,43 +110,13 @@ function profileAvatarSrc(profile: TechnicianSelfProfile) {
 
 function profileDraft(profile: TechnicianSelfProfile) {
   return {
-    displayName: profile.displayName,
-    avatar: profile.avatarUrl ?? "",
-    age: profile.age === null ? "" : String(profile.age),
-    heightCm: profile.heightCm === null ? "" : String(profile.heightCm),
-    languages: [...profile.languages],
+    gender: profile.gender,
+    age: profile.age,
+    heightCm: profile.heightCm,
+    languagesText: profile.languages.join("、"),
     bio: profile.bio ?? "",
-    serviceAreasText: profile.serviceAreas.join("、"),
-    profileTagsText: profile.profileTags.join("、"),
-    canServeForeigners: profile.canServeForeigners,
-    bidBudgetMinJpy: profile.bidBudgetMinJpy === null ? "" : String(profile.bidBudgetMinJpy),
-    bidBudgetMaxJpy: profile.bidBudgetMaxJpy === null ? "" : String(profile.bidBudgetMaxJpy),
-    paymentMethods: [...profile.paymentMethods]
+    visibility: profile.visibility
   };
-}
-
-function ProfileAvatar({ profile, editing, onSelect }: {
-  profile: TechnicianSelfProfile;
-  editing?: boolean;
-  onSelect?: () => void;
-}) {
-  const content = profile.avatarUrl ? (
-    <AvatarImage alt={profile.displayName} className="h-full w-full rounded-[28px]" src={profile.avatarUrl} />
-  ) : (
-    <span className="grid h-full w-full place-items-center rounded-[28px] bg-[color:var(--client-primary-soft)] text-4xl font-black text-[color:var(--client-primary-strong)]">
-      {profile.displayName.trim().slice(0, 1) || "技"}
-    </span>
-  );
-  return (
-    <div className="relative h-36 w-36 overflow-hidden rounded-[28px] border-[3px] border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] shadow-[0_18px_36px_rgba(0,0,0,0.28)]">
-      {content}
-      {editing ? (
-        <button aria-label="更换头像" className="absolute bottom-2 right-2 grid h-10 w-10 place-items-center rounded-full border border-white/30 bg-black/55 text-white" onClick={onSelect} type="button">
-          <AppIcon className="h-4 w-4" name="edit" />
-        </button>
-      ) : null}
-    </div>
-  );
 }
 
 function ResourceState({ error, retry }: { error?: string | null; retry?: () => void }) {
@@ -172,21 +141,34 @@ function TechnicianPortalDataGate() {
   const { session } = useAuth();
   const [revision, setRevision] = useState(0);
   const formalTechnicianProfileId = getFormalTechnicianProfileId(session);
+  const persistentCacheScope = getAuthenticatedPersistentCacheScope();
   const formalTechnicianSelfProfileQuery = useCoreReadQuery(
     () => formalTechnicianProfileId ? technicianProfileApi.getMine() : null,
-    [formalTechnicianProfileId, revision]
+    [formalTechnicianProfileId, revision],
+    {
+      enabled: Boolean(formalTechnicianProfileId),
+      force: revision > 0,
+      key: `technician:self-profile:${formalTechnicianProfileId ?? "missing"}`,
+      scope: persistentCacheScope
+    }
   );
   const formalTechnicianProfileQuery = useCoreReadQuery(
-    () => formalTechnicianProfileId && formalTechnicianSelfProfileQuery.data?.shopId
-      ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId)
-      : null,
-    [formalTechnicianProfileId, formalTechnicianSelfProfileQuery.data?.shopId, revision]
+    () => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null,
+    [formalTechnicianProfileId, revision],
+    {
+      enabled: Boolean(formalTechnicianProfileId),
+      force: revision > 0,
+      key: `core:technician:${formalTechnicianProfileId ?? "missing"}`,
+      scope: persistentCacheScope
+    }
   );
   const technician = formalTechnicianProfileQuery.data;
   const selfProfile = formalTechnicianSelfProfileQuery.data;
-  const error = formalTechnicianSelfProfileQuery.error;
+  const publicDetailHidden = formalTechnicianProfileQuery.error === "error.technician.not_found";
+  const error = formalTechnicianSelfProfileQuery.error
+    ?? (publicDetailHidden ? null : formalTechnicianProfileQuery.error);
 
-  if (!formalTechnicianProfileId || !selfProfile) {
+  if (!formalTechnicianProfileId || !selfProfile || (!technician && !publicDetailHidden)) {
     return <ResourceState error={error} retry={() => setRevision((current) => current + 1)} />;
   }
 
@@ -194,7 +176,6 @@ function TechnicianPortalDataGate() {
 }
 
 function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
-  const navigate = useNavigate();
   const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
   const shopName = technician?.shop?.name ?? (profile.shopId ? "关联店铺" : "个人技师");
   const [orders, setOrders] = useState<BookingOrder[]>([]);
@@ -247,25 +228,6 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
   const nextSlot = slots
     .filter((slot) => slot.status !== "blocked")
     .sort((left, right) => left.startsAt.localeCompare(right.startsAt))[0] ?? null;
-  const nowMs = Date.now();
-  const activeOrder = todayOrders.find((order) => order.status === "inService");
-  const insideConfirmedOrder = todayOrders.some((order) =>
-    order.status === "confirmed" && new Date(order.startsAt).getTime() <= nowMs && nowMs < new Date(order.endsAt).getTime()
-  );
-  const insideAvailableSlot = slots.some((slot) =>
-    slot.status === "available" && new Date(slot.startsAt).getTime() <= nowMs && nowMs < new Date(slot.endsAt).getTime()
-  );
-  const hasRemainingWork = todayOrders.some((order) => order.status !== "cancelled" && new Date(order.endsAt).getTime() > nowMs)
-    || slots.some((slot) => slot.status !== "blocked" && new Date(slot.endsAt).getTime() > nowMs);
-  const currentStatus = activeOrder ? "服务中" : insideConfirmedOrder || insideAvailableSlot ? "出勤" : hasRemainingWork ? "休息" : "退勤";
-  const statusButtons = [
-    { label: "出勤", icon: "●", tone: "duty", caption: "已进入正式排班或可预约时段" },
-    { label: "移动中", icon: "↗", tone: "travel", caption: "移动状态需要正式位置状态接口" },
-    { label: "服务中", icon: "▶", tone: "service", caption: "存在进行中的正式订单" },
-    { label: "休息", icon: "☾", tone: "rest", caption: "当前没有进行中的正式服务" },
-    { label: "退勤", icon: "■", tone: "off", caption: "今天已没有后续正式安排" }
-  ] as const;
-  const currentStatusCaption = statusButtons.find((item) => item.label === currentStatus)?.caption ?? "按正式排班与订单自动同步";
   const dateTime = (value: string) => new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",
@@ -273,70 +235,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
     minute: "2-digit",
     hour12: false
   }).format(new Date(value));
-  const statusTimelineEntries = orders.flatMap((order) =>
-    order.statusHistory.map((history) => {
-      const role = history.toStatus === "pending"
-        ? "预约创建"
-        : history.toStatus === "confirmed"
-          ? "服务方接单"
-          : history.toStatus === "inService"
-            ? "开始服务"
-            : history.toStatus === "completed"
-              ? "结束服务"
-              : "取消 / 异常";
-      const reason = history.reason?.trim() ?? "";
-      const isProblem = history.toStatus === "cancelled" || /迟到|异常|失败|冲突|拒绝|取消/.test(reason);
-      const actorIsTechnician = history.actorUserId === profile.userId;
-      const createdAt = new Date(history.createdAt);
-      const atLabel = Number.isFinite(createdAt.getTime())
-        ? new Intl.DateTimeFormat("zh-CN", {
-            day: "numeric",
-            hour: "2-digit",
-            hour12: false,
-            minute: "2-digit",
-            month: "numeric",
-            second: "2-digit",
-            year: "numeric"
-          }).format(createdAt)
-        : history.createdAt;
-      const action = history.toStatus === "pending"
-        ? "已创建预约"
-        : history.toStatus === "confirmed"
-          ? "已确认接单"
-          : history.toStatus === "inService"
-            ? "已开始服务"
-            : history.toStatus === "completed"
-              ? "已结束服务"
-              : "预约已取消";
-
-      return {
-        entry: {
-          actorAvatarSrc: actorIsTechnician ? profile.avatarUrl ?? undefined : undefined,
-          actorName: actorIsTechnician ? profile.displayName : "系统",
-          actorRole: role,
-          atLabel,
-          id: `order-${order.id}-history-${history.id}`,
-          message: (
-            <>
-              {action}：订单
-              <Link
-                className="font-black text-[color:var(--client-primary)] underline decoration-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] decoration-2 underline-offset-2"
-                to={`/technician/orders/${order.id}`}
-              >
-                {order.orderNo}
-              </Link>
-              ，项目 {order.serviceName}，预约时间 {dateTime(order.startsAt)}{reason ? `，${reason}` : ""}。
-            </>
-          ),
-          preserveAtLabel: true,
-          title: role,
-          tone: isProblem ? "red" : "green"
-        } satisfies ContactEventTimelineEntry,
-        sortAt: Number.isFinite(createdAt.getTime()) ? createdAt.getTime() : 0
-      };
-    })
-  ).sort((left, right) => right.sortAt - left.sortAt).slice(0, 24).map(({ entry }) => entry);
-  const statusRecordTarget = nextOrder ?? orders[0] ?? null;
+  const [statusRevision, setStatusRevision] = useState(0);
 
   return (
     <>
@@ -390,46 +289,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
           </div>
         </section>
 
-        <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")} data-testid="technician-formal-status-sync">
-          <div className="flex items-center justify-between gap-3">
-            <TitleWithInfo
-              as="h2"
-              info="把当前出勤状态同步给门店与调度，首页会高亮当前已同步状态。"
-              label="状态同步 简介"
-              title="状态同步"
-              titleClassName="text-lg font-bold text-[color:var(--client-text)]"
-              variant="paper"
-            />
-            <Link className="inline-flex h-11 items-center gap-2 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-needo-text)]" to="/technician/schedule">
-              <AppIcon className="h-4 w-4" name="calendar" />排班
-            </Link>
-          </div>
-          <div className="mt-3 grid grid-cols-5 gap-2">
-            {statusButtons.map((item) => {
-              const active = item.label === currentStatus;
-              return (
-                <div
-                  aria-current={active ? "true" : undefined}
-                  className={cn(
-                    "technician-work-status-button flex min-h-[88px] min-w-0 flex-col items-center justify-center rounded-[20px] border px-1.5 py-3 text-center",
-                    `technician-work-status--${item.tone}`,
-                    active ? "technician-work-status-button--active" : "technician-work-status-button--idle"
-                  )}
-                  key={item.label}
-                >
-                  <span className="technician-work-status-icon inline-flex h-9 w-9 items-center justify-center rounded-[14px] text-base font-black">{item.icon}</span>
-                  <span className="mt-2 flex min-h-[28px] w-full items-center justify-center overflow-hidden">
-                    <strong className="w-full text-[12px] font-black leading-[14px] tracking-normal">{item.label}</strong>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <div className={cn(surface.panel, "mt-3 rounded-[20px] border px-4 py-3")}>
-            <p className={cn(surface.muted, "text-[11px] font-bold")}>当前已同步状态</p>
-            <p className="mt-1 text-sm font-black">{currentStatus}： <span className={cn(surface.muted, "text-xs")}>{currentStatusCaption}</span></p>
-          </div>
-        </section>
+        <WorkStatusControls serviceOrderId={(todayOrders.find(order => order.status === "inService") ?? todayOrders.find(order => order.status === "confirmed"))?.id} onChooseService={() => setTasksPanelTab("orders")} shopId={profile.shopId} onChanged={() => setStatusRevision(value => value + 1)} />
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -496,19 +356,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
           )}
         </section>
 
-        <ContactEventTimelinePanel
-          commentAuthorAvatarSrc={profile.avatarUrl ?? undefined}
-          commentAuthorName={profile.displayName}
-          commentAuthorRole="补充记录"
-          commentButtonLabel="补充记录"
-          commentPlaceholder="记录执行经过、异常原因或后续处理..."
-          emptyLabel="暂无执行 / 异常记录"
-          events={statusTimelineEntries}
-          layout="three-column"
-          onCommentButtonClick={statusRecordTarget ? () => navigate(`/technician/orders/${statusRecordTarget.id}`) : undefined}
-          showCommentComposer={Boolean(statusRecordTarget)}
-          title="状态记录"
-        />
+        <WorkTimeline target={{ scope: "technician" }} revision={statusRevision} />
       </div>
     </>
   );
@@ -527,159 +375,118 @@ function describeProfileMutationError(error: unknown) {
   return "暂时无法保存，请稍后重试";
 }
 
-function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, onSaved }: {
+function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technician, onSaved }: {
   defaultCategoryId: number | null;
   defaultShopId: number | null;
   profile: TechnicianSelfProfile;
+  technician: CoreTechnicianDetail | null;
   onSaved: (profile: TechnicianSelfProfile) => void;
 }) {
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<TechnicianProfileDraft>(() => profileDraft(profile));
-  const [privacyMenuOpen, setPrivacyMenuOpen] = useState(false);
   const [privacyConfirmOpen, setPrivacyConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => setDraft(profileDraft(profile)), [profile]);
-  const mutate = async (input: Parameters<typeof technicianProfileApi.updateMine>[0]) => {
-    if (saving) return null;
+  const saveProfile = async () => {
+    if (saving) return;
     setSaving(true);
     setError("");
     try {
+      const input: TechnicianPersonalCenterUpdate = {
+        gender: draft.gender,
+        age: draft.age,
+        heightCm: draft.heightCm,
+        languages: splitList(draft.languagesText),
+        bio: draft.bio || null,
+        visibility: draft.visibility
+      };
       const saved = await technicianProfileApi.updateMine(input);
       onSaved(saved);
       setDraft(profileDraft(saved));
-      return saved;
+      if (saved) setEditing(false);
     } catch (mutationError) {
       setError(describeProfileMutationError(mutationError));
-      return null;
     } finally {
       setSaving(false);
     }
   };
-  const saveProfile = async () => {
-    const saved = await mutate({
-      displayName: draft.displayName.trim() || profile.displayName,
-      ...(draft.avatar.startsWith("data:image/") ? { avatarDataUrl: draft.avatar } : {}),
-      age: parseNullableNumber(draft.age),
-      heightCm: parseNullableNumber(draft.heightCm),
-      languages: draft.languages,
-      bio: draft.bio.trim() || null,
-      serviceAreas: splitList(draft.serviceAreasText),
-      profileTags: splitList(draft.profileTagsText),
-      canServeForeigners: draft.canServeForeigners,
-      bidBudgetMinJpy: parseNullableNumber(draft.bidBudgetMinJpy),
-      bidBudgetMaxJpy: parseNullableNumber(draft.bidBudgetMaxJpy),
-      paymentMethods: draft.paymentMethods
-    });
-    if (saved) setEditing(false);
+  const cancelEditing = () => {
+    if (saving) return;
+    setEditing(false);
+    setDraft(profileDraft(profile));
+    setPrivacyConfirmOpen(false);
+    setError("");
   };
-  const persistVisibility = async (visibility: TechnicianProfileVisibility, openMenu = false) => {
-    const saved = await mutate({ visibility });
-    if (saved) setPrivacyMenuOpen(openMenu && saved.visibility !== "public");
-  };
-  const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setDraft((current) => ({ ...current, avatar: reader.result as string }));
-    };
-    reader.readAsDataURL(file);
-    event.target.value = "";
-  };
-  const toggleLanguage = (language: string) => setDraft((current) => ({
-    ...current,
-    languages: current.languages.includes(language) ? current.languages.filter((item) => item !== language) : [...current.languages, language]
-  }));
-  const togglePaymentMethod = (method: TechnicianProfilePaymentMethod) => setDraft((current) => ({
-    ...current,
-    paymentMethods: current.paymentMethods.includes(method) ? current.paymentMethods.filter((item) => item !== method) : [...current.paymentMethods, method]
-  }));
-  const privacyEnabled = profile.visibility !== "public";
-  const visibilityLabel = profile.visibility === "public" ? "公开可见" : visibilityOptions.find((item) => item.value === profile.visibility)?.label ?? "隐私模式";
-  const displayedProfile = { ...profile, avatarUrl: editing && draft.avatar ? draft.avatar : profile.avatarUrl };
+  const privacyEnabled = draft.visibility !== "public";
+  const visibilityLabel = profile.visibility === "public"
+    ? "公开可见"
+    : visibilityOptions.find((item) => item.value === profile.visibility)?.label ?? "隐私模式";
+  const readOnlyPrivacy = (
+    <section className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-profile-privacy-control">
+      <p className={cn(surface.muted, "text-xs font-bold")}>隐私模式</p>
+      <strong className="mt-1 block text-sm">{visibilityLabel}</strong>
+    </section>
+  );
+  const editModel = fromTechnicianSelfProfile(profile, technician, []);
 
   return (
-    <section className={cn(surface.shell, "relative z-30 overflow-visible rounded-[28px] border p-4 shadow-[var(--client-shadow)]")} data-testid="technician-info-card">
-      <input accept="image/*" className="hidden" onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
-      <IconButton className={cn(surface.metric, "absolute right-4 top-4 z-10")} icon={editing ? "close" : "edit"} label={editing ? "取消编辑" : "编辑信息卡"} onClick={() => { setEditing((current) => !current); setDraft(profileDraft(profile)); setError(""); }} />
-      <div className="flex min-w-0 items-start gap-3 pr-12">
-        <ProfileAvatar editing={editing} onSelect={() => avatarInputRef.current?.click()} profile={displayedProfile} />
-        <div className="flex min-h-36 min-w-0 flex-1 flex-col">
-          {editing ? (
-            <input className="w-full bg-transparent text-[21px] font-black outline-none" onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} value={draft.displayName} />
-          ) : (
-            <h2 className="truncate text-[21px] font-black">{profile.displayName} <KycVerifiedBadge className="inline-flex align-middle" size="label" /></h2>
-          )}
-          <Badge className="mt-2 w-fit" tone="green">{profile.employmentType === "independent" ? "个人技师" : "店铺所属"}</Badge>
-          <p className={cn(surface.muted, "mt-1 truncate text-xs font-bold")}>ID：{profile.publicId}</p>
-          <div className={cn(surface.panel, "relative mt-auto rounded-[18px] border p-3")} data-testid="technician-profile-privacy-control">
-            <div className="flex items-center justify-between gap-3">
-              <button aria-expanded={privacyMenuOpen} className="min-w-0 flex-1 text-left" disabled={!privacyEnabled || saving} onClick={() => setPrivacyMenuOpen((current) => !current)} type="button"><p className={cn(surface.muted, "text-[11px] font-bold")}>隐私模式</p><strong className="mt-1 block truncate text-sm">{visibilityLabel}</strong></button>
-              <ToggleSwitch ariaLabel="开启隐私模式" checked={privacyEnabled} disabled={saving} onChange={(enabled) => enabled ? setPrivacyConfirmOpen(true) : void persistVisibility("public")} size="md" />
-            </div>
-            <PrivacyModeConfirmDialog onCancel={() => setPrivacyConfirmOpen(false)} onConfirm={() => { setPrivacyConfirmOpen(false); void persistVisibility("privateAll", true); }} open={privacyConfirmOpen} />
-            {privacyEnabled && privacyMenuOpen ? (
-              <div className={cn(surface.shell, "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)]")} data-testid="technician-privacy-options">
-                {visibilityOptions.map((option) => <button className={cn(profile.visibility === option.value ? surface.chip : surface.panel, "rounded-[16px] border px-3 py-3 text-left")} disabled={saving} key={option.value} onClick={() => void persistVisibility(option.value)} type="button"><strong className="block text-sm">{option.label}</strong><span className={cn(surface.muted, "mt-1 block text-[11px]")}>{option.description}</span></button>)}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <div className={cn(surface.metric, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>从业年限</p><strong className="mt-1 block text-xl">{profile.yearsExperience} 年</strong></div>
-        <div className={cn(surface.metric, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>服务城市</p><strong className="mt-1 block truncate text-xl">{profile.city}</strong></div>
-      </div>
-
-      <div className="my-4 h-px bg-[color:var(--client-line)]" />
-      <h2 className="text-lg font-black">基础信息</h2>
+    <div className="relative z-30 space-y-4" data-testid="technician-info-card">
+      <IconButton
+        className={cn(
+          "absolute right-4 top-4 z-50 shadow-[0_14px_30px_rgba(0,0,0,0.22)]",
+          editing ? "border-red-400 bg-red-500 text-white hover:bg-red-600" : surface.metric,
+          saving ? "cursor-not-allowed opacity-60" : undefined
+        )}
+        icon={editing ? "close" : "edit"}
+        label={editing ? "取消编辑" : "编辑信息卡"}
+        onClick={saving ? undefined : editing ? cancelEditing : () => { setEditing(true); setDraft(profileDraft(profile)); setError(""); }}
+      />
       {editing ? (
-        <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>年龄</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, age: event.target.value }))} value={draft.age} /></label>
-            <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>身高（cm）</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="decimal" onChange={(event) => setDraft((current) => ({ ...current, heightCm: event.target.value }))} value={draft.heightCm} /></label>
+        <section className={cn(surface.shell, "overflow-visible rounded-[28px] border p-4 shadow-[var(--client-shadow)]")}>
+          <div className="pr-14">
+            <h2 className="text-xl font-black">编辑基础信息</h2>
+            <p className={cn(surface.muted, "mt-1 text-xs font-bold")}>评价标签由正式订单评价生成，不可自行修改。</p>
           </div>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>语言能力</p><div className="mt-2 flex flex-wrap gap-1.5">{languageOptions.map((language) => <button className={cn(draft.languages.includes(language) ? surface.chip : surface.metric, "rounded-full border px-2.5 py-1 text-xs font-black")} key={language} onClick={() => toggleLanguage(language)} type="button">{language}</button>)}</div></div>
-          <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>服务范围</span><textarea className="mt-2 min-h-16 w-full bg-transparent text-sm font-bold outline-none" onChange={(event) => setDraft((current) => ({ ...current, serviceAreasText: event.target.value }))} value={draft.serviceAreasText} /></label>
-          <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>自我介绍</span><textarea className="mt-2 min-h-28 w-full bg-transparent text-sm font-bold leading-6 outline-none" onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))} value={draft.bio} /></label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>接单预算下限</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, bidBudgetMinJpy: event.target.value }))} value={draft.bidBudgetMinJpy} /></label>
-            <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>接单预算上限</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, bidBudgetMaxJpy: event.target.value }))} value={draft.bidBudgetMaxJpy} /></label>
+          <div className="mt-4 space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>性别</span><select className="mt-1 w-full bg-transparent text-sm font-black outline-none" onChange={(event) => setDraft((current) => ({ ...current, gender: event.target.value as TechnicianSelfProfile["gender"] }))} value={draft.gender}><option value="female">女性</option><option value="male">男性</option><option value="private">不公开</option></select></label>
+              <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>年龄</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, age: parseNullableNumber(event.target.value) }))} value={draft.age ?? ""} /></label>
+              <label className={cn(surface.panel, "rounded-[18px] border p-3 text-xs font-bold")}><span className={surface.muted}>身高</span><input className="mt-1 w-full bg-transparent text-sm font-black outline-none" inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, heightCm: parseNullableNumber(event.target.value) }))} value={draft.heightCm ?? ""} /></label>
+            </div>
+            <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>语言能力</span><textarea className="mt-2 min-h-16 w-full bg-transparent text-sm font-bold outline-none" onChange={(event) => setDraft((current) => ({ ...current, languagesText: event.target.value }))} value={draft.languagesText} /></label>
+            <label className={cn(surface.panel, "block rounded-[18px] border p-3")}><span className={cn(surface.muted, "text-xs font-bold")}>自我介绍</span><textarea className="mt-2 min-h-28 w-full bg-transparent text-sm font-bold leading-6 outline-none" onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))} value={draft.bio} /></label>
+            <TechnicianReviewTagSummaryView model={editModel} />
+            <section className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-profile-privacy-control">
+              <div className="flex items-center justify-between gap-3">
+                <div><p className={cn(surface.muted, "text-xs font-bold")}>隐私模式</p><strong className="mt-1 block text-sm">{draft.visibility === "public" ? "公开可见" : visibilityOptions.find((item) => item.value === draft.visibility)?.label}</strong></div>
+                <ToggleSwitch ariaLabel="开启隐私模式" checked={privacyEnabled} disabled={saving} onChange={(enabled) => enabled ? setPrivacyConfirmOpen(true) : setDraft((current) => ({ ...current, visibility: "public" }))} size="md" />
+              </div>
+              <PrivacyModeConfirmDialog onCancel={() => setPrivacyConfirmOpen(false)} onConfirm={() => { setPrivacyConfirmOpen(false); setDraft((current) => ({ ...current, visibility: "privateAll" })); }} open={privacyConfirmOpen} />
+              {privacyEnabled ? <div className="mt-3 grid gap-2" data-testid="technician-privacy-options">{visibilityOptions.map((option) => <button className={cn(draft.visibility === option.value ? surface.chip : surface.metric, "rounded-[16px] border px-3 py-3 text-left")} disabled={saving} key={option.value} onClick={() => setDraft((current) => ({ ...current, visibility: option.value }))} type="button"><strong className="block text-sm">{option.label}</strong><span className={cn(surface.muted, "mt-1 block text-[11px]")}>{option.description}</span></button>)}</div> : null}
+            </section>
+            {error ? <p className="text-xs font-bold text-red-500" role="alert">技师资料保存失败：{error}</p> : null}
           </div>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>支持支付方式</p><div className="mt-2 flex flex-wrap gap-1.5">{paymentOptions.map((method) => <button className={cn(draft.paymentMethods.includes(method.value) ? surface.chip : surface.metric, "rounded-full border px-2.5 py-1 text-xs font-black")} key={method.value} onClick={() => togglePaymentMethod(method.value)} type="button">{method.label}</button>)}</div></div>
-          <label className={cn(surface.panel, "flex items-center justify-between rounded-[18px] border p-3 text-sm font-black")}><span>服务外国人</span><ToggleSwitch ariaLabel="服务外国人" checked={draft.canServeForeigners} onChange={(checked) => setDraft((current) => ({ ...current, canServeForeigners: checked }))} /></label>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-info-special-tags"><p className={cn(surface.muted, "text-xs font-bold")}>特殊标签</p><div className="mt-2 flex flex-wrap gap-1.5">{profile.specialTags.length > 0 ? profile.specialTags.map((tag) => <span className={cn(surface.chip, "rounded-full border px-2.5 py-1 text-xs font-black")} key={tag}>{tag}</span>) : <span className={cn(surface.muted, "text-sm font-bold")}>暂未获得特殊标签</span>}</div></div>
-          <label className={cn(surface.panel, "block rounded-[18px] border p-3")} data-testid="technician-info-tags"><span className={cn(surface.muted, "text-xs font-bold")}>标签</span><textarea className="mt-2 min-h-16 w-full bg-transparent text-sm font-bold outline-none" onChange={(event) => setDraft((current) => ({ ...current, profileTagsText: event.target.value }))} value={draft.profileTagsText} /></label>
-          {error ? <p className="text-xs font-bold text-red-500" role="alert">技师资料保存失败：{error}</p> : null}
-          <button className={cn(surface.chip, "w-full rounded-[18px] border px-4 py-3 text-sm font-black")} disabled={saving} onClick={() => void saveProfile()} type="button">{saving ? "保存中…" : "保存"}</button>
-        </div>
-      ) : (
-        <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>年龄 / 身高</p><strong className="mt-1 block text-sm">{profile.age ?? "未设置"} / {profile.heightCm ? `${profile.heightCm}cm` : "未设置"}</strong></div>
-            <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>接待范围</p><strong className="mt-1 block text-sm">{profile.canServeForeigners ? "服务外国人" : "不服务外国人"}</strong></div>
-          </div>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>语言能力</p><div className="mt-2 flex flex-wrap gap-1.5">{profile.languages.map((language) => <span className={cn(surface.chip, "rounded-full border px-2.5 py-1 text-xs font-black")} key={language}>{language}</span>)}</div></div>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>服务范围</p><p className="mt-2 text-sm font-bold leading-6">{profile.serviceAreas.join("、") || "未设置"}</p></div>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>接单预算</p><strong className="mt-1 block text-sm">{profile.bidBudgetMinJpy === null && profile.bidBudgetMaxJpy === null ? "未设置" : `${profile.bidBudgetMinJpy?.toLocaleString("ja-JP") ?? "—"}–${profile.bidBudgetMaxJpy?.toLocaleString("ja-JP") ?? "—"} 円`}</strong></div>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>支持支付方式</p><p className="mt-2 text-sm font-bold leading-6">{profile.paymentMethods.map((value) => paymentOptions.find((item) => item.value === value)?.label ?? value).join("、") || "未设置"}</p></div>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-xs font-bold")}>自我介绍</p><p className="mt-2 text-sm font-bold leading-6">{profile.bio || "未设置"}</p></div>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-info-special-tags"><p className={cn(surface.muted, "text-xs font-bold")}>特殊标签</p><div className="mt-2 flex flex-wrap gap-1.5">{profile.specialTags.length > 0 ? profile.specialTags.map((tag) => <span className={cn(surface.chip, "rounded-full border px-2.5 py-1 text-xs font-black")} key={tag}>{tag}</span>) : <span className={cn(surface.muted, "text-sm font-bold")}>暂未获得特殊标签</span>}</div></div>
-          <div className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-info-tags"><p className={cn(surface.muted, "text-xs font-bold")}>标签</p><div className="mt-2 flex flex-wrap gap-1.5">{profile.profileTags.map((tag) => <span className={cn(surface.chip, "rounded-full border px-2.5 py-1 text-xs font-black")} key={tag}>{tag}</span>)}</div></div>
-          {error ? <p className="text-xs font-bold text-red-500" role="alert">技师资料保存失败：{error}</p> : null}
-        </div>
-      )}
-      <div className="mt-4" id="technician-service-information">
+        </section>
+      ) : null}
+      <div id="technician-service-information">
         <FormalTechnicianServicesPanel
           defaultCategoryId={defaultCategoryId}
           defaultShopId={defaultShopId}
+          privacySlot={editing ? undefined : readOnlyPrivacy}
+          profile={editing ? undefined : profile}
+          technician={technician}
         />
       </div>
-    </section>
+      {editing ? (
+        <StickyBottomBar>
+          <button className="w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-60" data-testid="technician-profile-save-action" disabled={saving} onClick={() => void saveProfile()} type="button">
+            {saving ? "正在保存资料" : "保存并退出编辑模式"}
+          </button>
+        </StickyBottomBar>
+      ) : null}
+    </div>
   );
 }
 
@@ -692,31 +499,64 @@ function describeServiceError(error: unknown) {
   return error instanceof Error ? error.message : "error.technician_service.failed";
 }
 
-function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId }: {
+function upsertTechnicianService(
+  current: TechnicianServicePayload[],
+  saved: TechnicianServicePayload
+) {
+  const existingIndex = current.findIndex((service) => service.id === saved.id);
+  if (existingIndex < 0) return [...current, saved];
+  return current.map((service) => service.id === saved.id ? saved : service);
+}
+export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, privacySlot, profile, technician = null }: {
   defaultShopId: number | null;
   defaultCategoryId: number | null;
+  privacySlot?: ReactNode;
+  profile?: TechnicianSelfProfile;
+  technician?: CoreTechnicianDetail | null;
 }) {
   const [services, setServices] = useState<TechnicianServicePayload[]>([]);
+  const [categories, setCategories] = useState<CoreCategory[]>([]);
   const [pricingMode, setPricingMode] = useState<ShopPricingMode | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [deleteArmedId, setDeleteArmedId] = useState<number | null>(null);
-  const [draft, setDraft] = useState({ name: "", priceAmount: "", durationMinutes: "60", description: "" });
+  const [draft, setDraft] = useState({ name: "", priceAmount: "", durationMinutes: "60", description: "", categoryId: defaultCategoryId ?? 0 });
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [removeCover, setRemoveCover] = useState(false);
+  const [persistedAfterPartialSave, setPersistedAfterPartialSave] = useState<TechnicianServicePayload | null>(null);
+  const pendingCoverOperation: "upload" | "remove" | "none" = coverFile
+    ? "upload"
+    : removeCover
+      ? "remove"
+      : "none";
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [serviceResult, modeResult] = await Promise.all([
-        pricingModeApi.listMyTechnicianServices({ page: 1, pageSize: 5, activeOnly: false }),
-        defaultShopId ? pricingModeApi.getShopPricingMode(defaultShopId) : Promise.resolve(null)
+      const serviceResult = await pricingModeApi.listMyTechnicianServices({
+        page: 1,
+        pageSize: 5,
+        activeOnly: false
+      });
+      const [modeResult, categoryResult] = await Promise.allSettled([
+        defaultShopId
+          ? pricingModeApi.getBookingNavigation(defaultShopId, { page: 1, pageSize: 1 })
+          : Promise.resolve(null),
+        coreReadApi.listCategories({ page: 1, pageSize: 100 })
       ]);
       setServices(serviceResult.list);
-      setPricingMode(modeResult?.pricingMode ?? null);
+      setPricingMode(modeResult.status === "fulfilled" ? modeResult.value?.pricingMode ?? null : null);
+      setCategories(
+        categoryResult.status === "fulfilled"
+          ? categoryResult.value.list.filter((category) => category.isActive)
+          : []
+      );
     } catch (loadError) {
       setServices([]);
+      setCategories([]);
       setPricingMode(null);
       setError(describeServiceError(loadError));
     } finally {
@@ -725,14 +565,52 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId }: {
   }, [defaultShopId]);
 
   useEffect(() => { void load(); }, [load]);
+  const closeAndResetServiceEditor = () => {
+    setEditingId(null);
+    setDeleteArmedId(null);
+    setCoverFile(null);
+    setRemoveCover(false);
+    setPersistedAfterPartialSave(null);
+  };
   const openEditor = (service?: TechnicianServicePayload) => {
     setEditingId(service?.id ?? "new");
     setDeleteArmedId(null);
     setError("");
-    setDraft(service ? { name: service.name, priceAmount: String(service.priceAmount), durationMinutes: String(service.durationMinutes), description: service.description ?? "" } : { name: "", priceAmount: "", durationMinutes: "60", description: "" });
+    setCoverFile(null);
+    setRemoveCover(false);
+    setPersistedAfterPartialSave(null);
+    setDraft(service
+      ? { name: service.name, priceAmount: String(service.priceAmount), durationMinutes: String(service.durationMinutes), description: service.description ?? "", categoryId: service.categoryId }
+      : { name: "", priceAmount: "", durationMinutes: "60", description: "", categoryId: defaultCategoryId ?? 0 });
   };
   const save = async () => {
     if (saving || editingId === null) return;
+    if (persistedAfterPartialSave) {
+      setSaving(true);
+      setError("");
+      try {
+        let saved = persistedAfterPartialSave;
+        if (pendingCoverOperation === "upload" && coverFile && saved.shopId) {
+          saved = await pricingModeApi.uploadTechnicianServiceCover(saved.shopId, saved.id, coverFile);
+        } else if (pendingCoverOperation === "remove" && saved.coverImageUrl && saved.shopId) {
+          saved = await pricingModeApi.removeTechnicianServiceCover(saved.shopId, saved.id);
+        }
+        const completedService = saved;
+        setServices((current) => upsertTechnicianService(current, completedService));
+        closeAndResetServiceEditor();
+      } catch {
+        setError(
+          pendingCoverOperation === "remove"
+            ? "封面移除失败，请重试"
+            : pendingCoverOperation === "upload"
+              ? "封面上传失败，请重试"
+              : ""
+        );
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     if (editingId === "new" && services.length >= 5) {
       setError("服务数量已达到 5 个上限");
       return;
@@ -744,19 +622,55 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId }: {
       return;
     }
     const existing = typeof editingId === "number" ? services.find((item) => item.id === editingId) : null;
-    const categoryId = existing?.categoryId ?? defaultCategoryId;
+    const categoryId = draft.categoryId || existing?.categoryId || defaultCategoryId || services[0]?.categoryId;
     if (!categoryId) { setError("当前没有可用的正式服务分类，暂时无法新增服务"); return; }
-    const targetShopId = existing?.shopId ?? defaultShopId;
-    if (!targetShopId) { setError("当前没有可用的正式店铺，暂时无法新增服务"); return; }
     setSaving(true);
     setError("");
     try {
       const body = { name: draft.name.trim(), priceAmount, durationMinutes, description: draft.description.trim() || null, categoryId, currency: "JPY" };
-      const saved = existing ? await pricingModeApi.updateTechnicianService(existing.shopId, existing.id, body) : await pricingModeApi.createTechnicianService(targetShopId, { ...body, sortOrder: services.length });
-      setServices((current) => existing ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved]);
-      setEditingId(null);
-    } catch (saveError) {
-      setError(describeServiceError(saveError));
+      let saved = existing ?? persistedAfterPartialSave;
+      if (!persistedAfterPartialSave) {
+        try {
+          saved = existing
+            ? await pricingModeApi.updateMyTechnicianService(existing.id, body)
+            : defaultShopId
+              ? await pricingModeApi.createTechnicianService(defaultShopId, { ...body, sortOrder: services.length })
+              : await pricingModeApi.createMyTechnicianService({ ...body, sortOrder: services.length });
+          const persistedService = saved;
+          setServices((current) => upsertTechnicianService(current, persistedService));
+        } catch (saveError) {
+          setError(describeServiceError(saveError));
+          return;
+        }
+      }
+      if (!saved) return;
+      try {
+        if (pendingCoverOperation === "upload" && coverFile && saved.shopId) {
+          saved = await pricingModeApi.uploadTechnicianServiceCover(saved.shopId, saved.id, coverFile);
+        } else if (pendingCoverOperation === "remove" && saved.coverImageUrl && saved.shopId) {
+          saved = await pricingModeApi.removeTechnicianServiceCover(saved.shopId, saved.id);
+        }
+        const completedService = saved;
+        setServices((current) => upsertTechnicianService(current, completedService));
+        closeAndResetServiceEditor();
+      } catch {
+        setDraft({
+          name: saved.name,
+          priceAmount: String(saved.priceAmount),
+          durationMinutes: String(saved.durationMinutes),
+          description: saved.description ?? "",
+          categoryId: saved.categoryId
+        });
+        setPersistedAfterPartialSave(saved);
+        setEditingId(saved.id);
+        setError(
+          pendingCoverOperation === "remove"
+            ? "服务已保存，封面移除失败，请重试"
+            : pendingCoverOperation === "upload"
+              ? "服务已保存，封面上传失败，请重试"
+              : ""
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -767,23 +681,21 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId }: {
     setSaving(true);
     setError("");
     try {
-      await pricingModeApi.deleteTechnicianService(service.shopId, service.id);
+      await pricingModeApi.deleteMyTechnicianService(service.id);
       setServices((current) => current.filter((item) => item.id !== service.id));
-      setEditingId(null);
-      setDeleteArmedId(null);
+      closeAndResetServiceEditor();
     } catch (deleteError) {
       setError(describeServiceError(deleteError));
     } finally {
       setSaving(false);
     }
   };
-  const move = async (service: TechnicianServicePayload, direction: -1 | 1) => {
+  const moveService = async (index: number, direction: -1 | 1) => {
     if (saving) return;
-    const currentIndex = services.findIndex((item) => item.id === service.id);
-    const nextIndex = currentIndex + direction;
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= services.length) return;
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= services.length) return;
     const reordered = [...services];
-    [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
+    [reordered[index], reordered[nextIndex]] = [reordered[nextIndex], reordered[index]];
     if (!globalThis.crypto?.randomUUID) {
       setError("当前环境无法安全保存服务排序");
       return;
@@ -802,47 +714,78 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId }: {
     }
   };
 
-  if (loading) return <section className={cn(surface.shell, "rounded-[28px] border p-6 text-center text-sm font-black")}>正在加载正式服务</section>;
-  return (
-    <section className={cn(surface.panel, "rounded-[24px] border p-4")}>
-      <div className="flex items-start justify-between gap-3">
-        <div><h2 className="text-lg font-black">服务信息</h2><p className={cn(surface.muted, "mt-1 text-xs font-bold")}>店铺当前定价模式：{pricingMode === "technician" ? "技师定价" : pricingMode === "merchant" ? "店铺定价" : "未读取"}</p></div>
+  if (loading) return <section className="space-y-3 py-6 text-center text-sm font-black">正在加载正式服务</section>;
+
+  const serviceAction = (_service: ReturnType<typeof fromTechnicianServicePayload>, index: number) => {
+    const rawService = services[index];
+    if (!rawService) return null;
+    return (
+      <div className="flex gap-2">
+        <IconButton className={cn("h-9 w-9", index === 0 || saving ? "pointer-events-none opacity-40" : undefined)} icon="back" label="上移" onClick={index === 0 || saving ? undefined : () => void moveService(index, -1)} />
+        <IconButton className={cn("h-9 w-9 rotate-180", index === services.length - 1 || saving ? "pointer-events-none opacity-40" : undefined)} icon="back" label="下移" onClick={index === services.length - 1 || saving ? undefined : () => void moveService(index, 1)} />
+        <IconButton className={cn("h-9 w-9", saving ? "pointer-events-none opacity-40" : undefined)} icon="edit" label="编辑" onClick={saving ? undefined : () => openEditor(rawService)} />
+      </div>
+    );
+  };
+  const editorService = typeof editingId === "number" ? services.find((service) => service.id === editingId) ?? null : null;
+  const editor = editingId !== null ? (
+    <article className={cn(surface.panel, "rounded-[22px] border p-4")} data-testid="technician-service-card">
+      <div className="space-y-3">
+        {editorService?.shopId || defaultShopId ? (
+          <TechnicianServiceCoverField
+            disabled={saving}
+            onFileChange={(file) => { setCoverFile(file); setError(""); }}
+            onRemovePersisted={(remove) => { setRemoveCover(remove); setError(""); }}
+            onValidationError={setError}
+            persistedUrl={editorService?.coverImageUrl ?? null}
+            removePersisted={removeCover}
+            selectedFile={coverFile}
+          />
+        ) : null}
+        <label className="block text-xs font-bold"><span className={surface.muted}>服务分类</span><select aria-label="服务分类" className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} onChange={(event) => setDraft((current) => ({ ...current, categoryId: Number(event.target.value) }))} value={draft.categoryId}><option value={0}>服务分类</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+        <label className="block text-xs font-bold"><span className={surface.muted}>服务名称</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} value={draft.name} /></label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs font-bold"><span className={surface.muted}>价格</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, priceAmount: event.target.value }))} value={draft.priceAmount} /></label>
+          <label className="block text-xs font-bold"><span className={surface.muted}>时长（分钟）</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: event.target.value }))} value={draft.durationMinutes} /></label>
+        </div>
+        <label className="block text-xs font-bold"><span className={surface.muted}>描述</span><textarea className={cn(surface.metric, "mt-1 min-h-20 w-full rounded-[14px] border px-3 py-2 text-sm font-bold outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} value={draft.description} /></label>
+        <div className="grid grid-cols-2 gap-2"><button className={cn(surface.metric, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={closeAndResetServiceEditor} type="button">取消</button><button className={cn(surface.chip, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={() => void save()} type="button">{saving ? "保存中…" : persistedAfterPartialSave ? pendingCoverOperation === "remove" ? "重试移除封面" : pendingCoverOperation === "upload" ? "重试上传封面" : "完成并关闭" : "保存"}</button></div>
+        {editorService && !persistedAfterPartialSave ? <button className="w-full rounded-[16px] border border-red-500/40 px-3 py-2.5 text-sm font-black text-red-500" disabled={saving} onClick={() => void remove(editorService)} type="button">{deleteArmedId === editorService.id ? "再次点击确认删除" : "删除该服务"}</button> : null}
+      </div>
+    </article>
+  ) : null;
+  const addAndState = (
+    <div className="space-y-3" data-testid="technician-service-management-controls">
+      <div className="flex items-center justify-between gap-3">
+        <p className={cn(surface.muted, "text-xs font-bold")}>店铺当前定价模式：{pricingMode === "technician" ? "技师定价" : pricingMode === "merchant" ? "店铺定价" : "未读取"}</p>
         {services.length < 5 ? <button className={cn(surface.chip, "rounded-full border px-3 py-2 text-xs font-black")} disabled={saving || editingId !== null} onClick={() => openEditor()} type="button">添加服务 {services.length}/5</button> : null}
       </div>
-      {error ? <p className="mt-3 text-xs font-bold text-red-500" role="alert">{error}</p> : null}
-      <div className="mt-4 space-y-3">
-        {services.length === 0 && editingId !== "new" ? <div className={cn(surface.panel, "rounded-[20px] border px-4 py-7 text-center text-sm font-bold")}>当前没有已保存的正式技师服务</div> : null}
-        {[...services, ...(editingId === "new" ? [null] : [])].map((service) => {
-          const editing = editingId === (service?.id ?? "new");
-          return (
-            <article className={cn(surface.panel, "relative rounded-[22px] border p-4")} data-testid="technician-service-card" key={service?.id ?? "new"}>
-              {editing ? (
-                <div className="space-y-3">
-                  <label className="block text-xs font-bold"><span className={surface.muted}>服务名称</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none")} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} value={draft.name} /></label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="block text-xs font-bold"><span className={surface.muted}>价格</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none")} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, priceAmount: event.target.value }))} value={draft.priceAmount} /></label>
-                    <label className="block text-xs font-bold"><span className={surface.muted}>时长（分钟）</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none")} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: event.target.value }))} value={draft.durationMinutes} /></label>
-                  </div>
-                  <label className="block text-xs font-bold"><span className={surface.muted}>描述</span><textarea className={cn(surface.metric, "mt-1 min-h-20 w-full rounded-[14px] border px-3 py-2 text-sm font-bold outline-none")} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} value={draft.description} /></label>
-                  <div className="grid grid-cols-2 gap-2"><button className={cn(surface.metric, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={() => { setEditingId(null); setDeleteArmedId(null); }} type="button">取消</button><button className={cn(surface.chip, "rounded-[16px] border px-3 py-2.5 text-sm font-black")} disabled={saving} onClick={() => void save()} type="button">{saving ? "保存中…" : "保存"}</button></div>
-                  {service ? <button className="w-full rounded-[16px] border border-red-500/40 px-3 py-2.5 text-sm font-black text-red-500" disabled={saving} onClick={() => void remove(service)} type="button">{deleteArmedId === service.id ? "再次点击确认删除" : "删除该服务"}</button> : null}
-                </div>
-              ) : service ? (
-                <>
-                  <div className="absolute right-3 top-3 flex gap-1">
-                    <button aria-label="服务上移" className={cn(surface.metric, "grid h-9 w-9 place-items-center rounded-full border text-sm font-black")} disabled={saving || services[0]?.id === service.id} onClick={() => void move(service, -1)} type="button">↑</button>
-                    <button aria-label="服务下移" className={cn(surface.metric, "grid h-9 w-9 place-items-center rounded-full border text-sm font-black")} disabled={saving || services.at(-1)?.id === service.id} onClick={() => void move(service, 1)} type="button">↓</button>
-                    <IconButton className={cn(surface.metric, "h-9 w-9")} icon="edit" label="编辑服务" onClick={() => openEditor(service)} />
-                  </div>
-                  <div className="pr-32"><p className={cn(surface.muted, "text-[11px] font-bold")}>服务名称</p><h3 className="mt-1 text-[17px] font-black">{service.name}</h3><p className={cn(surface.muted, "mt-1 text-[10px] font-bold")}>店铺 ID：{service.shopId}</p></div>
-                  <div className="mt-3 grid grid-cols-2 gap-2"><div className={cn(surface.metric, "rounded-[16px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>价格</p><strong className="mt-1 block">{yen(service.priceAmount)}</strong></div><div className={cn(surface.metric, "rounded-[16px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>时长</p><strong className="mt-1 block">{service.durationMinutes} 分钟</strong></div></div>
-                  <p className={cn(surface.muted, "mt-3 text-sm font-bold leading-6")}>{service.description || "未填写描述"}</p>
-                </>
-              ) : null}
-            </article>
-          );
-        })}
+      {error ? <div className="flex items-center justify-between gap-3" role="alert"><p className="text-xs font-bold text-red-500">{error}</p><button className="shrink-0 rounded-full border px-3 py-2 text-xs font-black" disabled={saving} onClick={() => void load()} type="button">重新加载服务</button></div> : null}
+      {services.length === 0 && editingId !== "new" ? <p className={cn(surface.muted, "px-1 py-4 text-center text-sm font-bold")}>当前没有已保存的正式技师服务</p> : null}
+      {editor}
+    </div>
+  );
+
+  if (profile) {
+    return (
+      <div className="space-y-3">
+        <TechnicianProfileInfoView
+          model={fromTechnicianSelfProfile(profile, technician, services)}
+          privacySlot={privacySlot}
+          serviceAction={serviceAction}
+        />
+        {addAndState}
       </div>
+    );
+  }
+
+  return (
+    <section className="space-y-3" data-testid="technician-profile-services">
+      <h2 className="px-1 text-lg font-black">服务信息</h2>
+      {services.map((service, index) => (
+        <UnifiedServiceInfoCard actionSlot={serviceAction(fromTechnicianServicePayload(service), index)} data={fromTechnicianServicePayload(service)} key={service.id} />
+      ))}
+      {addAndState}
     </section>
   );
 }
@@ -880,7 +823,7 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
     next.set("period", period);
     setSearchParams(next, { replace: true });
   };
-  const defaultCategoryId = technician?.services[0]?.category.id ?? null;
+  const defaultCategoryId = technician?.services[0]?.category.id ?? technician?.shop?.serviceCategories[0]?.id ?? null;
 
   useEffect(() => {
     if (searchParams.get("meTab") === "services") {
@@ -897,7 +840,7 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
   }, [searchParams, setSearchParams]);
 
   return (
-    <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"} showBottomNav={!(activeView === "me" && meTab === "data")}>
+    <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"} showBottomNav={activeView !== "me"}>
       {activeView === "tasks" ? <TasksView profile={selfProfile} technician={technician} /> : null}
       {activeView === "me" ? (
         <>
@@ -915,6 +858,7 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
                 defaultShopId={shopId}
                 onSaved={setSelfProfile}
                 profile={selfProfile}
+                technician={technician}
               />
             ) : null}
              {meTab === "data" ? <DataCenter onPeriodChange={updateDataCenterPeriod} onRangeLoaded={setDataCenterRange} period={dataCenterPeriod} /> : null}

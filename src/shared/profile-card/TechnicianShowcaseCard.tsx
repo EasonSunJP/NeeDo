@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AppIcon, IconMetricAction, type IconName } from "../../components/client-ui/AppScaffold";
 import { translateText, type Language } from "../../i18n/translations";
@@ -7,7 +7,6 @@ import { cn } from "../../lib/utils";
 import type { ServiceItem, Technician } from "../../types/domain";
 import { getScopedProfileDetailPath } from "../profile-detail/paths";
 import { SimpleRatingBadge } from "./SimpleRatingBadge";
-import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard";
 
 type TechnicianShowcaseCardProps = {
   "aria-label"?: string;
@@ -102,8 +101,26 @@ function getTechnicianCardShareCount() {
   return 0;
 }
 
-export function getTechnicianDynamicPath(technician: Technician) {
-  return `/profiles/technician/${technician.id}`;
+type TechnicianPublicProfileReference = Pick<Technician, "id"> & Partial<Pick<Technician, "systemId">>;
+
+export function getTechnicianPublicProfileId(
+  technician: TechnicianPublicProfileReference
+) {
+  const publicId = technician.systemId?.trim();
+  return publicId && /^s\d{10}$/u.test(publicId) ? publicId : technician.id;
+}
+
+export function getTechnicianDynamicPath(
+  technician: TechnicianPublicProfileReference
+) {
+  return getScopedTechnicianDynamicPath("user", technician);
+}
+
+export function getScopedTechnicianDynamicPath(
+  scope: "user" | "merchant" | "technician",
+  technician: TechnicianPublicProfileReference
+) {
+  return getScopedProfileDetailPath(scope, "technician", getTechnicianPublicProfileId(technician));
 }
 
 function getStableBucketFromText(value: string) {
@@ -374,9 +391,11 @@ export function TechnicianShowcaseCard({
   technician
 }: TechnicianShowcaseCardProps) {
   const location = useLocation();
-  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
-  const recommendedService = formalData ? null : getRecommendedServiceForTechnician(technician, directService, fallbackServices);
   const formalPrimaryService = formalData?.primaryService ?? null;
+  const persistedPrimaryService = formalData ? formalPrimaryService : technician.primaryService ?? null;
+  const recommendedService = formalData || persistedPrimaryService
+    ? null
+    : getRecommendedServiceForTechnician(technician, directService, fallbackServices);
   const copy = getTechnicianCardCopy(language);
   const displayName = formalData?.displayName?.trim() || getTechnicianDisplayName(technician);
   const formalRankBadge = formalData?.nearbyRank ? getTechnicianCardRankBadge(formalData.nearbyRank - 1) : null;
@@ -385,9 +404,9 @@ export function TechnicianShowcaseCard({
       ? [formalRankBadge]
       : []
     : buildTechnicianCardBadges(technician, rankIndex, language);
-  const primarySkillSource = formalData
-    ? formalPrimaryService?.name ?? ""
-    : technician.skills[0] ?? technician.profileTags?.[0] ?? copy.serviceFallback;
+  const primarySkillSource = persistedPrimaryService?.name ?? (
+    formalData ? "" : technician.skills[0] ?? technician.profileTags?.[0] ?? copy.serviceFallback
+  );
   const primarySkill = primarySkillSource ? localizeTechnicianCardText(primarySkillSource, language) : "";
   const areaSource = formalData ? formalData.city?.trim() ?? "" : technician.serviceAreas[0] ?? copy.tokyo;
   const areaLabel = areaSource ? localizeTechnicianCardText(areaSource, language) : "";
@@ -404,19 +423,21 @@ export function TechnicianShowcaseCard({
   const statusLine = [statusLabel, acceptanceRate === null ? "" : `${copy.acceptRate} ${acceptanceRate}%`].filter(Boolean).join(" · ");
   const packageInfo = recommendedService?.packages[0];
   const price = packageInfo?.price ?? recommendedService?.priceFrom ?? Number.parseInt(technician.bidBudgetMin ?? "", 10);
-  const duration = formalData ? formalPrimaryService?.durationMinutes : packageInfo?.durationMinutes ?? 60;
-  const priceLabel = formalData
-    ? formalPrimaryService
-      ? formatFormalServicePrice(formalPrimaryService.priceAmount, formalPrimaryService.currency)
-      : null
+  const duration = persistedPrimaryService?.durationMinutes ?? (formalData ? undefined : packageInfo?.durationMinutes ?? 60);
+  const priceLabel = persistedPrimaryService
+    ? formatFormalServicePrice(persistedPrimaryService.priceAmount, persistedPrimaryService.currency)
+    : formalData
+      ? null
     : Number.isFinite(price) && price > 0
       ? formatCardYen(price)
       : copy.pricePending;
-  const serviceName = formalData
-    ? formalPrimaryService?.name ?? ""
+  const serviceName = persistedPrimaryService
+    ? localizeTechnicianCardText(persistedPrimaryService.name, language)
+    : formalData
+      ? ""
     : localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
   const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
-  const detailHref = detailTo ?? getScopedProfileDetailPath(currentScope, "technician", technician.id);
+  const detailHref = detailTo ?? getScopedTechnicianDynamicPath(currentScope, technician);
   const selectionLabel = selectionAriaLabel ?? ariaLabel ?? (selected ? "已选技师" : "待选技师");
   const selectionIconName = selected ? selectionActiveIcon : selectionInactiveIcon;
   const favoriteCount = formalData ? normalizeFormalCount(formalData.favoriteCount) : getTechnicianCardFavoriteCount(technician);
@@ -514,14 +535,10 @@ export function TechnicianShowcaseCard({
       </div>
     </div>
   );
-  const photoTrigger = formalData ? (
+  const photoTrigger = (
     <Link aria-label={`查看${displayName}详情`} className="block w-full text-left active:scale-[0.99]" to={detailHref}>
       {photoContent}
     </Link>
-  ) : (
-    <button aria-label={`查看${displayName}信息卡`} className="block w-full text-left active:scale-[0.99]" onClick={() => setTechnicianInfoCardOpen(true)} type="button">
-      {photoContent}
-    </button>
   );
   const photoSection = (
     <div className="relative">
@@ -548,7 +565,6 @@ export function TechnicianShowcaseCard({
     </div>
   );
   return onSelect ? (
-    <>
     <div className={cardClassName}>
       <div className="relative">
         {photoSection}
@@ -580,33 +596,16 @@ export function TechnicianShowcaseCard({
           </button>
         ) : null}
       </div>
-      <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+      <Link aria-label={`查看${displayName}详情`} className="block active:scale-[0.99]" to={detailHref}>
         {detailContent}
       </Link>
     </div>
-    {!formalData ? <TechnicianPublicInfoCardModal
-      dynamicTo={detailHref}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={technician}
-      themeScope={currentScope}
-    /> : null}
-    </>
   ) : (
-    <>
     <div className={cardClassName}>
       {photoSection}
-      <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+      <Link aria-label={`查看${displayName}详情`} className="block active:scale-[0.99]" to={detailHref}>
         {detailContent}
       </Link>
     </div>
-    {!formalData ? <TechnicianPublicInfoCardModal
-      dynamicTo={detailHref}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={technician}
-      themeScope={currentScope}
-    /> : null}
-    </>
   );
 }

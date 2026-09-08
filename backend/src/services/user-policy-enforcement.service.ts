@@ -1,6 +1,7 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   UserGlobalPolicyResolverPort,
+  ApplicationEkycDecision,
   UserPolicyAccountFacts,
   UserPolicyComplianceDecision,
   UserPolicyEnforcementRepositoryPort,
@@ -41,9 +42,8 @@ export class UserPolicyEnforcementService {
     occurredAt: Date
   ): Promise<void> {
     const { facts, policy } = await this.resolveContext(userId, occurredAt);
-    const required = mode === "home"
-      ? policy.requireHomeServiceEkyc
-      : policy.requireStoreServiceEkyc;
+    const required =
+      mode === "home" ? policy.requireHomeServiceEkyc : policy.requireStoreServiceEkyc;
     if (!required || facts.ekycVerified) return;
     throw new AppError({
       code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
@@ -57,7 +57,19 @@ export class UserPolicyEnforcementService {
     });
   }
 
-  private async resolveContext(userId: number, occurredAt: Date): Promise<{
+  public async evaluateApplicationEkyc(userId: number, type: "merchant" | "technician", occurredAt: Date): Promise<ApplicationEkycDecision> {
+    const { facts, policy } = await this.resolveContext(userId, occurredAt);
+    return {
+      required: type === "merchant" ? policy.requireMerchantApplicationEkyc : policy.requireTechnicianApplicationEkyc,
+      verified: facts.ekycVerified,
+      policyVersionPublicId: policy.versionPublicId
+    };
+  }
+
+  private async resolveContext(
+    userId: number,
+    occurredAt: Date
+  ): Promise<{
     facts: UserPolicyAccountFacts;
     policy: ResolvedUserGlobalPolicy;
   }> {

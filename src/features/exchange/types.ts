@@ -27,6 +27,7 @@ export type ExchangeViewerState = {
   canWithdraw: boolean;
   canClaim: boolean;
   canViewClaims: boolean;
+  canViewMatching?: boolean;
 };
 
 export type ExchangeClaimStatus =
@@ -74,6 +75,15 @@ export type ExchangeClaimMine = {
 
 export type ExchangeMatchingStatus = "open" | "matched" | "closed";
 
+export type ExchangeQuickBudgetDecision = {
+  action: "increase_to_selected_total";
+  activeClaimCount: number;
+  selectedQuoteTotalJpy: number;
+  effectiveBudgetMaxJpy: number;
+  requiredBudgetMaxJpy: number;
+  requiredBudgetIncreaseJpy: number;
+};
+
 export type ExchangeMatchParticipant = {
   exchangeClaimId: number;
   provider: { publicId: string; displayName: string; avatarUrl: string | null };
@@ -86,6 +96,63 @@ export type ExchangeMatchParticipant = {
   estimatedStartsAt: string;
   estimatedEndsAt: string;
   matchedAt: string;
+  booking: ExchangeParticipantBooking | null;
+};
+
+export type ExchangeParticipantBooking = {
+  orderId: number;
+  orderNo: string;
+  status:
+    | "pending"
+    | "confirmed"
+    | "inService"
+    | "awaitingCheckout"
+    | "awaitingPaymentConfirmation"
+    | "completed"
+    | "cancelled";
+};
+
+export type ExchangeBookingConversion = {
+  exchangePostId: number;
+  matchingVersion: number;
+  bookedAt: string;
+  orders: Array<{
+    exchangeClaimId: number;
+    orderId: number;
+    orderNo: string;
+    status: "pending";
+    providerPublicId: string;
+    quoteAmountJpy: number;
+    startsAt: string;
+    endsAt: string;
+  }>;
+};
+
+export type ExchangeCancellationAction = "request" | "accept" | "reject" | "withdraw";
+export type ExchangeCancellationParty = "customer" | "provider";
+export type ExchangeCancellationStatus = "pending" | "accepted" | "rejected" | "withdrawn";
+
+export type ExchangeCancellation = {
+  orderId: number;
+  orderStatus:
+    | "pending"
+    | "confirmed"
+    | "in_service"
+    | "awaiting_checkout"
+    | "awaiting_payment_confirmation"
+    | "completed"
+    | "cancelled";
+  viewerParty: ExchangeCancellationParty;
+  allowedActions: ExchangeCancellationAction[];
+  cancellation: null | {
+    id: number;
+    status: ExchangeCancellationStatus;
+    reason: string;
+    initiatorParty: ExchangeCancellationParty;
+    version: number;
+    requestedAt: string;
+    resolvedAt: string | null;
+  };
 };
 
 export type ExchangeMatching = {
@@ -97,7 +164,12 @@ export type ExchangeMatching = {
   selectedQuoteTotalJpy: number;
   matchedAt: string | null;
   participants: ExchangeMatchParticipant[];
-  viewer: { canSelect: boolean };
+  quickBudgetDecision: ExchangeQuickBudgetDecision | null;
+  viewer: {
+    canSelect: boolean;
+    canConfirmQuickBudget: boolean;
+    canCreateBookings: boolean;
+  };
 };
 
 export type ExchangeMatchAdjustmentPreview = {
@@ -124,6 +196,14 @@ export type SelectExchangeMatchingInput = {
     action: "reduce_to_selected_count";
     confirmedTargetProviderCount: number;
   } | null;
+};
+
+export type ConfirmQuickExchangeBudgetInput = {
+  expectedVersion: number;
+  budgetConfirmation: {
+    action: "increase_to_selected_total";
+    confirmedBudgetMaxJpy: number;
+  };
 };
 
 export type ExchangeClaimOptionListInput = PaginationInput & {
@@ -183,6 +263,42 @@ export type ExchangeIntelligence = {
   serviceAreas: string[];
   originalPriceJpy: number | null;
   campaignPriceJpy: number;
+  booking: ExchangeIntelligenceBooking;
+  publisherCard: ExchangeIntelligencePublisherProfileProjection | null;
+  serviceCard: ExchangeIntelligenceServiceCardProjection | null;
+};
+
+export type ExchangeIntelligenceUnavailableReason =
+  | "legacy_unbound"
+  | "post_unavailable"
+  | "publisher_unavailable"
+  | "service_unavailable";
+
+export type ExchangeIntelligenceBooking = {
+  available: boolean;
+  unavailableReason: ExchangeIntelligenceUnavailableReason | null;
+  target: { type: "shop_service" | "technician_service"; id: number } | null;
+  catalogPriceJpy: number | null;
+  campaignPriceJpy: number;
+  serviceName: string | null;
+  durationMinutes: number | null;
+  serviceMode: ExchangeServiceMode;
+  serviceWindow: { startsAt: string; endsAt: string };
+};
+
+export type ExchangeIntelligenceServiceRef = `shop:${number}` | `technician:${number}`;
+
+export type ExchangeIntelligenceServiceOption = {
+  serviceRef: ExchangeIntelligenceServiceRef;
+  ownerType: "shop" | "technician";
+  name: string;
+  durationMinutes: number;
+  catalogPriceJpy: number;
+  currency: "JPY";
+  serviceMode: ExchangeServiceMode;
+  available: true;
+  shop: { publicId: string; name: string; city: string; address: string };
+  technician: null | { publicId: string; displayName: string; avatarUrl: string | null; serviceArea: string | null; serviceAreas: string[] };
 };
 
 export type ExchangePost = {
@@ -257,12 +373,10 @@ export type PublishExchangeDemandInput = ExchangePublishCommon & {
 
 export type PublishExchangeIntelligenceInput = ExchangePublishCommon & {
   type: "intelligence";
-  areaLabel: string;
-  serviceMode: ExchangeServiceMode;
-  addressLabel: string | null;
-  serviceAreas: string[];
-  originalPriceJpy: number | null;
+  serviceRef: ExchangeIntelligenceServiceRef;
   campaignPriceJpy: number;
 };
 
 export type PublishExchangePostInput = PublishExchangeDemandInput | PublishExchangeIntelligenceInput;
+import type { ExchangeIntelligencePublisherProfileProjection } from "../../shared/profile-card";
+import type { ExchangeIntelligenceServiceCardProjection } from "../../shared/service-card";

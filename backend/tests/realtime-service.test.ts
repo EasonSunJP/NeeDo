@@ -2,6 +2,43 @@ import { ConversationAccessPolicy } from "@prisma/client";
 import { logger } from "../src/config/logger";
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
 import { RealtimeService } from "../src/services/realtime.service";
+import type { ExchangeCommittedNotification } from "../src/types/exchange-booking-conversion.types";
+
+describe("RealtimeService committed Exchange notifications", () => {
+  it("publishes already-committed notification rows without inserting them again", async () => {
+    const repository = { createOrderStatusNotifications: jest.fn() };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+    const createdAt = new Date("2026-09-03T01:02:03.000Z");
+    const notifications: ExchangeCommittedNotification[] = [
+      {
+        id: 701,
+        recipientUserId: 51,
+        recipientIdentityId: 510,
+        actorUserId: 41,
+        actorIdentityId: 410,
+        type: "orderStatus",
+        title: "exchange.booking.created",
+        body: "ND501",
+        payload: { orderId: 501 },
+        readAt: null,
+        createdAt
+      }
+    ];
+
+    await service.publishCommittedNotifications(notifications);
+
+    expect(repository.createOrderStatusNotifications).not.toHaveBeenCalled();
+    expect(eventGateway.publish).toHaveBeenCalledWith({
+      id: expect.any(String),
+      type: "notification.created",
+      recipientUserId: 51,
+      recipientIdentityId: 510,
+      payload: notifications[0],
+      createdAt: createdAt.toISOString()
+    });
+  });
+});
 
 describe("RealtimeRepository message-send eligibility", () => {
   const createFixture = ({
@@ -32,9 +69,7 @@ describe("RealtimeRepository message-send eligibility", () => {
       conversationParticipant: { findFirst: findParticipant },
       contact: { count: countContacts }
     } as never);
-    const blockSpy = jest
-      .spyOn(repository, "isMessageSenderBlocked")
-      .mockResolvedValue(blocked);
+    const blockSpy = jest.spyOn(repository, "isMessageSenderBlocked").mockResolvedValue(blocked);
 
     return { repository, findParticipant, countContacts, blockSpy };
   };
@@ -131,22 +166,22 @@ describe("RealtimeRepository message-send eligibility", () => {
     });
   });
 
-  it.each([
-    ConversationAccessPolicy.BUSINESS_CONTEXT,
-    ConversationAccessPolicy.GROUP_MEMBERSHIP
-  ])("allows unblocked %s sends without querying contacts", async (accessPolicy) => {
-    const { repository, countContacts } = createFixture({ accessPolicy });
+  it.each([ConversationAccessPolicy.BUSINESS_CONTEXT, ConversationAccessPolicy.GROUP_MEMBERSHIP])(
+    "allows unblocked %s sends without querying contacts",
+    async (accessPolicy) => {
+      const { repository, countContacts } = createFixture({ accessPolicy });
 
-    await expect(
-      repository.checkMessageSendEligibility({
-        conversationId: 91,
-        senderUserId: 41,
-        senderIdentityId: 410
-      })
-    ).resolves.toBe("allowed");
+      await expect(
+        repository.checkMessageSendEligibility({
+          conversationId: 91,
+          senderUserId: 41,
+          senderIdentityId: 410
+        })
+      ).resolves.toBe("allowed");
 
-    expect(countContacts).not.toHaveBeenCalled();
-  });
+      expect(countContacts).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("RealtimeService fuzzy search", () => {
@@ -161,10 +196,11 @@ describe("RealtimeService fuzzy search", () => {
     });
 
     await expect(
-      service.searchDirectory(
-        { userId: 41 } as never,
-        { query: "u0000000167", page: 1, pageSize: 50 }
-      )
+      service.searchDirectory({ userId: 41 } as never, {
+        query: "u0000000167",
+        page: 1,
+        pageSize: 50
+      })
     ).resolves.toBe(directoryResult);
     expect(repository.searchDirectory).toHaveBeenCalledWith(41, {
       ownerIdentityId: 41,
@@ -286,10 +322,7 @@ describe("RealtimeService fuzzy search", () => {
     });
 
     await expect(
-      service.getDirectoryProfile(
-        { userId: 41, currentIdentityId: 410 } as never,
-        41
-      )
+      service.getDirectoryProfile({ userId: 41, currentIdentityId: 410 } as never, 41)
     ).resolves.toBe(profile);
 
     expect(repository.getDirectoryProfile).toHaveBeenCalledWith(41, 410, 41, 410);
@@ -320,9 +353,10 @@ describe("RealtimeService friend request lifecycle", () => {
     const service = new RealtimeService(repository as never, eventGateway);
     const auth = { userId: 41, currentIdentityId: 410 } as never;
 
-    await expect(
-      service.createFriendRequest(auth, { targetUserId: 167 })
-    ).resolves.toEqual({ friendRequest, created: false });
+    await expect(service.createFriendRequest(auth, { targetUserId: 167 })).resolves.toEqual({
+      friendRequest,
+      created: false
+    });
     expect(eventGateway.publish).not.toHaveBeenCalled();
 
     repository.createFriendRequest.mockResolvedValueOnce({
@@ -443,10 +477,11 @@ describe("RealtimeService message reaction outcomes", () => {
     const { eventGateway, service } = createFixture({ status: "updated", message });
 
     await expect(
-      service.setMessageReaction(
-        { userId: 1 } as never,
-        { conversationId: 3, messageId: 41, emoji: "OK" }
-      )
+      service.setMessageReaction({ userId: 1 } as never, {
+        conversationId: 3,
+        messageId: 41,
+        emoji: "OK"
+      })
     ).resolves.toBe(message);
     expect(eventGateway.publish).toHaveBeenCalledTimes(1);
     expect(eventGateway.publish).toHaveBeenCalledWith(
@@ -458,10 +493,11 @@ describe("RealtimeService message reaction outcomes", () => {
     const { eventGateway, service } = createFixture({ status: "unchanged", message });
 
     await expect(
-      service.setMessageReaction(
-        { userId: 1 } as never,
-        { conversationId: 3, messageId: 41, emoji: "OK" }
-      )
+      service.setMessageReaction({ userId: 1 } as never, {
+        conversationId: 3,
+        messageId: 41,
+        emoji: "OK"
+      })
     ).resolves.toBe(message);
     expect(eventGateway.publish).not.toHaveBeenCalled();
   });
@@ -474,10 +510,11 @@ describe("RealtimeService message reaction outcomes", () => {
     });
 
     await expect(
-      service.setMessageReaction(
-        { userId: 1 } as never,
-        { conversationId: 3, messageId: 41, emoji: "NO" }
-      )
+      service.setMessageReaction({ userId: 1 } as never, {
+        conversationId: 3,
+        messageId: 41,
+        emoji: "NO"
+      })
     ).rejects.toMatchObject({
       code: 40946,
       message: "error.im.reaction_slot_occupied",
@@ -490,20 +527,22 @@ describe("RealtimeService message reaction outcomes", () => {
     const { service } = createFixture({ status: "not_found" });
 
     await expect(
-      service.setMessageReaction(
-        { userId: 1 } as never,
-        { conversationId: 3, messageId: 41, emoji: "OK" }
-      )
+      service.setMessageReaction({ userId: 1 } as never, {
+        conversationId: 3,
+        messageId: 41,
+        emoji: "OK"
+      })
     ).rejects.toMatchObject({ statusCode: 404, message: "error.realtime.message_not_found" });
   });
 
   it("publishes only a changed DELETE outcome", async () => {
     const updated = createFixture({ status: "unchanged", message }, { status: "updated", message });
     await expect(
-      updated.service.removeMessageReaction(
-        { userId: 1 } as never,
-        { conversationId: 3, messageId: 41, emoji: "OK" }
-      )
+      updated.service.removeMessageReaction({ userId: 1 } as never, {
+        conversationId: 3,
+        messageId: 41,
+        emoji: "OK"
+      })
     ).resolves.toBe(message);
     expect(updated.eventGateway.publish).toHaveBeenCalledTimes(1);
 
@@ -512,10 +551,11 @@ describe("RealtimeService message reaction outcomes", () => {
       { status: "unchanged", message }
     );
     await expect(
-      unchanged.service.removeMessageReaction(
-        { userId: 1 } as never,
-        { conversationId: 3, messageId: 41, emoji: "OK" }
-      )
+      unchanged.service.removeMessageReaction({ userId: 1 } as never, {
+        conversationId: 3,
+        messageId: 41,
+        emoji: "OK"
+      })
     ).resolves.toBe(message);
     expect(unchanged.eventGateway.publish).not.toHaveBeenCalled();
   });
@@ -628,23 +668,29 @@ describe("RealtimeService social events", () => {
     const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, eventGateway);
 
-    await expect(service.updateSocialPost(
-      { userId: 1 } as never,
-      44,
-      { content: "edited", mentionUserIds: [5], visibility: "followers" },
-      { ip: "127.0.0.1" }
-    )).resolves.toBe(post);
+    await expect(
+      service.updateSocialPost(
+        { userId: 1 } as never,
+        44,
+        { content: "edited", mentionUserIds: [5], visibility: "followers" },
+        { ip: "127.0.0.1" }
+      )
+    ).resolves.toBe(post);
 
-    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      type: "social.post.updated",
-      recipientUserId: 2,
-      payload: post
-    }));
-    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      type: "notification.created",
-      recipientUserId: 5,
-      payload: notification
-    }));
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "social.post.updated",
+        recipientUserId: 2,
+        payload: post
+      })
+    );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "notification.created",
+        recipientUserId: 5,
+        payload: notification
+      })
+    );
   });
 });
 
@@ -669,7 +715,10 @@ describe("RealtimeService standard message recall", () => {
   const createRecallFixture = (
     outcome:
       | { status: "recalled" | "already_recalled"; message: typeof recalledMessage }
-      | { status: "not_found" | "window_expired" }
+      | { status: "not_found" | "window_expired" },
+    membershipBenefitResolver?: {
+      hasEffectiveBenefitAt: (userId: number, benefitCode: "traceless_recall", occurredAt: Date) => Promise<boolean>;
+    }
   ) => {
     const repository = {
       recallMessage: jest.fn(async () => outcome),
@@ -681,7 +730,14 @@ describe("RealtimeService standard message recall", () => {
       publish: jest.fn(),
       subscribe: jest.fn()
     };
-    const service = new RealtimeService(repository as never, eventGateway);
+    const service = new RealtimeService(
+      repository as never,
+      eventGateway,
+      undefined,
+      undefined,
+      undefined,
+      membershipBenefitResolver
+    );
 
     return { eventGateway, repository, service };
   };
@@ -693,10 +749,11 @@ describe("RealtimeService standard message recall", () => {
     });
 
     await expect(
-      service.recallMessage(
-        { userId: 1 } as never,
-        { conversationId: 91, messageId: 700, mode: "standard" }
-      )
+      service.recallMessage({ userId: 1 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
     ).resolves.toEqual({
       action: "standard_recall",
       conversationId: 91,
@@ -709,6 +766,7 @@ describe("RealtimeService standard message recall", () => {
       messageId: 700,
       senderIdentityId: 1,
       senderUserId: 1,
+      mode: "standard",
       now: expect.any(Date)
     });
     expect(recalledMessage.content).toBeNull();
@@ -730,10 +788,11 @@ describe("RealtimeService standard message recall", () => {
     });
 
     await expect(
-      service.recallMessage(
-        { userId: 1 } as never,
-        { conversationId: 91, messageId: 700, mode: "standard" }
-      )
+      service.recallMessage({ userId: 1 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
     ).resolves.toEqual({
       action: "standard_recall",
       conversationId: 91,
@@ -743,14 +802,85 @@ describe("RealtimeService standard message recall", () => {
     expect(eventGateway.publish).not.toHaveBeenCalled();
   });
 
+  it("selects traceless recall only from the server membership resolver", async () => {
+    const tracelessMessage = { ...recalledMessage, recallMode: "traceless" as const };
+    const resolver = {
+      hasEffectiveBenefitAt: jest.fn(async () => true)
+    };
+    const { repository, service } = createRecallFixture(
+      { status: "recalled", message: tracelessMessage } as never,
+      resolver
+    );
+
+    await expect(
+      service.recallMessage({ userId: 1 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
+    ).resolves.toMatchObject({ action: "traceless_recall", message: tracelessMessage });
+
+    expect(resolver.hasEffectiveBenefitAt).toHaveBeenCalledWith(
+      1,
+      "traceless_recall",
+      expect.any(Date)
+    );
+    expect(repository.recallMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "traceless" })
+    );
+  });
+
+  it("rejects before mutation when the membership resolver fails", async () => {
+    const resolver = {
+      hasEffectiveBenefitAt: jest.fn(async () => {
+        throw new Error("membership lookup failed");
+      })
+    };
+    const { repository, service } = createRecallFixture(
+      { status: "recalled", message: recalledMessage },
+      resolver
+    );
+
+    await expect(
+      service.recallMessage({ userId: 1 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
+    ).rejects.toThrow("membership lookup failed");
+    expect(repository.recallMessage).not.toHaveBeenCalled();
+  });
+
+  it("returns an already recalled terminal mode unchanged after eligibility changes", async () => {
+    const resolver = {
+      hasEffectiveBenefitAt: jest.fn(async () => true)
+    };
+    const { repository, service } = createRecallFixture(
+      { status: "already_recalled", message: recalledMessage },
+      resolver
+    );
+
+    await expect(
+      service.recallMessage({ userId: 1 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
+    ).resolves.toMatchObject({ action: "standard_recall", message: recalledMessage });
+    expect(repository.recallMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "traceless" })
+    );
+  });
+
   it("maps the authoritative deadline failure to a stable error", async () => {
     const { service } = createRecallFixture({ status: "window_expired" });
 
     await expect(
-      service.recallMessage(
-        { userId: 1 } as never,
-        { conversationId: 91, messageId: 700, mode: "standard" }
-      )
+      service.recallMessage({ userId: 1 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
     ).rejects.toMatchObject({
       message: "error.im.recall_window_expired",
       statusCode: 400
@@ -761,10 +891,11 @@ describe("RealtimeService standard message recall", () => {
     const { service } = createRecallFixture({ status: "not_found" });
 
     await expect(
-      service.recallMessage(
-        { userId: 2 } as never,
-        { conversationId: 91, messageId: 700, mode: "standard" }
-      )
+      service.recallMessage({ userId: 2 } as never, {
+        conversationId: 91,
+        messageId: 700,
+        mode: "standard"
+      })
     ).rejects.toMatchObject({
       message: "error.realtime.message_not_found",
       statusCode: 404
@@ -788,10 +919,11 @@ describe("RealtimeService message-send preflight", () => {
     });
 
     await expect(
-      service.createMessage(
-        { userId: 41 } as never,
-        { conversationId: 91, type: "text", content: "hello" }
-      )
+      service.createMessage({ userId: 41 } as never, {
+        conversationId: 91,
+        type: "text",
+        content: "hello"
+      })
     ).rejects.toMatchObject({
       message,
       statusCode
@@ -808,10 +940,11 @@ describe("RealtimeService message-send preflight", () => {
     const service = new RealtimeService(repository as never, gateway);
 
     await expect(
-      service.createMessage(
-        { userId: 41 } as never,
-        { conversationId: 91, type: "text", content: "hello" }
-      )
+      service.createMessage({ userId: 41 } as never, {
+        conversationId: 91,
+        type: "text",
+        content: "hello"
+      })
     ).rejects.toMatchObject({
       message: "error.im.not_friends",
       statusCode: 403
@@ -828,10 +961,11 @@ describe("RealtimeService message-send preflight", () => {
     const service = new RealtimeService(repository as never, gateway);
 
     await expect(
-      service.createMessage(
-        { userId: 41 } as never,
-        { conversationId: 91, type: "text", content: "hello" }
-      )
+      service.createMessage({ userId: 41 } as never, {
+        conversationId: 91,
+        type: "text",
+        content: "hello"
+      })
     ).rejects.toMatchObject({
       message: "error.im.recipient_blocked",
       statusCode: 403
@@ -854,10 +988,11 @@ describe("RealtimeService message-send preflight", () => {
 
     try {
       await expect(
-        service.createMessage(
-          { userId: 41 } as never,
-          { conversationId: 91, type: "text", content: "hello" }
-        )
+        service.createMessage({ userId: 41 } as never, {
+          conversationId: 91,
+          type: "text",
+          content: "hello"
+        })
       ).resolves.toBe(message);
       expect(gateway.publish).not.toHaveBeenCalled();
     } finally {
@@ -870,9 +1005,7 @@ describe("RealtimeService message-send preflight", () => {
     const repository = {
       checkMessageSendEligibility: jest.fn().mockResolvedValue("allowed"),
       createMessage: jest.fn().mockResolvedValue({ status: "created", message }),
-      listConversationRecipients: jest
-        .fn()
-        .mockResolvedValue([{ userId: 167, identityId: 1670 }])
+      listConversationRecipients: jest.fn().mockResolvedValue([{ userId: 167, identityId: 1670 }])
     };
     const gateway = {
       publish: jest.fn(() => {
@@ -885,10 +1018,11 @@ describe("RealtimeService message-send preflight", () => {
 
     try {
       await expect(
-        service.createMessage(
-          { userId: 41 } as never,
-          { conversationId: 91, type: "text", content: "hello" }
-        )
+        service.createMessage({ userId: 41 } as never, {
+          conversationId: 91,
+          type: "text",
+          content: "hello"
+        })
       ).resolves.toBe(message);
       expect(gateway.publish).toHaveBeenCalledTimes(1);
     } finally {
@@ -900,31 +1034,29 @@ describe("RealtimeService message-send preflight", () => {
 describe("RealtimeRepository transaction-time recipient block", () => {
   it("checks block state on the transaction client before creating a message", async () => {
     const createdAt = new Date("2026-08-31T00:00:00.000Z");
-    const participantFindFirst = jest
-      .fn()
-      .mockResolvedValue({
-        id: 77,
-        createdAt,
-        conversation: {
-          type: "DIRECT",
-          privacyModeEnabled: false,
-          disappearingTtlSeconds: null,
-          privacyPolicyVersion: 1,
-          accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
-          participants: [
-            {
-              userId: 41,
-              identityId: 410,
-              identity: { ownedContacts: [] }
-            },
-            {
-              userId: 167,
-              identityId: 1670,
-              identity: { ownedContacts: [{ id: 900 }] }
-            }
-          ]
-        }
-      });
+    const participantFindFirst = jest.fn().mockResolvedValue({
+      id: 77,
+      createdAt,
+      conversation: {
+        type: "DIRECT",
+        privacyModeEnabled: false,
+        disappearingTtlSeconds: null,
+        privacyPolicyVersion: 1,
+        accessPolicy: ConversationAccessPolicy.FRIENDSHIP_REQUIRED,
+        participants: [
+          {
+            userId: 41,
+            identityId: 410,
+            identity: { ownedContacts: [] }
+          },
+          {
+            userId: 167,
+            identityId: 1670,
+            identity: { ownedContacts: [{ id: 900 }] }
+          }
+        ]
+      }
+    });
     const messageCreate = jest.fn(async () => ({
       id: 501,
       conversationId: 91,
@@ -1029,10 +1161,10 @@ describe("RealtimeService friendship authorization", () => {
     });
 
     await expect(
-      service.createConversation(
-        { userId: 41 } as never,
-        { type: "direct", participantUserIds: [167] }
-      )
+      service.createConversation({ userId: 41 } as never, {
+        type: "direct",
+        participantUserIds: [167]
+      })
     ).rejects.toMatchObject({
       message: "error.im.not_friends",
       statusCode: 403
@@ -1057,16 +1189,13 @@ describe("RealtimeService group privacy and membership", () => {
     const service = new RealtimeService(repository as never, eventGateway);
 
     await expect(
-      service.updateConversationPrivacy(
-        { userId: 1 } as never,
-        {
-          conversationId: 91,
-          privacyModeEnabled: true,
-          disappearingTtlSeconds: 3_600,
-          hideMemberProfiles: true,
-          disappearingStartMode: "sent"
-        }
-      )
+      service.updateConversationPrivacy({ userId: 1 } as never, {
+        conversationId: 91,
+        privacyModeEnabled: true,
+        disappearingTtlSeconds: 3_600,
+        hideMemberProfiles: true,
+        disappearingStartMode: "sent"
+      })
     ).resolves.toBe(conversation);
 
     expect(repository.updateConversationPrivacy).toHaveBeenCalledWith({
@@ -1169,9 +1298,9 @@ describe("RealtimeService group privacy and membership", () => {
       subscribe: jest.fn()
     });
 
-    await expect(
-      service.clearConversationMessages({ userId: 1 } as never, 91)
-    ).resolves.toBe(conversation);
+    await expect(service.clearConversationMessages({ userId: 1 } as never, 91)).resolves.toBe(
+      conversation
+    );
     expect(repository.clearConversationMessages).toHaveBeenCalledWith({
       conversationId: 91,
       identityId: 1,
@@ -1188,10 +1317,10 @@ describe("RealtimeService group privacy and membership", () => {
     const service = new RealtimeService(repository as never, eventGateway);
 
     await expect(
-      service.updateConversationPreferences(
-        { userId: 41, currentIdentityId: 410 } as never,
-        { conversationId: 91, autoTranslateMessages: true }
-      )
+      service.updateConversationPreferences({ userId: 41, currentIdentityId: 410 } as never, {
+        conversationId: 91,
+        autoTranslateMessages: true
+      })
     ).resolves.toBe(conversation);
 
     expect(repository.updateConversationPreferences).toHaveBeenCalledWith({
@@ -1239,30 +1368,30 @@ describe("NeeDo entity-share atomicity", () => {
     ["not_found", "error.realtime.conversation_not_found", 404],
     ["recipient_blocked", "error.im.recipient_blocked", 403],
     ["not_friends", "error.im.not_friends", 403]
-  ] as const)("creates no share event when preflight returns %s", async (status, message, statusCode) => {
-    const repository = {
-      checkMessageSendEligibility: jest.fn().mockResolvedValue(status),
-      createNeedoEntityShare: jest.fn()
-    };
-    const service = new RealtimeService(repository as never, {
-      publish: jest.fn(),
-      subscribe: jest.fn()
-    });
+  ] as const)(
+    "creates no share event when preflight returns %s",
+    async (status, message, statusCode) => {
+      const repository = {
+        checkMessageSendEligibility: jest.fn().mockResolvedValue(status),
+        createNeedoEntityShare: jest.fn()
+      };
+      const service = new RealtimeService(repository as never, {
+        publish: jest.fn(),
+        subscribe: jest.fn()
+      });
 
-    await expect(
-      service.createNeedoEntityShare(
-        { userId: 41 } as never,
-        {
+      await expect(
+        service.createNeedoEntityShare({ userId: 41 } as never, {
           conversationId: 91,
           recipientIdentityId: 1670,
           target,
           idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
           requestFingerprint: "fingerprint"
-        }
-      )
-    ).rejects.toMatchObject({ message, statusCode });
-    expect(repository.createNeedoEntityShare).not.toHaveBeenCalled();
-  });
+        })
+      ).rejects.toMatchObject({ message, statusCode });
+      expect(repository.createNeedoEntityShare).not.toHaveBeenCalled();
+    }
+  );
 
   it("publishes only a newly committed NeeDo share message", async () => {
     const message = { id: 501, conversationId: 91 };
@@ -1280,24 +1409,19 @@ describe("NeeDo entity-share atomicity", () => {
           replayed: false
         }
       }),
-      listConversationRecipients: jest.fn(async () => [
-        { userId: 167, identityId: 1670 }
-      ])
+      listConversationRecipients: jest.fn(async () => [{ userId: 167, identityId: 1670 }])
     };
     const gateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, gateway);
 
     await expect(
-      service.createNeedoEntityShare(
-        { userId: 41 } as never,
-        {
-          conversationId: 91,
-          recipientIdentityId: 1670,
-          target,
-          idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
-          requestFingerprint: "fingerprint"
-        }
-      )
+      service.createNeedoEntityShare({ userId: 41 } as never, {
+        conversationId: 91,
+        recipientIdentityId: 1670,
+        target,
+        idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
+        requestFingerprint: "fingerprint"
+      })
     ).resolves.toMatchObject({ eventId: 21, shareCount: 4, replayed: false });
     expect(gateway.publish).toHaveBeenCalledWith(
       expect.objectContaining({ type: "message.created", payload: message })

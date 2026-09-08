@@ -20,7 +20,10 @@ export const exchangeClaimOptionListQuerySchema = z
     ...paginationShape,
     shop_id: z.coerce.number().int().positive().optional(),
     technician_profile_id: z.coerce.number().int().positive().optional(),
-    service_ref: z.string().regex(/^(?:shop|technician):[1-9]\d*$/u).optional()
+    service_ref: z
+      .string()
+      .regex(/^(?:shop|technician):[1-9]\d*$/u)
+      .optional()
   })
   .strict();
 

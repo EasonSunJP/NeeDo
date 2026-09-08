@@ -26,10 +26,15 @@ const baseAccounts = {
 const testPassword = "request-flow-test-password";
 
 type MutableFinanceRequestFlowDatabase = jest.Mocked<FinanceRequestFlowDatabase> & {
-  setUserWallet: (userId: number, wallet: { availableBalance: number; frozenBalance: number }) => void;
+  setUserWallet: (
+    userId: number,
+    wallet: { availableBalance: number; frozenBalance: number }
+  ) => void;
 };
 
-const createApi = (database: MutableFinanceRequestFlowDatabase): jest.Mocked<FinanceRequestFlowApi> => {
+const createApi = (
+  database: MutableFinanceRequestFlowDatabase
+): jest.Mocked<FinanceRequestFlowApi> => {
   const details = new Map<number, unknown>([
     [
       101,
@@ -130,7 +135,10 @@ const createDatabase = (): MutableFinanceRequestFlowDatabase => {
       { id: 12, serviceId: 21, startsAt: "2026-05-26T02:30:00.000Z" }
     ]),
     getUserWallet: jest.fn(async (userId) => wallets.get(userId) ?? null),
-    setUserWallet: (userId: number, wallet: { availableBalance: number; frozenBalance: number }) => {
+    setUserWallet: (
+      userId: number,
+      wallet: { availableBalance: number; frozenBalance: number }
+    ) => {
       wallets.set(userId, wallet);
     }
   } as MutableFinanceRequestFlowDatabase;

@@ -87,9 +87,14 @@ describe("UserCenterPage", () => {
     expect(source).toContain("absolute right-0 top-[calc(100%+8px)]");
     expect(source).toContain('className="flex min-h-36 min-w-0 flex-1 flex-col"');
     expect(source).not.toContain('isEditingProfile ? "min-h-36" : "h-36"');
-    expect(source).toContain("mt-auto rounded-[18px]");
+    expect(source).toContain('<div className="mt-3">{profilePrivacyControl}</div>');
     expect(source).toContain("z-[90]");
     expect(source).toContain("UserProfilePrivacyInfoButton");
+  });
+
+  it("passes the persisted privacy control through the post-details slot", () => {
+    expect(source).not.toContain("beforeDetailsSlot={profilePrivacyControl}");
+    expect(source).toContain("afterDetailsSlot={profilePrivacyControl}");
   });
 
   it("keeps the personal profile card colors tied to the active UI theme instead of membership kind", () => {

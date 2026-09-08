@@ -44,12 +44,14 @@ import {
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
+import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
+import { canAddShopService, SHOP_SERVICE_LIMIT } from "../../features/pricing-mode/shopServiceLimit";
 import { ShopServiceTaxonomyEditor } from "../../features/shop-taxonomy/ShopServiceTaxonomyEditor";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
-import type { Language } from "../../i18n/translations";
+import { translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
 import { buildStoreCheckoutRoute } from "../../lib/storeBookingRoute";
@@ -62,10 +64,15 @@ import {
 import { getStoreCardDecorationConfig, getStoreDecorationBlockConfig, getStoreUiDecoration } from "../../lib/storeUiDecoration";
 import { cn, yen } from "../../lib/utils";
 import { shareContent } from "../../lib/share";
-import { TechnicianShowcaseCard } from "../../shared/profile-card";
-import { TechnicianPublicInfoCardModal } from "../../shared/profile-card/TechnicianPublicInfoCard";
+import { getScopedTechnicianDynamicPath, TechnicianShowcaseCard } from "../../shared/profile-card";
 import { SimpleRatingBadge } from "../../shared/profile-card/SimpleRatingBadge";
-import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
+import { getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
+import {
+  mapCoreServiceCardToUnifiedData,
+  mapStoreMenuConfigToUnifiedData,
+  UnifiedServiceInfoCard,
+  type UnifiedServiceInfoCardData
+} from "../../shared/service-card";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
 import type { Order, OrderStatus, Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
@@ -94,12 +101,13 @@ type StoreDetailExperienceProps = {
   onEditFocus?: (focus: StoreDisplayExternalEditorMode) => void;
   pricingControl?: ReactNode;
   pricingMode?: "store" | "technician";
-  technicianPricingRatePercent?: number;
   privacyControl?: ReactNode;
   scope?: "user" | "merchant";
+  serviceCardsOverride?: UnifiedServiceInfoCardData[];
   store: Store;
   techniciansOverride?: Technician[];
   presentationOverride?: StorePresentationConfig;
+  transportSummary?: string;
   hideUnavailableReviewDetails?: boolean;
 };
 
@@ -134,7 +142,9 @@ type SeatCard = {
   cover: string;
 };
 
-type MenuCard = StoreMenuConfig;
+type MenuCard = StoreMenuConfig & {
+  serviceInfo?: UnifiedServiceInfoCardData;
+};
 
 type OfferCard = StoreOfferConfig;
 type StoreProfileConfig = StorePresentationConfig;
@@ -728,7 +738,7 @@ function buildServiceMenuPriceRangeLabel(store: Store, industry: StoreIndustry) 
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
 
-  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)}-${yen(maxPrice)}`;
+  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)} ~ ${yen(maxPrice)}`;
 }
 
 function buildDisplayedMenuPriceRangeLabel(menuCards: MenuCard[], fallback: string) {
@@ -744,7 +754,7 @@ function buildDisplayedMenuPriceRangeLabel(menuCards: MenuCard[], fallback: stri
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
 
-  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)}-${yen(maxPrice)}`;
+  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)} ~ ${yen(maxPrice)}`;
 }
 
 function buildMenuCards(store: Store, industry: StoreIndustry): MenuCard[] {
@@ -1282,7 +1292,7 @@ function StoreTechnicianServiceListRow({
   onSelect,
   onToggleVisibility,
   profileTo,
-  quoteRatePercent = 100,
+  hideServicePreview = false,
   selected,
   serviceListTo,
   technician,
@@ -1294,21 +1304,19 @@ function StoreTechnicianServiceListRow({
   onSelect?: () => void;
   onToggleVisibility?: () => void;
   profileTo: string;
-  quoteRatePercent?: number;
+  hideServicePreview?: boolean;
   selected?: boolean;
   serviceListTo: string;
   technician: Technician;
   technicianVisible?: boolean;
   unavailable?: boolean;
 }) {
-  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
   const displayName = getStoreTechnicianDisplayName(technician);
   const recommendedService = getStoreRecommendedServiceForTechnician(technician, fallbackServices);
   const packageInfo = recommendedService?.packages[0];
   const price = packageInfo?.price ?? recommendedService?.priceFrom ?? Number.parseInt(technician.bidBudgetMin ?? "", 10);
-  const displayedPrice = Number.isFinite(price) && price > 0 ? Math.round((price * quoteRatePercent) / 100) : price;
   const duration = packageInfo?.durationMinutes ?? 60;
-  const priceLabel = Number.isFinite(displayedPrice) && displayedPrice > 0 ? yen(displayedPrice) : "预约确认";
+  const priceLabel = Number.isFinite(price) && price > 0 ? yen(price) : "预约确认";
   const serviceName = recommendedService?.name ?? technician.skills[0] ?? "预约服务";
   const favoriteCount = Math.max(0, technician.orderCount);
   const shareCount = 0;
@@ -1319,7 +1327,6 @@ function StoreTechnicianServiceListRow({
   const showSelectionAction = !isMerchantEditable && typeof selected === "boolean" && Boolean(onSelect);
 
   return (
-    <>
     <article
       className={cn(
         "relative grid grid-cols-[118px_minmax(0,1fr)] gap-3 overflow-hidden rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_92%,transparent)] p-2.5 shadow-[0_14px_28px_rgba(0,0,0,0.14)]",
@@ -1348,12 +1355,11 @@ function StoreTechnicianServiceListRow({
           onSelect={onSelect}
         />
       ) : null}
-      <button
+      <Link
         aria-label={`查看${displayName}信息卡`}
         className="group relative min-h-[158px] overflow-hidden rounded-[14px] bg-black active:scale-[0.99]"
-        onClick={() => setTechnicianInfoCardOpen(true)}
         title="查看技师信息卡"
-        type="button"
+        to={profileTo}
       >
         <img
           alt={displayName}
@@ -1364,7 +1370,7 @@ function StoreTechnicianServiceListRow({
         <div className="absolute left-2 top-2 z-20">
           <SimpleRatingBadge compact value={formatStoreTechnicianRating(technician.rating).toFixed(1)} />
         </div>
-      </button>
+      </Link>
       <div className={cn("pointer-events-none absolute top-2 z-20 flex items-start gap-1", (isMerchantEditable || showSelectionAction) ? "right-[58px]" : "right-2")}>
         <IconMetricAction count={favoriteCount} icon="heart" label={`关注 ${favoriteCount}`} size="cluster" />
         <IconMetricAction count={shareCount} icon="share" label={`转发 ${shareCount}`} size="cluster" />
@@ -1393,23 +1399,21 @@ function StoreTechnicianServiceListRow({
           >
             <AppIcon className="h-4 w-4" name="info" />
           </span>
-          <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]">推荐服务</p>
-          <h4 className="mt-1.5 line-clamp-2 text-[14px] font-black leading-5 text-[color:var(--client-text)]">{serviceName}</h4>
-          <p className="mt-1 flex min-w-0 items-baseline gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
-            <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
-            <span className="min-w-0 truncate">/ {duration}分钟(含税)</span>
-          </p>
+          {hideServicePreview ? (
+            <p className="py-2 text-[13px] font-black text-[color:var(--client-text)]">选择该技师并查看服务</p>
+          ) : (
+            <>
+              <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]">推荐服务</p>
+              <h4 className="mt-1.5 line-clamp-2 text-[14px] font-black leading-5 text-[color:var(--client-text)]">{serviceName}</h4>
+              <p className="mt-1 flex min-w-0 items-baseline gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
+                <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
+                <span className="min-w-0 truncate">/ {duration}分钟(含税)</span>
+              </p>
+            </>
+          )}
         </div>
       </Link>
     </article>
-    <TechnicianPublicInfoCardModal
-      dynamicTo={profileTo}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={technician}
-      themeScope={isMerchantEditable ? "merchant" : "user"}
-    />
-    </>
   );
 }
 
@@ -1533,15 +1537,16 @@ function StoreMenuCoverImage({
   );
 }
 
-function MerchantAddServiceButton({ onAdd }: { onAdd: () => void }) {
+function MerchantAddServiceButton({ disabled, onAdd }: { disabled: boolean; onAdd: () => void }) {
   return (
     <button
       className="focus-ring inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_16%,var(--client-surface)_84%)] px-4 text-sm font-black text-[color:var(--client-text)] shadow-[0_14px_28px_color-mix(in_srgb,var(--client-primary)_10%,transparent)]"
+      disabled={disabled}
       onClick={onAdd}
       type="button"
     >
       <AppIcon className="h-4 w-4 text-[color:var(--client-primary)]" name="plus" />
-      添加服务
+      {disabled ? `服务已达上限 ${SHOP_SERVICE_LIMIT}/${SHOP_SERVICE_LIMIT}` : "添加服务"}
     </button>
   );
 }
@@ -2557,9 +2562,18 @@ function CompactMenuCard({
   onReplaceImage?: (files: FileList | null) => void;
 }) {
   const solidTags = cardUi?.tagStyle === "实心";
+  const serviceData = item.serviceInfo;
   const updateField = <Key extends keyof MenuCard>(key: Key, value: MenuCard[Key]) => {
     onChange?.({ ...item, [key]: value });
   };
+
+  if (serviceData && !editing) {
+    const actionSlot = showSelectAction ? (
+      <StoreSelectionIconButton active={selected} activeIcon={activeIcon} inactiveIcon={inactiveIcon} label={selectLabel} onSelect={onSelect} />
+    ) : editor;
+
+    return <UnifiedServiceInfoCard actionSlot={actionSlot} data={serviceData} />;
+  }
 
   return (
     <FlatCard className="p-2.5" editor={editor}>
@@ -2689,10 +2703,11 @@ export function StoreDetailExperience({
   pricingMode = "store",
   privacyControl,
   scope = "user",
+  serviceCardsOverride,
   store,
-  technicianPricingRatePercent,
   techniciansOverride,
   presentationOverride,
+  transportSummary,
   hideUnavailableReviewDetails = false
 }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
@@ -2716,9 +2731,6 @@ export function StoreDetailExperience({
   const isTechnicianPricingEntry =
     !isMerchantEditable && bookingNavigation?.pricingMode === "technician";
   const isTechnicianPricingActive = isMerchantEditable ? pricingMode === "technician" : isTechnicianPricingEntry;
-  const effectiveTechnicianPricingRatePercent = isTechnicianPricingActive
-    ? technicianPricingRatePercent ?? bookingNavigation?.technicianPricingRatePercent ?? 100
-    : 100;
   const heroBlock = useMemo(() => getStoreDecorationBlockConfig(store, "hero"), [store.id, store.uiDecoration]);
   const bookingBlock = useMemo(() => getStoreDecorationBlockConfig(store, "booking"), [store.id, store.uiDecoration]);
   const menuBlock = useMemo(() => getStoreDecorationBlockConfig(store, "menu"), [store.id, store.uiDecoration]);
@@ -2773,11 +2785,29 @@ export function StoreDetailExperience({
     [industry, presentationOverride, store, store.presentation]
   );
   const seatCards = useMemo(() => buildSeatCards(store, industry), [industry, store]);
-  const baseMenuCards = useMemo(
-    () => (formalApiOnly ? [] : buildMenuCards(store, industry)),
-    [formalApiOnly, industry, store]
+  const formalBookingMenuCards = useMemo(
+    () => bookingNavigation?.entry === "service_menu"
+      ? bookingNavigation.services.list.map((service) => mapBookingNavigationServiceToMenuCard(service, store.cover))
+      : [],
+    [bookingNavigation, store.cover]
   );
-  const menuCards = useMemo(() => mergeMenuCardOverrides(baseMenuCards, config.menuCards), [baseMenuCards, config.menuCards]);
+  const baseMenuCards = useMemo(
+    () => (formalApiOnly ? formalBookingMenuCards : buildMenuCards(store, industry)),
+    [formalApiOnly, formalBookingMenuCards, industry, store]
+  );
+  const serviceInfoById = useMemo(
+    () => new Map((serviceCardsOverride ?? []).map((service) => [service.id, service])),
+    [serviceCardsOverride]
+  );
+  const menuCards = useMemo(
+    () => (formalApiOnly && !isMerchantEditable
+      ? baseMenuCards
+      : mergeMenuCardOverrides(baseMenuCards, config.menuCards).map((menuCard) => ({
+          ...menuCard,
+          serviceInfo: serviceInfoById.get(menuCard.sourceServiceId) ?? menuCard.serviceInfo ?? mapStoreMenuConfigToUnifiedData(menuCard, store)
+        }))),
+    [baseMenuCards, config.menuCards, formalApiOnly, isMerchantEditable, serviceInfoById, store]
+  );
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
   const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
   const mapDetailCopy = storeMapDetailCopyByIndustry[industry];
@@ -3117,6 +3147,7 @@ export function StoreDetailExperience({
     });
   };
   const addMerchantMenuCard = () => {
+    if (!canAddShopService(menuCards.length)) return;
     const nextMenuCard = buildNextStoreMenuCard({
       images,
       menuCards,
@@ -3197,8 +3228,8 @@ export function StoreDetailExperience({
                 setSelectedTechnicianId(active ? "" : technician.id);
               } : undefined}
               onToggleVisibility={() => toggleTechnicianDisplayVisibility(technician)}
-              profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
-              quoteRatePercent={effectiveTechnicianPricingRatePercent}
+              profileTo={getScopedTechnicianDynamicPath(scope, technician)}
+              hideServicePreview={isTechnicianPricingActive && !isMerchantEditable}
               selected={selectable ? active : undefined}
               serviceListTo={getTechnicianServiceListTo(technician.id)}
               technician={technician}
@@ -3275,7 +3306,7 @@ export function StoreDetailExperience({
             );
           })}
           {isMerchantEditable ? (
-            <MerchantAddServiceButton onAdd={addMerchantMenuCard} />
+            <MerchantAddServiceButton disabled={!canAddShopService(menuCards.length)} onAdd={addMerchantMenuCard} />
           ) : null}
           </div>
         ) : null}
@@ -3459,7 +3490,12 @@ export function StoreDetailExperience({
                   metric="favorite"
                   onClick={() => setActiveMetricDetail((current) => (current === "favorite" ? null : "favorite"))}
                 />
-                <TransportEstimatePill className="w-full min-w-0 justify-center gap-1.5 px-2 text-[12px] !font-normal" distanceText={config.distance} />
+                {transportSummary !== undefined ? (
+                  <div className={cn(storeCompactMetricPillClassName, "min-w-0 gap-1.5 px-2 text-[12px] font-normal text-[color:var(--client-muted)]")}>
+                    <AppIcon className="h-4 w-4 shrink-0" name="map" />
+                    <span className="min-w-0 truncate">{transportSummary}</span>
+                  </div>
+                ) : <TransportEstimatePill className="w-full min-w-0 justify-center gap-1.5 px-2 text-[12px] !font-normal" distanceText={config.distance} />}
               </div>
               {activeMetricDetail ? (
                 <div className="inline-flex w-full items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_48%,transparent)] px-3 py-2 text-[12px] font-normal text-[color:var(--client-muted)]">
@@ -3500,7 +3536,7 @@ export function StoreDetailExperience({
                     </div>
                   ) : (
                     <p className="mt-1.5 text-sm font-semibold leading-6 text-[color:var(--client-text)]">
-                      {config.station} · {config.distance}
+                      {[config.station, config.distance].filter(Boolean).join(" · ")}
                     </p>
                   )}
                 </InfoRow>
@@ -3619,7 +3655,7 @@ export function StoreDetailExperience({
 
                             setSelectedTechnicianId(active ? "" : technician.id);
                           }}
-                          profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
+                          profileTo={getScopedTechnicianDynamicPath(scope, technician)}
                           rankIndex={index}
                           technician={technician}
                           technicianVisible={technicianVisible}
@@ -4067,6 +4103,9 @@ export function StoreDetailExperience({
           {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")}
           <div className={cn("relative", hasMerchantControls && "min-h-[112px]")}>
             <div className="min-w-0 pr-12">
+              <p className="truncate text-[11px] font-black tracking-[0.08em] text-[color:var(--client-muted)]">
+                <span>店铺 ID</span> <span data-no-i18n>{store.systemId}</span>
+              </p>
               <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
               <p className="mt-1 text-sm text-[color:var(--client-muted)]">{store.address}</p>
             </div>
@@ -4077,7 +4116,7 @@ export function StoreDetailExperience({
               </div>
             ) : null}
           </div>
-          <div className="-mx-1">{tabSwitcher}</div>
+          <div className="min-w-0">{tabSwitcher}</div>
           {renderActiveInlineEditor("basic-card")}
         </section>
         <div className="relative z-0">{content}</div>
@@ -4235,30 +4274,41 @@ function buildFormalStorePresentation(shop: CoreShopDetail, store: Store): Store
   };
 }
 
-function UnifiedFormalStoreDetail({
+export function UnifiedFormalStoreDetail({
   scope,
+  embedded = false,
   shopId
 }: {
   scope: "user" | "merchant";
   shopId: number | string;
+  embedded?: boolean;
 }) {
   const { language } = useI18n();
   const [revision, setRevision] = useState(0);
   const query = useCoreReadQuery(
     () => coreReadApi.getShopDetail(shopId),
-    [shopId, revision]
+    [shopId, revision],
+    { force: revision > 0, key: `core:shop:${shopId}` }
   );
 
   if (query.loading) {
+    if (embedded) return <p role="status">{translateText("正在加载正式店铺资料", language)}</p>;
     return <StoreDetailStatus description="正在同步数据库正式资料。" scope={scope} title="正在加载店铺资料" />;
   }
   if (query.error || !query.data) {
     const unavailableCopy = formalStoreLinkCopy[language];
+    if (embedded) return (
+      <EmptyStatePanel
+        action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{translateText("重新加载", language)}</PrimaryButton>}
+        caption={query.error ?? unavailableCopy.description}
+        title={unavailableCopy.title}
+      />
+    );
     return (
       <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "merchant" ? [] : undefined}>
         <AppTopBar subtitle="真实 API 数据源" title="店铺详情" />
         <EmptyStatePanel
-          action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>重新加载</PrimaryButton>}
+          action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{translateText("重新加载", language)}</PrimaryButton>}
           caption={query.error ?? unavailableCopy.description}
           title={unavailableCopy.title}
         />
@@ -4274,10 +4324,12 @@ function UnifiedFormalStoreDetail({
 
   return (
     <StoreDetailExperience
+      embedded={embedded}
       formalApiOnly={true}
       hideUnavailableReviewDetails
       presentationOverride={buildFormalStorePresentation(query.data, store)}
       scope={scope}
+      serviceCardsOverride={query.data.services.map(mapCoreServiceCardToUnifiedData)}
       store={store}
       techniciansOverride={technicians}
     />

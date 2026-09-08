@@ -3,6 +3,7 @@ import type { BackofficeService } from "../services/backoffice.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
+  backofficeAccountPostsQuerySchema,
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
   backofficeDashboardQuerySchema,
@@ -10,6 +11,7 @@ import {
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
   backofficeManagedUserListQuerySchema,
+  backofficeManagedUserDetailQuerySchema,
   backofficeManagedUserParamSchema,
   backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
@@ -58,15 +60,17 @@ export class BackofficeController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.service.getDashboardOverview(
-            getAuthenticatedAccess(response),
-            getRequestContext(request),
-            backofficeDashboardQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getDashboardOverview(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              backofficeDashboardQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -79,20 +83,30 @@ export class BackofficeController {
   ): Promise<void> => {
     try {
       const { metricKey } = backofficeDashboardMetricParamSchema.parse(request.params);
-      response.status(200).json(
-        successResponse(
-          await this.service.getDashboardMetricDetail(
-            getAuthenticatedAccess(response),
-            getRequestContext(request),
-            metricKey,
-            backofficeDashboardQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getDashboardMetricDetail(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              metricKey,
+              backofficeDashboardQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
   };
+
+  public technicianUserLog = (merchant: boolean) => this.createListHandler((service, request, response) =>
+    service.getTechnicianUserLog(backofficeEntityIdParamSchema.parse(request.params).id, merchant, getAuthenticatedAccess(response), getRequestContext(request), backofficeManagedUserDetailQuerySchema.parse(request.query))
+  );
+
+  public accountPosts = (subject: "users" | "technicians", merchant: boolean) => this.createListHandler((service, request, response) =>
+    service.listAccountPosts(backofficeEntityIdParamSchema.parse(request.params).id, subject, merchant, getAuthenticatedAccess(response), getRequestContext(request), backofficeAccountPostsQuerySchema.parse(request.query))
+  );
 
   public managedUsers = this.createListHandler((service, request, response) =>
     service.listManagedUsers(
@@ -106,7 +120,25 @@ export class BackofficeController {
     service.getManagedUser(
       backofficeManagedUserParamSchema.parse(request.params).userId,
       getAuthenticatedAccess(response),
-      getRequestContext(request)
+      getRequestContext(request),
+      backofficeManagedUserDetailQuerySchema.parse(request.query)
+    )
+  );
+
+  public merchantManagedUsers = this.createListHandler((service, request, response) =>
+    service.listMerchantManagedUsers(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeManagedUserListQuerySchema.parse(request.query)
+    )
+  );
+
+  public merchantManagedUser = this.createListHandler((service, request, response) =>
+    service.getMerchantManagedUser(
+      backofficeManagedUserParamSchema.parse(request.params).userId,
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      backofficeManagedUserDetailQuerySchema.parse(request.query)
     )
   );
 

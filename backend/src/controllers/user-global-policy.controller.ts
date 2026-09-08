@@ -9,6 +9,7 @@ import {
   ndpExperienceCampaignListQuerySchema,
   ndpExperienceCampaignParamSchema,
   userGlobalPolicyDraftBodySchema,
+  userGlobalPolicyPublishBodySchema,
   versionPublishBodySchema
 } from "../validators/user-global-policy.validator";
 
@@ -54,7 +55,7 @@ export class UserGlobalPolicyController {
           await this.service.publishDraft(
             getAuthenticatedAccess(response),
             getRequestContext(request),
-            versionPublishBodySchema.parse(request.body)
+            userGlobalPolicyPublishBodySchema.parse(request.body)
           )
         )
       );

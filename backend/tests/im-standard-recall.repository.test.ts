@@ -38,12 +38,18 @@ const recalledMessage = {
 };
 
 const createFixture = (
-  candidate: typeof activeMessage | typeof recalledMessage | null = activeMessage
+  candidate: typeof activeMessage | typeof recalledMessage | null = activeMessage,
+  senderParticipantCreatedAt: Date = createdAt
 ) => {
   const messageFindFirst = jest.fn(async () => candidate);
   const messageUpdateMany = jest.fn(async () => ({ count: 1 }));
-  const messageUpdate = jest.fn(async () => recalledMessage);
-  const messageFindUnique = jest.fn(async () => recalledMessage);
+  const tracelessMessage = { ...recalledMessage, recallMode: "TRACELESS" as const };
+  let persistedMessage: typeof recalledMessage | typeof tracelessMessage = recalledMessage;
+  const messageUpdate = jest.fn(async ({ data }: { data: { recallMode: string } }) => {
+    persistedMessage = data.recallMode === "TRACELESS" ? tracelessMessage : recalledMessage;
+    return persistedMessage;
+  });
+  const messageFindUnique = jest.fn(async () => persistedMessage);
   const translationDeleteMany = jest.fn(async () => ({ count: 2 }));
   const reactionUpdateMany = jest.fn(async () => ({ count: 2 }));
   const syncUpsert = jest.fn(async ({ create }: { create: Record<string, unknown> }) => ({
@@ -57,7 +63,8 @@ const createFixture = (
   const conversationUpdate = jest.fn(async () => ({ id: 3 }));
   const transaction = {
     conversationParticipant: {
-      findFirst: jest.fn(async () => ({ createdAt }))
+      findFirst: jest.fn(async () => ({ createdAt: senderParticipantCreatedAt })),
+      updateMany: jest.fn(async () => ({ count: 1 }))
     },
     message: {
       findFirst: messageFindFirst,
@@ -85,6 +92,7 @@ const createFixture = (
     reactionUpdateMany,
     syncUpsert,
     auditCreate,
+    conversationParticipantUpdateMany: transaction.conversationParticipant.updateMany,
     conversationUpdate
   };
 };
@@ -98,6 +106,7 @@ describe("RealtimeRepository standard recall", () => {
         conversationId: 3,
         messageId: 41,
         senderUserId: 7,
+        mode: "standard",
         now: recalledAt
       })
     ).resolves.toMatchObject({
@@ -179,6 +188,7 @@ describe("RealtimeRepository standard recall", () => {
         conversationId: 3,
         messageId: 41,
         senderUserId: 7,
+        mode: "standard",
         now: recalledAt
       })
     ).resolves.toMatchObject({
@@ -190,6 +200,97 @@ describe("RealtimeRepository standard recall", () => {
     expect(fixture.auditCreate).not.toHaveBeenCalled();
   });
 
+  it("persists a traceless terminal recall and removes its unread recipient state", async () => {
+    const fixture = createFixture();
+
+    await expect(
+      fixture.repository.recallMessage({
+        conversationId: 3,
+        messageId: 41,
+        senderUserId: 7,
+        mode: "traceless",
+        now: recalledAt
+      })
+    ).resolves.toMatchObject({
+      status: "recalled",
+      message: { content: null, metadata: null, recallMode: "traceless" }
+    });
+
+    expect(fixture.messageUpdate).toHaveBeenCalledWith({
+      where: { id: 41 },
+      data: expect.objectContaining({ recallMode: "TRACELESS" })
+    });
+    expect(fixture.syncUpsert).toHaveBeenCalledWith({
+      where: { messageId_action: { messageId: 41, action: "TRACELESS_RECALL" } },
+      create: expect.objectContaining({ action: "TRACELESS_RECALL" }),
+      update: {}
+    });
+    expect(fixture.auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "im.message.traceless_recall",
+        metadata: { conversationId: 3, recallMode: "traceless" }
+      })
+    });
+    expect(JSON.stringify(fixture.auditCreate.mock.calls[0]?.[0].data)).not.toMatch(
+      /content|url|storageKey|thumbnail|filename/i
+    );
+    expect(fixture.conversationParticipantUpdateMany).toHaveBeenCalledWith({
+      where: {
+        conversationId: 3,
+        identityId: { not: 7 },
+        deletedAt: null,
+        createdAt: { lte: createdAt },
+        unreadCount: { gt: 0 },
+        OR: [{ lastReadMessageId: null }, { lastReadMessageId: { lt: 41 } }]
+      },
+      data: { unreadCount: { decrement: 1 } }
+    });
+  });
+
+  it("builds a shared visible-message query that includes null and standard recalls but excludes traceless", () => {
+    const repository = createFixture().repository as unknown as {
+      availableMessageWhere: (at: Date) => Prisma.MessageWhereInput;
+    };
+
+    expect(repository.availableMessageWhere(recalledAt)).toEqual({
+      deletedAt: null,
+      expiredAt: null,
+      AND: [
+        {
+          OR: [{ recallMode: null }, { recallMode: "STANDARD" }]
+        },
+        {
+          OR: [{ expiresAt: null }, { expiresAt: { gt: recalledAt } }]
+        }
+      ]
+    });
+  });
+
+  it("does not decrement an unread counter for a recipient who joined after the recalled message", async () => {
+    const preJoinMessage = {
+      ...activeMessage,
+      createdAt: new Date(createdAt.getTime() - 1_000)
+    };
+    const fixture = createFixture(
+      preJoinMessage,
+      new Date(preJoinMessage.createdAt.getTime() - 1_000)
+    );
+
+    await fixture.repository.recallMessage({
+      conversationId: 3,
+      messageId: 41,
+      senderUserId: 7,
+      mode: "traceless",
+      now: recalledAt
+    });
+
+    expect(fixture.conversationParticipantUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ createdAt: { lte: preJoinMessage.createdAt } })
+      })
+    );
+  });
+
   it("rejects one millisecond after the deadline without writes", async () => {
     const fixture = createFixture();
 
@@ -198,6 +299,7 @@ describe("RealtimeRepository standard recall", () => {
         conversationId: 3,
         messageId: 41,
         senderUserId: 7,
+        mode: "standard",
         now: new Date(recallDeadlineAt.getTime() + 1)
       })
     ).resolves.toEqual({ status: "window_expired" });
@@ -215,6 +317,7 @@ describe("RealtimeRepository standard recall", () => {
         conversationId: 3,
         messageId: 41,
         senderUserId: 8,
+        mode: "standard",
         now: recalledAt
       })
     ).resolves.toEqual({ status: "not_found" });

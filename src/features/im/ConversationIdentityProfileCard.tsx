@@ -3,14 +3,15 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
-import { resolveCustomerMembership } from "../../shared/profile-card/customerMembership";
+import { resolveFormalPlatformMembershipTierCode } from "../../shared/profile-card/customerMembership";
+import { platformMembershipTierText } from "../../shared/profile-card/platformMembershipTierText";
 import { normalizeImLanguageLabels } from "./language-display";
 import type { DirectoryIdentityCard, ImRoleType, ImUser } from "./model";
 
-function identityLabel(card: DirectoryIdentityCard) {
+function identityLabel(card: DirectoryIdentityCard, language: Parameters<typeof platformMembershipTierText>[1]) {
   if (card.entityType === "user") {
     return card.identityLabel
-      ? resolveCustomerMembership(card.identityLabel).label
+      ? platformMembershipTierText(resolveFormalPlatformMembershipTierCode(card.identityLabel), language)
       : "用户";
   }
 
@@ -113,7 +114,7 @@ export function ConversationIdentityProfileCard({
           ) : null}
         </div>
         <span className="mt-2 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-primary)]">
-          {t(identityLabel(identityCard))}
+          {t(identityLabel(identityCard, language))}
         </span>
         <p className="mt-2 truncate text-[13px] font-black text-[color:var(--client-muted)]">
           ID {user.userIdLabel}
@@ -185,7 +186,11 @@ export function ConversationIdentityProfileCard({
           </p>
         )}
 
-        <div className="mt-4" data-im-language-section="true">
+        <div
+          className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_54%,var(--client-surface))] px-4 py-4"
+          data-im-language-card="true"
+          data-im-language-section="true"
+        >
           <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("语言能力")}</p>
           {languageLabels.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-2" data-im-language-pills="true" data-no-i18n="true">

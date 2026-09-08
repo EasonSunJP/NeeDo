@@ -44,12 +44,242 @@ const demandRow = {
     publisherIdentityPublic: false
   },
   intelligence: null,
+  matching: {
+    status: "OPEN",
+    effectiveTargetProviderCount: 1,
+    deletedAt: null
+  },
   matchParticipants: [],
   likes: [{ id: 91 }],
-  _count: { comments: 4, likes: 21, shares: 5 }
+  _count: { comments: 4, likes: 21, shares: 5, claims: 0 }
 };
 
 describe("ExchangePostRepository", () => {
+  it("resolves a merchant Intelligence service from the active shop authority", async () => {
+    const findUnique = jest.fn(async () => ({
+      id: 501,
+      shopId: 11,
+      name: "訪問ヘアセット",
+      durationMinutes: 60,
+      priceAmount: { toString: () => "15000.00" },
+      currency: "JPY",
+      serviceMode: "home",
+      status: "published",
+      deletedAt: null,
+      category: { isActive: true, deletedAt: null },
+      shop: {
+        city: "港区",
+        address: "港区青山1-1",
+        status: "published",
+        deletedAt: null,
+        publicIdentifier: {
+          publicId: "shop00000011",
+          kind: "SHOP",
+          status: "ACTIVE",
+          deletedAt: null
+        },
+        entitySuspensions: []
+      }
+    }));
+    const repository = new ExchangePostRepository({ service: { findUnique } } as never);
+
+    await expect(
+      repository.resolveIntelligencePublicationService({
+        actor: {
+          userId: 7,
+          identityId: 17,
+          identityType: "merchant_owner",
+          scopeType: "shop",
+          scopeId: 11,
+          publicId: "b0000000017",
+          displayName: "青山ケア",
+          avatarUrl: null,
+          isTestAccount: true,
+          customerMembership: null,
+          shopScope: { shopId: 11, status: "published" }
+        },
+        serviceRef: "shop:501",
+        now
+      })
+    ).resolves.toEqual({
+      kind: "success",
+      value: {
+        serviceRef: "shop:501",
+        serviceId: 501,
+        technicianServiceId: null,
+        serviceName: "訪問ヘアセット",
+        serviceDurationMinutes: 60,
+        catalogPriceJpy: 15_000,
+        serviceMode: "onsite",
+        areaLabel: "港区",
+        addressLabel: "港区青山1-1",
+        serviceAreas: ["港区"]
+      }
+    });
+
+    expect(findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 501 }, include: expect.any(Object) })
+    );
+  });
+
+  it("requires a technician service to share the active technician and shop affiliation", async () => {
+    const technicianServiceFindUnique = jest.fn(async () => ({
+      id: 701,
+      shopId: 11,
+      technicianId: 81,
+      name: "着付け",
+      durationMinutes: 90,
+      priceAmount: 18_000,
+      currency: "JPY",
+      isActive: true,
+      isBookable: true,
+      reviewStatus: "APPROVED",
+      deletedAt: null,
+      category: { isActive: true, deletedAt: null },
+      sourceShopService: { serviceMode: "store" },
+      shop: {
+        city: "港区",
+        address: "港区青山1-1",
+        status: "published",
+        deletedAt: null,
+        publicIdentifier: {
+          publicId: "shop00000011",
+          kind: "SHOP",
+          status: "ACTIVE",
+          deletedAt: null
+        },
+        entitySuspensions: []
+      },
+      technicianProfile: {
+        status: "published",
+        visibility: "public",
+        deletedAt: null,
+        serviceArea: "東京23区",
+        serviceAreasJson: ["港区", "渋谷区"],
+        user: { isActive: true, deletedAt: null }
+      }
+    }));
+    const affiliationFindFirst = jest.fn(async () => ({ id: 91 }));
+    const repository = new ExchangePostRepository({
+      technicianService: { findUnique: technicianServiceFindUnique },
+      technicianShopAffiliation: { findFirst: affiliationFindFirst }
+    } as never);
+
+    await expect(
+      repository.resolveIntelligencePublicationService({
+        actor: {
+          userId: 8,
+          identityId: 18,
+          identityType: "technician",
+          scopeType: "technician_profile",
+          scopeId: 81,
+          publicId: "s0000000081",
+          displayName: "山田 花子",
+          avatarUrl: null,
+          isTestAccount: true,
+          customerMembership: null,
+          shopScope: null
+        },
+        serviceRef: "technician:701",
+        now
+      })
+    ).resolves.toEqual({
+      kind: "success",
+      value: expect.objectContaining({
+        serviceRef: "technician:701",
+        serviceId: null,
+        technicianServiceId: 701,
+        serviceMode: "store",
+        serviceAreas: ["港区", "渋谷区"]
+      })
+    });
+    expect(affiliationFindFirst).toHaveBeenCalledWith({
+      where: {
+        technicianProfileId: 81,
+        shopId: 11,
+        workStatus: "ACTIVE",
+        activeKey: { not: null },
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+  });
+
+  it("persists only the server-resolved Intelligence service fields", async () => {
+    const create = jest.fn(async () => ({ id: 41 }));
+    const repository = new ExchangePostRepository({ exchangePost: { create } } as never);
+    const intelligenceService = {
+      serviceRef: "shop:501" as const,
+      serviceId: 501,
+      technicianServiceId: null,
+      serviceName: "訪問ヘアセット",
+      serviceDurationMinutes: 60,
+      catalogPriceJpy: 15_000,
+      serviceMode: "onsite" as const,
+      areaLabel: "港区",
+      addressLabel: "港区青山1-1",
+      serviceAreas: ["港区"]
+    };
+
+    await repository.createPost({
+      actor: {
+        userId: 7,
+        identityId: 17,
+        identityType: "merchant_owner",
+        scopeType: "shop",
+        scopeId: 11,
+        publicId: "b0000000017",
+        displayName: "青山ケア",
+        avatarUrl: null,
+        isTestAccount: true,
+        customerMembership: null,
+        shopScope: { shopId: 11, status: "published" }
+      },
+      input: {
+        type: "intelligence",
+        serviceRef: "shop:501",
+        title: "青山限定",
+        detail: "正式サービスです。",
+        contentLocale: "ja",
+        serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
+        serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
+        expiresAt: new Date("2026-08-31T08:30:00.000Z"),
+        campaignPriceJpy: 10_000,
+        areaLabel: "forged area",
+        serviceMode: "flexible",
+        addressLabel: "forged address",
+        serviceAreas: ["forged"],
+        originalPriceJpy: 1
+      },
+      intelligenceService,
+      idempotencyKey: "publish-intel-0001",
+      payloadFingerprint: "a".repeat(64),
+      now
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        areaLabel: "港区",
+        intelligence: {
+          create: {
+            serviceId: 501,
+            technicianServiceId: null,
+            serviceNameSnapshot: "訪問ヘアセット",
+            serviceDurationSnapshot: 60,
+            serviceMode: "ONSITE",
+            addressLabel: "港区青山1-1",
+            serviceAreas: ["港区"],
+            originalPriceJpy: 15_000,
+            campaignPriceJpy: 10_000
+          }
+        }
+      }),
+      select: { id: true }
+    });
+  });
+
   it("resolves only the exact active identity and public NeeDo id", async () => {
     const findFirst = jest.fn(async () => ({
       id: 17,
@@ -361,7 +591,8 @@ describe("ExchangePostRepository", () => {
             liked: true,
             canWithdraw: true,
             canClaim: false,
-            canViewClaims: false
+            canViewClaims: true,
+            canViewMatching: true
           },
           demand: {
             serviceMode: "store",
@@ -405,7 +636,10 @@ describe("ExchangePostRepository", () => {
         take: 10,
         include: expect.objectContaining({
           demand: { where: { deletedAt: null } },
-          intelligence: { where: { deletedAt: null } },
+            intelligence: expect.objectContaining({
+              where: { deletedAt: null },
+              include: expect.any(Object)
+            }),
           likes: {
             where: { actorIdentityId: 17, deletedAt: null },
             select: { id: true },
@@ -415,7 +649,15 @@ describe("ExchangePostRepository", () => {
             select: {
               comments: { where: { deletedAt: null } },
               likes: { where: { deletedAt: null } },
-              shares: { where: { deletedAt: null } }
+              shares: { where: { deletedAt: null } },
+              claims: { where: { status: "ACTIVE", deletedAt: null } }
+            }
+          },
+          matching: {
+            select: {
+              status: true,
+              effectiveTargetProviderCount: true,
+              deletedAt: true
             }
           }
         })
@@ -512,7 +754,8 @@ describe("ExchangePostRepository", () => {
           liked: true,
           canWithdraw: false,
           canClaim: false,
-          canViewClaims: false
+          canViewClaims: false,
+          canViewMatching: false
         },
         demand: expect.objectContaining({
           address: {
@@ -555,7 +798,8 @@ describe("ExchangePostRepository", () => {
       viewer: {
         canWithdraw: false,
         canClaim: false,
-        canViewClaims: false
+        canViewClaims: false,
+        canViewMatching: true
       }
     });
     expect(findFirst).toHaveBeenCalledWith(
@@ -589,6 +833,46 @@ describe("ExchangePostRepository", () => {
     });
   });
 
+  it("publishes capacity-aware Quick claim and owner claim-list capabilities", async () => {
+    const quickBelowTarget = {
+      ...demandRow,
+      matching: {
+        status: "OPEN",
+        effectiveTargetProviderCount: 2,
+        deletedAt: null
+      },
+      _count: { ...demandRow._count, claims: 1 }
+    };
+    const quickAtTarget = {
+      ...quickBelowTarget,
+      _count: { ...demandRow._count, claims: 2 }
+    };
+    const selective = {
+      ...quickAtTarget,
+      demand: { ...demandRow.demand, matchMode: "SELECTIVE" }
+    };
+    const findFirst = jest
+      .fn()
+      .mockResolvedValueOnce(quickBelowTarget)
+      .mockResolvedValueOnce(quickAtTarget)
+      .mockResolvedValueOnce(selective)
+      .mockResolvedValueOnce(quickAtTarget);
+    const repository = new ExchangePostRepository({ exchangePost: { findFirst } } as never);
+
+    await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
+      viewer: { canClaim: true, canViewClaims: false }
+    });
+    await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
+      viewer: { canClaim: false, canViewClaims: false }
+    });
+    await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
+      viewer: { canClaim: true, canViewClaims: false }
+    });
+    await expect(repository.findPostById(41, 17, now, 7)).resolves.toMatchObject({
+      viewer: { canClaim: false, canViewClaims: true }
+    });
+  });
+
   it("derives an expired status at read time and disables withdrawal", async () => {
     const expiredRow = {
       ...demandRow,
@@ -608,7 +892,8 @@ describe("ExchangePostRepository", () => {
           liked: false,
           canWithdraw: false,
           canClaim: false,
-          canViewClaims: false
+          canViewClaims: false,
+          canViewMatching: true
         }
       })
     );
@@ -628,6 +913,10 @@ describe("ExchangePostRepository", () => {
       publisherIdentityType: "technician",
       demand: null,
       intelligence: {
+        serviceId: null,
+        technicianServiceId: null,
+        serviceNameSnapshot: null,
+        serviceDurationSnapshot: null,
         serviceMode: "ONSITE",
         addressLabel: null,
         serviceAreas: ["渋谷区", "港区"],
@@ -651,13 +940,20 @@ describe("ExchangePostRepository", () => {
       expect.objectContaining({
         type: "intelligence",
         demand: null,
-        intelligence: {
+        intelligence: expect.objectContaining({
           serviceMode: "onsite",
           addressLabel: null,
           serviceAreas: ["渋谷区", "港区"],
           originalPriceJpy: 15_000,
-          campaignPriceJpy: 10_000
-        }
+          campaignPriceJpy: 10_000,
+          booking: expect.objectContaining({
+            available: false,
+            unavailableReason: "legacy_unbound",
+            target: null
+          }),
+          publisherCard: null,
+          serviceCard: null
+        })
       })
     );
     await expect(repository.findPostById(41, 17, now)).rejects.toThrow(
@@ -1023,12 +1319,10 @@ describe("ExchangePostRepository", () => {
     await expect(repository.listDuePostIds(now, 3)).resolves.toEqual([41, 42, 43]);
     await expect(repository.markWithdrawnIfPublished(41, now)).resolves.toBe(true);
     await expect(repository.markExpiredIfPublished(42, now)).resolves.toBe(true);
-    await expect(
-      repository.cancelActiveClaimsByPost(41, "request_withdrawn", now)
-    ).resolves.toBe(2);
-    await expect(
-      repository.cancelActiveClaimsByPost(42, "request_expired", now)
-    ).resolves.toBe(1);
+    await expect(repository.cancelActiveClaimsByPost(41, "request_withdrawn", now)).resolves.toBe(
+      2
+    );
+    await expect(repository.cancelActiveClaimsByPost(42, "request_expired", now)).resolves.toBe(1);
 
     expect(findMany).toHaveBeenCalledWith({
       where: { status: "PUBLISHED", expiresAt: { lte: now }, deletedAt: null },

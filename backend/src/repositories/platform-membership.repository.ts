@@ -21,10 +21,7 @@ import type {
 } from "../domain/platform-membership";
 import type { MembershipRenewalExperienceSource } from "../domain/user-experience";
 import { prisma } from "../prisma/client";
-import {
-  toAuditLogCreateData,
-  type AuditLogCreateInput
-} from "./audit-log.repository";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
 export interface ResolvedPlatformMembershipBenefit {
   code: PlatformMembershipBenefitCodeValue;
@@ -130,6 +127,24 @@ export type PlatformMembershipBenefitMutationResult =
   | { kind: "updated"; value: PlatformMembershipBenefitAdministrationPayload }
   | { kind: "not_found" | "version_conflict" };
 
+export interface ResolvedUserMembershipAdjustment {
+  tierMembership: ResolvedPlatformMembership | null;
+  multiplier: number | null;
+  lockVersion: number;
+  effectiveFrom: Date;
+}
+
+export interface UserMembershipAdjustmentPayload {
+  tierCode: PlatformMembershipTierCodeValue | null;
+  multiplier: number | null;
+  lockVersion: number;
+  effectiveFrom: Date;
+}
+
+export type UserMembershipAdjustmentMutationResult =
+  | { kind: "adjusted"; value: UserMembershipAdjustmentPayload }
+  | { kind: "not_found" | "version_conflict" | "invalid_state" };
+
 export interface PlatformMembershipRepositoryPort {
   listTiersForAdministration: () => Promise<PlatformMembershipTierAdministrationPayload[]>;
   listBenefitsForAdministration: () => Promise<PlatformMembershipBenefitAdministrationPayload[]>;
@@ -143,6 +158,10 @@ export interface PlatformMembershipRepositoryPort {
     tierCode: PlatformMembershipTierCodeValue,
     occurredAt: Date
   ) => Promise<ResolvedPlatformMembership | null>;
+  findActiveAdjustmentAt?: (
+    userId: number,
+    occurredAt: Date
+  ) => Promise<ResolvedUserMembershipAdjustment | null>;
   findTierDraft: (
     tierCode: PlatformMembershipTierCodeValue
   ) => Promise<PlatformMembershipTierVersionPayload | null>;
@@ -179,6 +198,16 @@ export interface PlatformMembershipRepositoryPort {
     expectedLockVersion: number;
     audit: AuditLogCreateInput;
   }) => Promise<PlatformMembershipBenefitMutationResult>;
+  adjustUserMembershipWithAudit?: (input: {
+    actorId: number;
+    userId: number;
+    tierCode?: PlatformMembershipTierCodeValue;
+    multiplierBps?: number;
+    reason: string;
+    expectedLockVersion: number | null;
+    effectiveFrom: Date;
+    audit: AuditLogCreateInput;
+  }) => Promise<UserMembershipAdjustmentMutationResult>;
 }
 
 const tierVersionSelect = Prisma.validator<Prisma.PlatformMembershipTierVersionSelect>()({
@@ -186,6 +215,8 @@ const tierVersionSelect = Prisma.validator<Prisma.PlatformMembershipTierVersionS
   experienceMultiplier: true,
   detailAccentColor: true,
   detailSurfaceColor: true,
+  detailSurfaceMiddleColor: true,
+  detailSurfaceBottomColor: true,
   detailItemSurfaceColor: true,
   detailOuterBorderColor: true,
   detailItemBorderColor: true,
@@ -236,6 +267,8 @@ const tierVersionAdministrationSelect =
     publishedAt: true,
     detailAccentColor: true,
     detailSurfaceColor: true,
+    detailSurfaceMiddleColor: true,
+    detailSurfaceBottomColor: true,
     detailItemSurfaceColor: true,
     detailOuterBorderColor: true,
     detailItemBorderColor: true,
@@ -254,40 +287,36 @@ const tierVersionAdministrationSelect =
     }
   });
 
-type TierVersionAdministrationRecord =
-  Prisma.PlatformMembershipTierVersionGetPayload<{
-    select: typeof tierVersionAdministrationSelect;
-  }>;
+type TierVersionAdministrationRecord = Prisma.PlatformMembershipTierVersionGetPayload<{
+  select: typeof tierVersionAdministrationSelect;
+}>;
 
-const entitlementResultSelect =
-  Prisma.validator<Prisma.PlatformMembershipEntitlementSelect>()({
-    id: true,
-    publicId: true,
-    changeKind: true,
-    startsAt: true,
-    expiresAt: true,
-    experienceValueNdp: true,
-    tierVersion: {
-      select: {
-        publicId: true,
-        tier: { select: { code: true } }
-      }
+const entitlementResultSelect = Prisma.validator<Prisma.PlatformMembershipEntitlementSelect>()({
+  id: true,
+  publicId: true,
+  changeKind: true,
+  startsAt: true,
+  expiresAt: true,
+  experienceValueNdp: true,
+  tierVersion: {
+    select: {
+      publicId: true,
+      tier: { select: { code: true } }
     }
-  });
+  }
+});
 
-type EntitlementResultRecord =
-  Prisma.PlatformMembershipEntitlementGetPayload<{
-    select: typeof entitlementResultSelect;
-  }>;
+type EntitlementResultRecord = Prisma.PlatformMembershipEntitlementGetPayload<{
+  select: typeof entitlementResultSelect;
+}>;
 
-const tierCodeToDb: Readonly<
-  Record<PlatformMembershipTierCodeValue, PlatformMembershipTierCode>
-> = {
-  free: PlatformMembershipTierCode.FREE,
-  silver: PlatformMembershipTierCode.SILVER,
-  gold: PlatformMembershipTierCode.GOLD,
-  black_diamond: PlatformMembershipTierCode.BLACK_DIAMOND
-};
+const tierCodeToDb: Readonly<Record<PlatformMembershipTierCodeValue, PlatformMembershipTierCode>> =
+  {
+    free: PlatformMembershipTierCode.FREE,
+    silver: PlatformMembershipTierCode.SILVER,
+    gold: PlatformMembershipTierCode.GOLD,
+    black_diamond: PlatformMembershipTierCode.BLACK_DIAMOND
+  };
 
 const tierCodeFromDb: Readonly<
   Record<PlatformMembershipTierCode, PlatformMembershipTierCodeValue>
@@ -307,7 +336,8 @@ const benefitCodeFromDb: Readonly<
   [PlatformMembershipBenefitCode.SUPPORT_SERVICE]: "support_service",
   [PlatformMembershipBenefitCode.EXCLUSIVE_DISCOUNT]: "exclusive_discount",
   [PlatformMembershipBenefitCode.MEMBER_DAY]: "member_day",
-  [PlatformMembershipBenefitCode.BIRTHDAY_GIFT]: "birthday_gift"
+  [PlatformMembershipBenefitCode.BIRTHDAY_GIFT]: "birthday_gift",
+  [PlatformMembershipBenefitCode.TRACELESS_RECALL]: "traceless_recall"
 };
 
 const benefitCodeToDb: Readonly<
@@ -319,7 +349,8 @@ const benefitCodeToDb: Readonly<
   support_service: PlatformMembershipBenefitCode.SUPPORT_SERVICE,
   exclusive_discount: PlatformMembershipBenefitCode.EXCLUSIVE_DISCOUNT,
   member_day: PlatformMembershipBenefitCode.MEMBER_DAY,
-  birthday_gift: PlatformMembershipBenefitCode.BIRTHDAY_GIFT
+  birthday_gift: PlatformMembershipBenefitCode.BIRTHDAY_GIFT,
+  traceless_recall: PlatformMembershipBenefitCode.TRACELESS_RECALL
 };
 
 const versionStatusFromDb = {
@@ -374,10 +405,7 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
         versions: {
           where: {
             status: {
-              in: [
-                PlatformMembershipVersionStatus.DRAFT,
-                PlatformMembershipVersionStatus.PUBLISHED
-              ]
+              in: [PlatformMembershipVersionStatus.DRAFT, PlatformMembershipVersionStatus.PUBLISHED]
             },
             deletedAt: null
           },
@@ -421,21 +449,21 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
   }
 
   public async hasActiveCustomerProfile(userId: number): Promise<boolean> {
-    return (
-      (await this.client.customerProfile.count({ where: { userId, deletedAt: null } })) > 0
-    );
+    return (await this.client.customerProfile.count({ where: { userId, deletedAt: null } })) > 0;
   }
 
   public async hasVerifiedEkycAt(userId: number, occurredAt: Date): Promise<boolean> {
-    return (await this.client.ekycVerification.count({
-      where: {
-        userId,
-        status: "verified",
-        verifiedAt: { not: null, lte: occurredAt },
-        deletedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }]
-      }
-    })) > 0;
+    return (
+      (await this.client.ekycVerification.count({
+        where: {
+          userId,
+          status: "verified",
+          verifiedAt: { not: null, lte: occurredAt },
+          deletedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: occurredAt } }]
+        }
+      })) > 0
+    );
   }
 
   public async findActiveEntitlementAt(
@@ -467,9 +495,7 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       }
     });
 
-    return entitlement
-      ? this.mapVersion(entitlement.tierVersion, entitlement.expiresAt)
-      : null;
+    return entitlement ? this.mapVersion(entitlement.tierVersion, entitlement.expiresAt) : null;
   }
 
   public async findPublishedTierAt(
@@ -489,6 +515,37 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     });
 
     return version ? this.mapVersion(version, null) : null;
+  }
+
+  public async findActiveAdjustmentAt(
+    userId: number,
+    occurredAt: Date
+  ): Promise<ResolvedUserMembershipAdjustment | null> {
+    const adjustment = await this.client.userMembershipAdjustment.findFirst({
+      where: {
+        userId,
+        effectiveFrom: { lte: occurredAt },
+        supersededAt: null,
+        deletedAt: null
+      },
+      orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+      select: {
+        multiplierBps: true,
+        lockVersion: true,
+        effectiveFrom: true,
+        tierVersion: { select: tierVersionSelect }
+      }
+    });
+    if (!adjustment) return null;
+    return {
+      tierMembership: adjustment.tierVersion
+        ? this.mapVersion(adjustment.tierVersion, null)
+        : null,
+      multiplier:
+        adjustment.multiplierBps === null ? null : adjustment.multiplierBps / 10_000,
+      lockVersion: adjustment.lockVersion,
+      effectiveFrom: adjustment.effectiveFrom
+    };
   }
 
   public async findTierDraft(
@@ -513,113 +570,115 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     audit: AuditLogCreateInput;
   }): Promise<PlatformMembershipTierMutationResult> {
     const occurredAt = this.now();
-    const result = await this.client.$transaction(async (transaction) => {
-      const tier = await transaction.platformMembershipTier.findFirst({
-        where: { code: tierCodeToDb[input.tierCode], deletedAt: null },
-        select: { id: true, publicId: true }
-      });
-      if (!tier) return { kind: "not_found" as const };
-
-      const latest = await transaction.platformMembershipTierVersion.findFirst({
-        where: { tierId: tier.id, deletedAt: null },
-        orderBy: { version: "desc" },
-        select: { id: true, version: true, status: true, lockVersion: true }
-      });
-      if (!latest) return { kind: "invalid_state" as const };
-      if (
-        latest.version !== input.draft.expectedVersion ||
-        latest.lockVersion !== input.draft.expectedLockVersion
-      ) {
-        return { kind: "version_conflict" as const };
-      }
-
-      const benefitCatalog = await transaction.platformMembershipBenefit.findMany({
-        where: { deletedAt: null },
-        select: { id: true, code: true }
-      });
-      if (benefitCatalog.length !== input.draft.benefits.length) {
-        return { kind: "invalid_state" as const };
-      }
-      const benefitIdByCode = new Map(
-        benefitCatalog.map((benefit) => [benefitCodeFromDb[benefit.code], benefit.id])
-      );
-      if (input.draft.benefits.some((benefit) => !benefitIdByCode.has(benefit.code))) {
-        return { kind: "invalid_state" as const };
-      }
-
-      let draftId: number;
-      let draftVersion: number;
-      if (latest.status === PlatformMembershipVersionStatus.DRAFT) {
-        const updated = await transaction.platformMembershipTierVersion.updateMany({
-          where: {
-            id: latest.id,
-            status: PlatformMembershipVersionStatus.DRAFT,
-            lockVersion: input.draft.expectedLockVersion,
-            deletedAt: null
-          },
-          data: {
-            ...this.versionMutableData(input.draft),
-            lockVersion: { increment: 1 }
-          }
+    const result = await this.client
+      .$transaction(async (transaction) => {
+        const tier = await transaction.platformMembershipTier.findFirst({
+          where: { code: tierCodeToDb[input.tierCode], deletedAt: null },
+          select: { id: true, publicId: true }
         });
-        if (updated.count !== 1) return { kind: "version_conflict" as const };
-        draftId = latest.id;
-        draftVersion = latest.version;
-      } else {
-        const created = await transaction.platformMembershipTierVersion.create({
-          data: {
-            tierId: tier.id,
-            version: latest.version + 1,
-            status: PlatformMembershipVersionStatus.DRAFT,
-            ...this.versionMutableData(input.draft),
-            effectiveFrom: occurredAt,
-            createdById: input.actorId
-          },
-          select: { id: true, version: true }
-        });
-        draftId = created.id;
-        draftVersion = created.version;
-      }
+        if (!tier) return { kind: "not_found" as const };
 
-      for (const benefit of input.draft.benefits) {
-        const benefitId = benefitIdByCode.get(benefit.code)!;
-        const updated = await transaction.platformMembershipTierBenefit.updateMany({
-          where: { tierVersionId: draftId, benefitId },
-          data: {
-            isEnabled: benefit.isEnabled,
-            configurationJson: benefit.configuration as Prisma.InputJsonObject,
-            deletedAt: null
-          }
+        const latest = await transaction.platformMembershipTierVersion.findFirst({
+          where: { tierId: tier.id, deletedAt: null },
+          orderBy: { version: "desc" },
+          select: { id: true, version: true, status: true, lockVersion: true }
         });
-        if (updated.count === 0) {
-          await transaction.platformMembershipTierBenefit.create({
+        if (!latest) return { kind: "invalid_state" as const };
+        if (
+          latest.version !== input.draft.expectedVersion ||
+          latest.lockVersion !== input.draft.expectedLockVersion
+        ) {
+          return { kind: "version_conflict" as const };
+        }
+
+        const benefitCatalog = await transaction.platformMembershipBenefit.findMany({
+          where: { deletedAt: null },
+          select: { id: true, code: true }
+        });
+        if (benefitCatalog.length !== input.draft.benefits.length) {
+          return { kind: "invalid_state" as const };
+        }
+        const benefitIdByCode = new Map(
+          benefitCatalog.map((benefit) => [benefitCodeFromDb[benefit.code], benefit.id])
+        );
+        if (input.draft.benefits.some((benefit) => !benefitIdByCode.has(benefit.code))) {
+          return { kind: "invalid_state" as const };
+        }
+
+        let draftId: number;
+        let draftVersion: number;
+        if (latest.status === PlatformMembershipVersionStatus.DRAFT) {
+          const updated = await transaction.platformMembershipTierVersion.updateMany({
+            where: {
+              id: latest.id,
+              status: PlatformMembershipVersionStatus.DRAFT,
+              lockVersion: input.draft.expectedLockVersion,
+              deletedAt: null
+            },
             data: {
-              tierVersionId: draftId,
-              benefitId,
-              isEnabled: benefit.isEnabled,
-              configurationJson: benefit.configuration as Prisma.InputJsonObject
+              ...this.versionMutableData(input.draft),
+              lockVersion: { increment: 1 }
             }
           });
+          if (updated.count !== 1) return { kind: "version_conflict" as const };
+          draftId = latest.id;
+          draftVersion = latest.version;
+        } else {
+          const created = await transaction.platformMembershipTierVersion.create({
+            data: {
+              tierId: tier.id,
+              version: latest.version + 1,
+              status: PlatformMembershipVersionStatus.DRAFT,
+              ...this.versionMutableData(input.draft),
+              effectiveFrom: occurredAt,
+              createdById: input.actorId
+            },
+            select: { id: true, version: true }
+          });
+          draftId = created.id;
+          draftVersion = created.version;
         }
-      }
 
-      await transaction.auditLog.create({
-        data: toAuditLogCreateData({
-          ...input.audit,
-          targetId: tier.id,
-          metadata: {
-            ...this.metadataObject(input.audit.metadata),
-            tierPublicId: tier.publicId,
-            tierCode: input.tierCode,
-            version: draftVersion
+        for (const benefit of input.draft.benefits) {
+          const benefitId = benefitIdByCode.get(benefit.code)!;
+          const updated = await transaction.platformMembershipTierBenefit.updateMany({
+            where: { tierVersionId: draftId, benefitId },
+            data: {
+              isEnabled: benefit.isEnabled,
+              configurationJson: benefit.configuration as Prisma.InputJsonObject,
+              deletedAt: null
+            }
+          });
+          if (updated.count === 0) {
+            await transaction.platformMembershipTierBenefit.create({
+              data: {
+                tierVersionId: draftId,
+                benefitId,
+                isEnabled: benefit.isEnabled,
+                configurationJson: benefit.configuration as Prisma.InputJsonObject
+              }
+            });
           }
-        })
+        }
+
+        await transaction.auditLog.create({
+          data: toAuditLogCreateData({
+            ...input.audit,
+            targetId: tier.id,
+            metadata: {
+              ...this.metadataObject(input.audit.metadata),
+              tierPublicId: tier.publicId,
+              tierCode: input.tierCode,
+              version: draftVersion
+            }
+          })
+        });
+        return { kind: "saved" as const };
+      })
+      .catch((error: unknown) => {
+        if (this.isUniqueConstraintError(error)) return { kind: "version_conflict" as const };
+        throw error;
       });
-      return { kind: "saved" as const };
-    }).catch((error: unknown) => {
-      if (this.isUniqueConstraintError(error)) return { kind: "version_conflict" as const };
-      throw error;
-    });
 
     if (result.kind !== "saved") return result;
     const value = await this.findTierDraft(input.tierCode);
@@ -848,14 +907,12 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
               input.command.kind === "expire"
                 ? {
                     kind: "expire",
-                    expectedCurrentLockVersion:
-                      input.command.expectedCurrentLockVersion
+                    expectedCurrentLockVersion: input.command.expectedCurrentLockVersion
                   }
                 : {
                     kind: input.command.kind,
                     billingCycle: input.command.billingCycle,
-                    expectedCurrentLockVersion:
-                      input.command.expectedCurrentLockVersion
+                    expectedCurrentLockVersion: input.command.expectedCurrentLockVersion
                   }
           });
         } catch (error: unknown) {
@@ -977,6 +1034,122 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     }
   }
 
+  public async adjustUserMembershipWithAudit(input: {
+    actorId: number;
+    userId: number;
+    tierCode?: PlatformMembershipTierCodeValue;
+    multiplierBps?: number;
+    reason: string;
+    expectedLockVersion: number | null;
+    effectiveFrom: Date;
+    audit: AuditLogCreateInput;
+  }): Promise<UserMembershipAdjustmentMutationResult> {
+    return this.client.$transaction(async (transaction) => {
+      const lockedUsers = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM users WHERE id = ${input.userId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      if (lockedUsers.length === 0) return { kind: "not_found" as const };
+
+      const current = await transaction.userMembershipAdjustment.findFirst({
+        where: {
+          userId: input.userId,
+          effectiveFrom: { lte: input.effectiveFrom },
+          supersededAt: null,
+          deletedAt: null
+        },
+        orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          lockVersion: true,
+          tierVersionId: true,
+          multiplierBps: true,
+          tierVersion: { select: { tier: { select: { code: true } } } }
+        }
+      });
+      if ((current?.lockVersion ?? null) !== input.expectedLockVersion) {
+        return { kind: "version_conflict" as const };
+      }
+
+      let tierVersionId: number | null = current?.tierVersionId ?? null;
+      if (input.tierCode !== undefined) {
+        const tierVersion = await transaction.platformMembershipTierVersion.findFirst({
+          where: {
+            status: PlatformMembershipVersionStatus.PUBLISHED,
+            deletedAt: null,
+            effectiveFrom: { lte: input.effectiveFrom },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gt: input.effectiveFrom } }],
+            tier: { code: tierCodeToDb[input.tierCode], deletedAt: null }
+          },
+          orderBy: [{ effectiveFrom: "desc" }, { version: "desc" }],
+          select: { id: true }
+        });
+        if (!tierVersion) return { kind: "not_found" as const };
+        tierVersionId = tierVersion.id;
+      }
+
+      if (current) {
+        const superseded = await transaction.userMembershipAdjustment.updateMany({
+          where: {
+            id: current.id,
+            lockVersion: current.lockVersion,
+            supersededAt: null,
+            deletedAt: null
+          },
+          data: { supersededAt: input.effectiveFrom }
+        });
+        if (superseded.count !== 1) return { kind: "version_conflict" as const };
+      }
+
+      const lockVersion = (current?.lockVersion ?? 0) + 1;
+      const created = await transaction.userMembershipAdjustment.create({
+        data: {
+          userId: input.userId,
+          tierVersionId,
+          multiplierBps: input.multiplierBps ?? current?.multiplierBps ?? null,
+          reason: input.reason,
+          expectedLockVersion: input.expectedLockVersion,
+          lockVersion,
+          effectiveFrom: input.effectiveFrom,
+          createdById: input.actorId
+        },
+        select: { id: true }
+      });
+      await transaction.auditLog.create({
+        data: toAuditLogCreateData({
+          ...input.audit,
+          targetId: created.id,
+          metadata: {
+            ...this.metadataObject(input.audit.metadata),
+            userId: input.userId,
+            tierCode: input.tierCode ?? null,
+            multiplierBps: input.multiplierBps ?? null,
+            reason: input.reason,
+            expectedLockVersion: input.expectedLockVersion,
+            lockVersion
+          }
+        })
+      });
+      return {
+        kind: "adjusted" as const,
+        value: {
+          tierCode:
+            input.tierCode ??
+            (current?.tierVersion
+              ? tierCodeFromDb[current.tierVersion.tier.code]
+              : null),
+          multiplier:
+            input.multiplierBps === undefined
+              ? current?.multiplierBps === null || current?.multiplierBps === undefined
+                ? null
+                : current.multiplierBps / 10_000
+              : input.multiplierBps / 10_000,
+          lockVersion,
+          effectiveFrom: input.effectiveFrom
+        }
+      };
+    });
+  }
+
   public async updateBenefitWithAudit(input: {
     actorId: number;
     benefitCode: PlatformMembershipBenefitCodeValue;
@@ -1084,6 +1257,8 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       description: input.description,
       detailAccentColor: input.theme.detailAccentColor,
       detailSurfaceColor: input.theme.detailSurfaceColor,
+      detailSurfaceMiddleColor: input.theme.detailSurfaceMiddleColor,
+      detailSurfaceBottomColor: input.theme.detailSurfaceBottomColor,
       detailItemSurfaceColor: input.theme.detailItemSurfaceColor,
       detailOuterBorderColor: input.theme.detailOuterBorderColor,
       detailItemBorderColor: input.theme.detailItemBorderColor,
@@ -1113,6 +1288,8 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       theme: {
         detailAccentColor: version.detailAccentColor,
         detailSurfaceColor: version.detailSurfaceColor,
+        detailSurfaceMiddleColor: version.detailSurfaceMiddleColor,
+        detailSurfaceBottomColor: version.detailSurfaceBottomColor,
         detailItemSurfaceColor: version.detailItemSurfaceColor,
         detailOuterBorderColor: version.detailOuterBorderColor,
         detailItemBorderColor: version.detailItemBorderColor,
@@ -1175,10 +1352,16 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
     }
     const record = value as Record<string, unknown>;
     const locales = ["zh", "zh-Hant", "ja", "en", "ko"] as const;
-    if (locales.some((locale) => typeof record[locale] !== "string" || !(record[locale] as string).trim())) {
+    if (
+      locales.some(
+        (locale) => typeof record[locale] !== "string" || !(record[locale] as string).trim()
+      )
+    ) {
       throw new Error("platform membership benefit localization is incomplete");
     }
-    return Object.fromEntries(locales.map((locale) => [locale, record[locale]])) as unknown as PlatformMembershipLocalizedText;
+    return Object.fromEntries(
+      locales.map((locale) => [locale, record[locale]])
+    ) as unknown as PlatformMembershipLocalizedText;
   }
 
   private metadataObject(metadata: unknown): Record<string, unknown> {
@@ -1190,9 +1373,9 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
   private isUniqueConstraintError(error: unknown): boolean {
     return Boolean(
       error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error as { code?: unknown }).code === "P2002"
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002"
     );
   }
 
@@ -1224,6 +1407,8 @@ export class PlatformMembershipRepository implements PlatformMembershipRepositor
       theme: {
         detailAccentColor: version.detailAccentColor,
         detailSurfaceColor: version.detailSurfaceColor,
+        detailSurfaceMiddleColor: version.detailSurfaceMiddleColor,
+        detailSurfaceBottomColor: version.detailSurfaceBottomColor,
         detailItemSurfaceColor: version.detailItemSurfaceColor,
         detailOuterBorderColor: version.detailOuterBorderColor,
         detailItemBorderColor: version.detailItemBorderColor,

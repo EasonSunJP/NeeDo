@@ -10,7 +10,10 @@ const membershipRewardFeeSource = readFileSync(new URL("./MembershipRewardFeePag
 const badgesSource = readFileSync(new URL("./AvatarBadgesPage.tsx", import.meta.url), "utf8");
 const notificationsSource = readFileSync(new URL("./AdminNotificationsPage.tsx", import.meta.url), "utf8");
 const notificationComposeSource = readFileSync(new URL("./AdminNotificationComposePage.tsx", import.meta.url), "utf8");
-const notificationGateSource = readFileSync(new URL("./OfficialNotificationCapabilityGate.tsx", import.meta.url), "utf8");
+const notificationWorkspaceSource = readFileSync(
+  new URL("../../features/official-notices/OfficialNoticeWorkspace.tsx", import.meta.url),
+  "utf8"
+);
 const dispatchSource = readFileSync(new URL("./AdminDispatchPage.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
@@ -24,8 +27,21 @@ const adminLayoutSource = readFileSync(
   new URL("../../components/admin/AdminLayout.tsx", import.meta.url),
   "utf8"
 );
+const merchantAdminLayoutSource = readFileSync(
+  new URL("../../components/merchant-admin/MerchantAdminLayout.tsx", import.meta.url),
+  "utf8"
+);
 const travelSource = readFileSync(new URL("./TravelSettingsPage.tsx", import.meta.url), "utf8");
 const supportSource = readFileSync(new URL("./AdminSupportPage.tsx", import.meta.url), "utf8");
+
+describe("operations system settings route", () => {
+  it("separates system settings from role management", () => {
+    expect(adminLayoutSource).toContain('to: "/admin/settings/system"');
+    expect(adminLayoutSource).not.toContain('to: "/admin/roles?module=system"');
+    expect(appSource).toContain('path="/admin/settings/system" element={protectPermission("admin", "backoffice:system-settings:read"');
+    expect(appSource).toContain('path="/admin/roles" element={protectPermission("admin", "page:role-management"');
+  });
+});
 
 describe("formal platform user-management routes", () => {
   it("registers five independently permissioned lazy workspaces", () => {
@@ -45,21 +61,31 @@ describe("formal platform user-management routes", () => {
 
   it("keeps the three old user-management entries as replace redirects", () => {
     expect(appSource).toContain('path="/admin/crm" element={protect("admin", <LegacyUserManagementRedirect source="crm" />)}');
-    expect(appSource).toContain('path="/admin/data" element={protect("admin", <LegacyUserManagementRedirect source="data"><DataCenterPage /></LegacyUserManagementRedirect>)}');
+    expect(appSource).toContain('path="/admin/data" element={protect("admin", <LegacyUserManagementRedirect source="data"><Suspense fallback={null}><DataCenterPage /></Suspense></LegacyUserManagementRedirect>)}');
     expect(appSource).toContain('<LegacyUserManagementRedirect source="users"><Suspense fallback={null}><PlatformUserListPage /></Suspense></LegacyUserManagementRedirect>');
   });
 });
 
 describe("formal partner finance administration routes", () => {
+  it("loads management workspaces on demand behind their permissions", () => {
+    for (const component of ["AgentsPage", "OperatingCostsPage", "ServiceSearchAnalyticsPage"]) {
+      expect(appSource).toContain(`const ${component} = lazy(() => import("./pages/admin/${component}")`);
+      expect(appSource).not.toContain(`import { ${component} } from`);
+    }
+    expect(appSource).toContain(
+      'path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)}'
+    );
+  });
+
   it("registers read-permissioned agent detail and operating-cost pages", () => {
     expect(appSource).toContain(
-      'path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <AgentsPage />)}'
+      'path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)}'
     );
     expect(appSource).toContain(
-      'path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <AgentsPage />)}'
+      'path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)}'
     );
     expect(appSource).toContain(
-      'path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <OperatingCostsPage />)}'
+      'path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <Suspense fallback={null}><OperatingCostsPage /></Suspense>)}'
     );
   });
 });
@@ -89,17 +115,16 @@ describe("operations timeline production capability gate", () => {
     expect(timelineSource).not.toContain("sortedTimeline");
   });
 
-  it("states the persistence, workflow, permission, and export prerequisites", () => {
-    expect(timelineSource).toContain("正式运营时间线尚未启用");
-    expect(timelineSource).toContain("OperationEvent 与 OperationalIncident 表和 migration");
-    expect(timelineSource).toContain("创建、指派、跟进、解决与归档状态机 API");
-    expect(timelineSource).toContain("跨城市 RBAC 与不可变审计链路");
-    expect(timelineSource).toContain("服务端筛选、分页、聚合与导出合同");
-    expect(timelineSource).toContain("当前不会展示模拟运营记录、负责人、城市、优先级或处理状态");
+  it("reads formal version publications without enabling incident management", () => {
+    expect(timelineSource).toContain("releasePublicationsApi");
+    expect(timelineSource).toContain("AdminEventTimeline");
+    expect(timelineSource).toContain("FormalTimelinePagination");
+    expect(timelineSource).not.toContain("正式运营时间线尚未启用");
+    expect(timelineSource).toContain("showCommentComposer={false}");
   });
 });
 
-describe("official notification production capability gate", () => {
+describe("formal official notification workspaces", () => {
   it("does not treat bundled updates or browser storage as sent notices", () => {
     expect(notificationsSource).not.toContain("readStoredOfficialNotices");
     expect(notificationsSource).not.toContain("updateNotices");
@@ -107,14 +132,29 @@ describe("official notification production capability gate", () => {
     expect(notificationComposeSource).not.toContain("useEntityStore");
   });
 
-  it("states the formal broadcast delivery prerequisites on list and compose routes", () => {
-    for (const pageSource of [notificationsSource, notificationComposeSource]) {
-      expect(pageSource).toContain("OfficialNotificationCapabilityGate");
+  it("uses the formal paginated management, lifecycle, and inbox APIs", () => {
+    expect(notificationsSource).toContain("OfficialNoticeManagement");
+    expect(notificationComposeSource).toContain("OfficialNoticeComposer");
+    for (const method of ["listManaged", "createDraft", "updateDraft", "planDraft", "cancelManaged", "archiveManaged", "retryManaged", "listInbox", "markRead"]) {
+      expect(notificationWorkspaceSource).toContain(`officialNoticesApi.${method}`);
     }
-    expect(notificationGateSource).toContain("OfficialNotice、NoticeAudience 与 NoticeDelivery 表和 migration");
-    expect(notificationGateSource).toContain("草稿、审核、定时发送、取消与归档状态机 API");
-    expect(notificationGateSource).toContain("目标快照、幂等投递、重试、失败回执与审计");
-    expect(notificationGateSource).toContain("当前不会展示模拟通知、更新记录、目标账号或发送状态");
+    expect(notificationWorkspaceSource).toContain("受众由服务端按当前权限与店铺范围生成快照");
+    expect(notificationWorkspaceSource).not.toMatch(/localStorage|sessionStorage|data\/mock|userIds|shopId/);
+    expect(appSource).not.toContain("OfficialNoticeAutoPopup");
+  });
+
+  it("registers separately permissioned platform and merchant management routes", () => {
+    expect(appSource).toContain('path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice"');
+    expect(appSource).toContain('path="/admin/notifications/inbox" element={protect("admin"');
+    expect(appSource).toContain('path="/admin/notifications/compose" element={protectPermission("admin", "button:backoffice-official-notice-create"');
+    expect(notificationWorkspaceSource).toContain('"button:backoffice-official-notice-send"');
+    expect(appSource).toContain('path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read"');
+    expect(appSource).toContain('path="/merchant-admin/notifications/compose" element={protectPermission("merchant", "merchant-admin:notice:create"');
+    expect(notificationWorkspaceSource).toContain('"merchant-admin:notice:send"');
+    expect(appSource).toContain('path="/merchant-admin/notifications/inbox" element={protect("merchant"');
+    expect(adminLayoutSource).toContain('permission: "page:backoffice-official-notice"');
+    expect(merchantAdminLayoutSource).toContain('rbacPermission: "merchant-admin:notice:read"');
+    expect(merchantAdminLayoutSource).toContain('to="/merchant-admin/notifications/inbox"');
   });
 });
 
@@ -144,7 +184,7 @@ describe("platform content and media production capability gates", () => {
 describe("localized carousel backoffice routes", () => {
   it("registers two independently permissioned routes", () => {
     expect(appSource).toContain(
-      'path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)}'
+      'path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <Suspense fallback={null}><CarouselPage /></Suspense>)}'
     );
     expect(appSource).toContain(
       'path="/admin/afirieito/announcements/carousel" element={protectPermission("admin", "page:backoffice-affiliate-notice-carousel", <AffiliateNoticeCarouselPage />)}'
@@ -284,25 +324,33 @@ describe("membership reward fee operations", () => {
   });
 });
 
-describe("travel and map provider production capability gate", () => {
-  it("does not present static fare tables or inert save/import actions as enabled settings", () => {
-    expect(travelSource).not.toContain("areaTravelFareRules");
-    expect(travelSource).not.toContain("buildDistanceFarePreview");
-    expect(travelSource).not.toContain("DataTable");
-    expect(travelSource).not.toContain("导入城市车费");
-    expect(travelSource).not.toContain("保存出行规则");
+describe("formal travel provider and fare policy operations workspace", () => {
+  it("gates both the route and navigation item with the formal read permission", () => {
+    expect(appSource).toContain(
+      'path="/admin/travel-settings" element={protectPermission("admin", "backoffice:travel-fare:read", <TravelSettingsPage />)}'
+    );
+    expect(adminLayoutSource).toContain(
+      '{ label: "出行能力状态", to: "/admin/travel-settings", icon: "行", permission: "backoffice:travel-fare:read"'
+    );
   });
 
-  it("states the deferred provider and formal policy prerequisites", () => {
-    expect(travelSource).toContain("地图、导航与出行计费尚未启用");
-    expect(travelSource).toContain("ExternalProviderConfig、TravelPolicy 与 RouteEstimate 表和 migration");
-    expect(travelSource).toContain("地址、经纬度、出行方式与人工交通费上限的正式配置 API");
-    expect(travelSource).toContain(
-      "地图/路线供应商适配器、限流、超时、缓存与 provider_unavailable 合同"
-    );
-    expect(travelSource).toContain("计费版本、审批、范围 RBAC、审计、分页与导出");
-    expect(travelSource).toContain("当前不会展示静态城市车费、试算结果或“已启用”交通方式");
-    expect(travelSource).toContain("地址和经纬度基础数据仍可由正式店铺/订单接口保存");
+  it("does not present static fare tables or fake fallback results", () => {
+    expect(travelSource).not.toContain("areaTravelFareRules");
+    expect(travelSource).not.toContain("buildDistanceFarePreview");
+    expect(travelSource).not.toContain("导入城市车费");
+    expect(travelSource).not.toContain("保存出行规则");
+    expect(travelSource).toContain("不会使用静态距离、模拟路线或伪造价格兜底");
+  });
+
+  it("loads redacted provider status and paginated persisted policies", () => {
+    expect(travelSource).toContain("travelFareApi.getProviderStatus()");
+    expect(travelSource).toContain("travelFareApi.listPolicies");
+    expect(travelSource).toContain("正在加载路线供应商与费率策略");
+    expect(travelSource).toContain("供应商或策略读取失败");
+    expect(travelSource).toContain("Geoapify 尚未配置");
+    expect(travelSource).toContain("没有符合条件的店铺费率策略");
+    expect(travelSource).toContain("上一页");
+    expect(travelSource).toContain("下一页");
   });
 });
 

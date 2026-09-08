@@ -23,15 +23,17 @@ export class NdpExchangeRateController {
   });
 
   public publish = this.handle(async (request, response) => {
-    response.status(201).json(
-      successResponse(
-        await this.service.publish(
-          getAuthenticatedAccess(response),
-          ndpExchangeRatePublishBodySchema.parse(request.body),
-          getRequestContext(request)
+    response
+      .status(201)
+      .json(
+        successResponse(
+          await this.service.publish(
+            getAuthenticatedAccess(response),
+            ndpExchangeRatePublishBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
         )
-      )
-    );
+      );
   });
 
   private handle(

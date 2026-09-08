@@ -59,6 +59,8 @@ export const checkFormalExchangeSimulation = async (
     id: true,
     userId: true,
     type: true,
+    scopeType: true,
+    scopeId: true,
     isActive: true,
     deletedAt: true,
     publicIdentifier: {
@@ -73,7 +75,54 @@ export const checkFormalExchangeSimulation = async (
         author: { select: { id: true, isActive: true, deletedAt: true } },
         authorIdentity: { select: actorIdentitySelect },
         demand: true,
-        intelligence: true,
+        intelligence: {
+          include: {
+            service: {
+              include: {
+                category: { select: { isActive: true, deletedAt: true } },
+                shop: {
+                  include: {
+                    publicIdentifier: true,
+                    entitySuspensions: {
+                      where: { activeKey: { not: null }, status: "active", deletedAt: null },
+                      select: { id: true }
+                    }
+                  }
+                }
+              }
+            },
+            technicianService: {
+              include: {
+                category: { select: { isActive: true, deletedAt: true } },
+                sourceShopService: { select: { serviceMode: true } },
+                shop: {
+                  include: {
+                    publicIdentifier: true,
+                    entitySuspensions: {
+                      where: { activeKey: { not: null }, status: "active", deletedAt: null },
+                      select: { id: true }
+                    }
+                  }
+                },
+                technicianProfile: {
+                  include: {
+                    user: { select: { isActive: true, deletedAt: true } },
+                    technicianShopAffiliations: {
+                      where: { deletedAt: null },
+                      select: {
+                        shopId: true,
+                        workStatus: true,
+                        activeKey: true,
+                        startsAt: true,
+                        endsAt: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         comments: {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           include: {
@@ -169,8 +218,7 @@ export const checkFormalExchangeSimulation = async (
       assert(post.demand && !post.demand.deletedAt, `Demand ${post.id} subtype is missing.`);
       assert(!post.intelligence, `Demand ${post.id} has mixed subtype data.`);
       assert(
-        post.demand.budgetMinJpy === null ||
-          post.demand.budgetMinJpy <= post.demand.budgetMaxJpy,
+        post.demand.budgetMinJpy === null || post.demand.budgetMinJpy <= post.demand.budgetMaxJpy,
         `Demand ${post.id} budget is invalid.`
       );
     } else {
@@ -196,6 +244,75 @@ export const checkFormalExchangeSimulation = async (
           post.intelligence.campaignPriceJpy <= post.intelligence.originalPriceJpy,
         `Intelligence ${post.id} price is invalid.`
       );
+      const shopService = post.intelligence.service;
+      const technicianService = post.intelligence.technicianService;
+      assert(
+        Boolean(shopService) !== Boolean(technicianService),
+        `Intelligence ${post.id} must bind exactly one formal service.`
+      );
+      const boundService = shopService ?? technicianService!;
+      const boundShop = boundService.shop;
+      assert(boundShop, `Intelligence ${post.id} service is not scoped to a shop.`);
+      assert(
+        post.intelligence.serviceNameSnapshot === boundService.name &&
+          post.intelligence.serviceDurationSnapshot === boundService.durationMinutes,
+        `Intelligence ${post.id} service snapshot is stale.`
+      );
+      const catalogPriceJpy = Number(boundService.priceAmount.toString());
+      assert(
+        Number.isSafeInteger(catalogPriceJpy) &&
+          post.intelligence.originalPriceJpy === catalogPriceJpy,
+        `Intelligence ${post.id} catalog price snapshot is stale.`
+      );
+      assert(
+        boundService.category.isActive && !boundService.category.deletedAt,
+        `Intelligence ${post.id} category is unavailable.`
+      );
+      assert(
+        boundShop.status === "published" &&
+          !boundShop.deletedAt &&
+          boundShop.publicIdentifier?.kind === "SHOP" &&
+          boundShop.publicIdentifier.status === "ACTIVE" &&
+          !boundShop.publicIdentifier.deletedAt &&
+          boundShop.entitySuspensions.length === 0,
+        `Intelligence ${post.id} shop is unavailable.`
+      );
+      if (shopService) {
+        assert(
+          ["merchant", "merchant_owner", "merchant_staff"].includes(post.authorIdentity.type) &&
+            post.authorIdentity.scopeType === "shop" &&
+            post.authorIdentity.scopeId === shopService.shopId &&
+            shopService.status === "published" &&
+            !shopService.deletedAt,
+          `Intelligence ${post.id} shop service is outside publisher scope.`
+        );
+      } else {
+        const profile = technicianService!.technicianProfile;
+        const affiliation = profile.technicianShopAffiliations.find(
+          (candidate) =>
+            candidate.shopId === technicianService!.shopId &&
+            candidate.workStatus === "ACTIVE" &&
+            candidate.activeKey !== null &&
+            candidate.startsAt <= checkedAt &&
+            (candidate.endsAt === null || candidate.endsAt > checkedAt)
+        );
+        assert(
+          post.authorIdentity.type === "technician" &&
+            post.authorIdentity.scopeType === "technician_profile" &&
+            post.authorIdentity.scopeId === technicianService!.technicianId &&
+            technicianService!.isActive &&
+            technicianService!.isBookable &&
+            technicianService!.reviewStatus === "APPROVED" &&
+            !technicianService!.deletedAt &&
+            profile.status === "published" &&
+            profile.visibility === "public" &&
+            !profile.deletedAt &&
+            profile.user.isActive &&
+            !profile.user.deletedAt &&
+            Boolean(affiliation),
+          `Intelligence ${post.id} technician service is outside publisher scope.`
+        );
+      }
     }
 
     assert(

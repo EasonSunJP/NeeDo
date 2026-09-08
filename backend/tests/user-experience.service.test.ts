@@ -41,10 +41,7 @@ const repository = (): jest.Mocked<UserExperienceRepositoryPort> => ({
   recordNdpReversalEvent: jest.fn()
 });
 
-const membership = (
-  multiplier = 1,
-  benefitCodes: PlatformMembershipBenefitCodeValue[] = []
-) => ({
+const membership = (multiplier = 1, benefitCodes: PlatformMembershipBenefitCodeValue[] = []) => ({
   resolveMembershipAt: jest.fn(async (userId: number, occurredAt: Date) => {
     void userId;
     void occurredAt;
@@ -57,6 +54,8 @@ const membership = (
       theme: {
         detailAccentColor: "#00FF00",
         detailSurfaceColor: "#000000",
+        detailSurfaceMiddleColor: "#101820",
+        detailSurfaceBottomColor: "#202838",
         detailItemSurfaceColor: "#111111",
         detailOuterBorderColor: "#222222",
         detailItemBorderColor: "#333333",

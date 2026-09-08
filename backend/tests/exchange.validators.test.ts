@@ -36,6 +36,7 @@ const validDemand = (overrides: Record<string, unknown> = {}) => ({
 const validIntelligence = (overrides: Record<string, unknown> = {}) => ({
   ...common,
   type: "intelligence" as const,
+  serviceRef: "shop:501",
   areaLabel: "  渋谷区  ",
   serviceMode: "store" as const,
   addressLabel: "  渋谷駅徒歩3分  ",
@@ -137,15 +138,39 @@ describe("formal NeeDo Exchange validators", () => {
     ).toBe(false);
   });
 
-  it("parses intelligence and rejects invalid price or service windows", () => {
+  it("requires one formal Intelligence service reference and treats legacy display fields as optional", () => {
     expect(publishExchangePostSchema.parse(validIntelligence())).toEqual(
-      expect.objectContaining({ type: "intelligence", addressLabel: "渋谷駅徒歩3分" })
+      expect.objectContaining({
+        type: "intelligence",
+        serviceRef: "shop:501",
+        addressLabel: "渋谷駅徒歩3分"
+      })
     );
 
     expect(
       publishExchangePostSchema.safeParse(
         validIntelligence({ serviceAreas: ["渋谷区"], originalPriceJpy: 9_000 })
       ).success
+    ).toBe(true);
+    expect(
+      publishExchangePostSchema.safeParse(validIntelligence({ serviceRef: undefined })).success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(validIntelligence({ serviceRef: "legacy:501" })).success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse({
+        ...common,
+        type: "intelligence",
+        serviceRef: "technician:701",
+        campaignPriceJpy: 10_000
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects invalid Intelligence prices or service windows", () => {
+    expect(
+      publishExchangePostSchema.safeParse(validIntelligence({ campaignPriceJpy: -1 })).success
     ).toBe(false);
     expect(
       publishExchangePostSchema.safeParse(

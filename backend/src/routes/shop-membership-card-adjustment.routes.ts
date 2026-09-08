@@ -23,11 +23,17 @@ export const SHOP_MEMBERSHIP_CARD_ADJUSTMENT_ROUTE_PERMISSIONS = {
   customerRead: "customer-profile:read"
 } as const;
 
-export const createShopMembershipCardAdjustmentRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
+export const createShopMembershipCardAdjustmentRoutes = (
+  config: AppConfig,
+  dependencies: AppDependencies
+): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new ShopMembershipCardAdjustmentService(
-    dependencies.shopMembershipCardAdjustmentRepository ?? new ShopMembershipCardAdjustmentRepository(),
+    dependencies.shopMembershipCardAdjustmentRepository ??
+      new ShopMembershipCardAdjustmentRepository(),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
   );
   const controller = new ShopMembershipCardAdjustmentController(service);
@@ -36,7 +42,10 @@ export const createShopMembershipCardAdjustmentRoutes = (config: AppConfig, depe
     "/merchant-admin/shop-membership-cards/:publicId/adjustment-requests",
     authenticate(),
     createAuthorizeMiddleware(SHOP_MEMBERSHIP_CARD_ADJUSTMENT_ROUTE_PERMISSIONS.request),
-    validateRequest({ params: shopMembershipCardAdjustmentPublicIdParamSchema, body: shopMembershipCardAdjustmentCreateBodySchema }),
+    validateRequest({
+      params: shopMembershipCardAdjustmentPublicIdParamSchema,
+      body: shopMembershipCardAdjustmentCreateBodySchema
+    }),
     controller.create
   );
   router.get(
@@ -50,7 +59,10 @@ export const createShopMembershipCardAdjustmentRoutes = (config: AppConfig, depe
     "/merchant-admin/shop-membership-card-adjustment-requests/:publicId/cancel",
     authenticate(),
     createAuthorizeMiddleware(SHOP_MEMBERSHIP_CARD_ADJUSTMENT_ROUTE_PERMISSIONS.request),
-    validateRequest({ params: shopMembershipCardAdjustmentPublicIdParamSchema, body: shopMembershipCardAdjustmentCancelBodySchema }),
+    validateRequest({
+      params: shopMembershipCardAdjustmentPublicIdParamSchema,
+      body: shopMembershipCardAdjustmentCancelBodySchema
+    }),
     controller.cancel
   );
   router.get(
@@ -64,7 +76,10 @@ export const createShopMembershipCardAdjustmentRoutes = (config: AppConfig, depe
     "/customer-profile/me/shop-membership-card-adjustment-requests/:publicId/decision",
     authenticate(),
     createAuthorizeMiddleware(SHOP_MEMBERSHIP_CARD_ADJUSTMENT_ROUTE_PERMISSIONS.customerRead),
-    validateRequest({ params: shopMembershipCardAdjustmentPublicIdParamSchema, body: shopMembershipCardAdjustmentDecisionBodySchema }),
+    validateRequest({
+      params: shopMembershipCardAdjustmentPublicIdParamSchema,
+      body: shopMembershipCardAdjustmentDecisionBodySchema
+    }),
     controller.decide
   );
   return router;

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiClientError } from "../../api/httpClient";
+import { useI18n } from "../../i18n/I18nProvider";
 import { Button } from "../../components/ui/Button";
-import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { AdminToggleSwitch } from "../../components/admin/AdminToggleSwitch";
 import { platformUserManagementApi } from "./api";
+import { resolvePlatformBenefitLocalizedText } from "./benefitLocalization";
 import type {
   PlatformBenefitAdministration,
   PlatformBenefitLocalizedText
@@ -40,6 +42,7 @@ export function MembershipBenefitEditor({
   onCancel: () => void;
   onSaved: (benefit: PlatformBenefitAdministration) => void;
 }) {
+  const { language } = useI18n();
   const [draft, setDraft] = useState<BenefitDraft>(() => draftFrom(benefit));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,8 +89,8 @@ export function MembershipBenefitEditor({
 
   return <section className="mt-5 rounded-xl border border-line bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><p className="text-xs font-black uppercase tracking-[0.18em] text-ink/40">{benefit.code}</p><h2 className="mt-1 text-lg font-black">编辑权益说明</h2></div>
-      <div className="flex items-center gap-3 rounded-lg border border-line bg-paper px-3 py-2"><span className="text-sm font-bold">全局启用</span><ToggleSwitch ariaLabel="全局启用" checked={draft.isGloballyEnabled} disabled={!canWrite} onChange={(checked) => setDraft((current) => ({ ...current, isGloballyEnabled: checked }))} /></div>
+      <div><p className="text-xs font-black text-ink/45">{resolvePlatformBenefitLocalizedText(benefit.nameTranslations, language, benefit.code)}</p><h2 className="mt-1 text-lg font-black">编辑权益说明</h2></div>
+      <div className="flex items-center gap-3 rounded-lg border border-line bg-paper px-3 py-2"><span className="text-sm font-bold">全局启用</span><AdminToggleSwitch ariaLabel="全局启用" checked={draft.isGloballyEnabled} disabled={!canWrite} onChange={(checked) => setDraft((current) => ({ ...current, isGloballyEnabled: checked }))} /></div>
     </div>
     {error ? <p className="mt-4 rounded-lg border border-coral/25 bg-coral/5 p-3 text-sm font-bold text-coral">{error}</p> : null}
     <label className="mt-5 block text-sm font-bold">显示顺序<input className="ml-3 h-10 w-28 rounded-lg border border-line bg-paper px-3" disabled={!canWrite} max={10_000} min={0} onChange={(event) => setDraft((current) => ({ ...current, sortOrder: Number(event.target.value) }))} type="number" value={draft.sortOrder} /></label>

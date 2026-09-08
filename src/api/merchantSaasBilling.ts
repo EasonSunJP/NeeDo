@@ -11,6 +11,7 @@ import type {
   SuspensionReasonCode,
   SuspensionScope
 } from "../features/merchant-saas-billing/model";
+import { isMerchantGroup } from "../features/merchant-saas-billing/model";
 
 export interface PaginatedMerchantAccounts {
   list: MerchantAccountCard[];
@@ -125,6 +126,9 @@ export const merchantSaasBillingApi = {
   getMerchantAccount(id: number) {
     return httpClient.request<MerchantGroupCard>(`/backoffice/merchant-accounts/${id}`);
   },
+  getShopAccount(id: number) {
+    return httpClient.request<ShopCard>(`/backoffice/shops/${id}/saas-account`);
+  },
   updateBillingProfile(subjectType: BillingSubjectType, subjectId: number, body: BillingProfileUpdate) {
     return httpClient.request<BillingProfileCard>(billingProfilePath(subjectType, subjectId), {
       body,
@@ -200,5 +204,11 @@ export const merchantSaasBillingApi = {
     });
   }
 };
+
+export function refreshMerchantAccountCard(card: MerchantAccountCard) {
+  return isMerchantGroup(card)
+    ? merchantSaasBillingApi.getMerchantAccount(card.id)
+    : merchantSaasBillingApi.getShopAccount(card.id);
+}
 
 export type { ShopCard };

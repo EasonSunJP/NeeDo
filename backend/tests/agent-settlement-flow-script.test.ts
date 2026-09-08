@@ -30,8 +30,8 @@ describe("rollback-only agent settlement flow checker", () => {
   it("creates the rollback shop identifier with the canonical shop prefix", () => {
     const runnerSource = readFileSync(runnerPath, "utf8");
 
-    expect(runnerSource).toContain('publicId: `shop${numericSuffix}`');
-    expect(runnerSource).not.toContain('publicId: `S${numericSuffix}`');
+    expect(runnerSource).toContain("publicId: `shop${numericSuffix}`");
+    expect(runnerSource).not.toContain("publicId: `S${numericSuffix}`");
   });
 
   it("preserves the unique active exchange-rate sentinel inside the rollback transaction", () => {
@@ -74,13 +74,16 @@ describe("rollback-only agent settlement flow checker", () => {
 
     const blockedLoaders = jest.fn();
     await expect(
-      loadValidatedSettlementCheckModules({}, {
-        validateEnvironment: () => {
-          throw new Error("formal environment rejected");
-        },
-        loadPrismaModule: blockedLoaders,
-        loadFlowModule: blockedLoaders
-      })
+      loadValidatedSettlementCheckModules(
+        {},
+        {
+          validateEnvironment: () => {
+            throw new Error("formal environment rejected");
+          },
+          loadPrismaModule: blockedLoaders,
+          loadFlowModule: blockedLoaders
+        }
+      )
     ).rejects.toThrow("formal environment rejected");
     expect(blockedLoaders).not.toHaveBeenCalled();
   });
@@ -153,9 +156,7 @@ describe("rollback-only agent settlement flow checker", () => {
     });
     expect(() => assertSettlementSnapshotUnchanged(snapshot, { ...snapshot })).not.toThrow();
     const persistedSettlement = { ...snapshot, publicId: "settlement-record" };
-    expect(() =>
-      assertSettlementSnapshotUnchanged(snapshot, persistedSettlement)
-    ).not.toThrow();
+    expect(() => assertSettlementSnapshotUnchanged(snapshot, persistedSettlement)).not.toThrow();
     expect(() =>
       assertSettlementSnapshotUnchanged(snapshot, { ...snapshot, totalAmountJpy: 2_001 })
     ).toThrow("Confirmed agent settlement snapshot changed");

@@ -23,6 +23,8 @@ describe("affiliate checkout attribution acceptance script", () => {
     expect(scriptSource).toContain("affiliateCode");
     expect(scriptSource).toContain("Promise.allSettled");
     expect(scriptSource).toContain("invalidateCancelledBooking");
+    expect(scriptSource).toContain("commissionFrozenNdp: input.totalBudgetNdp");
+    expect(scriptSource).toContain("platformFeeFrozenNdp: 0");
     expect(scriptSource).toContain("wallet balances changed during checkout attribution");
     expect(scriptSource).toContain("reward was created before service completion");
     expect(scriptSource).toContain("audit evidence leaked a signed token");

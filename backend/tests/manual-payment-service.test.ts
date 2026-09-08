@@ -67,6 +67,7 @@ const order = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPayloa
   serviceNameSnapshot: "Shiatsu Recovery",
   servicePriceSnapshot: "8800.00",
   serviceDurationSnapshot: 60,
+  fulfillmentAddressSnapshot: null,
   serviceSnapshot: null,
   shopName: "Aoyama Care Studio",
   technicianName: "Mika Tanaka",
@@ -85,10 +86,11 @@ const order = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPayloa
   ...overrides
 });
 
-const repository = (
-  result: ManualPaymentMutationResult
-): jest.Mocked<BookingRepositoryPort> =>
+const repository = (result: ManualPaymentMutationResult): jest.Mocked<BookingRepositoryPort> =>
   ({
+    findOrderById: jest.fn(async () =>
+      order({ status: "cancelled", paymentStatus: "refundPending" })
+    ),
     confirmManualPayment: jest.fn(async () => result),
     refundManualPayment: jest.fn(async () => result)
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
@@ -159,7 +161,12 @@ describe("BookingService manual payment", () => {
     ["amount_mismatch", ERROR_CODES.PAYMENT_AMOUNT_MISMATCH, "error.payment.amount_mismatch"],
     ["conflict", ERROR_CODES.PAYMENT_CONFLICT, "error.payment.conflict"]
   ] as const)("maps %s repository outcomes to stable errors", async (outcome, code, message) => {
-    const service = new BookingService(repository({ outcome }), undefined, undefined, auditLogService());
+    const service = new BookingService(
+      repository({ outcome }),
+      undefined,
+      undefined,
+      auditLogService()
+    );
 
     await expect(
       service.confirmManualPayment(
@@ -197,6 +204,58 @@ describe("BookingService manual payment", () => {
     );
   });
 
+  it("maps a direct-refund compare-and-swap conflict without writing an audit", async () => {
+    const bookingRepository = repository({ outcome: "conflict" });
+    const audit = auditLogService();
+    const service = new BookingService(bookingRepository, undefined, undefined, audit);
+
+    await expect(
+      service.refundManualPayment(
+        backofficeActor,
+        91,
+        { reason: "cancelled before completion", reference: "REF-CAS-CONFLICT" },
+        requestContext
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.PAYMENT_CONFLICT,
+      message: "error.payment.conflict",
+      statusCode: 409
+    });
+
+    expect(bookingRepository.refundManualPayment).toHaveBeenCalledTimes(1);
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["merchant-admin", merchantActor],
+    ["backoffice", backofficeActor]
+  ] as const)(
+    "rejects a completed confirmed payment before the %s direct-refund repository mutation",
+    async (_portal, actor) => {
+      const completed = order({ status: "completed", paymentStatus: "confirmed" });
+      const bookingRepository = repository({ outcome: "ok", order: completed, applied: true });
+      bookingRepository.findOrderById.mockResolvedValue(completed);
+      const audit = auditLogService();
+      const service = new BookingService(bookingRepository, undefined, undefined, audit);
+
+      await expect(
+        service.refundManualPayment(
+          actor,
+          91,
+          { reason: "must use the completed-order refund case", reference: "REF-BYPASS" },
+          requestContext
+        )
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.PAYMENT_INVALID_STATE,
+        message: "error.payment.invalid_state",
+        statusCode: 409
+      });
+
+      expect(bookingRepository.refundManualPayment).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
   it("rejects payment mutations from customer identities", async () => {
     const customerActor: AuthenticatedAccessContext = {
       ...merchantActor,
@@ -221,5 +280,71 @@ describe("BookingService manual payment", () => {
       message: "error.identity.forbidden"
     });
     expect(bookingRepository.confirmManualPayment).not.toHaveBeenCalled();
+  });
+
+  it("publishes manual confirmation and refund only for applied mutations", async () => {
+    const confirmed = order({ paymentStatus: "confirmed" });
+    const refunded = order({ status: "cancelled", paymentStatus: "refunded" });
+    const bookingRepository = repository({ outcome: "ok", order: confirmed, applied: true });
+    bookingRepository.confirmManualPayment
+      .mockResolvedValueOnce({ outcome: "ok", order: confirmed, applied: true })
+      .mockResolvedValueOnce({ outcome: "ok", order: confirmed, applied: false });
+    bookingRepository.refundManualPayment
+      .mockResolvedValueOnce({ outcome: "ok", order: refunded, applied: true })
+      .mockResolvedValueOnce({ outcome: "ok", order: refunded, applied: false });
+    bookingRepository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: 91,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: confirmed.orderNo,
+        status: confirmed.status,
+        serviceName: confirmed.serviceName,
+        amountJpy: 8_800
+      }
+    ]);
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      bookingRepository,
+      undefined,
+      undefined,
+      auditLogService(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await service.confirmManualPayment(
+      backofficeActor,
+      91,
+      { method: "bank_transfer", amountJpy: 8_800, reference: "BANK-LIVE-1" },
+      requestContext
+    );
+    await service.confirmManualPayment(
+      backofficeActor,
+      91,
+      { method: "bank_transfer", amountJpy: 8_800, reference: "BANK-LIVE-1" },
+      requestContext
+    );
+    await service.refundManualPayment(
+      backofficeActor,
+      91,
+      { reason: "refund", reference: "REF-LIVE-1" },
+      requestContext
+    );
+    await service.refundManualPayment(
+      backofficeActor,
+      91,
+      { reason: "refund", reference: "REF-LIVE-1" },
+      requestContext
+    );
+
+    expect(bookingRepository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(2);
+    expect(bookingRepository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([91]);
+    expect(publisher.publish).toHaveBeenCalledTimes(4);
   });
 });

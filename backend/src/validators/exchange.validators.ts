@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CONTENT_LOCALES } from "../constants/content-locales";
+import type { ExchangeIntelligenceServiceRef } from "../types/exchange-intelligence-booking.types";
 
 const MAX_MONEY_JPY = 1_000_000_000;
 
@@ -54,11 +55,15 @@ const intelligencePostSchema = z
   .object({
     type: z.literal("intelligence"),
     ...commonPostShape,
-    areaLabel: authoredText(120),
-    serviceMode: z.enum(["store", "onsite", "flexible"]),
-    addressLabel: authoredText(255).nullable().optional().default(null),
-    serviceAreas: serviceAreasSchema,
-    originalPriceJpy: moneyJpy.nullable().optional().default(null),
+    serviceRef: z
+      .string()
+      .regex(/^(?:shop|technician):[1-9]\d*$/u)
+      .transform((value) => value as ExchangeIntelligenceServiceRef),
+    areaLabel: authoredText(120).optional(),
+    serviceMode: z.enum(["store", "onsite", "flexible"]).optional(),
+    addressLabel: authoredText(255).nullable().optional(),
+    serviceAreas: serviceAreasSchema.optional(),
+    originalPriceJpy: moneyJpy.nullable().optional(),
     campaignPriceJpy: moneyJpy
   })
   .strict();
@@ -124,17 +129,6 @@ export const publishExchangePostSchema = z
         code: z.ZodIssueCode.custom,
         message: "addressLine3Public requires addressLine3",
         path: ["addressLine3Public"]
-      });
-    }
-    if (
-      value.type === "intelligence" &&
-      value.originalPriceJpy !== null &&
-      value.campaignPriceJpy > value.originalPriceJpy
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "campaignPriceJpy must not exceed originalPriceJpy",
-        path: ["campaignPriceJpy"]
       });
     }
   });

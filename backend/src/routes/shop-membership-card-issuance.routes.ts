@@ -19,9 +19,14 @@ export const SHOP_MEMBERSHIP_CARD_ISSUANCE_ROUTE_PERMISSIONS = {
   issue: "shop.member.card.issue"
 } as const;
 
-export const createShopMembershipCardIssuanceRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
+export const createShopMembershipCardIssuanceRoutes = (
+  config: AppConfig,
+  dependencies: AppDependencies
+): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new ShopMembershipCardIssuanceService(
     dependencies.shopMembershipCardIssuanceRepository ?? new ShopMembershipCardIssuanceRepository(),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
@@ -32,7 +37,10 @@ export const createShopMembershipCardIssuanceRoutes = (config: AppConfig, depend
     "/merchant-admin/shop-memberships/:publicId/cards",
     authenticate(),
     createAuthorizeMiddleware(SHOP_MEMBERSHIP_CARD_ISSUANCE_ROUTE_PERMISSIONS.issue),
-    validateRequest({ params: shopMembershipCardIssuanceParamSchema, body: shopMembershipCardIssuanceBodySchema }),
+    validateRequest({
+      params: shopMembershipCardIssuanceParamSchema,
+      body: shopMembershipCardIssuanceBodySchema
+    }),
     controller.issue
   );
   return router;

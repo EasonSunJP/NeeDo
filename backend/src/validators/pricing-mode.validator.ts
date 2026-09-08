@@ -5,11 +5,20 @@ const paginationQuerySchema = {
   pageSize: z.coerce.number().int().positive().max(100).optional()
 };
 
+const booleanQueryValueSchema = z.union([
+  z.boolean(),
+  z.enum(["true", "false"]).transform((value) => value === "true")
+]);
+
 export const shopIdParamSchema = z.object({
   shopId: z.coerce.number().int().positive()
 });
 
 export const technicianServiceIdParamSchema = shopIdParamSchema.extend({
+  serviceId: z.coerce.number().int().positive()
+});
+
+export const myTechnicianServiceIdParamSchema = z.object({
   serviceId: z.coerce.number().int().positive()
 });
 
@@ -19,12 +28,12 @@ export const publicTechnicianServicesParamSchema = shopIdParamSchema.extend({
 
 export const pricingModeBodySchema = z.object({
   pricingMode: z.enum(["merchant", "technician"]),
-  technicianPricingRatePercent: z.number().int().min(10).max(200).optional()
+  technicianPricingRatePercent: z.number().int().min(10).max(100).optional()
 });
 
 export const technicianServiceListQuerySchema = z.object({
   ...paginationQuerySchema,
-  activeOnly: z.coerce.boolean().optional()
+  activeOnly: booleanQueryValueSchema.optional()
 });
 
 export const technicianServiceOrderBodySchema = z

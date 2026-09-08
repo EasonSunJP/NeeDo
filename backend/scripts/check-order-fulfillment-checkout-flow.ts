@@ -823,7 +823,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     idempotencyKey: `${fixture.marker}-sigma-collision`
   }).success, "review validator accepted a final-sigma collision");
   const customerReviewInput = validatorModule.orderReviewCreateBodySchema.parse({
-    targetType: "technician", rating: 5, tags: ["ＳＰＡ", "ı", "i"],
+    targetType: "technician", rating: 5, tags: ["服务精神", "ＳＰＡ"],
     comment: "  Ｆｏｒｍａｌ  ",
     idempotencyKey: `${fixture.marker}-customer-review`
   });
@@ -902,9 +902,11 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     rateSnapshot.ndpUnits === 1 && rateSnapshot.jpyUnits === 1 &&
     rateSnapshot.effectiveFrom === fixture.rateEffectiveFrom.toISOString(),
   "NDP exchange-rate snapshot is not exact");
-  assert(calculationSnapshot.formula === "base_plus_accepted_add_ons_minus_discount" &&
+  assert(calculationSnapshot.formula === "base_plus_accepted_add_ons_plus_travel_fare_minus_discount" &&
     calculationSnapshot.baseAmountJpy === 8_800 && calculationSnapshot.addOnAmountJpy === 2_200 &&
+    calculationSnapshot.travelFareAmountJpy === 0 &&
     calculationSnapshot.discountAmountJpy === 0 && calculationSnapshot.checkoutAmountJpy === 11_000 &&
+    calculationSnapshot.rateFormula === "ceil(jpy_times_ndp_units_divided_by_jpy_units)" &&
     Array.isArray(calculationSnapshot.acceptedAddOnIds) &&
     calculationSnapshot.acceptedAddOnIds.length === 1 &&
     calculationSnapshot.acceptedAddOnIds[0] === addOnId,
@@ -1027,7 +1029,12 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
           orderAddOnId: null, orderCheckoutId: persistedCheckout.id,
           eventType: "CHECKOUT_CREATED", actorUserId: fixture.customer.id,
           idempotencyKey: `checkout:${ndpOrder.id}:created`, reason: null,
-          metadata: { checkoutAmountJpy: 11_000, payableNdp: 11_000, rateRuleId: fixture.rateId }
+          metadata: {
+            checkoutAmountJpy: 11_000,
+            travelFareAmountJpy: 0,
+            payableNdp: 11_000,
+            rateRuleId: fixture.rateId
+          }
         },
         {
           bookingOrderId: ndpOrder.id, serviceSessionId: ndpSession.id,
@@ -1071,7 +1078,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     technicianTargetReview.customerProfileId === null && technicianTargetReview.rating === 5 &&
     technicianTargetReview.comment === "Formal" &&
     JSON.stringify(technicianTargetReview.tags.map((tag) => tag.label).sort()) ===
-      JSON.stringify(["SPA", "i", "ı"].sort()),
+      JSON.stringify(["SPA", "服务max"].sort()),
   "technician-target review normalization/ownership is not exact");
   assert(customerTargetReview?.reviewerUserId === fixture.technician.id &&
     customerTargetReview.customerProfileId === fixture.customerProfileId &&
@@ -1133,10 +1140,10 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     tx, cashOrder.id, fixture.customer.id, currency
   );
   assertNoCashDebit(cashNoDebitBefore, cashNoDebitAfter);
-  const cashCustomerReview = {
-    targetType: "technician" as const, rating: 4, tags: ["服务精神"], comment: "现金流程",
+  const cashCustomerReview = validatorModule.orderReviewCreateBodySchema.parse({
+    targetType: "technician", rating: 4, tags: ["服务精神"], comment: "现金流程",
     idempotencyKey: `${fixture.marker}-cash-customer-review`
-  };
+  });
   await service.createOrderReview(customer, cashOrder.id, cashCustomerReview, context);
   await service.createOrderReview(customer, cashOrder.id, cashCustomerReview, context);
   await service.createOrderReview(technician, cashOrder.id, {
@@ -1300,7 +1307,12 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
           orderAddOnId: null, orderCheckoutId: cashCheckout.id,
           eventType: "CHECKOUT_CREATED", actorUserId: fixture.customer.id,
           idempotencyKey: `checkout:${cashOrder.id}:created`, reason: null,
-          metadata: { checkoutAmountJpy: 11_000, payableNdp: 11_000, rateRuleId: fixture.rateId }
+          metadata: {
+            checkoutAmountJpy: 11_000,
+            travelFareAmountJpy: 0,
+            payableNdp: 11_000,
+            rateRuleId: fixture.rateId
+          }
         },
         {
           bookingOrderId: cashOrder.id, serviceSessionId: cashSession.id,
@@ -1328,8 +1340,7 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   const customerSummary = summaryRows.find(
     (summary) => summary.customerProfileId === fixture.customerProfileId
   );
-  const expectedTechnicianHighlights = ["SPA", "i", "ı", "服务精神"]
-    .sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
+  const expectedTechnicianHighlights = ["服务max", "SPA"];
   assert(summaryRows.length === 2 && technicianSummary?.targetType === "technician" &&
     technicianSummary.targetId === fixture.technicianProfileId &&
     technicianSummary.reviewCount === 2 && technicianSummary.ratingAverage.toString() === "4.5" &&

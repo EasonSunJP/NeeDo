@@ -13,11 +13,8 @@ import { BOOKING_ROUTE_PERMISSIONS, createBookingRoutes } from "../src/routes/bo
 import * as authServiceFactory from "../src/routes/auth-service.factory";
 
 const now = new Date("2026-09-01T10:00:00.000Z");
-const fulfillmentPermissions = [
-  "order:service:start",
-  "order:add-on:write",
-  "order:service:end"
-];
+const fulfillmentPermissions = ["order:service:start", "order:add-on:write", "order:service:end"];
+const fixturePermissions = ["order:read", ...fulfillmentPermissions];
 
 const order: BookingOrderPayload = {
   id: 41,
@@ -49,6 +46,7 @@ const order: BookingOrderPayload = {
   serviceNameSnapshot: "舒缓 60 分钟",
   servicePriceSnapshot: "8800.00",
   serviceDurationSnapshot: 60,
+  fulfillmentAddressSnapshot: null,
   serviceSnapshot: { serviceId: 11, durationMinutes: 60 },
   shopName: "銀座店",
   technicianName: "Misaki",
@@ -72,7 +70,7 @@ const createFixture = () => {
     const base = {
       userId: 101,
       roles: ["customer"],
-      permissions: fulfillmentPermissions,
+      permissions: fixturePermissions,
       currentIdentityType: "customer",
       currentIdentityScopeType: "customer_profile",
       currentIdentityScopeId: 501
@@ -100,7 +98,8 @@ const createFixture = () => {
     startService: jest.fn(async () => ok),
     createOrderAddOn: jest.fn(async () => ok),
     decideOrderAddOn: jest.fn(async () => ok),
-    endService: jest.fn(async () => ok)
+    endService: jest.fn(async () => ok),
+    createOrderTimelineComment: jest.fn(async () => order)
   } as unknown as jest.Mocked<BookingRepositoryPort>;
   const app = express();
   app.use(express.json());
@@ -170,10 +169,7 @@ describe("formal order fulfillment API", () => {
   it("requires authentication and the exact fulfillment permission", async () => {
     const fixture = createFixture();
     const body = { actor: "customer", idempotencyKey: "api-auth-start0001" };
-    await request(fixture.app)
-      .post("/api/v1/orders/41/service/start")
-      .send(body)
-      .expect(401);
+    await request(fixture.app).post("/api/v1/orders/41/service/start").send(body).expect(401);
     await request(fixture.app)
       .post("/api/v1/orders/41/service/start")
       .set("Authorization", "Bearer no-permission")
@@ -210,6 +206,44 @@ describe("formal order fulfillment API", () => {
       .post("/api/v1/orders/41/complete")
       .set("Authorization", "Bearer customer")
       .expect(404);
+  });
+
+  it("creates a normalized participant timeline comment through the formal route", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/orders/41/timeline/comments")
+      .set("Authorization", "Bearer customer")
+      .send({ body: "  请提前五分钟联系  " })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ code: 0, message: "success", data: { id: 41 } });
+      });
+
+    expect(fixture.repository.createOrderTimelineComment).toHaveBeenCalledWith({
+      actorUserId: 101,
+      body: "请提前五分钟联系",
+      orderId: 41
+    });
+  });
+
+  it("validates timeline comments before repository access and enforces order:read", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/orders/41/timeline/comments")
+      .set("Authorization", "Bearer customer")
+      .send({ body: "   ", unexpected: true })
+      .expect(400)
+      .expect({ code: ERROR_CODES.VALIDATION, message: "error.validation", data: null });
+    await request(fixture.app)
+      .post("/api/v1/orders/41/timeline/comments")
+      .set("Authorization", "Bearer no-permission")
+      .send({ body: "需要联系" })
+      .expect(403)
+      .expect({ code: ERROR_CODES.FORBIDDEN, message: "error.forbidden", data: null });
+
+    expect(fixture.repository.createOrderTimelineComment).not.toHaveBeenCalled();
   });
 
   it("assigns the exact route permissions only to customer and technician roles", () => {

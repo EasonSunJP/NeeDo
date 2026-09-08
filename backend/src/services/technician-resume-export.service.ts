@@ -22,16 +22,11 @@ export interface TechnicianResumeRecord {
 }
 
 export interface TechnicianResumeRepositoryPort {
-  findForExport: (
-    applicationId: number,
-    shopId: number
-  ) => Promise<TechnicianResumeRecord | null>;
+  findForExport: (applicationId: number, shopId: number) => Promise<TechnicianResumeRecord | null>;
 }
 
 export interface TechnicianResumeMediaPort {
-  read: (
-    mediaAssetId: number
-  ) => Promise<{ buffer: Buffer; extension: "png" | "jpeg" | "gif" }>;
+  read: (mediaAssetId: number) => Promise<{ buffer: Buffer; extension: "png" | "jpeg" | "gif" }>;
 }
 
 export interface TechnicianResumeDownloadAuditInput {
@@ -59,8 +54,7 @@ export interface TechnicianResumeExportResult {
   buffer: Buffer;
 }
 
-const CONTENT_TYPE =
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const;
+const CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const;
 const FONT_NAME = "Hiragino Sans GB";
 
 export class TechnicianResumeExportService {
@@ -71,10 +65,7 @@ export class TechnicianResumeExportService {
   ) {}
 
   public async export(input: ExportTechnicianResumeInput): Promise<TechnicianResumeExportResult> {
-    const record = await this.repository.findForExport(
-      input.applicationId,
-      input.reviewerShopId
-    );
+    const record = await this.repository.findForExport(input.applicationId, input.reviewerShopId);
     if (!record) {
       throw new AppError({
         code: ERROR_CODES.NOT_FOUND,

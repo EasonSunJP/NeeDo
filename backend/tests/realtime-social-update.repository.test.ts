@@ -42,9 +42,7 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
   };
   const transaction = {
     socialPost: {
-      findFirst: jest.fn(async () =>
-        existingPost.authorUserId === 41 ? existingPost : null
-      ),
+      findFirst: jest.fn(async () => (existingPost.authorUserId === 41 ? existingPost : null)),
       update: jest.fn(async ({ data }) => ({
         ...existingPost,
         content: data.content,
@@ -71,14 +69,16 @@ function createFixture(options: { postAuthorUserId?: number; missingUpload?: boo
         },
         ...(options.missingUpload
           ? []
-          : [{
-              id: 302,
-              checksumSha256: uploadedChecksum,
-              url: `/media/content/${uploadedChecksum}.webp`,
-              entityType: "social_post_upload",
-              entityId: 41,
-              createdAt: now
-            }])
+          : [
+              {
+                id: 302,
+                checksumSha256: uploadedChecksum,
+                url: `/media/content/${uploadedChecksum}.webp`,
+                entityType: "social_post_upload",
+                entityId: 41,
+                createdAt: now
+              }
+            ])
       ]),
       updateMany: jest.fn(async () => ({ count: 1 }))
     },

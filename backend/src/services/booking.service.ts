@@ -41,11 +41,12 @@ import type {
 } from "../validators/booking.validator";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { AuditLogService } from "./audit-log.service";
+import type { BookingLedgerSettlementPort, CheckoutPaymentLedgerPort } from "./ledger.service";
 import type {
-  BookingLedgerSettlementPort,
-  CheckoutPaymentLedgerPort
-} from "./ledger.service";
-import type { OrderStatusNotificationInput, OrderStatusNotificationPort } from "./realtime.service";
+  OrderRealtimeChangeType,
+  OrderStatusNotificationInput,
+  OrderStatusNotificationPort
+} from "./realtime.service";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import {
@@ -54,9 +55,13 @@ import {
   type AffiliatePromotionInput
 } from "./affiliate-checkout.service";
 import { hasMerchantShopScope, requireMerchantShopId } from "./merchant-shop-scope";
+import { exchangeIdempotencyKeySchema } from "../validators/exchange.validators";
 import type { NdpExchangeRateService } from "./ndp-exchange-rate.service";
 import type { UserExperienceService } from "./user-experience.service";
 import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
+import type { PlatformPaymentMethod } from "../domain/platform-settings";
+import type { LiveDashboardEventPublisher } from "./live-dashboard-event.gateway";
+import { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change.publisher";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -70,10 +75,22 @@ export interface AuthenticatedBookingActor {
   isReadOnlyMerchantPreview?: boolean;
   merchantPreviewShopId?: number;
 }
-export interface BookingCreateInput
-  extends Omit<BookingCreateRepositoryInput, "customerUserId">, AffiliatePromotionInput {
-  orderType?: "booking" | "request";
-}
+type BookingCreateBaseInput = Omit<
+  BookingCreateRepositoryInput,
+  "customerUserId" | "fulfillmentMode" | "serviceLocation"
+> &
+  AffiliatePromotionInput & {
+    orderType?: "booking" | "request";
+  };
+
+export type BookingCreateInput = BookingCreateBaseInput &
+  (
+    | { fulfillmentMode: "store"; serviceLocation?: never }
+    | {
+        fulfillmentMode: "home";
+        serviceLocation: { countryCode: "JP"; admin1Code: string; admin2Code: string };
+      }
+  );
 
 export interface ManualPaymentConfirmInput {
   method: "onsite" | "bank_transfer";
@@ -95,6 +112,14 @@ export interface OrderConfirmInput {
   };
 }
 
+export type OrderCheckoutViewPayload = OrderCheckoutPayload & {
+  availablePaymentMethods: PlatformPaymentMethod[];
+};
+
+export interface PlatformPaymentPolicyPort {
+  getAvailablePaymentMethods(): Promise<PlatformPaymentMethod[]>;
+}
+
 type OrderAction = "confirm" | "cancel";
 
 const ORDER_TRANSITIONS = {
@@ -105,7 +130,7 @@ const ORDER_TRANSITIONS = {
   cancel: {
     from: ["pending", "confirmed"],
     to: "cancelled"
-  },
+  }
 } as const satisfies Record<
   OrderAction,
   { from: readonly BookingOrderStatusPayload[]; to: BookingOrderStatusPayload }
@@ -119,10 +144,12 @@ export class BookingService {
     UserPolicyEnforcementService,
     "assertServiceEkyc"
   >;
+  private readonly platformPaymentPolicy?: PlatformPaymentPolicyPort;
 
   public constructor(
     private readonly repository: BookingRepositoryPort,
-    private readonly ledgerService?: BookingLedgerSettlementPort & Partial<CheckoutPaymentLedgerPort>,
+    private readonly ledgerService?: BookingLedgerSettlementPort &
+      Partial<CheckoutPaymentLedgerPort>,
     private readonly notificationService?: OrderStatusNotificationPort,
     private readonly auditLogService?: Pick<AuditLogService, "record"> &
       Partial<Pick<AuditLogService, "createInput">>,
@@ -133,11 +160,15 @@ export class BookingService {
       | "invalidateCancelledBooking"
       | "settleCompletedBooking"
     >,
-    rateOrExperience?: Pick<NdpExchangeRateService, "resolveEffectiveRate"> |
-      Pick<UserExperienceService, "recordEvent">,
+    rateOrExperience?:
+      | Pick<NdpExchangeRateService, "resolveEffectiveRate">
+      | Pick<UserExperienceService, "recordEvent">,
     experienceOrNow?: Pick<UserExperienceService, "recordEvent"> | (() => Date),
     nowOrPolicy?: (() => Date) | Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
-    policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">
+    policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
+    platformPaymentPolicy?: PlatformPaymentPolicyPort,
+    private readonly workStatusNotifier?: {notifyTechnician:(id:number)=>Promise<void>},
+    private readonly liveDashboardEventPublisher?: LiveDashboardEventPublisher
   ) {
     if (rateOrExperience && "resolveEffectiveRate" in rateOrExperience) {
       this.ndpExchangeRateService = rateOrExperience;
@@ -152,6 +183,7 @@ export class BookingService {
     }
     this.userPolicyEnforcementService =
       policy ?? (typeof nowOrPolicy === "function" ? undefined : nowOrPolicy);
+    this.platformPaymentPolicy = platformPaymentPolicy;
   }
 
   public listAvailableSlots(input: AvailabilityListInput) {
@@ -243,7 +275,8 @@ export class BookingService {
 
   public async createBooking(
     actor: AuthenticatedBookingActor,
-    input: BookingCreateInput
+    input: BookingCreateInput,
+    rawIdempotencyKey?: string
   ): Promise<BookingOrderPayload> {
     if (!this.isCustomerSharedIdentity(actor)) {
       throw new AppError({
@@ -257,20 +290,66 @@ export class BookingService {
       input.fulfillmentMode,
       this.now()
     );
+    if (
+      input.fulfillmentMode === "home" &&
+      (!input.fulfillmentAddress || !input.travelEstimatePublicId)
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.TRAVEL_ESTIMATE_REQUIRED,
+        message: "error.travel.estimate_required",
+        statusCode: 422
+      });
+    }
+    if (
+      input.fulfillmentMode === "store" &&
+      (input.fulfillmentAddress !== undefined || input.travelEstimatePublicId !== undefined)
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.travel.estimate_not_allowed",
+        statusCode: 400
+      });
+    }
+    const selector = selectAffiliatePromotion(input);
+    let idempotencyKey: string | undefined;
+    if (input.exchangeIntelligencePostId) {
+      const parsedKey = exchangeIdempotencyKeySchema.safeParse(rawIdempotencyKey);
+      if (!parsedKey.success || selector) {
+        throw new AppError({
+          code: ERROR_CODES.VALIDATION,
+          message: "error.validation",
+          statusCode: 400
+        });
+      }
+      idempotencyKey = parsedKey.data;
+    }
     await this.assertShopNotSuspended(
       (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null
     );
     const repositoryInput: BookingCreateRepositoryInput = {
       customerUserId: actor.userId,
+      expectedPriceAmountJpy: input.expectedPriceAmountJpy,
       orderType: input.orderType ?? "booking",
       serviceId: input.serviceId,
       technicianServiceId: input.technicianServiceId,
       scheduleSlotId: input.scheduleSlotId,
       fulfillmentMode: input.fulfillmentMode,
+      serviceLocation:
+        input.fulfillmentMode === "store"
+          ? { source: "SHOP_LOCATION" }
+          : {
+              source: "CUSTOMER_SERVICE_LOCATION",
+              countryCode: input.serviceLocation.countryCode,
+              admin1Code: input.serviceLocation.admin1Code,
+              admin2Code: input.serviceLocation.admin2Code
+            },
       paymentMethod: input.paymentMethod,
-      note: input.note
+      note: input.note,
+      fulfillmentAddress: input.fulfillmentAddress,
+      travelEstimatePublicId: input.travelEstimatePublicId,
+      exchangeIntelligencePostId: input.exchangeIntelligencePostId,
+      idempotencyKey
     };
-    const selector = selectAffiliatePromotion(input);
     if (selector && !this.affiliateCheckoutService) {
       throw new AppError({
         code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
@@ -328,8 +407,46 @@ export class BookingService {
     if (!result) {
       throw this.slotUnavailableError();
     }
+    if ("travelEstimateError" in result) {
+      const details = {
+        expired: [ERROR_CODES.TRAVEL_ESTIMATE_EXPIRED, "error.travel.estimate_expired", 409],
+        consumed: [ERROR_CODES.TRAVEL_ESTIMATE_CONSUMED, "error.travel.estimate_consumed", 409],
+        mismatch: [ERROR_CODES.TRAVEL_ESTIMATE_MISMATCH, "error.travel.estimate_mismatch", 422],
+        invalid: [ERROR_CODES.TRAVEL_ESTIMATE_INVALID, "error.travel.estimate_invalid", 422]
+      }[result.travelEstimateError] as [number, string, number];
+      throw new AppError({ code: details[0], message: details[1], statusCode: details[2] });
+    }
+    if ("intelligenceBookingError" in result) {
+      const details = {
+        unavailable: [
+          ERROR_CODES.EXCHANGE_INTELLIGENCE_BOOKING_UNAVAILABLE,
+          "error.exchange.intelligence_booking_unavailable"
+        ],
+        service_mismatch: [
+          ERROR_CODES.EXCHANGE_INTELLIGENCE_BOOKING_SERVICE_MISMATCH,
+          "error.exchange.intelligence_booking_service_mismatch"
+        ],
+        idempotency_conflict: [
+          ERROR_CODES.BOOKING_CREATE_IDEMPOTENCY_CONFLICT,
+          "error.booking.create_idempotency_conflict"
+        ]
+      }[result.intelligenceBookingError] as [number, string];
+      throw new AppError({ code: details[0], message: details[1], statusCode: 409 });
+    }
+    if ("outcome" in result) {
+      throw new AppError({
+        code: ERROR_CODES.BOOKING_PRICE_CHANGED,
+        message: "error.booking.price_changed",
+        statusCode: 409,
+        data: { currentPriceAmountJpy: result.currentPriceAmountJpy }
+      });
+    }
     if (!("order" in result) || !("supersededOrders" in result)) {
+      await this.publishLiveDashboardChangesBestEffort([result.id]);
       return result;
+    }
+    if (result.idempotentReplay) {
+      return result.order;
     }
 
     for (const superseded of result.supersededOrders) {
@@ -352,6 +469,10 @@ export class BookingService {
       serviceName: result.order.serviceName,
       recipientUserIds: result.recipientUserIds
     });
+    await this.publishLiveDashboardChangesBestEffort([
+      ...result.supersededOrders.map((superseded) => superseded.order.id),
+      result.order.id
+    ]);
     return result.order;
   }
 
@@ -421,6 +542,7 @@ export class BookingService {
     });
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
+      if(mutation.order.technicianProfileId)await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
       await this.notifyOrderStatusChangedBestEffort({
         actorUserId: actor.userId,
         orderId: mutation.order.id,
@@ -430,6 +552,8 @@ export class BookingService {
         serviceName: mutation.order.serviceName,
         recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
       });
+      await this.notifyOrderChangedBestEffort(actor, mutation.order, "status");
+      await this.publishLiveDashboardChangesBestEffort([mutation.order.id]);
     }
     return mutation.order;
   }
@@ -449,7 +573,12 @@ export class BookingService {
       idempotencyKey: input.idempotencyKey,
       requestContext: this.fulfillmentRequestContext(context)
     });
-    return this.requireFulfillmentMutation(result).order;
+    const mutation = this.requireFulfillmentMutation(result);
+    if (mutation.applied) {
+      await this.notifyOrderChangedBestEffort(actor, mutation.order, "add_on");
+      await this.publishLiveDashboardChangesBestEffort([mutation.order.id]);
+    }
+    return mutation.order;
   }
 
   public async acceptOrderAddOn(
@@ -489,6 +618,7 @@ export class BookingService {
     });
     const mutation = this.requireFulfillmentMutation(result);
     if (mutation.applied) {
+      if(mutation.order.technicianProfileId)await this.workStatusNotifier?.notifyTechnician(mutation.order.technicianProfileId);
       await this.notifyOrderStatusChangedBestEffort({
         actorUserId: actor.userId,
         orderId: mutation.order.id,
@@ -498,6 +628,8 @@ export class BookingService {
         serviceName: mutation.order.serviceName,
         recipientUserIds: this.resolveOrderNotificationRecipients(actor, mutation.order)
       });
+      await this.notifyOrderChangedBestEffort(actor, mutation.order, "status");
+      await this.publishLiveDashboardChangesBestEffort([mutation.order.id]);
     }
     return mutation.order;
   }
@@ -518,16 +650,18 @@ export class BookingService {
     );
     const comment = input.comment?.normalize("NFKC").trim() || null;
     const requestFingerprint = createHash("sha256")
-      .update(JSON.stringify({
-        orderId,
-        reviewerUserId: actor.userId,
-        targetType: permittedTarget,
-        rating: input.rating,
-        tags,
-        comment
-      }))
+      .update(
+        JSON.stringify({
+          orderId,
+          reviewerUserId: actor.userId,
+          targetType: permittedTarget,
+          rating: input.rating,
+          tags,
+          comment
+        })
+      )
       .digest("hex");
-    return this.requireOrderReviewMutation(
+    const mutation = this.requireOrderReviewMutation(
       await this.repository.createOrderReview({
         ...reviewActor,
         orderId,
@@ -546,12 +680,18 @@ export class BookingService {
           metadata: {
             orderId,
             reviewTargetType: permittedTarget,
+            reviewTargets: permittedTarget === "technician" ? ["technician", "shop"] : ["customer"],
             rating: input.rating,
             tagCount: tags.length
           }
         })
       })
     );
+    if (mutation.applied) {
+      const order = await this.repository.findOrderById(orderId);
+      if (order) await this.notifyOrderChangedBestEffort(actor, order, "review");
+    }
+    return mutation;
   }
 
   public async getOwnOrderReview(
@@ -570,13 +710,37 @@ export class BookingService {
     return { review: result.review };
   }
 
+  public async createOrderTimelineComment(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    body: string
+  ): Promise<BookingOrderPayload> {
+    const participant = this.getFulfillmentActor(actor);
+    await this.assertFulfillmentOrderAccess(actor, orderId, participant.actor);
+    if (!this.repository.createOrderTimelineComment) throw this.dependencyUnavailableError();
+    const order = await this.repository.createOrderTimelineComment({
+      actorUserId: actor.userId,
+      body: body.normalize("NFKC").trim(),
+      orderId
+    });
+    if (!order) throw this.notFoundError();
+    await this.notifyOrderChangedBestEffort(actor, order, "timeline_comment");
+    return order;
+  }
+
   public async getCheckout(
     actor: AuthenticatedBookingActor,
     orderId: number
-  ): Promise<OrderCheckoutPayload> {
+  ): Promise<OrderCheckoutViewPayload> {
+    const availablePaymentMethods = await this.getAvailablePaymentMethods();
     const actorInput = this.checkoutActorInput(actor, orderId);
     const existing = await this.repository.getOrCreateCheckout({ ...actorInput, rate: null });
-    if (existing.outcome !== "rate_required") return this.requireCheckoutMutation(existing).checkout;
+    if (existing.outcome !== "rate_required") {
+      return this.withAvailablePaymentMethods(
+        this.requireCheckoutMutation(existing).checkout,
+        availablePaymentMethods
+      );
+    }
     if (!this.ndpExchangeRateService) throw this.dependencyUnavailableError();
     const resolvedAt = this.now();
     const rate = await this.ndpExchangeRateService.resolveEffectiveRate(resolvedAt);
@@ -584,7 +748,10 @@ export class BookingService {
       ...actorInput,
       rate: { ...rate, resolvedAt }
     });
-    return this.requireCheckoutMutation(created).checkout;
+    return this.withAvailablePaymentMethods(
+      this.requireCheckoutMutation(created).checkout,
+      availablePaymentMethods
+    );
   }
 
   public async selectCheckoutPaymentMethod(
@@ -592,8 +759,17 @@ export class BookingService {
     orderId: number,
     input: SelectPaymentMethodInput,
     context: AuthRequestContext
-  ): Promise<OrderCheckoutPayload> {
+  ): Promise<OrderCheckoutViewPayload> {
     this.assertOwningCustomerIdentity(actor);
+    if (input.method === "other") {
+      throw new AppError({
+        code: ERROR_CODES.PAYMENT_PROVIDER_UNCONFIGURED,
+        message: "error.payment.provider_unconfigured",
+        statusCode: 503
+      });
+    }
+    const availablePaymentMethods = await this.getAvailablePaymentMethods();
+    this.assertPaymentMethodEnabled(input.method, availablePaymentMethods);
     const result = await this.repository.selectCheckoutPaymentMethod({
       ...this.checkoutActorInput(actor, orderId),
       ...input
@@ -601,8 +777,9 @@ export class BookingService {
     const mutation = this.requireCheckoutMutation(result);
     if (mutation.applied) {
       await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, false);
+      await this.publishLiveDashboardChangesBestEffort([mutation.checkout.orderId]);
     }
-    return mutation.checkout;
+    return this.withAvailablePaymentMethods(mutation.checkout, availablePaymentMethods);
   }
 
   public async payCheckoutWithNdp(
@@ -610,8 +787,10 @@ export class BookingService {
     orderId: number,
     input: PayWithNdpInput,
     context: AuthRequestContext
-  ): Promise<OrderCheckoutPayload> {
+  ): Promise<OrderCheckoutViewPayload> {
     this.assertOwningCustomerIdentity(actor);
+    const availablePaymentMethods = await this.getAvailablePaymentMethods();
+    this.assertPaymentMethodEnabled("ndp", availablePaymentMethods);
     if (!this.ledgerService?.debitCheckoutPayment) throw this.dependencyUnavailableError();
     const result = await this.repository.payCheckoutWithNdp(
       { ...this.checkoutActorInput(actor, orderId), idempotencyKey: input.idempotencyKey },
@@ -637,7 +816,7 @@ export class BookingService {
     if (mutation.applied) {
       await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, true);
     }
-    return mutation.checkout;
+    return this.withAvailablePaymentMethods(mutation.checkout, availablePaymentMethods);
   }
 
   public async confirmCheckoutReceipt(
@@ -646,7 +825,7 @@ export class BookingService {
     input: ConfirmReceiptInput,
     context: AuthRequestContext,
     operationsOverride = false
-  ): Promise<OrderCheckoutPayload> {
+  ): Promise<OrderCheckoutViewPayload> {
     if (operationsOverride) {
       if (
         actor.currentIdentityScopeType !== "global" &&
@@ -662,6 +841,7 @@ export class BookingService {
     ) {
       throw this.notFoundError();
     }
+    const availablePaymentMethods = await this.getAvailablePaymentMethods();
     const actorInput = this.checkoutActorInput(actor, orderId);
     const repositoryInput = operationsOverride
       ? {
@@ -684,19 +864,16 @@ export class BookingService {
           idempotencyKey: input.idempotencyKey,
           evidence: "technician_receipt_confirmation" as const
         };
-    const result = await this.repository.confirmCheckoutReceipt(
-      repositoryInput,
-      {
-        settle: (checkoutContext) => this.settleCheckoutBooking(checkoutContext, actor.userId),
-        settleAffiliate: (checkoutContext) =>
-          this.settleCheckoutAffiliate(checkoutContext, actor.userId)
-      }
-    );
+    const result = await this.repository.confirmCheckoutReceipt(repositoryInput, {
+      settle: (checkoutContext) => this.settleCheckoutBooking(checkoutContext, actor.userId),
+      settleAffiliate: (checkoutContext) =>
+        this.settleCheckoutAffiliate(checkoutContext, actor.userId)
+    });
     const mutation = this.requireCheckoutMutation(result);
     if (mutation.applied) {
       await this.notifyCheckoutCompletionBestEffort(actor, mutation.checkout, context, true);
     }
-    return mutation.checkout;
+    return this.withAvailablePaymentMethods(mutation.checkout, availablePaymentMethods);
   }
 
   public async confirmManualPayment(
@@ -719,9 +896,33 @@ export class BookingService {
 
     if (result.outcome === "ok" && result.applied) {
       await this.recordManualPaymentMutation(actor, context, scope, "confirm", order);
+      await this.publishLiveDashboardChangesBestEffort([order.id]);
     }
 
     return order;
+  }
+
+  private async getAvailablePaymentMethods(): Promise<PlatformPaymentMethod[]> {
+    return this.platformPaymentPolicy?.getAvailablePaymentMethods() ?? ["cash", "ndp"];
+  }
+
+  private assertPaymentMethodEnabled(
+    method: PlatformPaymentMethod,
+    availablePaymentMethods: PlatformPaymentMethod[]
+  ): void {
+    if (availablePaymentMethods.includes(method)) return;
+    throw new AppError({
+      code: ERROR_CODES.PLATFORM_PAYMENT_METHOD_DISABLED,
+      message: "error.payment.method_disabled",
+      statusCode: 409
+    });
+  }
+
+  private withAvailablePaymentMethods(
+    checkout: OrderCheckoutPayload,
+    availablePaymentMethods: PlatformPaymentMethod[]
+  ): OrderCheckoutViewPayload {
+    return { ...checkout, availablePaymentMethods: [...availablePaymentMethods] };
   }
 
   private checkoutActorInput(
@@ -776,7 +977,9 @@ export class BookingService {
     actorUserId: number
   ): Promise<void> {
     if (!this.ledgerService) throw this.dependencyUnavailableError();
-    const confirmed = context.order.statusHistory.find((history) => history.toStatus === "confirmed");
+    const confirmed = context.order.statusHistory.find(
+      (history) => history.toStatus === "confirmed"
+    );
     await this.ledgerService.settleBookingCompletion(
       {
         bookingOrderId: context.order.id,
@@ -834,23 +1037,25 @@ export class BookingService {
     if (!completed) return;
     try {
       const order = await this.repository.findOrderById(checkout.orderId);
-      if (!order) return;
-      await this.notifyOrderStatusChangedBestEffort({
-        actorUserId: actor.userId,
-        orderId: order.id,
-        orderNo: order.orderNo,
-        fromStatus:
-          checkout.paymentMethod === "ndp" ? "awaitingCheckout" : "awaitingPaymentConfirmation",
-        toStatus: "completed",
-        serviceName: order.serviceName,
-        recipientUserIds: this.resolveOrderNotificationRecipients(actor, order)
-      });
+      if (order) {
+        await this.notifyOrderStatusChangedBestEffort({
+          actorUserId: actor.userId,
+          orderId: order.id,
+          orderNo: order.orderNo,
+          fromStatus:
+            checkout.paymentMethod === "ndp" ? "awaitingCheckout" : "awaitingPaymentConfirmation",
+          toStatus: "completed",
+          serviceName: order.serviceName,
+          recipientUserIds: this.resolveOrderNotificationRecipients(actor, order)
+        });
+      }
     } catch (error) {
       logger.error(
         { error, orderId: checkout.orderId },
         "Checkout completion notification lookup failed after booking commit"
       );
     }
+    await this.publishLiveDashboardChangesBestEffort([checkout.orderId]);
   }
 
   public async refundManualPayment(
@@ -860,6 +1065,14 @@ export class BookingService {
     context: AuthRequestContext
   ): Promise<BookingOrderPayload> {
     const scope = this.getManualPaymentScope(actor);
+    const current = await this.getOrder(actor, orderId);
+    if (current.status === "completed" && current.paymentStatus === "confirmed") {
+      throw new AppError({
+        code: ERROR_CODES.PAYMENT_INVALID_STATE,
+        message: "error.payment.invalid_state",
+        statusCode: 409
+      });
+    }
     const result = await this.repository.refundManualPayment({
       ...scope,
       orderId,
@@ -871,6 +1084,7 @@ export class BookingService {
 
     if (result.outcome === "ok" && result.applied) {
       await this.recordManualPaymentMutation(actor, context, scope, "refund", order);
+      await this.publishLiveDashboardChangesBestEffort([order.id]);
     }
 
     return order;
@@ -924,13 +1138,17 @@ export class BookingService {
               reason
             };
     const transitionOptions = this.createSettlementOptions(actor, order, action, confirmInput);
-    const guardedResult =
-      action === "confirm"
-        ? await this.repository.transitionOrderWithScheduleGuard?.(
-            transitionInput,
-            transitionOptions
-          )
-        : undefined;
+    const guardedResult = await this.repository.transitionOrderWithScheduleGuard?.(
+      transitionInput,
+      transitionOptions
+    );
+    if (guardedResult?.outcome === "exchange_cancellation_required") {
+      throw new AppError({
+        code: ERROR_CODES.EXCHANGE_MATCH_CANCELLATION_REQUIRED,
+        message: "error.exchange.match_cancellation_required",
+        statusCode: 409
+      });
+    }
     if (guardedResult?.outcome === "schedule_conflict") {
       throw new AppError({
         code: ERROR_CODES.SCHEDULE_CONFLICT,
@@ -974,6 +1192,8 @@ export class BookingService {
       serviceName: next.serviceName,
       recipientUserIds: this.resolveOrderNotificationRecipients(actor, next)
     });
+    await this.notifyOrderChangedBestEffort(actor, next, "status");
+    await this.publishLiveDashboardChangesBestEffort([next.id]);
 
     return next;
   }
@@ -996,7 +1216,12 @@ export class BookingService {
       idempotencyKey: input.idempotencyKey,
       requestContext: this.fulfillmentRequestContext(context)
     });
-    return this.requireFulfillmentMutation(result).order;
+    const mutation = this.requireFulfillmentMutation(result);
+    if (mutation.applied) {
+      await this.notifyOrderChangedBestEffort(actor, mutation.order, "add_on");
+      await this.publishLiveDashboardChangesBestEffort([mutation.order.id]);
+    }
+    return mutation.order;
   }
 
   private getFulfillmentActor(
@@ -1087,9 +1312,10 @@ export class BookingService {
     throw this.invalidTransitionError();
   }
 
-  private requireOrderReviewMutation(
-    result: OrderReviewMutationResult
-  ): { applied: boolean; review: OrderReviewPayload } {
+  private requireOrderReviewMutation(result: OrderReviewMutationResult): {
+    applied: boolean;
+    review: OrderReviewPayload;
+  } {
     if (result.outcome === "ok") {
       return { applied: result.applied, review: result.review };
     }
@@ -1141,6 +1367,47 @@ export class BookingService {
         "Order status notification failed after booking commit"
       );
     }
+  }
+
+  private async notifyOrderChangedBestEffort(
+    actor: AuthenticatedBookingActor,
+    order: BookingOrderPayload,
+    changeType: OrderRealtimeChangeType
+  ): Promise<void> {
+    if (
+      !this.notificationService?.notifyOrderChanged ||
+      !this.repository.findOrderRealtimeRecipients
+    ) {
+      return;
+    }
+    try {
+      const recipients = await this.repository.findOrderRealtimeRecipients(order.id);
+      await this.notificationService.notifyOrderChanged({
+        actorIdentityId: actor.currentIdentityId,
+        actorUserId: actor.userId,
+        changeType,
+        orderId: order.id,
+        orderNo: order.orderNo,
+        recipients
+      });
+    } catch (error) {
+      logger.error(
+        { error, orderId: order.id, changeType },
+        "Order realtime change delivery failed after booking commit"
+      );
+    }
+  }
+
+  private async publishLiveDashboardChangesBestEffort(orderIds: number[]): Promise<void> {
+    if (!this.liveDashboardEventPublisher || !this.repository.findLiveDashboardOrderEvents) return;
+    const projectionRepository = {
+      findLiveDashboardOrderEvents: (ids: number[]) =>
+        this.repository.findLiveDashboardOrderEvents!(ids)
+    };
+    await new LiveDashboardOrderChangePublisher(
+      projectionRepository,
+      this.liveDashboardEventPublisher
+    ).publishCommittedOrderChanges(orderIds);
   }
 
   private isAcceptancePausedResult(

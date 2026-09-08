@@ -15,4 +15,10 @@ describe("MobileFullscreenHeader overlay modes", () => {
     expect(source).toContain("footer?: ReactNode");
     expect(source).toContain("{footer ? <div");
   });
+
+  it("supports a custom center control between the shared back and close buttons", () => {
+    expect(source).toContain("center?: ReactNode");
+    expect(source).toContain("center ? (");
+    expect(source).toContain("{center}");
+  });
 });

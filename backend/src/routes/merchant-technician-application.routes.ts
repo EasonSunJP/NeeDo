@@ -30,7 +30,9 @@ export const createMerchantTechnicianApplicationRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const controller = new MerchantTechnicianApplicationController(
     createTechnicianApplicationReviewServiceForRoutes(dependencies),
     createTechnicianResumeExportServiceForRoutes(config, dependencies)

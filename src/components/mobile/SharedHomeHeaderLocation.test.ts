@@ -7,14 +7,18 @@ import userScheduleSource from "../../pages/user/UserSchedulePage.tsx?raw";
 import userScheduleDetailSource from "../../pages/user/UserTechnicianScheduleDetailPage.tsx?raw";
 
 describe("SharedHomeHeader location entry", () => {
-  it("routes user, merchant, and technician location controls to the shared service-range page", () => {
+  it("routes remaining user, merchant, and technician location controls to the shared service-range page", () => {
     expect(userSource).toContain('locationTo="/me/settings/service-range"');
-    expect(userScheduleSource).toContain('locationTo="/me/settings/service-range"');
-    expect(userScheduleSource).toContain('locationLabel={profile.city ?? "服务区域未设置"}');
     expect(userScheduleDetailSource).toContain('locationTo="/me/settings/service-range"');
     expect(merchantSource).toContain('locationTo="/merchant/settings/service-range"');
     expect(technicianSource).toContain('locationTo="/technician/settings/service-range"');
     expect(appSource).toContain('path="/merchant/settings/service-range"');
+  });
+
+  it("uses the compact shared schedule header instead of a location control on user schedule", () => {
+    expect(userScheduleSource).toContain("SchedulePageHeader");
+    expect(userScheduleSource).not.toContain("SharedHomeHeader");
+    expect(userScheduleSource).not.toContain('locationTo="/me/settings/service-range"');
   });
 
   it("shows the current service area caption above the technician task header location", () => {

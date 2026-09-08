@@ -182,6 +182,16 @@ describe("formal IM contact-card adapter", () => {
     expect(send).toHaveBeenCalledWith(91, targetUserId, idempotencyKey);
   });
 
+  it("loads and sends cards for current needo account identifiers", async () => {
+    const currentId = "needo0000000052";
+    const candidate = { targetUserId: currentId, needoId: currentId, nickname: "佐藤花子", avatarUrl: null, relationship: "friend" as const };
+    vi.spyOn(realtimeApi, "listContactCardCandidates").mockResolvedValue({ list: [candidate], total: 1, page: 1, page_size: 20 });
+    vi.spyOn(realtimeApi, "sendContactCard").mockResolvedValue({ message: message({ ...v2Metadata, contactCard: { ...v2Metadata.contactCard, targetUserPublicId: currentId, needoId: currentId } }), replayed: false });
+    const api = createApi();
+    await expect(api.listContactCardCandidates("91", { page: 1, pageSize: 20 })).resolves.toMatchObject({ list: [candidate] });
+    await expect(api.sendContactCard("91", currentId, idempotencyKey)).resolves.toMatchObject({ message: { ext: { contactCard: { userId: currentId } } } });
+  });
+
   it("uses the dedicated endpoints and never puts card details in the send body", async () => {
     const request = vi.spyOn(httpClient, "request")
       .mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 20 })

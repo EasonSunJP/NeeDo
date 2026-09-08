@@ -11,10 +11,7 @@ const isoDate = z.coerce.date();
 
 export const billingSubjectTypeSchema = z.enum(["merchant_account", "shop"]);
 export const billingCadenceSchema = z.enum(["monthly", "annual", "free"]);
-export const paymentResponsibilitySchema = z.enum([
-  "group_consolidated",
-  "shops_individual"
-]);
+export const paymentResponsibilitySchema = z.enum(["group_consolidated", "shops_individual"]);
 
 export const merchantAccountListQuerySchema = z.object({
   ...paginationFields,
@@ -39,7 +36,12 @@ export const billingSubjectParamSchema = z.object({
 export const invoiceIdParamSchema = z.object({ id: positiveId });
 
 export const createMerchantAccountBodySchema = z.object({
-  code: z.string().trim().min(2).max(100).regex(/^[a-z0-9][a-z0-9-]*$/),
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(100)
+    .regex(/^[a-z0-9][a-z0-9-]*$/),
   name: z.string().trim().min(1).max(160),
   ownerUserId: z.number().int().positive().nullable().optional(),
   paymentResponsibility: paymentResponsibilitySchema.default("group_consolidated")
@@ -133,9 +135,7 @@ export const dissolveMerchantBodySchema = z.object({
 export type MerchantAccountListQuery = z.infer<typeof merchantAccountListQuerySchema>;
 export type CreateMerchantAccountBody = z.infer<typeof createMerchantAccountBodySchema>;
 export type UpdateBillingProfileBody = z.infer<typeof updateBillingProfileBodySchema>;
-export type UpdatePaymentResponsibilityBody = z.infer<
-  typeof updatePaymentResponsibilityBodySchema
->;
+export type UpdatePaymentResponsibilityBody = z.infer<typeof updatePaymentResponsibilityBodySchema>;
 export type LinkMerchantShopBody = z.infer<typeof linkMerchantShopBodySchema>;
 export type ExtendTrialBody = z.infer<typeof extendTrialBodySchema>;
 export type InterruptTrialBody = z.infer<typeof interruptTrialBodySchema>;

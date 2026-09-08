@@ -18,6 +18,7 @@ const EMAIL_CHALLENGE_RESERVATION_SECONDS = 30;
 
 export type VerificationPurpose =
   | "email_registration"
+  | "password_login"
   | "google_registration_or_link"
   | "google_authenticated_link"
   | "google_unlink"
@@ -33,8 +34,14 @@ export interface GoogleChallengeMetadata {
   providerEmailVerifiedAt: string;
 }
 
+export interface PasswordLoginChallengeMetadata {
+  loginIdentityId: number;
+  platformSettingsVersion: number;
+}
+
 export type VerificationChallengeMetadata =
   | PasswordChallengeMetadata
+  | PasswordLoginChallengeMetadata
   | GoogleChallengeMetadata
   | Record<string, never>;
 
@@ -85,6 +92,7 @@ export type ReserveChallengeResult =
       ok: true;
       email: string;
       metadata: VerificationChallengeMetadata;
+      userId?: number;
       reservationToken: string;
     }
   | {
@@ -398,6 +406,7 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
   private parseConsumedChallenge(serialized: string | undefined): {
     email: string;
     metadata: VerificationChallengeMetadata;
+    userId?: number;
   } {
     if (!serialized) {
       return { email: "", metadata: {} };
@@ -410,6 +419,9 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
       const payload = parsed as { email?: unknown; metadata?: unknown };
       return {
         email: typeof payload.email === "string" ? payload.email : "",
+        ...(typeof (payload as { userId?: unknown }).userId === "number"
+          ? { userId: (payload as { userId: number }).userId }
+          : {}),
         metadata:
           payload.metadata &&
           typeof payload.metadata === "object" &&
@@ -441,6 +453,23 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
         );
       }
       return { passwordHash };
+    }
+    if (purpose === "password_login") {
+      if (
+        fieldNames.length !== 2 ||
+        fieldNames[0] !== "loginIdentityId" ||
+        fieldNames[1] !== "platformSettingsVersion" ||
+        !Number.isInteger(candidate.loginIdentityId) ||
+        Number(candidate.loginIdentityId) < 1 ||
+        !Number.isInteger(candidate.platformSettingsVersion) ||
+        Number(candidate.platformSettingsVersion) < 1
+      ) {
+        throw new Error("Verification challenge metadata is not allowed for this purpose");
+      }
+      return {
+        loginIdentityId: Number(candidate.loginIdentityId),
+        platformSettingsVersion: Number(candidate.platformSettingsVersion)
+      };
     }
     if (purpose === "google_registration_or_link" || purpose === "google_authenticated_link") {
       if (
@@ -549,10 +578,14 @@ local serialized = redis.call('GET', KEYS[1])
 if not serialized then return {'missing'} end
 local challenge = cjson.decode(serialized)
 if challenge.purpose ~= ARGV[1] then return {'purpose_mismatch'} end
-if challenge.userId == nil or challenge.userId == cjson.null then
-  if ARGV[2] ~= '' then return {'user_mismatch'} end
-elseif ARGV[2] == '' or tostring(challenge.userId) ~= ARGV[2] then
-  return {'user_mismatch'}
+if challenge.purpose == 'password_login' then
+  if challenge.userId == nil or challenge.userId == cjson.null then return {'user_mismatch'} end
+else
+  if challenge.userId == nil or challenge.userId == cjson.null then
+    if ARGV[2] ~= '' then return {'user_mismatch'} end
+  elseif ARGV[2] == '' or tostring(challenge.userId) ~= ARGV[2] then
+    return {'user_mismatch'}
+  end
 end
 local redisTime = redis.call('TIME')
 local now = tonumber(redisTime[1]) * 1000 + math.floor(tonumber(redisTime[2]) / 1000)
@@ -582,7 +615,7 @@ if ttl <= 0 then
   return {'missing'}
 end
 redis.call('SET', KEYS[1], cjson.encode(challenge), 'EX', ttl)
-return {'ok', cjson.encode({email = challenge.email, metadata = challenge.metadata or {}})}
+return {'ok', cjson.encode({email = challenge.email, userId = challenge.userId, metadata = challenge.metadata or {}})}
 `;
 
 const EMAIL_FINALIZE_LUA = `

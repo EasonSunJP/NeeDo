@@ -1,4 +1,11 @@
 import { httpClient } from "../../api/httpClient";
+import type {
+  ExchangeIntelligenceShopPublisherProfileProjection,
+  ExchangeIntelligenceTechnicianPublisherProfileProjection
+} from "../../shared/profile-card";
+import type {
+  TechnicianServiceBookingContextServiceCardProjection
+} from "../../shared/service-card";
 import type { FulfillmentMode, Order } from "../../types/domain";
 
 export type BookingOrderStatus =
@@ -12,6 +19,7 @@ export type BookingOrderStatus =
 export type ManualPaymentMethod = "onsite" | "bank_transfer";
 export type ManualPaymentStatus = "pending" | "confirmed" | "refundPending" | "refunded";
 export type CheckoutPaymentMethod = "cash" | "ndp" | "other";
+export type AvailableCheckoutPaymentMethod = "cash" | "ndp";
 export type CheckoutPaymentEvidence =
   | "ndp_ledger"
   | "technician_receipt_confirmation"
@@ -47,9 +55,11 @@ export type OrderCheckout = {
   status: BookingOrderStatus;
   baseAmountJpy: number;
   addOnAmountJpy: number;
+  travelFareAmountJpy: number;
   discountAmountJpy: number;
   checkoutAmountJpy: number;
   payableNdp: number;
+  availablePaymentMethods: AvailableCheckoutPaymentMethod[];
   rate: {
     ruleId: number;
     publicId: string;
@@ -59,10 +69,11 @@ export type OrderCheckout = {
     effectiveFrom: string;
   };
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount";
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount";
     baseAmountJpy: number;
     acceptedAddOnIds: number[];
     addOnAmountJpy: number;
+    travelFareAmountJpy: number;
     discountAmountJpy: number;
     checkoutAmountJpy: number;
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)";
@@ -94,7 +105,6 @@ export type EndServiceInput = BookingIdempotencyInput & { reason: string };
 export type SelectCheckoutPaymentMethodInput = BookingIdempotencyInput & (
   | { method: "cash"; otherMethodCode?: never; otherMethodLabel?: never }
   | { method: "ndp"; otherMethodCode?: never; otherMethodLabel?: never }
-  | { method: "other"; otherMethodCode: string; otherMethodLabel: string }
 );
 export type ConfirmCheckoutReceiptInput = BookingIdempotencyInput & { reason: string };
 export type OrderReviewTargetType = "customer" | "technician";
@@ -124,7 +134,27 @@ export type BookingOrderPerformanceAssessment = {
   updatedAt: string;
 };
 
+export type BookingOrderCustomer = {
+  userId: number;
+  profileId: number | null;
+  publicId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  membershipLevel: string;
+  ratingAverage: string;
+  reviewCount: number;
+};
+
 export type BookingOrderTimelineEvent =
+  | {
+      type: "ORDER_COMMENT_ADDED";
+      id: string;
+      createdAt: string;
+      actorUserId: number;
+      actorDisplayName: string;
+      actorAvatarUrl: string | null;
+      body: string;
+    }
   | {
       type: "ORDER_STATUS_CHANGED";
       id: string;
@@ -165,6 +195,20 @@ export type BookingScheduleSlot = {
   durationMinutes: number;
 };
 
+export type AdministrativeRegionReference = {
+  code: string;
+  name: string;
+  level: "country" | "admin1" | "admin2";
+  parentCode: string | null;
+  centroid: { lat: number; lng: number } | null;
+};
+
+export type AdministrativeRegionListInput = {
+  country: "JP";
+  locale?: "zh-CN" | "zh-TW" | "ja" | "en" | "ko";
+  parent?: string;
+};
+
 export type BookingOrder = {
   id: number;
   orderNo: string;
@@ -182,6 +226,8 @@ export type BookingOrder = {
   paymentRefundReference: string | null;
   paymentRefundReason: string | null;
   customerUserId: number;
+  exchangeIntelligencePostId?: number | null;
+  customer?: BookingOrderCustomer;
   serviceId: number | null;
   technicianServiceId: number | null;
   shopId: number;
@@ -241,6 +287,7 @@ export type AvailabilityQuery = {
 };
 
 export type OrderListQuery = {
+  dateMode?: "startsWithin" | "overlaps";
   from?: string;
   page?: number;
   pageSize?: number;
@@ -277,13 +324,36 @@ export type UpdateManagedScheduleSlotInput = {
   status?: "available" | "blocked";
 };
 
-export type CreateBookingInput = {
-  fulfillmentMode: FulfillmentMode;
+type CreateBookingBaseInput = {
+  exchangeIntelligencePostId?: number;
+  expectedPriceAmountJpy: number;
   note?: string;
   orderType?: "booking" | "request";
   paymentMethod?: ManualPaymentMethod;
   scheduleSlotId: number;
-} & ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
+} &
+  ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
+
+export type CreateBookingInput = CreateBookingBaseInput &
+  (
+    | { fulfillmentMode: "store"; serviceLocation?: never; fulfillmentAddress?: never; travelEstimatePublicId?: never }
+    | {
+        fulfillmentMode: "home";
+        fulfillmentAddress: import("../../api/travelFare").JapaneseRouteAddress;
+        travelEstimatePublicId: string;
+        serviceLocation: { countryCode: "JP"; admin1Code: string; admin2Code: string };
+      }
+  );
+
+export type TechnicianServiceBookingContext = {
+  target: { type: "technician_service"; id: number };
+  serviceCard: TechnicianServiceBookingContextServiceCardProjection;
+  shopCard: Omit<ExchangeIntelligenceShopPublisherProfileProjection, "avatarUrl" | "serviceMode"> & {
+    type: "shop";
+    serviceMode: "store" | "onsite" | "flexible";
+  };
+  technicianCard: ExchangeIntelligenceTechnicianPublisherProfileProjection;
+};
 
 export function isBookingApiId(value: string | number | null | undefined) {
   return typeof value === "number" ? Number.isInteger(value) && value > 0 : Boolean(value && /^[1-9]\d*$/.test(value));
@@ -348,24 +418,42 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
 }
 
 export const bookingApi = {
+  listAdministrativeRegions(input: AdministrativeRegionListInput) {
+    return httpClient.request<{ list: AdministrativeRegionReference[] }>(
+      "/reference/administrative-regions",
+      {
+        auth: false,
+        query: {
+          country: input.country,
+          locale: input.locale ?? "ja",
+          parent: input.parent
+        }
+      }
+    );
+  },
   listAvailability(query: AvailabilityQuery) {
     return httpClient.request<PaginatedBookingData<BookingScheduleSlot>>("/schedule/availability", {
       auth: false,
       query
     });
   },
-  createBooking(input: CreateBookingInput) {
+  getTechnicianServiceBookingContext(id: number) {
+    return httpClient.request<TechnicianServiceBookingContext>(`/technician-services/${id}/booking-context`);
+  },
+  createBooking(input: CreateBookingInput, idempotencyKey?: string) {
     return httpClient.request<BookingOrder>("/bookings", {
       body: {
         ...input,
         orderType: input.orderType ?? "booking",
         paymentMethod: input.paymentMethod ?? "onsite"
-      }
+      },
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined
     });
   },
   listOrders(query: OrderListQuery = {}) {
     return httpClient.request<PaginatedBookingData<BookingOrder>>("/orders", {
       query: {
+        dateMode: query.dateMode,
         from: query.from,
         page: query.page,
         pageSize: query.pageSize,
@@ -442,6 +530,12 @@ export const bookingApi = {
   },
   getOwnReview(id: number) {
     return httpClient.request<{ review: OrderReview | null }>(`/orders/${id}/reviews/mine`);
+  },
+  createTimelineComment(id: number, input: { body: string }) {
+    return httpClient.request<BookingOrder>(`/orders/${id}/timeline/comments`, {
+      body: input,
+      method: "POST"
+    });
   },
   createReview(id: number, input: CreateOrderReviewInput) {
     return httpClient.request<{ applied: boolean; review: OrderReview }>(`/orders/${id}/reviews`, {

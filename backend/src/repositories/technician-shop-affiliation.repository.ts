@@ -1,3 +1,4 @@
+import type { WorkStatus } from '../domain/work-status';
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
@@ -74,9 +75,7 @@ function timelineMessage(action: string, metadata: Record<string, unknown>) {
     return "更新了员工薪酬与分成方案";
   }
   if (action === "merchant_admin.employee_payroll_schedule_override.update") {
-    return metadata.inheritShopPolicy
-      ? "改为继承店铺工资结算周期"
-      : "更新了员工独立工资结算周期";
+    return metadata.inheritShopPolicy ? "改为继承店铺工资结算周期" : "更新了员工独立工资结算周期";
   }
   return typeof metadata.message === "string" ? metadata.message : "添加了员工档案备注";
 }
@@ -101,25 +100,31 @@ function mergeScheduleRanges(ranges: ScheduleRange[]): ScheduleRange[] {
   return merged;
 }
 
-function subtractScheduleRanges(range: ScheduleRange, busyRanges: ScheduleRange[]): ScheduleRange[] {
-  return busyRanges.reduce<ScheduleRange[]>((segments, busy) => {
-    return segments.flatMap((segment) => {
-      if (
-        busy.endsAt.getTime() <= segment.startsAt.getTime() ||
-        busy.startsAt.getTime() >= segment.endsAt.getTime()
-      ) {
-        return [segment];
-      }
-      const next: ScheduleRange[] = [];
-      if (busy.startsAt.getTime() > segment.startsAt.getTime()) {
-        next.push({ startsAt: segment.startsAt, endsAt: busy.startsAt });
-      }
-      if (busy.endsAt.getTime() < segment.endsAt.getTime()) {
-        next.push({ startsAt: busy.endsAt, endsAt: segment.endsAt });
-      }
-      return next;
-    });
-  }, [range]);
+function subtractScheduleRanges(
+  range: ScheduleRange,
+  busyRanges: ScheduleRange[]
+): ScheduleRange[] {
+  return busyRanges.reduce<ScheduleRange[]>(
+    (segments, busy) => {
+      return segments.flatMap((segment) => {
+        if (
+          busy.endsAt.getTime() <= segment.startsAt.getTime() ||
+          busy.startsAt.getTime() >= segment.endsAt.getTime()
+        ) {
+          return [segment];
+        }
+        const next: ScheduleRange[] = [];
+        if (busy.startsAt.getTime() > segment.startsAt.getTime()) {
+          next.push({ startsAt: segment.startsAt, endsAt: busy.startsAt });
+        }
+        if (busy.endsAt.getTime() < segment.endsAt.getTime()) {
+          next.push({ startsAt: busy.endsAt, endsAt: segment.endsAt });
+        }
+        return next;
+      });
+    },
+    [range]
+  );
 }
 
 const employeeAffiliationSelect = Prisma.validator<Prisma.TechnicianShopAffiliationSelect>()({
@@ -130,6 +135,9 @@ const employeeAffiliationSelect = Prisma.validator<Prisma.TechnicianShopAffiliat
   endsAt: true,
   technicianProfile: {
     select: {
+      id:true,
+      workState:{select:{status:true,deletedAt:true}},
+      bookingOrders:{where:{status:"IN_SERVICE",deletedAt:null},take:1,select:{id:true}},
       displayName: true,
       bio: true,
       city: true,
@@ -323,77 +331,76 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
     });
     if (!affiliation) return null;
 
-    const [slots, ownOrders, sharedAvailability, otherShopBusyOrders] =
-      await Promise.all([
-        this.client.scheduleSlot.findMany({
-          where: {
-            shopId: input.shopId,
-            technicianProfileId,
-            startsAt: { lt: input.to },
-            endsAt: { gt: input.from },
-            deletedAt: null
-          },
-          orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-          select: {
-            id: true,
-            startsAt: true,
-            endsAt: true,
-            status: true,
-            bookedCount: true,
-            service: { select: { name: true } },
-            technicianService: { select: { name: true } }
-          }
-        }),
-        this.client.bookingOrder.findMany({
-          where: {
-            shopId: input.shopId,
-            technicianProfileId,
-            status: { in: [...CURRENT_BOOKING_STATUSES] },
-            startsAt: { lt: input.to },
-            endsAt: { gt: input.from },
-            deletedAt: null
-          },
-          orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-          select: {
-            id: true,
-            scheduleSlotId: true,
-            status: true,
-            startsAt: true,
-            endsAt: true,
-            serviceNameSnapshot: true,
-            service: { select: { name: true } },
-            technicianService: { select: { name: true } }
-          }
-        }),
-        affiliation.relationshipType === "PARTNER"
-          ? this.client.availability.findMany({
-              where: {
-                shopId: { not: input.shopId },
-                technicianProfileId,
-                sourceType: "TECHNICIAN",
-                visibility: "AFFILIATED_SHOPS",
-                isActive: true,
-                startsAt: { lt: input.to },
-                endsAt: { gt: input.from },
-                deletedAt: null
-              },
-              orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-              select: { startsAt: true, endsAt: true }
-            })
-          : Promise.resolve([]),
-        this.client.bookingOrder.findMany({
-          where: {
-            shopId: { not: input.shopId },
-            technicianProfileId,
-            status: { in: [...BUSY_BOOKING_STATUSES] },
-            startsAt: { lt: input.to },
-            endsAt: { gt: input.from },
-            deletedAt: null
-          },
-          orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-          select: { startsAt: true, endsAt: true }
-        })
-      ]);
+    const [slots, ownOrders, sharedAvailability, otherShopBusyOrders] = await Promise.all([
+      this.client.scheduleSlot.findMany({
+        where: {
+          shopId: input.shopId,
+          technicianProfileId,
+          startsAt: { lt: input.to },
+          endsAt: { gt: input.from },
+          deletedAt: null
+        },
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          startsAt: true,
+          endsAt: true,
+          status: true,
+          bookedCount: true,
+          service: { select: { name: true } },
+          technicianService: { select: { name: true } }
+        }
+      }),
+      this.client.bookingOrder.findMany({
+        where: {
+          shopId: input.shopId,
+          technicianProfileId,
+          status: { in: [...CURRENT_BOOKING_STATUSES] },
+          startsAt: { lt: input.to },
+          endsAt: { gt: input.from },
+          deletedAt: null
+        },
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          scheduleSlotId: true,
+          status: true,
+          startsAt: true,
+          endsAt: true,
+          serviceNameSnapshot: true,
+          service: { select: { name: true } },
+          technicianService: { select: { name: true } }
+        }
+      }),
+      affiliation.relationshipType === "PARTNER"
+        ? this.client.availability.findMany({
+            where: {
+              shopId: { not: input.shopId },
+              technicianProfileId,
+              sourceType: "TECHNICIAN",
+              visibility: "AFFILIATED_SHOPS",
+              isActive: true,
+              startsAt: { lt: input.to },
+              endsAt: { gt: input.from },
+              deletedAt: null
+            },
+            orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+            select: { startsAt: true, endsAt: true }
+          })
+        : Promise.resolve([]),
+      this.client.bookingOrder.findMany({
+        where: {
+          shopId: { not: input.shopId },
+          technicianProfileId,
+          status: { in: [...BUSY_BOOKING_STATUSES] },
+          startsAt: { lt: input.to },
+          endsAt: { gt: input.from },
+          deletedAt: null
+        },
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        select: { startsAt: true, endsAt: true }
+      })
+    ]);
 
     const busyRanges = mergeScheduleRanges(otherShopBusyOrders);
     const bookedSlotIds = new Set(ownOrders.map((order) => order.scheduleSlotId));
@@ -420,16 +427,18 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
         };
       });
     const orderEvents: EmployeeScheduleEvent[] = ownOrders.map((order) => {
-      const status = order.status.toLowerCase() === "in_service"
-        ? "in_service"
-        : order.status.toLowerCase() as "pending" | "confirmed" | "completed";
-      const title = status === "pending"
-        ? "待确认预约"
-        : status === "confirmed"
-          ? "已确认预约"
-          : status === "in_service"
-            ? "服务中"
-            : "已完成预约";
+      const status =
+        order.status.toLowerCase() === "in_service"
+          ? "in_service"
+          : (order.status.toLowerCase() as "pending" | "confirmed" | "completed");
+      const title =
+        status === "pending"
+          ? "待确认预约"
+          : status === "confirmed"
+            ? "已确认预约"
+            : status === "in_service"
+              ? "服务中"
+              : "已完成预约";
       return {
         projectionId: `booking:${order.id}`,
         kind: "booking",
@@ -473,21 +482,15 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       isEditable: false
     }));
 
-    return [
-      ...slotEvents,
-      ...orderEvents,
-      ...sharedAvailabilityEvents,
-      ...redactedEvents
-    ].sort((left, right) =>
-      `${left.startsAt}:${left.endsAt}:${left.projectionId}`.localeCompare(
-        `${right.startsAt}:${right.endsAt}:${right.projectionId}`
-      )
+    return [...slotEvents, ...orderEvents, ...sharedAvailabilityEvents, ...redactedEvents].sort(
+      (left, right) =>
+        `${left.startsAt}:${left.endsAt}:${left.projectionId}`.localeCompare(
+          `${right.startsAt}:${right.endsAt}:${right.projectionId}`
+        )
     );
   }
 
-  public async listCurrentShopEmployeeTimeline(
-    input: EmployeeTimelineRepositoryInput
-  ) {
+  public async listCurrentShopEmployeeTimeline(input: EmployeeTimelineRepositoryInput) {
     const where = {
       action: { in: [...EMPLOYEE_TIMELINE_ACTIONS] },
       targetType: "technician_shop_affiliation",
@@ -518,15 +521,17 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
             tone: "green" as const
           },
           ...(affiliation.technicianProfile.verifiedAt
-            ? [{
-                id: `system-verified-${input.affiliationId}`,
-                at: affiliation.technicianProfile.verifiedAt.toISOString(),
-                actorName: "NeeDo 系统",
-                actorAvatarUrl: null,
-                actorRole: "档案验证",
-                message: "员工档案已通过验证",
-                tone: "green" as const
-              }]
+            ? [
+                {
+                  id: `system-verified-${input.affiliationId}`,
+                  at: affiliation.technicianProfile.verifiedAt.toISOString(),
+                  actorName: "NeeDo 系统",
+                  actorAvatarUrl: null,
+                  actorRole: "档案验证",
+                  message: "员工档案已通过验证",
+                  tone: "green" as const
+                }
+              ]
             : [])
         ]
       : [];
@@ -535,37 +540,38 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       Math.max(0, auditTotal - auditSkip),
       take + lifecycleEvents.length * 2
     );
-    const rows = auditTake > 0
-      ? await this.client.auditLog.findMany({
-          where,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          skip: auditSkip,
-          take: auditTake,
-          select: {
-            id: true,
-            action: true,
-            metadata: true,
-            createdAt: true,
-            actor: { select: { username: true, avatarUrl: true } }
-          }
-        })
-      : [];
+    const rows =
+      auditTake > 0
+        ? await this.client.auditLog.findMany({
+            where,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            skip: auditSkip,
+            take: auditTake,
+            select: {
+              id: true,
+              action: true,
+              metadata: true,
+              createdAt: true,
+              actor: { select: { username: true, avatarUrl: true } }
+            }
+          })
+        : [];
 
     const auditEvents = rows.map((row): EmployeeTimelineEventPayload => {
-        const metadata = auditMetadata(row.metadata);
-        const blockingStatus =
-          row.action === "merchant_admin.employee_affiliation.update" &&
-          (metadata.workStatus === "suspended" || metadata.workStatus === "ended");
-        return {
-          id: `audit-${row.id}`,
-          at: row.createdAt.toISOString(),
-          actorName: row.actor?.username ?? "NeeDo 系统",
-          actorAvatarUrl: row.actor?.avatarUrl ?? null,
-          actorRole: timelineRole(row.action),
-          message: timelineMessage(row.action, metadata),
-          tone: blockingStatus ? "red" : "accent"
-        };
-      });
+      const metadata = auditMetadata(row.metadata);
+      const blockingStatus =
+        row.action === "merchant_admin.employee_affiliation.update" &&
+        (metadata.workStatus === "suspended" || metadata.workStatus === "ended");
+      return {
+        id: `audit-${row.id}`,
+        at: row.createdAt.toISOString(),
+        actorName: row.actor?.username ?? "NeeDo 系统",
+        actorAvatarUrl: row.actor?.avatarUrl ?? null,
+        actorRole: timelineRole(row.action),
+        message: timelineMessage(row.action, metadata),
+        tone: blockingStatus ? "red" : "accent"
+      };
+    });
     const list = [...auditEvents, ...lifecycleEvents]
       .sort((left, right) => right.at.localeCompare(left.at) || right.id.localeCompare(left.id))
       .slice(skip - auditSkip, skip - auditSkip + take);
@@ -793,6 +799,8 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
     }
 
     return {
+      technicianProfileId:record.technicianProfile.id,
+      workStatus:record.technicianProfile.bookingOrders?.length ? "in_service" : (!record.technicianProfile.workState?.deletedAt ? record.technicianProfile.workState?.status??"unsynced" : "unsynced") as WorkStatus,
       needoId: technicianIdentifier.publicId,
       displayName: record.technicianProfile.displayName,
       avatarUrl: record.technicianProfile.user.avatarUrl,

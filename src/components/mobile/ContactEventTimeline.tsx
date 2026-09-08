@@ -1,9 +1,11 @@
 import { useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import { TimelineBubbleDisclosure } from "./TimelineBubbleDisclosure";
 
 export type ContactEventTimelineTone = "neutral" | "red" | "green" | "accent";
 
 export type ContactEventTimelineEntry = {
+  actions?: ReactNode;
   actorAvatarSrc?: string;
   actorName?: ReactNode;
   actorRole?: ReactNode;
@@ -22,6 +24,7 @@ export type ContactEventTimelineEntry = {
 };
 
 export function ContactEventTimeline({
+  bubbleMaxLines,
   className,
   commentAuthorAvatarSrc,
   commentAuthorName = "我",
@@ -35,6 +38,7 @@ export function ContactEventTimeline({
   onCommentSubmit,
   showCommentComposer = true
 }: {
+  bubbleMaxLines?: number;
   className?: string;
   commentAuthorAvatarSrc?: string;
   commentAuthorName?: string;
@@ -129,7 +133,7 @@ export function ContactEventTimeline({
         return (
           <div
             className={cn(
-              "grid",
+              "contact-event-row grid",
               layout === "three-column"
                 ? "grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
                 : "grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
@@ -154,7 +158,7 @@ export function ContactEventTimeline({
             </div>
             <div className={cn("min-w-0 pb-5", index === renderedEvents.length - 1 && "pb-0")}>
               <div className={cn(
-                "grid items-start",
+                "contact-event-avatar-row grid items-start",
                 layout === "three-column"
                   ? "grid-cols-[40px,minmax(0,1fr)] gap-2.5"
                   : "grid-cols-[32px,minmax(0,1fr)] gap-2 sm:grid-cols-[40px,minmax(0,1fr)] sm:gap-2.5"
@@ -175,10 +179,15 @@ export function ContactEventTimeline({
                         : "bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,var(--client-primary)_8%)]"
                     )}
                   >
-                    <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
+                    {bubbleMaxLines ? <TimelineBubbleDisclosure maxLines={bubbleMaxLines}>
+                      <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
+                        <span>{actorName}（{actorRole}）：</span>
+                        {message ? <span>{message}</span> : null}
+                      </p>
+                    </TimelineBubbleDisclosure> : <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
                       <span>{actorName}（{actorRole}）：</span>
                       {message ? <span>{message}</span> : null}
-                    </p>
+                    </p>}
                   </div>
                 </div>
               </div>
@@ -209,6 +218,7 @@ export function ContactEventTimeline({
                   </p>
                 </div>
               ) : null}
+              {event.actions ? <div className="mt-2 flex justify-end pl-10 sm:pl-[50px]">{event.actions}</div> : null}
             </div>
           </div>
         );
@@ -278,7 +288,7 @@ function ContactEventTimelineCommentRow({
 
   return (
     <div className={cn(
-      "grid",
+      "contact-event-comment-row grid",
       layout === "three-column"
         ? "grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
         : "grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
@@ -296,7 +306,7 @@ function ContactEventTimelineCommentRow({
         </button>
       </div>
       <div className="min-w-0 py-1">
-        <div className="grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5">
+        <div className="contact-event-avatar-row grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5">
           <ContactEventTimelineAvatar name={commentAuthorName} src={commentAuthorAvatarSrc} wide={layout === "three-column"} />
           <div className="min-w-0">
             {commentOpen ? (
@@ -339,6 +349,7 @@ function ContactEventTimelineCommentRow({
 }
 
 export function ContactEventTimelinePanel({
+  bubbleMaxLines,
   className,
   commentAuthorAvatarSrc,
   commentAuthorName,
@@ -355,6 +366,7 @@ export function ContactEventTimelinePanel({
   timelineClassName,
   title
 }: {
+  bubbleMaxLines?: number;
   className?: string;
   commentAuthorAvatarSrc?: string;
   commentAuthorName?: string;
@@ -385,6 +397,7 @@ export function ContactEventTimelinePanel({
         <p className="text-sm font-black text-[color:var(--client-text)]">{title}</p>
       )}
       <ContactEventTimeline
+        bubbleMaxLines={bubbleMaxLines}
         className={cn(headerVariant === "bar" ? "px-4 py-4" : "mt-4", timelineClassName)}
         commentAuthorAvatarSrc={commentAuthorAvatarSrc}
         commentAuthorName={commentAuthorName}

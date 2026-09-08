@@ -83,13 +83,15 @@ describe("PlatformMembershipRepository entitlement changes", () => {
     };
     const repository = new PlatformMembershipRepository(client as never, () => now);
 
-    await expect(repository.changeEntitlementWithAudit({
-      actorId: 9,
-      userId: 42,
-      occurredAt: now,
-      command,
-      audit: { actorId: 9, action: "grant", targetType: "membership" }
-    })).resolves.toEqual({
+    await expect(
+      repository.changeEntitlementWithAudit({
+        actorId: 9,
+        userId: 42,
+        occurredAt: now,
+        command,
+        audit: { actorId: 9, action: "grant", targetType: "membership" }
+      })
+    ).resolves.toEqual({
       kind: "changed",
       value: {
         kind: "grant",
@@ -102,18 +104,22 @@ describe("PlatformMembershipRepository entitlement changes", () => {
         idempotent: false
       }
     });
-    expect(fixture.customerUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ platformMembershipLockVersion: 4 }),
-      data: { platformMembershipLockVersion: { increment: 1 } }
-    }));
-    expect(fixture.entitlementCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        source: PlatformMembershipEntitlementSource.OPERATIONS,
-        changeKind: PlatformMembershipEntitlementChangeKind.GRANT,
-        experienceValueNdp: 300,
-        createdById: 9
+    expect(fixture.customerUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ platformMembershipLockVersion: 4 }),
+        data: { platformMembershipLockVersion: { increment: 1 } }
       })
-    }));
+    );
+    expect(fixture.entitlementCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          source: PlatformMembershipEntitlementSource.OPERATIONS,
+          changeKind: PlatformMembershipEntitlementChangeKind.GRANT,
+          experienceValueNdp: 300,
+          createdById: 9
+        })
+      })
+    );
     expect(fixture.auditCreate).toHaveBeenCalledTimes(1);
   });
 
@@ -126,13 +132,15 @@ describe("PlatformMembershipRepository entitlement changes", () => {
     };
     const repository = new PlatformMembershipRepository(client as never, () => now);
 
-    await expect(repository.changeEntitlementWithAudit({
-      actorId: 9,
-      userId: 42,
-      occurredAt: now,
-      command,
-      audit: { actorId: 9, action: "grant", targetType: "membership" }
-    })).resolves.toEqual({ kind: "version_conflict" });
+    await expect(
+      repository.changeEntitlementWithAudit({
+        actorId: 9,
+        userId: 42,
+        occurredAt: now,
+        command,
+        audit: { actorId: 9, action: "grant", targetType: "membership" }
+      })
+    ).resolves.toEqual({ kind: "version_conflict" });
     expect(fixture.entitlementCreate).not.toHaveBeenCalled();
     expect(fixture.auditCreate).not.toHaveBeenCalled();
   });
@@ -147,23 +155,27 @@ describe("PlatformMembershipRepository entitlement changes", () => {
     };
     const repository = new PlatformMembershipRepository(client as never, () => now);
 
-    await expect(repository.changeEntitlementWithAudit({
-      actorId: 9,
-      userId: 42,
-      occurredAt: now,
-      command,
-      audit: { actorId: 9, action: "grant", targetType: "membership" }
-    })).resolves.toMatchObject({
+    await expect(
+      repository.changeEntitlementWithAudit({
+        actorId: 9,
+        userId: 42,
+        occurredAt: now,
+        command,
+        audit: { actorId: 9, action: "grant", targetType: "membership" }
+      })
+    ).resolves.toMatchObject({
       kind: "idempotent",
       value: { entitlementPublicId: "entitlement-silver-1", idempotent: true }
     });
-    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        userId: 42,
-        source: PlatformMembershipEntitlementSource.OPERATIONS,
-        sourceReference: "ops:membership:42:1",
-        deletedAt: null
-      }
-    }));
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: 42,
+          source: PlatformMembershipEntitlementSource.OPERATIONS,
+          sourceReference: "ops:membership:42:1",
+          deletedAt: null
+        }
+      })
+    );
   });
 });

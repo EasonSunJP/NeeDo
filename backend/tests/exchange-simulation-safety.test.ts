@@ -18,6 +18,9 @@ describe("formal Exchange simulation seed safety", () => {
     const source = read("src/simulation/exchange-simulation-seed.ts");
     expect(source).toContain("discoverExchangeSimulationActors");
     expect(source).toContain("userIdentity.findMany");
+    expect(source).toContain("intelligenceService");
+    expect(source).toContain("technicianShopAffiliation.findMany");
+    expect(source).toContain("where: { idempotencyKey: share.idempotencyKey }");
     expect(source).not.toMatch(/user\.(?:create|upsert)\s*\(/);
     expect(source).not.toMatch(/userIdentity\.(?:create|upsert)\s*\(/);
   });
@@ -30,5 +33,8 @@ describe("formal Exchange simulation seed safety", () => {
     expect(checker).toContain("comments");
     expect(checker).toContain("likes");
     expect(checker).toContain("shares");
+    expect(checker).toContain("serviceNameSnapshot");
+    expect(checker).toContain("serviceDurationSnapshot");
+    expect(checker).toContain("technicianShopAffiliations");
   });
 });

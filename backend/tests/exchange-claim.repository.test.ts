@@ -74,9 +74,11 @@ const claimRow = {
 describe("ExchangeClaimRepository option projection", () => {
   it("paginates merchant options through formal affiliation, schedule and overlap authorities", async () => {
     const queryRaw = jest.fn(async (query: SqlQuery) =>
-      query.sql?.includes("COUNT(*)") ? [{ total: 1n }] : [optionRow]
+      query.sql?.includes("SELECT COUNT(*) AS total") ? [{ total: 1n }] : [optionRow]
     );
-    const repository = new ExchangeClaimRepository({ $queryRaw: queryRaw } as unknown as PrismaClient);
+    const repository = new ExchangeClaimRepository({
+      $queryRaw: queryRaw
+    } as unknown as PrismaClient);
 
     await expect(
       repository.listOptions({
@@ -109,6 +111,11 @@ describe("ExchangeClaimRepository option projection", () => {
     const sql = queryRaw.mock.calls.map(([query]) => query.sql ?? "").join("\n");
     expect(sql).toContain("FROM `exchange_posts` AS post");
     expect(sql).toContain("JOIN `exchange_demands` AS demand");
+    expect(sql).toContain("JOIN `exchange_request_matchings` AS matching");
+    expect(sql).toContain("matching.`status` = 'open'");
+    expect(sql).toContain("demand.`match_mode` = 'quick'");
+    expect(sql).toContain("capacity_claim.`status` = 'active'");
+    expect(sql).toContain("matching.`effective_target_provider_count`");
     expect(sql).toContain("JOIN `technician_shop_affiliations` AS affiliation");
     expect(sql).toContain("slot.`booked_count` < slot.`capacity`");
     expect(sql).toContain("affiliation.`work_status` = 'active'");
@@ -120,6 +127,7 @@ describe("ExchangeClaimRepository option projection", () => {
     expect(sql).toContain("NOT EXISTS");
     expect(sql).toContain("FROM `exchange_claims` AS active_claim");
     expect(sql).toContain("FROM `exchange_match_participants` AS matched_participant");
+    expect(sql).toContain("matched_participant.`active_reservation_key` IS NOT NULL");
     expect(sql).toContain("FROM `booking_orders` AS busy_order");
     expect(sql).toContain("slot.`shop_id` =");
     expect(sql).toContain("suspension.`active_key` IS NOT NULL");
@@ -127,11 +135,13 @@ describe("ExchangeClaimRepository option projection", () => {
 
   it("scopes technician options to the current technician profile and optional formal filters", async () => {
     const queryRaw = jest.fn(async (query: SqlQuery) =>
-      query.sql?.includes("COUNT(*)")
+      query.sql?.includes("SELECT COUNT(*) AS total")
         ? [{ total: 1n }]
         : [{ ...optionRow, serviceId: null, technicianServiceId: 701 }]
     );
-    const repository = new ExchangeClaimRepository({ $queryRaw: queryRaw } as unknown as PrismaClient);
+    const repository = new ExchangeClaimRepository({
+      $queryRaw: queryRaw
+    } as unknown as PrismaClient);
 
     const result = await repository.listOptions({
       postId: 41,
@@ -162,7 +172,13 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     const repository = new ExchangeClaimRepository({
       $queryRaw: jest.fn(async () => [{ id: 51 }]),
       exchangeRequestMatching: {
-        findUnique: jest.fn(async () => ({ id: 51, status: "OPEN", version: 3 })),
+        findUnique: jest.fn(async () => ({
+          id: 51,
+          status: "OPEN",
+          version: 3,
+          effectiveTargetProviderCount: 2,
+          effectiveBudgetMaxJpy: 30_000
+        })),
         updateMany
       },
       exchangeMatchEvent: { create: eventCreate }
@@ -171,7 +187,9 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     await expect(repository.lockMatching(41)).resolves.toEqual({
       id: 51,
       status: "open",
-      version: 3
+      version: 3,
+      effectiveTargetProviderCount: 2,
+      effectiveBudgetMaxJpy: 30_000
     });
     await expect(
       repository.advanceMatchingForClaimEvent({
@@ -214,14 +232,15 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     } as unknown as PrismaClient);
     const startsAt = new Date("2026-09-02T01:00:00.000Z");
     const endsAt = new Date("2026-09-02T02:00:00.000Z");
-    await expect(
-      repository.hasOverlappingMatchParticipant(81, startsAt, endsAt)
-    ).resolves.toBe(true);
+    await expect(repository.hasOverlappingMatchParticipant(81, startsAt, endsAt)).resolves.toBe(
+      true
+    );
     expect(findFirst).toHaveBeenCalledWith({
       where: {
         technicianProfileId: 81,
         estimatedStartsAt: { lt: endsAt },
         estimatedEndsAt: { gt: startsAt },
+        activeReservationKey: { not: null },
         deletedAt: null
       },
       select: { id: true }
@@ -284,7 +303,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         events.push("create-claim");
         return {
           ...claimRow,
-          ...data,
+          ...data
         };
       })
     };
@@ -331,11 +350,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         technicianServiceId: null
       });
       await expect(
-        lockedRepository.hasOverlappingActiveClaim(
-          81,
-          option!.startsAt,
-          option!.endsAt
-        )
+        lockedRepository.hasOverlappingActiveClaim(81, option!.startsAt, option!.endsAt)
       ).resolves.toBe(false);
       await expect(
         lockedRepository.hasConflictingBooking(81, option!.startsAt, option!.endsAt)
@@ -433,11 +448,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
     } as unknown as PrismaClient);
 
     await expect(
-      repository.lockOption(
-        91,
-        { kind: "technician", technicianProfileId: 81 },
-        now
-      )
+      repository.lockOption(91, { kind: "technician", technicianProfileId: 81 }, now)
     ).resolves.toBeNull();
   });
 
@@ -458,9 +469,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
         technicianProfileId: 81
       })
     ).resolves.toEqual({ technicianProfileId: 81 });
-    await expect(
-      repository.hasActiveClaimForRequestTechnician(41, 81)
-    ).resolves.toBe(true);
+    await expect(repository.hasActiveClaimForRequestTechnician(41, 81)).resolves.toBe(true);
     expect(slotFindFirst).toHaveBeenNthCalledWith(1, {
       where: { id: 91, shopId: 11, technicianProfileId: { not: null }, deletedAt: null },
       select: { technicianProfileId: true }
@@ -507,9 +516,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       auditLog: { create: auditCreate }
     } as unknown as PrismaClient);
 
-    await expect(
-      repository.findIdempotent("claim-key-00000001")
-    ).resolves.toMatchObject({
+    await expect(repository.findIdempotent("claim-key-00000001")).resolves.toMatchObject({
       claim: { id: 301, status: "active" },
       fingerprint: "a".repeat(64)
     });
@@ -521,9 +528,9 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       id: 301,
       exchangePostId: 41
     });
-    await expect(
-      repository.listReceived(41, 21, { page: 1, pageSize: 20 })
-    ).resolves.toMatchObject({ total: 1, page: 1, page_size: 20 });
+    await expect(repository.listReceived(41, 21, { page: 1, pageSize: 20 })).resolves.toMatchObject(
+      { total: 1, page: 1, page_size: 20 }
+    );
     await expect(repository.lockClaim(301)).resolves.toMatchObject({
       id: 301,
       exchangePostId: 41,
@@ -531,13 +538,7 @@ describe("ExchangeClaimRepository mutation primitives", () => {
       status: "active"
     });
     await expect(
-      repository.withdraw(
-        301,
-        17,
-        now,
-        "claim-withdraw-key-0001",
-        "b".repeat(64)
-      )
+      repository.withdraw(301, 17, now, "claim-withdraw-key-0001", "b".repeat(64))
     ).resolves.toMatchObject({
       id: 301,
       status: "withdrawn"

@@ -14,9 +14,7 @@ const author = {
 function createFixture(options: { replyTargetExists?: boolean; activeReplyCount?: number } = {}) {
   const transaction = {
     socialPost: {
-      findFirst: jest.fn(async () =>
-        options.replyTargetExists === false ? null : { id: 700 }
-      ),
+      findFirst: jest.fn(async () => (options.replyTargetExists === false ? null : { id: 700 })),
       create: jest.fn(async ({ data }) => ({
         id: 701,
         authorUserId: data.authorUserId,
@@ -67,11 +65,13 @@ describe("RealtimeRepository Social post replies", () => {
     await repository.listSocialPosts(71, { page: 2, pageSize: 100, replyToPostId: 700 }, 41);
 
     const expectedWhere = expect.objectContaining({ deletedAt: null, replyToPostId: 700 });
-    expect(client.socialPost.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expectedWhere,
-      skip: 100,
-      take: 100
-    }));
+    expect(client.socialPost.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expectedWhere,
+        skip: 100,
+        take: 100
+      })
+    );
     expect(client.socialPost.count).toHaveBeenCalledWith({ where: expectedWhere });
   });
 
@@ -97,15 +97,18 @@ describe("RealtimeRepository Social post replies", () => {
     expect(result.post).toMatchObject({ replyToPostId: 700, replyCount: 0 });
   });
 
-  it.each(["missing", "soft-deleted"])("rejects a %s reply target before creating the reply", async () => {
-    const { repository, transaction } = createFixture({ replyTargetExists: false });
+  it.each(["missing", "soft-deleted"])(
+    "rejects a %s reply target before creating the reply",
+    async () => {
+      const { repository, transaction } = createFixture({ replyTargetExists: false });
 
-    await expect(repository.createSocialPost(createInput())).rejects.toMatchObject({
-      message: "error.social.reply_target_not_found",
-      statusCode: 409
-    });
-    expect(transaction.socialPost.create).not.toHaveBeenCalled();
-  });
+      await expect(repository.createSocialPost(createInput())).rejects.toMatchObject({
+        message: "error.social.reply_target_not_found",
+        statusCode: 409
+      });
+      expect(transaction.socialPost.create).not.toHaveBeenCalled();
+    }
+  );
 
   it("maps the active reply count returned by the relation include", async () => {
     const { repository } = createFixture({ activeReplyCount: 2 });

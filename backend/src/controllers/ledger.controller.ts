@@ -25,9 +25,7 @@ export class LedgerController {
     try {
       response
         .status(200)
-        .json(
-          successResponse(await this.ledgerService.getMyWallet(this.getActor(response)))
-        );
+        .json(successResponse(await this.ledgerService.getMyWallet(this.getActor(response))));
     } catch (error) {
       next(error);
     }
@@ -42,9 +40,7 @@ export class LedgerController {
       response
         .status(200)
         .json(
-          successResponse(
-            await this.ledgerService.getMyWalletSummary(this.getActor(response))
-          )
+          successResponse(await this.ledgerService.getMyWalletSummary(this.getActor(response)))
         );
     } catch (error) {
       next(error);
@@ -57,14 +53,16 @@ export class LedgerController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(201).json(
-        successResponse(
-          await this.ledgerService.createWalletAdjustmentRequest(
-            this.getActor(response),
-            createWalletAdjustmentRequestBodySchema.parse(request.body)
+      response
+        .status(201)
+        .json(
+          successResponse(
+            await this.ledgerService.createWalletAdjustmentRequest(
+              this.getActor(response),
+              createWalletAdjustmentRequestBodySchema.parse(request.body)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -76,14 +74,16 @@ export class LedgerController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.ledgerService.listMyWalletAdjustmentRequests(
-            this.getActor(response),
-            walletAdjustmentMineQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.ledgerService.listMyWalletAdjustmentRequests(
+              this.getActor(response),
+              walletAdjustmentMineQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -95,14 +95,16 @@ export class LedgerController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.ledgerService.listWalletAdjustmentRequests(
-            this.getActor(response),
-            walletAdjustmentListQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.ledgerService.listWalletAdjustmentRequests(
+              this.getActor(response),
+              walletAdjustmentListQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -114,15 +116,17 @@ export class LedgerController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.ledgerService.reviewWalletAdjustmentRequest(
-            this.getActor(response),
-            walletAdjustmentIdParamSchema.parse(request.params).id,
-            reviewWalletAdjustmentRequestBodySchema.parse(request.body)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.ledgerService.reviewWalletAdjustmentRequest(
+              this.getActor(response),
+              walletAdjustmentIdParamSchema.parse(request.params).id,
+              reviewWalletAdjustmentRequestBodySchema.parse(request.body)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }

@@ -14,13 +14,17 @@ export class TechnicianDataCenterController {
   ): Promise<void> => {
     try {
       const query = technicianDataCenterQuerySchema.parse(request.query);
-      response.status(200).json(successResponse(
-        await this.service.getMine(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          query.period
-        )
-      ));
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getMine(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              query.period
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }

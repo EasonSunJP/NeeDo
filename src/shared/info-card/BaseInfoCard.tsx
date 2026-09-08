@@ -99,7 +99,7 @@ function TagChip({ dark, label, styleMode }: { dark: boolean; label: string; sty
 
 function EmptyVisual({ dark, label, roundedClass }: { dark: boolean; label: string; roundedClass: string }) {
   return (
-    <div className={cn("grid h-full w-full place-items-center bg-gradient-to-br text-xs font-black tracking-[0.14em]", roundedClass, dark ? "from-[#1f1a14] to-[#0e0c09] text-[#f3cf78]" : "from-[#f6f4ed] to-[#ebe7da] text-moss")}>
+    <div className={cn("grid place-items-center bg-gradient-to-br text-xs font-black tracking-[0.14em]", roundedClass, dark ? "from-[#1f1a14] to-[#0e0c09] text-[#f3cf78]" : "from-[#f6f4ed] to-[#ebe7da] text-moss")}>
       {label}
     </div>
   );

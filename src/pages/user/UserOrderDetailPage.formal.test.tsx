@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, type ReactNode } from "react";
+import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   createAddOn: vi.fn(),
   createReview: vi.fn(),
   endService: vi.fn(),
+  exchangeOrderLinked: false,
   getCheckout: vi.fn(),
   getOrder: vi.fn(),
   getOwnReview: vi.fn(),
@@ -58,6 +59,28 @@ vi.mock("../../features/core-read/api", async () => {
   };
 });
 vi.mock("../../state/userOrderStore", () => ({ useUserOrders: () => [{ id: "legacy-1", itemName: "历史服务", storeName: "历史店铺", bookedAt: "2026-08-01 10:00", status: "completed", amount: 5000, serviceId: "12" }] }));
+vi.mock("../../features/booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
+vi.mock("../../features/exchange/ExchangeOrderCancellationPanel", () => ({
+  ExchangeOrderCancellationPanel: ({
+    onCancellationChange,
+    onLinkedChange,
+    orderId
+  }: {
+    onCancellationChange?: (payload: { orderId: number; orderStatus: "cancelled" }) => void;
+    onLinkedChange?: (linked: boolean) => void;
+    orderId: number;
+  }) => {
+    useEffect(() => onLinkedChange?.(mocks.exchangeOrderLinked), [onLinkedChange]);
+    return (
+      <button
+        onClick={() => onCancellationChange?.({ orderId, orderStatus: "cancelled" })}
+        type="button"
+      >
+        模拟双方同意取消
+      </button>
+    );
+  }
+}));
 vi.mock("../../components/client-ui/AppScaffold", () => ({
   AppTopBar: ({ title }: { title: string }) => <header>{title}</header>,
   PageScaffold: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
@@ -71,17 +94,26 @@ vi.mock("../../components/mobile/ContactEventTimeline", () => ({
     </section>
   )
 }));
+vi.mock("../../shared/profile-card/SocialProfileMiniCard", () => ({
+  buildServiceMiniCardData: (service: unknown) => service,
+  SocialProfileMiniCard: ({ data, store, technician }: { data?: { name?: string }; store?: { name?: string }; technician?: { name?: string } }) => (
+    <article>{data?.name ?? store?.name ?? technician?.name}</article>
+  )
+}));
 vi.mock("../../shared/order-detail/ServiceSessionUi", () => ({
   ServiceCountdownPill: ({ seconds }: { seconds: number }) => <output data-testid="countdown">{seconds}</output>,
-  ServiceReviewPrompt: ({ error, onSkip, onSubmit, pending, tagOptions }: { error?: string; onSkip: () => void; onSubmit: (input: { rating: number; tags: string[]; comment: string | null }) => void; pending?: boolean; tagOptions: string[] }) => (
-    <section data-testid="review-prompt">
-      <p>{tagOptions.join("/")}</p>
-      {error ? <p>{error}</p> : null}
-      <button disabled={pending} onClick={onSkip} type="button">跳过不评价</button>
-      <button disabled={pending} onClick={() => onSubmit({ rating: 5, tags: [tagOptions[0]], comment: "很好" })} type="button">提交评价</button>
-      <button disabled={pending} onClick={() => onSubmit({ rating: 4, tags: [tagOptions[1]], comment: "修改后" })} type="button">修改后提交</button>
-    </section>
-  )
+  ServiceReviewPrompt: ({ error, onSkip, onSubmit, pending, tagOptions }: { error?: string; onSkip: () => void; onSubmit: (input: { rating: number; tags: string[]; comment: string | null }) => void; pending?: boolean; tagOptions: Array<string | { label: string }> }) => {
+    const labels = tagOptions.map((tag) => typeof tag === "string" ? tag : tag.label);
+    return (
+      <section data-testid="review-prompt">
+        <p>{labels.join("/")}</p>
+        {error ? <p>{error}</p> : null}
+        <button disabled={pending} onClick={onSkip} type="button">跳过不评价</button>
+        <button disabled={pending} onClick={() => onSubmit({ rating: 5, tags: [labels[0]!], comment: "很好" })} type="button">提交评价</button>
+        <button disabled={pending} onClick={() => onSubmit({ rating: 4, tags: [labels[1]!], comment: "修改后" })} type="button">修改后提交</button>
+      </section>
+    );
+  }
 }));
 
 import { UserOrderDetailPage } from "./UserOrderDetailPage";
@@ -154,15 +186,18 @@ const checkout: OrderCheckout = {
   status: "awaitingCheckout",
   baseAmountJpy: 8800,
   addOnAmountJpy: 1200,
+  travelFareAmountJpy: 0,
   discountAmountJpy: 500,
   checkoutAmountJpy: 9500,
   payableNdp: 19000,
+  availablePaymentMethods: ["cash", "ndp"],
   rate: { ruleId: 7, publicId: "rate-7", version: 3, ndpUnits: 2, jpyUnits: 1, effectiveFrom: "2026-09-01T00:00:00.000Z" },
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount",
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
     baseAmountJpy: 8800,
     acceptedAddOnIds: [301],
     addOnAmountJpy: 1200,
+    travelFareAmountJpy: 0,
     discountAmountJpy: 500,
     checkoutAmountJpy: 9500,
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"
@@ -190,6 +225,38 @@ const coreService = {
   durationMinutes: 30,
   coverUrl: null,
   reviewSummary: { ratingAverage: "5.0", reviewCount: 1, latestReviewAt: null, highlights: [] }
+};
+
+const coreTechnicianDetail = {
+  id: 9,
+  publicId: "s0000000009",
+  displayName: "正式技师",
+  city: "东京",
+  avatarUrl: null,
+  reviewSummary: coreService.reviewSummary,
+  age: 28,
+  favoriteCount: 0,
+  shareCount: 0,
+  completedOrderCount: 12,
+  acceptanceRatePercent: 98,
+  primaryService: null,
+  shop: coreService.shop,
+  bio: "正式技师介绍",
+  serviceArea: "港区",
+  yearsExperience: 8,
+  mediaAssets: [],
+  services: [coreService],
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 3 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: [{ label: "手法细致", count: 2 }]
+  },
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z"
 };
 
 let container: HTMLDivElement;
@@ -236,6 +303,7 @@ async function click(label: string) {
 describe("formal user order detail", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.exchangeOrderLinked = false;
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -261,6 +329,54 @@ describe("formal user order detail", () => {
     await click("开始计算");
     await waitFor(() => expect(mocks.startService).toHaveBeenCalledWith(88, { actor: "customer", idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/) }));
     expect(container.textContent).toContain("正式延长服务");
+  });
+
+  it("immediately adopts an accepted Exchange cancellation and removes stale customer actions", async () => {
+    mocks.exchangeOrderLinked = true;
+    mocks.getOrder.mockResolvedValue(makeOrder("confirmed"));
+
+    await render();
+    expect(container.textContent).toContain("开始服务");
+    await click("模拟双方同意取消");
+
+    await waitFor(() => expect(container.textContent).toContain("已取消"));
+    expect(container.textContent).not.toContain("开始服务");
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
+    expect(container.textContent).toContain("模拟双方同意取消");
+  });
+
+  it("shows the immutable booked price and payment method in the service card without duplicate summary cards", async () => {
+    mocks.getOrder.mockResolvedValue({
+      ...makeOrder("pending"),
+      paymentAmountJpy: 6000,
+      priceAmount: "6000.00",
+      serviceNameSnapshot: "ボディケア 60分",
+      servicePriceSnapshot: "6000.00",
+      serviceDurationSnapshot: 60
+    });
+    mocks.getServiceDetail.mockResolvedValue({
+      ...coreService,
+      name: "ボディケア 60分",
+      priceAmount: "8000.00",
+      durationMinutes: 60
+    });
+
+    await render();
+
+    await waitFor(() => expect(container.textContent).toContain("￥6,000/60分钟"));
+    expect(container.textContent).toContain("到店后确认付款");
+    expect(container.textContent).not.toContain("¥8,000");
+    expect(container.textContent).not.toContain("金额");
+    expect(container.textContent).not.toContain("来源");
+  });
+
+  it("labels onsite payment neutrally for a home-service booking", async () => {
+    mocks.getOrder.mockResolvedValue({ ...makeOrder("pending"), fulfillmentMode: "home" });
+
+    await render();
+
+    await waitFor(() => expect(container.textContent).toContain("服务现场确认付款"));
+    expect(container.textContent).not.toContain("到店后确认付款");
   });
 
   it("reconstructs countdown and real catalog, proposes and decides add-ons, then uses formal early end", async () => {
@@ -294,12 +410,12 @@ describe("formal user order detail", () => {
     expect(container.textContent).toContain("等待结账");
     expect(container.textContent).not.toContain("服务已完成");
     expect(container.textContent).toContain("2 NDP = 1 JPY");
-    expect(button("现金支付")).toBeTruthy();
+    expect(button("线下支付")).toBeTruthy();
     expect(button("NDP 支付")).toBeTruthy();
-    expect(button("其他方式")).toBeTruthy();
-    await click("现金支付");
+    expect(container.textContent).not.toContain("其他方式");
+    await click("线下支付");
     await waitFor(() => expect(mocks.selectPaymentMethod).toHaveBeenCalledWith(88, { method: "cash", idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/) }));
-    await waitFor(() => expect(container.textContent).toContain("等待技师确认收款"));
+    await waitFor(() => expect(container.textContent).toContain("等待线下收款确认"));
     expect(container.textContent).not.toContain("服务与结算已完成");
   });
 
@@ -309,10 +425,10 @@ describe("formal user order detail", () => {
     mocks.getCheckout.mockReturnValue(pendingCheckout.promise);
     await render();
     expect(container.textContent).toContain("正在加载正式结算");
-    expect(container.textContent).not.toContain("现金支付");
+    expect(container.textContent).not.toContain("线下支付");
     expect(container.textContent).not.toContain("NDP 支付");
     pendingCheckout.resolve(checkout);
-    await waitFor(() => expect(button("现金支付")).toBeTruthy());
+    await waitFor(() => expect(button("线下支付")).toBeTruthy());
   });
 
   it("shows checkout failure with a read-only retry and no payment actions", async () => {
@@ -320,9 +436,9 @@ describe("formal user order detail", () => {
     mocks.getCheckout.mockRejectedValueOnce(new ApiClientError("error.order.checkout_unavailable", 50301, 503)).mockResolvedValueOnce(checkout);
     await render();
     await waitFor(() => expect(container.textContent).toContain("正式结算加载失败"));
-    expect(container.textContent).not.toContain("现金支付");
+    expect(container.textContent).not.toContain("线下支付");
     await click("重新加载正式结算");
-    await waitFor(() => expect(button("现金支付")).toBeTruthy());
+    await waitFor(() => expect(button("线下支付")).toBeTruthy());
     expect(mocks.getCheckout).toHaveBeenCalledTimes(2);
   });
 
@@ -331,13 +447,13 @@ describe("formal user order detail", () => {
     mocks.getCheckout.mockResolvedValue(checkout);
     mocks.selectPaymentMethod.mockResolvedValue({ ...checkout, status: "awaitingPaymentConfirmation", paymentMethod: "cash" });
     await render();
-    await waitFor(() => expect(button("现金支付")).toBeTruthy());
-    await click("现金支付");
+    await waitFor(() => expect(button("线下支付")).toBeTruthy());
+    await click("线下支付");
     await waitFor(() => expect(container.textContent).toContain("订单状态读取失败"));
     expect(container.textContent).not.toContain("NDP 支付");
     expect(mocks.selectPaymentMethod).toHaveBeenCalledTimes(1);
     await click("重新读取订单状态");
-    await waitFor(() => expect(container.textContent).toContain("等待技师确认收款"));
+    await waitFor(() => expect(container.textContent).toContain("等待线下收款确认"));
     expect(mocks.selectPaymentMethod).toHaveBeenCalledTimes(1);
   });
 
@@ -356,19 +472,29 @@ describe("formal user order detail", () => {
   it("loads review eligibility only after formal evidence and submits the technician direction", async () => {
     mocks.getOrder.mockResolvedValue(makeOrder("completed"));
     mocks.getCheckout.mockResolvedValue({ ...checkout, status: "completed", paymentMethod: "ndp", paymentEvidence: "ndp_ledger" });
-    mocks.createReview.mockResolvedValue({ applied: true, review: { targetType: "technician", rating: 5, tags: ["魅力值"], comment: "很好", createdAt: "2026-09-01T12:00:00.000Z" } });
+    mocks.createReview.mockResolvedValue({ applied: true, review: { targetType: "technician", rating: 5, tags: ["魅力max"], comment: "很好", createdAt: "2026-09-01T12:00:00.000Z" } });
     await render();
-    await waitFor(() => expect(container.textContent).toContain("魅力值/服务精神/情绪价值/元气"));
+    await waitFor(() => expect(container.textContent).toContain("魅力max/服务max/情绪max/元气max"));
     expect(mocks.getOwnReview).toHaveBeenCalledWith(88);
     await click("提交评价");
     await waitFor(() => expect(mocks.createReview).toHaveBeenCalledWith(88, {
       targetType: "technician",
       rating: 5,
-      tags: ["魅力值"],
+      tags: ["魅力max"],
       comment: "很好",
       idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
     }));
     await waitFor(() => expect(container.textContent).not.toContain("提交评价"));
+  });
+
+  it("offers existing formal custom review labels after the four fixed stamps", async () => {
+    mocks.getOrder.mockResolvedValue(makeOrder("completed"));
+    mocks.getCheckout.mockResolvedValue({ ...checkout, status: "completed", paymentMethod: "ndp", paymentEvidence: "ndp_ledger" });
+    mocks.getTechnicianDetail.mockResolvedValue(coreTechnicianDetail);
+
+    await render();
+
+    await waitFor(() => expect(container.textContent).toContain("魅力max/服务max/情绪max/元气max/手法细致"));
   });
 
   it("retains the review key for unchanged ambiguous retry and replaces it after editing", async () => {
@@ -496,20 +622,23 @@ describe("formal user order detail", () => {
     expect(container.textContent).not.toContain("提交评价");
   });
 
-  it("selects other payment as a formal waiting method without fake completion", async () => {
-    mocks.getOrder.mockResolvedValueOnce(makeOrder("awaitingCheckout")).mockResolvedValueOnce(makeOrder("awaitingPaymentConfirmation"));
-    mocks.selectPaymentMethod.mockResolvedValue({ ...checkout, status: "awaitingPaymentConfirmation", paymentMethod: "other", otherMethod: { code: "other_manual", label: "其他方式" } });
+  it("renders only the payment methods enabled by the authoritative checkout projection", async () => {
+    mocks.getOrder.mockResolvedValue(makeOrder("awaitingCheckout"));
+    mocks.getCheckout.mockResolvedValue({ ...checkout, availablePaymentMethods: ["ndp"] });
     await render();
-    await waitFor(() => expect(container.textContent).toContain("其他方式"));
-    await click("其他方式");
-    await waitFor(() => expect(mocks.selectPaymentMethod).toHaveBeenCalledWith(88, {
-      method: "other",
-      otherMethodCode: "other_manual",
-      otherMethodLabel: "其他方式",
-      idempotencyKey: expect.stringMatching(/^[a-f0-9]{32}$/)
-    }));
-    await waitFor(() => expect(container.textContent).toContain("等待技师确认收款"));
-    expect(container.textContent).not.toContain("服务与结算已完成");
+    await waitFor(() => expect(container.textContent).toContain("NDP 支付"));
+    expect(container.textContent).not.toContain("线下支付");
+    expect(container.textContent).not.toContain("其他方式");
+    expect(mocks.selectPaymentMethod).not.toHaveBeenCalled();
+  });
+
+  it("shows an explicit unavailable state when operations disables every payment method", async () => {
+    mocks.getOrder.mockResolvedValue(makeOrder("awaitingCheckout"));
+    mocks.getCheckout.mockResolvedValue({ ...checkout, availablePaymentMethods: [] });
+    await render();
+    await waitFor(() => expect(container.textContent).toContain("当前暂无可用支付方式"));
+    expect(container.textContent).not.toContain("线下支付");
+    expect(container.textContent).not.toContain("NDP 支付");
   });
 
   it("keeps the displayed formal state unchanged when a mutation is rejected", async () => {

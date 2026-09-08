@@ -224,6 +224,12 @@ const createFixture = async () => {
         phone: null,
         status: "published",
         ownerEmail: "owner@example.com",
+        createdBy: {
+          userId: 1,
+          needoId: "U0000000001",
+          displayName: "Admin",
+          email: "admin@example.com"
+        },
         coverUrl: null,
         ratingAverage: 4.8,
         reviewCount: 12,
@@ -268,6 +274,7 @@ const createFixture = async () => {
       page_size: 20
     })),
     getMerchantAccount: jest.fn(async () => merchantRecord),
+    getShopAccount: jest.fn(async () => merchantRecord.shops[0]),
     createMerchantAccount: jest.fn(async () => merchantRecord),
     findBillingProfile: jest.fn(async () => profile),
     reconcileShopBillingProfiles: jest.fn(
@@ -358,12 +365,46 @@ describe("merchant SaaS billing backoffice API", () => {
       type: "merchant_group",
       paymentResponsibility: "group_consolidated",
       billing: { state: "trial", annualFeeJpy: 98000 },
-      shops: [expect.objectContaining({ type: "shop", technicianCount: 2 })]
+      shops: [expect.objectContaining({
+        type: "shop",
+        technicianCount: 2,
+        platformCommissionRatePercent: 0,
+        createdBy: {
+          userId: 1,
+          needoId: "U0000000001",
+          displayName: "Admin",
+          email: "admin@example.com"
+        }
+      })]
     });
     expect(fixture.merchantSaasBillingRepository.listAccounts).toHaveBeenCalledWith({
       page: 1,
       pageSize: 20
     });
+  });
+
+  it("returns a refreshed formal SaaS account for one shop", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("viewer@example.com");
+
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/shops/11/saas-account")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      id: 11,
+      platformCommissionRatePercent: 0,
+      createdBy: { needoId: "U0000000001", displayName: "Admin" }
+    });
+    expect(fixture.merchantSaasBillingRepository.getShopAccount).toHaveBeenCalledWith(11);
+    expect(fixture.auditLogs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "backoffice.shop_saas_account.read",
+        targetType: "shop",
+        targetId: 11
+      })
+    ]));
   });
 
   it("persists and audits technician-count trial transitions before returning cards", async () => {
@@ -422,7 +463,9 @@ describe("merchant SaaS billing backoffice API", () => {
     const token = await fixture.login("viewer@example.com");
 
     await request(fixture.app)
-      .get("/api/v1/backoffice/billing-subjects/merchant_account/5/free-periods?page=1&pageSize=100")
+      .get(
+        "/api/v1/backoffice/billing-subjects/merchant_account/5/free-periods?page=1&pageSize=100"
+      )
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 

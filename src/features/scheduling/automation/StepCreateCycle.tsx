@@ -152,10 +152,6 @@ function getCycleValidationMessage(cycle: DispatchCycle) {
     return "排班周期最长 1 年。";
   }
 
-  if (cycle.mode === "STORE_COLLECT_CONFIRM" && (!cycle.feedbackDeadline || cycle.feedbackDeadline.slice(0, 10) >= cycle.periodStart)) {
-    return "技师反馈截止时间必须早于周期开始日。";
-  }
-
   if (cycle.ruleSet.minStaff > cycle.ruleSet.targetStaff || cycle.ruleSet.targetStaff > cycle.ruleSet.maxStaff) {
     return "人数规则必须满足 最小人数 <= 目标人数 <= 最大人数。";
   }
@@ -439,9 +435,7 @@ export function StepCreateCycle({
               <div className={cn("mt-3 rounded-[22px] border px-4 py-4", panelCardClass)}>
                 <div className="flex flex-wrap items-center gap-2">
                   <strong className="text-base font-black">{getCycleModeLabel(draft.mode)}</strong>
-                  <Badge tone={draft.mode === "STORE_COLLECT_CONFIRM" ? "blue" : "green"}>
-                    {draft.mode === "STORE_COLLECT_CONFIRM" ? "商户最终确认" : "自动进入最终结果"}
-                  </Badge>
+                  <Badge tone="green">自动进入最终结果</Badge>
                 </div>
                 <p className={cn("mt-2 text-sm leading-6", quietTextClass)}>如需改变模式，请回到步骤 1。规则设定阶段只调整该模式下的周期、矩阵、容量和通知。</p>
               </div>
@@ -484,17 +478,6 @@ export function StepCreateCycle({
                 value={draft.periodEnd}
               />
             </label>
-            {draft.mode === "STORE_COLLECT_CONFIRM" ? (
-              <label className="text-sm font-semibold text-ink">
-                反馈截止
-                <input
-                  className={inputClass}
-                  onChange={(event) => updateDraft({ feedbackDeadline: event.target.value })}
-                  type="datetime-local"
-                  value={(draft.feedbackDeadline ?? "").slice(0, 16)}
-                />
-              </label>
-            ) : null}
           </div>
         </section>
       ) : null}
@@ -535,7 +518,7 @@ export function StepCreateCycle({
             <div>
               <Badge tone="blue">9/10</Badge>
               <RuleCardTitle
-                info="商户确认模式下这些技师会收到反馈任务；直接排班模式下这些技师会收到正式排班和确认收到入口。"
+                info="技师自主排班会通知技师发布可上班时间；商户直接排班会发送正式排班和确认收到入口。"
                 surface={surface}
                 title="选择本周期对象"
               />
@@ -1120,7 +1103,7 @@ export function StepCreateCycle({
                   launched.ok
                     ? draft.mode === "STORE_ASSIGN_FINAL"
                       ? `已保存 ${draft.name}，商户直接排班已正式生效并生成 confirmed slots。`
-                      : `已发起 ${draft.name}，当前停留在 ${draft.mode === "STORE_COLLECT_CONFIRM" ? "步骤 3" : "步骤 4"}。`
+                      : `已发起 ${draft.name}，当前进入最终确认。`
                     : launched.message ?? "发起失败。"
                 );
               }}

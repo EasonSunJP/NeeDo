@@ -12,6 +12,8 @@ describe("formal development launcher config", () => {
       opsApiPort: 3001,
       opsApiProxyTarget: "http://127.0.0.1:3001",
       opsApiRedisUrl: "redis://127.0.0.1:6379/1",
+      travelRouteHealthRedisUrl: "redis://127.0.0.1:6379/0",
+      liveDashboardRedisUrl: "redis://127.0.0.1:6379/0",
       proxyTarget: "http://127.0.0.1:3000"
     });
   });
@@ -24,6 +26,8 @@ describe("formal development launcher config", () => {
         FORMAL_MERCHANT_API_REDIS_URL: "redis://localhost:6380/12",
         FORMAL_OPS_API_PORT: "3103",
         FORMAL_OPS_API_REDIS_URL: "redis://localhost:6380/11",
+        FORMAL_TRAVEL_ROUTE_HEALTH_REDIS_URL: "redis://localhost:6380/13",
+        FORMAL_LIVE_DASHBOARD_REDIS_URL: "redis://localhost:6380/14",
         FRONTEND_PORT: "5181"
       })
     ).toEqual({
@@ -35,6 +39,8 @@ describe("formal development launcher config", () => {
       opsApiPort: 3103,
       opsApiProxyTarget: "http://127.0.0.1:3103",
       opsApiRedisUrl: "redis://localhost:6380/11",
+      travelRouteHealthRedisUrl: "redis://localhost:6380/13",
+      liveDashboardRedisUrl: "redis://localhost:6380/14",
       proxyTarget: "http://127.0.0.1:3102"
     });
     expect(() => resolveFormalDevConfig({ FORMAL_BACKEND_PORT: "70000" })).toThrow(

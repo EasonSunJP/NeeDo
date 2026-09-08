@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
@@ -13,6 +13,8 @@ import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import type { MessageCenterContext } from "../../lib/messageCenter";
 import { shareContent } from "../../lib/share";
+import { mapExchangeIntelligencePublisherToProfileData, UnifiedProfileCard } from "../../shared/profile-card";
+import { mapExchangeIntelligenceServiceToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import {
   getExchangePost,
   likeExchangePost,
@@ -23,6 +25,7 @@ import {
 import { ExchangeClaimPanel } from "./ExchangeClaimPanel";
 import { ExchangeInteractions } from "./ExchangeInteractions";
 import { ExchangeReceivedClaims } from "./ExchangeReceivedClaims";
+import { ExchangeMatchedBookingCard } from "./ExchangeMatchedBookingCard";
 import { exchangeText } from "./i18n";
 import type { ExchangeInteractionCounts, ExchangePost } from "./types";
 
@@ -31,6 +34,18 @@ const detailCardClassName =
   "rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel";
 const detailInnerCardClassName =
   "rounded-[18px] bg-[color:var(--client-bg-soft)] p-3";
+const tokyoCheckoutDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+const tokyoCheckoutTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Tokyo",
+  hourCycle: "h23",
+  hour: "2-digit",
+  minute: "2-digit"
+});
 
 function exchangeBasePath(context: MessageCenterContext) {
   return context === "user" ? "/needo" : `/${context}/needo`;
@@ -60,6 +75,21 @@ function formatTime(value: string, language: Language) {
   }).format(new Date(value));
 }
 
+function checkoutStartParts(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const dateParts = new Map(
+    tokyoCheckoutDateFormatter.formatToParts(date).map((part) => [part.type, part.value])
+  );
+  const timeParts = new Map(
+    tokyoCheckoutTimeFormatter.formatToParts(date).map((part) => [part.type, part.value])
+  );
+  return {
+    date: `${dateParts.get("year")}-${dateParts.get("month")}-${dateParts.get("day")}`,
+    time: `${timeParts.get("hour")}:${timeParts.get("minute")}`
+  };
+}
+
 function formatJpy(value: number) {
   return `¥${value.toLocaleString("ja-JP")}`;
 }
@@ -75,11 +105,12 @@ function formatCountdown(expiresAt: string, nowMs: number, language: Language) {
   return days > 0 ? `${prefix} ${days}d ${clock}` : `${prefix} ${clock}`;
 }
 
-function priceLabel(post: ExchangePost) {
+function priceLabel(post: ExchangePost, effectiveBudgetMaxJpy: number | null = null) {
   if (post.type === "demand" && post.demand) {
+    const budgetMaxJpy = effectiveBudgetMaxJpy ?? post.demand.budgetMaxJpy;
     return post.demand.budgetMinJpy === null
-      ? formatJpy(post.demand.budgetMaxJpy)
-      : `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
+      ? formatJpy(budgetMaxJpy)
+      : `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(budgetMaxJpy)}`;
   }
   return post.intelligence ? formatJpy(post.intelligence.campaignPriceJpy) : "—";
 }
@@ -89,6 +120,13 @@ function terminalStateTextKey(status: ExchangePost["status"]) {
   if (status === "expired") return "expiredState" as const;
   if (status === "matched") return "matchedState" as const;
   return "closedState" as const;
+}
+
+function intelligenceUnavailableTextKey(reason: NonNullable<ExchangePost["intelligence"]>["booking"]["unavailableReason"]) {
+  if (reason === "legacy_unbound") return "intelligenceLegacyUnbound" as const;
+  if (reason === "post_unavailable") return "intelligencePostUnavailable" as const;
+  if (reason === "publisher_unavailable") return "intelligencePublisherUnavailable" as const;
+  return "intelligenceServiceUnavailable" as const;
 }
 
 type HeaderActionName = "translate" | "favorite" | "share";
@@ -226,6 +264,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
   const validPostId = Boolean(postId && /^[1-9]\d*$/u.test(postId));
   const [post, setPost] = useState<ExchangePost | null>(null);
+  const [effectiveBudgetMaxJpy, setEffectiveBudgetMaxJpy] = useState<number | null>(null);
   const [loading, setLoading] = useState(validPostId);
   const [error, setError] = useState(!validPostId);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -246,6 +285,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     if (!postId || !validPostId) return;
     const controller = new AbortController();
     setPost(null);
+    setEffectiveBudgetMaxJpy(null);
     setLoading(true);
     setError(false);
     void getExchangePost(postId, controller.signal)
@@ -260,6 +300,10 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
       });
     return () => controller.abort();
   }, [postId, reloadVersion, validPostId]);
+
+  const updateEffectiveBudget = useCallback((budgetMaxJpy: number) => {
+    setEffectiveBudgetMaxJpy(budgetMaxJpy);
+  }, []);
 
   function goBack() {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -356,7 +400,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     );
   }
 
-  const price = priceLabel(post);
+  const price = priceLabel(post, effectiveBudgetMaxJpy);
   const active = post.status === "published";
   const serviceFlow = post.type === "intelligence"
     ? [t("flowSelectTechnician"), t("flowConfirmTime"), t("flowPrepare"), t("flowInService"), t("flowReview")]
@@ -366,9 +410,36 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     : [t(post.demand?.serviceMode === "home" ? "home" : "store"), post.areaLabel, post.contentLocale];
   const demandActionTarget = post.viewer.canViewClaims
     ? '[data-testid="exchange-received-claims"]'
+    : post.viewer.canViewMatching
+      ? '[data-testid="exchange-matched-booking-card"]'
     : post.viewer.canClaim
       ? '[data-testid="exchange-claim-panel"]'
-      : null;
+       : null;
+  const intelligenceBooking = post.intelligence?.booking ?? null;
+  const intelligencePostId = post.id;
+  const intelligenceServiceStartAt = post.serviceStartAt;
+  const intelligenceBookable = Boolean(
+    active &&
+    intelligenceBooking?.available &&
+    intelligenceBooking.target &&
+    intelligenceBooking.serviceMode === "store"
+  );
+
+  function openIntelligenceCheckout() {
+    if (!intelligenceBookable || !intelligenceBooking?.target) return;
+    const checkoutStart = checkoutStartParts(intelligenceServiceStartAt);
+    if (!checkoutStart) return;
+    const target = intelligenceBooking.target;
+    const path = target.type === "shop_service"
+      ? `/checkout/${target.id}`
+      : `/checkout/technician-service/${target.id}`;
+    const query = new URLSearchParams({
+      date: checkoutStart.date,
+      time: checkoutStart.time,
+      exchangePost: String(intelligencePostId)
+    });
+    navigate(`${path}?${query.toString()}`);
+  }
 
   function revealDemandAction() {
     if (!active || !demandActionTarget) return;
@@ -441,7 +512,10 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         {post.viewer.canClaim ? <ExchangeClaimPanel language={language} post={post} /> : null}
         {post.viewer.canViewClaims ? (
           <ExchangeReceivedClaims
+            context={context}
             language={language}
+            matchMode={post.demand?.matchMode}
+            onEffectiveBudgetChange={updateEffectiveBudget}
             onMatched={() =>
               setPost((current) =>
                 current
@@ -459,15 +533,21 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
             }
             postId={String(post.id)}
           />
+        ) : post.viewer.canViewMatching ? (
+          <ExchangeMatchedBookingCard context={context} language={language} postId={String(post.id)} />
         ) : null}
 
         <section className={detailCardClassName} data-no-i18n="true">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("paymentInformation")}</h2>
-              <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">{t("bookingPaymentDeferred")}</p>
+              <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">
+                {post.type === "intelligence" && intelligenceBookable
+                  ? t("intelligenceBookingAvailable")
+                  : t(post.status === "matched" ? "matchedBookingAvailablePaymentDeferred" : "bookingPaymentDeferred")}
+              </p>
             </div>
-            <Badge tone="green">{t("notEnabled")}</Badge>
+            <Badge tone="green">{post.type === "intelligence" && intelligenceBookable ? t("intelligenceBookNow") : t("notEnabled")}</Badge>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2">
             {[
@@ -490,7 +570,49 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           title={t("serviceFlow")}
         />
 
-        <PublisherCard language={language} post={post} />
+        {post.type === "demand" ? <PublisherCard language={language} post={post} /> : null}
+
+        {post.intelligence?.publisherCard ? (
+          <div data-no-i18n="true" data-testid="exchange-intelligence-publisher-card">
+            <UnifiedProfileCard
+              data={mapExchangeIntelligencePublisherToProfileData(
+                post.intelligence.publisherCard,
+                t(post.intelligence.serviceMode),
+                {
+                  entity: t(post.intelligence.publisherCard.type === "shop" ? "merchantIdentity" : "technicianIdentity"),
+                  bookable: t("bookable"),
+                  unavailable: t("currentUnavailable"),
+                  rating: t("rating"),
+                  reviews: t("reviews"),
+                  serviceMode: t("serviceModeLabel"),
+                  completedOrders: t("completedOrders"),
+                  acceptanceRate: t("acceptanceRate"),
+                  experience: post.intelligence.publisherCard.type === "technician"
+                    ? `${post.intelligence.publisherCard.yearsExperience}${t("yearsSuffix")}`
+                    : ""
+                }
+              )}
+              detailTo={post.intelligence.publisherCard.detailPath}
+              variant="detailHeader"
+            />
+          </div>
+        ) : null}
+
+        {post.intelligence?.serviceCard ? (
+          <UnifiedServiceInfoCard
+            data={mapExchangeIntelligenceServiceToUnifiedData(
+              post.intelligence.serviceCard,
+              t(post.intelligence.serviceMode)
+            )}
+            detailTo={post.intelligence.serviceCard.detailPath}
+          />
+        ) : null}
+
+        {post.type === "intelligence" && post.intelligence?.booking.unavailableReason ? (
+          <div className="rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black text-[color:var(--client-text)]" role="status">
+            {t(intelligenceUnavailableTextKey(post.intelligence.booking.unavailableReason))}
+          </div>
+        ) : null}
 
         <section className={detailCardClassName} data-no-i18n="true">
           <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("serviceRequirements")}</h2>
@@ -522,7 +644,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
             type="button"
           >
             {active && post.viewer.canViewClaims
-              ? t("matchingSelectProviders")
+              ? t(post.demand?.matchMode === "quick" ? "quickMatchingStatus" : "matchingSelectProviders")
               : active && post.viewer.canClaim
                 ? t("claimSubmit")
                 : t(post.status === "matched" ? "matchingCompleted" : "claimStatusMatchingClosed")}
@@ -530,11 +652,16 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
         ) : (
           <button
             className="min-h-12 min-w-[170px] rounded-full bg-[color:var(--client-primary)] px-6 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
-            data-action="booking-deferred"
-            disabled
+            data-action="book-intelligence"
+            disabled={!intelligenceBookable}
+            onClick={openIntelligenceCheckout}
             type="button"
           >
-            {t("bookingDeferred")}
+            {intelligenceBookable
+              ? t("intelligenceBookNow")
+              : post.intelligence?.booking.unavailableReason
+                ? t(intelligenceUnavailableTextKey(post.intelligence.booking.unavailableReason))
+                : t("bookingDeferred")}
           </button>
         )}
       </footer>

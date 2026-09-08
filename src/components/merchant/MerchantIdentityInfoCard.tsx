@@ -7,6 +7,7 @@ import {
   type MerchantProfileGender,
   type MerchantProfileVisibility
 } from "../../features/core-read/merchantProfileApi";
+import { copyTextToClipboard } from "../../lib/share";
 import { cn } from "../../lib/utils";
 import { IconButton, StickyBottomBar } from "../client-ui/AppScaffold";
 import { AvatarImage } from "../ui/AvatarImage";
@@ -99,6 +100,7 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
   const [privacyMenuOpen, setPrivacyMenuOpen] = useState(false);
   const [privacyConfirmOpen, setPrivacyConfirmOpen] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [copyStatus, setCopyStatus] = useState<"" | "copied" | "failed">("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -122,6 +124,10 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
     setDraft(toDraft(profile));
     setError("");
     setEditing(true);
+  };
+  const copyNeedoId = async () => {
+    if (!profile) return;
+    setCopyStatus(await copyTextToClipboard(profile.publicId) ? "copied" : "failed");
   };
   const cancelEditing = () => {
     if (profile) setDraft(toDraft(profile));
@@ -206,7 +212,8 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
           </div>
           <div className="flex min-h-36 min-w-0 flex-1 flex-col">
             {editing ? <input aria-label="商户姓名" className="min-w-0 border-0 bg-transparent text-lg font-black outline-none" onChange={(event) => update({ displayName: event.target.value })} value={draft.displayName} /> : <h1 className="break-words text-lg font-black leading-tight">{profile.displayName}<KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" /></h1>}
-            <button aria-label="复制 NeeDo ID" className={cn(surface.muted, "mt-2 truncate text-left text-xs font-bold")} onClick={() => void navigator.clipboard?.writeText(profile.publicId)} type="button">ID {profile.publicId}</button>
+            <button aria-label="复制 NeeDo ID" className={cn(surface.muted, "mt-2 truncate text-left text-xs font-bold")} onClick={() => void copyNeedoId()} type="button">ID {profile.publicId}</button>
+            {copyStatus ? <p aria-live="polite" className={cn(surface.muted, "mt-1 text-xs font-bold")} role="status">{copyStatus === "copied" ? "已复制" : "复制失败，请手动复制"}</p> : null}
             <div className={cn(surface.panel, "relative z-30 mt-auto rounded-[18px] border p-3")} data-testid="merchant-profile-privacy-control">
               <div className="flex items-center justify-between gap-3">
                 <button className="min-w-0 flex-1 text-left" disabled={!editing || visible.visibility === "public"} onClick={() => setPrivacyMenuOpen((open) => !open)} type="button"><p className={cn(surface.muted, "text-xs font-bold")}>隐私模式</p><strong className="mt-1 block truncate text-sm">{privacySummary(visible.visibility)}</strong></button>

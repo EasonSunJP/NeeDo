@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import unifiedCalendarSource from "../../components/scheduling/UnifiedUserCalendar.tsx?raw";
+import schedulingWindowLoaderSource from "../scheduling/window-loader.ts?raw";
 import routeSource from "./route-pages.tsx?raw";
 import workspaceSource from "./FormalTechnicianScheduleWorkspace.tsx?raw";
 
@@ -19,9 +20,10 @@ describe("approved formal technician schedule UI", () => {
     expect(routeSource).toContain("showHeader={false}");
     expect(routeSource).toContain("FormalTechnicianScheduleWorkspace");
     expect(routeSource).toContain('navItems={technicianNavItems}');
-    expect(workspaceSource).toContain("FloatingHomeHeader");
+    expect(routeSource).toContain("SchedulePageHeader");
     expect(workspaceSource).toContain("FeatureSegmentedTabs");
-    expect(workspaceSource).toContain("ScheduleSearchField");
+    expect(routeSource).toContain("showBottomNav={false}");
+    expect(workspaceSource).not.toContain("ScheduleSearchField");
     expect(routeSource).not.toContain("FormalRoutePage");
     expect(unifiedCalendarSource).toContain('aria-label="切换日程展示范围"');
     expect(unifiedCalendarSource).toContain('{ value: "day", label: "1日" }');
@@ -40,7 +42,8 @@ describe("approved formal technician schedule UI", () => {
   it("loads the shared calendar in formal-only mode without legacy store imports", () => {
     const combinedSource = `${routeSource}\n${workspaceSource}`;
     expect(workspaceSource).toContain("formalOnly");
-    expect(unifiedCalendarSource).toContain("schedulingApi.listSlots");
+    expect(unifiedCalendarSource).toContain("loadManagedScheduleWindow");
+    expect(schedulingWindowLoaderSource).toContain("schedulingApi.listSlots");
     expect(combinedSource).not.toContain("formalRuntimeFallbacks");
     expect(combinedSource).not.toContain("entityStore");
     expect(combinedSource).not.toContain("scheduleStore");

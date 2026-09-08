@@ -34,6 +34,8 @@ import type {
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
 import type { UserExperienceService } from "./user-experience.service";
+import type { PlatformMembershipBenefitResolverPort } from "./platform-membership.service";
+import type { ExchangeCommittedNotification } from "../types/exchange-booking-conversion.types";
 
 const SOCIAL_ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -42,8 +44,10 @@ function isClientAuthoredContactCard(metadata: unknown): boolean {
     return false;
   }
   const record = metadata as Record<string, unknown>;
-  return record.needoMessageType === "contact-card" ||
-    (record.snapshotVersion === 2 && record.type === "contact-card");
+  return (
+    record.needoMessageType === "contact-card" ||
+    (record.snapshotVersion === 2 && record.type === "contact-card")
+  );
 }
 
 export interface OrderStatusNotificationInput {
@@ -58,8 +62,25 @@ export interface OrderStatusNotificationInput {
   recipientIdentities?: Array<{ userId: number; identityId: number }>;
 }
 
+export type OrderRealtimeChangeType =
+  | "status"
+  | "add_on"
+  | "checkout"
+  | "review"
+  | "timeline_comment";
+
+export interface OrderChangedRealtimeInput {
+  actorIdentityId?: number;
+  actorUserId: number;
+  changeType: OrderRealtimeChangeType;
+  orderId: number;
+  orderNo: string;
+  recipients: Array<{ identityId: number; userId: number }>;
+}
+
 export interface OrderStatusNotificationPort {
   notifyOrderStatusChanged: (input: OrderStatusNotificationInput) => Promise<void>;
+  notifyOrderChanged?: (input: OrderChangedRealtimeInput) => Promise<void>;
 }
 
 export class RealtimeService implements OrderStatusNotificationPort {
@@ -70,7 +91,8 @@ export class RealtimeService implements OrderStatusNotificationPort {
       resolve: (actor: PersonalIdentityActor) => Promise<PersonalIdentityScope>;
     },
     private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly membershipBenefitResolver?: PlatformMembershipBenefitResolverPort
   ) {}
 
   public async createConversation(
@@ -187,9 +209,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
     const { result } = outcome;
 
-    const eventRecipients = recipients.length > 0
-      ? recipients
-      : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
+    const eventRecipients =
+      recipients.length > 0
+        ? recipients
+        : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
     for (const recipient of eventRecipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
@@ -204,10 +227,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return result;
   }
 
-  public async dissolveConversation(
-    auth: AuthenticatedAccessContext,
-    conversationId: number
-  ) {
+  public async dissolveConversation(auth: AuthenticatedAccessContext, conversationId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     const recipients = this.repository.listConversationRecipients
       ? await this.repository.listConversationRecipients(conversationId)
@@ -222,9 +242,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
       throw this.notFoundError("error.realtime.group_conversation_not_found");
     }
 
-    const eventRecipients = recipients.length > 0
-      ? recipients
-      : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
+    const eventRecipients =
+      recipients.length > 0
+        ? recipients
+        : result.recipientUserIds.map((userId) => ({ userId, identityId: userId }));
     for (const recipient of eventRecipients) {
       this.eventGateway.publish({
         id: this.createEventId(),
@@ -244,10 +265,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return this.repository.listConversations(scope.identityId, input);
   }
 
-  public async assertMessageSendAllowed(
-    auth: AuthenticatedAccessContext,
-    conversationId: number
-  ) {
+  public async assertMessageSendAllowed(auth: AuthenticatedAccessContext, conversationId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     const eligibility = await this.repository.checkMessageSendEligibility({
       conversationId,
@@ -305,6 +323,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
         message: "error.im.not_friends",
         statusCode: 403
       });
+    }
+    if (outcome.status === "media_invalid") {
+      throw this.validationError("error.im.media_invalid");
     }
     const { message } = outcome;
 
@@ -578,12 +599,22 @@ export class RealtimeService implements OrderStatusNotificationPort {
     input: { conversationId: number; messageId: number; mode: "standard" }
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
+    const occurredAt = this.now();
+    const mode =
+      (await this.membershipBenefitResolver?.hasEffectiveBenefitAt(
+        auth.userId,
+        "traceless_recall",
+        occurredAt
+      )) === true
+        ? "traceless"
+        : "standard";
     const outcome = await this.repository.recallMessage({
       conversationId: input.conversationId,
       messageId: input.messageId,
       senderUserId: auth.userId,
       senderIdentityId: scope.identityId,
-      now: new Date()
+      mode,
+      now: occurredAt
     });
 
     if (outcome.status === "not_found") {
@@ -607,7 +638,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     return {
-      action: "standard_recall" as const,
+      action:
+        outcome.message.recallMode === "traceless"
+          ? ("traceless_recall" as const)
+          : ("standard_recall" as const),
       conversationId: input.conversationId,
       messageId: input.messageId,
       message: outcome.message
@@ -674,10 +708,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return conversation;
   }
 
-  public async clearConversationMessages(
-    auth: AuthenticatedAccessContext,
-    conversationId: number
-  ) {
+  public async clearConversationMessages(auth: AuthenticatedAccessContext, conversationId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     const conversation = await this.repository.clearConversationMessages({
       conversationId,
@@ -712,9 +743,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
   public async getDirectoryProfile(auth: AuthenticatedAccessContext, targetUserId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const targetIdentityId = auth.userId === targetUserId
-      ? scope.identityId
-      : await this.requireCanonicalTargetIdentity(targetUserId);
+    const targetIdentityId =
+      auth.userId === targetUserId
+        ? scope.identityId
+        : await this.requireCanonicalTargetIdentity(targetUserId);
     const profile = await this.repository.getDirectoryProfile(
       auth.userId,
       scope.identityId,
@@ -991,13 +1023,40 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return result.post;
   }
 
+  public async setSocialPostPin(
+    auth: AuthenticatedAccessContext,
+    postId: number,
+    active: boolean,
+    context: AuthRequestContext
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const post = await this.repository.setSocialPostPin({
+      postId,
+      authorUserId: auth.userId,
+      authorIdentityId: scope.identityId,
+      active,
+      context
+    });
+    if (!post) {
+      throw this.notFoundError("error.realtime.social_post_not_found");
+    }
+
+    this.eventGateway.publish({
+      id: this.createEventId(),
+      type: "social.post.updated",
+      recipientUserId: auth.userId,
+      recipientIdentityId: scope.identityId,
+      payload: post,
+      createdAt: new Date().toISOString()
+    });
+    return post;
+  }
+
   public async listSocialPosts(auth: AuthenticatedAccessContext, input: SocialPostListInput) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     return this.repository.listSocialPosts(
       scope.identityId,
-      input.authorUserId === auth.userId
-        ? { ...input, authorIdentityId: scope.identityId }
-        : input,
+      input.authorUserId === auth.userId ? { ...input, authorIdentityId: scope.identityId } : input,
       auth.userId
     );
   }
@@ -1157,9 +1216,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
     now: Date = new Date()
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const targetIdentityId = targetUserId === auth.userId
-      ? scope.identityId
-      : await this.repository.findCanonicalIdentityIdForUser(targetUserId);
+    const targetIdentityId =
+      targetUserId === auth.userId
+        ? scope.identityId
+        : await this.repository.findCanonicalIdentityIdForUser(targetUserId);
     if (!targetIdentityId) {
       throw this.notFoundError("error.realtime.social_profile_not_found");
     }
@@ -1220,7 +1280,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
 
   public async markNotificationRead(auth: AuthenticatedAccessContext, notificationId: number) {
     const scope = await this.resolvePersonalIdentityScope(auth);
-    const notification = await this.repository.markNotificationRead(scope.identityId, notificationId);
+    const notification = await this.repository.markNotificationRead(
+      scope.identityId,
+      notificationId
+    );
 
     if (!notification) {
       throw this.notFoundError("error.realtime.notification_not_found");
@@ -1279,6 +1342,44 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
   }
 
+  public async publishCommittedNotifications(
+    notifications: ExchangeCommittedNotification[]
+  ): Promise<void> {
+    for (const notification of notifications) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "notification.created",
+        recipientUserId: notification.recipientUserId,
+        recipientIdentityId: notification.recipientIdentityId,
+        payload: notification,
+        createdAt: notification.createdAt.toISOString()
+      });
+    }
+  }
+
+  public async notifyOrderChanged(input: OrderChangedRealtimeInput): Promise<void> {
+    const recipients = new Map<number, { identityId: number; userId: number }>();
+    for (const recipient of input.recipients) {
+      if (recipient.identityId === input.actorIdentityId) continue;
+      recipients.set(recipient.identityId, recipient);
+    }
+
+    for (const recipient of recipients.values()) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "booking.order_changed",
+        recipientUserId: recipient.userId,
+        recipientIdentityId: recipient.identityId,
+        payload: {
+          orderId: input.orderId,
+          orderNo: input.orderNo,
+          changeType: input.changeType
+        },
+        createdAt: new Date().toISOString()
+      });
+    }
+  }
+
   private async assertActiveUsers(userIds: number[]): Promise<void> {
     const activeUserIds = await this.repository.findActiveUserIds(userIds);
     const missingUserIds = userIds.filter((userId) => !activeUserIds.includes(userId));
@@ -1321,14 +1422,16 @@ export class RealtimeService implements OrderStatusNotificationPort {
   ): Promise<void> {
     const recipients = this.repository.listConversationRecipients
       ? await this.repository.listConversationRecipients(conversationId)
-      : (await this.repository.getConversationForUser(
-          conversationId,
-          senderIdentityId,
-          senderUserId
-        ))?.participants.map((participant) => ({
+      : ((
+          await this.repository.getConversationForUser(
+            conversationId,
+            senderIdentityId,
+            senderUserId
+          )
+        )?.participants.map((participant) => ({
           userId: participant.userId,
           identityId: participant.userId
-        })) ?? [];
+        })) ?? []);
 
     for (const participant of recipients) {
       this.eventGateway.publish({

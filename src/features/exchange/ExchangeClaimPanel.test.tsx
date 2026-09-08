@@ -183,6 +183,61 @@ describe("ExchangeClaimPanel", () => {
     );
   });
 
+  it("submits a Quick claim from the same persisted shop, technician, service and time card", async () => {
+    vi.mocked(createExchangeClaim).mockResolvedValue(activeClaim);
+    const quickPost: ExchangePost = {
+      ...post,
+      title: "速配正式需求",
+      demand: { ...post.demand!, matchMode: "quick" }
+    };
+
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={quickPost} />));
+    await waitFor(() => expect(document.body.textContent).toContain("GINZA Calm Body Lab"));
+
+    expect(document.body.textContent).toContain("速配");
+    expect(document.body.textContent).not.toContain("SELECTIVE");
+    expect(document.body.textContent).toContain("山田 美咲");
+    expect(document.body.textContent).toContain("肩颈深层护理");
+
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-option-id="91"]')!.click());
+    await act(async () => {
+      changeInput(
+        document.body.querySelector<HTMLInputElement>('input[name="claimQuoteAmountJpy"]')!,
+        "15000"
+      );
+    });
+    await act(async () =>
+      document.body.querySelector<HTMLButtonElement>('[data-action="submit-claim"]')!.click()
+    );
+    await waitFor(() => expect(document.body.textContent).toContain("等待速配凑齐目标人数"));
+
+    expect(createExchangeClaim).toHaveBeenCalledWith(
+      "41",
+      { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
+      "exchange-claim-ui-0001"
+    );
+  });
+
+  it("shows a terminal matched Quick claim without a withdrawal action", async () => {
+    vi.mocked(getMyExchangeClaim).mockResolvedValue({
+      ...activeClaim,
+      status: "matched",
+      terminalAt: "2026-09-01T03:00:00.000Z"
+    });
+    const quickPost: ExchangePost = {
+      ...post,
+      demand: { ...post.demand!, matchMode: "quick" }
+    };
+
+    await act(async () => root.render(<ExchangeClaimPanel language="zh" post={quickPost} />));
+    await waitFor(() => expect(document.body.textContent).toContain("已匹配"));
+
+    expect(document.body.textContent).toContain("GINZA Calm Body Lab");
+    expect(document.body.textContent).toContain("山田 美咲 · NT00000012");
+    expect(document.body.textContent).toContain("肩颈深层护理");
+    expect(document.body.querySelector('[data-action="withdraw-claim"]')).toBeNull();
+  });
+
   it("rotates the create idempotency key when the normalized payload changes", async () => {
     vi.mocked(globalThis.crypto.randomUUID)
       .mockReturnValueOnce("00000000-0000-4000-8000-000000000001")

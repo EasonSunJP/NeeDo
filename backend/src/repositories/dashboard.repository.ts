@@ -4,6 +4,7 @@ import type {
   DashboardAggregateFacts,
   DashboardAggregateInput,
   DashboardFinanceFacts,
+  DashboardHeadlineSeriesPoint,
   DashboardMerchantFacts
 } from "../domain/dashboard";
 import { prisma } from "../prisma/client";
@@ -18,7 +19,8 @@ import {
 import {
   DashboardOperationsFinanceRepository,
   type DashboardOperationsFinanceReader,
-  type OperationsFinanceFacts
+  type OperationsFinanceFacts,
+  type TravelFareDetailRow
 } from "./dashboard-operations-finance.repository";
 import {
   DashboardCommissionRepository,
@@ -79,6 +81,21 @@ interface CityActivityScalarRow extends PeriodAggregateRow {
   pending_orders?: NumericValue;
 }
 
+interface HeadlineBucketRow {
+  bucketKey?: string;
+  bucket_key?: string;
+  availableScheduleSlots?: NumericValue;
+  available_schedule_slots?: NumericValue;
+  activeTechnicians?: NumericValue;
+  active_technicians?: NumericValue;
+  registeredTechnicians?: NumericValue;
+  registered_technicians?: NumericValue;
+  shopCount?: NumericValue;
+  shop_count?: NumericValue;
+  newCustomers?: NumericValue;
+  new_customers?: NumericValue;
+}
+
 interface ActivityScalarFacts {
   current: {
     availableScheduleSlots: number;
@@ -105,14 +122,19 @@ export class DashboardRepository {
   public constructor(
     private readonly client: PrismaClient = prisma,
     private readonly financeReader: DashboardFinanceReader = new DashboardFinanceRepository(client),
-    private readonly merchantReader: DashboardMerchantReader = new DashboardMerchantRepository(client),
-    private readonly operationsFinanceReader: DashboardOperationsFinanceReader =
-      new DashboardOperationsFinanceRepository(client),
-    private readonly commissionReader: DashboardCommissionReader =
-      new DashboardCommissionRepository(client),
+    private readonly merchantReader: DashboardMerchantReader = new DashboardMerchantRepository(
+      client
+    ),
+    private readonly operationsFinanceReader: DashboardOperationsFinanceReader = new DashboardOperationsFinanceRepository(
+      client
+    ),
+    private readonly commissionReader: DashboardCommissionReader = new DashboardCommissionRepository(
+      client
+    ),
     private readonly growthReader: DashboardGrowthReader = new DashboardGrowthRepository(client),
-    private readonly membershipReader: DashboardMembershipReader =
-      new DashboardMembershipRepository(client)
+    private readonly membershipReader: DashboardMembershipReader = new DashboardMembershipRepository(
+      client
+    )
   ) {}
 
   public async getDashboard(input: DashboardAggregateInput): Promise<DashboardAggregateFacts> {
@@ -135,6 +157,137 @@ export class DashboardRepository {
     };
   }
 
+  public async getHeadlineSeries3d(
+    input: DashboardAggregateInput
+  ): Promise<DashboardHeadlineSeriesPoint[]> {
+    if (input.window.buckets.length !== 3) {
+      throw new RangeError("Dashboard headline series requires exactly three buckets");
+    }
+    const shopId = input.scope.kind === "shop" ? input.scope.shopId : null;
+    const city = input.scope.kind === "platform" ? input.city : null;
+    const technicianScope = shopId
+      ? Prisma.sql`(direct_shop.id = ${shopId} OR affiliation_shop.id = ${shopId})`
+      : city
+        ? Prisma.sql`(
+            TRIM(profile.city) = ${city}
+            OR TRIM(direct_shop.city) = ${city}
+            OR TRIM(affiliation_shop.city) = ${city}
+          )`
+        : Prisma.sql`TRUE`;
+    const shopStockScope = shopId
+      ? Prisma.sql`shop.id = ${shopId}`
+      : city
+        ? Prisma.sql`TRIM(shop.city) = ${city}`
+        : Prisma.sql`TRUE`;
+    const customerScope = shopId
+      ? Prisma.sql`FALSE`
+      : city
+        ? Prisma.sql`TRIM(profile.city) = ${city}`
+        : Prisma.sql`TRUE`;
+    const slotScope = this.slotScope(shopId, city);
+    const bookingScope = this.bookingScope(shopId, city);
+    const rows = await this.client.$queryRaw<HeadlineBucketRow[]>(Prisma.sql`
+      /* dashboard_headline_series_3d */
+      WITH buckets AS (${this.bucketTable(input)}),
+      active_profiles AS (
+        SELECT bucket.bucket_key, slot.technician_profile_id AS profile_id
+        FROM buckets AS bucket
+        INNER JOIN schedule_slots AS slot
+          ON slot.starts_at < bucket.to_exclusive
+          AND slot.ends_at > bucket.from_inclusive
+          AND slot.deleted_at IS NULL
+          AND slot.technician_profile_id IS NOT NULL
+        INNER JOIN technician_profiles AS profile
+          ON profile.id = slot.technician_profile_id AND profile.deleted_at IS NULL
+        INNER JOIN shops AS shop ON shop.id = slot.shop_id
+        WHERE ${slotScope}
+        UNION
+        SELECT bucket.bucket_key, booking.technician_profile_id AS profile_id
+        FROM buckets AS bucket
+        INNER JOIN booking_orders AS booking
+          ON booking.starts_at >= bucket.from_inclusive
+          AND booking.starts_at < bucket.to_exclusive
+          AND booking.deleted_at IS NULL
+          AND booking.status <> ${"cancelled"}
+          AND booking.technician_profile_id IS NOT NULL
+        INNER JOIN technician_profiles AS profile
+          ON profile.id = booking.technician_profile_id AND profile.deleted_at IS NULL
+        INNER JOIN shops AS shop ON shop.id = booking.shop_id
+        WHERE ${bookingScope}
+      )
+      SELECT bucket.bucket_key AS bucketKey,
+        (SELECT COUNT(slot.id)
+         FROM schedule_slots AS slot
+         INNER JOIN shops AS shop ON shop.id = slot.shop_id
+         WHERE slot.deleted_at IS NULL AND slot.status = ${"available"}
+           AND slot.starts_at < bucket.to_exclusive
+           AND slot.ends_at > bucket.from_inclusive
+           AND ${slotScope}) AS availableScheduleSlots,
+        (SELECT COUNT(DISTINCT active.profile_id)
+         FROM active_profiles AS active
+         WHERE active.bucket_key = bucket.bucket_key) AS activeTechnicians,
+        (SELECT COUNT(DISTINCT profile.id)
+         FROM technician_profiles AS profile
+         LEFT JOIN shops AS direct_shop
+           ON direct_shop.id = profile.shop_id AND direct_shop.deleted_at IS NULL
+         LEFT JOIN technician_shop_affiliations AS affiliation
+           ON affiliation.technician_profile_id = profile.id
+           AND affiliation.work_status = ${"active"}
+           AND affiliation.deleted_at IS NULL
+           AND affiliation.starts_at < bucket.to_exclusive
+           AND (affiliation.ends_at IS NULL OR affiliation.ends_at >= bucket.to_exclusive)
+         LEFT JOIN shops AS affiliation_shop
+           ON affiliation_shop.id = affiliation.shop_id AND affiliation_shop.deleted_at IS NULL
+         WHERE profile.deleted_at IS NULL
+           AND profile.created_at < bucket.to_exclusive
+           AND ${technicianScope}) AS registeredTechnicians,
+        (SELECT COUNT(shop.id)
+         FROM shops AS shop
+         WHERE shop.deleted_at IS NULL
+           AND shop.created_at < bucket.to_exclusive
+           AND ${shopStockScope}) AS shopCount,
+        (SELECT COUNT(profile.id)
+         FROM customer_profiles AS profile
+         WHERE profile.deleted_at IS NULL
+           AND profile.created_at >= bucket.from_inclusive
+           AND profile.created_at < bucket.to_exclusive
+           AND ${customerScope}) AS newCustomers
+      FROM buckets AS bucket
+    `);
+    const allowedKeys = new Set(input.window.buckets.map((bucket) => bucket.key));
+    const byKey = new Map<string, Omit<DashboardHeadlineSeriesPoint, "key" | "label">>();
+    for (const row of rows) {
+      const key = row.bucketKey ?? row.bucket_key ?? "";
+      if (!allowedKeys.has(key) || byKey.has(key)) {
+        throw new RangeError("Dashboard headline series returned invalid bucket evidence");
+      }
+      byKey.set(key, {
+        availableScheduleSlots: this.toHeadlineInteger(
+          row.availableScheduleSlots ?? row.available_schedule_slots
+        ),
+        activeTechnicians: this.toHeadlineInteger(
+          row.activeTechnicians ?? row.active_technicians
+        ),
+        registeredTechnicians: this.toHeadlineInteger(
+          row.registeredTechnicians ?? row.registered_technicians
+        ),
+        shopCount: this.toHeadlineInteger(row.shopCount ?? row.shop_count),
+        newCustomers: this.toHeadlineInteger(row.newCustomers ?? row.new_customers)
+      });
+    }
+    return input.window.buckets.map((bucket) => ({
+      key: bucket.key,
+      label: bucket.label,
+      ...(byKey.get(bucket.key) ?? {
+        availableScheduleSlots: 0,
+        activeTechnicians: 0,
+        registeredTechnicians: 0,
+        shopCount: 0,
+        newCustomers: 0
+      })
+    }));
+  }
+
   public async getFinanceFacts(input: DashboardAggregateInput): Promise<DashboardFinanceFacts> {
     return this.financeReader.getFinanceFacts(input);
   }
@@ -149,6 +302,12 @@ export class DashboardRepository {
     input: DashboardAggregateInput
   ): Promise<OperationsFinanceFacts> {
     return this.operationsFinanceReader.getOperationsFinance(input);
+  }
+
+  public async getTravelFareDetails(
+    input: DashboardAggregateInput
+  ): Promise<TravelFareDetailRow[]> {
+    return this.operationsFinanceReader.getTravelFareDetails?.(input) ?? [];
   }
 
   public async getCommissionFacts(input: DashboardAggregateInput): Promise<CommissionFacts> {
@@ -200,9 +359,7 @@ export class DashboardRepository {
       scheduleRows.map((row) => [
         bucketKey(row),
         {
-          available: this.toNumber(
-            row.scheduleAvailableHours ?? row.schedule_available_hours
-          ),
+          available: this.toNumber(row.scheduleAvailableHours ?? row.schedule_available_hours),
           booked: this.toNumber(row.scheduleBookedHours ?? row.schedule_booked_hours)
         }
       ])
@@ -288,18 +445,10 @@ export class DashboardRepository {
         where: this.scheduleWhere(shopId, window.fromInclusive, window.toExclusive)
       }),
       this.client.scheduleSlot.count({
-        where: this.scheduleWhere(
-          shopId,
-          window.previousFromInclusive,
-          window.previousToExclusive
-        )
+        where: this.scheduleWhere(shopId, window.previousFromInclusive, window.previousToExclusive)
       }),
       this.client.bookingOrder.aggregate({
-        where: this.completedGmvWhere(
-          shopId,
-          window.fromInclusive,
-          window.toExclusive
-        ),
+        where: this.completedGmvWhere(shopId, window.fromInclusive, window.toExclusive),
         _sum: { priceAmount: true }
       }),
       this.client.bookingOrder.aggregate({
@@ -318,10 +467,7 @@ export class DashboardRepository {
         : Promise.resolve(null),
       input.scope.kind === "platform"
         ? this.client.customerProfile.count({
-            where: this.customerWhere(
-              window.previousFromInclusive,
-              window.previousToExclusive
-            )
+            where: this.customerWhere(window.previousFromInclusive, window.previousToExclusive)
           })
         : Promise.resolve(null),
       input.scope.kind === "platform"
@@ -429,9 +575,7 @@ export class DashboardRepository {
         availableScheduleSlots: this.toNumber(
           previous?.availableScheduleSlots ?? previous?.available_schedule_slots
         ),
-        serviceGmvJpy: this.toNumber(
-          previous?.serviceGmvJpy ?? previous?.service_gmv_jpy
-        ),
+        serviceGmvJpy: this.toNumber(previous?.serviceGmvJpy ?? previous?.service_gmv_jpy),
         newCustomers: this.toNumber(previous?.newCustomers ?? previous?.new_customers),
         shopCount: this.toNumber(previous?.shopCount ?? previous?.shop_count)
       }
@@ -474,9 +618,10 @@ export class DashboardRepository {
     };
   }
 
-  private prismaRelatedShopScope(
-    shopId: number | null
-  ): { shopId?: number; shop: Prisma.ShopWhereInput } {
+  private prismaRelatedShopScope(shopId: number | null): {
+    shopId?: number;
+    shop: Prisma.ShopWhereInput;
+  } {
     return {
       ...(shopId ? { shopId } : {}),
       shop: {
@@ -485,10 +630,7 @@ export class DashboardRepository {
     };
   }
 
-  private customerWhere(
-    fromInclusive: Date,
-    toExclusive: Date
-  ): Prisma.CustomerProfileWhereInput {
+  private customerWhere(fromInclusive: Date, toExclusive: Date): Prisma.CustomerProfileWhereInput {
     return {
       deletedAt: null,
       createdAt: { gte: fromInclusive, lt: toExclusive }
@@ -533,9 +675,7 @@ export class DashboardRepository {
           key: bucket.key,
           cutoff: bucket.toExclusive
         }))
-      ].map(
-        (cutoff) => Prisma.sql`SELECT ${cutoff.key} AS period_key, ${cutoff.cutoff} AS cutoff`
-      ),
+      ].map((cutoff) => Prisma.sql`SELECT ${cutoff.key} AS period_key, ${cutoff.cutoff} AS cutoff`),
       " UNION ALL "
     );
   }
@@ -778,5 +918,13 @@ export class DashboardRepository {
   private toNumber(value: NumericValue): number {
     if (value === null || value === undefined) return 0;
     return Number(typeof value === "object" ? value.toString() : value);
+  }
+
+  private toHeadlineInteger(value: NumericValue): number {
+    const parsed = this.toNumber(value);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      throw new RangeError("Dashboard headline series returned invalid numeric evidence");
+    }
+    return parsed;
   }
 }

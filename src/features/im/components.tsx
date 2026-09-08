@@ -18,6 +18,7 @@ import { floatingHeaderControlButtonClassName } from "../../components/client-ui
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../components/ui/AvatarImage";
+import { MediaLoadFeedback, useMediaLoadState } from "../../components/ui/MediaLoadFeedback";
 import { Button } from "../../components/ui/Button";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { PinBadgeIcon } from "../../components/ui/PinBadgeIcon";
@@ -26,11 +27,13 @@ import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
+import { useVisualViewportFrame } from "../../lib/useVisualViewportFrame";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
 import { getJudgementReactionIconUrl, ImReactionValue } from "./JudgementReactionIcon";
 import { ImChatRecordCard } from "./ImChatRecordCard";
+import { resolveImNoStoreMediaSource } from "./media-source";
 import { ReactionCatalog } from "./ReactionCatalog";
 import {
   getRecentImReactionSnapshot,
@@ -604,7 +607,7 @@ function ImComposerRichInput({
       <div className="relative min-h-[24px]">
         <textarea
           aria-placeholder={placeholder}
-          className="block max-h-[132px] min-h-[24px] w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+          className="block max-h-[132px] min-h-[24px] w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[16px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
           data-im-composer-native-input="true"
           disabled
           placeholder={placeholder}
@@ -619,7 +622,7 @@ function ImComposerRichInput({
     <div className="relative min-h-[24px]">
       {!draft ? (
         <span
-          className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]"
+          className="pointer-events-none absolute inset-0 text-[16px] leading-6 text-[color:var(--client-muted)]"
           data-no-i18n="true"
         >
           {localizedPlaceholder}
@@ -629,7 +632,7 @@ function ImComposerRichInput({
         aria-disabled={disabled}
         aria-multiline="true"
         aria-placeholder={localizedPlaceholder}
-        className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+        className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[16px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
         contentEditable={!disabled}
         data-im-composer-rich-input="true"
         data-no-i18n="true"
@@ -807,9 +810,9 @@ export function ImChatComposer({
     });
   };
   const composerInputShellClass =
-    "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
+    "im-composer-editor-shell min-h-[40px] min-w-0 max-h-full flex-1 overflow-y-auto overscroll-contain rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
   const composerIconButtonClass = "im-composer-icon-button shrink-0 text-[color:var(--client-muted)]";
-  const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel p-4";
+  const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel";
   const composerActionButtonClass =
     "min-w-0 rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-1.5 py-3 text-center text-[color:var(--client-text)] transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface)_90%)] sm:px-3 sm:py-4";
   const composerActionIconClass =
@@ -818,7 +821,7 @@ export function ImChatComposer({
   return (
     <div
       className={cn(
-        "im-chat-composer-root relative z-10 max-w-full px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 [overflow-x:clip]",
+        "im-chat-composer-root safe-nav-bottom relative z-10 max-w-full px-3 pt-2 [overflow-x:clip]",
         disabled ? "cursor-not-allowed opacity-60" : ""
       )}
       data-im-composer-disabled={disabled ? "true" : undefined}
@@ -854,7 +857,7 @@ export function ImChatComposer({
               <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
             </button>
           )}
-          <div className={composerInputShellClass}>
+          <div className={composerInputShellClass} data-im-composer-editor-shell="true">
             {pendingImage ? (
               <div className="mb-2 w-fit max-w-full pr-1 pt-1" data-im-composer-pending-image="true">
                 <div className="relative w-fit max-w-full">
@@ -917,18 +920,20 @@ export function ImChatComposer({
 
         {panel === "emoji" ? (
           <div className={cn(composerPanelClass, "overscroll-contain")} data-im-composer-panel="emoji">
-            <ReactionCatalog
-              disabled={disabled}
-              expanded
-              onSelect={selectReactionValue}
-              recentValues={visibleRecentReactions}
-            />
+            <div className="im-composer-panel-content p-4">
+              <ReactionCatalog
+                disabled={disabled}
+                expanded
+                onSelect={selectReactionValue}
+                recentValues={visibleRecentReactions}
+              />
+            </div>
           </div>
         ) : null}
 
         {panel === "more" && actions.length > 0 ? (
           <div className={composerPanelClass} data-im-composer-panel="more">
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+            <div className="im-composer-panel-content grid grid-cols-4 gap-2 p-4 sm:gap-3">
               {actions.map((action) => (
                 <button className={composerActionButtonClass} disabled={disabled} key={action.key} onClick={action.run} type="button">
                   <span className={composerActionIconClass}>
@@ -954,6 +959,9 @@ export function ImStandaloneShell({
 }) {
   const { theme, isNight } = useClientTheme();
   const location = useLocation();
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  useVisualViewportFrame(shellRef);
 
   useEffect(() => {
     let frame = 0;
@@ -1015,6 +1023,7 @@ export function ImStandaloneShell({
       )}
       data-page-drag-ignore="true"
       data-scroll-drag-ignore="true"
+      ref={shellRef}
     >
       <div className="mx-auto min-h-[100dvh] w-full min-w-0 overflow-x-hidden [overflow-x:clip] bg-transparent" style={{ maxWidth: "min(880px, 100%)" }}>
         {children}
@@ -1763,6 +1772,7 @@ export function ImBottomSheet({
   children,
   panelClassName,
   bodyClassName,
+  presentation = "sheet",
   showCloseButton = false,
   closeLabel = "关闭"
 }: {
@@ -1770,6 +1780,7 @@ export function ImBottomSheet({
   title?: string;
   onClose: () => void;
   children: ReactNode;
+  presentation?: "sheet" | "composer";
   panelClassName?: string;
   bodyClassName?: string;
   showCloseButton?: boolean;
@@ -1783,7 +1794,9 @@ export function ImBottomSheet({
     <div className="fixed inset-0 z-50 bg-[color:var(--client-overlay)]" onClick={onClose}>
       <div
         className={cn(
-          "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
+          presentation === "composer"
+            ? "absolute inset-x-0 mx-auto client-liquid-glass-surface im-composer-glass im-composer-panel im-contact-card-panel p-4"
+            : "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
           panelClassName
         )}
         onClick={(event) => event.stopPropagation()}
@@ -2836,9 +2849,10 @@ function ImRichMessageText({
       {parts.map((part, index) =>
         part.type === "judgement" ? (
           <span
-            className="mx-0.5 inline-flex align-[-0.3em]"
+            className="mx-0.5 inline-flex select-none align-[-0.3em] [-webkit-touch-callout:none]"
             data-im-message-judgement={part.value}
             key={`judgement-${part.value}-${index}`}
+            onContextMenu={(event) => event.preventDefault()}
           >
             <ImReactionValue judgementDisplay="summary" value={part.value} />
           </span>
@@ -2991,6 +3005,11 @@ export function MessageBubble({
 }) {
   const i18n = useProvidedI18n();
   const postCardCopy = socialPostCardCopy[i18n?.language ?? "zh"];
+  const rawMediaSource = message.type === "image" || (message.type === "video" && !readOnly)
+    ? message.ext?.thumbnailUrl ?? message.ext?.url ?? message.content
+    : message.ext?.url ?? message.content;
+  const mediaSource = resolveImNoStoreMediaSource(rawMediaSource);
+  const mediaLoad = useMediaLoadState(`${message.id}:${mediaSource}`);
   const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const visibleTranslation = translation.visible
     && typeof translation.content === "string"
@@ -3042,12 +3061,28 @@ export function MessageBubble({
     }
 
     if (message.type === "image" || message.type === "video") {
+      const expired = message.ext?.mediaState === "expired";
       const image = message.type === "video" && readOnly
-        ? <video aria-label={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" controls data-no-i18n={protectAuthoredContent ? "true" : undefined} preload="metadata" src={message.ext?.url ?? message.content} />
-        : <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" data-no-i18n={protectAuthoredContent ? "true" : undefined} src={message.ext?.thumbnailUrl ?? message.content} />;
+        ? <video aria-label={previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" controls key={mediaLoad.key} onError={mediaLoad.onError} onLoadedMetadata={mediaLoad.onLoad} preload="metadata" src={mediaSource} />
+        : <img alt={previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" key={mediaLoad.key} onError={mediaLoad.onError} onLoad={mediaLoad.onLoad} src={mediaSource} />;
+      const openLocalCopy = !readOnly && onPreviewMedia ? (
+        <button
+          aria-label={translateText("查看本地副本", i18n?.language ?? "zh")}
+          className="w-[180px] rounded-full bg-black/10 px-3 py-2 text-xs font-bold"
+          onClick={(event) => {
+            event.stopPropagation();
+            onPreviewMedia(message);
+          }}
+          type="button"
+        >
+          {translateText("查看本地副本", i18n?.language ?? "zh")}
+        </button>
+      ) : null;
       return (
         <div className="space-y-2">
-          {readOnly ? <div className="relative overflow-hidden rounded-2xl">{image}</div> : <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
+          {expired ? <><MediaLoadFeedback className="w-[180px]" expired kind={message.type} />{openLocalCopy}</> : mediaLoad.failed ? (
+            <><button className="w-[180px] rounded-2xl bg-black/10" onClick={(event) => { event.stopPropagation(); mediaLoad.retry(); }} type="button"><MediaLoadFeedback kind={message.type} /></button>{openLocalCopy}</>
+          ) : readOnly ? <div className="relative overflow-hidden rounded-2xl">{image}</div> : <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
             {image}
             {message.type === "video" ? (
               <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
@@ -3075,12 +3110,15 @@ export function MessageBubble({
             <div className="h-0.5 flex-1 rounded-full bg-black/20" />
             <span className="text-sm">{message.ext?.duration ?? 0}"</span>
           </div>
-          <audio
+          {mediaLoad.failed ? <button className="block w-full max-w-[220px] rounded-2xl bg-black/10" onClick={(event) => { event.stopPropagation(); mediaLoad.retry(); }} type="button"><MediaLoadFeedback kind="voice" /></button> : <audio
             className="block h-10 w-full max-w-[220px]"
             controls
-            preload="none"
-            src={message.ext?.url ?? message.content}
-          />
+            key={mediaLoad.key}
+            onError={mediaLoad.onError}
+            onLoadedMetadata={mediaLoad.onLoad}
+            preload="metadata"
+            src={mediaSource}
+          />}
         </div>
       );
     }

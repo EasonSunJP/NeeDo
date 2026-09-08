@@ -9,6 +9,8 @@ export interface ResolvedUserGlobalPolicy {
   requireEmail: boolean;
   requireHomeServiceEkyc: boolean;
   requireStoreServiceEkyc: boolean;
+  requireMerchantApplicationEkyc: boolean;
+  requireTechnicianApplicationEkyc: boolean;
   ndpPerBaseExp: number;
   baseExpUnitsPerThreshold: number;
   effectiveFrom: Date;
@@ -23,6 +25,8 @@ export interface UserGlobalPolicyDraftInput {
   requireEmail: boolean;
   requireHomeServiceEkyc: boolean;
   requireStoreServiceEkyc: boolean;
+  requireMerchantApplicationEkyc: boolean;
+  requireTechnicianApplicationEkyc: boolean;
   ndpPerBaseExp: number;
   baseExpUnitsPerThreshold: number;
   effectiveFrom: Date;
@@ -48,6 +52,7 @@ export interface UserGlobalPolicyRepositoryPort {
     expectedVersion: number;
     expectedLockVersion: number;
     publishedAt: Date;
+    effectiveImmediately?: boolean;
     audit: AuditLogCreateInput;
   }) => Promise<UserGlobalPolicyMutationResult>;
 }

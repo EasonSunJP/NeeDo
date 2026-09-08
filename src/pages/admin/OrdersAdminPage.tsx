@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
   type BackofficeOrderDetailPayload,
@@ -33,6 +34,21 @@ const statusFilters: Array<{ label: string; value: StatusFilter }> = [
   { label: "已完成", value: "completed" },
   { label: "已取消", value: "cancelled" }
 ];
+const statusFilterValues = new Set<StatusFilter>(statusFilters.map(({ value }) => value));
+
+function readStatusFilter(searchParams: URLSearchParams): StatusFilter {
+  const status = searchParams.get("status");
+  return status && statusFilterValues.has(status as StatusFilter)
+    ? (status as StatusFilter)
+    : "all";
+}
+
+function readOrderId(searchParams: URLSearchParams) {
+  const value = searchParams.get("orderId");
+  if (!value || !/^\d+$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
 
 function describeOperationsOrderError(error: unknown) {
   if (error instanceof ApiClientError) {
@@ -83,7 +99,12 @@ function performanceActionLabel(action: PerformanceAction) {
   return "设为特殊取消并排除计算";
 }
 
-function performanceEventCopy(type: BackofficeOrderTimelineEvent["type"]) {
+function performanceEventCopy(
+  type: Exclude<
+    BackofficeOrderTimelineEvent["type"],
+    "ADD_ON_PROPOSED" | "ADD_ON_ACCEPTED" | "ADD_ON_REJECTED"
+  >
+) {
   if (type === "ORDER_STATUS_CHANGED") return "订单状态";
   if (type === "TECHNICIAN_CANCEL_CLASSIFIED") return "技师原因取消";
   if (type === "TECHNICIAN_UNCOMPLETED_CLASSIFIED") return "技师未完单";
@@ -94,29 +115,52 @@ function performanceEventCopy(type: BackofficeOrderTimelineEvent["type"]) {
 function mapOperationsTimeline(
   events: BackofficeOrderTimelineEvent[]
 ): ContactEventTimelineEntry[] {
-  return events.map((event) => ({
-    actorName: event.actorUserId ? `#${event.actorUserId}` : "系统",
-    actorRole: performanceEventCopy(event.type),
-    atLabel: formatOrderDateTime(event.createdAt),
-    id: event.id,
-    message:
-      event.publicReason ??
-      (event.type === "ORDER_STATUS_CHANGED"
-        ? `${event.fromStatus ?? "created"} → ${event.toStatus}`
-        : "无公开原因"),
-    reason:
-      event.type === "ORDER_STATUS_CHANGED" || !event.internalNote
-        ? undefined
-        : event.internalNote,
-    reasonLabel:
-      event.type === "ORDER_STATUS_CHANGED" ? undefined : "内部备注（仅运营可见）",
-    title: performanceEventCopy(event.type),
-    tone:
-      event.type === "SPECIAL_CANCELLATION_APPLIED" ||
-      (event.type === "ORDER_STATUS_CHANGED" && event.toStatus !== "cancelled")
-        ? "green"
-        : "red"
-  }));
+  return events.map((event) => {
+    const actorName = event.actorUserId ? `#${event.actorUserId}` : "系统";
+    if ("addOnId" in event) {
+      const copy = event.type === "ADD_ON_PROPOSED"
+        ? { label: "提出加钟", tone: "accent" as const }
+        : event.type === "ADD_ON_ACCEPTED"
+          ? { label: "加钟已确认", tone: "green" as const }
+          : { label: "加钟已拒绝", tone: "red" as const };
+      const addOnSummary = `${event.serviceName} · +${event.durationMinutes}分钟 · ${yen(event.priceAmountJpy)}`;
+      return {
+        actorName,
+        actorRole: copy.label,
+        atLabel: formatOrderDateTime(event.createdAt),
+        id: event.id,
+        message: event.publicReason
+          ? `${addOnSummary} · ${event.publicReason}`
+          : addOnSummary,
+        title: copy.label,
+        tone: copy.tone
+      };
+    }
+
+    if (event.type === "ORDER_STATUS_CHANGED") {
+      return {
+        actorName,
+        actorRole: performanceEventCopy(event.type),
+        atLabel: formatOrderDateTime(event.createdAt),
+        id: event.id,
+        message: event.publicReason ?? `${event.fromStatus ?? "created"} → ${event.toStatus}`,
+        title: performanceEventCopy(event.type),
+        tone: event.toStatus === "cancelled" ? "red" as const : "green" as const
+      };
+    }
+
+    return {
+      actorName,
+      actorRole: performanceEventCopy(event.type),
+      atLabel: formatOrderDateTime(event.createdAt),
+      id: event.id,
+      message: event.publicReason ?? "无公开原因",
+      reason: event.internalNote ?? undefined,
+      reasonLabel: "内部备注（仅运营可见）",
+      title: performanceEventCopy(event.type),
+      tone: event.type === "SPECIAL_CANCELLATION_APPLIED" ? "green" as const : "red" as const
+    };
+  });
 }
 
 function createPerformanceIdempotencyKey() {
@@ -124,8 +168,9 @@ function createPerformanceIdempotencyKey() {
 }
 
 export function OrdersAdminPage() {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => readStatusFilter(searchParams));
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(() => readOrderId(searchParams));
   const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderDetailPayload | null>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [detailRevision, setDetailRevision] = useState(0);
@@ -146,6 +191,13 @@ export function OrdersAdminPage() {
   const [performanceInternalNote, setPerformanceInternalNote] = useState("");
   const [performanceConflictReviewRequired, setPerformanceConflictReviewRequired] = useState(false);
   const performanceIntentRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+
+  const writeRouteState = (status: StatusFilter, orderId: number | null) => {
+    const next = new URLSearchParams();
+    if (status !== "all") next.set("status", status);
+    if (orderId !== null) next.set("orderId", String(orderId));
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     let current = true;
@@ -206,6 +258,7 @@ export function OrdersAdminPage() {
     setPerformanceInternalNote("");
     setPerformanceConflictReviewRequired(false);
     performanceIntentRef.current = null;
+    writeRouteState(statusFilter, order.id);
   };
   const closeOrder = () => {
     if (mutationStatus === "saving") return;
@@ -214,6 +267,7 @@ export function OrdersAdminPage() {
     setDetailStatus("idle");
     setMutationError("");
     setConfirmIntent(null);
+    writeRouteState(statusFilter, null);
   };
   const finishMutation = () => {
     setSelectedOrderId(null);
@@ -221,6 +275,7 @@ export function OrdersAdminPage() {
     setConfirmIntent(null);
     setMutationError("");
     setRevision((value) => value + 1);
+    writeRouteState(statusFilter, null);
   };
 
   const runTransition = async (action: "confirm" | "start" | "complete" | "cancel") => {
@@ -369,7 +424,12 @@ export function OrdersAdminPage() {
   const changeFilter = (value: StatusFilter) => {
     setStatusFilter(value);
     setPage(1);
-    closeOrder();
+    setSelectedOrderId(null);
+    setSelectedOrder(null);
+    setDetailStatus("idle");
+    setMutationError("");
+    setConfirmIntent(null);
+    writeRouteState(value, null);
   };
 
   return (

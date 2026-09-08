@@ -13,10 +13,7 @@ const actor = {
   accessTokenJti: "ndp-rate-test-jti",
   accessTokenExpiresAt: 2_000_000_000,
   roles: ["operator"],
-  permissions: [
-    "backoffice:ndp-exchange-rate:read",
-    "backoffice:ndp-exchange-rate:write"
-  ],
+  permissions: ["backoffice:ndp-exchange-rate:read", "backoffice:ndp-exchange-rate:write"],
   currentIdentityType: "operator",
   currentIdentityScopeType: "global",
   currentIdentityScopeId: null
@@ -115,8 +112,9 @@ const createHarness = (options: { noInitial?: boolean; auditFailure?: Error } = 
     $queryRaw: jest.fn(async () => (latest() ? [{ id: latest()!.id }] : [])),
     ndpExchangeRateRule: {
       findFirst,
-      findUnique: jest.fn(async ({ where }: { where: { idempotencyKey: string } }) =>
-        rows.find((row) => row.idempotencyKey === where.idempotencyKey) ?? null
+      findUnique: jest.fn(
+        async ({ where }: { where: { idempotencyKey: string } }) =>
+          rows.find((row) => row.idempotencyKey === where.idempotencyKey) ?? null
       ),
       updateMany: jest.fn(async ({ where, data }: UpdateManyArgs) => {
         const row = rows.find(
@@ -265,7 +263,9 @@ describe("NdpExchangeRateService and repository state", () => {
     ]
   ])("rejects stale or invalid chronology without writes", async (overrides, code) => {
     const harness = createHarness();
-    await expect(harness.service.publish(actor, publishInput(overrides), context)).rejects.toMatchObject({
+    await expect(
+      harness.service.publish(actor, publishInput(overrides), context)
+    ).rejects.toMatchObject({
       code,
       statusCode: 409
     });
@@ -304,11 +304,7 @@ describe("NdpExchangeRateService and repository state", () => {
     "rejects a database-collation idempotency collision for byte-distinct keys",
     async (storedKey, collidingKey) => {
       const harness = createHarness();
-      await harness.service.publish(
-        actor,
-        publishInput({ idempotencyKey: storedKey }),
-        context
-      );
+      await harness.service.publish(actor, publishInput({ idempotencyKey: storedKey }), context);
       harness.tx.ndpExchangeRateRule.findUnique.mockImplementation(
         async ({ where }: { where: { idempotencyKey: string } }) =>
           harness.rows.find(
@@ -319,11 +315,7 @@ describe("NdpExchangeRateService and repository state", () => {
       );
 
       await expect(
-        harness.service.publish(
-          actor,
-          publishInput({ idempotencyKey: collidingKey }),
-          context
-        )
+        harness.service.publish(actor, publishInput({ idempotencyKey: collidingKey }), context)
       ).rejects.toMatchObject({
         code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
         statusCode: 409
@@ -355,7 +347,9 @@ describe("NdpExchangeRateService and repository state", () => {
   it("rolls back both version writes when the in-transaction audit fails", async () => {
     const auditFailure = new Error("audit unavailable");
     const harness = createHarness({ auditFailure });
-    await expect(harness.service.publish(actor, publishInput(), context)).rejects.toBe(auditFailure);
+    await expect(harness.service.publish(actor, publishInput(), context)).rejects.toBe(
+      auditFailure
+    );
     expect(harness.rows).toMatchObject([
       { version: 1, status: "ACTIVE", effectiveTo: null, activeKey: "ndp_exchange_rate" }
     ]);

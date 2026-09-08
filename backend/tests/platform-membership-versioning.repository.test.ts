@@ -12,6 +12,8 @@ const now = new Date("2026-09-01T12:00:00.000Z");
 const theme = {
   detailAccentColor: "#F4C967",
   detailSurfaceColor: "#302818",
+  detailSurfaceMiddleColor: "#253026",
+  detailSurfaceBottomColor: "#17243A",
   detailItemSurfaceColor: "#201A10",
   detailOuterBorderColor: "#A98645",
   detailItemBorderColor: "#66552F",
@@ -26,7 +28,8 @@ const benefitCodes = [
   PlatformMembershipBenefitCode.SUPPORT_SERVICE,
   PlatformMembershipBenefitCode.EXCLUSIVE_DISCOUNT,
   PlatformMembershipBenefitCode.MEMBER_DAY,
-  PlatformMembershipBenefitCode.BIRTHDAY_GIFT
+  PlatformMembershipBenefitCode.BIRTHDAY_GIFT,
+  PlatformMembershipBenefitCode.TRACELESS_RECALL
 ];
 const publicBenefitCodes = [
   "ndp_experience",
@@ -35,7 +38,8 @@ const publicBenefitCodes = [
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ] as const;
 const draft: PlatformMembershipTierDraftPersistenceInput = {
   expectedVersion: 1,
@@ -50,9 +54,7 @@ const draft: PlatformMembershipTierDraftPersistenceInput = {
     code,
     isEnabled: code === "ndp_experience" || code === "member_sign_in",
     configuration:
-      code === "ndp_experience"
-        ? { extraThresholdNdp: null, extraAwardExpUnits: null }
-        : {}
+      code === "ndp_experience" ? { extraThresholdNdp: null, extraAwardExpUnits: null } : {}
   }))
 };
 
@@ -84,7 +86,7 @@ const administrationRecord = (status: PlatformMembershipVersionStatus) => ({
 });
 
 describe("PlatformMembershipRepository tier versioning", () => {
-  it("creates a new draft version with all seven benefits and audit in one transaction", async () => {
+  it("creates a new draft version with all eight benefits and audit in one transaction", async () => {
     const tierVersionCreate = jest.fn(async () => ({ id: 22, version: 2 }));
     const tierBenefitCreate = jest.fn(async () => ({}));
     const auditCreate = jest.fn(async () => ({}));
@@ -112,29 +114,35 @@ describe("PlatformMembershipRepository tier versioning", () => {
       auditLog: { create: auditCreate }
     };
     const client = {
-      $transaction: jest.fn(async (callback: (value: typeof transaction) => unknown) => callback(transaction)),
+      $transaction: jest.fn(async (callback: (value: typeof transaction) => unknown) =>
+        callback(transaction)
+      ),
       platformMembershipTierVersion: {
         findFirst: jest.fn(async () => administrationRecord(PlatformMembershipVersionStatus.DRAFT))
       }
     };
     const repository = new PlatformMembershipRepository(client as never, () => now);
 
-    await expect(repository.saveTierDraftWithAudit({
-      actorId: 9,
-      tierCode: "gold",
-      draft,
-      audit: { actorId: 9, action: "save", targetType: "tier" }
-    })).resolves.toMatchObject({ kind: "saved", value: { version: 2, status: "draft" } });
-    expect(tierVersionCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        tierId: 3,
-        version: 2,
-        status: PlatformMembershipVersionStatus.DRAFT,
-        monthlyValueNdp: 1_999,
-        experienceMultiplier: 5
+    await expect(
+      repository.saveTierDraftWithAudit({
+        actorId: 9,
+        tierCode: "gold",
+        draft,
+        audit: { actorId: 9, action: "save", targetType: "tier" }
       })
-    }));
-    expect(tierBenefitCreate).toHaveBeenCalledTimes(7);
+    ).resolves.toMatchObject({ kind: "saved", value: { version: 2, status: "draft" } });
+    expect(tierVersionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tierId: 3,
+          version: 2,
+          status: PlatformMembershipVersionStatus.DRAFT,
+          monthlyValueNdp: 1_999,
+          experienceMultiplier: 5
+        })
+      })
+    );
+    expect(tierBenefitCreate).toHaveBeenCalledTimes(8);
     expect(auditCreate).toHaveBeenCalledTimes(1);
   });
 
@@ -160,33 +168,45 @@ describe("PlatformMembershipRepository tier versioning", () => {
       auditLog: { create: auditCreate }
     };
     const client = {
-      $transaction: jest.fn(async (callback: (value: typeof transaction) => unknown) => callback(transaction)),
+      $transaction: jest.fn(async (callback: (value: typeof transaction) => unknown) =>
+        callback(transaction)
+      ),
       platformMembershipTierVersion: {
-        findFirst: jest.fn(async () => administrationRecord(PlatformMembershipVersionStatus.PUBLISHED))
+        findFirst: jest.fn(async () =>
+          administrationRecord(PlatformMembershipVersionStatus.PUBLISHED)
+        )
       }
     };
     const repository = new PlatformMembershipRepository(client as never, () => now);
 
-    await expect(repository.publishTierDraftWithAudit({
-      actorId: 9,
-      tierCode: "gold",
-      expectedVersion: 2,
-      expectedLockVersion: 1,
-      audit: { actorId: 9, action: "publish", targetType: "tier_version" }
-    })).resolves.toMatchObject({ kind: "published", value: { status: "published" } });
-    expect(tierVersionUpdateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      data: expect.objectContaining({
-        status: PlatformMembershipVersionStatus.PUBLISHED,
-        publishedAt: now,
-        publishedById: 9
+    await expect(
+      repository.publishTierDraftWithAudit({
+        actorId: 9,
+        tierCode: "gold",
+        expectedVersion: 2,
+        expectedLockVersion: 1,
+        audit: { actorId: 9, action: "publish", targetType: "tier_version" }
       })
-    }));
-    expect(tierVersionUpdateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      data: expect.objectContaining({
-        status: PlatformMembershipVersionStatus.ARCHIVED,
-        effectiveTo: now
+    ).resolves.toMatchObject({ kind: "published", value: { status: "published" } });
+    expect(tierVersionUpdateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: PlatformMembershipVersionStatus.PUBLISHED,
+          publishedAt: now,
+          publishedById: 9
+        })
       })
-    }));
+    );
+    expect(tierVersionUpdateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: PlatformMembershipVersionStatus.ARCHIVED,
+          effectiveTo: now
+        })
+      })
+    );
     expect(auditCreate).toHaveBeenCalledTimes(1);
   });
 
@@ -209,17 +229,21 @@ describe("PlatformMembershipRepository tier versioning", () => {
       auditLog: { create: auditCreate }
     };
     const client = {
-      $transaction: jest.fn(async (callback: (value: typeof transaction) => unknown) => callback(transaction))
+      $transaction: jest.fn(async (callback: (value: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
     };
     const repository = new PlatformMembershipRepository(client as never, () => now);
 
-    await expect(repository.publishTierDraftWithAudit({
-      actorId: 9,
-      tierCode: "gold",
-      expectedVersion: 2,
-      expectedLockVersion: 1,
-      audit: { actorId: 9, action: "publish", targetType: "tier_version" }
-    })).resolves.toEqual({ kind: "version_conflict" });
+    await expect(
+      repository.publishTierDraftWithAudit({
+        actorId: 9,
+        tierCode: "gold",
+        expectedVersion: 2,
+        expectedLockVersion: 1,
+        audit: { actorId: 9, action: "publish", targetType: "tier_version" }
+      })
+    ).resolves.toEqual({ kind: "version_conflict" });
     expect(tierVersionUpdateMany).toHaveBeenCalledTimes(1);
     expect(auditCreate).not.toHaveBeenCalled();
   });
@@ -232,11 +256,13 @@ describe("PlatformMembershipRepository tier versioning", () => {
     };
     const repository = new PlatformMembershipRepository(client as never, () => now);
 
-    await expect(repository.saveTierDraftWithAudit({
-      actorId: 9,
-      tierCode: "gold",
-      draft,
-      audit: { actorId: 9, action: "save", targetType: "tier" }
-    })).resolves.toEqual({ kind: "version_conflict" });
+    await expect(
+      repository.saveTierDraftWithAudit({
+        actorId: 9,
+        tierCode: "gold",
+        draft,
+        audit: { actorId: 9, action: "save", targetType: "tier" }
+      })
+    ).resolves.toEqual({ kind: "version_conflict" });
   });
 });

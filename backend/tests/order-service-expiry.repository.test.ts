@@ -247,9 +247,9 @@ describe("OrderServiceExpiryRepository", () => {
   it("atomically ends a due session and creates one immutable checkout evidence chain", async () => {
     const h = createHarness();
 
-    await expect(h.repository().moveDueSessionsToCheckout({ now, batchSize: 100 })).resolves.toBe(
-      1
-    );
+    await expect(
+      h.repository().moveDueSessionsToCheckout({ now, batchSize: 100 })
+    ).resolves.toEqual([41]);
 
     expect(h.client.orderServiceSession.findMany).toHaveBeenCalledWith({
       where: {
@@ -339,7 +339,9 @@ describe("OrderServiceExpiryRepository", () => {
     });
     const h = createHarness({ orders: [future, completed, deleted, ended, unresolved] });
 
-    await expect(h.repository().moveDueSessionsToCheckout({ now, batchSize: 5 })).resolves.toBe(0);
+    await expect(h.repository().moveDueSessionsToCheckout({ now, batchSize: 5 })).resolves.toEqual(
+      []
+    );
     expect(h.histories).toHaveLength(0);
     expect(h.events).toHaveLength(0);
     expect(h.checkouts.size).toBe(0);
@@ -359,7 +361,7 @@ describe("OrderServiceExpiryRepository", () => {
 
     await expect(
       h.repository(reportFailure).moveDueSessionsToCheckout({ now, batchSize: 100 })
-    ).resolves.toBe(0);
+    ).resolves.toEqual([]);
     expect(h.orders[0].status).toBe("IN_SERVICE");
     expect(h.orders[0].serviceSession.endedAt).toBeNull();
     expect(h.histories).toHaveLength(0);
@@ -380,7 +382,7 @@ describe("OrderServiceExpiryRepository", () => {
 
     await expect(
       h.repository(reportFailure).moveDueSessionsToCheckout({ now, batchSize: 100 })
-    ).resolves.toBe(1);
+    ).resolves.toEqual([42]);
     expect(first.status).toBe("IN_SERVICE");
     expect(first.serviceSession.endedAt).toBeNull();
     expect(second.status).toBe("AWAITING_CHECKOUT");
@@ -403,12 +405,12 @@ describe("OrderServiceExpiryRepository", () => {
       second.moveDueSessionsToCheckout({ now, batchSize: 100 })
     ]);
 
-    expect(results[0] + results[1]).toBe(1);
+    expect(results.flat()).toEqual([41]);
     expect(h.histories).toHaveLength(1);
     expect(h.events.filter((event) => event.eventType === "SERVICE_ENDED")).toHaveLength(1);
     expect(h.events.filter((event) => event.eventType === "CHECKOUT_CREATED")).toHaveLength(1);
     expect(h.checkouts.size).toBe(1);
-    await expect(first.moveDueSessionsToCheckout({ now, batchSize: 100 })).resolves.toBe(0);
+    await expect(first.moveDueSessionsToCheckout({ now, batchSize: 100 })).resolves.toEqual([]);
   });
 
   it("fails closed on a pre-existing partial checkout without repairing it", async () => {
@@ -417,7 +419,7 @@ describe("OrderServiceExpiryRepository", () => {
 
     await expect(
       h.repository(reportFailure).moveDueSessionsToCheckout({ now, batchSize: 100 })
-    ).resolves.toBe(0);
+    ).resolves.toEqual([]);
     expect(h.orders[0].status).toBe("IN_SERVICE");
     expect(h.events).toHaveLength(0);
     expect(h.histories).toHaveLength(0);
@@ -440,7 +442,7 @@ describe("OrderServiceExpiryRepository", () => {
 
     await expect(
       h.repository(reportFailure).moveDueSessionsToCheckout({ now, batchSize: 100 })
-    ).resolves.toBe(0);
+    ).resolves.toEqual([]);
     expect(h.orders[0].status).toBe("IN_SERVICE");
     expect(h.orders[0].serviceSession.endedAt).toBeNull();
     expect(h.orders[0].serviceSession.endedByUserId).toBeNull();
@@ -464,7 +466,7 @@ describe("OrderServiceExpiryRepository", () => {
 
     await expect(
       h.repository(reportFailure).moveDueSessionsToCheckout({ now, batchSize: 100 })
-    ).resolves.toBe(0);
+    ).resolves.toEqual([]);
     expect(inconsistentOrder.status).toBe("IN_SERVICE");
     expect(inconsistentOrder.serviceSession.endedAt).toBeNull();
     expect(inconsistentOrder.serviceSession.endedByUserId).toBe(27);
@@ -478,4 +480,15 @@ describe("OrderServiceExpiryRepository", () => {
     expect(h.tx.orderCheckout.create).not.toHaveBeenCalled();
     expect(reportFailure).toHaveBeenCalledTimes(1);
   });
+});
+
+it('publishes work-status only after automatic expiry commits and skips rolled-back candidates',async()=>{
+ const h=createHarness({orders:[makeOrder(41)]});
+ const committed=jest.fn(async()=>{expect(h.orders[0]!.status).toBe('AWAITING_CHECKOUT');expect(h.checkouts.size).toBe(1)});
+ const repository=new OrderServiceExpiryRepository(h.client,undefined,committed);
+ expect(await repository.moveDueSessionsToCheckout({now,batchSize:100})).toEqual([41]);
+ expect(committed).toHaveBeenCalledWith(41);
+ const failed=createHarness({orders:[makeOrder(42)],failCheckoutForOrderId:42});
+ await new OrderServiceExpiryRepository(failed.client,undefined,committed).moveDueSessionsToCheckout({now,batchSize:100});
+ expect(committed).toHaveBeenCalledTimes(1);
 });

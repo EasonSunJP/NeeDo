@@ -13,6 +13,19 @@ export interface ExchangeSimulationActor {
   publicId: string;
   displayName: string;
   avatarUrl: string | null;
+  intelligenceService?: ExchangeSimulationServiceBinding;
+}
+
+export interface ExchangeSimulationServiceBinding {
+  serviceRef: `shop:${number}` | `technician:${number}`;
+  serviceId: number | null;
+  technicianServiceId: number | null;
+  serviceName: string;
+  serviceDurationMinutes: number;
+  catalogPriceJpy: number;
+  serviceMode: ExchangeServiceMode;
+  addressLabel: string | null;
+  serviceAreas: string[];
 }
 
 export interface ExchangeSimulationInteraction {
@@ -46,6 +59,11 @@ export interface ExchangeSimulationPost {
   createdAt: string;
   demand: { budgetMinJpy: number; budgetMaxJpy: number } | null;
   intelligence: {
+    serviceRef: ExchangeSimulationServiceBinding["serviceRef"];
+    serviceId: number | null;
+    technicianServiceId: number | null;
+    serviceName: string;
+    serviceDurationMinutes: number;
     serviceMode: ExchangeServiceMode;
     addressLabel: string | null;
     serviceAreas: string[];
@@ -73,8 +91,6 @@ interface LocalizedContent {
 
 const LOCALES: readonly ContentLocaleCode[] = ["ja", "zh-CN", "zh-TW", "en", "ko"];
 const AREAS = ["渋谷区", "新宿区", "港区", "目黒区", "世田谷区"] as const;
-const SERVICE_MODES: readonly ExchangeServiceMode[] = ["store", "onsite", "flexible"];
-
 const LOCALIZED_CONTENT: Record<ContentLocaleCode, LocalizedContent> = {
   ja: {
     demandTitle: "イベント前のヘアセットをお願いしたい",
@@ -170,12 +186,10 @@ const assertActorCapacity = (actors: readonly ExchangeSimulationActor[]): void =
   if (!actors.some((actor) => actor.identityType === "customer")) {
     throw new Error("Exchange simulation requires at least one customer demand publisher.");
   }
-  if (
-    !actors.some((actor) =>
-      ["technician", "merchant", "merchant_owner", "merchant_staff"].includes(actor.identityType)
-    )
-  ) {
-    throw new Error("Exchange simulation requires at least one intelligence publisher.");
+  if (!actors.some((actor) => actor.intelligenceService)) {
+    throw new Error(
+      "Exchange simulation requires at least one formal intelligence publisher service."
+    );
   }
 };
 
@@ -184,19 +198,23 @@ const interactionTime = (createdAt: Date, sequence: number, next: () => number):
 
 export const buildExchangeSimulationPlan = (
   inputActors: readonly ExchangeSimulationActor[],
-  seed = EXCHANGE_SIMULATION_DEFAULT_SEED
+  seed = EXCHANGE_SIMULATION_DEFAULT_SEED,
+  referenceTime = new Date()
 ): ExchangeSimulationPlan => {
   const actors = [...inputActors].sort(
     (left, right) => left.userId - right.userId || left.identityId - right.identityId
   );
   assertActorCapacity(actors);
   const customers = actors.filter((actor) => actor.identityType === "customer");
-  const intelligencePublishers = actors.filter((actor) =>
-    ["technician", "merchant", "merchant_owner", "merchant_staff"].includes(actor.identityType)
-  );
+  const intelligencePublishers = actors.filter((actor) => actor.intelligenceService);
   const next = createSeededGenerator(seed);
-  const publishedBase = new Date("2026-08-29T00:00:00.000Z");
-  const serviceBase = new Date("2026-09-02T01:00:00.000Z");
+  const referenceDay = Date.UTC(
+    referenceTime.getUTCFullYear(),
+    referenceTime.getUTCMonth(),
+    referenceTime.getUTCDate()
+  );
+  const publishedBase = new Date(referenceDay - 24 * 60 * 60_000);
+  const serviceBase = new Date(referenceDay + 25 * 60 * 60_000);
   const totalPosts =
     EXCHANGE_SIMULATION_COUNTS.demandPosts + EXCHANGE_SIMULATION_COUNTS.intelligencePosts;
 
@@ -238,7 +256,7 @@ export const buildExchangeSimulationPlan = (
     const commentActors = sampleUnique(interactionActors, commentCount, next);
     const likeActors = sampleUnique(interactionActors, likeCount, next);
     const shareActors = sampleUnique(interactionActors, shareCount, next);
-    const originalPriceJpy = 9_000 + (typeIndex % 5) * 1_000;
+    const intelligenceService = author.intelligenceService;
 
     return {
       key,
@@ -263,17 +281,16 @@ export const buildExchangeSimulationPlan = (
       intelligence:
         type === "intelligence"
           ? {
-              serviceMode: SERVICE_MODES[typeIndex % SERVICE_MODES.length]!,
-              addressLabel:
-                SERVICE_MODES[typeIndex % SERVICE_MODES.length] === "onsite"
-                  ? null
-                  : `${AREAS[typeIndex % AREAS.length]} テスト店舗`,
-              serviceAreas: [
-                AREAS[typeIndex % AREAS.length]!,
-                AREAS[(typeIndex + 1) % AREAS.length]!
-              ],
-              originalPriceJpy,
-              campaignPriceJpy: originalPriceJpy - 2_000
+              serviceRef: intelligenceService!.serviceRef,
+              serviceId: intelligenceService!.serviceId,
+              technicianServiceId: intelligenceService!.technicianServiceId,
+              serviceName: intelligenceService!.serviceName,
+              serviceDurationMinutes: intelligenceService!.serviceDurationMinutes,
+              serviceMode: intelligenceService!.serviceMode,
+              addressLabel: intelligenceService!.addressLabel,
+              serviceAreas: intelligenceService!.serviceAreas,
+              originalPriceJpy: intelligenceService!.catalogPriceJpy,
+              campaignPriceJpy: Math.max(1, intelligenceService!.catalogPriceJpy - 2_000)
             }
           : null,
       comments: commentActors.map((commentActor, commentIndex) => ({

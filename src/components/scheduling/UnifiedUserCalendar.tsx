@@ -8,20 +8,24 @@ import { HolidayCornerBadge } from "./HolidayCornerBadge";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "./ScheduleDraftRangeBlock";
 import { AvatarImage } from "../ui/AvatarImage";
 import { ConversationListItem } from "../ui/ConversationListItem";
-import { bookingApi, mapBookingOrderToDomainOrder, type BookingScheduleSlot } from "../../features/booking/api";
+import { bookingApi, mapBookingOrderToDomainOrder, type BookingOrder, type BookingScheduleSlot } from "../../features/booking/api";
 import { loadCustomerOrderWindow } from "../../features/booking/window-loaders";
-import { mapScheduleSlotToCalendarItem, schedulingApi } from "../../features/scheduling/api";
+import { mapScheduleSlotToCalendarItem } from "../../features/scheduling/api";
+import { loadEveryScopedOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
 import type { DispatchArrangement } from "../../features/dispatch-center/domain";
 import { getDisplayName, type ContactRelation, type Conversation, type ImRoleType, type ImUser } from "../../features/im/model";
 import { getImRoleConfig, isContactVisibleForRole } from "../../features/im/role-config";
 import { useImStore } from "../../features/im/store";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
-import { cn } from "../../lib/utils";
+import { cn, statusLabel } from "../../lib/utils";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getJapaneseHoliday } from "../../lib/japaneseHolidays";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getScheduleOrderDetailRoute, type ScheduleDetailTargetType } from "../../lib/scheduleDetailTarget";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
+import { getScopedTechnicianDynamicPath } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -106,6 +110,7 @@ export type UnifiedCalendarLane = {
 
 export type UnifiedCalendarEvent = {
   id: string;
+  scheduleSlotId?: number;
   sourceId: UnifiedCalendarSourceId;
   calendarId?: string;
   calendarLabel?: string;
@@ -137,6 +142,12 @@ export type UnifiedCalendarEvent = {
   creatorEntityType?: ImUser["entityType"];
   creatorEntityId?: string;
   participants?: UnifiedCalendarParticipant[];
+};
+
+type FormalCalendarCacheValue = {
+  orders: Order[];
+  merchantOrders: BookingOrder[];
+  scheduleSlots: BookingScheduleSlot[];
 };
 
 type LocalCalendarEvent = {
@@ -191,6 +202,7 @@ export type UnifiedUserCalendarProps = {
   searchQuery?: string;
   showSourceDrawer?: boolean;
   scope?: UnifiedCalendarScope;
+  technicians?: Technician[];
 };
 
 type UnifiedCalendarPeriod = {
@@ -576,24 +588,65 @@ function getOrderEvents(
     .filter((event): event is UnifiedCalendarEvent => Boolean(event));
 }
 
-function getFormalScheduleEvents(slots: BookingScheduleSlot[], scope: "merchant" | "technician"): UnifiedCalendarEvent[] {
-  return slots.map((slot) => {
+function getFormalCalendarSegments(startsAt: string, endsAt: string) {
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+  if (!(end.getTime() > start.getTime())) return [];
+  const segments: Array<{ date: string; startTime: string; endTime: string }> = [];
+  const day = new Date(start);
+  day.setHours(0, 0, 0, 0);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  while (day < end) {
+    const nextDay = new Date(day);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const segmentStart = new Date(Math.max(start.getTime(), day.getTime()));
+    const segmentEnd = new Date(Math.min(end.getTime(), nextDay.getTime()));
+    segments.push({
+      date: `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`,
+      startTime: `${pad(segmentStart.getHours())}:${pad(segmentStart.getMinutes())}`,
+      endTime: segmentEnd.getTime() === nextDay.getTime() ? "24:00" : `${pad(segmentEnd.getHours())}:${pad(segmentEnd.getMinutes())}`
+    });
+    day.setTime(nextDay.getTime());
+  }
+  return segments;
+}
+
+export function getFormalScheduleEvents(slots: BookingScheduleSlot[], scope: "merchant" | "technician"): UnifiedCalendarEvent[] {
+  return slots.flatMap((slot) => {
     const item = mapScheduleSlotToCalendarItem(slot);
-    return {
-      id: item.id,
+    return getFormalCalendarSegments(slot.startsAt, slot.endsAt).map((segment) => ({
+      ...segment,
+      id: `${item.id}-${segment.date}`,
+      scheduleSlotId: slot.id,
       sourceId: scope,
       calendarId: slot.technicianProfileId ? getTechnicianCalendarLaneId(String(slot.technicianProfileId)) : "merchant:unassigned",
       calendarLabel: slot.technicianName ?? "未指定技师",
-      date: item.date,
-      startTime: item.startTime,
-      endTime: item.endTime,
       title: item.title,
       subtitle: item.subtitle,
       badge: item.badge,
       readOnly: true,
-      detailTargetType: "none"
-    };
+      detailTargetType: "none" as const
+    }));
   });
+}
+
+export function getFormalMerchantOrderEvents(orders: BookingOrder[]): UnifiedCalendarEvent[] {
+  return orders.filter((order) => order.status !== "cancelled").flatMap((order) =>
+    getFormalCalendarSegments(order.startsAt, order.endsAt).map((segment) => ({
+      ...segment,
+      id: `formal-order-${order.id}-${segment.date}`,
+      orderId: String(order.id),
+      sourceId: "merchant" as const,
+      calendarId: order.technicianProfileId ? getTechnicianCalendarLaneId(String(order.technicianProfileId)) : "merchant:unassigned",
+      calendarLabel: order.technicianName ?? "未指定技师",
+      title: getCalendarBookingTitle(String(order.id), order.serviceName),
+      subtitle: [order.orderNo, order.technicianName, order.shopName].filter(Boolean).join(" · "),
+      badge: statusLabel(order.status),
+      readOnly: true,
+      detailTargetType: "order_detail" as const,
+      detailTargetId: String(order.id)
+    }))
+  );
 }
 
 function getRelevantTechnicianIds(arrangements: DispatchArrangement[], currentCustomer: Customer, technicians: Technician[], orderRows: Order[]) {
@@ -711,7 +764,7 @@ function getTechnicianParticipant(technician: Technician | undefined, scope: Uni
     avatar: technician.avatar,
     meta: [technician.identityLabel, technician.status === "busy" ? "服务中" : technician.status === "off" ? "休息" : "可排班"].filter(Boolean).join(" · "),
     role,
-    to: getScopedProfileDetailPath(scope, "technician", technician.id)
+    to: getScopedTechnicianDynamicPath(scope, technician)
   };
 }
 
@@ -1131,12 +1184,14 @@ function getMerchantAppointmentStatusLaneLabel(technicianId?: string | null) {
 }
 
 function matchesMerchantAppointmentStatusFilter(event: UnifiedCalendarEvent, filter: MerchantAppointmentStatusFilter) {
+  const assigned = event.calendarId?.startsWith("technician:") ?? false;
+
   if (filter === "assigned") {
-    return event.calendarId === merchantAssignedAppointmentLaneId;
+    return assigned || event.calendarId === merchantAssignedAppointmentLaneId;
   }
 
   if (filter === "unassigned") {
-    return event.calendarId === merchantUnassignedAppointmentLaneId;
+    return !assigned && (event.calendarId === "merchant:unassigned" || event.calendarId === merchantUnassignedAppointmentLaneId);
   }
 
   return true;
@@ -1305,7 +1360,7 @@ function getParallelCalendarLanes(
         caption: "我的排班",
         accent: "var(--client-primary)",
         avatar: currentTechnician.avatar,
-        detailPath: getScopedProfileDetailPath("technician", "technician", currentTechnician.id)
+        detailPath: getScopedTechnicianDynamicPath("technician", currentTechnician)
       }
     ];
   }
@@ -2437,7 +2492,7 @@ function CalendarEventCard({
 }) {
   const source = sourceConfigs[event.sourceId];
   const badgeLabel =
-    event.visibility === "busy_redacted"
+    event.visibility === "busy_redacted" || event.scheduleSlotId != null || event.orderId != null
       ? event.badge
       : compact
         ? source.shortLabel
@@ -4854,10 +4909,12 @@ export function UnifiedUserCalendar({
   merchantLaneMode = "technician",
   searchQuery = "",
   showSourceDrawer = !formalOnly,
-  scope = "user"
+  scope = "user",
+  technicians: providedTechnicians
 }: UnifiedUserCalendarProps) {
   const navigate = useNavigate();
-  const { customers, stores, technicians } = useEntityStore();
+  const { customers, stores, technicians: entityTechnicians } = useEntityStore();
+  const technicians = providedTechnicians ?? entityTechnicians;
   const scheduleSnapshot = useScheduleStore();
   const technicianSnapshot = useTechnicianScheduleStore();
   const dispatchSnapshot = useDispatchCenterStore();
@@ -4872,6 +4929,20 @@ export function UnifiedUserCalendar({
   const [anchorDate, setAnchorDate] = useState(initialDate);
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [agendaDateWindow, setAgendaDateWindow] = useState<AgendaDateWindow>(() => createAgendaDateWindow(initialDate));
+  const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
+  const formalCacheScope = getAuthenticatedPersistentCacheScope();
+  const formalCacheKey = [
+    "calendar",
+    activeScope,
+    currentStore?.id ?? currentTechnician?.id ?? currentCustomer?.id ?? "self",
+    formalOnly ? "formal" : "combined",
+    isMerchantAppointmentStatusMode ? "appointments" : "schedule",
+    period.startDate,
+    period.endDate
+  ].join(":");
+  const cachedFormalData = formalCacheScope
+    ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
+    : undefined;
   const [agendaScrollRequestId, setAgendaScrollRequestId] = useState(0);
   const [sourceVisibility, setSourceVisibility] = useState(defaultSourceVisibility);
   const [sourceDrawerOpen, setSourceDrawerOpen] = useState(false);
@@ -4883,13 +4954,13 @@ export function UnifiedUserCalendar({
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
   const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<MerchantAppointmentStatusFilter>("all");
-  const [formalOrders, setFormalOrders] = useState<Order[]>([]);
-  const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>([]);
-  const [formalDataLoading, setFormalDataLoading] = useState(false);
+  const [formalOrders, setFormalOrders] = useState<Order[]>(() => cachedFormalData?.orders ?? []);
+  const [formalMerchantOrders, setFormalMerchantOrders] = useState<BookingOrder[]>(() => cachedFormalData?.merchantOrders ?? []);
+  const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>(() => cachedFormalData?.scheduleSlots ?? []);
+  const [formalDataLoading, setFormalDataLoading] = useState(() => cachedFormalData === undefined);
   const [formalDataError, setFormalDataError] = useState("");
   const [formalDataReloadKey, setFormalDataReloadKey] = useState(0);
   const formalDataRequestId = useRef(0);
-  const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
   const googleCalendarActorId = getGoogleCalendarActorId(activeScope, currentCustomer, currentTechnician, currentStore);
   const appointmentStatusFilterLabel =
     merchantAppointmentStatusFilterOptions.find((option) => option.value === appointmentStatusFilter)?.label ?? "全预约";
@@ -4904,49 +4975,78 @@ export function UnifiedUserCalendar({
     formalDataRequestId.current = requestId;
     let alive = true;
     const isCurrentRequest = () => alive && formalDataRequestId.current === requestId;
+    const loadFormalDataFromServer = async (): Promise<FormalCalendarCacheValue> => {
+      if (activeScope === "user") {
+        if (formalOnly) {
+          const from = parseDateKey(period.startDate);
+          const to = parseDateKey(addDays(period.endDate, 1));
+          const orders = await loadFormalCustomerOrderPeriod(from, to);
+          return { orders: orders.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [] };
+        }
+        const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
+        return { orders: response.list.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [] };
+      }
+      const from = parseDateKey(period.startDate);
+      const to = parseDateKey(period.endDate);
+      to.setDate(to.getDate() + 1);
+      if (isMerchantAppointmentStatusMode) {
+        const orders = await loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" });
+        return { orders: [], merchantOrders: orders, scheduleSlots: [] };
+      }
+      const slots = await loadManagedScheduleWindow(activeScope === "merchant" ? "merchant-admin" : "technician", { from, to });
+      return { orders: [], merchantOrders: [], scheduleSlots: slots };
+    };
+    const applyFormalData = (data: FormalCalendarCacheValue) => {
+      if (!isCurrentRequest()) return;
+      setFormalOrders(data.orders);
+      setFormalMerchantOrders(data.merchantOrders);
+      setFormalScheduleSlots(data.scheduleSlots);
+      setFormalDataError("");
+      setFormalDataLoading(false);
+    };
+    const unsubscribe = formalCacheScope
+      ? persistentResourceCache.subscribe<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey, applyFormalData)
+      : () => undefined;
     const loadFormalData = async () => {
-      setFormalDataLoading(true);
+      const cached = formalCacheScope
+        ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
+        : undefined;
+      if (cached) applyFormalData(cached);
+      else setFormalDataLoading(true);
       setFormalDataError("");
       try {
-        if (activeScope === "user") {
-          if (formalOnly) {
-            const from = parseDateKey(period.startDate);
-            const to = parseDateKey(addDays(period.endDate, 1));
-            const orders = await loadFormalCustomerOrderPeriod(from, to);
-            if (isCurrentRequest()) {
-              setFormalOrders(orders.map(mapBookingOrderToDomainOrder));
-              setFormalScheduleSlots([]);
-            }
-            return;
-          }
-          const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
-          if (isCurrentRequest()) {
-            setFormalOrders(response.list.map(mapBookingOrderToDomainOrder));
-            setFormalScheduleSlots([]);
-          }
-          return;
-        }
-        const from = parseDateKey(period.startDate);
-        const to = parseDateKey(period.endDate);
-        to.setDate(to.getDate() + 1);
-        const response = await schedulingApi.listSlots(activeScope === "merchant" ? "merchant-admin" : "technician", { from, to, page: 1, pageSize: 100 });
-        if (isCurrentRequest()) {
-          setFormalScheduleSlots(response.list);
-          setFormalOrders([]);
-        }
+        const data = formalCacheScope
+          ? await persistentResourceCache.load({
+              force: formalDataReloadKey > 0,
+              key: formalCacheKey,
+              load: loadFormalDataFromServer,
+              scope: formalCacheScope
+            })
+          : await loadFormalDataFromServer();
+        applyFormalData(data);
       } catch (error) {
         if (isCurrentRequest()) {
-          setFormalDataError(error instanceof Error ? error.message : String(error));
-          setFormalOrders([]);
-          setFormalScheduleSlots([]);
+          const fallback = formalCacheScope
+            ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
+            : undefined;
+          if (fallback) applyFormalData(fallback);
+          else {
+            setFormalDataError(error instanceof Error ? error.message : String(error));
+            setFormalOrders([]);
+            setFormalMerchantOrders([]);
+            setFormalScheduleSlots([]);
+          }
         }
       } finally {
         if (isCurrentRequest()) setFormalDataLoading(false);
       }
     };
     void loadFormalData();
-    return () => { alive = false; };
-  }, [activeScope, formalDataReloadKey, formalOnly, period.endDate, period.startDate]);
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, [activeScope, formalCacheKey, formalCacheScope, formalDataReloadKey, formalOnly, isMerchantAppointmentStatusMode, period.endDate, period.startDate]);
 
   useEffect(() => {
     if (!formalOnly) {
@@ -5016,16 +5116,26 @@ export function UnifiedUserCalendar({
     technicians
   ]);
 
-  const parallelCalendarLanes = useMemo(
-    () => (resolvedDisplayMode === "parallel" && !isMerchantAppointmentStatusMode ? getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, effectiveMerchantLaneMode) : undefined),
-    [activeScope, currentStore, currentTechnician, effectiveMerchantLaneMode, isMerchantAppointmentStatusMode, resolvedDisplayMode, technicians]
-  );
+  const parallelCalendarLanes = useMemo(() => {
+    if (resolvedDisplayMode !== "parallel") return undefined;
+    const lanes = getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, "technician");
+    const laneIds = new Set(lanes.map((lane) => lane.id));
+    for (const slot of [...formalScheduleSlots, ...formalMerchantOrders]) {
+      const id = slot.technicianProfileId ? getTechnicianCalendarLaneId(String(slot.technicianProfileId)) : "merchant:unassigned";
+      if (laneIds.has(id)) continue;
+      laneIds.add(id);
+      lanes.push({ id, label: slot.technicianName ?? "未指定技师", accent: "var(--client-muted)" });
+    }
+    return lanes;
+  }, [activeScope, currentStore, currentTechnician, formalMerchantOrders, formalScheduleSlots, resolvedDisplayMode, technicians]);
 
   const allEvents = useMemo(() => {
     const birthdayEvents = formalOnly ? [] : getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
     const localCalendarEvents = formalOnly ? [] : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
     const neeDoEvents = activeScope === "user" && currentCustomer
       ? getOrderEvents(currentCustomer, formalOrders, formalOnly)
+      : isMerchantAppointmentStatusMode
+        ? getFormalMerchantOrderEvents(formalMerchantOrders)
       : activeScope === "merchant" || activeScope === "technician"
         ? getFormalScheduleEvents(formalScheduleSlots, activeScope)
         : [];
@@ -5054,6 +5164,7 @@ export function UnifiedUserCalendar({
     effectiveMerchantLaneMode,
     formalOrders,
     formalScheduleSlots,
+    formalMerchantOrders,
     formalOnly,
     imStore.users,
     isMerchantAppointmentStatusMode,

@@ -21,22 +21,25 @@ describe("ImMediaService", () => {
     const repository = {
       getConversationForUser: jest.fn(async () => ({ id: 91 }))
     };
+    const lifecycleRepository = { registerUpload: jest.fn(async () => undefined) };
     const service = new ImMediaService(
       repository as never,
       new ImMediaFileStorage(directory),
       "https://media.needo.test/media/im",
       {
         resolve: jest.fn(async () => ({ identityId: 71, userId: 41, identityType: "technician" }))
-      } as never
+      } as never,
+      lifecycleRepository,
+      () => new Date("2026-09-06T00:00:00.000Z")
     );
 
     const result = await service.upload(
       { userId: 41, currentIdentityId: 71, currentIdentityType: "technician" } as never,
       {
-      bytes: pngBytes,
-      conversationId: 91,
-      fileName: "album.png",
-      mimeType: "image/png"
+        bytes: pngBytes,
+        conversationId: 91,
+        fileName: "album.png",
+        mimeType: "image/png"
       }
     );
 
@@ -47,6 +50,13 @@ describe("ImMediaService", () => {
       mimeType: "image/png",
       url: expect.stringMatching(/^https:\/\/media\.needo\.test\/media\/im\/[a-f0-9]{64}\.png$/)
     });
+    expect(lifecycleRepository.registerUpload).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 91,
+      ownerUserId: 41,
+      ownerIdentityId: 71,
+      checksumSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      purgeAt: new Date("2026-09-06T01:00:00.000Z")
+    }));
     await expect(readFile(join(directory, result.url.split("/").at(-1)!))).resolves.toEqual(
       pngBytes
     );

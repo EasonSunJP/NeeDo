@@ -171,11 +171,7 @@ describe("UserRepository formal account creation", () => {
     const repository = new UserRepository(
       client as never,
       bootstrapKeyAllocator as never,
-      (tx) =>
-        new IdentifierAllocator(
-          new PublicIdentifierRepository(tx),
-          () => "5831047296"
-        )
+      (tx) => new IdentifierAllocator(new PublicIdentifierRepository(tx), () => "5831047296")
     );
 
     const result = await repository.create({

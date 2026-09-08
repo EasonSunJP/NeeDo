@@ -407,6 +407,9 @@ describe("RealtimeRepository friend request lifecycle", () => {
           isDefault: true
         }
       ],
+      platformMembershipEntitlements: [
+        { tierVersion: { tier: { code: "GOLD" } } }
+      ],
       customerProfile: {
         id: 73,
         displayName: "Mia",
@@ -426,7 +429,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
           deletedAt: null
         }
       },
-      technicianProfile: null
+      technicianProfile: null,
+      membershipAdjustments: []
     };
     const client = {
       $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
@@ -451,7 +455,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         entityType: "user",
         profileId: 73,
         displayName: "Mia",
-        identityLabel: "premium",
+        identityLabel: "gold",
         verified: false,
         creditValue: "5.00",
         creditReviewCount: 28,
@@ -546,10 +550,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
       customerProfile: null,
       technicianProfile: null
     };
-    const findContact = jest
-      .fn()
-      .mockResolvedValueOnce({ id: 91 })
-      .mockResolvedValueOnce(null);
+    const findContact = jest.fn().mockResolvedValueOnce({ id: 91 }).mockResolvedValueOnce(null);
     const client = {
       $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
       user: { findFirst: jest.fn().mockResolvedValue(publicTarget) },
@@ -601,9 +602,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
           if (args.where?.source === "friend_request") {
             return null;
           }
-          return businessContact(
-            args.where?.ownerIdentityId === requesterIdentityId ? 91 : 92
-          );
+          return businessContact(args.where?.ownerIdentityId === requesterIdentityId ? 91 : 92);
         }
       );
       const client = {
@@ -1267,9 +1266,11 @@ describe("RealtimeRepository friend request lifecycle", () => {
         bio: "预约制护理门店。"
       }
     });
-    expect(client.shop.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 55, status: "published", deletedAt: null }
-    }));
+    expect(client.shop.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 55, status: "published", deletedAt: null }
+      })
+    );
   });
 
   it("counts only incoming requests that remain unexpired by database time", async () => {

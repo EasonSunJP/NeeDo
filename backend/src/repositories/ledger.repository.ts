@@ -31,10 +31,7 @@ import type {
   WalletPayload
 } from "../services/ledger.service";
 import type { FeeType } from "../services/fee-calculation.service";
-import {
-  LedgerCurrencyService,
-  type LedgerCurrency
-} from "../services/ledger-currency.service";
+import { LedgerCurrencyService, type LedgerCurrency } from "../services/ledger-currency.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
 
@@ -453,10 +450,8 @@ export class LedgerRepository implements LedgerRepositoryPort {
       },
       data: {
         status: input.state,
-        capturedAmountNdp:
-          input.state === "captured" ? { increment: input.amountNdp } : undefined,
-        releasedAmountNdp:
-          input.state === "released" ? { increment: input.amountNdp } : undefined,
+        capturedAmountNdp: input.state === "captured" ? { increment: input.amountNdp } : undefined,
+        releasedAmountNdp: input.state === "released" ? { increment: input.amountNdp } : undefined,
         capturedAt: input.state === "captured" ? input.occurredAt : null,
         releasedAt: input.state === "released" ? input.occurredAt : null,
         metadata: {

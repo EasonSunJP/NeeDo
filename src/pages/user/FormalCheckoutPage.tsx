@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
+import { travelFareApi, type JapaneseRouteAddress, type RouteEstimate } from "../../api/travelFare";
 import { useAuth } from "../../auth/AuthProvider";
 import {
   AppTopBar,
@@ -9,16 +10,37 @@ import {
   SecondaryButton,
   SurfacePanel
 } from "../../components/client-ui/AppScaffold";
-import { bookingApi, type BookingScheduleSlot, type ManualPaymentMethod } from "../../features/booking/api";
+import {
+  bookingApi,
+  createBookingIdempotencyKey,
+  type AdministrativeRegionReference,
+  type BookingScheduleSlot,
+  type ManualPaymentMethod,
+  type TechnicianServiceBookingContext
+} from "../../features/booking/api";
+import { loadAvailabilityWindow } from "../../features/booking/window-loaders";
 import {
   coreReadApi,
-  mapCoreServiceToServiceItem,
   type CoreServiceDetail,
   type CoreTechnicianCard
 } from "../../features/core-read/api";
-import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
+import { getExchangePost } from "../../features/exchange/api";
+import type { ExchangePost } from "../../features/exchange/types";
+import { pricingModeApi } from "../../features/pricing-mode/api";
 import { cn, yen } from "../../lib/utils";
+import {
+  mapExchangeIntelligencePublisherToProfileData,
+  UnifiedProfileCard,
+  type ExchangeIntelligencePublisherProfileProjection
+} from "../../shared/profile-card";
 import { SocialProfileMiniCard } from "../../shared/profile-card/SocialProfileMiniCard";
+import {
+  mapCoreServiceCardToUnifiedData,
+  mapExchangeIntelligenceServiceToUnifiedData,
+  mapTechnicianBookingContextServiceToUnifiedData,
+  UnifiedServiceInfoCard,
+  type UnifiedServiceInfoCardData
+} from "../../shared/service-card";
 import type { FulfillmentMode } from "../../types/domain";
 import {
   CheckoutProgressNav,
@@ -35,9 +57,34 @@ import {
 
 type LoadStatus = "loading" | "success" | "error";
 type TechnicianLoadStatus = "idle" | "loading" | "error";
+export type CheckoutCatalogRef =
+  | { type: "shop_service"; id: number }
+  | { type: "technician_service"; id: number; shopId?: number; technicianId?: number };
+
+type CheckoutServiceContext = {
+  catalogRef: CheckoutCatalogRef;
+  publicId: string;
+  serviceInfo: UnifiedServiceInfoCardData;
+  serviceDetailPath: string;
+  serviceMode: string;
+  shop: {
+    name: string;
+    city: string;
+    address: string;
+    contactPath: string;
+  };
+  coreService: CoreServiceDetail | null;
+  technicianPublisher: ExchangeIntelligencePublisherProfileProjection | null;
+};
+
+type BookingIdempotencyState = { fingerprint: string; key: string };
+
+class CheckoutSourceError extends Error {}
+type EstimateStatus = "idle" | "loading" | "success" | "error" | "expired";
 
 const quickNotes = ["女性技师优先", "请提前联系", "需要安静环境"];
 const checkoutScheduleSlotStateKey = "checkoutScheduleSlotId";
+const emptyHomeAddress: JapaneseRouteAddress = { countryCode: "JP", postalCode: "", prefecture: "", city: "", addressLine1: "", addressLine2: "", building: "" };
 
 function checkoutHistoryState(value: unknown) {
   return value !== null && typeof value === "object"
@@ -51,7 +98,9 @@ function persistedCheckoutScheduleSlotId(value: unknown) {
 }
 
 function describeCheckoutError(error: unknown) {
+  if (error instanceof CheckoutSourceError) return error.message;
   if (error instanceof ApiClientError) {
+    if (error.code === 41038) return "价格已更新，请确认最新金额后重新提交";
     if (error.status === 401) return "登录状态已失效，请重新登录";
     if (error.status === 403) return "当前身份没有创建预约的权限";
     if (error.status === 404) return "服务不存在或已停止预约";
@@ -61,9 +110,65 @@ function describeCheckoutError(error: unknown) {
   return "预约页加载失败，请检查网络后重试";
 }
 
-function resolveFulfillmentMode(service: CoreServiceDetail, requestedMode: string | null): FulfillmentMode {
-  if (requestedMode === "home" || requestedMode === "store") return requestedMode;
-  return service.serviceMode === "home" || service.serviceMode === "onsite" ? "home" : "store";
+function describeEstimateError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.message === "error.travel.outside_service_area") return "该地址超出店铺的上门服务范围。";
+    if (error.message === "error.travel.provider_unconfigured") return "路线供应商尚未配置，暂时无法估算交通费。";
+    if (error.message === "error.travel.route_not_found") return "没有找到可用的驾驶路线，请检查地址。";
+    if (error.message.startsWith("error.travel.provider_")) return "路线供应商暂时不可用，请稍后重试。";
+  }
+  return "交通费估算失败，请检查地址后重试。";
+}
+
+function resolveFulfillmentMode(serviceMode: string, requestedMode: string | null): FulfillmentMode {
+  if (serviceMode === "home" || serviceMode === "onsite") return "home";
+  if (serviceMode === "store") return "store";
+  return requestedMode === "home" ? "home" : "store";
+}
+
+export function slotInsideIntelligenceWindow(
+  slot: Pick<BookingScheduleSlot, "startsAt" | "endsAt">,
+  source: NonNullable<ExchangePost["intelligence"]>
+) {
+  const slotStartsAt = new Date(slot.startsAt).getTime();
+  const slotEndsAt = new Date(slot.endsAt).getTime();
+  const windowStartsAt = new Date(source.booking.serviceWindow.startsAt).getTime();
+  const windowEndsAt = new Date(source.booking.serviceWindow.endsAt).getTime();
+  return [slotStartsAt, slotEndsAt, windowStartsAt, windowEndsAt].every(Number.isFinite)
+    && slotStartsAt >= windowStartsAt
+    && slotEndsAt <= windowEndsAt;
+}
+
+function resolveBookingIdempotencyKey(
+  current: BookingIdempotencyState | null,
+  fingerprint: string
+): BookingIdempotencyState {
+  return current?.fingerprint === fingerprint
+    ? current
+    : { fingerprint, key: createBookingIdempotencyKey() };
+}
+
+function ensureIntelligenceCheckoutSource(post: ExchangePost, catalogRef: CheckoutCatalogRef) {
+  if (post.type !== "intelligence" || !post.intelligence) {
+    throw new CheckoutSourceError("来源情报无效，无法预约");
+  }
+  if (post.status !== "published" || !post.intelligence.booking.available) {
+    throw new CheckoutSourceError("来源情报已结束或当前不可预约，请返回情报详情刷新");
+  }
+  const target = post.intelligence.booking.target;
+  if (!target || target.type !== catalogRef.type || target.id !== catalogRef.id) {
+    throw new CheckoutSourceError("来源情报与当前正式服务不一致，无法提交预约");
+  }
+  if (!post.intelligence.publisherCard || !post.intelligence.serviceCard) {
+    throw new CheckoutSourceError("来源情报的正式服务资料不完整，请稍后重试");
+  }
+  return post.intelligence;
+}
+
+function serviceModeLabel(serviceMode: string) {
+  if (serviceMode === "home" || serviceMode === "onsite") return "上门";
+  if (serviceMode === "both" || serviceMode === "flexible") return "到店或上门";
+  return "到店";
 }
 
 function formatTokyoDate(value: string) {
@@ -95,15 +200,24 @@ function SectionTitle({ children }: { children: string }) {
   return <h2 className="px-1 text-sm font-black tracking-wide text-[color:var(--client-primary)]">{children}</h2>;
 }
 
-export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
+export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalogRef }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const serviceId = catalogRef.type === "shop_service" ? catalogRef.id : null;
+  const technicianServiceId = catalogRef.type === "technician_service" ? catalogRef.id : null;
+  const technicianServiceShopId = catalogRef.type === "technician_service" ? catalogRef.shopId : undefined;
+  const technicianServiceTechnicianId = catalogRef.type === "technician_service" ? catalogRef.technicianId : undefined;
+  const exchangePostParam = searchParams.get("exchangePost");
+  const exchangePostId = exchangePostParam && /^[1-9]\d*$/u.test(exchangePostParam)
+    ? Number(exchangePostParam)
+    : null;
   const { isAuthenticated } = useAuth();
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [loadError, setLoadError] = useState("");
   const [revision, setRevision] = useState(0);
-  const [service, setService] = useState<CoreServiceDetail | null>(null);
+  const [service, setService] = useState<CheckoutServiceContext | null>(null);
+  const [intelligenceSource, setIntelligenceSource] = useState<NonNullable<ExchangePost["intelligence"]> | null>(null);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
   const [checkoutNowMs, setCheckoutNowMs] = useState(() => Date.now());
   const [selectedTechnicianDetail, setSelectedTechnicianDetail] = useState<CoreTechnicianCard | null>(null);
@@ -116,7 +230,17 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
   const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>("store");
   const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("onsite");
-  const [address, setAddress] = useState("");
+  const [homeAddress, setHomeAddress] = useState<JapaneseRouteAddress>(emptyHomeAddress);
+  const [estimate, setEstimate] = useState<RouteEstimate | null>(null);
+  const [estimateStatus, setEstimateStatus] = useState<EstimateStatus>("idle");
+  const [estimateError, setEstimateError] = useState("");
+  const estimateRequestVersionRef = useRef(0);
+  const [prefectures, setPrefectures] = useState<AdministrativeRegionReference[]>([]);
+  const [municipalities, setMunicipalities] = useState<AdministrativeRegionReference[]>([]);
+  const [selectedAdmin1Code, setSelectedAdmin1Code] = useState("");
+  const [selectedAdmin2Code, setSelectedAdmin2Code] = useState("");
+  const [regionLoadError, setRegionLoadError] = useState("");
+  const [municipalitiesLoading, setMunicipalitiesLoading] = useState(false);
   const [note, setNote] = useState(searchParams.get("remark") ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -124,43 +248,188 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Array<HTMLDivElement | null>>([]);
   const remarkInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const bookingIdempotencyRef = useRef<BookingIdempotencyState | null>(null);
   const [activeProgressStep, setActiveProgressStep] = useState(0);
   const selectedDayWindow = useMemo(() => getTokyoDayWindow(selectedDate), [selectedDate]);
   const persistedSlotId = persistedCheckoutScheduleSlotId(location.state);
+  const requestedTechnicianId = searchParams.get("technician");
+  const shopServiceTechnicianId = requestedTechnicianId && /^[1-9]\d*$/.test(requestedTechnicianId)
+    ? Number(requestedTechnicianId)
+    : undefined;
+
+  const updateHomeAddress = (field: keyof JapaneseRouteAddress, value: string) => {
+    estimateRequestVersionRef.current += 1;
+    setHomeAddress((current) => ({ ...current, [field]: value }));
+    setEstimate(null);
+    setEstimateStatus("idle");
+    setEstimateError("");
+  };
 
   useEffect(() => {
     if (!selectedDayWindow) return undefined;
     let active = true;
     setLoadStatus("loading");
     setLoadError("");
+    const servicePromise: Promise<CheckoutServiceContext> = serviceId !== null
+      ? coreReadApi.getServiceDetail(serviceId).then(async (serviceDetail) => {
+          const navigation = await pricingModeApi
+            .getBookingNavigation(serviceDetail.shop.id, { page: 1, pageSize: 100 })
+            .catch(() => null);
+          const bookingMetadata = navigation?.entry === "service_menu"
+            ? navigation.services.list.find((item) => item.id === serviceId) ?? null
+            : null;
+          if (navigation && !bookingMetadata) {
+            throw new CheckoutSourceError("当前定价模式下该服务不可预约，请返回店铺刷新");
+          }
+          const serviceInfo = mapCoreServiceCardToUnifiedData(serviceDetail);
+          return {
+            catalogRef: { type: "shop_service", id: serviceId },
+            publicId: serviceDetail.publicId,
+            serviceInfo: bookingMetadata
+              ? {
+                  ...serviceInfo,
+                  tags: bookingMetadata.tags,
+                  usageCount: bookingMetadata.usageCount
+                }
+              : serviceInfo,
+            serviceDetailPath: `/services/${serviceDetail.id}`,
+            serviceMode: serviceDetail.serviceMode,
+            shop: {
+              name: serviceDetail.shop.name,
+              city: serviceDetail.shop.city,
+              address: serviceDetail.shop.address,
+              contactPath: `/stores/${serviceDetail.shop.id}`
+            },
+            coreService: serviceDetail,
+            technicianPublisher: null
+          };
+        })
+      : technicianServiceShopId && technicianServiceTechnicianId
+        ? Promise.all([
+            coreReadApi.getShopDetail(technicianServiceShopId),
+            coreReadApi.listCategories({ page: 1, pageSize: 100 }),
+            pricingModeApi.listPublicTechnicianServices(
+              technicianServiceShopId,
+              technicianServiceTechnicianId,
+              { page: 1, pageSize: 100 }
+            )
+          ]).then(([shop, categories, technicianServices]) => {
+            const technicianService = technicianServices.list.find((item) => item.id === technicianServiceId);
+            const category = categories.list.find((item) => item.id === technicianService?.categoryId);
+            const technician = shop.technicians.find((item) => item.id === technicianServiceTechnicianId) ?? null;
+            if (!technicianService || !category || !technician) {
+              throw new CheckoutSourceError("技师服务资料与预约链接不一致，请返回后重试");
+            }
+            const serviceDetail: CoreServiceDetail = {
+              id: technicianService.id,
+              publicId: technicianService.publicId,
+              name: technicianService.name,
+              description: technicianService.description,
+              category,
+              shop,
+              technician,
+              city: shop.city,
+              priceAmount: String(technicianService.priceAmount),
+              currency: technicianService.currency,
+              durationMinutes: technicianService.durationMinutes,
+              usageCount: technicianService.usageCount,
+              coverUrl: technicianService.coverImageUrl ?? technicianService.images[0] ?? shop.coverUrl,
+              reviewSummary: technician.reviewSummary,
+              serviceMode: "store",
+              mediaAssets: [],
+              createdAt: technicianService.createdAt,
+              updatedAt: technicianService.updatedAt
+            };
+            return {
+              catalogRef,
+              publicId: technicianService.publicId,
+              serviceInfo: {
+                ...mapCoreServiceCardToUnifiedData(serviceDetail),
+                tags: technicianService.tags,
+                usageCount: technicianService.usageCount
+              },
+              serviceDetailPath: `/stores/${shop.publicId}/technicians/${technician.publicId}/services`,
+              serviceMode: "store",
+              shop: {
+                name: shop.name,
+                city: shop.city,
+                address: shop.address,
+                contactPath: `/stores/${shop.id}`
+              },
+              coreService: serviceDetail,
+              technicianPublisher: null
+            };
+          })
+        : bookingApi.getTechnicianServiceBookingContext(technicianServiceId!).then((bookingContext: TechnicianServiceBookingContext) => {
+            if (bookingContext.target.id !== technicianServiceId) {
+              throw new CheckoutSourceError("技师服务资料与预约链接不一致，请返回后重试");
+            }
+            return {
+              catalogRef,
+              publicId: bookingContext.serviceCard.publicId,
+              serviceInfo: mapTechnicianBookingContextServiceToUnifiedData(
+                bookingContext.serviceCard,
+                serviceModeLabel(bookingContext.serviceCard.serviceMode)
+              ),
+              serviceDetailPath: bookingContext.serviceCard.detailPath,
+              serviceMode: bookingContext.serviceCard.serviceMode,
+              shop: {
+                name: bookingContext.shopCard.name,
+                city: "",
+                address: bookingContext.shopCard.address,
+                contactPath: bookingContext.shopCard.detailPath
+              },
+              coreService: null,
+              technicianPublisher: bookingContext.technicianCard
+            };
+          });
+    const exchangePromise = exchangePostParam === null
+      ? Promise.resolve<ExchangePost | null>(null)
+      : exchangePostId === null
+        ? Promise.reject<ExchangePost | null>(new CheckoutSourceError("来源情报链接无效，请返回后重新进入预约"))
+        : getExchangePost(String(exchangePostId));
 
-    Promise.all([
-      coreReadApi.getServiceDetail(serviceId),
-      bookingApi.listAvailability({
-        serviceId,
-        from: selectedDayWindow.from,
-        to: selectedDayWindow.to,
-        includeUnavailable: true,
-        page: 1,
-        pageSize: 100
+    Promise.all([servicePromise, exchangePromise])
+      .then(async ([serviceContext, sourcePost]) => {
+        const source = sourcePost ? ensureIntelligenceCheckoutSource(sourcePost, catalogRef) : null;
+        const availabilityWindow = source
+          ? {
+              from: source.booking.serviceWindow.startsAt,
+              to: source.booking.serviceWindow.endsAt
+            }
+          : selectedDayWindow;
+        const availability = await loadAvailabilityWindow({
+          serviceId: serviceId ?? undefined,
+          technicianServiceId: technicianServiceId ?? undefined,
+          ...(serviceId && shopServiceTechnicianId ? { technicianId: shopServiceTechnicianId } : {}),
+          from: availabilityWindow.from,
+          to: availabilityWindow.to,
+          includeUnavailable: true
+        });
+        return { serviceContext, availability, source };
       })
-    ])
-      .then(([serviceDetail, availability]) => {
+      .then(({ serviceContext, availability, source }) => {
         if (!active) return;
-        const formalSlots = availability.list
+        const formalSlots = availability
+          .filter((slot) => catalogRef.type === "shop_service"
+            ? slot.serviceId === catalogRef.id && slot.technicianServiceId === null
+            : slot.technicianServiceId === catalogRef.id && slot.serviceId === null)
+          .filter((slot) => source ? slotInsideIntelligenceWindow(slot, source) : true)
           .slice()
           .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.id - right.id);
         const requestedTime = searchParams.get("time");
 
-        setService(serviceDetail);
+        setService(serviceContext);
+        setIntelligenceSource(source);
         setSlots(formalSlots);
         setSelectedSlotId(resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, persistedSlotId));
-        setFulfillmentMode(resolveFulfillmentMode(serviceDetail, searchParams.get("mode")));
+        setFulfillmentMode(resolveFulfillmentMode(source?.serviceMode ?? serviceContext.serviceMode, searchParams.get("mode")));
         setLoadStatus("success");
       })
       .catch((error: unknown) => {
         if (!active) return;
         setService(null);
+        setIntelligenceSource(null);
         setSlots([]);
         setSelectedSlotId(null);
         setLoadError(describeCheckoutError(error));
@@ -169,7 +438,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     return () => {
       active = false;
     };
-  }, [persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId]);
+  }, [catalogRef.id, catalogRef.type, exchangePostId, exchangePostParam, persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId, shopServiceTechnicianId, technicianServiceId, technicianServiceShopId, technicianServiceTechnicianId]);
 
   useEffect(() => {
     const nextBoundaryMs = slots.reduce<number | null>((earliest, slot) => {
@@ -193,6 +462,57 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
       setSelectedSlotId(null);
     }
   }, [checkoutNowMs, selectedSlotId, slots]);
+
+  useEffect(() => {
+    let active = true;
+    setRegionLoadError("");
+    void bookingApi
+      .listAdministrativeRegions({ country: "JP", locale: "ja" })
+      .then(({ list }) => {
+        if (active) setPrefectures(list);
+      })
+      .catch(() => {
+        if (active) {
+          setPrefectures([]);
+          setRegionLoadError("行政区域加载失败，请重试");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAdmin1Code) {
+      setMunicipalities([]);
+      setMunicipalitiesLoading(false);
+      return;
+    }
+    let active = true;
+    setMunicipalitiesLoading(true);
+    setRegionLoadError("");
+    void bookingApi
+      .listAdministrativeRegions({
+        country: "JP",
+        locale: "ja",
+        parent: selectedAdmin1Code
+      })
+      .then(({ list }) => {
+        if (active) setMunicipalities(list);
+      })
+      .catch(() => {
+        if (active) {
+          setMunicipalities([]);
+          setRegionLoadError("行政区域加载失败，请重试");
+        }
+      })
+      .finally(() => {
+        if (active) setMunicipalitiesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedAdmin1Code]);
 
   useEffect(() => {
     const updateProgressByScroll = () => {
@@ -222,9 +542,15 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     [checkoutNowMs, selectedSlotId, slots]
   );
   const selectedTechnicianProfileId = selectedSlot?.technicianProfileId ?? null;
+  const coreService = service?.coreService ?? null;
+  const fixedTechnicianPublisher = intelligenceSource?.publisherCard?.type === "technician"
+    ? intelligenceSource.publisherCard
+    : service?.technicianPublisher?.type === "technician"
+      ? service.technicianPublisher
+      : null;
 
   useEffect(() => {
-    if (!selectedTechnicianProfileId || service?.technician?.id === selectedTechnicianProfileId) {
+    if (!selectedTechnicianProfileId || coreService?.technician?.id === selectedTechnicianProfileId || fixedTechnicianPublisher) {
       setSelectedTechnicianDetail(null);
       setTechnicianLoadStatus("idle");
       return undefined;
@@ -251,31 +577,43 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     return () => {
       active = false;
     };
-  }, [selectedTechnicianProfileId, service?.technician?.id]);
+  }, [coreService?.technician?.id, fixedTechnicianPublisher, selectedTechnicianProfileId]);
 
-  const displayService = useMemo(
-    () => (service ? mapCoreServiceToServiceItem(service) : null),
-    [service]
+  useEffect(() => {
+    if (!estimate) return undefined;
+    const remainingMs = Date.parse(estimate.expiresAt) - Date.now();
+    if (remainingMs <= 0) {
+      setEstimateStatus("expired");
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => setEstimateStatus("expired"), remainingMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [estimate]);
+
+  const checkoutServiceMode = intelligenceSource?.serviceMode ?? service?.serviceMode;
+  const supportsBothModes = checkoutServiceMode === "both" || checkoutServiceMode === "flexible";
+  const canSubmitBooking = Boolean(selectedSlot) && (
+    fulfillmentMode === "store" ||
+    Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")
   );
-  const supportsBothModes = service?.serviceMode === "both";
   const people = searchParams.get("people") ?? "1名";
-  const packageDetail = displayService?.packages[0] ?? null;
-  const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : address.trim();
+  const formattedHomeAddress = [homeAddress.postalCode, homeAddress.prefecture, homeAddress.city, homeAddress.addressLine1, homeAddress.addressLine2, homeAddress.building].map((value) => value?.trim()).filter(Boolean).join(" ");
+  const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : formattedHomeAddress;
   const locationTitle = fulfillmentMode === "store" ? service?.shop.name ?? "" : "上门服务地址";
-  const locationQuery = [locationTitle, locationAddress].filter(Boolean).join(" ");
+  const locationQuery = fulfillmentMode === "store" ? [locationTitle, locationAddress].filter(Boolean).join(" ") : "";
   const selectedTechnician = useMemo(() => {
     if (!selectedTechnicianProfileId) return null;
-    if (service?.technician?.id === selectedTechnicianProfileId) return service.technician;
+    if (coreService?.technician?.id === selectedTechnicianProfileId) return coreService.technician;
     return selectedTechnicianDetail?.id === selectedTechnicianProfileId
       ? selectedTechnicianDetail
       : null;
-  }, [selectedTechnicianDetail, selectedTechnicianProfileId, service?.technician]);
+  }, [coreService?.technician, selectedTechnicianDetail, selectedTechnicianProfileId]);
   const checkoutTechnicianCardData = useMemo(() => {
     const technician = selectedTechnician;
     if (!technician) return null;
 
     return {
-      id: String(technician.id),
+      id: technician.publicId,
       entityType: "technician" as const,
       displayName: technician.displayName,
       avatar: technician.avatarUrl ?? "",
@@ -291,9 +629,62 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
       followingCount: 0
     };
   }, [selectedTechnician]);
+  const displayServiceInfo = useMemo(
+    () => intelligenceSource?.serviceCard
+      ? mapExchangeIntelligenceServiceToUnifiedData(
+          intelligenceSource.serviceCard,
+          serviceModeLabel(intelligenceSource.serviceMode)
+        )
+      : service?.serviceInfo ?? null,
+    [intelligenceSource, service?.serviceInfo]
+  );
+  const sourcePublisherData = useMemo(() => {
+    const publisher = intelligenceSource?.publisherCard ?? fixedTechnicianPublisher;
+    if (!publisher) return null;
+    return mapExchangeIntelligencePublisherToProfileData(
+      publisher,
+      serviceModeLabel(service?.serviceMode ?? "store"),
+      {
+        entity: publisher.type === "shop" ? "店铺" : "技师",
+        bookable: "可预约",
+        unavailable: "当前不可预约",
+        rating: publisher.type === "shop" ? "店铺评分" : "服务评分",
+        reviews: "评价",
+        serviceMode: "服务方式",
+        completedOrders: "完成订单",
+        acceptanceRate: "接单率",
+        experience: publisher.type === "technician" ? `${publisher.yearsExperience}年` : ""
+      }
+    );
+  }, [fixedTechnicianPublisher, intelligenceSource?.publisherCard, service?.serviceMode]);
 
   const appendQuickNote = (value: string) => {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
+  };
+
+  const requestTravelEstimate = async () => {
+    if (!service || estimateStatus === "loading") return;
+    if (!selectedSlotId) {
+      setEstimateError("请先从上方时间栏选定一个可用时段，再估算交通费。");
+      setEstimateStatus("error");
+      return;
+    }
+    const normalizedAddress = Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress;
+    if (!/^\d{3}-?\d{4}$/.test(normalizedAddress.postalCode) || !normalizedAddress.prefecture || !normalizedAddress.city || !normalizedAddress.addressLine1) {
+      setEstimateError("请完整填写邮编、都道府县、市区町村和街道地址。");
+      setEstimateStatus("error");
+      return;
+    }
+    const requestVersion = ++estimateRequestVersionRef.current;
+    setEstimateStatus("loading"); setEstimateError(""); setEstimate(null);
+    try {
+      const result = await travelFareApi.createEstimate({ servicePublicId: service.publicId, scheduleSlotId: selectedSlotId, destination: normalizedAddress });
+      if (requestVersion !== estimateRequestVersionRef.current) return;
+      setEstimate(result); setEstimateStatus(Date.parse(result.expiresAt) > Date.now() ? "success" : "expired");
+    } catch (error) {
+      if (requestVersion !== estimateRequestVersionRef.current) return;
+      setEstimateError(describeEstimateError(error)); setEstimateStatus("error");
+    }
   };
 
   const selectCheckoutSlot = (slotId: number) => {
@@ -304,6 +695,12 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     const selectedTime = getTokyoSlotParts(slot.startsAt)?.time;
     if (!selectedTime) return;
 
+    if (slot.id !== selectedSlotId) {
+      estimateRequestVersionRef.current += 1;
+      setEstimate(null);
+      setEstimateStatus("idle");
+      setEstimateError("");
+    }
     setSelectedSlotId(slot.id);
     const nextSearchParams = new URLSearchParams(location.search);
     const previousState = checkoutHistoryState(location.state);
@@ -362,29 +759,56 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
       navigate(`/login/user?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
       return;
     }
-    if (fulfillmentMode === "home" && !address.trim()) {
-      setSubmitError("请先填写完整上门地址，再提交预约");
+    if (fulfillmentMode === "home" && (!estimate || estimateStatus !== "success" || Date.parse(estimate.expiresAt) <= Date.now())) {
+      setEstimateStatus(estimate ? "expired" : estimateStatus);
+      setSubmitError("请先取得有效的正式交通费估价，再提交预约");
       return;
+    }
+    if (fulfillmentMode === "home") {
+      if (!selectedAdmin1Code || !selectedAdmin2Code) {
+        setSubmitError("请先选择都道府县和市区町村，再提交预约");
+        return;
+      }
+      if (!homeAddress.addressLine1.trim()) {
+        setSubmitError("请先填写完整上门地址，再提交预约");
+        return;
+      }
     }
 
     setSubmitting(true);
     setSubmitError("");
     try {
-      const order = await bookingApi.createBooking({
-        serviceId,
+      const fulfillment = fulfillmentMode === "home"
+        ? { fulfillmentMode: "home" as const, serviceLocation: { countryCode: "JP" as const, admin1Code: selectedAdmin1Code, admin2Code: selectedAdmin2Code }, fulfillmentAddress: Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress, travelEstimatePublicId: estimate!.publicId }
+        : { fulfillmentMode: "store" as const };
+      const bookingInput = {
+        ...(catalogRef.type === "shop_service"
+          ? { serviceId: catalogRef.id }
+          : { technicianServiceId: catalogRef.id }),
+        ...(exchangePostId ? { exchangeIntelligencePostId: exchangePostId } : {}),
+        expectedPriceAmountJpy: Number(displayServiceInfo?.priceAmount ?? freshSelectedSlot.priceAmount),
         scheduleSlotId: freshSelectedSlot.id,
-        fulfillmentMode,
+        ...fulfillment,
         paymentMethod,
-        note: [fulfillmentMode === "home" ? `上门地址：${address.trim()}` : "", note.trim()]
-          .filter(Boolean)
-          .join(" / ") || undefined
-      });
+        note: note.trim() || undefined
+      };
+      const fingerprint = JSON.stringify(bookingInput);
+      const idempotency = exchangePostId
+        ? resolveBookingIdempotencyKey(bookingIdempotencyRef.current, fingerprint)
+        : null;
+      bookingIdempotencyRef.current = idempotency;
+      const order = idempotency
+        ? await bookingApi.createBooking(bookingInput, idempotency.key)
+        : await bookingApi.createBooking(bookingInput);
       navigate(`/orders/${order.id}`, {
         replace: true,
         state: { notice: "预约成功，已进入订单详情。" }
       });
     } catch (error) {
       setSubmitError(describeCheckoutError(error));
+      if (error instanceof ApiClientError && error.code === 41038) {
+        setRevision((current) => current + 1);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -431,53 +855,24 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
         </div>
       ) : null}
 
-      {loadStatus === "success" && service && displayService ? (
+      {loadStatus === "success" && service && displayServiceInfo ? (
         <>
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[0] = node)}>
             <SectionTitle>套餐</SectionTitle>
-            <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
-              <div className="relative h-[196px] w-full overflow-hidden rounded-[24px] bg-black">
-                <img
-                  alt={service.name}
-                  className="absolute inset-0 h-full w-full scale-[1.035] object-cover"
-                  src={getGeneratedImageThumbnailUrl(displayService.cover)}
-                />
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {displayService.tags.slice(0, 2).map((tag) => (
-                  <span
-                    className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-muted)]"
-                    key={tag}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-              <h1 className="mt-3 text-[20px] font-black leading-tight tracking-[-0.03em] text-[color:var(--client-text)]">{service.name}</h1>
-              {service.description ? (
-                <p className="mt-1.5 text-sm leading-6 text-[color:var(--client-muted)]">{service.description}</p>
-              ) : null}
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-                <strong className="text-[25px] font-black tracking-[-0.04em] text-[color:var(--client-primary)]">{yen(Number(service.priceAmount))}</strong>
-                <span className="text-sm font-semibold text-[color:var(--client-muted)]">{service.durationMinutes} 分钟</span>
-                <span className="text-sm font-semibold text-[color:var(--client-muted)]">{service.city}</span>
-              </div>
-              {packageDetail?.includes.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {packageDetail.includes.slice(0, 4).map((item) => (
-                    <span
-                      className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-primary)]"
-                      key={item}
-                    >
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              <div className="mt-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] pt-3">
-                <p className="text-xs font-semibold text-[color:var(--client-muted)]">{packageDetail?.name ?? service.category.name}</p>
-              </div>
-            </div>
+            {intelligenceSource ? (
+              <SurfacePanel className="border-[color:var(--client-primary)]/25 bg-[color:var(--client-primary-soft)] p-4">
+                <p className="text-xs font-black text-[color:var(--client-primary)]"><span>来源情报</span> · <span data-no-i18n="true">#{exchangePostId}</span></p>
+                <p className="mt-1 text-sm font-bold text-[color:var(--client-text)]">活动价与可预约时段已按正式情报锁定</p>
+              </SurfacePanel>
+            ) : null}
+            <UnifiedServiceInfoCard data={displayServiceInfo} detailTo={intelligenceSource?.serviceCard?.detailPath ?? service.serviceDetailPath} />
+            {intelligenceSource?.publisherCard?.type === "shop" && sourcePublisherData ? (
+              <UnifiedProfileCard
+                data={sourcePublisherData}
+                detailTo={intelligenceSource.publisherCard?.detailPath}
+                variant="detailHeader"
+              />
+            ) : null}
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[1] = node)}>
@@ -517,15 +912,52 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                   </div>
                 </div>
               ) : (
-                <div className="mt-3">
+                <div className="mt-3 space-y-3">
                   <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">上门服务</p>
-                  <textarea
-                    aria-label="上门地址"
-                    className="focus-ring mt-3 min-h-28 w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
-                    onChange={(event) => setAddress(event.target.value)}
-                    placeholder="请输入完整地址、房间号和联系电话"
-                    value={address}
-                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <select
+                      aria-label="都道府县"
+                      className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
+                      onChange={(event) => {
+                        setSelectedAdmin1Code(event.target.value);
+                        setSelectedAdmin2Code("");
+                        updateHomeAddress("prefecture", prefectures.find((region) => region.code === event.target.value)?.name ?? "");
+                        updateHomeAddress("city", "");
+                      }}
+                      value={selectedAdmin1Code}
+                    >
+                      <option value="">请选择都道府县</option>
+                      {prefectures.map((region) => (
+                        <option key={region.code} value={region.code}>{region.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="市区町村"
+                      className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)] disabled:opacity-50"
+                      disabled={!selectedAdmin1Code || municipalitiesLoading}
+                      onChange={(event) => {
+                        setSelectedAdmin2Code(event.target.value);
+                        updateHomeAddress("city", municipalities.find((region) => region.code === event.target.value)?.name ?? "");
+                      }}
+                      value={selectedAdmin2Code}
+                    >
+                      <option value="">{municipalitiesLoading ? "正在加载市区町村" : "请选择市区町村"}</option>
+                      {municipalities.map((region) => (
+                        <option key={region.code} value={region.code}>{region.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {regionLoadError ? <p className="text-xs font-bold text-red-500">{regionLoadError}</p> : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <input aria-label="邮政编码" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("postalCode", event.target.value)} placeholder="邮编 104-0061" value={homeAddress.postalCode} />
+                    <input aria-label="街道地址" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("addressLine1", event.target.value)} placeholder="銀座1-2-3" value={homeAddress.addressLine1} />
+                    <input aria-label="地址补充" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("addressLine2", event.target.value)} placeholder="丁目、番地（可选）" value={homeAddress.addressLine2} />
+                    <input aria-label="建筑物与房间" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("building", event.target.value)} placeholder="建筑物、房间号（可选）" value={homeAddress.building} />
+                  </div>
+                  <button className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-50" disabled={estimateStatus === "loading" || !selectedSlotId} onClick={() => void requestTravelEstimate()} type="button">{estimateStatus === "loading" ? "正在计算驾驶路线…" : estimateStatus === "error" || estimateStatus === "expired" ? "重新估算交通费" : "估算交通费"}</button>
+                  {estimateStatus === "success" && estimate ? <div className="rounded-[20px] bg-[color:var(--client-primary-soft)] p-3"><p className="text-sm font-black text-[color:var(--client-primary)]">正式交通费 ¥{estimate.fareAmountJpy.toLocaleString("ja-JP")}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">驾驶距离 {(estimate.distanceMeters / 1000).toFixed(1)} km · 适用上限 {(estimate.bandMaximumDistanceMeters / 1000).toFixed(1)} km · 策略 v{estimate.policyVersion}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">估价有效至 {new Date(estimate.expiresAt).toLocaleString("ja-JP")}</p></div> : null}
+                  {estimateStatus === "expired" ? <p className="text-sm font-black text-amber-700" role="alert">交通费估价已过期，请重新估算。</p> : null}
+                  {estimateStatus === "error" ? <p className="text-sm font-black text-red-600" role="alert">{estimateError}</p> : null}
                 </div>
               )}
             </div>
@@ -563,7 +995,11 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[3] = node)}>
             <SectionTitle>地址</SectionTitle>
             <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
-              {locationQuery ? (
+              {fulfillmentMode === "home" ? (
+                <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:var(--client-surface)] px-4 py-6 text-center">
+                  <p className="text-sm font-black text-[color:var(--client-text)]">为保护上门地址隐私，此处不加载第三方地图预览。</p>
+                </div>
+              ) : locationQuery ? (
                 <div className="relative overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[#101318]">
                   <iframe
                     aria-hidden="true"
@@ -585,7 +1021,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
               )}
               <div className="mt-3">
                 <p className="text-sm font-black text-[color:var(--client-text)]">{locationAddress || "请填写上门地址"}</p>
-                <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{locationTitle}{service.shop.city ? ` · ${service.shop.city}` : ""}</p>
+                    <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{locationTitle}{service.shop.city ? ` · ${service.shop.city}` : ""}</p>
               </div>
               <div className="mt-3 flex gap-2">
                 {locationQuery ? (
@@ -612,7 +1048,13 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[4] = node)}>
             <SectionTitle>技师</SectionTitle>
-            {checkoutTechnicianCardData ? (
+            {fixedTechnicianPublisher && sourcePublisherData ? (
+              <UnifiedProfileCard
+                data={sourcePublisherData}
+                detailTo={fixedTechnicianPublisher.detailPath}
+                variant="detailHeader"
+              />
+            ) : checkoutTechnicianCardData ? (
               <SocialProfileMiniCard
                 className="cursor-pointer"
                 data={checkoutTechnicianCardData}
@@ -707,7 +1149,8 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
               <div className="grid grid-cols-[minmax(0,1fr),auto] items-end gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-black text-[color:color-mix(in_srgb,var(--client-text)_72%,var(--client-muted)_28%)]">应付金额</p>
-                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(Number(service.priceAmount))}</strong>
+                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(Number(displayServiceInfo.priceAmount) + (fulfillmentMode === "home" && estimateStatus === "success" ? estimate?.fareAmountJpy ?? 0 : 0))}</strong>
+                  {fulfillmentMode === "home" ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]">服务费 + 正式交通费</span> : null}
                 </div>
                 <div className="flex max-w-[54vw] flex-wrap justify-end gap-2">
                   {(["onsite", "bank_transfer"] as const).map((method) => (
@@ -729,10 +1172,10 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
                 </div>
               </div>
               <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2.5">
-                <SecondaryButton className="w-full" onClick={() => navigate(`/stores/${service.shop.id}`)}>联系</SecondaryButton>
+                <SecondaryButton className="w-full" onClick={() => navigate(service.shop.contactPath)}>联系</SecondaryButton>
                 <button
                   className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!selectedSlot || submitting}
+                  disabled={!canSubmitBooking || submitting}
                   onClick={() => void submitBooking()}
                   type="button"
                 >

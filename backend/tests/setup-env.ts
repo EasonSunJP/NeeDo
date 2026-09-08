@@ -2,11 +2,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { config as loadDotenv } from "dotenv";
 import { requireCustomerProfileRepositoryIntegrationDatabaseUrl } from "./customer-profile-repository-integration-safety";
+import { requireExchangeCancellationScratchEnvironment } from "../scripts/check-exchange-cancellation-flow";
 
 const runCustomerProfileRepositoryIntegration =
   process.env.RUN_CUSTOMER_PROFILE_REPOSITORY_INTEGRATION === "true";
 const runCarouselPublicationIntegration =
   process.env.RUN_CAROUSEL_PUBLICATION_INTEGRATION === "true";
+const runExchangeCancellationIntegration =
+  process.env.RUN_EXCHANGE_CANCELLATION_INTEGRATION === "true";
 
 if (runCustomerProfileRepositoryIntegration) {
   const envFile = process.env.ENV_FILE?.trim();
@@ -39,6 +42,18 @@ if (runCarouselPublicationIntegration) {
   process.env.DATABASE_URL = loadedEnvironment.parsed.DATABASE_URL;
 }
 
+if (runExchangeCancellationIntegration) {
+  const { envFile } = requireExchangeCancellationScratchEnvironment(
+    process.env.FORMAL_BACKEND_ENV_FILE
+  );
+  process.env.ENV_FILE = envFile;
+  const loadedEnvironment = loadDotenv({ path: envFile, override: true });
+  if (loadedEnvironment.error || !loadedEnvironment.parsed?.DATABASE_URL) {
+    throw new Error(`Unable to load Exchange cancellation integration ENV_FILE: ${envFile}`);
+  }
+  process.env.DATABASE_URL = loadedEnvironment.parsed.DATABASE_URL;
+}
+
 if (!runCarouselPublicationIntegration) {
   process.env.NODE_ENV = runCustomerProfileRepositoryIntegration ? "development" : "test";
   process.env.DEPLOY_ENV = runCustomerProfileRepositoryIntegration ? "local" : "test";
@@ -61,7 +76,11 @@ process.env.METRICS_BEARER_TOKEN = "";
 process.env.TRACING_ENABLED = "true";
 process.env.CACHE_PUBLIC_MAX_AGE_SECONDS = "30";
 process.env.CACHE_STALE_WHILE_REVALIDATE_SECONDS = "120";
-if (!runCustomerProfileRepositoryIntegration && !runCarouselPublicationIntegration) {
+if (
+  !runCustomerProfileRepositoryIntegration &&
+  !runCarouselPublicationIntegration &&
+  !runExchangeCancellationIntegration
+) {
   process.env.DATABASE_URL =
     process.env.CUSTOMER_PROFILE_REPOSITORY_TEST_DATABASE_URL ??
     "mysql://needo_test:needo_test_password@localhost:3307/needo_test";

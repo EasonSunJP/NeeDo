@@ -4,8 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
-import type { Customer } from "../../types/domain";
-import { UnifiedUserCalendar } from "./UnifiedUserCalendar";
+import type { BookingScheduleSlot } from "../../features/booking/api";
+import type { Customer, Store, Technician } from "../../types/domain";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
+import { getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedUserCalendar } from "./UnifiedUserCalendar";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -55,6 +57,10 @@ vi.mock("../../state/technicianScheduleStore", () => ({
 
 vi.mock("../../features/dispatch-center/store", () => ({
   useDispatchCenterStore: () => ({ arrangements: [] })
+}));
+
+vi.mock("../../lib/persistentCacheScope", () => ({
+  getAuthenticatedPersistentCacheScope: () => "account:7"
 }));
 
 vi.mock("../../features/im/store", () => ({
@@ -125,7 +131,8 @@ let container: HTMLDivElement;
 let root: Root;
 
 describe("UnifiedUserCalendar formal-only mode", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await persistentResourceCache.clearScope("account:7");
     vi.clearAllMocks();
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
@@ -165,6 +172,85 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     container.remove();
     window.localStorage.clear();
     vi.restoreAllMocks();
+  });
+
+  async function renderMerchant() {
+    await act(async () => root.render(
+      <MemoryRouter><I18nProvider><UnifiedUserCalendar
+        currentStore={{ id: "17", name: "Formal Shop" } as Store}
+        technicians={[{ ...technicianFixture, avatar: "/media/formal-avatar.jpg" } as Technician]}
+        scope="merchant" displayMode="parallel" merchantLaneMode="appointmentStatus" formalOnly
+      /></I18nProvider></MemoryRouter>
+    ));
+  }
+
+  it("keeps real technician avatar headers in appointment status mode on empty days", async () => {
+    await renderMerchant();
+    await waitFor(() => expect(container.querySelector('img[alt="山崎 俊介"]')).not.toBeNull());
+    expect(container.querySelector('img[alt="山崎 俊介"]')?.getAttribute("src")).toBe("/media/formal-avatar.jpg");
+    expect(container.textContent).toContain("已排预约");
+    expect(container.textContent).toContain("未排预约");
+  });
+
+  it("loads later real order pages and retains assigned orders under the status filter", async () => {
+    const slot = { id: 901, startsAt: `${todayKey()}T10:00:00`, endsAt: `${todayKey()}T11:00:00`,
+      status: "confirmed", orderNo: "TEST-901", serviceName: "first-page-service", technicianProfileId: 48, shopId: 17,
+      capacity: 1, bookedCount: 0, priceAmount: "8800", currency: "JPY", durationMinutes: 60 };
+    testState.legacyListOrders.mockImplementation(async (input) => ({
+      list: [{ ...slot, id: 900 + input.page, serviceName: input.page === 1 ? "first-page-service" : "last-page-service" }],
+      page: input.page, page_size: 1, total: 2
+    }));
+    await renderMerchant();
+    await waitFor(() => expect(container.textContent).toContain("last-page-service"));
+    const assigned = Array.from(container.querySelectorAll("button")).find(button => button.textContent === "已排预约");
+    await act(async () => assigned?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(container.textContent).toContain("last-page-service");
+  });
+
+  it("preserves historical orders when their technician is no longer in the current roster", async () => {
+    testState.legacyListOrders.mockResolvedValue({ list: [{ id: 903, orderNo: "TEST-903",
+      startsAt: `${todayKey()}T23:00:00`, endsAt: `${todayKey()}T23:59:00`,
+      status: "confirmed", serviceName: "departed-staff-service", technicianName: "Former Staff",
+      technicianProfileId: 49, shopId: 17, capacity: 1, bookedCount: 1,
+      priceAmount: "8800", currency: "JPY", durationMinutes: 59
+    }], total: 1, page: 1, page_size: 100 });
+    await renderMerchant();
+    await waitFor(() => expect(container.textContent).toContain("departed-staff-service"));
+    expect(container.textContent).toContain("Former Staff");
+  });
+
+  it("splits overnight slots into daily segments and preserves an exact midnight end", () => {
+    const events = getFormalScheduleEvents([{ id: 904,
+      startsAt: "2026-09-06T23:00:00", endsAt: "2026-09-07T01:00:00", serviceName: "overnight"
+    } as BookingScheduleSlot], "merchant");
+    expect(events).toEqual([
+      expect.objectContaining({ date: "2026-09-06", startTime: "23:00", endTime: "24:00" }),
+      expect.objectContaining({ date: "2026-09-07", startTime: "00:00", endTime: "01:00" })
+    ]);
+    const midnight = getFormalScheduleEvents([{ id: 905,
+      startsAt: "2026-09-06T23:00:00", endsAt: "2026-09-07T00:00:00", serviceName: "midnight"
+    } as BookingScheduleSlot], "merchant");
+    expect(midnight).toHaveLength(1);
+    expect(midnight[0]?.endTime).toBe("24:00");
+  });
+
+  it.each([["available", "可预约"], ["booked", "已预约"], ["blocked", "已锁定"]] as const)("keeps the persisted %s slot status visible on compact cards", async (status, badge) => {
+    const event = getFormalScheduleEvents([{ id: 906, status,
+      startsAt: "2026-09-06T00:00:00", endsAt: "2026-09-06T01:00:00", serviceName: "正式服务"
+    } as BookingScheduleSlot], "merchant")[0]!;
+    await act(async () => root.render(<UnifiedCalendarEventCard event={event} compact onOpen={() => {}} />));
+    expect(container.querySelector("button")?.textContent).toContain(badge);
+  });
+
+  it("does not present available staffing slots as customer appointments", async () => {
+    testState.listScheduleSlots.mockResolvedValue({ list: [{ id: 999,
+      startsAt: `${todayKey()}T00:00:00`, endsAt: `${todayKey()}T01:00:00`,
+      status: "available", serviceName: "unbooked-staffing-slot", technicianProfileId: 48
+    }], total: 1, page: 1, page_size: 100 });
+    await renderMerchant();
+    await waitFor(() => expect(testState.legacyListOrders).toHaveBeenCalled());
+    expect(container.textContent).not.toContain("unbooked-staffing-slot");
+    expect(testState.listScheduleSlots).not.toHaveBeenCalled();
   });
 
   it("does not replace a failed formal request with local events", async () => {
@@ -250,5 +336,37 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(query.to.getTime() - query.from.getTime()).toBeLessThanOrEqual(2 * 24 * 60 * 60 * 1000);
     expect(container.textContent).toContain("搜索「山崎」");
     expect(container.textContent).toContain("00:00");
+  });
+
+  it("restores a cached formal schedule immediately after route remount", async () => {
+    testState.listScheduleSlots.mockResolvedValue({
+      list: [{
+        id: 1001,
+        startsAt: `${todayKey()}T10:00:00`,
+        endsAt: `${todayKey()}T11:00:00`,
+        status: "available",
+        serviceName: "缓存排班",
+        technicianProfileId: 48
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+    const view = (
+      <MemoryRouter>
+        <I18nProvider>
+          <UnifiedUserCalendar currentTechnician={technicianFixture} formalOnly scope="technician" />
+        </I18nProvider>
+      </MemoryRouter>
+    );
+    await act(async () => root.render(view));
+    await waitFor(() => expect(container.textContent).toContain("缓存排班"));
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => root.render(view));
+
+    expect(container.textContent).toContain("缓存排班");
+    expect(testState.listScheduleSlots).toHaveBeenCalledTimes(1);
   });
 });

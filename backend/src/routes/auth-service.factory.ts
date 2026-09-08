@@ -17,16 +17,16 @@ export const createAuthServiceForRoutes = (
   config: AppConfig,
   dependencies: AppDependencies
 ): AuthService => {
-  const policyEnforcement = dependencies.userPolicyEnforcementService ?? (
-    dependencies.userPolicyEnforcementRepository || dependencies.userGlobalPolicyRepository
+  const policyEnforcement =
+    dependencies.userPolicyEnforcementService ??
+    (dependencies.userPolicyEnforcementRepository || dependencies.userGlobalPolicyRepository
       ? new UserPolicyEnforcementService(
           dependencies.userPolicyEnforcementRepository ?? new UserPolicyEnforcementRepository(),
           new UserGlobalPolicyService(
             dependencies.userGlobalPolicyRepository ?? new UserGlobalPolicyRepository()
           )
         )
-      : undefined
-  );
+      : undefined);
   return new AuthService(
     config,
     dependencies.authRepository ?? new AuthRepository(),
@@ -38,6 +38,7 @@ export const createAuthServiceForRoutes = (
     dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository(),
     dependencies.merchantShopAuditOutboxTrigger,
     createUserExperienceServiceForRoutes(dependencies),
-    policyEnforcement
+    policyEnforcement,
+    dependencies.platformAccessPolicyService
   );
 };

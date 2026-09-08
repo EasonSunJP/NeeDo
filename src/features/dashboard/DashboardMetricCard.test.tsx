@@ -94,6 +94,56 @@ describe("DashboardMetricCard", () => {
     expect(markup).not.toContain("1,024");
   });
 
+  it("renders an optional exact three-point sparkline beside the headline value", () => {
+    const markup = renderCard(
+      <DashboardMetricCard
+        comparison={{ changeRatePercent: 50, current: 3, previous: 2 }}
+        sparkline={[
+          { key: "2026-08-30", label: "08-30", value: 1 },
+          { key: "2026-08-31", label: "08-31", value: 2 },
+          { key: "2026-09-01", label: "09-01", value: 3 }
+        ]}
+        title="新增用户"
+        unit="people"
+      />
+    );
+
+    expect(markup).toContain('data-dashboard-sparkline="true"');
+    expect(markup.match(/data-dashboard-sparkline-node="true"/g)).toHaveLength(3);
+    expect(markup).toContain("新增用户");
+    expect(markup).toContain("09-01");
+    expect(markup).toContain("3 人");
+  });
+
+  it("keeps the headline number and unit intact when a narrow card wraps its sparkline", () => {
+    const markup = renderCard(
+      <DashboardMetricCard
+        comparison={{ changeRatePercent: 50, current: 123456, previous: 2 }}
+        sparkline={[
+          { key: "2026-08-30", label: "08-30", value: 1 },
+          { key: "2026-08-31", label: "08-31", value: 2 },
+          { key: "2026-09-01", label: "09-01", value: 3 }
+        ]}
+        title="可排班"
+        unit="slots"
+      />
+    );
+    const container = document.createElement("div");
+    container.innerHTML = markup;
+    const valueRow = container.querySelector<HTMLElement>("[data-analytics-metric-value]");
+    const valueGroup = container.querySelector<HTMLElement>("[data-dashboard-metric-value-group]");
+    const number = container.querySelector<HTMLElement>("[data-dashboard-metric-number]");
+    const unit = container.querySelector<HTMLElement>("[data-dashboard-metric-unit]");
+    const sparklineWrap = container.querySelector<HTMLElement>("[data-dashboard-sparkline-wrap]");
+
+    expect(valueRow?.classList.contains("flex-wrap")).toBe(true);
+    expect(valueGroup?.classList.contains("min-w-max")).toBe(true);
+    expect(number?.classList.contains("whitespace-nowrap")).toBe(true);
+    expect(number?.classList.contains("truncate")).toBe(false);
+    expect(unit?.classList.contains("whitespace-nowrap")).toBe(true);
+    expect(sparklineWrap?.classList.contains("ml-auto")).toBe(true);
+  });
+
   it.each([
     [20, "up", "+20%"],
     [-12.5, "down", "-12.5%"],
@@ -164,6 +214,9 @@ describe("DashboardMetricCard", () => {
     expect(markup).toContain('data-analytics-card-header="true"');
     expect(markup).toContain('data-analytics-detail-accessory="true"');
     expect(markup).toContain('aria-disabled="true"');
+    expect(markup).toContain("border-coral/40");
+    expect(markup).toContain("bg-coral/10");
+    expect(markup).toContain("text-coral");
     expect(markup).toMatch(/<span[^>]*data-analytics-disabled-detail="true"[^>]*>TEST<\/span>/);
     expect(markup).not.toMatch(/<button[^>]*>TEST<\/button>/);
     expect(markup.indexOf('data-analytics-detail-accessory="true"')).toBeLessThan(

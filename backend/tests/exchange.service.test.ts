@@ -64,7 +64,13 @@ const post: ExchangePostPayload = {
     avatarUrl: actor.avatarUrl
   },
   counts: { comments: 0, likes: 0, shares: 0 },
-  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false },
+  viewer: {
+    liked: false,
+    canWithdraw: true,
+    canClaim: false,
+    canViewClaims: true,
+    canViewMatching: true
+  },
   demand: {
     serviceMode: "store",
     targetProviderCount: 1,
@@ -96,6 +102,19 @@ const comment: ExchangeCommentPayload = {
 };
 
 const counts: ExchangeInteractionCounts = { comments: 4, likes: 21, shares: 5 };
+
+const resolvedIntelligenceService = {
+  serviceRef: "shop:501" as const,
+  serviceId: 501,
+  technicianServiceId: null,
+  serviceName: "訪問ヘアセット",
+  serviceDurationMinutes: 60,
+  catalogPriceJpy: 15_000,
+  serviceMode: "onsite" as const,
+  areaLabel: "港区",
+  addressLabel: "港区青山1-1",
+  serviceAreas: ["港区"]
+};
 
 const demandInput = {
   type: "demand" as const,
@@ -175,6 +194,10 @@ const createRepository = () => {
       page_size: 20
     })),
     findPostByIdempotencyKey: jest.fn(async () => null),
+    resolveIntelligencePublicationService: jest.fn(async () => ({
+      kind: "success" as const,
+      value: resolvedIntelligenceService
+    })),
     createPost: jest.fn(async () => ({ id: post.id })),
     createAudit: jest.fn(async () => undefined),
     findPostByIdOrThrow: jest.fn(async () => post),
@@ -341,7 +364,13 @@ describe("ExchangeService", () => {
 
     repository.findPostById.mockResolvedValueOnce({
       ...post,
-      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false }
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: false,
+        canViewClaims: false,
+        canViewMatching: false
+      }
     });
     await expect(service.getPost(access, 41)).rejects.toMatchObject({
       message: "error.exchange.post_not_found",
@@ -352,11 +381,55 @@ describe("ExchangeService", () => {
     await expect(service.getPost(access, 41)).resolves.toEqual(post);
   });
 
+  it("preserves the repository's authoritative Intelligence booking projection", async () => {
+    const repository = createRepository();
+    const intelligencePost: ExchangePostPayload = {
+      ...post,
+      type: "intelligence",
+      demand: null,
+      viewer: {
+        ...post.viewer,
+        canClaim: false,
+        canViewClaims: false
+      },
+      intelligence: {
+        serviceMode: "onsite",
+        addressLabel: "港区青山1-1",
+        serviceAreas: ["港区"],
+        originalPriceJpy: 15_000,
+        campaignPriceJpy: 10_000,
+        booking: {
+          available: false,
+          unavailableReason: "post_unavailable",
+          target: { type: "shop_service", id: 501 },
+          catalogPriceJpy: 15_000,
+          campaignPriceJpy: 10_000,
+          serviceName: "訪問ヘアセット",
+          durationMinutes: 60,
+          serviceMode: "onsite",
+          serviceWindow: { startsAt: post.serviceStartAt, endsAt: post.serviceEndAt }
+        },
+        publisherCard: null,
+        serviceCard: null
+      }
+    };
+    repository.findPostById.mockResolvedValueOnce(intelligencePost);
+    const service = new ExchangeService(repository, () => now);
+
+    await expect(service.getPost(access, 41)).resolves.toEqual(intelligencePost);
+  });
+
   it("decorates live selective Requests with server-authoritative claim capabilities", async () => {
     const repository = createRepository();
     const selectivePost = {
       ...post,
-      viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false },
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: true,
+        canViewClaims: false,
+        canViewMatching: false
+      },
       demand: { ...post.demand!, matchMode: "selective" as const }
     };
     repository.resolveActor.mockResolvedValue({
@@ -384,7 +457,15 @@ describe("ExchangeService", () => {
       service.listPosts(technicianAccess, { type: "demand", page: 1, pageSize: 20 })
     ).resolves.toMatchObject({
       list: [
-        { viewer: { liked: false, canWithdraw: false, canClaim: true, canViewClaims: false } }
+        {
+          viewer: {
+            liked: false,
+            canWithdraw: false,
+            canClaim: true,
+            canViewClaims: false,
+            canViewMatching: false
+          }
+        }
       ]
     });
     expect(repository.listPosts).toHaveBeenCalledWith(
@@ -394,10 +475,71 @@ describe("ExchangeService", () => {
     repository.resolveActor.mockResolvedValue(actor);
     repository.findPostById.mockResolvedValue({
       ...selectivePost,
-      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: false }
+      viewer: {
+        liked: false,
+        canWithdraw: true,
+        canClaim: false,
+        canViewClaims: false,
+        canViewMatching: true
+      }
     });
     await expect(service.getPost(access, 41)).resolves.toMatchObject({
-      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true }
+      viewer: {
+        liked: false,
+        canWithdraw: true,
+        canClaim: false,
+        canViewClaims: true,
+        canViewMatching: true
+      }
+    });
+  });
+
+  it("preserves repository-owned Quick capacity and owner claim-list capabilities", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now);
+    const providerPost = {
+      ...post,
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: true,
+        canViewClaims: false,
+        canViewMatching: false
+      }
+    };
+    repository.resolveActor.mockResolvedValue({
+      ...actor,
+      identityType: "technician",
+      scopeType: "technician_profile",
+      scopeId: 81
+    });
+    repository.findPostById.mockResolvedValue(providerPost);
+
+    await expect(
+      service.getPost(
+        {
+          ...access,
+          currentIdentityType: "technician",
+          currentIdentityScopeType: "technician_profile",
+          currentIdentityScopeId: 81
+        },
+        41
+      )
+    ).resolves.toMatchObject({ viewer: { canClaim: true } });
+
+    repository.resolveActor.mockResolvedValue(actor);
+    repository.findPostById.mockResolvedValue({
+      ...post,
+      viewer: {
+        liked: false,
+        canWithdraw: true,
+        canClaim: false,
+        canViewClaims: true,
+        canViewMatching: true
+      }
+    });
+    await expect(service.getPost(access, 41)).resolves.toMatchObject({
+      viewer: { canViewClaims: true }
     });
   });
 
@@ -407,7 +549,13 @@ describe("ExchangeService", () => {
     const matchedPost = {
       ...post,
       status: "matched" as const,
-      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: true },
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: false,
+        canViewClaims: true,
+        canViewMatching: true
+      },
       demand: { ...post.demand!, matchMode: "selective" as const }
     };
     repository.findPostById.mockResolvedValue(matchedPost);
@@ -419,7 +567,13 @@ describe("ExchangeService", () => {
     const repository = createRepository();
     repository.findPostById.mockResolvedValue({
       ...post,
-      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false }
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: false,
+        canViewClaims: false,
+        canViewMatching: false
+      }
     });
     const service = new ExchangeService(repository, () => now);
 
@@ -482,6 +636,7 @@ describe("ExchangeService", () => {
         {
           ...demandInput,
           type: "intelligence",
+          serviceRef: "shop:501",
           areaLabel: "渋谷区",
           serviceMode: "store",
           addressLabel: "渋谷区",
@@ -819,7 +974,33 @@ describe("ExchangeService", () => {
     "allows a %s identity to publish intelligence",
     async (identityType) => {
       const repository = createRepository();
-      repository.resolveActor.mockResolvedValueOnce({ ...actor, identityType });
+      const technician = identityType === "technician";
+      repository.resolveActor.mockResolvedValueOnce({
+        ...actor,
+        identityType,
+        scopeType: technician ? "technician_profile" : "shop",
+        scopeId: technician ? 81 : 11,
+        publicId: technician ? "s0000000081" : "b0000000017",
+        customerMembership: null,
+        shopScope: technician ? null : { shopId: 11, status: "published" }
+      });
+      const publicationService = technician
+        ? {
+            ...resolvedIntelligenceService,
+            serviceRef: "technician:701" as const,
+            serviceId: null,
+            technicianServiceId: 701,
+            serviceName: "着付け",
+            serviceDurationMinutes: 90,
+            catalogPriceJpy: 18_000,
+            serviceMode: "store" as const,
+            serviceAreas: ["港区", "渋谷区"]
+          }
+        : resolvedIntelligenceService;
+      repository.resolveIntelligencePublicationService.mockResolvedValueOnce({
+        kind: "success",
+        value: publicationService
+      });
       repository.findPostByIdOrThrow.mockResolvedValueOnce({
         ...post,
         type: "intelligence",
@@ -829,10 +1010,17 @@ describe("ExchangeService", () => {
 
       await expect(
         service.publish(
-          { ...access, currentIdentityType: identityType },
+          {
+            ...access,
+            currentIdentityType: identityType,
+            currentIdentityScopeType: technician ? "technician_profile" : "shop",
+            currentIdentityScopeId: technician ? 81 : 11,
+            currentPublicId: technician ? "s0000000081" : "b0000000017"
+          },
           {
             ...demandInput,
             type: "intelligence",
+            serviceRef: technician ? "technician:701" : "shop:501",
             areaLabel: "渋谷区",
             serviceMode: "onsite",
             addressLabel: null,
@@ -843,8 +1031,106 @@ describe("ExchangeService", () => {
           `publish-${identityType}-0001`
         )
       ).resolves.toEqual(expect.objectContaining({ type: "intelligence" }));
+      expect(repository.resolveIntelligencePublicationService).toHaveBeenCalledWith(
+        expect.objectContaining({
+          serviceRef: technician ? "technician:701" : "shop:501",
+          now
+        })
+      );
+      expect(repository.createPost).toHaveBeenCalledWith(
+        expect.objectContaining({ intelligenceService: publicationService })
+      );
     }
   );
+
+  it.each([
+    ["not_found", ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_NOT_FOUND, 404],
+    ["forbidden", ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_FORBIDDEN, 403],
+    ["unavailable", ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_UNAVAILABLE, 409]
+  ] as const)(
+    "maps a %s service resolution outcome without creating a post",
+    async (kind, code, statusCode) => {
+      const repository = createRepository();
+      repository.resolveActor.mockResolvedValue({
+        ...actor,
+        identityType: "merchant_owner",
+        scopeType: "shop",
+        scopeId: 11,
+        publicId: "b0000000017",
+        customerMembership: null,
+        shopScope: { shopId: 11, status: "published" }
+      });
+      repository.resolveIntelligencePublicationService.mockResolvedValue({ kind });
+      const service = new ExchangeService(repository, () => now);
+
+      await expect(
+        service.publish(
+          {
+            ...access,
+            currentIdentityType: "merchant_owner",
+            currentIdentityScopeType: "shop",
+            currentIdentityScopeId: 11,
+            currentPublicId: "b0000000017"
+          },
+          {
+            type: "intelligence",
+            serviceRef: "shop:501",
+            title: "青山限定",
+            detail: "正式サービスです。",
+            contentLocale: "ja",
+            serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
+            serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
+            expiresAt: new Date("2026-08-31T08:30:00.000Z"),
+            campaignPriceJpy: 10_000
+          },
+          "intelligence-bind-001"
+        )
+      ).rejects.toMatchObject({ code, statusCode });
+      expect(repository.createPost).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects a campaign price above the server-resolved catalog price", async () => {
+    const repository = createRepository();
+    repository.resolveActor.mockResolvedValue({
+      ...actor,
+      identityType: "merchant_staff",
+      scopeType: "shop",
+      scopeId: 11,
+      publicId: "b0000000017",
+      customerMembership: null,
+      shopScope: { shopId: 11, status: "published" }
+    });
+    const service = new ExchangeService(repository, () => now);
+
+    await expect(
+      service.publish(
+        {
+          ...access,
+          currentIdentityType: "merchant_staff",
+          currentIdentityScopeType: "shop",
+          currentIdentityScopeId: 11,
+          currentPublicId: "b0000000017"
+        },
+        {
+          type: "intelligence",
+          serviceRef: "shop:501",
+          title: "青山限定",
+          detail: "正式サービスです。",
+          contentLocale: "ja",
+          serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
+          serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
+          expiresAt: new Date("2026-08-31T08:30:00.000Z"),
+          campaignPriceJpy: 15_001
+        },
+        "intelligence-price-01"
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.EXCHANGE_INTELLIGENCE_CAMPAIGN_PRICE_INVALID,
+      statusCode: 422
+    });
+    expect(repository.createPost).not.toHaveBeenCalled();
+  });
 
   it("passes idempotency keys and transactional audits to comment and share", async () => {
     const repository = createRepository();
@@ -895,11 +1181,7 @@ describe("ExchangeService", () => {
       { transactionClient }
     );
     expect(repository.markWithdrawnIfPublished).toHaveBeenCalledWith(41, now);
-    expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(
-      41,
-      "request_withdrawn",
-      now
-    );
+    expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(41, "request_withdrawn", now);
     expect(repository.closeOpenMatchingForTerminalPost).toHaveBeenCalledWith({
       exchangePostId: 41,
       reason: "request_withdrawn",
@@ -928,10 +1210,7 @@ describe("ExchangeService", () => {
 
   it.each([
     ["legacy demand", terminalPost({ requestFinancial: null })],
-    [
-      "Intelligence",
-      terminalPost({ type: "intelligence", requestFinancial: { state: "held" } })
-    ]
+    ["Intelligence", terminalPost({ type: "intelligence", requestFinancial: { state: "held" } })]
   ])("withdraws %s without invoking the Request ledger", async (_label, lockedPost) => {
     const repository = createRepository();
     repository.lockPostForMutation.mockResolvedValue(lockedPost);
@@ -1039,11 +1318,7 @@ describe("ExchangeService", () => {
       { transactionClient }
     );
     expect(repository.markExpiredIfPublished).toHaveBeenCalledWith(41, now);
-    expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(
-      41,
-      "request_expired",
-      now
-    );
+    expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(41, "request_expired", now);
     expect(repository.closeOpenMatchingForTerminalPost).toHaveBeenCalledWith({
       exchangePostId: 41,
       reason: "request_expired",
@@ -1094,10 +1369,7 @@ describe("ExchangeService", () => {
 
   it.each([
     ["legacy demand", terminalPost({ requestFinancial: null })],
-    [
-      "Intelligence",
-      terminalPost({ type: "intelligence", requestFinancial: { state: "held" } })
-    ]
+    ["Intelligence", terminalPost({ type: "intelligence", requestFinancial: { state: "held" } })]
   ])("expires %s without invoking the Request ledger", async (_label, lockedPost) => {
     const repository = createRepository();
     repository.lockPostForMutation.mockResolvedValue({ ...lockedPost, expiresAt: now });
@@ -1117,11 +1389,7 @@ describe("ExchangeService", () => {
     if (_label === "Intelligence") {
       expect(repository.cancelActiveClaimsByPost).not.toHaveBeenCalled();
     } else {
-      expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(
-        41,
-        "request_expired",
-        now
-      );
+      expect(repository.cancelActiveClaimsByPost).toHaveBeenCalledWith(41, "request_expired", now);
     }
     expect(repository.createAudit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1220,12 +1488,7 @@ describe("ExchangeService", () => {
 
   it.each([
     ["not_found", null, "error.exchange.post_not_found", 404],
-    [
-      "forbidden",
-      terminalPost({ requestFinancial: null }),
-      "error.exchange.author_required",
-      403
-    ],
+    ["forbidden", terminalPost({ requestFinancial: null }), "error.exchange.author_required", 403],
     [
       "unavailable",
       { ...terminalPost({ requestFinancial: null }), expiresAt: now },
@@ -1237,9 +1500,7 @@ describe("ExchangeService", () => {
     async (kind, lockedPost, message, statusCode) => {
       const repository = createRepository();
       repository.lockPostForMutation.mockResolvedValueOnce(
-        kind === "forbidden" && lockedPost
-          ? { ...lockedPost, ownerIdentityId: 999 }
-          : lockedPost
+        kind === "forbidden" && lockedPost ? { ...lockedPost, ownerIdentityId: 999 } : lockedPost
       );
       const service = new ExchangeService(repository, () => now);
 

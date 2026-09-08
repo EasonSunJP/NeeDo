@@ -50,6 +50,17 @@ function chatRecordItem(position: number, overrides: Record<string, unknown> = {
 }
 
 describe("formal IM adapter", () => {
+  it("does not accept a sender-supplied media expiry flag as server state", () => {
+    const result = toFormalImStoreUpdate({
+      id: "media-state-untrusted", type: "message.created",
+      payload: {
+        id: 700, conversationId: 91, senderUserId: 100, type: "text", content: "/media/im/a.jpg", createdAt: now,
+        metadata: { needoMessageType: "image", needoMessageExt: { mediaState: "expired", caption: "keep caption" } }
+      }
+    });
+    expect(result).toMatchObject({ type: "message.created", message: { type: "image", ext: { caption: "keep caption" } } });
+    if (result?.type === "message.created") expect(result.message.ext?.mediaState).toBeUndefined();
+  });
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -854,6 +865,41 @@ describe("formal IM adapter", () => {
     expect(recallMessage).toHaveBeenCalledWith(91, 700, "standard");
   });
 
+  it("maps a confirmed traceless recall to the authoritative deletion mode", async () => {
+    vi.spyOn(realtimeApi, "recallMessage").mockResolvedValue({
+      action: "traceless_recall",
+      conversationId: 91,
+      messageId: 700,
+      message: {
+        id: 700,
+        conversationId: 91,
+        senderUserId: 100,
+        type: "text",
+        content: null,
+        metadata: null,
+        reactions: [],
+        recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+        recalledAt: "2026-08-25T10:01:00.000Z",
+        recallMode: "traceless",
+        contentPurgedAt: "2026-08-25T10:01:00.000Z",
+        lifecycleVersion: 2,
+        availableRecallModes: [],
+        createdAt: now,
+      },
+    });
+    const api = createFormalImApi({
+      currentUser: { id: 100, needoId: "n0000000100", username: "sim-customer-100", avatarUrl: null },
+      scope: "user",
+    });
+
+    await expect(api.recallMessage("91", "700", "standard")).resolves.toMatchObject({
+      conversationId: "91",
+      messageId: "700",
+      mode: "traceless",
+      message: { id: "700", recallMode: "traceless" },
+    });
+  });
+
   it("rejects a recall response that does not contain a terminal tombstone", async () => {
     vi.spyOn(realtimeApi, "recallMessage").mockResolvedValue({
       action: "standard_recall",
@@ -924,6 +970,34 @@ describe("formal IM adapter", () => {
     });
   });
 
+  it("maps traceless message.recalled SSE payloads to a terminal deletion", () => {
+    expect(toFormalImStoreUpdate({
+      id: "evt-traceless-1",
+      type: "message.recalled",
+      payload: {
+        id: 700,
+        conversationId: 91,
+        senderUserId: 100,
+        type: "text",
+        content: null,
+        metadata: null,
+        reactions: [],
+        recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+        recalledAt: "2026-08-25T10:01:00.000Z",
+        recallMode: "traceless",
+        contentPurgedAt: "2026-08-25T10:01:00.000Z",
+        lifecycleVersion: 2,
+        availableRecallModes: [],
+        createdAt: now,
+      },
+    })).toEqual({
+      type: "message.deleted",
+      conversationId: "91",
+      messageId: "700",
+      reason: "traceless_recall",
+    });
+  });
+
   it("maps message.created SSE payloads directly so an open chat updates without refresh", () => {
     expect(
       toFormalImStoreUpdate({
@@ -947,6 +1021,27 @@ describe("formal IM adapter", () => {
         conversationId: "91",
         content: "即时到达的信息",
       },
+    });
+  });
+
+  it("preserves content-free privacy deletion identity for local cache eviction", () => {
+    expect(
+      toFormalImStoreUpdate({
+        id: "evt-deleted-44",
+        type: "message.deleted",
+        payload: {
+          action: "privacy_expired",
+          conversationId: 91,
+          id: 44,
+          messageId: 702,
+          occurredAt: "2026-09-05T00:00:00.000Z",
+        },
+      }),
+    ).toEqual({
+      type: "message.deleted",
+      conversationId: "91",
+      messageId: "702",
+      reason: "privacy_expired",
     });
   });
 

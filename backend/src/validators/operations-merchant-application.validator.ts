@@ -8,9 +8,7 @@ export const operationsMerchantApplicationListQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     page_size: z.coerce.number().int().positive().max(100).default(20),
-    status: z
-      .enum(["submitted", "under_review", "approved", "rejected", "withdrawn"])
-      .optional()
+    status: z.enum(["submitted", "under_review", "approved", "rejected", "withdrawn"]).optional()
   })
   .strict();
 

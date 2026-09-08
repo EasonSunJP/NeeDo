@@ -23,10 +23,7 @@ export class LedgerCurrencyService {
     return user.isTestAccount ? "TEST_NDP" : "NDP";
   }
 
-  public static assertSameCurrency(
-    expected: LedgerCurrency,
-    actual: LedgerCurrency[]
-  ): void {
+  public static assertSameCurrency(expected: LedgerCurrency, actual: LedgerCurrency[]): void {
     if (actual.some((currency) => currency !== expected)) {
       throw LedgerCurrencyService.currencyMismatchError();
     }

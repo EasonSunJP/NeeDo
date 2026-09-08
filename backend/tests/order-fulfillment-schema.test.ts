@@ -3,10 +3,7 @@ import { join } from "node:path";
 
 const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
 const migration = readFileSync(
-  join(
-    process.cwd(),
-    "prisma/migrations/20260901090000_order_fulfillment_checkout/migration.sql"
-  ),
+  join(process.cwd(), "prisma/migrations/20260901090000_order_fulfillment_checkout/migration.sql"),
   "utf8"
 );
 
@@ -130,34 +127,29 @@ const compositeChildIndexes = [
   {
     model: "OrderAddOn",
     table: "order_add_ons",
-    prisma:
-      '@@index([serviceSessionId, bookingOrderId], map: "order_add_ons_session_order_idx")',
-    sql:
-      "INDEX `order_add_ons_session_order_idx`(`service_session_id`, `booking_order_id`)"
+    prisma: '@@index([serviceSessionId, bookingOrderId], map: "order_add_ons_session_order_idx")',
+    sql: "INDEX `order_add_ons_session_order_idx`(`service_session_id`, `booking_order_id`)"
   },
   {
     model: "OrderServiceEvent",
     table: "order_service_events",
     prisma:
       '@@index([serviceSessionId, bookingOrderId], map: "order_service_events_session_order_idx")',
-    sql:
-      "INDEX `order_service_events_session_order_idx`(`service_session_id`, `booking_order_id`)"
+    sql: "INDEX `order_service_events_session_order_idx`(`service_session_id`, `booking_order_id`)"
   },
   {
     model: "OrderServiceEvent",
     table: "order_service_events",
     prisma:
       '@@index([orderAddOnId, bookingOrderId, serviceSessionId], map: "order_service_events_add_on_order_session_idx")',
-    sql:
-      "INDEX `order_service_events_add_on_order_session_idx`(`order_add_on_id`, `booking_order_id`, `service_session_id`)"
+    sql: "INDEX `order_service_events_add_on_order_session_idx`(`order_add_on_id`, `booking_order_id`, `service_session_id`)"
   },
   {
     model: "OrderServiceEvent",
     table: "order_service_events",
     prisma:
       '@@index([orderCheckoutId, bookingOrderId], map: "order_service_events_checkout_order_idx")',
-    sql:
-      "INDEX `order_service_events_checkout_order_idx`(`order_checkout_id`, `booking_order_id`)"
+    sql: "INDEX `order_service_events_checkout_order_idx`(`order_checkout_id`, `booking_order_id`)"
   }
 ] as const;
 
@@ -202,8 +194,7 @@ const expectedCheckExpressions: Record<string, string> = {
   ndp_exchange_rate_rules_ndp_units_chk: "`ndp_units` > 0",
   ndp_exchange_rate_rules_jpy_units_chk: "`jpy_units` > 0",
   ndp_exchange_rate_rules_version_chk: "`version` > 0",
-  ndp_exchange_rate_rules_window_chk:
-    "`effective_to` IS NULL OR `effective_to` > `effective_from`",
+  ndp_exchange_rate_rules_window_chk: "`effective_to` IS NULL OR `effective_to` > `effective_from`",
   ndp_exchange_rate_rules_active_sentinel_chk:
     "(`status` = 'active' AND `active_key` IS NOT NULL AND `active_key` = 'ndp_exchange_rate') OR (`status` = 'superseded' AND `active_key` IS NULL)",
   order_service_sessions_ended_chronology_chk:
@@ -506,10 +497,7 @@ const expectedForeignKeys = [
   "ADD CONSTRAINT `order_service_events_actor_fkey` FOREIGN KEY (`actor_user_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT"
 ].map(normalize);
 
-const expectedPrismaEnums: Record<
-  string,
-  { members: string[]; directives: string[] }
-> = {
+const expectedPrismaEnums: Record<string, { members: string[]; directives: string[] }> = {
   BookingOrderStatus: {
     members: [
       'PENDING @map("pending")',
@@ -617,6 +605,7 @@ const expectedPrismaScalarFields: Record<string, string[]> = {
     'bookingOrderId Int @unique(map: "order_checkouts_booking_order_key") @map("booking_order_id")',
     'baseAmountJpy Int @map("base_amount_jpy")',
     'addOnAmountJpy Int @default(0) @map("add_on_amount_jpy")',
+    'travelFareAmountJpy Int @default(0) @map("travel_fare_amount_jpy")',
     'discountAmountJpy Int @default(0) @map("discount_amount_jpy")',
     'checkoutAmountJpy Int @map("checkout_amount_jpy")',
     'payableNdp Int @map("payable_ndp")',
@@ -661,8 +650,7 @@ const assertPrismaContracts = (source: string): void => {
       throw new Error(`Prisma enum member contract drift: ${name}`);
     }
     if (
-      JSON.stringify(prismaEnumDirectives(name, source)) !==
-      JSON.stringify(contract.directives)
+      JSON.stringify(prismaEnumDirectives(name, source)) !== JSON.stringify(contract.directives)
     ) {
       throw new Error(`Prisma enum directive contract drift: ${name}`);
     }
@@ -882,9 +870,7 @@ describe("order fulfillment persistence schema", () => {
 
   it("detects a missing composite ownership foreign key independently", () => {
     const mutated = migration.replace(compositeOwnershipFks[1], "");
-    expect(() => assertCompositeOwnershipFks(mutated)).toThrow(
-      "missing composite ownership FK"
-    );
+    expect(() => assertCompositeOwnershipFks(mutated)).toThrow("missing composite ownership FK");
   });
 
   it("detects a missing event-shape CHECK independently", () => {
@@ -918,10 +904,7 @@ describe("order fulfillment persistence schema", () => {
   });
 
   it("detects Prisma enum database-map drift without SQL changes", () => {
-    const mutated = schema.replace(
-      /(\n\s*CASH\s+)@map\("cash"\)/,
-      '$1@map("currency_cash")'
-    );
+    const mutated = schema.replace(/(\n\s*CASH\s+)@map\("cash"\)/, '$1@map("currency_cash")');
     expect(mutated).not.toBe(schema);
     expect(() => assertPrismaContracts(mutated)).toThrow(
       "Prisma enum member contract drift: ServicePaymentMethod"
@@ -952,9 +935,7 @@ describe("order fulfillment persistence schema", () => {
       "order_add_ons_currency_chk",
       "BINARY `currency` = 'jpy'"
     );
-    expect(() => assertAddOnCurrencyCheck(mutated)).toThrow(
-      "order_add_ons_currency_chk drift"
-    );
+    expect(() => assertAddOnCurrencyCheck(mutated)).toThrow("order_add_ons_currency_chk drift");
   });
 
   it("detects the nullable active-rate sentinel regression independently", () => {
@@ -968,9 +949,9 @@ describe("order fulfillment persistence schema", () => {
       "ndp_exchange_rate_rules_active_sentinel_chk",
       "(`status` = 'active' AND `active_key` = 'ndp_exchange_rate') OR (`status` = 'superseded' AND `active_key` IS NULL)"
     );
-    expect(() =>
-      assertExactCheck(mutated, "ndp_exchange_rate_rules_active_sentinel_chk")
-    ).toThrow("ndp_exchange_rate_rules_active_sentinel_chk drift");
+    expect(() => assertExactCheck(mutated, "ndp_exchange_rate_rules_active_sentinel_chk")).toThrow(
+      "ndp_exchange_rate_rules_active_sentinel_chk drift"
+    );
   });
 
   it("detects NULL payment method with ledger evidence independently", () => {
@@ -1007,10 +988,7 @@ describe("order fulfillment persistence schema", () => {
   });
 
   it("detects a weakened rate-seed guard independently", () => {
-    const mutated = migration.replace(
-      expectedRateSeed.guard,
-      `${expectedRateSeed.guard} OR 1 = 1`
-    );
+    const mutated = migration.replace(expectedRateSeed.guard, `${expectedRateSeed.guard} OR 1 = 1`);
     expect(mutated).not.toBe(migration);
     expect(() => assertRateSeed(mutated)).toThrow("rate seed guard drift");
   });

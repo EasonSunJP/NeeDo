@@ -70,13 +70,15 @@ describe("RealtimeRepository group privacy message countdown", () => {
         content: "隐私倒计时消息"
       });
 
-      expect(messageCreate).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({
-          createdAt,
-          expiresAt: new Date("2026-08-30T06:02:00.000Z"),
-          privacyPolicyVersionAtSend: 4
+      expect(messageCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdAt,
+            expiresAt: new Date("2026-08-30T06:02:00.000Z"),
+            privacyPolicyVersionAtSend: 4
+          })
         })
-      }));
+      );
       expect(result).toMatchObject({
         status: "created",
         message: {
@@ -107,13 +109,19 @@ describe("RealtimeRepository group privacy message countdown", () => {
       userId: 7
     });
 
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        conversationId: 3,
-        deletedAt: null,
-        expiredAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }]
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          conversationId: 3,
+          deletedAt: null,
+          expiredAt: null,
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }]
+            })
+          ])
+        })
       })
-    }));
+    );
   });
 });

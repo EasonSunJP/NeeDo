@@ -1,0 +1,33 @@
+{
+  "marker": "sos-admin-qa-30f2cecc-51d0-4747-85e3-4bf95b189822",
+  "orderId": 50492,
+  "checkedAt": "2026-09-06T11:17:20.221Z",
+  "resolvedBy": 1609,
+  "expectedAdmin": 1609,
+  "auditCount": 2,
+  "remaining": {
+    "workStates": 0,
+    "users": 0,
+    "shops": 0,
+    "alerts": 0,
+    "commands": 0,
+    "audits": 0,
+    "loginLogs": 0,
+    "roles": 0,
+    "identities": 0
+  },
+  "redisChecks": [
+    {
+      "db": 0,
+      "remainingRefreshUsers": 0
+    },
+    {
+      "db": 1,
+      "remainingRefreshUsers": 0
+    },
+    {
+      "db": 2,
+      "remainingRefreshUsers": 0
+    }
+  ]
+}

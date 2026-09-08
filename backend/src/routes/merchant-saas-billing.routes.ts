@@ -3,7 +3,10 @@ import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { MerchantSaasBillingController } from "../controllers/merchant-saas-billing.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
-import { createAuthorizeAnyMiddleware, createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
+import {
+  createAuthorizeAnyMiddleware,
+  createAuthorizeMiddleware
+} from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { MerchantSaasBillingRepository } from "../repositories/merchant-saas-billing.repository";
@@ -91,6 +94,13 @@ export const createMerchantSaasBillingRoutes = (
     authorize(MERCHANT_SAAS_BILLING_ROUTE_PERMISSIONS.read),
     validateRequest({ params: merchantAccountIdParamSchema }),
     controller.getMerchantAccount
+  );
+  router.get(
+    "/backoffice/shops/:id/saas-account",
+    authenticate(),
+    authorize(MERCHANT_SAAS_BILLING_ROUTE_PERMISSIONS.read),
+    validateRequest({ params: shopBillingParamSchema }),
+    controller.getShopAccount
   );
   router.patch(
     "/backoffice/merchant-accounts/:id/billing-profile",

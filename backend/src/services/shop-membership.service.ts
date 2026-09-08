@@ -33,18 +33,27 @@ export class ShopMembershipService {
       : { ...overview, recentActivities: [] };
   }
 
-  public async listMerchantMemberships(actor: AuthenticatedAccessContext, input: MembershipListInput) {
+  public async listMerchantMemberships(
+    actor: AuthenticatedAccessContext,
+    input: MembershipListInput
+  ) {
     const page = await this.repository.listMemberships(this.requireMerchantShop(actor), input);
     return { ...page, list: page.list.map((item) => this.toPublicMerchantDetail(item)) };
   }
 
   public async getMerchantMembershipDetail(actor: AuthenticatedAccessContext, publicId: string) {
-    const detail = await this.repository.findMembershipDetail(this.requireMerchantShop(actor), publicId);
+    const detail = await this.repository.findMembershipDetail(
+      this.requireMerchantShop(actor),
+      publicId
+    );
     if (!detail) throw this.notFound("error.shop_membership.not_found");
     return this.toPublicMerchantDetail(detail);
   }
 
-  public async listMerchantCandidates(actor: AuthenticatedAccessContext, input: Omit<MembershipListInput, "status">) {
+  public async listMerchantCandidates(
+    actor: AuthenticatedAccessContext,
+    input: Omit<MembershipListInput, "status">
+  ) {
     return this.repository.listCandidates(this.requireMerchantShop(actor), input);
   }
 
@@ -85,7 +94,10 @@ export class ShopMembershipService {
     }
   }
 
-  public async listMerchantCards(actor: AuthenticatedAccessContext, input: MembershipCardListInput) {
+  public async listMerchantCards(
+    actor: AuthenticatedAccessContext,
+    input: MembershipCardListInput
+  ) {
     return this.repository.listCards(this.requireMerchantShop(actor), input);
   }
 
@@ -93,7 +105,10 @@ export class ShopMembershipService {
     return this.repository.listActivities(this.requireMerchantShop(actor), input);
   }
 
-  public async getMerchantAnalytics(actor: AuthenticatedAccessContext, period: ShopMembershipAnalyticsPeriod) {
+  public async getMerchantAnalytics(
+    actor: AuthenticatedAccessContext,
+    period: ShopMembershipAnalyticsPeriod
+  ) {
     const shopId = this.requireMerchantShop(actor);
     const days = period === "last7days" ? 7 : period === "last90days" ? 90 : 30;
     const to = this.now();
@@ -105,13 +120,22 @@ export class ShopMembershipService {
     return this.repository.getAnalytics(shopId, { period, from, to, dateKeys });
   }
 
-  public async listCustomerMemberships(actor: AuthenticatedAccessContext, input: Omit<MembershipListInput, "keyword">) {
-    const page = await this.repository.listCustomerMemberships(this.requireCustomerProfile(actor), input);
+  public async listCustomerMemberships(
+    actor: AuthenticatedAccessContext,
+    input: Omit<MembershipListInput, "keyword">
+  ) {
+    const page = await this.repository.listCustomerMemberships(
+      this.requireCustomerProfile(actor),
+      input
+    );
     return { ...page, list: page.list.map((item) => this.toPublicCustomerDetail(item)) };
   }
 
   public async getCustomerMembershipDetail(actor: AuthenticatedAccessContext, publicId: string) {
-    const detail = await this.repository.findCustomerMembershipDetail(this.requireCustomerProfile(actor), publicId);
+    const detail = await this.repository.findCustomerMembershipDetail(
+      this.requireCustomerProfile(actor),
+      publicId
+    );
     if (!detail) throw this.notFound("error.shop_membership.not_found");
     return this.toPublicCustomerDetail(detail);
   }
@@ -139,8 +163,16 @@ export class ShopMembershipService {
     return actor.currentIdentityScopeId;
   }
 
-  private toPublicMerchantDetail<T extends { internalId: number; customerProfileId: number; createdAt: Date; updatedAt: Date }>(detail: T): Omit<T, "internalId" | "customerProfileId" | "createdAt" | "updatedAt"> {
-    const { internalId: _internalId, customerProfileId: _customerProfileId, createdAt: _createdAt, updatedAt: _updatedAt, ...publicDetail } = detail;
+  private toPublicMerchantDetail<
+    T extends { internalId: number; customerProfileId: number; createdAt: Date; updatedAt: Date }
+  >(detail: T): Omit<T, "internalId" | "customerProfileId" | "createdAt" | "updatedAt"> {
+    const {
+      internalId: _internalId,
+      customerProfileId: _customerProfileId,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ...publicDetail
+    } = detail;
     void _internalId;
     void _customerProfileId;
     void _createdAt;
@@ -148,14 +180,20 @@ export class ShopMembershipService {
     return publicDetail;
   }
 
-  private toPublicCustomerDetail<T extends { internalId: number }>(detail: T): Omit<T, "internalId"> {
+  private toPublicCustomerDetail<T extends { internalId: number }>(
+    detail: T
+  ): Omit<T, "internalId"> {
     const { internalId: _internalId, ...publicDetail } = detail;
     void _internalId;
     return publicDetail;
   }
 
   private identityForbidden(): AppError {
-    return new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.identity.forbidden", statusCode: 403 });
+    return new AppError({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.identity.forbidden",
+      statusCode: 403
+    });
   }
 
   private notFound(message: string): AppError {
@@ -163,9 +201,15 @@ export class ShopMembershipService {
   }
 
   private isActiveMembershipConflict(error: unknown): boolean {
-    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "P2002") return false;
-    const target = "meta" in error && error.meta && typeof error.meta === "object" && "target" in error.meta ? error.meta.target : undefined;
-    return Array.isArray(target) ? target.some((item) => String(item).includes("active_key")) : String(target ?? "").includes("active_key");
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "P2002")
+      return false;
+    const target =
+      "meta" in error && error.meta && typeof error.meta === "object" && "target" in error.meta
+        ? error.meta.target
+        : undefined;
+    return Array.isArray(target)
+      ? target.some((item) => String(item).includes("active_key"))
+      : String(target ?? "").includes("active_key");
   }
 
   private startOfJapanDay(value: Date): Date {
@@ -174,6 +218,11 @@ export class ShopMembershipService {
   }
 
   private japanDateKey(value: Date): string {
-    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(value);
   }
 }

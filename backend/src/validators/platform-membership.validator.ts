@@ -1,11 +1,6 @@
 import { z } from "zod";
 
-export const platformMembershipTierCodeSchema = z.enum([
-  "free",
-  "silver",
-  "gold",
-  "black_diamond"
-]);
+export const platformMembershipTierCodeSchema = z.enum(["free", "silver", "gold", "black_diamond"]);
 export const platformMembershipBenefitCodeSchema = z.enum([
   "ndp_experience",
   "member_sign_in",
@@ -13,7 +8,8 @@ export const platformMembershipBenefitCodeSchema = z.enum([
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ]);
 export const platformMembershipBenefitLocaleQuerySchema = z
   .object({
@@ -22,24 +18,30 @@ export const platformMembershipBenefitLocaleQuerySchema = z
   .strict();
 
 const hexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
-const localizedTextSchema = z.object({
-  zh: z.string().trim().min(1).max(120),
-  "zh-Hant": z.string().trim().min(1).max(120),
-  ja: z.string().trim().min(1).max(120),
-  en: z.string().trim().min(1).max(120),
-  ko: z.string().trim().min(1).max(120)
-}).strict();
-const localizedDescriptionSchema = z.object({
-  zh: z.string().trim().min(1).max(1000),
-  "zh-Hant": z.string().trim().min(1).max(1000),
-  ja: z.string().trim().min(1).max(1000),
-  en: z.string().trim().min(1).max(1000),
-  ko: z.string().trim().min(1).max(1000)
-}).strict();
+const localizedTextSchema = z
+  .object({
+    zh: z.string().trim().min(1).max(120),
+    "zh-Hant": z.string().trim().min(1).max(120),
+    ja: z.string().trim().min(1).max(120),
+    en: z.string().trim().min(1).max(120),
+    ko: z.string().trim().min(1).max(120)
+  })
+  .strict();
+const localizedDescriptionSchema = z
+  .object({
+    zh: z.string().trim().min(1).max(1000),
+    "zh-Hant": z.string().trim().min(1).max(1000),
+    ja: z.string().trim().min(1).max(1000),
+    en: z.string().trim().min(1).max(1000),
+    ko: z.string().trim().min(1).max(1000)
+  })
+  .strict();
 export const platformMembershipThemeSchema = z
   .object({
     detailAccentColor: hexColorSchema,
     detailSurfaceColor: hexColorSchema,
+    detailSurfaceMiddleColor: hexColorSchema,
+    detailSurfaceBottomColor: hexColorSchema,
     detailItemSurfaceColor: hexColorSchema,
     detailOuterBorderColor: hexColorSchema,
     detailItemBorderColor: hexColorSchema,
@@ -65,9 +67,7 @@ const ndpExperienceConfigurationSchema = z
     }
   });
 
-const ordinaryBenefitCodes = platformMembershipBenefitCodeSchema.exclude([
-  "ndp_experience"
-]);
+const ordinaryBenefitCodes = platformMembershipBenefitCodeSchema.exclude(["ndp_experience"]);
 const tierBenefitSchema = z.union([
   z
     .object({
@@ -105,7 +105,7 @@ export const platformMembershipTierDraftBodySchema = z
     experienceMultiplier: z.number().positive().max(100),
     description: z.string().trim().max(500).nullable(),
     theme: platformMembershipThemeSchema,
-    benefits: z.array(tierBenefitSchema).length(7)
+    benefits: z.array(tierBenefitSchema).length(8)
   })
   .strict();
 
@@ -161,9 +161,23 @@ export const platformMembershipEntitlementCommandSchema = z.discriminatedUnion("
     .strict()
 ]);
 
-export type PlatformMembershipTierDraftBody = z.infer<
-  typeof platformMembershipTierDraftBodySchema
->;
+export const userMembershipAdjustmentBodySchema = z
+  .object({
+    tierCode: platformMembershipTierCodeSchema.optional(),
+    multiplier: z.number().positive().max(100).optional(),
+    reason: z.string().trim().min(1).max(500),
+    expectedLockVersion: z.number().int().positive().nullable(),
+  })
+  .strict()
+  .refine(
+    (value) => value.tierCode !== undefined || value.multiplier !== undefined,
+    { message: "tierCode or multiplier is required" },
+  );
+
+export type PlatformMembershipTierDraftBody = z.infer<typeof platformMembershipTierDraftBodySchema>;
 export type PlatformMembershipBenefitUpdateBody = z.infer<
   typeof platformMembershipBenefitUpdateBodySchema
+>;
+export type UserMembershipAdjustmentBody = z.infer<
+  typeof userMembershipAdjustmentBodySchema
 >;

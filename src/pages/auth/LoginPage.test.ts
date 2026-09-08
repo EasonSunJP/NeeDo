@@ -18,6 +18,8 @@ import {
   type Language
 } from "../../i18n/translations";
 
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 const mocked = vi.hoisted(() => ({
   auth: {
     authenticateWithGoogleCredential: vi.fn(),
@@ -30,16 +32,31 @@ const mocked = vi.hoisted(() => ({
     startRegistration: vi.fn(),
     switchPortal: vi.fn(),
     verifyGoogleRegistrationOrLink: vi.fn(),
+    verifyPasswordLogin: vi.fn(),
     verifyRegistration: vi.fn()
   },
   authApi: {
     initializeGoogleLogin: vi.fn(),
     submitGoogleCredential: vi.fn()
   },
+  portal: "user",
+  redirect: "",
+  openPortalEntry: vi.fn(),
   navigateToPortal: vi.fn(),
   requestBrowserPasswordSave: vi.fn(async () => undefined),
-  requestGoogleCredential: vi.fn()
+  requestGoogleCredential: vi.fn(),
+  platformSettings: {
+    loginLogo: null,
+    loginMethods: { google: true, password: true },
+    paymentMethods: ["cash", "ndp"],
+    requestButton: null,
+    selfRegistrationEnabled: true,
+    siteEnabled: true,
+    version: 1
+  }
 }));
+
+vi.mock("../../auth/portalEntry", () => ({ openPortalEntry: mocked.openPortalEntry }));
 
 vi.mock("../../auth/AuthProvider", async (importOriginal) => {
   const actual = await importOriginal<typeof AuthProviderModule>();
@@ -80,12 +97,16 @@ vi.mock("../../theme/ClientThemeProvider", async (importOriginal) => {
   };
 });
 
+vi.mock("../../features/platform-settings/PlatformSettingsProvider", () => ({
+  usePlatformSettings: () => ({ settings: mocked.platformSettings, status: "ready" })
+}));
+
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof ReactRouterDomModule>();
   return {
     ...actual,
-    useParams: () => ({ portal: "user" }),
-    useSearchParams: () => [new URLSearchParams(), vi.fn()]
+    useParams: () => ({ portal: mocked.portal }),
+    useSearchParams: () => [new URLSearchParams(mocked.redirect), vi.fn()]
   };
 });
 
@@ -145,6 +166,9 @@ describe("LoginPage verified identity behavior", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mocked.portal = "user";
+    mocked.redirect = "";
+    window.history.replaceState(null, "", "/user.html#/login/user");
     localStorage.clear();
     sessionStorage.clear();
     mocked.auth.isAuthenticated = false;
@@ -172,6 +196,7 @@ describe("LoginPage verified identity behavior", () => {
       session,
       status: "authenticated"
     });
+    mocked.auth.verifyPasswordLogin.mockResolvedValue({ ok: true, session });
     mocked.authApi.initializeGoogleLogin.mockResolvedValue({
       clientId: "google-client-id.apps.googleusercontent.com",
       expiresIn: 300,
@@ -200,6 +225,82 @@ describe("LoginPage verified identity behavior", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+  });
+
+  it.each(["user", "merchant", "technician", "business"])(
+    "logs in through the user identity even from the legacy %s route",
+    async (portal) => {
+      mocked.portal = portal;
+      mocked.redirect = `redirect=${encodeURIComponent(`/${portal}/orders`)}`;
+      await act(async () => root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal })));
+      expect(container.querySelector("header")?.textContent).not.toMatch(/用户|店铺|员工|推广/);
+      await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click());
+      await act(async () => {
+        setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, "member@example.com");
+        setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password1");
+      });
+      mocked.auth.login.mockResolvedValueOnce({ ok: true, session });
+      await act(async () => container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit());
+      expect(mocked.auth.login).toHaveBeenCalledWith("user", "member@example.com", "Strong.Password1");
+      expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", portal === "user" ? "/user/orders" : "/");
+    }
+  );
+
+  it.each(["merchant", "technician", "afirieito"])(
+    "moves the %s HTML login entry to the user entry before accepting credentials",
+    async (entry) => {
+      window.history.replaceState(null, "", `/${entry}.html#/login/${entry}`);
+      await act(async () => root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal })));
+      expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", "/login/user");
+      expect(container.querySelector('[data-testid="show-password-login"]')).toBeNull();
+      expect(mocked.auth.login).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ["u1234567890", "user", "/"],
+    ["1234567890", "user", "/"],
+    ["0123456789", "user", "/"],
+    ["s1234567890", "technician", "/technician"],
+    [" B1234567890 ", "merchant", "/merchant"],
+    ["s1234567890@example.com", "user", "/"],
+    ["b1234567890@example.com", "user", "/"],
+    ["shop1234567890", "user", "/"],
+  ] as const)("routes ID or email %s to %s after formal login", async (identifier, portal, route) => {
+    mocked.auth.login.mockResolvedValueOnce({ ok: true, session: { ...session, portal } });
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click());
+    await act(async () => {
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, identifier);
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password1");
+    });
+    await act(async () => container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit());
+    expect(mocked.auth.login).toHaveBeenCalledWith(portal, identifier.trim(), "Strong.Password1");
+    expect(mocked.navigateToPortal).toHaveBeenCalledWith(portal, route);
+  });
+
+  it("keeps a technician ID login in the unified HTML session scope", async () => {
+    await act(async () => root.render(createElement(LoginPage)));
+    mocked.auth.login.mockResolvedValueOnce({ ok: true, session: { ...session, portal: "technician" } });
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click());
+    await act(async () => {
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, "s1234567890");
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password1");
+    });
+    await act(async () => container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit());
+    expect(mocked.openPortalEntry).toHaveBeenCalledWith("user", "/technician");
+  });
+
+  it("does not enter a portal when formal ID authentication is rejected", async () => {
+    mocked.auth.login.mockResolvedValueOnce({ ok: false, message: "error.auth.portal_forbidden" });
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click());
+    await act(async () => {
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, "s1234567890");
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password1");
+    });
+    await act(async () => container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit());
+    expect(mocked.auth.login).toHaveBeenCalledWith("technician", "s1234567890", "Strong.Password1");
+    expect(mocked.navigateToPortal).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
   });
 
   it("labels password login as Email or NeeDo ID and preserves password bytes", async () => {
@@ -330,6 +431,60 @@ describe("LoginPage verified identity behavior", () => {
       password: "Strong.Password.2026"
     });
     expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", "/");
+  });
+
+  it.each([
+    ["user@example.com", "user", "/"],
+    ["1234567890", "user", "/"],
+    ["s1234567890", "technician", "/technician"],
+    ["b1234567890", "merchant", "/merchant"],
+  ] as const)("keeps %s in %s through password OTP verification", async (identifier, portal, route) => {
+    mocked.auth.verifyPasswordLogin.mockResolvedValueOnce({ ok: true, session: { ...session, portal } });
+    mocked.auth.login.mockResolvedValue({
+      challenge: { ...challenge, cooldownSeconds: 0 },
+      ok: true,
+      status: "verification_required"
+    });
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click()
+    );
+    await act(async () => {
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, identifier);
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password.2026");
+    });
+    await act(async () =>
+      container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit()
+    );
+    await flushUi();
+
+    expect(container.textContent).toContain("n***@example.com");
+    expect(mocked.requestBrowserPasswordSave).not.toHaveBeenCalled();
+    expect(mocked.navigateToPortal).not.toHaveBeenCalled();
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="auth-verification-resend"]')?.click()
+    );
+    expect(mocked.auth.login).toHaveBeenCalledTimes(2);
+    expect(mocked.auth.login).toHaveBeenLastCalledWith(portal, identifier, "Strong.Password.2026");
+
+
+    await act(async () =>
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="auth-verification-code"]')!, "123456")
+    );
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="auth-verification-submit"]')?.click()
+    );
+    await flushUi();
+
+    expect(mocked.auth.verifyPasswordLogin).toHaveBeenCalledWith(
+      { challengeId: challenge.challengeId, otp: "123456" },
+      portal
+    );
+    expect(mocked.requestBrowserPasswordSave).toHaveBeenCalledWith({
+      id: identifier,
+      name: "NeeDo",
+      password: "Strong.Password.2026"
+    });
+    expect(mocked.navigateToPortal).toHaveBeenCalledWith(portal, route);
   });
 
   it("ignores a stale Google initialization failure after switching to registration", async () => {
@@ -599,6 +754,12 @@ describe("LoginPage verified identity behavior", () => {
 });
 
 describe("LoginPage formal flow guardrails", () => {
+  it("uses the published settings for login branding and public entry availability", () => {
+    expect(loginPageSource).toContain("platformSettings.loginLogo?.url ?? DEFAULT_LOGIN_LOGO_URL");
+    expect(loginPageSource).toContain('activePortal === "user" && platformSettings.selfRegistrationEnabled');
+    expect(loginPageSource).toContain("platformSettings.loginMethods.google");
+  });
+
   it("contains no fake Google, callback-query, generic OTP, captcha, or public technician flow", () => {
     [
       "googleAccountIconSrc",
@@ -686,7 +847,7 @@ describe("LoginPage formal flow guardrails", () => {
       "账号登录",
       "使用已验证的邮箱或 NeeDo ID 登录。",
       "欢迎使用 NeeDo",
-      "先确认你的 NeeDo 身份，再进入预约、消息或工作空间。",
+      "登录后即可预约服务、查看消息，并切换其他身份。",
       "请输入邮箱或 NeeDo ID 和密码。",
       "请输入邮箱和密码。",
       "后台",
@@ -765,6 +926,10 @@ describe("LoginPage formal flow guardrails", () => {
   it("audits the current checkout instead of a hard-coded sibling workspace", () => {
     expect(i18nAuditSource).toContain("fileURLToPath(import.meta.url)");
     expect(i18nAuditSource).toContain("affiliateMarketplaceTranslations");
+    expect(i18nAuditSource).toContain("orderPerformanceTranslationsPath");
+    expect(i18nAuditSource).toContain(
+      "const orderPerformanceTranslations = ${JSON.stringify(orderPerformanceTranslations)};"
+    );
     expect(i18nAuditSource).not.toContain(
       'const workspaceRoot = "/Users/eason/Documents/New project"'
     );

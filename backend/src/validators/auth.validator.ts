@@ -70,6 +70,7 @@ export const legacyLoginBodySchema = z
   }));
 
 export const registerVerifyBodySchema = challengeVerificationBodySchema;
+export const passwordLoginVerifyBodySchema = challengeVerificationBodySchema;
 
 export const emptyAuthActionBodySchema = z.object({}).strict();
 
@@ -88,7 +89,10 @@ export const passwordSetupBodySchema = z
 
 export const compliancePhoneBindingBodySchema = z
   .object({
-    phone: z.string().trim().regex(/^\+[1-9]\d{7,14}$/)
+    phone: z
+      .string()
+      .trim()
+      .regex(/^\+[1-9]\d{7,14}$/)
   })
   .strict();
 
@@ -122,6 +126,7 @@ export type LoginBody = z.infer<typeof loginBodySchema>;
 export type LegacyLoginBody = z.infer<typeof legacyLoginBodySchema>;
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type RegisterVerifyBody = z.infer<typeof registerVerifyBodySchema>;
+export type PasswordLoginVerifyBody = z.infer<typeof passwordLoginVerifyBodySchema>;
 export type ChallengeVerificationBody = z.infer<typeof challengeVerificationBodySchema>;
 export type GoogleCredentialBody = z.infer<typeof googleCredentialBodySchema>;
 export type PasswordSetupBody = z.infer<typeof passwordSetupBodySchema>;

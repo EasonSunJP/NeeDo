@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   createSlot: vi.fn(),
   deleteSlot: vi.fn(),
   endService: vi.fn(),
+  exchangeOrderLinked: false,
   getCheckout: vi.fn(),
   getOrder: vi.fn(),
   getOwnReview: vi.fn(),
@@ -31,6 +32,28 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: technicianSession }) }));
+vi.mock("../booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
+vi.mock("../exchange/ExchangeOrderCancellationPanel", () => ({
+  ExchangeOrderCancellationPanel: ({
+    onCancellationChange,
+    onLinkedChange,
+    orderId
+  }: {
+    onCancellationChange?: (payload: { orderId: number; orderStatus: "cancelled" }) => void;
+    onLinkedChange?: (linked: boolean) => void;
+    orderId: number;
+  }) => {
+    useEffect(() => onLinkedChange?.(mocks.exchangeOrderLinked), [onLinkedChange]);
+    return (
+      <button
+        onClick={() => onCancellationChange?.({ orderId, orderStatus: "cancelled" })}
+        type="button"
+      >
+        模拟双方同意取消
+      </button>
+    );
+  }
+}));
 vi.mock("../../theme/ClientThemeProvider", async () => {
   const actual = await vi.importActual<typeof import("../../theme/ClientThemeProvider")>("../../theme/ClientThemeProvider");
   return { ...actual, useClientTheme: () => ({ isNight: false, theme: "whiteGreen" }) };
@@ -145,7 +168,19 @@ const profile = {
   },
   bio: null,
   serviceArea: "东京",
+  gender: "private",
+  heightCm: null,
+  languages: ["日本語"],
   yearsExperience: 4,
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   mediaAssets: [],
   services: [],
   createdAt: "2026-08-01T00:00:00.000Z",
@@ -154,6 +189,7 @@ const profile = {
 
 const service: TechnicianServicePayload = {
   id: 102,
+  publicId: "00000000-0000-4000-8000-000000000102",
   shopId: 11,
   technicianId: 31,
   sourceShopServiceId: null,
@@ -163,10 +199,12 @@ const service: TechnicianServicePayload = {
   priceAmount: 10000,
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 7,
   taxIncluded: true,
   coverImageUrl: null,
   images: [],
   tags: [],
+  shop: { publicId: "shop0000000011", name: "正式店铺", address: "东京都港区" },
   isActive: true,
   isBookable: true,
   isRecommended: false,
@@ -214,6 +252,16 @@ function makeOrder(status: BookingOrderStatus, id = 29): BookingOrder {
     paymentRefundReference: null,
     paymentRefundReason: null,
     customerUserId: 71,
+    customer: {
+      userId: 71,
+      profileId: 17,
+      publicId: "u0000000071",
+      displayName: "预约用户 山田",
+      avatarUrl: "/images/formal/customer-71.jpg",
+      membershipLevel: "premium",
+      ratingAverage: "4.8",
+      reviewCount: 12
+    },
     serviceId: null,
     technicianServiceId: 102,
     shopId: 11,
@@ -281,15 +329,17 @@ const checkout = {
   status: "awaitingPaymentConfirmation" as const,
   baseAmountJpy: 10000,
   addOnAmountJpy: 3000,
+  travelFareAmountJpy: 0,
   discountAmountJpy: 0,
   checkoutAmountJpy: 13000,
   payableNdp: 13000,
   rate: { ruleId: 7, publicId: "rate-7", version: 3, ndpUnits: 1, jpyUnits: 1, effectiveFrom: "2026-09-01T00:00:00.000Z" },
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount" as const,
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount" as const,
     baseAmountJpy: 10000,
     acceptedAddOnIds: [301],
     addOnAmountJpy: 3000,
+    travelFareAmountJpy: 0,
     discountAmountJpy: 0,
     checkoutAmountJpy: 13000,
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)" as const
@@ -411,6 +461,10 @@ describe("formal technician schedule routes", () => {
     expect(container.textContent).toContain("正式技师");
     expect(container.textContent).toContain("正式店铺");
     expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.textContent).toBe("正式技师:正式店铺");
+    expect(container.querySelector('button[aria-label="返回技师首页"]')).not.toBeNull();
+    expect(container.querySelector('input[aria-label="搜索排班"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="关闭排班"]')).not.toBeNull();
+    expect(container.querySelector("nav")).toBeNull();
     expect(mocks.scheduleResource).toHaveBeenCalledWith(technicianSession, null);
   });
 
@@ -452,6 +506,9 @@ describe("formal technician schedule routes", () => {
     expect(container.textContent).toContain("暂未关联店铺");
     expect(container.textContent).toContain("关联店铺并配置正式服务后即可使用排班");
     expect(container.textContent).not.toContain("error.technician.shop_required");
+    expect(container.querySelector('input[aria-label="搜索排班"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="关闭排班"]')).not.toBeNull();
+    expect(container.querySelector("nav")).toBeNull();
   });
 
   it("locks a slot with the formal API and requires two clicks before deletion", async () => {
@@ -553,6 +610,7 @@ describe("formal technician schedule routes", () => {
 describe("formal technician order detail route", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.exchangeOrderLinked = false;
     mocks.getCheckout.mockResolvedValue(checkout);
     mocks.getOwnReview.mockResolvedValue({ review: null });
     container = document.createElement("div");
@@ -586,6 +644,18 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("请准备无香精用品");
     expect(container.textContent).toContain("用户提交");
     expect(container.textContent).toContain("正式状态记录");
+    expect(container.textContent).toContain("订单追踪信息");
+  });
+
+  it("renders the formal customer as the shared simple profile card with a NeeDoID", async () => {
+    await renderOrder(makeOrder("confirmed"));
+
+    expect(container.textContent).toContain("用户");
+    expect(container.textContent).toContain("预约用户 山田");
+    expect(container.textContent).toContain("u0000000071");
+    expect(container.textContent).not.toContain("客户账号");
+    expect(container.querySelector("dl")?.textContent).not.toContain("#71");
+    expect(container.querySelector('a[href="/technician/profiles/user/17"]')).not.toBeNull();
   });
 
   it("keeps the existing formal pending confirmation transition", async () => {
@@ -594,6 +664,20 @@ describe("formal technician order detail route", () => {
     await click("确认接单");
     await waitFor(() => expect(mocks.confirmOrder).toHaveBeenCalledWith(29));
     expect(container.textContent).toContain("已确认");
+  });
+
+  it("immediately adopts an accepted Exchange cancellation and removes stale provider actions", async () => {
+    mocks.exchangeOrderLinked = true;
+    await renderOrder(makeOrder("pending"));
+    expect(container.textContent).toContain("确认接单");
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
+
+    await click("模拟双方同意取消");
+
+    await waitFor(() => expect(container.textContent).toContain("已取消"));
+    expect(container.textContent).not.toContain("确认接单");
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
+    expect(container.textContent).toContain("模拟双方同意取消");
   });
 
   it("requires an explicit second confirmation when the shop platform-fee balance is insufficient", async () => {

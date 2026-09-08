@@ -1,3 +1,5 @@
+import { IdentifierAllocator } from "../services/public-identifier.service";
+import { PublicIdentifierRepository } from "./public-identifier.repository";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
@@ -62,119 +64,134 @@ export class IdentityActivationRepository implements IdentityActivationRepositor
     transaction: Prisma.TransactionClient,
     input: ActivateIdentityTransactionInput
   ): Promise<ActivatedIdentityRecord> {
-        const role = await transaction.role.findFirst({
-          where: { code: input.roleCode, deletedAt: null },
-          select: { id: true, code: true }
-        });
-        if (!role) {
-          throw new AppError({
-            code: ERROR_CODES.ROLE_NOT_FOUND,
-            message: "error.role_not_found",
-            statusCode: 404
-          });
-        }
+    const role = await transaction.role.findFirst({
+      where: { code: input.roleCode, deletedAt: null },
+      select: { id: true, code: true }
+    });
+    if (!role) {
+      throw new AppError({
+        code: ERROR_CODES.ROLE_NOT_FOUND,
+        message: "error.role_not_found",
+        statusCode: 404
+      });
+    }
 
-        const identity = await transaction.userIdentity.create({
-          data: {
-            userId: input.userId,
-            type: input.identityType,
-            activeKey: input.idempotencyKey,
-            scopeType: input.scopeType,
-            scopeId: input.scopeId,
-            displayName: input.displayName,
-            isDefault: false,
-            isActive: true,
-            createdAt: input.activatedAt
-          }
-        });
+    const identity = await transaction.userIdentity.create({
+      data: {
+        userId: input.userId,
+        type: input.identityType,
+        activeKey: input.idempotencyKey,
+        scopeType: input.scopeType,
+        scopeId: input.scopeId,
+        displayName: input.displayName,
+        isDefault: false,
+        isActive: true,
+        createdAt: input.activatedAt
+      }
+    });
 
-        if (
-          input.identityType === "merchant" ||
-          input.identityType === "merchant_owner" ||
-          input.identityType === "merchant_staff" ||
-          input.identityType === "merchant_organization"
-        ) {
-          await transaction.merchantIdentityProfile.create({
-            data: {
-              userId: input.userId,
-              identityId: identity.id,
-              displayName: input.displayName,
-              languages: []
-            }
-          });
-        }
+    const aliasKind =
+      input.identityType === "technician"
+        ? "S"
+        : input.identityType === "merchant_owner"
+          ? "B"
+          : null;
+    if (aliasKind) {
+      await new IdentifierAllocator(
+        new PublicIdentifierRepository(transaction)
+      ).registerPersonAlias({
+        kind: aliasKind,
+        userIdentityId: identity.id
+      });
+    }
 
-        const existingRole = await transaction.userRole.findFirst({
-          where: {
-            userId: input.userId,
-            roleId: role.id,
-            scopeType: input.scopeType,
-            scopeId: input.scopeId
-          },
-          select: { id: true, deletedAt: true }
-        });
-        if (!existingRole) {
-          await transaction.userRole.create({
-            data: {
-              userId: input.userId,
-              roleId: role.id,
-              scopeType: input.scopeType,
-              scopeId: input.scopeId
-            }
-          });
-        } else if (existingRole.deletedAt !== null) {
-          await transaction.userRole.update({
-            where: { id: existingRole.id },
-            data: { deletedAt: null }
-          });
-        }
-
-        const actorIdentityId = await resolveCanonicalPersonalIdentityId(
-          transaction,
-          input.actorUserId
-        );
-        if (!actorIdentityId) {
-          throw new AppError({
-            code: ERROR_CODES.IDENTITY_NOT_FOUND,
-            message: "error.auth.identity_not_found",
-            statusCode: 403
-          });
-        }
-        await transaction.notification.create({
-          data: {
-            recipientUserId: input.userId,
-            recipientIdentityId: identity.id,
-            actorUserId: input.actorUserId,
-            actorIdentityId,
-            type: "SYSTEM",
-            title: "identity.activation.approved.title",
-            body: "identity.activation.approved.body",
-            payload: input.notificationPayload as Prisma.InputJsonValue,
-            createdAt: input.activatedAt
-          }
-        });
-
-        await transaction.auditLog.create({
-          data: {
-            actorId: input.actorUserId,
-            action: "identity.activation.completed",
-            targetType: "UserIdentity",
-            targetId: identity.id,
-            ip: null,
-            userAgent: null,
-            metadata: input.auditMetadata as Prisma.InputJsonValue,
-            createdAt: input.activatedAt
-          }
-        });
-
-        return {
+    if (
+      input.identityType === "merchant" ||
+      input.identityType === "merchant_owner" ||
+      input.identityType === "merchant_staff" ||
+      input.identityType === "merchant_organization"
+    ) {
+      await transaction.merchantIdentityProfile.create({
+        data: {
+          userId: input.userId,
           identityId: identity.id,
-          userId: identity.userId,
-          identityType: identity.type,
-          roleCode: role.code,
-          scopeType: identity.scopeType ?? input.scopeType,
-          scopeId: identity.scopeId
-        };
+          displayName: input.displayName,
+          languages: []
+        }
+      });
+    }
+
+    const existingRole = await transaction.userRole.findFirst({
+      where: {
+        userId: input.userId,
+        roleId: role.id,
+        scopeType: input.scopeType,
+        scopeId: input.scopeId
+      },
+      select: { id: true, deletedAt: true }
+    });
+    if (!existingRole) {
+      await transaction.userRole.create({
+        data: {
+          userId: input.userId,
+          roleId: role.id,
+          scopeType: input.scopeType,
+          scopeId: input.scopeId
+        }
+      });
+    } else if (existingRole.deletedAt !== null) {
+      await transaction.userRole.update({
+        where: { id: existingRole.id },
+        data: { deletedAt: null }
+      });
+    }
+
+    const actorIdentityId = await resolveCanonicalPersonalIdentityId(
+      transaction,
+      input.actorUserId
+    );
+    if (!actorIdentityId) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_NOT_FOUND,
+        message: "error.auth.identity_not_found",
+        statusCode: 403
+      });
+    }
+    await transaction.notification.create({
+      data: {
+        recipientUserId: input.userId,
+        recipientIdentityId: identity.id,
+        actorUserId: input.actorUserId,
+        actorIdentityId,
+        type: "SYSTEM",
+        title: "identity.activation.approved.title",
+        body: "identity.activation.approved.body",
+        payload: input.notificationPayload as Prisma.InputJsonValue,
+        createdAt: input.activatedAt
+      }
+    });
+
+    await transaction.auditLog.create({
+      data: {
+        actorId: input.actorUserId,
+        action: "identity.activation.completed",
+        targetType: "UserIdentity",
+        targetId: identity.id,
+        ip: null,
+        userAgent: null,
+        metadata: input.auditMetadata as Prisma.InputJsonValue,
+        createdAt: input.activatedAt
+      }
+    });
+
+    return {
+      identityId: identity.id,
+      userId: identity.userId,
+      identityType: identity.type,
+      roleCode: role.code,
+      scopeType: identity.scopeType ?? input.scopeType,
+      scopeId: identity.scopeId
+    };
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

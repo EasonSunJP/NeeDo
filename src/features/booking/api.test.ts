@@ -81,6 +81,7 @@ describe("bookingApi", () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
 
     await bookingApi.createBooking({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       scheduleSlotId: 33,
       serviceId: 12
@@ -88,11 +89,92 @@ describe("bookingApi", () => {
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/bookings", expect.objectContaining({ method: "POST" }));
     expect(lastRequestBody()).toEqual({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       orderType: "booking",
       paymentMethod: "onsite",
       scheduleSlotId: 33,
       serviceId: 12
+    });
+  });
+
+  it("loads the authenticated technician-service booking context", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 0,
+      message: "success",
+      data: { target: { type: "technician_service", id: 51 } }
+    }));
+
+    await bookingApi.getTechnicianServiceBookingContext(51);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/technician-services/51/booking-context",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("submits Intelligence source evidence, displayed price confirmation, and idempotency", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
+
+    await bookingApi.createBooking({
+      exchangeIntelligencePostId: 61,
+      expectedPriceAmountJpy: 8800,
+      fulfillmentMode: "store",
+      scheduleSlotId: 33,
+      serviceId: 12
+    }, "123e4567-e89b-42d3-a456-426614174000");
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    expect(lastRequestBody()).toEqual({
+      exchangeIntelligencePostId: 61,
+      expectedPriceAmountJpy: 8800,
+      fulfillmentMode: "store",
+      orderType: "booking",
+      paymentMethod: "onsite",
+      scheduleSlotId: 33,
+      serviceId: 12
+    });
+    expect(lastRequestBody()).not.toHaveProperty("priceAmount");
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("123e4567-e89b-42d3-a456-426614174000");
+  });
+
+  it("loads official Japanese administrative children and submits home region codes", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({
+        code: 0,
+        message: "success",
+        data: {
+          list: [{ code: "13", name: "東京都", level: "admin1", parentCode: null, centroid: null }]
+        }
+      }))
+      .mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
+
+    await bookingApi.listAdministrativeRegions({ country: "JP", locale: "ja", parent: "13" });
+    await bookingApi.createBooking({
+      expectedPriceAmountJpy: 8800,
+      fulfillmentMode: "home",
+      scheduleSlotId: 33,
+      serviceId: 12,
+      serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+      travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
+    });
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/reference/administrative-regions?country=JP&locale=ja&parent=13",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(requestBodyAt(1)).toEqual({
+      expectedPriceAmountJpy: 8800,
+      fulfillmentMode: "home",
+      orderType: "booking",
+      paymentMethod: "onsite",
+      scheduleSlotId: 33,
+      serviceId: 12,
+      serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13104" },
+      fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+      travelEstimatePublicId: "00000000-0000-4000-8000-000000000001"
     });
   });
 
@@ -131,6 +213,7 @@ describe("bookingApi", () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("request")));
 
     await bookingApi.createBooking({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       orderType: "request",
       scheduleSlotId: 33,
@@ -139,6 +222,7 @@ describe("bookingApi", () => {
 
     expect(fetch).toHaveBeenCalledWith("/api/v1/bookings", expect.objectContaining({ method: "POST" }));
     expect(lastRequestBody()).toEqual({
+      expectedPriceAmountJpy: 8800,
       fulfillmentMode: "store",
       orderType: "request",
       paymentMethod: "onsite",
@@ -197,6 +281,12 @@ describe("bookingApi", () => {
     expect(requestInit).toEqual(expect.objectContaining({ method: "GET" }));
   });
 
+  it("serializes overlapping order windows for the merchant calendar", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { list: [], total: 0, page: 1, page_size: 100 } }));
+    await bookingApi.listOrders({ from: "2026-09-06T15:00:00.000Z", to: "2026-09-07T15:00:00.000Z", dateMode: "overlaps" });
+    expect(String(vi.mocked(fetch).mock.calls.at(-1)?.[0])).toContain("dateMode=overlaps");
+  });
+
   it("calls the scoped manual-payment confirmation and refund endpoints", async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")))
@@ -249,6 +339,18 @@ describe("bookingApi", () => {
     expect(fetch).toHaveBeenNthCalledWith(2, "/api/v1/orders/88/reviews", expect.objectContaining({ method: "POST" }));
     expect(requestBodyAt(1)).toEqual({ targetType: "technician", rating: 5, tags: ["服务精神"], comment: "很好", idempotencyKey: "review-browser-key-0001" });
     expect(requestBodyAt(1)).not.toHaveProperty("tagCounts");
+  });
+
+  it("persists participant order tracking comments through the formal order API", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking"), 201));
+
+    await bookingApi.createTimelineComment(88, { body: "请提前五分钟联系" });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/orders/88/timeline/comments",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(lastRequestBody()).toEqual({ body: "请提前五分钟联系" });
   });
 
   it("calls the authenticated merchant schedule-slot CRUD endpoints", async () => {
@@ -332,9 +434,11 @@ describe("bookingApi", () => {
         status: "pending",
         baseAmountJpy: 8800,
         addOnAmountJpy: 1200,
+        travelFareAmountJpy: 0,
         discountAmountJpy: 0,
         checkoutAmountJpy: 10000,
         payableNdp: 10000,
+        availablePaymentMethods: ["cash", "ndp"],
         rate: {
           ruleId: 7,
           publicId: "rate-7",
@@ -344,10 +448,11 @@ describe("bookingApi", () => {
           effectiveFrom: "2026-09-01T00:00:00.000Z"
         },
         calculation: {
-          formula: "base_plus_accepted_add_ons_minus_discount",
+          formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
           baseAmountJpy: 8800,
           acceptedAddOnIds: [301],
           addOnAmountJpy: 1200,
+          travelFareAmountJpy: 0,
           discountAmountJpy: 0,
           checkoutAmountJpy: 10000,
           rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"
@@ -380,7 +485,7 @@ describe("bookingApi", () => {
     await bookingApi.rejectAddOn(88, 302, { idempotencyKey: "idem-reject-000001" });
     await bookingApi.endService(88, { reason: "客户确认提前结束服务", idempotencyKey: "idem-ending-000001" });
     await bookingApi.getCheckout(88);
-    await bookingApi.selectPaymentMethod(88, { method: "other", otherMethodCode: "paypay", otherMethodLabel: "PayPay", idempotencyKey: "idem-method-000001" });
+    await bookingApi.selectPaymentMethod(88, { method: "cash", idempotencyKey: "idem-method-000001" });
     await bookingApi.payWithNdp(88, { idempotencyKey: "idem-ndp-pay-00001" });
     await bookingApi.confirmReceipt(88, { reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
 
@@ -401,7 +506,7 @@ describe("bookingApi", () => {
     expect(requestBodyAt(3)).toEqual({ idempotencyKey: "idem-reject-000001" });
     expect(requestBodyAt(4)).toEqual({ reason: "客户确认提前结束服务", idempotencyKey: "idem-ending-000001" });
     expect(requestBodyAt(5)).toEqual({});
-    expect(requestBodyAt(6)).toEqual({ method: "other", otherMethodCode: "paypay", otherMethodLabel: "PayPay", idempotencyKey: "idem-method-000001" });
+    expect(requestBodyAt(6)).toEqual({ method: "cash", idempotencyKey: "idem-method-000001" });
     expect(requestBodyAt(7)).toEqual({ idempotencyKey: "idem-ndp-pay-00001" });
     expect(requestBodyAt(8)).toEqual({ reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
   });

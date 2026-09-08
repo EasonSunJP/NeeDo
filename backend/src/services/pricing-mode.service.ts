@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import { AppError } from "../utils/app-error";
-import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
+import { buildPaginatedResponse, type PaginatedResponse, type PaginationInput } from "../utils/pagination";
 import type {
   TechnicianServiceBody,
   TechnicianServiceOrderBody
 } from "../validators/pricing-mode.validator";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { ContentMediaMimeType } from "./content-media.storage";
 import { assertMerchantShopId } from "./merchant-shop-scope";
 
 export type PricingModePayload = "merchant" | "technician";
@@ -24,12 +25,13 @@ export interface ShopPricingModePayload {
 
 export interface TechnicianShopScopePayload {
   technicianId: number;
-  shopId: number | null;
+  shopId: number;
 }
 
 export interface TechnicianServicePayload {
   id: number;
-  shopId: number;
+  publicId: string;
+  shopId: number | null;
   technicianId: number;
   sourceShopServiceId: number | null;
   name: string;
@@ -38,10 +40,12 @@ export interface TechnicianServicePayload {
   priceAmount: number;
   currency: string;
   durationMinutes: number;
+  usageCount: number;
   taxIncluded: true;
   coverImageUrl: string | null;
   images: string[];
   tags: string[];
+  shop: { publicId: string | null; name: string; address: string } | null;
   isActive: boolean;
   isBookable: boolean;
   isRecommended: boolean;
@@ -59,6 +63,9 @@ export interface BookingNavigationServicePayload {
   currency: string;
   durationMinutes: number;
   coverUrl: string | null;
+  description: string | null;
+  tags: string[];
+  usageCount: number;
 }
 
 export interface BookingNavigationTechnicianPayload {
@@ -79,14 +86,14 @@ export interface BookingNavigationPayload {
 }
 
 export interface TechnicianServiceCreateRepositoryInput extends TechnicianServiceBody {
-  shopId: number;
+  shopId: number | null;
   technicianId: number;
   createdBy: number;
   auditLog: AuditLogCreateInput;
 }
 
 export interface TechnicianServiceUpdateRepositoryInput extends Partial<TechnicianServiceBody> {
-  shopId: number;
+  shopId?: number;
   technicianId: number;
   serviceId: number;
   updatedBy: number;
@@ -101,6 +108,38 @@ export interface TechnicianServiceReorderRepositoryInput {
   auditLog: AuditLogCreateInput;
 }
 
+export interface TechnicianServiceDeleteRepositoryInput {
+  shopId?: number;
+  technicianId: number;
+  serviceId: number;
+  updatedBy: number;
+  now: Date;
+  auditLog: AuditLogCreateInput;
+}
+
+export interface TechnicianServiceCoverTarget {
+  service: TechnicianServicePayload;
+  activeMediaAssetId: number | null;
+  checksumSha256: string | null;
+  mimeType: string | null;
+}
+
+export interface TechnicianServiceCoverWriteInput {
+  shopId: number;
+  technicianId: number;
+  serviceId: number;
+  ownerUserId: number;
+  ownerIdentityId: number;
+  url: string;
+  fileKey: string;
+  mimeType: ContentMediaMimeType;
+  checksumSha256: string;
+  fileSize: number;
+  now: Date;
+  action: "technician.service.cover.updated";
+  context: AuthRequestContext;
+}
+
 export interface PricingModeRepositoryPort {
   findShopPricingMode: (shopId: number) => Promise<ShopPricingModePayload | null>;
   updateShopPricingMode: (
@@ -109,16 +148,14 @@ export interface PricingModeRepositoryPort {
     technicianPricingRatePercent: number,
     actorUserId: number
   ) => Promise<ShopPricingModePayload>;
-  findTechnicianShopScope: (technicianId: number) => Promise<TechnicianShopScopePayload | null>;
+  findTechnicianShopScope: (technicianId: number, shopId: number) => Promise<TechnicianShopScopePayload | null>;
   listTechnicianServices: (
     input: PaginationInput & { shopId: number; technicianId: number; activeOnly?: boolean }
   ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
   listTechnicianServicesByProfile: (
     input: PaginationInput & { technicianId: number; activeOnly?: boolean }
   ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
-  findPrimaryTechnicianService: (
-    technicianId: number
-  ) => Promise<TechnicianServicePayload | null>;
+  findPrimaryTechnicianService: (technicianId: number) => Promise<TechnicianServicePayload | null>;
   reorderTechnicianServices: (
     input: TechnicianServiceReorderRepositoryInput
   ) => Promise<TechnicianServicePayload[]>;
@@ -128,12 +165,26 @@ export interface PricingModeRepositoryPort {
   updateTechnicianService: (
     input: TechnicianServiceUpdateRepositoryInput
   ) => Promise<TechnicianServicePayload | null>;
-  deleteTechnicianService: (input: {
+  deleteTechnicianService: (input: TechnicianServiceDeleteRepositoryInput) => Promise<boolean>;
+  findTechnicianServiceCoverTarget(input: {
     shopId: number;
     technicianId: number;
     serviceId: number;
-    updatedBy: number;
-  }) => Promise<boolean>;
+  }): Promise<TechnicianServiceCoverTarget | null>;
+  replaceTechnicianServiceCover(
+    input: TechnicianServiceCoverWriteInput
+  ): Promise<TechnicianServicePayload | null>;
+  removeTechnicianServiceCover(input: {
+    shopId: number;
+    technicianId: number;
+    serviceId: number;
+    ownerUserId: number;
+    ownerIdentityId: number;
+    now: Date;
+    action: "technician.service.cover.removed";
+    context: AuthRequestContext;
+  }): Promise<TechnicianServicePayload | null>;
+  hasActiveMediaUrl(url: string): Promise<boolean>;
   listBookingNavigationShopServices: (
     input: PaginationInput & { shopId: number }
   ) => Promise<PaginatedResponse<BookingNavigationServicePayload>>;
@@ -286,6 +337,27 @@ export class PricingModeService {
     return service;
   }
 
+  public async createMyTechnicianService(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: TechnicianServiceBody
+  ): Promise<TechnicianServicePayload> {
+    const technicianId = this.getTechnicianIdentityScope(actor);
+    return this.repository.createTechnicianService({
+      ...input,
+      shopId: null,
+      technicianId,
+      createdBy: actor.userId,
+      auditLog: this.transactionalAuditLog(
+        actor,
+        context,
+        "technician.services.create",
+        "technician_service",
+        { technicianId, shopId: null }
+      )
+    });
+  }
+
   public async updateTechnicianService(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
@@ -314,6 +386,31 @@ export class PricingModeService {
     return service;
   }
 
+  public async updateMyTechnicianService(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    serviceId: number,
+    input: Partial<TechnicianServiceBody>
+  ): Promise<TechnicianServicePayload> {
+    const technicianId = this.getTechnicianIdentityScope(actor);
+    const service = await this.repository.updateTechnicianService({
+      ...input,
+      technicianId,
+      serviceId,
+      updatedBy: actor.userId
+    });
+    if (!service) throw this.notFound("error.technician_service.not_found");
+    await this.auditLogService.record({
+      actor,
+      action: "technician.services.update",
+      targetType: "technician_service",
+      targetId: serviceId,
+      context,
+      metadata: { technicianId, shopId: service.shopId }
+    });
+    return service;
+  }
+
   public async deleteTechnicianService(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
@@ -325,18 +422,47 @@ export class PricingModeService {
       shopId,
       technicianId: scope.technicianId,
       serviceId,
-      updatedBy: actor.userId
+      updatedBy: actor.userId,
+      now: new Date(),
+      auditLog: {
+        ...this.transactionalAuditLog(actor, context, "technician.services.delete", "shop", {
+          technicianId: scope.technicianId,
+          serviceId
+        }),
+        targetId: shopId
+      }
     });
 
     if (!deleted) {
       throw this.notFound("error.technician_service.not_found");
     }
 
-    await this.record(actor, context, "technician.services.delete", shopId, {
-      technicianId: scope.technicianId,
-      serviceId
-    });
+    return { deleted: true };
+  }
 
+  public async deleteMyTechnicianService(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    serviceId: number
+  ): Promise<{ deleted: true }> {
+    const technicianId = this.getTechnicianIdentityScope(actor);
+    const deleted = await this.repository.deleteTechnicianService({
+      technicianId,
+      serviceId,
+      updatedBy: actor.userId,
+      now: new Date(),
+      auditLog: {
+        ...this.transactionalAuditLog(
+          actor,
+          context,
+          "technician.services.delete",
+          "technician_service",
+          { technicianId }
+        ),
+        targetId: serviceId
+      }
+    });
+    if (!deleted) throw this.notFound("error.technician_service.not_found");
     return { deleted: true };
   }
 
@@ -371,27 +497,15 @@ export class PricingModeService {
     input: PaginationInput
   ): Promise<PaginatedResponse<TechnicianServicePayload>> {
     const pricingMode = await this.getExistingShopPricingMode(shopId);
-    const services = await this.repository.listPublicTechnicianServices({
+    if (pricingMode.pricingMode !== "technician") {
+      return buildPaginatedResponse([], 0, input);
+    }
+
+    return this.repository.listPublicTechnicianServices({
       ...input,
       shopId,
       technicianId
     });
-    const ratePercent =
-      pricingMode.pricingMode === "technician"
-        ? this.normalizeTechnicianPricingRatePercent(pricingMode.technicianPricingRatePercent)
-        : 100;
-
-    if (ratePercent === 100) {
-      return services;
-    }
-
-    return {
-      ...services,
-      list: services.list.map((service) => ({
-        ...service,
-        priceAmount: Math.round((service.priceAmount * ratePercent) / 100)
-      }))
-    };
   }
 
   private normalizeTechnicianPricingRatePercent(value: number): number {
@@ -399,7 +513,7 @@ export class PricingModeService {
       return 100;
     }
 
-    return Math.min(200, Math.max(10, Math.round(value)));
+    return Math.min(100, Math.max(10, Math.round(value)));
   }
 
   private transactionalAuditLog(
@@ -450,7 +564,7 @@ export class PricingModeService {
       throw this.identityForbidden();
     }
 
-    const scope = await this.repository.findTechnicianShopScope(actor.currentIdentityScopeId);
+    const scope = await this.repository.findTechnicianShopScope(actor.currentIdentityScopeId, shopId);
 
     if (!scope || scope.shopId !== shopId) {
       throw this.identityForbidden();

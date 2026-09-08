@@ -46,6 +46,7 @@ describe("formal Exchange OpenAPI contract", () => {
       ["/api/v1/exchange/posts/{id}/like", "delete"],
       ["/api/v1/exchange/posts/{id}/shares", "post"],
       ["/api/v1/exchange/request-publication-context", "get"],
+      ["/api/v1/exchange/intelligence/service-options", "get"],
       ["/api/v1/backoffice/exchange-request-fee/current", "get"],
       ["/api/v1/backoffice/exchange-request-fee/versions", "get"],
       ["/api/v1/backoffice/exchange-request-fee/versions", "post"]
@@ -59,6 +60,28 @@ describe("formal Exchange OpenAPI contract", () => {
     for (const deferred of ["offers", "matches", "bookings", "orders", "payments"]) {
       expect(paths).not.toHaveProperty(`/api/v1/exchange/posts/{id}/${deferred}`);
     }
+  });
+
+  it("documents the paginated Intelligence service option permission and public projection", () => {
+    const openApi = document();
+    const operation = openApi.paths["/api/v1/exchange/intelligence/service-options"].get;
+
+    expect(operation).toEqual(
+      expect.objectContaining({
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "exchange:intelligence:service-options:list"
+      })
+    );
+    expect(operation.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page" }),
+        expect.objectContaining({ name: "page_size" })
+      ])
+    );
+    expect(openApi.components.schemas).toHaveProperty("ExchangeIntelligenceServiceOption");
+    expect(JSON.stringify(openApi.components.schemas.ExchangeIntelligenceServiceOption)).not.toMatch(
+      /userId|identityId|technicianProfileId/
+    );
   });
 
   it("documents the Request publication context and paginated fee administration permissions", () => {
@@ -254,6 +277,115 @@ describe("formal Exchange OpenAPI contract", () => {
         canClaim: { type: "boolean" },
         canViewClaims: { type: "boolean" }
       })
+    );
+  });
+
+  it("documents server-authoritative Intelligence service binding and stable publication errors", () => {
+    const openApi = document();
+    const publish = openApi.components.schemas.ExchangeIntelligencePublishRequest;
+
+    expect(publish.required).toEqual(
+      expect.arrayContaining([
+        "type",
+        "title",
+        "detail",
+        "contentLocale",
+        "serviceStartAt",
+        "serviceEndAt",
+        "expiresAt",
+        "serviceRef",
+        "campaignPriceJpy"
+      ])
+    );
+    for (const derivedField of [
+      "areaLabel",
+      "serviceMode",
+      "addressLabel",
+      "serviceAreas",
+      "originalPriceJpy"
+    ]) {
+      expect(publish.required).not.toContain(derivedField);
+    }
+    expect(publish.properties.serviceRef).toEqual({
+      type: "string",
+      pattern: "^(?:shop|technician):[1-9][0-9]*$"
+    });
+
+    const responses = openApi.paths["/api/v1/exchange/posts"].post.responses;
+    expect(responses["403"].description).toContain(
+      "error.exchange.intelligence_service_forbidden"
+    );
+    expect(responses["404"].description).toContain(
+      "error.exchange.intelligence_service_not_found"
+    );
+    expect(responses["409"].description).toContain(
+      "error.exchange.intelligence_service_unavailable"
+    );
+    expect(responses["422"].description).toContain(
+      "error.exchange.intelligence_service_required"
+    );
+    expect(responses["422"].description).toContain(
+      "error.exchange.intelligence_campaign_price_invalid"
+    );
+  });
+
+  it("documents the complete public Intelligence booking and card projection", () => {
+    const schemas = document().components.schemas;
+    expect(schemas.ExchangeIntelligence.required).toEqual(
+      expect.arrayContaining(["booking", "publisherCard", "serviceCard"])
+    );
+    expect(schemas.ExchangeIntelligence.properties).toEqual(
+      expect.objectContaining({
+        booking: { $ref: "#/components/schemas/ExchangeIntelligenceBooking" },
+        publisherCard: {
+          oneOf: [
+            { $ref: "#/components/schemas/ExchangeIntelligenceShopPublisherCard" },
+            { $ref: "#/components/schemas/ExchangeIntelligenceTechnicianPublisherCard" },
+            { type: "null" }
+          ]
+        },
+        serviceCard: {
+          oneOf: [
+            { $ref: "#/components/schemas/ExchangeIntelligenceServiceCard" },
+            { type: "null" }
+          ]
+        }
+      })
+    );
+    expect(schemas.ExchangeIntelligenceBooking.required).toEqual([
+      "available",
+      "unavailableReason",
+      "target",
+      "catalogPriceJpy",
+      "campaignPriceJpy",
+      "serviceName",
+      "durationMinutes",
+      "serviceMode",
+      "serviceWindow"
+    ]);
+    expect(schemas.ExchangeIntelligenceBooking.properties.unavailableReason.enum).toEqual([
+      "legacy_unbound",
+      "post_unavailable",
+      "publisher_unavailable",
+      "service_unavailable",
+      null
+    ]);
+    expect(schemas.ExchangeIntelligenceBookingTarget.properties.type.enum).toEqual([
+      "shop_service",
+      "technician_service"
+    ]);
+    expect(schemas.ExchangeIntelligenceTechnicianPublisherCard.properties.publicId).toEqual({
+      type: "string",
+      pattern: "^s[0-9]{10}$"
+    });
+
+    const serialized = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(schemas).filter(([name]) => name.startsWith("ExchangeIntelligence"))
+      )
+    );
+    expect(serialized).not.toMatch(
+      /authorUserId|authorIdentityId|actorUserId|actorIdentityId|technicianProfileId|phone|email|homeAddress|kyc/iu
     );
   });
 });

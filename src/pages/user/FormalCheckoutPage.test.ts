@@ -2,17 +2,35 @@ import { describe, expect, it } from "vitest";
 import formalSource from "./FormalCheckoutPage.tsx?raw";
 import checkoutSource from "./CheckoutPage.tsx?raw";
 import progressSource from "./formal-checkout/CheckoutProgressNav.tsx?raw";
+import { translations } from "../../i18n/translations";
 
 describe("formal customer checkout", () => {
-  it("routes numeric services into an isolated API-only checkout", () => {
-    expect(checkoutSource).toContain("isBookingApiId(serviceId)");
-    expect(checkoutSource).toContain("? <FormalCheckoutPage serviceId={Number(serviceId)} />");
+  it("routes shop, scoped technician, and Intelligence technician services into API-only checkout", () => {
+    expect(checkoutSource).toContain("isBookingApiId(technicianServiceId)");
+    expect(checkoutSource).toContain("parseCheckoutServiceRoute(serviceId, searchParams)");
+    expect(checkoutSource).toContain('type: "shop_service"');
+    expect(checkoutSource).toContain('type: "technician_service"');
     expect(formalSource).toContain("coreReadApi.getServiceDetail(serviceId)");
-    expect(formalSource).toContain("bookingApi.listAvailability");
+    expect(formalSource).toContain("pricingModeApi.listPublicTechnicianServices");
+    expect(formalSource).toContain("bookingApi.getTechnicianServiceBookingContext");
+    expect(formalSource).toContain("getExchangePost");
+    expect(formalSource).toContain("loadAvailabilityWindow");
     expect(formalSource).toContain("bookingApi.createBooking");
+    expect(formalSource).toContain("technicianServiceId: catalogRef.id");
     expect(formalSource).toContain("isCheckoutSlotBookable(slot, Date.now())");
     expect(formalSource).toContain("scheduleSlotId: freshSelectedSlot.id");
+    expect(formalSource).toContain("expectedPriceAmountJpy: Number(displayServiceInfo?.priceAmount ?? freshSelectedSlot.priceAmount)");
+    expect(formalSource).toContain("价格已更新，请确认最新金额后重新提交");
+    expect(formalSource).toContain("error.code === 41038");
     expect(formalSource).toContain("navigate(`/orders/${order.id}`");
+  });
+
+  it("validates Intelligence source target and window before submitting the source id", () => {
+    expect(formalSource).toContain('searchParams.get("exchangePost")');
+    expect(formalSource).toContain("slotInsideIntelligenceWindow");
+    expect(formalSource).toContain("exchangeIntelligencePostId");
+    expect(formalSource).toContain("resolveBookingIdempotencyKey");
+    expect(formalSource).not.toContain("campaignPriceJpy:");
   });
 
   it("loads all formal rows for the exact Tokyo date into the checkout-time dropdown", () => {
@@ -68,8 +86,19 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("showSocialStats={false}");
     expect(formalSource).toContain("showLevel={false}");
     expect(formalSource).toContain("?view=card");
+    expect(formalSource).toContain("id: technician.publicId");
+    expect(formalSource).not.toContain("id: String(technician.id)");
     expect(formalSource).not.toContain("navigate(`/technicians/");
     expect(formalSource).not.toContain("acceptanceRatePercent}% 接单率");
+  });
+
+  it("renders the formal package through the unified service information card", () => {
+    expect(formalSource).toContain("UnifiedServiceInfoCard");
+    expect(formalSource).toContain("const serviceInfo = mapCoreServiceCardToUnifiedData(serviceDetail)");
+    expect(formalSource).toContain("<UnifiedServiceInfoCard data={displayServiceInfo}");
+    expect(formalSource).toContain("mapExchangeIntelligenceServiceToUnifiedData");
+    expect(formalSource).toContain("mapTechnicianBookingContextServiceToUnifiedData");
+    expect(formalSource).not.toContain("mapCoreServiceToServiceItem");
   });
 
   it("renders the approved detailed body without reviving unsupported stores", () => {
@@ -102,6 +131,67 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain("pointer-events-none fixed inset-x-0 bottom-0");
     expect(formalSource).toContain("paymentMethod");
     expect(formalSource).toContain("void submitBooking()");
-    expect(formalSource).toContain("disabled={!selectedSlot || submitting}");
+    expect(formalSource).toContain('estimateStatus === "success"');
+    expect(formalSource).toContain('(!estimate || estimateStatus !== "success" || Date.parse(estimate.expiresAt) <= Date.now())');
+  });
+
+  it("requires a structured Japanese address and valid server estimate for home checkout", () => {
+    for (const field of ["postalCode", "prefecture", "city", "addressLine1", "addressLine2", "building"]) {
+      expect(formalSource).toContain(`updateHomeAddress("${field}"`);
+    }
+    expect(formalSource).toContain("travelFareApi.createEstimate");
+    expect(formalSource).toContain("servicePublicId: service.publicId");
+    expect(formalSource).toContain("scheduleSlotId: selectedSlotId");
+    expect(formalSource).toContain("estimateRequestVersionRef");
+    expect(formalSource).toContain("不加载第三方地图预览");
+    expect(formalSource).toContain("travelEstimatePublicId: estimate!.publicId");
+    expect(formalSource).toContain("fulfillmentAddress:");
+    expect(formalSource).toContain("正式交通费");
+    expect(formalSource).toContain("驾驶距离");
+    expect(formalSource).toContain("适用上限");
+    expect(formalSource).toContain("交通费估价已过期");
+    expect(formalSource).toContain("超出店铺的上门服务范围");
+    expect(formalSource).toContain("路线供应商尚未配置");
+    expect(formalSource).toContain("重新估算交通费");
+  });
+
+  it("requires all checkout submission gates", () => {
+    expect(formalSource).toContain("disabled={!canSubmitBooking || submitting}");
+  });
+
+  it("uses formal JP prefecture and municipality selectors for home service", () => {
+    expect(formalSource).toMatch(/bookingApi\s*\.\s*listAdministrativeRegions/);
+    expect(formalSource).toContain('country: "JP"');
+    expect(formalSource).toContain("parent: selectedAdmin1Code");
+    expect(formalSource).toContain('aria-label="都道府县"');
+    expect(formalSource).toContain('aria-label="市区町村"');
+    expect(formalSource).toContain('? { fulfillmentMode: "home" as const, serviceLocation:');
+    expect(formalSource).toContain('countryCode: "JP"');
+    expect(formalSource).toContain("admin1Code: selectedAdmin1Code");
+    expect(formalSource).toContain("admin2Code: selectedAdmin2Code");
+    expect(formalSource).toContain('Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")');
+  });
+
+  it("keeps the typed home address while excluding structured home codes in store mode", () => {
+    expect(formalSource).toContain("onClick={() => setFulfillmentMode(mode)}");
+    expect(formalSource).not.toContain('setAddress("")');
+    expect(formalSource).toContain(': { fulfillmentMode: "store" as const }');
+  });
+
+  it("provides every Task 3 selector message in each supported target locale", () => {
+    const taskThreeKeys = [
+      "请选择都道府县",
+      "请选择市区町村",
+      "正在加载市区町村",
+      "行政区域加载失败，请重试",
+      "请先选择都道府县和市区町村，再提交预约",
+    ];
+
+    for (const key of taskThreeKeys) {
+      expect(translations[key]).toBeDefined();
+      for (const locale of ["zh-Hant", "ja", "en", "ko"] as const) {
+        expect(translations[key]?.[locale]?.trim()).toBeTruthy();
+      }
+    }
   });
 });

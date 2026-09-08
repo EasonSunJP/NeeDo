@@ -3,7 +3,7 @@ import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { InfoTooltipTrigger } from "../../../components/ui/TitleWithInfo";
 import { cn } from "../../../lib/utils";
-import { addDays, getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
+import { getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
 import { saveDispatchCycleDraft } from "../../dispatch-center/store";
 
 const modeOptions: Array<{
@@ -16,21 +16,13 @@ const modeOptions: Array<{
   recommended?: boolean;
 }> = [
   {
-    mode: "STORE_COLLECT_CONFIRM",
-    title: "商户确认模式",
-    scenario: "多数机构店铺",
-    merchantRole: "设定可排班时段，处理冲突并最终确认",
-    technicianRole: "提交可上班 / 不可上班反馈，可发起申请",
-    confirmation: "商户必须最终确认",
-    recommended: true
-  },
-  {
     mode: "TECH_SELF_FINAL",
     title: "技师自主排班",
     scenario: "自由技师、轻管理店铺",
     merchantRole: "设定基本边界规则，查看结果与冲突",
     technicianRole: "自行设定并保存上班时间",
-    confirmation: "系统自动确认"
+    confirmation: "系统自动确认",
+    recommended: true
   },
   {
     mode: "STORE_ASSIGN_FINAL",
@@ -74,10 +66,7 @@ export function StepModeSelection({
     const nextDraft = {
       ...draft,
       mode,
-      feedbackDeadline:
-        mode === "STORE_COLLECT_CONFIRM"
-          ? draft.feedbackDeadline ?? `${addDays(draft.periodStart, -2)}T18:00`
-          : null
+      feedbackDeadline: null
     };
 
     setDraft(nextDraft);
@@ -85,7 +74,12 @@ export function StepModeSelection({
   };
 
   return (
-    <div className="space-y-5">
+    <div
+      className={cn(
+        "space-y-5",
+        isMobileSurface && "pb-[calc(env(safe-area-inset-bottom,0px)+8.5rem)]"
+      )}
+    >
       <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
@@ -150,7 +144,7 @@ export function StepModeSelection({
           <p className={cn("text-xs font-black uppercase tracking-[0.16em]", labelTextClass)}>权限和同步边界</p>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             {[
-              ["正式排班来源", draft.mode === "TECH_SELF_FINAL" ? "技师发布后投影" : draft.mode === "STORE_ASSIGN_FINAL" ? "商户直接生成" : "反馈经商户确认"],
+              ["正式排班来源", draft.mode === "TECH_SELF_FINAL" ? "技师发布后投影" : "商户直接生成"],
               ["技师端编辑", draft.mode === "STORE_ASSIGN_FINAL" ? "只读 + 申请入口" : "可提交 / 修改"],
               ["用户端可约", "只读取最终 confirmed slots"]
             ].map(([label, value]) => (
@@ -163,34 +157,62 @@ export function StepModeSelection({
         </div>
       </section>
 
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        <Button
-          className={cn(secondaryButtonClass, "min-w-[132px]")}
-          variant="secondary"
-          onClick={() => {
-            const result = saveDispatchCycleDraft(draft);
-            onMessage(result.ok ? "模式草稿已保存。" : result.message ?? "保存失败。");
-          }}
-        >
-          保存草稿
-        </Button>
-        <Button
-          className={cn(primaryButtonClass, "min-w-[196px]")}
-          onClick={() => {
-            const nextDraft = { ...draft, currentStep: 2 as const };
-            const result = saveDispatchCycleDraft(nextDraft);
-
-            if (!result.ok) {
-              onMessage(result.message ?? "保存失败。");
-              return;
+      <div
+        className={cn(
+          isMobileSurface
+            ? "pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full pt-10"
+            : "flex flex-wrap items-center justify-center gap-3"
+        )}
+        data-schedule-wizard-bottom-actions="true"
+        style={isMobileSurface
+          ? {
+              maxWidth: "var(--client-bottom-nav-max-width, 880px)",
+              paddingLeft: "var(--client-bottom-nav-inline-gap, 12px)",
+              paddingRight: "var(--client-bottom-nav-inline-gap, 12px)"
             }
-
-            onCycleChange(nextDraft);
-            onMessage("模式已确认，继续进入规则设定。");
-          }}
+          : undefined}
+      >
+        <div
+          className={cn(
+            isMobileSurface
+              ? "schedule-wizard-action-dock pointer-events-auto grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-3 rounded-[28px] p-2 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)]"
+              : "contents"
+          )}
         >
-          下一步：规则设定
-        </Button>
+          <Button
+            className={cn(
+              secondaryButtonClass,
+              isMobileSurface ? "w-full min-w-0" : "min-w-[132px]"
+            )}
+            variant="secondary"
+            onClick={() => {
+              const result = saveDispatchCycleDraft(draft);
+              onMessage(result.ok ? "模式草稿已保存。" : result.message ?? "保存失败。");
+            }}
+          >
+            保存草稿
+          </Button>
+          <Button
+            className={cn(
+              primaryButtonClass,
+              isMobileSurface ? "w-full min-w-0" : "min-w-[196px]"
+            )}
+            onClick={() => {
+              const nextDraft = { ...draft, currentStep: 2 as const };
+              const result = saveDispatchCycleDraft(nextDraft);
+
+              if (!result.ok) {
+                onMessage(result.message ?? "保存失败。");
+                return;
+              }
+
+              onCycleChange(nextDraft);
+              onMessage("模式已确认，继续进入规则设定。");
+            }}
+          >
+            下一步：规则设定
+          </Button>
+        </div>
       </div>
     </div>
   );

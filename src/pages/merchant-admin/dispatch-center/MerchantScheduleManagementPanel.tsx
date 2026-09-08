@@ -6,6 +6,8 @@ import { bookingApi, type BookingScheduleSlot } from "../../../features/booking/
 import { loadCoreReadWithTransientRetry } from "../../../features/core-read/transientRetry";
 import { describeMerchantReadError } from "../../../features/merchant-admin/merchantReadError";
 import { useOptionalI18n } from "../../../i18n/I18nProvider";
+import { getAuthenticatedPersistentCacheScope } from "../../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../../lib/persistentResourceCache";
 
 const inputClassName = "h-10 w-full rounded-lg border border-line bg-white px-3 text-sm font-bold outline-none focus:border-moss";
 const pageSize = 30;
@@ -55,60 +57,117 @@ export function MerchantScheduleManagementPanel({ readOnly = false }: { readOnly
   const { language } = useOptionalI18n();
   const [range, setRange] = useState(initialRange);
   const [page, setPage] = useState(1);
-  const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
-  const [total, setTotal] = useState(0);
-  const [services, setServices] = useState<BackofficeServicePayload[]>([]);
-  const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>([]);
+  const cacheScope = getAuthenticatedPersistentCacheScope();
+  const masterCacheKey = "schedule:merchant-management:master";
+  const slotCacheKey = `schedule:merchant-management:slots:${range.from}:${range.to}:${page}`;
+  const cachedMaster = cacheScope
+    ? persistentResourceCache.peek<{ services: BackofficeServicePayload[]; technicians: BackofficeTechnicianPayload[] }>(cacheScope, masterCacheKey)
+    : undefined;
+  const cachedSlots = cacheScope
+    ? persistentResourceCache.peek<{ list: BookingScheduleSlot[]; total: number }>(cacheScope, slotCacheKey)
+    : undefined;
+  const [slots, setSlots] = useState<BookingScheduleSlot[]>(() => cachedSlots?.list ?? []);
+  const [total, setTotal] = useState(() => cachedSlots?.total ?? 0);
+  const [services, setServices] = useState<BackofficeServicePayload[]>(() => cachedMaster?.services ?? []);
+  const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>(() => cachedMaster?.technicians ?? []);
   const [serviceId, setServiceId] = useState("");
   const [technicianProfileId, setTechnicianProfileId] = useState("");
   const [startsAt, setStartsAt] = useState(initialStartValue);
   const [capacity, setCapacity] = useState("1");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cachedMaster || !cachedSlots);
   const [busyId, setBusyId] = useState<number | "create" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
 
-  const loadMasterData = useCallback(async () => {
-    const [servicePage, technicianPage] = await Promise.all([
-      loadCoreReadWithTransientRetry(
-        () => backofficeRealDataApi.services("merchant-admin", { page: 1, pageSize: 100 })
-      ),
-      loadCoreReadWithTransientRetry(
-        () => backofficeRealDataApi.technicians("merchant-admin", { page: 1, pageSize: 100 })
-      )
-    ]);
-    setServices(servicePage.list);
-    setTechnicians(technicianPage.list.filter((technician) => technician.status === "published"));
-    setServiceId((current) => current || (servicePage.list[0] ? String(servicePage.list[0].id) : ""));
-  }, []);
+  const loadMasterData = useCallback(async (force = false) => {
+    const loadFromServer = async () => {
+      const [servicePage, technicianPage] = await Promise.all([
+        loadCoreReadWithTransientRetry(
+          () => backofficeRealDataApi.services("merchant-admin", { page: 1, pageSize: 100 })
+        ),
+        loadCoreReadWithTransientRetry(
+          () => backofficeRealDataApi.technicians("merchant-admin", { page: 1, pageSize: 100 })
+        )
+      ]);
+      return {
+        services: servicePage.list,
+        technicians: technicianPage.list.filter((technician) => technician.status === "published")
+      };
+    };
+    const result = cacheScope
+      ? await persistentResourceCache.load({ force, key: masterCacheKey, load: loadFromServer, scope: cacheScope })
+      : await loadFromServer();
+    setServices(result.services);
+    setTechnicians(result.technicians);
+    setServiceId((current) => current || (result.services[0] ? String(result.services[0].id) : ""));
+  }, [cacheScope]);
 
-  const loadSlots = useCallback(async () => {
-    const response = await loadCoreReadWithTransientRetry(
-      () => bookingApi.listManagedScheduleSlots("merchant-admin", {
-        from: toIso(`${range.from}T00:00`),
-        page,
-        pageSize,
-        to: toIso(`${range.to}T23:59`)
-      })
-    );
-    setSlots(response.list);
-    setTotal(response.total);
-  }, [page, range.from, range.to]);
+  const loadSlots = useCallback(async (force = false) => {
+    const loadFromServer = async () => {
+      const response = await loadCoreReadWithTransientRetry(
+        () => bookingApi.listManagedScheduleSlots("merchant-admin", {
+          from: toIso(`${range.from}T00:00`),
+          page,
+          pageSize,
+          to: toIso(`${range.to}T23:59`)
+        })
+      );
+      return { list: response.list, total: response.total };
+    };
+    const result = cacheScope
+      ? await persistentResourceCache.load({ force, key: slotCacheKey, load: loadFromServer, scope: cacheScope })
+      : await loadFromServer();
+    setSlots(result.list);
+    setTotal(result.total);
+  }, [cacheScope, page, range.from, range.to, slotCacheKey]);
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    const hasCachedData = Boolean(
+      cacheScope &&
+      persistentResourceCache.peek(cacheScope, masterCacheKey) &&
+      persistentResourceCache.peek(cacheScope, slotCacheKey)
+    );
+    setLoading(!hasCachedData);
     setError("");
-    Promise.all([loadMasterData(), loadSlots()])
+    const force = reloadVersion > 0;
+    Promise.all([loadMasterData(force), loadSlots(force)])
       .catch((loadError: unknown) => {
-        if (active) setError(describeMerchantReadError(loadError, language));
+        if (active && !hasCachedData) setError(describeMerchantReadError(loadError, language));
       })
       .finally(() => {
         if (active) setLoading(false);
       });
     return () => { active = false; };
   }, [language, loadMasterData, loadSlots, reloadVersion]);
+
+  useEffect(() => {
+    if (!cacheScope) return;
+    const unsubscribeMaster = persistentResourceCache.subscribe<{
+      services: BackofficeServicePayload[];
+      technicians: BackofficeTechnicianPayload[];
+    }>(cacheScope, masterCacheKey, (master) => {
+      setServices(master.services);
+      setTechnicians(master.technicians);
+      setServiceId((current) => current || (master.services[0] ? String(master.services[0].id) : ""));
+      setError("");
+    });
+    const unsubscribeSlots = persistentResourceCache.subscribe<{ list: BookingScheduleSlot[]; total: number }>(
+      cacheScope,
+      slotCacheKey,
+      (next) => {
+        setSlots(next.list);
+        setTotal(next.total);
+        setError("");
+        setLoading(false);
+      }
+    );
+    return () => {
+      unsubscribeMaster();
+      unsubscribeSlots();
+    };
+  }, [cacheScope, slotCacheKey]);
 
   const selectedService = useMemo(
     () => services.find((service) => service.id === Number(serviceId)) ?? null,

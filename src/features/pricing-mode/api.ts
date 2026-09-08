@@ -19,7 +19,8 @@ export type PaginatedPricingData<TItem> = {
 
 export type TechnicianServicePayload = {
   id: number;
-  shopId: number;
+  publicId: string;
+  shopId: number | null;
   technicianId: number;
   sourceShopServiceId: number | null;
   name: string;
@@ -28,10 +29,12 @@ export type TechnicianServicePayload = {
   priceAmount: number;
   currency: string;
   durationMinutes: number;
+  usageCount: number;
   taxIncluded: true;
   coverImageUrl: string | null;
   images: string[];
   tags: string[];
+  shop: { publicId: string | null; name: string; address: string } | null;
   isActive: boolean;
   isBookable: boolean;
   isRecommended: boolean;
@@ -57,6 +60,9 @@ export type BookingNavigationService = {
   currency: string;
   durationMinutes: number;
   coverUrl: string | null;
+  description: string | null;
+  tags: string[];
+  usageCount: number;
 };
 
 export type BookingNavigationResponse =
@@ -144,6 +150,26 @@ export const pricingModeApi = {
     });
   },
 
+  createMyTechnicianService(body: TechnicianServiceBody) {
+    return httpClient.request<TechnicianServicePayload>("/technicians/me/services", {
+      body,
+      method: "POST"
+    });
+  },
+
+  updateMyTechnicianService(serviceId: number, body: Partial<TechnicianServiceBody>) {
+    return httpClient.request<TechnicianServicePayload>(`/technicians/me/services/${serviceId}`, {
+      body,
+      method: "PUT"
+    });
+  },
+
+  deleteMyTechnicianService(serviceId: number) {
+    return httpClient.request<{ deleted: true }>(`/technicians/me/services/${serviceId}`, {
+      method: "DELETE"
+    });
+  },
+
   updateTechnicianService(shopId: number, serviceId: number, body: Partial<TechnicianServiceBody>) {
     return httpClient.request<TechnicianServicePayload>(
       `/technicians/me/shops/${shopId}/services/${serviceId}`,
@@ -158,6 +184,20 @@ export const pricingModeApi = {
     return httpClient.request<{ deleted: true }>(`/technicians/me/shops/${shopId}/services/${serviceId}`, {
       method: "DELETE"
     });
+  },
+
+  uploadTechnicianServiceCover(shopId: number, serviceId: number, file: File) {
+    return httpClient.request<TechnicianServicePayload>(
+      `/technicians/me/shops/${shopId}/services/${serviceId}/cover`,
+      { body: file, headers: { "Content-Type": file.type }, method: "PUT" }
+    );
+  },
+
+  removeTechnicianServiceCover(shopId: number, serviceId: number) {
+    return httpClient.request<TechnicianServicePayload>(
+      `/technicians/me/shops/${shopId}/services/${serviceId}/cover`,
+      { method: "DELETE" }
+    );
   },
 
   listPublicTechnicianServices(shopId: number, technicianId: number, query: { page?: number; pageSize?: number } = {}) {

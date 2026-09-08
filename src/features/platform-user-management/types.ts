@@ -8,7 +8,8 @@ export const platformBenefitCodes = [
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ] as const;
 export type PlatformBenefitCode = (typeof platformBenefitCodes)[number];
 export type PublicationStatus = "draft" | "published" | "archived";
@@ -20,15 +21,104 @@ export type Paginated<T> = {
   page_size: number;
 };
 
+export type UserDirectoryScope = "operations" | "merchant";
+export type UserPrivacyScope = "public" | "privateAll" | "limited" | "network";
+export type UserMembershipAdjustmentInput = {
+  tierCode?: PlatformTierCode;
+  multiplier?: number;
+  reason: string;
+  expectedLockVersion: number | null;
+};
+
+export type ReceivedUserReview = {
+  reviewId: number;
+  targetType: "customer";
+  rating: number;
+  comment: string | null;
+  tags: string[];
+  createdAt: string;
+  amendmentVersion: number;
+  amendmentHistory: Array<{
+    version: number;
+    rating: number | null;
+    comment: string | null;
+    tags: string[];
+    reason: string;
+    revisedAt: string;
+    revisedBy: string;
+  }>;
+  order: {
+    id: number; orderNo: string; serviceName: string; startsAt: string;
+    shopName: string; durationMinutes: number | null; note: string | null;
+    paymentMethod: "onsite" | "bank_transfer" | "cash" | "ndp" | "other";
+    paymentStatus: "pending" | "confirmed" | "refund_pending" | "refunded";
+    paymentCurrency: string | null; otherPaymentMethod: string | null;
+    addOnCount: number; addOnMinutes: number;
+  };
+  reviewer: { needoId: string; displayName: string; avatarUrl: string | null };
+};
+
+export type UserReviewAmendmentInput = {
+  rating?: number;
+  comment?: string | null;
+  tags?: string[];
+  reason: string;
+  expectedVersion: number;
+};
+
+export type UserUsagePeriod = "last7days" | "thisWeek" | "last30days" | "thisMonth" | "thisYear" | "custom";
+export type UserUsageQuery = {
+  page?: number;
+  page_size?: 10;
+  keyword?: string;
+  period?: UserUsagePeriod;
+  from?: string;
+  to?: string;
+};
+export type UserUsageRefund = {
+  exists: boolean;
+  displayReference: string | null;
+  note: string | null;
+  amendmentVersion: number;
+};
+export type UserUsage = {
+  id: number;
+  orderNo: string;
+  status: string;
+  paymentStatus: string;
+  serviceName: string;
+  shopName: string;
+  technicianName: string | null;
+  startsAt: string;
+  endsAt: string;
+  priceAmount: number;
+  currency: string;
+  refund: UserUsageRefund;
+};
+export type UserUsageTimelineEntry = {
+  id: string;
+  type: "order_created" | "status" | "service" | "comment" | "refund";
+  code: string;
+  occurredAt: string;
+  actorName: string | null;
+  actorAvatarUrl?: string | null;
+  body: string | null;
+};
+export type UserUsageTimeline = { order: UserUsage; timeline: UserUsageTimelineEntry[] };
+
 export type PlatformManagedUser = {
   id: number;
   needoId: string;
   username: string;
+  displayName: string;
   email: string;
   phone: string | null;
   emailBound: boolean;
   phoneBound: boolean;
   avatarUrl: string | null;
+  city: string | null;
+  privacyMode: boolean;
+  privacyScope: UserPrivacyScope | null;
   isActive: boolean;
   isTestAccount: boolean;
   source: string[];
@@ -37,6 +127,11 @@ export type PlatformManagedUser = {
     displayName: string | null;
     scopeType: string | null;
     scopeId: number | null;
+  }>;
+  identityProfiles?: Array<{
+    type: "technician" | "merchant";
+    status: "active" | "not_enabled" | "under_review" | "rejected";
+    displayName: string | null;
   }>;
   roles: Array<{ code: string; name: string }>;
   groups: string[];
@@ -49,8 +144,9 @@ export type PlatformManagedUser = {
     experienceMultiplier: number;
     lockVersion: number | null;
   };
-  experience: { currentLevel: number; totalExpUnits: string } | null;
+  experience: { currentLevel: number; totalExp: string } | null;
   ndpBalance: { available: number; frozen: number };
+  testNdpBalance?: { available: number; frozen: number } | null;
   bookingCount: number;
   lastLoginAt: string | null;
   createdAt: string;
@@ -81,7 +177,25 @@ export type PlatformManagedUserDetail = PlatformManagedUser & {
     completedBookings: number;
     completedSpendJpy: number;
   };
+  metrics: {
+    ndpAvailable: number;
+    usageCount: number;
+    credit: {
+      ratingAverage: number;
+      reviewCount: number;
+      latestReviewAt: string | null;
+    };
+  };
+  capabilities: {
+    membershipWrite: boolean;
+    reviewAmend: boolean;
+    refundAmend: boolean;
+    partnerWrite: boolean;
+    timelineCommentWrite: boolean;
+  };
   audit: {
+    page?: number;
+    page_size?: number;
     total: number;
     list: Array<{
       id: string;
@@ -99,20 +213,36 @@ export type UserListQuery = {
   page_size?: number;
   keyword?: string;
   tier?: PlatformTierCode;
+  tiers?: PlatformTierCode[];
   groupCode?: string;
-  identityType?: string;
+  identityType?: PlatformIdentityType;
+  identityTypes?: PlatformIdentityType[];
   source?: string;
   state?: "active" | "inactive";
+  states?: Array<"active" | "inactive">;
   ekyc?: "verified" | "unverified";
+  ekycStates?: Array<"verified" | "unverified">;
   minLevel?: number;
   maxLevel?: number;
   minExpUnits?: string;
   maxExpUnits?: string;
   minNdpBalance?: number;
   maxNdpBalance?: number;
+  city?: string;
+  cities?: string[];
+  emailState?: "set" | "unset";
+  emailStates?: Array<"set" | "unset">;
+  privacy?: "enabled" | "disabled" | UserPrivacyScope;
+  privacyScopes?: Array<"enabled" | "disabled" | UserPrivacyScope>;
+  minBookings?: number;
+  maxBookings?: number;
+  sortBy?: "displayName" | "email" | "city" | "createdAt" | "ndpBalance" | "bookingCount";
+  sortDirection?: "asc" | "desc";
   registeredFrom?: string;
   registeredTo?: string;
 };
+
+export type PlatformIdentityType = "platform" | "customer" | "technician" | "merchant" | "broker" | "scout";
 
 export type UserGroup = {
   code: string;
@@ -125,6 +255,7 @@ export type UserGroup = {
 };
 
 export type UserGroupMember = {
+  id: number;
   needoId: string;
   username: string;
   avatarUrl: string | null;
@@ -140,6 +271,8 @@ export type UserGlobalPolicy = {
   requireEmail: boolean;
   requireHomeServiceEkyc: boolean;
   requireStoreServiceEkyc: boolean;
+  requireMerchantApplicationEkyc: boolean;
+  requireTechnicianApplicationEkyc: boolean;
   ndpPerBaseExp: number;
   baseExpUnitsPerThreshold: number;
   effectiveFrom: string;
@@ -163,6 +296,8 @@ export type NdpExperienceCampaign = {
 export type PlatformMembershipTheme = {
   detailAccentColor: string;
   detailSurfaceColor: string;
+  detailSurfaceMiddleColor: string;
+  detailSurfaceBottomColor: string;
   detailItemSurfaceColor: string;
   detailOuterBorderColor: string;
   detailItemBorderColor: string;
@@ -203,6 +338,7 @@ export type PlatformTierAdministration = {
 };
 
 export type PlatformBenefitAdministration = {
+  deliveryCapability?: "available" | "unavailable";
   code: PlatformBenefitCode;
   sortOrder: number;
   isGloballyEnabled: boolean;
@@ -235,3 +371,6 @@ export type UserExperienceEntry = {
   campaignVersionId: string | null;
   occurredAt: string;
 };
+
+export type AccountUserLogDetail = Pick<PlatformManagedUserDetail, "id" | "displayName" | "avatarUrl" | "createdAt" | "audit">;
+export type AccountActivitySubject = { scope: UserDirectoryScope; subject: "users" | "technicians"; id: number };

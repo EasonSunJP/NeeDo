@@ -5,13 +5,16 @@ import {
 } from "../domain/analytics-ranking";
 import { resolveDashboardWindow } from "../domain/dashboard-period";
 import type { AnalyticsRankingRepositoryPort } from "../repositories/analytics-ranking.repository";
-import type { AnalyticsRankingParams, AnalyticsRankingQuery } from "../validators/analytics-ranking.validator";
+import type {
+  AnalyticsRankingParams,
+  AnalyticsRankingQuery
+} from "../validators/analytics-ranking.validator";
 import { AppError } from "../utils/app-error";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { assertActivePlatformIdentity } from "./platform-identity-scope";
 
 type AnalyticsRankingAudit = Pick<AuditLogService, "record">;
-const platformIdentityTypes = new Set(["platform", "platform_admin"]);
 
 export class AnalyticsRankingService {
   public constructor(
@@ -26,11 +29,14 @@ export class AnalyticsRankingService {
     params: AnalyticsRankingParams,
     query: AnalyticsRankingQuery
   ): Promise<AnalyticsRankingResponse> {
-    this.assertPlatformIdentity(actor);
+    assertActivePlatformIdentity(actor);
     const evaluatedAt = this.now();
     const window = resolveDashboardWindow(query, evaluatedAt);
     const categoryId = query.categoryId ?? null;
-    if (categoryId !== null && await this.repository.findActiveCategoryById(categoryId) === null) {
+    if (
+      categoryId !== null &&
+      (await this.repository.findActiveCategoryById(categoryId)) === null
+    ) {
       throw new AppError({
         code: ERROR_CODES.ANALYTICS_RANKING_CATEGORY_NOT_FOUND,
         message: "error.analytics_ranking.category_not_found",
@@ -93,18 +99,5 @@ export class AnalyticsRankingService {
       }
       throw error;
     }
-  }
-
-  private assertPlatformIdentity(actor: AuthenticatedAccessContext): void {
-    if (
-      actor.currentIdentityType &&
-      platformIdentityTypes.has(actor.currentIdentityType) &&
-      (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform")
-    ) return;
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
   }
 }

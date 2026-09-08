@@ -45,7 +45,6 @@ const importSourceLabels: Record<ImportableTemplateOption["source"], string> = {
 
 const scheduleModeLabels: Record<StoreScheduleMode, string> = {
   TECHNICIAN_SELF_FINAL: "技师自主排班",
-  STORE_CONFIRM_REQUIRED: "商户确认模式",
   STORE_DIRECT_ASSIGN: "商户直接排班"
 };
 
@@ -832,7 +831,6 @@ export function resolveScheduleContext({
       mode: null,
       context: "INDIVIDUAL_SELF_FINAL",
       canSelfPublish: true,
-      requiresStoreConfirmation: false,
       editableSlotScope: "published_availability",
       storeRules: {
         businessHoursRequired: false,
@@ -853,14 +851,11 @@ export function resolveScheduleContext({
   }
 
   const modeConfig = getActiveModeConfigForStore(scopedStoreId, modeConfigs, atDate);
-  const mode = modeConfig?.mode ?? "STORE_CONFIRM_REQUIRED";
+  const mode = modeConfig?.mode ?? "TECHNICIAN_SELF_FINAL";
   const context =
     mode === "TECHNICIAN_SELF_FINAL"
       ? "STORE_TECH_SELF_FINAL"
-      : mode === "STORE_DIRECT_ASSIGN"
-        ? "STORE_DIRECT_ASSIGN"
-        : "STORE_CONFIRM_REQUIRED";
-  const requiresStoreConfirmation = context === "STORE_CONFIRM_REQUIRED";
+      : "STORE_DIRECT_ASSIGN";
   const isStoreDirectAssign = context === "STORE_DIRECT_ASSIGN";
 
   return {
@@ -868,9 +863,8 @@ export function resolveScheduleContext({
     storeId: scopedStoreId,
     mode,
     context,
-    canSelfPublish: !requiresStoreConfirmation && !isStoreDirectAssign,
-    requiresStoreConfirmation,
-    editableSlotScope: requiresStoreConfirmation || isStoreDirectAssign ? "store_application" : "published_availability",
+    canSelfPublish: !isStoreDirectAssign,
+    editableSlotScope: isStoreDirectAssign ? "store_application" : "published_availability",
     storeRules: {
       businessHoursRequired: modeConfig?.selfModeRules.businessHoursRequired ?? true,
       resourceValidationRequired: modeConfig?.selfModeRules.resourceValidationRequired ?? true,
@@ -887,19 +881,12 @@ export function resolveScheduleContext({
           description: "商户保存后即成为正式排班；你可以确认已读，或通过申请更改进入商户处理。",
           disabledReason: "商户直接排班模式下不可直接修改正式班表。"
         }
-      : requiresStoreConfirmation
-        ? {
-            title: "排班申请 / 可上班反馈",
-            primaryAction: "提交排班反馈",
-            description: "只能在商户开放时段内提交反馈，最终需等待商户确认后才会进入用户可预约时间。",
-            disabledReason: null
-          }
-        : {
-            title: "我的上班时间",
-            primaryAction: "发布我的上班时间",
-            description: "发布后会经过商户规则校验，通过的时间会直接进入最终可预约时间。",
-            disabledReason: null
-          }
+      : {
+          title: "我的上班时间",
+          primaryAction: "发布我的上班时间",
+          description: "发布后会经过商户规则校验，通过的时间会直接进入最终可预约时间。",
+          disabledReason: null
+        }
   };
 }
 
@@ -1247,7 +1234,6 @@ export function getScheduleContextLabel(context: ScheduleContext["context"]) {
   const labels: Record<ScheduleContext["context"], string> = {
     INDIVIDUAL_SELF_FINAL: "个体技师自排",
     STORE_TECH_SELF_FINAL: "技师自主排班",
-    STORE_CONFIRM_REQUIRED: "商户确认模式",
     STORE_DIRECT_ASSIGN: "商户直接排班"
   };
 
@@ -1376,7 +1362,7 @@ export function buildFinalBookableSlotsForTechnician({
       let status: FinalBookableSlotStatus | null = null;
       let validationSummary = "";
 
-      if (context.context === "STORE_CONFIRM_REQUIRED" || context.context === "STORE_DIRECT_ASSIGN") {
+      if (context.context === "STORE_DIRECT_ASSIGN") {
         const confirmedShift = confirmedShifts.find(
           (shift) =>
             shift.technicianId === technician.id &&
@@ -1392,7 +1378,7 @@ export function buildFinalBookableSlotsForTechnician({
 
         sourceActive = true;
         status = "available";
-        validationSummary = context.context === "STORE_DIRECT_ASSIGN" ? "商户直接排班已生效" : "商户已确认班表";
+        validationSummary = "商户直接排班已生效";
       } else {
         const publishedStatus = resolvePublishedTechnicianSlotStatus({
           response,
@@ -1454,7 +1440,7 @@ export function buildFinalBookableSlotsForTechnician({
         hour,
         status,
         context: context.context,
-        sourceType: context.context === "STORE_CONFIRM_REQUIRED" || context.context === "STORE_DIRECT_ASSIGN" ? "store_confirmed" : "technician_published",
+        sourceType: context.context === "STORE_DIRECT_ASSIGN" ? "store_confirmed" : "technician_published",
         validationSummary,
         updatedAt: atDate
       });

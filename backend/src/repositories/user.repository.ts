@@ -31,6 +31,7 @@ export interface UserBalancesRecord {
 }
 
 export interface UserListInput extends PaginationInput {
+  roleId?: number;
   keyword?: string;
   isActive?: boolean;
   isTestAccount?: boolean;
@@ -320,10 +321,19 @@ export class UserRepository implements UserRepositoryPort {
   private buildListWhere(input: UserListInput): Prisma.UserWhereInput {
     return {
       deletedAt: null,
-      ...(typeof input.isActive === "boolean" ? { isActive: input.isActive } : {}),
-      ...(typeof input.isTestAccount === "boolean"
-        ? { isTestAccount: input.isTestAccount }
+      ...(input.roleId
+        ? {
+            userRoles: {
+              some: {
+                roleId: input.roleId,
+                deletedAt: null,
+                role: { deletedAt: null }
+              }
+            }
+          }
         : {}),
+      ...(typeof input.isActive === "boolean" ? { isActive: input.isActive } : {}),
+      ...(typeof input.isTestAccount === "boolean" ? { isTestAccount: input.isTestAccount } : {}),
       ...(input.keyword
         ? {
             OR: [
@@ -343,9 +353,7 @@ export class UserRepository implements UserRepositoryPort {
     return (await this.attachBalances([user]))[0];
   }
 
-  private async attachBalances(
-    users: Array<Omit<UserRecord, "balances">>
-  ): Promise<UserRecord[]> {
+  private async attachBalances(users: Array<Omit<UserRecord, "balances">>): Promise<UserRecord[]> {
     if (users.length === 0) return [];
 
     const wallets = await this.client.wallet.findMany({

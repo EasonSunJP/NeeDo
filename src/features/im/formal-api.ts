@@ -355,7 +355,7 @@ function toContactCardCandidate(value: unknown): ImContactCardCandidate {
   ]);
   const targetUserId = contactCardString(candidate.targetUserId, 160);
   const needoId = contactCardString(candidate.needoId, 160);
-  if (!/^u[0-9]{10}$/u.test(targetUserId) || !/^u[0-9]{10}$/u.test(needoId)) {
+  if (!/^(?:u|needo)[0-9]{10}$/u.test(targetUserId) || !/^(?:u|needo)[0-9]{10}$/u.test(needoId)) {
     return invalidContactCard();
   }
   const nickname = contactCardString(candidate.nickname, 160);
@@ -771,7 +771,7 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
     ext && typeof ext === "object" && !Array.isArray(ext)
       ? (ext as MessageExt)
       : undefined;
-  const { disappearing: _untrustedDisappearing, ...safeRawExt } = rawExt ?? {};
+  const { disappearing: _untrustedDisappearing, mediaState: _untrustedMediaState, ...safeRawExt } = rawExt ?? {};
   const safeExt =
     type === "chat-record"
       ? toChatRecordMessageExt(metadata)
@@ -857,6 +857,30 @@ function isRealtimeMessagePayload(payload: unknown): payload is RealtimeMessage 
 }
 
 export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate {
+  if (event.type === "message.deleted" && event.payload && typeof event.payload === "object") {
+    const payload = event.payload as Partial<{
+      action: unknown;
+      conversationId: unknown;
+      messageId: unknown;
+    }>;
+    if (
+      payload.action === "privacy_expired" &&
+      typeof payload.conversationId === "number" &&
+      Number.isSafeInteger(payload.conversationId) &&
+      payload.conversationId > 0 &&
+      typeof payload.messageId === "number" &&
+      Number.isSafeInteger(payload.messageId) &&
+      payload.messageId > 0
+    ) {
+      return {
+        type: "message.deleted",
+        conversationId: String(payload.conversationId),
+        messageId: String(payload.messageId),
+        reason: "privacy_expired",
+      };
+    }
+  }
+
   if (
     ![
       "message.created",
@@ -871,6 +895,14 @@ export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate
 
   const message = toConversationMessage(event.payload);
   if (event.type === "message.recalled") {
+    if (message.recallMode === "traceless") {
+      return {
+        type: "message.deleted",
+        conversationId: message.conversationId,
+        messageId: message.id,
+        reason: "traceless_recall",
+      };
+    }
     return message.serverState === "recalled"
       ? { type: "message.recalled", message }
       : { type: "refresh" };
@@ -1377,7 +1409,7 @@ export function createFormalImApi({
       const normalizedTargetUserId = targetUserId.trim();
       const normalizedIdempotencyKey = idempotencyKey.trim();
       if (
-        !/^u[0-9]{10}$/u.test(normalizedTargetUserId) ||
+        !/^(?:u|needo)[0-9]{10}$/u.test(normalizedTargetUserId) ||
         normalizedIdempotencyKey.length < 8 ||
         normalizedIdempotencyKey.length > 191
       ) {
@@ -1635,16 +1667,18 @@ export function createFormalImApi({
       );
       const message = toConversationMessage(response.message);
 
+      const authoritativeMode = response.action === "standard_recall" ? "standard" : "traceless";
       if (
-        response.action !== "standard_recall" ||
+        (response.action !== "standard_recall" && response.action !== "traceless_recall") ||
         String(response.conversationId) !== conversationId ||
         String(response.messageId) !== messageId ||
-        message.serverState !== "recalled"
+        message.serverState !== "recalled" ||
+        response.message.recallMode !== authoritativeMode
       ) {
         throw new Error("error.response.invalid_recall_result");
       }
 
-      return { conversationId, messageId, message, mode };
+      return { conversationId, messageId, message, mode: authoritativeMode };
     },
     resendMessage: featureUnavailable,
     forwardMessage: featureUnavailable,

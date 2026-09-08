@@ -2,6 +2,15 @@ import type { ExchangeClaimServiceRef } from "./exchange-claim.types";
 
 export type ExchangeMatchingStatus = "open" | "matched" | "closed";
 
+export type ExchangeMatchingBookingStatus =
+  | "pending"
+  | "confirmed"
+  | "inService"
+  | "awaitingCheckout"
+  | "awaitingPaymentConfirmation"
+  | "completed"
+  | "cancelled";
+
 export interface ExchangeMatchAdjustmentPreview {
   currentVersion: number;
   selectedCount: number;
@@ -13,6 +22,15 @@ export interface ExchangeMatchAdjustmentPreview {
   requiredBudgetIncreaseJpy: number;
   requiresTargetConfirmation: boolean;
   requiresBudgetConfirmation: boolean;
+}
+
+export interface ExchangeQuickBudgetDecision {
+  action: "increase_to_selected_total";
+  activeClaimCount: number;
+  selectedQuoteTotalJpy: number;
+  effectiveBudgetMaxJpy: number;
+  requiredBudgetMaxJpy: number;
+  requiredBudgetIncreaseJpy: number;
 }
 
 export interface ExchangeMatchParticipantPayload {
@@ -42,6 +60,11 @@ export interface ExchangeMatchParticipantPayload {
   estimatedStartsAt: string;
   estimatedEndsAt: string;
   matchedAt: string;
+  booking: {
+    orderId: number;
+    orderNo: string;
+    status: ExchangeMatchingBookingStatus;
+  } | null;
 }
 
 export interface ExchangeMatchingPayload {
@@ -53,7 +76,10 @@ export interface ExchangeMatchingPayload {
   selectedQuoteTotalJpy: number;
   matchedAt: string | null;
   participants: ExchangeMatchParticipantPayload[];
+  quickBudgetDecision: ExchangeQuickBudgetDecision | null;
   viewer: {
     canSelect: boolean;
+    canConfirmQuickBudget: boolean;
+    canCreateBookings: boolean;
   };
 }

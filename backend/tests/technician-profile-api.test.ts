@@ -1,3 +1,5 @@
+import { WorkStatusService } from '../src/services/work-status.service';
+import type { WorkStatusRepository } from '../src/repositories/work-status.repository';
 import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
@@ -16,8 +18,12 @@ interface StoredValue {
 class InMemoryAuthSessionStore {
   private readonly values = new Map<string, StoredValue>();
 
-  public async getLoginLock(): Promise<boolean> { return false; }
-  public async getAccountLoginLock(): Promise<boolean> { return false; }
+  public async getLoginLock(): Promise<boolean> {
+    return false;
+  }
+  public async getAccountLoginLock(): Promise<boolean> {
+    return false;
+  }
   public async recordFailedLogin(): Promise<{ count: number; locked: boolean }> {
     return { count: 1, locked: false };
   }
@@ -32,7 +38,9 @@ class InMemoryAuthSessionStore {
   public async getOtp(email: string): Promise<string | null> {
     return this.getValue(`otp:${email}`);
   }
-  public async deleteOtp(email: string): Promise<void> { this.values.delete(`otp:${email}`); }
+  public async deleteOtp(email: string): Promise<void> {
+    this.values.delete(`otp:${email}`);
+  }
   public async hasOtpCooldown(email: string): Promise<boolean> {
     return this.getValue(`otp:cooldown:${email}`) !== null;
   }
@@ -88,13 +96,23 @@ const makeProfile = (): TechnicianProfilePayload => ({
   avatarUrl: null,
   bio: "肩颈护理",
   city: "Tokyo",
+  gender: "female",
   age: 28,
   heightCm: 164,
   serviceBase: { latitude: 35.6762, longitude: 139.6503 },
   languages: ["日本語"],
   serviceAreas: ["銀座"],
-  specialTags: ["准时"],
-  profileTags: ["肩颈调理"],
+  specialTags: [],
+  profileTags: [],
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 3 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: [{ label: "手法细致", count: 2 }]
+  },
   canServeForeigners: true,
   bidBudgetMinJpy: 12_000,
   bidBudgetMaxJpy: 28_000,
@@ -134,8 +152,8 @@ const createFixture = async () => {
   };
   const withoutProfilePermissions = {
     ...permittedRole,
-    rolePermissions: permittedRole.rolePermissions.filter(({ permission }) =>
-      !permission.code.startsWith("technician-profile:")
+    rolePermissions: permittedRole.rolePermissions.filter(
+      ({ permission }) => !permission.code.startsWith("technician-profile:")
     )
   };
   const makeUser = (
@@ -159,17 +177,19 @@ const createFixture = async () => {
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
-    identities: [{
-      id: id + 100,
-      userId: id,
-      type: identityType,
-      scopeType: identityType === "technician" ? "technician_profile" : "customer_profile",
-      scopeId,
-      displayName: email,
-      isDefault: true,
-      isActive: true,
-      deletedAt: null
-    }],
+    identities: [
+      {
+        id: id + 100,
+        userId: id,
+        type: identityType,
+        scopeType: identityType === "technician" ? "technician_profile" : "customer_profile",
+        scopeId,
+        displayName: email,
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
+      }
+    ],
     userRoles: [{ deletedAt: null, role }]
   });
   const users = [
@@ -179,40 +199,55 @@ const createFixture = async () => {
   ];
   let profile = makeProfile();
   const authRepository = {
-    findUserByEmail: jest.fn(async (email: string) => users.find((user) => user.email === email) ?? null),
-    findUserByLoginIdentifier: jest.fn(async (identifier: string) =>
-      users.find((user) => user.email === identifier || user.needoId === identifier) ?? null
+    findUserByEmail: jest.fn(
+      async (email: string) => users.find((user) => user.email === email) ?? null
+    ),
+    findUserByLoginIdentifier: jest.fn(
+      async (identifier: string) =>
+        users.find((user) => user.email === identifier || user.needoId === identifier) ?? null
     ),
     findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
-    createVerifiedBaselineCustomer: jest.fn(async () => { throw new Error("unexpected registration"); }),
+    createVerifiedBaselineCustomer: jest.fn(async () => {
+      throw new Error("unexpected registration");
+    }),
     findVerifiedRegistrationByChallenge: jest.fn(async () => null),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
+    getSuccessfulLoginEvidence: jest.fn(async () => ({
+      hasAnySuccessfulLogin: false,
+      hasSuccessfulLoginInPeriod: false,
+      hasSuccessfulLoginFromIp: false
+    })),
     createAuditLog: jest.fn(async () => undefined)
   };
   const technicianProfileRepository = {
     findMine: jest.fn(async (userId: number, profileId: number) =>
       userId === 9 && profileId === 31 ? profile : null
     ),
-    updateMine: jest.fn(async (
-      userId: number,
-      profileId: number,
-      ownerIdentityId: number,
-      mutation: TechnicianProfileMutation
-    ) => {
-      if (userId !== 9 || profileId !== 31 || ownerIdentityId !== 109) {
-        throw new Error("unexpected technician profile scope");
+    updateMine: jest.fn(
+      async (
+        userId: number,
+        profileId: number,
+        ownerIdentityId: number,
+        mutation: TechnicianProfileMutation
+      ) => {
+        if (userId !== 9 || profileId !== 31 || ownerIdentityId !== 109) {
+          throw new Error("unexpected technician profile scope");
+        }
+        profile = {
+          ...profile,
+          ...(mutation.displayName === undefined ? {} : { displayName: mutation.displayName }),
+          ...(mutation.gender === undefined ? {} : { gender: mutation.gender }),
+          ...(mutation.languages === undefined ? {} : { languages: mutation.languages }),
+          ...(mutation.serviceBase === undefined ? {} : { serviceBase: mutation.serviceBase }),
+          ...(mutation.paymentMethods === undefined
+            ? {}
+            : { paymentMethods: mutation.paymentMethods }),
+          ...(mutation.visibility === undefined ? {} : { visibility: mutation.visibility })
+        };
+        return profile;
       }
-      profile = {
-        ...profile,
-        ...(mutation.displayName === undefined ? {} : { displayName: mutation.displayName }),
-        ...(mutation.languages === undefined ? {} : { languages: mutation.languages }),
-        ...(mutation.serviceBase === undefined ? {} : { serviceBase: mutation.serviceBase }),
-        ...(mutation.paymentMethods === undefined ? {} : { paymentMethods: mutation.paymentMethods }),
-        ...(mutation.visibility === undefined ? {} : { visibility: mutation.visibility })
-      };
-      return profile;
-    })
+    )
   };
   const dataCenterSource: TechnicianDataCenterSource = {
     technician: {
@@ -240,7 +275,10 @@ const createFixture = async () => {
       userId === 9 && profileId === 31 ? dataCenterSource : null
     )
   };
+  const workUnit={assertScope:jest.fn(async()=>undefined),snapshot:jest.fn(async()=>({technicianProfileId:31,status:'unsynced',version:0,syncedAt:null,month:{lateCount:0,earlyLeaveCount:0,from:now.toISOString(),to:new Date(now.getTime()+86400000).toISOString()}}))};
+  const workRepository={transaction:async(fn:(unit:unknown)=>unknown)=>fn(workUnit)} as unknown as WorkStatusRepository;
   const app = createApp(env, {
+    workStatusService:new WorkStatusService(workRepository),
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 0 }),
     authRepository,
     testOnlyAllowLegacyAuthAdapters: true,
@@ -268,11 +306,13 @@ describe("technician profile current-identity API", () => {
       .get("/api/v1/technician/data-center?period=month")
       .set("Authorization", `Bearer ${token}`)
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        period: "month",
-        affiliation: { shopName: "GINZA Calm Body Lab" },
-        recentOrders: []
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          period: "month",
+          affiliation: { shopName: "GINZA Calm Body Lab" },
+          recentOrders: []
+        })
+      );
     expect(fixture.technicianDataCenterRepository.load).toHaveBeenCalledWith(
       9,
       31,
@@ -288,29 +328,36 @@ describe("technician profile current-identity API", () => {
       .get("/api/v1/technician-profile/me")
       .set("Authorization", `Bearer ${token}`)
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        id: 31,
-        displayName: "田中 彩",
-        serviceBase: { latitude: 35.6762, longitude: 139.6503 }
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          id: 31,
+          displayName: "田中 彩",
+          gender: "female",
+          serviceBase: { latitude: 35.6762, longitude: 139.6503 }
+        })
+      );
 
     await request(fixture.app)
       .patch("/api/v1/technician-profile/me")
       .set("Authorization", `Bearer ${token}`)
       .send({
         displayName: "彩",
+        gender: "female",
         languages: ["日本語", "中文"],
         paymentMethods: ["platform", "cash", "paypay"],
         serviceBase: { latitude: 35.6895, longitude: 139.6917 },
         visibility: "network"
       })
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        displayName: "彩",
-        paymentMethods: ["platform", "cash", "paypay"],
-        serviceBase: { latitude: 35.6895, longitude: 139.6917 },
-        visibility: "network"
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          displayName: "彩",
+          gender: "female",
+          paymentMethods: ["platform", "cash", "paypay"],
+          serviceBase: { latitude: 35.6895, longitude: 139.6917 },
+          visibility: "network"
+        })
+      );
 
     expect(fixture.technicianProfileRepository.updateMine).toHaveBeenCalledWith(
       9,
@@ -318,6 +365,7 @@ describe("technician profile current-identity API", () => {
       109,
       expect.objectContaining({
         displayName: "彩",
+        gender: "female",
         paymentMethods: ["platform", "cash", "paypay"],
         serviceBase: { latitude: 35.6895, longitude: 139.6917 },
         visibility: "network"
@@ -327,6 +375,7 @@ describe("technician profile current-identity API", () => {
         metadata: {
           changedFields: [
             "displayName",
+            "gender",
             "languages",
             "paymentMethods",
             "serviceBase",
@@ -344,12 +393,14 @@ describe("technician profile current-identity API", () => {
     await request(fixture.app)
       .patch("/api/v1/technician-profile/me")
       .set("Authorization", `Bearer ${token}`)
-      .send({ languages: [], serviceAreas: [], profileTags: [], paymentMethods: [] })
+      .send({ languages: [], serviceAreas: [], paymentMethods: [] })
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        languages: [],
-        paymentMethods: []
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          languages: [],
+          paymentMethods: []
+        })
+      );
 
     expect(fixture.technicianProfileRepository.updateMine).toHaveBeenCalledWith(
       9,
@@ -358,13 +409,12 @@ describe("technician profile current-identity API", () => {
       expect.objectContaining({
         languages: [],
         serviceAreas: [],
-        profileTags: [],
         paymentMethods: []
       }),
       expect.objectContaining({
         action: "technician_profile.self_update",
         metadata: {
-          changedFields: ["languages", "paymentMethods", "profileTags", "serviceAreas"]
+          changedFields: ["languages", "paymentMethods", "serviceAreas"]
         }
       })
     );
@@ -400,5 +450,34 @@ describe("technician profile current-identity API", () => {
       .set("Authorization", `Bearer ${technicianToken}`)
       .send({ serviceBase: { latitude: 35.6762 } })
       .expect(400);
+    await request(fixture.app)
+      .patch("/api/v1/technician-profile/me")
+      .set("Authorization", `Bearer ${technicianToken}`)
+      .send({ gender: "unknown" })
+      .expect(400);
+    await request(fixture.app)
+      .patch("/api/v1/technician-profile/me")
+      .set("Authorization", `Bearer ${technicianToken}`)
+      .send({ profileTags: ["肩颈调理"] })
+      .expect(400);
   });
+});
+
+
+describe('work status authenticated API contract',()=>{
+ it('requires login, RBAC and selected technician identity',async()=>{
+  const f=await createFixture();
+  await request(f.app).get('/api/v1/technician-work-status/me').expect(401);
+  const denied=await f.login('no-permission@example.com');
+  await request(f.app).get('/api/v1/technician-work-status/me').set('Authorization',`Bearer ${denied}`).expect(403);
+  const customer=await f.login('customer@example.com');
+  await request(f.app).get('/api/v1/technician-work-status/me').set('Authorization',`Bearer ${customer}`).expect(403);
+  const tech=await f.login('technician@example.com');
+  await request(f.app).get('/api/v1/technician-work-status/me').set('Authorization',`Bearer ${tech}`).expect(200).expect(({body})=>expect(body.data.status).toBe('unsynced'));
+ });
+ it('rejects client service state, actor spoofing, reversed intervals and excessive pages',async()=>{
+  const f=await createFixture(),token=await f.login('technician@example.com');
+  for(const body of [{status:'in_service',expectedVersion:0,idempotencyKey:'x'},{status:'on_duty',expectedVersion:0,idempotencyKey:'x',actorId:999}])await request(f.app).patch('/api/v1/technician-work-status/me').set('Authorization',`Bearer ${token}`).send(body).expect(400);
+  for(const query of ['from=2026-09-07T00:00:00Z&to=2026-09-06T00:00:00Z','page_size=101','incidentsOnly=nonsense'])await request(f.app).get(`/api/v1/technician-work-status/me/events?${query}`).set('Authorization',`Bearer ${token}`).expect(400);
+ });
 });

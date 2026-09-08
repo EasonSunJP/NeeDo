@@ -19,25 +19,29 @@ export class AffiliateMarketplaceController {
   ) {}
 
   public listTasks = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.listTasks(
-          this.actor(response),
-          affiliateMarketplaceListQuerySchema.parse(request.query)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listTasks(
+            this.actor(response),
+            affiliateMarketplaceListQuerySchema.parse(request.query)
+          )
         )
-      )
-    );
+      );
   });
 
   public getTask = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.getTask(
-          this.actor(response),
-          affiliateMarketplaceTaskIdParamSchema.parse(request.params).taskId
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.getTask(
+            this.actor(response),
+            affiliateMarketplaceTaskIdParamSchema.parse(request.params).taskId
+          )
         )
-      )
-    );
+      );
   });
 
   public claimTask = this.handle(async (request, response) => {
@@ -49,35 +53,41 @@ export class AffiliateMarketplaceController {
   });
 
   public listMyClaims = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.listMyClaims(
-          this.actor(response),
-          affiliateClaimListQuerySchema.parse(request.query)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listMyClaims(
+            this.actor(response),
+            affiliateClaimListQuerySchema.parse(request.query)
+          )
         )
-      )
-    );
+      );
   });
 
   public getMyClaim = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.getMyClaim(
-          this.actor(response),
-          affiliateMarketplaceClaimIdParamSchema.parse(request.params).claimId
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.getMyClaim(
+            this.actor(response),
+            affiliateMarketplaceClaimIdParamSchema.parse(request.params).claimId
+          )
         )
-      )
-    );
+      );
   });
 
   public resolveLink = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.resolveLink(
-          affiliatePublicTokenParamSchema.parse(request.params).publicToken
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.resolveLink(
+            affiliatePublicTokenParamSchema.parse(request.params).publicToken
+          )
         )
-      )
-    );
+      );
   });
 
   public validateCode = this.handle(async (request, response) => {

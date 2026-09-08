@@ -5,6 +5,8 @@ const now = new Date("2026-09-01T12:00:00.000Z");
 const theme = {
   detailAccentColor: "#F4C967",
   detailSurfaceColor: "#302818",
+  detailSurfaceMiddleColor: "#253026",
+  detailSurfaceBottomColor: "#17243A",
   detailItemSurfaceColor: "#201A10",
   detailOuterBorderColor: "#A98645",
   detailItemBorderColor: "#66552F",
@@ -19,7 +21,8 @@ const benefits = [
   ["support_service", false, {}],
   ["exclusive_discount", false, {}],
   ["member_day", false, {}],
-  ["birthday_gift", false, {}]
+  ["birthday_gift", false, {}],
+  ["traceless_recall", true, {}]
 ].map(([code, isEnabled, configuration]) => ({ code, isEnabled, configuration }));
 const version = {
   tierCode: "gold" as const,
@@ -70,8 +73,20 @@ const createService = () => ({
       code: "ndp_experience" as const,
       sortOrder: 0,
       isGloballyEnabled: true,
-      nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
-      descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+      nameTranslations: {
+        zh: "NDP消费经验",
+        "zh-Hant": "NDP消費經驗",
+        ja: "NDP利用経験値",
+        en: "NDP experience",
+        ko: "NDP 사용 경험치"
+      },
+      descriptionTranslations: {
+        zh: "说明",
+        "zh-Hant": "說明",
+        ja: "説明",
+        en: "Description",
+        ko: "설명"
+      },
       lockVersion: 1
     }
   ]),
@@ -79,8 +94,20 @@ const createService = () => ({
     code: "ndp_experience" as const,
     sortOrder: 0,
     isGloballyEnabled: false,
-    nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
-    descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+    nameTranslations: {
+      zh: "NDP消费经验",
+      "zh-Hant": "NDP消費經驗",
+      ja: "NDP利用経験値",
+      en: "NDP experience",
+      ko: "NDP 사용 경험치"
+    },
+    descriptionTranslations: {
+      zh: "说明",
+      "zh-Hant": "說明",
+      ja: "説明",
+      en: "Description",
+      ko: "설명"
+    },
     lockVersion: 2
   })),
   changeEntitlement: jest.fn(async () => ({
@@ -92,6 +119,12 @@ const createService = () => ({
     expiresAt: new Date("2026-10-01T12:00:00.000Z"),
     experienceValueNdp: 1_999,
     idempotent: false
+  })),
+  adjustUserMembership: jest.fn(async () => ({
+    tierCode: "gold" as const,
+    multiplier: 1.25,
+    lockVersion: 1,
+    effectiveFrom: now
   }))
 });
 
@@ -167,6 +200,15 @@ describe("platform membership administration API", () => {
       .send(draftBody)
       .expect(200);
     await request(fixture.app)
+      .patch("/api/v1/backoffice/users/42/membership-adjustment")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        multiplier: 1.25,
+        reason: "Approved retention adjustment",
+        expectedLockVersion: null
+      })
+      .expect(200);
+    await request(fixture.app)
       .post("/api/v1/backoffice/membership-tiers/gold/publish")
       .set("Authorization", `Bearer ${token}`)
       .send({ expectedVersion: 2, expectedLockVersion: 1 })
@@ -177,8 +219,20 @@ describe("platform membership administration API", () => {
       .send({
         isGloballyEnabled: false,
         sortOrder: 0,
-        nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
-        descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+        nameTranslations: {
+          zh: "NDP消费经验",
+          "zh-Hant": "NDP消費經驗",
+          ja: "NDP利用経験値",
+          en: "NDP experience",
+          ko: "NDP 사용 경험치"
+        },
+        descriptionTranslations: {
+          zh: "说明",
+          "zh-Hant": "說明",
+          ja: "説明",
+          en: "Description",
+          ko: "설명"
+        },
         expectedLockVersion: 1
       })
       .expect(200);
@@ -208,8 +262,20 @@ describe("platform membership administration API", () => {
       {
         isGloballyEnabled: false,
         sortOrder: 0,
-        nameTranslations: { zh: "NDP消费经验", "zh-Hant": "NDP消費經驗", ja: "NDP利用経験値", en: "NDP experience", ko: "NDP 사용 경험치" },
-        descriptionTranslations: { zh: "说明", "zh-Hant": "說明", ja: "説明", en: "Description", ko: "설명" },
+        nameTranslations: {
+          zh: "NDP消费经验",
+          "zh-Hant": "NDP消費經驗",
+          ja: "NDP利用経験値",
+          en: "NDP experience",
+          ko: "NDP 사용 경험치"
+        },
+        descriptionTranslations: {
+          zh: "说明",
+          "zh-Hant": "說明",
+          ja: "説明",
+          en: "Description",
+          ko: "설명"
+        },
         expectedLockVersion: 1
       }
     );
@@ -218,6 +284,16 @@ describe("platform membership administration API", () => {
       expect.anything(),
       42,
       expect.objectContaining({ kind: "grant", targetTierCode: "gold" })
+    );
+    expect(service.adjustUserMembership).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      42,
+      {
+        multiplier: 1.25,
+        reason: "Approved retention adjustment",
+        expectedLockVersion: null
+      }
     );
   });
 

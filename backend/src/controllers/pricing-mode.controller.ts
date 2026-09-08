@@ -4,6 +4,7 @@ import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   bookingNavigationQuerySchema,
+  myTechnicianServiceIdParamSchema,
   pricingModeBodySchema,
   publicTechnicianServicesParamSchema,
   shopIdParamSchema,
@@ -132,6 +133,57 @@ export class PricingModeController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createMyTechnicianService = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(201).json(successResponse(await this.service.createMyTechnicianService(
+        getAuthenticatedAccess(response),
+        getRequestContext(request),
+        technicianServiceBodySchema.parse(request.body)
+      )));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public updateMyTechnicianService = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { serviceId } = myTechnicianServiceIdParamSchema.parse(request.params);
+      response.status(200).json(successResponse(await this.service.updateMyTechnicianService(
+        getAuthenticatedAccess(response),
+        getRequestContext(request),
+        serviceId,
+        technicianServiceBodySchema.partial().parse(request.body)
+      )));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public deleteMyTechnicianService = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { serviceId } = myTechnicianServiceIdParamSchema.parse(request.params);
+      response.status(200).json(successResponse(await this.service.deleteMyTechnicianService(
+        getAuthenticatedAccess(response),
+        getRequestContext(request),
+        serviceId
+      )));
     } catch (error) {
       next(error);
     }

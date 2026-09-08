@@ -72,7 +72,8 @@ export function getMerchantAdminPreview(): MerchantAdminPreview | null {
 
 export function startMerchantAdminPreview(
   card: MerchantAccountCard,
-  returnTo = "/admin/merchants"
+  returnTo = "/admin/merchants",
+  selectedShopId?: number,
 ): MerchantAdminPreview | null {
   const shops = isMerchantGroup(card)
     ? card.shops.map((shop) => ({ id: shop.id, name: shop.name }))
@@ -86,7 +87,7 @@ export function startMerchantAdminPreview(
     subjectType: isMerchantGroup(card) ? "merchant_account" : "shop",
     subjectId: card.id,
     subjectName: card.name,
-    selectedShopId: firstShop.id,
+    selectedShopId: shops.some((shop) => shop.id === selectedShopId) ? selectedShopId! : firstShop.id,
     shops,
     returnTo: normalizeReturnTo(returnTo)
   };
@@ -96,6 +97,19 @@ export function startMerchantAdminPreview(
     silent: true
   });
   return preview;
+}
+
+export function openMerchantAdminPreviewWindow(
+  openWindow: (url: string, target: string) => Window | null = (url, target) => window.open(url, target),
+) {
+  const opened = openWindow("/pf-admin.html#/merchant-admin", "_blank");
+  if (!opened) return false;
+  try {
+    opened.opener = null;
+  } catch {
+    // The preview is already protected by its same-origin session and backend read-only guard.
+  }
+  return true;
 }
 
 export function setMerchantAdminPreviewShop(shopId: number): MerchantAdminPreview | null {

@@ -135,6 +135,12 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `GET` | `/api/v1/technicians/:id` | Public technician detail | Public |
 | `GET` | `/api/v1/profiles/customers/:id` | Public customer profile without account credentials | Public |
 
+For public technician navigation, `:id` is canonically the lowercase NeeDoID
+`s##########`. A positive numeric `TechnicianProfile.id` remains accepted only
+as a transition and internal-caller compatibility lookup. The response retains
+both `id` (internal relation key) and `publicId` (public identity); new public UI
+links must use `publicId` and must not display the numeric key as the account ID.
+
 ### Common Query Parameters
 
 `GET /categories`
@@ -272,6 +278,31 @@ The authenticated technician portfolio is profile-wide rather than shop-wide:
 
 A technician may have at most five non-deleted services across all shops. The limit is enforced under the technician-profile lock, so concurrent sixth creates cannot both succeed. Every service price is integer JPY and the response declares `taxIncluded: true`; duration is integer minutes. The first eligible service after ordering by `sortOrder`, then ID, is the primary service.
 
+### Technician service cover
+
+- `PUT /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover`
+  accepts one authenticated, single-frame raw JPEG/PNG/WebP body up to 8 MiB and
+  at most 25,000,000 decoded pixels, then returns the updated `TechnicianService`.
+- `DELETE /api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover`
+  removes the current public cover association and returns the updated service.
+
+Both routes require `technician:services:write` and derive actor scope from the
+session. Effective mutations persist the `MediaAsset` lifecycle change and audit
+evidence. An exact-image `PUT` retry or a `DELETE` when no cover is active returns
+the current service without creating duplicate media rows or audit entries.
+Before persistence, bounded header walks reject PNG `acTL`/`fcTL`/`fdAT` animation
+chunks and JPEG APP2 `MPF` multi-picture containers without calculating CRCs or
+decoding pixels. Sharp metadata then rejects any other image reporting more than one
+page, and libvips asynchronously fully decodes the accepted single frame. Header-only,
+truncated, corrupt, declared-MIME/decoded-format mismatch, and decoded pixel-limit
+violations all fail with the existing cover-invalid HTTP 400 contract.
+
+This decoded single-frame profile is cover-specific. The shared storage default used
+by `/api/v1/social/media` and `/api/v1/backoffice/content/media` retains their existing
+contract: at most 8 MiB, one of the three declared MIME types, and the corresponding
+magic signature. Those generic endpoints do not inherit the cover-only frame/page or
+decoded-pixel restrictions.
+
 The reorder body is strict JSON containing the complete current `orderedServiceIds` set (zero to five unique IDs) and a 16–160 character `idempotencyKey`. Omitting an existing service, including another technician's service, or reusing a key with different content returns a conflict or validation error. A successful command assigns contiguous zero-based positions and records one audit event.
 
 `GET /api/v1/im/directory/:userId` may include `technicianContactDetails` only when the caller owns an active, non-deleted, unblocked contact pointing to that technician identity. Reverse-only contacts, pending requests, deleted contacts, blocked contacts, self lookups without that relationship, and public lookups omit the entire key. The optional object contains integer bid-budget bounds, payment methods, active non-expired operations tags, technician profile tags, up to five active approved services, completed-order count, and acceptance rate in basis points (`10000` = 100%). It never contains `baseLatitude`, `baseLongitude`, `serviceBase`, or other precise coordinates.
@@ -350,6 +381,52 @@ The adjustment path does not debit a store wallet, credit customer NDP, change b
 The create body requires `feeRateBps` from 0 through 10,000, `expectedVersion`, ISO-8601 `effectiveFrom`, and a non-empty reason. The initial version is 1000 bps (10%). Creating a version writes an audit record; stale versions or overlapping policy boundaries return a conflict response.
 
 Top-up, redemption, refund, and reward ledger settlement remain outside these configuration, issuance, and adjustment endpoints and must be implemented as separate state-machine microsteps.
+
+## Exchange Matched-Order Bilateral Cancellation
+
+Cancellation is scoped to one persisted Exchange-linked Request order. Cancelling one selected
+provider's order does not cancel or modify any other participant order.
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/exchange/orders/:id/cancellation` | Read the current party's cancellation state and allowed actions | `exchange:cancellation:read-own` |
+| `POST` | `/api/v1/exchange/orders/:id/cancellation/requests` | Request cancellation with a reason | `exchange:cancellation:write-own` |
+| `POST` | `/api/v1/exchange/orders/:id/cancellation/accept` | Accept the opposite party's pending request | `exchange:cancellation:write-own` |
+| `POST` | `/api/v1/exchange/orders/:id/cancellation/reject` | Reject the opposite party's pending request | `exchange:cancellation:write-own` |
+| `POST` | `/api/v1/exchange/orders/:id/cancellation/withdraw` | Withdraw the exact initiating identity's pending request | `exchange:cancellation:write-own` |
+
+Every command requires `Idempotency-Key` and `expectedVersion`; request creation additionally
+requires a 1–500 character reason. The server resolves the actor, identity, customer/provider
+party, technician profile, and selected shop scope. Client-supplied actor, party, status, order,
+or financial fields fail strict validation.
+
+Only linked `REQUEST` orders in `PENDING` or `CONFIRMED` state are eligible, and only before service
+start or confirmed/refunded payment. Request, rejection, and withdrawal do not mutate orders,
+slots, wallets, or ledgers. Acceptance atomically updates the request, cancels that order, releases
+one unit of slot capacity, appends order status history and cancellation event history, writes
+audit and notification evidence, captures the Demand publication fee through its existing
+idempotent ledger authority, and releases the existing Request booking hold only when the order
+was confirmed. Any failure rolls back the transaction.
+
+The API does not implement payment refunds, service-in-progress termination, responsibility
+penalties, Affiliate reward/refund changes, or batch cancellation. The shared five-language client
+panel is wired into the owner/provider Exchange cards and the customer, technician, and merchant
+formal order details. It hides on an exact 404 for ordinary orders and suppresses their generic
+cancel action only after the server identifies an Exchange-linked order. Local authenticated
+browser acceptance passed with a customer request and reload at 320 px followed by provider
+acceptance and reload at 440 px; applying both additive migrations and repeating smoke checks in an
+authorized app environment remain deployment gates.
+
+The guarded real-MySQL suite is `backend/tests/exchange-cancellation.repository.integration.test.ts`.
+It runs only when `RUN_EXCHANGE_CANCELLATION_INTEGRATION=true` and
+`FORMAL_BACKEND_ENV_FILE` names an explicit loopback, non-production MySQL environment. The guarded
+checker applied all 130 migrations to a generated scratch database and passed eight scenarios:
+confirmed Request booking-hold release, races against formal confirmation/service-start/payment
+transitions, concurrent acceptance across two matched orders, publication-fee conservation,
+reject/withdraw financial neutrality, and transaction rollback. Cleanup removed the scratch
+database and principal with `existingDatabaseModified=false`. The suite must not target staging,
+production, or an unapproved shared development database; this isolated proof does not replace
+authorized-environment migration, deployment, or post-deploy smoke checks.
 
 Full machine-readable OpenAPI is served at `/api/v1/openapi.json` when `OPENAPI_ENABLED=true`.
 

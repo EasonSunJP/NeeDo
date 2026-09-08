@@ -18,6 +18,7 @@ describe("formal customer center integration", () => {
     expect(centerSource).toContain('formalData.wallet.currency === "TEST_NDP" ? "Test NDP" : "NDP"');
     expect(centerSource).toContain("{ label: pointsLabel, value: points.toLocaleString(\"en-US\") }");
     expect(centerSource).toContain('data-testid="user-profile-privacy-control"');
+    expect(centerSource).toContain("afterDetailsSlot={profilePrivacyControl}");
     expect(centerSource).toContain("我的订单");
     expect(centerSource).toContain("serviceTools.map");
     expect(centerSource).toContain("账号与服务");

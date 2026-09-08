@@ -117,6 +117,43 @@ export const CONTENT_PUBLICATION_PERMISSIONS = {
   contentMediaUpload: "button:backoffice-content-media-upload"
 } as const;
 
+export const OFFICIAL_NOTICE_PERMISSIONS = {
+  read: "page:backoffice-official-notice",
+  create: "button:backoffice-official-notice-create",
+  review: "button:backoffice-official-notice-review",
+  send: "button:backoffice-official-notice-send"
+} as const;
+
+export const MERCHANT_NOTICE_PERMISSIONS = {
+  read: "merchant-admin:notice:read",
+  create: "merchant-admin:notice:create",
+  review: "merchant-admin:notice:review",
+  send: "merchant-admin:notice:send"
+} as const;
+
+export const TRAVEL_FARE_PERMISSIONS = {
+  merchantRead: "merchant-admin:travel-fare-policy:read",
+  merchantWrite: "merchant-admin:travel-fare-policy:write",
+  backofficeRead: "backoffice:travel-fare:read",
+  estimateCreate: "booking:travel-estimate:create"
+} as const;
+
+export const PLATFORM_SETTINGS_PERMISSIONS = {
+  read: "backoffice:system-settings:read",
+  write: "backoffice:system-settings:write",
+  brandMediaActivate: "backoffice:system-brand-media:activate",
+  imRetentionRead: "backoffice:im-retention:read",
+  imRetentionWrite: "backoffice:im-retention:write",
+  paymentRead: "backoffice:payment-settings:read",
+  paymentWrite: "backoffice:payment-settings:write"
+} as const;
+
+export const LEGAL_DOCUMENT_PERMISSIONS = {
+  read: "backoffice:legal-documents:read",
+  write: "backoffice:legal-documents:write",
+  publish: "backoffice:legal-documents:publish"
+} as const;
+
 export const ENTITY_FAVORITE_PERMISSIONS = {
   read: "entity-favorite:read",
   write: "entity-favorite:write"
@@ -131,6 +168,7 @@ export const EXCHANGE_PERMISSIONS = {
   postDetail: "exchange:posts:detail",
   createDemand: "exchange:posts:create-demand",
   createIntelligence: "exchange:posts:create-intelligence",
+  intelligenceServiceOptionList: "exchange:intelligence:service-options:list",
   withdrawOwn: "exchange:posts:withdraw-own",
   claimOptionList: "exchange:claim-options:list",
   claimCreate: "exchange:claims:create",
@@ -139,6 +177,9 @@ export const EXCHANGE_PERMISSIONS = {
   claimWithdrawOwn: "exchange:claims:withdraw-own",
   matchingReadOwn: "exchange:matching:read-own",
   matchingSelectOwn: "exchange:matching:select-own",
+  matchingBookOwn: "exchange:matching:book-own",
+  cancellationReadOwn: "exchange:cancellation:read-own",
+  cancellationWriteOwn: "exchange:cancellation:write-own",
   commentList: "exchange:comments:list",
   commentCreate: "exchange:comments:create",
   likeWrite: "exchange:likes:write",
@@ -151,6 +192,10 @@ export const EXCHANGE_REQUEST_FEE_PERMISSIONS = {
 } as const;
 
 export const SYSTEM_PERMISSIONS = [
+  { code: "sos:create", name: "发送求救", type: "api", module: "sos", description: "Booking SOS create", isSystem: true },
+  { code: "sos:list", name: "查看求救", type: "api", module: "sos", description: "Booking SOS list", isSystem: true },
+  { code: "sos:resolve", name: "处理求救", type: "api", module: "sos", description: "Booking SOS resolve", isSystem: true },
+
   createPermission("auth:me", "查看当前账号", "api", "auth", "读取当前登录账号、身份、角色和权限"),
   createPermission(
     "auth:me:read",
@@ -260,6 +305,9 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-profile",
     "更新当前商户身份的独立个人资料"
   ),
+  createPermission("ekyc-application:own", "本人 eKYC 申请", "api", "ekyc-application", "本人 eKYC 申请"),
+  createPermission("ops:ekyc-application:read", "查看 eKYC 申请", "api", "ekyc-application", "查看 eKYC 申请"),
+  createPermission("ops:ekyc-application:review", "审核 eKYC 申请", "api", "ekyc-application", "审核 eKYC 申请"),
   createPermission(
     "identity-application:own",
     "本人身份申请",
@@ -457,11 +505,41 @@ export const SYSTEM_PERMISSIONS = [
     "order",
     "订单顾客或指派技师在正式结算完成后提交一次评价"
   ),
-  createPermission("order:checkout:read", "查看订单结账", "api", "order", "订单顾客或指派技师查看正式结账证据"),
-  createPermission("order:checkout:payment-method:write", "选择结账方式", "api", "order", "订单顾客选择现金、NDP 或其他支付方式"),
-  createPermission("order:checkout:ndp:pay", "NDP 结账", "api", "order", "订单顾客使用快照汇率完成 NDP 支付"),
-  createPermission("order:checkout:receipt:confirm", "确认线下收款", "api", "order", "指派技师确认现金或其他方式已收款"),
-  createPermission("backoffice:order:checkout:receipt-override", "运营确认线下收款", "api", "order", "平台运营以独立审计路径确认线下收款"),
+  createPermission(
+    "order:checkout:read",
+    "查看订单结账",
+    "api",
+    "order",
+    "订单顾客或指派技师查看正式结账证据"
+  ),
+  createPermission(
+    "order:checkout:payment-method:write",
+    "选择结账方式",
+    "api",
+    "order",
+    "订单顾客选择现金、NDP 或其他支付方式"
+  ),
+  createPermission(
+    "order:checkout:ndp:pay",
+    "NDP 结账",
+    "api",
+    "order",
+    "订单顾客使用快照汇率完成 NDP 支付"
+  ),
+  createPermission(
+    "order:checkout:receipt:confirm",
+    "确认线下收款",
+    "api",
+    "order",
+    "指派技师确认现金或其他方式已收款"
+  ),
+  createPermission(
+    "backoffice:order:checkout:receipt-override",
+    "运营确认线下收款",
+    "api",
+    "order",
+    "平台运营以独立审计路径确认线下收款"
+  ),
   createPermission(
     "merchant-admin:order-payment:write",
     "商户线下收款维护",
@@ -469,6 +547,10 @@ export const SYSTEM_PERMISSIONS = [
     "order",
     "确认或标记退款本店订单的到店及银行转账收款"
   ),
+  createPermission("user:order-refund:write", "用户订单退款", "api", "order", "为本人已完成订单申请退款、确认到账或投诉"),
+  createPermission("merchant-admin:order-refund:write", "商户订单退款", "api", "order", "在授权店铺处理退款申请、提交退款凭证或投诉"),
+  createPermission("backoffice:order-refund-dispute:read", "退款争议读取", "api", "backoffice", "分页读取已投诉的订单退款争议"),
+  createPermission("backoffice:order-refund-dispute:resolve", "退款争议裁定", "api", "backoffice", "裁定已正式投诉的订单退款争议"),
   createPermission(
     "backoffice:order-payment:write",
     "运营线下收款维护",
@@ -617,6 +699,13 @@ export const SYSTEM_PERMISSIONS = [
     "读取运营后台真实指标"
   ),
   createPermission(
+    "backoffice:releases:write",
+    "维护运营发布时间线",
+    "api",
+    "backoffice",
+    "附理由补录和更正发布时间线"
+  ),
+  createPermission(
     "backoffice:dashboard-detail:read",
     "运营后台 Dashboard 指标详情",
     "api",
@@ -650,6 +739,76 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "backoffice",
     "发布经过版本与审计保护的 NDP 对日元汇率"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.read,
+    "系统设置读取",
+    "api",
+    "backoffice",
+    "读取当前平台基础设置与能力状态"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.write,
+    "系统设置管理",
+    "api",
+    "backoffice",
+    "创建经过版本与审计保护的平台基础设置"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.brandMediaActivate,
+    "系统品牌媒体启用",
+    "api",
+    "backoffice",
+    "将经过验证的公开媒体设为登录 LOGO 或 Request 按钮图片"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.imRetentionRead,
+    "IM 保留策略读取",
+    "api",
+    "backoffice",
+    "读取服务器端 IM 消息与媒体保留策略"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.imRetentionWrite,
+    "IM 保留策略管理",
+    "api",
+    "backoffice",
+    "发布仅对新内容生效的服务器端 IM 保留策略"
+  ),
+  createPermission(
+    LEGAL_DOCUMENT_PERMISSIONS.read,
+    "政策协议读取",
+    "api",
+    "backoffice",
+    "分页读取政策协议目录、语言草稿与发布历史"
+  ),
+  createPermission(
+    LEGAL_DOCUMENT_PERMISSIONS.write,
+    "政策协议编辑",
+    "api",
+    "backoffice",
+    "创建政策协议目录并分别保存各语言草稿"
+  ),
+  createPermission(
+    LEGAL_DOCUMENT_PERMISSIONS.publish,
+    "政策协议发布",
+    "api",
+    "backoffice",
+    "将指定语言草稿发布为不可变版本"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.paymentRead,
+    "支付设置读取",
+    "api",
+    "backoffice",
+    "读取平台支持与未配置的支付能力状态"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.paymentWrite,
+    "支付设置管理",
+    "api",
+    "backoffice",
+    "启用或停用已正式支持的线下与 NDP 支付"
   ),
   createPermission(
     "backoffice:membership-tier:read",
@@ -722,6 +881,27 @@ export const SYSTEM_PERMISSIONS = [
     "依据结算规则登记付款凭证并完成结算"
   ),
   createPermission(
+    "backoffice:service-taxonomy:read",
+    "运营服务类型读取",
+    "api",
+    "backoffice",
+    "分页读取正式服务类型、搜索标签与同义词配置"
+  ),
+  createPermission(
+    "backoffice:service-taxonomy:write",
+    "运营服务类型管理",
+    "api",
+    "backoffice",
+    "创建和修改带版本及审计保护的服务类型、搜索标签与同义词"
+  ),
+  createPermission(
+    "backoffice:search-analytics:read",
+    "搜索关键词分析读取",
+    "api",
+    "backoffice",
+    "按城市、时间和服务类型读取真实搜索关键词排行与趋势"
+  ),
+  createPermission(
     "backoffice:membership-tier:publish",
     "平台会员等级发布",
     "api",
@@ -748,6 +928,20 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "backoffice",
     "发放、续费、升级、降级或终止用户平台会员资格"
+  ),
+  createPermission(
+    "backoffice:user-usage:comment",
+    "用户履约评论管理",
+    "api",
+    "backoffice",
+    "在用户履约时间线追加不可删除的运营评论"
+  ),
+  createPermission(
+    "backoffice:user-refund:amend",
+    "用户退款信息修订",
+    "api",
+    "backoffice",
+    "以理由和审计记录修订用户履约退款信息"
   ),
   createPermission(
     "backoffice:user-experience:read",
@@ -1672,6 +1866,90 @@ export const SYSTEM_PERMISSIONS = [
     "上传正式内容发布媒体资源"
   ),
   createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.read,
+    "官方通知读取",
+    "page",
+    "official-notice",
+    "分页查看平台官方通知及投递回执"
+  ),
+  createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.create,
+    "官方通知创建",
+    "button",
+    "official-notice",
+    "创建官方通知草稿并选择正式受众"
+  ),
+  createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.review,
+    "官方通知审核",
+    "button",
+    "official-notice",
+    "审核、取消与归档平台官方通知"
+  ),
+  createPermission(
+    OFFICIAL_NOTICE_PERMISSIONS.send,
+    "官方通知发送",
+    "button",
+    "official-notice",
+    "立即或定时发送并重试失败的官方通知"
+  ),
+  createPermission(
+    MERCHANT_NOTICE_PERMISSIONS.read,
+    "商户通知读取",
+    "api",
+    "merchant-admin",
+    "分页读取当前店铺发布的正式通知"
+  ),
+  createPermission(
+    MERCHANT_NOTICE_PERMISSIONS.create,
+    "商户通知创建",
+    "api",
+    "merchant-admin",
+    "为当前店铺的服务端派生受众创建正式通知"
+  ),
+  createPermission(
+    MERCHANT_NOTICE_PERMISSIONS.review,
+    "商户通知审核",
+    "api",
+    "merchant-admin",
+    "取消或归档当前店铺发布的正式通知"
+  ),
+  createPermission(
+    MERCHANT_NOTICE_PERMISSIONS.send,
+    "商户通知发送",
+    "api",
+    "merchant-admin",
+    "立即或定时发送并重试当前店铺的正式通知"
+  ),
+  createPermission(
+    TRAVEL_FARE_PERMISSIONS.merchantRead,
+    "商户车费规则读取",
+    "api",
+    "travel-fare",
+    "读取当前店铺的车费规则与不可变版本历史"
+  ),
+  createPermission(
+    TRAVEL_FARE_PERMISSIONS.merchantWrite,
+    "商户车费规则发布",
+    "api",
+    "travel-fare",
+    "为当前店铺发布按行驶距离计算的车费规则版本"
+  ),
+  createPermission(
+    TRAVEL_FARE_PERMISSIONS.backofficeRead,
+    "运营车费读取",
+    "api",
+    "travel-fare",
+    "读取路线供应商状态与店铺车费规则"
+  ),
+  createPermission(
+    TRAVEL_FARE_PERMISSIONS.estimateCreate,
+    "预约路线估算创建",
+    "api",
+    "travel-fare",
+    "为当前顾客的上门预约创建服务端路线与车费估算"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.postList,
     "需求情报列表",
     "api",
@@ -1698,6 +1976,13 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "exchange",
     "以当前技师或店铺身份发布正式情报"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.intelligenceServiceOptionList,
+    "读取情报服务选项",
+    "api",
+    "exchange",
+    "分页读取当前技师或店铺可用于发布正式情报的服务"
   ),
   createPermission(
     EXCHANGE_PERMISSIONS.withdrawOwn,
@@ -1756,6 +2041,27 @@ export const SYSTEM_PERMISSIONS = [
     "为本人发布的选配需求选择准确人数的有效抢单"
   ),
   createPermission(
+    EXCHANGE_PERMISSIONS.matchingBookOwn,
+    "创建匹配预约",
+    "api",
+    "exchange",
+    "将本人已匹配的需求原子转换为正式待接单预约"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.cancellationReadOwn,
+    "读取匹配预约取消状态",
+    "api",
+    "exchange",
+    "读取当前账号作为顾客或服务承接方参与的逐单双方取消状态"
+  ),
+  createPermission(
+    EXCHANGE_PERMISSIONS.cancellationWriteOwn,
+    "处理匹配预约取消",
+    "api",
+    "exchange",
+    "发起、同意、拒绝或撤回当前账号参与的逐单双方取消申请"
+  ),
+  createPermission(
     EXCHANGE_PERMISSIONS.commentList,
     "需求情报评论列表",
     "api",
@@ -1803,6 +2109,22 @@ export type SystemPermissionCode = (typeof SYSTEM_PERMISSIONS)[number]["code"];
 
 export const SYSTEM_PERMISSION_CODES = SYSTEM_PERMISSIONS.map((permission) => permission.code);
 
+const SYSTEM_SETTINGS_READ_PERMISSION_CODES = [
+  PLATFORM_SETTINGS_PERMISSIONS.read,
+  PLATFORM_SETTINGS_PERMISSIONS.imRetentionRead,
+  LEGAL_DOCUMENT_PERMISSIONS.read,
+  PLATFORM_SETTINGS_PERMISSIONS.paymentRead
+] as const satisfies readonly SystemPermissionCode[];
+
+const SYSTEM_SETTINGS_WRITE_PERMISSION_CODES = [
+  PLATFORM_SETTINGS_PERMISSIONS.write,
+  PLATFORM_SETTINGS_PERMISSIONS.brandMediaActivate,
+  PLATFORM_SETTINGS_PERMISSIONS.imRetentionWrite,
+  LEGAL_DOCUMENT_PERMISSIONS.write,
+  LEGAL_DOCUMENT_PERMISSIONS.publish,
+  PLATFORM_SETTINGS_PERMISSIONS.paymentWrite
+] as const satisfies readonly SystemPermissionCode[];
+
 const EXCHANGE_COMMON_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.postList,
   EXCHANGE_PERMISSIONS.postDetail,
@@ -1821,6 +2143,7 @@ const EXCHANGE_DEMAND_PUBLISHER_PERMISSION_CODES = [
 const EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES = [
   ...EXCHANGE_COMMON_PERMISSION_CODES,
   EXCHANGE_PERMISSIONS.createIntelligence,
+  EXCHANGE_PERMISSIONS.intelligenceServiceOptionList,
   EXCHANGE_PERMISSIONS.withdrawOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
@@ -1831,10 +2154,19 @@ const EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.claimWithdrawOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
+const EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES = [
+  EXCHANGE_PERMISSIONS.matchingReadOwn,
+  EXCHANGE_PERMISSIONS.cancellationReadOwn,
+  EXCHANGE_PERMISSIONS.cancellationWriteOwn
+] as const satisfies readonly SystemPermissionCode[];
+
 const EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.claimListOwnedRequest,
-  EXCHANGE_PERMISSIONS.matchingReadOwn,
-  EXCHANGE_PERMISSIONS.matchingSelectOwn
+  ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
+  EXCHANGE_PERMISSIONS.matchingSelectOwn,
+  EXCHANGE_PERMISSIONS.matchingBookOwn,
+  EXCHANGE_PERMISSIONS.cancellationReadOwn,
+  EXCHANGE_PERMISSIONS.cancellationWriteOwn
 ] as const satisfies readonly SystemPermissionCode[];
 
 const EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES = [
@@ -1887,11 +2219,15 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "backoffice:agent:read",
   "backoffice:operating-cost:read",
   "backoffice:agent-settlement:read",
+  "backoffice:service-taxonomy:read",
+  "backoffice:search-analytics:read",
   "backoffice:membership-benefit:read",
   "backoffice:user-experience:read",
   "backoffice:user-group:read",
   "backoffice:user-policy:read",
-  "backoffice:ndp-experience-campaign:read"
+  "backoffice:ndp-experience-campaign:read",
+  TRAVEL_FARE_PERMISSIONS.backofficeRead,
+  ...SYSTEM_SETTINGS_READ_PERMISSION_CODES
 ] as const satisfies readonly SystemPermissionCode[];
 
 const CUSTOMER_BOOKING_PERMISSION_CODES = [
@@ -1901,6 +2237,7 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   "customer-profile:read",
   "customer-profile:write",
   "booking:create",
+  TRAVEL_FARE_PERMISSIONS.estimateCreate,
   "order:list",
   "order:read",
   "order:cancel",
@@ -1960,6 +2297,7 @@ const REALTIME_USER_PERMISSION_CODES = [
 ] as const satisfies readonly SystemPermissionCode[];
 
 const IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES = [
+  "ekyc-application:own",
   "identity-application:own",
   "contract:read",
   "contract:accept",
@@ -1975,6 +2313,8 @@ const MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES = [
 ] as const satisfies readonly SystemPermissionCode[];
 
 const OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES = [
+  "ops:ekyc-application:read",
+  "ops:ekyc-application:review",
   "ops:merchant-application:read",
   "ops:merchant-application:review",
   "identity-application-media:sensitive-read"
@@ -2009,6 +2349,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
   "menu:admin-console",
   "backoffice:dashboard:read",
+  "backoffice:releases:write",
   "backoffice:dashboard-detail:read",
   "backoffice.member.analytics.view",
   "backoffice:analytics-ranking:read",
@@ -2022,11 +2363,15 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:agent:write",
   "backoffice:operating-cost:write",
   "backoffice:agent-settlement:write",
+  "backoffice:service-taxonomy:write",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
+  "backoffice:user-usage:comment",
+  "backoffice:user-refund:amend",
   "backoffice:user-group:write",
   "backoffice:user-policy:publish",
   "backoffice:ndp-experience-campaign:publish",
+  ...SYSTEM_SETTINGS_WRITE_PERMISSION_CODES,
   "backoffice:order-acceptance-pause:read",
   "backoffice:order-acceptance-pause:write",
   "backoffice:order-performance:write",
@@ -2105,8 +2450,16 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:shop:pricing-mode:read",
   "merchant-admin:shop:pricing-mode:update",
   "merchant-admin:shop:service-taxonomy:read",
+  TRAVEL_FARE_PERMISSIONS.merchantRead,
   "menu:finance",
   "page:finance"
+] as const satisfies readonly SystemPermissionCode[];
+
+const MERCHANT_NOTICE_PERMISSION_CODES = [
+  MERCHANT_NOTICE_PERMISSIONS.read,
+  MERCHANT_NOTICE_PERMISSIONS.create,
+  MERCHANT_NOTICE_PERMISSIONS.review,
+  MERCHANT_NOTICE_PERMISSIONS.send
 ] as const satisfies readonly SystemPermissionCode[];
 
 const MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES = [
@@ -2189,7 +2542,11 @@ const CONTENT_PUBLICATION_OPERATION_PERMISSION_CODES = [
   CONTENT_PUBLICATION_PERMISSIONS.affiliateAnnouncementPublish,
   CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticeEdit,
   CONTENT_PUBLICATION_PERMISSIONS.affiliateNoticePublish,
-  CONTENT_PUBLICATION_PERMISSIONS.contentMediaUpload
+  CONTENT_PUBLICATION_PERMISSIONS.contentMediaUpload,
+  OFFICIAL_NOTICE_PERMISSIONS.read,
+  OFFICIAL_NOTICE_PERMISSIONS.create,
+  OFFICIAL_NOTICE_PERMISSIONS.review,
+  OFFICIAL_NOTICE_PERMISSIONS.send
 ] as const satisfies readonly SystemPermissionCode[];
 
 export const buildRolePermissionAssignments = (): Record<
@@ -2198,6 +2555,7 @@ export const buildRolePermissionAssignments = (): Record<
 > => ({
   admin: [...SYSTEM_PERMISSION_CODES],
   operator: [
+    "sos:list", "sos:resolve",
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
     ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
@@ -2222,7 +2580,9 @@ export const buildRolePermissionAssignments = (): Record<
     "button:user:test-account:update",
     "menu:admin-settings",
     "page:admin-settings",
-    "backoffice:order:checkout:receipt-override"
+    "backoffice:order:checkout:receipt-override",
+    "backoffice:order-refund-dispute:read",
+    "backoffice:order-refund-dispute:resolve"
   ],
   finance: [
     ...FINANCE_PERMISSION_CODES,
@@ -2239,18 +2599,22 @@ export const buildRolePermissionAssignments = (): Record<
     "page:admin-settings"
   ],
   support: [
+    "sos:list", "sos:resolve",
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     "ops:merchant-application:read",
+    "ops:ekyc-application:read",
     "identity-application-media:sensitive-read",
     "menu:user-management",
     "page:user-management",
     "user:list",
     "user:update",
     "user:identity:list",
-    "button:user:update"
+    "button:user:update",
+    "backoffice:order-refund-dispute:read"
   ],
   merchant_owner: [
+    "sos:list", "sos:resolve",
     "merchant-profile:read",
     "merchant-profile:write",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
@@ -2260,27 +2624,35 @@ export const buildRolePermissionAssignments = (): Record<
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
+    TRAVEL_FARE_PERMISSIONS.merchantWrite,
+    ...MERCHANT_NOTICE_PERMISSION_CODES,
     ...MERCHANT_OWNER_MEMBERSHIP_PERMISSION_CODES,
     "merchant-admin:shop:service-taxonomy:write",
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
-    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
+    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES,
+    "merchant-admin:order-refund:write"
   ],
   merchant_staff: [
+    "sos:list", "sos:resolve",
     "merchant-profile:read",
     "merchant-profile:write",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
+    ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
+    ...MERCHANT_NOTICE_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
-    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
+    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES,
+    "merchant-admin:order-refund:write"
   ],
   technician: [
+    "sos:create",
     "menu:technician-app",
     "menu:technician-schedule",
     "technician-profile:read",
@@ -2296,6 +2668,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_INTELLIGENCE_PUBLISHER_PERMISSION_CODES,
     ...EXCHANGE_PROVIDER_CLAIM_PERMISSION_CODES,
+    ...EXCHANGE_MATCHED_PROVIDER_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     "technician:services:list",
@@ -2306,12 +2679,14 @@ export const buildRolePermissionAssignments = (): Record<
     "technician:payout-record:confirm"
   ],
   customer: [
+    "sos:create",
     ...CUSTOMER_BOOKING_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_PUBLISHER_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
-    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
+    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
+    "user:order-refund:write"
   ],
   broker: [
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,

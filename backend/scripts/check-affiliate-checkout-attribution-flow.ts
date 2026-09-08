@@ -229,6 +229,8 @@ const main = async (): Promise<void> => {
             create: {
               walletId: wallet.id,
               totalFrozenNdp: input.totalBudgetNdp,
+              commissionFrozenNdp: input.totalBudgetNdp,
+              platformFeeFrozenNdp: 0,
               allocatedNdp: input.allocatedNdp ?? 0,
               status: input.reservationStatus ?? "ACTIVE",
               idempotencyKey: `${marker}-${input.label}-reservation`

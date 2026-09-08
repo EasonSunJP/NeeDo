@@ -8,9 +8,7 @@ import type {
 } from "../services/merchant-contract-acceptance.service";
 import { AppError } from "../utils/app-error";
 
-export class MerchantContractAcceptanceRepository
-  implements MerchantContractAcceptanceRepositoryPort
-{
+export class MerchantContractAcceptanceRepository implements MerchantContractAcceptanceRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public acceptAndBindInTransaction(

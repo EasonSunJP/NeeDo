@@ -15,6 +15,7 @@ import { coreReadApi, coreReadIdFromRoute, mapCoreServiceToServiceItem, mapCoreT
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
+import { getTechnicianDynamicPath } from "../../shared/profile-card";
 import type { ServiceItem, Technician } from "../../types/domain";
 
 const servicePriceHighlightClassName = "text-[color:var(--client-primary)]";
@@ -121,7 +122,8 @@ function ServiceDetailContent() {
   const apiId = coreReadIdFromRoute(id, { allowUuid: true });
   const serviceQuery = useCoreReadQuery(
     () => (apiId ? coreReadApi.getServiceDetail(apiId) : null),
-    [apiId]
+    [apiId],
+    { enabled: Boolean(apiId), key: `core:service:${apiId ?? "invalid"}` }
   );
   const service = useMemo(
     () => (serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : null),
@@ -283,7 +285,7 @@ function ServiceDetailContent() {
           <div className="mt-3 space-y-2">
             {selectedTechnicians.length > 0 ? (
               selectedTechnicians.map((technician) => (
-                <Link className={cn(mobileDetailInnerCardClassName, "flex items-center gap-3")} key={technician.id} to={`/profiles/technician/${technician.id}`}>
+                <Link className={cn(mobileDetailInnerCardClassName, "flex items-center gap-3")} key={technician.id} to={getTechnicianDynamicPath(technician)}>
                   <AvatarImage alt={technician.name} className="h-12 w-12" src={technician.avatar} />
                   <span className="min-w-0 flex-1">
                     <strong className="block truncate text-sm">{technician.nickname?.trim() || technician.name}</strong>

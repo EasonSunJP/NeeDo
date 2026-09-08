@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getExchangePost,
@@ -18,6 +18,9 @@ import routeSource from "../../pages/mobile/NeedoRoutePages.tsx?raw";
 import detailSource from "./ExchangePostDetailPage.tsx?raw";
 
 const mockI18n = vi.hoisted(() => ({ language: "zh" as "zh" | "zh-Hant" | "ja" | "en" | "ko" }));
+const receivedClaimsMock = vi.hoisted(() => ({
+  onEffectiveBudgetChange: undefined as undefined | ((budgetMaxJpy: number) => void)
+}));
 
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: mockI18n.language }) }));
 vi.mock("../../lib/share", () => ({ shareContent: vi.fn() }));
@@ -41,7 +44,19 @@ vi.mock("./ExchangeClaimPanel", () => ({
   ExchangeClaimPanel: ({ post }: { post: ExchangePost }) => <div data-post-id={post.id} data-testid="formal-claim-panel" />
 }));
 vi.mock("./ExchangeReceivedClaims", () => ({
-  ExchangeReceivedClaims: ({ postId }: { postId: string }) => <div data-post-id={postId} data-testid="formal-received-claims" />
+  ExchangeReceivedClaims: ({
+    onEffectiveBudgetChange,
+    postId
+  }: {
+    onEffectiveBudgetChange?: (budgetMaxJpy: number) => void;
+    postId: string;
+  }) => {
+    receivedClaimsMock.onEffectiveBudgetChange = onEffectiveBudgetChange;
+    return <div data-post-id={postId} data-testid="formal-received-claims" />;
+  }
+}));
+vi.mock("./ExchangeMatchedBookingCard", () => ({
+  ExchangeMatchedBookingCard: ({ postId }: { postId: string }) => <div data-post-id={postId} data-testid="formal-matched-booking" />
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -83,7 +98,7 @@ const demandPost: ExchangePost = {
   intelligence: null
 };
 
-const intelligencePost: ExchangePost = {
+const intelligencePost = {
   ...demandPost,
   id: 61,
   type: "intelligence",
@@ -103,9 +118,105 @@ const intelligencePost: ExchangePost = {
     addressLabel: "東京都中央区銀座3-4-12",
     serviceAreas: ["銀座", "中央区"],
     originalPriceJpy: 12_250,
-    campaignPriceJpy: 9_800
+    campaignPriceJpy: 9_800,
+    booking: {
+      available: true,
+      unavailableReason: null,
+      target: { type: "shop_service", id: 701 },
+      catalogPriceJpy: 12_250,
+      campaignPriceJpy: 9_800,
+      serviceName: "深层放松护理",
+      durationMinutes: 90,
+      serviceMode: "store",
+      serviceWindow: {
+        startsAt: "2026-08-31T04:00:00.000Z",
+        endsAt: "2026-08-31T06:00:00.000Z"
+      }
+    },
+    publisherCard: {
+      type: "shop",
+      publicId: "shop0000000061",
+      name: "GINZA Calm Body Lab",
+      avatarUrl: "/simulation/shops/ginza-calm-body-lab-avatar.png",
+      coverUrl: "/simulation/shops/ginza-calm-body-lab.png",
+      imageUrls: ["/simulation/shops/ginza-calm-body-lab.png"],
+      status: "published",
+      isBookable: true,
+      ratingAverage: "4.8",
+      reviewCount: 126,
+      address: "東京都中央区銀座3-4-12",
+      serviceMode: "store",
+      detailPath: "/profiles/shop/shop0000000061"
+    },
+    serviceCard: {
+      targetType: "shop_service",
+      publicId: "service0000000701",
+      name: "深层放松护理",
+      description: "肩颈与足部深层护理",
+      coverUrl: "/services/deep-relaxation.png",
+      imageUrls: ["/services/deep-relaxation.png"],
+      tags: ["肩颈", "足部"],
+      catalogPriceJpy: 12_250,
+      campaignPriceJpy: 9_800,
+      currency: "JPY",
+      durationMinutes: 90,
+      serviceMode: "store",
+      shopPublicId: "shop0000000061",
+      shopAddress: "東京都中央区銀座3-4-12",
+      detailPath: "/services/service0000000701"
+    }
   }
-};
+} as unknown as ExchangePost;
+
+const technicianIntelligencePost = {
+  ...intelligencePost,
+  id: 62,
+  publisher: {
+    publicId: "s0000000062",
+    identityType: "technician",
+    displayName: "佐藤 真央",
+    avatarUrl: "/technicians/sato.png"
+  },
+  intelligence: {
+    ...intelligencePost.intelligence!,
+    serviceMode: "store",
+    booking: {
+      ...intelligencePost.intelligence!.booking,
+      target: { type: "technician_service", id: 801 },
+      serviceMode: "store"
+    },
+    publisherCard: {
+      type: "technician",
+      publicId: "s0000000062",
+      displayName: "佐藤 真央",
+      avatarUrl: "/technicians/sato.png",
+      shop: { publicId: "shop0000000061", name: "GINZA Calm Body Lab" },
+      status: "published",
+      isBookable: true,
+      yearsExperience: 8,
+      completedOrderCount: 352,
+      acceptanceRatePercent: 97.5,
+      ratingAverage: "4.9",
+      reviewCount: 88,
+      serviceAreas: ["中央区", "港区"],
+      languages: ["日本語", "中文"],
+      detailPath: "/profiles/technician/s0000000062",
+      servicesPath: "/stores/shop0000000061/technicians/s0000000062/services"
+    },
+    serviceCard: {
+      ...intelligencePost.intelligence!.serviceCard!,
+      targetType: "technician_service",
+      publicId: "technician-service0000000801",
+      serviceMode: "store",
+      detailPath: "/stores/shop0000000061/technicians/s0000000062/services"
+    }
+  }
+} as unknown as ExchangePost;
+
+function CheckoutDestination() {
+  const location = useLocation();
+  return <div data-testid="checkout-destination">{location.pathname}{location.search}</div>;
+}
 
 async function waitFor(assertion: () => void) {
   let lastError: unknown;
@@ -144,6 +255,8 @@ async function renderDetail(
           element={<ExchangePostDetailPage context={context} />}
         />
         <Route path={basePath} element={<div data-testid="exchange-root">{basePath}</div>} />
+        <Route path="/checkout/:serviceId" element={<CheckoutDestination />} />
+        <Route path="/checkout/technician-service/:technicianServiceId" element={<CheckoutDestination />} />
       </Routes>
     </MemoryRouter>
   ));
@@ -161,6 +274,7 @@ describe("ExchangePostDetailPage", () => {
     vi.mocked(recordExchangeShare).mockReset();
     vi.mocked(unlikeExchangePost).mockReset();
     vi.mocked(withdrawExchangePost).mockReset();
+    receivedClaimsMock.onEffectiveBudgetChange = undefined;
   });
 
   afterEach(async () => {
@@ -180,6 +294,20 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("¥8,000–¥12,000");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')).not.toBeNull();
     expect(document.body.innerHTML).toContain('data-no-i18n="true"');
+  });
+
+  it("keeps every owner budget summary aligned with the current matching budget", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true }
+    });
+    await renderDetail();
+    await waitFor(() => expect(receivedClaimsMock.onEffectiveBudgetChange).toBeTypeOf("function"));
+
+    await act(async () => receivedClaimsMock.onEffectiveBudgetChange?.(32_000));
+
+    expect(document.body.textContent).toContain("¥8,000–¥32,000");
+    expect(document.body.textContent).not.toContain("¥8,000–¥12,000");
   });
 
   it.each([
@@ -264,17 +392,102 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("服务流程");
     expect(document.body.textContent).toContain("服务要求");
     expect(document.body.textContent).toContain("GINZA Calm Body Lab");
-    expect(document.body.textContent).toContain("m0000000061");
+    expect(document.body.textContent).toContain("shop0000000061");
     expect(document.body.textContent).toContain("¥9,800");
-    expect(document.body.textContent).toContain("预约与支付后续开放");
+    expect(document.body.textContent).toContain("可通过正式预约流程下单");
+    expect(document.body.textContent).toContain("请通过平台保留沟通记录和服务凭证");
     expect(document.body.querySelector('[data-testid="exchange-detail-hero"] img')?.getAttribute("src")).toBe(
       "/simulation/shops/ginza-calm-body-lab.png"
     );
     expect(document.body.querySelector('[data-testid="formal-interactions"]')?.getAttribute("data-show-action-bar")).toBe("false");
     expect(document.body.querySelector('[data-testid="formal-interactions"]')?.getAttribute("data-variant")).toBe("detail");
-    expect(document.body.querySelector<HTMLButtonElement>('[data-action="booking-deferred"]')?.disabled).toBe(true);
+    expect(document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.disabled).toBe(false);
     expect(document.body.querySelector('[data-action="detail-like"]')).not.toBeNull();
     expect(document.body.querySelector('[data-action="detail-share"]')).not.toBeNull();
+  });
+
+  it("renders the formal shop and service projections through the shared cards and opens the exact checkout", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(intelligencePost);
+    await renderDetail("/needo/posts/61");
+    await waitFor(() => expect(document.body.textContent).toContain("深层放松护理"));
+
+    expect(document.body.querySelector('[data-testid="exchange-intelligence-publisher-card"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="unified-service-info-card"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("shop0000000061");
+    expect(document.body.textContent).toContain("4.8");
+    expect(document.body.textContent).toContain("126");
+    expect(document.body.textContent).toContain("￥9,800");
+    expect(document.body.textContent).toContain("￥12,250");
+    expect(document.body.textContent).toContain("90分钟");
+    expect(document.body.querySelector('a[href="/profiles/shop/shop0000000061"]')).not.toBeNull();
+    expect(document.body.querySelector('a[href="/services/service0000000701"]')).not.toBeNull();
+    expect(document.body.textContent).not.toContain("701");
+
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.click());
+    expect(document.body.querySelector('[data-testid="checkout-destination"]')?.textContent).toBe(
+      "/checkout/701?date=2026-08-31&time=13%3A00&exchangePost=61"
+    );
+  });
+
+  it("renders the canonical technician projection and opens technician-service checkout", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue(technicianIntelligencePost);
+    await renderDetail("/needo/posts/62");
+    await waitFor(() => expect(document.body.textContent).toContain("佐藤 真央"));
+
+    expect(document.body.textContent).toContain("s0000000062");
+    expect(document.body.textContent).toContain("GINZA Calm Body Lab");
+    expect(document.body.textContent).toContain("8年");
+    expect(document.body.textContent).toContain("352");
+    expect(document.body.textContent).toContain("97.5%");
+    expect(document.body.textContent).toContain("日本語");
+    expect(document.body.querySelector('a[href="/profiles/technician/s0000000062"]')).not.toBeNull();
+
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.click());
+    expect(document.body.querySelector('[data-testid="checkout-destination"]')?.textContent).toBe(
+      "/checkout/technician-service/801?date=2026-08-31&time=13%3A00&exchangePost=62"
+    );
+  });
+
+  it("fails closed for onsite Intelligence until structured travel checkout is integrated", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...technicianIntelligencePost,
+      intelligence: {
+        ...technicianIntelligencePost.intelligence!,
+        serviceMode: "onsite",
+        booking: { ...technicianIntelligencePost.intelligence!.booking, serviceMode: "onsite" },
+        serviceCard: { ...technicianIntelligencePost.intelligence!.serviceCard!, serviceMode: "onsite" }
+      }
+    } as ExchangePost);
+    await renderDetail("/needo/posts/62");
+    await waitFor(() => expect(document.body.textContent).toContain("佐藤 真央"));
+
+    const button = document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')!;
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe("预约后续开放");
+    expect(document.body.querySelector('[data-testid="checkout-destination"]')).toBeNull();
+  });
+
+  it.each([
+    ["legacy_unbound", "这条历史情报没有绑定正式服务，无法预约"],
+    ["publisher_unavailable", "发布方当前不可预约"],
+    ["service_unavailable", "绑定的正式服务当前不可预约"],
+    ["post_unavailable", "这条情报已结束，无法预约"]
+  ] as const)("fails closed with a localized %s reason", async (reason, expectedText) => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...intelligencePost,
+      intelligence: {
+        ...intelligencePost.intelligence!,
+        booking: {
+          ...intelligencePost.intelligence!.booking,
+          available: false,
+          unavailableReason: reason
+        }
+      }
+    } as ExchangePost);
+    await renderDetail("/needo/posts/61");
+    await waitFor(() => expect(document.body.textContent).toContain(expectedText));
+
+    expect(document.body.querySelector<HTMLButtonElement>('[data-action="book-intelligence"]')?.disabled).toBe(true);
   });
 
   it("localizes the detail type and publisher identity instead of exposing raw identity codes", async () => {
@@ -310,7 +523,8 @@ describe("ExchangePostDetailPage", () => {
       demand: { ...demandPost.demand!, matchMode: "selective" }
     });
     await renderDetail();
-    await waitFor(() => expect(document.body.textContent).toContain("匹配已完成，预约与支付尚未开放"));
+    await waitFor(() => expect(document.body.textContent).toContain("匹配已完成，请查看已选服务者的预约状态；支付不会自动扣款"));
+    expect(document.body.textContent).toContain("确认预约后，每位已匹配服务者各有一张独立订单；支付仍未启用");
     expect(document.body.querySelector('[data-testid="formal-received-claims"]')).not.toBeNull();
     expect(document.body.querySelector<HTMLButtonElement>('[data-action="matching-inbox"]')?.disabled).toBe(true);
   });
@@ -359,6 +573,24 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).toContain("选择服务者完成匹配");
   });
 
+  it("labels the owner Quick inbox without suggesting manual provider selection", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true },
+      demand: { ...demandPost.demand!, matchMode: "quick" }
+    });
+    await renderDetail();
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-testid="formal-received-claims"]')).not.toBeNull()
+    );
+
+    const inboxButton = document.body.querySelector<HTMLButtonElement>(
+      '[data-action="matching-inbox"]'
+    );
+    expect(inboxButton?.textContent).toBe("查看速配状态");
+    expect(document.body.textContent).not.toContain("选择服务者完成匹配");
+  });
+
   it("keeps the formal claim composition free of local or fake workflow bridges", () => {
     expect(appSource).not.toContain("/needo/posts/:postId/customer");
     expect(appSource).not.toContain("NeedoPostCustomerRoutePage");
@@ -366,5 +598,31 @@ describe("ExchangePostDetailPage", () => {
     expect(detailSource).toContain("ExchangeClaimPanel");
     expect(detailSource).toContain("ExchangeReceivedClaims");
     expect(detailSource).not.toMatch(/localStorage|fakeBooking|fakePayment/u);
+  });
+
+  it("renders only the provider-scoped booking panel for a matched participant", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      status: "matched",
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false, canViewMatching: true }
+    });
+    await renderDetail("/technician/needo/posts/41", "technician");
+    await waitFor(() => expect(document.body.querySelector('[data-testid="formal-matched-booking"]')).not.toBeNull());
+
+    expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="formal-claim-panel"]')).toBeNull();
+  });
+
+  it("does not expose a matching or booking panel to an unselected viewer", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      status: "matched",
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false, canViewMatching: false }
+    });
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
+
+    expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="formal-matched-booking"]')).toBeNull();
   });
 });

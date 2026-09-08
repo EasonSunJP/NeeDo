@@ -44,6 +44,28 @@ const makeTransitionOrderRecord = (
   service: null,
   technicianService: null,
   shop: { name: "LifeDance" },
+  customer: {
+    id: 101,
+    needoId: "u0000000101",
+    username: "预约用户 山田",
+    avatarUrl: "/uploads/customers/101.jpg",
+    avatarBootstrapUrl: null,
+    customerProfile: {
+      id: 17,
+      displayName: "预约用户 山田",
+      membershipLevel: "premium",
+      membershipGrantMode: "SELF_SERVICE",
+      membershipStartsAt: null,
+      membershipExpiresAt: null,
+      mediaAssets: [],
+      reviewSummary: {
+        ratingAverage: 4.8,
+        reviewCount: 12,
+        latestReviewAt: new Date("2026-08-31T04:00:00.000Z"),
+        highlights: []
+      }
+    }
+  },
   technicianProfile: { id: 31, userId: 707, displayName: "Misaki" },
   statusHistory: [],
   performanceAssessment: null,
@@ -95,7 +117,276 @@ const createCancellationTransaction = () => {
   };
 };
 
+type PendingReplacementOrder = {
+  id: number;
+  customerUserId: number;
+  scheduleSlotId: number;
+  status: string;
+  deletedAt: null;
+  exchangeMatchParticipant: { id: number } | null;
+  cancelReason: string | null;
+  [key: string]: unknown;
+};
+type PendingReplacementSlot = ReturnType<typeof makeReplacementSlot>;
+type PendingReplacementHistory = Record<string, unknown>;
+
+type PendingReplacementHarnessState = {
+  orders: PendingReplacementOrder[];
+  slots: PendingReplacementSlot[];
+  statusHistory: PendingReplacementHistory[];
+  nextOrderId: number;
+};
+
+type SlotUpdateArgs = {
+  where: {
+    id: number;
+    bookedCount?: { gte?: number; lt?: number };
+    status?: PendingReplacementSlot["status"];
+  };
+  data: {
+    bookedCount?: { decrement?: number; increment?: number };
+    status?: PendingReplacementSlot["status"];
+  };
+};
+
+type BookingWhere = {
+  customerUserId?: number;
+  status?: string;
+  deletedAt?: null;
+  exchangeMatchParticipant?: { is: null };
+  id?: { in: number[] };
+};
+
+type BookingUpdateArgs = {
+  where: Required<Pick<BookingWhere, "customerUserId" | "status" | "deletedAt" | "id">> &
+    Pick<BookingWhere, "exchangeMatchParticipant">;
+  data: { status: string; cancelReason: string };
+};
+
+type BookingCreateArgs = {
+  data: {
+    scheduleSlotId: number;
+    statusHistory: { create: Record<string, unknown> };
+    [key: string]: unknown;
+  };
+};
+
+const clonePendingReplacementState = (state: PendingReplacementHarnessState) =>
+  structuredClone(state);
+
+const makePendingReplacementOrder = (
+  id: number,
+  scheduleSlotId: number,
+  exchangeMatchParticipant: { id: number } | null
+) => ({
+  ...makeTransitionOrderRecord("PENDING"),
+  id,
+  scheduleSlotId,
+  exchangeMatchParticipant,
+  deletedAt: null,
+  shop: { name: "LifeDance", ownerUserId: 202 },
+  fulfillmentAddressSnapshot: null
+});
+
+const makeReplacementSlot = (id: number, bookedCount: number, status: "AVAILABLE" | "BOOKED") => ({
+  id,
+  serviceId: 11,
+  technicianServiceId: null,
+  shopId: 16,
+  technicianProfileId: null,
+  startsAt: new Date("2026-10-01T06:00:00.000Z"),
+  endsAt: new Date("2026-10-01T07:00:00.000Z"),
+  capacity: 2,
+  bookedCount,
+  status,
+  deletedAt: null as Date | null,
+  service: {
+    id: 11,
+    publicId: "svc-replacement-11",
+    categoryId: 7,
+    name: "肩颈调理",
+    description: "正式服务",
+    priceAmount: 8800,
+    currency: "JPY",
+    durationMinutes: 60,
+    createdAt: new Date("2026-09-01T00:00:00.000Z")
+  },
+  technicianService: null,
+  shop: { id: 16, name: "LifeDance", ownerUserId: 202, pricingMode: "MERCHANT",
+    serviceLocation: { countryCode: "JP", admin1RegionId: 13, admin2RegionId: 13104, datasetVersion: "N03-20260101", deletedAt: null,
+      admin1Region: { officialCode: "13" }, admin2Region: { officialCode: "13104" } } },
+  technicianProfile: null
+});
+
+const relationIsNull = (order: PendingReplacementOrder) => order.exchangeMatchParticipant == null;
+
+const createPendingReplacementHarness = (
+  options: { deletedPendingSlot?: boolean; linkAfterSelection?: boolean } = {}
+) => {
+  let committed: PendingReplacementHarnessState = {
+    orders: [
+      makePendingReplacementOrder(501, 601, null),
+      makePendingReplacementOrder(502, 602, { id: 81 })
+    ],
+    slots: [
+      {
+        ...makeReplacementSlot(601, 1, "BOOKED"),
+        deletedAt: options.deletedPendingSlot ? new Date("2026-09-02T00:00:00.000Z") : null
+      },
+      makeReplacementSlot(602, 1, "BOOKED"),
+      makeReplacementSlot(603, 0, "AVAILABLE")
+    ],
+    statusHistory: [],
+    nextOrderId: 701
+  };
+  let concurrentLinkApplied = false;
+
+  const transactionClient = (working: PendingReplacementHarnessState) => ({
+    $queryRaw: jest.fn().mockResolvedValueOnce([{ id: 101 }]).mockResolvedValue([
+      { id: 13, official_code: "13", level: "ADMIN1", parent_id: null, deleted_at: null },
+      { id: 13104, official_code: "13104", level: "ADMIN2", parent_id: 13, deleted_at: null }
+    ]),
+    administrativeRegionLocale: { findMany: jest.fn().mockResolvedValue([{ regionId: 13, name: "東京都" }, { regionId: 13104, name: "新宿区" }]) },
+    bookingServiceLocation: { create: jest.fn().mockResolvedValue({ id: 1 }) },
+    customerProfile: {
+      findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" })
+    },
+    technicianCompensationProfile: { findFirst: jest.fn().mockResolvedValue(null) },
+    shopFinanceRuleSet: { findFirst: jest.fn().mockResolvedValue(null) },
+    shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
+    scheduleSlot: {
+      findUnique: jest.fn(
+        async ({ where }: { where: { id: number } }) =>
+          working.slots.find((slot) => slot.id === where.id) ?? null
+      ),
+      findFirst: jest.fn(
+        async ({ where }: { where: { id: number } }) =>
+          working.slots.find((slot) => slot.id === where.id) ?? null
+      ),
+      updateMany: jest.fn(async ({ where, data }: SlotUpdateArgs) => {
+        const slot = working.slots.find((candidate) => candidate.id === where.id);
+        if (!slot || slot.deletedAt !== null) return { count: 0 };
+        if (where.bookedCount?.gte !== undefined && slot.bookedCount < where.bookedCount.gte) {
+          return { count: 0 };
+        }
+        if (where.bookedCount?.lt !== undefined && slot.bookedCount >= where.bookedCount.lt) {
+          return { count: 0 };
+        }
+        if (where.status && slot.status !== where.status) return { count: 0 };
+        if (data.bookedCount?.decrement) slot.bookedCount -= data.bookedCount.decrement;
+        if (data.bookedCount?.increment) slot.bookedCount += data.bookedCount.increment;
+        if (data.status) slot.status = data.status;
+        return { count: 1 };
+      })
+    },
+    bookingOrder: {
+      count: jest.fn().mockResolvedValue(0),
+      findMany: jest.fn(async ({ where }: { where: BookingWhere }) => {
+        if (where.customerUserId !== undefined) {
+          const selected = working.orders
+            .filter(
+              (order) =>
+                order.customerUserId === where.customerUserId &&
+                order.status === where.status &&
+                order.deletedAt === where.deletedAt &&
+                (!where.exchangeMatchParticipant || relationIsNull(order))
+            )
+            .map((order) => structuredClone(order));
+          if (options.linkAfterSelection && !concurrentLinkApplied && selected.length > 0) {
+            concurrentLinkApplied = true;
+            const targetId = selected[0].id;
+            const committedTarget = committed.orders.find((order) => order.id === targetId)!;
+            const workingTarget = working.orders.find((order) => order.id === targetId)!;
+            committedTarget.exchangeMatchParticipant = { id: 82 };
+            workingTarget.exchangeMatchParticipant = { id: 82 };
+          }
+          return selected;
+        }
+        const ids = where.id?.in;
+        if (ids) {
+          return working.orders
+            .filter((order) => ids.includes(order.id) && order.deletedAt === null)
+            .map((order) => structuredClone(order));
+        }
+        return [];
+      }),
+      findFirst: jest.fn().mockResolvedValue(null),
+      updateMany: jest.fn(async ({ where, data }: BookingUpdateArgs) => {
+        const matched = working.orders.filter(
+          (order) =>
+            where.id.in.includes(order.id) &&
+            order.customerUserId === where.customerUserId &&
+            order.status === where.status &&
+            order.deletedAt === where.deletedAt &&
+            (!where.exchangeMatchParticipant || relationIsNull(order))
+        );
+        for (const order of matched) {
+          order.status = data.status;
+          order.cancelReason = data.cancelReason;
+        }
+        return { count: matched.length };
+      }),
+      create: jest.fn(async ({ data }: BookingCreateArgs) => {
+        const slot = working.slots.find((candidate) => candidate.id === data.scheduleSlotId)!;
+        const order = {
+          ...makePendingReplacementOrder(working.nextOrderId++, data.scheduleSlotId, null),
+          ...data,
+          id: working.nextOrderId - 1,
+          service: slot.service,
+          technicianService: null,
+          shop: slot.shop,
+          technicianProfile: null,
+          statusHistory: [
+            {
+              id: 1,
+              bookingOrderId: working.nextOrderId - 1,
+              ...data.statusHistory.create,
+              reason: null,
+              createdAt: new Date("2026-09-03T00:00:00.000Z")
+            }
+          ]
+        };
+        working.orders.push(order);
+        return structuredClone(order);
+      })
+    },
+    orderStatusHistory: {
+      createMany: jest.fn(async ({ data }: { data: PendingReplacementHistory[] }) => {
+        working.statusHistory.push(...structuredClone(data));
+        return { count: data.length };
+      })
+    }
+  });
+
+  const client = {
+    $transaction: jest.fn(
+      async (callback: (tx: ReturnType<typeof transactionClient>) => unknown) => {
+        const working = clonePendingReplacementState(committed);
+        const result = await callback(transactionClient(working));
+        committed = working;
+        return result;
+      }
+    )
+  };
+
+  return {
+    client,
+    state: () => clonePendingReplacementState(committed)
+  };
+};
+
 describe("BookingRepository order list scope", () => {
+  it("uses overlap bounds without dropping merchant and technician identity scope", async () => {
+    const bookingOrder = { findMany: jest.fn(async () => []), count: jest.fn(async () => 0) };
+    const repository = new BookingRepository({ bookingOrder } as never);
+    const from = new Date("2026-09-06T15:00:00.000Z");
+    const to = new Date("2026-09-07T15:00:00.000Z");
+    await repository.listOrders({ shopId: 16, technicianProfileId: 31, from, to, dateMode: "overlaps", page: 1, pageSize: 20 });
+    const where = { shopId: 16, technicianProfileId: 31, deletedAt: null, startsAt: { lt: to }, endsAt: { gt: from } };
+    expect(bookingOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+    expect(bookingOrder.count).toHaveBeenCalledWith({ where });
+  });
+
   it("creates an affiliated merchant plan as shop-private and limits plan overlap to that shop", async () => {
     const startsAt = new Date("2026-08-29T13:00:00.000Z");
     const endsAt = new Date("2026-08-29T14:00:00.000Z");
@@ -265,14 +556,16 @@ describe("BookingRepository order list scope", () => {
     const where = scheduleSlot.findMany.mock.calls[0]?.[0]?.where;
     expect(where).not.toHaveProperty("status");
     expect(where).not.toHaveProperty("bookedCount");
-    expect(where).toEqual(expect.objectContaining({
-      deletedAt: null,
-      serviceId: 12,
-      startsAt: { gte: new Date("2026-09-02T15:00:00.000Z") },
-      endsAt: { lte: new Date("2026-09-03T15:00:00.000Z") },
-      service: { deletedAt: null, status: "published" },
-      shop: expect.objectContaining({ deletedAt: null, status: "published" })
-    }));
+    expect(where).toEqual(
+      expect.objectContaining({
+        deletedAt: null,
+        serviceId: 12,
+        startsAt: { gte: new Date("2026-09-02T15:00:00.000Z") },
+        endsAt: { lte: new Date("2026-09-03T15:00:00.000Z") },
+        service: { deletedAt: null, status: "published" },
+        shop: expect.objectContaining({ deletedAt: null, status: "published" })
+      })
+    );
     expect(scheduleSlot.count).toHaveBeenCalledWith({ where });
   });
 
@@ -284,9 +577,11 @@ describe("BookingRepository order list scope", () => {
       repository.createBooking(
         {
           customerUserId: 7,
+          expectedPriceAmountJpy: 8_800,
           serviceId: 1,
           scheduleSlotId: 11,
-          fulfillmentMode: "store"
+          fulfillmentMode: "store",
+          serviceLocation: { source: "SHOP_LOCATION" }
         },
         {
           prepareAffiliate: jest.fn()
@@ -294,6 +589,95 @@ describe("BookingRepository order list scope", () => {
       )
     ).rejects.toThrow("error.affiliate.checkout_hook_invalid");
     expect(client.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("returns the transaction-current database price before reserving a slot", async () => {
+    const startsAt = new Date("2026-09-10T03:00:00.000Z");
+    const endsAt = new Date("2026-09-10T04:00:00.000Z");
+    const slot = {
+      id: 611,
+      availabilityId: 511,
+      serviceId: 21,
+      technicianServiceId: null,
+      shopId: 16,
+      technicianProfileId: null,
+      startsAt,
+      endsAt,
+      capacity: 1,
+      bookedCount: 0,
+      status: "AVAILABLE",
+      createdAt: startsAt,
+      updatedAt: startsAt,
+      deletedAt: null,
+      service: {
+        id: 21,
+        publicId: "SVC-000021",
+        categoryId: 3,
+        name: "数据库最新价格服务",
+        description: "",
+        priceAmount: 9_800,
+        currency: "JPY",
+        durationMinutes: 60,
+        createdAt: startsAt
+      },
+      technicianService: null,
+      shop: {
+        id: 16,
+        name: "LifeDance",
+        pricingMode: "MERCHANT",
+        serviceLocation: {
+          countryCode: "JP",
+          admin1RegionId: 13,
+          admin2RegionId: 13104,
+          datasetVersion: "2026-09",
+          deletedAt: null,
+          admin1Region: { officialCode: "13" },
+          admin2Region: { officialCode: "13104" }
+        }
+      },
+      technicianProfile: null
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 7 }]),
+      customerProfile: { findFirst: jest.fn().mockResolvedValue(null) },
+      scheduleSlot: { findFirst: jest.fn().mockResolvedValue(slot), updateMany: jest.fn() },
+      shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      },
+      exchangeMatchParticipant: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+    (repository as unknown as {
+      administrativeRegionRepository: { resolveVerifiedScope: jest.Mock };
+    }).administrativeRegionRepository = {
+      resolveVerifiedScope: jest.fn().mockResolvedValue({
+        countryCode: "JP",
+        admin1Code: "13",
+        admin1NameJa: "東京都",
+        admin1RegionId: 13,
+        admin2Code: "13104",
+        admin2NameJa: "新宿区",
+        admin2RegionId: 13104,
+        datasetVersion: "2026-09"
+      })
+    };
+
+    await expect(repository.createBooking({
+      customerUserId: 7,
+      expectedPriceAmountJpy: 8_800,
+      serviceId: 21,
+      scheduleSlotId: 611,
+      fulfillmentMode: "store",
+      serviceLocation: { source: "SHOP_LOCATION" }
+    })).resolves.toEqual({ outcome: "price_changed", currentPriceAmountJpy: 9_800 });
+    expect(tx.scheduleSlot.updateMany).not.toHaveBeenCalled();
+    expect(tx.bookingOrder.create).not.toHaveBeenCalled();
   });
 
   it("rejects a slot at the current server time during transactional revalidation and aborts pending replacement", async () => {
@@ -309,7 +693,8 @@ describe("BookingRepository order list scope", () => {
         bookedCount: 0,
         status: "AVAILABLE"
       };
-      const scheduleFindFirst = jest.fn()
+      const scheduleFindFirst = jest
+        .fn()
         .mockResolvedValueOnce(pastSlot)
         .mockResolvedValueOnce(null);
       const cancelPending = jest.fn().mockResolvedValue({ count: 1 });
@@ -317,9 +702,12 @@ describe("BookingRepository order list scope", () => {
       const createOrder = jest.fn();
       const tx = {
         $queryRaw: jest.fn().mockResolvedValue([{ id: 101 }]),
-        customerProfile: { findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" }) },
+        customerProfile: {
+          findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" })
+        },
         shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
         scheduleSlot: {
+          findUnique: jest.fn().mockResolvedValue({ deletedAt: null }),
           findFirst: scheduleFindFirst,
           updateMany: releasePendingSlot
         },
@@ -333,26 +721,167 @@ describe("BookingRepository order list scope", () => {
         $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
       } as never);
 
-      await expect(repository.createBooking({
-        customerUserId: 101,
-        serviceId: 31,
-        scheduleSlotId: 701,
-        fulfillmentMode: "store"
-      })).resolves.toBeNull();
+      await expect(
+        repository.createBooking({
+          customerUserId: 101,
+          serviceId: 31,
+          scheduleSlotId: 701,
+fulfillmentMode: "store",
+serviceLocation: { source: "SHOP_LOCATION" }
+        })
+      ).resolves.toBeNull();
 
       const expectedFutureGuard = { gt: new Date("2026-09-03T01:00:00.000Z") };
-      expect(scheduleFindFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({
-        where: expect.objectContaining({ startsAt: expectedFutureGuard })
-      }));
-      expect(scheduleFindFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        where: expect.objectContaining({ startsAt: expectedFutureGuard })
-      }));
+      expect(scheduleFindFirst).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          where: expect.objectContaining({ startsAt: expectedFutureGuard })
+        })
+      );
+      expect(scheduleFindFirst).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({ startsAt: expectedFutureGuard })
+        })
+      );
       expect(cancelPending).toHaveBeenCalledTimes(1);
       expect(releasePendingSlot).toHaveBeenCalledTimes(1);
       expect(createOrder).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("replaces only the ordinary pending order while retaining the Exchange-linked pending order", async () => {
+    const harness = createPendingReplacementHarness();
+    const repository = new BookingRepository(harness.client as never);
+    const invalidateSupersededAffiliate = jest.fn().mockResolvedValue(undefined);
+
+    const result = await repository.createBooking(
+      {
+        customerUserId: 101,
+        serviceId: 11,
+        scheduleSlotId: 603,
+fulfillmentMode: "store",
+serviceLocation: { source: "SHOP_LOCATION" }
+      },
+      { invalidateSupersededAffiliate }
+    );
+
+    expect(result).toMatchObject({
+      order: { id: 701, status: "pending", scheduleSlotId: 603 },
+      supersededOrders: [{ order: { id: 501, status: "cancelled" } }]
+    });
+    expect(harness.state()).toMatchObject({
+      orders: expect.arrayContaining([
+        expect.objectContaining({ id: 501, status: "CANCELLED" }),
+        expect.objectContaining({
+          id: 502,
+          status: "PENDING",
+          exchangeMatchParticipant: { id: 81 }
+        }),
+        expect.objectContaining({ id: 701, status: "PENDING", scheduleSlotId: 603 })
+      ]),
+      slots: expect.arrayContaining([
+        expect.objectContaining({ id: 601, bookedCount: 0, status: "AVAILABLE" }),
+        expect.objectContaining({ id: 602, bookedCount: 1, status: "BOOKED" }),
+        expect.objectContaining({ id: 603, bookedCount: 1, status: "AVAILABLE" })
+      ]),
+      statusHistory: [
+        expect.objectContaining({
+          bookingOrderId: 501,
+          fromStatus: "PENDING",
+          toStatus: "CANCELLED",
+          reason: "superseded_by_new_pending_order"
+        })
+      ]
+    });
+    expect(invalidateSupersededAffiliate).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingOrderId: 501, actorUserId: 101 })
+    );
+  });
+
+  it("replaces a pending order whose old schedule slot was already soft-deleted", async () => {
+    const harness = createPendingReplacementHarness({ deletedPendingSlot: true });
+    const repository = new BookingRepository(harness.client as never);
+
+    const result = await repository.createBooking({
+      customerUserId: 101,
+      serviceId: 11,
+      scheduleSlotId: 603,
+      fulfillmentMode: "store",
+      serviceLocation: { source: "SHOP_LOCATION" }
+    });
+
+    expect(result).toMatchObject({
+      order: { id: 701, status: "pending", scheduleSlotId: 603 },
+      supersededOrders: [{ order: { id: 501, status: "cancelled" } }]
+    });
+    expect(harness.state()).toMatchObject({
+      orders: expect.arrayContaining([
+        expect.objectContaining({ id: 501, status: "CANCELLED" }),
+        expect.objectContaining({ id: 701, status: "PENDING", scheduleSlotId: 603 })
+      ]),
+      slots: expect.arrayContaining([
+        expect.objectContaining({
+          id: 601,
+          bookedCount: 1,
+          status: "BOOKED",
+          deletedAt: new Date("2026-09-02T00:00:00.000Z")
+        }),
+        expect.objectContaining({ id: 603, bookedCount: 1 })
+      ])
+    });
+  });
+
+  it("rolls back all local replacement writes when a selected pending order gains an Exchange link", async () => {
+    const harness = createPendingReplacementHarness({ linkAfterSelection: true });
+    const repository = new BookingRepository(harness.client as never);
+    const invalidateSupersededAffiliate = jest.fn().mockResolvedValue(undefined);
+    const prepareAffiliate = jest.fn();
+    const persistAffiliate = jest.fn();
+
+    await expect(
+      repository.createBooking(
+        {
+          customerUserId: 101,
+          serviceId: 11,
+          scheduleSlotId: 603,
+fulfillmentMode: "store",
+serviceLocation: { source: "SHOP_LOCATION" }
+        },
+        {
+          invalidateSupersededAffiliate,
+          prepareAffiliate,
+          persistAffiliate
+        }
+      )
+    ).rejects.toThrow("error.booking.pending_replacement_conflict");
+
+    expect(harness.state()).toMatchObject({
+      orders: expect.arrayContaining([
+        expect.objectContaining({
+          id: 501,
+          status: "PENDING",
+          exchangeMatchParticipant: { id: 82 }
+        }),
+        expect.objectContaining({
+          id: 502,
+          status: "PENDING",
+          exchangeMatchParticipant: { id: 81 }
+        })
+      ]),
+      slots: expect.arrayContaining([
+        expect.objectContaining({ id: 601, bookedCount: 1, status: "BOOKED" }),
+        expect.objectContaining({ id: 602, bookedCount: 1, status: "BOOKED" }),
+        expect.objectContaining({ id: 603, bookedCount: 0, status: "AVAILABLE" })
+      ]),
+      statusHistory: []
+    });
+    expect(harness.state().orders).toHaveLength(2);
+    expect(invalidateSupersededAffiliate).not.toHaveBeenCalled();
+    expect(prepareAffiliate).not.toHaveBeenCalled();
+    expect(persistAffiliate).not.toHaveBeenCalled();
   });
 
   it("applies customer, shop, and technician identity filters to Prisma", async () => {
@@ -618,7 +1147,10 @@ describe("BookingRepository order list scope", () => {
       endsAt: new Date("2026-08-29T15:00:00.000Z")
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValueOnce([{ id: 16 }]).mockResolvedValueOnce([]),
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 16 }])
+        .mockResolvedValueOnce([]),
       bookingOrder: {
         findFirst: jest.fn().mockResolvedValueOnce(current).mockResolvedValueOnce(null),
         updateMany
@@ -649,12 +1181,48 @@ describe("BookingRepository order list scope", () => {
         technicianProfileId: 47,
         estimatedStartsAt: { lt: current.endsAt },
         estimatedEndsAt: { gt: current.startsAt },
+        activeReservationKey: { not: null },
         deletedAt: null
       },
       select: { id: true }
     });
     expect(updateMany).not.toHaveBeenCalled();
     expect(settle).not.toHaveBeenCalled();
+  });
+
+  it("rejects generic cancellation of an Exchange-linked order before all writes", async () => {
+    const current = {
+      ...makeTransitionOrderRecord("PENDING"),
+      exchangeMatchParticipant: { id: 71 }
+    };
+    const orderUpdate = jest.fn();
+    const slotUpdate = jest.fn();
+    const historyCreate = jest.fn();
+    const tx = {
+      bookingOrder: {
+        findFirst: jest.fn().mockResolvedValue(current),
+        updateMany: orderUpdate
+      },
+      scheduleSlot: { updateMany: slotUpdate },
+      orderStatusHistory: { create: historyCreate }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(
+      repository.transitionOrderWithScheduleGuard({
+        id: 701,
+        actorUserId: 101,
+        fromStatus: "pending",
+        toStatus: "cancelled",
+        reason: "changed mind"
+      })
+    ).resolves.toEqual({ outcome: "exchange_cancellation_required" });
+
+    expect(orderUpdate).not.toHaveBeenCalled();
+    expect(slotUpdate).not.toHaveBeenCalled();
+    expect(historyCreate).not.toHaveBeenCalled();
   });
 
   it("merges public performance revisions into a stable timeline without exposing internal notes", async () => {
@@ -724,6 +1292,16 @@ describe("BookingRepository order list scope", () => {
       expect.objectContaining({ id: 11, toStatus: "pending" }),
       expect.objectContaining({ id: 12, toStatus: "cancelled" })
     ]);
+    expect(result?.customer).toEqual({
+      userId: 101,
+      profileId: 17,
+      publicId: "u0000000101",
+      displayName: "预约用户 山田",
+      avatarUrl: "/uploads/customers/101.jpg",
+      membershipLevel: "premium",
+      ratingAverage: "4.80",
+      reviewCount: 12
+    });
     expect(result?.performanceAssessment).toMatchObject({
       outcome: "technician_cancelled",
       treatment: "counted",
@@ -746,5 +1324,49 @@ describe("BookingRepository order list scope", () => {
         })
       })
     );
+  });
+
+  it("projects only a structurally valid fulfillment address snapshot", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("PENDING"),
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: 99,
+        privateNote: "do not expose"
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: { findFirst: jest.fn().mockResolvedValue(order) }
+    } as never);
+
+    await expect(repository.findOrderById(701)).resolves.toMatchObject({
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: null
+      }
+    });
+  });
+
+  it("omits fulfillment addresses from non-detail order list projections", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("PENDING"),
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: null
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([order]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as never);
+
+    await expect(repository.listOrders({ page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{ fulfillmentAddressSnapshot: null }]
+    });
   });
 });

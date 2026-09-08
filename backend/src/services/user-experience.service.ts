@@ -12,6 +12,7 @@ import {
   type UserExperienceRepositoryPort
 } from "../domain/user-experience";
 import {
+  formatExperienceUnits,
   USER_EXPERIENCE_THRESHOLDS,
   USER_EXPERIENCE_UNITS_PER_EXP
 } from "../domain/user-experience-levels";
@@ -20,17 +21,6 @@ import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
 
 const eventTypeSet = new Set<string>(USER_EXPERIENCE_EVENT_TYPES);
-
-const formatExperienceUnits = (units: bigint): string => {
-  const negative = units < 0n;
-  const absolute = negative ? -units : units;
-  const whole = absolute / USER_EXPERIENCE_UNITS_PER_EXP;
-  const fraction = (absolute % USER_EXPERIENCE_UNITS_PER_EXP)
-    .toString()
-    .padStart(4, "0")
-    .replace(/0+$/, "");
-  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
-};
 
 export { calculateFinalExperienceUnits } from "../domain/user-experience";
 
@@ -52,8 +42,7 @@ export class UserExperienceService {
       });
     }
     const levelStartUnits =
-      BigInt(USER_EXPERIENCE_THRESHOLDS[account.currentLevel - 1]) *
-      USER_EXPERIENCE_UNITS_PER_EXP;
+      BigInt(USER_EXPERIENCE_THRESHOLDS[account.currentLevel - 1]) * USER_EXPERIENCE_UNITS_PER_EXP;
     if (account.currentLevel === 100) {
       return {
         level: 100,
@@ -64,8 +53,7 @@ export class UserExperienceService {
       };
     }
     const nextLevelUnits =
-      BigInt(USER_EXPERIENCE_THRESHOLDS[account.currentLevel]) *
-      USER_EXPERIENCE_UNITS_PER_EXP;
+      BigInt(USER_EXPERIENCE_THRESHOLDS[account.currentLevel]) * USER_EXPERIENCE_UNITS_PER_EXP;
     const currentLevelUnits = account.totalUnits - levelStartUnits;
     const levelSpanUnits = nextLevelUnits - levelStartUnits;
     return {
@@ -175,9 +163,7 @@ export class UserExperienceService {
       this.globalPolicyResolver.resolvePolicyAt(source.occurredAt),
       this.campaignResolver.resolveCampaignAt(source.occurredAt)
     ]);
-    const ndpBenefit = membership.benefits.find(
-      (benefit) => benefit.code === "ndp_experience"
-    );
+    const ndpBenefit = membership.benefits.find((benefit) => benefit.code === "ndp_experience");
     if (!ndpBenefit) return { status: "ineligible", account };
     if (!Number.isSafeInteger(ndpBenefit.tierBenefitId) || (ndpBenefit.tierBenefitId ?? 0) < 1) {
       throw new AppError({
@@ -265,8 +251,7 @@ export class UserExperienceService {
       throw new RangeError("membership renewal experience policy is invalid");
     }
     const baseUnits =
-      (BigInt(source.experienceValueNdp) *
-        BigInt(policy.baseExpUnitsPerThreshold)) /
+      (BigInt(source.experienceValueNdp) * BigInt(policy.baseExpUnitsPerThreshold)) /
       BigInt(policy.ndpPerBaseExp);
     const finalUnits = calculateFinalExperienceUnits({
       baseUnits,

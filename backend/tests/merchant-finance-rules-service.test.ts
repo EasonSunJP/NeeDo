@@ -151,7 +151,11 @@ describe("MerchantFinanceRulesService", () => {
         actor: merchantActor,
         action: "merchant_admin.finance_rules.update",
         targetType: "shop",
-        targetId: 11
+        targetId: 11,
+        metadata: expect.objectContaining({
+          previousCommissionRatePercent: 50,
+          nextCommissionRatePercent: 62.5
+        })
       })
     );
   });

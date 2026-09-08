@@ -510,8 +510,8 @@ const createFixture = async () => {
     findActiveUserIds: jest.fn(async (ids: number[]) =>
       ids.filter((id) => users.some((user) => user.id === id))
     ),
-    findCanonicalIdentityIdForUser: jest.fn(async (userId: number) =>
-      users.find((user) => user.id === userId)?.identities[0]?.id ?? null
+    findCanonicalIdentityIdForUser: jest.fn(
+      async (userId: number) => users.find((user) => user.id === userId)?.identities[0]?.id ?? null
     ),
     listConversationRecipients: jest.fn(async (conversationIdToFind: number) => {
       const conversation = conversations.find((item) => item.id === conversationIdToFind);
@@ -852,8 +852,7 @@ const createFixture = async () => {
           (reaction) =>
             reaction.messageId === input.messageId &&
             reaction.userId === input.userId &&
-            getMessageReactionCategory(reaction.emoji) ===
-              getMessageReactionCategory(input.emoji)
+            getMessageReactionCategory(reaction.emoji) === getMessageReactionCategory(input.emoji)
         );
 
         if (activeInSlot?.emoji === input.emoji) {
@@ -922,17 +921,15 @@ const createFixture = async () => {
 
       return { conversationId: input.conversationId, unreadCount: 0 };
     }),
-    markConversationUnread: jest.fn(
-      async (input: { conversationId: number; userId: number }) => {
-        const conversation = conversations.find((item) => item.id === input.conversationId);
-        if (!conversation?.participantUserIds.includes(input.userId)) return null;
-        conversation.unreadByUserId.set(
-          input.userId,
-          Math.max(1, conversation.unreadByUserId.get(input.userId) ?? 0)
-        );
-        return mapConversation(conversation, input.userId);
-      }
-    ),
+    markConversationUnread: jest.fn(async (input: { conversationId: number; userId: number }) => {
+      const conversation = conversations.find((item) => item.id === input.conversationId);
+      if (!conversation?.participantUserIds.includes(input.userId)) return null;
+      conversation.unreadByUserId.set(
+        input.userId,
+        Math.max(1, conversation.unreadByUserId.get(input.userId) ?? 0)
+      );
+      return mapConversation(conversation, input.userId);
+    }),
     updateConversationPreferences: jest.fn(
       async (input: {
         conversationId: number;
@@ -995,65 +992,62 @@ const createFixture = async () => {
     listContacts: jest.fn(async (identityId: number) =>
       listPage(contacts.filter((contact) => contact.ownerIdentityId === identityId))
     ),
-    getDirectoryProfile: jest.fn(async (
-      viewerUserId: number,
-      viewerIdentityId: number,
-      targetUserId: number,
-      targetIdentityId: number
-    ) => {
-      const targetUser = users.find((user) => user.id === targetUserId);
-      if (!targetUser) return null;
-      const contact = contacts.find(
-        (item) =>
-          item.ownerIdentityId === viewerIdentityId &&
-          item.contactIdentityId === targetIdentityId
-      );
-      const friendRequest = [...friendRequests]
-        .reverse()
-        .find(
+    getDirectoryProfile: jest.fn(
+      async (
+        viewerUserId: number,
+        viewerIdentityId: number,
+        targetUserId: number,
+        targetIdentityId: number
+      ) => {
+        const targetUser = users.find((user) => user.id === targetUserId);
+        if (!targetUser) return null;
+        const contact = contacts.find(
           (item) =>
-            item.status === "pending" &&
-            ((item.requesterIdentityId === viewerIdentityId &&
-              item.targetIdentityId === targetIdentityId) ||
-              (item.requesterIdentityId === targetIdentityId &&
-                item.targetIdentityId === viewerIdentityId))
+            item.ownerIdentityId === viewerIdentityId && item.contactIdentityId === targetIdentityId
         );
-      return {
-        user: publicProfile(targetUserId),
-        identityCard: {
-          entityType: "account" as const,
-          profileId: null,
-          displayName: targetUser.username,
-          identityLabel: null,
-          verified: false,
-          creditValue: null,
-          creditReviewCount: 0,
-          gender: null,
-          age: null,
-          heightCm: null,
-          languages: [],
-          city: null,
-          serviceArea: null,
-          yearsExperience: null,
-          bio: null
-        },
-        relationship: contact
-          ? ("friend" as const)
-          : friendRequest?.requesterIdentityId === viewerIdentityId
-            ? ("outgoing_pending" as const)
-            : friendRequest
-              ? ("incoming_pending" as const)
-              : ("none" as const),
-        contactId: contact?.id ?? null,
-        friendRequest: friendRequest ?? null
-      };
-    }),
+        const friendRequest = [...friendRequests]
+          .reverse()
+          .find(
+            (item) =>
+              item.status === "pending" &&
+              ((item.requesterIdentityId === viewerIdentityId &&
+                item.targetIdentityId === targetIdentityId) ||
+                (item.requesterIdentityId === targetIdentityId &&
+                  item.targetIdentityId === viewerIdentityId))
+          );
+        return {
+          user: publicProfile(targetUserId),
+          identityCard: {
+            entityType: "account" as const,
+            profileId: null,
+            displayName: targetUser.username,
+            identityLabel: null,
+            verified: false,
+            creditValue: null,
+            creditReviewCount: 0,
+            gender: null,
+            age: null,
+            heightCm: null,
+            languages: [],
+            city: null,
+            serviceArea: null,
+            yearsExperience: null,
+            bio: null
+          },
+          relationship: contact
+            ? ("friend" as const)
+            : friendRequest?.requesterIdentityId === viewerIdentityId
+              ? ("outgoing_pending" as const)
+              : friendRequest
+                ? ("incoming_pending" as const)
+                : ("none" as const),
+          contactId: contact?.id ?? null,
+          friendRequest: friendRequest ?? null
+        };
+      }
+    ),
     setContactBlocked: jest.fn(
-      async (input: {
-        contactId: number;
-        isBlocked: boolean;
-        ownerUserId: number;
-      }) => {
+      async (input: { contactId: number; isBlocked: boolean; ownerUserId: number }) => {
         const contact = contacts.find(
           (item) => item.id === input.contactId && item.ownerUserId === input.ownerUserId
         );
@@ -1062,61 +1056,57 @@ const createFixture = async () => {
         return contact;
       }
     ),
-    deleteContact: jest.fn(
-      async (input: { contactId: number; ownerUserId: number }) => {
-        const ownedContact = contacts.find(
-          (item) => item.id === input.contactId && item.ownerUserId === input.ownerUserId
-        );
-        if (!ownedContact) return null;
-        const counterpartUserId = ownedContact.contactUserId;
-        const removedContactIds = contacts
-          .filter(
-            (item) =>
-              (item.ownerUserId === input.ownerUserId &&
-                item.contactUserId === counterpartUserId) ||
-              (item.ownerUserId === counterpartUserId &&
-                item.contactUserId === input.ownerUserId)
-          )
-          .map((item) => item.id);
-        for (let index = contacts.length - 1; index >= 0; index -= 1) {
-          if (removedContactIds.includes(contacts[index]!.id)) contacts.splice(index, 1);
-        }
-        let deletedFollowCount = 0;
-        for (let index = follows.length - 1; index >= 0; index -= 1) {
-          const follow = follows[index]!;
-          if (
-            (follow.followerUserId === input.ownerUserId &&
-              follow.followingUserId === counterpartUserId) ||
-            (follow.followerUserId === counterpartUserId &&
-              follow.followingUserId === input.ownerUserId)
-          ) {
-            follows.splice(index, 1);
-            deletedFollowCount += 1;
-          }
-        }
-        const conversation = conversations.find(
+    deleteContact: jest.fn(async (input: { contactId: number; ownerUserId: number }) => {
+      const ownedContact = contacts.find(
+        (item) => item.id === input.contactId && item.ownerUserId === input.ownerUserId
+      );
+      if (!ownedContact) return null;
+      const counterpartUserId = ownedContact.contactUserId;
+      const removedContactIds = contacts
+        .filter(
           (item) =>
-            item.type === "direct" &&
-            item.participantUserIds.includes(input.ownerUserId) &&
-            item.participantUserIds.includes(counterpartUserId)
-        );
-        if (conversation) {
-          conversation.participantUserIds = conversation.participantUserIds.filter(
-            (userId) => userId !== input.ownerUserId
-          );
-        }
-        return {
-          actorUserId: input.ownerUserId,
-          counterpartUserId,
-          contactIds: removedContactIds,
-          deletedContactCount: removedContactIds.length,
-          deletedFollowCount,
-          deletedConversationId: conversation?.id ?? null,
-          deleted: true as const,
-          deletedAt: now
-        };
+            (item.ownerUserId === input.ownerUserId && item.contactUserId === counterpartUserId) ||
+            (item.ownerUserId === counterpartUserId && item.contactUserId === input.ownerUserId)
+        )
+        .map((item) => item.id);
+      for (let index = contacts.length - 1; index >= 0; index -= 1) {
+        if (removedContactIds.includes(contacts[index]!.id)) contacts.splice(index, 1);
       }
-    ),
+      let deletedFollowCount = 0;
+      for (let index = follows.length - 1; index >= 0; index -= 1) {
+        const follow = follows[index]!;
+        if (
+          (follow.followerUserId === input.ownerUserId &&
+            follow.followingUserId === counterpartUserId) ||
+          (follow.followerUserId === counterpartUserId &&
+            follow.followingUserId === input.ownerUserId)
+        ) {
+          follows.splice(index, 1);
+          deletedFollowCount += 1;
+        }
+      }
+      const conversation = conversations.find(
+        (item) =>
+          item.type === "direct" &&
+          item.participantUserIds.includes(input.ownerUserId) &&
+          item.participantUserIds.includes(counterpartUserId)
+      );
+      if (conversation) {
+        conversation.participantUserIds = conversation.participantUserIds.filter(
+          (userId) => userId !== input.ownerUserId
+        );
+      }
+      return {
+        actorUserId: input.ownerUserId,
+        counterpartUserId,
+        contactIds: removedContactIds,
+        deletedContactCount: removedContactIds.length,
+        deletedFollowCount,
+        deletedConversationId: conversation?.id ?? null,
+        deleted: true as const,
+        deletedAt: now
+      };
+    }),
     createFriendRequest: jest.fn(
       async (input: {
         requesterUserId: number;
@@ -1254,7 +1244,7 @@ const createFixture = async () => {
       }) => {
         const mediaEnvelope =
           input.media && typeof input.media === "object"
-            ? input.media as { replyToPostId?: unknown }
+            ? (input.media as { replyToPostId?: unknown })
             : null;
         const replyToPostId =
           typeof mediaEnvelope?.replyToPostId === "number" ? mediaEnvelope.replyToPostId : null;
@@ -1289,7 +1279,8 @@ const createFixture = async () => {
         visibility: string;
       }) => {
         const post = socialPosts.find(
-          (candidate) => candidate.id === input.postId && candidate.authorUserId === input.authorUserId
+          (candidate) =>
+            candidate.id === input.postId && candidate.authorUserId === input.authorUserId
         );
         if (!post) return null;
         post.content = input.content;
@@ -1298,32 +1289,28 @@ const createFixture = async () => {
         return { post, notifications: [] };
       }
     ),
-    setSocialPostLike: jest.fn(async (input: {
-      postId: number;
-      actorIdentityId: number;
-      active: boolean;
-    }) => {
-      const post = socialPosts.find((candidate) => candidate.id === input.postId);
-      if (!post) return null;
-      const key = `${input.postId}:${input.actorIdentityId}`;
-      const changed = input.active ? !socialLikeKeys.has(key) : socialLikeKeys.has(key);
-      if (input.active) socialLikeKeys.add(key);
-      else socialLikeKeys.delete(key);
-      return { changed, post: mapSocialInteractionPost(post, input.actorIdentityId) };
-    }),
-    setSocialPostBookmark: jest.fn(async (input: {
-      postId: number;
-      actorIdentityId: number;
-      active: boolean;
-    }) => {
-      const post = socialPosts.find((candidate) => candidate.id === input.postId);
-      if (!post) return null;
-      const key = `${input.postId}:${input.actorIdentityId}`;
-      const changed = input.active ? !socialBookmarkKeys.has(key) : socialBookmarkKeys.has(key);
-      if (input.active) socialBookmarkKeys.add(key);
-      else socialBookmarkKeys.delete(key);
-      return { changed, post: mapSocialInteractionPost(post, input.actorIdentityId) };
-    }),
+    setSocialPostLike: jest.fn(
+      async (input: { postId: number; actorIdentityId: number; active: boolean }) => {
+        const post = socialPosts.find((candidate) => candidate.id === input.postId);
+        if (!post) return null;
+        const key = `${input.postId}:${input.actorIdentityId}`;
+        const changed = input.active ? !socialLikeKeys.has(key) : socialLikeKeys.has(key);
+        if (input.active) socialLikeKeys.add(key);
+        else socialLikeKeys.delete(key);
+        return { changed, post: mapSocialInteractionPost(post, input.actorIdentityId) };
+      }
+    ),
+    setSocialPostBookmark: jest.fn(
+      async (input: { postId: number; actorIdentityId: number; active: boolean }) => {
+        const post = socialPosts.find((candidate) => candidate.id === input.postId);
+        if (!post) return null;
+        const key = `${input.postId}:${input.actorIdentityId}`;
+        const changed = input.active ? !socialBookmarkKeys.has(key) : socialBookmarkKeys.has(key);
+        if (input.active) socialBookmarkKeys.add(key);
+        else socialBookmarkKeys.delete(key);
+        return { changed, post: mapSocialInteractionPost(post, input.actorIdentityId) };
+      }
+    ),
     recordSocialPostView: jest.fn(async (input: { postId: number; actorIdentityId: number }) => {
       const post = socialPosts.find((candidate) => candidate.id === input.postId);
       if (!post) return null;
@@ -1332,50 +1319,52 @@ const createFixture = async () => {
       socialViewKeys.add(key);
       return { changed, post: mapSocialInteractionPost(post, input.actorIdentityId) };
     }),
-    shareSocialPost: jest.fn(async (input: {
-      postId: number;
-      actorUserId: number;
-      actorIdentityId: number;
-      targetUserIds: number[];
-      idempotencyKey: string;
-    }) => {
-      const post = socialPosts.find((candidate) => candidate.id === input.postId);
-      if (!post) return null;
-      const deliveries = input.targetUserIds.map((recipientUserId) => {
-        const key = `${input.postId}:${input.actorIdentityId}:${recipientUserId}:${input.idempotencyKey}`;
-        const created = !socialShareKeys.has(key);
-        socialShareKeys.add(key);
+    shareSocialPost: jest.fn(
+      async (input: {
+        postId: number;
+        actorUserId: number;
+        actorIdentityId: number;
+        targetUserIds: number[];
+        idempotencyKey: string;
+      }) => {
+        const post = socialPosts.find((candidate) => candidate.id === input.postId);
+        if (!post) return null;
+        const deliveries = input.targetUserIds.map((recipientUserId) => {
+          const key = `${input.postId}:${input.actorIdentityId}:${recipientUserId}:${input.idempotencyKey}`;
+          const created = !socialShareKeys.has(key);
+          socialShareKeys.add(key);
+          return {
+            recipientUserId,
+            recipientIdentityId: recipientUserId,
+            created,
+            message: {
+              id: 900 + recipientUserId,
+              conversationId: 800 + recipientUserId,
+              senderUserId: input.actorUserId,
+              type: "text" as const,
+              content: "转发了一条动态",
+              metadata: { needoMessageType: "social-post-card" },
+              reactions: [],
+              createdAt: now,
+              recallDeadlineAt: new Date(now.getTime() + 180_000),
+              recalledAt: null,
+              recallMode: null,
+              contentPurgedAt: null,
+              expiresAt: null,
+              privacyPolicyVersionAtSend: null,
+              lifecycleVersion: 1,
+              reactionVersion: 0,
+              availableRecallModes: ["standard" as const]
+            }
+          };
+        });
         return {
-          recipientUserId,
-          recipientIdentityId: recipientUserId,
-          created,
-          message: {
-            id: 900 + recipientUserId,
-            conversationId: 800 + recipientUserId,
-            senderUserId: input.actorUserId,
-            type: "text" as const,
-            content: "转发了一条动态",
-            metadata: { needoMessageType: "social-post-card" },
-            reactions: [],
-            createdAt: now,
-            recallDeadlineAt: new Date(now.getTime() + 180_000),
-            recalledAt: null,
-            recallMode: null,
-            contentPurgedAt: null,
-            expiresAt: null,
-            privacyPolicyVersionAtSend: null,
-            lifecycleVersion: 1,
-            reactionVersion: 0,
-            availableRecallModes: ["standard" as const]
-          }
+          changed: deliveries.some((delivery) => delivery.created),
+          deliveries,
+          post: mapSocialInteractionPost(post, input.actorIdentityId)
         };
-      });
-      return {
-        changed: deliveries.some((delivery) => delivery.created),
-        deliveries,
-        post: mapSocialInteractionPost(post, input.actorIdentityId)
-      };
-    }),
+      }
+    ),
     listSocialPosts: jest.fn(async () => listPage(socialPosts)),
     getSocialPost: jest.fn(async (userId: number, postId: number) => {
       const post = socialPosts.find((item) => item.id === postId);
@@ -1416,7 +1405,10 @@ const createFixture = async () => {
             username: target.username,
             displayName: target.username,
             avatarUrl: target.avatarUrl,
-            entityType: target.identities[0]?.type === "technician" ? ("technician" as const) : ("user" as const),
+            entityType:
+              target.identities[0]?.type === "technician"
+                ? ("technician" as const)
+                : ("user" as const),
             joinedAt: target.createdAt
           }
         };
@@ -1525,7 +1517,11 @@ const createFixture = async () => {
     testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    realtimeRepository
+    realtimeRepository,
+    platformMembershipResolverService: {
+      resolveMembershipAt: jest.fn(),
+      hasEffectiveBenefitAt: jest.fn(async () => false)
+    }
   } as never);
   const login = async (email: string) => {
     const response = await request(app)
@@ -1559,23 +1555,27 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
     };
 
     const parsed = socialPostCreateBodySchema.parse({
-        content: "确认Pending",
-        media: { items: [], postType: "reply", replyToPostId: 700, richText }
-      });
+      content: "确认Pending",
+      media: { items: [], postType: "reply", replyToPostId: 700, richText }
+    });
     expect((parsed.media as { richText?: unknown } | undefined)?.richText).toEqual(richText);
 
-    expect(() => socialPostCreateBodySchema.parse({
-      content: "Later",
-      media: {
-        items: [],
-        richText: { version: 1, parts: [{ type: "judgement", value: "Later" }] }
-      }
-    })).toThrow();
+    expect(() =>
+      socialPostCreateBodySchema.parse({
+        content: "Later",
+        media: {
+          items: [],
+          richText: { version: 1, parts: [{ type: "judgement", value: "Later" }] }
+        }
+      })
+    ).toThrow();
 
-    expect(() => socialPostCreateBodySchema.parse({
-      content: "Pending!",
-      media: { items: [], richText }
-    })).toThrow();
+    expect(() =>
+      socialPostCreateBodySchema.parse({
+        content: "Pending!",
+        media: { items: [], richText }
+      })
+    ).toThrow();
   });
 
   it("accepts an image-only post while rejecting an empty post", async () => {
@@ -1722,7 +1722,11 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .send({ content: "After", mentionUserIds: [2], visibility: "followers" })
       .expect(200);
 
-    expect(updated.body.data).toMatchObject({ id: postId, content: "After", visibility: "followers" });
+    expect(updated.body.data).toMatchObject({
+      id: postId,
+      content: "After",
+      visibility: "followers"
+    });
     expect(fixture.realtimeRepository.updateSocialPost).toHaveBeenLastCalledWith(
       expect.objectContaining({
         postId,
@@ -1915,7 +1919,7 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
           counterpartUserId: 2,
           contactIds: [1, 2],
           deletedContactCount: 2,
-          deleted: true,
+          deleted: true
         });
       });
 
@@ -2161,6 +2165,9 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
           }
         });
       });
+    expect(fixture.realtimeRepository.recallMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mode: "standard" })
+    );
   });
 
   it("requires message:recall and rejects unsupported recall modes", async () => {
@@ -2425,7 +2432,10 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
         expect(response.body.data.list[0]).toMatchObject({
           id: messageResponse.body.data.id,
           reactionVersion: 2,
-          reactions: [{ emoji: "OK", reactedByMe: true }, { emoji: "😂", reactedByMe: true }]
+          reactions: [
+            { emoji: "OK", reactedByMe: true },
+            { emoji: "😂", reactedByMe: true }
+          ]
         });
       });
 

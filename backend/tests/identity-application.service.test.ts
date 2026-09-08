@@ -1,3 +1,4 @@
+import { applicationEkycPolicy } from "./helpers/application-ekyc-policy";
 import type { IdentityApplicationStatus } from "../src/services/identity-application-policy.service";
 import {
   IdentityApplicationService,
@@ -131,7 +132,7 @@ const createRepository = (): jest.Mocked<IdentityApplicationRepositoryPort> => (
 describe("IdentityApplicationService", () => {
   it("creates one technician draft for an eligible target shop", async () => {
     const repository = createRepository();
-    const service = new IdentityApplicationService(repository);
+    const service = new IdentityApplicationService(repository, applicationEkycPolicy());
 
     const result = await service.createTechnicianDraft({
       userId: 3,
@@ -153,7 +154,7 @@ describe("IdentityApplicationService", () => {
     const duplicateRepository = createRepository();
     duplicateRepository.findActiveByUserAndType.mockResolvedValue(application());
     await expect(
-      new IdentityApplicationService(duplicateRepository).createTechnicianDraft({
+      new IdentityApplicationService(duplicateRepository, applicationEkycPolicy()).createTechnicianDraft({
         userId: 3,
         targetShopId: 7,
         applicantName: "山本太郎"
@@ -166,7 +167,7 @@ describe("IdentityApplicationService", () => {
     const identityRepository = createRepository();
     identityRepository.hasActiveIdentity.mockResolvedValue(true);
     await expect(
-      new IdentityApplicationService(identityRepository).createTechnicianDraft({
+      new IdentityApplicationService(identityRepository, applicationEkycPolicy()).createTechnicianDraft({
         userId: 3,
         targetShopId: 7,
         applicantName: "山本太郎"
@@ -182,7 +183,7 @@ describe("IdentityApplicationService", () => {
     repository.isShopEligibleForTechnicianApplications.mockResolvedValue(false);
 
     await expect(
-      new IdentityApplicationService(repository).createTechnicianDraft({
+      new IdentityApplicationService(repository, applicationEkycPolicy()).createTechnicianDraft({
         userId: 3,
         targetShopId: 999,
         applicantName: "山本太郎"
@@ -196,15 +197,18 @@ describe("IdentityApplicationService", () => {
   it("requires one to five service categories and validates keyword membership before creating a merchant draft", async () => {
     const missingCategory = createRepository();
     await expect(
-      new IdentityApplicationService(missingCategory).createMerchantDraft({
+      new IdentityApplicationService(missingCategory, applicationEkycPolicy()).createMerchantDraft({
         userId: 3,
         detail: merchantDetail({ serviceCategoryIds: [], businessKeywordIds: [] })
       })
-    ).rejects.toMatchObject({ message: "error.identity_application.service_category_limit", statusCode: 400 });
+    ).rejects.toMatchObject({
+      message: "error.identity_application.service_category_limit",
+      statusCode: 400
+    });
     expect(missingCategory.createMerchantDraft).not.toHaveBeenCalled();
 
     const repository = createRepository();
-    await new IdentityApplicationService(repository).createMerchantDraft({
+    await new IdentityApplicationService(repository, applicationEkycPolicy()).createMerchantDraft({
       userId: 3,
       detail: merchantDetail()
     });
@@ -213,13 +217,15 @@ describe("IdentityApplicationService", () => {
       businessKeywordIds: [10]
     });
     expect(repository.createMerchantDraft).toHaveBeenCalledWith(
-      expect.objectContaining({ detail: expect.objectContaining({ serviceCategoryIds: [1], businessKeywordIds: [10] }) })
+      expect.objectContaining({
+        detail: expect.objectContaining({ serviceCategoryIds: [1], businessKeywordIds: [10] })
+      })
     );
   });
 
   it("updates only the owner's editable draft at the expected version", async () => {
     const repository = createRepository();
-    const service = new IdentityApplicationService(repository);
+    const service = new IdentityApplicationService(repository, applicationEkycPolicy());
 
     await service.updateTechnicianDraft({
       userId: 3,
@@ -243,7 +249,7 @@ describe("IdentityApplicationService", () => {
     const wrongOwner = createRepository();
     wrongOwner.findById.mockResolvedValue(application({ userId: 8 }));
     await expect(
-      new IdentityApplicationService(wrongOwner).updateTechnicianDraft({
+      new IdentityApplicationService(wrongOwner, applicationEkycPolicy()).updateTechnicianDraft({
         userId: 3,
         applicationId: 11,
         expectedVersion: 1,
@@ -254,7 +260,7 @@ describe("IdentityApplicationService", () => {
     const stale = createRepository();
     stale.findById.mockResolvedValue(application({ version: 2 }));
     await expect(
-      new IdentityApplicationService(stale).updateTechnicianDraft({
+      new IdentityApplicationService(stale, applicationEkycPolicy()).updateTechnicianDraft({
         userId: 3,
         applicationId: 11,
         expectedVersion: 1,
@@ -268,7 +274,7 @@ describe("IdentityApplicationService", () => {
     const submitted = createRepository();
     submitted.findById.mockResolvedValue(application({ status: "submitted" }));
     await expect(
-      new IdentityApplicationService(submitted).updateTechnicianDraft({
+      new IdentityApplicationService(submitted, applicationEkycPolicy()).updateTechnicianDraft({
         userId: 3,
         applicationId: 11,
         expectedVersion: 1,
@@ -286,7 +292,7 @@ describe("IdentityApplicationService", () => {
       application({ technicianDetail: technicianDetail({ applicantName: "  " }) })
     );
     await expect(
-      new IdentityApplicationService(missingName).submit({
+      new IdentityApplicationService(missingName, applicationEkycPolicy()).submit({
         userId: 3,
         applicationId: 11,
         expectedVersion: 1,
@@ -298,7 +304,7 @@ describe("IdentityApplicationService", () => {
     });
 
     const repository = createRepository();
-    await new IdentityApplicationService(repository).submit({
+    await new IdentityApplicationService(repository, applicationEkycPolicy()).submit({
       userId: 3,
       applicationId: 11,
       expectedVersion: 1,
@@ -317,6 +323,47 @@ describe("IdentityApplicationService", () => {
     );
   });
 
+  it.each(["individual", "corporate"] as const)("submits %s merchant evidence without a representative photo", async (applicantKind) => {
+    const repository = createRepository();
+    repository.findById.mockResolvedValue(application({
+      type: "merchant", technicianDetail: null,
+      merchantDetail: merchantDetail({ applicantKind, eKycVerified: true,
+        mediaPurposes: applicantKind === "corporate" ? ["corporate_registration"] : [] })
+    }));
+    await new IdentityApplicationService(repository, applicationEkycPolicy()).submit({
+      userId: 3, applicationId: 11, expectedVersion: 1, now: new Date("2026-08-26T05:00:00.000Z")
+    });
+    expect(repository.submit).toHaveBeenCalled();
+  });
+
+  it("submits an eKYC-verified individual merchant with a declared bank account", async () => {
+    const repository = createRepository();
+    repository.findById.mockResolvedValue(application({
+      type: "merchant",
+      technicianDetail: null,
+      merchantDetail: merchantDetail({
+        applicantKind: "individual",
+        corporateLegalName: null,
+        corporateLegalNameKana: null,
+        bankVerificationStatus: "declared",
+        eKycVerified: true,
+        mediaPurposes: []
+      })
+    }));
+
+    await new IdentityApplicationService(
+      repository,
+      applicationEkycPolicy(true, true)
+    ).submit({
+      userId: 3,
+      applicationId: 11,
+      expectedVersion: 1,
+      now: new Date("2026-08-26T05:00:00.000Z")
+    });
+
+    expect(repository.submit).toHaveBeenCalled();
+  });
+
   it("enforces corporate and individual merchant submission evidence", async () => {
     const corporate = createRepository();
     corporate.findById.mockResolvedValue(
@@ -327,7 +374,7 @@ describe("IdentityApplicationService", () => {
       })
     );
     await expect(
-      new IdentityApplicationService(corporate).submit({
+      new IdentityApplicationService(corporate, applicationEkycPolicy()).submit({
         userId: 3,
         applicationId: 11,
         expectedVersion: 1,
@@ -353,7 +400,7 @@ describe("IdentityApplicationService", () => {
       })
     );
     await expect(
-      new IdentityApplicationService(individual).submit({
+      new IdentityApplicationService(individual, applicationEkycPolicy(true, false)).submit({
         userId: 3,
         applicationId: 11,
         expectedVersion: 1,
@@ -370,7 +417,7 @@ describe("IdentityApplicationService", () => {
     repository.findById.mockResolvedValue(application({ status: "submitted" }));
     const now = new Date("2026-08-26T05:00:00.000Z");
 
-    await new IdentityApplicationService(repository).withdraw({
+    await new IdentityApplicationService(repository, applicationEkycPolicy()).withdraw({
       userId: 3,
       applicationId: 11,
       expectedVersion: 1,
@@ -393,7 +440,7 @@ describe("IdentityApplicationService", () => {
       repository.findById.mockResolvedValue(application({ status }));
 
       await expect(
-        new IdentityApplicationService(repository).withdraw({
+        new IdentityApplicationService(repository, applicationEkycPolicy()).withdraw({
           userId: 3,
           applicationId: 11,
           expectedVersion: 1,

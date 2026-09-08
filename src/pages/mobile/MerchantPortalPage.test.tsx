@@ -12,7 +12,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).not.toContain("stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0]");
   });
 
-  it("places appointment list navigation controls above the schedule tabs and hides the shared bottom nav", () => {
+  it("uses one fullscreen toolbar and hides the shared bottom nav across all merchant schedule tabs", () => {
     const scheduleHeaderSource = merchantSource.slice(
       merchantSource.indexOf("function MerchantScheduleHeaderTabs"),
       merchantSource.indexOf("function MerchantStaffHeaderTabs")
@@ -26,19 +26,25 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf("{activeView === \"contacts\" && (")
     );
 
-    expect(merchantSource).toContain('const isMerchantAppointmentsView = activeView === "schedule" && merchantSchedulePrimaryTab === "appointments";');
-    expect(scheduleHeaderSource).toContain("showAppointmentsToolbar");
+    expect(merchantSource).toContain('const isMerchantScheduleView = activeView === "schedule";');
+    expect(merchantSource).toContain('import { MobileFullscreenCloseButton, MobileFullscreenHeader }');
     expect(scheduleHeaderSource).toContain('className="relative z-10"');
     expect(scheduleHeaderSource).toContain('className="flex items-center gap-2"');
     expect(scheduleHeaderSource).toContain('aria-label="返回商户首页"');
+    expect(scheduleHeaderSource).toContain('const activeTabLabel = tabs.find((tab) => tab.value === value)?.label ?? "现状确认";');
     expect(scheduleHeaderSource).toContain('placeholder="搜索预约、客户、员工、状态"');
     expect(scheduleHeaderSource).toContain('name="search"');
+    expect(scheduleHeaderSource).toContain('{value === "appointments" ? (');
+    expect(scheduleHeaderSource).toContain('<strong className="truncate text-sm font-black">{activeTabLabel}</strong>');
+    expect(scheduleHeaderSource).toContain('<MobileFullscreenCloseButton label={`关闭${activeTabLabel}`} onClose={() => onExit?.()} />');
     expect(scheduleHeaderSource).toContain("<FeatureSegmentedTabs");
-    expect(shellSource).toContain("showBottomNav={!isMerchantAppointmentsView && !merchantProfileEditing}");
+    expect(shellSource).toContain("showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}");
     expect(merchantSource).toContain('activeView === "schedule" && "relative z-30"');
     expect(schedulePanelSource).toContain("onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("appointmentSearchQuery={merchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("searchQuery={merchantAppointmentSearchQuery}");
+    expect(schedulePanelSource).toContain('onExit={() => navigate("/merchant")}');
+    expect(schedulePanelSource).not.toContain("showAppointmentsToolbar");
   });
 
   it("keeps the approved appointment calendar as the first booking surface", () => {
@@ -47,7 +53,9 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf('{activeView === "contacts" && (')
     );
 
-    expect(schedulePanelSource).toContain('<UnifiedUserCalendar currentStore={store}');
+    expect(schedulePanelSource).toContain("<UnifiedUserCalendar");
+    expect(schedulePanelSource).toContain("currentStore={store}");
+    expect(schedulePanelSource).toContain("technicians={storeTechnicians}");
     expect(schedulePanelSource).not.toContain("<FormalScheduleInventoryPanel");
     expect(schedulePanelSource).not.toContain('className="space-y-4"');
   });
@@ -73,13 +81,13 @@ describe("MerchantPortalPage store privacy control", () => {
     );
 
     expect(staffDetailSource).toContain('backofficeRealDataApi.technician("merchant-admin", technicianApiId)');
-    expect(staffDetailSource).toContain("<FormalTechnicianDetailPanel detail={formalDetail} />");
+    expect(staffDetailSource).toContain('<FormalTechnicianDetailPanel detail={formalDetail} workStatusScope="merchant-admin" />');
     expect(staffDetailSource).toContain("正在读取员工资料");
   });
 
   it("adds the floating privacy menu to the merchant service card only", () => {
     expect(merchantSource).toContain('{ label: "信息卡", value: "info" }');
-    expect(merchantSource).toContain('{ label: "服务展示", value: "service" }');
+    expect(merchantSource).toContain('{ label: "店铺展示", value: "service" }');
     expect(merchantSource).toContain('{ label: "数据中心", value: "data" }');
     expect(merchantSource).toContain("function MerchantStorePrivacyControl");
     expect(merchantSource).toContain('data-testid="merchant-store-privacy-control"');
@@ -117,7 +125,16 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(meHeaderSource).toContain('title="个人中心"');
     expect(meHeaderSource).toContain("footer={");
     expect(meHeaderSource).not.toContain("<SharedHomeHeader");
-    expect(merchantSource).toContain('showBottomNav={!isMerchantAppointmentsView && !merchantProfileEditing}');
+    expect(merchantSource).toContain('showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}');
+  });
+
+  it("keeps the personal-center status panel inside the same mobile content inset", () => {
+    const statusPanelSource = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "dashboard" ? (', merchantSource.indexOf("{selectedContact && (")),
+      merchantSource.indexOf("</MobileShell>")
+    );
+
+    expect(statusPanelSource).toContain('className={activeView === "me" ? "mx-4 !w-auto" : undefined}');
   });
 
   it("adds the merchant pricing mode switch beside the privacy switch", () => {
@@ -143,10 +160,13 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("technicianPricingRatioPercent");
     expect(merchantSource).toContain("storeTechnicianPricingRatePercent");
     expect(merchantSource).toContain('ratePercent={storeTechnicianPricingRatePercent}');
-    expect(merchantSource).toContain('technicianPricingRatePercent={storeTechnicianPricingRatePercent}');
+    expect(merchantSource).not.toContain('technicianPricingRatePercent={storeTechnicianPricingRatePercent}');
     expect(merchantSource).toContain('data-testid="merchant-pricing-ratio-menu"');
-    expect(merchantSource).toContain("店铺报价与技师定价的比例");
-    expect(merchantSource).toContain("默认 100%，每次调整 10%。");
+    expect(merchantSource).toContain("店铺与技师结算比例");
+    expect(merchantSource).toContain("每次调整 10%，店铺与技师合计不超过 100%。");
+    expect(pricingControlSource).toContain("店铺 {settlementSplit.shopSharePercent}%：{settlementSplit.technicianSharePercent}% 技师");
+    expect(pricingControlSource).toContain("MAX_TECHNICIAN_SETTLEMENT_SHARE_PERCENT");
+    expect(pricingControlSource).toContain("MIN_TECHNICIAN_SETTLEMENT_SHARE_PERCENT");
     expect(merchantSource).toContain("updateTechnicianPricingRatio(10)");
     expect(merchantSource).toContain("updateTechnicianPricingRatio(-10)");
     expect(merchantSource).toContain('document.addEventListener("pointerdown", closeOnOutsidePointerDown)');
@@ -160,11 +180,12 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("confirmTechnicianPricingMode");
     expect(pricingControlSource).toContain("onTechnicianPricingConfirmRequest();");
     expect(pricingControlSource).toContain('onModeChange("technician", technicianPricingRatioPercent);');
-    expect(pricingControlSource).toContain('onRatePercentChange(technicianPricingRatioPercent);');
-    expect(pricingControlSource).toContain('技师定价（{ratePercent}%）');
+    expect(pricingControlSource).not.toContain('onRatePercentChange(technicianPricingRatioPercent);');
+    expect(pricingControlSource).toContain('onModeChange("technician", technicianPricingRatioPercent);');
+    expect(pricingControlSource).toContain('技师定价（店铺 {100 - ratePercent}%：{ratePercent}% 技师）');
     expect(pricingControlSource).not.toContain("onMenuOpenChange(true);");
     expect(pricingConfirmSource).toContain("setStorePricingRatioMenuOpen(true);");
-    expect(pricingUpdateSource).toContain("setStoreTechnicianPricingRatePercent(result.technicianPricingRatePercent);");
+    expect(pricingUpdateSource).toContain("setStoreTechnicianPricingRatePercent(normalizeTechnicianSettlementShare(result.technicianPricingRatePercent));");
     expect(pricingUpdateSource).toContain("const pricingModeChanged = nextMode !== storePricingMode;");
     expect(pricingUpdateSource).toContain("const pricingRateChanged = nextRatePercent !== storeTechnicianPricingRatePercent;");
     expect(pricingUpdateSource).toContain("(!pricingModeChanged && !pricingRateChanged) || storePricingModeSaving");
@@ -181,5 +202,17 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(storeDetailSource).toContain('className="mt-3 grid grid-cols-2 gap-2"');
     expect(storeDetailSource).toContain("{pricingControl ? <div>{pricingControl}</div> : <div />}");
     expect(storeDetailSource).toContain("{privacyControl ? <div>{privacyControl}</div> : <div />}");
+  });
+
+  it("uses the active UI theme colors instead of an image for the dashboard background", () => {
+    const dashboardHeroSource = merchantSource.slice(
+      merchantSource.indexOf('<section className="client-feature-panel overflow-hidden rounded-[28px] border text-white">'),
+      merchantSource.indexOf("<MerchantPrimaryNavCarousel />")
+    );
+
+    expect(dashboardHeroSource).toContain('className="client-feature-panel overflow-hidden rounded-[28px] border text-white"');
+    expect(dashboardHeroSource).toContain('className="client-feature-aura absolute inset-0"');
+    expect(dashboardHeroSource).not.toContain("<img");
+    expect(dashboardHeroSource).not.toContain("imageBank.salon");
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import pageSource from "./MembershipTiersPage.tsx?raw";
 import editorSource from "./MembershipTierEditor.tsx?raw";
+import i18nSource from "./i18n.ts?raw";
 
 describe("fixed platform membership tier editor", () => {
   it("shows exactly four immutable tiers and shared dual previews", () => {
@@ -15,9 +16,27 @@ describe("fixed platform membership tier editor", () => {
     expect(editorSource).toContain("platformUserManagementApi.publishTier");
     expect(editorSource).toContain("保存草稿");
     expect(editorSource).toContain("发布");
-    expect(editorSource).toContain("isAccessibleMembershipTheme");
+    expect(editorSource).not.toContain("isAccessibleMembershipTheme");
+    expect(editorSource).not.toContain("对比不足");
+    expect(editorSource).toContain("detailSurfaceTopLeft");
+    expect(editorSource).toContain("detailSurfaceMiddle");
+    expect(editorSource).toContain("detailSurfaceBottom");
+    expect(i18nSource).toContain("详细卡底色・左上角");
+    expect(i18nSource).toContain("Detailed card background · middle");
     expect(editorSource).toContain("月费价值（NDP）");
     expect(editorSource).toContain("会员经验倍率");
     expect(editorSource).toContain("有效期");
+  });
+
+  it("uses the operations switch so enabled benefits inherit the admin accent", () => {
+    expect(editorSource).toContain("<AdminToggleSwitch");
+    expect(editorSource).not.toContain("<ToggleSwitch");
+  });
+
+  it("loads formal benefit copy and does not render raw benefit fields", () => {
+    expect(pageSource).toContain("platformUserManagementApi.listBenefits");
+    expect(pageSource).toContain("benefits={benefits}");
+    expect(editorSource).toContain("resolvePlatformBenefitLocalizedText");
+    expect(editorSource).not.toContain("{benefit.code}</span>");
   });
 });

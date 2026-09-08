@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import scheduleCycleBoardSource from "./ScheduleCycleBoard.tsx?raw";
 import cycleBoardSource from "./ScheduleCycleCalendarBoard.tsx?raw";
 import scheduleGridSource from "../../features/dispatch-center/components/ScheduleGrid.tsx?raw";
-import stepFeedbackCollectionSource from "../../features/scheduling/automation/StepFeedbackCollection.tsx?raw";
 import stepModeSelectionSource from "../../features/scheduling/automation/StepModeSelection.tsx?raw";
 import scheduleSearchFieldSource from "./ScheduleSearchField.tsx?raw";
 import unifiedCalendarSource from "./UnifiedUserCalendar.tsx?raw";
@@ -43,6 +42,12 @@ describe("shared schedule frame layout", () => {
     expect(cycleBoardSource).not.toContain("<UnifiedCalendarMultiDayTimeline");
   });
 
+  it("lets a formal merchant adapter provide the cycle window and matching day grids", () => {
+    expect(cycleBoardSource).toContain("dataOverride?.cycle");
+    expect(cycleBoardSource).toContain("formalGridByDate");
+    expect(cycleBoardSource).toContain("period.dates.map((date)");
+  });
+
   it("keeps merchant matrix technician headers as square avatar plus name buttons", () => {
     expect(cycleBoardSource).toContain("function CyclePeriodTechnicianHeader(");
     expect(cycleBoardSource).toContain('shape="roundedSquare"');
@@ -80,13 +85,6 @@ describe("shared schedule frame layout", () => {
     expect(scheduleGridSource).toContain("!collapsedTechnicians && !(isMobileSurface && onToggleCollapsed)");
   });
 
-  it("does not draw an extra frame around the feedback deadline label", () => {
-    expect(stepFeedbackCollectionSource).toContain('className="ml-auto flex min-w-0 shrink items-center justify-end gap-2"');
-    expect(stepFeedbackCollectionSource).toContain('className="min-w-0 justify-center truncate rounded-xl px-2.5 py-1 text-sm"');
-    expect(stepFeedbackCollectionSource).not.toContain('"ml-auto flex h-10 min-w-0 shrink items-center justify-end gap-2 rounded-full border px-3"');
-    expect(stepFeedbackCollectionSource).not.toContain("const deadlineClass");
-  });
-
   it("keeps mode-card info triggers outside selection buttons", () => {
     const modeCardButtonBlock = stepModeSelectionSource.match(/<button[\s\S]*?cardClass[\s\S]*?<\/button>/)?.[0] ?? "";
 
@@ -94,11 +92,15 @@ describe("shared schedule frame layout", () => {
     expect(stepModeSelectionSource).toContain("<InfoTooltipTrigger");
   });
 
-  it("keeps the mode-selection action buttons free of a shared outer dock", () => {
-    expect(stepModeSelectionSource).toContain('className="flex flex-wrap items-center justify-center gap-3"');
-    expect(stepModeSelectionSource).not.toContain('isMobileSurface && "schedule-wizard-action-dock rounded-[28px] p-2"');
-    expect(stepModeSelectionSource).toContain('className={cn(secondaryButtonClass, "min-w-[132px]")}');
-    expect(stepModeSelectionSource).toContain('className={cn(primaryButtonClass, "min-w-[196px]")}');
+  it("floats mobile mode-selection actions in the same safe-area frame as the home navigation", () => {
+    expect(stepModeSelectionSource).toContain('data-schedule-wizard-bottom-actions="true"');
+    expect(stepModeSelectionSource).toContain('"pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full pt-10"');
+    expect(stepModeSelectionSource).toContain('maxWidth: "var(--client-bottom-nav-max-width, 880px)"');
+    expect(stepModeSelectionSource).toContain('paddingLeft: "var(--client-bottom-nav-inline-gap, 12px)"');
+    expect(stepModeSelectionSource).toContain('pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)]');
+    expect(stepModeSelectionSource).toContain('isMobileSurface && "pb-[calc(env(safe-area-inset-bottom,0px)+8.5rem)]"');
+    expect(stepModeSelectionSource).toContain('isMobileSurface ? "w-full min-w-0" : "min-w-[132px]"');
+    expect(stepModeSelectionSource).toContain('isMobileSurface ? "w-full min-w-0" : "min-w-[196px]"');
   });
 
   it("does not apply page theme background classes to the user calendar table itself", () => {

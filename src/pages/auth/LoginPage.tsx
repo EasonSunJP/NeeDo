@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { authApi, type VerificationChallengePayload } from "../../api/auth";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import {
@@ -10,10 +10,13 @@ import {
 } from "../../auth/browserPasswordSave";
 import { requestGoogleCredential } from "../../auth/googleIdentity";
 import { type AuthSession } from "../../auth/rbac";
+import { resolveAuthPersistenceScope } from "../../auth/authPersistenceScope";
 import { openPortalEntry } from "../../auth/portalEntry";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { DEFAULT_LOGIN_LOGO_URL } from "../../features/platform-settings/defaultBrandMedia";
+import { usePlatformSettings } from "../../features/platform-settings/PlatformSettingsProvider";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -25,7 +28,7 @@ import {
 import { AuthVerificationPanel, type AuthVerificationLabels } from "./AuthVerificationPanel";
 
 type LoginPanelMode = "welcome" | "account" | "register" | "verification" | "needo-id";
-type VerificationKind = "google" | "registration";
+type VerificationKind = "google" | "registration" | "password_login";
 
 type VerificationState = {
   challenge: VerificationChallengePayload;
@@ -37,7 +40,6 @@ type GeneratedNeedoIdState = {
   session: AuthSession;
 };
 
-const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
 const loginCopyrightText = "Copyright © 2026 LifeDance Co., Ltd. All rights reserved.";
 
 const portalEntryRoute: Record<PortalScope, string> = {
@@ -99,7 +101,7 @@ function buildLoginCopy(language: Language) {
     signedInAs: text("当前账号"),
     useAccountSubtitle: text("使用已验证的邮箱或 NeeDo ID 登录。"),
     useAccountTitle: text("账号登录"),
-    welcomeSubtitle: text("先确认你的 NeeDo 身份，再进入预约、消息或工作空间。"),
+    welcomeSubtitle: text("登录后即可预约服务、查看消息，并切换其他身份。"),
     welcomeTitle: text("欢迎使用 NeeDo"),
     portals: {
       admin: { shortLabel: text("后台"), title: text("NeeDo 运营后台") },
@@ -168,15 +170,10 @@ export function resolveLoginErrorMessage(message: string | undefined, language: 
   return translateText(source ?? "登录服务暂时不可用，请稍后重试。", language);
 }
 
-function normalizePortal(value?: string | null): PortalScope {
-  if (value === "merchant" || value === "technician" || value === "business") {
-    return value;
-  }
-
-  if (value === "cps" || value === "afirieito") {
-    return "business";
-  }
-
+function resolvePasswordLoginPortal(identifier: string): PortalScope {
+  const normalized = identifier.trim().toLowerCase();
+  if (/^s\d{10}$/.test(normalized)) return "technician";
+  if (/^b\d{10}$/.test(normalized)) return "merchant";
   return "user";
 }
 
@@ -240,7 +237,7 @@ export function requiresFormalFrontendLogin(_portal: PortalScope, _redirectPath:
   return true;
 }
 
-function AppMark() {
+function AppMark({ url }: { url: string }) {
   return (
     <div className="needo-login-logo mx-auto h-[92px] w-[92px] overflow-hidden rounded-[26px]">
       <img
@@ -248,21 +245,39 @@ function AppMark() {
         aria-hidden="true"
         className="needo-login-logo__mark h-full w-full object-cover"
         draggable="false"
-        src={loginIconMarkUrl}
+        src={url}
       />
     </div>
   );
 }
 
-export function LoginPage({
-  navigateToPortal = openPortalEntry
-}: {
+type LoginPageProps = {
   navigateToPortal?: (portal: PortalScope, route: string) => void;
-}) {
-  const { portal } = useParams();
+};
+
+function navigateFromLogin(_portal: PortalScope, route: string) {
+  // Keep the authenticated session in the unified entry's persistence scope.
+  openPortalEntry("user", route);
+}
+
+export function LoginPage({ navigateToPortal = navigateFromLogin }: LoginPageProps) {
+  const [searchParams] = useSearchParams();
+  const needsUserEntry = resolveAuthPersistenceScope() !== "user";
+  const redirect = searchParams.get("redirect");
+  const loginRoute = `/login/user${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ""}`;
+
+  useEffect(() => {
+    if (needsUserEntry) navigateToPortal("user", loginRoute);
+  }, [loginRoute, navigateToPortal, needsUserEntry]);
+
+  return needsUserEntry ? null : <UserLoginPage navigateToPortal={navigateToPortal} />;
+}
+
+function UserLoginPage({ navigateToPortal = navigateFromLogin }: LoginPageProps) {
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
   const { theme, isNight } = useClientTheme();
+  const { settings: platformSettings } = usePlatformSettings();
   const {
     authenticateWithGoogleCredential,
     canAccess,
@@ -274,14 +289,14 @@ export function LoginPage({
     startRegistration,
     switchPortal,
     verifyGoogleRegistrationOrLink,
+    verifyPasswordLogin,
     verifyRegistration
   } = useAuth();
-  const requestedPortal = normalizePortal(portal);
+  const activePortal: PortalScope = "user";
   const redirectPath = searchParams.get("redirect");
-  const [activePortal, setActivePortal] = useState<PortalScope>(requestedPortal);
   const passwordSaveScope = `frontend:${activePortal}` as BrowserPasswordSaveScope;
   const [savePassword, setSavePassword] = useState(() =>
-    readBrowserPasswordSavePreference(`frontend:${requestedPortal}` as BrowserPasswordSaveScope)
+    readBrowserPasswordSavePreference(`frontend:${activePortal}` as BrowserPasswordSaveScope)
   );
   const [panelMode, setPanelMode] = useState<LoginPanelMode>("welcome");
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -314,7 +329,6 @@ export function LoginPage({
     if (!result.ok) setFeedback(resolveLoginErrorMessage(result.message, language));
   };
 
-  useEffect(() => setActivePortal(requestedPortal), [requestedPortal]);
   useEffect(() => {
     setSavePassword(readBrowserPasswordSavePreference(passwordSaveScope));
   }, [passwordSaveScope]);
@@ -356,7 +370,13 @@ export function LoginPage({
 
   useEffect(() => {
     const container = googleContainerRef.current;
-    if (!container || panelMode !== "welcome" || hasActiveAccess || generatedNeedoId) {
+    if (
+      !platformSettings.loginMethods.google ||
+      !container ||
+      panelMode !== "welcome" ||
+      hasActiveAccess ||
+      generatedNeedoId
+    ) {
       return;
     }
 
@@ -427,6 +447,7 @@ export function LoginPage({
     authenticateWithGoogleCredential,
     navigateToPortal,
     panelMode,
+    platformSettings.loginMethods.google,
     redirectPath
   ]);
 
@@ -448,12 +469,21 @@ export function LoginPage({
 
     setPending(true);
     try {
-      const result = await login(activePortal, identifier, password);
+      const loginPortal = resolvePasswordLoginPortal(identifier);
+      const result = await login(loginPortal, identifier, password);
       if (!result.ok) {
         setFeedback(resolveLoginErrorMessage(result.message, language));
         return;
       }
-      if (savePassword && result.session.portal === activePortal) {
+      if (!("session" in result)) {
+        setLoginIdentifier(identifier);
+        setLoginPassword(password);
+        setVerification({ challenge: result.challenge, kind: "password_login" });
+        setVerificationError("");
+        setPanelMode("verification");
+        return;
+      }
+      if (savePassword && result.session.portal === loginPortal) {
         await requestBrowserPasswordSave({
           id: identifier,
           name: "NeeDo",
@@ -506,12 +536,21 @@ export function LoginPage({
       const result =
         verification.kind === "registration"
           ? await verifyRegistration(input)
-          : await verifyGoogleRegistrationOrLink(input, activePortal);
+          : verification.kind === "password_login"
+            ? await verifyPasswordLogin(input, resolvePasswordLoginPortal(loginIdentifier))
+            : await verifyGoogleRegistrationOrLink(input, activePortal);
       if (!result.ok) {
         setVerificationError(resolveLoginErrorMessage(result.message, language));
         return;
       }
-      if (result.needoId) {
+      if (verification.kind === "password_login" && savePassword) {
+        await requestBrowserPasswordSave({
+          id: loginIdentifier,
+          name: "NeeDo",
+          password: loginPassword
+        });
+      }
+      if ("needoId" in result && typeof result.needoId === "string" && result.needoId) {
         setGeneratedNeedoId({
           needoId: result.needoId,
           session: result.session
@@ -540,6 +579,28 @@ export function LoginPage({
       return;
     }
 
+    if (verification.kind === "password_login") {
+      setPending(true);
+      try {
+        const result = await login(resolvePasswordLoginPortal(loginIdentifier), loginIdentifier, loginPassword);
+        if (!result.ok) {
+          setVerificationError(resolveLoginErrorMessage(result.message, language));
+          return;
+        }
+        if ("session" in result) {
+          navigateToPortal(
+            result.session.portal,
+            getPostLoginRoute(result.session.portal, redirectPath)
+          );
+          return;
+        }
+        setVerification({ challenge: result.challenge, kind: "password_login" });
+      } finally {
+        setPending(false);
+      }
+      return;
+    }
+
     setPending(true);
     try {
       const result = await startRegistration({
@@ -558,7 +619,11 @@ export function LoginPage({
 
   const handleVerificationBack = () => {
     const returningFromGoogle = verification?.kind === "google";
-    const priorMode = returningFromGoogle ? "welcome" : "register";
+    const priorMode = returningFromGoogle
+      ? "welcome"
+      : verification?.kind === "password_login"
+        ? "account"
+        : "register";
     setVerification(null);
     setVerificationError("");
     setPanelMode(priorMode);
@@ -616,15 +681,13 @@ export function LoginPage({
               {copy.back}
             </button>
           ) : (
-            <span className="text-sm font-black text-[color:var(--client-soft-muted)]">
-              {activePortalCopy.shortLabel}
-            </span>
+            <span aria-hidden="true" />
           )}
           <LanguageSwitcher dark={isNight} iconOnly />
         </header>
 
         <section className="flex flex-1 flex-col justify-center py-8 text-center">
-          <AppMark />
+          <AppMark url={platformSettings.loginLogo?.url ?? DEFAULT_LOGIN_LOGO_URL} />
           <h1 className="mt-7 text-[32px] font-black leading-tight tracking-normal text-[color:var(--client-text)]">
             {copy.welcomeTitle}
           </h1>
@@ -855,7 +918,7 @@ export function LoginPage({
                 >
                   {copy.accountLogin}
                 </button>
-                {activePortal === "user" ? (
+                {activePortal === "user" && platformSettings.selfRegistrationEnabled ? (
                   <button
                     className="inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
                     data-testid="show-registration"
@@ -868,7 +931,7 @@ export function LoginPage({
               </div>
             )}
 
-            <div
+            {platformSettings.loginMethods.google ? <div
               className={
                 panelMode === "welcome" && !hasActiveAccess && !generatedNeedoId ? "mt-4" : "hidden"
               }
@@ -893,7 +956,7 @@ export function LoginPage({
                   </button>
                 ) : null}
               </div>
-            </div>
+            </div> : null}
 
             {feedback ? (
               <p

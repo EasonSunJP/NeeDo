@@ -5,8 +5,6 @@ import {
   ContactEventTimelinePanel,
   type ContactEventTimelineEntry
 } from "../../components/mobile/ContactEventTimeline";
-import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
-import { ScheduleSearchField } from "../../components/scheduling/ScheduleSearchField";
 import {
   UnifiedUserCalendar,
   type UnifiedCalendarTechnician
@@ -92,6 +90,7 @@ export function FormalTechnicianScheduleWorkspace({
   profileAvatarUrl,
   profileId,
   profileName,
+  searchQuery = "",
   shopId,
   shopName
 }: {
@@ -100,12 +99,12 @@ export function FormalTechnicianScheduleWorkspace({
   profileAvatarUrl?: string | null;
   profileId: number;
   profileName: string;
+  searchQuery?: string;
   shopId: number;
   shopName: string;
 }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<WorkspaceTab>("calendar");
-  const [searchQuery, setSearchQuery] = useState("");
   const [statusOrders, setStatusOrders] = useState<BookingOrder[]>([]);
   const [statusLoadState, setStatusLoadState] = useState<"loading" | "success" | "error">("loading");
   const calendarTechnician = useMemo<UnifiedCalendarTechnician>(() => ({
@@ -150,7 +149,7 @@ export function FormalTechnicianScheduleWorkspace({
 
   return (
     <div className="text-[color:var(--client-text)]" data-testid="formal-technician-schedule-workspace">
-      <FloatingHomeHeader className="relative z-10" panelClassName="relative overflow-hidden">
+      <div className="mb-4">
         <FeatureSegmentedTabs
           items={[
             { label: "我的排班", value: "calendar" },
@@ -160,10 +159,7 @@ export function FormalTechnicianScheduleWorkspace({
           value={tab}
           variant="header"
         />
-        {tab === "calendar" ? (
-          <ScheduleSearchField onChange={setSearchQuery} value={searchQuery} />
-        ) : null}
-      </FloatingHomeHeader>
+      </div>
 
       <div className="space-y-4">
         {dataCenterPeriodLabel ? <p className="rounded-2xl border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] px-4 py-2.5 text-xs font-black text-[color:var(--client-muted)]">数据中心期间：{dataCenterPeriodLabel}</p> : null}
@@ -227,7 +223,7 @@ export function FormalTechnicianScheduleWorkspace({
           />
           <button
             aria-label="新建正式排班"
-            className="fixed bottom-[calc(env(safe-area-inset-bottom)+112px)] right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_18px_42px_color-mix(in_srgb,var(--client-primary)_40%,transparent)]"
+            className="fixed bottom-[calc(env(safe-area-inset-bottom)+24px)] right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_18px_42px_color-mix(in_srgb,var(--client-primary)_40%,transparent)]"
             onClick={() => navigate("/technician/schedule/new")}
             type="button"
           >

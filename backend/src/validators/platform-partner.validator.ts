@@ -18,8 +18,41 @@ export const platformPartnerUserParamSchema = z
 export const platformPartnerProfileBodySchema = z
   .object({
     partnerType: z.enum(["agent", "franchisee", "supplier"]),
-    activatedAt: requiredDateSchema,
+    startsAt: requiredDateSchema,
+    endsAt: requiredDateSchema.nullable(),
+    permanent: z.boolean(),
     reason: reasonSchema
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.permanent && value.endsAt !== null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsAt"],
+        message: "Permanent ranges cannot have an end date"
+      });
+    }
+    if (!value.permanent && value.endsAt === null) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsAt"],
+        message: "An end date is required for non-permanent ranges"
+      });
+    }
+    if (value.endsAt !== null && value.endsAt <= value.startsAt) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsAt"],
+        message: "End date must be after start date"
+      });
+    }
+  });
+
+export const platformPartnerHistoryQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(20),
+    partnerType: z.enum(["agent", "franchisee", "supplier"]).optional()
   })
   .strict();
 
@@ -32,9 +65,7 @@ export const agentListQuerySchema = z
   })
   .strict();
 
-export const agentParamSchema = z
-  .object({ agentPublicId: z.string().uuid() })
-  .strict();
+export const agentParamSchema = z.object({ agentPublicId: z.string().uuid() }).strict();
 
 export const agentShopReferralListQuerySchema = z
   .object({
@@ -54,6 +85,7 @@ export const agentShopReferralBodySchema = z
   .strict();
 
 export type PlatformPartnerProfileBody = z.output<typeof platformPartnerProfileBodySchema>;
+export type PlatformPartnerHistoryQuery = z.output<typeof platformPartnerHistoryQuerySchema>;
 export type AgentListQuery = z.output<typeof agentListQuerySchema>;
 export type AgentShopReferralListQuery = z.output<typeof agentShopReferralListQuerySchema>;
 export type AgentShopReferralBody = z.output<typeof agentShopReferralBodySchema>;

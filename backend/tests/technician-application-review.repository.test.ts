@@ -43,6 +43,7 @@ describe("TechnicianApplicationReviewRepository", () => {
         id: 11,
         type: "technician",
         deletedAt: null,
+        status: { not: "draft" },
         technicianDetail: { targetShopId: 21, deletedAt: null }
       },
       select: expect.any(Object)
@@ -60,8 +61,9 @@ describe("TechnicianApplicationReviewRepository", () => {
       role: {
         findFirst: jest.fn().mockResolvedValue({ id: 6, code: "technician" })
       },
+      publicIdentifier: { create: jest.fn().mockResolvedValue({ id: 301 }) },
       userIdentity: {
-        findFirst: jest.fn().mockResolvedValue({ id: 130 }),
+        findFirst: jest.fn().mockResolvedValue({ id: 130, user: { accountNo: "8274936150" } }),
         create: jest.fn().mockResolvedValue({
           id: 61,
           userId: 7,

@@ -290,27 +290,31 @@ describe("TechnicianShopAffiliationRepository", () => {
     });
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 3 }));
-    expect(result).toEqual(expect.objectContaining({
-      total: 5,
-      page: 2,
-      page_size: 2,
-      list: [
-        expect.objectContaining({ id: "audit-503" }),
-        expect.objectContaining({ id: "system-affiliation-91" })
-      ]
-    }));
+    expect(result).toEqual(
+      expect.objectContaining({
+        total: 5,
+        page: 2,
+        page_size: 2,
+        list: [
+          expect.objectContaining({ id: "audit-503" }),
+          expect.objectContaining({ id: "system-affiliation-91" })
+        ]
+      })
+    );
   });
 
   it("sorts lifecycle and audit events together before applying the page", async () => {
     const repository = new TechnicianShopAffiliationRepository({
       auditLog: {
-        findMany: jest.fn().mockResolvedValue([{
-          id: 500,
-          action: "merchant_admin.employee_timeline.comment",
-          metadata: { message: "更早的审计记录" },
-          createdAt: new Date("2026-04-01T00:00:00.000Z"),
-          actor: { username: "财务管理员", avatarUrl: null }
-        }]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 500,
+            action: "merchant_admin.employee_timeline.comment",
+            metadata: { message: "更早的审计记录" },
+            createdAt: new Date("2026-04-01T00:00:00.000Z"),
+            actor: { username: "财务管理员", avatarUrl: null }
+          }
+        ]),
         count: jest.fn().mockResolvedValue(1)
       },
       technicianShopAffiliation: {
@@ -386,8 +390,7 @@ describe("TechnicianShopAffiliationRepository", () => {
         endsAt: "2026-08-29T13:00:00.000Z"
       }),
       {
-        projectionId:
-          "busy-redacted:2026-08-29T13:00:00.000Z:2026-08-29T15:00:00.000Z",
+        projectionId: "busy-redacted:2026-08-29T13:00:00.000Z:2026-08-29T15:00:00.000Z",
         kind: "busy_redacted",
         visibility: "busy_redacted",
         status: "busy",

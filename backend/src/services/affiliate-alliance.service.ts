@@ -16,11 +16,7 @@ type AuditRecorder = Pick<AuditLogService, "createInput">;
 export type AffiliateAllianceStatus = "active" | "suspended" | "closed";
 export type AffiliateAllianceMemberRole = "owner" | "partner" | "subordinate";
 export type AffiliateAllianceInvitationRole = "partner" | "subordinate";
-export type AffiliateAllianceInvitationStatus =
-  | "pending"
-  | "accepted"
-  | "rejected"
-  | "expired";
+export type AffiliateAllianceInvitationStatus = "pending" | "accepted" | "rejected" | "expired";
 
 const ALLIANCE_INVITATION_TTL_MS = 72 * 60 * 60 * 1000;
 
@@ -115,13 +111,11 @@ export interface AffiliateAllianceEligibleContactInput extends AffiliateAlliance
   ownerUserId: number;
 }
 
-export interface AffiliateAllianceSentInvitationListInput
-  extends AffiliateAllianceInvitationListQuery {
+export interface AffiliateAllianceSentInvitationListInput extends AffiliateAllianceInvitationListQuery {
   allianceId: number;
 }
 
-export interface AffiliateAllianceReceivedInvitationListInput
-  extends AffiliateAllianceInvitationListQuery {
+export interface AffiliateAllianceReceivedInvitationListInput extends AffiliateAllianceInvitationListQuery {
   inviteeUserId: number;
 }
 
@@ -181,9 +175,7 @@ export type AffiliateAllianceRejectInvitationResult =
 
 export interface AffiliateAllianceRepositoryPort {
   findMine: (userId: number) => Promise<AffiliateAlliancePayload | null>;
-  findCreationEligibility: (
-    userId: number
-  ) => Promise<AffiliateAllianceCreationEligibility>;
+  findCreationEligibility: (userId: number) => Promise<AffiliateAllianceCreationEligibility>;
   createOwned: (input: AffiliateAllianceCreateOwnedInput) => Promise<AffiliateAlliancePayload>;
   listMembers: (
     input: AffiliateAllianceOwnerListInput
@@ -223,9 +215,7 @@ export class AffiliateAllianceService {
     private readonly now: () => Date = () => new Date()
   ) {}
 
-  public async getMine(
-    actor: AuthenticatedAccessContext
-  ): Promise<AffiliateAllianceMineResponse> {
+  public async getMine(actor: AuthenticatedAccessContext): Promise<AffiliateAllianceMineResponse> {
     this.requireAffiliateIdentity(actor);
     return { alliance: await this.repository.findMine(actor.userId) };
   }
@@ -433,11 +423,7 @@ export class AffiliateAllianceService {
   ): Promise<AffiliateAlliancePayload> {
     this.requireAffiliateIdentity(actor);
     const alliance = await this.repository.findMine(actor.userId);
-    if (
-      alliance === null ||
-      alliance.status !== "active" ||
-      alliance.membership.role !== "owner"
-    ) {
+    if (alliance === null || alliance.status !== "active" || alliance.membership.role !== "owner") {
       throw new AppError({
         code: ERROR_CODES.AFFILIATE_ALLIANCE_OWNER_REQUIRED,
         message: "error.affiliate_alliance.owner_required",

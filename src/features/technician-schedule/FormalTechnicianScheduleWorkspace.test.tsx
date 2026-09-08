@@ -140,19 +140,21 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     await waitFor(() => expect(container.querySelector('[data-testid="shared-unified-calendar"]')).not.toBeNull());
     expect(container.textContent).toContain("我的排班");
     expect(container.textContent).toContain("排班设置");
-    const search = container.querySelector<HTMLInputElement>('input[aria-label="行程搜索"]');
-    expect(search?.placeholder).toBe("行程搜索");
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(search, "预约");
-      search?.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    await act(async () => root.render(
+      <MemoryRouter>
+        <FormalTechnicianScheduleWorkspace
+          dataCenterPeriod="last7days"
+          initialSelectedDate="2026-08-26"
+          profileAvatarUrl="/media/technician.jpg"
+          profileId={31}
+          profileName="正式技师"
+          searchQuery="预约"
+          shopId={11}
+          shopName="正式店铺"
+        />
+      </MemoryRouter>
+    ));
     expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({ searchQuery: "预约" }));
-  });
-
-  it("uses the approved floating header controls with a separate search action", async () => {
-    await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-floating-header"]')).not.toBeNull());
-    expect(container.querySelector('button[aria-label="搜索"]')).not.toBeNull();
-    expect(container.querySelector('input[role="searchbox"]')).not.toBeNull();
   });
 
   it("keeps the approved three-column formal status timeline below the shared calendar", async () => {

@@ -37,11 +37,12 @@ const technicianActor: AuthenticatedAccessContext = {
 
 type Assert<T extends true> = T;
 type IsEqual<TLeft, TRight> =
-  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
-    ? true
-    : false;
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2 ? true : false;
 type BookingCreationPaymentBoundary = Assert<
-  IsEqual<NonNullable<BookingCreateRepositoryInput["paymentMethod"]>, LegacyServicePaymentMethodPayload>
+  IsEqual<
+    NonNullable<BookingCreateRepositoryInput["paymentMethod"]>,
+    LegacyServicePaymentMethodPayload
+  >
 >;
 type ManualConfirmationPaymentBoundary = Assert<
   IsEqual<ConfirmManualPaymentRepositoryInput["method"], LegacyServicePaymentMethodPayload>
@@ -107,6 +108,7 @@ const makeOrder = (
   servicePriceSnapshot: "8800.00",
   serviceDurationSnapshot: 60,
   serviceSnapshot: null,
+  fulfillmentAddressSnapshot: null,
   shopName: "Aoyama Care Studio",
   technicianName: "Mika Tanaka",
   priceAmount: "8800.00",
@@ -208,6 +210,360 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("publishes compact regional order and invalidation events only after booking commit", async () => {
+    const order = makeOrder("pending");
+    const repository = createRepository(order);
+    repository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: order.id,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: order.orderNo,
+        status: order.status,
+        serviceName: order.serviceName,
+        amountJpy: 8800
+      }
+    ]);
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await expect(
+      service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toBe(order);
+
+    expect(repository.createBooking).toHaveBeenCalledTimes(1);
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([order.id]);
+    expect(publisher.publish).toHaveBeenNthCalledWith(1, {
+      type: "order.changed",
+      scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+      payload: {
+        orderNo: order.orderNo,
+        status: "pending",
+        serviceName: order.serviceName,
+        amountJpy: 8800
+      }
+    });
+    expect(publisher.publish).toHaveBeenNthCalledWith(2, {
+      type: "metrics.invalidate",
+      scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+      payload: { sections: ["headline", "orders", "trend", "rankings"] }
+    });
+    expect(JSON.stringify(publisher.publish.mock.calls)).not.toMatch(
+      /customer|address|phone|email|note|actorId|shopId|technicianId/i
+    );
+  });
+
+  it("keeps a committed booking successful when event projection or publishing fails", async () => {
+    const order = makeOrder("pending");
+    const projectionFailureRepository = createRepository(order);
+    projectionFailureRepository.findLiveDashboardOrderEvents = jest.fn(async () => {
+      throw new Error("projection unavailable");
+    });
+    const publisher = { publish: jest.fn(async () => null) };
+    const projectionFailureService = new BookingService(
+      projectionFailureRepository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+    await expect(
+      projectionFailureService.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toBe(order);
+    expect(publisher.publish).not.toHaveBeenCalled();
+
+    const publishFailureRepository = createRepository(order);
+    publishFailureRepository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: order.id,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: order.orderNo,
+        status: order.status,
+        serviceName: order.serviceName,
+        amountJpy: 8800
+      }
+    ]);
+    const failingPublisher = {
+      publish: jest.fn(async () => {
+        throw new Error("redis unavailable");
+      })
+    };
+    const publishFailureService = new BookingService(
+      publishFailureRepository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      failingPublisher
+    );
+    await expect(
+      publishFailureService.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toBe(order);
+    expect(failingPublisher.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("publishes only after an applied add-on mutation changes the compact order projection", async () => {
+    const order = makeOrder("inService");
+    const repository = createRepository(order);
+    repository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: order.id,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: order.orderNo,
+        status: order.status,
+        serviceName: order.serviceName,
+        amountJpy: 9800
+      }
+    ]);
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await service.createOrderAddOn(
+      actor,
+      order.id,
+      { serviceId: 2, idempotencyKey: "add-on-live-event-0001" },
+      { ip: "127.0.0.1", userAgent: "jest" }
+    );
+
+    expect(repository.createOrderAddOn).toHaveBeenCalledTimes(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("batch-projects every superseded cancellation and the new booking in one query", async () => {
+    const created = makeOrder("pending");
+    const superseded = [
+      { ...makeOrder("cancelled"), id: 11, orderNo: "ND11" },
+      { ...makeOrder("cancelled"), id: 12, orderNo: "ND12" }
+    ];
+    const repository = createRepository(created);
+    repository.createBooking.mockResolvedValue({
+      order: created,
+      recipientUserIds: [created.customerUserId],
+      supersededOrders: superseded.map((order) => ({
+        order,
+        recipientUserIds: [order.customerUserId]
+      }))
+    });
+    repository.findLiveDashboardOrderEvents = jest.fn(async (ids) =>
+      ids.map((id) => {
+        const order = id === created.id ? created : superseded.find((item) => item.id === id)!;
+        return {
+          orderId: id,
+          scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+          orderNo: order.orderNo,
+          status: order.status,
+          serviceName: order.serviceName,
+          amountJpy: 8800
+        };
+      })
+    );
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
+      serviceId: 1,
+      scheduleSlotId: 11,
+      fulfillmentMode: "store"
+    });
+
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(1);
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([11, 12, 1]);
+    expect(publisher.publish).toHaveBeenCalledTimes(6);
+  });
+
+  it("publishes fulfillment mutations only when applied, including both add-on decisions", async () => {
+    const order = makeOrder("confirmed");
+    const repository = createRepository(order);
+    repository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: order.id,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: order.orderNo,
+        status: order.status,
+        serviceName: order.serviceName,
+        amountJpy: 8800
+      }
+    ]);
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+    const context = { ip: "127.0.0.1", userAgent: "jest" };
+
+    await service.startService(
+      actor,
+      1,
+      { actor: "customer", idempotencyKey: "start-live-001" },
+      context
+    );
+    await service.createOrderAddOn(
+      actor,
+      1,
+      { serviceId: 2, idempotencyKey: "addon-live-001" },
+      context
+    );
+    await service.acceptOrderAddOn(actor, 1, 21, { idempotencyKey: "accept-live-001" }, context);
+    await service.rejectOrderAddOn(actor, 1, 22, { idempotencyKey: "reject-live-001" }, context);
+    await service.endService(
+      actor,
+      1,
+      { reason: "done", idempotencyKey: "end-live-0001" },
+      context
+    );
+
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(5);
+    expect(publisher.publish).toHaveBeenCalledTimes(10);
+
+    repository.startService.mockResolvedValue({ outcome: "ok", order, applied: false });
+    repository.createOrderAddOn.mockResolvedValue({ outcome: "ok", order, applied: false });
+    repository.decideOrderAddOn.mockResolvedValue({ outcome: "ok", order, applied: false });
+    repository.endService.mockResolvedValue({ outcome: "ok", order, applied: false });
+    await service.startService(
+      actor,
+      1,
+      { actor: "customer", idempotencyKey: "start-live-001" },
+      context
+    );
+    await service.createOrderAddOn(
+      actor,
+      1,
+      { serviceId: 2, idempotencyKey: "addon-live-001" },
+      context
+    );
+    await service.acceptOrderAddOn(actor, 1, 21, { idempotencyKey: "accept-live-001" }, context);
+    await service.rejectOrderAddOn(actor, 1, 22, { idempotencyKey: "reject-live-001" }, context);
+    await service.endService(
+      actor,
+      1,
+      { reason: "done", idempotencyKey: "end-live-0001" },
+      context
+    );
+
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(5);
+    expect(publisher.publish).toHaveBeenCalledTimes(10);
+  });
+
+  it("publishes normal confirmation and cancellation transitions", async () => {
+    const publisher = { publish: jest.fn(async () => null) };
+    const makeService = (status: "pending" | "confirmed") => {
+      const repository = createRepository(makeOrder(status));
+      repository.findLiveDashboardOrderEvents = jest.fn(async () => [
+        {
+          orderId: 1,
+          scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+          orderNo: "ND202605260001",
+          status,
+          serviceName: "Shiatsu Recovery",
+          amountJpy: 8800
+        }
+      ]);
+      return {
+        repository,
+        service: new BookingService(
+          repository,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          publisher
+        )
+      };
+    };
+    const confirmation = makeService("pending");
+    const cancellation = makeService("confirmed");
+
+    await confirmation.service.transitionOrder(actor, 1, "confirm");
+    await cancellation.service.transitionOrder(actor, 1, "cancel", "cancelled");
+
+    expect(confirmation.repository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([1]);
+    expect(cancellation.repository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([1]);
+    expect(publisher.publish).toHaveBeenCalledTimes(4);
+  });
+
   it("keeps legacy creation/manual payment inputs narrower than order projections", () => {
     expect(bookingCreationPaymentBoundary).toBe(true);
     expect(manualConfirmationPaymentBoundary).toBe(true);
@@ -260,6 +616,30 @@ describe("BookingService state machine", () => {
     expect(repository.transitionOrder).not.toHaveBeenCalled();
   });
 
+  it("requires the Exchange cancellation protocol before any fallback transition or settlement", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.transitionOrderWithScheduleGuard = jest
+      .fn()
+      .mockResolvedValue({ outcome: "exchange_cancellation_required" });
+    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+      freezeBookingAcceptance: jest.fn(),
+      releaseBookingHold: jest.fn(),
+      settleBookingCompletion: jest.fn(),
+      compensateCustomerForMerchantCancellation: jest.fn()
+    };
+    const service = new BookingService(repository, ledgerService);
+
+    await expect(service.transitionOrder(actor, 1, "cancel", "changed mind")).rejects.toMatchObject(
+      {
+        code: ERROR_CODES.EXCHANGE_MATCH_CANCELLATION_REQUIRED,
+        message: "error.exchange.match_cancellation_required",
+        statusCode: 409
+      }
+    );
+    expect(repository.transitionOrder).not.toHaveBeenCalled();
+    expect(ledgerService.releaseBookingHold).not.toHaveBeenCalled();
+  });
+
   it("derives technician scope for a single schedule slot", async () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);
@@ -290,6 +670,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"
@@ -297,6 +678,29 @@ describe("BookingService state machine", () => {
     ).rejects.toMatchObject({
       code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
       message: "error.booking.slot_unavailable"
+    });
+  });
+
+  it("rejects a stale displayed price and returns the current authoritative amount", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.createBooking.mockResolvedValue({
+      outcome: "price_changed",
+      currentPriceAmountJpy: 9_800
+    });
+    const service = new BookingService(repository);
+
+    await expect(
+      service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.BOOKING_PRICE_CHANGED,
+      message: "error.booking.price_changed",
+      statusCode: 409,
+      data: { currentPriceAmountJpy: 9_800 }
     });
   });
 
@@ -347,6 +751,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"
@@ -374,6 +779,7 @@ describe("BookingService state machine", () => {
     const service = new BookingService(repository);
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 12_000,
       technicianServiceId: 21,
       scheduleSlotId: 11,
       fulfillmentMode: "store"
@@ -396,6 +802,7 @@ describe("BookingService state machine", () => {
     const service = new BookingService(repository);
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       orderType: "request",
       serviceId: 1,
       scheduleSlotId: 11,
@@ -453,6 +860,7 @@ describe("BookingService state machine", () => {
     );
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 11,
       fulfillmentMode: "store",
@@ -518,6 +926,7 @@ describe("BookingService state machine", () => {
     );
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 11,
       fulfillmentMode: "store"
@@ -654,6 +1063,36 @@ describe("BookingService state machine", () => {
         { ip: "127.0.0.1" }
       )
     ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
+  });
+
+  it("returns the sanitized home address only to authorized owner and provider actors", async () => {
+    const order = {
+      ...makeOrder("pending"),
+      fulfillmentMode: "home" as const,
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: null
+      }
+    };
+    const service = new BookingService(createRepository(order));
+    const providerActor = {
+      userId: 2,
+      roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop" as const,
+      currentIdentityScopeId: 1
+    };
+
+    await expect(service.getOrder(actor, 1)).resolves.toMatchObject({
+      fulfillmentAddressSnapshot: order.fulfillmentAddressSnapshot
+    });
+    await expect(service.getOrder(providerActor, 1)).resolves.toMatchObject({
+      fulfillmentAddressSnapshot: order.fulfillmentAddressSnapshot
+    });
+    await expect(service.getOrder({ userId: 99, roles: ["customer"] }, 1)).rejects.toMatchObject({
+      statusCode: 404
+    });
   });
 
   it("hides other customers' orders from customer actors", async () => {
@@ -952,6 +1391,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"

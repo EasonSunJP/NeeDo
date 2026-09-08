@@ -42,6 +42,15 @@ const formalPost: RealtimeSocialPost = {
 };
 
 describe("formal social adapter", () => {
+  it("maps the server-authoritative pin state onto both the post and its author profile", () => {
+    const pinned = { ...formalPost, isPinned: true };
+
+    expect(mapFormalSocialPost(pinned).isPinned).toBe(true);
+    expect(mapFormalSocialProfiles([pinned])).toEqual({
+      "technician:22": expect.objectContaining({ pinnedPostId: "81" })
+    });
+  });
+
   it("maps formal media envelopes and quote metadata into the complete social post model", () => {
     expect(mapFormalSocialPost(formalPost)).toEqual(
       expect.objectContaining({

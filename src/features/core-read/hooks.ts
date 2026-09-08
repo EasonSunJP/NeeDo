@@ -1,4 +1,5 @@
 import { useEffect, useState, type DependencyList } from "react";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 
 export type CoreReadQueryState<TData> = {
   data: TData | null;
@@ -12,17 +13,36 @@ function normalizeCoreReadError(error: unknown) {
 
 export function useCoreReadQuery<TData>(
   load: () => Promise<TData> | null,
-  deps: DependencyList
+  deps: DependencyList,
+  cache?: { enabled?: boolean; force?: boolean; key: string; scope?: string | null }
 ): CoreReadQueryState<TData> {
-  const [state, setState] = useState<CoreReadQueryState<TData>>({
-    data: null,
-    error: null,
-    loading: true
+  const scope = cache?.scope === undefined ? "public" : cache.scope;
+  const [state, setState] = useState<CoreReadQueryState<TData>>(() => {
+    const cached = cache && scope ? persistentResourceCache.peek<TData>(scope, cache.key) : undefined;
+    return { data: cached ?? null, error: null, loading: cached === undefined };
   });
 
   useEffect(() => {
     let active = true;
-    const request = load();
+    if (cache?.enabled === false) {
+      setState({ data: null, error: null, loading: false });
+      return () => {
+        active = false;
+      };
+    }
+
+    const request = cache && scope
+      ? persistentResourceCache.load<TData>({
+          force: cache.force,
+          key: cache.key,
+          load: async () => {
+            const serverRequest = load();
+            if (!serverRequest) throw new Error("error.cache.disabled_resource");
+            return serverRequest;
+          },
+          scope
+        })
+      : load();
 
     if (!request) {
       setState({ data: null, error: null, loading: false });
@@ -31,7 +51,19 @@ export function useCoreReadQuery<TData>(
       };
     }
 
-    setState((current) => ({ ...current, error: null, loading: true }));
+    const cached = cache && scope ? persistentResourceCache.peek<TData>(scope, cache.key) : undefined;
+    setState((current) => ({
+      ...current,
+      data: cached ?? current.data,
+      error: null,
+      loading: cached === undefined && current.data === null
+    }));
+
+    const unsubscribe = cache && scope
+      ? persistentResourceCache.subscribe<TData>(scope, cache.key, (data) => {
+          if (active) setState({ data, error: null, loading: false });
+        })
+      : () => undefined;
 
     request
       .then((data) => {
@@ -41,14 +73,22 @@ export function useCoreReadQuery<TData>(
       })
       .catch((error: unknown) => {
         if (active) {
-          setState({ data: null, error: normalizeCoreReadError(error), loading: false });
+          const fallback = cache && scope
+            ? persistentResourceCache.peek<TData>(scope, cache.key)
+            : undefined;
+          setState({
+            data: fallback ?? null,
+            error: fallback === undefined ? normalizeCoreReadError(error) : null,
+            loading: false
+          });
         }
       });
 
     return () => {
       active = false;
+      unsubscribe();
     };
-  }, deps);
+  }, [...deps, cache?.enabled, cache?.force, cache?.key, scope]);
 
   return state;
 }

@@ -12,7 +12,7 @@ const pending = (id: number, totalShopDebitNdp: number): PendingShopMembershipRe
   customerUserId: 40 + id,
   customerRewardNdp: totalShopDebitNdp - 100,
   platformFeeNdp: 100,
-  platformFeeRateBps: Math.ceil(100 * 10_000 / (totalShopDebitNdp - 100)),
+  platformFeeRateBps: Math.ceil((100 * 10_000) / (totalShopDebitNdp - 100)),
   totalShopDebitNdp,
   outstandingRewardNdp: totalShopDebitNdp,
   rewardStatus: "pending_funds"
@@ -37,7 +37,11 @@ describe("ShopMembershipRewardDebtAllocator", () => {
         })
         .mockResolvedValueOnce(null)
     };
-    const allocator = new ShopMembershipRewardDebtAllocator(repository, settlement as never, () => now);
+    const allocator = new ShopMembershipRewardDebtAllocator(
+      repository,
+      settlement as never,
+      () => now
+    );
     const transactionClient = { transaction: true };
 
     await allocator.allocatePendingForShopWallet({
@@ -63,11 +67,15 @@ describe("ShopMembershipRewardDebtAllocator", () => {
   it("stops at a stale or unaffordable oldest row instead of bypassing FIFO", async () => {
     const repository: ShopMembershipRewardDebtRepositoryPort = {
       listPendingRewardIds: jest.fn(async () => [1, 2]),
-      lockPendingReward: jest.fn(async (id) => id === 1 ? null : pending(2, 1_100)),
+      lockPendingReward: jest.fn(async (id) => (id === 1 ? null : pending(2, 1_100))),
       markPendingRewardPaid: jest.fn(async () => undefined)
     };
     const settlement = { settleShopMembershipReward: jest.fn() };
-    const allocator = new ShopMembershipRewardDebtAllocator(repository, settlement as never, () => now);
+    const allocator = new ShopMembershipRewardDebtAllocator(
+      repository,
+      settlement as never,
+      () => now
+    );
 
     await allocator.allocatePendingForShopWallet({ walletId: 1, shopId: 71, actorUserId: 9 });
 

@@ -17,6 +17,8 @@ const policySelect = Prisma.validator<Prisma.UserGlobalPolicyVersionSelect>()({
   requireEmail: true,
   requireHomeServiceEkyc: true,
   requireStoreServiceEkyc: true,
+  requireMerchantApplicationEkyc: true,
+  requireTechnicianApplicationEkyc: true,
   ndpPerBaseExp: true,
   baseExpUnitsPerThreshold: true,
   effectiveFrom: true,
@@ -137,6 +139,7 @@ export class UserGlobalPolicyRepository implements UserGlobalPolicyRepositoryPor
     expectedVersion: number;
     expectedLockVersion: number;
     publishedAt: Date;
+    effectiveImmediately?: boolean;
     audit: AuditLogCreateInput;
   }): Promise<UserGlobalPolicyMutationResult> {
     return this.client.$transaction(async (transaction) => {
@@ -159,7 +162,7 @@ export class UserGlobalPolicyRepository implements UserGlobalPolicyRepositoryPor
       if (draft.lockVersion !== input.expectedLockVersion) {
         return { kind: "version_conflict" as const };
       }
-      if (draft.effectiveFrom.getTime() < input.publishedAt.getTime()) {
+      if (!input.effectiveImmediately && draft.effectiveFrom.getTime() < input.publishedAt.getTime()) {
         return { kind: "invalid_state" as const };
       }
       const updated = await transaction.userGlobalPolicyVersion.updateMany({
@@ -171,6 +174,7 @@ export class UserGlobalPolicyRepository implements UserGlobalPolicyRepositoryPor
         },
         data: {
           status: UserPolicyPublicationStatus.PUBLISHED,
+          ...(input.effectiveImmediately ? { effectiveFrom: input.publishedAt } : {}),
           publishedAt: input.publishedAt,
           publishedById: input.actorId,
           lockVersion: { increment: 1 }
@@ -195,6 +199,8 @@ export class UserGlobalPolicyRepository implements UserGlobalPolicyRepositoryPor
       requireEmail: input.requireEmail,
       requireHomeServiceEkyc: input.requireHomeServiceEkyc,
       requireStoreServiceEkyc: input.requireStoreServiceEkyc,
+      requireMerchantApplicationEkyc: input.requireMerchantApplicationEkyc,
+      requireTechnicianApplicationEkyc: input.requireTechnicianApplicationEkyc,
       ndpPerBaseExp: input.ndpPerBaseExp,
       baseExpUnitsPerThreshold: input.baseExpUnitsPerThreshold,
       effectiveFrom: input.effectiveFrom,
@@ -212,6 +218,8 @@ export class UserGlobalPolicyRepository implements UserGlobalPolicyRepositoryPor
       requireEmail: policy.requireEmail,
       requireHomeServiceEkyc: policy.requireHomeServiceEkyc,
       requireStoreServiceEkyc: policy.requireStoreServiceEkyc,
+      requireMerchantApplicationEkyc: policy.requireMerchantApplicationEkyc,
+      requireTechnicianApplicationEkyc: policy.requireTechnicianApplicationEkyc,
       ndpPerBaseExp: policy.ndpPerBaseExp,
       baseExpUnitsPerThreshold: policy.baseExpUnitsPerThreshold,
       effectiveFrom: policy.effectiveFrom,

@@ -2,6 +2,10 @@
 
 面向日本市场的本地生活服务平台与商家管理系统，覆盖上门服务、门店预约、餐饮预约和 SaaS 后台运营。
 
+分组成员、后台账号 LOG 与动态插页的接口及本地验证记录见 [Step 12 抽屉改进](docs/superpowers/plans/2026-09-07-operations-member-create.md)。
+
+正式运营发布时间线、手动维护、日期搜索和审计规则见 [运营发布时间线](docs/operations-release-timeline.md)。
+
 ## Run
 
 ```bash
@@ -30,6 +34,8 @@ npm run dev:frontend
 - 首次运行前把 `backend/.env.dev.example` 复制为未跟踪的 `backend/.env.dev`，并启动本地 MySQL/Redis、应用 migration 与 seed。
 - `npm run dev:formal` 会检查并启动四个独立监听：兼容 client API `3000`、运营 `ops-api` `3001`、商户 `merchant-api` `3002`、前端 `5180`。端口上若不是预期 NeeDo 服务会拒绝覆盖。
 - 本地端口可分别用 `FORMAL_BACKEND_PORT`、`FORMAL_OPS_API_PORT`、`FORMAL_MERCHANT_API_PORT`、`FRONTEND_PORT` 覆盖；后端环境文件继续用 `FORMAL_BACKEND_ENV_FILE` 指定。
+- IM/Social 媒体通过 `dev:formal` 启动时统一使用 Git 主检出目录的 `backend/runtime/im-media` 与 `backend/runtime/content-media`，切换 linked worktree 后仍读取同一批文件。环境变量或所选环境文件中的绝对 `IM_MEDIA_STORAGE_DIR` / `CONTENT_MEDIA_STORAGE_DIR` 可覆盖默认目录；自定义相对路径会被拒绝。非 Git 源码包使用项目绝对目录，并在启动日志中标出回退来源。
+- 直接运行 `backend` 或生产部署时应显式配置媒体目录的绝对持久卷路径，生产环境会拒绝相对值。修改目录后须重启已运行的 API（启动器复用现有进程时不会更新其环境变量）。已有文件无需移动，禁止清理仍被数据库引用的 runtime 文件。
 - 三个 API 进程共享 `DATABASE_URL` 指向的唯一 MySQL 数据源。运营与商户 API 默认分别使用 Redis logical DB `/1`、`/2`，可用 `FORMAL_OPS_API_REDIS_URL` 和 `FORMAL_MERCHANT_API_REDIS_URL` 配置，但两者不得相同。
 - 本项目默认前端端口已改为 `5180`，避免占用其他项目正在使用的 `5173`、`5175` 和 `5176`。
 - 如果 `5180` 已被占用，Vite 会自动切到下一个可用端口。
@@ -37,17 +43,24 @@ npm run dev:frontend
 
 ## Build
 
+运营排行服务类型筛选、完整详情、时间/城市查询和 10/50/100 分页的本地 main 集成范围与验收命令见 [排行集成记录](docs/qa/2026-09-07-ranking-main-integration.md)。
+
 ```bash
 npm run build
 ```
 
 ## Formal Auth Frontend
 
+The recovered platform announcement backend, delivery guarantees, guarded local
+MySQL acceptance command and explicitly pending merchant/UI scope are documented
+in [Official notice delivery](docs/official-notice-delivery.md).
+
 Step 07 has added the frontend side of formal Auth / RBAC while keeping the existing React / TSX / Vite stack. The frontend now calls `/api/v1/auth/*`, `/api/v1/users`, `/api/v1/roles`, and `/api/v1/permissions` through `src/api/httpClient.ts`.
 
 Auth behavior:
 
 - Development and production frontends use the same formal password or Google login chain. There is no passwordless or static-demo login path.
+- The client login page has no portal selector. Email, bare ten-digit account IDs, and `u` IDs enter the user portal; `s` IDs enter the technician portal and `b` IDs enter the merchant portal after formal identity authorization. Google login and registration enter the user portal. Other identities remain available through the user settings identity switch. Legacy client login entries redirect to `user.html` before accepting credentials so the session stays in the same persistence scope.
 - Access Token is kept in memory only.
 - Refresh Token is persisted under `needo.auth.refresh-token` so a page refresh can restore the session through `/api/v1/auth/refresh` and `/api/v1/auth/me`.
 - User / Role / Permission admin pages are backed by real APIs and gated by `menu:*`, `page:*`, and `button:*` permissions.
@@ -138,21 +151,39 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:formal-exchange-test
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:formal-exchange-test
 ```
 
-The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective Request claiming, owner selection, exact budget increase, and target-count reduction are enabled as formal fulfillment slices. Quick matching, manual matching close, bilateral cancellation, booking/order creation, appointments, and payment remain explicitly deferred.
+The user, merchant, and technician portals expose the same formal two-tab experience at `/needo`, `/merchant/needo`, and `/technician/needo`. UI controls are available in simplified Chinese, traditional Chinese, Japanese, English, and Korean; authored post/comment/claim-message text remains in its original language. Selective and Quick Request claiming/matching, exact budget increase, Selective target-count reduction, matched-order creation, per-order bilateral cancellation, and direct appointment booking from a published Intelligence post now have formal client/API slices. Manual matching close and half-fee settlement, complete appointment lifecycle expansion, service payment, and external payment remain explicitly deferred.
 
-### Formal Selective Exchange Claim
+### Formal Intelligence service and booking
 
-Selective Request claims reuse the existing identity, shop affiliation, service, technician schedule, booking-conflict, RBAC, audit, and Request-terminal transaction authorities. No parallel matching, booking, order, wallet, ledger, or payment system is created. An active claim is a soft technician-time hold; claimant withdrawal, Request withdrawal, and Request expiry persist a terminal claim state and release the hold.
+An Intelligence publisher must select one server-resolved catalog target: `shop:{serviceId}` for a merchant identity scoped to that shop, or `technician:{technicianServiceId}` for the owning public technician with a current active shop affiliation. The persisted Intelligence row stores exactly one Restrict-linked target plus the service name, duration, catalog price, campaign price, service mode, address, and area snapshots. Legacy unbound Intelligence remains readable but is explicitly not bookable.
+
+The shared Intelligence detail renders the formal shop/technician profile card and formal service card. A live store-mode source exposes exactly one checkout link: `/checkout/{serviceId}?date={tokyoDate}&time={tokyoStartTime}&exchangePost={postId}` or `/checkout/technician-service/{technicianServiceId}?date={tokyoDate}&time={tokyoStartTime}&exchangePost={postId}`. Checkout reloads the source and catalog context, keeps only slots fully inside the source window, and submits the exact service selector plus `exchangeIntelligencePostId`; catalog and campaign prices are never accepted from the client. Booking locks the source and capacity, revalidates publisher/service/affiliation state, snapshots the campaign price and source evidence, persists initial history and audit rows, and emits the provider notification only on the first idempotent commit. Onsite Intelligence is deliberately fail-closed in both detail and direct checkout until the separately owned structured-address and route-estimate checkout slice is committed; it cannot fall through to an invalid 422 submission. The shared empty-image fallback uses the caller's fixed dimensions rather than `h-full w-full`, so shop and technician detail cards retain readable text columns at both 440 px and 320 px mobile widths.
+
+The guarded acceptance command creates a dedicated local MySQL database and principal, applies this branch's complete migration chain from an empty database, verifies the seven physical columns, one CHECK, four indexes and three Restrict foreign keys, executes both shop and technician publication/booking paths, then deletes the database and principal. It also covers cross-shop and impersonated publication, legacy/closed/withdrawn/expired/unavailable sources, inactive affiliation, time-window and service mismatch, client price injection, referenced-service and source deletion, idempotency conflict/replay, injected transaction rollback, an explicit two-client capacity race, cards, snapshots, history, notifications, audit, and store-mode travel-state separation.
+
+```bash
+cd backend
+FORMAL_BACKEND_ENV_FILE=.env.dev \
+  npm run check:exchange-intelligence-booking-flow
+```
+
+When the local MySQL administrator authenticates through a Unix socket, set `EXCHANGE_CANCELLATION_MYSQL_ADMIN_SOCKET_PATH` to that verified socket (for example `/tmp/mysql.sock`). The checker verifies that the socket principal is exactly `root@localhost` before creating its random scratch database.
+
+Local `needo_dev` has migration `20260905180000_exchange_intelligence_booking` applied. The guarded disposable-database proof applies the complete current repository migration chain in an isolated scratch database and verifies the Intelligence migration contract before exercising both publication and booking paths. The exact current seed/check totals and browser evidence are recorded only after the final local acceptance run. Staging migration, staging deployment, remote push, and post-deploy acceptance remain separate release gates.
+
+### Formal Exchange Claim
+
+Selective and Quick Request claims reuse the existing identity, shop affiliation, service, technician schedule, booking-conflict, RBAC, audit, and Request-terminal transaction authorities. No parallel matching, booking, order, wallet, ledger, or payment system is created. An active claim is a soft technician-time hold; claimant withdrawal, Request withdrawal, Request expiry, matching, and future matching close persist an appropriate terminal claim state and release or convert that hold through the matching authority.
 
 The five authenticated endpoints are:
 
 - `GET /api/v1/exchange/posts/{id}/claim-options` — paginated, provider-scoped shop/technician/service/schedule options.
-- `POST /api/v1/exchange/posts/{id}/claims` — idempotent selective claim creation with server budget and overlap validation.
+- `POST /api/v1/exchange/posts/{id}/claims` — idempotent claim creation with server budget, capacity, and overlap validation.
 - `GET /api/v1/exchange/posts/{id}/claims/mine` — current identity's persisted claim.
 - `GET /api/v1/exchange/posts/{id}/claims` — paginated claims received by the Request owner only.
 - `POST /api/v1/exchange/claims/{claimId}/withdraw` — claimant-only, idempotent pre-match withdrawal.
 
-RBAC codes are `exchange:claim-options:list`, `exchange:claims:create`, `exchange:claims:read-own`, `exchange:claims:list-owned-request`, and `exchange:claims:withdraw-own`. Public claim states are `active`, `withdrawn`, `request_withdrawn`, and `request_expired`. Quote, service, shop, technician, and estimated time are server-authoritative; the provider message is optional and remains in its original language.
+RBAC codes are `exchange:claim-options:list`, `exchange:claims:create`, `exchange:claims:read-own`, `exchange:claims:list-owned-request`, and `exchange:claims:withdraw-own`. Public claim states are `active`, `withdrawn`, `request_withdrawn`, `request_expired`, `matched`, `not_selected`, and `matching_closed`. Quote, service, shop, technician, and estimated time are server-authoritative; the provider message is optional and remains in its original language.
 
 Run the guarded local claim-lifecycle fixture checker and concurrency proof from `backend/`. `ENV_FILE` is mandatory, remote/production-looking databases are rejected, and every checker fixture is identified and deleted by captured IDs:
 
@@ -164,7 +195,7 @@ RUN_EXCHANGE_CLAIM_INTEGRATION=true ALLOW_EXCHANGE_CLAIM_DEV_INTEGRATION=true EN
 
 The lifecycle checker creates its Request, schedule, service and identities as exact, namespaced Prisma fixtures, then exercises the real claim repository/service transaction boundary. It proves the claim state machine and cleanup, but does not by itself prove formal Request publication or its TEST_NDP hold; those remain browser/API acceptance responsibilities.
 
-On the current local database, migration `20260901100000_exchange_selective_claim` was applied and independently reconciled against the physical table, constraints, indexes, foreign keys, permissions, and role assignments. Withdrawal retries are persisted separately by `20260901130000_exchange_claim_withdraw_idempotency`, without rewriting the applied base migration. The older unrelated migration `20260831160000_im_chat_records_translation` remains pending and was deliberately left untouched; do not use a blanket migrate-deploy command for this acceptance slice.
+Migration `20260901100000_exchange_selective_claim` was applied and independently reconciled against the physical table, constraints, indexes, foreign keys, permissions, and role assignments. Withdrawal retries are persisted separately by `20260901130000_exchange_claim_withdraw_idempotency`, without rewriting the applied base migration. After synchronizing the latest local `main` at the 2026-09-07 Quick acceptance gate, Prisma found all 150 repository migrations applied on local `needo_dev`; no migration command or schema write was needed.
 
 Claim creation and withdrawal remain separate from the final owner-selection command documented below. Neither flow creates a `BookingOrder`, moves wallet value, or reserves schedule capacity through `bookedCount`.
 
@@ -191,7 +222,44 @@ The checker creates its own marker-scoped Request, three providers, claims, publ
 
 Migration `20260901232000_exchange_selective_exact_matching` is additive and backfills one OPEN matching aggregate and OPENED event for every non-deleted Demand. On the accepted local database it was applied independently of unrelated pending migrations, then reconciled against the physical tables, backfill counts, checks, indexes, Restrict foreign keys, permissions, grants, and Prisma migration history.
 
-This microstep does not implement quick-mode auto matching, manual close or half-fee settlement, bilateral cancellation after matching, `BookingOrder`, `Payment`, wallet, ledger, reconciliation, or external payment mutations. A successful adjusted match deliberately leaves the existing Request publication-fee hold unchanged for a later terminal lifecycle microstep.
+This Selective matching slice does not perform manual close or half-fee settlement, `BookingOrder`, `Payment`, wallet, ledger, reconciliation, or external payment mutations. A successful adjusted match deliberately leaves the existing Request publication-fee hold unchanged for a later terminal lifecycle microstep. Matched-order conversion and bilateral cancellation are documented separately below.
+
+### Formal Quick Matching
+
+Quick matching reuses the same claim, matching, participant, event, notification, audit, privacy, schedule-conflict, and financial boundaries as Selective matching. The final provider claim atomically matches all active claims only when their count exactly reaches `effectiveTargetProviderCount` and their quote total is within `effectiveBudgetMaxJpy`. No subset choice is exposed. Once the target count is reached, further claims are rejected even when the owner still needs to approve an over-budget total.
+
+The authenticated matching read remains `GET /api/v1/exchange/posts/{id}/matching`. An over-budget Quick Request exposes the exact current claim count, selected quote total, current effective budget, required maximum, and required increase to its owner. The only write command is `POST /api/v1/exchange/posts/{id}/matching/quick/confirm-budget`, with `Idempotency-Key`, optimistic `expectedVersion`, action `increase_to_selected_total`, and the exact server-calculated `confirmedBudgetMaxJpy`. Changed payloads, stale versions, inexact amounts, non-owner access, and unnecessary confirmations fail closed.
+
+An exact confirmation changes only `ExchangeRequestMatching.effectiveBudgetMaxJpy`, then completes the all-claim match in the same transaction. It appends one ordered `BUDGET_INCREASED` event followed by exactly one `QUICK_MATCHED` event, creates one Participant per claim, marks every active claim and the Request/matching aggregate matched, and emits scoped notification/audit evidence. The original Demand budget remains immutable; all owner-facing budget summaries use the persisted effective matching budget after confirmation.
+
+Quick matching does not create `BookingOrder`, `OrderFinancial`, payment, ledger, reconciliation, or schedule-capacity writes. The Request publication-fee hold stays active and the Request financial projection stays `HELD`. Run the rollback-contained checker and the explicitly enabled two-connection concurrency proof from `backend/`:
+
+```bash
+ENV_FILE=.env.dev npm run check:exchange-quick-matching-flow
+RUN_EXCHANGE_QUICK_MATCHING_INTEGRATION=true ALLOW_EXCHANGE_QUICK_MATCHING_DEV_INTEGRATION=true ENV_FILE=.env.dev \
+  npm test -- --runInBand --runTestsByPath tests/exchange-quick-matching.repository.integration.test.ts
+```
+
+Authenticated browser acceptance covered automatic within-budget matching, exact over-budget confirmation, third-provider capacity closure, persisted information-card contents and fallback avatars, reload, privacy, and 320 px, 440 px, and desktop layouts without horizontal overflow. The captured browser fixtures were reconciled and removed by exact IDs; no Booking/payment rows or financial balance movement occurred. See `docs/verification/2026-09-07-exchange-quick-matching.md`.
+
+### Exchange matched booking conversion
+
+`POST /api/v1/exchange/posts/:id/matching/bookings` converts every persisted matched participant into one independent `PENDING` Request order in one idempotent transaction. The command uses the matched quote, service and time snapshots, transfers each temporary participant reservation into formal slot capacity, replaces only ordinary unprotected pending orders for non-Black customers, and creates no service payment or Exchange publication-fee settlement.
+
+Run the rollback-contained local proof with:
+
+```bash
+cd backend
+ENV_FILE=.env.dev npm run check:exchange-booking-conversion-flow
+```
+
+Migration `20260903100000_exchange_matched_booking_conversion` is applied on the accepted local `needo_dev` database. The physical columns, unique and non-unique booking-order indexes, Restrict foreign key, participant booking-state check, Prisma migration record, and `exchange:matching:book-own` grants for `admin`, `customer`, and `merchant_owner` were reconciled directly. The rollback checker and two-connection concurrency proof both completed with zero marker users, posts, or audit rows left behind.
+
+Local formal-browser acceptance used the isolated `3100/3101/3102/5181` runtime and the persisted Admin2 Demand `62`. After the fixture was moved to a conflict-free future slot, the owner created Request order `ND202609042208537783` through the UI, reloaded the post and order-detail pages, and replayed the exact persisted idempotency key without creating a duplicate. Database reconciliation confirmed one `PENDING` order, one initial status-history row, transferred slot capacity, the participant booking link, one provider notification, and no `OrderFinancial` row. The generic cancellation endpoint remained blocked, while the matched provider could read only its own participant result. Native order links now use `#/orders/:id` and `#/technician/orders/:id`, keeping navigation inside the existing HashRouter. Mobile acceptance at 440 px and 320 px found no horizontal overflow or console errors. This evidence is local only; no production migration, deployment, or push was performed.
+
+Exchange-linked orders cannot use the generic cancel endpoint. The later bilateral-cancellation slice now reads and mutates the exact persisted per-order cancellation state from the Exchange and formal customer/provider order details, while ordinary orders retain their existing generic cancellation control. Its guarded local proof applied all 130 migrations to a disposable MySQL database, passed eight concurrency and finance scenarios, and removed the dedicated database and principal without modifying `needo_dev`. Authenticated customer/provider browser acceptance also passed at 320/440 px with reload persistence and no horizontal overflow. Applying the two additive migrations to an authorized app environment, remote push, deployment, and post-deploy smoke remain explicit release gates. Service payment, payment refunds, responsibility penalties, wallet reconciliation, and external payment are not part of this conversion or cancellation UI slice.
+
+The verified conversion is now merged into local `main`. See [the 2026-09-05 main acceptance record](docs/verification/2026-09-05-exchange-booking-main-acceptance.md) for complete regression counts, owner/provider/unauthorized browser checks, and the `5180` runtime proof.
 
 ### Exchange Test NDP Foundation
 
@@ -319,6 +387,14 @@ Merchant employee identity is now founded on one global technician profile, its 
 
 The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The merchant “员工列表” and “员工详细信息卡” now use the canonical employee APIs and NeeDoID; the legacy technician endpoints remain only as compatibility surfaces outside this merchant page. The same employee card reads, edits, and previews the current shop-scoped compensation rule through `/api/v1/merchant-admin/employees/:needoId/compensation-profile`, and shows the latest persisted payslip totals without exposing internal shop, technician, or actor IDs. Actual payment is still a manual finance record; this workflow never initiates a bank transfer.
 
+All new user-, merchant-, and technician-facing public profile links use the
+technician's canonical lowercase `s##########` NeeDoID. Numeric
+`TechnicianProfile.id` values remain internal relation keys for services,
+bookings, schedules, and compatibility lookups; they must not be displayed as
+the technician account identifier or used to construct a new public profile
+URL. A legacy numeric profile URL remains readable and is replaced with the
+canonical scoped URL after the formal detail API resolves the entity.
+
 ## Operations Technician Ranking
 
 The operations technician ranking is available at
@@ -436,7 +512,19 @@ The operations timeline route is an explicit production capability gate. It does
 
 The platform dispatch route is also an explicit capability gate. An operations identity is never redirected into a merchant-scoped dispatch workspace. Cross-shop dispatch remains unavailable until persisted dispatch jobs, assignments and exceptions; assignment/reassignment/escalation state machines; cross-shop technician availability and conflict locks; platform RBAC, audit, SLA, pagination, aggregate and export contracts are complete.
 
-The operations travel-settings route is an explicit external-provider capability gate. It does not label bundled city fares, distance calculations, transport modes, imports, or saves as active configuration. Store and order address/latitude/longitude fields remain usable through formal APIs, while maps, navigation, route estimates and automatic travel pricing stay disabled until provider configuration, timeout/rate-limit/cache behavior, stable `provider_unavailable` errors, versioned travel-policy approval, RBAC, audit and export contracts exist.
+The formal travel-fare lane is database-backed. A merchant can read and publish immutable, selected-shop fare-policy versions with strictly increasing driving-distance bands; operations can read redacted provider readiness and paginated current/scheduled policy visibility. A home checkout submits a structured Japanese address and selected schedule slot to `POST /api/v1/bookings/travel-estimates`, displays the server-owned distance, matching band and JPY fare, and cannot submit until the unconsumed estimate is valid. Booking atomically revalidates the same slot, consumes the estimate, and snapshots the policy, band, route evidence, normalized fulfillment address, and fare. Store checkout remains unchanged and rejects estimate injection.
+
+Geoapify is the first provider. Set `TRAVEL_ROUTE_PROVIDER=geoapify` and supply `GEOAPIFY_API_KEY` manually in the formal backend environment; validated settings include `GEOAPIFY_API_BASE_URL`, `TRAVEL_ROUTE_TIMEOUT_MS`, `TRAVEL_ROUTE_MAX_RETRIES`, `TRAVEL_ROUTE_CACHE_TTL_SECONDS`, `TRAVEL_ROUTE_NEGATIVE_CACHE_TTL_SECONDS`, and `TRAVEL_ESTIMATE_TTL_SECONDS`. Route-provider runtime health is shared across the client and operations API processes through `TRAVEL_ROUTE_HEALTH_REDIS_URL`, with an expiring observation controlled by `TRAVEL_ROUTE_HEALTH_TTL_SECONDS`; every process must point this setting at the same Redis database. Until a real key is present, the provider-status API reports `unconfigured` and estimate creation returns `error.travel.provider_unconfigured`; after configuration it reports `configured` until a request is observed, then `healthy`, `rate_limited`, or `unavailable` with a redacted observation time. If the shared health store cannot be read, the status request fails closed with the stable Redis dependency error; a failed health write never changes the underlying route result. The system never substitutes bundled city tables, static distances, simulated routes, or fabricated fares. Credentials, raw provider payloads, normalized-address inputs, and address-hash inputs are excluded from route-estimate/provider/operations responses and audit logs; the authenticated customer's own order detail may return its persisted fulfillment-address snapshot.
+
+Checkout uses `base + accepted add-ons + travel fare - discount`, then the existing snapshotted NDP conversion. Operations recognizes travel fare only from completed, payment-evidenced, non-refunded, non-reversed, snapshot-consistent checkouts; detail rows omit the customer address. The additive migrations are `20260905150000_shop_travel_fare_routing`, `20260905160000_route_estimate_schedule_slot_binding`, and `20260905170000_order_checkout_travel_fare_total`. First run the read-only status command and inspect the exact pending set. Run `migrate:deploy` only when every pending migration belongs to the approved release; never use an unrelated migration to unblock this checker. A local, non-production formal MySQL acceptance run is rollback-only and restores its baseline:
+
+```bash
+ENV_FILE=/absolute/path/to/backend/.env.dev npm --prefix backend run prisma:status
+ENV_FILE=/absolute/path/to/backend/.env.dev npm --prefix backend run prisma:migrate:deploy
+AUTH_TOKEN_AUDIENCE=needo-backend FORMAL_BACKEND_ENV_FILE=/absolute/path/to/backend/.env.dev npm --prefix backend run check:shop-travel-fare-flow
+```
+
+The checker refuses remote or production-looking databases, verifies migration/schema/RBAC evidence, uses a deterministic routing-provider seam without pretending to be a live Geoapify response, creates and settles the order through the production Booking and Ledger services, proves single estimate consumption, Booking snapshot and checkout arithmetic, completion recognition, refund exclusion, and redacted audits inside a rollback-only transaction. A separate dedicated-fixture phase runs two competing production Booking repository transactions against the same estimate, requires exactly one order and snapshot plus one consumed result, deletes only its captured fixture IDs, and compares the full baseline. Live Geoapify acceptance remains gated only by manual key provisioning.
 
 The operations demand and information routes are explicit production exchange capability gates. They do not assemble records, publisher identities, contacts, interactions, payment, or fulfillment data from the mobile demo feed. Activation requires persisted exchange posts, demands, offers, and replies; audited moderation and publication state machines; scoped identity/contact privacy; and matching, booking, payment, pagination, and export contracts.
 
@@ -2057,6 +2145,8 @@ npm test
 
 ## Backoffice IA Refactor
 
+店铺列表的详情抽屉包含「店铺 SaaS 情报」和「店铺展示」；展示复用用户端正式店铺组件，集团账户可选择旗下店铺。实现与验证说明见 [店铺详情抽屉](docs/shop-detail-drawer-tabs.md)。
+
 2026-04 这一轮对后台职责边界做了重构，目标是把平台运营能力和单店经营能力拆清楚。
 
 ### 调整原则
@@ -2108,6 +2198,18 @@ npm test
   - 系统设置与权限管理
 
 运营后台唯一“数据大盘”读取受 `backoffice:dashboard:read` 保护的正式数据库聚合，使用服务端东京日期分桶和具名比较字段，不生成演示折线或虚构增长率。旧分析页、旧数据大屏入口和旧 Dashboard 预览 payload 已退役。
+
+运营实时大盘 microstep A 只包含数据地基：`/api/v1/backoffice/dashboard/live-snapshot` 与 `/api/v1/backoffice/dashboard/live-events` 以 `country=JP`、可选的逐级 `admin1`/`admin2`、`period=today|last7days|last30days` 查询；快照名称按 `Accept-Language`（`zh-CN`、`zh-TW`、`ja`、`en`、`ko`，默认日语）本地化。地区归属只读取 Booking 创建时保存的不可变服务发生地，未解析或缺失快照的旧订单进入全国总量与未解析覆盖率，不进入东京/新宿下钻。缓存 TTL 为 300 秒，区域事件以 generation fence 逐级失效；SSE 发送 5 秒 retry、30 秒 heartbeat，支持 `Last-Event-ID`，过期/缺失游标返回 409，客户端需重新取快照再连接，且事件白名单不暴露客户资料、地址、备注或内部数字 ID。完整合同见 `docs/backoffice-real-data.md`。
+
+The compatibility backend and split operations/merchant servers share one live-dashboard runtime factory. Configure the same `LIVE_DASHBOARD_REDIS_URL` in every process for cache, generation and Stream keys; portal `REDIS_URL` remains isolated for auth/session state. Split startup fails closed without the shared setting. `dev:formal` supplies it to all three processes from `FORMAL_LIVE_DASHBOARD_REDIS_URL` (defaulting to the existing shared route-health target); shutdown closes the dedicated live clients. This wiring is not Redis connectivity acceptance.
+
+Home booking codes must resolve to the official Japanese prefecture/municipality names in the normalized address bound to the accepted estimate. A mismatch is rejected before capacity or estimate consumption. Exchange conversion snapshots a verified store assignment transactionally; free-text home demands and unverified stores get explicit unresolved snapshots. Eligible unresolved or missing historical snapshots contribute to Japan-wide totals and unresolved coverage, never regional child metrics/drill-downs. No region is inferred from free text or current customer/technician residence.
+
+历史 Booking 地点脚本默认 preview；apply 必须追加 `--apply --confirm-count=<preview-planned-count>`，恢复使用 `--restore-run=<run-id>`。最终本地 checker 必须同时显式传入 `FORMAL_BACKEND_ENV_FILE`、`LIVE_DASHBOARD_CHECK_ROLLBACK=true` 与本次运行唯一、可复现的小写 `LIVE_DASHBOARD_CHECK_RUN_ID`：`FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK=true LIVE_DASHBOARD_CHECK_RUN_ID=task8-local-a npm --prefix backend run check:live-dashboard`。microstep A contains no live-screen page；本地 commit、remote push、deployment、migration application、形式化 DB/Redis 验收与页面验收是互相独立的事实，本步骤不执行 push、部署或生产 migration。
+
+运营实时数据大屏 microstep B 已增加受保护的 `/pf-admin.html#/admin/live-screen` 独立页面，通过正式 snapshot/SSE 展示 JP、都道府县与市区町村范围数据，并使用本地版本化 N03 2026 地图资源。入口从现有运营数据大盘以 `noopener,noreferrer` 新标签页打开，不传递 token；页面支持日间/深色运营主题、全屏、低频对账、自动滚动暂停、地图键盘下钻和正式区域选择回退。完整的本地 migration、MySQL/Redis checker、浏览器与自动化证据见 [运营实时数据大屏本地验收记录](docs/live-dashboard-acceptance.md)。该记录不代表远端 push、部署或生产 migration。
+
+2026-09-07 响应式补充已完成本地验收：桌面流式单屏、手机竖屏隐藏地图但保留搜索/级联选择、全国本地搜索、可读引导线标签、缩放拖动还原及独立日期轴；20 个桌面与 3 个手机样本、正式 API 请求频率和密集区域证据见上述验收记录的“响应式地图与日期轴复验”。北海道等容量超限区域采用可访问的渐进名称披露，完整区域路径和搜索选择保持可用。
 
 “数据管理中心”已改为正式数据只读入口，通过后端分页和关键词过滤读取订单、客户、技师、店铺、服务、排班与结算。库存、评价及历史全屏图表在正式表结构、RBAC、审计和分页合同完成前保持禁用，不再回退到浏览器 mock 或本地资料覆盖层。
 
@@ -2634,3 +2736,39 @@ npm test
 - 技师端首页显示：UI 切换、语言、身份、资料编辑、本人验证、服务范围、账户与安全、通知设置。
 - 店铺端首页显示：UI 切换、语言、身份、资料编辑、店铺资质、账户与安全、通知设置。
 - 三端共用同一套设置首页组件和列表结构，只通过当前身份控制条目显隐与文案差异。
+
+运营/商户用户详情的用户LOG与履约时间线统一、审计 10/50 条正式分页、超过 10 行气泡展开/收起及本地验收记录见 [用户抽屉时间线验收](docs/qa/2026-09-06-user-drawer-timelines.md)。
+
+### 预约 SOS 与后台求救通知
+
+用户端与技师端的正式预约详情始终显示红色 SOS 胶囊按钮，不依赖服务状态或起止时间。点击将求救持久化；订单所属商户和具有对应权限的运营人员在统一的右上角工具栏查看待处理数量及分页列表。打开列表不会解除提醒，显式标记已处理后两端同步更新。
+
+新增正式权限为 `sos:create`、`sos:list`、`sos:resolve`；部署需先应用 `20260906100000_booking_sos` migration 并生成 Prisma Client。接口定义见 `backend/src/api/sos.openapi.ts`，验收说明见 [预约 SOS 本地验收](docs/qa/2026-09-06-booking-sos.md)。
+
+```bash
+npm --prefix backend test -- --runInBand --runTestsByPath tests/sos.service.test.ts tests/sos-api.test.ts
+npx vitest run src/features/sos
+ENV_FILE=.env.dev npm --prefix backend run check:sos-flow
+```
+
+真实数据库检查仅接受已验证的本机开发环境，使用独立测试记录验证权限、并发幂等、审计事务与跨端通知，完成后自动清理。
+
+### Technician work status and attendance
+
+The technician status controls now persist audited work events. Merchant and operations projections use the same formal status. Monthly lateness/early-departure counts open paginated incident timelines with Tokyo date filters. Zero grace is applied to precise server timestamps. See [implementation and acceptance](docs/qa/technician-work-status-20260906/main-integration.md) for migrations, API routes, checks and runtime boundaries.
+
+### Admin test contacts and six-month staffing
+
+The local-first, audited two-account dataset and formal calendar acceptance are documented in [administrator contacts and six-month staffing](docs/qa/2026-09-06-admin-contacts-six-month-schedule.md). Appointment overview reads persisted scoped BookingOrders; staffing slots remain separate and display their actual availability state.
+
+### User detail review facts and capsule tabs
+
+Received service reviews in the operations and merchant user detail cards now include formal payment method/status, checkout ledger currency, accepted extra service time, separated tag groups, and review/booking notes. Detail categories share one capsule tab container. See [local review-card acceptance and XP unit finding](docs/qa/2026-09-06-user-review-detail.md).
+
+The follow-up removes repeated membership facts, places adjustment controls inside the membership tab, consolidates merchant names, removes scout presentation, and adds server-side numeric ordering. See [user-directory follow-up acceptance](docs/qa/2026-09-06-user-directory-followup.md).
+
+Managed-user lists and membership details now consume exact decimal `totalExp`, consistent with user experience summaries. See [EXP display correction and evidence](docs/qa/2026-09-06-experience-display.md).
+
+### Application review and configurable eKYC requirements
+
+Operations System Settings now exposes four versioned eKYC requirements, with only customer home bookings enabled by default. Merchant and technician applications restore review details and provide floating withdraw, retry or approved-identity switching actions. Technician shop selection uses formal shop IDs and standalone profile cards. See [implementation and local validation](docs/superpowers/plans/2026-09-07-ekyc-requirements.md).

@@ -7,6 +7,10 @@ import {
   type AdminNotice,
   type OfficialNoticeBlock
 } from "../../lib/adminOfficialNotifications";
+import {
+  defaultOfficialNoticeFontSize,
+  officialNoticeFontSizeClass
+} from "../../lib/officialNoticeBlockPresentation";
 import { cn } from "../../lib/utils";
 import { AppIcon } from "../client-ui/AppScaffold";
 import { Badge } from "./Badge";
@@ -187,17 +191,20 @@ function NoticeBlockView({ block, index }: { block: OfficialNoticeBlock; index: 
     return <div className="border-t border-[color:color-mix(in_srgb,var(--client-line,#dfe8e3)_44%,transparent)]" />;
   }
 
+  const fontSize = block.fontSize ?? defaultOfficialNoticeFontSize(block.type);
+  const fontSizeClass = officialNoticeFontSizeClass(block.type, block.fontSize);
+
   if (block.type === "heading") {
-    return <h3 className="text-xl font-black leading-snug text-ink">{block.content}</h3>;
+    return <h3 className={`${fontSizeClass} font-black leading-snug text-ink`} data-notice-font-size={fontSize}>{block.content}</h3>;
   }
 
   if (block.type === "subheading") {
-    return <h4 className="text-base font-black leading-snug text-ink">{block.content}</h4>;
+    return <h4 className={`${fontSizeClass} font-black leading-snug text-ink`} data-notice-font-size={fontSize}>{block.content}</h4>;
   }
 
   if (block.type === "bullet") {
     return (
-      <p className="grid grid-cols-[1rem_minmax(0,1fr)] gap-2 text-sm font-bold leading-7 text-ink/75">
+      <p className={`grid grid-cols-[1rem_minmax(0,1fr)] gap-2 font-bold leading-7 text-ink/75 ${fontSizeClass}`} data-notice-font-size={fontSize}>
         <span>•</span>
         <span>{block.content}</span>
       </p>
@@ -206,7 +213,7 @@ function NoticeBlockView({ block, index }: { block: OfficialNoticeBlock; index: 
 
   if (block.type === "numbered") {
     return (
-      <p className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2 text-sm font-bold leading-7 text-ink/75">
+      <p className={`grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2 font-bold leading-7 text-ink/75 ${fontSizeClass}`} data-notice-font-size={fontSize}>
         <span>{index + 1}.</span>
         <span>{block.content}</span>
       </p>
@@ -215,7 +222,7 @@ function NoticeBlockView({ block, index }: { block: OfficialNoticeBlock; index: 
 
   if (block.type === "quote") {
     return (
-      <blockquote className="border-l-4 border-moss/35 bg-moss/5 px-4 py-3 text-sm font-bold leading-7 text-ink/70">
+      <blockquote className={`border-l-4 border-moss/35 bg-moss/5 px-4 py-3 font-bold leading-7 text-ink/70 ${fontSizeClass}`} data-notice-font-size={fontSize}>
         {block.content}
       </blockquote>
     );
@@ -223,7 +230,7 @@ function NoticeBlockView({ block, index }: { block: OfficialNoticeBlock; index: 
 
   if (block.type === "callout") {
     return (
-      <div className="rounded-lg border border-lemon/35 bg-lemon/15 px-4 py-3 text-sm font-bold leading-7 text-ink/75">
+      <div className={`rounded-lg border border-lemon/35 bg-lemon/15 px-4 py-3 font-bold leading-7 text-ink/75 ${fontSizeClass}`} data-notice-font-size={fontSize}>
         {block.content}
       </div>
     );
@@ -285,7 +292,7 @@ function NoticeBlockView({ block, index }: { block: OfficialNoticeBlock; index: 
     );
   }
 
-  return <p className="whitespace-pre-line text-sm font-bold leading-7 text-ink/75">{block.content}</p>;
+  return <p className={`whitespace-pre-line font-bold leading-7 text-ink/75 ${fontSizeClass}`} data-notice-font-size={fontSize}>{block.content}</p>;
 }
 
 export function OfficialNoticeAutoPopup({ disabled = false }: OfficialNoticeAutoPopupProps) {

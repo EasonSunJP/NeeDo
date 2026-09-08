@@ -49,6 +49,7 @@ const order = (status: BookingOrderPayload["status"]): BookingOrderPayload => ({
   serviceNameSnapshot: "Aroma 60",
   servicePriceSnapshot: "10000.00",
   serviceDurationSnapshot: 60,
+  fulfillmentAddressSnapshot: null,
   serviceSnapshot: null,
   shopName: "Aoyama Studio",
   technicianName: "Mika",
@@ -75,6 +76,7 @@ const createRepository = (initialStatus: BookingOrderPayload["status"]) => {
     status: "completed",
     baseAmountJpy: 10_000,
     addOnAmountJpy: 0,
+    travelFareAmountJpy: 0,
     discountAmountJpy: 0,
     checkoutAmountJpy: 10_000,
     payableNdp: 10_000,
@@ -87,10 +89,11 @@ const createRepository = (initialStatus: BookingOrderPayload["status"]) => {
       effectiveFrom: "2026-09-01T00:00:00.000Z"
     },
     calculation: {
-      formula: "base_plus_accepted_add_ons_minus_discount",
+      formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
       baseAmountJpy: 10_000,
       acceptedAddOnIds: [],
       addOnAmountJpy: 0,
+      travelFareAmountJpy: 0,
       discountAmountJpy: 0,
       checkoutAmountJpy: 10_000,
       rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"
@@ -187,12 +190,14 @@ describe("booking completion experience", () => {
       () => completedAt
     );
 
-    await expect(service.confirmCheckoutReceipt(
-      actor,
-      7,
-      { reason: "cash received", idempotencyKey: "experience-completion-1" },
-      context
-    )).resolves.toMatchObject({
+    await expect(
+      service.confirmCheckoutReceipt(
+        actor,
+        7,
+        { reason: "cash received", idempotencyKey: "experience-completion-1" },
+        context
+      )
+    ).resolves.toMatchObject({
       status: "completed"
     });
     expect(experienceService.recordEvent).toHaveBeenCalledWith(
@@ -234,12 +239,14 @@ describe("booking completion experience", () => {
       undefined,
       completedExperience as Pick<UserExperienceService, "recordEvent">
     );
-    await expect(completedService.confirmCheckoutReceipt(
-      actor,
-      7,
-      { reason: "cash received", idempotencyKey: "experience-replay-1" },
-      context
-    )).rejects.toMatchObject({
+    await expect(
+      completedService.confirmCheckoutReceipt(
+        actor,
+        7,
+        { reason: "cash received", idempotencyKey: "experience-replay-1" },
+        context
+      )
+    ).rejects.toMatchObject({
       statusCode: 409
     });
     expect(completedExperience.recordEvent).not.toHaveBeenCalled();
@@ -262,12 +269,14 @@ describe("booking completion experience", () => {
       experienceService
     );
 
-    await expect(service.confirmCheckoutReceipt(
-      actor,
-      7,
-      { reason: "cash received", idempotencyKey: "experience-rollback-1" },
-      context
-    )).rejects.toThrow("experience write failed");
+    await expect(
+      service.confirmCheckoutReceipt(
+        actor,
+        7,
+        { reason: "cash received", idempotencyKey: "experience-rollback-1" },
+        context
+      )
+    ).rejects.toThrow("experience write failed");
     expect(current().status).toBe("awaitingPaymentConfirmation");
   });
 });

@@ -19,7 +19,9 @@ export const createTechnicianDataCenterRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const service = new TechnicianDataCenterService(
     dependencies.technicianDataCenterRepository ?? new TechnicianDataCenterRepository(),
     new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())

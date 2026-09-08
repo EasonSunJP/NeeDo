@@ -2,20 +2,39 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PlatformMembershipDetailCard } from "./PlatformMembershipDetailCard";
 import { PlatformMembershipSimpleCard } from "./PlatformMembershipSimpleCard";
-import { isAccessibleMembershipTheme, resolveMembershipTheme } from "./platformMembershipTheme";
+import {
+  resolveMembershipDetailGradient,
+  resolveMembershipTheme
+} from "./platformMembershipTheme";
 
-const theme = { detailAccentColor: "#A7FF1E", detailSurfaceColor: "#10242D", detailItemSurfaceColor: "#09161D", detailOuterBorderColor: "#5D8B35", detailItemBorderColor: "#29424D", detailAvatarBorderColor: "#79A84B", simpleTopColor: "#0D2F27", simpleBottomColor: "#132630" };
+const theme = { detailAccentColor: "#A7FF1E", detailSurfaceColor: "#10242D", detailSurfaceMiddleColor: "#183A32", detailSurfaceBottomColor: "#24314B", detailItemSurfaceColor: "#09161D", detailOuterBorderColor: "#5D8B35", detailItemBorderColor: "#29424D", detailAvatarBorderColor: "#79A84B", simpleTopColor: "#0D2F27", simpleBottomColor: "#132630" };
 const profile = { avatarUrl: null, bio: "", displayName: "Mia", ekycVerified: true, entityKind: "customer" as const, languages: [], level: 37, needoId: "u0000000001", tierLabel: "黄金会员" };
 
 describe("shared platform membership cards", () => {
-  it("maps all eight theme colors and keeps empty profile rows visible", () => {
+  it("maps all ten theme colors and keeps empty profile rows visible", () => {
     const markup = renderToStaticMarkup(<PlatformMembershipDetailCard {...profile} theme={theme} />);
-    for (const color of Object.values(theme).slice(0, 6)) expect(markup.toLowerCase()).toContain(color.toLowerCase());
+    for (const color of Object.values(theme).slice(0, 8)) expect(markup.toLowerCase()).toContain(color.toLowerCase());
+    expect(markup).toContain("linear-gradient(155deg, #10242D 0%, #183A32 52%, #24314B 100%)");
     expect(markup).toContain("语言能力");
     expect(markup).toContain("自我介绍");
     expect(markup).toContain("未设置");
     expect(markup).toContain("Lv.37");
     expect(markup).toContain("eKYC verified");
+  });
+
+  it("renders the customer privacy slot after the basic-information labels", () => {
+    const markup = renderToStaticMarkup(
+      <PlatformMembershipDetailCard
+        {...profile}
+        afterDetailsSlot={<div>隐私模式</div>}
+        theme={theme}
+      />
+    );
+    const labels = markup.indexOf("语言能力");
+    const privacy = markup.indexOf("隐私模式");
+
+    expect(labels).toBeGreaterThan(-1);
+    expect(privacy).toBeGreaterThan(labels);
   });
 
   it("omits level for technician/shop cards and truncates the simple card", () => {
@@ -26,9 +45,10 @@ describe("shared platform membership cards", () => {
     expect(markup).toContain("line-clamp-2");
   });
 
-  it("centrally resolves readable foregrounds and rejects critical contrast", () => {
+  it("centrally resolves readable foregrounds without enforcing theme contrast", () => {
     expect(resolveMembershipTheme(theme).detailTextColor).toMatch(/^#/);
-    expect(isAccessibleMembershipTheme(theme)).toBe(true);
-    expect(isAccessibleMembershipTheme({ ...theme, detailAccentColor: "#111111", detailSurfaceColor: "#101010" })).toBe(false);
+    expect(resolveMembershipDetailGradient(theme)).toBe(
+      "linear-gradient(155deg, #10242D 0%, #183A32 52%, #24314B 100%)"
+    );
   });
 });

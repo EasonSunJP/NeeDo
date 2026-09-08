@@ -264,9 +264,10 @@ describe("order fulfillment validators", () => {
       expect(
         confirmReceiptBodySchema.parse({ idempotencyKey, reason: "  cash received  " })
       ).toEqual({ idempotencyKey, reason: "cash received" });
-      expect(
-        confirmReceiptBodySchema.parse({ idempotencyKey, reason: "r".repeat(500) })
-      ).toEqual({ idempotencyKey, reason: "r".repeat(500) });
+      expect(confirmReceiptBodySchema.parse({ idempotencyKey, reason: "r".repeat(500) })).toEqual({
+        idempotencyKey,
+        reason: "r".repeat(500)
+      });
       expect(() => confirmReceiptBodySchema.parse({ idempotencyKey, reason: "  " })).toThrow();
       expect(() =>
         confirmReceiptBodySchema.parse({ idempotencyKey, reason: "\u200B".repeat(16) })
@@ -291,9 +292,7 @@ describe("order fulfillment validators", () => {
       expect(() => payWithNdpBodySchema.parse({ idempotencyKey: "a".repeat(15) })).toThrow();
       expect(() => payWithNdpBodySchema.parse({ idempotencyKey: "b".repeat(161) })).toThrow();
       expect(() => payWithNdpBodySchema.parse({ idempotencyKey, unexpected: true })).toThrow();
-      expect(() =>
-        payWithNdpBodySchema.parse({ idempotencyKey: "\u200B".repeat(16) })
-      ).toThrow();
+      expect(() => payWithNdpBodySchema.parse({ idempotencyKey: "\u200B".repeat(16) })).toThrow();
     });
 
     it.each(["\u200B".repeat(16), "\u0000".repeat(16), "\u2028".repeat(16)])(
@@ -302,9 +301,7 @@ describe("order fulfillment validators", () => {
         expect(() =>
           endServiceBodySchema.parse({ reason: invisibleValue, idempotencyKey })
         ).toThrow();
-        expect(() =>
-          payWithNdpBodySchema.parse({ idempotencyKey: invisibleValue })
-        ).toThrow();
+        expect(() => payWithNdpBodySchema.parse({ idempotencyKey: invisibleValue })).toThrow();
       }
     );
 
@@ -333,9 +330,7 @@ describe("order fulfillment validators", () => {
             idempotencyKey
           })
         ).toThrow();
-        expect(() =>
-          payWithNdpBodySchema.parse({ idempotencyKey: invisibleValue })
-        ).toThrow();
+        expect(() => payWithNdpBodySchema.parse({ idempotencyKey: invisibleValue })).toThrow();
       }
     );
 
@@ -353,9 +348,9 @@ describe("order fulfillment validators", () => {
       expect(endServiceBodySchema.parse({ reason: visibleText, idempotencyKey })).toMatchObject({
         reason: visibleText
       });
-      expect(
-        confirmReceiptBodySchema.parse({ reason: visibleText, idempotencyKey })
-      ).toMatchObject({ reason: visibleText });
+      expect(confirmReceiptBodySchema.parse({ reason: visibleText, idempotencyKey })).toMatchObject(
+        { reason: visibleText }
+      );
       expect(
         selectPaymentMethodBodySchema.parse({
           method: "other",
@@ -370,9 +365,10 @@ describe("order fulfillment validators", () => {
     });
 
     it("allows visible multilingual text even when it contains format characters", () => {
-      expect(
-        endServiceBodySchema.parse({ reason: "施術\u200B完了", idempotencyKey })
-      ).toEqual({ reason: "施術\u200B完了", idempotencyKey });
+      expect(endServiceBodySchema.parse({ reason: "施術\u200B完了", idempotencyKey })).toEqual({
+        reason: "施術\u200B完了",
+        idempotencyKey
+      });
       expect(
         selectPaymentMethodBodySchema.parse({
           method: "other",
@@ -388,6 +384,7 @@ describe("order fulfillment validators", () => {
       (paymentMethod) => {
         expect(() =>
           bookingCreateBodySchema.parse({
+            expectedPriceAmountJpy: 8_800,
             serviceId: 1,
             scheduleSlotId: 11,
             fulfillmentMode: "store",
@@ -396,6 +393,41 @@ describe("order fulfillment validators", () => {
         ).toThrow();
       }
     );
+
+    it("accepts an Intelligence source id and keeps server-owned price fields closed", () => {
+      expect(
+        bookingCreateBodySchema.parse({
+          expectedPriceAmountJpy: 8_800,
+          serviceId: 1,
+          scheduleSlotId: 11,
+          exchangeIntelligencePostId: 91,
+          fulfillmentMode: "store"
+        })
+      ).toMatchObject({ exchangeIntelligencePostId: 91 });
+
+      expect(() =>
+        bookingCreateBodySchema.parse({
+          expectedPriceAmountJpy: 8_800,
+          serviceId: 1,
+          scheduleSlotId: 11,
+          exchangeIntelligencePostId: 0,
+          fulfillmentMode: "store"
+        })
+      ).toThrow();
+
+      for (const priceField of ["priceAmount", "campaignPriceJpy", "paymentAmountJpy"] as const) {
+        expect(() =>
+          bookingCreateBodySchema.parse({
+            expectedPriceAmountJpy: 8_800,
+            serviceId: 1,
+            scheduleSlotId: 11,
+            exchangeIntelligencePostId: 91,
+            fulfillmentMode: "store",
+            [priceField]: 1
+          })
+        ).toThrow();
+      }
+    });
 
     it.each(["awaitingCheckout", "awaitingPaymentConfirmation"] as const)(
       "accepts the %s order-list status",

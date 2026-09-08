@@ -1,4 +1,6 @@
 import { httpClient } from "../../api/httpClient";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 export type CustomerProfileVisibility = "public" | "privateAll" | "limited" | "network";
 
 export type CustomerSelfProfile = {
@@ -36,10 +38,13 @@ export const customerProfileApi = {
   getMine() {
     return httpClient.request<CustomerSelfProfile>("/customer-profile/me");
   },
-  updateMine(input: CustomerSelfProfileUpdate) {
-    return httpClient.request<CustomerSelfProfile>("/customer-profile/me", {
+  async updateMine(input: CustomerSelfProfileUpdate) {
+    const profile = await httpClient.request<CustomerSelfProfile>("/customer-profile/me", {
       body: input,
       method: "PATCH"
     });
+    const scope = getAuthenticatedPersistentCacheScope();
+    if (scope) await persistentResourceCache.write(scope, "customer:self", profile);
+    return profile;
   }
 };

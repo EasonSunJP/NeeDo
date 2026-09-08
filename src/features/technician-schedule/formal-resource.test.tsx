@@ -14,7 +14,7 @@ const apiMocks = vi.hoisted(() => ({
   getMine: vi.fn(),
   getTechnicianDetail: vi.fn(),
   getTechnicianSlot: vi.fn(),
-  listTechnicianServices: vi.fn()
+  listMyTechnicianServices: vi.fn()
 }));
 
 vi.mock("../booking/api", () => ({ bookingApi: { getOrder: apiMocks.getOrder } }));
@@ -25,7 +25,7 @@ vi.mock("../core-read/technicianProfileApi", () => ({
   technicianProfileApi: { getMine: apiMocks.getMine }
 }));
 vi.mock("../pricing-mode/api", () => ({
-  pricingModeApi: { listTechnicianServices: apiMocks.listTechnicianServices }
+  pricingModeApi: { listMyTechnicianServices: apiMocks.listMyTechnicianServices }
 }));
 vi.mock("../scheduling/api", () => ({
   schedulingApi: { getTechnicianSlot: apiMocks.getTechnicianSlot }
@@ -92,7 +92,19 @@ const profile = {
   },
   bio: null,
   serviceArea: "東京",
+  gender: "private",
+  heightCm: null,
+  languages: ["日本語"],
   yearsExperience: 4,
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   mediaAssets: [],
   services: [],
   createdAt: "2026-08-01T00:00:00.000Z",
@@ -108,12 +120,22 @@ const selfProfile = {
   avatarUrl: null,
   bio: null,
   city: "東京",
+  gender: "private",
   age: null,
   heightCm: null,
   languages: ["日本語"],
   serviceAreas: ["東京"],
   specialTags: [],
   profileTags: [],
+  reviewTagSummary: {
+    special: [
+      { code: "appeal_max", label: "魅力max", count: 0 },
+      { code: "service_max", label: "服务max", count: 0 },
+      { code: "emotion_max", label: "情绪max", count: 0 },
+      { code: "energy_max", label: "元气max", count: 0 }
+    ],
+    custom: []
+  },
   canServeForeigners: false,
   bidBudgetMinJpy: null,
   bidBudgetMaxJpy: null,
@@ -132,6 +154,7 @@ const makeService = (
   overrides: Partial<TechnicianServicePayload> = {}
 ): TechnicianServicePayload => ({
   id,
+  publicId: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
   shopId: 11,
   technicianId: 31,
   sourceShopServiceId: null,
@@ -141,10 +164,12 @@ const makeService = (
   priceAmount: 10000,
   currency: "JPY",
   durationMinutes: 60,
+  usageCount: 7,
   taxIncluded: true,
   coverImageUrl: null,
   images: [],
   tags: [],
+  shop: { publicId: "shop0000000011", name: "Formal Shop", address: "東京都港区" },
   isActive: true,
   isBookable: true,
   isRecommended: false,
@@ -242,7 +267,7 @@ describe("formal technician schedule resources", () => {
   });
 
   it("loads every technician-service page, filters inactive rows, and sorts deterministically", async () => {
-    apiMocks.listTechnicianServices
+    apiMocks.listMyTechnicianServices
       .mockResolvedValueOnce({
         list: [makeService(103, 2), makeService(101, 1), makeService(999, 0, { isBookable: false })],
         total: 101,
@@ -261,12 +286,12 @@ describe("formal technician schedule resources", () => {
       makeService(102, 1),
       makeService(103, 2)
     ]);
-    expect(apiMocks.listTechnicianServices).toHaveBeenNthCalledWith(1, 11, {
+    expect(apiMocks.listMyTechnicianServices).toHaveBeenNthCalledWith(1, {
       activeOnly: true,
       page: 1,
       pageSize: 100
     });
-    expect(apiMocks.listTechnicianServices).toHaveBeenNthCalledWith(2, 11, {
+    expect(apiMocks.listMyTechnicianServices).toHaveBeenNthCalledWith(2, {
       activeOnly: true,
       page: 2,
       pageSize: 100
@@ -280,7 +305,7 @@ describe("formal technician schedule resources", () => {
         resolveProfile = resolve;
       })
     );
-    apiMocks.listTechnicianServices.mockResolvedValue({
+    apiMocks.listMyTechnicianServices.mockResolvedValue({
       list: [makeService(102, 1)], total: 1, page: 1, page_size: 100
     });
     apiMocks.getTechnicianSlot.mockResolvedValue(slot);
@@ -305,7 +330,7 @@ describe("formal technician schedule resources", () => {
 
     expect(apiMocks.getMine).toHaveBeenCalledTimes(1);
     expect(apiMocks.getTechnicianDetail).not.toHaveBeenCalled();
-    expect(apiMocks.listTechnicianServices).not.toHaveBeenCalled();
+    expect(apiMocks.listMyTechnicianServices).not.toHaveBeenCalled();
     expect(apiMocks.getTechnicianSlot).not.toHaveBeenCalled();
   });
 
@@ -313,7 +338,7 @@ describe("formal technician schedule resources", () => {
     apiMocks.getTechnicianDetail
       .mockRejectedValueOnce(new ApiClientError("error.network.timeout", 408, 408))
       .mockResolvedValueOnce(profile);
-    apiMocks.listTechnicianServices.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
+    apiMocks.listMyTechnicianServices.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
     apiMocks.getTechnicianSlot.mockResolvedValue(slot);
 
     await act(async () => root.render(<ScheduleProbe />));
@@ -348,7 +373,7 @@ describe("formal technician schedule resources", () => {
 
     expect(apiMocks.getTechnicianDetail).not.toHaveBeenCalled();
     expect(apiMocks.getMine).not.toHaveBeenCalled();
-    expect(apiMocks.listTechnicianServices).not.toHaveBeenCalled();
+    expect(apiMocks.listMyTechnicianServices).not.toHaveBeenCalled();
     expect(apiMocks.getTechnicianSlot).not.toHaveBeenCalled();
     expect(apiMocks.getOrder).not.toHaveBeenCalled();
   });

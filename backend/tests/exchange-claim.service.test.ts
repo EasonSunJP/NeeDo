@@ -120,6 +120,14 @@ const option = {
   endsAt: serviceEndsAt
 };
 
+const matchingLock = {
+  id: 51,
+  status: "open" as const,
+  version: 3,
+  effectiveTargetProviderCount: 2,
+  effectiveBudgetMaxJpy: 30_000
+};
+
 const createRepository = (overrides: Partial<ExchangeClaimRepositoryPort> = {}) => {
   const repository: ExchangeClaimRepositoryPort = {
     runInTransaction: jest.fn(async (handler) => handler(repository)),
@@ -127,9 +135,15 @@ const createRepository = (overrides: Partial<ExchangeClaimRepositoryPort> = {}) 
     findRequest: jest.fn(async () => request),
     findOptionCandidate: jest.fn(async () => ({ technicianProfileId: 81 })),
     lockRequest: jest.fn(async () => request),
-    lockMatching: jest.fn(async () => ({ id: 51, status: "open" as const, version: 3 })),
+    lockMatching: jest.fn(async () => matchingLock),
     advanceMatchingForClaimEvent: jest.fn(async () => true),
     lockTechnician: jest.fn(async () => true),
+    lockActiveClaims: jest.fn(async () => []),
+    lockTechnicians: jest.fn(async () => true),
+    hasParticipantConflict: jest.fn(async () => false),
+    hasBookingConflict: jest.fn(async () => false),
+    notifyQuickBudgetDecisionRequired: jest.fn(async () => undefined),
+    completeMatch: jest.fn(async () => null),
     lockOption: jest.fn(async () => option),
     hasActiveClaimForRequestTechnician: jest.fn(async () => false),
     hasOverlappingActiveClaim: jest.fn(async () => false),
@@ -217,6 +231,7 @@ describe("ExchangeClaimService", () => {
 
   it("creates a selective claim with request-technician-slot locks, soft conflict checks and audit", async () => {
     const events: string[] = [];
+    const quickMatchingService = { attemptAfterClaim: jest.fn() };
     const repository = createRepository({
       lockRequest: jest.fn(async () => {
         events.push("lock-request");
@@ -224,7 +239,7 @@ describe("ExchangeClaimService", () => {
       }),
       lockMatching: jest.fn(async () => {
         events.push("lock-matching");
-        return { id: 51, status: "open" as const, version: 3 };
+        return matchingLock;
       }),
       findOptionCandidate: jest.fn(async () => {
         events.push("read-option-candidate");
@@ -277,7 +292,12 @@ describe("ExchangeClaimService", () => {
       })
     });
     const actorResolver = { resolveActor: jest.fn(async () => merchantActor) };
-    const service = new ExchangeClaimService(repository, actorResolver, () => now);
+    const service = new ExchangeClaimService(
+      repository,
+      actorResolver,
+      () => now,
+      quickMatchingService
+    );
 
     await expect(
       service.createClaim(
@@ -310,10 +330,10 @@ describe("ExchangeClaimService", () => {
         targetId: 301
       })
     );
+    expect(quickMatchingService.attemptAfterClaim).not.toHaveBeenCalled();
   });
 
   it.each([
-    ["quick mode", { ...request, demand: { ...request.demand, matchMode: "quick" } }, 40972],
     ["expired request", { ...request, expiresAt: now }, 40979],
     ["owner self claim", { ...request, ownerIdentityId: 17 }, 40311],
     [
@@ -342,6 +362,46 @@ describe("ExchangeClaimService", () => {
     expect(repository.create).not.toHaveBeenCalled();
   });
 
+  it("invokes Quick matching after the claim event and returns the refreshed matched claim", async () => {
+    const matchedClaim = { ...claim, status: "matched" as const, terminalAt: now.toISOString() };
+    const quickMatchingService = {
+      attemptAfterClaim: jest.fn(async () => ({ kind: "matched" as const, matching: null! }))
+    };
+    const repository = createRepository({
+      lockRequest: jest.fn(async () => ({
+        ...request,
+        demand: { ...request.demand, matchMode: "quick" as const }
+      })),
+      findMineById: jest.fn(async () => matchedClaim)
+    });
+    const service = new ExchangeClaimService(
+      repository,
+      { resolveActor: jest.fn(async () => merchantActor) },
+      () => now,
+      quickMatchingService
+    );
+
+    await expect(
+      service.createClaim(
+        merchantAccess,
+        41,
+        { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
+        "claim-quick-key-0001",
+        requestContext
+      )
+    ).resolves.toEqual(matchedClaim);
+    expect(quickMatchingService.attemptAfterClaim).toHaveBeenCalledWith(
+      repository,
+      expect.objectContaining({
+        exchangePostId: 41,
+        ownerUserId: 99,
+        ownerIdentityId: 21,
+        matching: expect.objectContaining({ id: 51, version: 4 }),
+        triggeringClaimId: 301
+      })
+    );
+  });
+
   it.each([
     [9_999, 40973],
     [30_001, 40974]
@@ -367,11 +427,7 @@ describe("ExchangeClaimService", () => {
     ["missing candidate", { findOptionCandidate: jest.fn(async () => null) }, 40419],
     ["missing technician", { lockTechnician: jest.fn(async () => false) }, 40975],
     ["stale slot", { lockOption: jest.fn(async () => null) }, 40975],
-    [
-      "duplicate",
-      { hasActiveClaimForRequestTechnician: jest.fn(async () => true) },
-      40977
-    ],
+    ["duplicate", { hasActiveClaimForRequestTechnician: jest.fn(async () => true) }, 40977],
     ["soft lock conflict", { hasOverlappingActiveClaim: jest.fn(async () => true) }, 40976],
     [
       "matched participant conflict",
@@ -450,7 +506,7 @@ describe("ExchangeClaimService", () => {
       }),
       lockMatching: jest.fn(async () => {
         events.push("lock-matching");
-        return { id: 51, status: "open" as const, version: 3 };
+        return matchingLock;
       }),
       lockClaim: jest.fn(async () => {
         events.push("lock-claim");
@@ -489,12 +545,7 @@ describe("ExchangeClaimService", () => {
 
     await expect(service.getMine(merchantAccess, 41)).resolves.toEqual(claim);
     await expect(
-      service.withdrawClaim(
-        merchantAccess,
-        301,
-        "claim-withdraw-key-0001",
-        requestContext
-      )
+      service.withdrawClaim(merchantAccess, 301, "claim-withdraw-key-0001", requestContext)
     ).resolves.toMatchObject({ id: 301, status: "withdrawn" });
     expect(events).toEqual([
       "lock-request",
@@ -562,11 +613,10 @@ describe("ExchangeClaimService", () => {
       { resolveActor: jest.fn(async () => ({ ...merchantActor, identityId: 21 })) },
       () => now
     );
-    await service.listReceived(
-      { ...merchantAccess, currentIdentityId: 21 },
-      41,
-      { page: 1, page_size: 20 }
-    );
+    await service.listReceived({ ...merchantAccess, currentIdentityId: 21 }, 41, {
+      page: 1,
+      page_size: 20
+    });
     expect(repository.listReceived).toHaveBeenCalledWith(41, 21, {
       page: 1,
       pageSize: 20

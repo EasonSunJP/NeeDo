@@ -1,8 +1,4 @@
-import type {
-  DashboardGranularity,
-  DashboardPeriod,
-  DashboardWindow
-} from "./dashboard-period";
+import type { DashboardGranularity, DashboardPeriod, DashboardWindow } from "./dashboard-period";
 
 export type {
   AnalyticsComparisonDirection,
@@ -42,6 +38,23 @@ export interface DashboardMetricComparison {
   current: number;
   previous: number;
   changeRatePercent: number | null;
+}
+
+export interface DashboardHeadlineSeriesPoint {
+  key: string;
+  label: string;
+  availableScheduleSlots: number;
+  activeTechnicians: number;
+  registeredTechnicians: number;
+  shopCount: number;
+  newCustomers: number;
+}
+
+export interface DashboardHeadlineSeries3d {
+  from: string;
+  to: string;
+  timeZone: "Asia/Tokyo";
+  buckets: DashboardHeadlineSeriesPoint[];
 }
 
 export interface DashboardPlatformGlobalNdpPair extends DashboardNdpPair {
@@ -169,6 +182,7 @@ export interface BackofficeDashboardPayload {
     serviceGmvJpy: number;
   };
   series: { buckets: DashboardBucketPayload[] };
+  headlineSeries3d: DashboardHeadlineSeries3d;
   finance: {
     platformNetRevenue: DashboardNdpPair;
     frozen: DashboardNdpPair;
@@ -183,7 +197,5 @@ export interface BackofficeDashboardPayload {
     memberDataStatus: "ready";
     completedCustomerCount: number;
   };
-  scope:
-    | { kind: "platform"; shopPublicId: null }
-    | { kind: "shop"; shopPublicId: string };
+  scope: { kind: "platform"; shopPublicId: null } | { kind: "shop"; shopPublicId: string };
 }

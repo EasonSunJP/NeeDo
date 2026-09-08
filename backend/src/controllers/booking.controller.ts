@@ -16,6 +16,7 @@ import {
   orderIdParamSchema,
   orderListQuerySchema,
   orderReviewCreateBodySchema,
+  orderTimelineCommentBodySchema,
   payWithNdpBodySchema,
   selectPaymentMethodBodySchema,
   startServiceBodySchema,
@@ -54,13 +55,16 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const body = bookingCreateBodySchema.parse(request.body);
+      const rawIdempotencyKey = request.get("Idempotency-Key");
       response
         .status(201)
         .json(
           successResponse(
             await this.bookingService.createBooking(
               this.getActor(response),
-              bookingCreateBodySchema.parse(request.body)
+              body,
+              ...(rawIdempotencyKey === undefined ? [] : [rawIdempotencyKey])
             )
           )
         );
@@ -211,17 +215,19 @@ export class BookingController {
   ): Promise<void> => {
     try {
       const params = orderAddOnIdParamsSchema.parse(request.params);
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.acceptOrderAddOn(
-            this.getActor(response),
-            params.id,
-            params.addOnId,
-            orderAddOnDecisionBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.acceptOrderAddOn(
+              this.getActor(response),
+              params.id,
+              params.addOnId,
+              orderAddOnDecisionBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -234,17 +240,19 @@ export class BookingController {
   ): Promise<void> => {
     try {
       const params = orderAddOnIdParamsSchema.parse(request.params);
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.rejectOrderAddOn(
-            this.getActor(response),
-            params.id,
-            params.addOnId,
-            orderAddOnDecisionBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.rejectOrderAddOn(
+              this.getActor(response),
+              params.id,
+              params.addOnId,
+              orderAddOnDecisionBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -256,16 +264,18 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.endService(
-            this.getActor(response),
-            this.getOrderId(request),
-            endServiceBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.endService(
+              this.getActor(response),
+              this.getOrderId(request),
+              endServiceBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -277,11 +287,13 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.getCheckout(this.getActor(response), this.getOrderId(request))
-        )
-      );
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.getCheckout(this.getActor(response), this.getOrderId(request))
+          )
+        );
     } catch (error) {
       next(error);
     }
@@ -293,16 +305,18 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.createOrderReview(
-            this.getActor(response),
-            this.getOrderId(request),
-            orderReviewCreateBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.createOrderReview(
+              this.getActor(response),
+              this.getOrderId(request),
+              orderReviewCreateBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -314,14 +328,39 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.getOwnOrderReview(
-            this.getActor(response),
-            this.getOrderId(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.getOwnOrderReview(
+              this.getActor(response),
+              this.getOrderId(request)
+            )
           )
-        )
-      );
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createOrderTimelineComment = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { body } = orderTimelineCommentBodySchema.parse(request.body);
+      response
+        .status(201)
+        .json(
+          successResponse(
+            await this.bookingService.createOrderTimelineComment(
+              this.getActor(response),
+              this.getOrderId(request),
+              body
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }
@@ -333,16 +372,18 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.selectCheckoutPaymentMethod(
-            this.getActor(response),
-            this.getOrderId(request),
-            selectPaymentMethodBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.selectCheckoutPaymentMethod(
+              this.getActor(response),
+              this.getOrderId(request),
+              selectPaymentMethodBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -354,16 +395,18 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.payCheckoutWithNdp(
-            this.getActor(response),
-            this.getOrderId(request),
-            payWithNdpBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.payCheckoutWithNdp(
+              this.getActor(response),
+              this.getOrderId(request),
+              payWithNdpBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -375,17 +418,19 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.confirmCheckoutReceipt(
-            getAuthenticatedAccess(response),
-            this.getOrderId(request),
-            confirmReceiptBodySchema.parse(request.body),
-            getRequestContext(request),
-            false
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.confirmCheckoutReceipt(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              confirmReceiptBodySchema.parse(request.body),
+              getRequestContext(request),
+              false
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -397,17 +442,19 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.confirmCheckoutReceipt(
-            getAuthenticatedAccess(response),
-            this.getOrderId(request),
-            confirmReceiptBodySchema.parse(request.body),
-            getRequestContext(request),
-            true
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.confirmCheckoutReceipt(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              confirmReceiptBodySchema.parse(request.body),
+              getRequestContext(request),
+              true
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -419,16 +466,18 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.confirmManualPayment(
-            getAuthenticatedAccess(response),
-            this.getOrderId(request),
-            manualPaymentConfirmBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.confirmManualPayment(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              manualPaymentConfirmBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -440,25 +489,42 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.refundManualPayment(
-            getAuthenticatedAccess(response),
-            this.getOrderId(request),
-            manualPaymentRefundBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.refundManualPayment(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              manualPaymentRefundBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
   };
 
-  public listScheduleSlots = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+  public listScheduleSlots = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.bookingService.listScheduleSlots(getAuthenticatedAccess(response), scheduleSlotListQuerySchema.parse(request.query))));
-    } catch (error) { next(error); }
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.listScheduleSlots(
+              getAuthenticatedAccess(response),
+              scheduleSlotListQuerySchema.parse(request.query)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
   };
 
   public getScheduleSlot = async (
@@ -467,35 +533,86 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.getScheduleSlot(
-            getAuthenticatedAccess(response),
-            this.getOrderId(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.getScheduleSlot(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
   };
 
-  public createScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+  public createScheduleSlot = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      response.status(201).json(successResponse(await this.bookingService.createScheduleSlot(getAuthenticatedAccess(response), scheduleSlotCreateBodySchema.parse(request.body), getRequestContext(request))));
-    } catch (error) { next(error); }
+      response
+        .status(201)
+        .json(
+          successResponse(
+            await this.bookingService.createScheduleSlot(
+              getAuthenticatedAccess(response),
+              scheduleSlotCreateBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
   };
 
-  public updateScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+  public updateScheduleSlot = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.bookingService.updateScheduleSlot(getAuthenticatedAccess(response), this.getOrderId(request), scheduleSlotUpdateBodySchema.parse(request.body), getRequestContext(request))));
-    } catch (error) { next(error); }
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.updateScheduleSlot(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              scheduleSlotUpdateBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
   };
 
-  public deleteScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+  public deleteScheduleSlot = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.bookingService.deleteScheduleSlot(getAuthenticatedAccess(response), this.getOrderId(request), getRequestContext(request))));
-    } catch (error) { next(error); }
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.deleteScheduleSlot(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
   };
 
   private getActor(response: Response) {

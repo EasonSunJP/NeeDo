@@ -18,6 +18,7 @@ const context: AuthRequestContext = { ip: "127.0.0.1", userAgent: "fulfillment-t
 const customer = {
   userId: 101,
   roles: ["customer"],
+  currentIdentityId: 1501,
   currentIdentityType: "customer",
   currentIdentityScopeType: "customer_profile",
   currentIdentityScopeId: 501
@@ -25,6 +26,7 @@ const customer = {
 const assignedTechnician = {
   userId: 202,
   roles: ["technician"],
+  currentIdentityId: 1702,
   currentIdentityType: "technician",
   currentIdentityScopeType: "technician_profile",
   currentIdentityScopeId: 702
@@ -78,6 +80,7 @@ const makeOrder = (
   updatedAt: now,
   statusHistory: [],
   ...overrides,
+  fulfillmentAddressSnapshot: overrides.fulfillmentAddressSnapshot ?? null,
   performanceAssessment: overrides.performanceAssessment ?? null,
   timelineEvents: overrides.timelineEvents ?? []
 });
@@ -206,15 +209,18 @@ describe("formal order fulfillment service", () => {
       makeOrder("confirmed", { technicianProfileId: null, technicianName: null }),
       { actor: "customer" as const, idempotencyKey: "missing-technician-01" }
     ]
-  ])("rejects unrelated or incomplete participants at the service boundary", async (requestActor, order, input) => {
-    const repository = createRepository(order);
-    const service = new BookingService(repository);
-    await expect(service.startService(requestActor, 41, input, context)).rejects.toMatchObject({
-      code: ERROR_CODES.NOT_FOUND,
-      statusCode: 404
-    });
-    expect(repository.startService).not.toHaveBeenCalled();
-  });
+  ])(
+    "rejects unrelated or incomplete participants at the service boundary",
+    async (requestActor, order, input) => {
+      const repository = createRepository(order);
+      const service = new BookingService(repository);
+      await expect(service.startService(requestActor, 41, input, context)).rejects.toMatchObject({
+        code: ERROR_CODES.NOT_FOUND,
+        statusCode: 404
+      });
+      expect(repository.startService).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ["not_found", ERROR_CODES.NOT_FOUND, 404],
@@ -222,19 +228,22 @@ describe("formal order fulfillment service", () => {
     ["invalid_transition", ERROR_CODES.ORDER_INVALID_TRANSITION, 409],
     ["unresolved_add_on", ERROR_CODES.ORDER_INVALID_TRANSITION, 409],
     ["conflict", ERROR_CODES.IDEMPOTENCY_KEY_REUSED, 409]
-  ] as const)("maps repository outcome %s without participant leakage", async (outcome, code, statusCode) => {
-    const repository = createRepository(makeOrder("inService"), { outcome });
-    const service = new BookingService(repository);
+  ] as const)(
+    "maps repository outcome %s without participant leakage",
+    async (outcome, code, statusCode) => {
+      const repository = createRepository(makeOrder("inService"), { outcome });
+      const service = new BookingService(repository);
 
-    await expect(
-      service.endService(
-        customer,
-        41,
-        { reason: "customer_completed", idempotencyKey: "customer-end-0000001" },
-        context
-      )
-    ).rejects.toMatchObject({ code, statusCode });
-  });
+      await expect(
+        service.endService(
+          customer,
+          41,
+          { reason: "customer_completed", idempotencyKey: "customer-end-0000001" },
+          context
+        )
+      ).rejects.toMatchObject({ code, statusCode });
+    }
+  );
 
   it("maps invalid add-on catalog selections to a validated client error", async () => {
     const repository = createRepository(makeOrder("inService"), { outcome: "invalid_service" });
@@ -311,6 +320,46 @@ describe("formal order fulfillment service", () => {
       )
     ).resolves.toMatchObject({ status: "awaitingCheckout" });
     expect(notifications.notifyOrderStatusChanged).not.toHaveBeenCalled();
+  });
+
+  it("emits an exact-identity realtime change when a customer proposes an add-on", async () => {
+    const inService = makeOrder("inService", {
+      serviceSession: {
+        startedAt: now,
+        expectedEndsAt: new Date("2026-09-01T11:00:00.000Z"),
+        endedAt: null,
+        addOns: []
+      }
+    });
+    const repository = createRepository(inService, ok(inService));
+    repository.findOrderRealtimeRecipients = jest.fn().mockResolvedValue([
+      { userId: 101, identityId: 1501 },
+      { userId: 202, identityId: 1702 }
+    ]);
+    const notifications = {
+      notifyOrderStatusChanged: jest.fn(),
+      notifyOrderChanged: jest.fn()
+    };
+    const service = new BookingService(repository, undefined, notifications);
+
+    await service.createOrderAddOn(
+      customer,
+      41,
+      { serviceId: 19, idempotencyKey: "customer-addon-realtime-01" },
+      context
+    );
+
+    expect(notifications.notifyOrderChanged).toHaveBeenCalledWith({
+      actorIdentityId: 1501,
+      actorUserId: 101,
+      changeType: "add_on",
+      orderId: 41,
+      orderNo: "ND202609010041",
+      recipients: [
+        { userId: 101, identityId: 1501 },
+        { userId: 202, identityId: 1702 }
+      ]
+    });
   });
 
   it("shows the stable code only on the owning customer detail and never exposes a hash", async () => {
@@ -406,6 +455,14 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     servicePriceSnapshot: new Prisma.Decimal(baseOrder.servicePriceSnapshot!),
     serviceSnapshotJson: baseOrder.serviceSnapshot,
     fulfillmentMode: "store",
+    customer: {
+      id: customer.userId,
+      needoId: "u0000000101",
+      username: "预约用户",
+      avatarUrl: null,
+      avatarBootstrapUrl: null,
+      customerProfile: null
+    },
     service: { id: 11, name: baseOrder.serviceName },
     technicianService: null,
     shop: { id: 12, name: baseOrder.shopName },
@@ -457,10 +514,15 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     ...dbOrder,
     serviceSession: session ? { ...session, addOns: [...addOns] } : null
   });
+  const workState={technicianProfileId:702,status:'on_duty',version:0,syncedAt:null as Date|null};
+  const workEvents:Record<string,unknown>[]=[];
   const tx = {
+    technicianWorkState:{upsert:jest.fn(async()=>workState),update:jest.fn(async()=>workState),findFirst:jest.fn(async()=>({...workState})),updateMany:jest.fn(async({where,data}:{where:{version:number};data:{status:string;version:{increment:number};syncedAt:Date}})=>{if(where.version!==workState.version)return {count:0};workState.status=data.status;workState.version+=data.version.increment;workState.syncedAt=data.syncedAt;return {count:1}})},
+    technicianWorkEvent:{create:jest.fn(async({data}:{data:Record<string,unknown>})=>{workEvents.push(data);return data})},
+    auditLog:{create:jest.fn(async()=>({}))},
     $queryRaw: jest.fn(async () => [{ id: dbOrder.id }]),
     bookingOrder: {
-      findFirst: jest.fn(async () => projectedOrder()),
+      findFirst: jest.fn(async (input?:{where?:{status?:string}}) => input?.where?.status&&input.where.status!==dbOrder.status?null:projectedOrder()),
       updateMany: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         Object.assign(dbOrder, data);
         return { count: options.guardedOrderUpdateCount ?? 1 };
@@ -559,10 +621,11 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
       const sessionSnapshot = session ? { ...session } : null;
       const eventSnapshot = events.map((event) => ({ ...event }));
       const addOnSnapshot = addOns.map((addOn) => ({ ...addOn }));
+      const workSnapshot={...workState};const workEventCount=workEvents.length;
       try {
         return await callback(tx);
       } catch (error) {
-        Object.assign(dbOrder, orderSnapshot);
+        Object.assign(dbOrder, orderSnapshot);Object.assign(workState,workSnapshot);workEvents.splice(workEventCount);
         dbOrder.statusHistory.splice(
           0,
           dbOrder.statusHistory.length,
@@ -577,6 +640,7 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
   };
   return {
     repository: new BookingRepository(client as never),
+    workState,workEvents,
     dbOrder,
     events,
     addOns,
@@ -640,9 +704,7 @@ describe("formal order fulfillment repository transactions", () => {
     expect(firstExpectedEndsAt.getTime() - harness.getSession()!.startedAt.getTime()).toBe(
       60 * 60_000
     );
-    expect(harness.getSession()!.verificationHash).not.toBe(
-      deriveOrderServiceVerificationCode(41)
-    );
+    expect(harness.getSession()!.verificationHash).not.toBe(deriveOrderServiceVerificationCode(41));
     expect(harness.getSession()!.verificationHash).not.toMatch(/^\d{6}$/);
     expect(harness.events).toHaveLength(1);
 
@@ -751,18 +813,21 @@ describe("formal order fulfillment repository transactions", () => {
     [{ status: "draft" }, "unpublished"],
     [{ currency: "usd" }, "non-JPY"],
     [{ priceAmount: "4000.50" }, "fractional-JPY"]
-  ] as const)("rejects %s catalog data instead of trusting a client snapshot", async (service, label) => {
-    const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true, service });
-    await expect(
-      harness.repository.createOrderAddOn({
-        ...repositoryActor,
-        orderId: 41,
-        serviceId: 19,
-        idempotencyKey: `invalid-addon-${label.padEnd(20, "0")}`
-      })
-    ).resolves.toEqual({ outcome: "invalid_service" });
-    expect(harness.addOns).toHaveLength(0);
-  });
+  ] as const)(
+    "rejects %s catalog data instead of trusting a client snapshot",
+    async (service, label) => {
+      const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true, service });
+      await expect(
+        harness.repository.createOrderAddOn({
+          ...repositoryActor,
+          orderId: 41,
+          serviceId: 19,
+          idempotencyKey: `invalid-addon-${label.padEnd(20, "0")}`
+        })
+      ).resolves.toEqual({ outcome: "invalid_service" });
+      expect(harness.addOns).toHaveLength(0);
+    }
+  );
 
   it("conflicts when a proposal key is reused with a different service", async () => {
     const harness = createRepositoryHarness({ status: "IN_SERVICE", session: true });
@@ -1025,4 +1090,28 @@ describe("formal order fulfillment repository transactions", () => {
     ).resolves.toBeNull();
     expect(transaction).not.toHaveBeenCalled();
   });
+});
+
+describe('work status post-commit notification',()=>{
+ it('notifies assigned technician after an applied start and end, but never on failed mutation',async()=>{
+  const notifier={notifyTechnician:jest.fn(async()=>undefined)};
+  const repository=createRepository(makeOrder('confirmed'),ok(makeOrder('inService')));
+  repository.findLiveDashboardOrderEvents = jest.fn(async () => [{ orderId: 41, scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" }, orderNo: "order-41", status: "inService" as const, serviceName: "service", amountJpy: 8800 }]);
+  const live = { publish: jest.fn(async () => null) };
+  const service=new BookingService(repository,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,undefined,notifier,live);
+  await service.startService(customer,41,{actor:'customer',idempotencyKey:'work-start-1'},context);
+  expect(notifier.notifyTechnician).toHaveBeenCalledWith(702);
+  expect(live.publish).toHaveBeenCalledTimes(2);
+  expect(repository.startService.mock.invocationCallOrder[0]).toBeLessThan(notifier.notifyTechnician.mock.invocationCallOrder[0]!);
+  expect(repository.startService.mock.invocationCallOrder[0]).toBeLessThan(live.publish.mock.invocationCallOrder[0]!);
+  repository.findOrderById.mockResolvedValue(makeOrder('inService'));
+  repository.endService.mockResolvedValue(ok(makeOrder('awaitingCheckout')));
+  await service.endService(customer,41,{reason:'customer_completed',idempotencyKey:'work-end-1'},context);
+  expect(notifier.notifyTechnician).toHaveBeenCalledTimes(2);
+  expect(live.publish).toHaveBeenCalledTimes(4);
+  repository.endService.mockResolvedValue({outcome:'invalid_transition'});
+  await expect(service.endService(customer,41,{reason:'customer_completed',idempotencyKey:'work-end-2'},context)).rejects.toThrow();
+  expect(notifier.notifyTechnician).toHaveBeenCalledTimes(2);
+  expect(live.publish).toHaveBeenCalledTimes(4);
+ });
 });

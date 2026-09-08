@@ -4,15 +4,23 @@ describe("AffiliateAllianceInvitationExpiryWorker", () => {
   afterEach(() => jest.restoreAllMocks());
 
   it("runs immediately, schedules one unref interval, and stops cleanly", async () => {
-    const expireDue = jest.fn().mockResolvedValue({ scanned: 2, expired: 2, skipped: 0, failed: 0 });
+    const expireDue = jest
+      .fn()
+      .mockResolvedValue({ scanned: 2, expired: 2, skipped: 0, failed: 0 });
     const logger = { info: jest.fn(), error: jest.fn() };
     const unref = jest.fn();
     const timer = { unref } as unknown as NodeJS.Timeout;
     jest.spyOn(global, "setInterval").mockReturnValue(timer);
-    const clearIntervalSpy = jest.spyOn(global, "clearInterval").mockImplementation(() => undefined);
+    const clearIntervalSpy = jest
+      .spyOn(global, "clearInterval")
+      .mockImplementation(() => undefined);
     const now = new Date("2026-08-31T12:00:00.000Z");
     const worker = new AffiliateAllianceInvitationExpiryWorker(
-      { expireDue }, logger, 300_000, 100, () => now
+      { expireDue },
+      logger,
+      300_000,
+      100,
+      () => now
     );
 
     worker.start();
@@ -28,10 +36,20 @@ describe("AffiliateAllianceInvitationExpiryWorker", () => {
   });
 
   it("prevents overlap and recovers after a logged failure", async () => {
-    let release: ((value: { scanned: number; expired: number; skipped: number; failed: number }) => void) | undefined;
-    const expireDue = jest.fn().mockImplementationOnce(
-      () => new Promise<{ scanned: number; expired: number; skipped: number; failed: number }>((resolve) => { release = resolve; })
-    ).mockRejectedValueOnce(new Error("database unavailable"));
+    let release:
+      | ((value: { scanned: number; expired: number; skipped: number; failed: number }) => void)
+      | undefined;
+    const expireDue = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ scanned: number; expired: number; skipped: number; failed: number }>(
+            (resolve) => {
+              release = resolve;
+            }
+          )
+      )
+      .mockRejectedValueOnce(new Error("database unavailable"));
     const logger = { info: jest.fn(), error: jest.fn() };
     const worker = new AffiliateAllianceInvitationExpiryWorker({ expireDue }, logger, 300_000, 100);
 

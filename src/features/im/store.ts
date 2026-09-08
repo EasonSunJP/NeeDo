@@ -1,7 +1,12 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import type { Language } from "../../i18n/translations";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
+import {
+  getImOpenedMediaCacheService,
+  type ImOpenedMediaCacheService,
+} from "./local-cache/service";
 import {
   applyConversationDraft,
   buildSearchResults,
@@ -139,6 +144,38 @@ export function getMessageFailureReason(error: unknown): ConversationMessage["fa
   }
 
   return "send_failed";
+}
+
+export function resolveImOpenedMediaCacheFetchSource(
+  source: string,
+  currentOrigin: string,
+) {
+  const origin = new URL(currentOrigin);
+  const resolved = new URL(source, origin);
+  if (
+    !["http:", "https:"].includes(resolved.protocol) ||
+    !resolved.pathname.startsWith("/media/im/")
+  ) {
+    throw new Error("error.im.local_cache_media_source_invalid");
+  }
+
+  return `${resolved.pathname}${resolved.search}`;
+}
+
+export async function fetchImOpenedMediaBlob(
+  source: string,
+  currentOrigin: string,
+  fetcher: typeof fetch = fetch,
+) {
+  const response = await fetcher(
+    resolveImOpenedMediaCacheFetchSource(source, currentOrigin),
+    { cache: "no-store", credentials: "same-origin" },
+  );
+  if (response.status === 410) return { state: "expired" as const };
+  if (!response.ok) {
+    throw new Error(`error.im.media_delivery_${response.status}`);
+  }
+  return { blob: await response.blob(), state: "ready" as const };
 }
 
 export function getFriendRequestCounterpartId(
@@ -312,22 +349,208 @@ function getUiStorageKey(scope: ImRoleType) {
   return `needo.im.ui.v2.${scope}`;
 }
 
+type PendingTerminalMediaPurge = {
+  onSuccess: Set<() => void>;
+  retryTimer?: number;
+};
+
 type ScopedStoreBackend = {
+  accountId: string;
   api: ReturnType<typeof createFormalImApi>;
+  localCache: ImOpenedMediaCacheService;
   subscribeUpdates: (onUpdate: (update: ImStoreUpdate) => void) => () => void;
 };
 
+type CachedImState = Pick<
+  ImSnapshot,
+  | "config"
+  | "contacts"
+  | "conversations"
+  | "currentUserId"
+  | "friendRequests"
+  | "members"
+  | "messagesByConversation"
+  | "organizationContacts"
+  | "paginationByConversation"
+  | "users"
+>;
+
+const maxCachedImConversations = 50;
+const maxCachedImMessagesPerConversation = 200;
+
+export function sanitizeImMessageForPersistentCache(message: ConversationMessage): ConversationMessage | null {
+  if (
+    message.id.startsWith("local-") ||
+    message.status === "sending" ||
+    message.status === "failed"
+  ) {
+    return null;
+  }
+  return { ...message, ext: message.ext ? { ...message.ext } : undefined };
+}
+
+function toCachedImState(snapshot: ImSnapshot): CachedImState {
+  const conversations = sortConversations(snapshot.conversations).slice(0, maxCachedImConversations);
+  const conversationIds = new Set(conversations.map((conversation) => conversation.id));
+  const messagesByConversation = Object.fromEntries(
+    Object.entries(snapshot.messagesByConversation)
+      .filter(([conversationId]) => conversationIds.has(conversationId))
+      .map(([conversationId, messages]) => [
+        conversationId,
+        messages
+          .map(sanitizeImMessageForPersistentCache)
+          .filter((message): message is ConversationMessage => message !== null)
+          .slice(-maxCachedImMessagesPerConversation)
+      ])
+  );
+  const paginationByConversation = Object.fromEntries(
+    Object.entries(snapshot.paginationByConversation)
+      .filter(([conversationId]) => conversationIds.has(conversationId))
+      .map(([conversationId, pagination]) => [
+        conversationId,
+        { ...pagination, loading: false }
+      ])
+  );
+  return {
+    config: snapshot.config,
+    contacts: snapshot.contacts,
+    conversations,
+    currentUserId: snapshot.currentUserId,
+    friendRequests: snapshot.friendRequests,
+    members: snapshot.members.filter((member) => conversationIds.has(member.conversationId)),
+    messagesByConversation,
+    organizationContacts: snapshot.organizationContacts,
+    paginationByConversation,
+    users: snapshot.users
+  };
+}
+
 function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
-  const { api } = backend;
+  const { accountId, api, localCache } = backend;
+  const persistentCacheKey = `im:state:${scope}`;
+  const persistentCacheScope = `account:${accountId}`;
+  const historyGenerations = new Map<string, number>();
   const listeners = new Set<() => void>();
   let realtimeUnsubscribe: (() => void) | null = null;
   let hydrated = false;
   let hydrating: Promise<void> | null = null;
   let entityRefresh: Promise<void> | null = null;
+  let entityRefreshGeneration = 0;
+  let persistScheduled = false;
   let snapshot = createInitialSnapshot();
+  const failedTerminalMediaPurges = new Set<string>();
+  const pendingTerminalMediaPurges = new Map<string, PendingTerminalMediaPurge>();
+  const tracelessMessageIdsByConversation = new Map<string, Set<string>>();
+
+  function applyCachedState(cached: CachedImState) {
+    snapshot = {
+      ...snapshot,
+      status: "ready",
+      error: undefined,
+      currentUserId: cached.currentUserId,
+      config: cached.config,
+      users: cached.users,
+      usersById: toUserRecord(cached.users),
+      contacts: cached.contacts,
+      organizationContacts: cached.organizationContacts,
+      friendRequests: cached.friendRequests,
+      conversations: sortConversations(applyDraftsToConversations(
+        cached.conversations.map(sanitizeTracelessConversation),
+        snapshot.ui.drafts,
+      )),
+      members: cached.members,
+      messagesByConversation: cached.messagesByConversation,
+      paginationByConversation: cached.paginationByConversation
+    };
+  }
+
+  function schedulePersistentStateWrite() {
+    if (!hydrated || snapshot.status !== "ready" || persistScheduled) return;
+    persistScheduled = true;
+    globalThis.queueMicrotask(() => {
+      persistScheduled = false;
+      void persistentResourceCache.write(
+        persistentCacheScope,
+        persistentCacheKey,
+        toCachedImState(snapshot)
+      ).catch(() => undefined);
+    });
+  }
 
   function emit() {
+    schedulePersistentStateWrite();
     listeners.forEach((listener) => listener());
+  }
+
+  async function purgeTerminalMediaWithRetry(
+    conversationId: string,
+    messageId: string,
+  ) {
+    const key = `${conversationId}:${messageId}`;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await localCache.purgeMedia(accountId, conversationId, messageId);
+        failedTerminalMediaPurges.delete(key);
+        if (
+          failedTerminalMediaPurges.size === 0 &&
+          snapshot.error === "error.im.local_cache_purge_failed"
+        ) {
+          snapshot = { ...snapshot, error: undefined };
+          emit();
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    failedTerminalMediaPurges.add(key);
+    snapshot = { ...snapshot, error: "error.im.local_cache_purge_failed" };
+    emit();
+    throw new Error("error.im.local_cache_purge_failed", { cause: lastError });
+  }
+
+  function scheduleTerminalMediaPurge(
+    conversationId: string,
+    messageId: string,
+    onSuccess?: () => void,
+    initialDelayMs = 0,
+  ) {
+    const key = `${conversationId}:${messageId}`;
+    const existing = pendingTerminalMediaPurges.get(key);
+    if (existing) {
+      if (onSuccess) existing.onSuccess.add(onSuccess);
+      return;
+    }
+
+    const pending: PendingTerminalMediaPurge = { onSuccess: new Set() };
+    if (onSuccess) pending.onSuccess.add(onSuccess);
+    pendingTerminalMediaPurges.set(key, pending);
+
+    const run = async () => {
+      try {
+        await purgeTerminalMediaWithRetry(conversationId, messageId);
+      } catch {
+        pending.retryTimer = window.setTimeout(() => {
+          pending.retryTimer = undefined;
+          void run();
+        }, 1_000);
+        return;
+      }
+
+      pendingTerminalMediaPurges.delete(key);
+      pending.onSuccess.forEach((callback) => callback());
+    };
+
+    if (initialDelayMs > 0) {
+      pending.retryTimer = window.setTimeout(() => {
+        pending.retryTimer = undefined;
+        void run();
+      }, initialDelayMs);
+    } else {
+      void run();
+    }
   }
 
   function readUiState(): UiState {
@@ -399,7 +622,10 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   function upsertConversation(conversation: Conversation) {
     const exists = snapshot.conversations.some((item) => item.id === conversation.id);
-    const nextConversation = applyDraftOverlay(conversation, snapshot.ui.drafts);
+    const nextConversation = applyDraftOverlay(
+      sanitizeTracelessConversation(conversation),
+      snapshot.ui.drafts,
+    );
     const conversations = exists
       ? snapshot.conversations.map((item) => (item.id === conversation.id ? nextConversation : item))
       : [nextConversation, ...snapshot.conversations];
@@ -410,7 +636,53 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
   }
 
+  function isTracelessMessage(conversationId: string, messageId: string) {
+    return tracelessMessageIdsByConversation.get(conversationId)?.has(messageId) ?? false;
+  }
+
+  function sanitizeTracelessConversation(conversation: Conversation) {
+    if (
+      !conversation.lastMessageId ||
+      !isTracelessMessage(conversation.id, conversation.lastMessageId)
+    ) {
+      return conversation;
+    }
+    const remainingMessages = snapshot.messagesByConversation[conversation.id] ?? [];
+    return {
+      ...conversation,
+      ...buildConversationLastMessageSummary(
+        remainingMessages.at(-1),
+        snapshot.currentUserId ?? "",
+        snapshot.usersById,
+        conversation.updatedAt,
+      ),
+    };
+  }
+
+  function rememberTracelessMessage(conversationId: string, messageId: string) {
+    const messageIds = tracelessMessageIdsByConversation.get(conversationId) ?? new Set<string>();
+    if (!messageIds.has(messageId)) entityRefreshGeneration += 1;
+    messageIds.add(messageId);
+    tracelessMessageIdsByConversation.set(conversationId, messageIds);
+  }
+
+  function removeTracelessMessage(conversationId: string, messageId: string) {
+    rememberTracelessMessage(conversationId, messageId);
+    const messages = (snapshot.messagesByConversation[conversationId] ?? []).filter(
+      (message) => message.id !== messageId,
+    );
+    snapshot = {
+      ...snapshot,
+      messagesByConversation: {
+        ...snapshot.messagesByConversation,
+        [conversationId]: messages,
+      },
+    };
+    rebuildConversationMessageSummary(conversationId);
+  }
+
   function upsertMessage(message: ConversationMessage) {
+    if (isTracelessMessage(message.conversationId, message.id)) return;
     const current = snapshot.messagesByConversation[message.conversationId] ?? [];
     const nextMessages = upsertConversationMessage(current, message);
 
@@ -424,6 +696,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   }
 
   function recomputeCurrentLastMessageSummary(message: ConversationMessage) {
+    if (isTracelessMessage(message.conversationId, message.id)) return;
     snapshot = {
       ...snapshot,
       conversations: sortConversations(
@@ -487,6 +760,11 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   function syncRealtime(event: ImRealtimeEvent) {
     if (event.type === "message.created" || event.type === "message.updated" || event.type === "message.recalled") {
       upsertConversation(event.payload.conversation);
+      if (event.type === "message.recalled" && event.payload.message.recallMode === "traceless") {
+        removeTracelessMessage(event.payload.message.conversationId, event.payload.message.id);
+        emit();
+        return;
+      }
       upsertMessage(event.payload.message);
       if (event.type === "message.recalled") {
         recomputeCurrentLastMessageSummary(event.payload.message);
@@ -578,30 +856,78 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       }));
 
       try {
-        const bootstrap = await api.bootstrap();
-        snapshot = {
-          ...snapshot,
-          status: "ready",
-          currentUserId: bootstrap.currentUserId,
-          config: bootstrap.config,
-          users: bootstrap.users,
-          usersById: toUserRecord(bootstrap.users),
-          contacts: bootstrap.contacts,
-          organizationContacts: bootstrap.organizationContacts,
-          friendRequests: bootstrap.friendRequests,
-          conversations: sortConversations(applyDraftsToConversations(bootstrap.conversations, snapshot.ui.drafts)),
-          members: bootstrap.members
+        let pendingRefreshedState: CachedImState | null = null;
+        const loadBootstrapState = async (): Promise<CachedImState> => {
+          const bootstrap = await api.bootstrap();
+          const retained = persistentResourceCache.peek<CachedImState>(
+            persistentCacheScope,
+            persistentCacheKey
+          );
+          return {
+            config: bootstrap.config,
+            contacts: bootstrap.contacts,
+            conversations: bootstrap.conversations.map(sanitizeTracelessConversation),
+            currentUserId: bootstrap.currentUserId,
+            friendRequests: bootstrap.friendRequests,
+            members: bootstrap.members,
+            messagesByConversation: retained?.messagesByConversation ?? snapshot.messagesByConversation,
+            organizationContacts: bootstrap.organizationContacts,
+            paginationByConversation: retained?.paginationByConversation ?? snapshot.paginationByConversation,
+            users: bootstrap.users
+          };
         };
+        const cachedState = await persistentResourceCache.load({
+          key: persistentCacheKey,
+          load: loadBootstrapState,
+          onRefresh: (refreshedState) => {
+            if (!hydrated) {
+              pendingRefreshedState = refreshedState;
+              return;
+            }
+            applyCachedState(refreshedState);
+            emit();
+          },
+          scope: persistentCacheScope
+        });
+        applyCachedState(cachedState);
 
         if (!realtimeUnsubscribe) {
           realtimeUnsubscribe = backend.subscribeUpdates((update) => {
+            if (update.type === "message.deleted") {
+              if (update.reason === "traceless_recall") {
+                removeTracelessMessage(update.conversationId, update.messageId);
+                emit();
+              }
+              scheduleTerminalMediaPurge(
+                update.conversationId,
+                update.messageId,
+                () => {
+                  void refreshBootstrap();
+                  if (snapshot.activeConversationId === update.conversationId) {
+                    void loadMessages(update.conversationId, { force: true, reset: true, limit: 40 });
+                  }
+                },
+              );
+              return;
+            }
+
             if (
               update.type === "message.created" ||
               update.type === "message.updated" ||
               update.type === "message.recalled"
             ) {
+              // After clearing, only server-filtered history may repopulate this conversation.
+              if (historyGenerations.has(update.message.conversationId)) {
+                void refreshBootstrap();
+                void loadMessages(update.message.conversationId, { force: true, reset: true, limit: 40 });
+                return;
+              }
               upsertMessage(update.message);
               if (update.type === "message.recalled") {
+                scheduleTerminalMediaPurge(
+                  update.message.conversationId,
+                  update.message.id,
+                );
                 recomputeCurrentLastMessageSummary(update.message);
               }
               emit();
@@ -622,11 +948,12 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
             void refreshBootstrap();
             if (snapshot.activeConversationId) {
-              void loadMessages(snapshot.activeConversationId, { reset: true, limit: 40 });
+              void loadMessages(snapshot.activeConversationId, { force: true, reset: true, limit: 40 });
             }
           });
         }
 
+        if (pendingRefreshedState) applyCachedState(pendingRefreshedState);
         hydrated = true;
         emit();
       } catch (error) {
@@ -670,6 +997,19 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   function replaceLocalMessage(localId: string, nextMessage: ConversationMessage) {
     const current = snapshot.messagesByConversation[nextMessage.conversationId] ?? [];
+    if (isTracelessMessage(nextMessage.conversationId, nextMessage.id)) {
+      snapshot = {
+        ...snapshot,
+        messagesByConversation: {
+          ...snapshot.messagesByConversation,
+          [nextMessage.conversationId]: current.filter(
+            (message) => message.id !== localId && message.localId !== localId,
+          ),
+        },
+      };
+      rebuildConversationMessageSummary(nextMessage.conversationId);
+      return;
+    }
     const deduped = current
       .map((message) => (message.id === localId || message.localId === localId ? nextMessage : message))
       .filter((message, index, array) => array.findIndex((item) => item.id === message.id) === index);
@@ -685,6 +1025,14 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   async function loadConversation(conversationId: string) {
     await hydrateStore();
+    const cachedConversation = snapshot.conversations.find((item) => item.id === conversationId);
+    if (
+      cachedConversation &&
+      !cachedConversation.isDeleted &&
+      snapshot.members.some((member) => member.conversationId === conversationId)
+    ) {
+      return cachedConversation;
+    }
     const response = await api.getConversation(conversationId);
     mergeUsers(response.users);
     snapshot = {
@@ -699,10 +1047,14 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response.conversation;
   }
 
-  async function loadMessages(conversationId: string, options?: { reset?: boolean; limit?: number }) {
+  async function loadMessages(conversationId: string, options?: { force?: boolean; reset?: boolean; limit?: number }) {
     await hydrateStore();
+    const generation = historyGenerations.get(conversationId) ?? 0;
     const pagination = snapshot.paginationByConversation[conversationId];
 
+    if (options?.reset && pagination?.loaded && !options.force) {
+      return;
+    }
     if (pagination?.loading) {
       return;
     }
@@ -722,9 +1074,12 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     emit();
 
     const response = await api.listMessages(conversationId, options?.reset ? null : pagination?.nextCursor ?? null, options?.limit ?? 30);
+    if ((historyGenerations.get(conversationId) ?? 0) !== generation) return;
     const nextMessages = mergeConversationMessageHistory(
       snapshot.messagesByConversation[conversationId] ?? [],
-      response.messages,
+      response.messages.filter(
+        (message) => !isTracelessMessage(conversationId, message.id),
+      ),
       options?.reset ?? false,
     );
 
@@ -745,6 +1100,11 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       }
     };
     emit();
+    response.messages
+      .filter((message) => message.serverState === "recalled" || message.type === "recalled")
+      .forEach((message) => {
+        scheduleTerminalMediaPurge(message.conversationId, message.id);
+      });
   }
 
   function setActiveConversation(conversationId?: string) {
@@ -944,15 +1304,34 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   async function recallMessage(conversationId: string, messageId: string, mode: "standard") {
     await hydrateStore();
     const response = await api.recallMessage(conversationId, messageId, mode);
-    upsertMessage(response.message);
-    recomputeCurrentLastMessageSummary(response.message);
-    emit();
+    let localPurgeFailed = false;
+    if (response.mode === "traceless") {
+      removeTracelessMessage(conversationId, messageId);
+      emit();
+      void refreshBootstrap();
+    }
+    await purgeTerminalMediaWithRetry(conversationId, messageId).catch(() => {
+      localPurgeFailed = true;
+    });
+    if (response.mode === "standard") {
+      upsertMessage(response.message);
+      recomputeCurrentLastMessageSummary(response.message);
+      emit();
+    }
+    if (localPurgeFailed) {
+      scheduleTerminalMediaPurge(conversationId, messageId, undefined, 1_000);
+      throw new Error("error.im.local_cache_purge_failed");
+    }
     return response;
   }
 
   async function deleteMessage(conversationId: string, messageId: string) {
     await hydrateStore();
     const response = await api.deleteMessage(conversationId, messageId);
+    let localPurgeFailed = false;
+    await purgeTerminalMediaWithRetry(conversationId, messageId).catch(() => {
+      localPurgeFailed = true;
+    });
     const remainingMessages = (snapshot.messagesByConversation[conversationId] ?? []).filter(
       (message) => message.id !== messageId,
     );
@@ -966,6 +1345,10 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
     rebuildConversationMessageSummary(conversationId, latestMessage);
     emit();
+    if (localPurgeFailed) {
+      scheduleTerminalMediaPurge(conversationId, messageId, undefined, 1_000);
+      throw new Error("error.im.local_cache_purge_failed");
+    }
     return response;
   }
 
@@ -1037,6 +1420,26 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       idempotencyKey,
       messageIds: [...messageIds],
     });
+    const localPurgeResults = await Promise.allSettled(
+      response.messageIds.map((messageId) =>
+        purgeTerminalMediaWithRetry(conversationId, messageId),
+      ),
+    );
+    const failedLocalPurgeMessageIds = response.messageIds.filter(
+      (_, index) => localPurgeResults[index]?.status === "rejected",
+    );
+    let localRetryScheduled = false;
+    const assertLocalPurgeSucceeded = () => {
+      if (failedLocalPurgeMessageIds.length > 0) {
+        if (!localRetryScheduled) {
+          localRetryScheduled = true;
+          failedLocalPurgeMessageIds.forEach((messageId) => {
+            scheduleTerminalMediaPurge(conversationId, messageId, undefined, 1_000);
+          });
+        }
+        throw new Error("error.im.local_cache_purge_failed");
+      }
+    };
     const removed = new Set(response.messageIds);
     const conversation = snapshot.conversations.find((item) => item.id === conversationId);
     const pagination = snapshot.paginationByConversation[conversationId];
@@ -1052,11 +1455,13 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     };
     if (!removedCurrentLast) {
       emit();
+      assertLocalPurgeSucceeded();
       return;
     }
     if (pagination?.loaded && !pagination.hasMore) {
       rebuildConversationMessageSummary(conversationId);
       emit();
+      assertLocalPurgeSucceeded();
       return;
     }
     try {
@@ -1079,6 +1484,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       };
       emit();
     }
+    assertLocalPurgeSucceeded();
   }
 
   async function translateMessages(
@@ -1144,9 +1550,28 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response.conversation;
   }
 
+  function purgeConversationHistory(conversationId: string) {
+    historyGenerations.set(conversationId, (historyGenerations.get(conversationId) ?? 0) + 1);
+    removeDraft(conversationId);
+    const messages = { ...snapshot.messagesByConversation };
+    const pagination = { ...snapshot.paginationByConversation };
+    delete messages[conversationId];
+    delete pagination[conversationId];
+    snapshot = {
+      ...snapshot,
+      messagesByConversation: messages,
+      paginationByConversation: pagination,
+      pendingChatRecordForward: snapshot.pendingChatRecordForward?.sourceConversationId === conversationId
+        ? null : snapshot.pendingChatRecordForward,
+    };
+    persistUiState();
+  }
+
   async function deleteConversation(conversationId: string) {
     await hydrateStore();
     const response = await api.deleteConversation(conversationId);
+    purgeConversationHistory(conversationId);
+    removeConversationLocally(conversationId);
     upsertConversation(response.conversation);
     emit();
   }
@@ -1154,13 +1579,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   async function clearConversation(conversationId: string) {
     await hydrateStore();
     const response = await api.clearConversation(conversationId);
-    snapshot = {
-      ...snapshot,
-      messagesByConversation: {
-        ...snapshot.messagesByConversation,
-        [conversationId]: []
-      }
-    };
+    purgeConversationHistory(conversationId);
     upsertConversation(response.conversation);
     emit();
   }
@@ -1420,6 +1839,47 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     emit();
   }
 
+  async function cacheOpenedMedia(message: ConversationMessage, source: string) {
+    const cachePermitted =
+      message.privacyPolicyVersionAtSend === undefined &&
+      message.ext?.disappearing === undefined;
+    const intent = cachePermitted
+      ? await localCache.beginCacheOpenedMedia(
+          accountId,
+          message.conversationId,
+          message.id,
+        )
+      : null;
+    const delivery = await fetchImOpenedMediaBlob(source, window.location.origin);
+    if (delivery.state === "expired") {
+      return { state: "expired" as const };
+    }
+    const { blob } = delivery;
+    if (!intent) {
+      return { blob, cacheState: "skipped" as const, state: "ready" as const };
+    }
+    try {
+      await localCache.cacheOpenedMedia(accountId, message, blob, intent);
+      return { blob, cacheState: "stored" as const, state: "ready" as const };
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "error.im.local_cache_media_terminal"
+      ) {
+        throw error;
+      }
+      return { blob, cacheState: "unavailable" as const, state: "ready" as const };
+    }
+  }
+
+  function getCachedMediaObjectUrl(conversationId: string, messageId: string) {
+    return localCache.getCachedMediaObjectUrl(accountId, conversationId, messageId);
+  }
+
+  function releaseCachedMediaObjectUrl(conversationId: string, messageId: string) {
+    localCache.releaseCachedMediaObjectUrl(accountId, conversationId, messageId);
+  }
+
   async function refreshBootstrap() {
     if (!hydrated || snapshot.status !== "ready") {
       return;
@@ -1430,20 +1890,29 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     }
 
     entityRefresh = (async () => {
-      const bootstrap = await api.bootstrap();
-      snapshot = {
-        ...snapshot,
-        currentUserId: bootstrap.currentUserId,
-        config: bootstrap.config,
-        users: bootstrap.users,
-        usersById: toUserRecord(bootstrap.users),
-        contacts: bootstrap.contacts,
-        organizationContacts: bootstrap.organizationContacts,
-        friendRequests: bootstrap.friendRequests,
-        conversations: sortConversations(applyDraftsToConversations(bootstrap.conversations, snapshot.ui.drafts)),
-        members: bootstrap.members
-      };
-      emit();
+      let generation: number;
+      do {
+        generation = entityRefreshGeneration;
+        const bootstrap = await api.bootstrap();
+        // A recall invalidates pre-recall counters as well as message previews.
+        if (generation !== entityRefreshGeneration) continue;
+        snapshot = {
+          ...snapshot,
+          currentUserId: bootstrap.currentUserId,
+          config: bootstrap.config,
+          users: bootstrap.users,
+          usersById: toUserRecord(bootstrap.users),
+          contacts: bootstrap.contacts,
+          organizationContacts: bootstrap.organizationContacts,
+          friendRequests: bootstrap.friendRequests,
+          conversations: sortConversations(applyDraftsToConversations(
+            bootstrap.conversations.map(sanitizeTracelessConversation),
+            snapshot.ui.drafts,
+          )),
+          members: bootstrap.members
+        };
+        emit();
+      } while (generation !== entityRefreshGeneration);
     })().finally(() => {
       entityRefresh = null;
     });
@@ -1516,6 +1985,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       rejectFriendRequest,
       search,
       searchDirectory,
+      cacheOpenedMedia,
+      getCachedMediaObjectUrl,
+      releaseCachedMediaObjectUrl,
       refresh: refreshBootstrap,
       rememberSearchTerm,
       clearSearchHistory
@@ -1550,7 +2022,9 @@ function getScopedStore(
   }
 
   const created = createScopedStore(scope, {
+    accountId: String(currentUser.id),
     api: createFormalImApi({ currentUser, scope }),
+    localCache: getImOpenedMediaCacheService(),
     subscribeUpdates: subscribeFormalImUpdates
   });
   scopedStores.set(key, created);

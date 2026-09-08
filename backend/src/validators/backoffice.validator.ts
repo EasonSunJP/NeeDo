@@ -4,6 +4,7 @@ import {
   MAX_DASHBOARD_CUSTOM_RANGE_DAYS,
   type DashboardPeriod
 } from "../domain/dashboard-period";
+import { verifiedServiceLocationSchema } from "./administrative-region.validator";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -11,6 +12,19 @@ const paginationQuerySchema = {
 };
 
 const isoDateSchema = z.coerce.date();
+const repeated = <TSchema extends z.ZodTypeAny>(schema: TSchema) =>
+  z.preprocess(
+    (value) => (value === undefined ? undefined : Array.isArray(value) ? value : [value]),
+    z.array(schema).min(1).max(20).optional()
+  );
+const managedIdentityTypeSchema = z.enum([
+  "platform",
+  "customer",
+  "technician",
+  "merchant",
+  "broker",
+  "scout"
+]);
 
 export const manageableMerchantShopsQuerySchema = z
   .object({
@@ -37,11 +51,29 @@ export const backofficeManagedUserListQuerySchema = z
     pageSize: z.coerce.number().int().positive().max(100).default(20),
     keyword: z.string().trim().max(100).optional(),
     tier: z.enum(["free", "silver", "gold", "black_diamond"]).optional(),
+    tiers: repeated(z.enum(["free", "silver", "gold", "black_diamond"])),
     groupCode: z.string().trim().min(1).max(80).optional(),
-    identityType: z.string().trim().min(1).max(50).optional(),
+    identityType: managedIdentityTypeSchema.optional(),
+    identityTypes: repeated(managedIdentityTypeSchema),
     source: z.string().trim().min(1).max(32).optional(),
     state: z.enum(["active", "inactive"]).optional(),
+    states: repeated(z.enum(["active", "inactive"])),
     ekyc: z.enum(["verified", "unverified"]).optional(),
+    ekycStates: repeated(z.enum(["verified", "unverified"])),
+    city: z.string().trim().min(1).max(100).optional(),
+    cities: repeated(z.string().trim().min(1).max(100)),
+    emailState: z.enum(["set", "unset"]).optional(),
+    emailStates: repeated(z.enum(["set", "unset"])),
+    privacy: z
+      .enum(["enabled", "disabled", "public", "privateAll", "limited", "network"])
+      .optional(),
+    privacyScopes: repeated(
+      z.enum(["enabled", "disabled", "public", "privateAll", "limited", "network"])
+    ),
+    minBookings: z.coerce.number().int().nonnegative().optional(),
+    maxBookings: z.coerce.number().int().nonnegative().optional(),
+    sortBy: z.enum(["displayName", "email", "city", "createdAt", "ndpBalance", "bookingCount"]).default("createdAt"),
+    sortDirection: z.enum(["asc", "desc"]).default("desc"),
     minLevel: z.coerce.number().int().min(1).max(100).optional(),
     maxLevel: z.coerce.number().int().min(1).max(100).optional(),
     minExpUnits: z.coerce.bigint().nonnegative().optional(),
@@ -57,6 +89,7 @@ export const backofficeManagedUserListQuerySchema = z
       [value.minLevel, value.maxLevel, "maxLevel"],
       [value.minExpUnits, value.maxExpUnits, "maxExpUnits"],
       [value.minNdpBalance, value.maxNdpBalance, "maxNdpBalance"],
+      [value.minBookings, value.maxBookings, "maxBookings"],
       [value.registeredFrom?.getTime(), value.registeredTo?.getTime(), "registeredTo"]
     ] as const;
     for (const [minimum, maximum, path] of ranges) {
@@ -70,9 +103,15 @@ export const backofficeManagedUserListQuerySchema = z
     }
   });
 
-export type BackofficeManagedUserListQuery = z.infer<
-  typeof backofficeManagedUserListQuerySchema
->;
+export type BackofficeManagedUserListQuery = z.infer<typeof backofficeManagedUserListQuerySchema>;
+
+export const backofficeManagedUserDetailQuerySchema = z.object({
+  audit_page: z.coerce.number().int().positive().default(1),
+  audit_page_size: z.coerce.number().refine((value) => value === 10 || value === 50).default(10),
+  audit_from: z.string().datetime().optional(),
+  audit_to: z.string().datetime().optional()
+}).strict().refine((value) => (!value.audit_from && !value.audit_to) || Boolean(value.audit_from && value.audit_to && Date.parse(value.audit_from) < Date.parse(value.audit_to)), { message: "Both ordered audit range boundaries are required" });
+export type BackofficeManagedUserDetailQuery = z.infer<typeof backofficeManagedUserDetailQuerySchema>;
 
 export const backofficeManagedUserParamSchema = z
   .object({ userId: z.coerce.number().int().positive() })
@@ -275,17 +314,42 @@ export const backofficeShopIdParamSchema = z.object({
   shopId: z.coerce.number().int().positive()
 });
 
-export const backofficeShopCreateBodySchema = z.object({
-  ownerEmail: emailSchema,
-  ownerUsername: z.string().trim().min(1).max(100),
-  ownerPassword: passwordSchema,
-  name: z.string().trim().min(1).max(160),
-  description: z.string().trim().max(5000).nullable().optional(),
-  city: z.string().trim().min(1).max(100),
-  address: z.string().trim().min(1).max(255),
-  phone: z.string().trim().min(5).max(32).nullable().optional(),
-  isRecommended: z.boolean().optional()
-});
+const optionalVerifiedServiceLocationFields = verifiedServiceLocationSchema.partial().shape;
+
+const requireCompleteVerifiedServiceLocation = (
+  value: {
+    serviceCountryCode?: "JP";
+    serviceAdmin1Code?: string;
+    serviceAdmin2Code?: string;
+  },
+  context: z.RefinementCtx
+) => {
+  const fields = [value.serviceCountryCode, value.serviceAdmin1Code, value.serviceAdmin2Code];
+  const supplied = fields.filter((field) => field !== undefined).length;
+  if (supplied > 0 && supplied < fields.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["serviceCountryCode"],
+      message: "service location fields must be supplied together"
+    });
+  }
+};
+
+export const backofficeShopCreateBodySchema = z
+  .object({
+    ownerEmail: emailSchema,
+    ownerUsername: z.string().trim().min(1).max(100),
+    ownerPassword: passwordSchema,
+    name: z.string().trim().min(1).max(160),
+    description: z.string().trim().max(5000).nullable().optional(),
+    city: z.string().trim().min(1).max(100),
+    address: z.string().trim().min(1).max(255),
+    phone: z.string().trim().min(5).max(32).nullable().optional(),
+    isRecommended: z.boolean().optional(),
+    ...optionalVerifiedServiceLocationFields
+  })
+  .strict()
+  .superRefine(requireCompleteVerifiedServiceLocation);
 
 const merchantShopUpdateFields = {
   name: z.string().trim().min(1).max(160).optional(),
@@ -303,8 +367,11 @@ const merchantShopUpdateFields = {
 export const backofficeShopUpdateBodySchema = z
   .object({
     ...merchantShopUpdateFields,
-    isRecommended: z.boolean().optional()
+    isRecommended: z.boolean().optional(),
+    ...optionalVerifiedServiceLocationFields
   })
+  .strict()
+  .superRefine(requireCompleteVerifiedServiceLocation)
   .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export const merchantShopUpdateBodySchema = z
@@ -398,3 +465,5 @@ export type BackofficeCustomerMembershipGrantBody = z.infer<
 >;
 export type BackofficeServiceCreateBody = z.infer<typeof backofficeServiceCreateBodySchema>;
 export type BackofficeServiceUpdateBody = z.infer<typeof backofficeServiceUpdateBodySchema>;
+
+export const backofficeAccountPostsQuerySchema = z.object({ page: z.coerce.number().int().positive().default(1), pageSize: z.coerce.number().int().positive().max(100).default(10) }).strict();

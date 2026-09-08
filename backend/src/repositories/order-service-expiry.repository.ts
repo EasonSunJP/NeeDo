@@ -1,3 +1,5 @@
+import { recordBookingWorkTransition } from '../domain/work-status-booking';
+import { WorkStatusSession } from './work-status.repository';
 import {
   BookingOrderStatus,
   OrderServiceEventType,
@@ -37,7 +39,8 @@ const expiryOrderInclude = {
   affiliateAttributions: {
     where: { deletedAt: null },
     orderBy: { id: "asc" }
-  }
+  },
+  travelFareSnapshot: true
 } satisfies Prisma.BookingOrderInclude;
 
 type ExpiryOrderRecord = Prisma.BookingOrderGetPayload<{ include: typeof expiryOrderInclude }>;
@@ -47,10 +50,14 @@ class OrderServiceExpirySnapshotError extends Error {}
 export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
-    private readonly reportFailure?: OrderServiceExpiryFailureReporter
+    private readonly reportFailure?: OrderServiceExpiryFailureReporter,
+    private readonly onWorkStatusCommitted?:(orderId:number)=>Promise<void>
   ) {}
 
-  public async moveDueSessionsToCheckout(input: { now: Date; batchSize: number }): Promise<number> {
+  public async moveDueSessionsToCheckout(input: {
+    now: Date;
+    batchSize: number;
+  }): Promise<number[]> {
     const candidates = await this.client.orderServiceSession.findMany({
       where: {
         deletedAt: null,
@@ -66,15 +73,18 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
       take: input.batchSize
     });
 
-    let advanced = 0;
+    const advancedOrderIds: number[] = [];
     for (const candidate of candidates) {
       try {
-        if (await this.advanceCandidate(candidate.bookingOrderId, input.now)) advanced += 1;
+        if (await this.advanceCandidate(candidate.bookingOrderId, input.now)) {
+          advancedOrderIds.push(candidate.bookingOrderId);
+          await this.onWorkStatusCommitted?.(candidate.bookingOrderId);
+        }
       } catch {
         await this.reportCandidateFailure(candidate.bookingOrderId);
       }
     }
-    return advanced;
+    return advancedOrderIds;
   }
 
   private advanceCandidate(orderId: number, now: Date): Promise<boolean> {
@@ -153,6 +163,7 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
           data: { status: BookingOrderStatus.AWAITING_CHECKOUT, updatedAt: dueAt }
         });
         if (orderUpdate.count !== 1) throw new OrderServiceExpirySnapshotError();
+        await recordBookingWorkTransition(new WorkStatusSession(transaction),{technicianProfileId:order.technicianProfileId,orderId:order.id,shopId:order.shopId,actorId:null,at:dueAt,started:false});
 
         await transaction.orderStatusHistory.create({
           data: {
@@ -191,6 +202,7 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
             bookingOrderId: order.id,
             baseAmountJpy: calculation.baseAmountJpy,
             addOnAmountJpy: calculation.addOnAmountJpy,
+            travelFareAmountJpy: calculation.travelFareAmountJpy,
             discountAmountJpy: calculation.discountAmountJpy,
             checkoutAmountJpy: calculation.checkoutAmountJpy,
             payableNdp: calculation.payableNdp,
@@ -214,6 +226,7 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
               trigger: "system_timer",
               expectedEndsAt: dueAt.toISOString(),
               checkoutAmountJpy: calculation.checkoutAmountJpy,
+              travelFareAmountJpy: calculation.travelFareAmountJpy,
               payableNdp: calculation.payableNdp,
               rateRuleId: rate.id
             },
@@ -271,7 +284,8 @@ export class OrderServiceExpiryRepository implements OrderServiceExpiryRepositor
           currency: order.currency,
           servicePrice: (order.servicePriceSnapshot ?? order.priceAmount).toString(),
           addOns: order.serviceSession?.addOns ?? [],
-          affiliateAttribution: order.affiliateAttributions[0] ?? null
+          affiliateAttribution: order.affiliateAttributions[0] ?? null,
+          travelFareAmountJpy: order.travelFareSnapshot?.fareAmountJpy ?? 0
         },
         { ...rate, ruleId: rate.id }
       );

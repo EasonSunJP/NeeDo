@@ -108,6 +108,21 @@ function fixture() {
     ),
     resolveActor: jest.fn(async () => actor),
     findPostByIdempotencyKey: jest.fn(async () => null),
+    resolveIntelligencePublicationService: jest.fn(async () => ({
+      kind: "success",
+      value: {
+        serviceRef: "technician:701",
+        serviceId: null,
+        technicianServiceId: 701,
+        serviceName: "Formal care",
+        serviceDurationMinutes: 60,
+        catalogPriceJpy: 10_000,
+        serviceMode: "store",
+        areaLabel: "Tokyo",
+        addressLabel: null,
+        serviceAreas: ["Tokyo"]
+      }
+    })),
     createPost: jest.fn(async () => ({ id: 51 })),
     createAudit: jest.fn(async () => undefined),
     findPostByIdOrThrow: jest.fn(async () => post)
@@ -192,6 +207,7 @@ describe("Exchange demand eKYC policy", () => {
       },
       {
         type: "intelligence",
+        serviceRef: "technician:701",
         title: "Offer",
         detail: "Available",
         contentLocale: "en",

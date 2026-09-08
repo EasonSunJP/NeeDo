@@ -12,7 +12,7 @@ import { AuthTokenService } from "../src/services/auth-token.service";
 const now = new Date("2026-08-31T03:00:00.000Z");
 const operations = {
   grossRevenue: { current: 100, previous: 80, dataStatus: "ready" as const },
-  travelFare: { current: null, previous: null, dataStatus: "not_connected" as const },
+  travelFare: { current: 700, previous: 300, dataStatus: "ready" as const },
   discountAmount: { current: 10, previous: 5, dataStatus: "ready" as const },
   consumablesSales: { current: null, previous: null, dataStatus: "not_connected" as const }
 };
@@ -47,46 +47,59 @@ const createUser = (id: number, role: string, permissions: string[]) => ({
   createdAt: now,
   updatedAt: now,
   deletedAt: null,
-  identities: [{
-    id: 100 + id,
-    userId: id,
-    type: role === "merchant_owner" ? "merchant_owner" : "platform_admin",
-    scopeType: role === "merchant_owner" ? "shop" : "global",
-    scopeId: role === "merchant_owner" ? 91 : null,
-    displayName: `Analytics ${id}`,
-    isDefault: true,
-    isActive: true,
-    deletedAt: null
-  }],
-  userRoles: [{
-    deletedAt: null,
-    role: {
-      code: role,
-      deletedAt: null,
-      rolePermissions: permissions.map((code) => ({
-        deletedAt: null,
-        permission: { code, type: "api", deletedAt: null }
-      }))
+  identities: [
+    {
+      id: 100 + id,
+      userId: id,
+      type: role === "merchant_owner" ? "merchant_owner" : "platform_admin",
+      scopeType: role === "merchant_owner" ? "shop" : "global",
+      scopeId: role === "merchant_owner" ? 91 : null,
+      displayName: `Analytics ${id}`,
+      isDefault: true,
+      isActive: true,
+      deletedAt: null
     }
-  }]
+  ],
+  userRoles: [
+    {
+      deletedAt: null,
+      role: {
+        code: role,
+        deletedAt: null,
+        rolePermissions: permissions.map((code) => ({
+          deletedAt: null,
+          permission: { code, type: "api", deletedAt: null }
+        }))
+      }
+    }
+  ]
 });
 
 const createFixture = () => {
   const users = [
-    createUser(1, "operator", [
-      "backoffice:dashboard:read",
-      "backoffice:dashboard-detail:read"
-    ]),
+    createUser(1, "operator", ["backoffice:dashboard:read", "backoffice:dashboard-detail:read"]),
     createUser(2, "viewer", ["backoffice:dashboard:read"]),
     createUser(3, "merchant_owner", ["merchant-admin:dashboard:read"])
   ];
   const auditLogs: unknown[] = [];
-  const operationSpy = jest.spyOn(DashboardRepository.prototype, "getOperationsFinance")
+  const operationSpy = jest
+    .spyOn(DashboardRepository.prototype, "getOperationsFinance")
     .mockResolvedValue(operations);
-  const commissionSpy = jest.spyOn(DashboardRepository.prototype, "getCommissionFacts")
+  const commissionSpy = jest
+    .spyOn(DashboardRepository.prototype, "getCommissionFacts")
     .mockResolvedValue(commission);
-  const growthSpy = jest.spyOn(DashboardRepository.prototype, "getGrowthFacts")
+  const growthSpy = jest
+    .spyOn(DashboardRepository.prototype, "getGrowthFacts")
     .mockResolvedValue(growth);
+  const travelDetailSpy = jest
+    .spyOn(DashboardRepository.prototype, "getTravelFareDetails")
+    .mockResolvedValue([{
+      orderNo: "46493", shopId: 11, shopName: "NeeDo Shinjuku",
+      completedAt: "2026-08-30T03:00:00.000Z", distanceMeters: 7_500,
+      policyVersionPublicId: "00000000-0000-4000-8000-000000000031",
+      policyVersion: 2, bandMaximumDistanceMeters: 10_000, fareAmountJpy: 500,
+      paymentEvidence: "ndp_ledger", reversalState: "none"
+    }]);
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     testOnlyAllowLegacyAuthAdapters: true,
@@ -95,19 +108,25 @@ const createFixture = () => {
     },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    auditLogRepository: { create: jest.fn(async (entry: unknown) => { auditLogs.push(entry); }) },
+    auditLogRepository: {
+      create: jest.fn(async (entry: unknown) => {
+        auditLogs.push(entry);
+      })
+    },
     backofficeRepository: {}
   } as never);
-  const tokens = Object.fromEntries(users.map((user) => [
-    user.id,
-    new AuthTokenService(env).issueAccessToken({
-      id: user.id,
-      email: user.email,
-      currentIdentityId: user.identities[0]!.id,
-      sessionGeneration: 0
-    }).token
-  ])) as Record<number, string>;
-  return { app, auditLogs, operationSpy, commissionSpy, growthSpy, tokens };
+  const tokens = Object.fromEntries(
+    users.map((user) => [
+      user.id,
+      new AuthTokenService(env).issueAccessToken({
+        id: user.id,
+        email: user.email,
+        currentIdentityId: user.identities[0]!.id,
+        sessionGeneration: 0
+      }).token
+    ])
+  ) as Record<number, string>;
+  return { app, auditLogs, operationSpy, commissionSpy, growthSpy, travelDetailSpy, tokens };
 };
 
 afterEach(() => jest.restoreAllMocks());
@@ -143,17 +162,19 @@ describe("comprehensive dashboard analytics HTTP API", () => {
     expect(fixture.operationSpy).toHaveBeenCalledTimes(1);
     expect(fixture.commissionSpy).toHaveBeenCalledTimes(1);
     expect(fixture.growthSpy).toHaveBeenCalledTimes(1);
-    expect(fixture.auditLogs).toEqual([expect.objectContaining({
-      actorId: 1,
-      action: "backoffice.dashboard.overview.read",
-      targetType: "backoffice_dashboard_overview",
-      metadata: {
-        period: "last7days",
-        from: expect.any(String),
-        to: expect.any(String),
-        city: "Tokyo"
-      }
-    })]);
+    expect(fixture.auditLogs).toEqual([
+      expect.objectContaining({
+        actorId: 1,
+        action: "backoffice.dashboard.overview.read",
+        targetType: "backoffice_dashboard_overview",
+        metadata: {
+          period: "last7days",
+          from: expect.any(String),
+          to: expect.any(String),
+          city: "Tokyo"
+        }
+      })
+    ]);
     expect(JSON.stringify(fixture.auditLogs)).not.toMatch(/customerId|shopId|technicianId/i);
   });
 
@@ -168,23 +189,41 @@ describe("comprehensive dashboard analytics HTTP API", () => {
       code: 0,
       data: {
         metric: { metricKey: "new_users", currentValue: 8, previousValue: 4 },
-        series: [{
-          seriesKey: "new_users",
-          unit: "people",
-          points: [
-            { key: "previous", value: 4 },
-            { key: "current", value: 8 }
-          ]
-        }]
+        series: [
+          {
+            seriesKey: "new_users",
+            unit: "people",
+            points: [
+              { key: "previous", value: 4 },
+              { key: "current", value: 8 }
+            ]
+          }
+        ]
       }
     });
     expect(fixture.operationSpy).not.toHaveBeenCalled();
     expect(fixture.commissionSpy).not.toHaveBeenCalled();
     expect(fixture.growthSpy).toHaveBeenCalledTimes(1);
-    expect(fixture.auditLogs).toEqual([expect.objectContaining({
-      action: "backoffice.dashboard.metric.read",
-      metadata: expect.objectContaining({ metricKey: "new_users" })
-    })]);
+    expect(fixture.auditLogs).toEqual([
+      expect.objectContaining({
+        action: "backoffice.dashboard.metric.read",
+        metadata: expect.objectContaining({ metricKey: "new_users" })
+      })
+    ]);
+  });
+
+  it("returns ready travel-fare totals and redacted order detail rows", async () => {
+    const fixture = createFixture();
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/dashboard/metrics/travel_fare?period=last7days&city=Tokyo")
+      .set("Authorization", `Bearer ${fixture.tokens[1]}`)
+      .expect(200);
+    expect(response.body.data).toMatchObject({
+      metric: { metricKey: "travel_fare", currentValue: 700, previousValue: 300, dataStatus: "ready" },
+      details: [{ orderNo: "46493", distanceMeters: 7_500, fareAmountJpy: 500, paymentEvidence: "ndp_ledger", reversalState: "none" }]
+    });
+    expect(JSON.stringify(response.body.data.details)).not.toMatch(/address|customer/i);
+    expect(fixture.travelDetailSpy).toHaveBeenCalledTimes(1);
   });
 
   it("rejects strict query/path input before any focused reader executes", async () => {

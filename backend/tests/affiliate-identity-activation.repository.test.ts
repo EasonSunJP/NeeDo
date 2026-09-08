@@ -38,10 +38,7 @@ describe("AffiliateIdentityActivationRepository", () => {
         })
       },
       userIdentity: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValueOnce(null)
-          .mockResolvedValue({ id: 70 }),
+        findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValue({ id: 70 }),
         create: jest.fn().mockResolvedValue({
           id: 81,
           userId: 7,

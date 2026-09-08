@@ -6,8 +6,7 @@ export const USER_POLICY_COMPLIANCE_REQUIREMENTS = [
   "ekyc_required"
 ] as const;
 
-export type UserPolicyComplianceRequirement =
-  (typeof USER_POLICY_COMPLIANCE_REQUIREMENTS)[number];
+export type UserPolicyComplianceRequirement = (typeof USER_POLICY_COMPLIANCE_REQUIREMENTS)[number];
 export type UserPolicyServiceMode = "home" | "store";
 
 export interface UserPolicyAccountFacts {
@@ -24,12 +23,23 @@ export interface UserPolicyComplianceDecision {
 }
 
 export interface UserPolicyEnforcementRepositoryPort {
-  findAccountFactsAt: (
-    userId: number,
-    occurredAt: Date
-  ) => Promise<UserPolicyAccountFacts | null>;
+  findAccountFactsAt: (userId: number, occurredAt: Date) => Promise<UserPolicyAccountFacts | null>;
 }
 
 export interface UserGlobalPolicyResolverPort {
   resolvePolicyAt: (occurredAt: Date) => Promise<ResolvedUserGlobalPolicy>;
+}
+
+export interface ApplicationEkycDecision {
+  required: boolean;
+  verified: boolean;
+  policyVersionPublicId: string;
+}
+
+export interface ApplicationEkycPolicyPort {
+  evaluateApplicationEkyc: (
+    userId: number,
+    type: "merchant" | "technician",
+    occurredAt: Date
+  ) => Promise<ApplicationEkycDecision>;
 }

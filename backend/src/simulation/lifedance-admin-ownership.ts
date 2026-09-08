@@ -1,8 +1,4 @@
-import {
-  ShopPricingMode,
-  TechnicianEmploymentType,
-  type Prisma
-} from "@prisma/client";
+import { ShopPricingMode, TechnicianEmploymentType, type Prisma } from "@prisma/client";
 
 import {
   LIFEDANCE_ADMIN_EMAIL,
@@ -19,10 +15,7 @@ const LIFEDANCE_SHOP_DESCRIPTION =
 const LIFEDANCE_SHOP_PHONE = "050-9101-1001";
 const MIGRATED_AT = new Date(SIMULATION_AS_OF_AT);
 
-const assert: (condition: unknown, message: string) => asserts condition = (
-  condition,
-  message
-) => {
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
     throw new Error(message);
   }
@@ -33,8 +26,7 @@ const activeIdentityKey = (
   type: string,
   scopeType: string,
   scopeId: number | null
-): string =>
-  ["lifedance-identity", userId, type, scopeType, scopeId ?? "global"].join(":");
+): string => ["lifedance-identity", userId, type, scopeType, scopeId ?? "global"].join(":");
 
 export interface LifeDanceAdminOwnershipResult {
   adminUserId: number;
@@ -409,8 +401,7 @@ export const migrateLifeDanceAdminOwnership = async (
       previousOwnerProfile?.shopId === shop.id &&
       previousOwnerProfile.status === "private" &&
       previousOwnerProfile.yearsExperience === 0 &&
-      previousOwnerProfile.bio ===
-        `${SIMULATION_NAMESPACE} の店舗運営者用技師プロフィールです。` &&
+      previousOwnerProfile.bio === `${SIMULATION_NAMESPACE} の店舗運営者用技師プロフィールです。` &&
       previousOwnerProfile._count.technicianServices === 0 &&
       previousOwnerProfile._count.availabilities === 0 &&
       previousOwnerProfile._count.bookingOrders === 0;

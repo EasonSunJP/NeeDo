@@ -4,7 +4,7 @@ export type DispatchGridView = "day" | "week" | "month";
 export type DispatchTemplateType = "day" | "week" | "month";
 export type DispatchSurface = "desktop" | "mobile";
 export type DispatchServiceMode = "store" | "home";
-export type DispatchCycleMode = "TECH_SELF_FINAL" | "STORE_COLLECT_CONFIRM" | "STORE_ASSIGN_FINAL" | "INDIVIDUAL_SELF_FINAL";
+export type DispatchCycleMode = "TECH_SELF_FINAL" | "STORE_ASSIGN_FINAL" | "INDIVIDUAL_SELF_FINAL";
 export type DispatchCycleStatus =
   | "draft"
   | "rule_setting"
@@ -601,7 +601,6 @@ export function getTemplateDayLabel(templateType: DispatchTemplateType, dayIndex
 export function getCycleModeLabel(mode: DispatchCycleMode) {
   const labels: Record<DispatchCycleMode, string> = {
     TECH_SELF_FINAL: "技师自主排班",
-    STORE_COLLECT_CONFIRM: "商户确认模式",
     STORE_ASSIGN_FINAL: "商户直接排班",
     INDIVIDUAL_SELF_FINAL: "个体技师独立排班"
   };
@@ -775,10 +774,6 @@ export function getFinalShiftStatusLabel(status: DispatchFinalShiftStatus) {
 
 export function getFloatingTaskTone(severity: DispatchFloatingTaskSeverity) {
   return severity === "high" ? "red" : severity === "medium" ? "yellow" : "blue";
-}
-
-export function getModeNeedsFeedback(mode: DispatchCycleMode) {
-  return mode === "STORE_COLLECT_CONFIRM";
 }
 
 export function getTemplateRowWeekday(templateType: DispatchTemplateType, dayIndex: number, periodStart: string) {

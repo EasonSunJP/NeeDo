@@ -89,16 +89,15 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("技师列表");
     expect(pageSource).toContain("const shouldRenderTechnicianShowcase = technicianBlock.visible;");
     expect(pageSource).toContain("function StoreTechnicianServiceListRow");
-    expect(pageSource).toContain("technicianPricingRatePercent?: number");
-    expect(pageSource).toContain("const effectiveTechnicianPricingRatePercent = isTechnicianPricingActive");
-    expect(pageSource).toContain("bookingNavigation?.technicianPricingRatePercent");
-    expect(pageSource).toContain("quoteRatePercent={effectiveTechnicianPricingRatePercent}");
+    expect(pageSource).toContain("mapBookingNavigationServiceToMenuCard");
+    expect(pageSource).toContain('bookingNavigation?.entry === "service_menu"');
+    expect(pageSource).not.toContain("quoteRatePercent");
     expect(pageSource).toContain('<SectionTitle showInfo={false} title="技师列表" />');
     expect(pageSource).toContain("<SectionTitle showInfo={false} title={technicianBlock.name}>");
     expect(pageSource).toContain("{serviceMenuHomePackageSection}");
     expect(pageSource).toContain("{serviceMenuTabOrderedSections}");
     expect(pageSource).toContain("<StoreTechnicianServiceListRow");
-    expect(pageSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(pageSource).toContain("profileTo={getScopedTechnicianDynamicPath(scope, technician)}");
     expect(pageSource).toContain("getScopedTechnicianServiceListPath");
     expect(pageSource).toContain("const getTechnicianServiceListTo = (technicianId: string)");
     expect(pageSource).toContain("serviceListTo={getTechnicianServiceListTo(technician.id)}");
@@ -120,7 +119,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(homeTechnicianSource).toContain("storeHomeTechnicianServiceListRows");
     expect(homeTechnicianSource).toContain(") : storeTechnicians.length > 0 ? (");
     expect(homeTechnicianSource).toContain("<StoreTechnicianSelectableCard");
-    expect(homeTechnicianSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(homeTechnicianSource).toContain("profileTo={getScopedTechnicianDynamicPath(scope, technician)}");
     expect(homeTechnicianSource).toContain("setSelectedTechnicianId(active ? \"\" : technician.id);");
     expect(homeTechnicianSource).not.toContain("onServiceSelect");
   });
@@ -189,9 +188,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).toContain("serviceListTo");
     expect(technicianRowSource).toContain("to={serviceListTo}");
     expect(technicianRowSource).toContain("查看技师服务列表");
-    expect(technicianRowSource).toContain("quoteRatePercent = 100");
-    expect(technicianRowSource).toContain("const displayedPrice = Number.isFinite(price) && price > 0 ? Math.round((price * quoteRatePercent) / 100) : price;");
-    expect(technicianRowSource).toContain("yen(displayedPrice)");
+    expect(technicianRowSource).not.toContain("quoteRatePercent");
+    expect(technicianRowSource).toContain("yen(price)");
     expect(technicianRowSource).toContain('className="flex min-w-0 flex-col justify-between rounded-[14px] py-1 pl-1.5 pr-1.5 text-left active:scale-[0.99]"');
     expect(technicianRowSource).toContain('className={cn("min-w-0", (isMerchantEditable || showSelectionAction) && "pr-12")}');
     expect(technicianRowSource).toContain("py-2 pl-3 pr-11");
@@ -200,17 +198,14 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).not.toContain("查看店铺服务项目");
   });
 
-  it("opens the technician public info card from technician-list row avatars", () => {
+  it("opens technician-list row avatars on the scoped full detail page", () => {
     const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+    const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
 
-    expect(pageSource).toContain('import { TechnicianPublicInfoCardModal } from "../../shared/profile-card/TechnicianPublicInfoCard";');
-    expect(technicianRowSource).toContain("const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);");
+    expect(technicianRowSource).toContain("<Link");
     expect(technicianRowSource).toContain('aria-label={`查看${displayName}信息卡`}');
-    expect(technicianRowSource).toContain("onClick={() => setTechnicianInfoCardOpen(true)}");
-    expect(technicianRowSource).toContain("<TechnicianPublicInfoCardModal");
-    expect(technicianRowSource).toContain("open={technicianInfoCardOpen}");
-    expect(technicianRowSource).toContain("technician={technician}");
-    expect(technicianRowSource).toContain("themeScope={isMerchantEditable ? \"merchant\" : \"user\"}");
+    expect(technicianRowSource).toContain("to={profileTo}");
+    expect(pageSource).not.toContain(retiredModalName);
   });
 
   it("keeps merchant technician visibility as an outer top-right eye action", () => {
@@ -429,6 +424,9 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(homeCarouselSource).not.toContain("slide.badge");
     expect(pageSource).not.toContain("查看大图");
     expect(embeddedHeaderSource).not.toContain(">服务展示<");
+    expect(embeddedHeaderSource).toContain("店铺 ID");
+    expect(embeddedHeaderSource).toContain("{store.systemId}");
+    expect(embeddedHeaderSource.indexOf("店铺 ID")).toBeLessThan(embeddedHeaderSource.indexOf("{store.name}"));
     expect(embeddedHeaderSource).toContain("{store.address}</p>");
     expect(embeddedHeaderSource).not.toContain("{config.subtitle}</p>");
     expect(fixedHeaderSource).not.toContain("{config.subtitle}</p>");

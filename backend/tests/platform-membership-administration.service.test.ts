@@ -22,10 +22,17 @@ const benefitCodes = [
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ] as const;
 const nameTranslations = { zh: "权益", "zh-Hant": "權益", ja: "特典", en: "Benefit", ko: "혜택" };
-const descriptionTranslations = { zh: "权益说明", "zh-Hant": "權益說明", ja: "特典説明", en: "Benefit description", ko: "혜택 설명" };
+const descriptionTranslations = {
+  zh: "权益说明",
+  "zh-Hant": "權益說明",
+  ja: "特典説明",
+  en: "Benefit description",
+  ko: "혜택 설명"
+};
 const tiers = tierCodes.map((tierCode, sortOrder) => ({
   tierCode,
   sortOrder,
@@ -80,47 +87,73 @@ describe("PlatformMembershipService administration", () => {
     const service = new PlatformMembershipService(repository(), audit, () => now);
 
     await expect(service.listTiersForAdministration(actor)).resolves.toEqual(tiers);
-    await expect(service.listBenefitsForAdministration(actor)).resolves.toEqual(benefits);
+    const listed = await service.listBenefitsForAdministration(actor);
+    expect(listed).toEqual(benefits.map(benefit => ({ ...benefit, deliveryCapability: ["ndp_experience", "member_sign_in", "priority_request", "traceless_recall"].includes(benefit.code) ? "available" : "unavailable" })));
+    expect(listed.find(benefit => benefit.code === "traceless_recall")).toMatchObject({ deliveryCapability: "available" });
+  });
+
+  it("accepts an intact catalog in the operator's configured display order", async () => {
+    const reordered = [...benefits].reverse();
+    const service = new PlatformMembershipService({ ...repository(), listBenefitsForAdministration: jest.fn(async () => reordered) }, audit, () => now);
+    await expect(service.listBenefitsForAdministration(actor)).resolves.toEqual(reordered.map(benefit => expect.objectContaining({code:benefit.code})));
+  });
+
+  it("still rejects missing or duplicated benefit codes", async () => {
+    const duplicated = benefits.map((benefit, index) => index === benefits.length - 1 ? benefits[0]! : benefit);
+    const service = new PlatformMembershipService({ ...repository(), listBenefitsForAdministration: jest.fn(async () => duplicated) }, audit, () => now);
+    await expect(service.listBenefitsForAdministration(actor)).rejects.toMatchObject({message:"error.platform_membership.catalog_invalid"});
   });
 
   it("updates a global benefit with optimistic locking and an audit input", async () => {
     const repo = repository();
     const service = new PlatformMembershipService(repo, audit, () => now);
 
-    await expect(service.updateBenefit(
-      actor,
-      { ip: "127.0.0.1" },
-      "ndp_experience",
-      { isGloballyEnabled: false, sortOrder: 0, nameTranslations, descriptionTranslations, expectedLockVersion: 1 }
-    )).resolves.toMatchObject({
+    await expect(
+      service.updateBenefit(actor, { ip: "127.0.0.1" }, "ndp_experience", {
+        isGloballyEnabled: false,
+        sortOrder: 0,
+        nameTranslations,
+        descriptionTranslations,
+        expectedLockVersion: 1
+      })
+    ).resolves.toMatchObject({
       code: "ndp_experience",
       isGloballyEnabled: false,
       lockVersion: 2
     });
-    expect(repo.updateBenefitWithAudit).toHaveBeenCalledWith(expect.objectContaining({
-      actorId: 9,
-      benefitCode: "ndp_experience",
-      expectedLockVersion: 1,
-      sortOrder: 0,
-      nameTranslations,
-      descriptionTranslations,
-      audit: expect.objectContaining({ action: "platform.membership_benefit.update" })
-    }));
+    expect(repo.updateBenefitWithAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 9,
+        benefitCode: "ndp_experience",
+        expectedLockVersion: 1,
+        sortOrder: 0,
+        nameTranslations,
+        descriptionTranslations,
+        audit: expect.objectContaining({ action: "platform.membership_benefit.update" })
+      })
+    );
   });
 
   it("surfaces a stale benefit lock as 409", async () => {
-    const service = new PlatformMembershipService(repository({
-      updateBenefitWithAudit: jest.fn(async (input: UpdateBenefitArgument) => {
-        void input;
-        return { kind: "version_conflict" as const };
-      })
-    }), audit, () => now);
+    const service = new PlatformMembershipService(
+      repository({
+        updateBenefitWithAudit: jest.fn(async (input: UpdateBenefitArgument) => {
+          void input;
+          return { kind: "version_conflict" as const };
+        })
+      }),
+      audit,
+      () => now
+    );
 
-    await expect(service.updateBenefit(
-      actor,
-      { ip: "127.0.0.1" },
-      "ndp_experience",
-      { isGloballyEnabled: false, sortOrder: 0, nameTranslations, descriptionTranslations, expectedLockVersion: 1 }
-    )).rejects.toMatchObject({ statusCode: 409 });
+    await expect(
+      service.updateBenefit(actor, { ip: "127.0.0.1" }, "ndp_experience", {
+        isGloballyEnabled: false,
+        sortOrder: 0,
+        nameTranslations,
+        descriptionTranslations,
+        expectedLockVersion: 1
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 });

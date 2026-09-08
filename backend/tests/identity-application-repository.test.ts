@@ -43,6 +43,14 @@ const applicationRow = {
 };
 
 describe("IdentityApplicationRepository", () => {
+  it("searches and returns the formal shop ID instead of padding its database key", async () => {
+    const shop = { findMany: jest.fn().mockResolvedValue([{ id: 217, name: "麻布十番", city: "東京", address: "港区", publicIdentifier: { publicId: "shop1357924680" } }]), count: jest.fn().mockResolvedValue(1) };
+    const client = { shop, $transaction: (operations: Promise<unknown>[]) => Promise.all(operations) } as unknown as PrismaClient;
+    const result = await new IdentityApplicationRepository(client).searchEligibleShops({ query: "shop1357924680", page: 1, pageSize: 20 });
+    expect(result.list[0].merchantId).toBe("shop1357924680");
+    expect(shop.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ OR: expect.arrayContaining([{ publicIdentifier: { is: { publicId: "shop1357924680", deletedAt: null } } }]) }) }));
+  });
+
   it("filters active applications and deleted records", async () => {
     const identityApplication = {
       findFirst: jest.fn().mockResolvedValue(applicationRow)
@@ -98,21 +106,33 @@ describe("IdentityApplicationRepository", () => {
   it("validates that application keywords are active and belong to a selected category", async () => {
     const category = { findMany: jest.fn().mockResolvedValue([{ id: 1 }]) };
     const businessKeyword = { findMany: jest.fn().mockResolvedValue([{ id: 10, categoryId: 1 }]) };
-    const repository = new IdentityApplicationRepository({ category, businessKeyword } as unknown as PrismaClient);
+    const repository = new IdentityApplicationRepository({
+      category,
+      businessKeyword
+    } as unknown as PrismaClient);
 
-    await expect(repository.assertMerchantTaxonomySelection({
-      serviceCategoryIds: [1],
-      businessKeywordIds: [10]
-    })).resolves.toBeUndefined();
-    expect(businessKeyword.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ category: { isActive: true, deletedAt: null } })
-    }));
+    await expect(
+      repository.assertMerchantTaxonomySelection({
+        serviceCategoryIds: [1],
+        businessKeywordIds: [10]
+      })
+    ).resolves.toBeUndefined();
+    expect(businessKeyword.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ category: { isActive: true, deletedAt: null } })
+      })
+    );
 
     businessKeyword.findMany.mockResolvedValueOnce([{ id: 10, categoryId: 2 }]);
-    await expect(repository.assertMerchantTaxonomySelection({
-      serviceCategoryIds: [1],
-      businessKeywordIds: [10]
-    })).rejects.toMatchObject({ message: "error.identity_application.taxonomy_selection_invalid", statusCode: 400 });
+    await expect(
+      repository.assertMerchantTaxonomySelection({
+        serviceCategoryIds: [1],
+        businessKeywordIds: [10]
+      })
+    ).rejects.toMatchObject({
+      message: "error.identity_application.taxonomy_selection_invalid",
+      statusCode: 400
+    });
   });
 
   it("creates a technician application and typed detail in one nested write", async () => {
@@ -169,7 +189,7 @@ describe("IdentityApplicationRepository", () => {
         businessAddress: "東京都中央区",
         contactPhone: "0312345678",
         responsiblePersonName: "山本太郎",
-        showcaseDraft: { description: "リラクゼーション" },
+        showcaseDraft: { description: "リラクゼーション", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分" },
         bankAccountId: null,
         contractAcceptanceId: null,
         bankAccount: null
@@ -178,39 +198,48 @@ describe("IdentityApplicationRepository", () => {
       businessKeywords: [{ businessKeywordId: 10 }]
     };
     const identityApplication = { create: jest.fn().mockResolvedValue(merchantRow) };
-    const repository = new IdentityApplicationRepository({ identityApplication } as unknown as PrismaClient);
+    const repository = new IdentityApplicationRepository({
+      identityApplication
+    } as unknown as PrismaClient);
 
-    await expect(repository.createMerchantDraft({
-      userId: 3,
-      activeKey: "3:merchant",
-      detail: {
-        applicantKind: "individual",
-        corporateLegalName: null,
-        corporateLegalNameKana: null,
-        representativeName: "山本太郎",
-        representativeNameKana: "ヤマモトタロウ",
-        shopName: "NeeDo 银座店",
-        businessAddress: "東京都中央区",
-        contactPhone: "0312345678",
-        responsiblePersonName: "山本太郎",
-        showcaseDraft: { description: "リラクゼーション" },
-        serviceCategoryIds: [1],
-        businessKeywordIds: [10],
-        bankAccountId: null,
-        contractAcceptanceId: null,
-        mediaPurposes: [],
-        bankVerificationStatus: null,
-        eKycVerified: false
-      }
-    })).resolves.toMatchObject({
-      merchantDetail: { serviceCategoryIds: [1], businessKeywordIds: [10] }
-    });
-    expect(identityApplication.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        serviceCategories: { create: [{ categoryId: 1, selectedByUserId: 3 }] },
-        businessKeywords: { create: [{ businessKeywordId: 10, selectedByUserId: 3 }] }
+    await expect(
+      repository.createMerchantDraft({
+        userId: 3,
+        activeKey: "3:merchant",
+        detail: {
+          applicantKind: "individual",
+          corporateLegalName: null,
+          corporateLegalNameKana: null,
+          representativeName: "山本太郎",
+          representativeNameKana: "ヤマモトタロウ",
+          shopName: "NeeDo 银座店",
+          businessAddress: "東京都中央区",
+          contactPhone: "0312345678",
+          responsiblePersonName: "山本太郎",
+          showcaseDraft: { description: "リラクゼーション", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分" },
+          serviceCategoryIds: [1],
+          businessKeywordIds: [10],
+          bankAccountId: null,
+          contractAcceptanceId: null,
+          mediaPurposes: [],
+          bankVerificationStatus: null,
+          eKycVerified: false
+        }
       })
-    }));
+    ).resolves.toMatchObject({
+      merchantDetail: { serviceCategoryIds: [1], businessKeywordIds: [10], showcaseDraft: { description: "リラクゼーション", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分" } }
+    });
+    expect(identityApplication.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          merchantDetail: { create: expect.objectContaining({ showcaseDraft: {
+            description: "リラクゼーション", nearestStation: "新宿駅 南口", stationAccess: "徒歩5分"
+          } }) },
+          serviceCategories: { create: [{ categoryId: 1, selectedByUserId: 3 }] },
+          businessKeywords: { create: [{ businessKeywordId: 10, selectedByUserId: 3 }] }
+        })
+      })
+    );
   });
 
   it("paginates only the current user's non-deleted applications", async () => {
@@ -232,7 +261,7 @@ describe("IdentityApplicationRepository", () => {
         where: { userId: 3, type: "technician", status: "draft", deletedAt: null },
         skip: 10,
         take: 10,
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       })
     );
   });
@@ -242,6 +271,7 @@ describe("IdentityApplicationRepository", () => {
       findMany: jest.fn().mockResolvedValue([
         {
           id: 21,
+          publicIdentifier: { publicId: "shop2468135790" },
           name: "GINZA Calm Body Lab",
           city: "东京",
           address: "东京都中央区银座3-4-12"
@@ -256,12 +286,13 @@ describe("IdentityApplicationRepository", () => {
     const repository = new IdentityApplicationRepository(client);
 
     await expect(
-      repository.searchEligibleShops({ page: 1, pageSize: 20, query: "s0000000021" })
+      repository.searchEligibleShops({ page: 1, pageSize: 20, query: "shop2468135790" })
     ).resolves.toEqual({
       list: [
         {
           id: 21,
-          merchantId: "s0000000021",
+          merchantId: "shop2468135790",
+          coverUrl: null, rating: null, reviewCount: 0, keywords: [],
           name: "GINZA Calm Body Lab",
           city: "东京",
           address: "东京都中央区银座3-4-12"
@@ -277,10 +308,10 @@ describe("IdentityApplicationRepository", () => {
           status: "published",
           deletedAt: null,
           OR: [
-            { id: 21 },
-            { name: { contains: "s0000000021" } },
-            { city: { contains: "s0000000021" } },
-            { address: { contains: "s0000000021" } }
+            { publicIdentifier: { is: { publicId: "shop2468135790", deletedAt: null } } },
+            { name: { contains: "shop2468135790" } },
+            { city: { contains: "shop2468135790" } },
+            { address: { contains: "shop2468135790" } }
           ]
         },
         skip: 0,

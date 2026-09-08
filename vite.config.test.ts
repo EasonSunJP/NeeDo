@@ -82,10 +82,53 @@ describe("Needo API proxy config", () => {
 });
 
 describe("Needo production chunks", () => {
-  it("keeps identity-application translations outside the base i18n budget", () => {
+  it("keeps feature translations outside the base i18n budget", () => {
     expect(resolveNeedoManualChunk("/workspace/src/features/identity-applications/i18n.ts"))
       .toBe("identity-applications-i18n");
     expect(resolveNeedoManualChunk("/workspace/src/i18n/translations.ts")).toBe("i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/travel-fare/i18n.ts"))
+      .toBe("travel-fare-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/operations-analytics/i18n.ts"))
+      .toBe("operations-analytics-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/affiliate-profile/i18n.ts"))
+      .toBe("affiliate-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/affiliate-marketplace/i18n.ts"))
+      .toBe("affiliate-i18n");
+  });
+
+  it("loads the operations dashboard only after entering its route", () => {
+    const appSource = readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
+
+    expect(appSource).not.toContain(
+      'import { DashboardPage } from "./pages/admin/DashboardPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { DashboardMetricDetailPage } from "./pages/admin/DashboardMetricDetailPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { MerchantAdminDashboardPage } from "./pages/merchant-admin/MerchantAdminDashboardPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { MembershipAnalyticsPage } from "./pages/admin/MembershipAnalyticsPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { DataCenterPage } from "./pages/admin/DataCenterPage";'
+    );
+    expect(appSource).toContain(
+      'const DashboardPage = lazy(() => import("./pages/admin/DashboardPage")'
+    );
+    expect(appSource).toContain(
+      'const DashboardMetricDetailPage = lazy(() => import("./pages/admin/DashboardMetricDetailPage")'
+    );
+    expect(appSource).toContain(
+      'const MerchantAdminDashboardPage = lazy(() => import("./pages/merchant-admin/MerchantAdminDashboardPage")'
+    );
+    expect(appSource).toContain(
+      'const MembershipAnalyticsPage = lazy(() => import("./pages/admin/MembershipAnalyticsPage")'
+    );
+    expect(appSource).toContain(
+      'const DataCenterPage = lazy(() => import("./pages/admin/DataCenterPage")'
+    );
   });
 });
 

@@ -59,9 +59,7 @@ type TechnicianReviewRow = Prisma.IdentityApplicationGetPayload<{
 const asStringArray = (value: Prisma.JsonValue | null): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
-export class TechnicianApplicationReviewRepository
-  implements TechnicianApplicationReviewRepositoryPort
-{
+export class TechnicianApplicationReviewRepository implements TechnicianApplicationReviewRepositoryPort {
   private readonly identityActivation: IdentityActivationRepository;
 
   public constructor(private readonly client: PrismaClient = prisma) {
@@ -75,7 +73,7 @@ export class TechnicianApplicationReviewRepository
     const where: Prisma.IdentityApplicationWhereInput = {
       type: "technician",
       deletedAt: null,
-      ...(query.status ? { status: query.status } : {}),
+      status: query.status ?? { in: ["submitted", "under_review", "approved", "rejected", "withdrawn"] },
       technicianDetail: { targetShopId: shopId, deletedAt: null }
     };
     const [rows, total] = await this.client.$transaction([
@@ -108,6 +106,7 @@ export class TechnicianApplicationReviewRepository
         id: applicationId,
         type: "technician",
         deletedAt: null,
+        status: { not: "draft" },
         technicianDetail: { targetShopId: shopId, deletedAt: null }
       },
       select: technicianReviewSelect
@@ -166,6 +165,7 @@ export class TechnicianApplicationReviewRepository
             applicationId: input.applicationId,
             targetShopId: input.targetShopId,
             technicianProfileId: profile.id,
+            ekycPolicy: input.ekycPolicy,
             identityId: identity.identityId,
             version: input.expectedVersion + 1
           },
@@ -269,9 +269,7 @@ export class TechnicianApplicationReviewRepository
 
   private async closeForReview(
     transaction: Prisma.TransactionClient,
-    input:
-      | ApproveTechnicianApplicationRepositoryInput
-      | RejectTechnicianApplicationRepositoryInput,
+    input: ApproveTechnicianApplicationRepositoryInput | RejectTechnicianApplicationRepositoryInput,
     status: "approved" | "rejected",
     rejectionReason: string | null
   ): Promise<void> {

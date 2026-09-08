@@ -74,6 +74,11 @@ import {
   type LoginMethod
 } from "./rbac";
 import { purgeLegacyRememberedCredentials } from "./rememberCredentials";
+import { persistentResourceCache } from "../lib/persistentResourceCache";
+import {
+  getImOpenedMediaCacheService,
+  transitionImOpenedMediaCacheAccount,
+} from "../features/im/local-cache/service";
 
 export type { PortalScope } from "./portal";
 export type { AuthSession } from "./rbac";
@@ -89,6 +94,7 @@ export type VerifiedRegistrationActionResult =
   | { needoId: string; ok: true; session: AuthSession; status: "authenticated" }
   | { message: string; ok: false };
 export type GoogleAuthActionResult = AuthChallengeActionResult | AuthenticatedAuthActionResult;
+export type PasswordLoginActionResult = AuthActionResult | AuthChallengeActionResult;
 
 type AuthContextValue = {
   session: AuthSession | null;
@@ -101,11 +107,15 @@ type AuthContextValue = {
     email: string,
     password: string,
     captchaCode?: string
-  ) => Promise<AuthActionResult>;
+  ) => Promise<PasswordLoginActionResult>;
   loginWithFormalPassword: (
     portal: PortalScope,
     username: string,
     password: string
+  ) => Promise<PasswordLoginActionResult>;
+  verifyPasswordLogin: (
+    input: VerificationChallengeInput,
+    portal: PortalScope
   ) => Promise<AuthActionResult>;
   startRegistration: (input: RegistrationStartInput) => Promise<AuthChallengeActionResult>;
   verifyRegistration: (
@@ -259,19 +269,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const envelopeRef = useRef<PersistedAuthEnvelopeV8 | null>(initialEnvelope);
   const envelopeRawRef = useRef<string | null>(initialEnvelopeSnapshot?.raw ?? null);
 
-  const publishSession = useCallback((nextSession: AuthSession | null) => {
+  const publishSession = useCallback((
+    nextSession: AuthSession | null,
+    previousAccountAlreadyLocked = false,
+  ) => {
+    const previousAccountId = sessionRef.current ? String(sessionRef.current.id) : null;
+    const nextAccountId = nextSession ? String(nextSession.id) : null;
+    if (
+      previousAccountId &&
+      previousAccountId !== nextAccountId &&
+      !previousAccountAlreadyLocked
+    ) {
+      persistentResourceCache.lockScopePrefix(`account:${previousAccountId}`);
+    }
+    void transitionImOpenedMediaCacheAccount(
+      previousAccountAlreadyLocked ? null : previousAccountId,
+      nextAccountId,
+    )
+      .catch(() => undefined);
     sessionRef.current = nextSession;
     setSession(nextSession);
   }, []);
 
-  const publishAnonymous = useCallback(() => {
-    publishSession(null);
+  const publishAnonymous = useCallback((previousAccountAlreadyLocked = false) => {
+    publishSession(null, previousAccountAlreadyLocked);
     setRestoreError(null);
   }, [publishSession]);
 
   const terminateLocalSession = useCallback(() => {
+    const previousAccountId = sessionRef.current ? String(sessionRef.current.id) : null;
+    if (previousAccountId) {
+      getImOpenedMediaCacheService().lock(previousAccountId);
+      persistentResourceCache.lockScopePrefix(`account:${previousAccountId}`);
+    }
     const credentials = terminateAuthImmediately();
-    publishAnonymous();
+    publishAnonymous(Boolean(previousAccountId));
     setIsRestoring(false);
     return credentials;
   }, [publishAnonymous]);
@@ -369,6 +401,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           operation.kind === "startup-restore" ||
           operation.kind === "remembered-portal-restore"
       );
+      const previousAccountId = sessionRef.current
+        ? String(sessionRef.current.id)
+        : null;
+      const replacementAccountId = String(nextSession.id);
+      const previousAccountLocked = Boolean(
+        previousAccountId && previousAccountId !== replacementAccountId,
+      );
+      if (previousAccountLocked) {
+        getImOpenedMediaCacheService().lock(previousAccountId!);
+      }
       const committed = await commitRotatedAuthOperation(operation, {
         expectedUserId: nextSession.id,
         persistClient: async () =>
@@ -378,12 +420,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
       });
       if (!committed) {
-        publishAnonymous();
+        publishAnonymous(previousAccountLocked);
         return "storage_failed" as const;
       }
       envelopeRef.current = nextEnvelope;
       envelopeRawRef.current = JSON.stringify(nextEnvelope);
-      publishSession(nextSession);
+      publishSession(nextSession, previousAccountLocked);
       setRestoreError(null);
       return "committed" as const;
     },
@@ -696,10 +738,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [terminateLocalSession]);
 
   const login = useCallback(
-    async (portal: PortalScope, email: string, password: string, captchaCode?: string) => {
+    async (
+      portal: PortalScope,
+      email: string,
+      password: string,
+      captchaCode?: string
+    ): Promise<PasswordLoginActionResult> => {
       const operation = beginLatestAuthOperation("password-login");
       try {
         const payload = await authApi.login(email, password, captchaCode);
+        if (payload.status === "verification_required") {
+          abandonAuthOperation(operation);
+          const { status: _status, ...challenge } = payload;
+          return { ok: true, status: "verification_required", challenge };
+        }
         return completeLatestAuthentication(operation, payload, portal, "password");
       } catch (error) {
         if (!rejectInvalidRotatedResponse(operation, error) && isAuthOperationCurrent(operation))
@@ -711,10 +763,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loginWithFormalPassword = useCallback(
-    async (portal: PortalScope, username: string, password: string) => {
+    async (
+      portal: PortalScope,
+      username: string,
+      password: string
+    ): Promise<PasswordLoginActionResult> => {
       const operation = beginLatestAuthOperation("formal-password-login");
       try {
         const payload = await authApi.loginFormal(username, password);
+        if (payload.status === "verification_required") {
+          abandonAuthOperation(operation);
+          const { status: _status, ...challenge } = payload;
+          return { ok: true, status: "verification_required", challenge };
+        }
         return completeLatestAuthentication(operation, payload, portal, "password");
       } catch (error) {
         if (!rejectInvalidRotatedResponse(operation, error) && isAuthOperationCurrent(operation))
@@ -723,6 +784,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     },
     [completeLatestAuthentication, rejectInvalidRotatedResponse, terminateLocalSession]
+  );
+
+  const verifyPasswordLogin = useCallback(
+    async (input: VerificationChallengeInput, portal: PortalScope): Promise<AuthActionResult> => {
+      const operation = beginLatestAuthOperation("password-login-verification");
+      try {
+        const payload = await authApi.verifyPasswordLogin(input);
+        return completeLatestAuthentication(operation, payload, portal, "password");
+      } catch (error) {
+        if (!rejectInvalidRotatedResponse(operation, error)) abandonAuthOperation(operation);
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [completeLatestAuthentication, rejectInvalidRotatedResponse]
   );
 
   const startRegistration = useCallback(
@@ -1181,6 +1256,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       retrySessionRestore,
       login,
       loginWithFormalPassword,
+      verifyPasswordLogin,
       startRegistration,
       verifyRegistration,
       authenticateWithGoogleCredential,
@@ -1212,6 +1288,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isRestoring,
       login,
       loginWithFormalPassword,
+      verifyPasswordLogin,
       loginWithQr,
       loginWithVerificationCode,
       logout,

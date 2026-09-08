@@ -5,7 +5,20 @@ export type ContractLanguage = "zh-CN" | "ja" | "en";
 export type IdentityApplicationStatus = "draft" | "submitted" | "under_review" | "approved" | "rejected" | "withdrawn";
 
 export type Paginated<T> = { list: T[]; total: number; page: number; page_size: number };
+export interface ApplicationReviewEvidence {
+  serviceCategories?: string[];
+  businessKeywords?: string[];
+  targetShopName: string | null;
+  targetShopPublicId: string | null;
+  media: Array<{ id: number; purpose: string }>;
+  bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string | null; accountHolderMasked: string | null; verificationStatus: string } | null;
+  contractAcceptance: { contractVersion: string; acceptedTextSnapshot: string; acceptedAt: string; receiptId: string } | null;
+}
+
 export type IdentityApplication = {
+  reviewEvidence?: ApplicationReviewEvidence;
+  createdAt?: string;
+  purgedAt?: string | null;
   id: number;
   userId: number;
   type: "technician" | "merchant";
@@ -50,7 +63,7 @@ export type MerchantApplicationProfile = {
   eKycVerified: boolean;
 };
 
-export type EligibleShop = { id: number; merchantId: string; name: string; city: string; address: string };
+export type EligibleShop = { coverUrl?: string | null; rating?: number | null; reviewCount?: number; keywords?: string[]; id: number; merchantId: string; name: string; city: string; address: string };
 export type ContractDefinition = {
   type: "merchant" | "affiliate";
   version: string;
@@ -108,6 +121,8 @@ export type MerchantReview = {
   applicantUserId: number;
   status: IdentityApplicationStatus;
   version: number;
+  submittedAt: string | null;
+  createdAt: string;
   applicantKind: "corporate" | "individual";
   corporateLegalName: string | null;
   corporateLegalNameKana: string | null;
@@ -120,7 +135,7 @@ export type MerchantReview = {
   showcaseDraft: Record<string, unknown> | null;
   serviceCategories: Array<{ id: number; code: string; label: string; qualificationPolicy: string }>;
   businessKeywords: Array<{ id: number; code: string; categoryId: number; label: string; qualificationPolicy: string }>;
-  bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string; accountHolderMasked: string; holderMatched: boolean; verificationStatus: string; verificationSource: string } | null;
+  bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string; accountHolderMasked: string; verificationStatus: string; verificationSource: string } | null;
   eKycVerified: boolean;
   contractAcceptance: { contractVersion: string; contentHash: string; language: string; receiptId: string; acceptedAt: string } | null;
   media: Array<{ id: number; purpose: string; url: string; mimeType: string }>;
@@ -150,7 +165,7 @@ export const identityApplicationsApi = {
     return httpClient.request<IdentityApplication>(`/identity-applications/${id}/merchant-showcase`, { body, method: "PATCH" });
   },
   bindMerchantBankAccount(id: number, body: BankAccountInput & { expectedVersion: number }) {
-    return httpClient.request<{ applicationVersion: number; accountNumberMasked: string; holderMatched: true }>(`/identity-applications/${id}/merchant-bank-account`, { body, method: "PATCH" });
+    return httpClient.request<{ applicationVersion: number; accountNumberMasked: string }>(`/identity-applications/${id}/merchant-bank-account`, { body, method: "PATCH" });
   },
   uploadMedia(id: number, purpose: string, expectedVersion: number, file: File) {
     return httpClient.request<{ id: number; applicationVersion: number }>(`/identity-applications/${id}/media`, {
@@ -224,7 +239,7 @@ export type BankAccountInput = {
   bankName: string;
   branchCode: string;
   branchName: string;
-  accountType: "ordinary" | "current";
+  accountType: "ordinary" | "current" | "savings" | "other";
   accountNumber: string;
   accountHolderName: string;
 };

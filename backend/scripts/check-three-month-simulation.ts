@@ -19,11 +19,27 @@ import {
 import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
 import { BackofficeRepository } from "../src/repositories/backoffice.repository";
 import { LIFEDANCE_PAYROLL_PERIODS } from "../src/simulation/lifedance-payroll-seed";
+import {
+  filterSimulationContactsByIdentityPair,
+  simulationContactIdentityPairKey
+} from "../src/simulation/three-month-simulation-contact-check";
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
     throw new Error(message);
   }
+};
+
+const getRequiredId = <Key, Value>(
+  ids: ReadonlyMap<Key, Value>,
+  key: Key,
+  entity: string
+): Value => {
+  const value = ids.get(key);
+  if (value === undefined) {
+    throw new Error(`${entity} id is missing for ${String(key)}.`);
+  }
+  return value;
 };
 
 const readJsonRecord = (value: unknown): Record<string, unknown> | null =>
@@ -153,6 +169,7 @@ const main = async (): Promise<void> => {
           deletedAt: null
         },
         select: {
+          id: true,
           userId: true,
           type: true,
           scopeType: true,
@@ -750,13 +767,33 @@ const main = async (): Promise<void> => {
       assert(value, `missing ${type} participant id for ${key}`);
       return value;
     };
-    const expectedContactKeys = new Set(
+    const resolveParticipantIdentityId = (
+      type: "admin" | "customer" | "technician" | "shop_owner",
+      key: string
+    ): number => {
+      const userId = resolveParticipantId(type, key);
+      const identityType =
+        type === "admin"
+          ? "platform"
+          : type === "shop_owner"
+            ? "merchant_owner"
+            : type;
+      const identity = (identitiesByUser.get(userId) ?? []).find(
+        (candidate) => candidate.type === identityType
+      );
+      assert(identity, `missing ${identityType} identity for ${type} participant ${key}`);
+      return identity.id;
+    };
+    const expectedContactIdentityKeys = new Set(
       plan.contacts.map(
         (contact) =>
-          `${resolveParticipantId(contact.ownerType, contact.ownerKey)}:${resolveParticipantId(
+          simulationContactIdentityPairKey(
+            resolveParticipantIdentityId(contact.ownerType, contact.ownerKey),
+            resolveParticipantIdentityId(
             contact.contactType,
             contact.contactKey
-          )}`
+            )
+          )
       )
     );
     const candidateContacts = await prisma.contact.findMany({
@@ -766,10 +803,17 @@ const main = async (): Promise<void> => {
         },
         deletedAt: null
       },
-      select: { ownerUserId: true, contactUserId: true, source: true }
+      select: {
+        ownerUserId: true,
+        ownerIdentityId: true,
+        contactUserId: true,
+        contactIdentityId: true,
+        source: true
+      }
     });
-    const simulationContacts = candidateContacts.filter((contact) =>
-      expectedContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
+    const simulationContacts = filterSimulationContactsByIdentityPair(
+      candidateContacts,
+      expectedContactIdentityKeys
     );
     assert(
       simulationContacts.length === plan.contacts.length,
@@ -781,6 +825,138 @@ const main = async (): Promise<void> => {
     assert(
       focusedCustomerContacts.length === 12,
       `expected 12 focused customer contacts, found ${focusedCustomerContacts.length}`
+    );
+
+    const fixedRealtimeAccounts = await prisma.user.findMany({
+      where: {
+        email: {
+          in: ["customer@example.com", "technician@example.com", "merchant@example.com"]
+        },
+        isActive: true,
+        deletedAt: null
+      },
+      select: {
+        id: true,
+        email: true,
+        identities: {
+          where: { isActive: true, deletedAt: null },
+          select: { id: true, type: true }
+        }
+      }
+    });
+    assert(fixedRealtimeAccounts.length === 3, "fixed realtime test accounts are missing");
+    const fixedRealtimeUserIdByEmail = new Map(
+      fixedRealtimeAccounts.map((account) => [account.email, account.id])
+    );
+    const fixedCustomerUserId = getRequiredId(
+      fixedRealtimeUserIdByEmail,
+      "customer@example.com",
+      "fixed customer user"
+    );
+    const fixedRealtimeAccountByEmail = new Map(
+      fixedRealtimeAccounts.map((account) => [account.email, account])
+    );
+    const getFixedIdentityId = (email: string, type: string): number => {
+      const account = getRequiredId(fixedRealtimeAccountByEmail, email, "fixed realtime account");
+      const identity = account.identities.find((candidate) => candidate.type === type);
+      assert(identity, `missing ${type} identity for ${email}`);
+      return identity.id;
+    };
+    const fixedCustomerIdentityId = getFixedIdentityId("customer@example.com", "customer");
+    const fixedCounterparts = [
+      {
+        userId: getRequiredId(
+          fixedRealtimeUserIdByEmail,
+          "technician@example.com",
+          "fixed technician user"
+        ),
+        identityId: getFixedIdentityId("technician@example.com", "technician"),
+        messagePrefix: "conversation-formal-preview-customer-fixed-technician-account-"
+      },
+      {
+        userId: getRequiredId(
+          fixedRealtimeUserIdByEmail,
+          "merchant@example.com",
+          "fixed merchant user"
+        ),
+        identityId: getFixedIdentityId("merchant@example.com", "merchant"),
+        messagePrefix: "conversation-formal-preview-customer-fixed-merchant-account-"
+      }
+    ];
+    const fixedCounterpartUserIds = fixedCounterparts.map((counterpart) => counterpart.userId);
+    const fixedRealtimeContacts = await prisma.contact.count({
+      where: {
+        deletedAt: null,
+        OR: fixedCounterparts.flatMap((counterpart) => [
+          {
+            ownerIdentityId: fixedCustomerIdentityId,
+            contactIdentityId: counterpart.identityId
+          },
+          {
+            ownerIdentityId: counterpart.identityId,
+            contactIdentityId: fixedCustomerIdentityId
+          }
+        ])
+      }
+    });
+    assert(fixedRealtimeContacts === 4, `expected 4 fixed realtime contacts, found ${fixedRealtimeContacts}`);
+    const fixedRealtimeConversations = await prisma.conversation.findMany({
+      where: {
+        deletedAt: null,
+        AND: [
+          { participants: { some: { userId: fixedCustomerUserId, deletedAt: null } } },
+          { participants: { some: { userId: { in: fixedCounterpartUserIds }, deletedAt: null } } }
+        ]
+      },
+      select: { id: true, messages: { where: { deletedAt: null }, select: { metadata: true } } }
+    });
+    const fixedSeedConversations = fixedRealtimeConversations.filter((conversation) =>
+      conversation.messages.some((message) => {
+        const metadata = readJsonRecord(message.metadata);
+        return (
+          metadata?.namespace === SIMULATION_NAMESPACE &&
+          metadata.dataset === "im" &&
+          fixedCounterparts.some(
+            (counterpart) =>
+              typeof metadata.messageKey === "string" &&
+              metadata.messageKey.startsWith(counterpart.messagePrefix)
+          )
+        );
+      })
+    );
+    assert(
+      fixedSeedConversations.length === 2,
+      `expected 2 fixed realtime conversations, found ${fixedSeedConversations.length}`
+    );
+    const fixedRealtimeMessages = await prisma.message.count({
+      where: {
+        conversationId: { in: fixedSeedConversations.map((conversation) => conversation.id) },
+        deletedAt: null
+      }
+    });
+    assert(fixedRealtimeMessages >= 8, `expected at least 8 fixed realtime messages, found ${fixedRealtimeMessages}`);
+    const experienceEligibleUsers = await prisma.user.count({
+      where: {
+        isTestAccount: true,
+        isActive: true,
+        deletedAt: null,
+        customerProfile: { is: { deletedAt: null } }
+      }
+    });
+    const activeExperienceAccounts = await prisma.userExperienceAccount.count({
+      where: {
+        deletedAt: null,
+        user: {
+          isTestAccount: true,
+          isActive: true,
+          deletedAt: null,
+          customerProfile: { is: { deletedAt: null } }
+        }
+      }
+    });
+    assert(
+      activeExperienceAccounts === experienceEligibleUsers,
+      `expected ${experienceEligibleUsers} active test experience accounts, found ${activeExperienceAccounts}`
     );
 
     const lifeDanceStaffMessages = simulationMessages.filter((message) => {
@@ -1318,6 +1494,11 @@ const main = async (): Promise<void> => {
           focusedCustomerConversations: focusedCustomerConversations.length,
           focusedCustomerMessages: focusedCustomerMessages.length,
           focusedCustomerContacts: focusedCustomerContacts.length,
+          fixedRealtimeContacts,
+          fixedRealtimeConversations: fixedSeedConversations.length,
+          fixedRealtimeMessages,
+          experienceEligibleUsers,
+          activeExperienceAccounts,
           organizationDirectory: organizationDirectory.total,
           staffOperations,
           status: "ok"

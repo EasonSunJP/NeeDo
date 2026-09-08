@@ -89,8 +89,13 @@ const mocked = vi.hoisted(() => {
       switchIdentity: vi.fn(),
       switchMerchantShop: vi.fn(),
       verifyGoogleRegistrationOrLink: vi.fn(),
+      verifyPasswordLogin: vi.fn(),
       verifyOtp: vi.fn(),
       verifyRegistration: vi.fn()
+    },
+    imCache: {
+      lock: vi.fn((_accountId: string) => undefined),
+      unlock: vi.fn(async (_accountId: string) => undefined),
     },
     clearAuthTokens: vi.fn(() => {
       tokenState.epoch += 1;
@@ -107,6 +112,17 @@ const mocked = vi.hoisted(() => {
 });
 
 vi.mock("../api/auth", () => ({ authApi: mocked.authApi }));
+vi.mock("../features/im/local-cache/service", () => ({
+  getImOpenedMediaCacheService: () => mocked.imCache,
+  transitionImOpenedMediaCacheAccount: async (
+    previousAccountId: string | null,
+    nextAccountId: string | null,
+  ) => {
+    if (previousAccountId === nextAccountId) return;
+    if (previousAccountId) mocked.imCache.lock(previousAccountId);
+    if (nextAccountId) await mocked.imCache.unlock(nextAccountId);
+  },
+}));
 vi.mock("./authCredentialCoordinator", () => ({
   abandonAuthOperation: (operation: {
     generation: number;
@@ -428,7 +444,8 @@ const customerIdentity = {
   publicId: "u0000000007",
   scopeId: 41,
   scopeType: "customer_profile",
-  type: "customer"
+  type: "customer",
+  displayName: "用户"
 };
 
 const technicianIdentity = {
@@ -436,7 +453,8 @@ const technicianIdentity = {
   publicId: "s0000000007",
   scopeId: 42,
   scopeType: "technician_profile",
-  type: "technician"
+  type: "technician",
+  displayName: "技师"
 };
 
 const merchantStoreIdentity = {
@@ -444,7 +462,8 @@ const merchantStoreIdentity = {
   publicId: "b0000000007",
   scopeId: 43,
   scopeType: "shop",
-  type: "merchant_owner"
+  type: "merchant_owner",
+  displayName: "店铺负责人"
 };
 
 const merchantOrganizationIdentity = {
@@ -452,7 +471,8 @@ const merchantOrganizationIdentity = {
   publicId: "o0000000007",
   scopeId: 9,
   scopeType: "merchant_account",
-  type: "merchant_organization"
+  type: "merchant_organization",
+  displayName: "商户组织"
 };
 
 const platformIdentity = {
@@ -460,7 +480,8 @@ const platformIdentity = {
   publicId: null,
   scopeId: null,
   scopeType: "global",
-  type: "platform"
+  type: "platform",
+  displayName: "平台管理员"
 };
 
 const customerMe: AuthMePayload = {
@@ -474,6 +495,7 @@ const customerMe: AuthMePayload = {
   hasPassword: true,
   username: "u0000000007",
   avatarUrl: null,
+  profileDisplayName: "u0000000007",
   isActive: true,
   isTestAccount: false,
   currentIdentity: customerIdentity,
@@ -642,6 +664,7 @@ function storedCustomerSession(overrides: Partial<AuthSession> = {}): AuthSessio
     emailVerifiedAt: customerMe.emailVerifiedAt,
     hasPassword: customerMe.hasPassword,
     avatarUrl: null,
+    profileDisplayName: customerMe.profileDisplayName,
     portal: "user",
     allowedPortals: ["user"],
     loginMethod: "google",
@@ -760,6 +783,36 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(auth.session?.loginMethod).toBe("google");
   });
 
+  it("locks the previous account cache before committing replacement credentials", async () => {
+    mocked.authApi.me.mockResolvedValueOnce(customerMe);
+    await renderProvider();
+    persistTokens("google-access-token", "google-refresh-token");
+    await invoke(() => authenticateGoogle());
+    mocked.imCache.lock.mockClear();
+    mocked.imCache.unlock.mockClear();
+    mocked.setExpectedAuthUserId.mockClear();
+
+    const replacementMe = {
+      ...merchantOrganizationMe,
+      id: 8,
+      needoId: "u0000000008",
+      primaryPublicId: "u0000000008",
+    };
+    mocked.authApi.loginFormal.mockResolvedValueOnce(
+      formalLoginPayload(replacementMe),
+    );
+    await invoke(() => auth.loginWithFormalPassword(
+      "merchant",
+      "o5831047296",
+      "secret",
+    ));
+
+    expect(mocked.imCache.lock).toHaveBeenCalledWith(String(customerMe.id));
+    expect(mocked.imCache.lock.mock.invocationCallOrder[0])
+      .toBeLessThan(mocked.setExpectedAuthUserId.mock.invocationCallOrder[0]!);
+    expect(mocked.imCache.unlock).toHaveBeenCalledWith(String(replacementMe.id));
+  });
+
   it("never uses an inline login me and requires the caller-owned /auth/me response", async () => {
     mocked.authApi.loginFormal.mockResolvedValueOnce({
       accessToken: "login-access",
@@ -783,6 +836,38 @@ describe("AuthProvider formal registration and Google sessions", () => {
       refreshToken: "login-refresh"
     });
     expect(auth.session?.permissions).not.toContain("platform:superuser");
+  });
+
+  it("returns a password-login challenge without creating a session, then verifies it", async () => {
+    mocked.authApi.loginFormal.mockResolvedValueOnce({
+      status: "verification_required",
+      ...challenge
+    });
+    mocked.authApi.verifyPasswordLogin.mockResolvedValueOnce({
+      accessToken: "verified-access",
+      refreshToken: "verified-refresh",
+      expiresIn: 900
+    });
+    mocked.authApi.me.mockResolvedValueOnce(customerMe);
+    await renderProvider();
+
+    const challenged = await invoke(() =>
+      auth.loginWithFormalPassword("user", "user@example.com", "secret")
+    );
+    expect(challenged).toEqual({ ok: true, status: "verification_required", challenge });
+    expect(auth.session).toBeNull();
+
+    const verified = await invoke(() =>
+      auth.verifyPasswordLogin(
+        { challengeId: challenge.challengeId, otp: "123456" },
+        "user"
+      )
+    );
+    expect(verified).toMatchObject({ ok: true, session: { portal: "user" } });
+    expect(mocked.authApi.verifyPasswordLogin).toHaveBeenCalledWith({
+      challengeId: challenge.challengeId,
+      otp: "123456"
+    });
   });
 
   it("persists the active portal only inside the V8 envelope", async () => {
@@ -1099,7 +1184,8 @@ describe("AuthProvider formal registration and Google sessions", () => {
       publicId: null,
       scopeId: null,
       scopeType: "global",
-      type: "platform"
+      type: "platform",
+      displayName: "平台管理员"
     };
     mocked.authApi.verifyRegistration.mockImplementation(async () => {
       persistTokens("registration-access", "registration-refresh");

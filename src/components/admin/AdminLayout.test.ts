@@ -3,6 +3,11 @@ import source from "./AdminLayout.tsx?raw";
 import { routeMatches } from "./AdminLayout";
 
 describe("AdminLayout navigation", () => {
+  it("uses the shared formal notice bell without a hard-coded unread count", () => {
+    expect(source).toContain("<OfficialNoticeBell to=\"/admin/notifications/inbox\"");
+    expect(source).not.toContain("count={12}");
+  });
+
   it("exposes one read-permission-filtered NDP exchange-rate settings item", () => {
     expect(source.match(/to: "\/admin\/settings\/ndp-exchange-rate"/g)).toHaveLength(1);
     expect(source).toContain('label: "NDP 汇率"');
@@ -29,10 +34,10 @@ describe("AdminLayout navigation", () => {
   });
 
   it("renames operations and keeps disabled TEST partner sections in the top navigation", () => {
-    expect(source).toContain('title: "运营管理"');
+    expect(source).toContain('title: "运营"');
     expect(source).toContain('title: "加盟商"');
     expect(source).toContain('title: "供货商"');
-    expect(source.match(/badge: "TEST"/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(source.match(/badge: "TEST"/g)?.length).toBe(5);
     expect(source.match(/disabled: true/g)).toHaveLength(2);
     expect(source).toContain("section.disabled || section.items.length > 0");
     expect(source).toContain("if (section.disabled) return;");
@@ -61,6 +66,17 @@ describe("AdminLayout navigation", () => {
     expect(source).not.toContain("东京城市组");
     expect(source).not.toContain("19 个待审核商家，36 个工单需要运营介入。");
     expect(source).not.toContain("admin-sidebar-note");
+  });
+
+  it("renders the formal operator summary without demo profile constants", () => {
+    expect(source).toContain("<AdminOperatorSummary");
+    expect(source).toContain("resolveAdminDisplayName");
+    expect(source).toContain("resolveAdminRoleLabel");
+    expect(source).not.toContain("David Stainberry");
+    expect(source).not.toContain("profile-03.jpg");
+    expect(source).not.toContain("admin@needo.jp");
+    expect(source).not.toContain(">36<");
+    expect(source).not.toContain(">19<");
   });
 
   it("does not expose the removed operations design module", () => {

@@ -7,11 +7,11 @@ import { env } from "../src/config/env";
 import { AuthTokenService } from "../src/services/auth-token.service";
 import { ContentMediaFileStorage } from "../src/services/content-media.storage";
 import { SocialMediaService } from "../src/services/social-media.service";
-
-const validPng = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from("needo-social-media-api")
-]);
+import {
+  createValidExcessivePixelPng,
+  validPng,
+  validTwoFrameApng
+} from "./fixtures/content-images";
 
 const createFixture = async (hasPermission = true, useRealService = false) => {
   const directory = await mkdtemp(join(tmpdir(), "needo-social-media-api-"));
@@ -72,17 +72,14 @@ const createFixture = async (hasPermission = true, useRealService = false) => {
           fileSize: validPng.length
         }))
       };
-  const app = createApp(
-    { ...env, CONTENT_MEDIA_STORAGE_DIR: directory },
-    {
-      redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
-      testOnlyAllowLegacyAuthAdapters: true,
-      authRepository: { findUserById: jest.fn(async () => user) },
-      authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
-      otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-      socialMediaService: service
-    } as never
-  );
+  const app = createApp({ ...env, CONTENT_MEDIA_STORAGE_DIR: directory }, {
+    redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
+    testOnlyAllowLegacyAuthAdapters: true,
+    authRepository: { findUserById: jest.fn(async () => user) },
+    authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
+    otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
+    socialMediaService: service
+  } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: 41,
     email: user.email,
@@ -141,6 +138,26 @@ describe("Social media HTTP API", () => {
         now: expect.any(Date)
       })
     );
+    await rm(fixture.directory, { recursive: true, force: true });
+  });
+
+  it("accepts APNG and valid large-dimension images under the existing Social route contract", async () => {
+    const fixture = await createFixture(true, true);
+    const validLargePng = await createValidExcessivePixelPng();
+
+    expect(validLargePng.length).toBeLessThanOrEqual(8 * 1024 * 1024);
+    await request(fixture.app)
+      .post("/api/v1/social/media?fileName=animated.png")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .set("Content-Type", "image/png")
+      .send(validTwoFrameApng)
+      .expect(201);
+    await request(fixture.app)
+      .post("/api/v1/social/media?fileName=large-dimensions.png")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .set("Content-Type", "image/png")
+      .send(validLargePng)
+      .expect(201);
     await rm(fixture.directory, { recursive: true, force: true });
   });
 

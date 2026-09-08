@@ -40,49 +40,41 @@ describeIntegration("localized carousel checker exact command cleanup", () => {
     if (disconnectPrisma) await disconnectPrisma();
   });
 
-  it(
-    "preserves the opposite aggregate command with the same numeric release ID",
-    async () => {
-      const marker = `localized-cleanup-it-${randomUUID()}`;
-      const releaseId = randomInt(100_000_000, 2_000_000_000);
-      const fingerprint = (label: string) =>
-        createHash("sha256").update(`${marker}:${label}`).digest("hex");
-      const owned = await prisma.contentPublicationCommand.create({
-        data: {
-          idempotencyKey: `${marker}-owned`,
-          requestFingerprint: fingerprint("owned"),
-          aggregateType: "CAROUSEL",
-          aggregateKey: "carousel:USER_HOME",
-          releaseId,
-          action: "publish",
-          result: { marker, owned: true }
-        }
-      });
-      const opposite = await prisma.contentPublicationCommand.create({
-        data: {
-          idempotencyKey: `${marker}-opposite`,
-          requestFingerprint: fingerprint("opposite"),
-          aggregateType: "OFFICIAL_ANNOUNCEMENT",
-          aggregateKey: `announcement:${randomUUID()}`,
-          releaseId,
-          action: "publish",
-          result: { marker, owned: false }
-        }
-      });
-      createdCommandIds.push(owned.id, opposite.id);
+  it("preserves the opposite aggregate command with the same numeric release ID", async () => {
+    const marker = `localized-cleanup-it-${randomUUID()}`;
+    const releaseId = randomInt(100_000_000, 2_000_000_000);
+    const fingerprint = (label: string) =>
+      createHash("sha256").update(`${marker}:${label}`).digest("hex");
+    const owned = await prisma.contentPublicationCommand.create({
+      data: {
+        idempotencyKey: `${marker}-owned`,
+        requestFingerprint: fingerprint("owned"),
+        aggregateType: "CAROUSEL",
+        aggregateKey: "carousel:USER_HOME",
+        releaseId,
+        action: "publish",
+        result: { marker, owned: true }
+      }
+    });
+    const opposite = await prisma.contentPublicationCommand.create({
+      data: {
+        idempotencyKey: `${marker}-opposite`,
+        requestFingerprint: fingerprint("opposite"),
+        aggregateType: "OFFICIAL_ANNOUNCEMENT",
+        aggregateKey: `announcement:${randomUUID()}`,
+        releaseId,
+        action: "publish",
+        result: { marker, owned: false }
+      }
+    });
+    createdCommandIds.push(owned.id, opposite.id);
 
-      await expect(
-        deleteLocalizedPublicationCommandsByExactId(prisma, [owned.id])
-      ).resolves.toBe(1);
+    await expect(deleteLocalizedPublicationCommandsByExactId(prisma, [owned.id])).resolves.toBe(1);
 
-      const survivors = await prisma.contentPublicationCommand.findMany({
-        where: { id: { in: [owned.id, opposite.id] } },
-        select: { id: true, aggregateType: true }
-      });
-      expect(survivors).toEqual([
-        { id: opposite.id, aggregateType: "OFFICIAL_ANNOUNCEMENT" }
-      ]);
-    },
-    30_000
-  );
+    const survivors = await prisma.contentPublicationCommand.findMany({
+      where: { id: { in: [owned.id, opposite.id] } },
+      select: { id: true, aggregateType: true }
+    });
+    expect(survivors).toEqual([{ id: opposite.id, aggregateType: "OFFICIAL_ANNOUNCEMENT" }]);
+  }, 30_000);
 });

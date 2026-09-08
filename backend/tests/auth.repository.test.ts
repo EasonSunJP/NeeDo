@@ -90,6 +90,7 @@ describe("AuthRepository formal login identifiers", () => {
     const query = findFirst.mock.calls[0]?.[0];
 
     expect(JSON.stringify(query)).toContain("publicIdentifier");
+    expect(JSON.stringify(query)).toContain("customerProfile");
     expect(JSON.stringify(query)).toContain("loginAllowed");
     expect(result).toMatchObject({
       needoId: "u1234567890",

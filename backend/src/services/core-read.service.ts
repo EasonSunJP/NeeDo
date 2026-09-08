@@ -24,13 +24,17 @@ import {
 import { AppError } from "../utils/app-error";
 import { buildPaginatedResponse, normalizePagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
+import type { SearchQueryRecorderPort } from "./search-query-recorder.service";
 
 const INITIAL_NEARBY_RADIUS_KM = 3;
 const REQUIRED_NEARBY_TECHNICIANS = 3;
 const MAX_NEARBY_RADIUS_KM = 20_038;
 
 export class CoreReadService {
-  public constructor(private readonly repository: CoreReadRepositoryPort) {}
+  public constructor(
+    private readonly repository: CoreReadRepositoryPort,
+    private readonly searchQueryRecorder?: SearchQueryRecorderPort
+  ) {}
 
   public listCategories(input: CategoryListInput): Promise<PaginatedResponse<CategoryPayload>> {
     return this.repository.listCategories(input);
@@ -56,21 +60,34 @@ export class CoreReadService {
     return this.repository.getHomeRecommendations(input);
   }
 
-  public search(input: CoreSearchInput): Promise<CoreSearchResponse> {
+  public async search(
+    input: CoreSearchInput,
+    anonymousSessionId?: string
+  ): Promise<CoreSearchResponse> {
+    let result: CoreSearchResponse;
     if (input.entityType === "shop") {
-      return this.repository.searchShops(input);
-    }
-    if (input.entityType === "technician") {
+      result = await this.repository.searchShops(input);
+    } else if (input.entityType === "technician") {
       if (input.latitude !== undefined && input.longitude !== undefined) {
-        return this.searchNearbyTechnicians(input, {
+        result = await this.searchNearbyTechnicians(input, {
           latitude: input.latitude,
           longitude: input.longitude
         });
+      } else {
+        result = await this.repository.searchTechnicians(input);
       }
-      return this.repository.searchTechnicians(input);
+    } else {
+      result = await this.repository.search(input);
     }
 
-    return this.repository.search(input);
+    if (input.keyword || input.keywords.length > 0) {
+      await this.searchQueryRecorder?.recordSuccessfulSearch({
+        input,
+        resultCount: result.total,
+        anonymousSessionId
+      });
+    }
+    return result;
   }
 
   private async searchNearbyTechnicians(
@@ -141,7 +158,7 @@ export class CoreReadService {
     return shop;
   }
 
-  public async getTechnicianDetail(id: number): Promise<TechnicianDetailPayload> {
+  public async getTechnicianDetail(id: number | string): Promise<TechnicianDetailPayload> {
     const technician = await this.repository.findTechnicianDetail(id);
 
     if (!technician) {

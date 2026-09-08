@@ -231,9 +231,7 @@ const attachRolePermissions = (
   }
 };
 
-export const createStep06Fixture = async (
-  dependencyOverrides: Partial<AppDependencies> = {}
-) => {
+export const createStep06Fixture = async (dependencyOverrides: Partial<AppDependencies> = {}) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const auditLogs: AuditLogEntry[] = [];
   const permissionAssignCalls: Array<{ roleId: number; permissionIds: number[] }> = [];
@@ -662,30 +660,43 @@ export const createStep06Fixture = async (
     )
   };
   const userRepository = {
-    list: jest.fn(async ({
-      page,
-      pageSize,
-      isTestAccount
-    }: {
-      page: number;
-      pageSize: number;
-      isTestAccount?: boolean;
-    }) => ({
-      list: users
-        .filter(
+    list: jest.fn(
+      async ({
+        page,
+        pageSize,
+        isTestAccount,
+        roleId
+      }: {
+        page: number;
+        pageSize: number;
+        isTestAccount?: boolean;
+        roleId?: number;
+      }) => ({
+        list: users
+          .filter(
+            (user) =>
+              user.deletedAt === null &&
+              (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount) &&
+              (!roleId ||
+                user.userRoles.some(
+                  (assignment) =>
+                    assignment.roleId === roleId && assignment.deletedAt === null
+                ))
+          )
+          .slice((page - 1) * pageSize, page * pageSize),
+        total: users.filter(
           (user) =>
             user.deletedAt === null &&
-            (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount)
-        )
-        .slice((page - 1) * pageSize, page * pageSize),
-      total: users.filter(
-        (user) =>
-          user.deletedAt === null &&
-          (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount)
-      ).length,
-      page,
-      page_size: pageSize
-    })),
+            (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount) &&
+            (!roleId ||
+              user.userRoles.some(
+                (assignment) => assignment.roleId === roleId && assignment.deletedAt === null
+              ))
+        ).length,
+        page,
+        page_size: pageSize
+      })
+    ),
     findById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
     findByEmail: jest.fn(
       async (email: string) => users.find((user) => user.email === email) ?? null

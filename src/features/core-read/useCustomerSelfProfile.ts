@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Customer } from "../../types/domain";
+import { platformMembershipSelfApi } from "../platform-membership/api";
 import { mapCoreCustomerToCustomer } from "./api";
 import { customerProfileApi, type CustomerSelfProfile } from "./customerProfileApi";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 
 export type CustomerSelfProfileResource = {
   profile: CustomerSelfProfile | null;
@@ -27,18 +30,26 @@ const disabledState: CustomerSelfProfileState = {
   error: null
 };
 
-let customerSelfProfileRequestInFlight: Promise<CustomerSelfProfile> | null = null;
+const customerSelfProfileRequestsInFlight = new Map<string, Promise<CustomerSelfProfile>>();
 
-function requestCustomerSelfProfile(force = false) {
-  if (!force && customerSelfProfileRequestInFlight) {
-    return customerSelfProfileRequestInFlight;
+function requestCustomerSelfProfile(scope: string | null, force = false) {
+  const requestScope = scope ?? "uncached";
+  const current = customerSelfProfileRequestsInFlight.get(requestScope);
+  if (!force && current) {
+    return current;
   }
 
-  const request = customerProfileApi.getMine();
-  customerSelfProfileRequestInFlight = request;
+  const serverRequest = () => Promise.all([
+    customerProfileApi.getMine(),
+    platformMembershipSelfApi.getMine().catch(() => null)
+  ]).then(([profile, membership]) => ({ ...profile, membershipLevel: membership?.tierCode ?? "" }));
+  const request = scope
+    ? persistentResourceCache.load({ force, key: "customer:self", load: serverRequest, scope })
+    : serverRequest();
+  customerSelfProfileRequestsInFlight.set(requestScope, request);
   const clearRequest = () => {
-    if (customerSelfProfileRequestInFlight === request) {
-      customerSelfProfileRequestInFlight = null;
+    if (customerSelfProfileRequestsInFlight.get(requestScope) === request) {
+      customerSelfProfileRequestsInFlight.delete(requestScope);
     }
   };
   void request.then(clearRequest, clearRequest);
@@ -47,9 +58,16 @@ function requestCustomerSelfProfile(force = false) {
 }
 
 export function useCustomerSelfProfile(enabled = true): CustomerSelfProfileResource {
-  const [state, setState] = useState<CustomerSelfProfileState>(() =>
-    enabled ? initialState : disabledState
-  );
+  const cacheScope = getAuthenticatedPersistentCacheScope();
+  const [state, setState] = useState<CustomerSelfProfileState>(() => {
+    if (!enabled) return disabledState;
+    const profile = cacheScope
+      ? persistentResourceCache.peek<CustomerSelfProfile>(cacheScope, "customer:self")
+      : undefined;
+    return profile
+      ? { profile, customer: mapCoreCustomerToCustomer(profile), loading: false, error: null }
+      : initialState;
+  });
   const requestGeneration = useRef(0);
 
   const load = useCallback(async (force = false) => {
@@ -61,15 +79,18 @@ export function useCustomerSelfProfile(enabled = true): CustomerSelfProfileResou
       return;
     }
 
+    const cached = cacheScope
+      ? persistentResourceCache.peek<CustomerSelfProfile>(cacheScope, "customer:self")
+      : undefined;
     setState({
-      profile: null,
-      customer: null,
-      loading: true,
+      profile: cached ?? null,
+      customer: cached ? mapCoreCustomerToCustomer(cached) : null,
+      loading: cached === undefined,
       error: null
     });
 
     try {
-      const profile = await requestCustomerSelfProfile(force);
+      const profile = await requestCustomerSelfProfile(cacheScope, force);
       if (requestGeneration.current !== generation) return;
       setState({
         profile,
@@ -79,21 +100,35 @@ export function useCustomerSelfProfile(enabled = true): CustomerSelfProfileResou
       });
     } catch (error) {
       if (requestGeneration.current !== generation) return;
+      const fallback = cacheScope
+        ? persistentResourceCache.peek<CustomerSelfProfile>(cacheScope, "customer:self")
+        : undefined;
       setState({
-        profile: null,
-        customer: null,
+        profile: fallback ?? null,
+        customer: fallback ? mapCoreCustomerToCustomer(fallback) : null,
         loading: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: fallback ? null : error instanceof Error ? error.message : String(error)
       });
     }
-  }, [enabled]);
+  }, [cacheScope, enabled]);
 
   useEffect(() => {
+    const unsubscribe = enabled && cacheScope
+      ? persistentResourceCache.subscribe<CustomerSelfProfile>(cacheScope, "customer:self", (profile) => {
+          setState({
+            profile,
+            customer: mapCoreCustomerToCustomer(profile),
+            loading: false,
+            error: null
+          });
+        })
+      : () => undefined;
     void load();
     return () => {
       requestGeneration.current += 1;
+      unsubscribe();
     };
-  }, [load]);
+  }, [cacheScope, enabled, load]);
 
   const reload = useCallback(() => {
     void load(true);

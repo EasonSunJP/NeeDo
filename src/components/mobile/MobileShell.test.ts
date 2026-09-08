@@ -23,7 +23,8 @@ describe("MobileShell shared navigation", () => {
   it("renders the raised center Needo button with the supplied green artwork", () => {
     expect(mobileShellSource).toContain("function NeedoFeaturedNavButton");
     expect(mobileShellSource).toContain("<NeedoFeaturedNavButton");
-    expect(mobileShellSource).toContain("/icons/needo-green-button-light.png");
+    expect(mobileShellSource).toContain("DEFAULT_REQUEST_BUTTON_URL");
+    expect(mobileShellSource).toContain("settings.requestButton?.url ?? DEFAULT_REQUEST_BUTTON_URL");
     expect(mobileShellSource).not.toContain("/icons/needo-nav-button-light.png");
     expect(mobileShellSource).not.toContain("/icons/needo-nav-button-dark.png");
     expect(mobileShellSource).not.toContain("needoNavButtonImages[theme]");

@@ -53,7 +53,23 @@ const intelligencePost: ExchangePost = {
     addressLabel: null,
     serviceAreas: ["新宿区", "渋谷区"],
     originalPriceJpy: 12000,
-    campaignPriceJpy: 9000
+    campaignPriceJpy: 9000,
+    booking: {
+      available: false,
+      unavailableReason: "legacy_unbound",
+      target: null,
+      catalogPriceJpy: null,
+      campaignPriceJpy: 9000,
+      serviceName: null,
+      durationMinutes: null,
+      serviceMode: "onsite",
+      serviceWindow: {
+        startsAt: demandPost.serviceStartAt,
+        endsAt: demandPost.serviceEndAt
+      }
+    },
+    publisherCard: null,
+    serviceCard: null
   }
 };
 

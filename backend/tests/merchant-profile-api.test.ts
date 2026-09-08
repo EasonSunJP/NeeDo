@@ -7,12 +7,19 @@ import type {
   MerchantProfilePayload
 } from "../src/repositories/merchant-profile.repository";
 
-interface StoredValue { value: string; expiresAt: number }
+interface StoredValue {
+  value: string;
+  expiresAt: number;
+}
 
 class InMemoryAuthSessionStore {
   private readonly values = new Map<string, StoredValue>();
-  public async getLoginLock(): Promise<boolean> { return false; }
-  public async getAccountLoginLock(): Promise<boolean> { return false; }
+  public async getLoginLock(): Promise<boolean> {
+    return false;
+  }
+  public async getAccountLoginLock(): Promise<boolean> {
+    return false;
+  }
   public async recordFailedLogin(): Promise<{ count: number; locked: boolean }> {
     return { count: 1, locked: false };
   }
@@ -24,8 +31,12 @@ class InMemoryAuthSessionStore {
   public async storeOtp(email: string, otp: string, ttlSeconds: number): Promise<void> {
     this.setValue(`otp:${email}`, otp, ttlSeconds);
   }
-  public async getOtp(email: string): Promise<string | null> { return this.getValue(`otp:${email}`); }
-  public async deleteOtp(email: string): Promise<void> { this.values.delete(`otp:${email}`); }
+  public async getOtp(email: string): Promise<string | null> {
+    return this.getValue(`otp:${email}`);
+  }
+  public async deleteOtp(email: string): Promise<void> {
+    this.values.delete(`otp:${email}`);
+  }
   public async hasOtpCooldown(email: string): Promise<boolean> {
     return this.getValue(`otp:cooldown:${email}`) !== null;
   }
@@ -113,8 +124,8 @@ const createFixture = async () => {
   };
   const withoutProfilePermissions = {
     ...permittedRole,
-    rolePermissions: permittedRole.rolePermissions.filter(({ permission }) =>
-      !permission.code.startsWith("merchant-profile:")
+    rolePermissions: permittedRole.rolePermissions.filter(
+      ({ permission }) => !permission.code.startsWith("merchant-profile:")
     )
   };
   const customerPermittedRole = { ...permittedRole, code: "customer" };
@@ -138,17 +149,19 @@ const createFixture = async () => {
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
-    identities: [{
-      id: id + 100,
-      userId: id,
-      type: identityType,
-      scopeType: identityType === "customer" ? "customer_profile" : "shop",
-      scopeId: identityType === "customer" ? 41 : 73,
-      displayName: email,
-      isDefault: true,
-      isActive: true,
-      deletedAt: null
-    }],
+    identities: [
+      {
+        id: id + 100,
+        userId: id,
+        type: identityType,
+        scopeType: identityType === "customer" ? "customer_profile" : "shop",
+        scopeId: identityType === "customer" ? 41 : 73,
+        displayName: email,
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
+      }
+    ],
     userRoles: [{ deletedAt: null, role }]
   });
   const users = [
@@ -158,30 +171,38 @@ const createFixture = async () => {
   ];
   let profile = makeProfile();
   const authRepository = {
-    findUserByEmail: jest.fn(async (email: string) => users.find((user) => user.email === email) ?? null),
-    findUserByLoginIdentifier: jest.fn(async (identifier: string) =>
-      users.find((user) => user.email === identifier || user.needoId === identifier) ?? null
+    findUserByEmail: jest.fn(
+      async (email: string) => users.find((user) => user.email === email) ?? null
+    ),
+    findUserByLoginIdentifier: jest.fn(
+      async (identifier: string) =>
+        users.find((user) => user.email === identifier || user.needoId === identifier) ?? null
     ),
     findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
-    createVerifiedBaselineCustomer: jest.fn(async () => { throw new Error("unexpected registration"); }),
+    createVerifiedBaselineCustomer: jest.fn(async () => {
+      throw new Error("unexpected registration");
+    }),
     findVerifiedRegistrationByChallenge: jest.fn(async () => null),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
+    getSuccessfulLoginEvidence: jest.fn(async () => ({
+      hasAnySuccessfulLogin: false,
+      hasSuccessfulLoginInPeriod: false,
+      hasSuccessfulLoginFromIp: false
+    })),
     createAuditLog: jest.fn(async () => undefined)
   };
   const merchantProfileRepository = {
     findMine: jest.fn(async (userId: number, identityId: number) =>
       userId === 9 && identityId === 109 ? profile : null
     ),
-    updateMine: jest.fn(async (
-      userId: number,
-      identityId: number,
-      mutation: MerchantProfileMutation
-    ) => {
-      if (userId !== 9 || identityId !== 109) throw new Error("unexpected merchant scope");
-      profile = { ...profile, ...mutation, avatarUrl: mutation.avatar?.url ?? profile.avatarUrl };
-      return profile;
-    })
+    updateMine: jest.fn(
+      async (userId: number, identityId: number, mutation: MerchantProfileMutation) => {
+        if (userId !== 9 || identityId !== 109) throw new Error("unexpected merchant scope");
+        profile = { ...profile, ...mutation, avatarUrl: mutation.avatar?.url ?? profile.avatarUrl };
+        return profile;
+      }
+    )
   };
   const app = createApp(env, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 0 }),
@@ -192,18 +213,22 @@ const createFixture = async () => {
     customerAvatarStorage: { save: jest.fn() },
     merchantProfileRepository,
     merchantShopContextRepository: {
-      listManageableShops: jest.fn(async (input: { identityScopeId: number; page: number; pageSize: number }) => ({
-        list: [{
-          publicId: `shop${String(input.identityScopeId).padStart(10, "0")}`,
-          name: "Authenticated shop",
-          city: "Tokyo",
-          status: "published",
-          selected: true
-        }],
-        total: 1,
-        page: input.page,
-        page_size: input.pageSize
-      })),
+      listManageableShops: jest.fn(
+        async (input: { identityScopeId: number; page: number; pageSize: number }) => ({
+          list: [
+            {
+              publicId: `shop${String(input.identityScopeId).padStart(10, "0")}`,
+              name: "Authenticated shop",
+              city: "Tokyo",
+              status: "published",
+              selected: true
+            }
+          ],
+          total: 1,
+          page: input.page,
+          page_size: input.pageSize
+        })
+      ),
       resolveShop: jest.fn(),
       resolveDefaultShop: jest.fn()
     }
@@ -227,21 +252,25 @@ describe("merchant profile current-identity API", () => {
       .get("/api/v1/merchant-profile/me")
       .set("Authorization", `Bearer ${token}`)
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        publicId: "b0000000109",
-        displayName: "佐藤 美咲"
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          publicId: "b0000000109",
+          displayName: "佐藤 美咲"
+        })
+      );
 
     await request(fixture.app)
       .patch("/api/v1/merchant-profile/me")
       .set("Authorization", `Bearer ${token}`)
       .send({ displayName: "Misaki", languages: [], visibility: "network" })
       .expect(200)
-      .expect(({ body }) => expect(body.data).toMatchObject({
-        displayName: "Misaki",
-        languages: [],
-        visibility: "network"
-      }));
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({
+          displayName: "Misaki",
+          languages: [],
+          visibility: "network"
+        })
+      );
     expect(fixture.merchantProfileRepository.updateMine).toHaveBeenCalledWith(
       9,
       109,

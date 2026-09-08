@@ -75,6 +75,14 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).not.toContain("frontend-bypass");
   });
 
+  it("loads public platform settings and keeps operations available during maintenance", () => {
+    expect(appSource).toContain("<PlatformSettingsProvider>");
+    expect(appSource).toContain("function PlatformAvailabilityGate");
+    expect(appSource).toContain('location.pathname === "/login/admin"');
+    expect(appSource).toContain('location.pathname.startsWith("/admin/")');
+    expect(appSource).toContain('status === "ready" && !settings.siteEnabled && !isOperationsRoute');
+  });
+
   it("admits an authenticated operations admin only when a read-only merchant preview is active", () => {
     expect(requirePortalAuthSource).toContain("getMerchantAdminPreview");
     expect(requirePortalAuthSource).toContain("isOperationsMerchantPreview");
@@ -126,35 +134,38 @@ describe("production route chunk boundaries", () => {
   it("mounts one operations data dashboard and redirects the legacy analytics route", () => {
     expect(appSource.match(/path="\/admin" element=/g)).toHaveLength(1);
     expect(appSource).toContain(
-      'path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)}'
+      'path="/admin" element={protectPermission("admin", "page:dashboard", <Suspense fallback={null}><DashboardPage /></Suspense>)}'
     );
     expect(appSource).toContain(
-      'import { DashboardMetricDetailPage } from "./pages/admin/DashboardMetricDetailPage";'
+      'const DashboardMetricDetailPage = lazy(() => import("./pages/admin/DashboardMetricDetailPage")'
     );
     expect(appSource).toContain(
-      'path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <DashboardMetricDetailPage />)}'
+      'path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <Suspense fallback={null}><DashboardMetricDetailPage /></Suspense>)}'
     );
     expect(appSource).toContain(
-      'import { MembershipAnalyticsPage } from "./pages/admin/MembershipAnalyticsPage";'
+      'const MembershipAnalyticsPage = lazy(() => import("./pages/admin/MembershipAnalyticsPage")'
     );
     expect(appSource).toContain(
-      'path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <MembershipAnalyticsPage scope="backoffice" />)}'
+      'path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="backoffice" /></Suspense>)}'
     );
     expect(appSource).toContain(
-      'path="/merchant-admin/analytics/members" element={protectPermission("merchant", "shop.member.analytics.view", <MembershipAnalyticsPage scope="merchant-admin" />)}'
+      'path="/merchant-admin/analytics/members" element={protectPermission("merchant", "shop.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="merchant-admin" /></Suspense>)}'
     );
     expect(appSource).not.toContain('import { AnalyticsPage } from "./pages/admin/AnalyticsPage";');
     expect(appSource).toContain(
       'path="/admin/analytics" element={protectPermission("admin", "page:dashboard", <Navigate replace to="/admin" />)}'
     );
     expect(appSource).not.toContain("<AnalyticsPage />");
+    expect(appSource).toContain(
+      'path="/admin/live-screen" element={protectPermission("admin", "page:dashboard", <Suspense fallback={null}><LiveDashboardPage /></Suspense>)}'
+    );
   });
 
   it("mounts one merchant data dashboard and redirects the legacy analytics route", () => {
     const oldAnalyticsPath = ["/merchant-admin", "analytics"].join("/");
     expect(appSource.match(/path="\/merchant-admin" element=/g)).toHaveLength(1);
     expect(appSource).toContain(
-      'path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)}'
+      'path="/merchant-admin" element={protect("merchant", <Suspense fallback={null}><MerchantAdminDashboardPage /></Suspense>)}'
     );
     expect(appSource).not.toContain('import { MerchantAdminAnalyticsPage }');
     expect(appSource).not.toContain("<MerchantAdminAnalyticsPage />");
@@ -171,6 +182,69 @@ describe("production route chunk boundaries", () => {
     expect(
       appSource.match(/<Suspense fallback=\{null\}><TechnicianPortalPage \/><\/Suspense>/g)
     ).toHaveLength(2);
+  });
+
+  it("loads application review workspaces only after entering their protected routes", () => {
+    expect(appSource).not.toContain(
+      'import { EkycReviewPage } from "./features/settings/EkycReviewPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { MerchantBackofficeApplicationReviewPage, OperationsShopApplicationReviewPage } from "./features/identity-applications/BackofficeReviewPages";'
+    );
+    expect(appSource).toContain(
+      'const EkycReviewPage = lazy(() => import("./features/settings/EkycReviewPage")'
+    );
+    expect(appSource).toContain(
+      'const MerchantBackofficeApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages")'
+    );
+    expect(appSource).toContain(
+      'const OperationsShopApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages")'
+    );
+    expect(appSource).toContain(
+      'path="/admin/application-reviews/ekyc" element={protectPermission("admin", "ops:ekyc-application:read", <Suspense fallback={null}><EkycReviewPage /></Suspense>)}'
+    );
+    expect(appSource).toContain(
+      'path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <Suspense fallback={null}><OperationsShopApplicationReviewPage /></Suspense>)}'
+    );
+    expect(appSource).toContain(
+      'path="/merchant-admin/employee-applications" element={protectPermission("merchant", "merchant:technician-application:read", <Suspense fallback={null}><MerchantBackofficeApplicationReviewPage /></Suspense>)}'
+    );
+  });
+
+  it("loads the operations timeline only after entering its protected route", () => {
+    expect(appSource).not.toContain(
+      'import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";',
+    );
+    expect(appSource).toContain(
+      'const OperationTimelinePage = lazy(() => import("./pages/admin/OperationTimelinePage")',
+    );
+    expect(appSource).toContain(
+      'path="/admin/operation-timeline" element={protectPermission("admin", "backoffice:dashboard:read", <Suspense fallback={null}><OperationTimelinePage /></Suspense>)}',
+    );
+  });
+
+  it("loads the carousel editor only after entering its protected route", () => {
+    expect(appSource).not.toContain(
+      'import { CarouselPage } from "./pages/admin/CarouselPage";',
+    );
+    expect(appSource).toContain(
+      'const CarouselPage = lazy(() => import("./pages/admin/CarouselPage")',
+    );
+    expect(appSource).toContain(
+      'path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <Suspense fallback={null}><CarouselPage /></Suspense>)}',
+    );
+  });
+
+  it("loads the operations order workspace only after entering its route", () => {
+    expect(appSource).not.toContain(
+      'import { OrdersAdminPage } from "./pages/admin/OrdersAdminPage";',
+    );
+    expect(appSource).toContain(
+      'const OrdersAdminPage = lazy(() => import("./pages/admin/OrdersAdminPage")',
+    );
+    expect(appSource).toContain(
+      'path="/admin/orders" element={protect("admin", <Suspense fallback={null}><OrdersAdminPage /></Suspense>)}',
+    );
   });
 
   it("routes the accepted technician schedule index directly to the formal-only page", () => {

@@ -7,9 +7,9 @@ describe("booking expiry rollback checker contract", () => {
   it("provides a guarded independent-connection rollback checker", () => {
     expect(existsSync(checkerPath)).toBe(true);
     const source = readFileSync(checkerPath, "utf8");
-    const packageJson = JSON.parse(
-      readFileSync(resolve(__dirname, "../package.json"), "utf8")
-    ) as { scripts?: Record<string, string> };
+    const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8")) as {
+      scripts?: Record<string, string>;
+    };
 
     expect(packageJson.scripts?.["check:booking-expiry-rollback"]).toBe(
       "tsx scripts/check-booking-expiry-rollback.ts"
@@ -25,7 +25,7 @@ describe("booking expiry rollback checker contract", () => {
   });
 
   it("cleans marker rows and disconnects every client when the lock transaction rejects before readiness", async () => {
-    const checker = await import("../scripts/check-booking-expiry-rollback") as Partial<{
+    const checker = (await import("../scripts/check-booking-expiry-rollback")) as Partial<{
       awaitOldSlotLockOrThrow: (
         oldSlotLocked: Promise<void>,
         lockTransaction: Promise<unknown>
@@ -48,18 +48,25 @@ describe("booking expiry rollback checker contract", () => {
     const disconnectClients = Array.from({ length: 4 }, () => jest.fn(async () => undefined));
     let continuedAfterLock = false;
 
-    await expect(checker.runBookingExpiryRollbackLifecycle({
-      execute: async () => {
-        await checker.awaitOldSlotLockOrThrow!(
-          new Promise<void>(() => undefined),
-          Promise.reject(lockFailure)
-        );
-        continuedAfterLock = true;
-      },
-      settle,
-      cleanupMarker: markerCleanup,
-      disconnectClients
-    })).rejects.toBe(lockFailure);
+    let observedError: unknown;
+    try {
+      await checker.runBookingExpiryRollbackLifecycle({
+        execute: async () => {
+          await checker.awaitOldSlotLockOrThrow!(
+            new Promise<void>(() => undefined),
+            Promise.reject(lockFailure)
+          );
+          continuedAfterLock = true;
+        },
+        settle,
+        cleanupMarker: markerCleanup,
+        disconnectClients
+      });
+    } catch (error) {
+      observedError = error;
+    }
+
+    expect(observedError).toBe(lockFailure);
 
     expect(continuedAfterLock).toBe(false);
     expect(settle).toHaveBeenCalledTimes(1);

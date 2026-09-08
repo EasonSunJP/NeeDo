@@ -5,6 +5,181 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents shop creator, platform commission, and the protected SaaS detail endpoint", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { schemas: Record<string, { required?: string[]; properties?: Record<string, unknown> }> };
+    };
+    const detail = document.paths["/api/v1/backoffice/shops/{id}/saas-account"]?.get;
+
+    expect(detail).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      "x-permission": "backoffice:merchant-accounts:read",
+      responses: {
+        "200": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object)
+      }
+    });
+    expect(document.components.schemas.ShopBillingCard).toMatchObject({
+      required: expect.arrayContaining(["createdBy", "platformCommissionRatePercent"]),
+      properties: {
+        createdBy: expect.any(Object),
+        platformCommissionRatePercent: { type: "number", minimum: 0, maximum: 100 }
+      }
+    });
+  });
+
+  it("documents every authenticated completed-order refund command with strict public contracts", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { schemas: Record<string, { additionalProperties?: boolean; properties?: Record<string, unknown> }> };
+    };
+    const commands = [
+      ["/api/v1/orders/{orderId}/refund-requests", "post", "user:order-refund:write"],
+      ["/api/v1/orders/{orderId}/refund-requests/{caseId}/confirm-receipt", "post", "user:order-refund:write"],
+      ["/api/v1/orders/{orderId}/refund-requests/{caseId}/complaints", "post", "user:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/approve", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/reject", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/refund-evidence", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/complaints", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/backoffice/refund-disputes", "get", "backoffice:order-refund-dispute:read"],
+      ["/api/v1/backoffice/refund-disputes/{disputeId}/resolve", "post", "backoffice:order-refund-dispute:resolve"]
+    ] as const;
+
+    for (const [path, method, permission] of commands) {
+      const operation = document.paths[path]?.[method];
+      expect(operation).toMatchObject({ security: [{ bearerAuth: [] }], "x-permission": permission });
+      expect(operation?.responses).toEqual(
+        expect.objectContaining({ "400": expect.any(Object), "401": expect.any(Object), "403": expect.any(Object), "404": expect.any(Object), "409": expect.any(Object) })
+      );
+    }
+
+    const create = document.paths["/api/v1/orders/{orderId}/refund-requests"].post as {
+      requestBody: { content: { "application/json": { schema: { $ref: string } } } };
+      responses: Record<string, { description: string }>;
+    };
+    expect(create.requestBody.content["application/json"].schema.$ref).toBe(
+      "#/components/schemas/OrderRefundRequestInput"
+    );
+    expect(create.responses["201"].description).toContain("created");
+    expect(create.responses["200"].description).toContain("replay");
+
+    const resolve = document.paths[
+      "/api/v1/backoffice/refund-disputes/{disputeId}/resolve"
+    ].post as { responses: Record<string, { description: string }> };
+    expect(resolve.responses["409"].description).toContain("error.order_refund.dispute_required");
+
+    const confirmReceipt = document.paths[
+      "/api/v1/orders/{orderId}/refund-requests/{caseId}/confirm-receipt"
+    ].post as { responses: Record<string, { description: string }> };
+    expect(confirmReceipt.responses["500"].description).toContain(
+      "error.order_refund_case.affiliate_invariant_failed"
+    );
+
+    const list = document.paths["/api/v1/backoffice/refund-disputes"].get as {
+      parameters: Array<{ name: string; in: string; schema: Record<string, unknown> }>;
+    };
+    expect(list.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page", in: "query" }),
+        expect.objectContaining({ name: "page_size", in: "query" }),
+        expect.objectContaining({ name: "status", in: "query" }),
+        expect.objectContaining({ name: "search", in: "query" })
+      ])
+    );
+
+    for (const name of [
+      "OrderRefundRequestInput",
+      "OrderRefundUpdateEnvelope",
+      "OrderRefundComplaintInput",
+      "OrderRefundDisputeResolutionInput"
+    ]) {
+      expect(document.components.schemas[name]).toMatchObject({ additionalProperties: false });
+    }
+    expect(document.components.schemas.OrderRefundCasePublic.properties).not.toEqual(
+      expect.objectContaining({ id: expect.anything(), requestFingerprint: expect.anything(), internalNote: expect.anything() })
+    );
+    expect(document.components.schemas.OrderRefundCasePublic).toMatchObject({
+      required: expect.arrayContaining([
+        "merchantDecisionNote",
+        "refundReference",
+        "merchantDecisionAt",
+        "refundSubmittedAt",
+        "customerConfirmedAt",
+        "dispute",
+        "affiliateReward"
+      ]),
+      properties: {
+        refundAmountJpy: { type: "integer", minimum: 1 }
+      }
+    });
+    expect(document.components.schemas.OrderRefundRequestInput).toMatchObject({
+      properties: { idempotencyKey: { type: "string", minLength: 8, maxLength: 160 } }
+    });
+  });
+
+  it("documents the protected Bearer-only regional live event stream", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<
+        string,
+        {
+          get: {
+            operationId?: string;
+            description?: string;
+            security?: unknown;
+            "x-required-permission"?: string;
+            parameters: Array<Record<string, unknown>>;
+            responses: Record<string, { description?: string; content?: Record<string, unknown> }>;
+          };
+        }
+      >;
+    };
+    const operation = document.paths["/api/v1/backoffice/dashboard/live-events"]?.get;
+
+    expect(operation).toMatchObject({
+      operationId: "streamBackofficeLiveDashboardEvents",
+      security: [{ bearerAuth: [] }],
+      "x-required-permission": "backoffice:dashboard:read"
+    });
+    expect(operation.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "country", in: "query", required: true }),
+        expect.objectContaining({ name: "admin1", in: "query" }),
+        expect.objectContaining({ name: "admin2", in: "query" }),
+        expect.objectContaining({ name: "period", in: "query" }),
+        expect.objectContaining({ name: "Last-Event-ID", in: "header" })
+      ])
+    );
+    expect(operation.parameters).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ in: "query", name: expect.stringMatching(/token/i) })
+      ])
+    );
+    expect(operation.responses["200"]?.content?.["text/event-stream"]).toBeDefined();
+    expect(operation.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "409": expect.any(Object)
+      })
+    );
+    expect(operation.responses["409"]?.description).toContain(
+      "error.live_dashboard.cursor_reset_required"
+    );
+    expect(operation.responses["409"]?.description).toContain("full snapshot");
+    expect(operation.description).toContain("authenticated Bearer fetch stream");
+    expect(operation.description).toContain("native EventSource");
+    expect(operation.description).toContain("last successfully delivered Redis Stream ID");
+    expect(operation.description).toContain("exponential backoff");
+    expect(operation.description).toContain("jitter");
+    expect(operation.description).toContain("EOF, network failure, or 503");
+    expect(operation.responses["409"]?.description).toContain("clear the stored cursor");
+    expect(operation.responses["503"]?.description).toContain("retryable");
+  });
+
   it("uses a root server when versioned paths already include the API prefix", () => {
     const document = createOpenApiDocument(env) as unknown as {
       servers: Array<{ url: string }>;
@@ -15,6 +190,113 @@ describe("GET /api/v1/openapi.json", () => {
     expect(document.servers).toEqual([{ url: "/" }]);
     expect(document.paths).toHaveProperty(loginPath);
     expect(`${document.servers[0].url.replace(/\/$/, "")}${loginPath}`).toBe(loginPath);
+  });
+
+  it("documents formal administrative-region lookup and stable shop assignment failures", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: {
+        "/api/v1/reference/administrative-regions": {
+          get: {
+            security?: unknown;
+            responses: Record<
+              string,
+              { content: Record<string, { schema: { properties: { data: unknown } } }> }
+            >;
+          };
+        };
+        "/api/v1/backoffice/shops": {
+          post: { responses: Record<string, { description: string }> };
+        };
+        "/api/v1/backoffice/shops/{id}": {
+          patch: { responses: Record<string, { description: string }> };
+        };
+      };
+      components: { schemas: Record<string, unknown> };
+    };
+    const reference = document.paths["/api/v1/reference/administrative-regions"].get;
+    const createShop = document.paths["/api/v1/backoffice/shops"].post;
+    const updateShop = document.paths["/api/v1/backoffice/shops/{id}"].patch;
+
+    expect(reference.security).toBeUndefined();
+    expect(reference.responses["200"].content["application/json"].schema.properties.data).toEqual(
+      expect.objectContaining({
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AdministrativeRegionReference" }
+          }
+        }
+      })
+    );
+    expect(document.components.schemas.AdministrativeRegionReference).toMatchObject({
+      additionalProperties: false,
+      required: ["code", "name", "level", "parentCode", "centroid"]
+    });
+    expect(document.components.schemas.BackofficeShopUpdateInput).toMatchObject({
+      additionalProperties: false,
+      dependentRequired: expect.objectContaining({
+        serviceCountryCode: ["serviceAdmin1Code", "serviceAdmin2Code"]
+      })
+    });
+    for (const operation of [createShop, updateShop]) {
+      expect(operation.responses["400"].description).toContain(
+        "error.administrative_region.invalid_hierarchy"
+      );
+      expect(operation.responses["400"].description).toContain(
+        "error.administrative_region.verifier_required"
+      );
+    }
+    expect(updateShop.responses["400"].description).toContain("error.shop.public_number_required");
+  });
+
+  it("documents the booking service-identifier XOR and unresolved store-location conflict", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: {
+        "/api/v1/bookings": {
+          post: {
+            requestBody: {
+              content: { "application/json": { schema: object } };
+            };
+            responses: Record<string, { description: string }>;
+          };
+        };
+      };
+    };
+    const operation = document.paths["/api/v1/bookings"].post;
+    const ajv = new Ajv({ allErrors: true });
+    const schemas = (createOpenApiDocument(env).components as { schemas: Record<string, object> }).schemas;
+    ajv.addSchema(schemas.JapaneseRouteAddress, "#/components/schemas/JapaneseRouteAddress");
+    const validate = ajv.compile(
+      operation.requestBody.content["application/json"].schema
+    );
+    const homeLocation = {
+      countryCode: "JP",
+      admin1Code: "13",
+      admin2Code: "13104"
+    };
+
+    for (const fulfillment of [
+      { fulfillmentMode: "store" },
+      { fulfillmentMode: "home", serviceLocation: homeLocation,
+        fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+        travelEstimatePublicId: "00000000-0000-4000-8000-000000000001" }
+    ]) {
+      expect(validate({ ...fulfillment, expectedPriceAmountJpy: 8_800, scheduleSlotId: 33, serviceId: 12 })).toBe(true);
+      expect(validate({ ...fulfillment, expectedPriceAmountJpy: 8_800, scheduleSlotId: 33, technicianServiceId: 21 })).toBe(true);
+      expect(validate({ ...fulfillment, expectedPriceAmountJpy: 8_800, scheduleSlotId: 33 })).toBe(false);
+      expect(
+        validate({
+          ...fulfillment,
+          expectedPriceAmountJpy: 8_800,
+          scheduleSlotId: 33,
+          serviceId: 12,
+          technicianServiceId: 21
+        })
+      ).toBe(false);
+    }
+    expect(operation.responses["409"].description).toContain(
+      "error.booking.service_location_unresolved"
+    );
   });
 
   it("documents Exchange matching adjustment confirmations and previews", () => {
@@ -65,9 +347,8 @@ describe("GET /api/v1/openapi.json", () => {
         "requiresBudgetConfirmation"
       ])
     );
-    const conflict = document.paths[
-      "/api/v1/exchange/posts/{id}/matching/select"
-    ].post.responses["409"];
+    const conflict =
+      document.paths["/api/v1/exchange/posts/{id}/matching/select"].post.responses["409"];
     expect(conflict).toMatchObject({
       description: expect.stringContaining("error.exchange.match_target_confirmation_required"),
       content: {
@@ -115,6 +396,18 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/auth/merchant-shop/switch");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/logout");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/me");
+    expect(response.body.components.schemas.AuthMe.required).toEqual(
+      expect.arrayContaining(["profileDisplayName"])
+    );
+    expect(response.body.components.schemas.AuthMe.properties.profileDisplayName).toEqual({
+      type: ["string", "null"]
+    });
+    expect(response.body.components.schemas.AuthIdentity.required).toEqual(
+      expect.arrayContaining(["displayName"])
+    );
+    expect(response.body.components.schemas.AuthIdentity.properties.displayName).toEqual({
+      type: ["string", "null"]
+    });
     [
       "/api/v1/social/posts/{id}/like",
       "/api/v1/social/posts/{id}/bookmark",
@@ -286,10 +579,12 @@ describe("GET /api/v1/openapi.json", () => {
     const categoryLocale = response.body.paths["/api/v1/service-categories"].get.parameters.find(
       (parameter: { name: string }) => parameter.name === "locale"
     );
-    expect(categoryLocale.schema).toEqual(expect.objectContaining({
-      enum: ["zh-CN", "zh-TW", "ja", "en", "ko"],
-      default: "ja"
-    }));
+    expect(categoryLocale.schema).toEqual(
+      expect.objectContaining({
+        enum: ["zh-CN", "zh-TW", "ja", "en", "ko"],
+        default: "ja"
+      })
+    );
     const taxonomyPut = response.body.paths["/api/v1/merchant-admin/shop/service-taxonomy"].put;
     expect(taxonomyPut).toMatchObject({
       security: [{ bearerAuth: [] }],
@@ -305,18 +600,38 @@ describe("GET /api/v1/openapi.json", () => {
         idempotencyKey: { type: "string", minLength: 16, maxLength: 160 }
       }
     });
-    expect(taxonomyPut.responses["200"].content["application/json"].schema.properties.data).toEqual({
-      $ref: "#/components/schemas/ShopServiceTaxonomySelection"
-    });
+    expect(taxonomyPut.responses["200"].content["application/json"].schema.properties.data).toEqual(
+      {
+        $ref: "#/components/schemas/ShopServiceTaxonomySelection"
+      }
+    );
     expect(taxonomyPut.responses["400"].description).toContain("qualification");
     expect(taxonomyPut.responses["409"].description).toContain("version_conflict");
     expect(response.body.components.schemas.ShopServiceTaxonomySelection.required).toEqual(
-      expect.arrayContaining(["categoryLimit", "keywordLimit", "selectedCategories", "selectedKeywords", "removedKeywordIds"])
+      expect.arrayContaining([
+        "categoryLimit",
+        "keywordLimit",
+        "selectedCategories",
+        "selectedKeywords",
+        "removedKeywordIds"
+      ])
     );
-    const merchantApplicationBody = response.body.paths["/api/v1/identity-applications/merchant"].post.requestBody.content["application/json"].schema;
-    expect(merchantApplicationBody.required).toEqual(expect.arrayContaining(["serviceCategoryIds", "businessKeywordIds"]));
-    expect(merchantApplicationBody.properties.serviceCategoryIds).toMatchObject({ minItems: 1, maxItems: 5, uniqueItems: true });
-    expect(merchantApplicationBody.properties.businessKeywordIds).toMatchObject({ maxItems: 5, uniqueItems: true });
+    const merchantApplicationBody =
+      response.body.paths["/api/v1/identity-applications/merchant"].post.requestBody.content[
+        "application/json"
+      ].schema;
+    expect(merchantApplicationBody.required).toEqual(
+      expect.arrayContaining(["serviceCategoryIds", "businessKeywordIds"])
+    );
+    expect(merchantApplicationBody.properties.serviceCategoryIds).toMatchObject({
+      minItems: 1,
+      maxItems: 5,
+      uniqueItems: true
+    });
+    expect(merchantApplicationBody.properties.businessKeywordIds).toMatchObject({
+      maxItems: 5,
+      uniqueItems: true
+    });
     expect(
       response.body.paths["/api/v1/identity-applications/{id}/media"].post.requestBody.content
     ).toHaveProperty("image/jpeg");
@@ -516,15 +831,17 @@ describe("GET /api/v1/openapi.json", () => {
       additionalProperties: false,
       required: expect.arrayContaining(["durationMinutes", "taxIncluded"]),
       properties: {
+        shopId: { type: "integer", nullable: true, minimum: 1 },
         durationMinutes: { type: "integer", minimum: 1 },
         taxIncluded: { type: "boolean", enum: [true] }
       }
     });
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/me/services");
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/me/services/order");
-    const serviceOrderSchema = response.body.paths[
-      "/api/v1/technicians/me/services/order"
-    ].put.requestBody.content["application/json"].schema;
+    const serviceOrderSchema =
+      response.body.paths["/api/v1/technicians/me/services/order"].put.requestBody.content[
+        "application/json"
+      ].schema;
     expect(serviceOrderSchema).toMatchObject({
       additionalProperties: false,
       required: ["orderedServiceIds", "idempotencyKey"],
@@ -532,9 +849,9 @@ describe("GET /api/v1/openapi.json", () => {
         orderedServiceIds: { type: "array", maxItems: 5, uniqueItems: true }
       }
     });
-    expect(
-      response.body.paths["/api/v1/technicians/me/services/order"].put.description
-    ).toContain("complete");
+    expect(response.body.paths["/api/v1/technicians/me/services/order"].put.description).toContain(
+      "complete"
+    );
     expect(response.body.components.schemas.TechnicianSelfProfile.required).toContain(
       "specialTags"
     );
@@ -561,8 +878,7 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.paths["/api/v1/im/conversations/{conversationId}/media"].post.requestBody
         .content
     ).toHaveProperty("image/png");
-    const voicePath =
-      response.body.paths["/api/v1/im/conversations/{conversationId}/voice"].post;
+    const voicePath = response.body.paths["/api/v1/im/conversations/{conversationId}/voice"].post;
     expect(voicePath.security).toEqual([{ bearerAuth: [] }]);
     expect(voicePath.description).toContain("server-probed duration is authoritative");
     expect(voicePath.description).toContain("pure audio");
@@ -601,6 +917,43 @@ describe("GET /api/v1/openapi.json", () => {
       ])
     );
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/{id}");
+    expect(response.body.paths["/api/v1/technicians/{id}"].get.parameters[0].schema.oneOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "integer", minimum: 1 }),
+        expect.objectContaining({ type: "string", pattern: "^s[0-9]{10}$" })
+      ])
+    );
+    expect(response.body.components.schemas.TechnicianDetail.allOf[1].required).toEqual(
+      expect.arrayContaining(["gender", "heightCm", "languages", "reviewTagSummary"])
+    );
+    expect(
+      response.body.components.schemas.TechnicianDetail.allOf[1].properties.reviewTagSummary
+    ).toEqual({ $ref: "#/components/schemas/TechnicianReviewTagSummary" });
+    expect(response.body.components.schemas.TechnicianSelfProfile.required).toEqual(
+      expect.arrayContaining(["gender", "reviewTagSummary"])
+    );
+    expect(response.body.components.schemas.TechnicianSelfProfileUpdate.properties.gender).toEqual({
+      type: "string",
+      enum: ["female", "male", "private"]
+    });
+    expect(
+      response.body.components.schemas.TechnicianSelfProfileUpdate.properties
+    ).not.toHaveProperty("profileTags");
+    expect(response.body.components.schemas.TechnicianReviewTagSummary).toMatchObject({
+      required: ["special", "custom"],
+      properties: {
+        special: {
+          type: "array",
+          minItems: 4,
+          maxItems: 4,
+          items: { $ref: "#/components/schemas/TechnicianReviewSpecialTagCount" }
+        },
+        custom: {
+          type: "array",
+          items: { $ref: "#/components/schemas/TechnicianReviewCustomTagCount" }
+        }
+      }
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/profiles/customers/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/schedule/availability");
     expect(response.body.paths["/api/v1/schedule/availability"].get.description).toEqual(
@@ -656,15 +1009,28 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty(
       "/api/v1/backoffice/orders/{id}/checkout/confirm-receipt"
     );
-    expect(response.body.components.schemas.OrderCheckout.description).toMatch(
-      /never returned/i
-    );
+    expect(response.body.components.schemas.OrderCheckout.description).toMatch(/never returned/i);
     expect(response.body.paths).toHaveProperty(
       "/api/v1/merchant-admin/orders/{id}/payment/confirm"
     );
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/orders/{id}/payment/refund");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/orders/{id}/payment/confirm");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/orders/{id}/payment/refund");
+    [
+      "/api/v1/merchant-admin/orders/{id}/payment/refund",
+      "/api/v1/backoffice/orders/{id}/payment/refund"
+    ].forEach((path) => {
+      const conflictResponse = response.body.paths[path].post.responses["409"];
+      expect(conflictResponse.description).toEqual(expect.stringMatching(/completed/i));
+      expect(conflictResponse.description).toContain("OrderRefundCase");
+      expect(conflictResponse.description).toContain("40913");
+      expect(conflictResponse.description).toContain("error.payment.invalid_state");
+      expect(conflictResponse.description).toContain("40915");
+      expect(conflictResponse.description).toContain("error.payment.conflict");
+      expect(conflictResponse.content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/ApiError"
+      });
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/me");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/me/summary");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/{id}/ledger");
@@ -738,7 +1104,42 @@ describe("GET /api/v1/openapi.json", () => {
     expect(dashboardSchemas.Dashboard).toMatchObject({
       type: "object",
       additionalProperties: false,
-      required: ["filter", "summary", "series", "finance", "shop", "membership", "scope"]
+      required: [
+        "filter",
+        "summary",
+        "series",
+        "headlineSeries3d",
+        "finance",
+        "shop",
+        "membership",
+        "scope"
+      ]
+    });
+    expect(dashboardSchemas.DashboardHeadlineSeriesPoint).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "key",
+        "label",
+        "availableScheduleSlots",
+        "activeTechnicians",
+        "registeredTechnicians",
+        "shopCount",
+        "newCustomers"
+      ]
+    });
+    expect(dashboardSchemas.Dashboard.properties.headlineSeries3d).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["from", "to", "timeZone", "buckets"],
+      properties: {
+        buckets: {
+          type: "array",
+          minItems: 3,
+          maxItems: 3,
+          items: { $ref: "#/components/schemas/DashboardHeadlineSeriesPoint" }
+        }
+      }
     });
     expect(dashboardSchemas.Dashboard.properties.finance.properties.walletStock).toEqual({
       oneOf: [{ $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" }, { type: "null" }]
@@ -994,11 +1395,14 @@ describe("GET /api/v1/openapi.json", () => {
         })
       })
     ]);
-    expect(response.body.components.schemas.TechnicianDataCenter.properties.series.items.properties)
-      .toEqual(expect.objectContaining({
+    expect(
+      response.body.components.schemas.TechnicianDataCenter.properties.series.items.properties
+    ).toEqual(
+      expect.objectContaining({
         incomeJpy: { type: "integer" },
         workedMinutes: { type: "integer" }
-      }));
+      })
+    );
     expect(response.body.paths["/api/v1/merchant-profile/me"]).toMatchObject({
       get: { responses: { "200": expect.any(Object), "403": expect.any(Object) } },
       patch: { responses: { "200": expect.any(Object), "400": expect.any(Object) } }
@@ -1183,6 +1587,16 @@ describe("GET /api/v1/openapi.json", () => {
         })
       })
     });
+    const recallPath =
+      response.body.paths["/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"];
+    expect(recallPath.post.requestBody.content["application/json"].schema.properties.mode).toEqual({
+      type: "string",
+      enum: ["standard"]
+    });
+    expect(recallPath.post.responses["200"].content["application/json"].schema.properties.data.properties.action).toEqual({
+      type: "string",
+      enum: ["standard_recall", "traceless_recall"]
+    });
     const reactionPath =
       response.body.paths[
         "/api/v1/im/conversations/{conversationId}/messages/{messageId}/reactions"
@@ -1253,6 +1667,47 @@ describe("GET /api/v1/openapi.json", () => {
       );
     });
     expect(response.body.components.schemas).toHaveProperty("ServiceCard");
+    expect(response.body.components.schemas.ServiceCard.required).toContain("usageCount");
+    expect(response.body.components.schemas.ServiceCard.properties.usageCount).toEqual({
+      type: "integer",
+      minimum: 0
+    });
+    expect(response.body.components.schemas.TechnicianService.required).toEqual(
+      expect.arrayContaining(["publicId", "usageCount", "shop"])
+    );
+    expect(response.body.components.schemas.TechnicianService.properties).toMatchObject({
+      publicId: { type: "string", format: "uuid" },
+      usageCount: { type: "integer", minimum: 0 },
+      shop: {
+        oneOf: [
+          { $ref: "#/components/schemas/TechnicianServiceShop" },
+          { type: "null" }
+        ]
+      }
+    });
+    expect(response.body.components.schemas.TechnicianServiceShop).toMatchObject({
+      required: ["publicId", "name", "address"],
+      properties: {
+        publicId: { type: ["string", "null"], pattern: "^shop[0-9]{10}$" },
+        name: { type: "string" },
+        address: { type: "string" }
+      }
+    });
+    const coverPath =
+      response.body.paths["/api/v1/technicians/me/shops/{shopId}/services/{serviceId}/cover"];
+    expect(coverPath.put.requestBody.content).toEqual(
+      expect.objectContaining({
+        "image/jpeg": expect.any(Object),
+        "image/png": expect.any(Object),
+        "image/webp": expect.any(Object)
+      })
+    );
+    expect(coverPath.put.description).toContain("25,000,000 decoded pixels");
+    expect(coverPath.put.description).toContain("asynchronous image decode");
+    expect(coverPath.put.description).toContain("single-frame images only");
+    expect(coverPath.put.description).toContain("APNG and JPEG MPF");
+    expect(coverPath.put.responses["200"]).toBeDefined();
+    expect(coverPath.delete.responses["200"]).toBeDefined();
     expect(response.body.components.schemas).toHaveProperty("ShopDetail");
     expect(response.body.components.schemas.TechnicianDetail.allOf[1].required).toContain("shop");
     expect(response.body.components.schemas).toHaveProperty("CustomerProfile");
@@ -1337,8 +1792,8 @@ describe("GET /api/v1/openapi.json", () => {
         .content["application/json"].schema.properties.disappearingTtlSeconds.maximum
     ).toBe(359_940);
     expect(
-      response.body.paths["/api/v1/im/conversations/{conversationId}/preferences"].patch
-        .requestBody.content["application/json"].schema
+      response.body.paths["/api/v1/im/conversations/{conversationId}/preferences"].patch.requestBody
+        .content["application/json"].schema
     ).toMatchObject({
       minProperties: 1,
       properties: { autoTranslateMessages: { type: "boolean", default: false } }
@@ -1453,6 +1908,7 @@ describe("GET /api/v1/openapi.json", () => {
     });
     expect(response.body.components.schemas.OrderTimelineEvent.oneOf).toEqual([
       { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
+      { $ref: "#/components/schemas/OrderTimelineCommentEvent" },
       { $ref: "#/components/schemas/OrderTimelinePerformanceEvent" }
     ]);
     expect(response.body.components.schemas.OrderTimelineStatusEvent.properties.type.const).toBe(
@@ -1466,6 +1922,22 @@ describe("GET /api/v1/openapi.json", () => {
       "SPECIAL_CANCELLATION_APPLIED",
       "SPECIAL_CANCELLATION_REVOKED"
     ]);
+    expect(response.body.components.schemas.OrderTimelineCommentEvent).toMatchObject({
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "type",
+        "id",
+        "createdAt",
+        "actorUserId",
+        "actorDisplayName",
+        "actorAvatarUrl",
+        "body"
+      ]),
+      properties: {
+        type: { type: "string", const: "ORDER_COMMENT_ADDED" },
+        body: { type: "string", minLength: 1, maxLength: 1000 }
+      }
+    });
     expect(
       response.body.components.schemas.OrderTimelinePerformanceEvent.properties
     ).not.toHaveProperty("internalNote");
@@ -1473,9 +1945,37 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.components.schemas.OperationsOrderTimelinePerformanceEvent.properties
         .internalNote
     ).toMatchObject({ "x-visibility": "operations-only" });
+    expect(response.body.components.schemas.OperationsOrderTimelineAddOnEvent).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "type",
+        "id",
+        "createdAt",
+        "actorUserId",
+        "publicReason",
+        "addOnId",
+        "serviceId",
+        "serviceName",
+        "priceAmountJpy",
+        "currency",
+        "durationMinutes"
+      ]),
+      properties: {
+        type: { type: "string", enum: ["ADD_ON_PROPOSED", "ADD_ON_ACCEPTED", "ADD_ON_REJECTED"] },
+        id: { type: "string", pattern: "^service:[1-9][0-9]*$" },
+        addOnId: { type: "integer", minimum: 1 },
+        serviceId: { type: "integer", minimum: 1 },
+        serviceName: { type: "string", minLength: 1, maxLength: 160 },
+        priceAmountJpy: { type: "integer", minimum: 0 },
+        currency: { type: "string", const: "JPY" },
+        durationMinutes: { type: "integer", minimum: 1 }
+      }
+    });
     expect(response.body.components.schemas.OperationsOrderTimelineEvent.oneOf).toEqual([
       { $ref: "#/components/schemas/OrderTimelineStatusEvent" },
-      { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" }
+      { $ref: "#/components/schemas/OperationsOrderTimelinePerformanceEvent" },
+      { $ref: "#/components/schemas/OperationsOrderTimelineAddOnEvent" }
     ]);
     expect(response.body.components.schemas.BackofficeOrderDetail.allOf[1]).toMatchObject({
       required: ["performanceAssessment", "timelineEvents"],
@@ -2655,24 +3155,26 @@ describe("GET /api/v1/openapi.json", () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
     const search = response.body.paths["/api/v1/search"].get;
 
-    expect(search.parameters).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        name: "entityType",
-        schema: expect.objectContaining({ enum: ["service", "shop", "technician"] })
-      }),
-      expect.objectContaining({
-        name: "keywords",
-        style: "form",
-        explode: true,
-        schema: expect.objectContaining({ type: "array", maxItems: 20 })
-      }),
-      expect.objectContaining({
-        name: "categoryIds",
-        style: "form",
-        explode: true,
-        schema: expect.objectContaining({ type: "array", maxItems: 20 })
-      })
-    ]));
+    expect(search.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "entityType",
+          schema: expect.objectContaining({ enum: ["service", "shop", "technician"] })
+        }),
+        expect.objectContaining({
+          name: "keywords",
+          style: "form",
+          explode: true,
+          schema: expect.objectContaining({ type: "array", maxItems: 20 })
+        }),
+        expect.objectContaining({
+          name: "categoryIds",
+          style: "form",
+          explode: true,
+          schema: expect.objectContaining({ type: "array", maxItems: 20 })
+        })
+      ])
+    );
     expect(
       search.responses["200"].content?.["application/json"].schema.properties.data.anyOf
     ).toHaveLength(3);
@@ -2682,14 +3184,31 @@ describe("GET /api/v1/openapi.json", () => {
   });
 
   it("documents every formal membership acquisition source end to end", () => {
-    type AcquisitionSchema = { properties: { issuanceSource: { enum: string[]; description?: string } } };
+    type AcquisitionSchema = {
+      properties: { issuanceSource: { enum: string[]; description?: string } };
+    };
     const document = createOpenApiDocument(env) as {
       components: { schemas: Record<string, AcquisitionSchema> };
     };
-    const expected = ["offline_paid", "online_paid", "gift", "trial", "renewal", "historical_replacement", "manual_grant"];
-    expect(document.components.schemas.ShopMembershipCardIssuanceRequest.properties.issuanceSource.enum).toEqual(expected);
-    expect(document.components.schemas.ShopMembershipCardIssuanceResult.properties.issuanceSource.enum).toEqual(expected);
-    expect(document.components.schemas.ShopMembershipCardIssuanceRequest.properties.issuanceSource.description).toContain("platform-global first-paid");
+    const expected = [
+      "offline_paid",
+      "online_paid",
+      "gift",
+      "trial",
+      "renewal",
+      "historical_replacement",
+      "manual_grant"
+    ];
+    expect(
+      document.components.schemas.ShopMembershipCardIssuanceRequest.properties.issuanceSource.enum
+    ).toEqual(expected);
+    expect(
+      document.components.schemas.ShopMembershipCardIssuanceResult.properties.issuanceSource.enum
+    ).toEqual(expected);
+    expect(
+      document.components.schemas.ShopMembershipCardIssuanceRequest.properties.issuanceSource
+        .description
+    ).toContain("platform-global first-paid");
   });
 
   it("documents the four formal membership analytics operations without exposing card secrets", () => {
@@ -2713,10 +3232,26 @@ describe("GET /api/v1/openapi.json", () => {
       components: { schemas: Record<string, Schema> };
     };
     const contracts = [
-      ["/api/v1/backoffice/analytics/members/trend", "backoffice.member.analytics.view", ["period", "from", "to", "city"]],
-      ["/api/v1/backoffice/analytics/members", "backoffice.member.analytics.view", ["period", "from", "to", "city", "needoId", "nickname", "page", "pageSize"]],
-      ["/api/v1/merchant-admin/analytics/members/trend", "shop.member.analytics.view", ["period", "from", "to"]],
-      ["/api/v1/merchant-admin/analytics/members", "shop.member.analytics.view", ["period", "from", "to", "needoId", "nickname", "page", "pageSize"]]
+      [
+        "/api/v1/backoffice/analytics/members/trend",
+        "backoffice.member.analytics.view",
+        ["period", "from", "to", "city"]
+      ],
+      [
+        "/api/v1/backoffice/analytics/members",
+        "backoffice.member.analytics.view",
+        ["period", "from", "to", "city", "needoId", "nickname", "page", "pageSize"]
+      ],
+      [
+        "/api/v1/merchant-admin/analytics/members/trend",
+        "shop.member.analytics.view",
+        ["period", "from", "to"]
+      ],
+      [
+        "/api/v1/merchant-admin/analytics/members",
+        "shop.member.analytics.view",
+        ["period", "from", "to", "needoId", "nickname", "page", "pageSize"]
+      ]
     ] as const;
 
     for (const [path, permission, parameterNames] of contracts) {
@@ -2729,7 +3264,9 @@ describe("GET /api/v1/openapi.json", () => {
         "400": { description: expect.stringContaining("error.validation") },
         "401": { description: expect.stringContaining("error.auth.token_invalid") },
         "403": { description: expect.stringContaining("error.forbidden") },
-        "409": { description: expect.stringContaining("error.membership_analytics.incomplete_history") }
+        "409": {
+          description: expect.stringContaining("error.membership_analytics.incomplete_history")
+        }
       });
       expect(operation.responses["409"].description).toContain("40966");
     }
@@ -2769,8 +3306,12 @@ describe("GET /api/v1/openapi.json", () => {
     expect(trendPoint.properties.value).toMatchObject({ type: "integer", minimum: 0 });
     expect(netPoint.properties.value).toEqual({ type: "integer" });
 
-    for (const path of contracts.filter(([path]) => !path.endsWith("/trend")).map(([path]) => path)) {
-      const page = document.paths[path].get.parameters.find((parameter) => parameter.name === "page");
+    for (const path of contracts
+      .filter(([path]) => !path.endsWith("/trend"))
+      .map(([path]) => path)) {
+      const page = document.paths[path].get.parameters.find(
+        (parameter) => parameter.name === "page"
+      );
       expect(page?.schema).toMatchObject({
         type: "integer",
         minimum: 1,
@@ -2809,7 +3350,8 @@ describe("GET /api/v1/openapi.json", () => {
         Object.entries(object).map(([key, nested]) => [key, dereferenceForAjv(nested)])
       ) as Record<string, unknown>;
       if (Array.isArray(normalized.prefixItems)) {
-        normalized.additionalItems = normalized.items === false ? false : normalized.additionalItems;
+        normalized.additionalItems =
+          normalized.items === false ? false : normalized.additionalItems;
         normalized.items = normalized.prefixItems;
         delete normalized.prefixItems;
       }
@@ -2819,9 +3361,9 @@ describe("GET /api/v1/openapi.json", () => {
       dereferenceForAjv(document.components.schemas.MembershipTrendPayload) as object
     );
     for (const [path] of [contracts[0]!, contracts[2]!]) {
-      const published = document.paths[path].get.responses["200"].content?.[
-        "application/json"
-      ] as { example?: { data?: unknown } };
+      const published = document.paths[path].get.responses["200"].content?.["application/json"] as {
+        example?: { data?: unknown };
+      };
       expect(validateTrendPayload(published.example?.data)).toBe(true);
       expect(validateTrendPayload.errors).toBeNull();
     }
@@ -2832,7 +3374,12 @@ describe("GET /api/v1/openapi.json", () => {
     expect(listExample.example).toMatchObject({
       code: 0,
       message: "success",
-      data: { total: 1, page: 1, page_size: 20, list: [expect.objectContaining({ cardNoMasked: "•••• •••• •••• AABB" })] }
+      data: {
+        total: 1,
+        page: 1,
+        page_size: 20,
+        list: [expect.objectContaining({ cardNoMasked: "•••• •••• •••• AABB" })]
+      }
     });
 
     const itemSchema = document.components.schemas.MemberAnalyticsListItem;
@@ -2926,12 +3473,14 @@ describe("GET /api/v1/openapi.json", () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
     const schemas = response.body.components.schemas;
 
-    expect(schemas.ShopCard.required).toEqual(expect.arrayContaining([
-      "serviceCategories",
-      "businessKeywords",
-      "favoriteCount",
-      "shareCount"
-    ]));
+    expect(schemas.ShopCard.required).toEqual(
+      expect.arrayContaining([
+        "serviceCategories",
+        "businessKeywords",
+        "favoriteCount",
+        "shareCount"
+      ])
+    );
     expect(schemas.ShopCard.properties.favoriteCount).toEqual(
       expect.objectContaining({ type: "integer", minimum: 0 })
     );
@@ -2939,14 +3488,16 @@ describe("GET /api/v1/openapi.json", () => {
       expect.objectContaining({ type: "integer", minimum: 0 })
     );
 
-    expect(schemas.TechnicianCard.required).toEqual(expect.arrayContaining([
-      "age",
-      "favoriteCount",
-      "shareCount",
-      "completedOrderCount",
-      "acceptanceRatePercent",
-      "primaryService"
-    ]));
+    expect(schemas.TechnicianCard.required).toEqual(
+      expect.arrayContaining([
+        "age",
+        "favoriteCount",
+        "shareCount",
+        "completedOrderCount",
+        "acceptanceRatePercent",
+        "primaryService"
+      ])
+    );
     expect(schemas.TechnicianCard.properties.acceptanceRatePercent).toEqual(
       expect.objectContaining({ type: "number", minimum: 0, maximum: 100 })
     );

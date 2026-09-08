@@ -44,7 +44,8 @@ const participant = (claimId: number, technicianProfileId: number, quoteAmountJp
   currency: "JPY" as const,
   estimatedStartsAt: "2026-09-02T01:00:00.000Z",
   estimatedEndsAt: "2026-09-02T02:00:00.000Z",
-  matchedAt: now.toISOString()
+  matchedAt: now.toISOString(),
+  booking: null
 });
 
 const openPayload: ExchangeMatchingPayload = {
@@ -56,7 +57,8 @@ const openPayload: ExchangeMatchingPayload = {
   selectedQuoteTotalJpy: 0,
   matchedAt: null,
   participants: [],
-  viewer: { canSelect: true }
+  quickBudgetDecision: null,
+  viewer: { canSelect: true, canConfirmQuickBudget: false, canCreateBookings: false }
 };
 
 const matchingRecord: ExchangeMatchingRecord = {
@@ -77,6 +79,19 @@ const matchingRecord: ExchangeMatchingRecord = {
   payload: openPayload
 };
 
+const quickBudgetPayload: ExchangeMatchingPayload = {
+  ...openPayload,
+  quickBudgetDecision: {
+    action: "increase_to_selected_total",
+    activeClaimCount: 2,
+    selectedQuoteTotalJpy: 31_000,
+    effectiveBudgetMaxJpy: 30_000,
+    requiredBudgetMaxJpy: 31_000,
+    requiredBudgetIncreaseJpy: 1_000
+  },
+  viewer: { canSelect: false, canConfirmQuickBudget: true, canCreateBookings: false }
+};
+
 const claim = (
   id: number,
   technicianProfileId: number,
@@ -92,6 +107,8 @@ const claim = (
   technicianServiceId: null,
   scheduleSlotId: id + 1_000,
   quoteAmountJpy,
+  serviceNameSnapshot: "ヘアセット",
+  serviceDurationSnapshot: 60,
   currency: "JPY",
   status: "active",
   estimatedStartsAt: new Date("2026-09-02T01:00:00.000Z"),
@@ -116,7 +133,21 @@ const matchedPayload: ExchangeMatchingPayload = {
   selectedQuoteTotalJpy: 29_000,
   matchedAt: now.toISOString(),
   participants: [participant(301, 81, 15_000), participant(302, 82, 14_000)],
-  viewer: { canSelect: false }
+  quickBudgetDecision: null,
+  viewer: { canSelect: false, canConfirmQuickBudget: false, canCreateBookings: true }
+};
+
+const quickClaims = [claim(301, 81, 15_000), claim(302, 82, 16_000)];
+const quickMatchingRecord: ExchangeMatchingRecord = {
+  ...matchingRecord,
+  matchMode: "quick",
+  payload: quickBudgetPayload
+};
+const quickMatchedPayload: ExchangeMatchingPayload = {
+  ...matchedPayload,
+  version: 5,
+  effectiveBudgetMaxJpy: 31_000,
+  selectedQuoteTotalJpy: 31_000
 };
 
 const createRepository = (
@@ -126,12 +157,13 @@ const createRepository = (
     runInTransaction: jest.fn(async (handler) => handler(repository)),
     findForViewer: jest.fn(async () => matchingRecord),
     findIdempotentSelection: jest.fn(async () => null),
+    findIdempotentQuickConfirmation: jest.fn(async () => null),
     lockMatching: jest.fn(async () => matchingRecord),
     lockActiveClaims: jest.fn(async () => claims),
     lockTechnicians: jest.fn(async () => true),
     hasParticipantConflict: jest.fn(async () => false),
     hasBookingConflict: jest.fn(async () => false),
-    completeSelection: jest.fn(async () => matchedPayload),
+    completeMatch: jest.fn(async () => matchedPayload),
     ...overrides
   };
   return repository;
@@ -150,6 +182,149 @@ describe("ExchangeMatchingService", () => {
     ).rejects.toMatchObject({ code: 40423 });
   });
 
+  it("returns the repository-owned exact Quick budget decision unchanged", async () => {
+    const repository = createRepository({
+      findForViewer: jest.fn(async () => ({
+        ...matchingRecord,
+        matchMode: "quick" as const,
+        payload: quickBudgetPayload
+      }))
+    });
+
+    await expect(
+      new ExchangeMatchingService(repository, () => now).getMatching(access, 41)
+    ).resolves.toEqual(quickBudgetPayload);
+  });
+
+  it("confirms the exact Quick total and matches every active claim", async () => {
+    const repository = createRepository({
+      lockMatching: jest.fn(async () => quickMatchingRecord),
+      lockActiveClaims: jest.fn(async () => quickClaims),
+      completeMatch: jest.fn(async () => quickMatchedPayload)
+    });
+    const service = new ExchangeMatchingService(repository, () => now);
+
+    await expect(
+      service.confirmQuickBudget(
+        access,
+        41,
+        {
+          expectedVersion: 3,
+          budgetConfirmation: {
+            action: "increase_to_selected_total",
+            confirmedBudgetMaxJpy: 31_000
+          }
+        },
+        "matching-quick-budget-0001",
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).resolves.toEqual(quickMatchedPayload);
+    expect(repository.completeMatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedClaimIds: [301, 302],
+        unselectedClaimIds: [],
+        selectedQuoteTotalJpy: 31_000,
+        effectiveBudgetMaxJpyAfter: 31_000,
+        adjustments: [{ type: "budget_increased", before: 30_000, after: 31_000 }],
+        versionBefore: 3,
+        versionAfter: 5,
+        actorUserId: 7,
+        actorIdentityId: 17,
+        viewerIdentityId: 17,
+        matchEventType: "quick_matched",
+        idempotencyKey: "matching-quick-budget-0001"
+      })
+    );
+  });
+
+  it.each([
+    ["non-owner", { ...quickMatchingRecord, ownerIdentityId: 99 }, 3, 31_000, 40312],
+    ["Selective mode", matchingRecord, 3, 31_000, 40992],
+    ["non-open matching", { ...quickMatchingRecord, status: "matched" as const }, 3, 31_000, 40992],
+    ["stale version", quickMatchingRecord, 2, 31_000, 40993],
+    [
+      "expired Request",
+      { ...quickMatchingRecord, expiresAt: new Date("2026-08-31T23:59:59.000Z") },
+      3,
+      31_000,
+      40992
+    ]
+  ])("rejects Quick confirmation for %s", async (_label, record, version, budget, code) => {
+    const repository = createRepository({ lockMatching: jest.fn(async () => record) });
+    await expect(
+      new ExchangeMatchingService(repository, () => now).confirmQuickBudget(
+        access,
+        41,
+        {
+          expectedVersion: version,
+          budgetConfirmation: {
+            action: "increase_to_selected_total",
+            confirmedBudgetMaxJpy: budget
+          }
+        },
+        `matching-quick-reject-${code}`,
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).rejects.toMatchObject({ code });
+    expect(repository.completeMatch).not.toHaveBeenCalled();
+  });
+
+  it("requires target capacity, a real overage and the exact locked total", async () => {
+    for (const [activeClaims, confirmedBudgetMaxJpy, code] of [
+      [[quickClaims[0]!], 15_000, 40995],
+      [[...quickClaims, claim(303, 83, 1_000)], 32_000, 40995],
+      [claims, 29_000, 40992],
+      [quickClaims, 30_999, 41001]
+    ] as const) {
+      const repository = createRepository({
+        lockMatching: jest.fn(async () => quickMatchingRecord),
+        lockActiveClaims: jest.fn(async () => [...activeClaims])
+      });
+      await expect(
+        new ExchangeMatchingService(repository, () => now).confirmQuickBudget(
+          access,
+          41,
+          {
+            expectedVersion: 3,
+            budgetConfirmation: {
+              action: "increase_to_selected_total",
+              confirmedBudgetMaxJpy
+            }
+          },
+          `matching-quick-exact-${confirmedBudgetMaxJpy}`,
+          { ip: "127.0.0.1", userAgent: "jest" }
+        )
+      ).rejects.toMatchObject({ code });
+      expect(repository.completeMatch).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects Quick confirmation conflicts before the terminal mutation", async () => {
+    for (const method of ["hasParticipantConflict", "hasBookingConflict"] as const) {
+      const repository = createRepository({
+        lockMatching: jest.fn(async () => quickMatchingRecord),
+        lockActiveClaims: jest.fn(async () => quickClaims),
+        [method]: jest.fn(async () => true)
+      });
+      await expect(
+        new ExchangeMatchingService(repository, () => now).confirmQuickBudget(
+          access,
+          41,
+          {
+            expectedVersion: 3,
+            budgetConfirmation: {
+              action: "increase_to_selected_total",
+              confirmedBudgetMaxJpy: 31_000
+            }
+          },
+          `matching-quick-conflict-${method}`,
+          { ip: "127.0.0.1", userAgent: "jest" }
+        )
+      ).rejects.toMatchObject({ code: 40997 });
+      expect(repository.completeMatch).not.toHaveBeenCalled();
+    }
+  });
+
   it("matches the exact selected count and budget in one repository transaction", async () => {
     const repository = createRepository();
     const service = new ExchangeMatchingService(repository, () => now);
@@ -164,7 +339,7 @@ describe("ExchangeMatchingService", () => {
     expect(repository.lockMatching).toHaveBeenCalledWith(41);
     expect(repository.lockActiveClaims).toHaveBeenCalledWith(41);
     expect(repository.lockTechnicians).toHaveBeenCalledWith([81, 82]);
-    expect(repository.completeSelection).toHaveBeenCalledWith(
+    expect(repository.completeMatch).toHaveBeenCalledWith(
       expect.objectContaining({
         matchingId: 51,
         exchangePostId: 41,
@@ -176,7 +351,9 @@ describe("ExchangeMatchingService", () => {
         versionAfter: 4,
         idempotencyKey: "matching-select-key-0001",
         actorUserId: 7,
-        actorIdentityId: 17
+        actorIdentityId: 17,
+        viewerIdentityId: 17,
+        matchEventType: "selective_matched"
       })
     );
   });
@@ -206,7 +383,7 @@ describe("ExchangeMatchingService", () => {
         requiresBudgetConfirmation: false
       }
     });
-    expect(repository.completeSelection).not.toHaveBeenCalled();
+    expect(repository.completeMatch).not.toHaveBeenCalled();
 
     await service.selectMatching(
       access,
@@ -220,7 +397,7 @@ describe("ExchangeMatchingService", () => {
       "matching-target-confirm-0001",
       { ip: "127.0.0.1", userAgent: "jest" }
     );
-    expect(repository.completeSelection).toHaveBeenLastCalledWith(
+    expect(repository.completeMatch).toHaveBeenLastCalledWith(
       expect.objectContaining({
         effectiveTargetProviderCountAfter: 1,
         effectiveBudgetMaxJpyAfter: 30_000,
@@ -254,7 +431,7 @@ describe("ExchangeMatchingService", () => {
         requiresBudgetConfirmation: true
       })
     });
-    expect(repository.completeSelection).not.toHaveBeenCalled();
+    expect(repository.completeMatch).not.toHaveBeenCalled();
 
     await service.selectMatching(
       access,
@@ -268,7 +445,7 @@ describe("ExchangeMatchingService", () => {
       "matching-budget-confirm-0001",
       { ip: "127.0.0.1", userAgent: "jest" }
     );
-    expect(repository.completeSelection).toHaveBeenLastCalledWith(
+    expect(repository.completeMatch).toHaveBeenLastCalledWith(
       expect.objectContaining({
         effectiveTargetProviderCountAfter: 2,
         effectiveBudgetMaxJpyAfter: 31_000,
@@ -300,7 +477,7 @@ describe("ExchangeMatchingService", () => {
       ip: "127.0.0.1",
       userAgent: "jest"
     });
-    expect(repository.completeSelection).toHaveBeenLastCalledWith(
+    expect(repository.completeMatch).toHaveBeenLastCalledWith(
       expect.objectContaining({
         effectiveTargetProviderCountAfter: 1,
         effectiveBudgetMaxJpyAfter: 31_000,
@@ -347,7 +524,7 @@ describe("ExchangeMatchingService", () => {
           { ip: "127.0.0.1", userAgent: "jest" }
         )
       ).rejects.toMatchObject({ statusCode: 409 });
-      expect(isolated.completeSelection).not.toHaveBeenCalled();
+      expect(isolated.completeMatch).not.toHaveBeenCalled();
     }
 
     const aboveTarget = createRepository({
@@ -362,7 +539,7 @@ describe("ExchangeMatchingService", () => {
         { ip: "127.0.0.1", userAgent: "jest" }
       )
     ).rejects.toMatchObject({ code: 40995 });
-    expect(aboveTarget.completeSelection).not.toHaveBeenCalled();
+    expect(aboveTarget.completeMatch).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -382,7 +559,7 @@ describe("ExchangeMatchingService", () => {
         userAgent: "jest"
       })
     ).rejects.toMatchObject({ code });
-    expect(repository.completeSelection).not.toHaveBeenCalled();
+    expect(repository.completeMatch).not.toHaveBeenCalled();
   });
 
   it("rejects an inactive claim set and duplicate technician", async () => {
@@ -426,7 +603,7 @@ describe("ExchangeMatchingService", () => {
           { ip: "127.0.0.1", userAgent: "jest" }
         )
       ).rejects.toMatchObject({ code: 40997 });
-      expect(repository.completeSelection).not.toHaveBeenCalled();
+      expect(repository.completeMatch).not.toHaveBeenCalled();
     }
   });
 
@@ -437,7 +614,7 @@ describe("ExchangeMatchingService", () => {
       ip: "127.0.0.1",
       userAgent: "jest"
     });
-    const input = (initial.completeSelection as jest.Mock).mock.calls[0]?.[0] as {
+    const input = (initial.completeMatch as jest.Mock).mock.calls[0]?.[0] as {
       payloadFingerprint: string;
     };
     const replay = createRepository({
@@ -491,6 +668,60 @@ describe("ExchangeMatchingService", () => {
         41,
         selection([301, 302]),
         "matching-select-key-0001",
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).rejects.toMatchObject({ code: 40998 });
+  });
+
+  it("replays only the identical Quick budget command", async () => {
+    const initial = createRepository({
+      lockMatching: jest.fn(async () => quickMatchingRecord),
+      lockActiveClaims: jest.fn(async () => quickClaims),
+      completeMatch: jest.fn(async () => quickMatchedPayload)
+    });
+    const body = {
+      expectedVersion: 3,
+      budgetConfirmation: {
+        action: "increase_to_selected_total" as const,
+        confirmedBudgetMaxJpy: 31_000
+      }
+    };
+    await new ExchangeMatchingService(initial, () => now).confirmQuickBudget(
+      access,
+      41,
+      body,
+      "matching-quick-replay-0001",
+      { ip: "127.0.0.1", userAgent: "jest" }
+    );
+    const completedInput = (initial.completeMatch as jest.Mock).mock.calls[0]?.[0] as {
+      payloadFingerprint: string;
+    };
+    const replay = createRepository({
+      findIdempotentQuickConfirmation: jest.fn(async () => ({
+        payload: quickMatchedPayload,
+        payloadFingerprint: completedInput.payloadFingerprint
+      }))
+    });
+    await expect(
+      new ExchangeMatchingService(replay, () => now).confirmQuickBudget(
+        access,
+        41,
+        body,
+        "matching-quick-replay-0001",
+        { ip: "127.0.0.1", userAgent: "jest" }
+      )
+    ).resolves.toEqual(quickMatchedPayload);
+    expect(replay.lockMatching).not.toHaveBeenCalled();
+
+    await expect(
+      new ExchangeMatchingService(replay, () => now).confirmQuickBudget(
+        access,
+        41,
+        {
+          ...body,
+          budgetConfirmation: { ...body.budgetConfirmation, confirmedBudgetMaxJpy: 32_000 }
+        },
+        "matching-quick-replay-0001",
         { ip: "127.0.0.1", userAgent: "jest" }
       )
     ).rejects.toMatchObject({ code: 40998 });

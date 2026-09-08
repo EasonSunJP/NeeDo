@@ -1,5 +1,5 @@
-import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
@@ -27,6 +27,7 @@ const imageMetadata = {
 export type ImMediaMimeType = keyof typeof imageMetadata;
 
 export interface StoredImMedia {
+  checksumSha256: string;
   fileKey: string;
   mimeType: ImMediaMimeType;
   size: number;
@@ -34,6 +35,7 @@ export interface StoredImMedia {
 
 export interface ImMediaStoragePort {
   save: (bytes: Buffer, mimeType: ImMediaMimeType) => Promise<StoredImMedia>;
+  remove: (fileKey: string) => Promise<void>;
 }
 
 export class ImMediaFileStorage implements ImMediaStoragePort {
@@ -51,7 +53,20 @@ export class ImMediaFileStorage implements ImMediaStoragePort {
     const fileKey = `${randomBytes(32).toString("hex")}.${metadata.extension}`;
     await mkdir(this.directory, { recursive: true });
     await writeFile(this.pathFor(fileKey), bytes, { flag: "wx" });
-    return { fileKey, mimeType, size: bytes.length };
+    return {
+      checksumSha256: createHash("sha256").update(bytes).digest("hex"),
+      fileKey,
+      mimeType,
+      size: bytes.length
+    };
+  }
+
+  public async remove(fileKey: string): Promise<void> {
+    try {
+      await unlink(this.pathFor(fileKey));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
 
   private pathFor(fileKey: string): string {

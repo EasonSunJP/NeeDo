@@ -21,18 +21,38 @@ const actors = Array.from({ length: 90 }, (_, index): ExchangeSimulationActor =>
     identityType,
     publicId: `${identityType === "customer" ? "u" : "s"}${String(index + 1).padStart(10, "0")}`,
     displayName: `正式测试账号 ${index + 1}`,
-    avatarUrl: index % 3 === 0 ? null : `/images/avatars/test-${index + 1}.jpg`
+    avatarUrl: index % 3 === 0 ? null : `/images/avatars/test-${index + 1}.jpg`,
+    ...(identityType === "customer"
+      ? {}
+      : {
+          intelligenceService: {
+            serviceRef: `shop:${index + 1001}` as const,
+            serviceId: index + 1001,
+            technicianServiceId: null,
+            serviceName: `正式服务 ${index + 1}`,
+            serviceDurationMinutes: 60,
+            catalogPriceJpy: 12_000,
+            serviceMode: "store" as const,
+            addressLabel: "東京都渋谷区",
+            serviceAreas: ["渋谷区"]
+          }
+        })
   };
 });
 
 describe("formal Exchange simulation plan", () => {
-  const plan = buildExchangeSimulationPlan(actors, "needo-exchange-2026-08-30");
+  const referenceTime = new Date("2026-09-05T05:00:00.000Z");
+  const plan = buildExchangeSimulationPlan(actors, "needo-exchange-2026-08-30", referenceTime);
 
   it("is byte-for-byte deterministic and never uses Math.random", () => {
-    expect(buildExchangeSimulationPlan(actors, "needo-exchange-2026-08-30")).toEqual(plan);
-    expect(JSON.stringify(buildExchangeSimulationPlan(actors, "needo-exchange-2026-08-30"))).toBe(
-      JSON.stringify(plan)
+    expect(buildExchangeSimulationPlan(actors, "needo-exchange-2026-08-30", referenceTime)).toEqual(
+      plan
     );
+    expect(
+      JSON.stringify(
+        buildExchangeSimulationPlan(actors, "needo-exchange-2026-08-30", referenceTime)
+      )
+    ).toBe(JSON.stringify(plan));
     const source = readFileSync(
       resolve(__dirname, "../src/simulation/exchange-simulation-plan.ts"),
       "utf8"
@@ -58,7 +78,12 @@ describe("formal Exchange simulation plan", () => {
           post.author.identityType
         );
         expect(post.demand).toBeNull();
-        expect(post.intelligence).not.toBeNull();
+        expect(post.intelligence).toMatchObject({
+          serviceRef: post.author.intelligenceService?.serviceRef,
+          serviceName: post.author.intelligenceService?.serviceName,
+          originalPriceJpy: 12_000,
+          campaignPriceJpy: 10_000
+        });
       }
     }
   });
@@ -88,13 +113,16 @@ describe("formal Exchange simulation plan", () => {
   });
 
   it("keeps share idempotency keys bound to the same post and actor across seed changes", () => {
-    const alternatePlan = buildExchangeSimulationPlan(actors, "exchange-integration-seed");
+    const alternatePlan = buildExchangeSimulationPlan(
+      actors,
+      "exchange-integration-seed",
+      referenceTime
+    );
     const originalKeys = new Map(
       plan.posts.flatMap((post) =>
-        post.shares.map((share) => [
-          `${post.key}:${share.actor.userId}`,
-          share.idempotencyKey
-        ] as const)
+        post.shares.map(
+          (share) => [`${post.key}:${share.actor.userId}`, share.idempotencyKey] as const
+        )
       )
     );
     const overlappingShares = alternatePlan.posts.flatMap((post) =>
@@ -114,20 +142,17 @@ describe("formal Exchange simulation plan", () => {
 
   it("never selects two identities of the same account for one like or share set", () => {
     const actorsWithDuplicateIdentities = actors.flatMap((actor, index) =>
-      index < 40
-        ? [actor, { ...actor, identityId: actor.identityId + 10_000 }]
-        : [actor]
+      index < 40 ? [actor, { ...actor, identityId: actor.identityId + 10_000 }] : [actor]
     );
     const duplicateIdentityPlan = buildExchangeSimulationPlan(
       actorsWithDuplicateIdentities,
-      "duplicate-identity-seed"
+      "duplicate-identity-seed",
+      referenceTime
     );
 
     for (const post of duplicateIdentityPlan.posts) {
       expect(new Set(post.likes.map((like) => like.actor.userId)).size).toBe(post.likes.length);
-      expect(new Set(post.shares.map((share) => share.actor.userId)).size).toBe(
-        post.shares.length
-      );
+      expect(new Set(post.shares.map((share) => share.actor.userId)).size).toBe(post.shares.length);
     }
   });
 
@@ -140,6 +165,7 @@ describe("formal Exchange simulation plan", () => {
       const serviceEndAt = new Date(post.serviceEndAt).getTime();
       const expiresAt = new Date(post.expiresAt).getTime();
       expect(createdAt).toBeLessThan(serviceStartAt);
+      expect(serviceStartAt).toBeGreaterThan(referenceTime.getTime());
       expect(serviceStartAt).toBeLessThan(serviceEndAt);
       expect(serviceEndAt).toBeLessThanOrEqual(expiresAt);
       expect(post.title.trim()).toBe(post.title);
@@ -148,14 +174,19 @@ describe("formal Exchange simulation plan", () => {
   });
 
   it("fails closed before planning when unique actor capacity is insufficient", () => {
-    expect(() => buildExchangeSimulationPlan(actors.slice(0, 66), "too-small")).toThrow(
-      "at least 67 eligible real test actors"
-    );
+    expect(() =>
+      buildExchangeSimulationPlan(actors.slice(0, 66), "too-small", referenceTime)
+    ).toThrow("at least 67 eligible real test actors");
     expect(() =>
       buildExchangeSimulationPlan(
-        actors.map((actor) => ({ ...actor, identityType: "customer" })),
-        "missing-intelligence"
+        actors.map((actor) => ({
+          ...actor,
+          identityType: "customer",
+          intelligenceService: undefined
+        })),
+        "missing-intelligence",
+        referenceTime
       )
-    ).toThrow("intelligence publisher");
+    ).toThrow("formal intelligence publisher service");
   });
 });

@@ -20,6 +20,28 @@ import componentsSource from "./components.tsx?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
+  it("renders the header quick menu outside the glass header clipping context", () => {
+    const componentStart = pagesSource.indexOf("function ImHeaderQuickMenu");
+    const componentEnd = pagesSource.indexOf("export function ImMessagesEntryPage", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+
+    expect(componentStart).toBeGreaterThan(-1);
+    expect(componentSource).toContain("createPortal(");
+    expect(componentSource).toContain('anchorRef.current?.closest(".client-shell")');
+    expect(componentSource).toContain('data-im-header-quick-menu="true"');
+    expect(componentSource).toContain('className="fixed z-[120]');
+  });
+
+  it("binds the chat-list delete swipe action to full conversation deletion", () => {
+    const pageStart = pagesSource.indexOf("export function ImConversationListPage");
+    const pageEnd = pagesSource.indexOf("export function ImContactsListPage", pageStart);
+    const pageSource = pagesSource.slice(pageStart, pageEnd);
+
+    expect(pageSource).toContain('key: "delete"');
+    expect(pageSource).toContain('label: "删除"');
+    expect(pageSource).toContain("store.deleteConversation(conversation.id)");
+  });
+
   it("renders the shared Test badge after the service-account title", () => {
     const markup = renderToStaticMarkup(
       createElement(
@@ -365,6 +387,7 @@ describe("IM pages", () => {
     expect(recallSource).toContain(
       "restoreImComposerDraft(message.content, message.ext?.richText)",
     );
+    expect(recallSource).not.toContain('store.recallMessage(message.conversationId, message.id, "traceless")');
     expect(recallSource).toContain("if (mediaPreview?.id === message.id)");
     expect(recallSource).toContain("setMediaPreview(null)");
     expect(recallSource.indexOf("setDraft(originalContent)")).toBeGreaterThan(
@@ -422,7 +445,11 @@ describe("IM pages", () => {
     expect(componentSource).toContain("messageIds: [mediaPreview.id]");
     expect(componentSource).toContain("sourceConversationId: conversationId");
     expect(componentSource).not.toContain("messageId: mediaPreview.id");
-    expect(componentSource).toContain("<video");
+    expect(pagesSource).toContain('import { OpenedImMediaViewer } from "./OpenedImMediaViewer";');
+    expect(componentSource).toContain("<OpenedImMediaViewer");
+    expect(componentSource).toContain("cache={store}");
+    expect(componentSource).toContain("onResolvedSourceChange={setMediaPreviewResolvedSource}");
+    expect(componentSource).toContain("href={mediaPreviewResolvedSource ?? undefined}");
   });
 
   it("anchors the long-press action menu to the selected message instead of the composer edge", () => {

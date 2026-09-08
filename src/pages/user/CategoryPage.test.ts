@@ -3,8 +3,10 @@ import categoryPageSource from "./CategoryPage.tsx?raw";
 import homePageSource from "./HomePage.tsx?raw";
 
 describe("CategoryPage service preview card", () => {
-  it("keeps the short availability badge on one line", () => {
-    expect(categoryPageSource).toContain('className="shrink-0 whitespace-nowrap" tone="green"');
+  it("delegates service previews to the shared unified service-information card", () => {
+    expect(categoryPageSource).toContain("UnifiedServiceInfoCard");
+    expect(categoryPageSource).toContain("mapServiceItemToUnifiedData(service)");
+    expect(categoryPageSource).not.toContain("getGeneratedImageThumbnailUrl(service.cover)");
   });
 });
 
@@ -41,7 +43,8 @@ describe("CategoryPage formal entity cards", () => {
   it("shows up to 20 technician cards and routes cards to the formal profile", () => {
     expect(categoryPageSource).toContain('pageSize: 40');
     expect(categoryPageSource).toContain('entityFilter === "technician" ? 20');
-    expect(categoryPageSource).toContain('const detailPath = `/profiles/technician/${item.profile.id}`');
+    expect(categoryPageSource).toContain('const detailPath = `/profiles/technician/${item.profile.publicId}`');
+    expect(categoryPageSource).not.toContain('const detailPath = `/profiles/technician/${item.profile.id}`');
   });
 
   it("adapts formal search DTOs into the shared cards without legacy mock collections", () => {

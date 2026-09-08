@@ -1,3 +1,4 @@
+import type { WorkStatus } from '../domain/work-status';
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
@@ -11,6 +12,8 @@ export type EmployeeCurrentWorkStatus = "active" | "on_leave" | "suspended";
 export type EmployeeWorkStatus = EmployeeCurrentWorkStatus | "ended";
 
 export interface MerchantEmployeePayload {
+  technicianProfileId?: number;
+  workStatus?: WorkStatus;
   needoId: string;
   displayName: string;
   avatarUrl: string | null;

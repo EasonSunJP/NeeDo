@@ -84,6 +84,35 @@ describe("httpClient structured errors", () => {
   });
 });
 
+describe("httpClient authenticated streams", () => {
+  afterEach(() => {
+    clearAuthTokens();
+    vi.unstubAllGlobals();
+  });
+
+  it("refreshes once after a stream 401 and returns the retried response body unread", async () => {
+    setAuthTokens({ accessToken: "expired-access-token", refreshToken: "refresh-token" });
+    const stream = new ReadableStream();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { accessToken: "fresh-access-token", expiresIn: 900 } }))
+      .mockResolvedValueOnce(new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await httpClient.openStream("/backoffice/dashboard/live-events", {
+      headers: { Accept: "text/event-stream" },
+      signal: new AbortController().signal
+    });
+
+    expect(response.body).toBe(stream);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/backoffice/dashboard/live-events",
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer fresh-access-token" }) })
+    );
+  });
+});
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     headers: { "content-type": "application/json" },
@@ -955,6 +984,41 @@ describe("httpClient auth tokens", () => {
       status: 403
     });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not apply merchant preview restrictions to backoffice writes", async () => {
+    setAuthTokens({ accessToken: "admin-access-token" });
+    window.sessionStorage.setItem(
+      "needo.merchant-admin.read-only-preview",
+      JSON.stringify({
+        version: 1,
+        subjectType: "shop",
+        subjectId: 22,
+        subjectName: "Kichijoji Family Care",
+        selectedShopId: 22,
+        shops: [{ id: 22, name: "Kichijoji Family Care" }],
+        returnTo: "/admin/merchants"
+      })
+    );
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 0, message: "success", data: { publicId: "notice-1" } })
+    );
+
+    await expect(
+      httpClient.request("/backoffice/official-notices", {
+        body: { title: "Service update" },
+        method: "POST"
+      })
+    ).resolves.toEqual({ publicId: "notice-1" });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/backoffice/official-notices",
+      expect.objectContaining({
+        headers: expect.not.objectContaining({
+          "X-NeeDo-Merchant-Preview-Shop-Id": expect.anything()
+        })
+      })
+    );
   });
 
   it("uses msg from non-NeeDo JSON API errors when message is absent", async () => {

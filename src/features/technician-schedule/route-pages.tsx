@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { BookingSosButton } from "../sos/BookingSosButton";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { technicianNavItems } from "../../components/mobile/navItems";
+import { SchedulePageHeader } from "../../components/scheduling/SchedulePageHeader";
 import { Button } from "../../components/ui/Button";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
+import { SocialProfileMiniCard, type SocialProfileMiniData } from "../../shared/profile-card";
+import { getScopedProfileDetailPath } from "../../shared/profile-detail/paths";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import {
   bookingApi,
@@ -18,8 +22,11 @@ import {
   type OrderCheckout,
   type OrderReview
 } from "../booking/api";
+import { useOrderRealtimeRefresh } from "../booking/useOrderRealtimeRefresh";
 import { schedulingApi } from "../scheduling/api";
 import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
+import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
+import type { ExchangeCancellation } from "../exchange/types";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
 import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
 import {
@@ -33,26 +40,54 @@ const panelClass =
 const fieldClass =
   "mt-2 h-11 w-full rounded-[16px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 text-sm font-bold text-[color:var(--client-text)] outline-none";
 
+function bookingCustomerMiniCardData(order: BookingOrder): SocialProfileMiniData | null {
+  if (!order.customer) return null;
+  const rating = Number(order.customer.ratingAverage);
+
+  return {
+    id: String(order.customer.profileId ?? order.customer.userId),
+    entityType: "user",
+    displayName: order.customer.displayName,
+    avatar: order.customer.avatarUrl ?? "",
+    coverImage: order.customer.avatarUrl ?? "",
+    regionLabel: `ID ${order.customer.publicId}`,
+    addressLabel: "ID",
+    addressValue: order.customer.publicId,
+    primaryLabel: order.customer.membershipLevel,
+    kycVerified: true,
+    levelLabel: "",
+    scoreLabel: "信用度",
+    scoreValue: `${Number.isFinite(rating) ? rating.toFixed(1) : "0.0"}/5`,
+    followerCount: 0,
+    followingCount: 0
+  };
+}
+
 function TechnicianSchedulePageShell({
   title,
   subtitle,
   backTo = "/technician/schedule",
   showHeader = true,
+  showBottomNav = true,
+  action,
   children
 }: {
   title: string;
   subtitle?: string;
   backTo?: string;
   showHeader?: boolean;
+  showBottomNav?: boolean;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
   const { isNight } = useClientTheme();
   return (
-    <MobileShell navItems={technicianNavItems}>
+    <MobileShell navItems={technicianNavItems} showBottomNav={showBottomNav}>
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
         {showHeader ? (
           <MobileFullscreenHeader
+            action={action}
             className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
             dark={isNight}
             onBack={() => navigate(backTo)}
@@ -62,7 +97,9 @@ function TechnicianSchedulePageShell({
         ) : null}
         <main className={showHeader
           ? "min-h-0 flex-1 px-4 py-3 pb-24"
-          : "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden px-4 pb-[calc(220px+env(safe-area-inset-bottom))] pt-0 [overflow-x:clip]"
+          : showBottomNav
+            ? "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden px-4 pb-[calc(220px+env(safe-area-inset-bottom))] pt-0 [overflow-x:clip]"
+            : "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden px-4 pb-[calc(96px+env(safe-area-inset-bottom))] pt-0 [overflow-x:clip]"
         }>{children}</main>
       </div>
     </MobileShell>
@@ -128,43 +165,55 @@ function ScheduleResourceErrorPanel({
 }
 
 export function TechnicianScheduleIndexRoutePage() {
+  const navigate = useNavigate();
   const { session } = useAuth();
   const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState("");
   const resource = useFormalTechnicianScheduleResource(session, null);
   const dataCenterPeriod = readDataCenterPeriod(searchParams.get("period"));
   const initialSelectedDate = tokyoDateKey(searchParams.get("from"));
 
-  if (resource.loading) {
-    return <TechnicianSchedulePageShell backTo="/technician" showHeader={false} title="排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></TechnicianSchedulePageShell>;
-  }
-  if (resource.error || !resource.data) {
-    return (
-      <TechnicianSchedulePageShell backTo="/technician" showHeader={false} title="排班与预约">
+  const handleBack = () => {
+    const historyIndex = typeof window !== "undefined"
+      ? (window.history.state as { idx?: number } | null)?.idx
+      : undefined;
+    if (typeof historyIndex === "number" && historyIndex > 0) {
+      navigate(-1);
+      return;
+    }
+    navigate("/technician");
+  };
+
+  return (
+    <TechnicianSchedulePageShell backTo="/technician" showBottomNav={false} showHeader={false} title="排班与预约">
+      <SchedulePageHeader
+        ariaLabel="搜索排班"
+        backLabel="返回技师首页"
+        closeLabel="关闭排班"
+        onBack={handleBack}
+        onChange={setSearchQuery}
+        onClose={() => navigate("/technician", { replace: true })}
+        placeholder="搜索排班、预约、服务、状态"
+        value={searchQuery}
+      />
+      {resource.loading ? <LoadingPanel label="正在读取正式排班与预约" /> : null}
+      {resource.error || (!resource.loading && !resource.data) ? (
         <ScheduleResourceErrorPanel
           error={resource.error ?? "error.schedule.profile_not_found"}
           onRetry={resource.retry}
           title="正式排班资源加载失败"
         />
-      </TechnicianSchedulePageShell>
-    );
-  }
-
-  return (
-    <TechnicianSchedulePageShell
-      backTo="/technician"
-      showHeader={false}
-      subtitle={`${resource.data.profile.displayName} · ${resource.data.profile.shop?.name ?? "--"}`}
-      title="排班与预约"
-    >
-      <FormalTechnicianScheduleWorkspace
+      ) : null}
+      {resource.data ? <FormalTechnicianScheduleWorkspace
         dataCenterPeriod={dataCenterPeriod}
         initialSelectedDate={initialSelectedDate}
         profileAvatarUrl={resource.data.profile.avatarUrl}
         profileId={resource.data.profile.id}
         profileName={resource.data.profile.displayName}
+        searchQuery={searchQuery}
         shopId={resource.data.shopId}
         shopName={resource.data.profile.shop?.name ?? "--"}
-      />
+      /> : null}
     </TechnicianSchedulePageShell>
   );
 }
@@ -638,6 +687,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const [reviewSkipped, setReviewSkipped] = useState(false);
   const [reviewRevision, setReviewRevision] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [exchangeOrderLinked, setExchangeOrderLinked] = useState<boolean | null>(null);
   const mutationKeys = useRef(new Map<string, { idempotencyKey: string; semantics: string }>());
 
   useEffect(() => {
@@ -653,6 +703,19 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   useEffect(() => {
     setOrder(resource.data);
   }, [resource.data]);
+
+  const refreshOrder = useCallback(async () => {
+    const latestOrder = await bookingApi.getOrder(orderId);
+    setOrder(latestOrder);
+  }, [orderId]);
+  const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
+    if (payload.orderStatus !== "cancelled") return;
+    setOrder((current) => current?.id === payload.orderId
+      ? { ...current, status: "cancelled" }
+      : current);
+  }, []);
+
+  useOrderRealtimeRefresh({ onRefresh: refreshOrder, orderId });
 
   useEffect(() => {
     if (!order || !["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(order.status)) {
@@ -713,6 +776,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   }
 
   const canCancel = order.status === "pending" || order.status === "confirmed";
+  const customerCard = bookingCustomerMiniCardData(order);
 
   const retainedMutationKey = (slot: string, semantics: string) => {
     const retained = mutationKeys.current.get(slot);
@@ -855,6 +919,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   return (
     <TechnicianSchedulePageShell
       backTo="/technician/schedule"
+      action={<BookingSosButton orderId={order.id} revision={`${order.status}:${order.serviceSession?.endedAt ?? ""}`} />}
       subtitle={`${order.orderNo} · ${timeRangeLabel(order.startsAt, order.endsAt)}`}
       title="正式预约订单"
     >
@@ -874,8 +939,26 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
             <DetailRow label="店铺" value={order.shopName} />
             <DetailRow label="预约时间" value={`${localDateLabel(order.startsAt)} · ${timeRangeLabel(order.startsAt, order.endsAt)}`} />
             <DetailRow label="支付" value={orderPaymentLabel(order)} />
-            <DetailRow label="客户账号" value={`#${order.customerUserId}`} />
           </dl>
+          <div className="mt-4">
+            <h3 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">用户</h3>
+            {customerCard ? (
+              <SocialProfileMiniCard
+                data={customerCard}
+                detailTo={order.customer?.profileId
+                  ? getScopedProfileDetailPath("technician", "user", String(order.customer.profileId))
+                  : undefined}
+                showAction={false}
+                showLevel={false}
+                showSocialStats={false}
+                topTags={[{ label: "预约者", tone: "purple" }]}
+              />
+            ) : (
+              <div className="rounded-[18px] bg-[color:var(--client-elevated)] px-3 py-4 text-sm font-bold text-[color:var(--client-muted)]">
+                用户资料暂不可用
+              </div>
+            )}
+          </div>
           {order.note ? (
             <div className="mt-3 rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3 text-sm">
               <strong>备注：</strong>{order.note}
@@ -884,9 +967,22 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
         </section>
 
         <ContactEventTimelinePanel
-          title="状态记录"
+          title="订单追踪信息"
           events={buildFormalOrderTimelineEvents(order)}
+          onCommentSubmit={(body) => {
+            void runFormalMutation("timeline-comment", () =>
+              bookingApi.createTimelineComment(order.id, { body })
+            );
+          }}
         />
+
+        {canCancel || order.status === "cancelled" ? (
+          <ExchangeOrderCancellationPanel
+            onCancellationChange={handleExchangeCancellationChange}
+            onLinkedChange={setExchangeOrderLinked}
+            orderId={order.id}
+          />
+        ) : null}
 
         {order.status === "confirmed" ? (
           <section className={panelClass}>
@@ -955,7 +1051,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
         {reviewEligible && reviewStatus === "error" ? <section className="space-y-3 rounded-2xl border border-red-400/35 bg-red-500/10 p-4" role="alert"><p className="text-sm font-black text-red-500">{reviewError}</p><Button className="w-full" onClick={() => setReviewRevision((value) => value + 1)} variant="secondary">重新读取评价状态</Button></section> : null}
         {order.status === "pending" || canCancel ? (
           <section className="grid gap-2 sm:grid-cols-2">
-            {canCancel ? (
+            {exchangeOrderLinked === false && canCancel ? (
               <Button disabled={pending} onClick={() => void cancel()} variant="danger">
                 {cancelArmed ? "再次点击确认取消" : "取消预约"}
               </Button>

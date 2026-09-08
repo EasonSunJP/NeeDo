@@ -14,10 +14,11 @@ export const coreReadServiceIdParamSchema = z.object({
 });
 
 export const coreReadShopIdParamSchema = z.object({
-  id: z.union([
-    z.coerce.number().int().positive(),
-    z.string().regex(/^shop\d{10}$/)
-  ])
+  id: z.union([z.coerce.number().int().positive(), z.string().regex(/^shop\d{10}$/)])
+});
+
+export const coreReadTechnicianIdParamSchema = z.object({
+  id: z.union([z.coerce.number().int().positive(), z.string().regex(/^s\d{10}$/)])
 });
 
 export const categoryListQuerySchema = z.object({
@@ -103,6 +104,7 @@ export const homeRecommendationsQuerySchema = z.object({
 export type CoreReadIdParams = z.infer<typeof coreReadIdParamSchema>;
 export type CoreReadServiceIdParams = z.infer<typeof coreReadServiceIdParamSchema>;
 export type CoreReadShopIdParams = z.infer<typeof coreReadShopIdParamSchema>;
+export type CoreReadTechnicianIdParams = z.infer<typeof coreReadTechnicianIdParamSchema>;
 export type CategoryListQuery = z.infer<typeof categoryListQuerySchema>;
 export type ServiceListQuery = z.infer<typeof serviceListQuerySchema>;
 export type CoreSearchQuery = z.infer<typeof coreSearchQuerySchema>;

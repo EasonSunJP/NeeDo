@@ -1,3 +1,4 @@
+import { applicationEkycPolicy } from "./helpers/application-ekyc-policy";
 import { SensitiveFieldCipherService } from "../src/services/sensitive-field-cipher.service";
 import {
   ProtectedBankAccountService,
@@ -13,9 +14,7 @@ const createRepository = (): jest.Mocked<ProtectedBankAccountRepositoryPort> => 
     status: "draft",
     version: 1,
     applicantKind: "corporate",
-    corporateLegalNameKana: "カブシキガイシャ ニード",
-    currentBankAccountId: null,
-    verifiedEkycNameKanaEncrypted: null
+    currentBankAccountId: null
   }),
   bindVerifiedMerchantAccount: jest.fn(async (input) => ({
     id: 44,
@@ -44,23 +43,60 @@ const input = {
 };
 
 describe("ProtectedBankAccountService", () => {
-  it("binds a corporate account only when the holder matches the legal entity name", async () => {
-    const repository = createRepository();
-    const service = new ProtectedBankAccountService(repository, cipher);
+  it.each(["corporate", "individual"] as const)(
+    "records an unrelated holder name for a %s merchant application without comparing names",
+    async (applicantKind) => {
+      const repository = createRepository();
+      repository.findMerchantBindingContext.mockResolvedValue({
+        applicationId: 11,
+        userId: 7,
+        status: "draft",
+        version: 1,
+        applicantKind,
+        currentBankAccountId: null
+      });
+      const service = new ProtectedBankAccountService(
+        repository,
+        cipher,
+        applicationEkycPolicy(true, true)
+      );
 
-    await expect(service.bindMerchantAccount(input)).resolves.toMatchObject({
+      const result = await service.bindMerchantAccount({
+        ...input,
+        accountHolderName: "サトウ ハナコ"
+      });
+
+      expect(result).not.toHaveProperty("holderMatched");
+      expect(repository.bindVerifiedMerchantAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          verificationSource: "applicant_declaration",
+          verificationStatus: "declared",
+          verifiedAt: null
+        })
+      );
+    }
+  );
+
+  it.each(["ordinary", "current", "savings", "other"] as const)("records a %s corporate account as an applicant declaration", async (accountType) => {
+    const repository = createRepository();
+    const service = new ProtectedBankAccountService(repository, cipher, applicationEkycPolicy());
+
+    await expect(service.bindMerchantAccount({ ...input, accountType })).resolves.toMatchObject({
+      accountType,
       accountNumberMasked: "•••4567",
-      holderMatched: true,
       applicationVersion: 2
     });
     const stored = repository.bindVerifiedMerchantAccount.mock.calls[0]?.[0];
     expect(stored).toMatchObject({
-      verificationSource: "corporate_registration",
-      verificationStatus: "verified",
+      accountType,
+      verificationSource: "applicant_declaration",
+      verificationStatus: "declared",
+      verifiedAt: null,
       auditMetadata: {
         applicationId: 11,
         applicantKind: "corporate",
-        verificationStatus: "verified"
+        verificationStatus: "declared",
+        verificationSource: "applicant_declaration"
       }
     });
     expect(stored?.accountNumberEncrypted).not.toContain("1234567");
@@ -70,20 +106,31 @@ describe("ProtectedBankAccountService", () => {
     expect(JSON.stringify(stored?.auditMetadata)).not.toContain("ニード");
   });
 
-  it("rejects a representative's personal account for a corporate application", async () => {
+  it.each([false, true])("keeps individual bank declarations distinct from eKYC when required=%s", async (required) => {
     const repository = createRepository();
-    const service = new ProtectedBankAccountService(repository, cipher);
+    repository.findMerchantBindingContext.mockResolvedValue({ applicationId: 11, userId: 7, status: "draft", version: 1, applicantKind: "individual", currentBankAccountId: null });
+    const service = new ProtectedBankAccountService(repository, cipher, applicationEkycPolicy(required, false));
+    const result = service.bindMerchantAccount({ ...input, accountHolderName: "ヤマダ タロウ" });
+    if (required) { await expect(result).rejects.toMatchObject({ statusCode: 409 }); expect(repository.bindVerifiedMerchantAccount).not.toHaveBeenCalled(); }
+    else { await result; expect(repository.bindVerifiedMerchantAccount).toHaveBeenCalledWith(expect.objectContaining({ verificationSource: "applicant_declaration", verificationStatus: "declared", verifiedAt: null })); }
+  });
+  it("records an unrelated declared account when eKYC is disabled", async () => {
+    const repository = createRepository();
+    repository.findMerchantBindingContext.mockResolvedValue({ applicationId: 11, userId: 7, status: "draft", version: 1, applicantKind: "individual", currentBankAccountId: null });
+    await expect(new ProtectedBankAccountService(repository, cipher, applicationEkycPolicy(false, false)).bindMerchantAccount({ ...input, accountHolderName: "サトウ ハナコ" })).resolves.toMatchObject({ applicationVersion: 2 });
+  });
+
+  it("records a representative's personal account for a corporate application", async () => {
+    const repository = createRepository();
+    const service = new ProtectedBankAccountService(repository, cipher, applicationEkycPolicy());
 
     await expect(
       service.bindMerchantAccount({ ...input, accountHolderName: "ヤマモト タロウ" })
-    ).rejects.toMatchObject({
-      message: "error.bank_account.holder_name_mismatch",
-      statusCode: 409
-    });
-    expect(repository.bindVerifiedMerchantAccount).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ applicationVersion: 2 });
+    expect(repository.bindVerifiedMerchantAccount).toHaveBeenCalled();
   });
 
-  it("matches an individual account only to the verified eKYC kana", async () => {
+  it("records an individual account independently from the verified eKYC kana", async () => {
     const repository = createRepository();
     repository.findMerchantBindingContext.mockResolvedValue({
       applicationId: 11,
@@ -91,21 +138,19 @@ describe("ProtectedBankAccountService", () => {
       status: "draft",
       version: 1,
       applicantKind: "individual",
-      corporateLegalNameKana: null,
-      currentBankAccountId: null,
-      verifiedEkycNameKanaEncrypted: cipher.seal("ヤマモト タロウ")
+      currentBankAccountId: null
     });
-    const service = new ProtectedBankAccountService(repository, cipher);
+    const service = new ProtectedBankAccountService(repository, cipher, applicationEkycPolicy());
 
     await service.bindMerchantAccount({ ...input, accountHolderName: "ﾔﾏﾓﾄ ﾀﾛｳ" });
     expect(repository.bindVerifiedMerchantAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ verificationSource: "ekyc" })
+      expect.objectContaining({ verificationSource: "applicant_declaration", verificationStatus: "declared" })
     );
   });
 
   it("blocks missing eKYC, another owner, locked states, and stale versions", async () => {
     const repository = createRepository();
-    const service = new ProtectedBankAccountService(repository, cipher);
+    const service = new ProtectedBankAccountService(repository, cipher, applicationEkycPolicy(true, false));
 
     repository.findMerchantBindingContext.mockResolvedValueOnce({
       applicationId: 11,
@@ -113,9 +158,7 @@ describe("ProtectedBankAccountService", () => {
       status: "draft",
       version: 1,
       applicantKind: "individual",
-      corporateLegalNameKana: null,
-      currentBankAccountId: null,
-      verifiedEkycNameKanaEncrypted: null
+      currentBankAccountId: null
     });
     await expect(service.bindMerchantAccount(input)).rejects.toMatchObject({
       message: "error.identity_application.ekyc_required",
@@ -128,9 +171,7 @@ describe("ProtectedBankAccountService", () => {
       status: "draft",
       version: 1,
       applicantKind: "corporate",
-      corporateLegalNameKana: "カブシキガイシャ ニード",
-      currentBankAccountId: null,
-      verifiedEkycNameKanaEncrypted: null
+      currentBankAccountId: null
     });
     await expect(service.bindMerchantAccount(input)).rejects.toMatchObject({ statusCode: 404 });
 
@@ -140,9 +181,7 @@ describe("ProtectedBankAccountService", () => {
       status: "submitted",
       version: 1,
       applicantKind: "corporate",
-      corporateLegalNameKana: "カブシキガイシャ ニード",
-      currentBankAccountId: null,
-      verifiedEkycNameKanaEncrypted: null
+      currentBankAccountId: null
     });
     await expect(service.bindMerchantAccount(input)).rejects.toMatchObject({ statusCode: 409 });
 
@@ -152,9 +191,7 @@ describe("ProtectedBankAccountService", () => {
       status: "draft",
       version: 2,
       applicantKind: "corporate",
-      corporateLegalNameKana: "カブシキガイシャ ニード",
-      currentBankAccountId: null,
-      verifiedEkycNameKanaEncrypted: null
+      currentBankAccountId: null
     });
     await expect(service.bindMerchantAccount(input)).rejects.toMatchObject({
       message: "error.identity_application.version_conflict",

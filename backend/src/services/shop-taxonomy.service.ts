@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
-import type {
-  ShopTaxonomyQuota,
-  ShopTaxonomyQuotaPolicyPort
-} from "./shop-taxonomy-quota.service";
+import type { ShopTaxonomyQuota, ShopTaxonomyQuotaPolicyPort } from "./shop-taxonomy-quota.service";
 import type {
   LocalizedBusinessKeyword,
   LocalizedServiceCategory,
@@ -108,7 +105,10 @@ export class ShopTaxonomyService {
     const categoryIds = [...new Set(input.categoryIds)].sort((a, b) => a - b);
     const keywordIds = [...new Set(input.keywordIds)].sort((a, b) => a - b);
 
-    if (categoryIds.length !== input.categoryIds.length || keywordIds.length !== input.keywordIds.length) {
+    if (
+      categoryIds.length !== input.categoryIds.length ||
+      keywordIds.length !== input.keywordIds.length
+    ) {
       throw this.validationError("error.shop_taxonomy.duplicate_selection");
     }
 

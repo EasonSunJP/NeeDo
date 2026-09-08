@@ -1,12 +1,17 @@
 import { httpClient } from "../../api/httpClient";
 import type {
+  ConfirmQuickExchangeBudgetInput,
   CreateExchangeClaimInput,
   ExchangeClaim,
   ExchangeClaimMine,
   ExchangeClaimOption,
   ExchangeClaimOptionListInput,
+  ExchangeBookingConversion,
+  ExchangeCancellation,
+  ExchangeCancellationAction,
   ExchangeComment,
   ExchangeInteractionCounts,
+  ExchangeIntelligenceServiceOption,
   ExchangeListInput,
   ExchangeMatching,
   ExchangePost,
@@ -94,6 +99,73 @@ export function selectExchangeMatching(
   });
 }
 
+export function confirmQuickExchangeBudget(
+  postId: string,
+  input: ConfirmQuickExchangeBudgetInput,
+  key: string
+): Promise<ExchangeMatching> {
+  return httpClient.request<ExchangeMatching>(
+    `/exchange/posts/${postId}/matching/quick/confirm-budget`,
+    {
+      body: input,
+      headers: idempotencyHeaders(key),
+      method: "POST"
+    }
+  );
+}
+
+export function createExchangeMatchingBookings(
+  postId: string,
+  input: { expectedVersion: number },
+  key: string
+): Promise<ExchangeBookingConversion> {
+  return httpClient.request<ExchangeBookingConversion>(`/exchange/posts/${postId}/matching/bookings`, {
+    body: input,
+    headers: idempotencyHeaders(key),
+    method: "POST"
+  });
+}
+
+export function getExchangeCancellation(
+  orderId: number,
+  signal?: AbortSignal
+): Promise<ExchangeCancellation> {
+  return httpClient.request<ExchangeCancellation>(`/exchange/orders/${orderId}/cancellation`, {
+    signal
+  });
+}
+
+export function createExchangeCancellationRequest(
+  orderId: number,
+  input: { expectedVersion: number; reason: string },
+  key: string
+): Promise<ExchangeCancellation> {
+  return httpClient.request<ExchangeCancellation>(
+    `/exchange/orders/${orderId}/cancellation/requests`,
+    {
+      body: input,
+      headers: idempotencyHeaders(key),
+      method: "POST"
+    }
+  );
+}
+
+export function decideExchangeCancellation(
+  orderId: number,
+  action: Exclude<ExchangeCancellationAction, "request">,
+  expectedVersion: number,
+  key: string
+): Promise<ExchangeCancellation> {
+  return httpClient.request<ExchangeCancellation>(
+    `/exchange/orders/${orderId}/cancellation/${action}`,
+    {
+      body: { expectedVersion },
+      headers: idempotencyHeaders(key),
+      method: "POST"
+    }
+  );
+}
+
 export async function getMyExchangeClaim(
   postId: string,
   signal?: AbortSignal
@@ -116,6 +188,18 @@ export function withdrawExchangeClaim(claimId: string, key: string): Promise<Exc
 
 export function getRequestPublicationContext(): Promise<ExchangeRequestPublicationContext> {
   return httpClient.request<ExchangeRequestPublicationContext>("/exchange/request-publication-context");
+}
+
+export function listExchangeIntelligenceServiceOptions(
+  input: PaginationInput = {}
+): Promise<Paginated<ExchangeIntelligenceServiceOption>> {
+  return httpClient.request<Paginated<ExchangeIntelligenceServiceOption>>(
+    "/exchange/intelligence/service-options",
+    {
+      query: { page: input.page ?? 1, page_size: input.pageSize ?? 20 },
+      signal: input.signal
+    }
+  );
 }
 
 export function publishExchangePost(input: PublishExchangePostInput, key: string): Promise<ExchangePost> {

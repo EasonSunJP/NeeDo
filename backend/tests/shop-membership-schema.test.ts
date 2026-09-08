@@ -30,8 +30,12 @@ describe("shop membership foundation schema", () => {
     expect(migration).toContain("CREATE TABLE `shop_customer_memberships`");
     expect(migration).toContain("CREATE TABLE `shop_membership_cards`");
     expect(migration).toContain("FOREIGN KEY (`shop_id`) REFERENCES `shops`(`id`)");
-    expect(migration).toContain("FOREIGN KEY (`customer_profile_id`) REFERENCES `customer_profiles`(`id`)");
-    expect(migration).toContain("FOREIGN KEY (`membership_id`) REFERENCES `shop_customer_memberships`(`id`)");
+    expect(migration).toContain(
+      "FOREIGN KEY (`customer_profile_id`) REFERENCES `customer_profiles`(`id`)"
+    );
+    expect(migration).toContain(
+      "FOREIGN KEY (`membership_id`) REFERENCES `shop_customer_memberships`(`id`)"
+    );
     expect(migration).not.toContain("INSERT INTO");
     expect(migration).not.toContain("UPDATE `");
   });

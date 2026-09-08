@@ -6,18 +6,22 @@ export interface ContentMediaProjection {
   publicId: string;
   mediaAssetId: number;
   url: string;
-  mimeType: ContentMediaMimeType;
+  mimeType: string;
   width: number | null;
   height: number | null;
   checksumSha256: string;
 }
 
 export interface CreateContentMediaRepositoryInput {
-  entityType: "content_publication_upload";
+  entityType: "content_publication_upload" | "official_notice_upload";
   entityId: number;
   ownerUserId: number;
+  ownerIdentityId?: number | null;
+  shopId?: number | null;
   url: string;
-  mimeType: ContentMediaMimeType;
+  mimeType: string;
+  usageType?: "content_publication_public" | "official_notice_attachment";
+  fileName?: string;
   altText: string | null;
   checksumSha256: string;
   createdAt: Date;
@@ -53,7 +57,7 @@ export class ContentMediaService {
     context: AuthRequestContext,
     input: UploadContentMediaInput
   ): Promise<ContentMediaProjection> {
-    const prepared = this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
+    const prepared = await this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
     return this.repository.withChecksumLock(prepared.checksumSha256, async (locked) => {
       const stored = await this.storage.save({ bytes: input.bytes, mimeType: input.mimeType });
       try {

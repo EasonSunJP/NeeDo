@@ -1,8 +1,10 @@
+import { BookingSosButton } from "../../features/sos/BookingSosButton";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { AppTopBar, PageScaffold, PrimaryButton } from "../../components/client-ui/AppScaffold";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
+import { buildOrderServiceMiniCardData } from "../../components/mobile/OrderServiceMiniCard";
 import {
   bookingApi,
   createBookingIdempotencyKey,
@@ -16,7 +18,6 @@ import {
 } from "../../features/booking/api";
 import {
   coreReadApi,
-  mapCoreServiceToServiceItem,
   mapCoreShopToStore,
   mapCoreTechnicianToTechnician,
   type CoreServiceCard,
@@ -25,10 +26,19 @@ import {
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
+import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
+import type { ExchangeCancellation } from "../../features/exchange/types";
+import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
-import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card/SocialProfileMiniCard";
+import { serviceReviewSpecialTags } from "../../shared/order-detail/serviceReviewTagCatalog";
+import { getScopedTechnicianDynamicPath, SocialProfileMiniCard } from "../../shared/profile-card";
+import {
+  mapCoreServiceCardToUnifiedData,
+  UnifiedServiceInfoCard,
+  type UnifiedServiceInfoCardData
+} from "../../shared/service-card";
 import { useUserOrders } from "../../state/userOrderStore";
 
 function describeFormalOrderError(error: unknown) {
@@ -54,7 +64,7 @@ function formalStatusLabel(status: BookingOrder["status"]) {
 }
 
 function paymentMethodLabel(method: OrderCheckout["paymentMethod"]) {
-  if (method === "cash") return "现金支付";
+  if (method === "cash") return "线下支付";
   if (method === "ndp") return "NDP 支付";
   if (method === "other") return "其他方式支付";
   return "尚未选择";
@@ -67,8 +77,13 @@ function paymentEvidenceLabel(evidence: OrderCheckout["paymentEvidence"]) {
   return "尚无收款凭证";
 }
 
-function bookingPaymentMethodLabel(method: BookingOrder["paymentMethod"]) {
-  if (method === "onsite" || method === "cash") return "到店后确认付款";
+function bookingPaymentMethodLabel(
+  method: BookingOrder["paymentMethod"],
+  fulfillmentMode: BookingOrder["fulfillmentMode"]
+) {
+  if (method === "onsite" || method === "cash") {
+    return fulfillmentMode === "home" ? "服务现场确认付款" : "到店后确认付款";
+  }
   if (method === "bank_transfer") return "银行转账";
   if (method === "ndp") return "NDP 支付";
   return "其他支付方式";
@@ -105,29 +120,87 @@ function ProfileSection({ children, title }: { children: ReactNode; title: strin
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="min-w-0 rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 py-4 shadow-panel">
-      <p className="text-[11px] font-black text-[color:var(--client-muted)]">{label}</p>
-      <p className="mt-1 truncate text-sm font-black text-[color:var(--client-text)]">{value}</p>
-    </div>
-  );
+function buildBookingOrderSnapshotServiceData(order: BookingOrder): UnifiedServiceInfoCardData {
+  const snapshotPrice = Number(order.servicePriceSnapshot ?? order.priceAmount);
+
+  return {
+    id: String(order.id),
+    coverUrl: null,
+    name: order.serviceNameSnapshot?.trim() || order.serviceName,
+    priceAmount: Number.isFinite(snapshotPrice) ? snapshotPrice : order.paymentAmountJpy,
+    currency: order.currency,
+    durationMinutes: order.serviceDurationSnapshot ?? getPersistedBookingDurationMinutes(order),
+    usageCount: null,
+    shopPublicId: null,
+    shopAddress: null,
+    description: null,
+    tags: []
+  };
+}
+
+function buildBookingOrderServiceData(
+  order: BookingOrder,
+  service: CoreServiceDetail | null
+): UnifiedServiceInfoCardData {
+  const snapshot = buildBookingOrderSnapshotServiceData(order);
+  const paymentMethod = bookingPaymentMethodLabel(order.paymentMethod, order.fulfillmentMode);
+
+  if (!service) {
+    return { ...snapshot, tags: [paymentMethod] };
+  }
+
+  const live = mapCoreServiceCardToUnifiedData(service);
+  return {
+    ...live,
+    name: snapshot.name,
+    priceAmount: snapshot.priceAmount,
+    currency: snapshot.currency,
+    durationMinutes: snapshot.durationMinutes,
+    tags: [...live.tags.filter((tag) => tag !== paymentMethod), paymentMethod],
+    catalogPriceAmount: null
+  };
+}
+
+function getPersistedBookingDurationMinutes(order: BookingOrder) {
+  const startsAt = new Date(order.startsAt).getTime();
+  const endsAt = new Date(order.endsAt).getTime();
+  if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || endsAt <= startsAt) {
+    return 0;
+  }
+  return Math.max(1, Math.round((endsAt - startsAt) / 60_000));
+}
+
+function buildAddOnSnapshotServiceData(addOn: BookingOrderAddOn): UnifiedServiceInfoCardData {
+  return {
+    id: String(addOn.id),
+    coverUrl: null,
+    name: addOn.serviceNameSnapshot,
+    priceAmount: addOn.priceAmountJpy,
+    currency: addOn.currency,
+    durationMinutes: addOn.durationMinutes,
+    usageCount: null,
+    shopPublicId: null,
+    shopAddress: null,
+    description: null,
+    tags: []
+  };
 }
 
 function AddOnRow({ addOn, actions }: { addOn: BookingOrderAddOn; actions?: ReactNode }) {
+  const status = addOn.status === "accepted" ? "已接受" : addOn.status === "rejected" ? "已拒绝" : addOn.proposedBy === "customer" ? "等待技师确认" : "等待你的确认";
+
   return (
-    <article className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-black text-[color:var(--client-text)]">{addOn.serviceNameSnapshot}</h3>
-          <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">+{addOn.durationMinutes} 分钟 · {yen(addOn.priceAmountJpy)}</p>
+    <UnifiedServiceInfoCard
+      actionSlot={(
+        <div className="flex max-w-[108px] flex-col items-end gap-2">
+          <span className="rounded-full bg-[color:var(--client-elevated)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-muted)]">
+            {status}
+          </span>
+          {actions ? <div className="grid w-full grid-cols-2 gap-1">{actions}</div> : null}
         </div>
-        <span className="rounded-full bg-[color:var(--client-surface)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-muted)]">
-          {addOn.status === "accepted" ? "已接受" : addOn.status === "rejected" ? "已拒绝" : addOn.proposedBy === "customer" ? "等待技师确认" : "等待你的确认"}
-        </span>
-      </div>
-      {actions ? <div className="mt-3 grid grid-cols-2 gap-2">{actions}</div> : null}
-    </article>
+      )}
+      data={buildAddOnSnapshotServiceData(addOn)}
+    />
   );
 }
 
@@ -146,6 +219,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const [orderShop, setOrderShop] = useState<CoreShopDetail | null>(null);
   const [orderTechnician, setOrderTechnician] = useState<CoreTechnicianDetail | null>(null);
   const [profileLoadError, setProfileLoadError] = useState("");
+  const [profileRevision, setProfileRevision] = useState(0);
   const [queryStatus, setQueryStatus] = useState<"loading" | "success" | "error">("loading");
   const [queryError, setQueryError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -160,6 +234,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [queryRevision, setQueryRevision] = useState(0);
+  const [exchangeOrderLinked, setExchangeOrderLinked] = useState<boolean | null>(null);
   const mutationKeys = useRef(new Map<string, string>());
   const retainedReviewCommand = useRef<{ fingerprint: string; key: string } | null>(null);
   const routeState = location.state as { notice?: string } | null;
@@ -179,6 +254,8 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     setOrder(data);
     return data;
   }, [orderId]);
+
+  useOrderRealtimeRefresh({ onRefresh: loadOrder, orderId });
 
   useEffect(() => {
     let active = true;
@@ -225,7 +302,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     };
     void loadProfiles();
     return () => { active = false; };
-  }, [order]);
+  }, [order, profileRevision]);
 
   useEffect(() => {
     if (!order || !["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(order.status)) {
@@ -340,10 +417,11 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       setProjectionError("订单状态读取失败，支付结果已经保存，请重新读取订单状态。");
     }
   };
-  const selectPayment = (method: "cash" | "other") => {
-    void runMutation(`payment-${method}`, (idempotencyKey) => bookingApi.selectPaymentMethod(orderId, method === "cash"
-      ? { method: "cash", idempotencyKey }
-      : { method: "other", otherMethodCode: "other_manual", otherMethodLabel: "其他方式", idempotencyKey }), async (value) => {
+  const selectOfflinePayment = () => {
+    void runMutation("payment-cash", (idempotencyKey) => bookingApi.selectPaymentMethod(orderId, {
+      method: "cash",
+      idempotencyKey
+    }), async (value) => {
       await applyCheckoutMutation(value);
     });
   };
@@ -384,6 +462,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       retainedReviewCommand.current = null;
       setOwnReview(result.review);
       setReviewStatus("success");
+      setProfileRevision((revision) => revision + 1);
     } catch (error) {
       if (!isAmbiguousMutationError(error)) retainedReviewCommand.current = null;
       setReviewError(`评价提交失败：${describeFormalOrderError(error)}`);
@@ -393,10 +472,6 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   };
 
   const remaining = getRemainingSeconds(order?.serviceSession?.expectedEndsAt, now);
-  const displayService = useMemo(
-    () => (orderService ? mapCoreServiceToServiceItem(orderService) : null),
-    [orderService]
-  );
   const displayShop = useMemo(
     () => (orderShop ? mapCoreShopToStore(orderShop) : null),
     [orderShop]
@@ -405,6 +480,14 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     () => (orderTechnician ? mapCoreTechnicianToTechnician(orderTechnician) : null),
     [orderTechnician]
   );
+  const technicianReviewTagOptions = useMemo(() => [
+    ...serviceReviewSpecialTags,
+    ...(orderTechnician?.reviewTagSummary.custom ?? []).map((tag) => ({
+      label: tag.label,
+      count: tag.count,
+      kind: "chip" as const
+    }))
+  ], [orderTechnician]);
   const canChoosePayment =
     order?.status === "awaitingCheckout" &&
     checkoutStatus === "success" &&
@@ -416,10 +499,16 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     navigate(-1);
   };
   const canCancel = order?.status === "pending" || order?.status === "confirmed";
+  const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
+    if (payload.orderStatus !== "cancelled") return;
+    setOrder((current) => current?.id === payload.orderId
+      ? { ...current, status: "cancelled" }
+      : current);
+  }, []);
 
   return (
     <PageScaffold contentClassName="space-y-4 pb-36" navItems={[]}>
-      <AppTopBar closeLabel="关闭预约详情" onBack={handleBack} onClose={closeDetail} title="预约详情" />
+      <AppTopBar actions={order ? <BookingSosButton orderId={order.id} revision={`${order.status}:${order.serviceSession?.endedAt ?? ""}`} /> : null} closeLabel="关闭预约详情" onBack={handleBack} onClose={closeDetail} title="预约详情" />
       {routeState?.notice ? <section className="rounded-[20px] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black">{routeState.notice}</section> : null}
       {queryStatus === "loading" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-6 text-center font-black">正在加载预约详情</section> : null}
       {queryStatus === "error" ? (
@@ -436,27 +525,11 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           {profileLoadError ? <p className="rounded-[18px] bg-amber-500/10 px-4 py-3 text-xs font-black text-amber-500">{profileLoadError}</p> : null}
 
           <ProfileSection title="服务">
-            {displayService ? (
-              <SocialProfileMiniCard
-                data={buildServiceMiniCardData(displayService, displayShop ?? undefined)}
-                detailTo={`/services/${displayService.id}`}
-                showAction={false}
-                topTags={[{ label: formalStatusLabel(order.status), tone: "green" }]}
-              />
-            ) : (
-              <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
-                <p className="text-xs font-black text-[color:var(--client-muted)]">正式预约服务</p>
-                <h2 className="mt-1 text-xl font-black text-[color:var(--client-text)]">{order.serviceName}</h2>
-                <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{order.shopName}</p>
-              </section>
-            )}
+            <UnifiedServiceInfoCard
+              data={buildBookingOrderServiceData(order, orderService)}
+              detailTo={orderService ? `/services/${orderService.id}` : undefined}
+            />
           </ProfileSection>
-
-          <div className="grid grid-cols-3 gap-2">
-            <SummaryStat label="金额" value={yen(order.paymentAmountJpy)} />
-            <SummaryStat label="支付手段" value={bookingPaymentMethodLabel(order.paymentMethod)} />
-            <SummaryStat label="来源" value="App" />
-          </div>
 
           <ProfileSection title="店铺 / 服务方">
             {displayShop ? (
@@ -474,7 +547,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           <ProfileSection title="技师 / 担当">
             {displayTechnician ? (
               <SocialProfileMiniCard
-                detailTo={`/technicians/${displayTechnician.id}`}
+                detailTo={getScopedTechnicianDynamicPath("user", displayTechnician)}
                 showAction={false}
                 technician={displayTechnician}
                 topTags={[{ label: "本次担当", tone: "green" }]}
@@ -500,9 +573,22 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           ]} />
 
           <ContactEventTimelinePanel
-            title="联系信息"
+            title="订单追踪信息"
             events={buildFormalOrderTimelineEvents(order)}
+            onCommentSubmit={(body) => {
+              void runOrderMutation("timeline-comment", () =>
+                bookingApi.createTimelineComment(orderId, { body })
+              );
+            }}
           />
+
+          {canCancel || order.status === "cancelled" ? (
+            <ExchangeOrderCancellationPanel
+              onCancellationChange={handleExchangeCancellationChange}
+              onLinkedChange={setExchangeOrderLinked}
+              orderId={orderId}
+            />
+          ) : null}
 
           {order.status === "confirmed" && /^\d{6}$/.test(order.serviceVerificationCode ?? "") ? (
             <section className="rounded-[24px] border border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] p-5 text-center">
@@ -527,10 +613,20 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
                 <h2 className="text-sm font-black">追加正式服务</h2>
                 <div className="mt-2 grid gap-2">
                   {services.map((service) => (
-                    <button className="flex items-center justify-between rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3 text-left" disabled={Boolean(pendingAction)} key={service.id} onClick={() => void runOrderMutation(`addon-${service.id}`, (idempotencyKey) => bookingApi.createAddOn(orderId, { serviceId: service.id, idempotencyKey }))} type="button">
-                      <span><strong className="block text-sm">{service.name}</strong><small className="text-[color:var(--client-muted)]">+{service.durationMinutes} 分钟</small></span>
-                      <strong>{yen(Number(service.priceAmount))}</strong>
-                    </button>
+                    <UnifiedServiceInfoCard
+                      actionSlot={(
+                        <button
+                          className="h-9 rounded-full bg-[color:var(--client-primary)] px-3 text-xs font-black text-[color:var(--client-primary-contrast)] disabled:opacity-50"
+                          disabled={Boolean(pendingAction)}
+                          onClick={() => void runOrderMutation(`addon-${service.id}`, (idempotencyKey) => bookingApi.createAddOn(orderId, { serviceId: service.id, idempotencyKey }))}
+                          type="button"
+                        >
+                          追加<span className="sr-only"> {service.name}</span>
+                        </button>
+                      )}
+                      data={mapCoreServiceCardToUnifiedData(service)}
+                      key={service.id}
+                    />
                   ))}
                 </div>
               </div>
@@ -550,7 +646,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
             ["支付凭证", paymentEvidenceLabel(checkout.paymentEvidence)]
           ]} /> : null}
 
-          {order.status === "awaitingPaymentConfirmation" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center"><h2 className="text-lg font-black">等待技师确认收款</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">订单会在技师确认现金或其他方式收款后完成。</p></section> : null}
+          {order.status === "awaitingPaymentConfirmation" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center"><h2 className="text-lg font-black">等待线下收款确认</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">线下支付由现场人员、技师或店铺确认收款后完成。</p></section> : null}
           {order.status === "completed" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center"><h2 className="text-lg font-black">服务与结算已完成</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkout ? paymentEvidenceLabel(checkout.paymentEvidence) : "正在读取支付凭证"}</p></section> : null}
 
           {projectionError ? <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert"><p>{projectionError}</p><button className="mt-3 h-10 w-full rounded-full border border-red-400/40" disabled={projectionPending} onClick={() => void retryOrderProjection()} type="button">{projectionPending ? "正在读取订单状态" : "重新读取订单状态"}</button></section> : null}
@@ -560,8 +656,9 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           {order.status === "confirmed" ? <button className="h-12 w-full rounded-[20px] bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-50" disabled={Boolean(pendingAction)} onClick={() => setStartConfirmOpen(true)} type="button">开始服务</button> : null}
           {order.status === "inService" && remaining > 0 ? <button className="h-12 w-full rounded-[20px] bg-red-500 text-sm font-black text-white" disabled={Boolean(pendingAction)} onClick={() => setEndConfirmOpen(true)} type="button">提前结束服务</button> : null}
           {order.status === "inService" && remaining === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black">服务时间已到，等待系统完成结算准备</p> : null}
-          {canChoosePayment ? <div className="grid grid-cols-3 gap-2"><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("cash")} type="button">现金支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void runMutation("payment-ndp", (idempotencyKey) => bookingApi.payWithNdp(orderId, { idempotencyKey }), applyCheckoutMutation)} type="button">NDP 支付</button><button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={() => selectPayment("other")} type="button">其他方式</button></div> : null}
-          {canCancel ? <button className="h-12 w-full rounded-[20px] border border-red-400/40 text-sm font-black text-red-500" disabled={Boolean(pendingAction)} onClick={() => void runOrderMutation("cancel", async () => bookingApi.cancelOrder(orderId, "客户从预约详情取消"))} type="button">取消预约</button> : null}
+          {canChoosePayment && checkout.availablePaymentMethods.length === 0 ? <p className="rounded-[20px] bg-[color:var(--client-surface)] px-4 py-3 text-center text-sm font-black text-[color:var(--client-muted)]">当前暂无可用支付方式</p> : null}
+          {canChoosePayment && checkout.availablePaymentMethods.length > 0 ? <div className="grid grid-cols-2 gap-2">{checkout.availablePaymentMethods.includes("cash") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-elevated)] text-xs font-black" disabled={Boolean(pendingAction)} onClick={selectOfflinePayment} type="button">线下支付</button> : null}{checkout.availablePaymentMethods.includes("ndp") ? <button className="h-12 rounded-[18px] bg-[color:var(--client-primary)] text-xs font-black text-[color:var(--client-primary-contrast)]" disabled={Boolean(pendingAction)} onClick={() => void runMutation("payment-ndp", (idempotencyKey) => bookingApi.payWithNdp(orderId, { idempotencyKey }), applyCheckoutMutation)} type="button">NDP 支付</button> : null}</div> : null}
+          {exchangeOrderLinked === false && canCancel ? <button className="h-12 w-full rounded-[20px] border border-red-400/40 text-sm font-black text-red-500" disabled={Boolean(pendingAction)} onClick={() => void runOrderMutation("cancel", async () => bookingApi.cancelOrder(orderId, "客户从预约详情取消"))} type="button">取消预约</button> : null}
         </>
       ) : null}
 
@@ -578,7 +675,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
           onSubmit={(submission) => void submitReview(submission)}
           pending={reviewPending}
           showTagCounts={false}
-          tagOptions={["魅力值", "服务精神", "情绪价值", "元气"]}
+          tagOptions={technicianReviewTagOptions}
           title="评价技师"
         />
       ) : null}
@@ -599,7 +696,8 @@ function LegacyUserOrderDetailPage() {
   return (
     <PageScaffold contentClassName="space-y-4 pb-8" navItems={[]}>
       <AppTopBar closeLabel="关闭预约详情" onBack={handleBack} onClose={closeDetail} title="预约详情" />
-      <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5"><p className="text-xs font-black text-[color:var(--client-muted)]">历史只读预约</p><h2 className="mt-2 text-xl font-black">{order.itemName}</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{order.storeName} · {order.bookedAt}</p><p className="mt-4 text-sm font-black">{statusLabel(order.status)} · {yen(order.amount)}</p></section>
+      <p className="text-xs font-black text-[color:var(--client-muted)]">历史只读预约</p>
+      <UnifiedServiceInfoCard data={buildOrderServiceMiniCardData(order)} detailTo={order.serviceId ? `/services/${order.serviceId}` : undefined} />
       <p className="rounded-[20px] bg-[color:var(--client-elevated)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]">此旧记录仅供查看，不支持开始、追加、结束、结算或评价操作。</p>
       {order.serviceId ? <Link className="text-center text-sm font-black text-[color:var(--client-primary)]" to={`/services/${order.serviceId}`}>查看服务</Link> : null}
     </PageScaffold>

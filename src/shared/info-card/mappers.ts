@@ -1,6 +1,7 @@
 import type { DetailProfile } from "../../types/detailProfile";
 import type { Customer, ServicePaymentMethod, Store, Technician } from "../../types/domain";
 import { getProfileDetailPath } from "../profile-detail/paths";
+import { getTechnicianDynamicPath } from "../profile-card/TechnicianShowcaseCard";
 import { formatCustomerMembershipLevel, getCustomerLevelLabel, resolveCustomerMembership } from "../profile-card/customerMembership";
 import { formatCustomerCreditScore, formatCustomerGenderLabel } from "../profile-card/customerProfileLabels";
 import { getStoreCardDecorationConfig } from "../../lib/storeUiDecoration";
@@ -167,7 +168,7 @@ export function buildTechnicianInfoCardData(technician: Technician): TechnicianI
       ...technician.languages.slice(0, 2),
       ...tagPool.slice(0, 2)
     ].filter(Boolean),
-    detailPath: getProfileDetailPath("technician", technician.id),
+    detailPath: getTechnicianDynamicPath(technician),
     age: technician.age,
     serviceTypes: technician.skills,
     languages: technician.languages,

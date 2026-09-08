@@ -561,6 +561,7 @@ export function AppTopBar({
   closeTo,
   actions,
   footer,
+  overlay,
   footerClassName,
   containerClassName,
   hideBackButton = false,
@@ -568,6 +569,7 @@ export function AppTopBar({
   closeLabel = "关闭",
   controlButtonClassName,
   className,
+  frameClassName,
   fixed = false
 }: {
   title: ReactNode;
@@ -579,6 +581,7 @@ export function AppTopBar({
   closeTo?: string;
   actions?: ReactNode;
   footer?: ReactNode;
+  overlay?: ReactNode;
   footerClassName?: string;
   containerClassName?: string;
   hideBackButton?: boolean;
@@ -586,6 +589,7 @@ export function AppTopBar({
   closeLabel?: string;
   controlButtonClassName?: string;
   className?: string;
+  frameClassName?: string;
   fixed?: boolean;
 }) {
   const navigate = useNavigate();
@@ -655,8 +659,9 @@ export function AppTopBar({
   return (
     <FloatingHomeHeader
       className="gap-0"
-      frameClassName="z-40"
+      frameClassName={cn("z-40", frameClassName)}
       maxWidth="1600px"
+      overlay={overlay}
       panelClassName={cn(appTopBarPanelClassName, className)}
       showSpacer={!fixed}
       spacerGapPx={0}

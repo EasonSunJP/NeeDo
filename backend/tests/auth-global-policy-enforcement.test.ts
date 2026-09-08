@@ -6,6 +6,15 @@ import type { UserPolicyComplianceDecision } from "../src/domain/user-policy-enf
 import type { AuthUserRecord } from "../src/repositories/auth.repository";
 import { AuthService } from "../src/services/auth.service";
 
+const requireAuthenticatedLogin = (
+  result: Awaited<ReturnType<AuthService["login"]>>
+): Extract<Awaited<ReturnType<AuthService["login"]>>, { status: "authenticated" }> => {
+  if (result.status !== "authenticated") {
+    throw new Error("fixture password login unexpectedly required verification");
+  }
+  return result;
+};
+
 const nowIso = "2026-09-01T10:00:00.000Z";
 const allowedRoutes = [
   "/api/v1/auth/me",
@@ -33,35 +42,39 @@ const user = async (): Promise<AuthUserRecord> => ({
   accessState: { disabled: false, restricted: false },
   lastLoginAt: null,
   deletedAt: null,
-  identities: [{
-    id: 410,
-    userId: 41,
-    type: "customer",
-    scopeType: "customer_profile",
-    scopeId: 41,
-    displayName: "Member",
-    isDefault: true,
-    isActive: true,
-    deletedAt: null,
-    publicIdentifier: {
-      publicId: "u0000000041",
-      kind: "U",
-      loginAllowed: true,
-      status: "ACTIVE",
-      deletedAt: null
-    }
-  }],
-  userRoles: [{
-    deletedAt: null,
-    role: {
-      code: "customer",
+  identities: [
+    {
+      id: 410,
+      userId: 41,
+      type: "customer",
+      scopeType: "customer_profile",
+      scopeId: 41,
+      displayName: "Member",
+      isDefault: true,
+      isActive: true,
       deletedAt: null,
-      rolePermissions: ["auth:me", "auth:logout"].map((code) => ({
-        deletedAt: null,
-        permission: { code, type: "api", deletedAt: null }
-      }))
+      publicIdentifier: {
+        publicId: "u0000000041",
+        kind: "U",
+        loginAllowed: true,
+        status: "ACTIVE",
+        deletedAt: null
+      }
     }
-  }]
+  ],
+  userRoles: [
+    {
+      deletedAt: null,
+      role: {
+        code: "customer",
+        deletedAt: null,
+        rolePermissions: ["auth:me", "auth:logout"].map((code) => ({
+          deletedAt: null,
+          permission: { code, type: "api", deletedAt: null }
+        }))
+      }
+    }
+  ]
 });
 
 const restrictedDecision = (): UserPolicyComplianceDecision => ({
@@ -88,6 +101,11 @@ async function fixture() {
     findUserById: jest.fn(async () => account),
     createVerifiedBaselineCustomer: jest.fn(),
     findVerifiedRegistrationByChallenge: jest.fn(),
+    getSuccessfulLoginEvidence: jest.fn(async () => ({
+      hasAnySuccessfulLogin: true,
+      hasSuccessfulLoginInPeriod: true,
+      hasSuccessfulLoginFromIp: true
+    })),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
     createAuditLog: jest.fn(async () => undefined),
@@ -143,7 +161,9 @@ async function fixture() {
     repository,
     service,
     refreshTokens,
-    setDecision: (next: UserPolicyComplianceDecision) => { decision = next; }
+    setDecision: (next: UserPolicyComplianceDecision) => {
+      decision = next;
+    }
   };
 }
 
@@ -166,7 +186,9 @@ describe("auth global-policy enforcement", () => {
 
   it("issues a limited existing-user session and exposes only safe compliance data", async () => {
     const { service } = await fixture();
-    const tokens = await service.login("member@example.com", "Abcd@1234", { ip: "127.0.0.1" });
+    const tokens = requireAuthenticatedLogin(
+      await service.login("member@example.com", "Abcd@1234", { ip: "127.0.0.1" })
+    );
 
     await expect(service.authenticateAccessToken(tokens.accessToken)).rejects.toMatchObject({
       code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
@@ -178,11 +200,9 @@ describe("auth global-policy enforcement", () => {
         permittedNextRoutes: allowedRoutes
       }
     });
-    const limited = await service.authenticateAccessToken(
-      tokens.accessToken,
-      undefined,
-      { allowDuringCompliance: true }
-    );
+    const limited = await service.authenticateAccessToken(tokens.accessToken, undefined, {
+      allowDuringCompliance: true
+    });
     expect(limited.complianceRequirements).toEqual(["phone_binding_required"]);
     await expect(service.getMe(limited)).resolves.toMatchObject({
       complianceRequirements: ["phone_binding_required"],
@@ -193,7 +213,11 @@ describe("auth global-policy enforcement", () => {
   it("re-evaluates a published policy on the next protected action without revoking refresh", async () => {
     const state = await fixture();
     state.setDecision(compliantDecision());
-    const tokens = await state.service.login("member@example.com", "Abcd@1234", { ip: "127.0.0.1" });
+    const tokens = requireAuthenticatedLogin(
+      await state.service.login("member@example.com", "Abcd@1234", {
+        ip: "127.0.0.1"
+      })
+    );
     await expect(state.service.authenticateAccessToken(tokens.accessToken)).resolves.toMatchObject({
       userId: 41,
       complianceRequirements: []
@@ -214,22 +238,24 @@ describe("auth global-policy enforcement", () => {
     const state = await fixture();
     state.setDecision(compliantDecision());
 
-    await expect(state.service.bindCompliancePhone(
-      "+819012345678",
-      {
-        userId: 41,
-        email: "member@example.com",
-        accessTokenJti: "access-41",
-        accessTokenExpiresAt: Math.floor(Date.now() / 1000) + 900,
-        currentIdentityId: 410,
-        currentIdentityType: "customer",
-        currentIdentityScopeType: "customer_profile",
-        currentIdentityScopeId: 41,
-        roles: ["customer"],
-        permissions: ["auth:me"]
-      },
-      { ip: "127.0.0.1" }
-    )).resolves.toEqual({
+    await expect(
+      state.service.bindCompliancePhone(
+        "+819012345678",
+        {
+          userId: 41,
+          email: "member@example.com",
+          accessTokenJti: "access-41",
+          accessTokenExpiresAt: Math.floor(Date.now() / 1000) + 900,
+          currentIdentityId: 410,
+          currentIdentityType: "customer",
+          currentIdentityScopeType: "customer_profile",
+          currentIdentityScopeId: 41,
+          roles: ["customer"],
+          permissions: ["auth:me"]
+        },
+        { ip: "127.0.0.1" }
+      )
+    ).resolves.toEqual({
       phone: "+819012345678",
       complianceRequirements: [],
       smsVerified: false

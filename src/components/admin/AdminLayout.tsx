@@ -1,15 +1,17 @@
+import { BackofficeHeaderActions } from "../../features/sos/BackofficeHeaderActions";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { cn } from "../../lib/utils";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, type AdminTheme } from "../../theme/AdminTheme";
 import { AdminAccountMenu } from "./AdminAccountMenu";
-import { AdminThemeMenu } from "./AdminThemeMenu";
 import { CloseIconButton } from "../ui/CloseIconButton";
-import { LanguageSwitcher } from "../ui/LanguageSwitcher";
-import { NotificationBadge } from "../ui/NotificationBadge";
+import { OfficialNoticeBell } from "../ui/OfficialNoticeBell";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { contentPublicationEditorText } from "../../features/content-publication/i18n";
+import { translateText } from "../../i18n/translations";
+import { AdminOperatorSummary } from "./AdminOperatorSummary";
+import { resolveAdminDisplayName, resolveAdminRoleLabel } from "./adminOperatorSummaryModel";
 
 const themeStorageKey = "needo.admin.theme";
 const themePreferenceModeStorageKey = "needo.admin.theme.mode";
@@ -37,23 +39,29 @@ type AdminNavSection = {
   items: AdminNavItem[];
 };
 
-type AdminUtilityLink = {
-  label: string;
-  to: string;
-  tone: "screen" | "sos";
-};
 
 const navSections: AdminNavSection[] = [
   {
     key: "platform",
-    title: "运营管理",
+    title: "运营",
     items: [
       { label: "数据大盘", to: "/admin", icon: "◆", permission: "menu:dashboard" },
-      { label: "运营时间线", to: "/admin/operation-timeline", icon: "线", children: ["搜索筛选", "城市跟进", "异常观察"] },
       { label: "数据中心", to: "/admin/data", icon: "▥" },
       { label: "动态管理", to: "/admin/data?module=moments", icon: "◎" },
       { label: "用户端首页轮播图", to: "/admin/carousel", icon: "播", permission: "page:backoffice-user-home-carousel", children: ["五语言", "草稿与发布", "版本回滚"] },
-      { label: "官方通知", to: "/admin/notifications", icon: "通", children: ["通知列表", "定时发送", "图文视频"] }
+      { label: "官方通知", to: "/admin/notifications", icon: "通", permission: "page:backoffice-official-notice", children: ["通知列表", "定时发送", "投递回执"] },
+      { label: "运营时间线", to: "/admin/operation-timeline", icon: "线", permission: "backoffice:dashboard:read" }
+    ]
+  },
+  {
+    key: "users",
+    title: "用户",
+    items: [
+      { label: "用户列表", to: "/admin/users", icon: "列", permission: "backoffice:users:read", children: ["全部账号", "身份", "会员与经验"] },
+      { label: "用户分组", to: "/admin/user-groups", icon: "组", permission: "backoffice:user-group:read", children: ["系统分组", "自定义分组", "成员"] },
+      { label: "用户全局设置", to: "/admin/user-global-settings", icon: "全", permission: "backoffice:user-policy:read", children: ["账号绑定", "eKYC", "NDP经验活动"] },
+      { label: "会员等级设置", to: "/admin/membership-tiers", icon: "级", permission: "backoffice:membership-tier:read", children: ["四种会员", "卡面", "草稿发布"] },
+      { label: "会员权益说明", to: "/admin/membership-benefits", icon: "益", permission: "backoffice:membership-benefit:read", children: ["八项权益", "启停", "交付能力"] }
     ]
   },
   {
@@ -81,6 +89,25 @@ const navSections: AdminNavSection[] = [
     ]
   },
   {
+    key: "stores",
+    title: "店铺",
+    items: [
+      { label: "店铺列表", to: "/admin/merchants", icon: "店", children: ["店铺信息卡", "营业状态", "预约能力"] },
+      { label: "店铺分类", to: "/admin/merchants?module=categories", icon: "类", children: ["分类图标", "启用状态", "排序"] },
+      { label: "店铺申请管理", to: "/admin/merchant-applications", icon: "审", permission: "ops:merchant-application:read" }
+    ]
+  },
+  {
+    key: "marketing",
+    title: "营销",
+    badge: "TEST",
+    items: [
+      { label: "优惠券", to: "/admin/marketing", icon: "券", children: ["能力门禁", "核销合同", "归因审计"] },
+      { label: "礼品卡", to: "/admin/marketing?module=gift-cards", icon: "礼", children: ["能力门禁"] },
+      { label: "文章管理", to: "/admin/marketing?module=articles", icon: "文", children: ["能力门禁"] }
+    ]
+  },
+  {
     key: "finance",
     title: "财务",
     items: [
@@ -90,15 +117,6 @@ const navSections: AdminNavSection[] = [
       { label: "退款审核", to: "/admin/finance?module=refund-review", icon: "审" },
       { label: "分账规则", to: "/admin/finance?module=commission", icon: "％" },
       { label: "发票记录", to: "/admin/finance?module=invoices", icon: "票" }
-    ]
-  },
-  {
-    key: "marketing",
-    title: "营销",
-    items: [
-      { label: "优惠券", to: "/admin/marketing", icon: "券", children: ["能力门禁", "核销合同", "归因审计"] },
-      { label: "礼品卡", to: "/admin/marketing?module=gift-cards", icon: "礼", children: ["能力门禁"] },
-      { label: "文章管理", to: "/admin/marketing?module=articles", icon: "文", children: ["能力门禁"] }
     ]
   },
   {
@@ -112,27 +130,9 @@ const navSections: AdminNavSection[] = [
     ]
   },
   {
-    key: "users",
-    title: "用户管理",
-    items: [
-      { label: "用户列表", to: "/admin/users", icon: "列", permission: "backoffice:users:read", children: ["全部账号", "身份", "会员与经验"] },
-      { label: "用户分组", to: "/admin/user-groups", icon: "组", permission: "backoffice:user-group:read", children: ["系统分组", "自定义分组", "成员"] },
-      { label: "用户全局设置", to: "/admin/user-global-settings", icon: "全", permission: "backoffice:user-policy:read", children: ["账号绑定", "eKYC", "NDP经验活动"] },
-      { label: "会员等级设置", to: "/admin/membership-tiers", icon: "级", permission: "backoffice:membership-tier:read", children: ["四种会员", "卡面", "草稿发布"] },
-      { label: "会员权益说明", to: "/admin/membership-benefits", icon: "益", permission: "backoffice:membership-benefit:read", children: ["七项权益", "启停", "交付能力"] }
-    ]
-  },
-  {
-    key: "stores",
-    title: "店铺与商家",
-    items: [
-      { label: "店铺列表", to: "/admin/merchants", icon: "店", children: ["店铺信息卡", "营业状态", "预约能力"] },
-      { label: "店铺分类", to: "/admin/merchants?module=categories", icon: "类", children: ["分类图标", "启用状态", "排序"] }
-    ]
-  },
-  {
     key: "agents",
-    title: "代理",
+    title: "代理商",
+    badge: "TEST",
     items: [
       { label: "代理商管理", to: "/admin/agents", icon: "代", permission: "backoffice:agent:read", children: ["介绍店铺", "佣金规则", "结算与支付"] }
     ]
@@ -155,12 +155,13 @@ const navSections: AdminNavSection[] = [
     key: "settings",
     title: "设置",
     items: [
-      { label: "系统设置", to: "/admin/roles?module=system", icon: "系", permission: "menu:admin-settings", children: ["储存设置", "支付设置"] },
+      { label: "系统设置", to: "/admin/settings/system", icon: "系", permission: "menu:admin-settings", children: ["基础设置", "政策和协议", "储存设置", "支付设置", "eKYC"] },
       { label: "NDP 汇率", to: "/admin/settings/ndp-exchange-rate", icon: "率", permission: "backoffice:ndp-exchange-rate:read", children: ["当前汇率", "计划汇率", "版本历史"] },
+      { label: "运营服务类型设置", to: "/admin/settings/service-search", icon: "搜", permission: "backoffice:service-taxonomy:read", children: ["服务类型", "搜索标签", "关键词趋势"] },
       { label: "城市设置", to: "/admin/cities", icon: "城", children: ["城市管理", "城市投票"] },
       { label: "角色管理", to: "/admin/roles", icon: "角", permission: "menu:role-management", children: ["角色列表", "分配权限"] },
       { label: "权限管理", to: "/admin/permissions", icon: "权", permission: "menu:permission-management", children: ["权限列表", "权限树"] },
-      { label: "出行能力状态", to: "/admin/travel-settings", icon: "行", children: ["地址基础数据", "供应商未配置", "出行合同"] }
+      { label: "出行能力状态", to: "/admin/travel-settings", icon: "行", permission: "backoffice:travel-fare:read", children: ["地址基础数据", "供应商未配置", "出行合同"] }
     ]
   },
   {
@@ -170,12 +171,10 @@ const navSections: AdminNavSection[] = [
       { label: "操作文档", to: "/admin/docs", icon: "文", children: ["产运后台", "商户后台", "联盟营销后台"] },
       { label: "API 文档", to: "/admin/docs/api", icon: "A", children: ["全量 API", "显示开关", "关键字段"] }
     ]
-  }
+  },
+  { key: "application-reviews", title: "审核", items: [{ label: "eKYC手动", to: "/admin/application-reviews/ekyc", icon: "审", permission: "ops:ekyc-application:read" }] }
 ];
 
-const utilityLinks: AdminUtilityLink[] = [
-  { label: "求救通知", to: "/admin/reviews?module=sos", tone: "sos" }
-];
 
 function splitTo(to: string) {
   const [path, query = ""] = to.split("?");
@@ -253,30 +252,16 @@ function getInitialAdminThemeState(): AdminThemeState {
   };
 }
 
-function AdminUtilityIcon({ tone }: { tone: AdminUtilityLink["tone"] }) {
-  if (tone === "sos") {
-    return (
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-        <path d="M12 3.4 3.8 18.2a1.6 1.6 0 0 0 1.4 2.4h13.6a1.6 1.6 0 0 0 1.4-2.4L12 3.4Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2.1" />
-        <path d="M12 8.5v5.2M12 17.2h.01" stroke="currentColor" strokeLinecap="round" strokeWidth="2.3" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-      <path d="M4 5.6h16v10.8H4z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-      <path d="M9 20h6M12 16.4V20M7.5 13.2V9.8M12 13.2V7.6M16.5 13.2v-2.4" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-    </svg>
-  );
-}
-
 export function AdminLayout({ children }: { children: ReactNode }) {
   const [{ theme, preferenceMode }, setThemeState] = useState<AdminThemeState>(getInitialAdminThemeState);
   const location = useLocation();
   const navigate = useNavigate();
-  const { canAccessMenu } = useAuth();
+  const { canAccessMenu, hasPermission, session } = useAuth();
   const { language } = useOptionalI18n();
+  const accountName = session ? resolveAdminDisplayName(session) : "—";
+  const roleLabel = session
+    ? resolveAdminRoleLabel(session, translateText("运营后台成员", language))
+    : translateText("运营后台成员", language);
   const visibleNavSections = useMemo(
     () =>
       navSections
@@ -332,7 +317,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         <div className="flex h-full flex-col">
           <div className="admin-brand rounded-lg p-4 text-white">
             <div className="flex items-center gap-3">
-              <AdminAccountMenu accountName="David Stainberry" fallbackEmail="admin@needo.jp" loginPath="/login/admin" portal="admin" roleLabel="平台运营管理员" />
+              <AdminAccountMenu accountName={accountName} loginPath="/login/admin" portal="admin" roleLabel={roleLabel} />
               <NavLink className="min-w-0 flex-1 text-white" to="/">
                 <p className="text-xs font-bold text-mint">NeeDo 运营后台</p>
                 <h1 className="mt-1 text-lg font-black">运营后台</h1>
@@ -340,29 +325,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <section className="admin-profile mt-4 rounded-lg border border-line bg-paper p-3">
-            <div className="flex items-center gap-3">
-              <img
-                alt="运营管理员头像"
-                className="avatar-shape h-11 w-11 object-cover"
-                src="/images/generated/profiles/profile-03.jpg"
-              />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black">David Stainberry</p>
-                <p className="mt-1 text-xs text-ink/45">平台运营管理员</p>
-              </div>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-md bg-white px-2 py-2">
-                <p className="text-[11px] text-ink/45">待处理</p>
-                <strong className="text-sm">36</strong>
-              </div>
-              <div className="rounded-md bg-white px-2 py-2">
-                <p className="text-[11px] text-ink/45">审核</p>
-                <strong className="text-sm">19</strong>
-              </div>
-            </div>
-          </section>
+          <AdminOperatorSummary hasPermission={hasPermission} language={language} session={session} />
 
           <section className="admin-sidebar-search mt-4 rounded-lg border border-line bg-paper p-3">
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-ink/40">全局搜索</p>
@@ -497,56 +460,15 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     </button>
                   ))}
                 </div>
-                <div className="admin-utility-actions hidden shrink-0 items-center gap-2 xl:flex">
-                  {utilityLinks.map((item) => {
-                    const { path, search } = splitTo(item.to);
-                    const active = location.pathname === path && location.search === search;
 
-                    return (
-                      <NavLink
-                        aria-label={item.label}
-                        className={cn(
-                          "admin-utility-link focus-ring flex h-10 items-center gap-2 rounded-lg border px-3 text-xs font-black transition",
-                          `is-${item.tone}`,
-                          active && "is-active"
-                        )}
-                        key={item.to}
-                        to={item.to}
-                      >
-                        <span className="grid h-7 w-7 place-items-center rounded-md">
-                          <AdminUtilityIcon tone={item.tone} />
-                        </span>
-                        <span>{item.label}</span>
-                      </NavLink>
-                    );
-                  })}
-                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <LanguageSwitcher className="shrink-0" iconOnly />
-                <AdminThemeMenu onThemeChange={setTheme} options={platformAdminThemeOptions} theme={theme} />
-                <NavLink
-                  aria-label="消息"
-                  className="focus-ring relative grid h-10 w-10 place-items-center rounded-lg border border-line bg-white text-ink/70 transition hover:text-moss"
-                  to="/admin/notifications"
-                >
-                  <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <path d="M12 4a6 6 0 0 0-6 6v2.5L4.7 15a1 1 0 0 0 .7 1.7H18.6a1 1 0 0 0 .7-1.7L18 12.5V10a6 6 0 0 0-6-6Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-                    <path d="M9.5 19a2.5 2.5 0 0 0 5 0" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-                  </svg>
-                  <NotificationBadge className="absolute right-1.5 top-1.5" count={12} size="sm" />
-                </NavLink>
-                <NavLink
-                  aria-label="客服台"
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-lg border border-line bg-white text-ink/70 transition hover:text-moss"
-                  to="/admin/support"
-                >
-                  <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <path d="M4 13.5a8 8 0 0 1 16 0v3a2 2 0 0 1-2 2h-1.2a1.8 1.8 0 0 1-1.8-1.8v-1.4a1.8 1.8 0 0 1 1.8-1.8H18v-.2a6 6 0 0 0-12 0v.2h1.2A1.8 1.8 0 0 1 9 15.3v1.4a1.8 1.8 0 0 1-1.8 1.8H6a2 2 0 0 1-2-2v-3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-                    <path d="M12 18.5h2.5a2 2 0 0 0 2-2" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-                  </svg>
-                </NavLink>
-              </div>
+              <BackofficeHeaderActions
+                theme={theme}
+                onThemeChange={setTheme}
+                themeOptions={platformAdminThemeOptions}
+                messageAction={<OfficialNoticeBell to="/admin/notifications/inbox" />}
+                supportTo="/admin/support"
+              />
             </div>
             <div className="admin-subnav scrollbar-none mt-3 flex items-center gap-2 overflow-x-auto lg:hidden">
               {activeSection.items.map((item) => (
@@ -558,18 +480,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     )
                   }
                   end={item.to === "/admin"}
-                  key={item.to}
-                  to={item.to}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-              {utilityLinks.map((item) => (
-                <NavLink
-                  className={cn(
-                    "shrink-0 rounded-lg border px-3 py-2 text-xs font-black",
-                    item.tone === "sos" ? "sos-danger-action" : "border-line bg-paper text-ink/60"
-                  )}
                   key={item.to}
                   to={item.to}
                 >

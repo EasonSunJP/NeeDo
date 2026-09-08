@@ -13,8 +13,7 @@ export type TechnicianServiceEligibilityInput = {
 
 export const isPublicEligibleTechnicianService = (
   service: TechnicianServiceEligibilityInput
-): boolean =>
-  service.deletedAt === null && service.isActive && service.reviewStatus === "APPROVED";
+): boolean => service.deletedAt === null && service.isActive && service.reviewStatus === "APPROVED";
 
 export const selectPrimaryTechnicianService = <T extends TechnicianServiceEligibilityInput>(
   services: readonly T[]

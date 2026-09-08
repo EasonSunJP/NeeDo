@@ -8,8 +8,9 @@ import {
 
 describe("formal Social interaction contract", () => {
   it("validates bookmarked pagination and unique friend-share targets", () => {
-    expect(socialPostListQuerySchema.parse({ bookmarked: "true", page: "1", pageSize: "20" }))
-      .toMatchObject({ bookmarked: true, page: 1, pageSize: 20 });
+    expect(
+      socialPostListQuerySchema.parse({ bookmarked: "true", page: "1", pageSize: "20" })
+    ).toMatchObject({ bookmarked: true, page: 1, pageSize: 20 });
     expect(socialPostShareBodySchema.parse({ targetUserIds: [8, 9] })).toEqual({
       targetUserIds: [8, 9]
     });
@@ -19,7 +20,10 @@ describe("formal Social interaction contract", () => {
   it("adds durable interaction tables and deployable role permissions", async () => {
     const schema = await readFile(join(process.cwd(), "prisma/schema.prisma"), "utf8");
     const migration = await readFile(
-      join(process.cwd(), "prisma/migrations/20260831150000_social_post_interactions/migration.sql"),
+      join(
+        process.cwd(),
+        "prisma/migrations/20260831150000_social_post_interactions/migration.sql"
+      ),
       "utf8"
     );
 
@@ -35,12 +39,17 @@ describe("formal Social interaction contract", () => {
     expect(migration).toContain("social_post_views");
     expect(migration).toContain("social_post_shares");
     expect(migration).toContain("social-post:interact");
-    expect(migration).toContain("'admin', 'merchant_owner', 'merchant_staff', 'technician', 'customer'");
+    expect(migration).toContain(
+      "'admin', 'merchant_owner', 'merchant_staff', 'technician', 'customer'"
+    );
   });
 
   it("keeps every explicit interaction database identifier within MySQL's 64-character limit", async () => {
     const migration = await readFile(
-      join(process.cwd(), "prisma/migrations/20260831150000_social_post_interactions/migration.sql"),
+      join(
+        process.cwd(),
+        "prisma/migrations/20260831150000_social_post_interactions/migration.sql"
+      ),
       "utf8"
     );
     const identifiers = Array.from(

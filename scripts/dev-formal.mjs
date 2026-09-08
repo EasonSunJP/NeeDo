@@ -1,9 +1,12 @@
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
 import { createServer as createNetServer } from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { resolveFormalDevConfig } from "./dev-formal-config.mjs";
 import { waitForService } from "./dev-formal-runtime.mjs";
+import { readGitCommonDirectory, resolveFormalMediaStorage } from "./formal-media-storage.mjs";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const {
@@ -15,10 +18,25 @@ const {
   opsApiPort,
   opsApiProxyTarget,
   opsApiRedisUrl,
-  proxyTarget
+  proxyTarget,
+  travelRouteHealthRedisUrl,
+  liveDashboardRedisUrl
 } = resolveFormalDevConfig(process.env);
 const backendDirectory = path.resolve("backend");
 const backendEnvFile = process.env.FORMAL_BACKEND_ENV_FILE || path.join(backendDirectory, ".env.dev");
+const mediaStorage = resolveFormalMediaStorage({
+  env: process.env,
+  fileEnv: parseEnv(readFileSync(backendEnvFile, "utf8")),
+  projectRoot: path.resolve("."),
+  gitCommonDirectory: readGitCommonDirectory(path.resolve("."))
+});
+const mediaStorageEnv = {
+  IM_MEDIA_STORAGE_DIR: mediaStorage.imMediaStorageDir,
+  CONTENT_MEDIA_STORAGE_DIR: mediaStorage.contentMediaStorageDir
+};
+console.log(`[dev:formal] media storage (${mediaStorage.source})`);
+console.log(`[dev:formal] IM media ${mediaStorage.imMediaStorageDir}`);
+console.log(`[dev:formal] Content media ${mediaStorage.contentMediaStorageDir}`);
 const tsxCommand = path.join(
   backendDirectory,
   "node_modules",
@@ -145,9 +163,12 @@ if (backendState === "free") {
     cwd: backendDirectory,
     env: {
       AUTH_TOKEN_AUDIENCE: "needo-backend",
+      ...mediaStorageEnv,
       ENV_FILE: backendEnvFile,
       PORT: String(backendPort),
-      SERVICE_NAME: "needo-backend"
+      SERVICE_NAME: "needo-backend",
+      TRAVEL_ROUTE_HEALTH_REDIS_URL: travelRouteHealthRedisUrl,
+      LIVE_DASHBOARD_REDIS_URL: liveDashboardRedisUrl
     }
   });
 }
@@ -157,10 +178,13 @@ if (opsApiState === "free") {
     cwd: backendDirectory,
     env: {
       AUTH_TOKEN_AUDIENCE: "needo-ops-api",
+      ...mediaStorageEnv,
       ENV_FILE: backendEnvFile,
       PORT: String(opsApiPort),
       REDIS_URL: opsApiRedisUrl,
-      SERVICE_NAME: "needo-ops-api"
+      SERVICE_NAME: "needo-ops-api",
+      TRAVEL_ROUTE_HEALTH_REDIS_URL: travelRouteHealthRedisUrl,
+      LIVE_DASHBOARD_REDIS_URL: liveDashboardRedisUrl
     }
   });
 }
@@ -170,10 +194,13 @@ if (merchantApiState === "free") {
     cwd: backendDirectory,
     env: {
       AUTH_TOKEN_AUDIENCE: "needo-merchant-api",
+      ...mediaStorageEnv,
       ENV_FILE: backendEnvFile,
       PORT: String(merchantApiPort),
       REDIS_URL: merchantApiRedisUrl,
-      SERVICE_NAME: "needo-merchant-api"
+      SERVICE_NAME: "needo-merchant-api",
+      TRAVEL_ROUTE_HEALTH_REDIS_URL: travelRouteHealthRedisUrl,
+      LIVE_DASHBOARD_REDIS_URL: liveDashboardRedisUrl
     }
   });
 }

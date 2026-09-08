@@ -3,6 +3,7 @@ import type { ExchangeMatchingService } from "../services/exchange-matching.serv
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
+  confirmQuickExchangeBudgetSchema,
   exchangeMatchingPostIdParamSchema,
   selectExchangeMatchSchema
 } from "../validators/exchange-matching.validators";
@@ -19,17 +20,36 @@ export class ExchangeMatchingController {
 
   public select = this.handle(async (request, response) => {
     const { id } = exchangeMatchingPostIdParamSchema.parse(request.params);
-    response.status(200).json(
-      successResponse(
-        await this.service.selectMatching(
-          getAuthenticatedAccess(response),
-          id,
-          selectExchangeMatchSchema.parse(request.body),
-          response.locals.exchangeMatchingIdempotencyKey as string,
-          getRequestContext(request)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.selectMatching(
+            getAuthenticatedAccess(response),
+            id,
+            selectExchangeMatchSchema.parse(request.body),
+            response.locals.exchangeIdempotencyKey as string,
+            getRequestContext(request)
+          )
         )
-      )
-    );
+      );
+  });
+
+  public confirmQuickBudget = this.handle(async (request, response) => {
+    const { id } = exchangeMatchingPostIdParamSchema.parse(request.params);
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.confirmQuickBudget(
+            getAuthenticatedAccess(response),
+            id,
+            confirmQuickExchangeBudgetSchema.parse(request.body),
+            response.locals.exchangeIdempotencyKey as string,
+            getRequestContext(request)
+          )
+        )
+      );
   });
 
   private handle(

@@ -88,9 +88,7 @@ export interface AffiliatePlatformFeeRepositoryPort {
   listRules: (
     input: AffiliatePlatformFeeRuleListInput
   ) => Promise<PaginatedResponse<AffiliatePlatformFeeRuleRecord>>;
-  getGlobalSummary: (
-    evaluatedAt: Date
-  ) => Promise<AffiliatePlatformFeeRuleSummary>;
+  getGlobalSummary: (evaluatedAt: Date) => Promise<AffiliatePlatformFeeRuleSummary>;
   listEligibleShops: (
     input: AffiliatePlatformFeeShopOptionInput
   ) => Promise<PaginatedResponse<AffiliatePlatformFeeShopOption>>;

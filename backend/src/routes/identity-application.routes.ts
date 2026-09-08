@@ -31,11 +31,13 @@ export const createIdentityApplicationRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
   const authorize = createAuthorizeMiddleware(IDENTITY_APPLICATION_ROUTE_PERMISSIONS.own);
   const authorizeBank = createAuthorizeMiddleware("bank-account:own");
   const controller = new IdentityApplicationController(
-    createIdentityApplicationServiceForRoutes(dependencies),
+    createIdentityApplicationServiceForRoutes(config, dependencies),
     createProtectedBankAccountServiceForRoutes(config, dependencies)
   );
 
@@ -64,7 +66,10 @@ export const createIdentityApplicationRoutes = (
     "/identity-applications/:id/technician-profile",
     authenticate(),
     authorize,
-    validateRequest({ params: identityApplicationIdParamSchema, body: updateTechnicianApplicationBodySchema }),
+    validateRequest({
+      params: identityApplicationIdParamSchema,
+      body: updateTechnicianApplicationBodySchema
+    }),
     controller.updateTechnicianDraft
   );
   router.post(
@@ -78,7 +83,10 @@ export const createIdentityApplicationRoutes = (
     "/identity-applications/:id/merchant-showcase",
     authenticate(),
     authorize,
-    validateRequest({ params: identityApplicationIdParamSchema, body: updateMerchantShowcaseBodySchema }),
+    validateRequest({
+      params: identityApplicationIdParamSchema,
+      body: updateMerchantShowcaseBodySchema
+    }),
     controller.updateMerchantShowcase
   );
   router.patch(
@@ -95,14 +103,20 @@ export const createIdentityApplicationRoutes = (
     "/identity-applications/:id/submit",
     authenticate(),
     authorize,
-    validateRequest({ params: identityApplicationIdParamSchema, body: identityApplicationVersionBodySchema }),
+    validateRequest({
+      params: identityApplicationIdParamSchema,
+      body: identityApplicationVersionBodySchema
+    }),
     controller.submit
   );
   router.post(
     "/identity-applications/:id/withdraw",
     authenticate(),
     authorize,
-    validateRequest({ params: identityApplicationIdParamSchema, body: identityApplicationVersionBodySchema }),
+    validateRequest({
+      params: identityApplicationIdParamSchema,
+      body: identityApplicationVersionBodySchema
+    }),
     controller.withdraw
   );
 

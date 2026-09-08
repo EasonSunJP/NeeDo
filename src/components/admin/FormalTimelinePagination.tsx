@@ -11,6 +11,7 @@ interface FormalTimelinePaginationProps {
   pageSize: number;
   total: number;
   disabled?: boolean;
+  pageSizes?: readonly FormalTimelinePageSize[];
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: FormalTimelinePageSize) => void;
 }
@@ -18,6 +19,7 @@ interface FormalTimelinePaginationProps {
 export function FormalTimelinePagination({
   ariaLabel,
   disabled = false,
+  pageSizes = formalTimelinePageSizes,
   onPageChange,
   onPageSizeChange,
   page,
@@ -32,6 +34,7 @@ export function FormalTimelinePagination({
   return (
     <nav
       aria-label={t(ariaLabel)}
+      style={{ background: "var(--admin-surface, #ffffff)", borderColor: "var(--admin-line, rgba(22,54,48,0.12))" }}
       className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-paper/70 px-3 py-3"
     >
       <label className="flex items-center gap-2 text-xs font-black text-ink/55">
@@ -45,7 +48,7 @@ export function FormalTimelinePagination({
           }
           value={pageSize}
         >
-          {formalTimelinePageSizes.map((size) => (
+          {pageSizes.map((size) => (
             <option key={size} value={size}>
               {size}
             </option>

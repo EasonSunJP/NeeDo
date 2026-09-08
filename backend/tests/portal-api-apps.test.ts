@@ -10,6 +10,29 @@ const healthDependencies = {
 };
 
 describe("portal API application boundaries", () => {
+  it("keeps technician work-status administration behind each portal namespace", async () => {
+    const ops = createOpsApp(env, healthDependencies);
+    const merchant = createMerchantApp(env, healthDependencies);
+    for (const suffix of ["", "/events", "/comments"]) {
+      const method = suffix === "/comments" ? "post" : "get";
+      const opsPath = `/api/v1/backoffice/technicians/1/work-status${suffix}`;
+      const merchantPath = `/api/v1/merchant-admin/technicians/1/work-status${suffix}`;
+      await request(ops)[method](opsPath).expect(401);
+      await request(merchant)[method](opsPath).expect(404);
+      await request(merchant)[method](merchantPath).expect(401);
+      await request(ops)[method](merchantPath).expect(404);
+    }
+  });
+  it("keeps platform notice publication on ops and authenticated inboxes on both services", async () => {
+    const ops = createOpsApp(env, healthDependencies);
+    const merchant = createMerchantApp(env, healthDependencies);
+    await request(ops).post("/api/v1/backoffice/official-notices").send({}).expect(401);
+    await request(merchant).post("/api/v1/backoffice/official-notices").send({}).expect(404);
+    await request(merchant).post("/api/v1/merchant-admin/official-notices").send({}).expect(401);
+    await request(ops).post("/api/v1/merchant-admin/official-notices").send({}).expect(404);
+    await request(ops).get("/api/v1/official-notices?locale=ja").expect(401);
+    await request(merchant).get("/api/v1/official-notices?locale=ja").expect(401);
+  });
   it("reports independently identifiable service names", async () => {
     const opsHealth = await request(createOpsApp(env, healthDependencies))
       .get("/api/v1/health")

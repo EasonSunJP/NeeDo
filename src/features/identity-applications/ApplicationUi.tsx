@@ -1,5 +1,7 @@
 import { useEffect, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { SettingsDetailPage } from "../../components/client-ui/SettingsDirectory";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
+import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -13,14 +15,20 @@ export function ApplicationShell({
   info,
   children,
   backTo = "/me/settings/portal",
+  closeTo = "/me/settings/portal",
   onBack,
+  error,
+  onDismissError,
   hideNavigation = false
 }: {
   title: string;
   info: string;
   children: ReactNode;
   backTo?: string;
+  closeTo?: string;
   onBack?: () => void;
+  error?: string;
+  onDismissError?: () => void;
   hideNavigation?: boolean;
 }) {
   const { language } = useI18n();
@@ -30,8 +38,17 @@ export function ApplicationShell({
     <SettingsDetailPage
       backTo={backTo}
       closeLabel={t("关闭")}
-      closeTo="/me/settings/portal"
-      contentClassName="pb-[calc(env(safe-area-inset-bottom)+2rem)]"
+      closeTo={closeTo}
+      contentClassName="pb-[calc(env(safe-area-inset-bottom)+10.5rem)]"
+      headerFrameClassName="!z-[140]"
+      headerOverlay={error ? (
+        <div className="pointer-events-none absolute inset-x-0 top-2 mx-auto w-full max-w-[880px]">
+          <div aria-atomic="true" className="pointer-events-auto flex items-start gap-3 rounded-[20px] border border-[#ff4d5e] bg-[#26060b] px-4 py-3 text-sm font-semibold leading-6 text-white shadow-[0_12px_32px_rgba(255,36,64,0.26)]" role="alert">
+            <span className="min-w-0 flex-1 break-words">{t(error)}</span>
+            {onDismissError ? <button aria-label={t("关闭提示")} className="focus-ring inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#ffd6dc]" onClick={onDismissError} type="button"><AppIcon className="h-4 w-4" name="close" /></button> : null}
+          </div>
+        </div>
+      ) : undefined}
       info={t(info)}
       navItems={hideNavigation ? [] : undefined}
       onBack={onBack}
@@ -55,10 +72,50 @@ export function ApplicationCard({ children, className }: { children: ReactNode; 
   );
 }
 
+export function ApplicationSection({ title, info, children, className }: {
+  title: string;
+  info?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+  return (
+    <ApplicationCard className={cn("space-y-4", className)}>
+      <TitleWithInfo as="h2" info={info ? t(info) : undefined} label={t("申请分区说明：{title}").replace("{title}", t(title))} title={t(title)} titleClassName="text-[17px] font-black text-[color:var(--client-text)]" variant="client" />
+      {children}
+    </ApplicationCard>
+  );
+}
+
+export function ApplicationFileUpload({ accept, file, label, onChange }: {
+  accept: string;
+  file: File | null;
+  label: string;
+  onChange: (file: File | null) => void;
+}) {
+  const { language } = useI18n();
+  return (
+    <label className="focus-ring flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 focus-within:border-[color:var(--client-primary)]">
+      <span className="min-w-0 truncate text-sm font-bold text-[color:var(--client-text)]">{file?.name ?? label}</span>
+      <span className="shrink-0 rounded-full bg-[color:var(--client-primary)] px-4 py-2 text-xs font-black text-[color:var(--client-primary-contrast)]">{translateText("上传图片", language)}</span>
+      <input accept={accept} aria-label={label} className="sr-only" onChange={(event) => onChange(event.target.files?.[0] ?? null)} type="file" />
+    </label>
+  );
+}
+
+export function ApplicationBottomAction({ children }: { children: ReactNode }) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full max-w-[880px] px-[var(--client-bottom-nav-inline-gap,12px)] pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8">
+      <div className="pointer-events-auto p-3">{children}</div>
+    </div>
+  );
+}
+
 export function ApplicationSteps({ current, labels }: { current: number; labels: string[] }) {
   const { language } = useI18n();
   return (
-    <ol className="grid grid-cols-3 gap-2" aria-label={translateText("申请进度", language)}>
+    <ol className="grid gap-2" style={{ gridTemplateColumns: `repeat(${labels.length}, minmax(0, 1fr))` }} aria-label={translateText("申请进度", language)}>
       {labels.map((label, index) => (
         <li className="min-w-0" key={label}>
           <div className={cn("h-1.5 rounded-full", index <= current ? "bg-[color:var(--client-primary)]" : "bg-[color:var(--client-line)]")} />
@@ -71,11 +128,11 @@ export function ApplicationSteps({ current, labels }: { current: number; labels:
   );
 }
 
-export function ApplicationField({ label, hint, required, children }: { label: string; hint?: string; required?: boolean; children: ReactNode }) {
+export function ApplicationField({ label, hint, required, children, as: Component = "label" }: { label: string; hint?: string; required?: boolean; children: ReactNode; as?: "label" | "div" }) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
   return (
-    <label className="block space-y-2">
+    <Component className="block space-y-2">
       <span className="flex items-center gap-2 text-[13px] font-black text-[color:var(--client-text)]">
         {t(label)}
         <span className={cn("text-[10px]", required ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-muted)]")}>
@@ -84,7 +141,20 @@ export function ApplicationField({ label, hint, required, children }: { label: s
       </span>
       {children}
       {hint ? <span className="block text-[11px] leading-5 text-[color:var(--client-muted)]">{t(hint)}</span> : null}
-    </label>
+    </Component>
+  );
+}
+
+export function ApplicationReadOnlyField({ label, value }: { label: string; value: ReactNode }) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+  const isEmpty = value === null || value === undefined || value === "";
+
+  return (
+    <div className="min-w-0 rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 py-3 text-left">
+      <p className="text-[11px] font-black text-[color:var(--client-muted)]">{t(label)}</p>
+      <p className="mt-1 break-words whitespace-pre-wrap text-sm font-bold text-[color:var(--client-text)]">{isEmpty ? "—" : value}</p>
+    </div>
   );
 }
 

@@ -5,6 +5,10 @@ describe("getCustomerCustomProfileReviewTags", () => {
   it("filters shared special tags and keeps customer custom tags", () => {
     expect(
       getCustomerCustomProfileReviewTags([
+        "魅力max",
+        "服务max",
+        "情绪max",
+        "元气max",
         "魅力值MAX",
         "服务精神MAX",
         "情绪价值MAX",

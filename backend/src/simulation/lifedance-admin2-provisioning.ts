@@ -51,6 +51,7 @@ export interface LifeDanceAdmin2ProvisioningResult {
   userId: number;
   shopId: number;
   technicianProfileId: number;
+  compensationProfileId: number;
   bookingServiceId: number;
   availableBookingSlotCount: number;
   merchantAccountId: number;
@@ -116,11 +117,81 @@ const activeIdentityKey = (
   scopeId: number | null
 ): string => ["lifedance-admin2-identity", userId, type, scopeType, scopeId ?? "global"].join(":");
 
-const assert: (condition: unknown, message: string) => asserts condition = (
-  condition,
-  message
-) => {
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(message);
+};
+
+const LIFEDANCE_ADMIN2_COMPENSATION_PROFILE_NAME =
+  "LifeDance 管理员 2 2026 正社員給与";
+
+export const buildLifeDanceAdmin2CompensationProfileData = (
+  adminUserId: number
+) => ({
+  name: LIFEDANCE_ADMIN2_COMPENSATION_PROFILE_NAME,
+  status: "active",
+  version: 1,
+  wageMode: "base_plus_commission",
+  baseSalaryJpy: 230_000,
+  hourlyRateJpy: 0,
+  dailyRateJpy: 0,
+  fixedOrderPayJpy: 0,
+  commissionRateBps: 2_000,
+  extensionCommissionRateBps: 2_000,
+  nominationFeeJpy: 0,
+  guaranteedMinimumJpy: 0,
+  ndpFeeBearer: "shop",
+  technicianNdpShareBps: 0,
+  bonusRulesJson: [],
+  deductionRulesJson: [],
+  effectiveFrom: new Date("2026-08-29T00:00:00.000Z"),
+  effectiveTo: null,
+  updatedById: adminUserId,
+  deletedAt: null
+} satisfies Prisma.TechnicianCompensationProfileUncheckedUpdateInput);
+
+export const ensureLifeDanceAdmin2CompensationProfile = async (
+  tx: Prisma.TransactionClient,
+  input: { shopId: number; technicianProfileId: number; adminUserId: number }
+): Promise<number> => {
+  const activeProfiles = await tx.technicianCompensationProfile.findMany({
+    where: {
+      shopId: input.shopId,
+      technicianProfileId: input.technicianProfileId,
+      status: "active",
+      deletedAt: null
+    },
+    select: { id: true, name: true }
+  });
+  assert(
+    activeProfiles.length <= 1 &&
+      activeProfiles.every(
+        (profile) => profile.name === LIFEDANCE_ADMIN2_COMPENSATION_PROFILE_NAME
+      ),
+    "LifeDance admin2 compensation profile conflicts with an active profile."
+  );
+  const existing =
+    activeProfiles[0] ??
+    (await tx.technicianCompensationProfile.findFirst({
+      where: {
+        shopId: input.shopId,
+        technicianProfileId: input.technicianProfileId,
+        name: LIFEDANCE_ADMIN2_COMPENSATION_PROFILE_NAME
+      },
+      orderBy: [{ id: "desc" }],
+      select: { id: true }
+    }));
+  const data = buildLifeDanceAdmin2CompensationProfileData(input.adminUserId);
+  const profile = existing
+    ? await tx.technicianCompensationProfile.update({ where: { id: existing.id }, data })
+    : await tx.technicianCompensationProfile.create({
+        data: {
+          shopId: input.shopId,
+          technicianProfileId: input.technicianProfileId,
+          createdById: input.adminUserId,
+          ...data
+        }
+      });
+  return profile.id;
 };
 
 export const selectAdmin2AccountCandidate = (
@@ -151,10 +222,7 @@ export const resolveLifeDanceAdmin2Password = (env: {
   return password;
 };
 
-export const buildLifeDanceAdmin2UserData = (
-  passwordHash: string,
-  sessionGeneration: number
-) => ({
+export const buildLifeDanceAdmin2UserData = (passwordHash: string, sessionGeneration: number) => ({
   email: LIFEDANCE_ADMIN2_PLAN.email,
   needoId: LIFEDANCE_ADMIN2_PLAN.needoId,
   accountNo: LIFEDANCE_ADMIN2_PLAN.numberPart,
@@ -186,20 +254,16 @@ export const buildLifeDanceAdmin2BookingSlotStarts = (
   const month = jstNow.getUTCMonth();
   const date = jstNow.getUTCDate();
 
-  return Array.from({ length: 7 }, (_, dayIndex) => dayIndex + 1).flatMap(
-    (dayOffset) =>
-      [10, 14].map((jstHour) => {
-        const startsAt = new Date(
-          Date.UTC(year, month, date + dayOffset, jstHour - 9, 0, 0, 0)
-        );
-        return {
-          startsAt,
-          endsAt: new Date(
-            startsAt.getTime() +
-              LIFEDANCE_ADMIN2_PLAN.bookingService.durationMinutes * 60 * 1000
-          )
-        };
-      })
+  return Array.from({ length: 7 }, (_, dayIndex) => dayIndex + 1).flatMap((dayOffset) =>
+    [10, 14].map((jstHour) => {
+      const startsAt = new Date(Date.UTC(year, month, date + dayOffset, jstHour - 9, 0, 0, 0));
+      return {
+        startsAt,
+        endsAt: new Date(
+          startsAt.getTime() + LIFEDANCE_ADMIN2_PLAN.bookingService.durationMinutes * 60 * 1000
+        )
+      };
+    })
   );
 };
 
@@ -386,12 +450,7 @@ const ensureIdentity = async (
     displayName: input.displayName,
     isDefault: input.isDefault,
     isActive: true,
-    activeKey: activeIdentityKey(
-      input.userId,
-      input.type,
-      input.scopeType,
-      input.scopeId
-    ),
+    activeKey: activeIdentityKey(input.userId, input.type, input.scopeType, input.scopeId),
     deletedAt: null
   };
 
@@ -657,6 +716,11 @@ export const provisionLifeDanceAdmin2 = async (
       deletedAt: null
     }
   });
+  const compensationProfileId = await ensureLifeDanceAdmin2CompensationProfile(tx, {
+    shopId: shop.id,
+    technicianProfileId: technicianProfile.id,
+    adminUserId: admin.id
+  });
   const bookingInventory = await ensureLifeDanceAdmin2BookingInventory(tx, {
     shopId: shop.id,
     technicianProfileId: technicianProfile.id
@@ -837,7 +901,10 @@ export const provisionLifeDanceAdmin2 = async (
   const allocator = new IdentifierAllocator(new PublicIdentifierRepository(tx));
   const persistedShop = await tx.shop.findUniqueOrThrow({
     where: { id: shop.id },
-    include: { publicIdentifier: true, customerSupportAccount: { include: { publicIdentifier: true } } }
+    include: {
+      publicIdentifier: true,
+      customerSupportAccount: { include: { publicIdentifier: true } }
+    }
   });
   const supportAccount = persistedShop.customerSupportAccount
     ? await tx.customerSupportAccount.update({
@@ -907,7 +974,10 @@ export const provisionLifeDanceAdmin2 = async (
     select: { id: true, code: true }
   });
   const roleIds = new Map(roles.map((role) => [role.code, role.id]));
-  assert(roleIds.size === LIFEDANCE_ADMIN2_PLAN.roleCodes.length, "LifeDance admin2 roles are incomplete.");
+  assert(
+    roleIds.size === LIFEDANCE_ADMIN2_PLAN.roleCodes.length,
+    "LifeDance admin2 roles are incomplete."
+  );
   for (const grant of [
     { code: "admin", scopeType: "global", scopeId: null },
     { code: "customer", scopeType: "customer_profile", scopeId: customerProfile.id },
@@ -917,7 +987,12 @@ export const provisionLifeDanceAdmin2 = async (
   ] as const) {
     const roleId = roleIds.get(grant.code);
     assert(roleId, `LifeDance admin2 role is missing: ${grant.code}`);
-    await ensureRole(tx, { userId: user.id, roleId, scopeType: grant.scopeType, scopeId: grant.scopeId });
+    await ensureRole(tx, {
+      userId: user.id,
+      roleId,
+      scopeType: grant.scopeType,
+      scopeId: grant.scopeId
+    });
   }
 
   const friendCandidates = await tx.user.findMany({
@@ -948,6 +1023,7 @@ export const provisionLifeDanceAdmin2 = async (
         email: LIFEDANCE_ADMIN2_PLAN.email,
         needoId: LIFEDANCE_ADMIN2_PLAN.needoId,
         shopId: shop.id,
+        compensationProfileId,
         bookingServiceId: bookingInventory.serviceId,
         availableBookingSlotCount: bookingInventory.availableSlotCount,
         merchantAccountId: merchantAccount.id,
@@ -961,6 +1037,7 @@ export const provisionLifeDanceAdmin2 = async (
     userId: user.id,
     shopId: shop.id,
     technicianProfileId: technicianProfile.id,
+    compensationProfileId,
     bookingServiceId: bookingInventory.serviceId,
     availableBookingSlotCount: bookingInventory.availableSlotCount,
     merchantAccountId: merchantAccount.id,

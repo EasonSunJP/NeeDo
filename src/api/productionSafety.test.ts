@@ -61,11 +61,16 @@ describe("frontend production safety", () => {
     const config = createConfig({ command: "serve", mode: "test" });
 
     expect(config.test?.exclude).toEqual(
-      expect.arrayContaining([".worktrees/**", "worktrees/**"])
+      expect.arrayContaining([
+        ".worktrees/**",
+        "worktrees/**",
+        "scripts/release-notes.test.mjs",
+        "deploy/staging/release-publication-contract.test.mjs"
+      ])
     );
-    expect(config.server?.watch?.ignored).toEqual(
-      expect.arrayContaining(["**/.worktrees/**", "**/worktrees/**"])
-    );
+    const ignored = config.server?.watch?.ignored ?? [];
+    expect(ignored.some((pattern) => pattern.endsWith("/.worktrees/**"))).toBe(true);
+    expect(ignored.some((pattern) => pattern.endsWith("/worktrees/**"))).toBe(true);
   });
 
   it("builds the formal release without loading a local production env file", () => {

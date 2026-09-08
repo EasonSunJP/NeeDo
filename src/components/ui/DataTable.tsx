@@ -80,6 +80,7 @@ export function DataTable<T>({
   footerActions,
   footerPlacement = "fixed",
   onView,
+  frozenDetailLabel,
   pageSize = 8,
   showFooterActions = footerPlacement === "fixed"
 }: {
@@ -88,6 +89,7 @@ export function DataTable<T>({
   footerActions?: ReactNode;
   footerPlacement?: "fixed" | "inline";
   onView?: (row: T) => void;
+  frozenDetailLabel?: string;
   pageSize?: number;
   showFooterActions?: boolean;
 }) {
@@ -98,8 +100,8 @@ export function DataTable<T>({
         const numericWidth = column.width?.match(/^(\d+(?:\.\d+)?)px$/)?.[1];
 
         return sum + (numericWidth ? Number(numericWidth) : 156);
-      }, onView ? 176 : 0),
-    [columns, onView]
+      }, onView ? (frozenDetailLabel ? 104 : 176) : 0),
+    [columns, onView, frozenDetailLabel]
   );
   const shouldFitContainer = !onView && columns.length <= 3 && columns.every((column) => !column.width);
   const desktopTableMinWidth = shouldFitContainer ? "100%" : `max(100%, ${desktopMinWidth}px)`;
@@ -324,19 +326,19 @@ export function DataTable<T>({
                 ))}
               </div>
               {onView ? (
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className={`mt-3 grid gap-2 ${frozenDetailLabel ? "grid-cols-1" : "grid-cols-2"}`}>
                   <Button size="sm" variant="secondary" onClick={(event) => {
                     event.stopPropagation();
                     onView(row);
                   }}>
-                    查看
+                    {frozenDetailLabel ?? "查看"}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={(event) => {
+                  {!frozenDetailLabel ? <Button size="sm" variant="ghost" onClick={(event) => {
                     event.stopPropagation();
                     onView(row);
                   }}>
                     编辑
-                  </Button>
+                  </Button> : null}
                 </div>
               ) : null}
             </article>
@@ -371,7 +373,7 @@ export function DataTable<T>({
                   onToggleValue={(value) => toggleColumnFilterValue(column.key, value)}
                 />
               ))}
-              {onView && <th className="border-b border-line px-4 py-3">操作</th>}
+              {onView && <th className={`${frozenDetailLabel ? "table-frozen-action " : ""}border-b border-line px-4 py-3`}>{frozenDetailLabel ?? "操作"}</th>}
             </tr>
           </thead>
           <tbody>
@@ -398,20 +400,20 @@ export function DataTable<T>({
                   </td>
                 ))}
                 {onView && (
-                  <td className="whitespace-nowrap px-4 py-3">
+                  <td className={`${frozenDetailLabel ? "table-frozen-action " : ""}whitespace-nowrap px-4 py-3`}>
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="secondary" onClick={(event) => {
                         event.stopPropagation();
                         onView(row);
                       }}>
-                        查看
+                        {frozenDetailLabel ?? "查看"}
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={(event) => {
+                      {!frozenDetailLabel ? <Button size="sm" variant="ghost" onClick={(event) => {
                         event.stopPropagation();
                         onView(row);
                       }}>
                         编辑
-                      </Button>
+                      </Button> : null}
                     </div>
                   </td>
                 )}

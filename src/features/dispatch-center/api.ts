@@ -4,11 +4,9 @@ import {
   annotateArrangement,
   assignArrangementTechnician,
   cancelArrangement,
-  closeDispatchFeedback,
   createDispatchCycleDraft,
   createSpecialTask,
   finalizeDispatchCycle,
-  getCycleFeedbackMatrix,
   getDispatchCycleList,
   getDispatchOverviewSummary,
   getDispatchScheduleGrid,
@@ -22,7 +20,6 @@ import {
   rescheduleArrangement,
   runDispatchAutoConfirm,
   saveDispatchCycleDraft,
-  sendDispatchFeedbackReminder,
   updateSpecialTask
 } from "./store";
 
@@ -61,15 +58,6 @@ export function createDispatchCenterApi(operatorId: string) {
     },
     async launchCycle(cycleId: string) {
       return launchDispatchCycle(cycleId, operatorId);
-    },
-    async getFeedbackMatrix(cycleId: string, dateKey: string) {
-      return getCycleFeedbackMatrix(cycleId, dateKey);
-    },
-    async remindFeedback(cycleId: string) {
-      return sendDispatchFeedbackReminder(cycleId, operatorId);
-    },
-    async closeFeedback(cycleId: string) {
-      return closeDispatchFeedback(cycleId, operatorId);
     },
     async runAutoConfirm(cycleId: string) {
       return runDispatchAutoConfirm(cycleId, operatorId);

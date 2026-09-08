@@ -66,10 +66,7 @@ export class AffiliateAllianceInvitationExpiryService {
     invitationIds: number[];
     advanceForwardCursor: boolean;
   }> {
-    if (
-      this.afterInvitationId !== 0 &&
-      this.forwardRunsSinceRevisit >= FORWARD_RUNS_PER_REVISIT
-    ) {
+    if (this.afterInvitationId !== 0 && this.forwardRunsSinceRevisit >= FORWARD_RUNS_PER_REVISIT) {
       this.forwardRunsSinceRevisit = 0;
       return this.listRevisitCandidateIds(input);
     }

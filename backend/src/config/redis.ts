@@ -42,6 +42,7 @@ export type RedisHealthStatus =
 
 let redisPool: RedisClient[] | undefined;
 let redisPoolCursor = 0;
+const managedRedisClients = new Map<string, RedisClient>();
 
 const createReconnectStrategy =
   (config: RedisEnvConfig) =>
@@ -86,6 +87,19 @@ export const getRedisClient = (): RedisClient => {
   const client = pool[redisPoolCursor % pool.length];
   redisPoolCursor += 1;
 
+  return client;
+};
+
+export const getManagedRedisClient = (
+  name: string,
+  config: RedisEnvConfig,
+  options: RedisClientRuntimeOptions = {}
+): RedisClient => {
+  const existing = managedRedisClients.get(name);
+  if (existing) return existing;
+
+  const client = createRedisClient(config, options);
+  managedRedisClients.set(name, client);
   return client;
 };
 
@@ -187,18 +201,18 @@ const withRedisOperationTimeout = async <T>(
 };
 
 export const disconnectRedis = async (): Promise<void> => {
-  if (!redisPool) {
-    return;
+  const clients = new Set([...(redisPool ?? []), ...managedRedisClients.values()]);
+  try {
+    await Promise.all(
+      [...clients].map(async (client) => {
+        if (client.isOpen) {
+          await client.quit();
+        }
+      })
+    );
+  } finally {
+    redisPool = undefined;
+    redisPoolCursor = 0;
+    managedRedisClients.clear();
   }
-
-  await Promise.all(
-    redisPool.map(async (client) => {
-      if (client.isOpen) {
-        await client.quit();
-      }
-    })
-  );
-
-  redisPool = undefined;
-  redisPoolCursor = 0;
 };

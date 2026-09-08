@@ -84,7 +84,13 @@ const post: ExchangePostPayload = {
     avatarUrl: null
   },
   counts: { comments: 4, likes: 21, shares: 5 },
-  viewer: { liked: false, canWithdraw: true, canClaim: false, canViewClaims: true },
+  viewer: {
+    liked: false,
+    canWithdraw: true,
+    canClaim: false,
+    canViewClaims: true,
+    canViewMatching: true
+  },
   demand: {
     serviceMode: "store",
     targetProviderCount: 1,
@@ -374,6 +380,52 @@ describe("formal Exchange routes", () => {
       .send(demandBody)
       .expect(400);
     expect(service.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("requires a formal service reference before publishing Intelligence", async () => {
+    const { app, login, service } = await createFixture();
+    const technicianToken = await login("technician@example.test");
+    const intelligenceBody = {
+      type: "intelligence",
+      title: "平日限定ヘッドスパ",
+      detail: "正式サービスの空き枠をご案内します。",
+      contentLocale: "ja",
+      serviceStartAt: "2026-08-31T09:00:00+09:00",
+      serviceEndAt: "2026-08-31T10:00:00+09:00",
+      expiresAt: "2026-08-31T08:30:00Z",
+      campaignPriceJpy: 10_000
+    };
+
+    await request(app)
+      .post("/api/v1/exchange/posts")
+      .set("Authorization", `Bearer ${technicianToken}`)
+      .set("Idempotency-Key", "publish-intel-no-service")
+      .send(intelligenceBody)
+      .expect(422)
+      .expect((response) =>
+        expect(response.body).toEqual({
+          code: 42212,
+          message: "error.exchange.intelligence_service_required",
+          data: null
+        })
+      );
+    expect(service.publish).not.toHaveBeenCalled();
+
+    await request(app)
+      .post("/api/v1/exchange/posts")
+      .set("Authorization", `Bearer ${technicianToken}`)
+      .set("Idempotency-Key", "publish-intel-service-01")
+      .send({ ...intelligenceBody, serviceRef: "technician:701" })
+      .expect(201);
+    expect(service.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 8, currentIdentityType: "technician" }),
+      expect.objectContaining({
+        type: "intelligence",
+        serviceRef: "technician:701",
+        campaignPriceJpy: 10_000
+      }),
+      "publish-intel-service-01"
+    );
   });
 
   it("exposes a demand publication context only to the exact publish permission", async () => {

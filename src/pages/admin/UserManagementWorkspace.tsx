@@ -7,6 +7,8 @@ import { Button } from "../../components/ui/Button";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
+import { RoleMembersPanel } from "./RoleMembersPanel";
+import { flattenPermissionTree } from "./permissionTree";
 import {
   userManagementApi,
   type PaginatedData,
@@ -51,6 +53,10 @@ type Copy = {
   keyword: string;
   search: string;
   empty: string;
+  members: string;
+  memberEmpty: string;
+  retry: string;
+  scope: string;
   permissionTree: string;
   saveSuccess: string;
   formalAccount: string;
@@ -99,6 +105,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "关键字",
     search: "搜索",
     empty: "暂无数据",
+    members: "人员列表",
+    memberEmpty: "该角色暂无人员",
+    retry: "重试",
+    scope: "范围",
     permissionTree: "权限树",
     saveSuccess: "已保存",
     formalAccount: "正式账号",
@@ -145,6 +155,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "關鍵字",
     search: "搜尋",
     empty: "暫無資料",
+    members: "人員列表",
+    memberEmpty: "此角色暫無人員",
+    retry: "重試",
+    scope: "範圍",
     permissionTree: "權限樹",
     saveSuccess: "已儲存",
     formalAccount: "正式帳號",
@@ -191,6 +205,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "キーワード",
     search: "検索",
     empty: "データがありません",
+    members: "メンバー一覧",
+    memberEmpty: "このロールにはメンバーがいません",
+    retry: "再試行",
+    scope: "範囲",
     permissionTree: "権限ツリー",
     saveSuccess: "保存しました",
     formalAccount: "正式アカウント",
@@ -237,6 +255,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "Keyword",
     search: "Search",
     empty: "No data",
+    members: "Member list",
+    memberEmpty: "No members have this role",
+    retry: "Retry",
+    scope: "Scope",
     permissionTree: "Permission tree",
     saveSuccess: "Saved",
     formalAccount: "Formal account",
@@ -283,6 +305,10 @@ const copyByLanguage: Record<Language, Copy> = {
     keyword: "키워드",
     search: "검색",
     empty: "데이터 없음",
+    members: "구성원 목록",
+    memberEmpty: "이 역할에 구성원이 없습니다",
+    retry: "다시 시도",
+    scope: "범위",
     permissionTree: "권한 트리",
     saveSuccess: "저장됨",
     formalAccount: "정식 계정",
@@ -404,7 +430,17 @@ function RolePermissionControl({
   role: RolePayload;
 }) {
   const [selected, setSelected] = useState(() => new Set(role.permissions.map((permission) => permission.id)));
-  const visiblePermissions = permissions.slice(0, 40);
+  const [permissionKeyword, setPermissionKeyword] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const visiblePermissions = useMemo(() => {
+    const normalizedKeyword = permissionKeyword.trim().toLocaleLowerCase();
+    if (!normalizedKeyword) return permissions;
+    return permissions.filter((permission) =>
+      [permission.name, permission.code, permission.module, permission.type].some((value) =>
+        value.toLocaleLowerCase().includes(normalizedKeyword)
+      )
+    );
+  }, [permissionKeyword, permissions]);
 
   useEffect(() => {
     setSelected(new Set(role.permissions.map((permission) => permission.id)));
@@ -412,35 +448,49 @@ function RolePermissionControl({
 
   return (
     <PermissionGate permission="button:role:assign-permission">
-      <details className="mt-3 rounded-lg border border-line bg-paper p-3">
+      <details
+        className="mt-3 rounded-lg border border-line bg-paper p-3"
+        onToggle={(event) => setIsOpen(event.currentTarget.open)}
+      >
         <summary className="cursor-pointer text-xs font-black text-ink/60">{copy.assign} {copy.permissions}</summary>
-        <div className="mt-3 grid max-h-56 gap-2 overflow-auto sm:grid-cols-2">
-          {visiblePermissions.map((permission) => (
-            <label className="flex items-start gap-2 rounded-lg bg-white px-2 py-2 text-xs font-bold text-ink/65" key={permission.id}>
-              <input
-                checked={selected.has(permission.id)}
-                className="mt-0.5"
-                onChange={(event) => {
-                  setSelected((current) => {
-                    const next = new Set(current);
-                    if (event.target.checked) {
-                      next.add(permission.id);
-                    } else {
-                      next.delete(permission.id);
-                    }
+        {isOpen ? (
+          <>
+            <input
+              aria-label={`${copy.search} ${copy.permissions}`}
+              className="mt-3 h-9 w-full rounded-lg border border-line bg-white px-3 text-xs font-bold outline-none focus:border-moss"
+              onChange={(event) => setPermissionKeyword(event.target.value)}
+              placeholder={copy.keyword}
+              value={permissionKeyword}
+            />
+            <div className="mt-3 grid max-h-56 gap-2 overflow-auto sm:grid-cols-2">
+              {visiblePermissions.map((permission) => (
+                <label className="flex items-start gap-2 rounded-lg bg-white px-2 py-2 text-xs font-bold text-ink/65" key={permission.id}>
+                  <input
+                    checked={selected.has(permission.id)}
+                    className="mt-0.5"
+                    onChange={(event) => {
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        if (event.target.checked) {
+                          next.add(permission.id);
+                        } else {
+                          next.delete(permission.id);
+                        }
 
-                    return next;
-                  });
-                }}
-                type="checkbox"
-              />
-              <span>{permission.name}<span className="ml-1 font-mono text-ink/40">{permission.code}</span></span>
-            </label>
-          ))}
-        </div>
-        <Button className="mt-3" onClick={() => onAssign(role.id, Array.from(selected))} size="sm" variant="dark">
-          {copy.assign}
-        </Button>
+                        return next;
+                      });
+                    }}
+                    type="checkbox"
+                  />
+                  <span>{permission.name}<span className="ml-1 font-mono text-ink/40">{permission.code}</span></span>
+                </label>
+              ))}
+            </div>
+            <Button className="mt-3" onClick={() => onAssign(role.id, Array.from(selected))} size="sm" variant="dark">
+              {copy.assign}
+            </Button>
+          </>
+        ) : null}
       </details>
     </PermissionGate>
   );
@@ -456,16 +506,33 @@ function PermissionTree({ copy, tree }: { copy: Copy; tree: PermissionTreePayloa
       <h2 className="font-black">{copy.permissionTree}</h2>
       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {tree.modules.map((module) => (
-          <article className="rounded-lg border border-line bg-paper p-3" key={module.module}>
-            <h3 className="font-mono text-sm font-black">{module.module}</h3>
-            <div className="mt-2 space-y-2">
+          <details className="rounded-xl border border-line bg-paper p-3" key={module.module} open>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-mono text-sm font-black marker:content-none">
+              <span>{module.module}</span>
+              <Badge tone="neutral">
+                {module.children.reduce((total, child) => total + child.permissions.length, 0)}
+              </Badge>
+            </summary>
+            <div className="mt-3 space-y-3 border-t border-line pt-3">
               {module.children.map((child) => (
-                <p className="text-xs font-bold text-ink/60" key={`${module.module}-${child.type}`}>
-                  {child.type}: {child.permissions.length}
-                </p>
+                <section key={`${module.module}-${child.type}`}>
+                  <h4 className="text-xs font-black uppercase tracking-wide text-ink/45">
+                    {child.type} · {child.permissions.length}
+                  </h4>
+                  <ul className="mt-2 grid gap-1.5">
+                    {child.permissions.map((permission) => (
+                      <li className="rounded-lg border border-line bg-white px-2.5 py-2" key={permission.id}>
+                        <p className="text-xs font-black text-ink/75">{permission.name}</p>
+                        <p className="mt-0.5 break-all font-mono text-[11px] font-bold text-ink/45">
+                          {permission.code}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               ))}
             </div>
-          </article>
+          </details>
         ))}
       </div>
     </section>
@@ -507,19 +574,15 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
       setError("");
 
       try {
-        const [nextRoles, nextPermissions] = await Promise.all([
+        const [nextRoles, nextPermissions, nextUsers, nextPermissionTree] = await Promise.all([
           mode === "users"
             ? userManagementApi.listRoles({ page: 1, pageSize: 100 })
             : mode === "roles"
               ? userManagementApi.listRoles({ keyword, page: 1, pageSize: 100 })
               : Promise.resolve(emptyRoles),
-          mode === "roles"
-            ? userManagementApi.listPermissions({ page: 1, pageSize: 100 })
-            : mode === "permissions"
-              ? userManagementApi.listPermissions({ keyword, page: 1, pageSize: 100 })
-              : Promise.resolve(emptyPermissions)
-        ]);
-        const [nextUsers, nextPermissionTree] = await Promise.all([
+          mode === "permissions"
+            ? userManagementApi.listPermissions({ keyword, page, pageSize: 20 })
+            : Promise.resolve(emptyPermissions),
           mode === "users"
             ? userManagementApi.listUsers({
                 keyword,
@@ -530,7 +593,9 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
                   : {})
               })
             : Promise.resolve(emptyUsers),
-          mode === "permissions" ? userManagementApi.getPermissionTree() : Promise.resolve(null)
+          mode === "roles" || mode === "permissions"
+            ? userManagementApi.getPermissionTree()
+            : Promise.resolve(null)
         ]);
 
         if (!alive) {
@@ -560,6 +625,7 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
   }, [accountTypeFilter, keyword, mode, page, refreshKey]);
 
   const roleById = useMemo(() => new Map(roles.list.map((role) => [role.id, role])), [roles.list]);
+  const allPermissions = useMemo(() => flattenPermissionTree(permissionTree), [permissionTree]);
 
   const mutate = async (action: () => Promise<unknown>) => {
     setError("");
@@ -777,7 +843,24 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
                       <Badge key={permission.id} tone="neutral">{permission.code}</Badge>
                     ))}
                   </div>
-                  <RolePermissionControl copy={copy} onAssign={(roleId, permissionIds) => mutate(() => userManagementApi.assignRolePermissions(roleId, permissionIds))} permissions={permissions.list} role={role} />
+                  <PermissionGate permission="user:list">
+                    <RoleMembersPanel
+                      copy={{
+                        active: copy.active,
+                        disabled: copy.disabled,
+                        empty: copy.memberEmpty,
+                        loading: copy.loading,
+                        members: copy.members,
+                        nextPage: copy.nextPage,
+                        previousPage: copy.previousPage,
+                        retry: copy.retry,
+                        scope: copy.scope,
+                        pageSummary: copy.pageSummary
+                      }}
+                      role={role}
+                    />
+                  </PermissionGate>
+                  <RolePermissionControl copy={copy} onAssign={(roleId, permissionIds) => mutate(() => userManagementApi.assignRolePermissions(roleId, permissionIds))} permissions={allPermissions} role={role} />
                   {!role.isSystem ? (
                     <PermissionGate permission="button:role:delete">
                       <Button className="mt-3" onClick={() => mutate(() => userManagementApi.deleteRole(role.id))} size="sm" variant="danger">
@@ -856,6 +939,32 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
                 </tbody>
               </table>
             </section>
+            {permissions.total > permissions.page_size ? (
+              <nav aria-label={copy.permissionsTitle} className="flex flex-wrap items-center justify-center gap-3">
+                <Button
+                  disabled={permissions.page <= 1 || loading}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {copy.previousPage}
+                </Button>
+                <span className="text-sm font-bold text-ink/55">
+                  {copy.pageSummary(
+                    permissions.page,
+                    Math.max(1, Math.ceil(permissions.total / permissions.page_size))
+                  )}
+                </span>
+                <Button
+                  disabled={permissions.page >= Math.ceil(permissions.total / permissions.page_size) || loading}
+                  onClick={() => setPage((current) => current + 1)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {copy.nextPage}
+                </Button>
+              </nav>
+            ) : null}
           </>
         ) : null}
       </ModuleShell>

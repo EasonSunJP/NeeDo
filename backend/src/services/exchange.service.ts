@@ -26,6 +26,11 @@ import type { ExchangeRequestFeeService } from "./exchange-request-fee.service";
 import type { LedgerService } from "./ledger.service";
 import { sha256StableJson } from "../utils/stable-json";
 import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
+import type {
+  ExchangeIntelligencePublicationService,
+  ExchangeIntelligencePublicationServiceResolution,
+  ExchangeIntelligenceServiceRef
+} from "../types/exchange-intelligence-booking.types";
 
 export interface ExchangeActorLookup {
   userId: number;
@@ -73,6 +78,7 @@ export interface ExchangePublishRepositoryInput {
   actor: ExchangeActorRecord;
   input: PublishExchangePostBody;
   capacity?: ExchangePublisherCapacity;
+  intelligenceService?: ExchangeIntelligencePublicationService;
   idempotencyKey: string;
   payloadFingerprint: string;
   now: Date;
@@ -156,6 +162,11 @@ export interface ExchangeRepositoryPort {
     ownerIdentityId: number,
     now: Date
   ): Promise<ExchangePublicationRecord | null>;
+  resolveIntelligencePublicationService(input: {
+    actor: ExchangeActorRecord;
+    serviceRef: ExchangeIntelligenceServiceRef;
+    now: Date;
+  }): Promise<ExchangeIntelligencePublicationServiceResolution>;
   createPost(input: ExchangePublishRepositoryInput): Promise<{ id: number }>;
   createAudit(input: AuditLogCreateInput): Promise<void>;
   findPostByIdOrThrow(
@@ -402,9 +413,23 @@ export class ExchangeService {
           return repository.findPostByIdOrThrow(created.id, ownerIdentityId, occurredAt);
         }
 
+        const intelligenceService = await repository.resolveIntelligencePublicationService({
+          actor,
+          serviceRef: input.serviceRef,
+          now: occurredAt
+        });
+        const resolvedService = this.unwrapIntelligenceService(intelligenceService);
+        if (input.campaignPriceJpy > resolvedService.catalogPriceJpy) {
+          throw new AppError({
+            code: ERROR_CODES.EXCHANGE_INTELLIGENCE_CAMPAIGN_PRICE_INVALID,
+            message: "error.exchange.intelligence_campaign_price_invalid",
+            statusCode: 422
+          });
+        }
         const created = await repository.createPost({
           actor,
           input,
+          intelligenceService: resolvedService,
           idempotencyKey,
           payloadFingerprint,
           now: occurredAt
@@ -413,7 +438,11 @@ export class ExchangeService {
           this.audit(access, "exchange.post.publish", created.id, {
             identityId: actor.identityId,
             identityType: actor.identityType,
-            postType: input.type
+            postType: input.type,
+            serviceRef: resolvedService.serviceRef,
+            serviceOwnerType: resolvedService.serviceId === null ? "technician" : "shop",
+            catalogPriceJpy: resolvedService.catalogPriceJpy,
+            campaignPriceJpy: input.campaignPriceJpy
           })
         );
         return repository.findPostByIdOrThrow(created.id, ownerIdentityId, occurredAt);
@@ -462,11 +491,7 @@ export class ExchangeService {
       }
       const cancelledClaimCount =
         locked.type === "demand"
-          ? await repository.cancelActiveClaimsByPost(
-              locked.id,
-              "request_withdrawn",
-              occurredAt
-            )
+          ? await repository.cancelActiveClaimsByPost(locked.id, "request_withdrawn", occurredAt)
           : 0;
       if (cancelledClaimCount > 0) {
         await repository.createAudit({
@@ -604,11 +629,7 @@ export class ExchangeService {
       }
       const cancelledClaimCount =
         locked.type === "demand"
-          ? await repository.cancelActiveClaimsByPost(
-              locked.id,
-              "request_expired",
-              now
-            )
+          ? await repository.cancelActiveClaimsByPost(locked.id, "request_expired", now)
           : 0;
       if (cancelledClaimCount > 0) {
         await repository.createAudit({
@@ -778,11 +799,7 @@ export class ExchangeService {
           }
         : {
             ...common,
-            areaLabel: input.areaLabel,
-            serviceMode: input.serviceMode,
-            addressLabel: input.addressLabel ?? null,
-            serviceAreas: input.serviceAreas,
-            originalPriceJpy: input.originalPriceJpy ?? null,
+            serviceRef: input.serviceRef,
             campaignPriceJpy: input.campaignPriceJpy
           };
 
@@ -797,6 +814,30 @@ export class ExchangeService {
       throw this.idempotencyConflict();
     }
     return replay.value;
+  }
+
+  private unwrapIntelligenceService(
+    resolution: ExchangeIntelligencePublicationServiceResolution
+  ): ExchangeIntelligencePublicationService {
+    if (resolution.kind === "success") return resolution.value;
+    const mapping = {
+      not_found: {
+        code: ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_NOT_FOUND,
+        message: "error.exchange.intelligence_service_not_found",
+        statusCode: 404
+      },
+      forbidden: {
+        code: ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_FORBIDDEN,
+        message: "error.exchange.intelligence_service_forbidden",
+        statusCode: 403
+      },
+      unavailable: {
+        code: ERROR_CODES.EXCHANGE_INTELLIGENCE_SERVICE_UNAVAILABLE,
+        message: "error.exchange.intelligence_service_unavailable",
+        statusCode: 409
+      }
+    } as const;
+    throw new AppError(mapping[resolution.kind]);
   }
 
   private isUniqueConflict(error: unknown): boolean {
@@ -925,7 +966,8 @@ export class ExchangeService {
       post.viewer.canWithdraw ||
       post.viewer.canViewClaims ||
       DEMAND_AUDIENCE_IDENTITIES.has(actor.identityType)
-    ) return;
+    )
+      return;
     throw this.postNotFound();
   }
 
@@ -933,24 +975,20 @@ export class ExchangeService {
     post: ExchangePostPayload,
     actor: ExchangeActorRecord
   ): ExchangePostPayload {
-    const selectiveDemand =
-      post.type === "demand" &&
-      post.demand?.matchMode === "selective";
-    const selectiveLiveDemand = selectiveDemand && post.status === "published";
+    const demandPost = post.type === "demand" && Boolean(post.demand);
+    const liveDemand = demandPost && post.status === "published";
     const ownerView = post.viewer.canWithdraw || post.viewer.canViewClaims;
     return {
       ...post,
       viewer: {
         ...post.viewer,
         canClaim:
-          selectiveLiveDemand &&
+          liveDemand &&
           CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) &&
           !ownerView &&
           post.viewer.canClaim,
         canViewClaims:
-          selectiveDemand &&
-          (post.status === "published" || post.status === "matched") &&
-          ownerView
+          demandPost && (post.status === "published" || post.status === "matched") && ownerView
       }
     };
   }

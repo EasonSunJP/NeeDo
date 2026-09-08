@@ -21,7 +21,7 @@ const main = async (): Promise<void> => {
 
   try {
     const actors = await discoverExchangeSimulationActors(prisma);
-    const plan = buildExchangeSimulationPlan(actors, config.exchangeSeed);
+    const plan = buildExchangeSimulationPlan(actors, config.exchangeSeed, new Date());
     const summary = await applyExchangeSimulationPlan(prisma, plan);
     console.log(JSON.stringify({ ...summary, seed: config.exchangeSeed, status: "ok" }, null, 2));
   } finally {
