@@ -17,6 +17,7 @@ import { AppError } from "../utils/app-error";
 import { buildIdentityActivationTransactionInput } from "../services/identity-activation.service";
 import { IdentityActivationRepository } from "./identity-activation.repository";
 import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
+import { provisionShopPublicIdentifier } from "./shop-public-identifier-provisioning";
 
 const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date) =>
   ({
@@ -162,7 +163,8 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
   public constructor(
     private readonly client: PrismaClient,
     private readonly cipher: SensitiveFieldCipherService,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly nextShopNumberCandidate?: () => string
   ) {
     this.identityActivation = new IdentityActivationRepository(client);
   }
@@ -175,7 +177,9 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
       type: "merchant",
       deletedAt: null,
       merchantDetail: { deletedAt: null },
-      status: query.status ?? { in: ["submitted", "under_review", "approved", "rejected", "withdrawn"] }
+      status: query.status ?? {
+        in: ["submitted", "under_review", "approved", "rejected", "withdrawn"]
+      }
     };
     const [rows, total] = await this.client.$transaction([
       this.client.identityApplication.findMany({
@@ -241,6 +245,11 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
           status: "published",
           isRecommended: false
         }
+      });
+      const shopPublicIdentifier = await provisionShopPublicIdentifier(transaction, {
+        shopId: shop.id,
+        shopName: input.shopName,
+        nextCandidate: this.nextShopNumberCandidate
       });
       const taxonomy = await this.requireApplicationTaxonomy(transaction, input);
       await transaction.shopServiceCategory.createMany({
@@ -349,6 +358,8 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
             applicationId: input.applicationId,
             merchantAccountId: merchant.id,
             shopId: shop.id,
+            shopPublicId: shopPublicIdentifier.publicId,
+            shopNo: shopPublicIdentifier.numberPart,
             identityId: identity.identityId,
             billingProfileId: billingProfile.id,
             ekycPolicy: input.ekycPolicy,
@@ -535,7 +546,9 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
             this.holder.normalizeForMatch("corporate", detail.corporateLegalNameKana)
           )
         : bank?.verificationSource === "applicant_declaration"
-          ? this.cipher.matchHash(this.holder.normalizeForMatch("individual", detail.representativeNameKana))
+          ? this.cipher.matchHash(
+              this.holder.normalizeForMatch("individual", detail.representativeNameKana)
+            )
           : (row.applicant.ekycVerifications[0]?.nameMatchHash ?? null);
 
     return {
