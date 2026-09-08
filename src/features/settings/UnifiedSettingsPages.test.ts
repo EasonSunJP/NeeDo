@@ -351,6 +351,12 @@ describe("FormalAccountSecurityPanel", () => {
     expect(accountSource).not.toMatch(/fetchGoogleAccountApi|\/api\/google-account\/|GoogleCalendarAccountBinding|4176/);
   });
 
+  it("returns an ordinary logout directly to login instead of the cached merchant homepage", () => {
+    const logoutAction = source.slice(source.indexOf("void logout().then"), source.indexOf("void logout().then") + 380);
+    expect(logoutAction).toContain("window.location.replace(getPortalEntryUrl(portal, `/login/${portal}`))");
+    expect(logoutAction).toContain("window.location.reload()");
+  });
+
   it("wires successful unlink through AuthProvider logout and returns to the current portal login", () => {
     const accountPageSource = source.slice(source.indexOf("export function UnifiedSettingsAccountPage"), source.indexOf("export function UnifiedSettingsNotificationsPage"));
     expect(accountPageSource).toContain("logout");
@@ -358,6 +364,18 @@ describe("FormalAccountSecurityPanel", () => {
     expect(accountPageSource).toContain("navigate(`/login/${portal}`");
     expect(accountPageSource).toContain("session={session}");
     expect(accountPageSource).not.toContain("google-calendar");
+  });
+});
+
+describe("persisted public legal documents", () => {
+  it("renders the exact current-language release without static legal fallback", () => {
+    expect(source).toContain("usePublicLegalDocument(slug, language)");
+    expect(source).toContain('slug="terms-of-use"');
+    expect(source).toContain('slug="privacy-policy"');
+    expect(source).toContain("state.document.body");
+    expect(source).toContain("当前语言尚无已发布版本");
+    expect(source).not.toContain("getLegalTermsDocument(language)");
+    expect(source).not.toContain("getLegalPrivacyDocument(language)");
   });
 });
 
@@ -455,6 +473,8 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(portalPageSource).toContain('row.action === "retry"');
     expect(portalPageSource).toContain("getIdentityApplicationPath(row.kind)");
     expect(portalPageSource).toContain('t("申请")');
+    expect(portalPageSource).toContain('const disabled = row.action === "current" || switchingPortal !== null;');
+    expect(portalPageSource).not.toContain('row.action === "current" || row.action === "pending"');
   });
 
   it("keeps merchant identity switching on the merchant app instead of technician", () => {
@@ -560,6 +580,13 @@ describe("UnifiedSettingsProfilePage", () => {
     expect(profileRouteSource).toContain("SettingsProfileResourceState");
   });
 
+  it("keeps empty formal languages and biography empty in the user profile draft", () => {
+    expect(userProfileSource).toContain("languages: customer.languages?.length ? [...customer.languages] : technician?.languages?.length ? [...technician.languages] : []");
+    expect(userProfileSource).toContain('bio: customer.bio ?? technician?.bio ?? ""');
+    expect(userProfileSource).not.toContain('current.languages.length === 1 ? current');
+    expect(userProfileSource).not.toContain('"可在这里补充你的语言偏好、常用预约习惯和其他说明。"');
+  });
+
   it("loads and saves the technician profile through the formal technician profile API", () => {
     const profileRouteSource = source.slice(
       source.indexOf("function FormalTechnicianProfileSettingsPage"),
@@ -580,5 +607,21 @@ describe("UnifiedSettingsProfilePage", () => {
 
     expect(profileRouteSource).toContain('if (!store)');
     expect(profileRouteSource).toContain("SettingsProfileResourceState");
+  });
+});
+
+
+describe("formal personal verification", () => {
+  it("does not advertise completion on the settings entry before checking records", () => {
+    const summary = source.slice(source.indexOf("function getVerificationStatusLabel"), source.indexOf("function getThemeCaption"));
+    expect(summary).toContain('if (portal === "user")');
+    expect(summary).toContain('return "查看状态"');
+  });
+  it("does not label personal identity and credit verified without records", () => {
+    const verification = source.slice(source.indexOf("export function UnifiedSettingsVerificationPage"), source.indexOf("export function UnifiedSettingsServiceRangePage"));
+    expect(verification).not.toContain("已通过基础实名校验。");
+    expect(verification).not.toContain("头像、昵称与预约资料一致性正常。");
+    expect(verification).toContain("EkycProfileForm");
+    expect(verification).not.toContain("PersonalVerificationStatus");
   });
 });

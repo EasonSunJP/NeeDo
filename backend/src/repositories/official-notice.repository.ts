@@ -14,13 +14,16 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import type {
   CreateAndPlanOfficialNoticeInput,
+  CreateDraftOfficialNoticeInput,
   LifecycleMutationInput,
   OfficialNoticeDispatchResult,
   OfficialNoticeLevelCode,
   OfficialNoticePayload,
   OfficialNoticeRepositoryPort,
   OfficialNoticeStatusCode,
-  RecipientOfficialNoticePayload
+  PlanDraftOfficialNoticeInput,
+  RecipientOfficialNoticePayload,
+  UpdateDraftOfficialNoticeInput
 } from "../services/official-notice.service";
 import { AppError } from "../utils/app-error";
 import { toPrismaPagination } from "../utils/pagination";
@@ -31,6 +34,7 @@ import type {
   OfficialNoticeAudienceInput,
   OfficialNoticeBlockInput
 } from "../validators/official-notice.validator";
+import { officialNoticeBlockSchema } from "../validators/official-notice.validator";
 import type {
   NoticeIssuerReadScope,
   NoticeIssuerScope
@@ -93,6 +97,7 @@ interface NoticeRecord {
   status: OfficialNoticeStatus;
   sourceLocale: ContentLocale;
   targetSummary: string;
+  audienceCriteria: Prisma.JsonValue;
   scheduledAt: Date | null;
   sentAt: Date | null;
   cancelledAt: Date | null;
@@ -117,6 +122,75 @@ interface DeliveryCounts {
   read: number;
 }
 
+export interface OfficialNoticeMediaBindingRecord {
+  id: number;
+  entityType: string;
+  ownerUserId: number | null;
+  shopId: number | null;
+  url: string;
+  mimeType: string;
+  isActive: boolean;
+  deletedAt: Date | null;
+}
+
+const mediaMimeMatchesBlock = (type: string, mimeType: string): boolean =>
+  type === "image"
+    ? ["image/jpeg", "image/png", "image/webp"].includes(mimeType)
+    : type === "video"
+      ? ["video/mp4", "video/webm"].includes(mimeType)
+      : type === "file" && ["application/pdf", "text/plain"].includes(mimeType);
+
+export function assertOfficialNoticeMediaBindings(
+  assets: readonly OfficialNoticeMediaBindingRecord[],
+  translations:
+    | Readonly<Record<string, { blocks: unknown }>>
+    | ReadonlyArray<{ blocks: unknown }>,
+  issuerScope: NoticeIssuerScope,
+  actorUserId: number
+): void {
+  const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+  const values = Array.isArray(translations) ? translations : Object.values(translations);
+  for (const translation of values) {
+    const blocks = Array.isArray(translation.blocks) ? translation.blocks : [];
+    for (const rawBlock of blocks) {
+      if (typeof rawBlock !== "object" || rawBlock === null || !("mediaAssetId" in rawBlock)) continue;
+      const block = rawBlock as {
+        type?: string;
+        content?: string;
+        mimeType?: string;
+        mediaAssetId?: unknown;
+      };
+      if (typeof block.mediaAssetId !== "number") continue;
+      const asset = assetById.get(block.mediaAssetId);
+      const scoped = issuerScope.type === "platform"
+        ? asset?.ownerUserId === actorUserId && asset.shopId === null
+        : asset?.shopId === issuerScope.shopId;
+      if (
+        !asset ||
+        asset.entityType !== "official_notice_upload" ||
+        !asset.isActive ||
+        asset.deletedAt !== null ||
+        !scoped ||
+        asset.url !== block.content ||
+        !block.type ||
+        !mediaMimeMatchesBlock(block.type, asset.mimeType) ||
+        (block.mimeType !== undefined && block.mimeType !== asset.mimeType)
+      ) {
+        throw new AppError({
+          code: ERROR_CODES.VALIDATION,
+          message: "error.official_notice.media_invalid",
+          statusCode: 400
+        });
+      }
+    }
+  }
+}
+
+type SnapshotAudienceInput = Pick<
+  CreateAndPlanOfficialNoticeInput,
+  "publicId" | "issuerScope" | "audience" | "now" | "scheduledAt"
+>;
+
 export function getOfficialNoticeRetryAt(
   attemptCount: number,
   maxAttempts: number,
@@ -137,7 +211,14 @@ export function buildOfficialNoticeRecipientWhere(
     return { ...base, type: { in: [...new Set(audience.identityTypes)] } };
   }
   if (audience.type === "exact_users") {
-    return { ...base, userId: { in: [...new Set(audience.userIds)] } };
+    return {
+      ...base,
+      user: {
+        isActive: true,
+        deletedAt: null,
+        needoId: { in: [...new Set(audience.needoIds)] }
+      }
+    };
   }
   return base;
 }
@@ -151,6 +232,247 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     private readonly eventGateway?: Pick<RealtimeEventGatewayPort, "publish">
   ) {
     this.maxDeliveryAttempts = Math.max(1, Math.min(20, maxDeliveryAttempts));
+  }
+
+  public async createDraft(
+    input: CreateDraftOfficialNoticeInput
+  ): Promise<OfficialNoticePayload> {
+    let resultPublicId = input.publicId;
+    await this.assertActiveMerchantPublisher(this.client, input.issuerScope, input.now);
+    const replay = await this.client.officialNotice.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+      select: {
+        publicId: true,
+        requestFingerprint: true,
+        issuerType: true,
+        issuerShopId: true
+      }
+    });
+    if (replay) {
+      this.assertIssuerScope(replay, input.issuerScope);
+      if (replay.requestFingerprint !== input.requestFingerprint)
+        throw this.conflict("error.idempotency_key_reused");
+      return this.getManaged(replay.publicId, input.issuerScope);
+    }
+
+    await this.client.$transaction(async (transaction) => {
+      await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
+      await this.assertMediaBindings(
+        transaction,
+        input.translations,
+        input.issuerScope,
+        input.actorUserId
+      );
+      const notice = await transaction.officialNotice.create({
+        data: {
+          publicId: input.publicId,
+          level: levelToDb[input.level],
+          status: OfficialNoticeStatus.DRAFT,
+          sourceLocale: localeToDb[input.sourceLocale],
+          audienceType: audienceTypeToDb[input.audience.type],
+          audienceCriteria: input.audience as Prisma.InputJsonValue,
+          targetSummary: input.targetSummary,
+          scheduledAt: null,
+          submittedAt: null,
+          approvedAt: null,
+          lockVersion: 1,
+          idempotencyKey: input.idempotencyKey,
+          requestFingerprint: input.requestFingerprint,
+          issuerType:
+            input.issuerScope.type === "platform"
+              ? OfficialNoticeIssuerType.PLATFORM
+              : OfficialNoticeIssuerType.SHOP,
+          issuerShopId: input.issuerScope.type === "shop" ? input.issuerScope.shopId : null,
+          createdByIdentityId:
+            input.issuerScope.type === "shop" ? input.issuerScope.actorIdentityId : null,
+          createdById: input.actorUserId,
+          updatedById: input.actorUserId,
+          createdAt: input.now,
+          updatedAt: input.now,
+          translations: {
+            create: CONTENT_LOCALES.map((locale) => ({
+              locale: localeToDb[locale],
+              title: input.translations[locale].title,
+              summary: input.translations[locale].summary,
+              blocks: input.translations[locale].blocks as Prisma.InputJsonValue,
+              sourceLocale: localeToDb[input.translations[locale].sourceLocale],
+              isInitialCopy: input.translations[locale].isInitialCopy,
+              createdAt: input.now,
+              updatedAt: input.now
+            }))
+          }
+        }
+      });
+      await transaction.auditLog.create({
+        data: {
+          actorId: input.actorUserId,
+          action: "official_notice.draft_create",
+          targetType: "OfficialNotice",
+          targetId: notice.id,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent ?? null,
+          metadata: {
+            publicId: input.publicId,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: input.requestFingerprint,
+            issuerType: input.issuerScope.type,
+            issuerShopId: input.issuerScope.type === "shop" ? input.issuerScope.shopId : null
+          } satisfies Prisma.InputJsonValue,
+          createdAt: input.now
+        }
+      });
+    }).catch(async (error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const concurrent = await this.client.officialNotice.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+          select: {
+            publicId: true,
+            requestFingerprint: true,
+            issuerType: true,
+            issuerShopId: true
+          }
+        });
+        if (concurrent) {
+          this.assertIssuerScope(concurrent, input.issuerScope);
+          if (concurrent.requestFingerprint !== input.requestFingerprint)
+            throw this.conflict("error.idempotency_key_reused");
+          resultPublicId = concurrent.publicId;
+          return;
+        }
+      }
+      throw error;
+    });
+    return this.getManaged(resultPublicId, input.issuerScope);
+  }
+
+  public async getManaged(
+    publicId: string,
+    issuerScope: NoticeIssuerReadScope
+  ): Promise<OfficialNoticePayload> {
+    const record = await this.client.officialNotice.findFirst({
+      where: { publicId, deletedAt: null, ...this.issuerWhere(issuerScope) },
+      include: { translations: { where: { deletedAt: null }, orderBy: { id: "asc" } } }
+    });
+    if (!record) throw this.notFound();
+    const counts = await this.deliveryCounts([record.id]);
+    return this.mapPayload(record as NoticeRecord, counts.get(record.id));
+  }
+
+  public async updateDraft(
+    input: UpdateDraftOfficialNoticeInput
+  ): Promise<OfficialNoticePayload> {
+    await this.client.$transaction(async (transaction) => {
+      const notice = await this.lockNotice(transaction, input.publicId, input.issuerScope);
+      await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
+      if (await this.isCommandReplay(transaction, notice.id, input)) return;
+      if (notice.status !== OfficialNoticeStatus.DRAFT)
+        throw this.conflict("error.official_notice.not_draft");
+      this.assertVersion(notice.lockVersion, input.expectedLockVersion);
+      await this.assertMediaBindings(
+        transaction,
+        input.translations,
+        input.issuerScope,
+        input.actorUserId
+      );
+      await transaction.officialNotice.update({
+        where: { id: notice.id },
+        data: {
+          level: levelToDb[input.level],
+          sourceLocale: localeToDb[input.sourceLocale],
+          audienceType: audienceTypeToDb[input.audience.type],
+          audienceCriteria: input.audience as Prisma.InputJsonValue,
+          targetSummary: input.targetSummary,
+          updatedById: input.actorUserId,
+          lockVersion: { increment: 1 },
+          updatedAt: input.now
+        }
+      });
+      for (const locale of CONTENT_LOCALES) {
+        const translation = input.translations[locale];
+        await transaction.officialNoticeTranslation.upsert({
+          where: { noticeId_locale: { noticeId: notice.id, locale: localeToDb[locale] } },
+          create: {
+            noticeId: notice.id,
+            locale: localeToDb[locale],
+            title: translation.title,
+            summary: translation.summary,
+            blocks: translation.blocks as Prisma.InputJsonValue,
+            sourceLocale: localeToDb[translation.sourceLocale],
+            isInitialCopy: translation.isInitialCopy,
+            createdAt: input.now,
+            updatedAt: input.now
+          },
+          update: {
+            title: translation.title,
+            summary: translation.summary,
+            blocks: translation.blocks as Prisma.InputJsonValue,
+            sourceLocale: localeToDb[translation.sourceLocale],
+            isInitialCopy: translation.isInitialCopy,
+            deletedAt: null,
+            updatedAt: input.now
+          }
+        });
+      }
+      await this.auditDraftCommand(transaction, notice.id, "draft_update", input);
+    });
+    return this.getManaged(input.publicId, input.issuerScope);
+  }
+
+  public async planDraft(
+    input: PlanDraftOfficialNoticeInput
+  ): Promise<OfficialNoticePayload> {
+    await this.client.$transaction(
+      async (transaction) => {
+        const notice = await this.lockNotice(transaction, input.publicId, input.issuerScope);
+        await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
+        if (await this.isCommandReplay(transaction, notice.id, input)) return;
+        if (notice.status !== OfficialNoticeStatus.DRAFT)
+          throw this.conflict("error.official_notice.not_draft");
+        this.assertVersion(notice.lockVersion, input.expectedLockVersion);
+        if (input.sendMode === "scheduled" && input.scheduledAt.getTime() <= input.now.getTime()) {
+          throw new AppError({
+            code: ERROR_CODES.VALIDATION,
+            message: "error.official_notice.schedule_future_required",
+            statusCode: 400
+          });
+        }
+        this.assertDraftComplete(notice.translations);
+        await this.assertMediaBindings(
+          transaction,
+          notice.translations,
+          input.issuerScope,
+          input.actorUserId
+        );
+        await transaction.officialNotice.update({
+          where: { id: notice.id },
+          data: {
+            status: OfficialNoticeStatus.SCHEDULED,
+            scheduledAt: input.scheduledAt,
+            submittedAt: input.now,
+            approvedAt: input.now,
+            submittedById: input.actorUserId,
+            approvedById: input.actorUserId,
+            updatedById: input.actorUserId,
+            lockVersion: { increment: 1 },
+            updatedAt: input.now
+          }
+        });
+        const audience = notice.audienceCriteria as unknown as NoticeAudienceInput;
+        const audienceCount = await this.snapshotAudience(transaction, notice.id, {
+          publicId: input.publicId,
+          issuerScope: input.issuerScope,
+          audience,
+          now: input.now,
+          scheduledAt: input.scheduledAt
+        });
+        await this.auditDraftCommand(transaction, notice.id, "plan_draft", input, {
+          audienceCount,
+          scheduledAt: input.scheduledAt.toISOString()
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 60_000 }
+    );
+    return this.getManaged(input.publicId, input.issuerScope);
   }
 
   public async createAndPlan(
@@ -185,6 +507,12 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       .$transaction(
         async (transaction) => {
           await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
+          await this.assertMediaBindings(
+            transaction,
+            input.translations,
+            input.issuerScope,
+            input.actorUserId
+          );
           const notice = await transaction.officialNotice.create({
             data: {
               publicId: input.publicId,
@@ -287,6 +615,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     issuerScope: NoticeIssuerReadScope;
     page: number;
     pageSize: number;
+    search?: string;
     status?: OfficialNoticeStatusCode;
     level?: OfficialNoticeLevelCode;
   }): Promise<{ list: OfficialNoticePayload[]; total: number }> {
@@ -294,6 +623,25 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     const where: Prisma.OfficialNoticeWhereInput = {
       deletedAt: null,
       ...this.issuerWhere(input.issuerScope),
+      ...(input.search
+        ? {
+            OR: [
+              { publicId: { contains: input.search } },
+              { targetSummary: { contains: input.search } },
+              {
+                translations: {
+                  some: {
+                    deletedAt: null,
+                    OR: [
+                      { title: { contains: input.search } },
+                      { summary: { contains: input.search } }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        : {}),
       ...(input.status ? { status: statusToDb[input.status] } : {}),
       ...(input.level ? { level: levelToDb[input.level] } : {})
     };
@@ -474,7 +822,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     await this.client.$transaction(async (transaction) => {
       const notice = await this.lockNotice(transaction, input.publicId, input.issuerScope);
       await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
-      if (await this.isLifecycleReplay(transaction, notice.id, input)) return;
+      if (await this.isCommandReplay(transaction, notice.id, input)) return;
       if (
         !new Set<OfficialNoticeStatus>([
           OfficialNoticeStatus.SENT,
@@ -594,7 +942,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       select: { id: true }
     });
     if (!candidate) throw this.notFound();
-    return this.client.$transaction(async (transaction) => {
+    const result = await this.client.$transaction(async (transaction) => {
       await transaction.$queryRaw(Prisma.sql`SELECT id FROM notice_deliveries
         WHERE id = ${candidate.id}
         AND recipient_identity_id = ${input.recipientIdentityId} AND recipient_user_id = ${input.actorUserId}
@@ -635,8 +983,23 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
           }
         });
       }
-      return { publicId: input.publicId, readAt };
+      return { publicId: input.publicId, readAt, changed: !delivery.readAt, deliveryId: delivery.id };
     });
+    if (result.changed) {
+      try {
+        this.eventGateway?.publish({
+          id: `official-notice-read:${result.deliveryId}:${result.readAt.getTime()}`,
+          type: "notification.read",
+          recipientUserId: input.actorUserId,
+          recipientIdentityId: input.recipientIdentityId,
+          payload: { kind: "official_notice", publicId: input.publicId },
+          createdAt: result.readAt.toISOString()
+        });
+      } catch {
+        // The read is committed; reconnecting clients recover it through the inbox API.
+      }
+    }
+    return { publicId: result.publicId, readAt: result.readAt };
   }
 
   private async deliverOne(deliveryId: number, noticeId: number, now: Date): Promise<void> {
@@ -737,7 +1100,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     await this.client.$transaction(async (transaction) => {
       const notice = await this.lockNotice(transaction, input.publicId, input.issuerScope);
       await this.assertActiveMerchantPublisher(transaction, input.issuerScope, input.now);
-      if (await this.isLifecycleReplay(transaction, notice.id, input)) return;
+      if (await this.isCommandReplay(transaction, notice.id, input)) return;
       this.assertVersion(notice.lockVersion, input.expectedLockVersion);
       if (action === "cancel") {
         if (
@@ -811,7 +1174,58 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     if (locked.length !== 1) throw this.notFound();
     return transaction.officialNotice.findUniqueOrThrow({
       where: { id: locked[0].id },
-      select: { id: true, status: true, lockVersion: true }
+      select: {
+        id: true,
+        status: true,
+        lockVersion: true,
+        audienceCriteria: true,
+        translations: {
+          where: { deletedAt: null },
+          orderBy: { id: "asc" },
+          select: {
+            title: true,
+            summary: true,
+            blocks: true,
+            locale: true
+          }
+        }
+      }
+    });
+  }
+
+  private assertDraftComplete(
+    translations: Array<{
+      title: string;
+      summary: string;
+      blocks: Prisma.JsonValue;
+      locale: ContentLocale;
+    }>
+  ): void {
+    if (translations.length !== CONTENT_LOCALES.length) {
+      throw this.invalidDraft();
+    }
+    const locales = new Set(translations.map((translation) => translation.locale));
+    if (CONTENT_LOCALES.some((locale) => !locales.has(localeToDb[locale]))) {
+      throw this.invalidDraft();
+    }
+    for (const translation of translations) {
+      if (!translation.title.trim() || !translation.summary.trim()) throw this.invalidDraft();
+      const blocks = Array.isArray(translation.blocks) ? translation.blocks : [];
+      if (blocks.length === 0) throw this.invalidDraft();
+      for (const block of blocks) {
+        if (!officialNoticeBlockSchema.safeParse(block).success) throw this.invalidDraft();
+      }
+      if (!blocks.some((block) => (
+        typeof block === "object" && block !== null && "type" in block && block.type !== "divider"
+      ))) throw this.invalidDraft();
+    }
+  }
+
+  private invalidDraft(): AppError {
+    return new AppError({
+      code: ERROR_CODES.VALIDATION,
+      message: "error.official_notice.draft_incomplete",
+      statusCode: 400
     });
   }
 
@@ -832,10 +1246,10 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     };
   }
 
-  private async isLifecycleReplay(
+  private async isCommandReplay(
     transaction: Prisma.TransactionClient,
     noticeId: number,
-    input: LifecycleMutationInput
+    input: { idempotencyKey: string; requestFingerprint: string }
   ): Promise<boolean> {
     const record = await transaction.auditLog.findFirst({
       where: {
@@ -851,6 +1265,39 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     if (metadata?.requestFingerprint !== input.requestFingerprint)
       throw this.conflict("error.idempotency_key_reused");
     return true;
+  }
+
+  private async auditDraftCommand(
+    transaction: Prisma.TransactionClient,
+    noticeId: number,
+    action: "draft_update" | "plan_draft",
+    input: {
+      actorUserId: number;
+      publicId: string;
+      context: { ip: string; userAgent?: string };
+      now: Date;
+      idempotencyKey: string;
+      requestFingerprint: string;
+    },
+    extra: Record<string, unknown> = {}
+  ): Promise<void> {
+    await transaction.auditLog.create({
+      data: {
+        actorId: input.actorUserId,
+        action: `official_notice.${action}`,
+        targetType: "OfficialNotice",
+        targetId: noticeId,
+        ip: input.context.ip,
+        userAgent: input.context.userAgent ?? null,
+        metadata: {
+          publicId: input.publicId,
+          idempotencyKey: input.idempotencyKey,
+          requestFingerprint: input.requestFingerprint,
+          ...extra
+        } as Prisma.InputJsonValue,
+        createdAt: input.now
+      }
+    });
   }
 
   private async auditLifecycle(
@@ -883,11 +1330,11 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
   private async snapshotAudience(
     transaction: Prisma.TransactionClient,
     noticeId: number,
-    input: CreateAndPlanOfficialNoticeInput
+    input: SnapshotAudienceInput
   ): Promise<number> {
     let afterId = 0;
     let total = 0;
-    const foundUsers = new Set<number>();
+    const foundNeedoIds = new Set<string>();
     while (true) {
       const recipients = await transaction.userIdentity.findMany({
         where: {
@@ -916,7 +1363,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       afterId = recipients[recipients.length - 1].id;
       total += recipients.length;
       if (input.audience.type === "exact_users")
-        for (const recipient of recipients) foundUsers.add(recipient.userId);
+        for (const recipient of recipients) foundNeedoIds.add(recipient.user.needoId);
       await transaction.noticeAudience.createMany({
         data: recipients.map((recipient) => ({
           noticeId,
@@ -958,7 +1405,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
     if (total === 0) throw this.conflict("error.official_notice.audience_empty");
     if (
       input.audience.type === "exact_users" &&
-      input.audience.userIds.some((id) => !foundUsers.has(id))
+      input.audience.needoIds.some((needoId) => !foundNeedoIds.has(needoId))
     ) {
       throw this.conflict("error.official_notice.target_unavailable");
     }
@@ -1037,6 +1484,7 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
       status: statusFromDb[record.status],
       sourceLocale: localeFromDb[record.sourceLocale],
       targetSummary: record.targetSummary,
+      audience: record.audienceCriteria as unknown as NoticeAudienceInput,
       scheduledAt: record.scheduledAt,
       sentAt: record.sentAt,
       cancelledAt: record.cancelledAt,
@@ -1102,6 +1550,44 @@ export class OfficialNoticeRepository implements OfficialNoticeRepositoryPort {
         statusCode: 403
       });
     }
+  }
+
+  private async assertMediaBindings(
+    client: PrismaClient | Prisma.TransactionClient,
+    translations:
+      | Readonly<Record<string, { blocks: unknown }>>
+      | ReadonlyArray<{ blocks: unknown }>,
+    issuerScope: NoticeIssuerScope,
+    actorUserId: number
+  ): Promise<void> {
+    const values = Array.isArray(translations) ? translations : Object.values(translations);
+    const mediaAssetIds = [...new Set(values.flatMap((translation) => {
+      const blocks = Array.isArray(translation.blocks) ? translation.blocks : [];
+      return blocks.flatMap((rawBlock: unknown) => {
+        if (
+          typeof rawBlock !== "object" ||
+          rawBlock === null ||
+          !("mediaAssetId" in rawBlock) ||
+          typeof rawBlock.mediaAssetId !== "number"
+        ) return [];
+        return [rawBlock.mediaAssetId];
+      });
+    }))];
+    if (mediaAssetIds.length === 0) return;
+    const assets = await client.mediaAsset.findMany({
+      where: { id: { in: mediaAssetIds } },
+      select: {
+        id: true,
+        entityType: true,
+        ownerUserId: true,
+        shopId: true,
+        url: true,
+        mimeType: true,
+        isActive: true,
+        deletedAt: true
+      }
+    });
+    assertOfficialNoticeMediaBindings(assets, translations, issuerScope, actorUserId);
   }
 
   private errorName(error: unknown): string {

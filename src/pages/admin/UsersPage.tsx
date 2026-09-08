@@ -312,7 +312,7 @@ function CustomerProfilesWorkspace() {
           { key: "level", title: "会员等级", render: (row: BackofficeCustomerPayload) => row.membershipLevel },
           { key: "orders", title: "预约数", render: (row: BackofficeCustomerPayload) => row.bookingCount },
           { key: "public", title: "公开资料", render: (row: BackofficeCustomerPayload) => <Badge tone={row.isPublic ? "green" : "neutral"}>{row.isPublic ? "公开" : "不公开"}</Badge> }
-        ]} footerPlacement="inline" onView={openCustomer} rows={customers} /> : null}
+        ]} footerPlacement="inline" frozenDetailLabel={translateText("详情", language)} onView={openCustomer} rows={customers} /> : null}
       </ModuleShell>
 
       <Drawer onClose={closeCustomer} open={selectedCustomerId !== null} title="用户详细信息">

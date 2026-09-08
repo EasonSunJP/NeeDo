@@ -19,6 +19,10 @@ import {
 import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
 import { BackofficeRepository } from "../src/repositories/backoffice.repository";
 import { LIFEDANCE_PAYROLL_PERIODS } from "../src/simulation/lifedance-payroll-seed";
+import {
+  filterSimulationContactsByIdentityPair,
+  simulationContactIdentityPairKey
+} from "../src/simulation/three-month-simulation-contact-check";
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
@@ -153,6 +157,7 @@ const main = async (): Promise<void> => {
           deletedAt: null
         },
         select: {
+          id: true,
           userId: true,
           type: true,
           scopeType: true,
@@ -750,13 +755,33 @@ const main = async (): Promise<void> => {
       assert(value, `missing ${type} participant id for ${key}`);
       return value;
     };
-    const expectedContactKeys = new Set(
+    const resolveParticipantIdentityId = (
+      type: "admin" | "customer" | "technician" | "shop_owner",
+      key: string
+    ): number => {
+      const userId = resolveParticipantId(type, key);
+      const identityType =
+        type === "admin"
+          ? "platform"
+          : type === "shop_owner"
+            ? "merchant_owner"
+            : type;
+      const identity = (identitiesByUser.get(userId) ?? []).find(
+        (candidate) => candidate.type === identityType
+      );
+      assert(identity, `missing ${identityType} identity for ${type} participant ${key}`);
+      return identity.id;
+    };
+    const expectedContactIdentityKeys = new Set(
       plan.contacts.map(
         (contact) =>
-          `${resolveParticipantId(contact.ownerType, contact.ownerKey)}:${resolveParticipantId(
+          simulationContactIdentityPairKey(
+            resolveParticipantIdentityId(contact.ownerType, contact.ownerKey),
+            resolveParticipantIdentityId(
             contact.contactType,
             contact.contactKey
-          )}`
+            )
+          )
       )
     );
     const candidateContacts = await prisma.contact.findMany({
@@ -766,10 +791,17 @@ const main = async (): Promise<void> => {
         },
         deletedAt: null
       },
-      select: { ownerUserId: true, contactUserId: true, source: true }
+      select: {
+        ownerUserId: true,
+        ownerIdentityId: true,
+        contactUserId: true,
+        contactIdentityId: true,
+        source: true
+      }
     });
-    const simulationContacts = candidateContacts.filter((contact) =>
-      expectedContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
+    const simulationContacts = filterSimulationContactsByIdentityPair(
+      candidateContacts,
+      expectedContactIdentityKeys
     );
     assert(
       simulationContacts.length === plan.contacts.length,

@@ -10,7 +10,8 @@ import {
   platformMembershipTierDraftBodySchema,
   platformMembershipTierParamSchema,
   platformMembershipTierPublishBodySchema,
-  platformMembershipUserParamSchema
+  platformMembershipUserParamSchema,
+  userMembershipAdjustmentBodySchema
 } from "../validators/platform-membership.validator";
 
 export class PlatformMembershipController {
@@ -124,6 +125,20 @@ export class PlatformMembershipController {
           )
         )
       );
+  });
+
+  public adjustUserMembership = this.handle(async (request, response) => {
+    const { userId } = platformMembershipUserParamSchema.parse(request.params);
+    response.status(200).json(
+      successResponse(
+        await this.service.adjustUserMembership(
+          getAuthenticatedAccess(response),
+          getRequestContext(request),
+          userId,
+          userMembershipAdjustmentBodySchema.parse(request.body)
+        )
+      )
+    );
   });
 
   private handle(

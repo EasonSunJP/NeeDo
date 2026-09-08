@@ -1,0 +1,227 @@
+// @vitest-environment jsdom
+import { act, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UnifiedUserDetailDrawer } from "./UnifiedUserDetailDrawer";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const state = vi.hoisted(() => ({
+  getUser: vi.fn(),
+  listAccountPosts: vi.fn(async () => ({ list: [], total: 0, page: 1, page_size: 10 })),
+  listReceivedReviews: vi.fn(),
+  amendReview: vi.fn(),
+  listUsage: vi.fn(),
+  getUsageTimeline: vi.fn(),
+  appendUsageComment: vi.fn(),
+  amendUsageRefund: vi.fn(),
+  listUserPartnerProfiles: vi.fn(),
+  markPartnerProfile: vi.fn()
+}));
+
+vi.mock("./api", () => ({ platformUserManagementApi: state }));
+vi.mock("../../api/platformPartners", () => ({
+  platformPartnersApi: {
+    listUserPartnerProfiles: state.listUserPartnerProfiles,
+    markPartnerProfile: state.markPartnerProfile
+  }
+}));
+vi.mock("../../components/ui/Drawer", () => ({
+  Drawer: ({ children, open, title }: { children: ReactNode; open: boolean; title: string }) => open ? <section><h1>{title}</h1>{children}</section> : null
+}));
+
+const detail = {
+  id: 41,
+  needoId: "u0000000041",
+  username: "mia",
+  displayName: "Mia",
+  email: "mia@example.test",
+  phone: null,
+  emailBound: true,
+  phoneBound: false,
+  avatarUrl: "/mia.png",
+  city: "Tokyo",
+  privacyMode: true,
+  privacyScope: "limited",
+  isActive: true,
+  isTestAccount: false,
+  source: ["password"],
+  identities: [], roles: [], groups: [], ekycVerified: false,
+  membership: { tierCode: "gold", tierVersionPublicId: null, entitlementPublicId: null, expiresAt: null, experienceMultiplier: 2, lockVersion: null },
+  experience: { currentLevel: 1, totalExp: "4" },
+  ndpBalance: { available: 900, frozen: 0 },
+  bookingCount: 3,
+  lastLoginAt: null,
+  createdAt: "2026-09-01T12:00:00.000Z",
+  updatedAt: "2026-09-01T12:00:00.000Z",
+  profile: { displayName: "Mia", bio: null, city: "Tokyo", gender: null, age: null, heightCm: null, languages: [] },
+  account: { roles: [] },
+  bookingSpend: { totalBookings: 3, completedBookings: 2, completedSpendJpy: 18000 },
+  metrics: { ndpAvailable: 900, usageCount: 3, credit: { ratingAverage: 4.8, reviewCount: 12, latestReviewAt: null } },
+  capabilities: { membershipWrite: false, reviewAmend: false, refundAmend: false, partnerWrite: false, timelineCommentWrite: false },
+  audit: { total: 0, list: [] }
+};
+
+async function waitForText(container: HTMLElement, text: string) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (container.textContent?.includes(text)) return;
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 0)); });
+  }
+  throw new Error(`missing text: ${text}`);
+}
+
+describe("UnifiedUserDetailDrawer", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  beforeEach(() => {
+    state.getUser.mockReset().mockResolvedValue(detail);
+    state.listReceivedReviews.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
+    state.listUserPartnerProfiles.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 });
+    state.amendReview.mockReset();
+    state.listUsage.mockReset().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
+    state.getUsageTimeline.mockReset();
+    state.appendUsageComment.mockReset();
+    state.amendUsageRefund.mockReset();
+    window.localStorage.setItem("needo.language", "zh");
+    window.localStorage.setItem("needo.language.mode", "manual");
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+  });
+  afterEach(() => { act(() => root.unmount()); container.remove(); window.localStorage.clear(); });
+
+  it.each(["operations", "merchant"] as const)("renders the same canonical detail structure for %s", async (scope) => {
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope={scope} userId={41} />));
+    await waitForText(container, "Mia");
+    expect(state.getUser).toHaveBeenCalledWith(scope, 41);
+    for (const tab of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG", "动态"]) {
+      expect([...container.querySelectorAll('[role="tab"]')].some((node) => node.textContent === tab)).toBe(true);
+    }
+    expect(container.textContent).toContain("900");
+    expect(container.textContent).toContain("4.8");
+    expect(container.textContent).toContain("已开启");
+  });
+
+  it("renders the server-projected account origin and queries dates on the server", async () => {
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 1, page: 1, page_size: 10, list: [{ id: "account-created-41", action: "account.created", actorName: "Mia", actorAvatarUrl: null, createdAt: detail.createdAt, metadata: null }] } });
+    await act(async () => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "账号生成");
+    const log = container.querySelector(".admin-event-timeline")!;
+    expect(log.textContent).toContain("账号已生成");
+    expect(log.textContent).toContain("2026");
+    expect(log.textContent).not.toContain("尚未接入正式数据");
+    await act(async () => [...log.closest("section[aria-busy]")!.querySelectorAll("button")].find((button) => button.textContent === "近7天")!.click());
+    expect(state.getUser).toHaveBeenLastCalledWith("operations", 41, expect.objectContaining({ audit_page: 1, audit_from: expect.any(String), audit_to: expect.any(String) }));
+  });
+
+  it("paginates actual user activity and resets to the first page at 50 rows", async () => {
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 1, page_size: 10, list: [] } });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "Mia");
+    const nav = () => container.querySelector('nav[aria-label="用户LOG翻页"]')!;
+    expect(nav()).not.toBeNull();
+    const select = nav().querySelector("select")!;
+    expect([...select.options].map((option) => option.value)).toEqual(["10", "50"]);
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 2, page_size: 10, list: [] } });
+    act(() => [...nav().querySelectorAll("button")].find((button) => button.textContent === "下一页")?.click());
+    await waitForText(nav() as HTMLElement, "2/13");
+    expect(state.getUser).toHaveBeenLastCalledWith("operations", 41, { audit_page: 2, audit_page_size: 10 });
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 1, page_size: 50, list: [] } });
+    act(() => { select.value = "50"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await waitForText(nav() as HTMLElement, "1/3");
+    expect(state.getUser).toHaveBeenLastCalledWith("operations", 41, { audit_page: 1, audit_page_size: 50 });
+    state.getUser.mockRejectedValueOnce(new Error("offline"));
+    act(() => [...nav().querySelectorAll("button")].find((button) => button.textContent === "下一页")?.click());
+    await waitForText(container, "重试");
+    expect(nav().textContent).toContain("1/3");
+  });
+
+  it("keeps the displayed page size when navigating after a failed size change", async () => {
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 1, page_size: 10, list: [] } });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "Mia");
+    const nav = container.querySelector('nav[aria-label="用户LOG翻页"]')!;
+    state.getUser.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => { const select = nav.querySelector("select")!; select.value = "50"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await waitForText(container, "重试");
+    expect(nav.querySelector("select")?.value).toBe("10");
+    state.getUser.mockResolvedValue({ ...detail, audit: { total: 126, page: 2, page_size: 10, list: [] } });
+    await act(async () => [...nav.querySelectorAll("button")].find((button) => button.textContent === "下一页")?.click());
+    expect(state.getUser).toHaveBeenLastCalledWith("operations", 41, { audit_page: 2, audit_page_size: 10 });
+  });
+
+  it("shows both reasoned membership actions only when the operations capability is granted", async () => {
+    state.getUser.mockResolvedValue({
+      ...detail,
+      capabilities: { ...detail.capabilities, membershipWrite: true },
+    });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "修改会员类型");
+    expect(container.textContent).toContain("修改会员倍率");
+    const membershipTab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((tab) => tab.textContent === "会员等级")!;
+    const panel = container.querySelector<HTMLElement>(`[id="${membershipTab.getAttribute("aria-controls")}"]`)!;
+    for (const [action, label] of [["修改会员类型", "当前会员等级"], ["修改会员倍率", "会员倍率"]]) {
+      const button = [...container.querySelectorAll("button")].find((node) => node.textContent === action)!;
+      expect(button.closest('[role="tabpanel"]')).toBe(panel);
+      expect(button.closest("dd")?.parentElement?.querySelector("dt")?.textContent).toBe(label);
+    }
+    expect([...container.querySelectorAll("p, dt")].filter((node) => node.textContent === "累计经验")).toHaveLength(1);
+    expect(panel.hidden).toBe(true);
+    act(() => membershipTab.click());
+    expect(panel.hidden).toBe(false);
+    expect(panel.textContent).toContain("4 EXP");
+    expect(panel.textContent).not.toContain("40000 EXP");
+    for (const action of ["修改会员类型", "修改会员倍率"]) {
+      act(() => [...panel.querySelectorAll("button")].find((node) => node.textContent === action)!.click());
+      const dialog = container.querySelector('[role="dialog"]')!;
+      expect(dialog.getAttribute("aria-label")).toBe(action);
+      expect(dialog.textContent).toContain("调整理由");
+      act(() => [...dialog.querySelectorAll("button")].find((node) => node.textContent === "取消")!.click());
+    }
+  });
+
+  it("renders three independent partner ranges only for permitted operations users", async () => {
+    state.getUser.mockResolvedValue({
+      ...detail,
+      capabilities: { ...detail.capabilities, partnerWrite: true }
+    });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "平台合作方标记");
+    expect(container.querySelectorAll('input[aria-label="开始日期"]')).toHaveLength(3);
+    expect(container.querySelectorAll('input[aria-label="结束日期"]')).toHaveLength(3);
+  });
+
+  it("keeps scoped permissions collapsed in the shared account tab", async () => {
+    state.getUser.mockResolvedValue({
+      ...detail,
+      account: { roles: [{
+        code: "operator",
+        name: "运营管理员",
+        scopeType: "global",
+        scopeId: null,
+        permissions: ["backoffice:users:read"]
+      }] }
+    });
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "Mia");
+    const accountTab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')]
+      .find((node) => node.textContent === "权限与账号");
+    act(() => accountTab?.click());
+    await waitForText(container, "展开权限");
+    expect(container.textContent).not.toContain("backoffice:users:read");
+  });
+
+  it("shows partner marks only inside the account tab across all seven tabs", async () => {
+    act(() => root.render(<UnifiedUserDetailDrawer onClose={vi.fn()} scope="operations" userId={41} />));
+    await waitForText(container, "平台合作方标记");
+    const headings = [...container.querySelectorAll("h3")].filter((node) => node.textContent === "平台合作方标记");
+    expect(headings).toHaveLength(1);
+    const panel = headings[0].closest<HTMLElement>('[role="tabpanel"]');
+    expect(panel).not.toBeNull();
+    for (const tab of container.querySelectorAll<HTMLElement>('[role="tab"]')) {
+      act(() => tab.click());
+      expect(panel!.hidden).toBe(tab.textContent !== "权限与账号");
+      if (tab.textContent === "权限与账号") expect(panel!.getAttribute("aria-labelledby")).toBe(tab.id);
+    }
+  });
+});

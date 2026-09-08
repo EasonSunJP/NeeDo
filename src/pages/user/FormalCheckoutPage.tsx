@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
+import { travelFareApi, type JapaneseRouteAddress, type RouteEstimate } from "../../api/travelFare";
 import { useAuth } from "../../auth/AuthProvider";
 import {
   AppTopBar,
@@ -12,6 +13,7 @@ import {
 import {
   bookingApi,
   createBookingIdempotencyKey,
+  type AdministrativeRegionReference,
   type BookingScheduleSlot,
   type ManualPaymentMethod,
   type TechnicianServiceBookingContext
@@ -59,6 +61,7 @@ export type CheckoutCatalogRef =
 
 type CheckoutServiceContext = {
   catalogRef: CheckoutCatalogRef;
+  publicId: string;
   serviceInfo: UnifiedServiceInfoCardData;
   serviceDetailPath: string;
   serviceMode: string;
@@ -75,9 +78,11 @@ type CheckoutServiceContext = {
 type BookingIdempotencyState = { fingerprint: string; key: string };
 
 class CheckoutSourceError extends Error {}
+type EstimateStatus = "idle" | "loading" | "success" | "error" | "expired";
 
 const quickNotes = ["女性技师优先", "请提前联系", "需要安静环境"];
 const checkoutScheduleSlotStateKey = "checkoutScheduleSlotId";
+const emptyHomeAddress: JapaneseRouteAddress = { countryCode: "JP", postalCode: "", prefecture: "", city: "", addressLine1: "", addressLine2: "", building: "" };
 
 function checkoutHistoryState(value: unknown) {
   return value !== null && typeof value === "object"
@@ -100,6 +105,16 @@ function describeCheckoutError(error: unknown) {
     if (error.status >= 500) return "预约服务暂时不可用，请稍后重试";
   }
   return "预约页加载失败，请检查网络后重试";
+}
+
+function describeEstimateError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.message === "error.travel.outside_service_area") return "该地址超出店铺的上门服务范围。";
+    if (error.message === "error.travel.provider_unconfigured") return "路线供应商尚未配置，暂时无法估算交通费。";
+    if (error.message === "error.travel.route_not_found") return "没有找到可用的驾驶路线，请检查地址。";
+    if (error.message.startsWith("error.travel.provider_")) return "路线供应商暂时不可用，请稍后重试。";
+  }
+  return "交通费估算失败，请检查地址后重试。";
 }
 
 function resolveFulfillmentMode(serviceMode: string, requestedMode: string | null): FulfillmentMode {
@@ -212,7 +227,17 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
   const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>("store");
   const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("onsite");
-  const [address, setAddress] = useState("");
+  const [homeAddress, setHomeAddress] = useState<JapaneseRouteAddress>(emptyHomeAddress);
+  const [estimate, setEstimate] = useState<RouteEstimate | null>(null);
+  const [estimateStatus, setEstimateStatus] = useState<EstimateStatus>("idle");
+  const [estimateError, setEstimateError] = useState("");
+  const estimateRequestVersionRef = useRef(0);
+  const [prefectures, setPrefectures] = useState<AdministrativeRegionReference[]>([]);
+  const [municipalities, setMunicipalities] = useState<AdministrativeRegionReference[]>([]);
+  const [selectedAdmin1Code, setSelectedAdmin1Code] = useState("");
+  const [selectedAdmin2Code, setSelectedAdmin2Code] = useState("");
+  const [regionLoadError, setRegionLoadError] = useState("");
+  const [municipalitiesLoading, setMunicipalitiesLoading] = useState(false);
   const [note, setNote] = useState(searchParams.get("remark") ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -225,6 +250,14 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const selectedDayWindow = useMemo(() => getTokyoDayWindow(selectedDate), [selectedDate]);
   const persistedSlotId = persistedCheckoutScheduleSlotId(location.state);
 
+  const updateHomeAddress = (field: keyof JapaneseRouteAddress, value: string) => {
+    estimateRequestVersionRef.current += 1;
+    setHomeAddress((current) => ({ ...current, [field]: value }));
+    setEstimate(null);
+    setEstimateStatus("idle");
+    setEstimateError("");
+  };
+
   useEffect(() => {
     if (!selectedDayWindow) return undefined;
     let active = true;
@@ -234,6 +267,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     const servicePromise: Promise<CheckoutServiceContext> = serviceId !== null
       ? coreReadApi.getServiceDetail(serviceId).then((serviceDetail) => ({
           catalogRef: { type: "shop_service", id: serviceId },
+          publicId: serviceDetail.publicId,
           serviceInfo: mapCoreServiceCardToUnifiedData(serviceDetail),
           serviceDetailPath: `/services/${serviceDetail.id}`,
           serviceMode: serviceDetail.serviceMode,
@@ -252,6 +286,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           }
           return {
             catalogRef: { type: "technician_service" as const, id: technicianServiceId! },
+            publicId: bookingContext.serviceCard.publicId,
             serviceInfo: mapTechnicianBookingContextServiceToUnifiedData(
               bookingContext.serviceCard,
               serviceModeLabel(bookingContext.serviceCard.serviceMode)
@@ -344,6 +379,57 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   }, [checkoutNowMs, selectedSlotId, slots]);
 
   useEffect(() => {
+    let active = true;
+    setRegionLoadError("");
+    void bookingApi
+      .listAdministrativeRegions({ country: "JP", locale: "ja" })
+      .then(({ list }) => {
+        if (active) setPrefectures(list);
+      })
+      .catch(() => {
+        if (active) {
+          setPrefectures([]);
+          setRegionLoadError("行政区域加载失败，请重试");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAdmin1Code) {
+      setMunicipalities([]);
+      setMunicipalitiesLoading(false);
+      return;
+    }
+    let active = true;
+    setMunicipalitiesLoading(true);
+    setRegionLoadError("");
+    void bookingApi
+      .listAdministrativeRegions({
+        country: "JP",
+        locale: "ja",
+        parent: selectedAdmin1Code
+      })
+      .then(({ list }) => {
+        if (active) setMunicipalities(list);
+      })
+      .catch(() => {
+        if (active) {
+          setMunicipalities([]);
+          setRegionLoadError("行政区域加载失败，请重试");
+        }
+      })
+      .finally(() => {
+        if (active) setMunicipalitiesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedAdmin1Code]);
+
+  useEffect(() => {
     const updateProgressByScroll = () => {
       const progressBottom = progressBarRef.current?.getBoundingClientRect().bottom ?? 138;
       const sectionTops = sectionRefs.current.map(
@@ -408,11 +494,27 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     };
   }, [coreService?.technician?.id, fixedTechnicianPublisher, selectedTechnicianProfileId]);
 
+  useEffect(() => {
+    if (!estimate) return undefined;
+    const remainingMs = Date.parse(estimate.expiresAt) - Date.now();
+    if (remainingMs <= 0) {
+      setEstimateStatus("expired");
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => setEstimateStatus("expired"), remainingMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [estimate]);
+
   const supportsBothModes = service?.serviceMode === "both" || service?.serviceMode === "flexible";
+  const canSubmitBooking = Boolean(selectedSlot) && (
+    fulfillmentMode === "store" ||
+    Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")
+  );
   const people = searchParams.get("people") ?? "1名";
-  const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : address.trim();
+  const formattedHomeAddress = [homeAddress.postalCode, homeAddress.prefecture, homeAddress.city, homeAddress.addressLine1, homeAddress.addressLine2, homeAddress.building].map((value) => value?.trim()).filter(Boolean).join(" ");
+  const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : formattedHomeAddress;
   const locationTitle = fulfillmentMode === "store" ? service?.shop.name ?? "" : "上门服务地址";
-  const locationQuery = [locationTitle, locationAddress].filter(Boolean).join(" ");
+  const locationQuery = fulfillmentMode === "store" ? [locationTitle, locationAddress].filter(Boolean).join(" ") : "";
   const selectedTechnician = useMemo(() => {
     if (!selectedTechnicianProfileId) return null;
     if (coreService?.technician?.id === selectedTechnicianProfileId) return coreService.technician;
@@ -474,6 +576,31 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
   };
 
+  const requestTravelEstimate = async () => {
+    if (!service || estimateStatus === "loading") return;
+    if (!selectedSlotId) {
+      setEstimateError("请先从上方时间栏选定一个可用时段，再估算交通费。");
+      setEstimateStatus("error");
+      return;
+    }
+    const normalizedAddress = Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress;
+    if (!/^\d{3}-?\d{4}$/.test(normalizedAddress.postalCode) || !normalizedAddress.prefecture || !normalizedAddress.city || !normalizedAddress.addressLine1) {
+      setEstimateError("请完整填写邮编、都道府县、市区町村和街道地址。");
+      setEstimateStatus("error");
+      return;
+    }
+    const requestVersion = ++estimateRequestVersionRef.current;
+    setEstimateStatus("loading"); setEstimateError(""); setEstimate(null);
+    try {
+      const result = await travelFareApi.createEstimate({ servicePublicId: service.publicId, scheduleSlotId: selectedSlotId, destination: normalizedAddress });
+      if (requestVersion !== estimateRequestVersionRef.current) return;
+      setEstimate(result); setEstimateStatus(Date.parse(result.expiresAt) > Date.now() ? "success" : "expired");
+    } catch (error) {
+      if (requestVersion !== estimateRequestVersionRef.current) return;
+      setEstimateError(describeEstimateError(error)); setEstimateStatus("error");
+    }
+  };
+
   const selectCheckoutSlot = (slotId: number) => {
     const slot = slots.find(
       (candidate) => candidate.id === slotId && isCheckoutSlotBookable(candidate, Date.now())
@@ -482,6 +609,12 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     const selectedTime = getTokyoSlotParts(slot.startsAt)?.time;
     if (!selectedTime) return;
 
+    if (slot.id !== selectedSlotId) {
+      estimateRequestVersionRef.current += 1;
+      setEstimate(null);
+      setEstimateStatus("idle");
+      setEstimateError("");
+    }
     setSelectedSlotId(slot.id);
     const nextSearchParams = new URLSearchParams(location.search);
     const previousState = checkoutHistoryState(location.state);
@@ -540,25 +673,37 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       navigate(`/login/user?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
       return;
     }
-    if (fulfillmentMode === "home" && !address.trim()) {
-      setSubmitError("请先填写完整上门地址，再提交预约");
+    if (fulfillmentMode === "home" && (!estimate || estimateStatus !== "success" || Date.parse(estimate.expiresAt) <= Date.now())) {
+      setEstimateStatus(estimate ? "expired" : estimateStatus);
+      setSubmitError("请先取得有效的正式交通费估价，再提交预约");
       return;
+    }
+    if (fulfillmentMode === "home") {
+      if (!selectedAdmin1Code || !selectedAdmin2Code) {
+        setSubmitError("请先选择都道府县和市区町村，再提交预约");
+        return;
+      }
+      if (!homeAddress.addressLine1.trim()) {
+        setSubmitError("请先填写完整上门地址，再提交预约");
+        return;
+      }
     }
 
     setSubmitting(true);
     setSubmitError("");
     try {
+      const fulfillment = fulfillmentMode === "home"
+        ? { fulfillmentMode: "home" as const, serviceLocation: { countryCode: "JP" as const, admin1Code: selectedAdmin1Code, admin2Code: selectedAdmin2Code }, fulfillmentAddress: Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress, travelEstimatePublicId: estimate!.publicId }
+        : { fulfillmentMode: "store" as const };
       const bookingInput = {
         ...(catalogRef.type === "shop_service"
           ? { serviceId: catalogRef.id }
           : { technicianServiceId: catalogRef.id }),
         ...(exchangePostId ? { exchangeIntelligencePostId: exchangePostId } : {}),
         scheduleSlotId: freshSelectedSlot.id,
-        fulfillmentMode,
+        ...fulfillment,
         paymentMethod,
-        note: [fulfillmentMode === "home" ? `上门地址：${address.trim()}` : "", note.trim()]
-          .filter(Boolean)
-          .join(" / ") || undefined
+        note: note.trim() || undefined
       };
       const fingerprint = JSON.stringify(bookingInput);
       const idempotency = exchangePostId
@@ -677,15 +822,52 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                   </div>
                 </div>
               ) : (
-                <div className="mt-3">
+                <div className="mt-3 space-y-3">
                   <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">上门服务</p>
-                  <textarea
-                    aria-label="上门地址"
-                    className="focus-ring mt-3 min-h-28 w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
-                    onChange={(event) => setAddress(event.target.value)}
-                    placeholder="请输入完整地址、房间号和联系电话"
-                    value={address}
-                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <select
+                      aria-label="都道府县"
+                      className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
+                      onChange={(event) => {
+                        setSelectedAdmin1Code(event.target.value);
+                        setSelectedAdmin2Code("");
+                        updateHomeAddress("prefecture", prefectures.find((region) => region.code === event.target.value)?.name ?? "");
+                        updateHomeAddress("city", "");
+                      }}
+                      value={selectedAdmin1Code}
+                    >
+                      <option value="">请选择都道府县</option>
+                      {prefectures.map((region) => (
+                        <option key={region.code} value={region.code}>{region.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="市区町村"
+                      className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)] disabled:opacity-50"
+                      disabled={!selectedAdmin1Code || municipalitiesLoading}
+                      onChange={(event) => {
+                        setSelectedAdmin2Code(event.target.value);
+                        updateHomeAddress("city", municipalities.find((region) => region.code === event.target.value)?.name ?? "");
+                      }}
+                      value={selectedAdmin2Code}
+                    >
+                      <option value="">{municipalitiesLoading ? "正在加载市区町村" : "请选择市区町村"}</option>
+                      {municipalities.map((region) => (
+                        <option key={region.code} value={region.code}>{region.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {regionLoadError ? <p className="text-xs font-bold text-red-500">{regionLoadError}</p> : null}
+                  <div className="grid grid-cols-2 gap-2">
+                    <input aria-label="邮政编码" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("postalCode", event.target.value)} placeholder="邮编 104-0061" value={homeAddress.postalCode} />
+                    <input aria-label="街道地址" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("addressLine1", event.target.value)} placeholder="銀座1-2-3" value={homeAddress.addressLine1} />
+                    <input aria-label="地址补充" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("addressLine2", event.target.value)} placeholder="丁目、番地（可选）" value={homeAddress.addressLine2} />
+                    <input aria-label="建筑物与房间" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("building", event.target.value)} placeholder="建筑物、房间号（可选）" value={homeAddress.building} />
+                  </div>
+                  <button className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-50" disabled={estimateStatus === "loading" || !selectedSlotId} onClick={() => void requestTravelEstimate()} type="button">{estimateStatus === "loading" ? "正在计算驾驶路线…" : estimateStatus === "error" || estimateStatus === "expired" ? "重新估算交通费" : "估算交通费"}</button>
+                  {estimateStatus === "success" && estimate ? <div className="rounded-[20px] bg-[color:var(--client-primary-soft)] p-3"><p className="text-sm font-black text-[color:var(--client-primary)]">正式交通费 ¥{estimate.fareAmountJpy.toLocaleString("ja-JP")}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">驾驶距离 {(estimate.distanceMeters / 1000).toFixed(1)} km · 适用上限 {(estimate.bandMaximumDistanceMeters / 1000).toFixed(1)} km · 策略 v{estimate.policyVersion}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">估价有效至 {new Date(estimate.expiresAt).toLocaleString("ja-JP")}</p></div> : null}
+                  {estimateStatus === "expired" ? <p className="text-sm font-black text-amber-700" role="alert">交通费估价已过期，请重新估算。</p> : null}
+                  {estimateStatus === "error" ? <p className="text-sm font-black text-red-600" role="alert">{estimateError}</p> : null}
                 </div>
               )}
             </div>
@@ -723,7 +905,11 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[3] = node)}>
             <SectionTitle>地址</SectionTitle>
             <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
-              {locationQuery ? (
+              {fulfillmentMode === "home" ? (
+                <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:var(--client-surface)] px-4 py-6 text-center">
+                  <p className="text-sm font-black text-[color:var(--client-text)]">为保护上门地址隐私，此处不加载第三方地图预览。</p>
+                </div>
+              ) : locationQuery ? (
                 <div className="relative overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[#101318]">
                   <iframe
                     aria-hidden="true"
@@ -873,7 +1059,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               <div className="grid grid-cols-[minmax(0,1fr),auto] items-end gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-black text-[color:color-mix(in_srgb,var(--client-text)_72%,var(--client-muted)_28%)]">应付金额</p>
-                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(displayServiceInfo.priceAmount)}</strong>
+                  <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(Number(displayServiceInfo.priceAmount) + (fulfillmentMode === "home" && estimateStatus === "success" ? estimate?.fareAmountJpy ?? 0 : 0))}</strong>
+                  {fulfillmentMode === "home" ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]">服务费 + 正式交通费</span> : null}
                 </div>
                 <div className="flex max-w-[54vw] flex-wrap justify-end gap-2">
                   {(["onsite", "bank_transfer"] as const).map((method) => (
@@ -898,7 +1085,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                 <SecondaryButton className="w-full" onClick={() => navigate(service.shop.contactPath)}>联系</SecondaryButton>
                 <button
                   className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!selectedSlot || submitting}
+                  disabled={!canSubmitBooking || submitting}
                   onClick={() => void submitBooking()}
                   type="button"
                 >

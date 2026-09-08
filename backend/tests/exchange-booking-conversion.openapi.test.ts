@@ -126,7 +126,8 @@ const matchingProjectionWithNullBooking: ExchangeMatchingPayload = {
       booking: null
     }
   ],
-  viewer: { canSelect: false, canCreateBookings: true }
+  quickBudgetDecision: null,
+  viewer: { canSelect: false, canConfirmQuickBudget: false, canCreateBookings: true }
 };
 
 describe("Exchange matched booking conversion OpenAPI", () => {
@@ -278,12 +279,16 @@ describe("Exchange matched booking conversion OpenAPI", () => {
     );
     expect(document.components.schemas.ExchangeMatching.properties?.viewer).toEqual(
       expect.objectContaining({
-        required: ["canSelect", "canCreateBookings"],
+        required: ["canSelect", "canConfirmQuickBudget", "canCreateBookings"],
         properties: {
           canSelect: { type: "boolean" },
+          canConfirmQuickBudget: { type: "boolean" },
           canCreateBookings: { type: "boolean" }
         }
       })
+    );
+    expect(document.components.schemas.ExchangeMatching.properties?.quickBudgetDecision).toEqual(
+      expect.objectContaining({ oneOf: expect.any(Array) })
     );
   });
 });

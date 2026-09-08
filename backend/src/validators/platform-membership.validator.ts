@@ -8,7 +8,8 @@ export const platformMembershipBenefitCodeSchema = z.enum([
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ]);
 export const platformMembershipBenefitLocaleQuerySchema = z
   .object({
@@ -39,6 +40,8 @@ export const platformMembershipThemeSchema = z
   .object({
     detailAccentColor: hexColorSchema,
     detailSurfaceColor: hexColorSchema,
+    detailSurfaceMiddleColor: hexColorSchema,
+    detailSurfaceBottomColor: hexColorSchema,
     detailItemSurfaceColor: hexColorSchema,
     detailOuterBorderColor: hexColorSchema,
     detailItemBorderColor: hexColorSchema,
@@ -102,7 +105,7 @@ export const platformMembershipTierDraftBodySchema = z
     experienceMultiplier: z.number().positive().max(100),
     description: z.string().trim().max(500).nullable(),
     theme: platformMembershipThemeSchema,
-    benefits: z.array(tierBenefitSchema).length(7)
+    benefits: z.array(tierBenefitSchema).length(8)
   })
   .strict();
 
@@ -158,7 +161,23 @@ export const platformMembershipEntitlementCommandSchema = z.discriminatedUnion("
     .strict()
 ]);
 
+export const userMembershipAdjustmentBodySchema = z
+  .object({
+    tierCode: platformMembershipTierCodeSchema.optional(),
+    multiplier: z.number().positive().max(100).optional(),
+    reason: z.string().trim().min(1).max(500),
+    expectedLockVersion: z.number().int().positive().nullable(),
+  })
+  .strict()
+  .refine(
+    (value) => value.tierCode !== undefined || value.multiplier !== undefined,
+    { message: "tierCode or multiplier is required" },
+  );
+
 export type PlatformMembershipTierDraftBody = z.infer<typeof platformMembershipTierDraftBodySchema>;
 export type PlatformMembershipBenefitUpdateBody = z.infer<
   typeof platformMembershipBenefitUpdateBodySchema
+>;
+export type UserMembershipAdjustmentBody = z.infer<
+  typeof userMembershipAdjustmentBodySchema
 >;

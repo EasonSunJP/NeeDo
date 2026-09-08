@@ -1,0 +1,15 @@
+{
+  "title": "NeeDo 申请者操作教程",
+  "version": "2026-09-07",
+  "sourceEnvironment": "本地 TEST 示例",
+  "finalReady": false,
+  "screenshotRoot": "exports/application-guide-2026-09-07/screenshots",
+  "groups": [
+    {"section": "店铺申请", "glob": "0[1-7]-*-mobile.png"},
+    {"section": "本人认证", "glob": "1[0-9]-*-mobile.png"},
+    {"section": "技师申请", "glob": "2[0-9]-*-mobile.png"}
+  ],
+  "screenshots": [],
+  "excludePattern": "(?i)(operator|reviewer|backoffice|admin|ops-)",
+  "notes": "等待部署与最终截图确认。可用 screenshots 数组指定最终顺序，每项包含 file、title、section、sourceEnvironment。显式数组非空时替代 groups 自动发现。仅纳入申请者页面。"
+}

@@ -8,6 +8,7 @@ import {
   agentShopReferralBodySchema,
   agentShopReferralListQuerySchema,
   platformPartnerProfileBodySchema,
+  platformPartnerHistoryQuerySchema,
   platformPartnerUserParamSchema
 } from "../validators/platform-partner.validator";
 
@@ -33,6 +34,26 @@ export class PlatformPartnerController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listUserProfiles = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { userId } = platformPartnerUserParamSchema.parse(request.params);
+      response.status(200).json(
+        successResponse(
+          await this.service.listUserProfiles(
+            userId,
+            platformPartnerHistoryQuerySchema.parse(request.query)
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }

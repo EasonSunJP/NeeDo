@@ -47,18 +47,52 @@ describe("BackofficeUserGroupRepository", () => {
     expect(client.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          platformMembershipEntitlements: {
-            some: expect.objectContaining({
-              startsAt: { lte: occurredAt },
-              tierVersion: expect.objectContaining({
-                tier: expect.objectContaining({ code: "GOLD" })
-              })
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              platformMembershipEntitlements: {
+                some: expect.objectContaining({
+                  startsAt: { lte: occurredAt },
+                  tierVersion: expect.objectContaining({
+                    tier: expect.objectContaining({ code: "GOLD" })
+                  })
+                })
+              }
             })
-          }
+          ])
         }),
         skip: 0,
         take: 20
       })
+    );
+  });
+
+  it("includes effective membership adjustments in both group totals and member lists", async () => {
+    const client = { user: { findMany: jest.fn(async () => []), count: jest.fn(async () => 1) } };
+    const repository = new BackofficeUserGroupRepository(client as unknown as PrismaClient);
+    const occurredAt = new Date("2026-09-07T00:00:00Z");
+    await repository.countSystemGroupMembers("system:black_diamond", occurredAt);
+    await repository.listSystemGroupMembers("system:black_diamond", occurredAt, {
+      page: 1,
+      pageSize: 20
+    });
+    expect(client.user.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              membershipAdjustments: {
+                some: expect.objectContaining({
+                  effectiveFrom: { lte: occurredAt },
+                  tierVersion: { tier: { code: "BLACK_DIAMOND", deletedAt: null } }
+                })
+              }
+            })
+          ])
+        })
+      })
+    );
+    expect(client.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ OR: expect.any(Array) }) })
     );
   });
 

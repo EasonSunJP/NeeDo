@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import source from "./TechnicianPortalPage.tsx?raw";
+import controlsSource from "../../features/technician-work-status/WorkStatusControls.tsx?raw";
+import timelineSource from "../../features/technician-work-status/WorkTimeline.tsx?raw";
 
 describe("TechnicianPortalPage formal approved UI", () => {
   it("keeps the authenticated self portal available for private technicians without a shop", () => {
@@ -28,20 +30,20 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).toContain("<SharedHomeHeader");
     expect(tasksSource).toContain('locationCaption="当前服务区域"');
     expect(tasksSource).toContain('locationLabel={profile.serviceAreas[0] ?? profile.city ?? "服务区域未设置"}');
-    expect(tasksSource).toContain('to="/technician/schedule"');
+    expect(controlsSource).toContain('to="/technician/schedule"');
     expect(tasksSource).toContain("<FormalTechnicianOrdersPanel />");
     expect(tasksSource).toContain("loadEveryTechnicianOrder");
     expect(tasksSource).toContain("loadManagedScheduleWindow");
     expect(tasksSource).toContain('data-testid="technician-formal-income-dashboard"');
-    expect(tasksSource).toContain('data-testid="technician-formal-status-sync"');
+    expect(tasksSource).toContain("<WorkStatusControls");
     expect(tasksSource).toContain("本月收入");
     expect(tasksSource).toContain("接单率");
     expect(tasksSource).toContain("服务评价");
     expect(tasksSource).toContain("本月订单");
-    expect(tasksSource).toContain("状态同步");
+    expect(controlsSource).toContain("workStatusApi.update");
     expect(tasksSource).toContain("今日仅排班展示");
     expect(tasksSource).toContain("今日订单");
-    expect(tasksSource).toContain("状态记录");
+    expect(tasksSource).toContain("<WorkTimeline");
     expect(tasksSource).toContain("technician.reviewSummary.ratingAverage");
     expect(tasksSource).not.toContain("formalRuntimeFallbacks");
     expect(tasksSource).not.toContain("technicianScheduleStore");
@@ -62,39 +64,21 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).not.toContain('<h2 className="text-xl font-black">今日安排</h2>');
   });
 
-  it("matches the deployed formal status-sync heading and compact five-state controls", () => {
-    const tasksStart = source.indexOf("function TasksView");
-    const tasksEnd = source.indexOf("type TechnicianProfileDraft", tasksStart);
-    const tasksSource = source.slice(tasksStart, tasksEnd);
-
-    expect(tasksSource).toContain('label="状态同步 简介"');
-    expect(tasksSource).toContain('title="状态同步"');
-    expect(tasksSource).toContain('titleClassName="text-lg font-bold text-[color:var(--client-text)]"');
-    expect(tasksSource).toContain('variant="paper"');
-    expect(tasksSource).toContain('"☾", tone: "rest"');
-    expect(tasksSource).toContain('min-h-[88px]');
-    expect(tasksSource).toContain('h-9 w-9');
-    expect(tasksSource).not.toContain('min-h-[104px]');
-    expect(tasksSource).not.toContain('"休息中", icon: "◕"');
+  it("keeps five compact controls and sends formal state mutations", () => {
+    expect(source).toContain("<WorkStatusControls");
+    expect(controlsSource).toContain("min-h-[88px]");
+    expect(controlsSource).toContain("h-9 w-9");
+    expect(controlsSource).toContain("aria-pressed");
+    expect(controlsSource).toContain("expectedVersion");
+    expect(controlsSource).toContain("workStatusApi.update");
   });
 
-  it("restores the deployed formal status timeline instead of a simple list", () => {
-    const tasksStart = source.indexOf("function TasksView");
-    const tasksEnd = source.indexOf("type TechnicianProfileDraft", tasksStart);
-    const tasksSource = source.slice(tasksStart, tasksEnd);
-
-    expect(source).toContain('import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline"');
-    expect(tasksSource).toContain("orders.flatMap");
-    expect(tasksSource).toContain("statusHistory");
-    expect(tasksSource).toContain("<ContactEventTimelinePanel");
-    expect(tasksSource).toContain('commentButtonLabel="补充记录"');
-    expect(tasksSource).toContain('commentPlaceholder="记录执行经过、异常原因或后续处理..."');
-    expect(tasksSource).toContain('emptyLabel="暂无执行 / 异常记录"');
-    expect(tasksSource).toContain("onCommentButtonClick={statusRecordTarget");
-    expect(tasksSource).toContain('showCommentComposer={Boolean(statusRecordTarget)}');
-    expect(tasksSource).toContain('title="状态记录"');
-    expect(tasksSource).not.toContain('<ol className="space-y-3">');
-    expect(tasksSource).not.toContain("nextOrder?.statusHistory.slice(-3)");
+  it("uses persisted work events and comments in the shared timeline", () => {
+    expect(source).toContain('<WorkTimeline target={{ scope: "technician" }}');
+    expect(timelineSource).toContain("ContactEventTimelinePanel");
+    expect(timelineSource).toContain("workStatusApi.events");
+    expect(timelineSource).toContain("workStatusApi.comment");
+    expect(source).not.toContain("const statusTimelineEntries = orders.flatMap");
   });
 
   it("keeps profile and data-center tabs while normalizing the legacy services entry", () => {

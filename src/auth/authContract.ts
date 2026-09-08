@@ -41,6 +41,7 @@ const authMeKeys = [
   "hasPassword",
   "username",
   "avatarUrl",
+  "profileDisplayName",
   "isActive",
   "isTestAccount",
   "currentIdentity",
@@ -61,7 +62,7 @@ const complianceRequirements = new Set<UserPolicyComplianceRequirement>([
   "email_binding_required",
   "ekyc_required"
 ]);
-const identityKeys = ["id", "publicId", "scopeId", "scopeType", "type"] as const;
+const identityKeys = ["id", "publicId", "scopeId", "scopeType", "type", "displayName"] as const;
 const identityAvailabilityKeys = [
   "kind",
   "state",
@@ -152,7 +153,8 @@ export function isFormalAuthIdentityPayload(value: unknown): value is AuthIdenti
       (typeof identity.scopeType === "string" && identity.scopeType.length > 0)) &&
     isNullablePositiveInteger(identity.scopeId) &&
     typeof identity.type === "string" &&
-    identity.type.length > 0
+    identity.type.length > 0 &&
+    isNullableString(identity.displayName)
   );
 }
 
@@ -207,6 +209,7 @@ export function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
     typeof me.username === "string" &&
     me.username.length > 0 &&
     isNullableString(me.avatarUrl) &&
+    isNullableString(me.profileDisplayName) &&
     typeof me.isActive === "boolean" &&
     typeof me.isTestAccount === "boolean" &&
     isFormalAuthIdentityPayload(me.currentIdentity) &&
@@ -221,7 +224,8 @@ export function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
         identity.publicId === me.currentIdentity.publicId &&
         identity.type === me.currentIdentity.type &&
         identity.scopeType === me.currentIdentity.scopeType &&
-        identity.scopeId === me.currentIdentity.scopeId
+        identity.scopeId === me.currentIdentity.scopeId &&
+        identity.displayName === me.currentIdentity.displayName
     ) &&
     me.activeIdentityId === me.currentIdentity?.id &&
     me.activePublicId === me.currentIdentity?.publicId &&

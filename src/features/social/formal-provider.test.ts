@@ -482,6 +482,26 @@ describe("formal social provider gate", () => {
     expect(source).not.toContain("updatePost: formalSocialMutationUnavailable");
   });
 
+  it("rejects a delayed create before the API call when the publishing identity changed", () => {
+    const createStart = source.indexOf("const createPost = async");
+    const createEnd = source.indexOf("const updatePost = async", createStart);
+    const createSource = source.slice(createStart, createEnd);
+    const requestGuard = createSource.indexOf("if (!shouldCommitFormalSocialRequest(");
+    const apiCall = createSource.indexOf("realtimeApi.createSocialPost");
+
+    expect(createStart).toBeGreaterThan(-1);
+    expect(requestGuard).toBeGreaterThan(-1);
+    expect(requestGuard).toBeLessThan(apiCall);
+    expect(createSource).toContain('throw new Error("error.auth.operation_superseded")');
+  });
+
+  it("persists pin and unpin through the formal API instead of the unavailable fallback", () => {
+    expect(source).toContain("const togglePinPost = async");
+    expect(source).toContain("realtimeApi.pinSocialPost");
+    expect(source).toContain("realtimeApi.unpinSocialPost");
+    expect(source).not.toContain("togglePinPost: formalSocialMutationUnavailable");
+  });
+
   it("leaves mounted posts unchanged when a formal reply create rejects", async () => {
     const posts = [makeSocialPost({ id: "700", replyCount: 2 })];
     expect(behavior.createFormalSocialPost).toBeTypeOf("function");

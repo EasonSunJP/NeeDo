@@ -1,3 +1,5 @@
+import { WorkStatusService } from '../src/services/work-status.service';
+import type { WorkStatusRepository } from '../src/repositories/work-status.repository';
 import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
@@ -211,6 +213,11 @@ const createFixture = async () => {
     findVerifiedRegistrationByChallenge: jest.fn(async () => null),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
+    getSuccessfulLoginEvidence: jest.fn(async () => ({
+      hasAnySuccessfulLogin: false,
+      hasSuccessfulLoginInPeriod: false,
+      hasSuccessfulLoginFromIp: false
+    })),
     createAuditLog: jest.fn(async () => undefined)
   };
   const technicianProfileRepository = {
@@ -268,7 +275,10 @@ const createFixture = async () => {
       userId === 9 && profileId === 31 ? dataCenterSource : null
     )
   };
+  const workUnit={assertScope:jest.fn(async()=>undefined),snapshot:jest.fn(async()=>({technicianProfileId:31,status:'unsynced',version:0,syncedAt:null,month:{lateCount:0,earlyLeaveCount:0,from:now.toISOString(),to:new Date(now.getTime()+86400000).toISOString()}}))};
+  const workRepository={transaction:async(fn:(unit:unknown)=>unknown)=>fn(workUnit)} as unknown as WorkStatusRepository;
   const app = createApp(env, {
+    workStatusService:new WorkStatusService(workRepository),
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 0 }),
     authRepository,
     testOnlyAllowLegacyAuthAdapters: true,
@@ -451,4 +461,23 @@ describe("technician profile current-identity API", () => {
       .send({ profileTags: ["肩颈调理"] })
       .expect(400);
   });
+});
+
+
+describe('work status authenticated API contract',()=>{
+ it('requires login, RBAC and selected technician identity',async()=>{
+  const f=await createFixture();
+  await request(f.app).get('/api/v1/technician-work-status/me').expect(401);
+  const denied=await f.login('no-permission@example.com');
+  await request(f.app).get('/api/v1/technician-work-status/me').set('Authorization',`Bearer ${denied}`).expect(403);
+  const customer=await f.login('customer@example.com');
+  await request(f.app).get('/api/v1/technician-work-status/me').set('Authorization',`Bearer ${customer}`).expect(403);
+  const tech=await f.login('technician@example.com');
+  await request(f.app).get('/api/v1/technician-work-status/me').set('Authorization',`Bearer ${tech}`).expect(200).expect(({body})=>expect(body.data.status).toBe('unsynced'));
+ });
+ it('rejects client service state, actor spoofing, reversed intervals and excessive pages',async()=>{
+  const f=await createFixture(),token=await f.login('technician@example.com');
+  for(const body of [{status:'in_service',expectedVersion:0,idempotencyKey:'x'},{status:'on_duty',expectedVersion:0,idempotencyKey:'x',actorId:999}])await request(f.app).patch('/api/v1/technician-work-status/me').set('Authorization',`Bearer ${token}`).send(body).expect(400);
+  for(const query of ['from=2026-09-07T00:00:00Z&to=2026-09-06T00:00:00Z','page_size=101','incidentsOnly=nonsense'])await request(f.app).get(`/api/v1/technician-work-status/me/events?${query}`).set('Authorization',`Bearer ${token}`).expect(400);
+ });
 });

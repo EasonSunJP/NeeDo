@@ -3,7 +3,7 @@ import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { InfoTooltipTrigger } from "../../../components/ui/TitleWithInfo";
 import { cn } from "../../../lib/utils";
-import { addDays, getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
+import { getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
 import { saveDispatchCycleDraft } from "../../dispatch-center/store";
 
 const modeOptions: Array<{
@@ -16,21 +16,13 @@ const modeOptions: Array<{
   recommended?: boolean;
 }> = [
   {
-    mode: "STORE_COLLECT_CONFIRM",
-    title: "商户确认模式",
-    scenario: "多数机构店铺",
-    merchantRole: "设定可排班时段，处理冲突并最终确认",
-    technicianRole: "提交可上班 / 不可上班反馈，可发起申请",
-    confirmation: "商户必须最终确认",
-    recommended: true
-  },
-  {
     mode: "TECH_SELF_FINAL",
     title: "技师自主排班",
     scenario: "自由技师、轻管理店铺",
     merchantRole: "设定基本边界规则，查看结果与冲突",
     technicianRole: "自行设定并保存上班时间",
-    confirmation: "系统自动确认"
+    confirmation: "系统自动确认",
+    recommended: true
   },
   {
     mode: "STORE_ASSIGN_FINAL",
@@ -74,10 +66,7 @@ export function StepModeSelection({
     const nextDraft = {
       ...draft,
       mode,
-      feedbackDeadline:
-        mode === "STORE_COLLECT_CONFIRM"
-          ? draft.feedbackDeadline ?? `${addDays(draft.periodStart, -2)}T18:00`
-          : null
+      feedbackDeadline: null
     };
 
     setDraft(nextDraft);
@@ -150,7 +139,7 @@ export function StepModeSelection({
           <p className={cn("text-xs font-black uppercase tracking-[0.16em]", labelTextClass)}>权限和同步边界</p>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             {[
-              ["正式排班来源", draft.mode === "TECH_SELF_FINAL" ? "技师发布后投影" : draft.mode === "STORE_ASSIGN_FINAL" ? "商户直接生成" : "反馈经商户确认"],
+              ["正式排班来源", draft.mode === "TECH_SELF_FINAL" ? "技师发布后投影" : "商户直接生成"],
               ["技师端编辑", draft.mode === "STORE_ASSIGN_FINAL" ? "只读 + 申请入口" : "可提交 / 修改"],
               ["用户端可约", "只读取最终 confirmed slots"]
             ].map(([label, value]) => (

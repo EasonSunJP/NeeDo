@@ -11,12 +11,12 @@ import type {
   MerchantApplicationRejectionResult,
   RejectMerchantApplicationRepositoryInput
 } from "../services/merchant-application-review.service";
-import { BankAccountHolderService } from "../services/bank-account-holder.service";
 import type { SensitiveFieldCipherService } from "../services/sensitive-field-cipher.service";
 import { AppError } from "../utils/app-error";
 import { buildIdentityActivationTransactionInput } from "../services/identity-activation.service";
 import { IdentityActivationRepository } from "./identity-activation.repository";
 import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
+import { provisionShopPublicIdentifier } from "./shop-public-identifier-provisioning";
 
 const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date) =>
   ({
@@ -49,7 +49,6 @@ const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date
             accountType: true,
             accountNumberEncrypted: true,
             accountHolderEncrypted: true,
-            holderMatchHash: true,
             verificationSource: true,
             verificationStatus: true,
             verifiedAt: true,
@@ -80,7 +79,7 @@ const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date
           },
           orderBy: [{ verifiedAt: "desc" as const }, { id: "desc" as const }],
           take: 1,
-          select: { nameMatchHash: true }
+          select: { id: true }
         }
       }
     },
@@ -157,12 +156,12 @@ const maskHolder = (holderName: string): string => {
 
 export class MerchantApplicationReviewRepository implements MerchantApplicationReviewRepositoryPort {
   private readonly identityActivation: IdentityActivationRepository;
-  private readonly holder = new BankAccountHolderService();
 
   public constructor(
     private readonly client: PrismaClient,
     private readonly cipher: SensitiveFieldCipherService,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly nextShopNumberCandidate?: () => string
   ) {
     this.identityActivation = new IdentityActivationRepository(client);
   }
@@ -175,7 +174,9 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
       type: "merchant",
       deletedAt: null,
       merchantDetail: { deletedAt: null },
-      ...(query.status ? { status: query.status } : {})
+      status: query.status ?? {
+        in: ["submitted", "under_review", "approved", "rejected", "withdrawn"]
+      }
     };
     const [rows, total] = await this.client.$transaction([
       this.client.identityApplication.findMany({
@@ -204,7 +205,7 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
     includeSensitiveDocuments: boolean
   ): Promise<MerchantApplicationReviewRecord | null> {
     const row = await this.client.identityApplication.findFirst({
-      where: { id: applicationId, type: "merchant", deletedAt: null },
+      where: { id: applicationId, type: "merchant", deletedAt: null, status: { not: "draft" } },
       select: buildMerchantReviewSelect(includeSensitiveDocuments, this.now())
     });
     return row ? this.map(row) : null;
@@ -241,6 +242,11 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
           status: "published",
           isRecommended: false
         }
+      });
+      const shopPublicIdentifier = await provisionShopPublicIdentifier(transaction, {
+        shopId: shop.id,
+        shopName: input.shopName,
+        nextCandidate: this.nextShopNumberCandidate
       });
       const taxonomy = await this.requireApplicationTaxonomy(transaction, input);
       await transaction.shopServiceCategory.createMany({
@@ -349,8 +355,12 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
             applicationId: input.applicationId,
             merchantAccountId: merchant.id,
             shopId: shop.id,
+            shopPublicId: shopPublicIdentifier.publicId,
+            shopNo: shopPublicIdentifier.numberPart,
             identityId: identity.identityId,
             billingProfileId: billingProfile.id,
+            ekycPolicy: input.ekycPolicy,
+            bankVerification: input.bankVerification,
             bankAccountId: input.bankAccountId,
             contractAcceptanceId: input.contractAcceptanceId,
             serviceCategoryIds: input.serviceCategoryIds,
@@ -449,7 +459,8 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
           id: input.bankAccountId,
           ownerUserId: input.applicantUserId,
           purpose: "merchant_application",
-          verificationStatus: "verified",
+          verificationStatus: input.bankVerification?.status ?? "verified",
+          ...(input.bankVerification ? { verificationSource: input.bankVerification.source } : {}),
           deletedAt: null
         },
         select: { id: true }
@@ -526,13 +537,6 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
     const contract =
       detail.contractAcceptance?.deletedAt === null ? detail.contractAcceptance : null;
     const applicantKind = detail.applicantKind as "corporate" | "individual";
-    const expectedHolderHash =
-      applicantKind === "corporate" && detail.corporateLegalNameKana
-        ? this.cipher.matchHash(
-            this.holder.normalizeForMatch("corporate", detail.corporateLegalNameKana)
-          )
-        : (row.applicant.ekycVerifications[0]?.nameMatchHash ?? null);
-
     return {
       applicationId: row.id,
       applicantUserId: row.userId,
@@ -590,8 +594,6 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
             accountHolderMasked: maskHolder(this.cipher.open(bank.accountHolderEncrypted)),
             verificationSource: bank.verificationSource,
             verificationStatus: bank.verificationStatus,
-            holderMatched:
-              expectedHolderHash !== null && expectedHolderHash === bank.holderMatchHash,
             verifiedAt: bank.verifiedAt
           }
         : null,

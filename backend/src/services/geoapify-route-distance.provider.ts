@@ -5,12 +5,14 @@ import {
   type RouteDistanceRequest,
   type RouteDistanceResult
 } from "./route-distance.provider";
+import type { RouteProviderHealthStorePort } from "./route-provider-health";
 
 export interface GeoapifyRouteDistanceProviderOptions {
   apiBaseUrl: string;
   apiKey: string;
   timeoutMs: number;
   maxRetries: number;
+  healthStore: RouteProviderHealthStorePort;
   fetch?: typeof fetch;
   sleep?: (delayMs: number) => Promise<void>;
 }
@@ -45,6 +47,7 @@ export class GeoapifyRouteDistanceProvider implements RouteDistanceProvider {
   private readonly apiKey: string;
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
+  private readonly healthStore: RouteProviderHealthStorePort;
   private readonly fetchImplementation: typeof fetch;
   private readonly sleepImplementation: (delayMs: number) => Promise<void>;
 
@@ -53,14 +56,46 @@ export class GeoapifyRouteDistanceProvider implements RouteDistanceProvider {
     this.apiKey = options.apiKey;
     this.timeoutMs = options.timeoutMs;
     this.maxRetries = options.maxRetries;
+    this.healthStore = options.healthStore;
     this.fetchImplementation = options.fetch ?? fetch;
     this.sleepImplementation = options.sleep ?? defaultSleep;
   }
 
   public async getDrivingRoute(request: RouteDistanceRequest): Promise<RouteDistanceResult> {
-    const origin = await this.geocode(request.origin);
-    const destination = await this.geocode(request.destination);
-    return this.route(origin, destination);
+    let result: RouteDistanceResult;
+    try {
+      const origin = await this.geocode(request.origin);
+      const destination = await this.geocode(request.destination);
+      result = await this.route(origin, destination);
+    } catch (error) {
+      await this.recordFailureSafely(
+        error instanceof RouteDistanceProviderError
+          ? error.errorKey
+          : "error.travel.provider_unavailable"
+      );
+      throw error;
+    }
+
+    await this.recordSuccessSafely();
+    return result;
+  }
+
+  private async recordSuccessSafely(): Promise<void> {
+    try {
+      await this.healthStore.recordSuccess(this.key);
+    } catch {
+      // Health evidence is secondary and must not replace a valid provider result.
+    }
+  }
+
+  private async recordFailureSafely(
+    errorKey: RouteDistanceProviderError["errorKey"]
+  ): Promise<void> {
+    try {
+      await this.healthStore.recordFailure(this.key, errorKey);
+    } catch {
+      // Preserve the original provider failure; health reads remain fail-closed.
+    }
   }
 
   private async geocode(address: JapaneseRouteAddress): Promise<Coordinates> {

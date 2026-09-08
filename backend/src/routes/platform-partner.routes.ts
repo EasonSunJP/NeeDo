@@ -15,12 +15,14 @@ import {
   agentShopReferralBodySchema,
   agentShopReferralListQuerySchema,
   platformPartnerProfileBodySchema,
+  platformPartnerHistoryQuerySchema,
   platformPartnerUserParamSchema
 } from "../validators/platform-partner.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
 export const PLATFORM_PARTNER_ROUTE_PERMISSIONS = {
   markProfile: "backoffice:partner-profile:write",
+  readProfiles: "backoffice:users:read",
   readAgents: "backoffice:agent:read",
   writeAgents: "backoffice:agent:write"
 } as const;
@@ -48,6 +50,16 @@ export const createPlatformPartnerRoutes = (
       body: platformPartnerProfileBodySchema
     }),
     controller.markProfile
+  );
+  router.get(
+    "/backoffice/users/:userId/partner-profiles",
+    authenticate(),
+    createAuthorizeMiddleware(PLATFORM_PARTNER_ROUTE_PERMISSIONS.readProfiles),
+    validateRequest({
+      params: platformPartnerUserParamSchema,
+      query: platformPartnerHistoryQuerySchema
+    }),
+    controller.listUserProfiles
   );
   router.get(
     "/backoffice/agents",

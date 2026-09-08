@@ -22,7 +22,8 @@ const benefitCodes = [
   "support_service",
   "exclusive_discount",
   "member_day",
-  "birthday_gift"
+  "birthday_gift",
+  "traceless_recall"
 ] as const;
 const nameTranslations = { zh: "权益", "zh-Hant": "權益", ja: "特典", en: "Benefit", ko: "혜택" };
 const descriptionTranslations = {
@@ -86,7 +87,21 @@ describe("PlatformMembershipService administration", () => {
     const service = new PlatformMembershipService(repository(), audit, () => now);
 
     await expect(service.listTiersForAdministration(actor)).resolves.toEqual(tiers);
-    await expect(service.listBenefitsForAdministration(actor)).resolves.toEqual(benefits);
+    const listed = await service.listBenefitsForAdministration(actor);
+    expect(listed).toEqual(benefits.map(benefit => ({ ...benefit, deliveryCapability: ["ndp_experience", "member_sign_in", "priority_request", "traceless_recall"].includes(benefit.code) ? "available" : "unavailable" })));
+    expect(listed.find(benefit => benefit.code === "traceless_recall")).toMatchObject({ deliveryCapability: "available" });
+  });
+
+  it("accepts an intact catalog in the operator's configured display order", async () => {
+    const reordered = [...benefits].reverse();
+    const service = new PlatformMembershipService({ ...repository(), listBenefitsForAdministration: jest.fn(async () => reordered) }, audit, () => now);
+    await expect(service.listBenefitsForAdministration(actor)).resolves.toEqual(reordered.map(benefit => expect.objectContaining({code:benefit.code})));
+  });
+
+  it("still rejects missing or duplicated benefit codes", async () => {
+    const duplicated = benefits.map((benefit, index) => index === benefits.length - 1 ? benefits[0]! : benefit);
+    const service = new PlatformMembershipService({ ...repository(), listBenefitsForAdministration: jest.fn(async () => duplicated) }, audit, () => now);
+    await expect(service.listBenefitsForAdministration(actor)).rejects.toMatchObject({message:"error.platform_membership.catalog_invalid"});
   });
 
   it("updates a global benefit with optimistic locking and an audit input", async () => {

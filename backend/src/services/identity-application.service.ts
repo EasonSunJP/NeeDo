@@ -1,3 +1,4 @@
+import type { ApplicationEkycPolicyPort } from "../domain/user-policy-enforcement";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import {
@@ -39,7 +40,19 @@ export interface MerchantApplicationDetailRecord {
   eKycVerified: boolean;
 }
 
+export interface ApplicationReviewEvidence {
+  serviceCategories?: string[];
+  businessKeywords?: string[];
+  targetShopName: string | null;
+  targetShopPublicId: string | null;
+  media: Array<{ id: number; purpose: string }>;
+  bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string | null; accountHolderMasked: string | null; verificationStatus: string } | null;
+  contractAcceptance: { contractVersion: string; acceptedTextSnapshot: string; acceptedAt: Date; receiptId: string } | null;
+}
+
 export interface IdentityApplicationRecord {
+  reviewEvidence?: ApplicationReviewEvidence;
+  purgedAt?: Date | null;
   id: number;
   userId: number;
   type: IdentityApplicationType;
@@ -71,6 +84,10 @@ export interface EligibleShopSearchQuery {
 }
 
 export interface EligibleShopSearchResult {
+  coverUrl?: string | null;
+  rating?: number | null;
+  reviewCount?: number;
+  keywords?: string[];
   id: number;
   merchantId: string;
   name: string;
@@ -234,6 +251,7 @@ const emptyTechnicianDetail = (
 export class IdentityApplicationService {
   public constructor(
     private readonly repository: IdentityApplicationRepositoryPort,
+    private readonly ekycPolicy: ApplicationEkycPolicyPort,
     private readonly policy = new IdentityApplicationPolicyService()
   ) {}
 
@@ -351,7 +369,9 @@ export class IdentityApplicationService {
     this.assertEditable(application.status);
     this.assertTransition(application.status, "submitted");
 
-    const submittedSnapshot = this.buildSubmittedSnapshot(application);
+    const ekyc = await this.ekycPolicy.evaluateApplicationEkyc(input.userId, application.type, input.now);
+    if (ekyc.required && !ekyc.verified) throw this.conflict("error.identity_application.ekyc_required");
+    const submittedSnapshot = { ...this.buildSubmittedSnapshot(application), ekycPolicy: ekyc };
     return this.repository.submit({
       applicationId: application.id,
       expectedVersion: input.expectedVersion,
@@ -482,9 +502,6 @@ export class IdentityApplicationService {
     if (detail.serviceCategoryIds.length === 0) {
       throw this.validation("error.identity_application.service_category_required");
     }
-    if (!detail.mediaPurposes.includes("representative_identity")) {
-      throw this.validation("error.identity_application.representative_identity_required");
-    }
     if (detail.applicantKind === "corporate") {
       if (!detail.corporateLegalName?.trim() || !detail.corporateLegalNameKana?.trim()) {
         throw this.validation("error.identity_application.corporate_name_required");
@@ -492,10 +509,11 @@ export class IdentityApplicationService {
       if (!detail.mediaPurposes.includes("corporate_registration")) {
         throw this.validation("error.identity_application.corporate_registration_required");
       }
-    } else if (!detail.eKycVerified) {
-      throw this.conflict("error.identity_application.ekyc_required");
     }
-    if (!detail.bankAccountId || detail.bankVerificationStatus !== "verified") {
+    if (
+      !detail.bankAccountId ||
+      !["verified", "declared"].includes(detail.bankVerificationStatus ?? "")
+    ) {
       throw this.conflict("error.identity_application.bank_verification_required");
     }
     if (!detail.contractAcceptanceId) {

@@ -3,8 +3,9 @@ import type { DashboardPeriod, DashboardWindow } from "./dashboard-period";
 export type RankingKind = "service" | "technician" | "customer";
 export type RankingMetric = "gmv" | "completedCount";
 export type RankingEntityType = "service" | "technician_service" | "technician" | "customer";
+export type AnalyticsRankingDataComposition = "formal" | "test" | "mixed";
 
-export const MAX_ANALYTICS_RANKING_PAGE = Math.floor(Number.MAX_SAFE_INTEGER / 10);
+export const MAX_ANALYTICS_RANKING_PAGE = Math.floor(Number.MAX_SAFE_INTEGER / 100);
 
 export interface AnalyticsRankingInput {
   kind: RankingKind;
@@ -27,6 +28,9 @@ export interface AnalyticsRankingItem {
   categoryId: number | null;
   gmvJpy: number;
   completedCount: number;
+  testGmvJpy: number;
+  testCompletedCount: number;
+  dataComposition: AnalyticsRankingDataComposition;
   registeredAt: string;
 }
 

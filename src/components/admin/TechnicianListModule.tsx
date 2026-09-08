@@ -1,3 +1,4 @@
+import { WorkStatusBadge } from "../../features/technician-work-status/WorkStatusMetrics";
 import { useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import type { Technician } from "../../types/domain";
@@ -83,9 +84,7 @@ export function TechnicianListModule({
       key: "status",
       title: "状态",
       render: (row) => (
-        <Badge tone={row.status === "available" ? "green" : row.status === "busy" ? "yellow" : "neutral"}>
-          {statusText[row.status]}
-        </Badge>
+        <WorkStatusBadge status={row.workStatus} />
       )
     },
     { key: "skills", title: "能力标签", render: (row) => row.skills.slice(0, 3).join("、") },

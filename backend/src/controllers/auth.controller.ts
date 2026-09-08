@@ -10,6 +10,7 @@ import type {
   LoginBody,
   LogoutBody,
   PasswordSetupBody,
+  PasswordLoginVerifyBody,
   RefreshBody,
   RegisterBody,
   RegisterVerifyBody,
@@ -34,6 +35,28 @@ export class AuthController {
         .json(
           successResponse(
             await this.authService.login(loginIdentifier, password, this.getContext(request))
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public verifyPasswordLogin = async (
+    request: BodyRequest<PasswordLoginVerifyBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.verifyPasswordLogin(
+              request.body.challengeId,
+              request.body.otp,
+              this.getContext(request)
+            )
           )
         );
     } catch (error) {

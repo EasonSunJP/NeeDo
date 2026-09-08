@@ -31,6 +31,7 @@ export interface UserBalancesRecord {
 }
 
 export interface UserListInput extends PaginationInput {
+  roleId?: number;
   keyword?: string;
   isActive?: boolean;
   isTestAccount?: boolean;
@@ -320,6 +321,17 @@ export class UserRepository implements UserRepositoryPort {
   private buildListWhere(input: UserListInput): Prisma.UserWhereInput {
     return {
       deletedAt: null,
+      ...(input.roleId
+        ? {
+            userRoles: {
+              some: {
+                roleId: input.roleId,
+                deletedAt: null,
+                role: { deletedAt: null }
+              }
+            }
+          }
+        : {}),
       ...(typeof input.isActive === "boolean" ? { isActive: input.isActive } : {}),
       ...(typeof input.isTestAccount === "boolean" ? { isTestAccount: input.isTestAccount } : {}),
       ...(input.keyword

@@ -167,6 +167,10 @@ vi.mock("../../components/client-ui/FeatureCarousel", () => ({
   FeatureCarousel: ({ slides }: { slides: unknown[] }) => createElement("div", { "data-slide-count": slides.length })
 }));
 
+vi.mock("../../features/content-publication/PublishedCarousel", () => ({
+  PublishedCarousel: ({ scene }: { scene: string }) => createElement("div", { "data-carousel-scene": scene })
+}));
+
 vi.mock("../../auth/AuthProvider", () => ({
   useOptionalAuth: () => authHarness
 }));
@@ -323,11 +327,34 @@ describe("CategoryPage formal category state", () => {
     expect(html).toContain("橘 ひかり");
   });
 
-  it("loads only the adapter selected by the entity filter", () => {
+  it.each([
+    ["store", "shop"],
+    ["technician", "technician"],
+    ["service", "service"]
+  ] as const)("loads all %s results without silently applying the cleaning category", (entityType, queryKey) => {
     resetQueryStates();
-    renderCategoryPage("/categories?type=store");
+    renderCategoryPage(`/categories?type=${entityType}`);
 
-    expect(queryHarness.calls).toEqual(["categories", "shop"]);
+    expect(queryHarness.calls).toEqual(["categories", queryKey]);
+    expect(queryHarness.queries[queryKey]).toMatchObject({ categoryIds: [] });
+  });
+
+  it("does not present cleaning as an active filter on an entity-only entry", () => {
+    resetQueryStates();
+    const html = renderCategoryPage("/categories?type=store");
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const cleaningTag = [...container.querySelectorAll("button")].find((button) => button.textContent === "家政");
+
+    expect(cleaningTag?.querySelector("span")?.className).toContain("var(--client-text)");
+    expect(cleaningTag?.querySelector("span")?.className).not.toContain("var(--client-primary)");
+  });
+
+  it("reuses the formal homepage carousel above search results", () => {
+    resetQueryStates();
+    const html = renderCategoryPage("/categories?type=store");
+
+    expect(html).toContain('data-carousel-scene="user-home"');
   });
 
   it("passes every selected formal category as an OR query value", () => {

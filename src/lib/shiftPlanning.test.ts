@@ -167,7 +167,7 @@ describe("shift planning schedule context", () => {
     });
 
     expect(context.context).toBe("INDIVIDUAL_SELF_FINAL");
-    expect(context.requiresStoreConfirmation).toBe(false);
+    expect(context.canSelfPublish).toBe(true);
     expect(context.uiHints.primaryAction).toContain("发布");
   });
 
@@ -181,14 +181,14 @@ describe("shift planning schedule context", () => {
     expect(context.canSelfPublish).toBe(true);
   });
 
-  it("falls back to store confirm required when no self-final config is active", () => {
+  it("falls back to technician self-final when no store mode config is active", () => {
     const context = resolveScheduleContext({
       technician: makeTechnician(),
       modeConfigs: []
     });
 
-    expect(context.context).toBe("STORE_CONFIRM_REQUIRED");
-    expect(context.requiresStoreConfirmation).toBe(true);
+    expect(context.context).toBe("STORE_TECH_SELF_FINAL");
+    expect(context.canSelfPublish).toBe(true);
   });
 
   it("makes store direct assignment read-only for technicians", () => {
@@ -230,10 +230,10 @@ describe("final bookable slot projection", () => {
     expect(slots.find((slot) => slot.hour === 11)?.status).toBe("blocked_by_store");
   });
 
-  it("only uses confirmed shifts as the final source in store confirm mode", () => {
+  it("only uses confirmed shifts as the final source in store direct assignment mode", () => {
     const slots = buildFinalBookableSlotsForTechnician({
       technician: makeTechnician(),
-      modeConfigs: [makeModeConfig("STORE_CONFIRM_REQUIRED")],
+      modeConfigs: [makeModeConfig("STORE_DIRECT_ASSIGN")],
       policies: [makePolicy()],
       templates: [makeStoreTemplate(), makeResponseTemplate()],
       overrides: [] satisfies ScheduleSlotOverride[],

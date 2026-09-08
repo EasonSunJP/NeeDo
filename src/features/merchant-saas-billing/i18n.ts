@@ -1,15 +1,32 @@
 import { translateText, type Language, type TranslationEntry } from "../../i18n/translations";
 
-const copy: Record<string, TranslationEntry> = {
+export const merchantSaasBillingTranslations: Record<string, TranslationEntry> = {
   "账号类型": { "zh-Hant": "帳號類型", ja: "アカウント種別", en: "Account type", ko: "계정 유형" },
   "付费模式": { "zh-Hant": "付費模式", ja: "料金プラン", en: "Payment mode", ko: "결제 방식" },
   "集团以 1 张卡片显示；展开后可在同一边框内管理集团与旗下店铺。": { "zh-Hant": "集團以 1 張卡片顯示；展開後可在同一邊框內管理集團與旗下店鋪。", ja: "グループは1枚のカードで表示し、展開後は同じ枠内でグループと傘下店舗を管理できます。", en: "Each group appears as one card; expand it to manage the group and its shops within one boundary.", ko: "그룹은 카드 1장으로 표시되며 펼치면 같은 테두리 안에서 그룹과 산하 매장을 관리할 수 있습니다." },
   "个独立账单主体": { "zh-Hant": "個獨立帳單主體", ja: "件の独立請求主体", en: "billing entities", ko: "개 독립 청구 주체" },
+  "信息卡显示": { "zh-Hant": "資訊卡顯示", ja: "カード表示", en: "Card view", ko: "정보 카드 보기" },
+  "列表显示": { "zh-Hant": "列表顯示", ja: "リスト表示", en: "List view", ko: "목록 보기" },
+  "列表按店铺显示正式资料，集团名称保留在店名下方。": { "zh-Hant": "列表按店鋪顯示正式資料，集團名稱保留在店名下方。", ja: "リストは店舗単位の正式データを表示し、グループ名は店舗名の下に表示します。", en: "The list shows formal shop records and keeps the group name beneath each shop.", ko: "목록은 매장별 공식 데이터를 표시하고 그룹명은 매장명 아래에 유지합니다." },
+  "店名": { "zh-Hant": "店名", ja: "店舗名", en: "Shop name", ko: "매장명" },
+  "创建者": { "zh-Hant": "建立者", ja: "作成者", en: "Creator", ko: "생성자" },
+  "地区": { "zh-Hant": "地區", ja: "地域", en: "Region", ko: "지역" },
+  "平台抽成": { "zh-Hant": "平台抽成", ja: "プラットフォーム手数料", en: "Platform commission", ko: "플랫폼 수수료" },
+  "添加时间": { "zh-Hant": "新增時間", ja: "追加日時", en: "Added at", ko: "추가 일시" },
+  "详情": { "zh-Hant": "詳情", ja: "詳細", en: "Details", ko: "상세" },
+  "暂无店铺数据": { "zh-Hant": "暫無店鋪資料", ja: "店舗データはありません", en: "No shop data", ko: "매장 데이터 없음" },
   "正在读取真实商家计费数据…": { "zh-Hant": "正在讀取真實商家計費資料…", ja: "実際の事業者料金データを読み込み中…", en: "Loading live merchant billing data…", ko: "실제 가맹점 요금 데이터 불러오는 중…" },
   "计费数据读取失败": { "zh-Hant": "計費資料讀取失敗", ja: "料金データを読み込めませんでした", en: "Could not load billing data", ko: "요금 데이터 불러오기 실패" },
   "重新读取": { "zh-Hant": "重新讀取", ja: "再読み込み", en: "Retry", ko: "다시 불러오기" },
   "暂无商家或店铺数据": { "zh-Hant": "暫無商家或店鋪資料", ja: "事業者・店舗データはありません", en: "No merchant or shop data", ko: "가맹점 또는 매장 데이터 없음" },
   "集团账户边界": { "zh-Hant": "集團帳戶邊界", ja: "グループアカウント範囲", en: "Group account boundary", ko: "그룹 계정 경계" },
+  "商家 / 门店详情": { "zh-Hant": "商家 / 門店詳情", ja: "事業者 / 店舗詳細", en: "Merchant / shop details", ko: "가맹점 / 매장 상세" },
+  "店铺 SaaS 情报": { "zh-Hant": "店鋪 SaaS 情報", ja: "店舗 SaaS 情報", en: "Shop SaaS information", ko: "매장 SaaS 정보" },
+  "店铺展示": { "zh-Hant": "店鋪展示", ja: "店舗紹介", en: "Shop display", ko: "매장 소개" },
+  "打开该店铺后台": { "zh-Hant": "開啟該店鋪後台", ja: "この店舗の管理画面を開く", en: "Open this shop admin", ko: "이 매장 관리자 열기" },
+  "浏览器阻止了新页面，请允许弹出窗口后重试": { "zh-Hant": "瀏覽器阻止了新頁面，請允許彈出視窗後重試", ja: "ブラウザが新しいページをブロックしました。ポップアップを許可して再試行してください。", en: "The browser blocked the new page. Allow pop-ups and try again.", ko: "브라우저가 새 페이지를 차단했습니다. 팝업을 허용한 뒤 다시 시도하세요." },
+  "选择旗下店铺": { "zh-Hant": "選擇旗下店鋪", ja: "傘下の店舗を選択", en: "Select a shop", ko: "산하 매장 선택" },
+  "暂无旗下店铺": { "zh-Hant": "暫無旗下店鋪", ja: "傘下の店舗はありません", en: "No shops in this group", ko: "산하 매장이 없습니다" },
   "商家 / 门店 SaaS 详情": { "zh-Hant": "商家 / 門店 SaaS 詳情", ja: "事業者 / 店舗 SaaS 詳細", en: "Merchant / shop SaaS details", ko: "가맹점 / 매장 SaaS 상세" },
   "家旗下店铺": { "zh-Hant": "家旗下店鋪", ja: "店舗", en: "shops", ko: "개 산하 매장" },
   "商家": { "zh-Hant": "商家", ja: "事業者", en: "Merchant group", ko: "가맹점 그룹" },
@@ -138,5 +155,5 @@ const copy: Record<string, TranslationEntry> = {
 
 export function translateMerchantBillingText(source: string, language: Language) {
   if (language === "zh") return source;
-  return copy[source]?.[language] ?? translateText(source, language);
+  return merchantSaasBillingTranslations[source]?.[language] ?? translateText(source, language);
 }

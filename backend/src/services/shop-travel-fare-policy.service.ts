@@ -46,6 +46,7 @@ export type PublishTravelFarePolicyResult =
 
 export interface ShopTravelFarePolicyRepositoryPort {
   findCurrentAndNext: (shopId: number, at: Date) => Promise<TravelFarePolicySummaryPayload>;
+  findLatest: (shopId: number) => Promise<TravelFarePolicyVersionPayload | null>;
   listVersions: (
     shopId: number,
     input: PaginationInput
@@ -87,6 +88,16 @@ export class ShopTravelFarePolicyService {
       bands: Array<{ maximumDistanceMeters: number; fareAmountJpy: number }>;
     }
   ): Promise<TravelFarePolicyVersionPayload> {
+    if (
+      actor.currentIdentityType !== "merchant_owner" ||
+      !actor.roles.includes("merchant_owner")
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
+    }
     const shopId = requireMerchantShopId(actor);
     let bands: ValidatedTravelFareBand[];
     try {
@@ -103,9 +114,14 @@ export class ShopTravelFarePolicyService {
       throw error;
     }
 
-    const current = await this.repository.findCurrentAndNext(shopId, new Date()).then(
-      (summary) => summary.current
-    );
+    const latest = await this.repository.findLatest(shopId);
+    if ((latest?.version ?? 0) !== input.expectedVersion) {
+      throw new AppError({
+        code: ERROR_CODES.TRAVEL_FARE_POLICY_VERSION_CONFLICT,
+        message: "error.travel_fare_policy.version_conflict",
+        statusCode: 409
+      });
+    }
     const publicId = randomUUID();
     const effectiveFrom = new Date(input.effectiveFrom);
     const audit = this.auditInputFactory.createInput(
@@ -113,7 +129,7 @@ export class ShopTravelFarePolicyService {
         action: "merchant_admin.travel_fare_policy.publish",
         targetType: "shop_travel_fare_policy_version",
         metadata: {
-          previousVersionPublicId: current?.publicId ?? null,
+          previousVersionPublicId: latest?.publicId ?? null,
           newVersionPublicId: publicId,
           effectiveFrom: effectiveFrom.toISOString(),
           reason: input.reason,

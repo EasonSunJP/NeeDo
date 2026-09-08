@@ -4,7 +4,7 @@ import { ProtectedBankAccountRepository } from "../src/repositories/protected-ba
 const verifiedAt = new Date("2026-08-26T05:00:00.000Z");
 
 describe("ProtectedBankAccountRepository", () => {
-  it("loads only a usable verified eKYC record with the merchant draft", async () => {
+  it("loads only the merchant draft ownership and recorded bank context", async () => {
     const identityApplication = {
       findFirst: jest.fn().mockResolvedValue({
         id: 11,
@@ -13,45 +13,37 @@ describe("ProtectedBankAccountRepository", () => {
         version: 1,
         merchantDetail: {
           applicantKind: "individual",
-          corporateLegalNameKana: null,
           bankAccountId: null
-        },
-        applicant: {
-          ekycVerifications: [{ verifiedNameKanaEncrypted: "v1.encrypted" }]
         }
       })
     };
     const client = { identityApplication } as unknown as PrismaClient;
     const repository = new ProtectedBankAccountRepository(client);
 
-    await expect(repository.findMerchantBindingContext(11, verifiedAt)).resolves.toMatchObject({
+    await expect(repository.findMerchantBindingContext(11)).resolves.toMatchObject({
       applicationId: 11,
       userId: 7,
       applicantKind: "individual",
-      verifiedEkycNameKanaEncrypted: "v1.encrypted"
+      currentBankAccountId: null
     });
     expect(identityApplication.findFirst).toHaveBeenCalledWith({
       where: { id: 11, type: "merchant", deletedAt: null },
-      select: expect.objectContaining({
-        applicant: {
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        version: true,
+        merchantDetail: {
           select: {
-            ekycVerifications: {
-              where: {
-                status: "verified",
-                deletedAt: null,
-                OR: [{ expiresAt: null }, { expiresAt: { gt: verifiedAt } }]
-              },
-              orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
-              take: 1,
-              select: { verifiedNameKanaEncrypted: true }
-            }
+            applicantKind: true,
+            bankAccountId: true
           }
         }
-      })
+      }
     });
   });
 
-  it("creates, binds, replaces, versions, notifies audit, and never writes raw values in one transaction", async () => {
+  it.each(["ordinary", "current", "savings", "other"] as const)("persists %s, binds, versions and audits without raw values in one transaction", async (accountType) => {
     const tx = {
       identityApplication: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -63,7 +55,7 @@ describe("ProtectedBankAccountRepository", () => {
           bankName: "三菱UFJ银行",
           branchCode: "001",
           branchName: "本店",
-          accountType: "ordinary",
+          accountType,
           verifiedAt
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -90,7 +82,7 @@ describe("ProtectedBankAccountRepository", () => {
         bankName: "三菱UFJ银行",
         branchCode: "001",
         branchName: "本店",
-        accountType: "ordinary",
+        accountType,
         accountNumberEncrypted: "v1.account",
         accountHolderEncrypted: "v1.holder",
         accountHolderNormalizedEncrypted: "v1.normalized",
@@ -98,6 +90,7 @@ describe("ProtectedBankAccountRepository", () => {
         verificationSource: "ekyc",
         verificationStatus: "verified",
         verifiedAt,
+        boundAt: verifiedAt,
         auditMetadata: {
           applicationId: 11,
           applicantKind: "individual",
@@ -120,6 +113,7 @@ describe("ProtectedBankAccountRepository", () => {
       data: expect.objectContaining({
         ownerUserId: 7,
         purpose: "merchant_application",
+        accountType,
         accountNumberEncrypted: "v1.account",
         accountHolderEncrypted: "v1.holder"
       })

@@ -36,6 +36,26 @@ const createClient = () => {
     .mockResolvedValueOnce({ _sum: { priceAmount: 1_800 } });
   const queryRaw = jest.fn(async (query: SqlQuery) => {
     const sql = queryText(query);
+    if (sql.includes("dashboard_headline_series_3d")) {
+      return [
+        {
+          bucketKey: "2026-08-29",
+          availableScheduleSlots: 4n,
+          activeTechnicians: 2n,
+          registeredTechnicians: 130n,
+          shopCount: 20n,
+          newCustomers: 3n
+        },
+        {
+          bucketKey: "2026-08-31",
+          availableScheduleSlots: 6n,
+          activeTechnicians: 4n,
+          registeredTechnicians: 134n,
+          shopCount: 21n,
+          newCustomers: 1n
+        }
+      ];
+    }
     if (sql.includes("dashboard_available_cities")) {
       return [
         ...new Set(
@@ -135,6 +155,56 @@ const createClient = () => {
 };
 
 describe("DashboardRepository activity and supply aggregates", () => {
+  it("returns an exact three-day headline skeleton with scoped zero filling", async () => {
+    const fixture = createClient();
+    const repository = new DashboardRepository(fixture.client);
+    const headlineWindow = resolveDashboardWindow(
+      { period: "custom", from: "2026-08-29", to: "2026-08-31" },
+      new Date("2026-08-31T03:00:00.000Z")
+    );
+
+    await expect(
+      repository.getHeadlineSeries3d({
+        scope: { kind: "platform" },
+        city: "Tokyo",
+        window: headlineWindow
+      })
+    ).resolves.toEqual([
+      {
+        key: "2026-08-29",
+        label: "08-29",
+        availableScheduleSlots: 4,
+        activeTechnicians: 2,
+        registeredTechnicians: 130,
+        shopCount: 20,
+        newCustomers: 3
+      },
+      {
+        key: "2026-08-30",
+        label: "08-30",
+        availableScheduleSlots: 0,
+        activeTechnicians: 0,
+        registeredTechnicians: 0,
+        shopCount: 0,
+        newCustomers: 0
+      },
+      {
+        key: "2026-08-31",
+        label: "08-31",
+        availableScheduleSlots: 6,
+        activeTechnicians: 4,
+        registeredTechnicians: 134,
+        shopCount: 21,
+        newCustomers: 1
+      }
+    ]);
+    const query = fixture.queryRaw.mock.calls.find(([candidate]) =>
+      queryText(candidate as SqlQuery).includes("dashboard_headline_series_3d")
+    )?.[0] as SqlQuery;
+    expect(queryText(query)).toContain("WITH buckets AS");
+    expect(query.values).toEqual(expect.arrayContaining(["Tokyo"]));
+  });
+
   it("normalizes, filters, and deduplicates cities while using the same TRIM scope", async () => {
     const fixture = createClient();
     const financeFacts = {

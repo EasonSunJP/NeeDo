@@ -111,7 +111,7 @@ export function TechnicianSmartPreferencePanel({
           </div>
           <TitleWithInfo
             className="mt-2"
-            info="开启后，系统会根据你的常规可上班时间、不可用时间、历史反馈和店铺规则生成自动反馈；商户最终确认前不会直接影响用户端可预约时间。"
+            info="开启后，系统会根据你的常规可上班时间、不可用时间、历史记录和店铺规则生成上班时间；通过店铺规则校验后进入最终可预约时间。"
             infoClassName="h-5 w-5 border-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] text-[color:var(--client-muted)]"
             label="我的排班偏好说明"
             title={<span className="text-[18px] font-black tracking-[-0.02em] text-[color:var(--client-text)]">我的排班偏好</span>}

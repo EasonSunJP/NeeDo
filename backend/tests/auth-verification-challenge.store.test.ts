@@ -98,7 +98,15 @@ class FakeRedis {
       };
       if (challenge.purpose !== purpose) return ["purpose_mismatch"];
       const userId = suppliedUserId === "" ? undefined : Number(suppliedUserId);
-      if ((challenge.userId ?? undefined) !== userId) return ["user_mismatch"];
+      if (
+        challenge.purpose !== "password_login" &&
+        (challenge.userId ?? undefined) !== userId
+      ) {
+        return ["user_mismatch"];
+      }
+      if (challenge.purpose === "password_login" && challenge.userId == null) {
+        return ["user_mismatch"];
+      }
       const now = Date.now();
       if (challenge.reservationToken && (challenge.reservationExpiresAt ?? 0) > now) {
         return ["reserved"];
@@ -116,7 +124,14 @@ class FakeRedis {
       challenge.reservationToken = reservationToken;
       challenge.reservationExpiresAt = now + 30_000;
       await this.set(key, JSON.stringify(challenge), { EX: await this.ttl(key) });
-      return ["ok", JSON.stringify({ email: challenge.email, metadata: challenge.metadata ?? {} })];
+      return [
+        "ok",
+        JSON.stringify({
+          email: challenge.email,
+          userId: challenge.userId,
+          metadata: challenge.metadata ?? {}
+        })
+      ];
     }
     if (script.includes("auth-verification-email-finalize")) {
       const [key] = options.keys;
@@ -205,6 +220,7 @@ class FakeRedis {
 
 const allPurposes: VerificationPurpose[] = [
   "email_registration",
+  "password_login",
   "google_registration_or_link",
   "google_authenticated_link",
   "google_unlink",
@@ -236,6 +252,8 @@ describe("RedisVerificationChallengeStore", () => {
         metadata:
           purpose === "email_registration" || purpose === "password_setup"
             ? { passwordHash: await hash("Abcd@1234", 12) }
+            : purpose === "password_login"
+              ? { loginIdentityId: 70, platformSettingsVersion: 4 }
             : purpose === "google_unlink"
               ? undefined
               : {
@@ -259,6 +277,31 @@ describe("RedisVerificationChallengeStore", () => {
       ).toBeLessThanOrEqual(600);
     }
   );
+
+  it("reserves a password-login challenge without exposing the user id in the request", async () => {
+    const client = new FakeRedis();
+    const store = new RedisVerificationChallengeStore(() => client as never);
+    const created = await store.createEmailChallenge({
+      email: "customer@example.com",
+      otp: "123456",
+      purpose: "password_login",
+      userId: 7,
+      metadata: { loginIdentityId: 70, platformSettingsVersion: 4 }
+    });
+
+    await expect(
+      store.reserveEmailChallenge({
+        challengeId: created.challengeId,
+        otp: "123456",
+        purpose: "password_login"
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      email: "customer@example.com",
+      userId: 7,
+      metadata: { loginIdentityId: 70, platformSettingsVersion: 4 }
+    });
+  });
 
   it("uses cooldown, purpose/user checks, atomically consumes valid OTPs, and rejects replay", async () => {
     const client = new FakeRedis();

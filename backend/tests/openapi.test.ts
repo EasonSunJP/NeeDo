@@ -5,6 +5,155 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents every authenticated completed-order refund command with strict public contracts", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { schemas: Record<string, { additionalProperties?: boolean; properties?: Record<string, unknown> }> };
+    };
+    const commands = [
+      ["/api/v1/orders/{orderId}/refund-requests", "post", "user:order-refund:write"],
+      ["/api/v1/orders/{orderId}/refund-requests/{caseId}/confirm-receipt", "post", "user:order-refund:write"],
+      ["/api/v1/orders/{orderId}/refund-requests/{caseId}/complaints", "post", "user:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/approve", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/reject", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/refund-evidence", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/merchant-admin/orders/{orderId}/refund-requests/{caseId}/complaints", "post", "merchant-admin:order-refund:write"],
+      ["/api/v1/backoffice/refund-disputes", "get", "backoffice:order-refund-dispute:read"],
+      ["/api/v1/backoffice/refund-disputes/{disputeId}/resolve", "post", "backoffice:order-refund-dispute:resolve"]
+    ] as const;
+
+    for (const [path, method, permission] of commands) {
+      const operation = document.paths[path]?.[method];
+      expect(operation).toMatchObject({ security: [{ bearerAuth: [] }], "x-permission": permission });
+      expect(operation?.responses).toEqual(
+        expect.objectContaining({ "400": expect.any(Object), "401": expect.any(Object), "403": expect.any(Object), "404": expect.any(Object), "409": expect.any(Object) })
+      );
+    }
+
+    const create = document.paths["/api/v1/orders/{orderId}/refund-requests"].post as {
+      requestBody: { content: { "application/json": { schema: { $ref: string } } } };
+      responses: Record<string, { description: string }>;
+    };
+    expect(create.requestBody.content["application/json"].schema.$ref).toBe(
+      "#/components/schemas/OrderRefundRequestInput"
+    );
+    expect(create.responses["201"].description).toContain("created");
+    expect(create.responses["200"].description).toContain("replay");
+
+    const resolve = document.paths[
+      "/api/v1/backoffice/refund-disputes/{disputeId}/resolve"
+    ].post as { responses: Record<string, { description: string }> };
+    expect(resolve.responses["409"].description).toContain("error.order_refund.dispute_required");
+
+    const confirmReceipt = document.paths[
+      "/api/v1/orders/{orderId}/refund-requests/{caseId}/confirm-receipt"
+    ].post as { responses: Record<string, { description: string }> };
+    expect(confirmReceipt.responses["500"].description).toContain(
+      "error.order_refund_case.affiliate_invariant_failed"
+    );
+
+    const list = document.paths["/api/v1/backoffice/refund-disputes"].get as {
+      parameters: Array<{ name: string; in: string; schema: Record<string, unknown> }>;
+    };
+    expect(list.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page", in: "query" }),
+        expect.objectContaining({ name: "page_size", in: "query" }),
+        expect.objectContaining({ name: "status", in: "query" }),
+        expect.objectContaining({ name: "search", in: "query" })
+      ])
+    );
+
+    for (const name of [
+      "OrderRefundRequestInput",
+      "OrderRefundUpdateEnvelope",
+      "OrderRefundComplaintInput",
+      "OrderRefundDisputeResolutionInput"
+    ]) {
+      expect(document.components.schemas[name]).toMatchObject({ additionalProperties: false });
+    }
+    expect(document.components.schemas.OrderRefundCasePublic.properties).not.toEqual(
+      expect.objectContaining({ id: expect.anything(), requestFingerprint: expect.anything(), internalNote: expect.anything() })
+    );
+    expect(document.components.schemas.OrderRefundCasePublic).toMatchObject({
+      required: expect.arrayContaining([
+        "merchantDecisionNote",
+        "refundReference",
+        "merchantDecisionAt",
+        "refundSubmittedAt",
+        "customerConfirmedAt",
+        "dispute",
+        "affiliateReward"
+      ]),
+      properties: {
+        refundAmountJpy: { type: "integer", minimum: 1 }
+      }
+    });
+    expect(document.components.schemas.OrderRefundRequestInput).toMatchObject({
+      properties: { idempotencyKey: { type: "string", minLength: 8, maxLength: 160 } }
+    });
+  });
+
+  it("documents the protected Bearer-only regional live event stream", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<
+        string,
+        {
+          get: {
+            operationId?: string;
+            description?: string;
+            security?: unknown;
+            "x-required-permission"?: string;
+            parameters: Array<Record<string, unknown>>;
+            responses: Record<string, { description?: string; content?: Record<string, unknown> }>;
+          };
+        }
+      >;
+    };
+    const operation = document.paths["/api/v1/backoffice/dashboard/live-events"]?.get;
+
+    expect(operation).toMatchObject({
+      operationId: "streamBackofficeLiveDashboardEvents",
+      security: [{ bearerAuth: [] }],
+      "x-required-permission": "backoffice:dashboard:read"
+    });
+    expect(operation.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "country", in: "query", required: true }),
+        expect.objectContaining({ name: "admin1", in: "query" }),
+        expect.objectContaining({ name: "admin2", in: "query" }),
+        expect.objectContaining({ name: "period", in: "query" }),
+        expect.objectContaining({ name: "Last-Event-ID", in: "header" })
+      ])
+    );
+    expect(operation.parameters).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ in: "query", name: expect.stringMatching(/token/i) })
+      ])
+    );
+    expect(operation.responses["200"]?.content?.["text/event-stream"]).toBeDefined();
+    expect(operation.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "409": expect.any(Object)
+      })
+    );
+    expect(operation.responses["409"]?.description).toContain(
+      "error.live_dashboard.cursor_reset_required"
+    );
+    expect(operation.responses["409"]?.description).toContain("full snapshot");
+    expect(operation.description).toContain("authenticated Bearer fetch stream");
+    expect(operation.description).toContain("native EventSource");
+    expect(operation.description).toContain("last successfully delivered Redis Stream ID");
+    expect(operation.description).toContain("exponential backoff");
+    expect(operation.description).toContain("jitter");
+    expect(operation.description).toContain("EOF, network failure, or 503");
+    expect(operation.responses["409"]?.description).toContain("clear the stored cursor");
+    expect(operation.responses["503"]?.description).toContain("retryable");
+  });
+
   it("uses a root server when versioned paths already include the API prefix", () => {
     const document = createOpenApiDocument(env) as unknown as {
       servers: Array<{ url: string }>;
@@ -15,6 +164,112 @@ describe("GET /api/v1/openapi.json", () => {
     expect(document.servers).toEqual([{ url: "/" }]);
     expect(document.paths).toHaveProperty(loginPath);
     expect(`${document.servers[0].url.replace(/\/$/, "")}${loginPath}`).toBe(loginPath);
+  });
+
+  it("documents formal administrative-region lookup and stable shop assignment failures", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: {
+        "/api/v1/reference/administrative-regions": {
+          get: {
+            security?: unknown;
+            responses: Record<
+              string,
+              { content: Record<string, { schema: { properties: { data: unknown } } }> }
+            >;
+          };
+        };
+        "/api/v1/backoffice/shops": {
+          post: { responses: Record<string, { description: string }> };
+        };
+        "/api/v1/backoffice/shops/{id}": {
+          patch: { responses: Record<string, { description: string }> };
+        };
+      };
+      components: { schemas: Record<string, unknown> };
+    };
+    const reference = document.paths["/api/v1/reference/administrative-regions"].get;
+    const createShop = document.paths["/api/v1/backoffice/shops"].post;
+    const updateShop = document.paths["/api/v1/backoffice/shops/{id}"].patch;
+
+    expect(reference.security).toBeUndefined();
+    expect(reference.responses["200"].content["application/json"].schema.properties.data).toEqual(
+      expect.objectContaining({
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AdministrativeRegionReference" }
+          }
+        }
+      })
+    );
+    expect(document.components.schemas.AdministrativeRegionReference).toMatchObject({
+      additionalProperties: false,
+      required: ["code", "name", "level", "parentCode", "centroid"]
+    });
+    expect(document.components.schemas.BackofficeShopUpdateInput).toMatchObject({
+      additionalProperties: false,
+      dependentRequired: expect.objectContaining({
+        serviceCountryCode: ["serviceAdmin1Code", "serviceAdmin2Code"]
+      })
+    });
+    for (const operation of [createShop, updateShop]) {
+      expect(operation.responses["400"].description).toContain(
+        "error.administrative_region.invalid_hierarchy"
+      );
+      expect(operation.responses["400"].description).toContain(
+        "error.administrative_region.verifier_required"
+      );
+    }
+    expect(updateShop.responses["400"].description).toContain("error.shop.public_number_required");
+  });
+
+  it("documents the booking service-identifier XOR and unresolved store-location conflict", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: {
+        "/api/v1/bookings": {
+          post: {
+            requestBody: {
+              content: { "application/json": { schema: object } };
+            };
+            responses: Record<string, { description: string }>;
+          };
+        };
+      };
+    };
+    const operation = document.paths["/api/v1/bookings"].post;
+    const ajv = new Ajv({ allErrors: true });
+    const schemas = (createOpenApiDocument(env).components as { schemas: Record<string, object> }).schemas;
+    ajv.addSchema(schemas.JapaneseRouteAddress, "#/components/schemas/JapaneseRouteAddress");
+    const validate = ajv.compile(
+      operation.requestBody.content["application/json"].schema
+    );
+    const homeLocation = {
+      countryCode: "JP",
+      admin1Code: "13",
+      admin2Code: "13104"
+    };
+
+    for (const fulfillment of [
+      { fulfillmentMode: "store" },
+      { fulfillmentMode: "home", serviceLocation: homeLocation,
+        fulfillmentAddress: { countryCode: "JP", postalCode: "160-0022", prefecture: "東京都", city: "新宿区", addressLine1: "新宿1-1-1" },
+        travelEstimatePublicId: "00000000-0000-4000-8000-000000000001" }
+    ]) {
+      expect(validate({ ...fulfillment, scheduleSlotId: 33, serviceId: 12 })).toBe(true);
+      expect(validate({ ...fulfillment, scheduleSlotId: 33, technicianServiceId: 21 })).toBe(true);
+      expect(validate({ ...fulfillment, scheduleSlotId: 33 })).toBe(false);
+      expect(
+        validate({
+          ...fulfillment,
+          scheduleSlotId: 33,
+          serviceId: 12,
+          technicianServiceId: 21
+        })
+      ).toBe(false);
+    }
+    expect(operation.responses["409"].description).toContain(
+      "error.booking.service_location_unresolved"
+    );
   });
 
   it("documents Exchange matching adjustment confirmations and previews", () => {
@@ -114,6 +369,18 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/auth/merchant-shop/switch");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/logout");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/me");
+    expect(response.body.components.schemas.AuthMe.required).toEqual(
+      expect.arrayContaining(["profileDisplayName"])
+    );
+    expect(response.body.components.schemas.AuthMe.properties.profileDisplayName).toEqual({
+      type: ["string", "null"]
+    });
+    expect(response.body.components.schemas.AuthIdentity.required).toEqual(
+      expect.arrayContaining(["displayName"])
+    );
+    expect(response.body.components.schemas.AuthIdentity.properties.displayName).toEqual({
+      type: ["string", "null"]
+    });
     [
       "/api/v1/social/posts/{id}/like",
       "/api/v1/social/posts/{id}/bookmark",
@@ -721,6 +988,21 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/orders/{id}/payment/refund");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/orders/{id}/payment/confirm");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/orders/{id}/payment/refund");
+    [
+      "/api/v1/merchant-admin/orders/{id}/payment/refund",
+      "/api/v1/backoffice/orders/{id}/payment/refund"
+    ].forEach((path) => {
+      const conflictResponse = response.body.paths[path].post.responses["409"];
+      expect(conflictResponse.description).toEqual(expect.stringMatching(/completed/i));
+      expect(conflictResponse.description).toContain("OrderRefundCase");
+      expect(conflictResponse.description).toContain("40913");
+      expect(conflictResponse.description).toContain("error.payment.invalid_state");
+      expect(conflictResponse.description).toContain("40915");
+      expect(conflictResponse.description).toContain("error.payment.conflict");
+      expect(conflictResponse.content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/ApiError"
+      });
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/me");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/me/summary");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/{id}/ledger");
@@ -794,7 +1076,42 @@ describe("GET /api/v1/openapi.json", () => {
     expect(dashboardSchemas.Dashboard).toMatchObject({
       type: "object",
       additionalProperties: false,
-      required: ["filter", "summary", "series", "finance", "shop", "membership", "scope"]
+      required: [
+        "filter",
+        "summary",
+        "series",
+        "headlineSeries3d",
+        "finance",
+        "shop",
+        "membership",
+        "scope"
+      ]
+    });
+    expect(dashboardSchemas.DashboardHeadlineSeriesPoint).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "key",
+        "label",
+        "availableScheduleSlots",
+        "activeTechnicians",
+        "registeredTechnicians",
+        "shopCount",
+        "newCustomers"
+      ]
+    });
+    expect(dashboardSchemas.Dashboard.properties.headlineSeries3d).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["from", "to", "timeZone", "buckets"],
+      properties: {
+        buckets: {
+          type: "array",
+          minItems: 3,
+          maxItems: 3,
+          items: { $ref: "#/components/schemas/DashboardHeadlineSeriesPoint" }
+        }
+      }
     });
     expect(dashboardSchemas.Dashboard.properties.finance.properties.walletStock).toEqual({
       oneOf: [{ $ref: "#/components/schemas/DashboardPlatformGlobalNdpPair" }, { type: "null" }]
@@ -1241,6 +1558,16 @@ describe("GET /api/v1/openapi.json", () => {
           "404": expect.any(Object)
         })
       })
+    });
+    const recallPath =
+      response.body.paths["/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"];
+    expect(recallPath.post.requestBody.content["application/json"].schema.properties.mode).toEqual({
+      type: "string",
+      enum: ["standard"]
+    });
+    expect(recallPath.post.responses["200"].content["application/json"].schema.properties.data.properties.action).toEqual({
+      type: "string",
+      enum: ["standard_recall", "traceless_recall"]
     });
     const reactionPath =
       response.body.paths[

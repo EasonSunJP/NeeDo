@@ -1,5 +1,6 @@
 import { httpClient } from "../../api/httpClient";
 import type {
+  ConfirmQuickExchangeBudgetInput,
   CreateExchangeClaimInput,
   ExchangeClaim,
   ExchangeClaimMine,
@@ -96,6 +97,21 @@ export function selectExchangeMatching(
     headers: idempotencyHeaders(key),
     method: "POST"
   });
+}
+
+export function confirmQuickExchangeBudget(
+  postId: string,
+  input: ConfirmQuickExchangeBudgetInput,
+  key: string
+): Promise<ExchangeMatching> {
+  return httpClient.request<ExchangeMatching>(
+    `/exchange/posts/${postId}/matching/quick/confirm-budget`,
+    {
+      body: input,
+      headers: idempotencyHeaders(key),
+      method: "POST"
+    }
+  );
 }
 
 export function createExchangeMatchingBookings(

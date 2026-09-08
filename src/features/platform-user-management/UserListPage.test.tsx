@@ -1,21 +1,23 @@
 import { describe, expect, it } from "vitest";
 import source from "./UserListPage.tsx?raw";
+import directorySource from "./UnifiedUserDirectory.tsx?raw";
 import filtersSource from "./UserFilters.tsx?raw";
 
 describe("formal all-user workspace", () => {
   it("uses URL filters and server pagination", () => {
-    expect(source).toContain("useSearchParams");
-    expect(source).toContain("platformUserManagementApi.listUsers");
-    expect(source).toContain("page_size: 20");
-    expect(source).toContain("setSearchParams");
+    expect(directorySource).toContain("useSearchParams");
+    expect(source).toContain('scope="operations"');
+    expect(source).toContain("UnifiedUserDirectory");
     expect(filtersSource).toContain("onSubmit");
+    expect(directorySource).toContain("setSearchParams");
+    expect(directorySource).toContain("page_size: pageSize");
+    expect(source).toContain('readPositiveIntegerSearchParam(searchParams, "detailUserId")');
   });
 
   it("renders explicit loading, empty, retry and bounded account facts", () => {
-    for (const text of ["正在读取全部用户", "没有符合条件的用户", "重新加载", "手机已绑定", "邮箱已绑定", "eKYC"]) {
-      expect(source).toContain(text);
-    }
-    expect(source).toContain("row.experience ?");
+    expect(source).toContain("UnifiedUserDetailDrawer");
+    expect(source).not.toContain("function UserTable");
+    expect(source).not.toContain("邮箱已绑定");
     expect(source).not.toMatch(/passwordHash|accessToken|refreshToken|otp/i);
   });
 });

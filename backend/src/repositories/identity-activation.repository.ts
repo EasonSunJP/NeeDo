@@ -1,3 +1,5 @@
+import { IdentifierAllocator } from "../services/public-identifier.service";
+import { PublicIdentifierRepository } from "./public-identifier.repository";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
@@ -87,6 +89,21 @@ export class IdentityActivationRepository implements IdentityActivationRepositor
         createdAt: input.activatedAt
       }
     });
+
+    const aliasKind =
+      input.identityType === "technician"
+        ? "S"
+        : input.identityType === "merchant_owner"
+          ? "B"
+          : null;
+    if (aliasKind) {
+      await new IdentifierAllocator(
+        new PublicIdentifierRepository(transaction)
+      ).registerPersonAlias({
+        kind: aliasKind,
+        userIdentityId: identity.id
+      });
+    }
 
     if (
       input.identityType === "merchant" ||

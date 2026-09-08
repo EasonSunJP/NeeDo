@@ -4,7 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import source from "./DashboardPage.tsx?raw";
+import type { AnalyticsRankingItem } from "../../api/backofficeRealData";
 import { DashboardPage } from "./DashboardPage";
+import { openLiveDashboardWindow } from "./DashboardPage";
 import { DashboardMetricDetailPage } from "./DashboardMetricDetailPage";
 import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
 
@@ -29,8 +31,16 @@ vi.mock("../../features/dashboard/DashboardCharts", () => ({
   getAnalyticsSeriesColor: (index: number) => `color-${index}`
 }));
 vi.mock("../../features/dashboard/AnalyticsRankingsSection", () => ({
-  AnalyticsRankingsSection: () => createElement("div", { "data-testid": "rankings-section" }, "排行榜 TOP10")
+  AnalyticsRankingsSection: ({ onOpenDetail }: { onOpenDetail: (item: AnalyticsRankingItem) => void }) => createElement("div", { "data-testid": "rankings-section" }, "排行榜 TOP10", ...(["service", "technician", "customer"] as const).map((entityType) => createElement("button", {
+    key: entityType, "data-ranking-kind": entityType,
+    onClick: () => onOpenDetail({ entityType, entityNumericId: 51, entityPublicId: "public-51" } as AnalyticsRankingItem)
+  }, entityType)))
 }));
+
+
+vi.mock("./MerchantsPage", () => ({ MerchantsPage: ({ embeddedDetail }: { embeddedDetail?: { id: number; onClose: () => void } }) => embeddedDetail ? createElement("button", { "data-detail": "service", onClick: embeddedDetail.onClose }, String(embeddedDetail.id)) : null }));
+vi.mock("./TechniciansPage", () => ({ TechniciansPage: ({ embeddedDetail }: { embeddedDetail?: { id: number; onClose: () => void } }) => embeddedDetail ? createElement("button", { "data-detail": "technician", onClick: embeddedDetail.onClose }, String(embeddedDetail.id)) : null }));
+vi.mock("../../features/platform-user-management/UnifiedUserDetailDrawer", () => ({ UnifiedUserDetailDrawer: ({ userId, onClose }: { userId: number; onClose: () => void }) => createElement("button", { "data-detail": "customer", onClick: onClose }, String(userId)) }));
 
 const filter = {
   period: "last7days",
@@ -56,6 +66,16 @@ const dashboardPayload = {
     serviceGmvJpy: 0
   },
   series: { buckets: [] },
+  headlineSeries3d: {
+    from: "2026-08-30",
+    to: "2026-09-01",
+    timeZone: "Asia/Tokyo",
+    buckets: [
+      { key: "2026-08-30", label: "08-30", availableScheduleSlots: 1, activeTechnicians: 2, registeredTechnicians: 3, shopCount: 4, newCustomers: 5 },
+      { key: "2026-08-31", label: "08-31", availableScheduleSlots: 10, activeTechnicians: 20, registeredTechnicians: 30, shopCount: 40, newCustomers: 50 },
+      { key: "2026-09-01", label: "09-01", availableScheduleSlots: 100, activeTechnicians: 200, registeredTechnicians: 300, shopCount: 400, newCustomers: 500 }
+    ]
+  },
   finance: {
     platformNetRevenue: { ndp: 0, testNdp: 0 },
     frozen: { ndp: 0, testNdp: 0 },
@@ -124,6 +144,24 @@ describe("operations unified data dashboard", () => {
     container.remove();
   });
 
+  it.each(["service", "technician", "customer"])("opens and closes %s detail without leaving or reloading the dashboard", async (kind) => {
+    apiMocks.dashboard.mockResolvedValue(dashboardPayload);
+    apiMocks.dashboardOverview.mockResolvedValue(overviewPayload);
+    const router = createMemoryRouter([{ path: "*", element: createElement(DashboardPage) }], { initialEntries: ["/admin?period=last7days"] });
+    await act(async () => root.render(createElement(RouterProvider, { router })));
+    const rankings = container.querySelector('[data-testid="rankings-section"]');
+    await act(async () => container.querySelector<HTMLButtonElement>(`[data-ranking-kind="${kind}"]`)!.click());
+    expect(router.state.location.pathname).toBe("/admin");
+    expect(router.state.location.search).toBe("?period=last7days");
+    expect(container.querySelector(`[data-detail="${kind}"]`)?.textContent).toBe("51");
+    await act(async () => container.querySelector<HTMLButtonElement>(`[data-detail="${kind}"]`)!.click());
+    expect(container.querySelector("[data-detail]")).toBeNull();
+    expect(container.querySelector('[data-testid="rankings-section"]')).toBe(rankings);
+    expect(apiMocks.dashboard).toHaveBeenCalledTimes(1);
+    expect(apiMocks.dashboardOverview).toHaveBeenCalledTimes(1);
+    router.dispose();
+  });
+
   it("commits the dashboard and overview atomically from one query generation", async () => {
     const dashboardRequest = deferred<typeof dashboardPayload>();
     const overviewRequest = deferred<typeof overviewPayload>();
@@ -149,6 +187,13 @@ describe("operations unified data dashboard", () => {
     expect(container.querySelectorAll("[data-analytics-disabled-detail]")).toHaveLength(3);
     expect(container.querySelectorAll("[data-analytics-detail-accessory]")).toHaveLength(8);
     expect(container.querySelector('button[aria-label="查看营业总额说明和计算公式"]')).toBeTruthy();
+    expect(
+      [...container.querySelectorAll<HTMLElement>('[data-dashboard-sparkline="true"]')].map(
+        (item) => item.dataset.sparklineValues
+      )
+    ).toEqual(["1,10,100", "2,20,200", "3,30,300", "4,40,400", "5,50,500"]);
+    expect(source).toContain("dashboard.headlineSeries3d");
+    expect(source).not.toMatch(/changeRatePercent.{0,160}(sparkline|points)/s);
   });
 
   it.each(["pending", "failed"] as const)(
@@ -375,7 +420,10 @@ describe("operations unified data dashboard", () => {
 
   it("renders the three formal Top10 rankings after the comprehensive overview", () => {
     expect(source).toContain('import { AnalyticsRankingsSection } from "../../features/dashboard/AnalyticsRankingsSection";');
-    expect(source).toContain("<AnalyticsRankingsSection query={committedQuery} />");
+    expect(source).not.toContain("buildAnalyticsRankingDetailLocation");
+    expect(source).toContain("<AnalyticsRankingsSection");
+    expect(source).toContain("onOpenDetail={setRankingDetail}");
+    expect(source).toContain("query={committedQuery}");
   });
 
   it("renders exactly the five requested headline comparisons", () => {
@@ -450,5 +498,17 @@ describe("operations unified data dashboard", () => {
     expect(source).not.toMatch(/\|\|\s*["']—["']/u);
     expect(source).not.toContain("尚未启用的运营模块");
     expect(source).not.toContain("DataTable");
+  });
+
+  it("opens the live screen in an isolated tab without changing dashboard state", () => {
+    const child = { opener: window } as unknown as Window;
+    const openWindow = vi.fn(() => child);
+    openLiveDashboardWindow(openWindow);
+    expect(openWindow).toHaveBeenCalledWith(
+      "/pf-admin.html#/admin/live-screen?country=JP&period=today",
+      "_blank",
+      "noopener,noreferrer"
+    );
+    expect(child.opener).toBeNull();
   });
 });

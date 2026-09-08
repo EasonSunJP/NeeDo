@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Customer } from "../../types/domain";
+import { platformMembershipSelfApi } from "../platform-membership/api";
 import { mapCoreCustomerToCustomer } from "./api";
 import { customerProfileApi, type CustomerSelfProfile } from "./customerProfileApi";
 
@@ -34,7 +35,10 @@ function requestCustomerSelfProfile(force = false) {
     return customerSelfProfileRequestInFlight;
   }
 
-  const request = customerProfileApi.getMine();
+  const request = Promise.all([
+    customerProfileApi.getMine(),
+    platformMembershipSelfApi.getMine().catch(() => null)
+  ]).then(([profile, membership]) => ({ ...profile, membershipLevel: membership?.tierCode ?? "" }));
   customerSelfProfileRequestInFlight = request;
   const clearRequest = () => {
     if (customerSelfProfileRequestInFlight === request) {

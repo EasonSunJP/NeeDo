@@ -1,0 +1,26 @@
+{
+  "marker": "sos-integration-154b5403-dd47-4c6d-99db-e9e07422e0d8",
+  "checkedAt": "2026-09-06T10:56:44.992Z",
+  "resolvedAlerts": [
+    {
+      "id": 25,
+      "status": "resolved",
+      "resolvedByUserId": 1606
+    },
+    {
+      "id": 26,
+      "status": "resolved",
+      "resolvedByUserId": 1605
+    }
+  ],
+  "remaining": {
+    "users": 0,
+    "shops": 0,
+    "alerts": 0,
+    "commands": 0,
+    "audits": 0,
+    "loginLogs": 0,
+    "roles": 0,
+    "identities": 0
+  }
+}

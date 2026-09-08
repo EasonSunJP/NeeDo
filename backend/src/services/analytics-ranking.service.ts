@@ -12,9 +12,9 @@ import type {
 import { AppError } from "../utils/app-error";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { assertActivePlatformIdentity } from "./platform-identity-scope";
 
 type AnalyticsRankingAudit = Pick<AuditLogService, "record">;
-const platformIdentityTypes = new Set(["platform", "platform_admin"]);
 
 export class AnalyticsRankingService {
   public constructor(
@@ -29,7 +29,7 @@ export class AnalyticsRankingService {
     params: AnalyticsRankingParams,
     query: AnalyticsRankingQuery
   ): Promise<AnalyticsRankingResponse> {
-    this.assertPlatformIdentity(actor);
+    assertActivePlatformIdentity(actor);
     const evaluatedAt = this.now();
     const window = resolveDashboardWindow(query, evaluatedAt);
     const categoryId = query.categoryId ?? null;
@@ -99,19 +99,5 @@ export class AnalyticsRankingService {
       }
       throw error;
     }
-  }
-
-  private assertPlatformIdentity(actor: AuthenticatedAccessContext): void {
-    if (
-      actor.currentIdentityType &&
-      platformIdentityTypes.has(actor.currentIdentityType) &&
-      (actor.currentIdentityScopeType === "global" || actor.currentIdentityScopeType === "platform")
-    )
-      return;
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
   }
 }

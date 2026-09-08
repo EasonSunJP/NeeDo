@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "../../api/httpClient";
 import {
+  confirmQuickExchangeBudget,
   createExchangeClaim,
   createExchangeCancellationRequest,
   createExchangeMatchingBookings,
@@ -294,6 +295,35 @@ describe("formal Exchange API client", () => {
       headers: { "Idempotency-Key": "exchange-match-select-0001" },
       method: "POST"
     });
+  });
+
+  it("confirms the exact server-projected Quick budget through the versioned formal route", async () => {
+    await confirmQuickExchangeBudget(
+      "41",
+      {
+        expectedVersion: 6,
+        budgetConfirmation: {
+          action: "increase_to_selected_total",
+          confirmedBudgetMaxJpy: 31_000
+        }
+      },
+      "exchange-quick-budget-0001"
+    );
+
+    expect(httpClient.request).toHaveBeenCalledWith(
+      "/exchange/posts/41/matching/quick/confirm-budget",
+      {
+        body: {
+          expectedVersion: 6,
+          budgetConfirmation: {
+            action: "increase_to_selected_total",
+            confirmedBudgetMaxJpy: 31_000
+          }
+        },
+        headers: { "Idempotency-Key": "exchange-quick-budget-0001" },
+        method: "POST"
+      }
+    );
   });
 
   it("creates matched bookings through the versioned formal route with its idempotency key", async () => {

@@ -31,6 +31,15 @@ const service = {
     pricingMode: "MERCHANT",
     status: "published",
     deletedAt: null,
+    serviceLocation: {
+      countryCode: "JP",
+      admin1RegionId: 1300,
+      admin2RegionId: 13104,
+      datasetVersion: "N03-20260101",
+      admin1Region: { officialCode: "13" },
+      admin2Region: { officialCode: "13104" },
+      deletedAt: null
+    },
     publicIdentifier: { kind: "SHOP", status: "ACTIVE", deletedAt: null },
     entitySuspensions: []
   }
@@ -141,7 +150,21 @@ const createHarness = (overrides: { intelligence?: Record<string, unknown> | nul
     return persistedOrder;
   });
   const tx = {
-    $queryRaw: jest.fn().mockResolvedValue([{ id: 7, post_id: 61 }]),
+    $queryRaw: jest.fn().mockImplementation(async (query: { strings?: readonly string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      return sql.includes("administrative_regions")
+        ? [
+            { id: 1300, official_code: "13", level: "ADMIN1", parent_id: null, deleted_at: null },
+            { id: 13104, official_code: "13104", level: "ADMIN2", parent_id: 1300, deleted_at: null }
+          ]
+        : [{ id: 7, post_id: 61 }];
+    }),
+    administrativeRegionLocale: {
+      findMany: jest.fn().mockResolvedValue([
+        { regionId: 1300, name: "東京都" },
+        { regionId: 13104, name: "新宿区" }
+      ])
+    },
     customerProfile: { findFirst: jest.fn().mockResolvedValue({ membershipLevel: "black" }) },
     exchangeIntelligence: {
       findFirst: jest.fn().mockResolvedValue(
@@ -164,6 +187,7 @@ const createHarness = (overrides: { intelligence?: Record<string, unknown> | nul
       findMany: jest.fn().mockResolvedValue([]),
       create
     },
+    bookingServiceLocation: { create: jest.fn().mockResolvedValue({ id: 1 }) },
     auditLog: { create: jest.fn().mockResolvedValue({ id: 1 }) }
   };
   return {
@@ -189,7 +213,8 @@ describe("BookingRepository Exchange Intelligence source", () => {
         scheduleSlotId: 51,
         exchangeIntelligencePostId: 61,
         idempotencyKey: "intelligence-booking-0001",
-        fulfillmentMode: "store"
+        fulfillmentMode: "store",
+        serviceLocation: { source: "SHOP_LOCATION" }
       })
     ).resolves.toMatchObject({
       order: {
@@ -201,7 +226,7 @@ describe("BookingRepository Exchange Intelligence source", () => {
       }
     });
 
-    expect(harness.tx.$queryRaw).toHaveBeenCalledTimes(6);
+    expect(harness.tx.$queryRaw).toHaveBeenCalledTimes(7);
     expect(harness.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -252,7 +277,8 @@ describe("BookingRepository Exchange Intelligence source", () => {
         scheduleSlotId: 51,
         exchangeIntelligencePostId: 61,
         idempotencyKey: "intelligence-booking-0001",
-        fulfillmentMode: "store"
+        fulfillmentMode: "store",
+        serviceLocation: { source: "SHOP_LOCATION" }
       })
     ).resolves.toEqual({ intelligenceBookingError: "unavailable" });
     expect(harness.create).not.toHaveBeenCalled();
@@ -267,7 +293,8 @@ describe("BookingRepository Exchange Intelligence source", () => {
         scheduleSlotId: 51,
         exchangeIntelligencePostId: 61,
         idempotencyKey: "intelligence-booking-0001",
-        fulfillmentMode: "store"
+        fulfillmentMode: "store",
+        serviceLocation: { source: "SHOP_LOCATION" }
       })
     ).resolves.toEqual({ intelligenceBookingError: "service_mismatch" });
     expect(harness.tx.scheduleSlot.updateMany).not.toHaveBeenCalled();
@@ -281,7 +308,8 @@ describe("BookingRepository Exchange Intelligence source", () => {
       scheduleSlotId: 51,
       exchangeIntelligencePostId: 61,
       idempotencyKey: "intelligence-booking-0001",
-      fulfillmentMode: "store" as const
+      fulfillmentMode: "store" as const,
+      serviceLocation: { source: "SHOP_LOCATION" as const }
     };
 
     const first = await harness.repository.createBooking(base);

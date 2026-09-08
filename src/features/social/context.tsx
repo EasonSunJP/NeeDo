@@ -423,7 +423,12 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         const postProfiles = mapFormalSocialProfiles(postPage.list);
         const postProfile = postProfiles[targetKey];
         const mergedProfile = postProfile
-          ? { ...profile, coverImage: profile.coverImage || postProfile.coverImage, location: postProfile.location }
+          ? {
+              ...profile,
+              coverImage: profile.coverImage || postProfile.coverImage,
+              location: postProfile.location,
+              pinnedPostId: postProfile.pinnedPostId
+            }
           : profile;
         const mappedPosts = postPage.list.map(mapFormalSocialPost);
         const actorKey = `${formalEntityType(sessionIdentityType)}:${sessionUserId}`;
@@ -645,7 +650,11 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       extraProfileFields: {}
     };
     const actor = ownProfile ?? fallbackProfile;
-    nextProfiles[profileKey(actor)] = actor;
+    const actorProfileKey = profileKey(actor);
+    nextProfiles[actorProfileKey] = {
+      ...actor,
+      pinnedPostId: nextProfiles[actorProfileKey]?.pinnedPostId
+    };
     const actorKey = profileKey(actor);
     const follows: SocialState["follows"] = {};
     const friends: SocialState["friends"] = {};
@@ -811,6 +820,12 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       filterTimelinePosts({ posts: state.posts, profiles, follows: state.follows, friends: state.friends, actorKey: key, filter, locationContext });
     const createPost = async (input: SocialCreatePostInput) => {
       if (!session || input.authorKey !== actorKey) throw new Error("error.auth.forbidden");
+      if (!shouldCommitFormalSocialRequest(
+        formalSessionKey,
+        currentFormalSessionKeyRef.current
+      )) {
+        throw new Error("error.auth.operation_superseded");
+      }
       if (input.visibility && !["public", "followers"].includes(input.visibility)) {
         throw new Error("error.social.visibility_unavailable");
       }
@@ -931,6 +946,41 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         : await realtimeApi.bookmarkSocialPost(Number(postId));
       commitInteractionPost(updated);
     };
+    const togglePinPost = async (postId: string, key: string) => {
+      if (!session || key !== actorKey) throw new Error("error.auth.forbidden");
+      const currentPost = getPostById(postId);
+      if (!currentPost || postAuthorKey(currentPost) !== actorKey || currentPost.replyToPostId) {
+        throw new Error("error.realtime.social_post_not_found");
+      }
+      const updated = currentPost.isPinned
+        ? await realtimeApi.unpinSocialPost(Number(postId))
+        : await realtimeApi.pinSocialPost(Number(postId));
+      const mapped = mapFormalSocialPost(updated);
+      if (!shouldCommitFormalSocialRequest(
+        formalSessionKey,
+        currentFormalSessionKeyRef.current
+      )) {
+        return;
+      }
+      setProfiles((current) => ({
+        ...current,
+        [actorKey]: {
+          ...current[actorKey],
+          pinnedPostId: mapped.isPinned ? mapped.id : undefined
+        }
+      }));
+      setStateScopeKey(formalSessionKey);
+      setState((current) => ({
+        ...current,
+        posts: current.posts.map((post) =>
+          postAuthorKey(post) === actorKey
+            ? post.id === mapped.id
+              ? mapped
+              : { ...post, isPinned: false }
+            : post
+        )
+      }));
+    };
     const incrementView = async (postId: string) => {
       if (!session) return;
       const updated = await realtimeApi.recordSocialPostView(Number(postId));
@@ -1010,7 +1060,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         const currentlyFollowing = (state.follows[actorKey] ?? []).includes(targetKey);
         void (currentlyFollowing ? realtimeApi.unfollow(Number(target.id)) : realtimeApi.follow(Number(target.id))).then(() => loadFormalSocial());
       },
-      togglePinPost: formalSocialMutationUnavailable,
+      togglePinPost,
       updateProfileOverride: formalSocialMutationUnavailable,
       incrementView,
       shareSocialPostToFriends,

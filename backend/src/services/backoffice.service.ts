@@ -1,3 +1,5 @@
+import type { RealtimeRepositoryPort } from "../repositories/realtime.repository";
+import type { WorkStatus } from '../domain/work-status';
 import { hash } from "bcryptjs";
 import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import { ERROR_CODES } from "../constants/error-codes";
@@ -7,6 +9,7 @@ import type {
   BackofficeDashboardQuery,
   BackofficeListQuery,
   BackofficeManagedUserListQuery,
+  BackofficeManagedUserDetailQuery,
   BackofficeNdpSummaryQuery,
   BackofficeTimelineQuery,
   BackofficeServiceCreateBody,
@@ -25,6 +28,7 @@ import { DASHBOARD_METRIC_KEYS, type DashboardMetricKey } from "../validators/ba
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
+import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { LedgerCurrency } from "./ledger-currency.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
@@ -40,6 +44,7 @@ import type {
   BackofficeDashboardPayload,
   DashboardAggregateFacts,
   DashboardAggregateInput,
+  DashboardHeadlineSeriesPoint,
   DashboardMetricComparison,
   DashboardNdpPair,
   DashboardPlatformGlobalNdpPair
@@ -463,6 +468,7 @@ export interface BackofficeManagedUserMembershipPayload {
 
 export interface BackofficeManagedUserExperiencePayload {
   currentLevel: number;
+  totalExp: string;
   totalExpUnits: string;
 }
 
@@ -470,6 +476,7 @@ export interface BackofficeManagedUserPayload {
   id: number;
   needoId: string;
   username: string;
+  displayName: string;
   email: string;
   phone: string | null;
   emailBound: boolean;
@@ -479,13 +486,22 @@ export interface BackofficeManagedUserPayload {
   isTestAccount: boolean;
   source: string[];
   identities: BackofficeManagedUserIdentityPayload[];
+  identityProfiles?: Array<{
+    type: "technician" | "merchant";
+    status: "active" | "not_enabled" | "under_review" | "rejected";
+    displayName: string | null;
+  }>;
   roles: Array<{ code: string; name: string }>;
   groups: string[];
   ekycVerified: boolean;
   membership: BackofficeManagedUserMembershipPayload;
   experience: BackofficeManagedUserExperiencePayload | null;
   ndpBalance: { available: number; frozen: number };
+  testNdpBalance?: { available: number; frozen: number } | null;
   bookingCount: number;
+  city: string | null;
+  privacyMode: boolean;
+  privacyScope: "public" | "privateAll" | "limited" | "network" | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -515,13 +531,37 @@ export interface BackofficeManagedUserDetailPayload extends BackofficeManagedUse
     completedBookings: number;
     completedSpendJpy: number;
   };
+  metrics: {
+    ndpAvailable: number;
+    usageCount: number;
+    credit: {
+      ratingAverage: number;
+      reviewCount: number;
+      latestReviewAt: string | null;
+    };
+  };
+  capabilities: {
+    membershipWrite: boolean;
+    reviewAmend: boolean;
+    refundAmend: boolean;
+    partnerWrite: boolean;
+    timelineCommentWrite: boolean;
+  };
   audit: {
+    page?: number;
+    page_size?: number;
     total: number;
     list: BackofficeAuditEventPayload[];
   };
 }
 
+export type BackofficeManagedUserDetailRecord = Omit<
+  BackofficeManagedUserDetailPayload,
+  "capabilities"
+>;
+
 export interface BackofficeTechnicianPayload {
+  workStatus?: WorkStatus;
   id: number;
   userId: number;
   needoId: string;
@@ -584,6 +624,7 @@ export type TechnicianRankingRepositoryInput = BackofficeScope &
 
 export interface BackofficeShopPayload {
   id: number;
+  shopNo: string | null;
   ownerUserId: number | null;
   ownerEmail: string | null;
   avatarUrl: string | null;
@@ -765,6 +806,13 @@ export interface BackofficeServicePayload {
 
 export interface BackofficeShopCreateData extends Omit<BackofficeShopCreateBody, "ownerPassword"> {
   ownerPasswordHash: string;
+  verifiedById: number;
+  serviceLocationAudit?: AuditLogCreateInput;
+}
+
+export interface BackofficeShopMutationContext {
+  verifiedById: number;
+  serviceLocationAudit?: AuditLogCreateInput;
 }
 
 export type ScopedTechnicianUpdateInput = BackofficeScope &
@@ -812,16 +860,22 @@ export interface BackofficeNdpSummaryPayload {
   settleableNdp: number;
 }
 
+export type BackofficeActivityAccount = Pick<BackofficeManagedUserDetailRecord, "id" | "displayName" | "avatarUrl" | "createdAt">;
 export interface BackofficeRepositoryPort {
+  findActivityAccount: (input: BackofficeScope & { subject: "users" | "technicians"; id: number }) => Promise<BackofficeActivityAccount | null>;
+  getAccountAudit: (input: BackofficeScope & { account: BackofficeActivityAccount } & BackofficeManagedUserDetailQuery) => Promise<BackofficeManagedUserDetailRecord["audit"]>;
   getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
+  getHeadlineSeries3d: (
+    input: DashboardAggregateInput
+  ) => Promise<DashboardHeadlineSeriesPoint[]>;
   listManagedUsers: (
-    input: BackofficeManagedUserListQuery,
+    input: BackofficeScope & BackofficeManagedUserListQuery,
     occurredAt: Date
   ) => Promise<PaginatedResponse<BackofficeManagedUserPayload>>;
   getManagedUser: (
-    userId: number,
+    input: BackofficeScope & { userId: number } & Partial<BackofficeManagedUserDetailQuery>,
     occurredAt: Date
-  ) => Promise<BackofficeManagedUserDetailPayload | null>;
+  ) => Promise<BackofficeManagedUserDetailRecord | null>;
   listOrders: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeOrderPayload>>;
@@ -854,7 +908,8 @@ export interface BackofficeRepositoryPort {
   createShop: (input: BackofficeShopCreateData) => Promise<BackofficeShopPayload>;
   updateShop: (
     id: number,
-    input: BackofficeShopUpdateBody
+    input: BackofficeShopUpdateBody,
+    mutation?: BackofficeShopMutationContext
   ) => Promise<BackofficeShopPayload | null>;
   updateMerchantShopProfile?: (input: {
     avatar?: { mimeType: string; url: string };
@@ -912,7 +967,8 @@ export class BackofficeService {
     analyticsOrMembership?:
       | BackofficeAnalyticsReader
       | Pick<PlatformMembershipService, "changeEntitlement">,
-    platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">
+    platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">,
+    private readonly accountPostsRepository?: Pick<RealtimeRepositoryPort, "listSocialPosts">
   ) {
     if (analyticsOrMembership && "getOperationsFinance" in analyticsOrMembership) {
       this.analyticsReader = analyticsOrMembership;
@@ -1027,6 +1083,14 @@ export class BackofficeService {
   ): Promise<BackofficeDashboardPayload> {
     const evaluatedAt = this.now();
     const window = resolveDashboardWindow(query, evaluatedAt);
+    const headlineWindow = resolveDashboardWindow(
+      {
+        period: "custom",
+        from: shiftCalendarDate(window.toDate, -2),
+        to: window.toDate
+      },
+      evaluatedAt
+    );
     const city = query.city ?? null;
     await this.record(actor, context, "backoffice.dashboard.read", "backoffice_dashboard", {
       period: window.period,
@@ -1035,13 +1099,25 @@ export class BackofficeService {
       city,
       shopId: null
     });
-    const aggregate = await this.repository.getDashboard({
-      scope: { kind: "platform" },
-      city,
+    const scope = { kind: "platform" } as const;
+    const [aggregate, headlineBuckets] = await Promise.all([
+      this.repository.getDashboard({ scope, city, window, evaluatedAt }),
+      this.repository.getHeadlineSeries3d({
+        scope,
+        city,
+        window: headlineWindow,
+        evaluatedAt
+      })
+    ]);
+    return this.composeDashboard(
+      aggregate,
       window,
+      headlineWindow,
+      headlineBuckets,
+      city,
+      null,
       evaluatedAt
-    });
-    return this.composeDashboard(aggregate, window, city, null, evaluatedAt);
+    );
   }
 
   public async listManagedUsers(
@@ -1052,19 +1128,87 @@ export class BackofficeService {
     await this.record(actor, context, "backoffice.users.list", "User", {
       filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
     });
-    return this.repository.listManagedUsers(input, this.now());
+    return this.repository.listManagedUsers({ ...input, scope: "platform" }, this.now());
+  }
+
+  public async listMerchantManagedUsers(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeManagedUserListQuery
+  ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.users.list", "User", {
+      shopId: scope.shopId,
+      filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
+    });
+    return this.repository.listManagedUsers({ ...input, ...scope }, this.now());
+  }
+
+  public async getTechnicianUserLog(id: number, merchant: boolean, actor: AuthenticatedAccessContext, context: AuthRequestContext, query: BackofficeManagedUserDetailQuery) {
+    const scope: BackofficeScope = merchant ? this.getMerchantScope(actor) : { scope: "platform" };
+    const account = this.requireResult(await this.repository.findActivityAccount({ ...scope, subject: "technicians", id }), "error.technician.not_found");
+    await this.record(actor, context, "backoffice.technician.user_log.read", "TechnicianProfile", { technicianProfileId: id, ...scope });
+    return { ...account, audit: await this.repository.getAccountAudit({ ...scope, account, ...query }) };
+  }
+
+  public async listAccountPosts(id: number, subject: "users" | "technicians", merchant: boolean, actor: AuthenticatedAccessContext, context: AuthRequestContext, query: { page?: number; pageSize?: number }) {
+    const scope: BackofficeScope = merchant ? this.getMerchantScope(actor) : { scope: "platform" };
+    const account = this.requireResult(await this.repository.findActivityAccount({ ...scope, subject, id }), "error.user.not_found");
+    await this.record(actor, context, "backoffice.account.posts.read", "User", { userId: account.id, ...scope });
+    if (!this.accountPostsRepository) throw new AppError({ code: ERROR_CODES.INTERNAL, message: "error.service.unavailable", statusCode: 503 });
+    if (!actor.currentIdentityId) throw new AppError({ code: ERROR_CODES.FORBIDDEN, message: "error.auth.forbidden", statusCode: 403 });
+    return this.accountPostsRepository.listSocialPosts(actor.currentIdentityId, { ...query, authorUserId: account.id }, actor.userId);
   }
 
   public async getManagedUser(
     userId: number,
     actor: AuthenticatedAccessContext,
-    context: AuthRequestContext
+    context: AuthRequestContext,
+    query: BackofficeManagedUserDetailQuery = { audit_page: 1, audit_page_size: 10 }
   ): Promise<BackofficeManagedUserDetailPayload> {
     await this.record(actor, context, "backoffice.user.read", "User", { userId });
-    return this.requireResult(
-      await this.repository.getManagedUser(userId, this.now()),
+    const detail = this.requireResult(
+      await this.repository.getManagedUser({ scope: "platform", userId, ...query }, this.now()),
       "error.user.not_found"
     );
+    return this.withManagedUserCapabilities(detail, actor, "platform");
+  }
+
+  public async getMerchantManagedUser(
+    userId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    query: BackofficeManagedUserDetailQuery = { audit_page: 1, audit_page_size: 10 }
+  ): Promise<BackofficeManagedUserDetailPayload> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.user.read", "User", {
+      userId,
+      shopId: scope.shopId
+    });
+    const detail = this.requireResult(
+      await this.repository.getManagedUser({ ...scope, userId, ...query }, this.now()),
+      "error.user.not_found"
+    );
+    return this.withManagedUserCapabilities(detail, actor, "merchant");
+  }
+
+  private withManagedUserCapabilities(
+    detail: BackofficeManagedUserDetailRecord,
+    actor: AuthenticatedAccessContext,
+    scope: "platform" | "merchant"
+  ): BackofficeManagedUserDetailPayload {
+    const permits = (permission: string) =>
+      scope === "platform" && actor.permissions.includes(permission);
+    return {
+      ...detail,
+      capabilities: {
+        membershipWrite: permits("backoffice:user-membership:write"),
+        reviewAmend: permits("backoffice:customers:write"),
+        refundAmend: permits("backoffice:user-refund:amend"),
+        partnerWrite: permits("backoffice:partner-profile:write"),
+        timelineCommentWrite: permits("backoffice:user-usage:comment")
+      }
+    };
   }
 
   public async getMerchantDashboard(
@@ -1075,6 +1219,14 @@ export class BackofficeService {
     const scope = this.getMerchantScope(actor);
     const evaluatedAt = this.now();
     const window = resolveDashboardWindow(query, evaluatedAt);
+    const headlineWindow = resolveDashboardWindow(
+      {
+        period: "custom",
+        from: shiftCalendarDate(window.toDate, -2),
+        to: window.toDate
+      },
+      evaluatedAt
+    );
     await this.record(actor, context, "merchant_admin.dashboard.read", "merchant_admin_dashboard", {
       period: window.period,
       from: window.fromDate,
@@ -1082,13 +1234,30 @@ export class BackofficeService {
       city: null,
       shopId: scope.shopId
     });
-    const aggregate = await this.repository.getDashboard({
-      scope: { kind: "shop", shopId: scope.shopId },
-      city: null,
+    const dashboardScope = { kind: "shop", shopId: scope.shopId } as const;
+    const [aggregate, headlineBuckets] = await Promise.all([
+      this.repository.getDashboard({
+        scope: dashboardScope,
+        city: null,
+        window,
+        evaluatedAt
+      }),
+      this.repository.getHeadlineSeries3d({
+        scope: dashboardScope,
+        city: null,
+        window: headlineWindow,
+        evaluatedAt
+      })
+    ]);
+    return this.composeDashboard(
+      aggregate,
       window,
+      headlineWindow,
+      headlineBuckets,
+      null,
+      scope.shopId,
       evaluatedAt
-    });
-    return this.composeDashboard(aggregate, window, null, scope.shopId, evaluatedAt);
+    );
   }
 
   public async listManageableMerchantShops(
@@ -1250,6 +1419,8 @@ export class BackofficeService {
   private composeDashboard(
     aggregate: DashboardAggregateFacts,
     window: ReturnType<typeof resolveDashboardWindow>,
+    headlineWindow: ReturnType<typeof resolveDashboardWindow>,
+    headlineBuckets: DashboardHeadlineSeriesPoint[],
     city: string | null,
     shopId: number | null,
     evaluatedAt: Date
@@ -1330,6 +1501,12 @@ export class BackofficeService {
           shopEstimatedGrossProfitJpy:
             aggregate.finance.bucketShopEstimatedGrossProfitJpy.get(bucket.key) ?? 0
         }))
+      },
+      headlineSeries3d: {
+        from: headlineWindow.fromDate,
+        to: headlineWindow.toDate,
+        timeZone: "Asia/Tokyo",
+        buckets: headlineBuckets
       },
       finance: {
         platformNetRevenue: aggregate.finance.platformNetRevenue,
@@ -1745,7 +1922,9 @@ export class BackofficeService {
     try {
       shop = await this.repository.createShop({
         ...input,
-        ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS)
+        ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS),
+        verifiedById: actor.userId,
+        serviceLocationAudit: this.createVerifiedServiceLocationAudit(input, actor, context)
       });
     } catch (error) {
       if (error instanceof UserBootstrapKeyAllocationExhaustedError) {
@@ -1771,7 +1950,10 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeShopPayload> {
     const shop = this.requireResult(
-      await this.repository.updateShop(id, input),
+      await this.repository.updateShop(id, input, {
+        verifiedById: actor.userId,
+        serviceLocationAudit: this.createVerifiedServiceLocationAudit(input, actor, context)
+      }),
       "error.shop.not_found"
     );
     await this.record(actor, context, "backoffice.shop.update", "Shop", {
@@ -2280,6 +2462,32 @@ export class BackofficeService {
     );
     await this.record(actor, context, action, "Service", { serviceId, shopId: service.shopId });
     return service;
+  }
+
+  private createVerifiedServiceLocationAudit(
+    input: {
+      serviceCountryCode?: "JP";
+      serviceAdmin1Code?: string;
+      serviceAdmin2Code?: string;
+    },
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): AuditLogCreateInput | undefined {
+    if (!input.serviceCountryCode || !input.serviceAdmin1Code || !input.serviceAdmin2Code) {
+      return undefined;
+    }
+    return this.auditLogService.createInput({
+      actor,
+      action: "backoffice.shop.service_location.verify",
+      targetType: "shop",
+      targetId: null,
+      context,
+      metadata: {
+        countryCode: input.serviceCountryCode,
+        admin1Code: input.serviceAdmin1Code,
+        admin2Code: input.serviceAdmin2Code
+      }
+    });
   }
 
   private requireResult<T>(value: T | null, message: string): T {

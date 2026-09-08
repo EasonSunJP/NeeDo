@@ -1,3 +1,4 @@
+import { BackofficeHeaderActions } from "../../features/sos/BackofficeHeaderActions";
 import {
   useEffect,
   useLayoutEffect,
@@ -37,9 +38,8 @@ import {
   type AdminTheme
 } from "../../theme/AdminTheme";
 import { AdminAccountMenu } from "../admin/AdminAccountMenu";
-import { AdminThemeMenu } from "../admin/AdminThemeMenu";
 import { CloseIconButton } from "../ui/CloseIconButton";
-import { LanguageSwitcher } from "../ui/LanguageSwitcher";
+import { OfficialNoticeBell } from "../ui/OfficialNoticeBell";
 
 type MerchantAdminNavItem = {
   label: string;
@@ -228,7 +228,8 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
         to: "/merchant-admin/people?module=staff",
         icon: "员",
         children: ["正式员工", "状态", "店铺范围"]
-      }
+      },
+      { label: "员工申请管理", to: "/merchant-admin/employee-applications", icon: "审", rbacPermission: "merchant:technician-application:read" }
     ]
   },
   {
@@ -258,6 +259,13 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
         to: "/merchant-admin/settings",
         icon: "设",
         children: ["基础资料", "数据库状态", "待接入能力"]
+      },
+      {
+        label: "上门交通费",
+        to: "/merchant-admin/settings/travel-fare",
+        icon: "行",
+        children: ["当前策略", "计划版本", "距离区间"],
+        rbacPermission: "merchant-admin:travel-fare-policy:read"
       }
     ]
   },
@@ -604,7 +612,6 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
             <div className="flex items-center gap-3">
               <AdminAccountMenu
                 accountName={accountName}
-                fallbackEmail={session?.email}
                 loginPath="/login/merchant-admin"
                 portal="merchant"
                 roleLabel="店铺管理员"
@@ -825,26 +832,13 @@ export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
                   />
                 </label>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <NavLink
-                  className="focus-ring rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black text-ink/65"
-                  to="/merchant-admin/notifications/inbox"
-                >
-                  通知
-                </NavLink>
-                <NavLink
-                  className="focus-ring rounded-lg border border-line bg-paper px-3 py-2 text-xs font-black text-ink/65"
-                  to="/merchant-admin/settings"
-                >
-                  设置
-                </NavLink>
-                <LanguageSwitcher className="shrink-0" iconOnly />
-                <AdminThemeMenu
-                  onThemeChange={setTheme}
-                  options={sharedAdminThemeOptions}
-                  theme={theme}
-                />
-              </div>
+              <BackofficeHeaderActions
+                theme={theme}
+                onThemeChange={setTheme}
+                themeOptions={sharedAdminThemeOptions}
+                messageAction={<OfficialNoticeBell to="/merchant-admin/notifications/inbox" />}
+                supportTo="/merchant/settings/help"
+              />
             </div>
             <div className="admin-subnav scrollbar-none mt-3 flex items-center gap-2 overflow-x-auto lg:hidden">
               {activeSection.items.map((item) => (

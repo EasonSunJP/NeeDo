@@ -312,6 +312,11 @@ describe("formal order fulfillment OpenAPI contract", () => {
       "operations_receipt_override",
       null
     ]);
+    expect(checkout.properties.availablePaymentMethods).toMatchObject({
+      type: "array",
+      uniqueItems: true,
+      items: { type: "string", enum: ["cash", "ndp"] }
+    });
     expect(Object.keys(checkout.properties)).toEqual([
       "id",
       "orderId",
@@ -322,6 +327,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
       "discountAmountJpy",
       "checkoutAmountJpy",
       "payableNdp",
+      "availablePaymentMethods",
       "rate",
       "calculation",
       "paymentMethod",

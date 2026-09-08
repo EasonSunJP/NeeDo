@@ -68,7 +68,7 @@ const post: ExchangePostPayload = {
     liked: false,
     canWithdraw: true,
     canClaim: false,
-    canViewClaims: false,
+    canViewClaims: true,
     canViewMatching: true
   },
   demand: {
@@ -387,6 +387,11 @@ describe("ExchangeService", () => {
       ...post,
       type: "intelligence",
       demand: null,
+      viewer: {
+        ...post.viewer,
+        canClaim: false,
+        canViewClaims: false
+      },
       intelligence: {
         serviceMode: "onsite",
         addressLabel: "港区青山1-1",
@@ -486,6 +491,55 @@ describe("ExchangeService", () => {
         canViewClaims: true,
         canViewMatching: true
       }
+    });
+  });
+
+  it("preserves repository-owned Quick capacity and owner claim-list capabilities", async () => {
+    const repository = createRepository();
+    const service = new ExchangeService(repository, () => now);
+    const providerPost = {
+      ...post,
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: true,
+        canViewClaims: false,
+        canViewMatching: false
+      }
+    };
+    repository.resolveActor.mockResolvedValue({
+      ...actor,
+      identityType: "technician",
+      scopeType: "technician_profile",
+      scopeId: 81
+    });
+    repository.findPostById.mockResolvedValue(providerPost);
+
+    await expect(
+      service.getPost(
+        {
+          ...access,
+          currentIdentityType: "technician",
+          currentIdentityScopeType: "technician_profile",
+          currentIdentityScopeId: 81
+        },
+        41
+      )
+    ).resolves.toMatchObject({ viewer: { canClaim: true } });
+
+    repository.resolveActor.mockResolvedValue(actor);
+    repository.findPostById.mockResolvedValue({
+      ...post,
+      viewer: {
+        liked: false,
+        canWithdraw: true,
+        canClaim: false,
+        canViewClaims: true,
+        canViewMatching: true
+      }
+    });
+    await expect(service.getPost(access, 41)).resolves.toMatchObject({
+      viewer: { canViewClaims: true }
     });
   });
 

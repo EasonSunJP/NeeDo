@@ -29,6 +29,7 @@ const exchangeDeferredCapabilityTokens = [
   "cancel"
 ] as const;
 const permittedExchangeCapabilityMutations = new Set([
+  "post /exchange/posts/:id/matching/quick/confirm-budget",
   "post /exchange/posts/:id/matching/bookings",
   "post /exchange/orders/:id/cancellation/requests",
   "post /exchange/orders/:id/cancellation/accept",
@@ -81,7 +82,19 @@ describe("formal Exchange source policy", () => {
     expect(isForbiddenExchangeCapabilityMutation({ method, path })).toBe(true);
   });
 
-  it("allows only the exact formal booking and bilateral-cancellation mutation tuples and does not block reads", () => {
+  it("allows only the exact formal quick-budget, booking, and bilateral-cancellation mutation tuples and does not block reads", () => {
+    expect(
+      isForbiddenExchangeCapabilityMutation({
+        method: "post",
+        path: "/exchange/posts/:id/matching/quick/confirm-budget"
+      })
+    ).toBe(false);
+    expect(
+      isForbiddenExchangeCapabilityMutation({
+        method: "put",
+        path: "/exchange/posts/:id/matching/quick/confirm-budget"
+      })
+    ).toBe(true);
     expect(
       isForbiddenExchangeCapabilityMutation({
         method: "post",

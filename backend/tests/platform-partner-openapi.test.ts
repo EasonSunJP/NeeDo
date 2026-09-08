@@ -17,6 +17,9 @@ describe("platform partner OpenAPI", () => {
       paths["/api/v1/backoffice/agents/{agentPublicId}/shop-referrals"].get["x-permission"]
     ).toBe("backoffice:agent:read");
     expect(response.body.components.schemas.PlatformPartnerProfile).toBeDefined();
+    expect(response.body.components.schemas.PlatformPartnerProfile.required).toEqual(
+      expect.arrayContaining(["startsAt", "endsAt", "permanent"])
+    );
     expect(
       response.body.components.schemas.PlatformPartnerProfile.properties.administration.properties
     ).toMatchObject({

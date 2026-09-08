@@ -34,6 +34,7 @@ import type {
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
 import type { UserExperienceService } from "./user-experience.service";
+import type { PlatformMembershipBenefitResolverPort } from "./platform-membership.service";
 import type { ExchangeCommittedNotification } from "../types/exchange-booking-conversion.types";
 
 const SOCIAL_ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -90,7 +91,8 @@ export class RealtimeService implements OrderStatusNotificationPort {
       resolve: (actor: PersonalIdentityActor) => Promise<PersonalIdentityScope>;
     },
     private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly membershipBenefitResolver?: PlatformMembershipBenefitResolverPort
   ) {}
 
   public async createConversation(
@@ -321,6 +323,9 @@ export class RealtimeService implements OrderStatusNotificationPort {
         message: "error.im.not_friends",
         statusCode: 403
       });
+    }
+    if (outcome.status === "media_invalid") {
+      throw this.validationError("error.im.media_invalid");
     }
     const { message } = outcome;
 
@@ -594,12 +599,22 @@ export class RealtimeService implements OrderStatusNotificationPort {
     input: { conversationId: number; messageId: number; mode: "standard" }
   ) {
     const scope = await this.resolvePersonalIdentityScope(auth);
+    const occurredAt = this.now();
+    const mode =
+      (await this.membershipBenefitResolver?.hasEffectiveBenefitAt(
+        auth.userId,
+        "traceless_recall",
+        occurredAt
+      )) === true
+        ? "traceless"
+        : "standard";
     const outcome = await this.repository.recallMessage({
       conversationId: input.conversationId,
       messageId: input.messageId,
       senderUserId: auth.userId,
       senderIdentityId: scope.identityId,
-      now: new Date()
+      mode,
+      now: occurredAt
     });
 
     if (outcome.status === "not_found") {
@@ -623,7 +638,10 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     return {
-      action: "standard_recall" as const,
+      action:
+        outcome.message.recallMode === "traceless"
+          ? ("traceless_recall" as const)
+          : ("standard_recall" as const),
       conversationId: input.conversationId,
       messageId: input.messageId,
       message: outcome.message
@@ -1003,6 +1021,35 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     return result.post;
+  }
+
+  public async setSocialPostPin(
+    auth: AuthenticatedAccessContext,
+    postId: number,
+    active: boolean,
+    context: AuthRequestContext
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const post = await this.repository.setSocialPostPin({
+      postId,
+      authorUserId: auth.userId,
+      authorIdentityId: scope.identityId,
+      active,
+      context
+    });
+    if (!post) {
+      throw this.notFoundError("error.realtime.social_post_not_found");
+    }
+
+    this.eventGateway.publish({
+      id: this.createEventId(),
+      type: "social.post.updated",
+      recipientUserId: auth.userId,
+      recipientIdentityId: scope.identityId,
+      payload: post,
+      createdAt: new Date().toISOString()
+    });
+    return post;
   }
 
   public async listSocialPosts(auth: AuthenticatedAccessContext, input: SocialPostListInput) {

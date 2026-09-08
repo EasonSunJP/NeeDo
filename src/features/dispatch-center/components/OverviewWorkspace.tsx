@@ -19,13 +19,16 @@ import { Button } from "../../../components/ui/Button";
 import { Drawer } from "../../../components/ui/Drawer";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { ScheduleCycleCalendarBoard, type ScheduleCycleCalendarBoardView } from "../../../components/scheduling/ScheduleCycleCalendarBoard";
+import { buildFormalMerchantScheduleBoard, getFormalMerchantScheduleCycleRange } from "../../../components/scheduling/formalMerchantScheduleBoard";
 import { emptyOrders as orders } from "../../../data/formalRuntimeFallbacks";
+import { loadCoreReadWithTransientRetry } from "../../core-read/transientRetry";
+import { loadManagedScheduleWindow } from "../../scheduling/window-loader";
 import { getMerchantCustomerConversationId, getMessagePath } from "../../../lib/messageCenter";
 import { shareContent } from "../../../lib/share";
 import { cn, statusLabel as formatOrderStatusLabel, yen } from "../../../lib/utils";
 import { useEntityStore } from "../../../state/entityStore";
 import { SocialProfileMiniCard } from "../../../shared/profile-card";
-import type { Customer, Order } from "../../../types/domain";
+import type { Customer, Order, Store, Technician } from "../../../types/domain";
 import { FloatingActionWindow } from "./FloatingActionWindow";
 import { ScheduleCellDetailContent } from "./ScheduleCellDetailContent";
 import { SpecialTaskPool } from "./SpecialTaskPool";
@@ -34,6 +37,7 @@ import { translateText } from "../../../i18n/translations";
 import { resolveScheduleEventDetailTarget } from "../../../lib/scheduleDetailTarget";
 import { buildCurrentRoute, withReturnTo } from "../../../lib/navigationReturn";
 import { addDays, type DispatchFloatingTask } from "../domain";
+import { getTodayDateKey } from "../../technician-schedule/model";
 import { getMerchantScheduleCellPath } from "../paths";
 import {
   getDispatchOverviewSummary,
@@ -746,12 +750,16 @@ function ContactStatusDetailContent({
 }
 
 export function DispatchOverviewWorkspace({
+  formalStore,
+  formalTechnicians = [],
   operatorId,
   scheduleStickyTop,
   staffLabel = "技师",
   storeId,
   surface
 }: {
+  formalStore?: Store;
+  formalTechnicians?: Technician[];
   operatorId: string;
   scheduleStickyTop?: string;
   staffLabel?: "技师" | "员工";
@@ -759,8 +767,9 @@ export function DispatchOverviewWorkspace({
   surface: "desktop" | "mobile";
 }) {
   const { language } = useI18n();
+  const t = (text: string) => translateText(text, language);
   const [view, setView] = useState<ScheduleCycleCalendarBoardView>("day");
-  const [dateKey, setDateKey] = useState("2026-04-20");
+  const [dateKey, setDateKey] = useState(getTodayDateKey);
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false);
   const [scheduleDetailReturnView, setScheduleDetailReturnView] = useState<ScheduleCycleCalendarBoardView | null>(null);
   const scheduleSearchQuery = "";
@@ -771,12 +780,35 @@ export function DispatchOverviewWorkspace({
   const [contactStatusDecisions, setContactStatusDecisions] = useState<Record<string, ContactDecision>>({});
   const [selectedCell, setSelectedCell] = useState<DispatchScheduleCell | null>(null);
   const [selectedContactStatusItem, setSelectedContactStatusItem] = useState<MobileContactStatusItem | null>(null);
+  const [formalScheduleResult, setFormalScheduleResult] = useState<{ scopeKey: string; slots: Awaited<ReturnType<typeof loadManagedScheduleWindow>>; loading: boolean; error: string }>({ scopeKey: "", slots: [], loading: false, error: "" });
+  const [formalScheduleReloadKey, setFormalScheduleReloadKey] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const dispatchSnapshot = useDispatchCenterStore();
   const entitySnapshot = useEntityStore();
   const summary = useMemo(() => getDispatchOverviewSummary(storeId), [dispatchSnapshot.revision, storeId]);
   const isMobileSurface = surface === "mobile";
+  const formalCycleRange = useMemo(() => getFormalMerchantScheduleCycleRange(dateKey), [dateKey]);
+  const usesFormalMerchantSchedule = isMobileSurface && Boolean(formalStore);
+  const formalScheduleScopeKey = `${formalStore?.id ?? storeId}:${formalCycleRange.periodStart}:${formalCycleRange.periodEnd}`;
+  const formalScheduleMatchesScope = formalScheduleResult.scopeKey === formalScheduleScopeKey;
+  const formalScheduleSlots = formalScheduleMatchesScope ? formalScheduleResult.slots : [];
+  const formalScheduleLoading = usesFormalMerchantSchedule && (!formalScheduleMatchesScope || formalScheduleResult.loading);
+  const formalScheduleError = formalScheduleMatchesScope ? formalScheduleResult.error : "";
+  const formalScheduleBoard = useMemo(() => {
+    if (!usesFormalMerchantSchedule || !formalStore) {
+      return null;
+    }
+
+    return buildFormalMerchantScheduleBoard({
+      dateKey,
+      range: formalCycleRange,
+      shop: { cover: formalStore.cover, id: formalStore.id, name: formalStore.name },
+      slots: formalScheduleSlots,
+      technicians: formalTechnicians
+    });
+  }, [dateKey, formalCycleRange, formalScheduleSlots, formalStore, formalTechnicians, usesFormalMerchantSchedule]);
+  const schedulePeriodLabel = formalScheduleBoard?.periodLabel ?? summary.activePeriodLabel;
   const scheduleDetailStickyTop = "var(--client-mobile-schedule-detail-grid-header-top, calc(env(safe-area-inset-top, 0px) + 58px))";
   const overviewRangeView: ScheduleViewSegmentedValue = view === "agenda" || view === "threeDay" ? "day" : view;
   const rangeSummary = useMemo(
@@ -810,6 +842,23 @@ export function DispatchOverviewWorkspace({
   const scheduleOverviewInfo = isMobileSurface
     ? "概要页只保留关键状态，完整周期排班表进入详细页查看。"
     : "先看状态摘要，再处理 24 小时排班表和特派任务池。预约记录统一在预约一览中查看。后台与商户端都走同一套排班数据。";
+
+  useEffect(() => {
+    if (!usesFormalMerchantSchedule) return;
+    let active = true;
+    setFormalScheduleResult({ scopeKey: formalScheduleScopeKey, slots: [], loading: true, error: "" });
+    loadCoreReadWithTransientRetry(() => loadManagedScheduleWindow("merchant-admin", {
+      from: new Date(`${formalCycleRange.periodStart}T00:00:00+09:00`),
+      to: new Date(`${formalCycleRange.periodEnd}T23:59:59.999+09:00`)
+    }))
+      .then((slots) => {
+        if (active) setFormalScheduleResult({ scopeKey: formalScheduleScopeKey, slots, loading: false, error: "" });
+      })
+      .catch((error: unknown) => {
+        if (active) setFormalScheduleResult({ scopeKey: formalScheduleScopeKey, slots: [], loading: false, error: error instanceof Error && error.message.trim() ? error.message : "正式排班数据加载失败" });
+      });
+    return () => { active = false; };
+  }, [formalCycleRange.periodEnd, formalCycleRange.periodStart, formalScheduleReloadKey, formalScheduleScopeKey, usesFormalMerchantSchedule]);
 
   const openDateSchedule = (nextDateKey: string) => {
     setDateKey(nextDateKey);
@@ -883,9 +932,33 @@ export function DispatchOverviewWorkspace({
     value: string;
     tone: BadgeTone;
   }> = [
-    { label: "排班人员", value: rangeSummary.technicianCountLabel, tone: "neutral" },
-    { label: "确定天数", value: rangeSummary.confirmedDayLabel, tone: "blue" },
-    { label: "确定订单", value: rangeSummary.confirmedOrderLabel, tone: "green" }
+    {
+      label: "排班人员",
+      value: formalScheduleLoading
+        ? t("加载中")
+        : formalScheduleBoard
+          ? `${formalScheduleBoard.summary.scheduledTechnicianCount}/${formalScheduleBoard.summary.technicianCount}`
+          : rangeSummary.technicianCountLabel,
+      tone: "neutral"
+    },
+    {
+      label: "确定天数",
+      value: formalScheduleLoading
+        ? t("加载中")
+        : formalScheduleBoard
+          ? `${formalScheduleBoard.summary.scheduledDayCount}/14 天`
+          : rangeSummary.confirmedDayLabel,
+      tone: "blue"
+    },
+    {
+      label: usesFormalMerchantSchedule ? "有预约时段" : "确定订单",
+      value: formalScheduleLoading
+        ? t("加载中")
+        : formalScheduleBoard
+          ? `${formalScheduleBoard.summary.bookedCount}`
+          : rangeSummary.confirmedOrderLabel,
+      tone: "green"
+    }
   ];
   const mobileContactStatusItems = useMemo<MobileContactStatusItem[]>(() => {
     if (!isMobileSurface || !rangeSummary.effectiveStartDate || !rangeSummary.effectiveEndDate) {
@@ -1671,7 +1744,7 @@ export function DispatchOverviewWorkspace({
             <div className="grid grid-cols-2 gap-2 text-sm font-black text-ink">
               <div className={cn("rounded-[18px] border px-3 py-2.5", cardClass)}>
                 <p className={cn("text-[10px] uppercase tracking-[0.14em]", labelTextClass)}>周期</p>
-                <p className="mt-1 text-[15px]">{formatCompactPeriodLabel(summary.activePeriodLabel)}</p>
+                <p className="mt-1 text-[15px]">{formalScheduleLoading ? t("加载中") : formatCompactPeriodLabel(schedulePeriodLabel)}</p>
               </div>
               <div className={cn("rounded-[18px] border px-3 py-2.5", cardClass)}>
                 <p className={cn("text-[10px] uppercase tracking-[0.14em]", labelTextClass)}>模式</p>
@@ -1688,14 +1761,22 @@ export function DispatchOverviewWorkspace({
               ))}
             </div>
 
-            <Button className="h-12 w-full text-[15px] font-black" onClick={() => setScheduleDetailOpen(true)}>
-              查看详细排班表
-            </Button>
+            {formalScheduleError ? (
+              <div className="rounded-[18px] border border-red-500/35 bg-red-500/10 px-3 py-3" role="alert">
+                <p className="text-xs font-black text-red-400">{t("正式排班操作失败，请稍后重试")}</p>
+                <p className="mt-1 text-[11px] font-bold text-ink/55">{t("本店经营数据加载失败，请检查网络后重试")}</p>
+                <button className="mt-2 h-9 rounded-full border border-red-500/35 px-3 text-xs font-black text-red-300" onClick={() => setFormalScheduleReloadKey((current) => current + 1)} type="button">
+                  {t("刷新")}
+                </button>
+              </div>
+            ) : null}
+
           </div>
         ) : (
           <div className="mt-4">
             <ScheduleCycleCalendarBoard
-              cycleId={summary.activeCycle?.id ?? null}
+              cycleId={formalScheduleBoard ? null : summary.activeCycle?.id ?? null}
+              dataOverride={formalScheduleBoard?.dataOverride}
               dateKey={dateKey}
               getTechnicianDetailPath={getMerchantStaffDetailPath}
               onDateChange={(nextDateKey) => {
@@ -1708,7 +1789,7 @@ export function DispatchOverviewWorkspace({
               searchQuery={scheduleSearchQuery}
               statusFilter={scheduleStatusFilter}
               storeId={storeId}
-              subtitle={`${summary.activePeriodLabel} · 当前周期`}
+              subtitle={`${schedulePeriodLabel} · 当前周期`}
               surface={surface}
               view={view}
             />
@@ -1727,6 +1808,21 @@ export function DispatchOverviewWorkspace({
           onFilterChange={setContactStatusFilter}
           onSelect={setSelectedContactStatusItem}
         />
+      ) : null}
+
+      {isMobileSurface ? (
+        <div
+          className="safe-bottom fixed bottom-0 left-1/2 z-[80] w-full max-w-[480px] -translate-x-1/2 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]"
+          data-testid="merchant-current-schedule-detail-action"
+        >
+          <Button
+            className="h-14 w-full text-[15px] font-black shadow-[0_18px_46px_color-mix(in_srgb,var(--client-primary)_28%,rgba(0,0,0,0.28))]"
+            disabled={formalScheduleLoading || Boolean(formalScheduleError)}
+            onClick={() => setScheduleDetailOpen(true)}
+          >
+            {formalScheduleLoading ? t("加载正式排班中") : t("查看详细排班表")}
+          </Button>
+        </div>
       ) : null}
 
       {!isMobileSurface ? (
@@ -1757,13 +1853,20 @@ export function DispatchOverviewWorkspace({
               setScheduleDetailReturnView(null);
             }}
             showSpacer={false}
-            subtitle={summary.activePeriodLabel}
+            subtitle={schedulePeriodLabel}
             title="周期排班表"
           />
           <div className="scrollbar-none client-mobile-schedule-detail__refractive-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-3">
+            {usesFormalMerchantSchedule && (formalScheduleLoading || formalScheduleError) ? (
+              <div aria-live="polite" className="rounded-2xl border border-line p-3 text-sm">
+                {t(formalScheduleLoading ? "加载正式排班中" : "本店经营数据加载失败，请检查网络后重试")}
+                {formalScheduleError ? <Button onClick={() => setFormalScheduleReloadKey((current) => current + 1)}>{t("刷新")}</Button> : null}
+              </div>
+            ) : null}
             <ScheduleCycleCalendarBoard
               className="client-mobile-schedule-detail__calendar-board"
-              cycleId={summary.activeCycle?.id ?? null}
+              cycleId={formalScheduleBoard ? null : summary.activeCycle?.id ?? null}
+              dataOverride={formalScheduleBoard?.dataOverride}
               dateKey={dateKey}
               getTechnicianDetailPath={getMerchantStaffDetailPath}
               onDateChange={(nextDateKey) => {
@@ -1776,7 +1879,7 @@ export function DispatchOverviewWorkspace({
               searchQuery={scheduleSearchQuery}
               statusFilter={scheduleStatusFilter}
               storeId={storeId}
-              subtitle={`${summary.activePeriodLabel} · 当前周期`}
+              subtitle={`${schedulePeriodLabel} · 当前周期`}
               surface={surface}
               view={view}
             />

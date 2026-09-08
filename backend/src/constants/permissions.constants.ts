@@ -138,6 +138,22 @@ export const TRAVEL_FARE_PERMISSIONS = {
   estimateCreate: "booking:travel-estimate:create"
 } as const;
 
+export const PLATFORM_SETTINGS_PERMISSIONS = {
+  read: "backoffice:system-settings:read",
+  write: "backoffice:system-settings:write",
+  brandMediaActivate: "backoffice:system-brand-media:activate",
+  imRetentionRead: "backoffice:im-retention:read",
+  imRetentionWrite: "backoffice:im-retention:write",
+  paymentRead: "backoffice:payment-settings:read",
+  paymentWrite: "backoffice:payment-settings:write"
+} as const;
+
+export const LEGAL_DOCUMENT_PERMISSIONS = {
+  read: "backoffice:legal-documents:read",
+  write: "backoffice:legal-documents:write",
+  publish: "backoffice:legal-documents:publish"
+} as const;
+
 export const ENTITY_FAVORITE_PERMISSIONS = {
   read: "entity-favorite:read",
   write: "entity-favorite:write"
@@ -176,6 +192,10 @@ export const EXCHANGE_REQUEST_FEE_PERMISSIONS = {
 } as const;
 
 export const SYSTEM_PERMISSIONS = [
+  { code: "sos:create", name: "发送求救", type: "api", module: "sos", description: "Booking SOS create", isSystem: true },
+  { code: "sos:list", name: "查看求救", type: "api", module: "sos", description: "Booking SOS list", isSystem: true },
+  { code: "sos:resolve", name: "处理求救", type: "api", module: "sos", description: "Booking SOS resolve", isSystem: true },
+
   createPermission("auth:me", "查看当前账号", "api", "auth", "读取当前登录账号、身份、角色和权限"),
   createPermission(
     "auth:me:read",
@@ -285,6 +305,9 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-profile",
     "更新当前商户身份的独立个人资料"
   ),
+  createPermission("ekyc-application:own", "本人 eKYC 申请", "api", "ekyc-application", "本人 eKYC 申请"),
+  createPermission("ops:ekyc-application:read", "查看 eKYC 申请", "api", "ekyc-application", "查看 eKYC 申请"),
+  createPermission("ops:ekyc-application:review", "审核 eKYC 申请", "api", "ekyc-application", "审核 eKYC 申请"),
   createPermission(
     "identity-application:own",
     "本人身份申请",
@@ -524,6 +547,10 @@ export const SYSTEM_PERMISSIONS = [
     "order",
     "确认或标记退款本店订单的到店及银行转账收款"
   ),
+  createPermission("user:order-refund:write", "用户订单退款", "api", "order", "为本人已完成订单申请退款、确认到账或投诉"),
+  createPermission("merchant-admin:order-refund:write", "商户订单退款", "api", "order", "在授权店铺处理退款申请、提交退款凭证或投诉"),
+  createPermission("backoffice:order-refund-dispute:read", "退款争议读取", "api", "backoffice", "分页读取已投诉的订单退款争议"),
+  createPermission("backoffice:order-refund-dispute:resolve", "退款争议裁定", "api", "backoffice", "裁定已正式投诉的订单退款争议"),
   createPermission(
     "backoffice:order-payment:write",
     "运营线下收款维护",
@@ -707,6 +734,76 @@ export const SYSTEM_PERMISSIONS = [
     "发布经过版本与审计保护的 NDP 对日元汇率"
   ),
   createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.read,
+    "系统设置读取",
+    "api",
+    "backoffice",
+    "读取当前平台基础设置与能力状态"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.write,
+    "系统设置管理",
+    "api",
+    "backoffice",
+    "创建经过版本与审计保护的平台基础设置"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.brandMediaActivate,
+    "系统品牌媒体启用",
+    "api",
+    "backoffice",
+    "将经过验证的公开媒体设为登录 LOGO 或 Request 按钮图片"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.imRetentionRead,
+    "IM 保留策略读取",
+    "api",
+    "backoffice",
+    "读取服务器端 IM 消息与媒体保留策略"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.imRetentionWrite,
+    "IM 保留策略管理",
+    "api",
+    "backoffice",
+    "发布仅对新内容生效的服务器端 IM 保留策略"
+  ),
+  createPermission(
+    LEGAL_DOCUMENT_PERMISSIONS.read,
+    "政策协议读取",
+    "api",
+    "backoffice",
+    "分页读取政策协议目录、语言草稿与发布历史"
+  ),
+  createPermission(
+    LEGAL_DOCUMENT_PERMISSIONS.write,
+    "政策协议编辑",
+    "api",
+    "backoffice",
+    "创建政策协议目录并分别保存各语言草稿"
+  ),
+  createPermission(
+    LEGAL_DOCUMENT_PERMISSIONS.publish,
+    "政策协议发布",
+    "api",
+    "backoffice",
+    "将指定语言草稿发布为不可变版本"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.paymentRead,
+    "支付设置读取",
+    "api",
+    "backoffice",
+    "读取平台支持与未配置的支付能力状态"
+  ),
+  createPermission(
+    PLATFORM_SETTINGS_PERMISSIONS.paymentWrite,
+    "支付设置管理",
+    "api",
+    "backoffice",
+    "启用或停用已正式支持的线下与 NDP 支付"
+  ),
+  createPermission(
     "backoffice:membership-tier:read",
     "平台会员等级读取",
     "api",
@@ -824,6 +921,20 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "backoffice",
     "发放、续费、升级、降级或终止用户平台会员资格"
+  ),
+  createPermission(
+    "backoffice:user-usage:comment",
+    "用户履约评论管理",
+    "api",
+    "backoffice",
+    "在用户履约时间线追加不可删除的运营评论"
+  ),
+  createPermission(
+    "backoffice:user-refund:amend",
+    "用户退款信息修订",
+    "api",
+    "backoffice",
+    "以理由和审计记录修订用户履约退款信息"
   ),
   createPermission(
     "backoffice:user-experience:read",
@@ -1991,6 +2102,22 @@ export type SystemPermissionCode = (typeof SYSTEM_PERMISSIONS)[number]["code"];
 
 export const SYSTEM_PERMISSION_CODES = SYSTEM_PERMISSIONS.map((permission) => permission.code);
 
+const SYSTEM_SETTINGS_READ_PERMISSION_CODES = [
+  PLATFORM_SETTINGS_PERMISSIONS.read,
+  PLATFORM_SETTINGS_PERMISSIONS.imRetentionRead,
+  LEGAL_DOCUMENT_PERMISSIONS.read,
+  PLATFORM_SETTINGS_PERMISSIONS.paymentRead
+] as const satisfies readonly SystemPermissionCode[];
+
+const SYSTEM_SETTINGS_WRITE_PERMISSION_CODES = [
+  PLATFORM_SETTINGS_PERMISSIONS.write,
+  PLATFORM_SETTINGS_PERMISSIONS.brandMediaActivate,
+  PLATFORM_SETTINGS_PERMISSIONS.imRetentionWrite,
+  LEGAL_DOCUMENT_PERMISSIONS.write,
+  LEGAL_DOCUMENT_PERMISSIONS.publish,
+  PLATFORM_SETTINGS_PERMISSIONS.paymentWrite
+] as const satisfies readonly SystemPermissionCode[];
+
 const EXCHANGE_COMMON_PERMISSION_CODES = [
   EXCHANGE_PERMISSIONS.postList,
   EXCHANGE_PERMISSIONS.postDetail,
@@ -2092,7 +2219,8 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "backoffice:user-group:read",
   "backoffice:user-policy:read",
   "backoffice:ndp-experience-campaign:read",
-  TRAVEL_FARE_PERMISSIONS.backofficeRead
+  TRAVEL_FARE_PERMISSIONS.backofficeRead,
+  ...SYSTEM_SETTINGS_READ_PERMISSION_CODES
 ] as const satisfies readonly SystemPermissionCode[];
 
 const CUSTOMER_BOOKING_PERMISSION_CODES = [
@@ -2162,6 +2290,7 @@ const REALTIME_USER_PERMISSION_CODES = [
 ] as const satisfies readonly SystemPermissionCode[];
 
 const IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES = [
+  "ekyc-application:own",
   "identity-application:own",
   "contract:read",
   "contract:accept",
@@ -2177,6 +2306,8 @@ const MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES = [
 ] as const satisfies readonly SystemPermissionCode[];
 
 const OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES = [
+  "ops:ekyc-application:read",
+  "ops:ekyc-application:review",
   "ops:merchant-application:read",
   "ops:merchant-application:review",
   "identity-application-media:sensitive-read"
@@ -2227,9 +2358,12 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:service-taxonomy:write",
   "backoffice:membership-benefit:write",
   "backoffice:user-membership:write",
+  "backoffice:user-usage:comment",
+  "backoffice:user-refund:amend",
   "backoffice:user-group:write",
   "backoffice:user-policy:publish",
   "backoffice:ndp-experience-campaign:publish",
+  ...SYSTEM_SETTINGS_WRITE_PERMISSION_CODES,
   "backoffice:order-acceptance-pause:read",
   "backoffice:order-acceptance-pause:write",
   "backoffice:order-performance:write",
@@ -2413,6 +2547,7 @@ export const buildRolePermissionAssignments = (): Record<
 > => ({
   admin: [...SYSTEM_PERMISSION_CODES],
   operator: [
+    "sos:list", "sos:resolve",
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
     ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
@@ -2437,7 +2572,9 @@ export const buildRolePermissionAssignments = (): Record<
     "button:user:test-account:update",
     "menu:admin-settings",
     "page:admin-settings",
-    "backoffice:order:checkout:receipt-override"
+    "backoffice:order:checkout:receipt-override",
+    "backoffice:order-refund-dispute:read",
+    "backoffice:order-refund-dispute:resolve"
   ],
   finance: [
     ...FINANCE_PERMISSION_CODES,
@@ -2454,18 +2591,22 @@ export const buildRolePermissionAssignments = (): Record<
     "page:admin-settings"
   ],
   support: [
+    "sos:list", "sos:resolve",
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     "ops:merchant-application:read",
+    "ops:ekyc-application:read",
     "identity-application-media:sensitive-read",
     "menu:user-management",
     "page:user-management",
     "user:list",
     "user:update",
     "user:identity:list",
-    "button:user:update"
+    "button:user:update",
+    "backoffice:order-refund-dispute:read"
   ],
   merchant_owner: [
+    "sos:list", "sos:resolve",
     "merchant-profile:read",
     "merchant-profile:write",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
@@ -2482,9 +2623,11 @@ export const buildRolePermissionAssignments = (): Record<
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
-    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
+    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES,
+    "merchant-admin:order-refund:write"
   ],
   merchant_staff: [
+    "sos:list", "sos:resolve",
     "merchant-profile:read",
     "merchant-profile:write",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
@@ -2497,9 +2640,11 @@ export const buildRolePermissionAssignments = (): Record<
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
     ...MERCHANT_AFFILIATE_PERMISSION_CODES,
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
-    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
+    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES,
+    "merchant-admin:order-refund:write"
   ],
   technician: [
+    "sos:create",
     "menu:technician-app",
     "menu:technician-schedule",
     "technician-profile:read",
@@ -2526,12 +2671,14 @@ export const buildRolePermissionAssignments = (): Record<
     "technician:payout-record:confirm"
   ],
   customer: [
+    "sos:create",
     ...CUSTOMER_BOOKING_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_PUBLISHER_PERMISSION_CODES,
     ...EXCHANGE_DEMAND_OWNER_CLAIM_PERMISSION_CODES,
     ...AFFILIATE_ENTRY_PERMISSION_CODES,
-    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
+    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
+    "user:order-refund:write"
   ],
   broker: [
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
@@ -105,11 +105,12 @@ function formatCountdown(expiresAt: string, nowMs: number, language: Language) {
   return days > 0 ? `${prefix} ${days}d ${clock}` : `${prefix} ${clock}`;
 }
 
-function priceLabel(post: ExchangePost) {
+function priceLabel(post: ExchangePost, effectiveBudgetMaxJpy: number | null = null) {
   if (post.type === "demand" && post.demand) {
+    const budgetMaxJpy = effectiveBudgetMaxJpy ?? post.demand.budgetMaxJpy;
     return post.demand.budgetMinJpy === null
-      ? formatJpy(post.demand.budgetMaxJpy)
-      : `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
+      ? formatJpy(budgetMaxJpy)
+      : `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(budgetMaxJpy)}`;
   }
   return post.intelligence ? formatJpy(post.intelligence.campaignPriceJpy) : "—";
 }
@@ -263,6 +264,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
   const validPostId = Boolean(postId && /^[1-9]\d*$/u.test(postId));
   const [post, setPost] = useState<ExchangePost | null>(null);
+  const [effectiveBudgetMaxJpy, setEffectiveBudgetMaxJpy] = useState<number | null>(null);
   const [loading, setLoading] = useState(validPostId);
   const [error, setError] = useState(!validPostId);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -283,6 +285,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     if (!postId || !validPostId) return;
     const controller = new AbortController();
     setPost(null);
+    setEffectiveBudgetMaxJpy(null);
     setLoading(true);
     setError(false);
     void getExchangePost(postId, controller.signal)
@@ -297,6 +300,10 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
       });
     return () => controller.abort();
   }, [postId, reloadVersion, validPostId]);
+
+  const updateEffectiveBudget = useCallback((budgetMaxJpy: number) => {
+    setEffectiveBudgetMaxJpy(budgetMaxJpy);
+  }, []);
 
   function goBack() {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -393,7 +400,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
     );
   }
 
-  const price = priceLabel(post);
+  const price = priceLabel(post, effectiveBudgetMaxJpy);
   const active = post.status === "published";
   const serviceFlow = post.type === "intelligence"
     ? [t("flowSelectTechnician"), t("flowConfirmTime"), t("flowPrepare"), t("flowInService"), t("flowReview")]
@@ -507,6 +514,8 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
           <ExchangeReceivedClaims
             context={context}
             language={language}
+            matchMode={post.demand?.matchMode}
+            onEffectiveBudgetChange={updateEffectiveBudget}
             onMatched={() =>
               setPost((current) =>
                 current
@@ -635,7 +644,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
             type="button"
           >
             {active && post.viewer.canViewClaims
-              ? t("matchingSelectProviders")
+              ? t(post.demand?.matchMode === "quick" ? "quickMatchingStatus" : "matchingSelectProviders")
               : active && post.viewer.canClaim
                 ? t("claimSubmit")
                 : t(post.status === "matched" ? "matchingCompleted" : "claimStatusMatchingClosed")}

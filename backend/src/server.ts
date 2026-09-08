@@ -1,3 +1,5 @@
+import { WorkStatusWorker } from './workers/work-status.worker';
+import { WorkStatusService } from './services/work-status.service';
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
@@ -7,6 +9,7 @@ import { createMerchantShopAuditCompletionRuntime } from "./prisma/merchant-shop
 import { AffiliateAllianceRepository } from "./repositories/affiliate-alliance.repository";
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
 import { AuditLogRepository } from "./repositories/audit-log.repository";
+import { BookingRepository } from "./repositories/booking.repository";
 import { BookingUserRewardExpiryRepository } from "./repositories/booking-user-reward-expiry.repository";
 import { ShopMembershipCardAdjustmentRepository } from "./repositories/shop-membership-card-adjustment.repository";
 import { ExchangeClaimRepository } from "./repositories/exchange-claim.repository";
@@ -16,6 +19,7 @@ import { AuthRepository } from "./repositories/auth.repository";
 import { CarouselPublicationRepository } from "./repositories/carousel-publication.repository";
 import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
 import { ImPrivacyExpiryRepository } from "./repositories/im-privacy-expiry.repository";
+import { ImServerRetentionRepository } from "./repositories/im-server-retention.repository";
 import { LedgerRepository } from "./repositories/ledger.repository";
 import { OfficialAnnouncementRepository } from "./repositories/official-announcement.repository";
 import { OfficialNoticeRepository } from "./repositories/official-notice.repository";
@@ -35,6 +39,8 @@ import { FriendRequestExpiryService } from "./services/friend-request-expiry.ser
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
 import { ImPrivacyExpiryService } from "./services/im-privacy-expiry.service";
+import { ImServerRetentionService } from "./services/im-server-retention.service";
+import { ImMediaFileStorage } from "./services/im-media.storage";
 import { RedisAuthSessionStore } from "./services/auth-session.store";
 import { MerchantShopAuditOutboxService } from "./services/merchant-shop-audit-outbox.service";
 import { OrderServiceExpiryService } from "./services/order-service-expiry.service";
@@ -49,6 +55,8 @@ import { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import { UserPolicyEnforcementService } from "./services/user-policy-enforcement.service";
 import { RedisRealtimeEventBus } from "./services/redis-realtime-event.bus";
 import { SseRealtimeEventGateway } from "./services/realtime-event.gateway";
+import { createLiveDashboardRuntime } from "./services/live-dashboard-runtime";
+import { LiveDashboardOrderChangePublisher } from "./services/live-dashboard-order-change.publisher";
 import { createShutdownHandler } from "./server-shutdown";
 import { LedgerService } from "./services/ledger.service";
 import { AffiliateAllianceInvitationExpiryWorker } from "./workers/affiliate-alliance-invitation-expiry.worker";
@@ -60,6 +68,7 @@ import { ContentPublicationWorker } from "./workers/content-publication.worker";
 import { FriendRequestExpiryWorker } from "./workers/friend-request-expiry.worker";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 import { ImPrivacyExpiryWorker } from "./workers/im-privacy-expiry.worker";
+import { ImServerRetentionWorker } from "./workers/im-server-retention.worker";
 import { MerchantShopAuditOutboxWorker } from "./workers/merchant-shop-audit-outbox.worker";
 import { OrderServiceExpiryWorker } from "./workers/order-service-expiry.worker";
 import { OfficialNoticeWorker } from "./workers/official-notice.worker";
@@ -77,6 +86,9 @@ const realtimeEventGateway = new SseRealtimeEventGateway({
     logger.error({ error, operation }, "Realtime event delivery error");
   }
 });
+const liveDashboard = createLiveDashboardRuntime(env);
+const { cache: liveDashboardCache, gateway: liveDashboardEventGateway } = liveDashboard;
+const workStatusService=new WorkStatusService(undefined,undefined,realtimeEventGateway);
 const authRepository = new AuthRepository();
 const officialNoticeRepository = new OfficialNoticeRepository(
   undefined,
@@ -182,6 +194,8 @@ const merchantShopAuditOutboxWorker = new MerchantShopAuditOutboxWorker(
 const app = createApp(env, {
   redisHealthCheck: checkRedisHealth,
   realtimeEventGateway,
+  liveDashboardCache,
+  liveDashboardEventGateway,
   exchangeService,
   exchangeClaimService,
   exchangeRequestFeeService,
@@ -240,7 +254,8 @@ const orderServiceExpiryWorker = new OrderServiceExpiryWorker(
   new OrderServiceExpiryService(
     new OrderServiceExpiryRepository(undefined, ({ orderId, code, message }) => {
       logger.error({ orderId, code, message }, "Order service expiry candidate failed");
-    })
+    },orderId=>workStatusService.notifyOrder(orderId)),
+    new LiveDashboardOrderChangePublisher(new BookingRepository(), liveDashboardEventGateway)
   ),
   logger,
   env.ORDER_SERVICE_EXPIRY_INTERVAL_MS,
@@ -289,6 +304,17 @@ const imPrivacyExpiryWorker = new ImPrivacyExpiryWorker(
   env.IM_PRIVACY_EXPIRY_INTERVAL_MS,
   env.IM_PRIVACY_EXPIRY_BATCH_SIZE
 );
+const imServerRetentionWorker = new ImServerRetentionWorker(
+  new ImServerRetentionService(
+    new ImServerRetentionRepository(),
+    new ImMediaFileStorage(env.IM_MEDIA_STORAGE_DIR)
+  ),
+  logger,
+  env.IM_SERVER_RETENTION_INTERVAL_MS,
+  env.IM_SERVER_RETENTION_BATCH_SIZE
+);
+
+const workStatusWorker=new WorkStatusWorker(workStatusService,logger,env.WORK_STATUS_INTERVAL_MS,env.WORK_STATUS_BATCH_SIZE);
 
 const server = app.listen(env.PORT, () => {
   logger.info(
@@ -299,6 +325,7 @@ const server = app.listen(env.PORT, () => {
     },
     "NeeDo backend started"
   );
+  workStatusWorker.start();
   friendRequestExpiryWorker.start();
   identityApplicationPurgeWorker.start();
   affiliateTaskExpiryWorker.start();
@@ -312,13 +339,19 @@ const server = app.listen(env.PORT, () => {
   contentPublicationWorker.start();
   officialNoticeWorker.start();
   imPrivacyExpiryWorker.start();
+  imServerRetentionWorker.start();
   merchantShopAuditOutboxWorker.start();
 });
 
 const shutdown = createShutdownHandler({
   closeServer: (callback) => server.close(callback),
   disconnect: async () => {
-    await Promise.all([disconnectPrisma(), disconnectRedis(), realtimeEventGateway.close()]);
+    await Promise.all([
+      disconnectPrisma(),
+      disconnectRedis(),
+      realtimeEventGateway.close(),
+      liveDashboard.close()
+    ]);
   },
   exit: (code) => process.exit(code),
   logger,
@@ -327,6 +360,9 @@ const shutdown = createShutdownHandler({
   stopWorker: async () => {
     void realtimeEventGateway.close().catch((error) => {
       logger.error({ error }, "Realtime gateway shutdown failed");
+    });
+    void liveDashboard.close().catch((error) => {
+      logger.error({ error }, "Live dashboard gateway shutdown failed");
     });
     bookingUserRewardExpiryWorker.stop();
     orderServiceExpiryWorker.stop();
@@ -339,7 +375,9 @@ const shutdown = createShutdownHandler({
     friendRequestExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
     imPrivacyExpiryWorker.stop();
+    imServerRetentionWorker.stop();
     await Promise.all([merchantShopAuditOutboxWorker.stop(), officialNoticeWorker.stopAndDrain()]);
+    await workStatusWorker.stop();
   }
 });
 

@@ -426,6 +426,9 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(homeCarouselSource).not.toContain("slide.badge");
     expect(pageSource).not.toContain("查看大图");
     expect(embeddedHeaderSource).not.toContain(">服务展示<");
+    expect(embeddedHeaderSource).toContain("店铺 ID");
+    expect(embeddedHeaderSource).toContain("{store.systemId}");
+    expect(embeddedHeaderSource.indexOf("店铺 ID")).toBeLessThan(embeddedHeaderSource.indexOf("{store.name}"));
     expect(embeddedHeaderSource).toContain("{store.address}</p>");
     expect(embeddedHeaderSource).not.toContain("{config.subtitle}</p>");
     expect(fixedHeaderSource).not.toContain("{config.subtitle}</p>");

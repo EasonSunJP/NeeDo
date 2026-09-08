@@ -18,6 +18,8 @@ Implemented:
 - Frontend checkout/orders API lane for numeric backend ids, with legacy local demo ids left intact.
 - Merchant and technician schedule portals create, block, restore, and soft-delete formal slots; the shared calendar reads the same backend records.
 - Booking orders persist `onsite` or `bank_transfer` payment selection and the formal manual-payment lifecycle.
+- Home-service Booking creation requires a short-lived, unconsumed route estimate bound to the authenticated customer, shop, service, selected schedule slot, normalized destination hash, active fare-policy version, and selected distance band. Changing the slot requires a new estimate. Store bookings reject travel-estimate injection.
+- Estimate consumption, the Booking row, normalized fulfillment-address snapshot, and immutable `booking_travel_fare_snapshots` row share the same transaction. Concurrent reuse has exactly one winner; expired, consumed, or mismatched estimates leave no partial Booking.
 
 Reserved only:
 
@@ -74,6 +76,11 @@ Public:
 Authenticated:
 
 - `POST /api/v1/bookings`
+- `POST /api/v1/bookings/travel-estimates`
+- `GET /api/v1/merchant-admin/travel-fare-policy`
+- `GET|POST /api/v1/merchant-admin/travel-fare-policy/versions`
+- `GET /api/v1/backoffice/travel/providers/status`
+- `GET /api/v1/backoffice/travel/fare-policies`
 - `GET /api/v1/orders`
 - `GET /api/v1/orders/:id`
 - `POST /api/v1/orders/:id/confirm`
@@ -152,13 +159,23 @@ Oversell or conflict returns:
 }
 ```
 
+## Home-service route fare
+
+- The route origin is always the persisted shop address. The customer submits a structured Japanese destination (`countryCode=JP`, postal code, prefecture, city, street, and optional building fields); a client cannot submit distance, duration, fare, shop origin, policy, or band.
+- Geoapify is the first routing provider and uses the driving profile. `TRAVEL_ROUTE_PROVIDER=geoapify` plus `GEOAPIFY_API_KEY` enables it. `GEOAPIFY_API_BASE_URL`, timeout, retry count, estimate TTL, and positive/negative cache TTL are environment-configured and validated.
+- Provider credentials, raw provider payloads, normalized address inputs, and address-hash inputs never appear in route-estimate/provider/operations responses or audit metadata. Operations receives only redacted readiness and policy visibility; the authenticated customer's own order detail may return its fulfillment-address snapshot.
+- An unconfigured provider returns `error.travel.provider_unconfigured`. The redacted operations status is `configured` before the first observed request, then records `healthy`, `rate_limited`, or `unavailable` with its observation time. Rate limits, timeouts, missing routes, malformed responses, provider failures, outside-area distances, and missing policies keep distinct stable errors. There is no static-distance or fabricated-fare fallback.
+- Fare policies are shop-owned immutable versions. Bands must have strictly increasing positive maximum driving distances and non-negative integer JPY fares. The first inclusive matching upper bound owns the fare; a distance beyond the greatest band is outside the service area.
+- Checkout arithmetic is `base JPY + accepted add-ons JPY + snapshotted travel fare JPY - discount JPY`. The immutable result is converted with the effective NDP rate using the existing ceiling rule.
+- Operations `travel_fare` recognizes only completed, payment-evidenced, non-refunded, non-reversed checkouts whose arithmetic and booking travel snapshot agree. Detail rows expose distance, policy version, band limit, and fare, never the full customer address.
+
 ## Manual Payment Rules
 
 - Initial methods are limited to `onsite` and `bank_transfer`; no external gateway can create a paid transaction.
 - A payment can be confirmed only after the order is confirmed and before/after service completion. The confirmed amount must equal the order price snapshot.
 - Merchant mutations are restricted to the authenticated shop. Operations/finance mutations require a platform identity and the backoffice payment-write permission.
 - Repeating the exact same confirmation or refund returns the existing order without another mutation or audit event. A different retry returns a stable conflict.
-- Cancelling a confirmed paid order changes payment status to `refundPending`. A cancelled `refundPending` payment or a completed confirmed payment can be marked `refunded`.
+- Cancelling a confirmed paid order changes payment status to `refundPending`; the direct merchant/backoffice payment-refund endpoints may finalize only that cancelled `refundPending` pre-completion path. A `COMPLETED` + `CONFIRMED` order must use the formal `OrderRefundCase` workflow and becomes `REFUNDED` only when its customer confirms receipt.
 - Confirmation and refund update the order plus `order_financials` money timeline in one database transaction. Each applied action also writes an audit log.
 
 ## Frontend Integration

@@ -12,7 +12,7 @@ const actor: AuthenticatedAccessContext = {
   accessTokenJti: "jti",
   accessTokenExpiresAt: 2_000_000_000,
   currentIdentityId: 70,
-  currentIdentityType: "merchant",
+  currentIdentityType: "merchant_owner",
   currentIdentityScopeType: "shop",
   currentIdentityScopeId: 11,
   roles: ["merchant_owner"],
@@ -38,6 +38,10 @@ const repository = (): jest.Mocked<ShopTravelFarePolicyRepositoryPort> => ({
     void shopId; void at;
     return { current: version(), next: null };
   }),
+  findLatest: jest.fn(async (shopId: number) => {
+    void shopId;
+    return version();
+  }),
   listVersions: jest.fn(async (shopId: number, input) => {
     void shopId; void input;
     return { list: [version()], total: 1, page: 1, page_size: 20 };
@@ -49,6 +53,30 @@ const repository = (): jest.Mocked<ShopTravelFarePolicyRepositoryPort> => ({
 });
 
 describe("ShopTravelFarePolicyService", () => {
+  it("rejects a shop-scoped merchant staff identity at the service boundary", async () => {
+    const repo = repository();
+    const service = new ShopTravelFarePolicyService(repo, { createInput: (input) => input as never });
+
+    await expect(service.publishVersion(
+      { ...actor, roles: ["merchant_staff"] },
+      { ip: "127.0.0.1" },
+      { expectedVersion: 1, effectiveFrom: "2026-09-07T00:00:00.000Z", reason: "Forbidden", bands: [{ maximumDistanceMeters: 5_000, fareAmountJpy: 0 }] }
+    )).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    expect(repo.publishVersion).not.toHaveBeenCalled();
+  });
+
+  it("rejects a staff active identity even when the account also has an owner role", async () => {
+    const repo = repository();
+    const service = new ShopTravelFarePolicyService(repo, { createInput: (input) => input as never });
+
+    await expect(service.publishVersion(
+      { ...actor, currentIdentityType: "merchant_staff", roles: ["merchant_owner", "merchant_staff"] },
+      { ip: "127.0.0.1" },
+      { expectedVersion: 1, effectiveFrom: "2026-09-07T00:00:00.000Z", reason: "Forbidden", bands: [{ maximumDistanceMeters: 5_000, fareAmountJpy: 0 }] }
+    )).rejects.toMatchObject({ message: "error.identity.forbidden", statusCode: 403 });
+    expect(repo.publishVersion).not.toHaveBeenCalled();
+  });
+
   it("always scopes reads and immutable publication to the signed merchant shop", async () => {
     const repo = repository();
     const service = new ShopTravelFarePolicyService(repo, { createInput: (input) => input as never });
@@ -63,6 +91,7 @@ describe("ShopTravelFarePolicyService", () => {
     });
 
     expect(repo.findCurrentAndNext).toHaveBeenCalledWith(11, expect.any(Date));
+    expect(repo.findLatest).toHaveBeenCalledWith(11);
     expect(repo.listVersions).toHaveBeenCalledWith(11, { page: 2, pageSize: 5 });
     expect(repo.publishVersion).toHaveBeenCalledWith(expect.objectContaining({
       shopId: 11,
@@ -90,6 +119,7 @@ describe("ShopTravelFarePolicyService", () => {
 
   it("preserves the greatest inclusive maximum and writes complete immutable audit metadata", async () => {
     const repo = repository();
+    repo.findLatest.mockResolvedValue(version({ publicId: "policy-v3", version: 3 }));
     let audit: AuditLogCreateInput | undefined;
     const service = new ShopTravelFarePolicyService(repo, {
       createInput: (input) => {
@@ -103,7 +133,7 @@ describe("ShopTravelFarePolicyService", () => {
     ];
 
     await service.publishVersion(actor, { ip: "127.0.0.1", userAgent: "jest" }, {
-      expectedVersion: 1,
+      expectedVersion: 3,
       effectiveFrom: "2026-09-07T00:00:00.000Z",
       reason: "Publish maximum supported area",
       bands
@@ -117,7 +147,7 @@ describe("ShopTravelFarePolicyService", () => {
       action: "merchant_admin.travel_fare_policy.publish",
       targetType: "shop_travel_fare_policy_version",
       metadata: {
-        previousVersionPublicId: "policy-v1",
+        previousVersionPublicId: "policy-v3",
         newVersionPublicId: expect.any(String),
         effectiveFrom: "2026-09-07T00:00:00.000Z",
         reason: "Publish maximum supported area",
@@ -127,6 +157,23 @@ describe("ShopTravelFarePolicyService", () => {
         ]
       }
     });
+  });
+
+  it("rejects a stale or future expected version before building audit metadata", async () => {
+    const repo = repository();
+    repo.findLatest.mockResolvedValue(version({ publicId: "policy-v3", version: 3 }));
+    const createInput = jest.fn((input) => input as never);
+    const service = new ShopTravelFarePolicyService(repo, { createInput });
+
+    await expect(service.publishVersion(actor, { ip: "127.0.0.1" }, {
+      expectedVersion: 4,
+      effectiveFrom: "2026-09-08T00:00:00.000Z",
+      reason: "Concurrent publish",
+      bands: [{ maximumDistanceMeters: 5_000, fareAmountJpy: 0 }]
+    })).rejects.toMatchObject({ message: "error.travel_fare_policy.version_conflict", statusCode: 409 });
+
+    expect(createInput).not.toHaveBeenCalled();
+    expect(repo.publishVersion).not.toHaveBeenCalled();
   });
 
   it("maps optimistic publication conflicts to a stable error", async () => {

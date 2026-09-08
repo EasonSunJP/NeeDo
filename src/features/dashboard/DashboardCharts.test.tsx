@@ -1,3 +1,7 @@
+// @vitest-environment jsdom
+
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { AnalyticsMetricSeries, DashboardBucketPayload } from "../../api/backofficeRealData";
@@ -9,6 +13,8 @@ import {
   GroupedBarChart
 } from "./DashboardCharts";
 import source from "./DashboardCharts.tsx?raw";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const buckets: DashboardBucketPayload[] = [
   {
@@ -62,12 +68,44 @@ describe("DashboardCharts", () => {
 
     expect(markup).toContain('viewBox="0 0 720 280"');
     expect(markup.match(/<path/g)).toHaveLength(2);
-    expect(markup.match(/<circle/g)).toHaveLength(2);
+    expect(markup.match(/data-chart-series-node="true"/g)).toHaveLength(4);
     expect(markup.match(/<polygon/g)).toHaveLength(2);
+    expect(markup.match(/data-chart-point-control="true"/g)).toHaveLength(4);
     expect(markup).toContain('vector-effect="non-scaling-stroke"');
     expect(markup).toContain("订单总量 · 单");
     expect(markup).toContain("服务 GMV · JPY");
     expect(markup).not.toMatch(/NaN|Infinity/);
+  });
+
+  it("keeps the chart description in the title information control", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(
+      <I18nProvider>
+        <DualAxisLineChart
+          buckets={buckets}
+          description="订单与服务金额趋势"
+          left={orderSeries}
+          right={gmvSeries}
+          title="订单总量与服务 GMV"
+        />
+      </I18nProvider>
+    ));
+
+    const figure = container.querySelector('[data-dashboard-chart-frame="true"]')!;
+    expect(figure.querySelector('[data-dashboard-chart-info="true"]')).not.toBeNull();
+    expect(figure.querySelector("figcaption > p")).toBeNull();
+    const info = figure.querySelector<HTMLButtonElement>(
+      '[data-dashboard-chart-info="true"] button[aria-label]'
+    );
+    expect(info).not.toBeNull();
+    expect(info?.getAttribute("aria-label")).toContain("订单总量与服务 GMV");
+    await act(async () => info?.click());
+    expect(document.body.textContent).toContain("订单与服务金额趋势");
+
+    await act(async () => root.unmount());
+    container.remove();
   });
 
   it.each([
@@ -105,6 +143,68 @@ describe("DashboardCharts", () => {
     expect(markup).toContain(">2<");
     expect(markup).toContain(">12,000<");
     expect(markup).toContain('data-no-i18n="true"');
+  });
+
+  it("shows numeric axes and exposes point details to mouse and keyboard", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(
+      <I18nProvider>
+        <DualAxisLineChart
+          buckets={buckets}
+          description="订单与服务金额趋势"
+          left={orderSeries}
+          right={gmvSeries}
+          title="订单总量与服务 GMV"
+        />
+      </I18nProvider>
+    ));
+
+    expect(container.querySelectorAll('[data-axis-side="left"]').length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[data-axis-side="right"]').length).toBeGreaterThan(0);
+    const controls = container.querySelectorAll<SVGElement>('[data-chart-point-control="true"]');
+    expect(controls).toHaveLength(4);
+
+    await act(async () => controls[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(container.querySelector('[data-dashboard-point-detail="true"]')?.textContent)
+      .toContain("8/24");
+    expect(container.querySelector('[data-dashboard-point-detail="true"]')?.textContent)
+      .toContain("2 单");
+    expect(container.querySelector('[data-dashboard-point-detail="true"]')?.textContent)
+      .toContain("12,000 JPY");
+
+    const close = container.querySelector<HTMLButtonElement>(
+      '[data-dashboard-point-detail="true"] button'
+    )!;
+    expect(close.getAttribute("aria-label")).toBeTruthy();
+    await act(async () => close.click());
+    expect(container.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
+
+    await act(async () => controls[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(container.querySelector('[data-dashboard-point-detail="true"]')).not.toBeNull();
+    await act(async () => container.querySelector('[data-dashboard-chart-frame="true"]')?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+    ));
+    expect(container.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
+
+    await act(async () => controls[2]?.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true })));
+    expect(container.querySelector('[data-dashboard-point-detail="true"]')).not.toBeNull();
+    await act(async () => root.render(
+      <I18nProvider>
+        <DualAxisLineChart
+          buckets={[buckets[1]]}
+          description="订单与服务金额趋势"
+          left={orderSeries}
+          right={gmvSeries}
+          title="订单总量与服务 GMV"
+        />
+      </I18nProvider>
+    ));
+    expect(container.querySelector('[data-dashboard-point-detail="true"]')).toBeNull();
+
+    await act(async () => root.unmount());
+    container.remove();
   });
 
   it("renders three bar groups for total, available, and booked hours", () => {

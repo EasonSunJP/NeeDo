@@ -13,8 +13,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async findMerchantBindingContext(
-    applicationId: number,
-    now: Date
+    applicationId: number
   ): Promise<MerchantBankBindingContext | null> {
     const application = await this.client.identityApplication.findFirst({
       where: { id: applicationId, type: "merchant", deletedAt: null },
@@ -26,22 +25,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
         merchantDetail: {
           select: {
             applicantKind: true,
-            corporateLegalNameKana: true,
             bankAccountId: true
-          }
-        },
-        applicant: {
-          select: {
-            ekycVerifications: {
-              where: {
-                status: "verified",
-                deletedAt: null,
-                OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
-              },
-              orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
-              take: 1,
-              select: { verifiedNameKanaEncrypted: true }
-            }
           }
         }
       }
@@ -56,10 +40,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
       status: application.status,
       version: application.version,
       applicantKind: application.merchantDetail.applicantKind as "corporate" | "individual",
-      corporateLegalNameKana: application.merchantDetail.corporateLegalNameKana,
-      currentBankAccountId: application.merchantDetail.bankAccountId,
-      verifiedEkycNameKanaEncrypted:
-        application.applicant.ekycVerifications[0]?.verifiedNameKanaEncrypted ?? null
+      currentBankAccountId: application.merchantDetail.bankAccountId
     };
   }
 
@@ -115,7 +96,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
             ownerUserId: input.userId,
             deletedAt: null
           },
-          data: { deletedAt: input.verifiedAt }
+          data: { deletedAt: input.boundAt }
         });
       }
 
@@ -128,7 +109,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
           ip: null,
           userAgent: null,
           metadata: input.auditMetadata as Prisma.InputJsonValue,
-          createdAt: input.verifiedAt
+          createdAt: input.boundAt
         }
       });
 

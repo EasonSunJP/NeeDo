@@ -21,6 +21,8 @@ export const userGlobalPolicyDraftBodySchema = z
     requireEmail: z.boolean(),
     requireHomeServiceEkyc: z.boolean(),
     requireStoreServiceEkyc: z.boolean(),
+    requireMerchantApplicationEkyc: z.boolean(),
+    requireTechnicianApplicationEkyc: z.boolean(),
     ndpPerBaseExp: z.number().int().positive().max(1_000_000),
     baseExpUnitsPerThreshold: z.number().int().positive().max(1_000_000_000),
     effectiveFrom: japanTimestampSchema
@@ -33,6 +35,10 @@ export const versionPublishBodySchema = z
     expectedLockVersion: z.number().int().positive()
   })
   .strict();
+
+export const userGlobalPolicyPublishBodySchema = versionPublishBodySchema.extend({
+  effectiveImmediately: z.boolean().optional()
+});
 
 export const ndpExperienceCampaignListQuerySchema = z
   .object({

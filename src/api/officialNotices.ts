@@ -1,5 +1,7 @@
 import { httpClient } from "./httpClient";
 
+export const OFFICIAL_NOTICE_CHANGED_EVENT = "official-notice:changed";
+
 export type OfficialNoticeScope = "platform" | "merchant";
 export type OfficialNoticeLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
 export type OfficialNoticeLevel = "general" | "important" | "urgent";
@@ -26,6 +28,8 @@ export type OfficialNoticeBlockType =
   | "video"
   | "file";
 
+export type OfficialNoticeFontSize = "small" | "medium" | "large" | "xlarge";
+
 export type OfficialNoticeBlock = {
   id: string;
   type: OfficialNoticeBlockType;
@@ -34,6 +38,7 @@ export type OfficialNoticeBlock = {
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
+  fontSize?: OfficialNoticeFontSize;
   source?: "url" | "media";
   mediaAssetId?: number;
 };
@@ -43,6 +48,7 @@ export type MerchantNoticeAudience = {
 };
 export type PlatformNoticeAudience =
   | { type: "all" }
+  | { type: "exact_users"; needoIds: string[] }
   | {
       type: "identity_types";
       identityTypes: Array<
@@ -59,10 +65,33 @@ export type PlatformNoticeAudience =
 export type ManagedNoticeCreateInput = {
   sourceLocale: OfficialNoticeLocale;
   level: OfficialNoticeLevel;
-  title: string;
-  summary: string;
-  blocks: OfficialNoticeBlock[];
+  translations: Record<
+    OfficialNoticeLocale,
+    { title: string; summary: string; blocks: OfficialNoticeBlock[]; isInitialCopy?: boolean }
+  >;
   audience: MerchantNoticeAudience | PlatformNoticeAudience;
+  sendMode: "now" | "scheduled";
+  scheduledAt: string | null;
+  idempotencyKey: string;
+};
+
+export type ManagedNoticeDraftInput = {
+  sourceLocale: OfficialNoticeLocale;
+  level: OfficialNoticeLevel;
+  translations: Record<
+    OfficialNoticeLocale,
+    { title: string; summary: string; blocks: OfficialNoticeBlock[]; isInitialCopy: boolean }
+  >;
+  audience: MerchantNoticeAudience | PlatformNoticeAudience;
+  idempotencyKey: string;
+};
+
+export type ManagedNoticeDraftUpdateInput = ManagedNoticeDraftInput & {
+  expectedLockVersion: number;
+};
+
+export type ManagedNoticePlanInput = {
+  expectedLockVersion: number;
   sendMode: "now" | "scheduled";
   scheduledAt: string | null;
   idempotencyKey: string;
@@ -82,6 +111,7 @@ export type OfficialNotice = {
   status: OfficialNoticeStatus;
   sourceLocale: OfficialNoticeLocale;
   targetSummary: string;
+  audience?: MerchantNoticeAudience | PlatformNoticeAudience;
   scheduledAt: string | null;
   sentAt: string | null;
   cancelledAt: string | null;
@@ -115,6 +145,7 @@ export type OfficialNoticePage<T> = {
 export type ManagedNoticeQuery = {
   page: number;
   pageSize: number;
+  search?: string;
   status?: OfficialNoticeStatus;
   level?: OfficialNoticeLevel;
 };
@@ -123,6 +154,16 @@ export type NoticeLifecycleInput = {
   expectedLockVersion: number;
   reason: string;
   idempotencyKey: string;
+};
+
+export type OfficialNoticeMediaUpload = {
+  publicId: string;
+  mediaAssetId: number;
+  url: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  checksumSha256: string;
 };
 
 const managementBase = (scope: OfficialNoticeScope) =>
@@ -140,7 +181,8 @@ export const officialNoticesApi = {
       ["page", query.page],
       ["pageSize", query.pageSize],
       ["status", query.status],
-      ["level", query.level]
+      ["level", query.level],
+      ["search", query.search]
     ]);
     return httpClient.request<OfficialNoticePage<OfficialNotice>>(
       `${managementBase(scope)}?${search}`
@@ -150,6 +192,39 @@ export const officialNoticesApi = {
     return httpClient.request<OfficialNotice>(managementBase(scope), {
       method: "POST",
       body: input
+    });
+  },
+  createDraft(scope: OfficialNoticeScope, input: ManagedNoticeDraftInput) {
+    return httpClient.request<OfficialNotice>(`${managementBase(scope)}/drafts`, {
+      method: "POST",
+      body: input
+    });
+  },
+  getManaged(scope: OfficialNoticeScope, publicId: string) {
+    return httpClient.request<OfficialNotice>(`${managementBase(scope)}/${publicId}`);
+  },
+  updateDraft(
+    scope: OfficialNoticeScope,
+    publicId: string,
+    input: ManagedNoticeDraftUpdateInput
+  ) {
+    return httpClient.request<OfficialNotice>(`${managementBase(scope)}/${publicId}/draft`, {
+      method: "PUT",
+      body: input
+    });
+  },
+  planDraft(scope: OfficialNoticeScope, publicId: string, input: ManagedNoticePlanInput) {
+    return httpClient.request<OfficialNotice>(`${managementBase(scope)}/${publicId}/plan`, {
+      method: "POST",
+      body: input
+    });
+  },
+  uploadMedia(scope: OfficialNoticeScope, file: File, caption?: string) {
+    return httpClient.request<OfficialNoticeMediaUpload>(`${managementBase(scope)}/media`, {
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": file.type },
+      query: { file_name: file.name, caption }
     });
   },
   cancelManaged(scope: OfficialNoticeScope, publicId: string, input: NoticeLifecycleInput) {

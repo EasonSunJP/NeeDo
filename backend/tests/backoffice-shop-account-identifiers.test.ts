@@ -73,6 +73,7 @@ describe("BackofficeRepository shop owner account identifiers", () => {
     );
 
     await repository.createShop({
+      verifiedById: 1,
       ownerEmail: "owner@example.com",
       ownerPasswordHash: "hash",
       ownerUsername: "Owner",

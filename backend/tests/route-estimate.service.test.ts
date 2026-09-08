@@ -12,7 +12,7 @@ const destination = {
   addressLine1: "新宿1-2-3", addressLine2: "", building: "Needo 301"
 };
 const context = {
-  serviceId: 21, servicePublicId: "service-21", shopId: 11,
+  serviceId: 21, scheduleSlotId: 71, servicePublicId: "service-21", shopId: 11,
   origin: { countryCode: "JP" as const, postalCode: "", prefecture: "東京都", city: "新宿区", addressLine1: "西新宿1-1-1" },
   policyVersionId: 31, policyVersionPublicId: "policy-v1", policyVersion: 1,
   bands: [
@@ -22,7 +22,7 @@ const context = {
 };
 
 const createRepository = (): jest.Mocked<RouteEstimateRepositoryPort> => ({
-  findEligibleContext: jest.fn(async (servicePublicId: string, at: Date) => { void servicePublicId; void at; return context; }),
+  findEligibleContext: jest.fn(async (servicePublicId: string, scheduleSlotId: number, at: Date) => { void servicePublicId; void scheduleSlotId; void at; return context; }),
   findReusableEstimate: jest.fn(async (input) => { void input; return null; }),
   createEstimate: jest.fn(async (input) => ({
     publicId: input.publicId, distanceMeters: input.distanceMeters, durationSeconds: input.durationSeconds,
@@ -43,7 +43,9 @@ describe("RouteEstimateService", () => {
     const clock = () => new Date("2026-09-05T00:00:00.000Z");
     const service = new RouteEstimateService(repo, routeProvider, { createInput: (input) => input as never }, { estimateTtlSeconds: 600, cacheTtlSeconds: 300 }, clock);
 
-    const result = await service.create(actor, { ip: "203.0.113.1" }, { servicePublicId: "service-21", destination });
+    const result = await service.create(actor, { ip: "203.0.113.1" }, { servicePublicId: "service-21", scheduleSlotId: 71, destination });
+
+    expect(repo.findEligibleContext).toHaveBeenCalledWith("service-21", 71, new Date("2026-09-05T00:00:00.000Z"));
 
     expect(routeProvider.getDrivingRoute).toHaveBeenCalledWith({
       origin: context.origin,
@@ -53,7 +55,7 @@ describe("RouteEstimateService", () => {
       }
     });
     expect(repo.createEstimate).toHaveBeenCalledWith(expect.objectContaining({
-      customerUserId: 9, shopId: 11, serviceId: 21, policyVersionId: 31, matchedBandId: 42,
+      customerUserId: 9, shopId: 11, serviceId: 21, scheduleSlotId: 71, policyVersionId: 31, matchedBandId: 42,
       distanceMeters: 7_500, fareAmountJpy: 500,
       expiresAt: new Date("2026-09-05T00:10:00.000Z"),
       originAddressHash: expect.stringMatching(/^[a-f0-9]{64}$/), destinationAddressHash: expect.stringMatching(/^[a-f0-9]{64}$/)
@@ -72,7 +74,7 @@ describe("RouteEstimateService", () => {
     const routeProvider = provider();
     const service = new RouteEstimateService(repo, routeProvider, { createInput: (input) => input as never }, { estimateTtlSeconds: 600, cacheTtlSeconds: 300 }, () => new Date("2026-09-05T00:00:00.000Z"));
 
-    await expect(service.create(actor, { ip: "203.0.113.1" }, { servicePublicId: "service-21", destination })).resolves.toMatchObject({ publicId: "cached", cached: true });
+    await expect(service.create(actor, { ip: "203.0.113.1" }, { servicePublicId: "service-21", scheduleSlotId: 71, destination })).resolves.toMatchObject({ publicId: "cached", cached: true });
     expect(routeProvider.getDrivingRoute).not.toHaveBeenCalled();
   });
 
@@ -80,15 +82,15 @@ describe("RouteEstimateService", () => {
     const repo = createRepository();
     repo.findEligibleContext.mockResolvedValueOnce(null);
     const service = new RouteEstimateService(repo, provider(), { createInput: (input) => input as never }, { estimateTtlSeconds: 600, cacheTtlSeconds: 300 });
-    await expect(service.create(actor, { ip: "ip" }, { servicePublicId: "store-service", destination })).rejects.toMatchObject({ message: "error.travel.home_service_not_eligible", statusCode: 422 });
+    await expect(service.create(actor, { ip: "ip" }, { servicePublicId: "store-service", scheduleSlotId: 71, destination })).rejects.toMatchObject({ message: "error.travel.home_service_not_eligible", statusCode: 422 });
 
     repo.findEligibleContext.mockResolvedValueOnce({ ...context, bands: [] });
-    await expect(service.create(actor, { ip: "ip" }, { servicePublicId: "service-21", destination })).rejects.toMatchObject({ message: "error.travel.policy_unavailable", statusCode: 503 });
+    await expect(service.create(actor, { ip: "ip" }, { servicePublicId: "service-21", scheduleSlotId: 71, destination })).rejects.toMatchObject({ message: "error.travel.policy_unavailable", statusCode: 503 });
 
     const farProvider = provider();
     farProvider.getDrivingRoute.mockResolvedValue({ providerCode: "geoapify", providerRequestId: null, distanceMeters: 10_001, durationSeconds: 2_000 });
     const farService = new RouteEstimateService(repo, farProvider, { createInput: (input) => input as never }, { estimateTtlSeconds: 600, cacheTtlSeconds: 300 });
-    await expect(farService.create(actor, { ip: "ip" }, { servicePublicId: "service-21", destination })).rejects.toMatchObject({ message: "error.travel.outside_service_area", statusCode: 422 });
+    await expect(farService.create(actor, { ip: "ip" }, { servicePublicId: "service-21", scheduleSlotId: 71, destination })).rejects.toMatchObject({ message: "error.travel.outside_service_area", statusCode: 422 });
   });
 
   it.each([
@@ -98,6 +100,29 @@ describe("RouteEstimateService", () => {
     const routeProvider = provider();
     routeProvider.getDrivingRoute.mockRejectedValue(new RouteDistanceProviderError(errorKey));
     const service = new RouteEstimateService(createRepository(), routeProvider, { createInput: (input) => input as never }, { estimateTtlSeconds: 600, cacheTtlSeconds: 300 });
-    await expect(service.create(actor, { ip: "ip" }, { servicePublicId: "service-21", destination })).rejects.toMatchObject({ message: errorKey });
+    await expect(service.create(actor, { ip: "ip" }, { servicePublicId: "service-21", scheduleSlotId: 71, destination })).rejects.toMatchObject({ message: errorKey });
+  });
+
+  it("coalesces unchanged in-flight previews and negatively caches provider failures", async () => {
+    const repo = createRepository();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const routeProvider = provider();
+    routeProvider.getDrivingRoute.mockImplementation(async () => { await pending; return { providerCode: "geoapify", providerRequestId: "req-1", distanceMeters: 7_500, durationSeconds: 1_200 }; });
+    const service = new RouteEstimateService(repo, routeProvider, { createInput: (input) => input as never }, { estimateTtlSeconds: 600, cacheTtlSeconds: 300, negativeCacheTtlSeconds: 30 }, () => new Date("2026-09-05T00:00:00.000Z"));
+    const input = { servicePublicId: "service-21", scheduleSlotId: 71, destination };
+    const first = service.create(actor, { ip: "203.0.113.1" }, input);
+    const second = service.create(actor, { ip: "203.0.113.1" }, input);
+    release();
+    await expect(Promise.all([first, second])).resolves.toEqual([expect.objectContaining({ fareAmountJpy: 500 }), expect.objectContaining({ fareAmountJpy: 500 })]);
+    expect(routeProvider.getDrivingRoute).toHaveBeenCalledTimes(1);
+    expect(repo.createEstimate).toHaveBeenCalledTimes(1);
+
+    const failingProvider = provider();
+    failingProvider.getDrivingRoute.mockRejectedValue(new RouteDistanceProviderError("error.travel.provider_timeout"));
+    const failing = new RouteEstimateService(createRepository(), failingProvider, { createInput: (input) => input as never }, { estimateTtlSeconds: 600, cacheTtlSeconds: 300, negativeCacheTtlSeconds: 30 }, () => new Date("2026-09-05T00:00:00.000Z"));
+    await expect(failing.create(actor, { ip: "203.0.113.1" }, input)).rejects.toMatchObject({ message: "error.travel.provider_timeout" });
+    await expect(failing.create(actor, { ip: "203.0.113.1" }, input)).rejects.toMatchObject({ message: "error.travel.provider_timeout" });
+    expect(failingProvider.getDrivingRoute).toHaveBeenCalledTimes(1);
   });
 });

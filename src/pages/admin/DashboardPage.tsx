@@ -4,7 +4,9 @@ import {
   backofficeRealDataApi,
   serializeDashboardQuerySearch,
   type BackofficeDashboardPayload,
+  type DashboardHeadlineSeriesPoint,
   type DashboardOverviewPayload,
+  type AnalyticsRankingItem,
   type DashboardQuery
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
@@ -14,12 +16,27 @@ import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { DualAxisLineChart } from "../../features/dashboard/DashboardCharts";
 import { DashboardFilterBar, type DashboardFilterValue } from "../../features/dashboard/DashboardFilterBar";
 import { DashboardMetricCard } from "../../features/dashboard/DashboardMetricCard";
+import type { DashboardMetricSparklinePoint } from "../../features/dashboard/DashboardMetricSparkline";
 import { AnalyticsMetricGrid } from "../../features/dashboard/AnalyticsMetricGrid";
 import { AnalyticsRankingsSection } from "../../features/dashboard/AnalyticsRankingsSection";
+import { MerchantsPage } from "./MerchantsPage";
+import { TechniciansPage } from "./TechniciansPage";
+import { UnifiedUserDetailDrawer } from "../../features/platform-user-management/UnifiedUserDetailDrawer";
 import { useI18n } from "../../i18n/I18nProvider";
 import { getAnalyticsMetricInfoLabel, translateTextForContext } from "../../i18n/translations";
 
 const defaultQuery: DashboardQuery = { period: "last7days" };
+
+export function openLiveDashboardWindow(
+  openWindow: (url: string, target: string, features: string) => Window | null = (url, target, features) => window.open(url, target, features)
+) {
+  const child = openWindow(
+    "/pf-admin.html#/admin/live-screen?country=JP&period=today",
+    "_blank",
+    "noopener,noreferrer"
+  );
+  if (child) child.opener = null;
+}
 
 type DashboardPair = {
   dashboard: BackofficeDashboardPayload;
@@ -74,10 +91,35 @@ function describeDashboardError(error: unknown) {
   return "经营数据加载失败，请检查网络后重试";
 }
 
+function headlineSparkline(
+  value: unknown,
+  key: keyof Omit<DashboardHeadlineSeriesPoint, "key" | "label">
+): DashboardMetricSparklinePoint[] | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const buckets = (value as { buckets?: unknown }).buckets;
+  if (!Array.isArray(buckets) || buckets.length !== 3) return undefined;
+  const points = buckets.map((candidate) => {
+    if (!candidate || typeof candidate !== "object") return null;
+    const bucket = candidate as Record<string, unknown>;
+    const pointValue = bucket[key];
+    if (
+      typeof bucket.key !== "string" ||
+      typeof bucket.label !== "string" ||
+      typeof pointValue !== "number" ||
+      !Number.isFinite(pointValue)
+    ) return null;
+    return { key: bucket.key, label: bucket.label, value: pointValue };
+  });
+  return points.every((point): point is DashboardMetricSparklinePoint => point !== null)
+    ? points
+    : undefined;
+}
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const { language } = useI18n();
   const t = (source: string) => translateTextForContext(source, language, { portal: "admin" });
+  const [rankingDetail, setRankingDetail] = useState<AnalyticsRankingItem | null>(null);
   const [pair, setPair] = useState<DashboardPair | null>(null);
   const [query, setQuery] = useState<DashboardQuery>(defaultQuery);
   const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
@@ -125,6 +167,10 @@ export function DashboardPage() {
           accent: "blue" as const,
           comparison: dashboard.summary.availableScheduleSlots,
           icon: "◇",
+          sparkline: headlineSparkline(
+            dashboard.headlineSeries3d,
+            "availableScheduleSlots"
+          ),
           title: t("可排班"),
           unit: "slots" as const
         },
@@ -132,6 +178,7 @@ export function DashboardPage() {
           accent: "green" as const,
           comparison: dashboard.summary.activeTechnicians,
           icon: "●",
+          sparkline: headlineSparkline(dashboard.headlineSeries3d, "activeTechnicians"),
           title: t("活跃技师"),
           unit: "people" as const
         },
@@ -139,6 +186,7 @@ export function DashboardPage() {
           accent: "purple" as const,
           comparison: dashboard.summary.registeredTechnicians,
           icon: "◎",
+          sparkline: headlineSparkline(dashboard.headlineSeries3d, "registeredTechnicians"),
           title: t("注册技师"),
           unit: "people" as const
         },
@@ -146,6 +194,7 @@ export function DashboardPage() {
           accent: "cyan" as const,
           comparison: dashboard.summary.shopCount,
           icon: "▦",
+          sparkline: headlineSparkline(dashboard.headlineSeries3d, "shopCount"),
           statusMessage: dashboard.summary.shopCount ? undefined : t("店铺数据暂不可用"),
           title: t("店铺数"),
           unit: "count" as const
@@ -154,6 +203,7 @@ export function DashboardPage() {
           accent: "orange" as const,
           comparison: dashboard.summary.newCustomers,
           icon: "+",
+          sparkline: headlineSparkline(dashboard.headlineSeries3d, "newCustomers"),
           statusMessage: dashboard.summary.newCustomers ? undefined : t("用户数据暂不可用"),
           title: t("新增用户"),
           unit: "people" as const
@@ -216,6 +266,13 @@ export function DashboardPage() {
             />
           </div>
           <div className="flex gap-2">
+            <button
+              className="rounded-xl border border-moss bg-moss/5 px-4 py-2 text-sm font-black text-moss transition hover:bg-moss/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40"
+              onClick={() => openLiveDashboardWindow()}
+              type="button"
+            >
+              {t("实时数据大屏")}
+            </button>
             <Link className="rounded-xl border border-line bg-white px-4 py-2 text-sm font-black text-ink transition hover:border-moss focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-moss/40" to="/admin/orders">
               {t("处理订单")}
             </Link>
@@ -342,10 +399,21 @@ export function DashboardPage() {
               </div>
             ) : null}
 
-            <AnalyticsRankingsSection query={committedQuery} />
+            <AnalyticsRankingsSection
+              cities={dashboard?.filter.availableCities ?? []}
+              onOpenDetail={setRankingDetail}
+              query={committedQuery}
+            />
           </>
         ) : null}
       </div>
+      {rankingDetail?.entityType === "customer" ? (
+        <UnifiedUserDetailDrawer scope="operations" userId={rankingDetail.entityNumericId} onClose={() => setRankingDetail(null)} />
+      ) : rankingDetail?.entityType === "technician" ? (
+        <TechniciansPage key={rankingDetail.entityNumericId} embeddedDetail={{ id: rankingDetail.entityNumericId, onClose: () => setRankingDetail(null) }} />
+      ) : rankingDetail ? (
+        <MerchantsPage key={`${rankingDetail.entityType}:${rankingDetail.entityNumericId}`} embeddedDetail={{ id: rankingDetail.entityNumericId, type: rankingDetail.entityType, onClose: () => setRankingDetail(null) }} />
+      ) : null}
     </AdminLayout>
   );
 }

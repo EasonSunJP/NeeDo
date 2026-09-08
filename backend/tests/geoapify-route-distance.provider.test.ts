@@ -6,6 +6,7 @@ import {
   RouteDistanceProviderError,
   type RouteDistanceRequest
 } from "../src/services/route-distance.provider";
+import type { RouteProviderHealthStorePort } from "../src/services/route-provider-health";
 
 const request: RouteDistanceRequest = {
   origin: {
@@ -41,11 +42,30 @@ const createFetch = (...responses: Array<Response | Error>): jest.MockedFunction
     return next;
   }) as unknown as jest.MockedFunction<typeof fetch>;
 
-const options = (fetchImplementation: typeof fetch): GeoapifyRouteDistanceProviderOptions => ({
+const createHealthStore = (): jest.Mocked<RouteProviderHealthStorePort> => ({
+  recordSuccess: jest.fn<
+    ReturnType<RouteProviderHealthStorePort["recordSuccess"]>,
+    Parameters<RouteProviderHealthStorePort["recordSuccess"]>
+  >(async () => undefined),
+  recordFailure: jest.fn<
+    ReturnType<RouteProviderHealthStorePort["recordFailure"]>,
+    Parameters<RouteProviderHealthStorePort["recordFailure"]>
+  >(async () => undefined),
+  read: jest.fn<
+    ReturnType<RouteProviderHealthStorePort["read"]>,
+    Parameters<RouteProviderHealthStorePort["read"]>
+  >(async () => ({ status: "configured", checkedAt: null }))
+});
+
+const options = (
+  fetchImplementation: typeof fetch,
+  healthStore: RouteProviderHealthStorePort = createHealthStore()
+): GeoapifyRouteDistanceProviderOptions => ({
   apiBaseUrl: "https://api.geoapify.com",
   apiKey: "geoapify-secret-key-123456",
   timeoutMs: 50,
   maxRetries: 0,
+  healthStore,
   fetch: fetchImplementation,
   sleep: async () => undefined
 });
@@ -71,7 +91,8 @@ describe("Geoapify route distance provider", () => {
         { "x-request-id": "geo-route-request-1" }
       )
     );
-    const provider = new GeoapifyRouteDistanceProvider(options(fetchImplementation));
+    const healthStore = createHealthStore();
+    const provider = new GeoapifyRouteDistanceProvider(options(fetchImplementation, healthStore));
 
     await expect(provider.getDrivingRoute(request)).resolves.toEqual({
       providerCode: "geoapify",
@@ -96,6 +117,7 @@ describe("Geoapify route distance provider", () => {
     expect(routeUrl.searchParams.get("waypoints")).toBe(
       "35.6909,139.7003|35.6702,139.7027"
     );
+    expect(healthStore.recordSuccess).toHaveBeenCalledWith("geoapify");
   });
 
   it("retries a bounded transient failure without changing the route request", async () => {
@@ -123,8 +145,9 @@ describe("Geoapify route distance provider", () => {
   });
 
   it("maps rate limiting without exposing the API key", async () => {
+    const healthStore = createHealthStore();
     const provider = new GeoapifyRouteDistanceProvider(
-      options(createFetch(jsonResponse({ message: "quota" }, 429)))
+      options(createFetch(jsonResponse({ message: "quota" }, 429)), healthStore)
     );
 
     const error = await provider.getDrivingRoute(request).catch((caught: unknown) => caught);
@@ -135,6 +158,62 @@ describe("Geoapify route distance provider", () => {
     });
     expect(String(error)).not.toContain("geoapify-secret-key-123456");
     expect((error as Error & { cause?: unknown }).cause).toBeUndefined();
+    expect(healthStore.recordFailure).toHaveBeenCalledWith(
+      "geoapify",
+      "error.travel.provider_rate_limited"
+    );
+  });
+
+  it("awaits a health observation without letting its failure mask a successful route", async () => {
+    const healthStore = createHealthStore();
+    healthStore.recordSuccess.mockRejectedValueOnce(
+      new Error("redis://default:super-secret@redis.internal:6379/0")
+    );
+    const provider = new GeoapifyRouteDistanceProvider(
+      options(
+        createFetch(
+          jsonResponse({ results: [{ lat: 35.6909, lon: 139.7003 }] }),
+          jsonResponse({ results: [{ lat: 35.6702, lon: 139.7027 }] }),
+          jsonResponse({
+            features: [
+              {
+                properties: {
+                  distance: 4_000,
+                  time: 900,
+                  legs: [{ distance: 4_000, time: 900 }]
+                }
+              }
+            ]
+          })
+        ),
+        healthStore
+      )
+    );
+
+    await expect(provider.getDrivingRoute(request)).resolves.toMatchObject({
+      distanceMeters: 4_000,
+      durationSeconds: 900
+    });
+    expect(healthStore.recordSuccess).toHaveBeenCalledWith("geoapify");
+  });
+
+  it("does not let a failed health write replace the original provider failure", async () => {
+    const healthStore = createHealthStore();
+    healthStore.recordFailure.mockRejectedValueOnce(
+      new Error("redis://default:super-secret@redis.internal:6379/0")
+    );
+    const provider = new GeoapifyRouteDistanceProvider(
+      options(createFetch(jsonResponse({ message: "quota" }, 429)), healthStore)
+    );
+
+    await expect(provider.getDrivingRoute(request)).rejects.toMatchObject({
+      message: "error.travel.provider_rate_limited",
+      statusCode: 429
+    });
+    expect(healthStore.recordFailure).toHaveBeenCalledWith(
+      "geoapify",
+      "error.travel.provider_rate_limited"
+    );
   });
 
   it("maps an aborted request to the stable timeout error", async () => {

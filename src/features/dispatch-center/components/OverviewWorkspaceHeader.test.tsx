@@ -7,6 +7,33 @@ import storeSource from "../store.ts?raw";
 const styles = readFileSync(new URL("../../../styles.css", import.meta.url), "utf8");
 
 describe("OverviewWorkspace mobile schedule detail header", () => {
+  it("loads the merchant detail board from formal schedule slots and formal technician avatars", () => {
+    expect(source).toContain("loadManagedScheduleWindow");
+    expect(source).toContain("buildFormalMerchantScheduleBoard");
+    expect(source).toContain("formalTechnicians");
+    expect(source).toContain("dataOverride={formalScheduleBoard?.dataOverride}");
+    expect(source).toContain("formalScheduleLoading");
+    expect(source).toContain("formalScheduleError");
+    expect(source).not.toContain('useState("2026-04-20")');
+  });
+
+  it("reloads and isolates formal data when switching shops", () => {
+    expect(source).toContain("formalScheduleScopeKey");
+    expect(source).toContain("formalScheduleResult.scopeKey === formalScheduleScopeKey");
+    expect(source).toContain("formalScheduleReloadKey, formalScheduleScopeKey, usesFormalMerchantSchedule]");
+  });
+
+  it("keeps the formal board override during loading and errors", () => {
+    const start = source.indexOf("const formalScheduleBoard = useMemo");
+    const guard = source.slice(start, source.indexOf("return buildFormalMerchantScheduleBoard", start));
+    expect(guard).not.toContain("formalScheduleLoading");
+    expect(guard).not.toContain("formalScheduleError");
+    const detail = source.slice(source.indexOf('<MobileFullscreenPage className="z-[90]"'));
+    expect(detail).toContain('aria-live="polite"');
+    expect(detail).toContain("formalScheduleLoading");
+    expect(detail).toContain("formalScheduleError");
+  });
+
   it("uses the shared floating fullscreen header without a page-local wrapper", () => {
     const detailStart = source.indexOf('<MobileFullscreenPage className="z-[90]"');
     const detailEnd = source.indexOf("isMobileSurface && currentSelectedContactStatusItem", detailStart);
@@ -28,6 +55,18 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
     expect(scheduleDetailSource).not.toContain("client-mobile-schedule-detail__solid-header");
     expect(scheduleDetailSource).not.toContain("client-mobile-schedule-detail__header shrink-0");
     expect(scheduleDetailSource).not.toContain("bg-transparent text-ink backdrop-blur-none");
+  });
+
+  it("moves the mobile detailed schedule action from the summary card to a fixed bottom control", () => {
+    const summaryStart = source.indexOf('title={t("当前周期班表")}');
+    const summaryEnd = source.indexOf("{isMobileSurface ? (\n        <ContactInfoStatusPanel", summaryStart);
+    const summarySource = source.slice(summaryStart, summaryEnd);
+
+    expect(summarySource).not.toContain('t("查看详细排班表")');
+    expect(source).toContain('data-testid="merchant-current-schedule-detail-action"');
+    expect(source).toContain('className="safe-bottom fixed bottom-0 left-1/2 z-[80] w-full max-w-[480px] -translate-x-1/2 px-4');
+    expect(source).toContain('onClick={() => setScheduleDetailOpen(true)}');
+    expect(source).toContain('{formalScheduleLoading ? t("加载正式排班中") : t("查看详细排班表")}');
   });
 
   it("keeps schedule content aligned under the shared glass header without a local solid wrapper", () => {

@@ -43,6 +43,7 @@ function createSession(portal: AuthSession["portal"]): AuthSession {
     emailVerifiedAt: "2026-08-27T00:00:00.000Z",
     hasPassword: true,
     avatarUrl: null,
+    profileDisplayName: `${portal}-user`,
     portal,
     allowedPortals: [portal],
     loginMethod: "password",
@@ -58,7 +59,8 @@ function createSession(portal: AuthSession["portal"]): AuthSession {
       publicId,
       type: portal === "user" ? "customer" : portal,
       scopeId: 9,
-      scopeType: `${portal}_profile`
+      scopeType: `${portal}_profile`,
+      displayName: `${portal}-identity`
     },
     identities: [
       {
@@ -66,7 +68,8 @@ function createSession(portal: AuthSession["portal"]): AuthSession {
         publicId,
         type: portal === "user" ? "customer" : portal,
         scopeId: 9,
-        scopeType: `${portal}_profile`
+        scopeType: `${portal}_profile`,
+        displayName: `${portal}-identity`
       }
     ],
     identityAvailability: [

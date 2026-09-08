@@ -16,7 +16,8 @@ const mocked = vi.hoisted(() => ({
     logout: vi.fn(),
     sendVerificationCode: vi.fn(),
     session: null as { email?: string; loginMethod?: string; portal?: string; username?: string } | null,
-    switchPortal: vi.fn()
+    switchPortal: vi.fn(),
+    verifyPasswordLogin: vi.fn()
   },
   language: "en" as "en" | "ja" | "ko" | "zh" | "zh-Hant",
   requestBrowserPasswordSave: vi.fn(async () => undefined),
@@ -200,6 +201,42 @@ describe("AdminLoginPage formal password surface", () => {
       name: "Operations Admin",
       password: "Strong.Password.2026"
     });
+    expect(mocked.navigate).toHaveBeenCalledWith("/admin", { replace: true });
+  });
+
+  it("requires the emailed OTP before completing a challenged password login", async () => {
+    mocked.auth.loginWithFormalPassword.mockResolvedValueOnce({
+      ok: true,
+      status: "verification_required",
+      challenge: {
+        challengeId: "challenge-admin-1",
+        cooldownSeconds: 60,
+        expiresIn: 600,
+        maskedEmail: "a***@lifedance.com"
+      }
+    });
+    mocked.auth.verifyPasswordLogin.mockResolvedValueOnce({
+      ok: true,
+      session: { portal: "admin" }
+    });
+    const account = container.querySelector<HTMLInputElement>('input[name="username"]')!;
+    const password = container.querySelector<HTMLInputElement>('input[type="password"]')!;
+    setInput(account, "admin@lifedance.com");
+    setInput(password, "Strong.Password.2026");
+    await act(async () => container.querySelector<HTMLFormElement>("form")?.requestSubmit());
+
+    expect(container.textContent).toContain("a***@lifedance.com");
+    expect(mocked.requestBrowserPasswordSave).not.toHaveBeenCalled();
+    setInput(container.querySelector<HTMLInputElement>('[data-testid="password-login-otp"]')!, "123456");
+    await act(async () =>
+      container.querySelector<HTMLFormElement>('[data-testid="password-login-verification"]')?.requestSubmit()
+    );
+
+    expect(mocked.auth.verifyPasswordLogin).toHaveBeenCalledWith(
+      { challengeId: "challenge-admin-1", otp: "123456" },
+      "admin"
+    );
+    expect(mocked.requestBrowserPasswordSave).toHaveBeenCalledTimes(1);
     expect(mocked.navigate).toHaveBeenCalledWith("/admin", { replace: true });
   });
 

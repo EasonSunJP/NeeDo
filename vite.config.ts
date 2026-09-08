@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
 import { loadEnv, type ProxyOptions } from "vite";
@@ -249,6 +250,14 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "dashboard-i18n";
   }
 
+  if (normalizedId.endsWith("/src/features/travel-fare/i18n.ts")) {
+    return "travel-fare-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/operations-analytics/i18n.ts")) {
+    return "operations-analytics-i18n";
+  }
+
   if (normalizedId.endsWith("/src/features/order-performance/i18n.ts")) {
     return "order-performance-i18n";
   }
@@ -306,7 +315,7 @@ export default defineConfig(({ command, mode }) => {
       port: 5180,
       proxy: apiProxy,
       watch: {
-        ignored: ["**/.worktrees/**", "**/worktrees/**"]
+        ignored: [resolve(process.cwd(), ".worktrees", "**"), resolve(process.cwd(), "worktrees", "**")]
       }
     },
     preview: {

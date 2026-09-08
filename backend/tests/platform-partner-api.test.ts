@@ -13,6 +13,7 @@ const profile: PlatformPartnerProfileRecord = {
   publicId: "11111111-1111-4111-8111-111111111111",
   partnerType: "AGENT",
   activatedAt: new Date("2026-09-01T00:00:00.000Z"),
+  endsAt: null,
   markedById: 1,
   reason: "线下代理协议已审核",
   createdAt: new Date("2026-09-01T01:00:00.000Z"),
@@ -58,6 +59,7 @@ const agentListProfile = {
 const createRepository = (): jest.Mocked<PlatformPartnerRepositoryPort> =>
   ({
     markPartnerProfile: jest.fn(async () => ({ kind: "created", profile })),
+    listUserProfiles: jest.fn(async () => ({ list: [profile], total: 1, page: 1, page_size: 20 })),
     listAgents: jest.fn(async () => ({
       list: [agentListProfile],
       total: 1,
@@ -74,6 +76,7 @@ const createRepository = (): jest.Mocked<PlatformPartnerRepositoryPort> =>
 const createFixture = (
   permissions: string[] = [
     "backoffice:partner-profile:write",
+    "backoffice:users:read",
     "backoffice:agent:read",
     "backoffice:agent:write"
   ]
@@ -150,7 +153,9 @@ describe("platform partner HTTP API", () => {
       .set("Authorization", `Bearer ${fixture.token}`)
       .send({
         partnerType: "agent",
-        activatedAt: "2026-09-01T00:00:00.000Z",
+        startsAt: "2026-09-01T00:00:00.000Z",
+        endsAt: null,
+        permanent: true,
         reason: "资料确认"
       })
       .expect(403);
@@ -164,7 +169,9 @@ describe("platform partner HTTP API", () => {
       .set("Authorization", `Bearer ${fixture.token}`)
       .send({
         partnerType: "agent",
-        activatedAt: "2026-09-01T00:00:00.000Z",
+        startsAt: "2026-09-01T00:00:00.000Z",
+        endsAt: null,
+        permanent: true,
         reason: "线下代理协议已审核"
       })
       .expect(201)
@@ -172,6 +179,9 @@ describe("platform partner HTTP API", () => {
         expect(response.body.data).toMatchObject({
           publicId: "11111111-1111-4111-8111-111111111111",
           partnerType: "agent",
+          startsAt: "2026-09-01T00:00:00.000Z",
+          endsAt: null,
+          permanent: true,
           user: { id: 88, needoId: "u0000000088", nickname: "山田代理" }
         });
         expect(JSON.stringify(response.body.data)).not.toContain("passwordHash");
@@ -181,7 +191,8 @@ describe("platform partner HTTP API", () => {
       expect.objectContaining({
         userId: 88,
         partnerType: "AGENT",
-        activatedAt: new Date("2026-09-01T00:00:00.000Z"),
+        startsAt: new Date("2026-09-01T00:00:00.000Z"),
+        endsAt: null,
         reason: "线下代理协议已审核"
       })
     );
@@ -189,8 +200,24 @@ describe("platform partner HTTP API", () => {
     await request(fixture.app)
       .post("/api/v1/backoffice/users/not-a-number/partner-profiles")
       .set("Authorization", `Bearer ${fixture.token}`)
-      .send({ partnerType: "invalid", activatedAt: "not-a-date", reason: "" })
+      .send({ partnerType: "invalid", startsAt: "not-a-date", endsAt: null, permanent: true, reason: "" })
       .expect(400);
+  });
+
+  it("lists one user's immutable partner validity history", async () => {
+    const fixture = createFixture();
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/users/88/partner-profiles?page=1&pageSize=20&partnerType=agent")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({ total: 1, page: 1, page_size: 20 });
+    expect(fixture.repository.listUserProfiles).toHaveBeenCalledWith({
+      userId: 88,
+      page: 1,
+      pageSize: 20,
+      partnerType: "AGENT"
+    });
   });
 
   it("returns a paginated agent list filtered by NeeDo ID, nickname, and status", async () => {

@@ -49,6 +49,8 @@ describe("user global policy and NDP campaign API", () => {
         requireEmail: false,
         requireHomeServiceEkyc: true,
         requireStoreServiceEkyc: false,
+        requireMerchantApplicationEkyc: false,
+        requireTechnicianApplicationEkyc: false,
         ndpPerBaseExp: 100,
         baseExpUnitsPerThreshold: 10000,
         effectiveFrom: "2026-12-01T00:00:00+09:00"
@@ -69,6 +71,8 @@ describe("user global policy and NDP campaign API", () => {
         requireEmail: false,
         requireHomeServiceEkyc: true,
         requireStoreServiceEkyc: false,
+        requireMerchantApplicationEkyc: false,
+        requireTechnicianApplicationEkyc: false,
         ndpPerBaseExp: 100,
         baseExpUnitsPerThreshold: 10000,
         effectiveFrom: "2026-12-01T00:00:00Z"

@@ -17,6 +17,14 @@ const migrationPath = resolve(
   __dirname,
   "../prisma/migrations/20260905150000_shop_travel_fare_routing/migration.sql"
 );
+const scheduleSlotMigrationPath = resolve(
+  __dirname,
+  "../prisma/migrations/20260905160000_route_estimate_schedule_slot_binding/migration.sql"
+);
+const checkoutTotalMigrationPath = resolve(
+  __dirname,
+  "../prisma/migrations/20260905170000_order_checkout_travel_fare_total/migration.sql"
+);
 
 const modelBody = (name: string): string =>
   schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
@@ -51,6 +59,7 @@ describe("shop travel fare persistence schema", () => {
       "customerUserId",
       "shopId",
       "serviceId",
+      "scheduleSlotId",
       "policyVersionId",
       "matchedBandId",
       "providerCode",
@@ -68,7 +77,7 @@ describe("shop travel fare persistence schema", () => {
     }
     expect(estimate).toMatch(/consumedByBookingOrderId\s+Int\?\s+@unique/);
     expect(estimate).toContain(
-      "@@index([customerUserId, shopId, serviceId, expiresAt, deletedAt]"
+      "@@index([customerUserId, shopId, serviceId, scheduleSlotId, expiresAt, deletedAt]"
     );
     expect(estimate).toContain(
       "@@index([providerCode, originAddressHash, destinationAddressHash, expiresAt, deletedAt]"
@@ -122,6 +131,16 @@ describe("shop travel fare persistence schema", () => {
     expect(migration).toMatch(/CHECK \(`expires_at` > `created_at`\)/);
     expect(migration).toMatch(/ON DELETE RESTRICT ON UPDATE RESTRICT/g);
     expect(migration).not.toMatch(/DROP TABLE|DELETE FROM|UPDATE\s+`?(booking_orders|order_checkouts)/i);
+    expect(existsSync(scheduleSlotMigrationPath)).toBe(true);
+    const scheduleSlotMigration = readFileSync(scheduleSlotMigrationPath, "utf8");
+    expect(scheduleSlotMigration).toContain("ADD COLUMN `schedule_slot_id` INTEGER NULL");
+    expect(scheduleSlotMigration).toContain("route_estimates_schedule_slot_fkey");
+    expect(existsSync(checkoutTotalMigrationPath)).toBe(true);
+    const checkoutTotalMigration = readFileSync(checkoutTotalMigrationPath, "utf8");
+    expect(checkoutTotalMigration).toContain("DROP CHECK `order_checkouts_total_chk`");
+    expect(checkoutTotalMigration).toMatch(
+      /`base_amount_jpy`\s*\+\s*`add_on_amount_jpy`\s*\+\s*`travel_fare_amount_jpy`\s*-\s*`discount_amount_jpy`/
+    );
 
     for (const permission of Object.values(TRAVEL_FARE_PERMISSIONS)) {
       expect(migration).toContain(permission);

@@ -21,6 +21,7 @@ export type AuthIdentityPayload = {
   scopeId: number | null;
   scopeType: string | null;
   type: string;
+  displayName: string | null;
 };
 
 export type AuthMePayload = {
@@ -34,6 +35,7 @@ export type AuthMePayload = {
   hasPassword: boolean;
   username: string;
   avatarUrl: string | null;
+  profileDisplayName: string | null;
   isActive: boolean;
   isTestAccount: boolean;
   currentIdentity: AuthIdentityPayload;
@@ -61,6 +63,7 @@ export type AuthSession = {
   emailVerifiedAt: string | null;
   hasPassword: boolean;
   avatarUrl: string | null;
+  profileDisplayName: string | null;
   portal: PortalScope;
   allowedPortals: PortalScope[];
   loginMethod: LoginMethod;
@@ -215,6 +218,7 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     emailVerifiedAt: me.emailVerifiedAt,
     hasPassword: me.hasPassword,
     avatarUrl: me.avatarUrl,
+    profileDisplayName: me.profileDisplayName,
     portal,
     allowedPortals,
     loginMethod,

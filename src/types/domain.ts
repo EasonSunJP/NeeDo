@@ -1,3 +1,4 @@
+import type { WorkStatus } from "../features/technician-work-status/api";
 export type FulfillmentMode = "home" | "store";
 export type ServicePaymentMethod =
   | "platform"
@@ -261,6 +262,7 @@ export interface Staff {
 }
 
 export interface Technician extends Staff {
+  workStatus?: WorkStatus;
   systemId: string;
   skills: string[];
   serviceAreas: string[];

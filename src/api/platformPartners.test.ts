@@ -10,7 +10,9 @@ vi.mock("./httpClient", async (importOriginal) => ({
 const partner = {
   publicId: "11111111-1111-4111-8111-111111111111",
   partnerType: "agent",
-  activatedAt: "2026-09-01T00:00:00.000Z",
+  startsAt: "2026-09-01T00:00:00.000Z",
+  endsAt: null,
+  permanent: true,
   markedAt: "2026-09-01T01:00:00.000Z",
   reason: "合同审核完成",
   user: {
@@ -134,7 +136,9 @@ describe("platformPartnersApi", () => {
 
     await platformPartnersApi.markPartnerProfile(88, {
       partnerType: "agent",
-      activatedAt: partner.activatedAt,
+      startsAt: partner.startsAt,
+      endsAt: partner.endsAt,
+      permanent: partner.permanent,
       reason: partner.reason,
     });
     await platformPartnersApi.linkShop(partner.publicId, {

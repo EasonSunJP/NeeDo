@@ -4,7 +4,10 @@ This Step 13 slice restores the existing platform notice API and adds a formally
 scoped merchant publication API. Migration
 `20260905120000_merchant_official_notice_scope` adds immutable platform/shop
 issuer scope, merchant audiences and dedicated merchant notice permissions. It
-does not restore the announcement pages or merchant notification UI.
+also restores the operations management/composer/inbox pages and the equivalent
+merchant management/composer/inbox surfaces. Both portal headers use the shared
+official-notice bell, whose badge is derived from the recipient inbox rather than
+the generic realtime notification count.
 
 ## Ownership and API
 
@@ -12,9 +15,18 @@ The operations route manifest owns the following `/api/v1` management routes;
 the merchant API rejects this namespace with 404. The compatibility backend
 retains its existing combined manifest.
 
-- `GET /backoffice/official-notices`: paginated list, read permission.
+- `GET /backoffice/official-notices`: paginated, server-searched and filtered list, read permission.
 - `POST /backoffice/official-notices`: immediate or scheduled publication,
   both create and send permissions.
+- `POST /backoffice/official-notices/drafts`: persist incomplete five-locale
+  editing state without creating audience or delivery rows, create permission.
+- `POST /backoffice/official-notices/media`: upload a signature-verified image,
+  MP4/WebM video, PDF or UTF-8 text attachment under the notice create permission.
+- `GET /backoffice/official-notices/{publicId}` and
+  `PUT /backoffice/official-notices/{publicId}/draft`: reload and update a
+  scope-owned draft with optimistic locking.
+- `POST /backoffice/official-notices/{publicId}/plan`: validate all five
+  locales, freeze the current audience and plan delivery, create and send permissions.
 - `POST /backoffice/official-notices/{publicId}/cancel`: pre-dispatch cancellation,
   review permission, expected version and idempotency key.
 - `POST /backoffice/official-notices/{publicId}/archive`: terminal archival,
@@ -22,8 +34,19 @@ retains its existing combined manifest.
 - `POST /backoffice/official-notices/{publicId}/retry-failures`: retry failed
   recipients only, send permission, expected version and idempotency key.
 
-The merchant route manifest owns the equivalent paginated create/list and
-cancel/archive/retry operations under `/merchant-admin/official-notices`.
+The merchant route manifest owns the equivalent paginated create/list,
+draft create/read/update/plan and cancel/archive/retry operations under
+`/merchant-admin/official-notices`.
+The merchant namespace has its own `POST /merchant-admin/official-notices/media`
+endpoint and permission check; it does not call the operations route.
+Both management list endpoints accept the same bounded `search` query and match
+persisted notice public IDs, audience summaries, and locale titles/summaries on
+the server; the browser never filters only the currently loaded page.
+Operations exact-account delivery searches the formal global account directory
+under `backoffice:users:read` by email, phone or NeeDoID. The create request sends
+only public `needoIds`; the notice repository resolves them again and rejects any
+account without an active, non-deleted identity. Internal `userIds` and friend
+lists are not accepted as targeting inputs.
 Every merchant operation derives its shop and acting identity from the verified
 session. The request cannot supply a shop, issuer, recipient user or platform
 audience. Dedicated `merchant-admin:notice:*` permissions are granted to the
@@ -38,9 +61,22 @@ platform publishing permission. All route contracts are registered in OpenAPI.
 
 ## Persistence and delivery
 
-Publication creates the notice, five locale records, immutable audience snapshots,
-queued delivery rows and an audit record in one transaction. Locale records are
-source copies marked `isInitialCopy`; this is **not automatic translation**.
+Draft save requires five explicit locale slots but permits incomplete titles,
+summaries and content blocks. It creates only the notice, translations and audit
+record. It does not freeze recipients or enqueue delivery. Planning a draft
+revalidates complete strict content, locks the current version, freezes recipients,
+creates delivery rows and records the plan audit in one transaction. The editor
+initially keeps the other four locales synchronized with the selected source
+language; editing a locale independently clears its initial-copy flag so later
+source edits do not overwrite it. All five locale records are sent as one notice.
+Text content blocks may persist one of four validated font-size values, rendered
+consistently in management preview, inbox and homepage notice presentation.
+Uploaded notice media is content-addressed on the server and recorded as an
+audited `MediaAsset`. Platform drafts may reference only active assets uploaded
+by their authenticated platform account. Merchant drafts may reuse only active
+assets belonging to the same server-derived shop. The stored URL, declared MIME
+type and block family (image/video/file) are rechecked on draft create/update and
+again before delivery planning; browser `blob:` and `data:` URLs remain invalid.
 Merchant publication supports only server-derived current-shop audiences:
 active issued membership-card holders, current shop employees, and current shop
 technicians linked through their active affiliation, employee record and role.
@@ -106,11 +142,11 @@ idempotency and zero persistent fixtures.
 
 ## Still pending in the overall task
 
-- Restore the approved operations UI and shared merchant notification surfaces.
-- Real browser multi-portal login/logout acceptance.
-- Operations-to-user/technician/merchant delivery and read reception acceptance.
-- Same-shop database/API/page parity and update propagation acceptance.
+- Real browser multi-portal login/logout acceptance beyond the local portal checks.
+- Staging operations-to-user/technician/merchant delivery and read reception acceptance.
+- Staging same-shop database/API/page parity and update propagation acceptance.
+- Complete five-locale coverage for the remaining legacy editor labels.
 
-Draft editing and a separate approval workflow are not enabled by the immediate/
-scheduled publication endpoint; schema statuses alone must not be presented as
-completed product capabilities. GitHub upload and deployment are outside this run.
+A separate approval workflow is not enabled by this slice; schema review statuses
+alone must not be presented as completed product capabilities. GitHub upload and
+deployment are outside this run.

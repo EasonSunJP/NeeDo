@@ -6,6 +6,8 @@ import {
   MessageRecallMode,
   MessageType,
   NotificationType,
+  PlatformMembershipTierCode,
+  PlatformMembershipVersionStatus,
   Prisma,
   SocialPostVisibility
 } from "@prisma/client";
@@ -25,6 +27,7 @@ import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { EnsureTechnicianApplicationContactInput } from "../services/technician-application-review.service";
 import { AppError } from "../utils/app-error";
 import {
+  ImMediaBindingError,
   imMessageInclude as messageInclude,
   persistImMessageInTransaction
 } from "./im-message-send.transaction";
@@ -291,6 +294,7 @@ export interface SocialPostPayload {
   visibility: SocialPostVisibilityPayload;
   createdAt: Date;
   updatedAt: Date;
+  isPinned: boolean;
   author: SocialPostAuthorPayload;
   viewerFollowsAuthor: boolean;
   authorFollowsViewer: boolean;
@@ -466,7 +470,8 @@ export type CreateMessageOutcome =
   | { status: "created"; message: MessagePayload }
   | { status: "not_found" }
   | { status: "recipient_blocked" }
-  | { status: "not_friends" };
+  | { status: "not_friends" }
+  | { status: "media_invalid" };
 
 export interface CreateNeedoEntityShareInput {
   actorUserId: number;
@@ -524,6 +529,7 @@ export interface RecallMessageInput {
   messageId: number;
   senderUserId: number;
   senderIdentityId?: number;
+  mode: "standard" | "traceless";
   now: Date;
 }
 
@@ -643,6 +649,14 @@ export interface CreateSocialPostResult {
 
 export interface UpdateSocialPostInput extends CreateSocialPostInput {
   postId: number;
+}
+
+export interface SetSocialPostPinInput {
+  postId: number;
+  authorUserId: number;
+  authorIdentityId?: number;
+  active: boolean;
+  context: AuthRequestContext;
 }
 
 export type UpdateSocialPostResult = CreateSocialPostResult;
@@ -796,6 +810,7 @@ export interface RealtimeRepositoryPort {
   expireDueFriendRequests: (input: { batchSize: number }) => Promise<FriendRequestPayload[]>;
   createSocialPost: (input: CreateSocialPostInput) => Promise<CreateSocialPostResult>;
   updateSocialPost: (input: UpdateSocialPostInput) => Promise<UpdateSocialPostResult | null>;
+  setSocialPostPin: (input: SetSocialPostPinInput) => Promise<SocialPostPayload | null>;
   listSocialPosts: (
     identityId: number,
     input: SocialPostListInput,
@@ -860,7 +875,7 @@ const socialPostInclude = {
     select: socialAuthorSelect
   },
   authorIdentity: {
-    select: { id: true, type: true, displayName: true }
+    select: { id: true, type: true, displayName: true, pinnedSocialPostId: true }
   },
   _count: {
     select: {
@@ -873,14 +888,34 @@ const socialPostInclude = {
   }
 } satisfies Prisma.SocialPostInclude;
 
+const imParticipantUserSelect = {
+  id: true,
+  needoId: true,
+  username: true,
+  avatarUrl: true,
+  customerProfile: {
+    select: { displayName: true, deletedAt: true }
+  },
+  technicianProfile: {
+    select: { displayName: true, deletedAt: true }
+  }
+} satisfies Prisma.UserSelect;
+
+const imParticipantIdentitySelect = {
+  id: true,
+  type: true,
+  displayName: true,
+  merchantIdentityProfile: {
+    select: { displayName: true, deletedAt: true }
+  }
+} satisfies Prisma.UserIdentitySelect;
+
 const contactInclude = {
   contactUser: {
-    select: {
-      id: true,
-      needoId: true,
-      username: true,
-      avatarUrl: true
-    }
+    select: imParticipantUserSelect
+  },
+  contactIdentity: {
+    select: imParticipantIdentitySelect
   }
 } satisfies Prisma.ContactInclude;
 
@@ -907,14 +942,8 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
   include: {
     participants: {
       include: {
-        user: {
-          select: {
-            id: true;
-            needoId: true;
-            username: true;
-            avatarUrl: true;
-          };
-        };
+        user: { select: typeof imParticipantUserSelect };
+        identity: { select: typeof imParticipantIdentitySelect };
       };
     };
     messages: {
@@ -925,6 +954,12 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
 
 type MessageRecord = Prisma.MessageGetPayload<{ include: typeof messageInclude }>;
 type ContactRecord = Prisma.ContactGetPayload<{ include: typeof contactInclude }>;
+type ImParticipantUserRecord = Prisma.UserGetPayload<{
+  select: typeof imParticipantUserSelect;
+}>;
+type ImParticipantIdentityRecord = Prisma.UserIdentityGetPayload<{
+  select: typeof imParticipantIdentitySelect;
+}>;
 type FriendRequestRecord = Prisma.FriendRequestGetPayload<{
   include: typeof friendRequestInclude;
 }>;
@@ -952,12 +987,21 @@ type DirectoryProfileUserRecord = {
     displayName: string | null;
     isDefault: boolean;
   }>;
+  platformMembershipEntitlements: Array<{
+    tierVersion: {
+      tier: { code: PlatformMembershipTierCode };
+    };
+  }>;
+  membershipAdjustments: Array<{
+    tierVersion: {
+      tier: { code: PlatformMembershipTierCode };
+    } | null;
+  }>;
   customerProfile: {
     id: number;
     displayName: string;
     bio: string | null;
     city: string | null;
-    membershipLevel: string;
     isPublic: boolean;
     gender: string;
     age: number | null;
@@ -1535,24 +1579,29 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   public async createMessage(input: CreateMessageInput): Promise<CreateMessageOutcome> {
-    return this.client.$transaction(async (tx) => {
-      const transactionNow = new Date();
-      const senderIdentityId = input.senderIdentityId ?? input.senderUserId;
-      const outcome = await persistImMessageInTransaction(tx, {
-        conversationId: input.conversationId,
-        senderUserId: input.senderUserId,
-        senderIdentityId,
-        type: this.messageTypeToDb(input.type),
-        content: input.content,
-        metadata: input.metadata,
-        transactionNow
+    try {
+      return await this.client.$transaction(async (tx) => {
+        const transactionNow = new Date();
+        const senderIdentityId = input.senderIdentityId ?? input.senderUserId;
+        const outcome = await persistImMessageInTransaction(tx, {
+          conversationId: input.conversationId,
+          senderUserId: input.senderUserId,
+          senderIdentityId,
+          type: this.messageTypeToDb(input.type),
+          content: input.content,
+          metadata: input.metadata,
+          transactionNow
+        });
+        if (outcome.status !== "created") return outcome;
+        return {
+          status: "created" as const,
+          message: this.mapMessage(outcome.message, senderIdentityId)
+        };
       });
-      if (outcome.status !== "created") return outcome;
-      return {
-        status: "created",
-        message: this.mapMessage(outcome.message, senderIdentityId)
-      };
-    });
+    } catch (error) {
+      if (error instanceof ImMediaBindingError) return { status: "media_invalid" };
+      throw error;
+    }
   }
 
   public async createNeedoEntityShare(
@@ -1861,6 +1910,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         return { status: "not_found" } as const;
       }
 
+      const recallMode =
+        input.mode === "traceless" ? MessageRecallMode.TRACELESS : MessageRecallMode.STANDARD;
+      const deletionAction =
+        input.mode === "traceless"
+          ? ImDeletionAction.TRACELESS_RECALL
+          : ImDeletionAction.STANDARD_RECALL;
+      const auditAction =
+        input.mode === "traceless" ? "im.message.traceless_recall" : "im.message.standard_recall";
       await tx.imMessageTranslation.deleteMany({ where: { messageId: input.messageId } });
       await tx.message.update({
         where: { id: input.messageId },
@@ -1868,7 +1925,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           content: null,
           metadata: Prisma.DbNull,
           recalledAt: input.now,
-          recallMode: MessageRecallMode.STANDARD,
+          recallMode,
           contentPurgedAt: input.now
         }
       });
@@ -1881,13 +1938,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         where: {
           messageId_action: {
             messageId: input.messageId,
-            action: ImDeletionAction.STANDARD_RECALL
+            action: deletionAction
           }
         },
         create: {
           conversationId: input.conversationId,
           messageId: input.messageId,
-          action: ImDeletionAction.STANDARD_RECALL,
+          action: deletionAction,
           mediaKind: null,
           occurredAt: input.now
         },
@@ -1896,18 +1953,31 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       await tx.auditLog.create({
         data: {
           actorId: input.senderUserId,
-          action: "im.message.standard_recall",
+          action: auditAction,
           targetType: "Message",
           targetId: input.messageId,
           ip: null,
           userAgent: null,
           metadata: {
             conversationId: input.conversationId,
-            recallMode: "standard"
+            recallMode: input.mode
           },
           createdAt: input.now
         }
       });
+      if (input.mode === "traceless") {
+        await tx.conversationParticipant.updateMany({
+          where: {
+            conversationId: input.conversationId,
+            identityId: { not: input.senderIdentityId ?? input.senderUserId },
+            deletedAt: null,
+            createdAt: { lte: candidate.createdAt },
+            unreadCount: { gt: 0 },
+            OR: [{ lastReadMessageId: null }, { lastReadMessageId: { lt: input.messageId } }]
+          },
+          data: { unreadCount: { decrement: 1 } }
+        });
+      }
       await tx.conversation.update({
         where: { id: input.conversationId },
         data: { updatedAt: input.now }
@@ -2528,7 +2598,15 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       id: { not: userId },
       isActive: true,
       deletedAt: null,
-      OR: [{ username: { contains: query } }, { needoId: { contains: query } }],
+      OR: [
+        { username: { contains: query } },
+        { needoId: { contains: query } },
+        {
+          customerProfile: {
+            is: { displayName: { contains: query }, deletedAt: null }
+          }
+        }
+      ],
       NOT: {
         contactEntries: {
           some: {
@@ -2539,10 +2617,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       }
     };
     const select = {
-      id: true,
-      needoId: true,
-      username: true,
-      avatarUrl: true
+      ...imParticipantUserSelect,
+      identities: {
+        where: { isActive: true, deletedAt: null },
+        select: imParticipantIdentitySelect,
+        orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
+      }
     } satisfies Prisma.UserSelect;
     const [list, total] = await Promise.all([
       this.client.user.findMany({
@@ -2556,12 +2636,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((user) => ({
-        userId: user.id,
-        needoId: user.needoId,
-        username: user.username,
-        avatarUrl: user.avatarUrl
-      })),
+      list.map((user) =>
+        this.mapParticipant(
+          user,
+          undefined,
+          this.findCanonicalParticipantIdentity(user.identities)
+        )
+      ),
       total,
       pagination
     );
@@ -2853,13 +2934,52 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           },
           orderBy: [{ isDefault: "desc" }, { id: "asc" }]
         },
+        platformMembershipEntitlements: {
+          where: {
+            deletedAt: null,
+            startsAt: { lte: dbNow },
+            supersededAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: dbNow } }],
+            tierVersion: {
+              status: {
+                in: [
+                  PlatformMembershipVersionStatus.PUBLISHED,
+                  PlatformMembershipVersionStatus.ARCHIVED
+                ]
+              },
+              deletedAt: null,
+              tier: { deletedAt: null }
+            }
+          },
+          orderBy: [{ startsAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: {
+            tierVersion: {
+              select: { tier: { select: { code: true } } }
+            }
+          }
+        },
+        membershipAdjustments: {
+          where: {
+            deletedAt: null,
+            supersededAt: null,
+            effectiveFrom: { lte: dbNow },
+            tierVersionId: { not: null }
+          },
+          orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+          take: 1,
+          select: {
+            tierVersion: {
+              select: { tier: { select: { code: true } } }
+            }
+          }
+        },
         customerProfile: {
           select: {
             id: true,
             displayName: true,
             bio: true,
             city: true,
-            membershipLevel: true,
             isPublic: true,
             gender: true,
             age: true,
@@ -2907,9 +3027,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       return null;
     }
     const identityCard = await this.buildDirectoryIdentityCard(user, targetIdentityId);
+    const directoryParticipant = this.mapParticipant({
+      ...user,
+      username: identityCard.displayName
+    });
     if (viewerUserId === targetUserId && viewerIdentityId === targetIdentityId) {
       return {
-        user: this.mapParticipant(user),
+        user: directoryParticipant,
         identityCard,
         relationship: "self",
         contactId: null,
@@ -2943,7 +3067,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       : null;
     if (contact && reciprocalContact) {
       return {
-        user: this.mapParticipant(user),
+        user: directoryParticipant,
         identityCard,
         relationship: "friend",
         contactId: contact.id,
@@ -2966,7 +3090,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
 
     return {
-      user: this.mapParticipant(user),
+      user: directoryParticipant,
       identityCard,
       relationship: friendRequest
         ? friendRequest.requesterIdentityId === viewerIdentityId
@@ -3822,6 +3946,63 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         post: this.mapSocialPost(updatedPost, authorIdentityId, authorIdentityId),
         notifications
       };
+    });
+  }
+
+  public async setSocialPostPin(input: SetSocialPostPinInput): Promise<SocialPostPayload | null> {
+    return this.client.$transaction(async (transaction) => {
+      const authorIdentityId = input.authorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.authorUserId);
+      if (!authorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+
+      const post = await transaction.socialPost.findFirst({
+        where: {
+          id: input.postId,
+          authorUserId: input.authorUserId,
+          authorIdentityId,
+          replyToPostId: null,
+          deletedAt: null
+        },
+        include: socialPostInclude
+      });
+      if (!post) return null;
+
+      const previousPinnedPostId = post.authorIdentity.pinnedSocialPostId;
+      if (input.active) {
+        await transaction.userIdentity.update({
+          where: { id: authorIdentityId },
+          data: { pinnedSocialPostId: post.id }
+        });
+      } else {
+        await transaction.userIdentity.updateMany({
+          where: { id: authorIdentityId, pinnedSocialPostId: post.id },
+          data: { pinnedSocialPostId: null }
+        });
+      }
+
+      await transaction.auditLog.create({
+        data: {
+          actorId: input.authorUserId,
+          action: input.active ? "social.post.pinned" : "social.post.unpinned",
+          targetType: "SocialPost",
+          targetId: post.id,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent ?? null,
+          metadata: { previousPinnedPostId } satisfies Prisma.InputJsonValue
+        }
+      });
+
+      const updatedPost = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: post.id },
+        include: socialPostInclude
+      });
+      return this.mapSocialPost(updatedPost, authorIdentityId, authorIdentityId);
     });
   }
 
@@ -5143,12 +5324,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         where: { deletedAt: null },
         include: {
           user: {
-            select: {
-              id: true,
-              needoId: true,
-              username: true,
-              avatarUrl: true
-            }
+            select: imParticipantUserSelect
+          },
+          identity: {
+            select: imParticipantIdentitySelect
           }
         }
       },
@@ -5190,12 +5369,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       type: this.conversationTypeFromDb(conversation.type),
       title: conversation.title,
       participants: conversation.participants.map((participant) =>
-        this.mapParticipant(participant.user, participant.role)
+        this.mapParticipant(participant.user, participant.role, participant.identity)
       ),
       directPeer:
         conversation.type === ConversationType.DIRECT
           ? activeDirectPeer
-            ? this.mapParticipant(activeDirectPeer.user, activeDirectPeer.role)
+            ? this.mapParticipant(
+                activeDirectPeer.user,
+                activeDirectPeer.role,
+                activeDirectPeer.identity
+              )
             : (missingDirectPeer ?? null)
           : null,
       lastMessage:
@@ -5224,7 +5407,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return {
       deletedAt: null,
       expiredAt: null,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+      AND: [
+        {
+          OR: [{ recallMode: null }, { recallMode: MessageRecallMode.STANDARD }]
+        },
+        {
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+        }
+      ]
     };
   }
 
@@ -5277,14 +5467,19 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         user: { isActive: true, deletedAt: null }
       },
       select: {
-        id: true,
+        ...imParticipantIdentitySelect,
         user: {
-          select: { id: true, needoId: true, username: true, avatarUrl: true }
+          select: imParticipantUserSelect
         }
       }
     });
     const participantByIdentityId = new Map(
-      identities.map((identity) => [identity.id, this.mapParticipant(identity.user)] as const)
+      identities.map(
+        (identity) => [
+          identity.id,
+          this.mapParticipant(identity.user, undefined, identity)
+        ] as const
+      )
     );
     const peerByConversationId = new Map<number, ParticipantPayload>();
     for (const [conversationId, peerIdentityId] of missingPeerIdentityIdByConversationId) {
@@ -5360,7 +5555,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       ownerIdentityId: contact.ownerIdentityId,
       contactUserId: contact.contactUserId,
       contactIdentityId: contact.contactIdentityId,
-      contactUser: this.mapParticipant(contact.contactUser),
+      contactUser: this.mapParticipant(
+        contact.contactUser,
+        undefined,
+        contact.contactIdentity
+      ),
       nickname: contact.nickname,
       source: contact.source,
       isBlocked: contact.blockedAt !== null,
@@ -5369,21 +5568,50 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   private mapParticipant(
-    user: {
-      id: number;
-      needoId: string;
-      username: string;
-      avatarUrl: string | null;
-    },
-    role?: string
+    user: Pick<ImParticipantUserRecord, "id" | "needoId" | "username" | "avatarUrl"> &
+      Partial<Pick<ImParticipantUserRecord, "customerProfile" | "technicianProfile">>,
+    role?: string,
+    identity?: ImParticipantIdentityRecord | null
   ): ParticipantPayload {
     return {
       userId: user.id,
       needoId: user.needoId,
-      username: user.username,
+      username: this.resolveParticipantDisplayName(user, identity),
       avatarUrl: user.avatarUrl,
       ...(role === "owner" || role === "admin" || role === "member" ? { role } : {})
     };
+  }
+
+  private resolveParticipantDisplayName(
+    user: Pick<ImParticipantUserRecord, "username"> &
+      Partial<Pick<ImParticipantUserRecord, "customerProfile" | "technicianProfile">>,
+    identity?: ImParticipantIdentityRecord | null
+  ): string {
+    const identityType = identity?.type?.toLowerCase();
+    if (
+      ["customer", "user", "u"].includes(identityType ?? "") &&
+      user.customerProfile?.deletedAt === null
+    ) {
+      return user.customerProfile.displayName.trim() || user.username;
+    }
+    if (identityType === "technician" && user.technicianProfile?.deletedAt === null) {
+      return user.technicianProfile.displayName.trim() || user.username;
+    }
+    if (
+      ["merchant", "merchant_owner", "merchant_staff"].includes(identityType ?? "") &&
+      identity?.merchantIdentityProfile?.deletedAt === null
+    ) {
+      return identity.merchantIdentityProfile.displayName.trim() || user.username;
+    }
+    return identity?.displayName?.trim() || user.username;
+  }
+
+  private findCanonicalParticipantIdentity(
+    identities: ImParticipantIdentityRecord[]
+  ): ImParticipantIdentityRecord | undefined {
+    return identities.find((identity) =>
+      ["customer", "user", "u"].includes(identity.type.toLowerCase())
+    ) ?? identities[0];
   }
 
   private async buildDirectoryIdentityCard(
@@ -5439,7 +5667,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         entityType: "user",
         profileId: profile.id,
         displayName: profile.displayName,
-        identityLabel: profile.membershipLevel,
+        identityLabel: this.directoryMembershipTierCode(user),
         verified: false,
         creditValue: review?.ratingAverage.toString() ?? null,
         creditReviewCount: review?.reviewCount ?? 0,
@@ -5529,6 +5757,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
 
     return fallback;
+  }
+
+  private directoryMembershipTierCode(user: DirectoryProfileUserRecord): string {
+    const code =
+      user.membershipAdjustments?.[0]?.tierVersion?.tier.code ??
+      user.platformMembershipEntitlements?.[0]?.tierVersion.tier.code;
+    if (code === PlatformMembershipTierCode.SILVER) return "silver";
+    if (code === PlatformMembershipTierCode.GOLD) return "gold";
+    if (code === PlatformMembershipTierCode.BLACK_DIAMOND) return "black_diamond";
+    return "free";
   }
 
   private async loadTechnicianContactDetails(
@@ -5822,6 +6060,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       visibility: this.socialPostVisibilityFromDb(socialPost.visibility),
       createdAt: socialPost.createdAt,
       updatedAt: socialPost.updatedAt,
+      isPinned: socialPost.authorIdentity.pinnedSocialPostId === socialPost.id,
       viewerFollowsAuthor:
         viewerIdentityId === authorIdentityId ||
         relationshipMap.follows.has(`${viewerIdentityId}:${authorIdentityId}`),

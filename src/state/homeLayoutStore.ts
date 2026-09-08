@@ -329,6 +329,17 @@ function normalizeConfig(raw?: Partial<HomeLayoutConfig> | null): HomeLayoutConf
     const matched = rawLocations.find((item) => item && typeof item === "object" && item.id === base.id);
     return normalizeLocation(base, matched);
   });
+  for (const location of rawLocations) {
+    if (!location || typeof location !== "object" || typeof location.id !== "string" ||
+      !location.id.trim() || typeof location.label !== "string" || !location.label.trim() ||
+      typeof location.city !== "string" || typeof location.area !== "string" || !location.area.trim() ||
+      locations.some((item) => item.id === location.id)) {
+      continue;
+    }
+    locations.push(normalizeLocation({
+      id: location.id, label: location.label.trim(), city: location.city.trim(), area: location.area.trim()
+    }, location));
+  }
   const selectedLocationId = locations.some((item) => item.id === raw?.selectedLocationId) ? raw!.selectedLocationId! : defaults.selectedLocationId;
   const rawServiceModules = Array.isArray(raw?.serviceModules) ? raw.serviceModules : [];
   const rawMetrics = Array.isArray(raw?.platformMetrics) ? raw.platformMetrics : [];

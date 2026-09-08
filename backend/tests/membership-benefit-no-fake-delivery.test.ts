@@ -22,9 +22,9 @@ describe("membership benefit delivery boundary", () => {
       multiplier: 5,
       expiresAt: null,
       benefits: [],
-      benefitCatalog: ["support_service", "exclusive_discount", "member_day", "birthday_gift"].map(
+      benefitCatalog: ["support_service", "exclusive_discount", "member_day", "birthday_gift", "traceless_recall"].map(
         (code) => ({
-          code: code as "support_service" | "exclusive_discount" | "member_day" | "birthday_gift",
+          code: code as "support_service" | "exclusive_discount" | "member_day" | "birthday_gift" | "traceless_recall",
           configuredEnabled: true,
           globallyEnabled: true,
           configuration: {},
@@ -35,6 +35,8 @@ describe("membership benefit delivery boundary", () => {
       theme: {
         detailAccentColor: "#A7FF33",
         detailSurfaceColor: "#102731",
+        detailSurfaceMiddleColor: "#183A32",
+        detailSurfaceBottomColor: "#24314B",
         detailItemSurfaceColor: "#0B1820",
         detailOuterBorderColor: "#577A39",
         detailItemBorderColor: "#34514A",
@@ -62,7 +64,7 @@ describe("membership benefit delivery boundary", () => {
       "en"
     );
 
-    expect(result.list).toHaveLength(4);
+    expect(result.list).toHaveLength(5);
     expect(result.list.every((benefit) => benefit.deliveryCapability === "unavailable")).toBe(true);
     expect(repository.saveTierDraftWithAudit).not.toHaveBeenCalled();
     expect(repository.publishTierDraftWithAudit).not.toHaveBeenCalled();

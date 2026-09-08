@@ -492,6 +492,41 @@ ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
 
 本次只增加了现有 Booking、OrderFinancial、TechnicianProfile 与 Shop 的只读聚合合同，未新增 migration 或 mock 数据。浏览器验收（各期间、排序、筛选、分页、CSV、错误/空态和详情抽屉）仍由主代理在运行中的正式服务上执行；本文档与静态测试不替代该验收。
 
+## 运营实时大盘 microstep A 数据合同（2026-09-06）
+
+microstep A contains no live-screen page。这个微步骤只交付正式数据地基、只读 API、缓存和 SSE 合同；运营端大屏页面及交互属于后续微步骤，不能把本文的后端验收表述为页面或浏览器验收。
+
+- 快照：`GET /api/v1/backoffice/dashboard/live-snapshot?country=JP&admin1=13&admin2=13104&period=today`。`country` 固定为 `JP`；`admin1`、`admin2` 逐级可选，`admin2` 必须带所属 `admin1`；`period` 为 `today`、`last7days` 或 `last30days`。`Accept-Language` 支持 `zh-CN`、`zh-TW`、`ja`、`en`、`ko`，无法识别时回退日语。所有范围以不可变的 `BookingServiceLocation` 服务发生地为准，全国范围保留 unresolved 覆盖率，东京/新宿等下钻只纳入 verified 归属。
+- 事件：`GET /api/v1/backoffice/dashboard/live-events` 使用与快照相同的查询参数和 `backoffice:dashboard:read` 权限。客户端以 `Last-Event-ID` 续传；服务端发送 `retry: 5000`、每 30 秒 heartbeat，并只发送白名单化的 `order.changed` 和 `metrics.invalidate` 字段。事件不得包含客户姓名、邮箱、电话、地址、备注或内部数字关联 ID。游标已过保留窗口或不再存在时返回 `409 error.live_dashboard.cursor_reset_required`，客户端必须丢弃旧游标、重新取快照后重连，不能静默跳过事件。
+- Redis 快照 key 使用 `dashboard:live:v1:{country}:{admin1|-}:{admin2|-}:{period}`，TTL 为 300 秒；订单变化触发 country → admin1 → admin2 的 generation-fenced 失效。Stream 最多保留 100 条且保留窗口为 5 分钟；发布、回放、排序、背压断开和隐私白名单均由正式 Redis 测试覆盖。
+
+补充运行时与归属合同：compatibility backend、operations API、merchant API 必须使用同一个 `LIVE_DASHBOARD_REDIS_URL` 共享快照、generation 与 Stream；各端 `REDIS_URL` 继续隔离认证/session。拆分 API 缺少共享配置时拒绝启动，退出时关闭专属 live Redis clients。`dev:formal` 从 `FORMAL_LIVE_DASHBOARD_REDIS_URL` 向三个进程传入同一目标。
+
+全国总量与 unresolved 覆盖率包括符合既有资格条件但尚无服务地点快照的历史订单；区域子级指标和下钻仍只使用 verified 快照。普通 home Booking 将官方行政名称与 estimate 接受的规范地址绑定，错配在容量预占与 estimate 消耗前拒绝。Exchange 转单在同一事务创建地点快照：可靠店铺地点为 verified，自由文本 home 地址或未核验店铺为 unresolved；只在事务提交后发布新订单和被替代订单的变化。
+
+Booking 历史服务地点回填默认只预览，不写库：
+
+```bash
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev npm --prefix backend run backfill:booking-service-locations
+```
+
+应用必须显式给出预览计数以避免目标漂移；脚本还提供具名 run 的恢复路径：
+
+```bash
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev npm --prefix backend run backfill:booking-service-locations -- --apply --confirm-count=<preview-planned-count>
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev npm --prefix backend run backfill:booking-service-locations -- --restore-run=<run-id>
+```
+
+最终形式化 checker 只允许明确的本地/开发 MySQL 与 Redis，并强制事务回滚和 run-prefix 清理：
+
+```bash
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK=true LIVE_DASHBOARD_CHECK_RUN_ID=task8-local-a npm --prefix backend run check:live-dashboard
+```
+
+`LIVE_DASHBOARD_CHECK_RUN_ID` 必须是显式、可复现且本次运行唯一的小写 token；checker 对它做稳定哈希，不使用 PID 或随机数，并在数据库或 Redis 已存在同名 run 前缀时拒绝继续。直接 MySQL oracle 以独立 raw SQL 逐节核对全国、东京、新宿和三个 period 的 headline、payments、orders、realtime、activity、trend、coverage 与排名；仅排名资格及排序 CTE 复用 Task 5 明确定义为正式权威的 `AnalyticsRankingRepository` CTE，其余映射与生产 `LiveDashboardRepository` 独立。
+
+验收事实必须分开记录：本地代码提交不等于远端 push；远端 push 不等于部署；部署不等于 migration 已应用；migration 已应用也不等于正式 checker、API、SSE 或页面验收已经发生。本微步骤不执行 push、部署、生产 migration，也不声称存在 live-screen page。
+
 ## 数据来源
 
 本次读取正式表：
@@ -575,3 +610,109 @@ ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
 - 本次不做银行代付、税务/发票、文件上传和多级复杂审批；工资调整只覆盖基础申请、提交、审批/驳回、申诉处理、支付记录确认和锁定应用。
 - 本次只做 Request dispatch fee 的后端/API/账本适配，不做 Request 大厅、复杂调度、退款、商户违约赔付或前端入口。
 - 旧后台周边模块仍可能保留 legacy mock compatibility；正式运营/商户后台的核心指标、订单、排班、财务、技师、店铺入口不再使用这些兼容数据。
+
+## 2026-09-06 数据大盘视觉证据补齐
+
+本微步骤保持现有运营后台信息架构，只补齐排行榜、摘要趋势和大图表的正式数据证据：
+
+- 服务项目、技师和用户 Top 10 使用同一套完整订单证据聚合。结果同时返回总 `gmvJpy` / `completedCount` 与 TEST 子集 `testGmvJpy` / `testCompletedCount`，并以 `dataComposition=formal|test|mixed` 明确来源；任何 TEST 贡献都显示红色 `TEST` 标签。
+- TEST NDP 订单只接受 `TEST_NDP` 账本，正式订单仍只接受 `NDP`。有独立支付方式选择事件时，账本必须发生在选择之后；无独立选择事件的直接 NDP 路径，账本必须处于服务结束与支付确认之间。其他结算、事件、退款、身份、软删除与一致性条件继续 fail-closed。
+- 五张摘要卡消费服务端 `headlineSeries3d`，固定为以 `Asia/Tokyo` 解释、截至同一 `evaluatedAt` 的连续 3 个自然日；每张卡只绘制三个有限数值点，缺失或矛盾数据不在浏览器中补造。
+- 三张大折线图分别显示左右数值坐标轴；每个折线节点可由鼠标、Enter 或 Space 打开锚定详情，显示该日期全部序列的精确值，并支持关闭按钮、Escape 和筛选变化后的状态清理。原有无障碍数据表和 reduced-motion 规则保留。
+- 三个排行榜标题控制行采用相同最小高度，服务榜补齐与另外两榜一致的分类筛选位置，因此分割线基线一致。
+
+本地真实 MySQL 的近 7 天只读查询结果为：服务榜 3 项、技师榜 2 人、用户榜 1 人；用户榜合计 5 个完成订单、`testCompletedCount=5`，全部为 `dataComposition=test`。服务榜把每个完成订单的主服务及已接受加项分别计入服务完成次数，因此三项合计 10 次。未执行 seed、repair、migration 或 schema 修改。
+
+本次新鲜验证结果：
+
+- 后端聚焦测试：8 suites / 99 tests 通过；受显式本地 `needo_test` authority 保护的 MySQL fixture suite 默认跳过 1 test。
+- 前端聚焦测试：9 files / 70 tests 通过。
+- 后端 lint、后端 build、前端 typecheck lint、i18n audit 和前端 production build 均退出 0。
+- `audit:production-bundle` 未通过：`main-BCYiBKko.js` 为 4,053,344 bytes（预算 4,000,000），`i18n-DvR3q3_2.js` 为 3,723,288 bytes（预算 3,704,096）；本微步骤未做跨模块拆包重构。
+- 现有全量模拟数据 checker 已连接本地 MySQL，但被既有联系人基线差异阻断：预期 460，实际 462；未在本微步骤修复或写入联系人数据。
+- 标准前端端口 `5180` 由原始检出目录占用，标准后端 `3000` 当时未监听。本分支在 `5286/3106/3107/3108` 隔离运行并到达运营后台登录页；由于新 origin 不继承既有登录态，认证后的视觉浏览器验收未宣称完成。
+
+上述事实仅证明隔离分支的代码、测试、构建、只读数据库聚合和运行时可达性；不代表已合并到 `main`、已 push、已部署、已执行 migration，亦不代表 staging 已验收。
+
+## 2026-09-06 角色人员列表与权限完整性
+
+角色管理的每张角色卡现在通过正式 `GET /api/v1/users?roleId=<id>` 按需读取当前人员，接口继续使用 `user:list` 鉴权、Zod 查询校验、Service/Repository 分层和服务端分页。查询只匹配未删除的用户及有效 `UserRole` 关系；页面显示账号启停状态与该角色的作用域，不在浏览器中维护人员副本。
+
+权限 API 核对结果：`GET /api/v1/permissions/tree` 已由 `PermissionRepository.listAll()` 读取数据库中全部未删除权限，并按模块与类型分组；系统权限由 `SYSTEM_PERMISSIONS` 统一定义并由正式 seed 以 code upsert。此次不新增第二套权限 API。旧前端存在三处过期限制：角色分配只读取列表前 100 项后再截取 40 项、权限树只显示数量、权限表没有翻页。现在角色分配直接使用完整权限树并支持搜索，权限树展示每个真实名称和 code，权限表继续使用分页列表 API 并提供翻页。
+
+本微步骤没有 schema 或 migration 修改，也没有新增 mock、静态权限回退或浏览器本地角色数据。
+
+隔离分支在 `3013/5183` 启动后完成认证 API smoke：数据库返回 11 个角色、36 个权限模块和 333 条有效权限；admin 角色分页返回 5 名当前人员，全部具有对应的有效角色分配。新前端 origin 未继承既有登录态，因此没有把未认证页面记作视觉验收。启动时还观察到本地 `needo_dev` 尚未应用另一分支的会员卡三色字段 migration；该差异与本微步骤无关，未在此执行 migration 或补写数据库。
+
+## 2026-09-06 会员详细卡三色渐变与发布规则
+
+本微步骤把原 `detailSurfaceColor` 保留为详细卡左上角色，并新增正式持久化字段 `detailSurfaceMiddleColor` 与 `detailSurfaceBottomColor`。运营后台预览和用户端详细会员卡共用 `linear-gradient(155deg, TOP 0%, MIDDLE 52%, BOTTOM 100%)`，避免两端视觉实现漂移。三个色阶的运营标签已补齐简体中文、繁体中文、日文、英文与韩文。
+
+增量 migration `20260906130000_platform_membership_three_color_detail_surface` 先以原详细卡底色回填两个新字段，再将其收紧为 `NOT NULL` 并扩展现有 `#RRGGBB` 数据库约束，因此历史会员卡默认保持原有纯色效果。前后端继续校验十个颜色字段的十六进制格式，但不再以强调色与底色的对比度阻止保存或发布。
+
+本地验收结果：
+
+- 随机命名临时数据库迁移 checker 通过 5 项断言：两条旧记录回填一致、两个新字段均为非空、非法新色值被数据库约束拒绝；临时库已删除，`existingDatabaseModified=false`。
+- 后端聚焦测试：12 suites / 44 tests 通过。
+- 前端聚焦测试：9 files / 62 tests 通过。
+- 后端 lint、后端 build、前端 typecheck lint 与前端 production build 均退出 0。
+
+本微步骤未执行正式数据库 migration、未 push、未部署 staging；聊天无痕撤回的实际 IM 行为仍属于后续独立微步骤。
+
+## 运营后台系统设置（2026-09-06）
+
+运营后台的“系统设置”已从角色管理中拆出，固定使用
+`/admin/settings/system?tab=basic|legal|storage|payment`；`/admin/roles` 继续只承载角色管理。
+四个插页共用运营后台的 `ink/paper/line/mist` 视觉契约，现有 NDP 汇率页也已对齐该视觉体系，汇率版本、幂等键、409 冲突刷新锁和按评估时间分页逻辑未改变。
+
+正式持久化与执行范围：
+
+- 基础设置：站点开关、自助注册入口、Google 登录入口、登录页 LOGO、主导航 Request 图片，以及密码登录邮箱验证码总开关。验证码时间规则为“仅初次 / 每月初次 / 每次”单选，“新 IP 登录”可叠加；验证码关闭时保持原密码登录。关闭自助注册不会阻止运营后台通过正式用户管理 API 创建用户。品牌图片未配置数据库覆盖时，后台会显示客户端实际正在启用的系统默认图片，而不是“尚未设置”；登录页预览复用中央标识渲染，Request 预览复用主导航主题类，颜色会随各客户端 UI 主题适配。原生文件输入已替换为与运营后台一致的选择按钮、当前启用状态和格式说明。
+- 政策和协议：目录分页、五种语言（`zh-CN`、`zh-TW`、`ja`、`en`、`ko`）独立草稿、分别保存、不可变发布版本、发布日期、发布历史、内部显示路径和链接开关。公开条款与隐私页面只读取已发布的当前语言版本，不跨语言回退；商户与 Affiliate 的接受快照继续使用正式协议版本。
+- 储存设置：IM 消息默认 30 天、IM 媒体默认 3 天，只影响设置生效后创建的服务器记录；不要求或指示客户端删除本地聊天记录或媒体缓存。
+- 支付设置：线下支付和 NDP 支付是当前可正式启停的能力，后端结算/支付入口会读取已发布设置并拒绝被关闭的方法。线下支付仍是现场人员、技师或店铺人工确认；PayPay、PayPal 保留为 NeeDo 发起的外部支付入口，Stripe 保留聚合支付项目入口，Apple 与 LINE 保留未来入口，这五项均不可操作且没有新增假 API、供应商调用或凭据字段。
+
+正式 API：
+
+- `GET /api/v1/platform/settings/public`
+- `GET /api/v1/backoffice/system-settings`
+- `PUT /api/v1/backoffice/system-settings/basic`
+- `PUT /api/v1/backoffice/system-settings/payment`
+- `GET /api/v1/legal-documents/:slug/current`
+- `GET|POST /api/v1/backoffice/legal-documents`
+- `PATCH /api/v1/backoffice/legal-documents/:publicId`
+- `GET /api/v1/backoffice/legal-documents/:publicId/locales/:locale`
+- `PUT /api/v1/backoffice/legal-documents/:publicId/locales/:locale/draft`
+- `POST /api/v1/backoffice/legal-documents/:publicId/locales/:locale/publish`
+- `GET /api/v1/backoffice/legal-documents/:publicId/locales/:locale/releases`
+
+所有写入均经过 Zod、RBAC、乐观版本检查和审计。正式权限为
+`backoffice:system-settings:read|write`、
+`backoffice:system-brand-media:activate`、
+`backoffice:im-retention:read|write`、
+`backoffice:payment-settings:read|write`、
+`backoffice:legal-documents:read|write|publish`。迁移只向 `admin` 与预定的 `operator` 角色授予写入/发布权限，`viewer` 只获得读取权限。
+
+新增的加法迁移：
+
+- `20260906100000_operations_system_settings`：平台设置版本、政策协议目录/语言草稿/发布版本、初始正式设置、权限与角色授权。
+- `20260906110000_im_server_retention_defaults`：为既有 IM 服务器记录增加前瞻性的消息/媒体到期时间默认值与索引。
+
+本地自动验证结果：
+
+- 前端 `npm test`：354 个测试文件、2,473 项测试全部通过。
+- 前端 `npm run lint`、`npm run i18n:quality`、`npm run verify:production-build`：全部通过；正式生产包审计通过 8 个 HTML 入口和 36 个资源。
+- 后端系统设置定向测试：18 个套件、75 项测试全部通过；前端系统设置、公开投影、登录和 NDP 汇率聚焦回归另有 14 个文件、230 项测试通过。
+- 后端 `npm --prefix backend run lint` 与 `npm --prefix backend run build`：全部通过。
+- 后端全量基线运行暴露三个与本切片无关的既存问题：会员卡调整倒计时断言为 0、会员分析测试仍使用已不允许的 `operator` 身份类型，以及串行全量测试在约 4 GB 堆上最终 OOM；单独复跑 OpenAPI 超时项通过。本切片引入的两个 Auth repository 测试夹具已补齐登录证据端口并单独通过。
+
+数据库与浏览器验收状态：
+
+- 共享正式本地库 `needo_dev` 只执行了迁移状态读取，没有写入。系统设置分支只有 120 个历史迁移，而当前本地 `main` 已有 137 个；直接在临时库回放旧分支时，历史迁移 `20260902110000_agent_commission_operating_cost` 因已在 `main` 修正的外键规则失败。因此本次没有篡改已应用迁移，也没有把旧分支迁移历史写入共享库。
+- 为完成可回滚验收，使用当前 `main` 的 137 个迁移与本分支两个加法迁移组成 139 个迁移的临时只读并集，部署到独立本地库 `needo_system_settings_qa_20260906`。139 个迁移全部成功，`prisma migrate status` 返回 schema up to date；两个功能迁移的 SHA-256 与分支文件逐字节一致。
+- 在该隔离库运行 `backfill:system-settings` 成功，随后 `check:system-settings-flow` 通过真实 `/api/v1`、真实 Prisma/MySQL、RBAC、版本、审计和回滚校验；脚本结束时 `residue: 0`，没有把检查数据遗留到被测正式表。正式 seed 也在该隔离库成功完成，`admin`/`operator` 获得 10 项系统设置写入与发布权限，`viewer` 只有 4 项读取权限。
+- 隔离服务分别监听后端 `3012`、前端 `5182`，进程 cwd 均指向当前功能 worktree；`/api/v1/health`、`/api/v1/ready`、运营后台入口与前端代理健康接口均返回 200。共享 `3000`/`5180` 服务没有停止或替换。
+- 认证浏览器验收确认系统设置四个插页可以独立切换，`/admin/roles` 仍是独立角色管理页面。政策页新建了带公开链接的 QA 文档，中日文草稿切换时互不覆盖，并分别保存、发布为独立 v1；公开接口按 `zh-CN` 与 `ja` 返回相应标题、正文、发布日期、版本和显示位置。基础设置把验证码临时发布为“开启 + 每月初次 + 新 IP”，数据库生成 v2 和审计记录；随后经同一 UI 恢复为“关闭 + 仅初次 + 非新 IP”，生成 v3，字段与初始 v1 完全一致，历史版本未被覆盖。
+- 基础设置品牌区已在认证浏览器中确认：两张卡片显示“系统默认 · 当前启用”，登录页中央标识与 Request 主导航中央按钮均显示实际默认资源；Request 预览呈现当前示例主题颜色，并明确提示其会随每位用户的 UI 主题适配。选择控件使用后台统一的圆角按钮，不再暴露浏览器原生文件输入。
+- 储存页在浏览器显示默认 30/3 天和“只影响服务器前瞻保留、不删除设备本地记录/缓存”的边界；支付页显示当前线下/NDP 开关与 PayPay、PayPal、Stripe、Apple、LINE 的未接入项目入口。支付启停与 IM 保留期的真实写入/恢复由上述 checker 覆盖，本次浏览器没有重复制造额外版本。
+- 角色卡片人员列表与权限树/API 最新性对账不在本系统设置微步骤内，未修改；它们必须作为独立的小步骤，以最新 User Management、权限常量、路由声明和数据库授权为共同依据实施。

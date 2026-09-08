@@ -57,6 +57,7 @@ export interface UserPayload {
 export interface UserListInput {
   page?: number;
   pageSize?: number;
+  roleId?: number;
   keyword?: string;
   isActive?: boolean;
   isTestAccount?: boolean;

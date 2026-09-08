@@ -63,7 +63,7 @@ describe("analytics ranking OpenAPI", () => {
       maximum: MAX_ANALYTICS_RANKING_PAGE,
       default: 1
     });
-    expect(parameters.pageSize.schema).toMatchObject({ maximum: 10, default: 10 });
+    expect(parameters.pageSize.schema).toMatchObject({ maximum: 100, default: 10 });
     expect(path.get.description).toContain("custom requires both from and to");
     expect(path.get.description).toContain("non-custom periods reject from and to");
     expect(path.get.description).toContain("to must be on or after from");
@@ -83,6 +83,9 @@ describe("analytics ranking OpenAPI", () => {
       "categoryId",
       "gmvJpy",
       "completedCount",
+      "testGmvJpy",
+      "testCompletedCount",
+      "dataComposition",
       "registeredAt"
     ]);
     expect(schemas.AnalyticsRankingItem.properties.entityType.enum).toEqual([
@@ -90,6 +93,19 @@ describe("analytics ranking OpenAPI", () => {
       "technician_service",
       "technician",
       "customer"
+    ]);
+    expect(schemas.AnalyticsRankingItem.properties.testGmvJpy).toEqual({
+      type: "integer",
+      minimum: 0
+    });
+    expect(schemas.AnalyticsRankingItem.properties.testCompletedCount).toEqual({
+      type: "integer",
+      minimum: 0
+    });
+    expect(schemas.AnalyticsRankingItem.properties.dataComposition.enum).toEqual([
+      "formal",
+      "test",
+      "mixed"
     ]);
     expect(schemas.AnalyticsRankingItem.properties).not.toHaveProperty("checkoutId");
     expect(path.get.description).toContain("global one-based rank");

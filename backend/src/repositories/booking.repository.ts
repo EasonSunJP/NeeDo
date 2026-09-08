@@ -1,3 +1,5 @@
+import { recordBookingWorkTransition } from '../domain/work-status-booking';
+import { WorkStatusSession } from './work-status.repository';
 import {
   BookingOrderStatus as DatabaseBookingOrderStatus,
   OrderPerformanceOutcome,
@@ -10,13 +12,16 @@ import {
 } from "@prisma/client";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env";
+import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
+import { AppError } from "../utils/app-error";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import type { JapaneseRouteAddress } from "../services/route-distance.provider";
 import {
   hashRouteAddress,
-  normalizeJapaneseRouteAddress
+  normalizeJapaneseRouteAddress,
+  shopAddressToJapaneseRouteAddress
 } from "../services/route-estimate.service";
 import type { AuditLogCreateInput } from "./audit-log.repository";
 import { toAuditLogCreateData } from "./audit-log.repository";
@@ -38,6 +43,12 @@ import {
   classifyAdverseOutcomeInTransaction,
   recalculateTechnicianSummaryInTransaction
 } from "./order-performance.repository";
+import {
+  AdministrativeRegionRepository,
+  type AdministrativeRegionRepositoryPort,
+  type VerifiedAdministrativeRegionScope
+} from "./administrative-region.repository";
+import type { LiveDashboardScope } from "../domain/live-dashboard";
 
 const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
@@ -99,6 +110,14 @@ export type BookingOrderStatusPayload =
 export type BookingOrderTypePayload = "booking" | "request";
 export type ScheduleSlotStatusPayload = "available" | "booked" | "blocked";
 export type BookingFulfillmentMode = "home" | "store";
+export type BookingServiceLocationInput =
+  | { source: "SHOP_LOCATION" }
+  | {
+      source: "CUSTOMER_SERVICE_LOCATION";
+      countryCode: "JP";
+      admin1Code: string;
+      admin2Code: string;
+    };
 export type LegacyServicePaymentMethodPayload = "onsite" | "bank_transfer";
 export type ServicePaymentMethodPayload =
   | LegacyServicePaymentMethodPayload
@@ -209,6 +228,7 @@ export interface BookingCreateRepositoryInput {
   technicianServiceId?: number;
   scheduleSlotId: number;
   fulfillmentMode: BookingFulfillmentMode;
+  serviceLocation: BookingServiceLocationInput;
   paymentMethod?: LegacyServicePaymentMethodPayload;
   note?: string | null;
   fulfillmentAddress?: JapaneseRouteAddress;
@@ -302,6 +322,7 @@ export type RefundManualPaymentRepositoryInput = ManualPaymentScope & {
 };
 
 export interface OrderListInput extends PaginationInput {
+  dateMode?: "startsWithin" | "overlaps";
   customerUserId?: number;
   shopId?: number;
   technicianProfileId?: number;
@@ -709,6 +730,29 @@ export type FulfillmentAddressSnapshot = {
   line3: string | null;
 };
 
+export const fulfillmentAddressSnapshotFromRouteAddress = (
+  address: JapaneseRouteAddress
+): FulfillmentAddressSnapshot => {
+  const normalized = normalizeJapaneseRouteAddress(address);
+  const postalCode =
+    normalized.postalCode.length === 7
+      ? `${normalized.postalCode.slice(0, 3)}-${normalized.postalCode.slice(3)}`
+      : normalized.postalCode;
+  return {
+    line1: `${postalCode ? `〒${postalCode} ` : ""}${normalized.prefecture}${normalized.city}${normalized.addressLine1}`,
+    line2: normalized.addressLine2 ?? null,
+    line3: normalized.building ?? null
+  };
+};
+export interface LiveDashboardOrderEventProjection {
+  orderId: number;
+  scope: LiveDashboardScope;
+  orderNo: string;
+  status: BookingOrderStatusPayload;
+  serviceName: string;
+  amountJpy: number;
+}
+
 export interface FulfillmentRequestContext {
   ip: string;
   userAgent?: string | null;
@@ -801,6 +845,7 @@ export interface BookingRepositoryPort {
     body: string;
     orderId: number;
   }) => Promise<BookingOrderPayload | null>;
+  findLiveDashboardOrderEvents?: (ids: number[]) => Promise<LiveDashboardOrderEventProjection[]>;
   getServiceVerificationCode: (orderId: number) => Promise<string>;
   startService: (input: StartServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
   createOrderAddOn: (input: CreateOrderAddOnRepositoryInput) => Promise<FulfillmentMutationResult>;
@@ -852,7 +897,13 @@ type SlotRecord = Prisma.ScheduleSlotGetPayload<{
   include: {
     service: true;
     technicianService: true;
-    shop: true;
+    shop: {
+      include: {
+        serviceLocation: {
+          include: { admin1Region: true; admin2Region: true };
+        };
+      };
+    };
     technicianProfile: true;
   };
 }>;
@@ -946,7 +997,68 @@ const ACTIVE_ORDER_DB_STATUSES = ["PENDING", "CONFIRMED", "IN_SERVICE"] as const
 const HARD_LOCK_ORDER_DB_STATUSES = ["CONFIRMED", "IN_SERVICE"] as const;
 
 export class BookingRepository implements BookingRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  private readonly administrativeRegionRepository: AdministrativeRegionRepositoryPort;
+
+  public constructor(
+    private readonly client: PrismaClient = prisma,
+    administrativeRegionRepository?: AdministrativeRegionRepositoryPort
+  ) {
+    this.administrativeRegionRepository =
+      administrativeRegionRepository ?? new AdministrativeRegionRepository(client);
+  }
+
+  public async findLiveDashboardOrderEvents(
+    ids: number[]
+  ): Promise<LiveDashboardOrderEventProjection[]> {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return [];
+    const orders = await this.client.bookingOrder.findMany({
+      where: { id: { in: uniqueIds }, deletedAt: null },
+      select: {
+        id: true,
+        orderNo: true,
+        status: true,
+        serviceNameSnapshot: true,
+        priceAmount: true,
+        service: { select: { name: true } },
+        technicianService: { select: { name: true } },
+        serviceLocation: {
+          select: {
+            countryCode: true,
+            admin1RegionCode: true,
+            admin2RegionCode: true,
+            resolutionStatus: true,
+            deletedAt: true
+          }
+        }
+      }
+    });
+    const byId = new Map(orders.map((order) => [order.id, order]));
+    return uniqueIds.flatMap((id) => {
+      const order = byId.get(id);
+      const location = order?.serviceLocation;
+      if (!order || (location && (location.deletedAt || location.countryCode !== "JP"))) return [];
+      const verified = location?.resolutionStatus === "VERIFIED";
+      return [
+        {
+          orderId: order.id,
+          scope: {
+            countryCode: "JP" as const,
+            admin1Code: verified ? location!.admin1RegionCode : null,
+            admin2Code: verified ? location!.admin2RegionCode : null
+          },
+          orderNo: order.orderNo,
+          status: bookingOrderStatusFromDb(order.status),
+          serviceName:
+            order.serviceNameSnapshot ??
+            order.service?.name ??
+            order.technicianService?.name ??
+            "-",
+          amountJpy: Number(this.formatDecimal(order.priceAmount, 0))
+        }
+      ];
+    });
+  }
 
   public async listAvailableSlots(
     input: AvailabilityListInput
@@ -1491,11 +1603,25 @@ export class BookingRepository implements BookingRepositoryPort {
               throw new BookingIntelligenceAbort("service_mismatch");
             }
 
+            const serviceLocation = await this.resolveBookingServiceLocation(tx, slot, input);
             let travelEstimate: BookingTravelEstimateRecord | null = null;
+            let normalizedFulfillmentAddress: JapaneseRouteAddress | null = null;
             if (input.fulfillmentMode === "home") {
               if (!input.travelEstimatePublicId || !input.fulfillmentAddress) {
                 throw new BookingTravelEstimateAbort("invalid");
               }
+              normalizedFulfillmentAddress = normalizeJapaneseRouteAddress(input.fulfillmentAddress);
+              const canonicalAddress = normalizeJapaneseRouteAddress({
+                ...normalizedFulfillmentAddress,
+                prefecture: serviceLocation.admin1NameJa,
+                city: serviceLocation.admin2NameJa
+              });
+              if (normalizedFulfillmentAddress.prefecture !== canonicalAddress.prefecture ||
+                  normalizedFulfillmentAddress.city !== canonicalAddress.city) {
+                throw new AppError({ code: ERROR_CODES.VALIDATION, statusCode: 400,
+                  message: "error.administrative_region.address_mismatch" });
+              }
+              normalizedFulfillmentAddress = canonicalAddress;
               await tx.$queryRaw`
                 SELECT id FROM route_estimates
                 WHERE public_id = ${input.travelEstimatePublicId} AND deleted_at IS NULL
@@ -1530,9 +1656,17 @@ export class BookingRepository implements BookingRepositoryPort {
                 travelEstimate.customerUserId !== input.customerUserId ||
                 travelEstimate.shopId !== slot.shopId ||
                 travelEstimate.serviceId !== serviceId ||
+                travelEstimate.scheduleSlotId !== slot.id ||
                 travelEstimate.policyVersionId !== currentPolicy?.id ||
+                travelEstimate.originAddressHash !==
+                  hashRouteAddress(
+                    shopAddressToJapaneseRouteAddress({
+                      city: slot.shop.city,
+                      address: slot.shop.address
+                    })
+                  ) ||
                 travelEstimate.destinationAddressHash !==
-                  hashRouteAddress(normalizeJapaneseRouteAddress(input.fulfillmentAddress))
+                  hashRouteAddress(normalizedFulfillmentAddress)
               ) {
                 throw new BookingTravelEstimateAbort("mismatch");
               }
@@ -1680,6 +1814,14 @@ export class BookingRepository implements BookingRepositoryPort {
                       }
                     }
                   : serviceSource.snapshot,
+                ...(normalizedFulfillmentAddress
+                  ? {
+                      fulfillmentAddressSnapshot:
+                        fulfillmentAddressSnapshotFromRouteAddress(
+                          normalizedFulfillmentAddress
+                        ) as unknown as Prisma.InputJsonValue
+                    }
+                  : {}),
                 startsAt: slot.startsAt,
                 endsAt: slot.endsAt,
                 paymentMethod: servicePaymentMethodToDb(input.paymentMethod ?? "onsite"),
@@ -1713,7 +1855,7 @@ export class BookingRepository implements BookingRepositoryPort {
               });
             }
 
-            if (travelEstimate && input.fulfillmentAddress) {
+            if (travelEstimate && normalizedFulfillmentAddress) {
               const consumedAt = new Date();
               const consumed = await tx.routeEstimate.updateMany({
                 where: {
@@ -1740,15 +1882,28 @@ export class BookingRepository implements BookingRepositoryPort {
                   providerRequestId: travelEstimate.providerRequestId,
                   originAddressHash: travelEstimate.originAddressHash,
                   destinationAddressHash: travelEstimate.destinationAddressHash,
-                  fulfillmentAddressJson: normalizeJapaneseRouteAddress(
-                    input.fulfillmentAddress
-                  ) as unknown as Prisma.InputJsonValue,
+                  fulfillmentAddressJson:
+                    normalizedFulfillmentAddress as unknown as Prisma.InputJsonValue,
                   distanceMeters: travelEstimate.distanceMeters,
                   durationSeconds: travelEstimate.durationSeconds,
                   fareAmountJpy: travelEstimate.fareAmountJpy
                 }
               });
             }
+            await tx.bookingServiceLocation.create({
+              data: {
+                bookingOrderId: order.id,
+                countryCode: serviceLocation.countryCode,
+                admin1RegionCode: serviceLocation.admin1Code,
+                admin1Name: serviceLocation.admin1NameJa,
+                admin2RegionCode: serviceLocation.admin2Code,
+                admin2Name: serviceLocation.admin2NameJa,
+                source: input.serviceLocation.source,
+                resolutionStatus: "VERIFIED",
+                datasetVersion: serviceLocation.datasetVersion,
+                resolvedAt: new Date()
+              }
+            });
 
             if (supersededOrderIds.length > 0) {
               await tx.orderStatusHistory.createMany({
@@ -2178,7 +2333,9 @@ export class BookingRepository implements BookingRepositoryPort {
       ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {}),
       ...(input.status ? { status: bookingOrderStatusToDb(input.status) } : {}),
-      ...(input.from && input.to ? { startsAt: { gte: input.from, lt: input.to } } : {})
+      ...(input.from && input.to ? input.dateMode === "overlaps"
+        ? { startsAt: { lt: input.to }, endsAt: { gt: input.from } }
+        : { startsAt: { gte: input.from, lt: input.to } } : {})
     };
     const [list, total] = await Promise.all([
       this.client.bookingOrder.findMany({
@@ -2378,6 +2535,7 @@ export class BookingRepository implements BookingRepositoryPort {
         data: { status: DatabaseBookingOrderStatus.IN_SERVICE, updatedAt: now }
       });
       if (updated.count !== 1) throw new FulfillmentTransactionAbort();
+      await recordBookingWorkTransition(new WorkStatusSession(tx), {technicianProfileId:current.technicianProfileId,orderId:current.id,shopId:current.shopId,actorId:input.actorUserId,at:now,started:true});
       await tx.orderStatusHistory.create({
         data: {
           bookingOrderId: current.id,
@@ -2638,6 +2796,7 @@ export class BookingRepository implements BookingRepositoryPort {
         data: { status: DatabaseBookingOrderStatus.AWAITING_CHECKOUT, updatedAt: now }
       });
       if (updated.count !== 1) throw new FulfillmentTransactionAbort();
+      await recordBookingWorkTransition(new WorkStatusSession(tx), {technicianProfileId:current.technicianProfileId,orderId:current.id,shopId:current.shopId,actorId:input.actorUserId,at:now,started:false});
       await tx.orderStatusHistory.create({
         data: {
           bookingOrderId: current.id,
@@ -3577,8 +3736,7 @@ export class BookingRepository implements BookingRepositoryPort {
       }
 
       const mayRefund =
-        (current.paymentStatus === "REFUND_PENDING" && current.status === "CANCELLED") ||
-        (current.paymentStatus === "CONFIRMED" && current.status === "COMPLETED");
+        current.paymentStatus === "REFUND_PENDING" && current.status === "CANCELLED";
 
       if (!mayRefund) {
         return { outcome: "invalid_state" };
@@ -3941,9 +4099,82 @@ export class BookingRepository implements BookingRepositoryPort {
     return {
       service: true,
       technicianService: true,
-      shop: true,
+      shop: {
+        include: {
+          serviceLocation: {
+            include: { admin1Region: true, admin2Region: true }
+          }
+        }
+      },
       technicianProfile: true
     };
+  }
+
+  private async resolveBookingServiceLocation(
+    transaction: Prisma.TransactionClient,
+    slot: SlotRecord,
+    input: BookingCreateRepositoryInput
+  ): Promise<VerifiedAdministrativeRegionScope> {
+    if (input.fulfillmentMode === "home") {
+      if (input.serviceLocation.source !== "CUSTOMER_SERVICE_LOCATION") {
+        throw this.serviceLocationUnresolvedError();
+      }
+      return this.administrativeRegionRepository.resolveVerifiedScope(
+        {
+          countryCode: input.serviceLocation.countryCode,
+          admin1Code: input.serviceLocation.admin1Code,
+          admin2Code: input.serviceLocation.admin2Code
+        },
+        transaction
+      );
+    }
+
+    const assignment = slot.shop.serviceLocation;
+    if (
+      input.serviceLocation.source !== "SHOP_LOCATION" ||
+      !assignment ||
+      assignment.deletedAt !== null ||
+      assignment.countryCode !== "JP"
+    ) {
+      throw this.serviceLocationUnresolvedError();
+    }
+    let resolved: VerifiedAdministrativeRegionScope;
+    try {
+      resolved = await this.administrativeRegionRepository.resolveVerifiedScope(
+        {
+          countryCode: "JP",
+          admin1Code: assignment.admin1Region.officialCode,
+          admin2Code: assignment.admin2Region.officialCode
+        },
+        transaction
+      );
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        error.code === ERROR_CODES.VALIDATION &&
+        error.statusCode === 400 &&
+        error.message === "error.administrative_region.invalid_hierarchy"
+      ) {
+        throw this.serviceLocationUnresolvedError();
+      }
+      throw error;
+    }
+    if (
+      resolved.admin1RegionId !== assignment.admin1RegionId ||
+      resolved.admin2RegionId !== assignment.admin2RegionId ||
+      resolved.datasetVersion !== assignment.datasetVersion
+    ) {
+      throw this.serviceLocationUnresolvedError();
+    }
+    return resolved;
+  }
+
+  private serviceLocationUnresolvedError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
+      message: "error.booking.service_location_unresolved",
+      statusCode: 409
+    });
   }
 
   private async runFulfillmentTransaction(

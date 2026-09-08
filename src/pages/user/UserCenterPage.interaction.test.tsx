@@ -211,6 +211,8 @@ describe("UserCenterPage inline profile editing", () => {
       theme: {
         detailAccentColor: "#A8FF2F",
         detailSurfaceColor: "#10212A",
+        detailSurfaceMiddleColor: "#183A32",
+        detailSurfaceBottomColor: "#24314B",
         detailItemSurfaceColor: "#0A151C",
         detailOuterBorderColor: "#5B7D3A",
         detailItemBorderColor: "#263E48",
@@ -335,6 +337,24 @@ describe("UserCenterPage inline profile editing", () => {
     expect(nickname?.className).toContain("[field-sizing:content]");
   });
 
+  it("renders empty formal languages and biography honestly without inventing profile data", async () => {
+    testState.getMine.mockResolvedValueOnce({
+      ...savedProfile,
+      bio: null,
+      languages: []
+    });
+
+    await renderUserCenter();
+
+    expect(container.textContent).not.toContain("可在这里补充你的语言偏好");
+    expect(container.textContent).not.toContain("日本語");
+    expect(container.textContent?.match(/未设置/g)?.length).toBeGreaterThanOrEqual(2);
+
+    await click(findIconButton("编辑资料"));
+    expect(container.querySelector<HTMLTextAreaElement>('textarea[data-profile-field="bio"]')?.value).toBe("");
+    expect(findButton("日本語").className).not.toContain("client-primary-soft");
+  });
+
   it("places the edit-state privacy control after the basic-information labels", async () => {
     await renderUserCenter();
     await click(findIconButton("编辑资料"));
@@ -450,6 +470,22 @@ describe("UserCenterPage inline profile editing", () => {
     await renderUserCenter();
 
     await click(findIconButton("编辑资料"));
+    await click(findButton("保存并退出编辑模式"));
+
+    await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));
+  });
+
+  it("refreshes the authoritative account session when only the display name changes", async () => {
+    testState.updateMine.mockResolvedValue({
+      ...savedProfile,
+      displayName: "服务端新姓名"
+    });
+    await renderUserCenter();
+
+    await click(findIconButton("编辑资料"));
+    const nickname = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]');
+    expect(nickname).not.toBeNull();
+    await inputValue(nickname!, "服务端新姓名");
     await click(findButton("保存并退出编辑模式"));
 
     await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));

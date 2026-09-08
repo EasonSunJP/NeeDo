@@ -44,7 +44,6 @@ const reviewRecord = {
     accountHolderMasked: "カ•••••••••ド",
     verificationSource: "corporate_registration",
     verificationStatus: "verified",
-    holderMatched: true,
     verifiedAt: new Date("2026-08-15T02:00:00.000Z")
   },
   eKycVerified: false,
@@ -158,9 +157,9 @@ describe("operations merchant application HTTP API", () => {
         expect(response.body.data).toMatchObject({ total: 1, page: 1, page_size: 20 });
         expect(response.body.data.list[0].bankAccount).toMatchObject({
           accountNumberMasked: "•••4567",
-          accountHolderMasked: "カ•••••••••ド",
-          holderMatched: true
+          accountHolderMasked: "カ•••••••••ド"
         });
+        expect(response.body.data.list[0].bankAccount).not.toHaveProperty("holderMatched");
         expect(JSON.stringify(response.body)).not.toContain("1234567");
       });
     expect(fixture.merchantApplicationReviewService.list).toHaveBeenCalledWith(

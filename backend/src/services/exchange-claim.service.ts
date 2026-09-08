@@ -25,8 +25,13 @@ import type {
 } from "../validators/exchange-claim.validators";
 import { exchangeIdempotencyKeySchema } from "../validators/exchange.validators";
 import { requireMerchantShopId } from "./merchant-shop-scope";
+import {
+  ExchangeQuickMatchingService,
+  type ExchangeQuickMatchingRepositoryPort,
+  type ExchangeQuickMatchingServicePort
+} from "./exchange-quick-matching.service";
 
-export interface ExchangeClaimRepositoryPort {
+export interface ExchangeClaimRepositoryPort extends ExchangeQuickMatchingRepositoryPort {
   runInTransaction<T>(handler: (repository: ExchangeClaimRepositoryPort) => Promise<T>): Promise<T>;
   listOptions(input: ExchangeClaimOptionListInput): Promise<ExchangeClaimOptionPage>;
   findRequest(postId: number): Promise<ExchangeClaimRequestRecord | null>;
@@ -39,6 +44,8 @@ export interface ExchangeClaimRepositoryPort {
     id: number;
     status: "open" | "matched" | "closed";
     version: number;
+    effectiveTargetProviderCount: number;
+    effectiveBudgetMaxJpy: number;
   } | null>;
   advanceMatchingForClaimEvent(input: {
     matchingId: number;
@@ -119,7 +126,9 @@ export class ExchangeClaimService {
   public constructor(
     private readonly repository: ExchangeClaimRepositoryPort,
     private readonly actorResolver: ExchangeClaimActorResolverPort,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly quickMatchingService: ExchangeQuickMatchingServicePort =
+      new ExchangeQuickMatchingService(now)
   ) {}
 
   public async listOptions(
@@ -250,6 +259,25 @@ export class ExchangeClaimService {
             quoteAmountJpy: input.quoteAmountJpy
           })
         );
+        if (request!.demand.matchMode === "quick") {
+          const result = await this.quickMatchingService.attemptAfterClaim(repository, {
+            exchangePostId: postId,
+            ownerUserId: request!.authorUserId,
+            ownerIdentityId: request!.ownerIdentityId,
+            matching: {
+              id: matching.id,
+              version: matching.version + 1,
+              effectiveTargetProviderCount: matching.effectiveTargetProviderCount,
+              effectiveBudgetMaxJpy: matching.effectiveBudgetMaxJpy
+            },
+            triggeringClaimId: created.id
+          });
+          if (result.kind === "matched") {
+            const refreshed = await repository.findMineById(created.id, actor.identityId);
+            if (!refreshed) throw this.invalidState();
+            return refreshed;
+          }
+        }
         return created;
       });
     } catch (error) {
@@ -425,7 +453,6 @@ export class ExchangeClaimService {
     if (request.authorUserId === actor.userId || request.ownerIdentityId === actor.identityId) {
       throw this.notAllowed();
     }
-    if (request.demand.matchMode !== "selective") throw this.selectiveOnly();
     if (request.status !== "published" || request.expiresAt <= at) {
       throw this.invalidState();
     }
@@ -507,14 +534,6 @@ export class ExchangeClaimService {
       code: ERROR_CODES.EXCHANGE_CLAIM_NOT_FOUND,
       message: "error.exchange.claim_not_found",
       statusCode: 404
-    });
-  }
-
-  private selectiveOnly(): AppError {
-    return new AppError({
-      code: ERROR_CODES.EXCHANGE_CLAIM_SELECTIVE_ONLY,
-      message: "error.exchange.claim_selective_only",
-      statusCode: 409
     });
   }
 

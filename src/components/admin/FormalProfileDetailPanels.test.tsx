@@ -203,25 +203,25 @@ function assertExactTabRelationships(markup: string, expectedCount: number) {
 }
 
 describe("formal profile tab accessibility", () => {
-  it("renders seven technician tabs and one existing labelled panel for every aria-controls", () => {
+  it("renders eight technician tabs and one existing labelled panel for every aria-controls", () => {
     const markup = renderToStaticMarkup(<FormalTechnicianDetailPanel detail={technicianDetail} />);
 
     for (const label of ["基础资料", "状态与数据", "技能与服务", "排班偏好", "薪酬设置", "权限与账号", "时间线"]) {
       expect(markup).toContain(`>${label}</button>`);
     }
-    expect(markup.match(/role="tab"/g)).toHaveLength(7);
+    expect(markup.match(/role="tab"/g)).toHaveLength(8);
     expect(markup).toContain('role="tablist"');
     expect(markup).toContain("overflow-x-auto");
-    assertExactTabRelationships(markup, 7);
+    assertExactTabRelationships(markup, 8);
   });
 
-  it("renders five user tabs and exact tab-to-panel relationships", () => {
+  it("renders seven user tabs including reviews and exact tab-to-panel relationships", () => {
     const markup = renderToStaticMarkup(<FormalCustomerDetailPanel detail={customerDetail} />);
 
-    for (const label of ["基础资料", "会员等级", "预约与消费", "权限与账号", "用户动态"]) {
+    for (const label of ["基础资料", "会员等级", "预约与消费", "评价", "权限与账号", "用户LOG"]) {
       expect(markup).toContain(`>${label}</button>`);
     }
-    assertExactTabRelationships(markup, 5);
+    assertExactTabRelationships(markup, 7);
   });
 
   it("renders membership provenance and the operations editor only when supplied", () => {
@@ -247,7 +247,7 @@ describe("formal profile tab accessibility", () => {
     const markup = renderToStaticMarkup(
       <FormalCustomerDetailPanel
         detail={customerDetail}
-        initialTab="用户动态"
+        initialTab="用户LOG"
         timeline={{
           list: [{
             id: "audit-membership",
@@ -280,7 +280,7 @@ describe("formal profile tab accessibility", () => {
     const markup = renderToStaticMarkup(
       <FormalCustomerDetailPanel
         detail={customerDetail}
-        initialTab="用户动态"
+        initialTab="用户LOG"
         timeline={{
           list: [{
             id: "audit-created",
@@ -343,7 +343,7 @@ describe("formal profile tab accessibility", () => {
 
     expect(classTokens(activePanel)).toContain("grid");
     expect(classTokens(activePanel)).not.toContain("hidden");
-    expect(inactivePanels).toHaveLength(6);
+    expect(inactivePanels).toHaveLength(7);
     for (const panel of inactivePanels) {
       expect(classTokens(panel)).toContain("hidden");
       expect(classTokens(panel)).not.toContain("grid");
@@ -384,7 +384,7 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
 
     for (const content of [
       "身份与基础资料", "业务状态与正式指标", "正式启用服务", "近期正式排班",
-      "薪酬设置", "账号状态", "角色", "身份", "正式审计时间线",
+      "薪酬设置", "账号状态", "角色", "身份", "动态",
       "訪問ケア 60分", "¥186,000", "¥12,000", "停用账号"
     ]) {
       expect(markup).toContain(content);
@@ -411,12 +411,12 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
     }
   });
 
-  it("always shows all three unavailable metrics even when the API hint array is empty", () => {
+  it("keeps remaining unavailable metrics and replaces lateness with formal monthly metrics", () => {
     const markup = renderToStaticMarkup(
       <FormalTechnicianDetailPanel detail={{ ...technicianDetail, unavailableMetrics: [] }} />
     );
 
-    for (const label of ["接单率", "迟到情况", "排班偏好"]) {
+    for (const label of ["接单率", "排班偏好"]) {
       expect(markup).toMatch(new RegExp(`${label}[\\s\\S]*?尚未接入正式数据`));
     }
   });
@@ -446,36 +446,14 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
     expect(markup).toContain('data-tone="neutral">future_status');
   });
 
-  it("renders structured formal audit metadata and uses unavailable detail without invented prose", () => {
-    const markup = renderToStaticMarkup(<FormalTechnicianDetailPanel detail={technicianDetail} />);
-
-    for (const formalValue of ["更新了技师档案", "资料复核", "city", "bio", "formal-backoffice", "2", "保留原始正式动作"]) {
-      expect(markup).toContain(formalValue);
-    }
-    expect(markup).toContain('data-tone="neutral"');
-    expect(markup).toMatch(/custom\.empty\.action[\s\S]*?尚未接入正式数据/);
-    expect(markup).not.toContain("记录了 custom.empty.action");
-    expect(source).toContain("preserveAtLabel: true");
-  });
-
-  it("normalizes recursively empty structured metadata to the localized unavailable state", () => {
-    const markup = renderToStaticMarkup(
-      <FormalTechnicianDetailPanel detail={{
-        ...technicianDetail,
-        timeline: [{
-          id: "audit-empty-values",
-          action: "custom.empty.values",
-          actorName: "审计服务",
-          actorAvatarUrl: null,
-          createdAt: "2026-08-24T10:00:00.000Z",
-          metadata: { reason: "  ", changedFields: [], source: {} }
-        }]
-      }} />
-    );
-
-    for (const label of ["原因", "变更字段", "来源"]) {
-      expect(markup).toMatch(new RegExp(`${label}[\\s\\S]*?尚未接入正式数据`));
-    }
+  it("replaces technical inspection logs with the formal business timeline", () => {
+    const markup = renderToStaticMarkup(<FormalTechnicianDetailPanel detail={technicianDetail} initialTab="时间线" />);
+    expect(markup).toContain("正在读取用户LOG...");
+    expect(markup).not.toContain("工作时间线");
+    expect(markup).not.toContain("利用详细列表");
+    expect(markup).not.toContain("custom.empty.action");
+    expect(markup).not.toContain("formal-backoffice");
+    expect(markup).toContain("work-status-month-metrics");
   });
 
   it("uses a neutral missing-avatar placeholder instead of deriving a fake identity", () => {
@@ -502,7 +480,7 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
       }} />
     );
 
-    for (const emptyLabel of ["尚未接入正式数据", "当前没有近期正式排班", "当前没有正式角色记录", "当前没有正式身份记录", "暂无正式审计记录"]) {
+    for (const emptyLabel of ["尚未接入正式数据", "当前没有近期正式排班", "当前没有正式角色记录", "当前没有正式身份记录", "正在同步…"]) {
       expect(markup).toContain(emptyLabel);
     }
   });
@@ -550,7 +528,7 @@ describe("FormalCustomerDetailPanel formal-data boundaries", () => {
       />
     );
 
-    for (const content of ["基础资料", "会员等级", "预约与消费汇总", "下次预约", "近期预约", "账号状态", "用户动态", "¥48,000", "管理账号", "NeeDoID u0000002044"]) {
+    for (const content of ["基础资料", "会员等级", "预约与消费汇总", "下次预约", "近期预约", "账号状态", "用户LOG", "¥48,000", "管理账号", "NeeDoID u0000002044"]) {
       expect(markup).toContain(content);
     }
     expect(markup).not.toContain("用户档案 #");
@@ -612,7 +590,7 @@ describe("FormalCustomerDetailPanel formal-data boundaries", () => {
       expect(inactivePrivateMarkup).toContain(value);
     }
     expect(technicianMarkup).toContain('alt="佐藤 美香 头像"');
-    expect(technicianMarkup).toContain("已批准");
+    expect(technicianMarkup).toContain("已验证");
   });
 });
 
@@ -622,7 +600,7 @@ describe("formal profile localization and dependency boundary", () => {
     expect(translateText("预约与消费", "en")).toBe("Bookings & Spend");
     expect(translateText("权限与账号", "ko")).toBe("권한 및 계정");
     expect(translateText("迟到情况", "zh-Hant")).toBe("遲到情況");
-    expect(translateText("用户动态", "ja")).toBe("ユーザーアクティビティ");
+    expect(translateText("用户LOG", "ja")).toBe("ユーザーLOG");
     expect(translateText("运营免费赋予", "en")).toBe("Complimentary operations grant");
     expect(translateText("永久免费", "ko")).toBe("영구 무료");
     expect(translateText("用户身份", "ja")).toBe("ユーザー ID");

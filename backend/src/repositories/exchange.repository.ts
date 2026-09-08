@@ -297,11 +297,21 @@ const postInclude = (viewerIdentityId: number) =>
       select: { id: true },
       take: 1
     },
+    matching: {
+      select: {
+        status: true,
+        effectiveTargetProviderCount: true,
+        deletedAt: true
+      }
+    },
     _count: {
       select: {
         comments: { where: { deletedAt: null } },
         likes: { where: { deletedAt: null } },
-        shares: { where: { deletedAt: null } }
+        shares: { where: { deletedAt: null } },
+        claims: {
+          where: { status: "ACTIVE", deletedAt: null }
+        }
       }
     }
   }) satisfies Prisma.ExchangePostInclude;
@@ -1692,6 +1702,15 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     const matchedParticipantView = row.matchParticipants.length > 0;
     const claimableByProviderUser =
       claimProviderUserId !== undefined && row.authorUserId !== claimProviderUserId;
+    const matchingOpen =
+      row.matching?.status === DatabaseExchangeMatchingStatus.OPEN &&
+      row.matching.deletedAt === null;
+    const activeClaimCount = row._count.claims ?? 0;
+    const matchingHasCapacity =
+      row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE ||
+      (row.demand?.matchMode === DatabaseExchangeMatchMode.QUICK &&
+        Boolean(row.matching) &&
+        activeClaimCount < row.matching!.effectiveTargetProviderCount);
     const intelligence = this.mapIntelligence(row, status, now);
 
     const demand = row.demand
@@ -1762,12 +1781,13 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           claimableByProviderUser &&
           status === "published" &&
           Boolean(row.demand) &&
-          row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE,
+          matchingOpen &&
+          matchingHasCapacity,
         canViewClaims:
           ownerView &&
           status !== "withdrawn" &&
           status !== "expired" &&
-          row.demand?.matchMode === DatabaseExchangeMatchMode.SELECTIVE,
+          Boolean(row.demand),
         canViewMatching: ownerView || matchedParticipantView
       },
       ...(priority ? { priority } : {}),

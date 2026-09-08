@@ -4,6 +4,7 @@ import draftsSource from "./SocialDraftsPage.tsx?raw";
 import source from "./SocialComposerPage.tsx?raw";
 import typesSource from "../types.ts?raw";
 import {
+  areSocialComposerMediaUploadsComplete,
   getSocialComposerErrorMessage,
   getSocialImageValidationError,
   isSocialComposerPublishReady
@@ -51,15 +52,39 @@ describe("SocialComposerPage formal contacts and image uploads", () => {
     expect(source).not.toContain("createMediaFromFile");
   });
 
-  it("blocks publishing until every selected image has a server asset reference", () => {
+  it("allows a new post to publish while selected images are still uploading", () => {
     expect(isSocialComposerPublishReady({ text: "发布", media: [uploadedImage] })).toBe(true);
     expect(
       isSocialComposerPublishReady({
         text: "发布",
         media: [{ ...uploadedImage, mediaAssetPublicId: undefined, url: "blob:preview" }]
       })
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      isSocialComposerPublishReady({
+        text: "",
+        media: [{ ...uploadedImage, mediaAssetPublicId: undefined, url: "blob:preview" }]
+      })
+    ).toBe(true);
     expect(isSocialComposerPublishReady({ text: "", media: [] })).toBe(false);
+  });
+
+  it("keeps formal media completion as a separate edit-save guard", () => {
+    expect(areSocialComposerMediaUploadsComplete([uploadedImage])).toBe(true);
+    expect(
+      areSocialComposerMediaUploadsComplete([
+        { ...uploadedImage, mediaAssetPublicId: undefined, url: "blob:preview" }
+      ])
+    ).toBe(false);
+  });
+
+  it("queues new-post creation behind existing upload tasks and leaves the composer immediately", () => {
+    expect(source).toContain("mediaUploadTaskByIdRef");
+    expect(source).toContain("resolveSocialComposerMediaUploads");
+    expect(source).toContain("emitShareFeedback");
+    expect(source).toContain("failedMediaUploadStateById");
+    expect(source).toMatch(/navigate\(socialPaths\.timeline\(scope\), \{ replace: true \}\);[\s\S]*?void publishNewPostInBackground\(\);/u);
+    expect(source).toContain("areSocialComposerMediaUploadsComplete(media)");
   });
 
   it("accepts only formal image types up to eight MiB", () => {

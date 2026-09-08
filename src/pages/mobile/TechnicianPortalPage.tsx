@@ -4,8 +4,8 @@ import { ApiClientError } from "../../api/httpClient";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
 import { AppIcon, FeatureSegmentedTabs, IconButton, PrimaryButton, StickyBottomBar } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
-import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
-import type { ContactEventTimelineEntry } from "../../components/mobile/ContactEventTimeline";
+import { WorkStatusControls } from "../../features/technician-work-status/WorkStatusControls";
+import { WorkTimeline } from "../../features/technician-work-status/WorkTimeline";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
@@ -162,7 +162,6 @@ function TechnicianPortalDataGate() {
 }
 
 function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
-  const navigate = useNavigate();
   const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
   const shopName = technician?.shop?.name ?? (profile.shopId ? "关联店铺" : "个人技师");
   const [orders, setOrders] = useState<BookingOrder[]>([]);
@@ -215,25 +214,6 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
   const nextSlot = slots
     .filter((slot) => slot.status !== "blocked")
     .sort((left, right) => left.startsAt.localeCompare(right.startsAt))[0] ?? null;
-  const nowMs = Date.now();
-  const activeOrder = todayOrders.find((order) => order.status === "inService");
-  const insideConfirmedOrder = todayOrders.some((order) =>
-    order.status === "confirmed" && new Date(order.startsAt).getTime() <= nowMs && nowMs < new Date(order.endsAt).getTime()
-  );
-  const insideAvailableSlot = slots.some((slot) =>
-    slot.status === "available" && new Date(slot.startsAt).getTime() <= nowMs && nowMs < new Date(slot.endsAt).getTime()
-  );
-  const hasRemainingWork = todayOrders.some((order) => order.status !== "cancelled" && new Date(order.endsAt).getTime() > nowMs)
-    || slots.some((slot) => slot.status !== "blocked" && new Date(slot.endsAt).getTime() > nowMs);
-  const currentStatus = activeOrder ? "服务中" : insideConfirmedOrder || insideAvailableSlot ? "出勤" : hasRemainingWork ? "休息" : "退勤";
-  const statusButtons = [
-    { label: "出勤", icon: "●", tone: "duty", caption: "已进入正式排班或可预约时段" },
-    { label: "移动中", icon: "↗", tone: "travel", caption: "移动状态需要正式位置状态接口" },
-    { label: "服务中", icon: "▶", tone: "service", caption: "存在进行中的正式订单" },
-    { label: "休息", icon: "☾", tone: "rest", caption: "当前没有进行中的正式服务" },
-    { label: "退勤", icon: "■", tone: "off", caption: "今天已没有后续正式安排" }
-  ] as const;
-  const currentStatusCaption = statusButtons.find((item) => item.label === currentStatus)?.caption ?? "按正式排班与订单自动同步";
   const dateTime = (value: string) => new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",
@@ -241,70 +221,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
     minute: "2-digit",
     hour12: false
   }).format(new Date(value));
-  const statusTimelineEntries = orders.flatMap((order) =>
-    order.statusHistory.map((history) => {
-      const role = history.toStatus === "pending"
-        ? "预约创建"
-        : history.toStatus === "confirmed"
-          ? "服务方接单"
-          : history.toStatus === "inService"
-            ? "开始服务"
-            : history.toStatus === "completed"
-              ? "结束服务"
-              : "取消 / 异常";
-      const reason = history.reason?.trim() ?? "";
-      const isProblem = history.toStatus === "cancelled" || /迟到|异常|失败|冲突|拒绝|取消/.test(reason);
-      const actorIsTechnician = history.actorUserId === profile.userId;
-      const createdAt = new Date(history.createdAt);
-      const atLabel = Number.isFinite(createdAt.getTime())
-        ? new Intl.DateTimeFormat("zh-CN", {
-            day: "numeric",
-            hour: "2-digit",
-            hour12: false,
-            minute: "2-digit",
-            month: "numeric",
-            second: "2-digit",
-            year: "numeric"
-          }).format(createdAt)
-        : history.createdAt;
-      const action = history.toStatus === "pending"
-        ? "已创建预约"
-        : history.toStatus === "confirmed"
-          ? "已确认接单"
-          : history.toStatus === "inService"
-            ? "已开始服务"
-            : history.toStatus === "completed"
-              ? "已结束服务"
-              : "预约已取消";
-
-      return {
-        entry: {
-          actorAvatarSrc: actorIsTechnician ? profile.avatarUrl ?? undefined : undefined,
-          actorName: actorIsTechnician ? profile.displayName : "系统",
-          actorRole: role,
-          atLabel,
-          id: `order-${order.id}-history-${history.id}`,
-          message: (
-            <>
-              {action}：订单
-              <Link
-                className="font-black text-[color:var(--client-primary)] underline decoration-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] decoration-2 underline-offset-2"
-                to={`/technician/orders/${order.id}`}
-              >
-                {order.orderNo}
-              </Link>
-              ，项目 {order.serviceName}，预约时间 {dateTime(order.startsAt)}{reason ? `，${reason}` : ""}。
-            </>
-          ),
-          preserveAtLabel: true,
-          title: role,
-          tone: isProblem ? "red" : "green"
-        } satisfies ContactEventTimelineEntry,
-        sortAt: Number.isFinite(createdAt.getTime()) ? createdAt.getTime() : 0
-      };
-    })
-  ).sort((left, right) => right.sortAt - left.sortAt).slice(0, 24).map(({ entry }) => entry);
-  const statusRecordTarget = nextOrder ?? orders[0] ?? null;
+  const [statusRevision, setStatusRevision] = useState(0);
 
   return (
     <>
@@ -358,46 +275,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
           </div>
         </section>
 
-        <section className={cn(surface.shell, "rounded-[28px] border p-4 shadow-[var(--client-shadow)]")} data-testid="technician-formal-status-sync">
-          <div className="flex items-center justify-between gap-3">
-            <TitleWithInfo
-              as="h2"
-              info="把当前出勤状态同步给门店与调度，首页会高亮当前已同步状态。"
-              label="状态同步 简介"
-              title="状态同步"
-              titleClassName="text-lg font-bold text-[color:var(--client-text)]"
-              variant="paper"
-            />
-            <Link className="inline-flex h-11 items-center gap-2 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-needo-text)]" to="/technician/schedule">
-              <AppIcon className="h-4 w-4" name="calendar" />排班
-            </Link>
-          </div>
-          <div className="mt-3 grid grid-cols-5 gap-2">
-            {statusButtons.map((item) => {
-              const active = item.label === currentStatus;
-              return (
-                <div
-                  aria-current={active ? "true" : undefined}
-                  className={cn(
-                    "technician-work-status-button flex min-h-[88px] min-w-0 flex-col items-center justify-center rounded-[20px] border px-1.5 py-3 text-center",
-                    `technician-work-status--${item.tone}`,
-                    active ? "technician-work-status-button--active" : "technician-work-status-button--idle"
-                  )}
-                  key={item.label}
-                >
-                  <span className="technician-work-status-icon inline-flex h-9 w-9 items-center justify-center rounded-[14px] text-base font-black">{item.icon}</span>
-                  <span className="mt-2 flex min-h-[28px] w-full items-center justify-center overflow-hidden">
-                    <strong className="w-full text-[12px] font-black leading-[14px] tracking-normal">{item.label}</strong>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <div className={cn(surface.panel, "mt-3 rounded-[20px] border px-4 py-3")}>
-            <p className={cn(surface.muted, "text-[11px] font-bold")}>当前已同步状态</p>
-            <p className="mt-1 text-sm font-black">{currentStatus}： <span className={cn(surface.muted, "text-xs")}>{currentStatusCaption}</span></p>
-          </div>
-        </section>
+        <WorkStatusControls serviceOrderId={(todayOrders.find(order => order.status === "inService") ?? todayOrders.find(order => order.status === "confirmed"))?.id} onChooseService={() => setTasksPanelTab("orders")} shopId={profile.shopId} onChanged={() => setStatusRevision(value => value + 1)} />
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -464,19 +342,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
           )}
         </section>
 
-        <ContactEventTimelinePanel
-          commentAuthorAvatarSrc={profile.avatarUrl ?? undefined}
-          commentAuthorName={profile.displayName}
-          commentAuthorRole="补充记录"
-          commentButtonLabel="补充记录"
-          commentPlaceholder="记录执行经过、异常原因或后续处理..."
-          emptyLabel="暂无执行 / 异常记录"
-          events={statusTimelineEntries}
-          layout="three-column"
-          onCommentButtonClick={statusRecordTarget ? () => navigate(`/technician/orders/${statusRecordTarget.id}`) : undefined}
-          showCommentComposer={Boolean(statusRecordTarget)}
-          title="状态记录"
-        />
+        <WorkTimeline target={{ scope: "technician" }} revision={statusRevision} />
       </div>
     </>
   );

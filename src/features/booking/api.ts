@@ -19,6 +19,7 @@ export type BookingOrderStatus =
 export type ManualPaymentMethod = "onsite" | "bank_transfer";
 export type ManualPaymentStatus = "pending" | "confirmed" | "refundPending" | "refunded";
 export type CheckoutPaymentMethod = "cash" | "ndp" | "other";
+export type AvailableCheckoutPaymentMethod = "cash" | "ndp";
 export type CheckoutPaymentEvidence =
   | "ndp_ledger"
   | "technician_receipt_confirmation"
@@ -54,9 +55,11 @@ export type OrderCheckout = {
   status: BookingOrderStatus;
   baseAmountJpy: number;
   addOnAmountJpy: number;
+  travelFareAmountJpy: number;
   discountAmountJpy: number;
   checkoutAmountJpy: number;
   payableNdp: number;
+  availablePaymentMethods: AvailableCheckoutPaymentMethod[];
   rate: {
     ruleId: number;
     publicId: string;
@@ -66,10 +69,11 @@ export type OrderCheckout = {
     effectiveFrom: string;
   };
   calculation: {
-    formula: "base_plus_accepted_add_ons_minus_discount";
+    formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount";
     baseAmountJpy: number;
     acceptedAddOnIds: number[];
     addOnAmountJpy: number;
+    travelFareAmountJpy: number;
     discountAmountJpy: number;
     checkoutAmountJpy: number;
     rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)";
@@ -101,7 +105,6 @@ export type EndServiceInput = BookingIdempotencyInput & { reason: string };
 export type SelectCheckoutPaymentMethodInput = BookingIdempotencyInput & (
   | { method: "cash"; otherMethodCode?: never; otherMethodLabel?: never }
   | { method: "ndp"; otherMethodCode?: never; otherMethodLabel?: never }
-  | { method: "other"; otherMethodCode: string; otherMethodLabel: string }
 );
 export type ConfirmCheckoutReceiptInput = BookingIdempotencyInput & { reason: string };
 export type OrderReviewTargetType = "customer" | "technician";
@@ -192,6 +195,20 @@ export type BookingScheduleSlot = {
   durationMinutes: number;
 };
 
+export type AdministrativeRegionReference = {
+  code: string;
+  name: string;
+  level: "country" | "admin1" | "admin2";
+  parentCode: string | null;
+  centroid: { lat: number; lng: number } | null;
+};
+
+export type AdministrativeRegionListInput = {
+  country: "JP";
+  locale?: "zh-CN" | "zh-TW" | "ja" | "en" | "ko";
+  parent?: string;
+};
+
 export type BookingOrder = {
   id: number;
   orderNo: string;
@@ -270,6 +287,7 @@ export type AvailabilityQuery = {
 };
 
 export type OrderListQuery = {
+  dateMode?: "startsWithin" | "overlaps";
   from?: string;
   page?: number;
   pageSize?: number;
@@ -306,14 +324,25 @@ export type UpdateManagedScheduleSlotInput = {
   status?: "available" | "blocked";
 };
 
-export type CreateBookingInput = {
+type CreateBookingBaseInput = {
   exchangeIntelligencePostId?: number;
-  fulfillmentMode: FulfillmentMode;
   note?: string;
   orderType?: "booking" | "request";
   paymentMethod?: ManualPaymentMethod;
   scheduleSlotId: number;
-} & ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
+} &
+  ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
+
+export type CreateBookingInput = CreateBookingBaseInput &
+  (
+    | { fulfillmentMode: "store"; serviceLocation?: never; fulfillmentAddress?: never; travelEstimatePublicId?: never }
+    | {
+        fulfillmentMode: "home";
+        fulfillmentAddress: import("../../api/travelFare").JapaneseRouteAddress;
+        travelEstimatePublicId: string;
+        serviceLocation: { countryCode: "JP"; admin1Code: string; admin2Code: string };
+      }
+  );
 
 export type TechnicianServiceBookingContext = {
   target: { type: "technician_service"; id: number };
@@ -388,6 +417,19 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
 }
 
 export const bookingApi = {
+  listAdministrativeRegions(input: AdministrativeRegionListInput) {
+    return httpClient.request<{ list: AdministrativeRegionReference[] }>(
+      "/reference/administrative-regions",
+      {
+        auth: false,
+        query: {
+          country: input.country,
+          locale: input.locale ?? "ja",
+          parent: input.parent
+        }
+      }
+    );
+  },
   listAvailability(query: AvailabilityQuery) {
     return httpClient.request<PaginatedBookingData<BookingScheduleSlot>>("/schedule/availability", {
       auth: false,
@@ -410,6 +452,7 @@ export const bookingApi = {
   listOrders(query: OrderListQuery = {}) {
     return httpClient.request<PaginatedBookingData<BookingOrder>>("/orders", {
       query: {
+        dateMode: query.dateMode,
         from: query.from,
         page: query.page,
         pageSize: query.pageSize,

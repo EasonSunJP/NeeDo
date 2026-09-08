@@ -14,6 +14,8 @@ describe("customer platform membership projection", () => {
         theme: {
           detailAccentColor: "#F4C967",
           detailSurfaceColor: "#302818",
+          detailSurfaceMiddleColor: "#253026",
+          detailSurfaceBottomColor: "#17243A",
           detailItemSurfaceColor: "#201A10",
           detailOuterBorderColor: "#A98645",
           detailItemBorderColor: "#66552F",

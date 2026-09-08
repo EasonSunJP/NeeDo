@@ -38,6 +38,7 @@ export const createAuthServiceForRoutes = (
     dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository(),
     dependencies.merchantShopAuditOutboxTrigger,
     createUserExperienceServiceForRoutes(dependencies),
-    policyEnforcement
+    policyEnforcement,
+    dependencies.platformAccessPolicyService
   );
 };

@@ -17,7 +17,8 @@ import {
   platformMembershipTierDraftBodySchema,
   platformMembershipTierParamSchema,
   platformMembershipTierPublishBodySchema,
-  platformMembershipUserParamSchema
+  platformMembershipUserParamSchema,
+  userMembershipAdjustmentBodySchema
 } from "../validators/platform-membership.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -114,6 +115,16 @@ export const createPlatformMembershipRoutes = (
       body: platformMembershipEntitlementCommandSchema
     }),
     controller.changeEntitlement
+  );
+  router.patch(
+    "/backoffice/users/:userId/membership-adjustment",
+    authenticate(),
+    createAuthorizeMiddleware(PLATFORM_MEMBERSHIP_ROUTE_PERMISSIONS.userMembershipWrite),
+    validateRequest({
+      params: platformMembershipUserParamSchema,
+      body: userMembershipAdjustmentBodySchema
+    }),
+    controller.adjustUserMembership
   );
 
   return router;

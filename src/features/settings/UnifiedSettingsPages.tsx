@@ -1,3 +1,4 @@
+import { getPortalEntryUrl } from "../../auth/portalEntry";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { authApi, type GoogleLinkStatus, type VerificationChallengePayload } from "../../api/auth";
@@ -56,8 +57,7 @@ import {
   type TechnicianPortalSettingsState,
   type UnifiedSettingsPortal
 } from "./portalSettingsState";
-import { getLegalPrivacyDocument, getLegalPrivacyUiCopy, type LegalPrivacyBlock } from "./legalPrivacyContent";
-import { getLegalTermsDocument, getLegalTermsUiCopy } from "./legalTermsContent";
+import { usePublicLegalDocument } from "../platform-settings/publicLegalDocuments";
 import { TestOnlyBackendPortalEntries } from "./TestOnlyBackendPortalEntries";
 import { buildIdentityRows, defaultIdentityAvailability, type IdentityKind } from "../identity-applications/model";
 import { AuthVerificationPanel, type AuthVerificationLabels } from "../../pages/auth/AuthVerificationPanel";
@@ -69,6 +69,8 @@ import {
   type TechnicianProfilePaymentMethod
 } from "../core-read/technicianProfileApi";
 import { useCustomerSelfProfile } from "../core-read/useCustomerSelfProfile";
+import { EkycProfileForm } from "./EkycProfileForm";
+import { ApplicationShell } from "../identity-applications/ApplicationUi";
 import { ImOpenedMediaCacheSettingsSection } from "./ImOpenedMediaCacheSettingsSection";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
@@ -506,6 +508,10 @@ function getVerificationTitle(portal: UnifiedSettingsPortal) {
 }
 
 function getVerificationStatusLabel(portal: UnifiedSettingsPortal) {
+  if (portal === "user") {
+    return "查看状态";
+  }
+
   if (portal === "business") {
     return "已认证";
   }
@@ -1852,7 +1858,11 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
             title={t(isBusinessPortal ? "退出账号" : "退出登录")}
             onClick={() => {
               void logout().then((result) => {
-                if (result.ok) navigate(getPortalEntry(portal), { replace: true });
+                if (result.ok) {
+                  window.location.replace(getPortalEntryUrl(portal, `/login/${portal}`));
+                  // A hash-only navigation keeps the previous portal mounted.
+                  window.location.reload();
+                }
               });
             }}
             value={t("退出")}
@@ -2016,7 +2026,7 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
                         : row.kind === "affiliate"
                           ? t("确认并开启")
                           : t("申请");
-            const disabled = row.action === "current" || row.action === "pending" || switchingPortal !== null;
+            const disabled = row.action === "current" || switchingPortal !== null;
 
             return (
               <SettingsPortalActionRow
@@ -2121,11 +2131,8 @@ function UserProfileSettingsPage({
       nickname: customer.nickname?.trim() || customer.name,
       age: customer.age ?? technician?.age ?? "",
       height: customer.height ?? technician?.height ?? "",
-      languages: customer.languages?.length ? [...customer.languages] : technician?.languages?.length ? [...technician.languages] : ["日本語"],
-      bio:
-        customer.bio ??
-        technician?.bio ??
-        "可在这里补充你的语言偏好、常用预约习惯和其他说明。"
+      languages: customer.languages?.length ? [...customer.languages] : technician?.languages?.length ? [...technician.languages] : [],
+      bio: customer.bio ?? technician?.bio ?? ""
     }),
     [customer, technician]
   );
@@ -2138,7 +2145,7 @@ function UserProfileSettingsPage({
   const toggleLanguage = (language: string) => {
     setDraft((current) => {
       if (current.languages.includes(language)) {
-        return current.languages.length === 1 ? current : { ...current, languages: current.languages.filter((item) => item !== language) };
+        return { ...current, languages: current.languages.filter((item) => item !== language) };
       }
 
       return { ...current, languages: [...current.languages, language] };
@@ -3190,6 +3197,17 @@ export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettings
 }
 
 export function UnifiedSettingsVerificationPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { session } = useAuth();
+  const [verificationError, setVerificationError] = useState("");
+  if (portal === "user") {
+    return (
+      <PortalScopedSettingsPage portal={portal}>
+        <ApplicationShell backTo={getSettingsBasePath(portal)} closeTo={getSettingsBasePath(portal)} error={verificationError} hideNavigation info="请填写与本人证件一致的资料。" onDismissError={() => setVerificationError("")} title={getVerificationTitle(portal)}>
+          <EkycProfileForm key={session?.needoId} onError={setVerificationError} />
+        </ApplicationShell>
+      </PortalScopedSettingsPage>
+    );
+  }
   const verificationCards =
     portal === "merchant"
       ? [
@@ -3197,16 +3215,10 @@ export function UnifiedSettingsVerificationPage({ portal }: { portal: UnifiedSet
           { title: "店铺主体", description: "结算账户、门店信息与店铺主体已完成关联。", status: "已核验" },
           { title: "经营规则", description: "改期、退款与预约规则已确认，状态正常。", status: "正常" }
         ]
-      : portal === "technician"
-        ? [
+      : [
             { title: "实名认证", description: "姓名、头像与接单主体一致，基础实名已通过。", status: "已完成" },
             { title: "从业资料", description: "技师资料、服务信息与展示页已完成同步。", status: "已同步" },
             { title: "服务信用", description: "接单、履约和取消记录稳定，可继续接单。", status: "良好" }
-          ]
-        : [
-            { title: "实名认证", description: "已通过基础实名校验。", status: "已完成" },
-            { title: "本人一致性", description: "头像、昵称与预约资料一致性正常。", status: "已核验" },
-            { title: "信用记录", description: "取消、支付与履约记录稳定。", status: "良好" }
           ];
 
   return (
@@ -3721,188 +3733,30 @@ export function UnifiedSettingsAboutPage({ portal }: { portal: UnifiedSettingsPo
 
 type LegalDocumentKind = "terms" | "privacy";
 
-function NoI18nText({ children, className }: { children: ReactNode; className?: string }) {
+function PersistedLegalDocumentPage({ portal, slug }: { portal: UnifiedSettingsPortal; slug: "terms-of-use" | "privacy-policy" }) {
+  const { language } = useI18n();
+  const state = usePublicLegalDocument(slug, language);
+  const fallbackTitle = translateText(slug === "terms-of-use" ? "利用规约" : "个人信息保护方针", language);
   return (
-    <span className={className} data-no-i18n>
-      {children}
-    </span>
-  );
-}
-
-function splitLegalMetaItem(item: string) {
-  const separatorIndex = item.search(/[：:]/);
-
-  if (separatorIndex === -1) {
-    return {
-      label: "",
-      value: item
-    };
-  }
-
-  return {
-    label: item.slice(0, separatorIndex).trim(),
-    value: item.slice(separatorIndex + 1).trim()
-  };
-}
-
-function LegalDocumentMetaRows({
-  rows
-}: {
-  rows: Array<{
-    label: string;
-    value: string;
-  }>;
-}) {
-  return (
-    <div className="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" data-no-i18n>
-      {rows.map((item) => (
-        <div className="grid gap-1 px-4 py-3.5 sm:grid-cols-[9rem,1fr] sm:gap-4" key={`${item.label}-${item.value}`}>
-          {item.label ? <p className="text-[12px] font-black text-[color:var(--client-muted)]">{item.label}</p> : null}
-          <p className={cn("break-words text-[13px] font-semibold leading-6 text-[color:var(--client-text)]", item.label ? "" : "sm:col-span-2")}>
-            {item.value}
-          </p>
-        </div>
-      ))}
-    </div>
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage backTo={getSettingsBasePath(portal)} contentClassName="pb-28" info={translateText("只显示运营后台已发布的当前语言版本。", language)} navItems={getSettingsNavItems(portal)} title={state.document?.title ?? fallbackTitle}>
+        {state.status === "loading" ? <SettingsSection title={translateText("正在读取政策文档…", language)}><p className="text-sm text-[color:var(--client-muted)]">{translateText("请稍候。", language)}</p></SettingsSection> : null}
+        {state.status === "unavailable" ? <SettingsSection title={fallbackTitle}><p className="text-sm font-semibold leading-7 text-[color:var(--client-muted)]">{translateText("当前语言尚无已发布版本，请联系 NeeDo 客服。", language)}</p></SettingsSection> : null}
+        {state.document ? <>
+          <SettingsSection title={translateText("文档信息", language)}><div className="space-y-2 text-sm font-semibold text-[color:var(--client-muted)]" data-no-i18n><p>{state.document.locale} · v{state.document.version}</p><p>{new Date(state.document.publishedAt).toLocaleString()}</p></div></SettingsSection>
+          <SettingsSection title={translateText("正文", language)}><article className="whitespace-pre-wrap break-words text-[13px] leading-7 text-[color:var(--client-muted)]" data-no-i18n>{state.document.body}</article></SettingsSection>
+        </> : null}
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
   );
 }
 
 function UnifiedSettingsTermsDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  const { language } = useI18n();
-  const termsDocument = getLegalTermsDocument(language);
-  const copy = getLegalTermsUiCopy(language);
-  const metaRows = [
-    {
-      label: copy.languageLabel,
-      value: termsDocument.languageName
-    },
-    ...termsDocument.meta.map(splitLegalMetaItem),
-    {
-      label: copy.sectionCountLabel,
-      value: copy.sectionCountValue
-    }
-  ];
-
-  return (
-    <PortalScopedSettingsPage portal={portal}>
-      <SettingsDetailPage
-        backTo={getSettingsBasePath(portal)}
-        contentClassName="pb-28"
-        info={<NoI18nText>{copy.pageInfo}</NoI18nText>}
-        navItems={getSettingsNavItems(portal)}
-        title={<NoI18nText>{termsDocument.title}</NoI18nText>}
-      >
-        <SettingsSection
-          description={<NoI18nText>{copy.documentInfoDescription}</NoI18nText>}
-          panelClassName="p-0"
-          title={<NoI18nText>{copy.documentInfoTitle}</NoI18nText>}
-        >
-          <LegalDocumentMetaRows rows={metaRows} />
-        </SettingsSection>
-
-        <SettingsSection
-          description={<NoI18nText>{copy.bodyDescription}</NoI18nText>}
-          panelClassName="p-0"
-          title={<NoI18nText>{copy.bodyTitle}</NoI18nText>}
-        >
-          <div className="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" data-no-i18n>
-            {termsDocument.sections.map((section) => (
-              <article className="px-4 py-4 sm:px-5" key={section.title}>
-                <h3 className="break-words text-[15px] font-black leading-6 text-[color:var(--client-text)]">{section.title}</h3>
-                <div className="mt-3 space-y-2.5">
-                  {section.paragraphs.map((paragraph, paragraphIndex) => (
-                    <p className="break-words text-[13px] leading-7 text-[color:var(--client-muted)]" key={`${section.title}-${paragraphIndex}`}>
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        </SettingsSection>
-      </SettingsDetailPage>
-    </PortalScopedSettingsPage>
-  );
-}
-
-function PrivacyBlock({ block }: { block: LegalPrivacyBlock }) {
-  if (block.kind === "bullet") {
-    return (
-      <li className="break-words text-[13px] leading-7 text-[color:var(--client-muted)]">
-        {block.text}
-      </li>
-    );
-  }
-
-  return <p className="break-words text-[13px] leading-7 text-[color:var(--client-muted)]">{block.text}</p>;
+  return <PersistedLegalDocumentPage portal={portal} slug="terms-of-use" />;
 }
 
 function UnifiedSettingsPrivacyDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  const { language } = useI18n();
-  const privacyDocument = getLegalPrivacyDocument(language);
-  const copy = getLegalPrivacyUiCopy(language);
-  const metaRows = [
-    {
-      label: copy.languageLabel,
-      value: privacyDocument.languageName
-    },
-    ...privacyDocument.meta.map(splitLegalMetaItem),
-    {
-      label: copy.sectionCountLabel,
-      value: copy.sectionCountValue
-    }
-  ];
-
-  return (
-    <PortalScopedSettingsPage portal={portal}>
-      <SettingsDetailPage
-        backTo={getSettingsBasePath(portal)}
-        contentClassName="pb-28"
-        info={<NoI18nText>{copy.pageInfo}</NoI18nText>}
-        navItems={getSettingsNavItems(portal)}
-        title={<NoI18nText>{privacyDocument.title}</NoI18nText>}
-      >
-        <SettingsSection
-          description={<NoI18nText>{copy.documentInfoDescription}</NoI18nText>}
-          panelClassName="p-0"
-          title={<NoI18nText>{copy.documentInfoTitle}</NoI18nText>}
-        >
-          <LegalDocumentMetaRows rows={metaRows} />
-        </SettingsSection>
-
-        <SettingsSection
-          description={<NoI18nText>{copy.bodyDescription}</NoI18nText>}
-          panelClassName="p-0"
-          title={<NoI18nText>{copy.bodyTitle}</NoI18nText>}
-        >
-          <div className="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" data-no-i18n>
-            {privacyDocument.sections.map((section) => (
-              <article className="px-4 py-4 sm:px-5" key={section.title}>
-                <h3 className="break-words text-[15px] font-black leading-6 text-[color:var(--client-text)]">{section.title}</h3>
-                <div className="mt-3 space-y-2.5">
-                  {section.blocks.some((block) => block.kind === "bullet") ? (
-                    <div className="space-y-2.5">
-                      {section.blocks.map((block, blockIndex) =>
-                        block.kind === "bullet" ? (
-                          <ul className="list-disc space-y-2.5 pl-5" key={`${section.title}-${blockIndex}`}>
-                            <PrivacyBlock block={block} />
-                          </ul>
-                        ) : (
-                          <PrivacyBlock block={block} key={`${section.title}-${blockIndex}`} />
-                        )
-                      )}
-                    </div>
-                  ) : (
-                    section.blocks.map((block, blockIndex) => <PrivacyBlock block={block} key={`${section.title}-${blockIndex}`} />)
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
-        </SettingsSection>
-      </SettingsDetailPage>
-    </PortalScopedSettingsPage>
-  );
+  return <PersistedLegalDocumentPage portal={portal} slug="privacy-policy" />;
 }
 
 function UnifiedSettingsLegalDocumentPage({

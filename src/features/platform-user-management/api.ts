@@ -1,3 +1,5 @@
+import type { AccountUserLogDetail, AccountActivitySubject } from "./types";
+import type { RealtimeSocialPost } from "../realtime/api";
 import { httpClient, type ApiQueryValue } from "../../api/httpClient";
 import {
   platformBenefitCodes,
@@ -18,7 +20,14 @@ import {
   type UserGlobalPolicy,
   type UserGroup,
   type UserGroupMember,
-  type UserListQuery
+  type UserListQuery,
+  type UserDirectoryScope,
+  type UserMembershipAdjustmentInput,
+  type ReceivedUserReview,
+  type UserReviewAmendmentInput,
+  type UserUsage,
+  type UserUsageQuery,
+  type UserUsageTimeline
 } from "./types";
 
 type UnknownRecord = Record<string, unknown>;
@@ -65,16 +74,23 @@ const decodeUser = (value: unknown): PlatformManagedUser => {
   const raw = record(value);
   const membership = record(raw.membership);
   const balance = record(raw.ndpBalance);
+  const testBalance = raw.testNdpBalance == null ? null : record(raw.testNdpBalance);
   const experience = raw.experience === null ? null : record(raw.experience);
   return {
     id: integer(raw.id),
     needoId: string(raw.needoId),
     username: string(raw.username),
+    displayName: string(raw.displayName),
     email: string(raw.email),
     phone: nullableString(raw.phone),
     emailBound: boolean(raw.emailBound),
     phoneBound: boolean(raw.phoneBound),
     avatarUrl: nullableString(raw.avatarUrl),
+    city: nullableString(raw.city),
+    privacyMode: boolean(raw.privacyMode),
+    privacyScope: raw.privacyScope === null
+      ? null
+      : enumValue(raw.privacyScope, ["public", "privateAll", "limited", "network"] as const),
     isActive: boolean(raw.isActive),
     isTestAccount: boolean(raw.isTestAccount),
     source: array(raw.source).map(string),
@@ -85,6 +101,14 @@ const decodeUser = (value: unknown): PlatformManagedUser => {
         displayName: nullableString(identity.displayName),
         scopeType: nullableString(identity.scopeType),
         scopeId: identity.scopeId === null ? null : integer(identity.scopeId)
+      };
+    }),
+    identityProfiles: raw.identityProfiles === undefined ? undefined : array(raw.identityProfiles).map((item) => {
+      const profile = record(item);
+      return {
+        type: enumValue(profile.type, ["technician", "merchant"] as const),
+        status: enumValue(profile.status, ["active", "not_enabled", "under_review", "rejected"] as const),
+        displayName: nullableString(profile.displayName)
       };
     }),
     roles: array(raw.roles).map((item) => {
@@ -104,10 +128,11 @@ const decodeUser = (value: unknown): PlatformManagedUser => {
     experience: experience
       ? {
           currentLevel: integer(experience.currentLevel),
-          totalExpUnits: string(experience.totalExpUnits)
+          totalExp: typeof experience.totalExp === "string" && /^(0|[1-9][0-9]*)(\.[0-9]{1,4})?$/.test(experience.totalExp) ? experience.totalExp : invalid()
         }
       : null,
     ndpBalance: { available: integer(balance.available), frozen: integer(balance.frozen) },
+    testNdpBalance: testBalance ? { available: integer(testBalance.available), frozen: integer(testBalance.frozen) } : null,
     bookingCount: integer(raw.bookingCount),
     lastLoginAt: nullableTimestamp(raw.lastLoginAt),
     createdAt: timestamp(raw.createdAt),
@@ -121,6 +146,9 @@ const decodeUserDetail = (value: unknown): PlatformManagedUserDetail => {
   const profile = raw.profile === null ? null : record(raw.profile);
   const account = record(raw.account);
   const bookingSpend = record(raw.bookingSpend);
+  const metrics = record(raw.metrics);
+  const credit = record(metrics.credit);
+  const capabilities = record(raw.capabilities);
   const audit = record(raw.audit);
   return {
     ...summary,
@@ -152,7 +180,25 @@ const decodeUserDetail = (value: unknown): PlatformManagedUserDetail => {
       completedBookings: integer(bookingSpend.completedBookings),
       completedSpendJpy: number(bookingSpend.completedSpendJpy)
     },
+    metrics: {
+      ndpAvailable: integer(metrics.ndpAvailable),
+      usageCount: integer(metrics.usageCount),
+      credit: {
+        ratingAverage: number(credit.ratingAverage),
+        reviewCount: integer(credit.reviewCount),
+        latestReviewAt: nullableTimestamp(credit.latestReviewAt)
+      }
+    },
+    capabilities: {
+      membershipWrite: boolean(capabilities.membershipWrite),
+      reviewAmend: boolean(capabilities.reviewAmend),
+      refundAmend: boolean(capabilities.refundAmend),
+      partnerWrite: boolean(capabilities.partnerWrite),
+      timelineCommentWrite: boolean(capabilities.timelineCommentWrite)
+    },
     audit: {
+      page: integer(audit.page),
+      page_size: integer(audit.page_size),
       total: integer(audit.total),
       list: array(audit.list).map((item) => {
         const event = record(item);
@@ -185,6 +231,7 @@ const decodeGroup = (value: unknown): UserGroup => {
 const decodeGroupMember = (value: unknown): UserGroupMember => {
   const raw = record(value);
   return {
+    id: integer(raw.id),
     needoId: string(raw.needoId),
     username: string(raw.username),
     avatarUrl: nullableString(raw.avatarUrl),
@@ -204,6 +251,8 @@ const decodePolicy = (value: unknown): UserGlobalPolicy => {
     requireEmail: boolean(raw.requireEmail),
     requireHomeServiceEkyc: boolean(raw.requireHomeServiceEkyc),
     requireStoreServiceEkyc: boolean(raw.requireStoreServiceEkyc),
+    requireMerchantApplicationEkyc: boolean(raw.requireMerchantApplicationEkyc),
+    requireTechnicianApplicationEkyc: boolean(raw.requireTechnicianApplicationEkyc),
     ndpPerBaseExp: integer(raw.ndpPerBaseExp),
     baseExpUnitsPerThreshold: integer(raw.baseExpUnitsPerThreshold),
     effectiveFrom: timestamp(raw.effectiveFrom),
@@ -233,6 +282,8 @@ const decodeTheme = (value: unknown): PlatformMembershipTheme => {
   return {
     detailAccentColor: string(raw.detailAccentColor),
     detailSurfaceColor: string(raw.detailSurfaceColor),
+    detailSurfaceMiddleColor: string(raw.detailSurfaceMiddleColor),
+    detailSurfaceBottomColor: string(raw.detailSurfaceBottomColor),
     detailItemSurfaceColor: string(raw.detailItemSurfaceColor),
     detailOuterBorderColor: string(raw.detailOuterBorderColor),
     detailItemBorderColor: string(raw.detailItemBorderColor),
@@ -296,6 +347,7 @@ const decodeBenefit = (value: unknown): PlatformBenefitAdministration => {
   };
   return {
     code: enumValue(raw.code, platformBenefitCodes),
+    deliveryCapability: raw.deliveryCapability === undefined ? "unavailable" : enumValue(raw.deliveryCapability, ["available", "unavailable"] as const),
     sortOrder: integer(raw.sortOrder),
     isGloballyEnabled: boolean(raw.isGloballyEnabled),
     nameTranslations: decodeLocalizedText(raw.nameTranslations),
@@ -324,6 +376,90 @@ const decodeExperienceEntry = (value: unknown): UserExperienceEntry => {
   };
 };
 
+const decodeReceivedUserReview = (value: unknown): ReceivedUserReview => {
+  const raw = record(value);
+  const order = record(raw.order);
+  const reviewer = record(raw.reviewer);
+  return {
+    reviewId: integer(raw.reviewId),
+    targetType: enumValue(raw.targetType, ["customer"] as const),
+    rating: integer(raw.rating),
+    comment: nullableString(raw.comment),
+    tags: array(raw.tags).map(string),
+    createdAt: timestamp(raw.createdAt),
+    amendmentVersion: integer(raw.amendmentVersion),
+    amendmentHistory: array(raw.amendmentHistory).map((item) => {
+      const amendment = record(item);
+      return {
+        version: integer(amendment.version),
+        rating: amendment.rating === null ? null : integer(amendment.rating),
+        comment: nullableString(amendment.comment),
+        tags: array(amendment.tags).map(string),
+        reason: string(amendment.reason),
+        revisedAt: timestamp(amendment.revisedAt),
+        revisedBy: string(amendment.revisedBy)
+      };
+    }),
+    order: {
+      id: integer(order.id),
+      orderNo: string(order.orderNo),
+      serviceName: string(order.serviceName),
+      startsAt: timestamp(order.startsAt),
+      shopName: string(order.shopName),
+      durationMinutes: order.durationMinutes === null ? null : integer(order.durationMinutes),
+      note: nullableString(order.note),
+      paymentMethod: enumValue(order.paymentMethod, ["onsite", "bank_transfer", "cash", "ndp", "other"] as const),
+      paymentStatus: enumValue(order.paymentStatus, ["pending", "confirmed", "refund_pending", "refunded"] as const),
+      paymentCurrency: nullableString(order.paymentCurrency),
+      otherPaymentMethod: nullableString(order.otherPaymentMethod),
+      addOnCount: integer(order.addOnCount),
+      addOnMinutes: integer(order.addOnMinutes)
+    },
+    reviewer: {
+      needoId: string(reviewer.needoId),
+      displayName: string(reviewer.displayName),
+      avatarUrl: nullableString(reviewer.avatarUrl)
+    }
+  };
+};
+
+const decodeUserUsage = (value: unknown): UserUsage => {
+  const raw = record(value);
+  const refund = record(raw.refund);
+  return {
+    id: integer(raw.id), orderNo: string(raw.orderNo), status: string(raw.status),
+    paymentStatus: string(raw.paymentStatus), serviceName: string(raw.serviceName),
+    shopName: string(raw.shopName), technicianName: nullableString(raw.technicianName),
+    startsAt: timestamp(raw.startsAt), endsAt: timestamp(raw.endsAt),
+    priceAmount: number(raw.priceAmount), currency: string(raw.currency),
+    refund: {
+      exists: boolean(refund.exists),
+      displayReference: nullableString(refund.displayReference),
+      note: nullableString(refund.note),
+      amendmentVersion: integer(refund.amendmentVersion)
+    }
+  };
+};
+
+const decodeUserUsageTimeline = (value: unknown): UserUsageTimeline => {
+  const raw = record(value);
+  return {
+    order: decodeUserUsage(raw.order),
+    timeline: array(raw.timeline).map((item) => {
+      const event = record(item);
+      return {
+        id: string(event.id),
+        type: enumValue(event.type, ["order_created", "status", "service", "comment", "refund"] as const),
+        code: string(event.code),
+        occurredAt: timestamp(event.occurredAt),
+        actorName: nullableString(event.actorName),
+        actorAvatarUrl: event.actorAvatarUrl === undefined ? null : nullableString(event.actorAvatarUrl),
+        body: nullableString(event.body)
+      };
+    })
+  };
+};
+
 const pageQuery = (query: PageQuery): Record<string, ApiQueryValue> => ({
   page: query.page,
   pageSize: query.page_size
@@ -335,14 +471,68 @@ const userQuery = (query: UserListQuery): Record<string, ApiQueryValue> => {
 };
 
 export const platformUserManagementApi = {
-  async listUsers(query: UserListQuery = {}) {
+  getTechnicianUserLog(scope: UserDirectoryScope, technicianId: number, query?: { audit_page: number; audit_page_size: 10 | 50; audit_from?: string; audit_to?: string }) {
+    const prefix = scope === "operations" ? "/backoffice" : "/merchant-admin";
+    return httpClient.request<AccountUserLogDetail>(`${prefix}/technicians/${technicianId}/user-log`, { query });
+  },
+  listAccountPosts(account: AccountActivitySubject, page: number, signal?: AbortSignal) {
+    const prefix = account.scope === "operations" ? "/backoffice" : "/merchant-admin";
+    return httpClient.request<{ list: RealtimeSocialPost[]; total: number; page: number; page_size: number }>(`${prefix}/${account.subject}/${account.id}/posts`, { query: { page, pageSize: 10 }, signal });
+  },
+  async listUsers(scope: UserDirectoryScope, query: UserListQuery = {}) {
+    const path = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
     return decodePage(
-      await httpClient.request<unknown>("/backoffice/users", { query: userQuery(query) }),
+      await httpClient.request<unknown>(path, { query: userQuery(query) }),
       decodeUser
     );
   },
-  async getUser(userId: number) {
-    return decodeUserDetail(await httpClient.request<unknown>(`/backoffice/users/${userId}`));
+  async getUser(scope: UserDirectoryScope, userId: number, query?: { audit_page: number; audit_page_size: 10 | 50; audit_from?: string; audit_to?: string }) {
+    const path = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
+    return decodeUserDetail(await (query ? httpClient.request<unknown>(`${path}/${userId}`, { query }) : httpClient.request<unknown>(`${path}/${userId}`)));
+  },
+  adjustMembership(userId: number, body: UserMembershipAdjustmentInput) {
+    return httpClient.request<unknown>(`/backoffice/users/${userId}/membership-adjustment`, {
+      method: "PATCH",
+      body
+    });
+  },
+  async listReceivedReviews(
+    scope: UserDirectoryScope,
+    userId: number,
+    query: { page?: number; page_size?: 10 } = {}
+  ) {
+    const prefix = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
+    return decodePage(
+      await httpClient.request<unknown>(`${prefix}/${userId}/received-reviews`, {
+        query: { page: query.page ?? 1, page_size: 10 }
+      }),
+      decodeReceivedUserReview
+    );
+  },
+  amendReview(reviewId: number, body: UserReviewAmendmentInput) {
+    return httpClient.request<{ reviewId: number; version: number }>(
+      `/backoffice/reviews/${reviewId}/amendments`,
+      { method: "POST", body }
+    );
+  },
+  async listUsage(scope: UserDirectoryScope, userId: number, query: UserUsageQuery = {}) {
+    const prefix = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
+    return decodePage(
+      await httpClient.request<unknown>(`${prefix}/${userId}/usages`, {
+        query: { ...query, page: query.page ?? 1, page_size: 10 }
+      }),
+      decodeUserUsage
+    );
+  },
+  async getUsageTimeline(scope: UserDirectoryScope, userId: number, orderId: number) {
+    const prefix = scope === "operations" ? "/backoffice/users" : "/merchant-admin/users";
+    return decodeUserUsageTimeline(await httpClient.request<unknown>(`${prefix}/${userId}/usages/${orderId}`));
+  },
+  appendUsageComment(userId: number, orderId: number, body: string) {
+    return httpClient.request<{ commentId: number }>(`/backoffice/users/${userId}/usages/${orderId}/comments`, { method: "POST", body: { body } });
+  },
+  amendUsageRefund(userId: number, orderId: number, body: { displayReference?: string | null; note?: string | null; reason: string; expectedVersion: number }) {
+    return httpClient.request<{ orderId: number; version: number }>(`/backoffice/users/${userId}/usages/${orderId}/refund-amendments`, { method: "POST", body });
   },
   async listGroups(query: PageQuery = {}) {
     return decodePage(
@@ -382,13 +572,15 @@ export const platformUserManagementApi = {
     requireEmail: boolean;
     requireHomeServiceEkyc: boolean;
     requireStoreServiceEkyc: boolean;
+    requireMerchantApplicationEkyc: boolean;
+    requireTechnicianApplicationEkyc: boolean;
     ndpPerBaseExp: number;
     baseExpUnitsPerThreshold: number;
     effectiveFrom: string;
   }) {
     return decodePolicy(await httpClient.request<unknown>("/backoffice/user-global-settings/draft", { method: "PUT", body }));
   },
-  async publishGlobalSettings(body: { expectedVersion: number; expectedLockVersion: number }) {
+  async publishGlobalSettings(body: { expectedVersion: number; expectedLockVersion: number; effectiveImmediately?: boolean }) {
     return decodePolicy(await httpClient.request<unknown>("/backoffice/user-global-settings/publish", { method: "POST", body }));
   },
   async listCampaigns(query: PageQuery = {}) {

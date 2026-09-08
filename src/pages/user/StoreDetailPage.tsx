@@ -49,7 +49,7 @@ import { SocialEmptyState, SocialPostItem } from "../../features/social/componen
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
-import type { Language } from "../../i18n/translations";
+import { translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
 import { buildStoreCheckoutRoute } from "../../lib/storeBookingRoute";
@@ -106,6 +106,7 @@ type StoreDetailExperienceProps = {
   store: Store;
   techniciansOverride?: Technician[];
   presentationOverride?: StorePresentationConfig;
+  transportSummary?: string;
   hideUnavailableReviewDetails?: boolean;
 };
 
@@ -736,7 +737,7 @@ function buildServiceMenuPriceRangeLabel(store: Store, industry: StoreIndustry) 
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
 
-  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)}-${yen(maxPrice)}`;
+  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)} ~ ${yen(maxPrice)}`;
 }
 
 function buildDisplayedMenuPriceRangeLabel(menuCards: MenuCard[], fallback: string) {
@@ -752,7 +753,7 @@ function buildDisplayedMenuPriceRangeLabel(menuCards: MenuCard[], fallback: stri
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
 
-  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)}-${yen(maxPrice)}`;
+  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)} ~ ${yen(maxPrice)}`;
 }
 
 function buildMenuCards(store: Store, industry: StoreIndustry): MenuCard[] {
@@ -2700,6 +2701,7 @@ export function StoreDetailExperience({
   technicianPricingRatePercent,
   techniciansOverride,
   presentationOverride,
+  transportSummary,
   hideUnavailableReviewDetails = false
 }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
@@ -3476,7 +3478,12 @@ export function StoreDetailExperience({
                   metric="favorite"
                   onClick={() => setActiveMetricDetail((current) => (current === "favorite" ? null : "favorite"))}
                 />
-                <TransportEstimatePill className="w-full min-w-0 justify-center gap-1.5 px-2 text-[12px] !font-normal" distanceText={config.distance} />
+                {transportSummary !== undefined ? (
+                  <div className={cn(storeCompactMetricPillClassName, "min-w-0 gap-1.5 px-2 text-[12px] font-normal text-[color:var(--client-muted)]")}>
+                    <AppIcon className="h-4 w-4 shrink-0" name="map" />
+                    <span className="min-w-0 truncate">{transportSummary}</span>
+                  </div>
+                ) : <TransportEstimatePill className="w-full min-w-0 justify-center gap-1.5 px-2 text-[12px] !font-normal" distanceText={config.distance} />}
               </div>
               {activeMetricDetail ? (
                 <div className="inline-flex w-full items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_48%,transparent)] px-3 py-2 text-[12px] font-normal text-[color:var(--client-muted)]">
@@ -3517,7 +3524,7 @@ export function StoreDetailExperience({
                     </div>
                   ) : (
                     <p className="mt-1.5 text-sm font-semibold leading-6 text-[color:var(--client-text)]">
-                      {config.station} · {config.distance}
+                      {[config.station, config.distance].filter(Boolean).join(" · ")}
                     </p>
                   )}
                 </InfoRow>
@@ -4084,6 +4091,9 @@ export function StoreDetailExperience({
           {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")}
           <div className={cn("relative", hasMerchantControls && "min-h-[112px]")}>
             <div className="min-w-0 pr-12">
+              <p className="truncate text-[11px] font-black tracking-[0.08em] text-[color:var(--client-muted)]">
+                <span>店铺 ID</span> <span data-no-i18n>{store.systemId}</span>
+              </p>
               <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
               <p className="mt-1 text-sm text-[color:var(--client-muted)]">{store.address}</p>
             </div>
@@ -4094,7 +4104,7 @@ export function StoreDetailExperience({
               </div>
             ) : null}
           </div>
-          <div className="-mx-1">{tabSwitcher}</div>
+          <div className="min-w-0">{tabSwitcher}</div>
           {renderActiveInlineEditor("basic-card")}
         </section>
         <div className="relative z-0">{content}</div>
@@ -4252,12 +4262,14 @@ function buildFormalStorePresentation(shop: CoreShopDetail, store: Store): Store
   };
 }
 
-function UnifiedFormalStoreDetail({
+export function UnifiedFormalStoreDetail({
   scope,
+  embedded = false,
   shopId
 }: {
   scope: "user" | "merchant";
   shopId: number | string;
+  embedded?: boolean;
 }) {
   const { language } = useI18n();
   const [revision, setRevision] = useState(0);
@@ -4267,15 +4279,23 @@ function UnifiedFormalStoreDetail({
   );
 
   if (query.loading) {
+    if (embedded) return <p role="status">{translateText("正在加载正式店铺资料", language)}</p>;
     return <StoreDetailStatus description="正在同步数据库正式资料。" scope={scope} title="正在加载店铺资料" />;
   }
   if (query.error || !query.data) {
     const unavailableCopy = formalStoreLinkCopy[language];
+    if (embedded) return (
+      <EmptyStatePanel
+        action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{translateText("重新加载", language)}</PrimaryButton>}
+        caption={query.error ?? unavailableCopy.description}
+        title={unavailableCopy.title}
+      />
+    );
     return (
       <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "merchant" ? [] : undefined}>
         <AppTopBar subtitle="真实 API 数据源" title="店铺详情" />
         <EmptyStatePanel
-          action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>重新加载</PrimaryButton>}
+          action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{translateText("重新加载", language)}</PrimaryButton>}
           caption={query.error ?? unavailableCopy.description}
           title={unavailableCopy.title}
         />
@@ -4291,6 +4311,7 @@ function UnifiedFormalStoreDetail({
 
   return (
     <StoreDetailExperience
+      embedded={embedded}
       formalApiOnly={true}
       hideUnavailableReviewDetails
       presentationOverride={buildFormalStorePresentation(query.data, store)}

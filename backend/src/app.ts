@@ -1,3 +1,10 @@
+import { createEkycApplicationRoutes } from "./routes/ekyc-application.routes";
+import type { EkycApplicationRepositoryPort, EkycApplicationService } from "./services/ekyc-application.service";
+import type { OperationsMemberRepositoryPort } from "./repositories/operations-member.repository";
+import { createWorkStatusRoutes } from './routes/work-status.routes';
+import type { WorkStatusService } from './services/work-status.service';
+import { createSosRoutes } from "./routes/sos.routes";
+import type { SosService, SosRepositoryPort } from "./services/sos.service";
 import express, { Router, type Express } from "express";
 import { compatibilityApiRouteManifest, type ApiRouteOwnership } from "./apps/api-route-manifest";
 import { createOpenApiRoutes } from "./api/openapi";
@@ -16,11 +23,19 @@ import {
   createRateLimitMiddleware
 } from "./middlewares/security.middleware";
 import { createTracingMiddleware } from "./middlewares/tracing.middleware";
-import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
+import { createPlatformMaintenanceMiddleware } from "./middlewares/platform-maintenance.middleware";
+import {
+  AuditLogRepository,
+  type AuditLogRepositoryPort
+} from "./repositories/audit-log.repository";
 import type { AffiliateProfileRepositoryPort } from "./repositories/affiliate-profile.repository";
 import { AuthRepository, type AuthRepositoryPort } from "./repositories/auth.repository";
 import type { MerchantShopContextRepositoryPort } from "./repositories/merchant-shop-context.repository";
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
+import type { BackofficeUserReviewRepositoryPort } from "./repositories/backoffice-user-review.repository";
+import type { BackofficeUserReviewService } from "./services/backoffice-user-review.service";
+import type { BackofficeUserUsageRepositoryPort } from "./repositories/backoffice-user-usage.repository";
+import type { BackofficeUserUsageService } from "./services/backoffice-user-usage.service";
 import type {
   AffiliateTaskRepositoryPort,
   AffiliateTaskService
@@ -45,7 +60,26 @@ import type { SearchQueryRecorderPort } from "./services/search-query-recorder.s
 import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
-import type { PlatformMembershipRepositoryPort } from "./repositories/platform-membership.repository";
+import {
+  PlatformMembershipRepository,
+  type PlatformMembershipRepositoryPort
+} from "./repositories/platform-membership.repository";
+import {
+  PlatformSettingsRepository,
+  type PlatformSettingsRepositoryPort
+} from "./repositories/platform-settings.repository";
+import {
+  ImServerRetentionRepository,
+  type ImMediaLifecycleRepositoryPort
+} from "./repositories/im-server-retention.repository";
+import {
+  ImPolicyRepository,
+  type ImPolicyRepositoryPort
+} from "./repositories/im-policy.repository";
+import {
+  LegalDocumentRepository,
+  type LegalDocumentRepositoryPort
+} from "./repositories/legal-document.repository";
 import type { UserExperienceRepositoryPort } from "./domain/user-experience";
 import type { BackofficeUserGroupRepositoryPort } from "./domain/backoffice-user-group";
 import type { UserGlobalPolicyRepositoryPort } from "./domain/user-global-policy";
@@ -64,6 +98,8 @@ import type { AnalyticsRankingRepositoryPort } from "./repositories/analytics-ra
 import type { AgentCommissionRuleRepositoryPort } from "./repositories/agent-commission-rule.repository";
 import type { OperatingCostRepositoryPort } from "./repositories/operating-cost.repository";
 import type { AgentSettlementRepositoryPort } from "./repositories/agent-settlement.repository";
+import type { AdministrativeRegionRepositoryPort } from "./repositories/administrative-region.repository";
+import type { LiveDashboardRepositoryPort } from "./repositories/live-dashboard.repository";
 import type { TechnicianProfileRepositoryPort } from "./repositories/technician-profile.repository";
 import type { TechnicianDataCenterRepositoryPort } from "./services/technician-data-center.service";
 import type { MerchantProfileRepositoryPort } from "./repositories/merchant-profile.repository";
@@ -72,9 +108,12 @@ import type { PlatformFeePolicyRepositoryPort } from "./services/platform-fee-po
 import type { ShopTravelFarePolicyRepositoryPort } from "./services/shop-travel-fare-policy.service";
 import type { RouteEstimateRepositoryPort } from "./services/route-estimate.service";
 import type { RouteDistanceProvider } from "./services/route-distance.provider";
+import type { RouteProviderHealthStorePort } from "./services/route-provider-health";
+import type { TravelOperationsRepositoryPort } from "./services/travel-operations.service";
 import type { OrderAcceptancePauseRepositoryPort } from "./services/order-acceptance-pause.service";
 import type { NdpExchangeRateService } from "./services/ndp-exchange-rate.service";
 import type { OrderPerformanceRepositoryPort } from "./repositories/order-performance.repository";
+import type { OrderRefundCaseRepositoryPort } from "./services/order-refund-case.service";
 import type {
   AffiliatePlatformFeeRepositoryPort,
   AffiliatePlatformFeeService
@@ -87,6 +126,11 @@ import type { IdentityApplicationMediaService } from "./services/identity-applic
 import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
 import type { ContentMediaRepositoryPort } from "./services/content-media.service";
 import type { ContentMediaService } from "./services/content-media.service";
+import type { OfficialNoticeMediaStoragePort } from "./services/official-notice-media.storage";
+import type {
+  OfficialNoticeMediaRepositoryPort,
+  OfficialNoticeMediaService
+} from "./services/official-notice-media.service";
 import type { SocialMediaRepositoryPort } from "./services/social-media.service";
 import type { SocialMediaService } from "./services/social-media.service";
 import type { OfficialAnnouncementRepositoryPort } from "./services/official-announcement.service";
@@ -148,6 +192,8 @@ import { createAffiliateMarketplaceRoutes } from "./routes/affiliate-marketplace
 import { createAffiliateProfileRoutes } from "./routes/affiliate-profile.routes";
 import { createAffiliateAllianceRoutes } from "./routes/affiliate-alliance.routes";
 import { createBackofficeRoutes } from "./routes/backoffice.routes";
+import { createBackofficeUserReviewRoutes } from "./routes/backoffice-user-review.routes";
+import { createBackofficeUserUsageRoutes } from "./routes/backoffice-user-usage.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
 import { createCoreReadRoutes } from "./routes/core-read.routes";
@@ -169,11 +215,16 @@ import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createPlatformFeePolicyRoutes } from "./routes/platform-fee-policy.routes";
 import { createShopTravelFarePolicyRoutes } from "./routes/shop-travel-fare-policy.routes";
 import { createRouteEstimateRoutes } from "./routes/route-estimate.routes";
+import { createTravelOperationsRoutes } from "./routes/travel-operations.routes";
 import { createPlatformMembershipRoutes } from "./routes/platform-membership.routes";
+import { createPlatformSettingsRoutes } from "./routes/platform-settings.routes";
 import { createBackofficeUserGroupRoutes } from "./routes/backoffice-user-group.routes";
 import { createUserGlobalPolicyRoutes } from "./routes/user-global-policy.routes";
+import { createImPolicyRoutes } from "./routes/im-policy.routes";
+import { createLegalDocumentRoutes } from "./routes/legal-document.routes";
 import { createOrderAcceptancePauseRoutes } from "./routes/order-acceptance-pause.routes";
 import { createOrderPerformanceRoutes } from "./routes/order-performance.routes";
+import { createOrderRefundCaseRoutes } from "./routes/order-refund-case.routes";
 import { createAffiliatePlatformFeeRoutes } from "./routes/affiliate-platform-fee.routes";
 import { createNdpExchangeRateRoutes } from "./routes/ndp-exchange-rate.routes";
 import { createHealthRoutes } from "./routes/health.routes";
@@ -224,21 +275,31 @@ import { createAgentCommissionRuleRoutes } from "./routes/agent-commission-rule.
 import { createOperatingCostRoutes } from "./routes/operating-cost.routes";
 import { createServiceSearchAnalyticsRoutes } from "./routes/service-search-analytics.routes";
 import { createAgentSettlementRoutes } from "./routes/agent-settlement.routes";
+import { createAdministrativeRegionRoutes } from "./routes/administrative-region.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import { createUserExperienceServiceForRoutes } from "./routes/user-experience-service.factory";
 import { createUserExperienceRoutes } from "./routes/user-experience.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
+import type { LiveDashboardCachePort } from "./services/live-dashboard-cache.service";
+import type { LiveDashboardEventGatewayPort } from "./services/live-dashboard-event.gateway";
 import type { MerchantShopAuditOutboxTrigger } from "./services/auth.service";
 import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
 import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
-import type { PlatformMembershipService } from "./services/platform-membership.service";
+import { PlatformMembershipService } from "./services/platform-membership.service";
 import type { UserExperienceService } from "./services/user-experience.service";
 import type { BackofficeUserGroupService } from "./services/backoffice-user-group.service";
 import type { UserGlobalPolicyService } from "./services/user-global-policy.service";
 import type { NdpExperienceCampaignService } from "./services/ndp-experience-campaign.service";
+import { AuditLogService } from "./services/audit-log.service";
+import {
+  PlatformAccessPolicyService,
+  type PlatformAccessPolicyPort
+} from "./services/platform-access-policy.service";
+import { PlatformSettingsResolver } from "./services/platform-settings.resolver";
+import { PlatformSettingsService } from "./services/platform-settings.service";
 import type { ExchangeService } from "./services/exchange.service";
 import type { ExchangeIntelligenceServiceService } from "./services/exchange-intelligence-service.service";
 import type { TechnicianServiceBookingContextService } from "./services/technician-service-booking-context.service";
@@ -254,6 +315,8 @@ import {
 import { RealtimeService } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
+import { ImPolicyService } from "./services/im-policy.service";
+import { LegalDocumentService } from "./services/legal-document.service";
 import type { ImChatRecordMediaStoragePort } from "./services/im-chat-record-media.storage";
 import type { ImChatRecordService } from "./services/im-chat-record.service";
 import type { ImMessageTranslationService } from "./services/im-message-translation.service";
@@ -268,6 +331,7 @@ import {
 } from "./services/observability.service";
 
 export interface AppDependencies {
+  workStatusService?: WorkStatusService;
   redisHealthCheck: () => Promise<RedisHealthStatus>;
   databaseHealthCheck?: () => Promise<DatabaseHealthStatus>;
   metricsService?: ObservabilityMetricsPort;
@@ -288,6 +352,7 @@ export interface AppDependencies {
   shopEmployeeDirectoryRepository?: ShopEmployeeDirectoryRepositoryPort;
   roleRepository?: RoleRepositoryPort;
   userRepository?: UserRepositoryPort;
+  operationsMemberRepository?: OperationsMemberRepositoryPort;
   testAccountRepository?: TestAccountRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
   searchQueryRecorderRepository?: SearchQueryRecorderRepositoryPort;
@@ -308,6 +373,11 @@ export interface AppDependencies {
   agentCommissionRuleRepository?: AgentCommissionRuleRepositoryPort;
   operatingCostRepository?: OperatingCostRepositoryPort;
   agentSettlementRepository?: AgentSettlementRepositoryPort;
+  administrativeRegionRepository?: AdministrativeRegionRepositoryPort;
+  liveDashboardRepository?: LiveDashboardRepositoryPort;
+  liveDashboardCache?: LiveDashboardCachePort;
+  liveDashboardEventGateway?: LiveDashboardEventGatewayPort;
+  liveDashboardClock?: () => Date;
   analyticsRankingClock?: () => Date;
   technicianProfileRepository?: TechnicianProfileRepositoryPort;
   technicianDataCenterRepository?: TechnicianDataCenterRepositoryPort;
@@ -318,8 +388,11 @@ export interface AppDependencies {
   shopTravelFarePolicyRepository?: ShopTravelFarePolicyRepositoryPort;
   routeEstimateRepository?: RouteEstimateRepositoryPort;
   routeDistanceProvider?: RouteDistanceProvider;
+  routeProviderHealthStore?: RouteProviderHealthStorePort;
+  travelOperationsRepository?: TravelOperationsRepositoryPort;
   orderAcceptancePauseRepository?: OrderAcceptancePauseRepositoryPort;
   orderPerformanceRepository?: OrderPerformanceRepositoryPort;
+  orderRefundCaseRepository?: OrderRefundCaseRepositoryPort;
   affiliatePlatformFeeRepository?: AffiliatePlatformFeeRepositoryPort;
   affiliatePlatformFeeService?: AffiliatePlatformFeeService;
   ndpExchangeRateRepository?: NdpExchangeRateRepositoryPort;
@@ -333,6 +406,8 @@ export interface AppDependencies {
   compensationProfileRepository?: CompensationProfileRepositoryPort;
   bookingRepository?: BookingRepositoryPort;
   ledgerRepository?: LedgerRepositoryPort;
+  ekycApplicationRepository?: EkycApplicationRepositoryPort;
+  ekycApplicationService?: EkycApplicationService;
   identityApplicationRepository?: IdentityApplicationRepositoryPort;
   identityApplicationService?: IdentityApplicationService;
   identityApplicationMediaRepository?: IdentityApplicationMediaRepositoryPort;
@@ -341,6 +416,9 @@ export interface AppDependencies {
   contentMediaRepository?: ContentMediaRepositoryPort;
   contentMediaService?: ContentMediaService;
   contentMediaStorage?: ContentMediaStoragePort;
+  officialNoticeMediaRepository?: OfficialNoticeMediaRepositoryPort;
+  officialNoticeMediaService?: OfficialNoticeMediaService;
+  officialNoticeMediaStorage?: OfficialNoticeMediaStoragePort;
   socialMediaRepository?: SocialMediaRepositoryPort;
   socialMediaService?: SocialMediaService;
   socialMediaStorage?: ContentMediaStoragePort;
@@ -373,8 +451,26 @@ export interface AppDependencies {
   merchantApplicationReviewRepository?: MerchantApplicationReviewRepositoryPort;
   merchantApplicationReviewService?: MerchantApplicationReviewService;
   backofficeRepository?: BackofficeRepositoryPort;
+  backofficeUserReviewRepository?: BackofficeUserReviewRepositoryPort;
+  backofficeUserReviewService?: Pick<
+    BackofficeUserReviewService,
+    "listForOperations" | "listForMerchant" | "amend"
+  >;
+  backofficeUserUsageRepository?: BackofficeUserUsageRepositoryPort;
+  backofficeUserUsageService?: Pick<
+    BackofficeUserUsageService,
+    | "listForOperations"
+    | "listForMerchant"
+    | "getTimelineForOperations"
+    | "getTimelineForMerchant"
+    | "appendComment"
+    | "amendRefund"
+  >;
   platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
-  platformMembershipResolverService?: Pick<PlatformMembershipService, "resolveMembershipAt">;
+  platformMembershipResolverService?: Pick<
+    PlatformMembershipService,
+    "resolveMembershipAt" | "hasEffectiveBenefitAt"
+  >;
   userExperienceService?: Pick<
     UserExperienceService,
     | "recordEvent"
@@ -394,10 +490,32 @@ export interface AppDependencies {
     | "listBenefitsForAdministration"
     | "updateBenefit"
     | "changeEntitlement"
+    | "adjustUserMembership"
     | "getMyMembership"
     | "getMyMembershipBenefits"
   >;
   platformMembershipRepository?: PlatformMembershipRepositoryPort;
+  platformSettingsRepository?: PlatformSettingsRepositoryPort;
+  platformSettingsResolver?: PlatformSettingsResolver;
+  platformSettingsService?: Pick<
+    PlatformSettingsService,
+    "getPublic" | "getForOperations" | "updateBasic" | "updatePayment"
+  >;
+  platformAccessPolicyService?: PlatformAccessPolicyPort;
+  imPolicyRepository?: ImPolicyRepositoryPort;
+  imPolicyService?: Pick<ImPolicyService, "get" | "update">;
+  legalDocumentRepository?: LegalDocumentRepositoryPort;
+  legalDocumentService?: Pick<
+    LegalDocumentService,
+    | "list"
+    | "create"
+    | "updateMetadata"
+    | "getLocale"
+    | "saveDraft"
+    | "publish"
+    | "listReleases"
+    | "getPublicCurrent"
+  >;
   backofficeUserGroupService?: Pick<
     BackofficeUserGroupService,
     | "listGroups"
@@ -430,10 +548,13 @@ export interface AppDependencies {
   affiliateCheckoutService?: AffiliateCheckoutService;
   realtimeRepository?: RealtimeRepositoryPort;
   realtimeEventGateway?: RealtimeEventGatewayPort;
+  sosService?: SosService;
+  sosRepository?: SosRepositoryPort;
   realtimeService?: RealtimeService;
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
+  imMediaLifecycleRepository?: ImMediaLifecycleRepositoryPort;
   imChatRecordRepository?: ImChatRecordRepositoryPort;
   imChatRecordMediaStorage?: ImChatRecordMediaStoragePort;
   imChatRecordService?: ImChatRecordService;
@@ -508,13 +629,54 @@ export const createApp = (
   const personalIdentityScopeService =
     dependencies.personalIdentityScopeService ?? new PersonalIdentityScopeService(authRepository);
   const userExperienceService = createUserExperienceServiceForRoutes(dependencies);
+  const platformSettingsRepository =
+    dependencies.platformSettingsRepository ?? new PlatformSettingsRepository();
+  const platformSettingsResolver =
+    dependencies.platformSettingsResolver ??
+    new PlatformSettingsResolver(platformSettingsRepository);
+  const platformSettingsService =
+    dependencies.platformSettingsService ??
+    new PlatformSettingsService(
+      platformSettingsRepository,
+      platformSettingsResolver,
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
+  const platformAccessPolicyService =
+    dependencies.platformAccessPolicyService ??
+    (config.NODE_ENV === "test"
+      ? undefined
+      : new PlatformAccessPolicyService(platformSettingsResolver));
+  const imPolicyRepository = dependencies.imPolicyRepository ?? new ImPolicyRepository();
+  const imPolicyService =
+    dependencies.imPolicyService ??
+    new ImPolicyService(
+      imPolicyRepository,
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
+  const imMediaLifecycleRepository =
+    dependencies.imMediaLifecycleRepository ?? new ImServerRetentionRepository();
+  const legalDocumentRepository =
+    dependencies.legalDocumentRepository ?? new LegalDocumentRepository();
+  const legalDocumentService =
+    dependencies.legalDocumentService ??
+    new LegalDocumentService(
+      legalDocumentRepository,
+      new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    );
+  const platformMembershipRepository =
+    dependencies.platformMembershipRepository ?? new PlatformMembershipRepository();
+  const platformMembershipResolverService =
+    dependencies.platformMembershipResolverService ??
+    new PlatformMembershipService(platformMembershipRepository);
   const realtimeService =
     dependencies.realtimeService ??
     new RealtimeService(
       realtimeRepository,
       realtimeEventGateway,
       personalIdentityScopeService,
-      userExperienceService
+      userExperienceService,
+      undefined,
+      platformMembershipResolverService
     );
   const resolvedDependencies: AppDependencies = {
     ...dependencies,
@@ -525,7 +687,18 @@ export const createApp = (
     realtimeEventGateway,
     realtimeService,
     userExperienceService,
-    personalIdentityScopeService
+    personalIdentityScopeService,
+    platformSettingsRepository,
+    platformSettingsResolver,
+    platformSettingsService,
+    imPolicyRepository,
+    imPolicyService,
+    imMediaLifecycleRepository,
+    legalDocumentRepository,
+    legalDocumentService,
+    ...(platformAccessPolicyService ? { platformAccessPolicyService } : {}),
+    platformMembershipRepository,
+    platformMembershipResolverService
   };
 
   apiRouter.use((request, response, next) => {
@@ -541,11 +714,18 @@ export const createApp = (
 
   mount("shared", createHealthRoutes(config, resolvedDependencies));
   mount("shared", createObservabilityRoutes(config, metricsService));
+  mount("shared", createPlatformSettingsRoutes(config, resolvedDependencies));
+  mount("shared", createImPolicyRoutes(config, resolvedDependencies));
+  mount("shared", createLegalDocumentRoutes(config, resolvedDependencies));
   mount("shared", createAuthRoutes(config, resolvedDependencies));
+  if (platformAccessPolicyService) {
+    apiRouter.use(createPlatformMaintenanceMiddleware(platformAccessPolicyService));
+  }
   mount("backoffice", createPermissionRoutes(config, resolvedDependencies));
   mount("backoffice", createRoleRoutes(config, resolvedDependencies));
   mount("backoffice", createUserRoutes(config, resolvedDependencies));
   mount("shared", createCoreReadRoutes(config, resolvedDependencies));
+  mount("shared", createAdministrativeRegionRoutes(resolvedDependencies));
   mount(["shared", "merchant-admin"], createShopTaxonomyRoutes(config, resolvedDependencies));
   mount("shared", createEntityEngagementRoutes(config, resolvedDependencies));
   mount("merchant-admin", createCustomerProfileRoutes(config, resolvedDependencies));
@@ -574,6 +754,7 @@ export const createApp = (
   );
   mount("merchant-admin", createShopTravelFarePolicyRoutes(config, resolvedDependencies));
   mount("shared", createRouteEstimateRoutes(config, resolvedDependencies));
+  mount("backoffice", createTravelOperationsRoutes(config, resolvedDependencies));
   mount("backoffice", createPlatformMembershipRoutes(config, resolvedDependencies));
   mount("backoffice", createUserExperienceRoutes(config, resolvedDependencies));
   mount("backoffice", createBackofficeUserGroupRoutes(config, resolvedDependencies));
@@ -583,6 +764,10 @@ export const createApp = (
     createOrderAcceptancePauseRoutes(config, resolvedDependencies)
   );
   mount("backoffice", createOrderPerformanceRoutes(config, resolvedDependencies));
+  mount(
+    ["shared", "backoffice", "merchant-admin"],
+    createOrderRefundCaseRoutes(config, resolvedDependencies)
+  );
   mount("backoffice", createAffiliatePlatformFeeRoutes(config, resolvedDependencies));
   mount("backoffice", createNdpExchangeRateRoutes(config, resolvedDependencies));
   mount("merchant-admin", createMerchantFinanceRulesRoutes(config, resolvedDependencies));
@@ -591,6 +776,8 @@ export const createApp = (
   mount("merchant-admin", createPayrollSchedulePolicyRoutes(config, resolvedDependencies));
   mount("merchant-admin", createCompensationProfileRoutes(config, resolvedDependencies));
   mount(["shared", "backoffice"], createLedgerRoutes(config, resolvedDependencies));
+  mount("shared", createEkycApplicationRoutes(config, resolvedDependencies));
+  mount("backoffice", createEkycApplicationRoutes(config, resolvedDependencies, true));
   mount("backoffice", createIdentityApplicationRoutes(config, resolvedDependencies));
   mount("backoffice", createIdentityApplicationMediaRoutes(config, resolvedDependencies));
   mount("backoffice", createContentMediaRoutes(config, resolvedDependencies));
@@ -611,6 +798,14 @@ export const createApp = (
   mount("shared", createAffiliateMarketplaceRoutes(config, resolvedDependencies));
   mount(["backoffice", "merchant-admin"], createBookingRoutes(config, resolvedDependencies));
   mount(["backoffice", "merchant-admin"], createBackofficeRoutes(config, resolvedDependencies));
+  mount(
+    ["backoffice", "merchant-admin"],
+    createBackofficeUserReviewRoutes(config, resolvedDependencies)
+  );
+  mount(
+    ["backoffice", "merchant-admin"],
+    createBackofficeUserUsageRoutes(config, resolvedDependencies)
+  );
   mount("backoffice", createMerchantSaasBillingRoutes(config, resolvedDependencies));
   mount("shared", createImMediaRoutes(config, resolvedDependencies));
   mount("shared", createImVoiceMessageRoutes(config, resolvedDependencies));
@@ -618,6 +813,8 @@ export const createApp = (
   mount("shared", createImChatRecordRoutes(config, resolvedDependencies));
   mount("shared", createImMessageTranslationRoutes(config, resolvedDependencies));
   mount("shared", createRealtimeRoutes(config, resolvedDependencies));
+  mount("shared", createWorkStatusRoutes(config, resolvedDependencies));
+  mount("shared", createSosRoutes(config, resolvedDependencies));
   mount("shared", createExchangeRoutes(config, resolvedDependencies));
   mount("shared", createExchangeIntelligenceServiceRoutes(config, resolvedDependencies));
   mount("shared", createTechnicianServiceBookingContextRoutes(config, resolvedDependencies));
@@ -651,7 +848,7 @@ export const createApp = (
 };
 
 const customerAvatarFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
-const contentMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+const contentMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp|mp4|webm|pdf|txt)$/;
 
 const createContentMediaStaticMiddleware = (directory: string) => {
   const staticMiddleware = express.static(directory, {

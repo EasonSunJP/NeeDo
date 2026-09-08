@@ -37,7 +37,7 @@ export const createIdentityApplicationRoutes = (
   const authorize = createAuthorizeMiddleware(IDENTITY_APPLICATION_ROUTE_PERMISSIONS.own);
   const authorizeBank = createAuthorizeMiddleware("bank-account:own");
   const controller = new IdentityApplicationController(
-    createIdentityApplicationServiceForRoutes(dependencies),
+    createIdentityApplicationServiceForRoutes(config, dependencies),
     createProtectedBankAccountServiceForRoutes(config, dependencies)
   );
 

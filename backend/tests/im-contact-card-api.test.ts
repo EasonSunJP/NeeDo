@@ -112,6 +112,7 @@ describe("formal contact-card HTTP contract", () => {
       contactCardCandidateListQuerySchema.parse({ page: "2", pageSize: "10", query: " 花子 " })
     ).toEqual({ page: 2, pageSize: 10, query: "花子" });
     expect(contactCardSendBodySchema.parse({ targetUserId })).toEqual({ targetUserId });
+    expect(contactCardSendBodySchema.parse({ targetUserId: "needo0000000052" })).toEqual({ targetUserId: "needo0000000052" });
     expect(contactCardIdempotencyKeySchema.parse(idempotencyKey)).toBe(idempotencyKey);
 
     for (const input of [
