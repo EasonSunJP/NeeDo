@@ -514,7 +514,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
   it("updates service text before replacing an existing cover", async () => {
     mockServiceEditorContext([service]);
     const updated = { ...service, name: "肩颈调理" };
-    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(updated);
+    const updateRequest = vi.spyOn(pricingModeApi, "updateMyTechnicianService").mockResolvedValue(updated);
     const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover")
       .mockResolvedValue({ ...updated, coverImageUrl: "/replacement-cover.jpg" });
 
@@ -532,7 +532,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
 
   it("updates service text before removing an existing cover", async () => {
     mockServiceEditorContext([service]);
-    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(service);
+    const updateRequest = vi.spyOn(pricingModeApi, "updateMyTechnicianService").mockResolvedValue(service);
     const removeCoverRequest = vi.spyOn(pricingModeApi, "removeTechnicianServiceCover")
       .mockResolvedValue({ ...service, coverImageUrl: null });
 
@@ -550,7 +550,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
   it("keeps a removal draft after partial success and retries only the failed removal", async () => {
     mockServiceEditorContext([service]);
     const persisted = { ...service, name: "服务端已保存名称" };
-    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(persisted);
+    const updateRequest = vi.spyOn(pricingModeApi, "updateMyTechnicianService").mockResolvedValue(persisted);
     const removeCoverRequest = vi
       .spyOn(pricingModeApi, "removeTechnicianServiceCover")
       .mockRejectedValueOnce(new Error("remove unavailable"))
@@ -609,11 +609,11 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
       coverImageUrl: null
     };
     const createRequest = vi.spyOn(pricingModeApi, "createTechnicianService").mockResolvedValue(created);
-    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService");
+    const updateRequest = vi.spyOn(pricingModeApi, "updateMyTechnicianService");
     const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover")
       .mockRejectedValueOnce(new Error("upload unavailable"))
       .mockResolvedValue({ ...created, coverImageUrl: "/retry-cover.jpg" });
-    const deleteRequest = vi.spyOn(pricingModeApi, "deleteTechnicianService");
+    const deleteRequest = vi.spyOn(pricingModeApi, "deleteMyTechnicianService");
 
     await openNewServiceEditor();
     const file = new File([new Uint8Array([0xff, 0xd8])], "retry.jpg", { type: "image/jpeg" });
@@ -691,7 +691,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
       priceAmount: 9200,
       durationMinutes: 70
     };
-    const updateRequest = vi.spyOn(pricingModeApi, "updateTechnicianService").mockResolvedValue(persisted);
+    const updateRequest = vi.spyOn(pricingModeApi, "updateMyTechnicianService").mockResolvedValue(persisted);
     const uploadRequest = vi.spyOn(pricingModeApi, "uploadTechnicianServiceCover")
       .mockRejectedValueOnce(new Error("upload unavailable"))
       .mockResolvedValue({ ...persisted, coverImageUrl: "/retry-existing-cover.jpg" });

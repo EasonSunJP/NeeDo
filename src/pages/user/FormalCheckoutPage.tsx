@@ -186,21 +186,20 @@ export function FormalCheckoutPage(props: FormalCheckoutPageProps) {
 
     const serviceRequest = shopServiceId
       ? coreReadApi.getServiceDetail(shopServiceId).then(async (serviceDetail) => {
-          const navigation = await pricingModeApi.getBookingNavigation(
-            serviceDetail.shop.id,
-            { page: 1, pageSize: 100 }
-          );
-          const bookingService = navigation.entry === "service_menu"
+          const navigation = await pricingModeApi
+            .getBookingNavigation(serviceDetail.shop.id, { page: 1, pageSize: 100 })
+            .catch(() => null);
+          const bookingService = navigation?.entry === "service_menu"
             ? navigation.services.list.find((item) => item.id === shopServiceId)
             : null;
-          if (!bookingService) {
+          if (navigation && !bookingService) {
             throw new Error("Shop service is unavailable in the current pricing mode");
           }
           return {
             detail: serviceDetail,
             bookingMetadata: {
-              tags: bookingService.tags,
-              usageCount: bookingService.usageCount
+              tags: bookingService?.tags ?? [],
+              usageCount: bookingService?.usageCount ?? serviceDetail.usageCount
             }
           };
         })
