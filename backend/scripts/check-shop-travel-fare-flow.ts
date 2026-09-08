@@ -255,7 +255,10 @@ async function runFlow(transaction: PrismaTypes.TransactionClient): Promise<void
     travelEstimatePublicId: estimatePayload.publicId,
     note: marker
   });
-  assert(bookingResult && !("travelEstimateError" in bookingResult), "formal booking path rejected the route estimate");
+  assert(
+    bookingResult && "order" in bookingResult,
+    "formal booking path rejected the route estimate or intelligence booking context"
+  );
   const order = bookingResult.order;
   const storedOrder = await transaction.bookingOrder.findUniqueOrThrow({ where: { id: order.id }, select: { fulfillmentAddressSnapshot: true } });
   const storedSnapshot = await transaction.bookingTravelFareSnapshot.findUnique({ where: { bookingOrderId: order.id } });
@@ -498,8 +501,8 @@ async function runConcurrentConsumptionCheck(client: PrismaClient): Promise<void
       result.status === "fulfilled" ? [result.value] : []
     );
     const successes = results.filter(
-      (result): result is Exclude<NonNullable<typeof result>, { travelEstimateError: string }> =>
-        Boolean(result && !("travelEstimateError" in result))
+      (result): result is Extract<NonNullable<typeof result>, { order: unknown }> =>
+        Boolean(result && "order" in result)
     );
     const consumedFailures = results.filter(
       (result) => result && "travelEstimateError" in result && result.travelEstimateError === "consumed"

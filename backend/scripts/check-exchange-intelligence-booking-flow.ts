@@ -1147,7 +1147,8 @@ async function main(): Promise<void> {
       notifications.filter((notification) => {
         const payload = notification.payload;
         return payload !== null && typeof payload === "object" && !Array.isArray(payload)
-          && payload.orderId === homeOrder.id;
+          && payload.orderId === homeOrder.id
+          && notification.recipientUserId === shopOwnerUser.id;
       }).length,
       1,
       "onsite Intelligence booking must notify its provider exactly once"

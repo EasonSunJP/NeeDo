@@ -50,7 +50,7 @@ describe("UserOrderDetailPage header", () => {
     }
     expect(source).toContain('getScopedTechnicianDynamicPath("user", displayTechnician)');
     expect(source).not.toContain('detailTo={`/technicians/${displayTechnician.id}`}');
-    expect(source).toContain("bookingPaymentMethodLabel(order.paymentMethod)");
+    expect(source).toContain("bookingPaymentMethodLabel(order.paymentMethod, order.fulfillmentMode)");
     expect(source).toContain("tags: [...live.tags.filter");
     expect(source).not.toContain("function SummaryStat");
     expect(source).not.toContain('label="来源"');

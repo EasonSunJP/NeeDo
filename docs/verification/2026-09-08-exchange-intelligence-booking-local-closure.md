@@ -50,12 +50,18 @@ No remote environment was used or modified during this verification.
 
 - Frontend typecheck/lint: `npm run lint`
 - Frontend production build: `npm run build`
-- Frontend affected suites: 7 files / 81 tests passed
+- Frontend affected suites: 10 files / 97 tests passed
+- Frontend full suite: 487 files / 3,315 tests passed
 - Backend lint: `npm run lint`
 - Backend build: `npm run build`
-- Backend affected suites: 7 suites / 102 tests passed
+- Backend affected suites: 12 suites / 68 tests passed
+- Backend full suite: all 771 test files completed in nine isolated batches;
+  every runnable suite passed. The partitioned run replaced the monolithic
+  process after it reached the 4 GB heap ceiling. One stale travel-fare checker
+  type guard exposed during the batch run was repaired and its 3 tests passed
+  on rerun.
 - Prisma client generation and schema validation passed
-- Prisma migration status: 153 migrations, database schema up to date
+- Prisma migration status: 155 migrations, database schema up to date
 - Scratch-database Intelligence checker passed the full migration chain, three
   publications and four booking variants, including an onsite booking with a
   consumed route estimate, immutable travel-fare snapshot, customer service
@@ -65,11 +71,6 @@ No remote environment was used or modified during this verification.
 - Formal Exchange data checker passed: 251 actors, 40 posts, 255 comments,
   1,543 likes, 312 shares, and zero legacy residue
 
-The repository-wide suites were also sampled. They expose pre-existing failures
-in unrelated notification-route assertions, an obsolete calendar-loader source
-assertion, the i18n audit's temporary-module path, and older backend test
-fixtures; the monolithic backend Jest run subsequently exceeded its 4 GB heap.
-None of those failing production files are changed by this batch. The scoped
-tests, static checks, builds, migration checks, scratch integration checker, and
-authenticated browser acceptance above are the release evidence for this
-batch.
+The scoped tests, full frontend and backend test inventories, static checks,
+builds, migration checks, scratch integration checker, and authenticated
+browser acceptance above are the local release evidence for this batch.
