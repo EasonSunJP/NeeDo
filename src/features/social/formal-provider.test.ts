@@ -1,10 +1,16 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { RealtimeNotification, RealtimeSocialPost } from "../realtime/api";
 import type { SocialNotification, SocialPost, SocialProfile } from "./types";
 import * as socialContext from "./context";
 
 type FormalProviderBehavior = {
+  runFormalSocialLoadSingleFlight?: (
+    state: { current: { key: string; request: Promise<void> } | null },
+    key: string,
+    load: () => Promise<void>,
+    onError: (error: unknown) => void
+  ) => Promise<void>;
   resolveFormalNotificationText?: (
     value: string,
     language: "zh" | "zh-Hant" | "ja" | "en" | "ko"
@@ -81,6 +87,28 @@ function createMemoryStorage(initial: Record<string, string>) {
 }
 
 describe("formal social provider gate", () => {
+  it("coalesces same-session background refreshes and contains their failures", async () => {
+    expect(behavior.runFormalSocialLoadSingleFlight).toBeTypeOf("function");
+    if (!behavior.runFormalSocialLoadSingleFlight) return;
+
+    let rejectLoad: ((error: unknown) => void) | undefined;
+    const load = vi.fn(() => new Promise<void>((_resolve, reject) => {
+      rejectLoad = reject;
+    }));
+    const onError = vi.fn();
+    const state = { current: null as { key: string; request: Promise<void> } | null };
+
+    const first = behavior.runFormalSocialLoadSingleFlight(state, "7:11", load, onError);
+    const second = behavior.runFormalSocialLoadSingleFlight(state, "7:11", load, onError);
+
+    expect(first).toBe(second);
+    expect(load).toHaveBeenCalledTimes(1);
+    rejectLoad?.(new Error("error.rate_limited"));
+    await expect(first).resolves.toBeUndefined();
+    expect(onError).toHaveBeenCalledOnce();
+    expect(state.current).toBeNull();
+  });
+
   it("localizes every Exchange cancellation notification key instead of exposing it", () => {
     expect(behavior.resolveFormalNotificationText).toBeTypeOf("function");
     if (!behavior.resolveFormalNotificationText) return;

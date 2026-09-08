@@ -1699,7 +1699,9 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
     () => portal === "technician" ? technicianProfileApi.getMine() : null,
     [portal, session?.currentIdentity.scopeId]
   );
-  const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
+  const formalCustomerProfile = useCustomerSelfProfile(portal === "user");
+  const legacyCustomer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
+  const customer = portal === "user" ? formalCustomerProfile.customer ?? undefined : legacyCustomer;
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const selectedHomeLocation =
     homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ??
@@ -1712,6 +1714,18 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   const currentLanguageLabel = languages.find((item) => item.code === language)?.label ?? "简中";
   const switchedFromPortal = Boolean((location.state as SettingsNavigationState | null)?.settingsSwitchedFromPortal);
   const isBusinessPortal = portal === "business";
+  const profileStatus = portal === "user"
+    ? formalCustomerProfile.loading ? "正在加载我的正式数据"
+      : formalCustomerProfile.error ? "我的数据加载失败"
+        : summarizeProfileStatus(portal, { customer, store })
+    : portal === "technician"
+      ? technicianProfileQuery.data ? "已完善" : technicianProfileQuery.loading ? "加载中" : "未完善"
+      : summarizeProfileStatus(portal, { customer, store });
+  const accountStatus = portal === "user"
+    ? formalCustomerProfile.loading ? "正在加载我的正式数据"
+      : formalCustomerProfile.error ? "我的数据加载失败"
+        : summarizeAccountStatus(portal, customer, store)
+    : summarizeAccountStatus(portal, customer, store);
   const pwaInstall = usePwaInstallPrompt();
   const [pwaInstallDialogOpen, setPwaInstallDialogOpen] = useState(false);
   const [pwaInstallDialogStatus, setPwaInstallDialogStatus] = useState<PwaInstallDialogStatus>("guide");
@@ -1794,7 +1808,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
             <SettingsListItem
               title={t(getProfileEntryTitle(portal))}
               to={getSettingsPath(portal, "profile")}
-              value={t(portal === "technician" ? (technicianProfileQuery.data ? "已完善" : technicianProfileQuery.loading ? "加载中" : "未完善") : summarizeProfileStatus(portal, { customer, store }))}
+              value={t(profileStatus)}
             />
             {portal !== "merchant" && profileCardBackgroundSettings.editEntryEnabled ? (
               <SettingsListItem
@@ -1818,7 +1832,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           panelClassName={settingsListDividerClassName}
           title={t("账户与安全")}
         >
-          <SettingsListItem title={t("账户与安全")} to={getSettingsPath(portal, "account")} value={t(summarizeAccountStatus(portal, customer, store))} />
+          <SettingsListItem title={t("账户与安全")} to={getSettingsPath(portal, "account")} value={t(accountStatus)} />
         </SettingsSection>
 
         <SettingsSection

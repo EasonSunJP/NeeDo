@@ -492,6 +492,14 @@ describe("UnifiedSettingsPortalPage", () => {
   });
 });
 
+describe("UnifiedSettingsPage formal customer summary", () => {
+  it("loads the signed-in user summary from the formal customer profile without querying other portals", () => {
+    expect(source).toContain('useCustomerSelfProfile(portal === "user")');
+    expect(source).toContain('formalCustomerProfile.loading ? "正在加载我的正式数据"');
+    expect(source).toContain('formalCustomerProfile.error ? "我的数据加载失败"');
+  });
+});
+
 describe("UnifiedSettingsPage Xiaobai asset gate", () => {
   const settingsHomeSource = source.slice(
     source.indexOf("export function UnifiedSettingsPage"),

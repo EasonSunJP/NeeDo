@@ -113,6 +113,10 @@ export function isNonFatalBrowserRuntimeError(error: Error) {
     return true;
   }
 
+  if (error.name === "ApiClientError" && "status" in error && error.status === 429) {
+    return true;
+  }
+
   if (stack.includes("chrome-extension://") || message === "failed to connect to metamask") {
     return true;
   }

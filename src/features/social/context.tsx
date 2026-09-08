@@ -271,6 +271,35 @@ function formalSocialMutationUnavailable(..._args: unknown[]): never {
   throw new Error("error.feature_unavailable");
 }
 
+type FormalSocialLoadRequestState = {
+  current: { key: string; request: Promise<void> } | null;
+};
+
+export function runFormalSocialLoadSingleFlight(
+  state: FormalSocialLoadRequestState,
+  key: string,
+  load: () => Promise<void>,
+  onError: (error: unknown) => void
+): Promise<void> {
+  const pending = state.current;
+  if (pending?.key === key) return pending.request;
+
+  let request!: Promise<void>;
+  request = load()
+    .catch((error) => {
+      onError(error);
+    })
+    .finally(() => {
+      if (state.current?.request === request) state.current = null;
+    });
+  state.current = { key, request };
+  return request;
+}
+
+function handleFormalSocialLoadError(error: unknown) {
+  console.warn("NeeDo social background refresh failed", { error });
+}
+
 function formalEntityType(identityType: string | undefined): SocialProfile["entityType"] {
   if (identityType === "technician") return "technician";
   if (["merchant", "merchant_owner", "merchant_staff"].includes(identityType ?? "")) return "shop";
@@ -383,6 +412,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
   const activePostThreadProfilesRef = useRef(new Map<string, Record<string, SocialProfile>>());
   const postThreadRequestsRef = useRef(new Map<string, Promise<boolean>>());
   const postThreadAbortControllersRef = useRef(new Map<string, AbortController>());
+  const formalSocialLoadRequestRef = useRef<{ key: string; request: Promise<void> } | null>(null);
   const sessionUserId = session?.id ?? null;
   const sessionIdentityId = session?.currentIdentity?.id ?? null;
   const sessionIdentityType = session?.currentIdentity?.type;
@@ -614,7 +644,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     postThreadRequestsRef.current.delete(requestKey);
   }, [formalSessionKey]);
 
-  const loadFormalSocial = useCallback(async () => {
+  const performFormalSocialLoad = useCallback(async () => {
     if (sessionUserId === null || isRestoring) return;
     const [timelinePage, minePage, bookmarkedPage, notificationPage] = await Promise.all([
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100 }),
@@ -728,6 +758,16 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     sessionUserId,
     sessionUsername
   ]);
+
+  const loadFormalSocial = useCallback(
+    () => runFormalSocialLoadSingleFlight(
+      formalSocialLoadRequestRef,
+      formalSessionKey,
+      performFormalSocialLoad,
+      handleFormalSocialLoadError
+    ),
+    [formalSessionKey, performFormalSocialLoad]
+  );
 
   useEffect(() => () => {
     postThreadAbortControllersRef.current.forEach((controller) => controller.abort());
@@ -1058,13 +1098,19 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         const target = profiles[targetKey];
         if (!target) return;
         const currentlyFollowing = (state.follows[actorKey] ?? []).includes(targetKey);
-        void (currentlyFollowing ? realtimeApi.unfollow(Number(target.id)) : realtimeApi.follow(Number(target.id))).then(() => loadFormalSocial());
+        void (currentlyFollowing ? realtimeApi.unfollow(Number(target.id)) : realtimeApi.follow(Number(target.id)))
+          .then(() => loadFormalSocial())
+          .catch(handleFormalSocialLoadError);
       },
       togglePinPost,
       updateProfileOverride: formalSocialMutationUnavailable,
       incrementView,
       shareSocialPostToFriends,
-      markNotificationsRead: () => { void realtimeApi.markAllNotificationsRead().then(() => loadFormalSocial()); },
+      markNotificationsRead: () => {
+        void realtimeApi.markAllNotificationsRead()
+          .then(() => loadFormalSocial())
+          .catch(handleFormalSocialLoadError);
+      },
       refreshFeeds: () => { void loadFormalSocial(); },
       ensureAccountProfile,
       ensurePostThread,
