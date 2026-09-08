@@ -43,12 +43,11 @@ export class MerchantFinanceRulesRepository implements MerchantFinanceRulesRepos
         },
         data: {
           status: "archived",
-          updatedById: actorUserId,
-          deletedAt: new Date()
+          updatedById: actorUserId
         }
       });
 
-      return transaction.shopFinanceRuleSet.create({
+      const next = await transaction.shopFinanceRuleSet.create({
         data: {
           shopId,
           name: input.name,
@@ -72,6 +71,12 @@ export class MerchantFinanceRulesRepository implements MerchantFinanceRulesRepos
           updatedById: actorUserId
         }
       });
+      await transaction.shop.update({
+        where: { id: shopId },
+        data: { technicianPricingRatePercent: Math.round(input.commissionRatePercent) }
+      });
+
+      return next;
     });
 
     return this.mapRuleSet(created);

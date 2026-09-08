@@ -163,7 +163,7 @@ type RealtimeDirectoryProfileBase = {
 
 export type RealtimeTechnicianContactService = {
   id: number;
-  shopId: number;
+  shopId: number | null;
   name: string;
   priceAmount: number;
   currency: string;

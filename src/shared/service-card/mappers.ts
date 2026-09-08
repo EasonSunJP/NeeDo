@@ -58,8 +58,8 @@ export function mapTechnicianServiceToUnifiedData(service: TechnicianServicePayl
     currency: service.currency,
     durationMinutes: service.durationMinutes,
     usageCount: service.usageCount,
-    shopPublicId: normalizeText(service.shop.publicId),
-    shopAddress: normalizeText(service.shop.address),
+    shopPublicId: normalizeText(service.shop?.publicId),
+    shopAddress: normalizeText(service.shop?.address),
     description: normalizeText(service.description),
     tags: uniqueStrings(service.tags).slice(0, 8)
   };

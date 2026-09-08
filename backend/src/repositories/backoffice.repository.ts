@@ -18,6 +18,7 @@ import { IdentifierAllocator, formatPersonId } from "../services/public-identifi
 import { PublicIdentifierRepository } from "./public-identifier.repository";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError, createInternalError } from "../utils/app-error";
+import { assertShopServiceQuota } from "../services/shop-service-policy";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { LedgerCurrencyService } from "../services/ledger-currency.service";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
@@ -1917,9 +1918,22 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   public async createService(input: ScopedServiceCreateInput): Promise<BackofficeServicePayload> {
     const shopId = input.shopId;
-    await this.requireServiceRelations(shopId, input.categoryId, input.technicianProfileId ?? null);
-    return this.mapService(
-      await this.client.service.create({
+    const created = await this.client.$transaction(async (transaction) => {
+      await transaction.$queryRaw(
+        Prisma.sql`SELECT id FROM shops WHERE id = ${shopId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      await this.requireServiceRelations(
+        shopId,
+        input.categoryId,
+        input.technicianProfileId ?? null,
+        transaction
+      );
+      const nonDeletedCount = await transaction.service.count({
+        where: { shopId, deletedAt: null }
+      });
+      assertShopServiceQuota(nonDeletedCount + 1);
+
+      return transaction.service.create({
         data: {
           categoryId: input.categoryId,
           shopId,
@@ -1936,8 +1950,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           sortOrder: input.sortOrder ?? 0
         },
         include: this.serviceInclude()
-      })
-    );
+      });
+    });
+    return this.mapService(created);
   }
 
   public async updateService(
@@ -2534,19 +2549,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   private async requireServiceRelations(
     shopId: number,
     categoryId: number,
-    technicianProfileId: number | null
+    technicianProfileId: number | null,
+    client: PrismaClient | Prisma.TransactionClient = this.client
   ): Promise<void> {
     const [shop, category, technician] = await Promise.all([
-      this.client.shop.findFirst({ where: { id: shopId, deletedAt: null }, select: { id: true } }),
-      this.client.category.findFirst({
-        where: { id: categoryId, deletedAt: null, isActive: true },
-        select: { id: true }
-      }),
+      client.shop.findFirst({ where: { id: shopId, deletedAt: null }, select: { id: true } }),
+      client.category.findFirst({ where: { id: categoryId, deletedAt: null, isActive: true }, select: { id: true } }),
       technicianProfileId
-        ? this.client.technicianProfile.findFirst({
-            where: { id: technicianProfileId, shopId, deletedAt: null },
-            select: { id: true }
-          })
+        ? client.technicianProfile.findFirst({ where: { id: technicianProfileId, shopId, deletedAt: null }, select: { id: true } })
         : Promise.resolve({ id: 0 })
     ]);
     if (!shop || !category || !technician) {

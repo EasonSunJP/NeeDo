@@ -140,7 +140,7 @@ export class TechnicianServiceCoverService {
       });
     }
 
-    const scope = await this.repository.findTechnicianShopScope(actor.currentIdentityScopeId);
+    const scope = await this.repository.findTechnicianShopScope(actor.currentIdentityScopeId, shopId);
     if (!scope || scope.shopId !== shopId) {
       throw new AppError({
         code: ERROR_CODES.IDENTITY_FORBIDDEN,

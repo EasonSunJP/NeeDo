@@ -23,6 +23,10 @@ import {
   normalizeJapaneseRouteAddress,
   shopAddressToJapaneseRouteAddress
 } from "../services/route-estimate.service";
+import {
+  appendCompensationBasis,
+  type CompensationBasisVersion
+} from "../services/compensation-basis";
 import type { AuditLogCreateInput } from "./audit-log.repository";
 import { toAuditLogCreateData } from "./audit-log.repository";
 import type {
@@ -1520,6 +1524,12 @@ export class BookingRepository implements BookingRepositoryPort {
             }
 
             const pricingMode = this.pricingModeFromDb(slot.shop.pricingMode);
+            if (
+              slot.technicianProfileId &&
+              !(await this.hasActiveScheduleAffiliation(tx, slot.shopId, slot.technicianProfileId))
+            ) {
+              return null;
+            }
             const serviceSource =
               pricingMode === "technician"
                 ? this.createTechnicianServiceSource(slot, input.technicianServiceId)
@@ -1531,6 +1541,15 @@ export class BookingRepository implements BookingRepositoryPort {
               }
               return null;
             }
+            const sourceUsageCount = await tx.bookingOrder.count({
+              where: {
+                deletedAt: null,
+                status: "COMPLETED",
+                ...(serviceSource.technicianServiceId
+                  ? { technicianServiceId: serviceSource.technicianServiceId }
+                  : { serviceId: serviceSource.serviceId })
+              }
+            });
 
             const serviceLocation = await this.resolveBookingServiceLocation(tx, slot, input);
             let travelEstimate: BookingTravelEstimateRecord | null = null;
@@ -1677,6 +1696,11 @@ export class BookingRepository implements BookingRepositoryPort {
               ? await options.prepareAffiliate(affiliateContext)
               : null;
             const finalPriceJpy = preparedAffiliate?.finalPriceJpy ?? originalPriceJpy;
+            const compensationBasisVersion = await this.resolveCompensationBasisVersion(
+              tx,
+              slot.shopId,
+              slot.technicianProfileId
+            );
 
             const nextBookedCount = slot.bookedCount + 1;
             const slotUpdate = await tx.scheduleSlot.updateMany({
@@ -1720,15 +1744,18 @@ export class BookingRepository implements BookingRepositoryPort {
                 serviceNameSnapshot: serviceSource.name,
                 servicePriceSnapshot: serviceSource.priceAmount,
                 serviceDurationSnapshot: serviceSource.durationMinutes,
-                serviceSnapshotJson: serviceSource.snapshot,
+                serviceSnapshotJson: appendCompensationBasis(
+                  { ...serviceSource.snapshot, usageCount: sourceUsageCount },
+                  compensationBasisVersion
+                ) as Prisma.InputJsonValue,
                 ...(normalizedFulfillmentAddress
                   ? {
                       fulfillmentAddressSnapshot:
                         fulfillmentAddressSnapshotFromRouteAddress(
                           normalizedFulfillmentAddress
                         ) as unknown as Prisma.InputJsonValue
-                    }
-                  : {}),
+                      }
+                    : {}),
                 startsAt: slot.startsAt,
                 endsAt: slot.endsAt,
                 paymentMethod: servicePaymentMethodToDb(input.paymentMethod ?? "onsite"),
@@ -3414,7 +3441,6 @@ export class BookingRepository implements BookingRepositoryPort {
       const technicianService = await transaction.technicianService.findFirst({
         where: {
           id: technicianServiceId,
-          shopId,
           deletedAt: null,
           isActive: true,
           isBookable: true
@@ -3593,8 +3619,7 @@ export class BookingRepository implements BookingRepositoryPort {
     shopId: number,
     technicianProfileId: number
   ): Promise<boolean> {
-    return Boolean(
-      await transaction.technicianShopAffiliation.findFirst({
+    const affiliation = await transaction.technicianShopAffiliation.findFirst({
         where: {
           shopId,
           technicianProfileId,
@@ -3605,8 +3630,18 @@ export class BookingRepository implements BookingRepositoryPort {
           technicianProfile: { deletedAt: null, status: "published" }
         },
         select: { id: true, relationshipType: true }
-      })
-    );
+      });
+    if (affiliation) return true;
+
+    return Boolean(await transaction.technicianProfile.findFirst({
+      where: {
+        id: technicianProfileId,
+        shopId,
+        deletedAt: null,
+        status: "published"
+      },
+      select: { id: true }
+    }));
   }
 
   private async hasConfirmedBookingOverlap(
@@ -4783,12 +4818,40 @@ export class BookingRepository implements BookingRepositoryPort {
         categoryId: slot.service.categoryId,
         name: slot.service.name,
         description: slot.service.description,
+        tags: [],
         priceAmount: this.formatDecimal(slot.service.priceAmount, 2),
         currency: slot.service.currency,
         durationMinutes: slot.service.durationMinutes,
         registeredAt: slot.service.createdAt.toISOString()
       }
     };
+  }
+
+  private async resolveCompensationBasisVersion(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    technicianProfileId: number | null
+  ): Promise<CompensationBasisVersion | null> {
+    if (technicianProfileId) {
+      const technicianRule = await transaction.technicianCompensationProfile.findFirst({
+        where: {
+          shopId,
+          technicianProfileId,
+          status: "active",
+          deletedAt: null
+        },
+        orderBy: [{ version: "desc" }, { id: "desc" }],
+        select: { id: true }
+      });
+      if (technicianRule) return `technician_override:${technicianRule.id}`;
+    }
+
+    const shopRule = await transaction.shopFinanceRuleSet.findFirst({
+      where: { shopId, status: "active", deletedAt: null },
+      orderBy: { id: "desc" },
+      select: { id: true }
+    });
+    return shopRule ? `shop_default:${shopRule.id}` : null;
   }
 
   private createTechnicianServiceSource(slot: SlotRecord, requestedTechnicianServiceId?: number) {
@@ -4818,6 +4881,7 @@ export class BookingRepository implements BookingRepositoryPort {
         categoryId: slot.technicianService.categoryId,
         name: slot.technicianService.name,
         description: slot.technicianService.description,
+        tags: this.jsonStringArray(slot.technicianService.tagsJson),
         priceAmount: slot.technicianService.priceAmount,
         currency: slot.technicianService.currency,
         durationMinutes: slot.technicianService.durationMinutes,
@@ -4825,6 +4889,12 @@ export class BookingRepository implements BookingRepositoryPort {
         registeredAt: slot.technicianService.createdAt.toISOString()
       }
     };
+  }
+
+  private jsonStringArray(value: Prisma.JsonValue | null | undefined): string[] {
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
   }
 
   private paymentStatusFromDb(status: string): ServicePaymentStatusPayload {

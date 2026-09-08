@@ -57,10 +57,12 @@ const technicianServiceCardInclude = {
 type TechnicianServiceRecord = Prisma.TechnicianServiceGetPayload<{
   include: typeof technicianServiceCardInclude;
 }>;
+type ShopFinanceRuleRecord = Prisma.ShopFinanceRuleSetGetPayload<Record<string, never>>;
 
 type ShopServiceRecord = Prisma.ServiceGetPayload<{
   include: {
     mediaAssets: true;
+    _count: { select: { bookingOrders: true } };
   };
 }>;
 
@@ -96,42 +98,59 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     actorUserId: number
   ): Promise<ShopPricingModePayload> {
     try {
-      return this.mapShopPricingMode(
-        await this.updateShopPricingModeWithRate(
-          shopId,
-          pricingMode,
-          technicianPricingRatePercent,
-          actorUserId
-        )
-      ) as ShopPricingModePayload;
+      return await this.updatePricingModeAndSettlementRule(
+        shopId,
+        pricingMode,
+        technicianPricingRatePercent,
+        actorUserId,
+        true
+      );
     } catch (error) {
       if (!this.isMissingTechnicianPricingRateColumn(error)) {
         throw error;
       }
 
-      const shop = await this.updateShopPricingModeWithoutRate(shopId, pricingMode, actorUserId);
       legacyShopTechnicianPricingRatePercent.set(shopId, technicianPricingRatePercent);
-      return {
-        ...(this.mapShopPricingMode(shop, technicianPricingRatePercent) as ShopPricingModePayload)
-      };
+      return this.updatePricingModeAndSettlementRule(
+        shopId,
+        pricingMode,
+        technicianPricingRatePercent,
+        actorUserId,
+        false
+      );
     }
   }
 
   public async findTechnicianShopScope(
-    technicianId: number
+    technicianId: number,
+    shopId: number
   ): Promise<TechnicianShopScopePayload | null> {
+    const now = new Date();
     const technician = await this.client.technicianProfile.findFirst({
       where: {
         id: technicianId,
-        deletedAt: null
+        deletedAt: null,
+        OR: [
+          { shopId },
+          {
+            technicianShopAffiliations: {
+              some: {
+                shopId,
+                deletedAt: null,
+                workStatus: "ACTIVE",
+                startsAt: { lte: now },
+                OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+              }
+            }
+          }
+        ]
       },
       select: {
-        id: true,
-        shopId: true
+        id: true
       }
     });
 
-    return technician ? { technicianId: technician.id, shopId: technician.shopId } : null;
+    return technician ? { technicianId: technician.id, shopId } : null;
   }
 
   public async listTechnicianServices(
@@ -542,7 +561,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     const update = await this.client.technicianService.updateMany({
       where: {
         id: input.serviceId,
-        shopId: input.shopId,
+        ...(input.shopId ? { shopId: input.shopId } : {}),
         technicianId: input.technicianId,
         deletedAt: null
       },
@@ -581,14 +600,22 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     input: TechnicianServiceDeleteRepositoryInput
   ): Promise<boolean> {
     return this.client.$transaction(async (transaction) => {
-      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
-        Prisma.sql`SELECT id FROM technician_services
-          WHERE id = ${input.serviceId}
-            AND shop_id = ${input.shopId}
-            AND technician_id = ${input.technicianId}
-            AND deleted_at IS NULL
-          FOR UPDATE`
-      );
+      const locked = input.shopId
+        ? await transaction.$queryRaw<Array<{ id: number }>>(
+            Prisma.sql`SELECT id FROM technician_services
+              WHERE id = ${input.serviceId}
+                AND shop_id = ${input.shopId}
+                AND technician_id = ${input.technicianId}
+                AND deleted_at IS NULL
+              FOR UPDATE`
+          )
+        : await transaction.$queryRaw<Array<{ id: number }>>(
+            Prisma.sql`SELECT id FROM technician_services
+              WHERE id = ${input.serviceId}
+                AND technician_id = ${input.technicianId}
+                AND deleted_at IS NULL
+              FOR UPDATE`
+          );
       if (locked.length !== 1) {
         return false;
       }
@@ -633,7 +660,16 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.service.findMany({
         where,
-        include: { mediaAssets: true },
+        include: {
+          mediaAssets: true,
+          _count: {
+            select: {
+              bookingOrders: {
+                where: { status: "COMPLETED", deletedAt: null }
+              }
+            }
+          }
+        },
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
@@ -652,10 +688,24 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     input: PaginationInput & { shopId: number }
   ): Promise<PaginatedResponse<BookingNavigationTechnicianPayload>> {
     const pagination = toPrismaPagination(input);
+    const now = new Date();
     const where: Prisma.TechnicianProfileWhereInput = {
-      shopId: input.shopId,
       deletedAt: null,
-      status: "published"
+      status: "published",
+      OR: [
+        { shopId: input.shopId },
+        {
+          technicianShopAffiliations: {
+            some: {
+              shopId: input.shopId,
+              deletedAt: null,
+              workStatus: "ACTIVE",
+              startsAt: { lte: now },
+              OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+            }
+          }
+        }
+      ]
     };
     const [list, total] = await Promise.all([
       this.client.technicianProfile.findMany({
@@ -682,13 +732,31 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     input: PaginationInput & { shopId: number; technicianId: number }
   ): Promise<PaginatedResponse<TechnicianServicePayload>> {
     const pagination = toPrismaPagination(input);
+    const now = new Date();
     const where: Prisma.TechnicianServiceWhereInput = {
-      shopId: input.shopId,
       technicianId: input.technicianId,
       deletedAt: null,
       isActive: true,
       isBookable: true,
-      reviewStatus: "APPROVED"
+      reviewStatus: "APPROVED",
+      technicianProfile: {
+        deletedAt: null,
+        status: "published",
+        OR: [
+          { shopId: input.shopId },
+          {
+            technicianShopAffiliations: {
+              some: {
+                shopId: input.shopId,
+                deletedAt: null,
+                workStatus: "ACTIVE",
+                startsAt: { lte: now },
+                OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+              }
+            }
+          }
+        ]
+      }
     };
     const [list, total] = await Promise.all([
       this.client.technicianService.findMany({
@@ -726,11 +794,13 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       coverImageUrl: service.coverImageUrl,
       images: this.stringArrayFromJson(service.imagesJson),
       tags: this.stringArrayFromJson(service.tagsJson),
-      shop: {
-        publicId: this.activeShopPublicId(service.shop.publicIdentifier),
-        name: service.shop.name,
-        address: service.shop.address
-      },
+      shop: service.shop
+        ? {
+            publicId: this.activeShopPublicId(service.shop.publicIdentifier),
+            name: service.shop.name,
+            address: service.shop.address
+          }
+        : null,
       isActive: service.isActive,
       isBookable: service.isBookable,
       isRecommended: service.isRecommended,
@@ -794,7 +864,10 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       priceAmount: this.formatDecimal(service.priceAmount, 2),
       currency: service.currency,
       durationMinutes: service.durationMinutes,
-      coverUrl: service.mediaAssets.find((asset) => asset.usageType === "cover")?.url ?? null
+      coverUrl: service.mediaAssets.find((asset) => asset.usageType === "cover")?.url ?? null,
+      description: service.description,
+      tags: [],
+      usageCount: service._count.bookingOrders
     };
   }
 
@@ -842,49 +915,93 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     });
   }
 
-  private async updateShopPricingModeWithRate(
+  private async updatePricingModeAndSettlementRule(
     shopId: number,
     pricingMode: PricingModePayload,
     technicianPricingRatePercent: number,
-    actorUserId: number
-  ): Promise<ShopPricingModeRecord> {
-    return this.client.shop.update({
-      where: { id: shopId },
-      data: {
-        pricingMode: this.pricingModeToDb(pricingMode),
-        technicianPricingRatePercent,
-        pricingModeUpdatedAt: new Date(),
-        pricingModeUpdatedBy: actorUserId
-      },
-      select: {
-        id: true,
-        pricingMode: true,
-        technicianPricingRatePercent: true,
-        pricingModeUpdatedAt: true,
-        pricingModeUpdatedBy: true
+    actorUserId: number,
+    includeLegacyRateColumn: boolean
+  ): Promise<ShopPricingModePayload> {
+    return this.client.$transaction(async (transaction) => {
+      const currentRule = await transaction.shopFinanceRuleSet.findFirst({
+        where: { shopId, status: "active", deletedAt: null },
+        orderBy: { id: "desc" }
+      });
+      const shareBps = technicianPricingRatePercent * 100;
+      if (
+        !currentRule ||
+        currentRule.commissionRateBps !== shareBps ||
+        currentRule.extensionCommissionRateBps !== shareBps
+      ) {
+        if (currentRule) {
+          await transaction.shopFinanceRuleSet.updateMany({
+            where: { shopId, status: "active", deletedAt: null },
+            data: { status: "archived", updatedById: actorUserId }
+          });
+        }
+        await transaction.shopFinanceRuleSet.create({
+          data: this.nextShopFinanceRule(
+            shopId,
+            currentRule,
+            technicianPricingRatePercent,
+            actorUserId
+          )
+        });
       }
+
+      const shop = await transaction.shop.update({
+        where: { id: shopId },
+        data: {
+          pricingMode: this.pricingModeToDb(pricingMode),
+          ...(includeLegacyRateColumn ? { technicianPricingRatePercent } : {}),
+          pricingModeUpdatedAt: new Date(),
+          pricingModeUpdatedBy: actorUserId
+        },
+        select: {
+          id: true,
+          pricingMode: true,
+          ...(includeLegacyRateColumn ? { technicianPricingRatePercent: true } : {}),
+          pricingModeUpdatedAt: true,
+          pricingModeUpdatedBy: true
+        }
+      });
+
+      return this.mapShopPricingMode(
+        shop as ShopPricingModeRecord,
+        technicianPricingRatePercent
+      ) as ShopPricingModePayload;
     });
   }
 
-  private async updateShopPricingModeWithoutRate(
+  private nextShopFinanceRule(
     shopId: number,
-    pricingMode: PricingModePayload,
+    current: ShopFinanceRuleRecord | null,
+    technicianSharePercent: number,
     actorUserId: number
-  ): Promise<ShopPricingModeRecord> {
-    return this.client.shop.update({
-      where: { id: shopId },
-      data: {
-        pricingMode: this.pricingModeToDb(pricingMode),
-        pricingModeUpdatedAt: new Date(),
-        pricingModeUpdatedBy: actorUserId
-      },
-      select: {
-        id: true,
-        pricingMode: true,
-        pricingModeUpdatedAt: true,
-        pricingModeUpdatedBy: true
-      }
-    });
+  ): Prisma.ShopFinanceRuleSetUncheckedCreateInput {
+    const shareBps = technicianSharePercent * 100;
+    return {
+      shopId,
+      name: current?.name ?? "Default merchant finance rules",
+      status: "active",
+      wageMode: current?.wageMode ?? "commission",
+      baseSalaryJpy: current?.baseSalaryJpy ?? 0,
+      hourlyRateJpy: current?.hourlyRateJpy ?? 0,
+      dailyRateJpy: current?.dailyRateJpy ?? 0,
+      fixedOrderPayJpy: current?.fixedOrderPayJpy ?? 0,
+      commissionRateBps: shareBps,
+      extensionCommissionRateBps: shareBps,
+      nominationFeeJpy: current?.nominationFeeJpy ?? 0,
+      guaranteedMinimumJpy: current?.guaranteedMinimumJpy ?? 0,
+      ndpFeeBearer: current?.ndpFeeBearer ?? "shop",
+      technicianNdpShareBps: current?.technicianNdpShareBps ?? 0,
+      bonusRulesJson: current?.bonusRulesJson ?? Prisma.JsonNull,
+      deductionRulesJson: current?.deductionRulesJson ?? Prisma.JsonNull,
+      effectiveFrom: current?.effectiveFrom ?? null,
+      effectiveTo: current?.effectiveTo ?? null,
+      createdById: actorUserId,
+      updatedById: actorUserId
+    };
   }
 
   private mapShopPricingMode(
@@ -932,7 +1049,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
   }
 
   private activeShopPublicId(
-    identifier: TechnicianServiceRecord["shop"]["publicIdentifier"]
+    identifier: NonNullable<TechnicianServiceRecord["shop"]>["publicIdentifier"]
   ): string | null {
     return identifier?.kind === "SHOP" &&
       identifier.status === "ACTIVE" &&

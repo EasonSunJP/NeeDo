@@ -830,6 +830,7 @@ describe("GET /api/v1/openapi.json", () => {
       additionalProperties: false,
       required: expect.arrayContaining(["durationMinutes", "taxIncluded"]),
       properties: {
+        shopId: { type: "integer", nullable: true, minimum: 1 },
         durationMinutes: { type: "integer", minimum: 1 },
         taxIncluded: { type: "boolean", enum: [true] }
       }
@@ -1676,7 +1677,12 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas.TechnicianService.properties).toMatchObject({
       publicId: { type: "string", format: "uuid" },
       usageCount: { type: "integer", minimum: 0 },
-      shop: { $ref: "#/components/schemas/TechnicianServiceShop" }
+      shop: {
+        oneOf: [
+          { $ref: "#/components/schemas/TechnicianServiceShop" },
+          { type: "null" }
+        ]
+      }
     });
     expect(response.body.components.schemas.TechnicianServiceShop).toMatchObject({
       required: ["publicId", "name", "address"],

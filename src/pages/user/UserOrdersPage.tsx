@@ -13,6 +13,7 @@ import { bookingApi, mapBookingOrderToDomainOrder } from "../../features/booking
 import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import type { Order } from "../../types/domain";
+import { getRebookPath } from "./rebookRoute";
 
 const fullscreenHeaderClassName = "";
 const surfaceCardClassName =
@@ -63,18 +64,6 @@ function getProviderDetailPath(order: Order) {
   if (order.mode === "store" && order.shopId) return `/stores/${order.shopId}`;
   if (order.technicianProfileId) return `/profiles/technician/${order.technicianProfileId}`;
   return null;
-}
-
-function getRebookPath(order: Order) {
-  if (!order.serviceId) return null;
-  const params = new URLSearchParams();
-
-  if (order.shopId) params.set("store", order.shopId);
-  if (order.mode === "home") params.set("mode", "home");
-  if (order.technicianProfileId) params.set("technician", order.technicianProfileId);
-  const query = params.toString();
-
-  return `/checkout/${order.serviceId}${query ? `?${query}` : ""}`;
 }
 
 function describeOrderLoadError(error: unknown) {

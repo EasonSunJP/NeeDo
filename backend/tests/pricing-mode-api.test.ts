@@ -22,7 +22,7 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
     findShopPricingMode: jest.fn(async () => ({
       shopId: 1,
       pricingMode: "technician",
-      technicianPricingRatePercent: 200,
+      technicianPricingRatePercent: 30,
       updatedAt: now,
       updatedBy: 7
     })),
@@ -101,16 +101,16 @@ describe("pricing mode public API", () => {
       .get("/api/v1/shops/1/technicians/3/services?page=1&pageSize=20")
       .expect(200);
     expect(servicesResponse.body.data).toMatchObject({
-      list: [{ id: 11, name: "深层护理 60 分钟", priceAmount: 17600 }]
+      list: [{ id: 11, name: "深层护理 60 分钟", priceAmount: 8800 }]
     });
   });
 
-  it("keeps public technician services readable in merchant pricing mode without exposing them in booking navigation", async () => {
+  it("keeps technician services private in merchant pricing mode", async () => {
     const pricingModeRepository = createRepository();
     pricingModeRepository.findShopPricingMode.mockResolvedValue({
       shopId: 1,
       pricingMode: "merchant",
-      technicianPricingRatePercent: 200,
+      technicianPricingRatePercent: 30,
       updatedAt: now,
       updatedBy: 7
     });
@@ -122,7 +122,10 @@ describe("pricing mode public API", () => {
           priceAmount: "8800.00",
           currency: "JPY",
           durationMinutes: 60,
-          coverUrl: null
+          coverUrl: null,
+          description: null,
+          tags: [],
+          usageCount: 0
         }
       ])
     );
@@ -145,13 +148,16 @@ describe("pricing mode public API", () => {
     const servicesResponse = await request(app)
       .get("/api/v1/shops/1/technicians/3/services?page=1&pageSize=20")
       .expect(200);
-    expect(servicesResponse.body.data).toMatchObject({
-      list: [{ id: 11, name: "深层护理 60 分钟", priceAmount: 8800 }]
-    });
+    expect(servicesResponse.body.data).toEqual({ list: [], total: 0, page: 1, page_size: 20 });
+    expect(pricingModeRepository.listPublicTechnicianServices).not.toHaveBeenCalled();
   });
 
   it("lists and reorders the authenticated technician portfolio with validated commands", async () => {
     const pricingModeRepository = createRepository();
+    pricingModeRepository.createTechnicianService.mockResolvedValue({
+      ...serviceRecordForApi(13, null),
+      name: "独立服务"
+    });
     pricingModeRepository.listTechnicianServicesByProfile.mockResolvedValue(
       paginated([
         { ...serviceRecordForApi(11, 1), sortOrder: 0 },
@@ -175,6 +181,23 @@ describe("pricing mode public API", () => {
       scopeId: 3
     };
     const accessToken = await fixture.loginAsAdmin();
+
+    const createResponse = await request(fixture.app)
+      .post("/api/v1/technicians/me/services")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "独立服务",
+        categoryId: 2,
+        priceAmount: 6800,
+        currency: "JPY",
+        durationMinutes: 45
+      })
+      .expect(201);
+    expect(createResponse.body.data).toMatchObject({ id: 13, shopId: null, name: "独立服务" });
+    expect(pricingModeRepository.createTechnicianService).toHaveBeenCalledWith(expect.objectContaining({
+      shopId: null,
+      technicianId: 3
+    }));
 
     const listResponse = await request(fixture.app)
       .get("/api/v1/technicians/me/services?page=1&pageSize=20&activeOnly=false")
@@ -347,7 +370,7 @@ describe("pricing mode public API", () => {
   });
 });
 
-const serviceRecordForApi = (id: number, shopId: number) => ({
+const serviceRecordForApi = (id: number, shopId: number | null) => ({
   id,
   publicId: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
   shopId,

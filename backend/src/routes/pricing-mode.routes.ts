@@ -19,6 +19,7 @@ import { ContentMediaFileStorage } from "../services/content-media.storage";
 import { TechnicianServiceCoverService } from "../services/technician-service-cover.service";
 import {
   bookingNavigationQuerySchema,
+  myTechnicianServiceIdParamSchema,
   pricingModeBodySchema,
   publicTechnicianServicesParamSchema,
   shopIdParamSchema,
@@ -82,12 +83,33 @@ export const createPricingModeRoutes = (
     validateRequest({ query: technicianServiceListQuerySchema }),
     controller.listMyTechnicianServices
   );
+  router.post(
+    "/technicians/me/services",
+    authenticate(),
+    authorize(PRICING_MODE_ROUTE_PERMISSIONS.technicianServicesWrite),
+    validateRequest({ body: technicianServiceBodySchema }),
+    controller.createMyTechnicianService
+  );
   router.put(
     "/technicians/me/services/order",
     authenticate(),
     authorize(PRICING_MODE_ROUTE_PERMISSIONS.technicianServicesWrite),
     validateRequest({ body: technicianServiceOrderBodySchema }),
     controller.reorderMyTechnicianServices
+  );
+  router.put(
+    "/technicians/me/services/:serviceId",
+    authenticate(),
+    authorize(PRICING_MODE_ROUTE_PERMISSIONS.technicianServicesWrite),
+    validateRequest({ params: myTechnicianServiceIdParamSchema, body: technicianServiceBodySchema.partial() }),
+    controller.updateMyTechnicianService
+  );
+  router.delete(
+    "/technicians/me/services/:serviceId",
+    authenticate(),
+    authorize(PRICING_MODE_ROUTE_PERMISSIONS.technicianServicesWrite),
+    validateRequest({ params: myTechnicianServiceIdParamSchema }),
+    controller.deleteMyTechnicianService
   );
   router.get(
     "/technicians/me/shops/:shopId/services",

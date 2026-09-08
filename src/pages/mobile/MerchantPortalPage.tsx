@@ -59,6 +59,13 @@ import { ImScopeProvider } from "../../features/im/scope";
 import { useImStore } from "../../features/im/store";
 import { MerchantPrimaryNavCarousel } from "../../features/merchant-navigation/MerchantPrimaryNavCarousel";
 import { pricingModeApi, type ShopPricingMode } from "../../features/pricing-mode/api";
+import {
+  adjustTechnicianSettlementShare,
+  MAX_TECHNICIAN_SETTLEMENT_SHARE_PERCENT,
+  MIN_TECHNICIAN_SETTLEMENT_SHARE_PERCENT,
+  normalizeTechnicianSettlementShare,
+  resolveSettlementSplit
+} from "../../features/pricing-mode/settlementSplit";
 import { AutomationWizard } from "../../features/scheduling/automation/AutomationWizard";
 import { partitionDirectoryContacts } from "../../lib/contactDirectory";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
@@ -1307,7 +1314,6 @@ function MerchantStorePricingModeControl({
   onTechnicianPricingConfirmRequest,
   onMenuOpenChange,
   onModeChange,
-  onRatePercentChange,
   pending,
   ratePercent
 }: {
@@ -1316,12 +1322,12 @@ function MerchantStorePricingModeControl({
   onTechnicianPricingConfirmRequest: () => void;
   onMenuOpenChange: (open: boolean) => void;
   onModeChange: (mode: MerchantStorePricingMode, ratePercent?: number) => void;
-  onRatePercentChange: (ratePercent: number) => void;
   pending?: boolean;
   ratePercent: number;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [technicianPricingRatioPercent, setTechnicianPricingRatioPercent] = useState(ratePercent);
+  const settlementSplit = resolveSettlementSplit(technicianPricingRatioPercent);
   const technicianPricing = mode === "technician";
   const nextMode = technicianPricing ? "store" : "technician";
   const requestModeChange = (targetMode: MerchantStorePricingMode) => {
@@ -1337,10 +1343,9 @@ function MerchantStorePricingModeControl({
     onModeChange(targetMode);
   };
   const updateTechnicianPricingRatio = (delta: number) => {
-    setTechnicianPricingRatioPercent((current) => Math.min(200, Math.max(10, current + delta)));
+    setTechnicianPricingRatioPercent((current) => adjustTechnicianSettlementShare(current, delta));
   };
   const confirmTechnicianPricing = () => {
-    onRatePercentChange(technicianPricingRatioPercent);
     onMenuOpenChange(false);
     onModeChange("technician", technicianPricingRatioPercent);
   };
@@ -1386,7 +1391,9 @@ function MerchantStorePricingModeControl({
           >
             <span className="block truncate text-[10px] font-black text-[color:var(--client-muted)]">定价模式</span>
             <strong className="mt-0.5 block text-[11px] font-black leading-4 text-[color:var(--client-text)]">
-              {technicianPricing ? <>技师定价（{ratePercent}%）</> : "店铺定价"}
+              {technicianPricing
+                ? <>技师定价（店铺 {100 - ratePercent}%：{ratePercent}% 技师）</>
+                : "店铺定价"}
             </strong>
           </button>
           <ToggleSwitch
@@ -1402,25 +1409,27 @@ function MerchantStorePricingModeControl({
           className="absolute left-0 right-0 top-[calc(100%+8px)] z-[95] rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_36%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,var(--client-bg))] p-2.5 shadow-[0_18px_36px_rgba(0,0,0,0.28)] backdrop-blur-xl"
           data-testid="merchant-pricing-ratio-menu"
         >
-          <p className="text-[11px] font-black leading-4 text-[color:var(--client-text)]">店铺报价与技师定价的比例</p>
-          <p className="mt-1 text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">默认 100%，每次调整 10%。</p>
+          <p className="text-[11px] font-black leading-4 text-[color:var(--client-text)]">店铺与技师结算比例</p>
+          <p className="mt-1 text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">每次调整 10%，店铺与技师合计不超过 100%。</p>
           <div className="mt-2 grid grid-cols-[38px_minmax(0,1fr)_38px] items-center gap-2">
             <button
               aria-label="增加比例"
               className="grid h-9 place-items-center rounded-full bg-[color:var(--client-primary)] text-lg font-black text-black disabled:opacity-60"
-              disabled={pending || technicianPricingRatioPercent >= 200}
+              disabled={pending || technicianPricingRatioPercent >= MAX_TECHNICIAN_SETTLEMENT_SHARE_PERCENT}
               onClick={() => updateTechnicianPricingRatio(10)}
               type="button"
             >
               +
             </button>
             <div className="min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] px-3 py-2 text-center">
-              <strong className="block text-lg font-black text-[color:var(--client-text)]">{technicianPricingRatioPercent}%</strong>
+              <strong className="block text-base font-black text-[color:var(--client-text)]">
+                店铺 {settlementSplit.shopSharePercent}%：{settlementSplit.technicianSharePercent}% 技师
+              </strong>
             </div>
             <button
               aria-label="减少比例"
               className="grid h-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] text-lg font-black text-[color:var(--client-text)] disabled:opacity-45"
-              disabled={pending || technicianPricingRatioPercent <= 10}
+              disabled={pending || technicianPricingRatioPercent <= MIN_TECHNICIAN_SETTLEMENT_SHARE_PERCENT}
               onClick={() => updateTechnicianPricingRatio(-10)}
               type="button"
             >
@@ -1826,7 +1835,7 @@ export function MerchantPortalContent({
       .then((result) => {
         if (mounted) {
           setStorePricingMode(merchantStorePricingModeFromApi(result.pricingMode));
-          setStoreTechnicianPricingRatePercent(result.technicianPricingRatePercent);
+          setStoreTechnicianPricingRatePercent(normalizeTechnicianSettlementShare(result.technicianPricingRatePercent));
         }
       })
       .catch(() => {
@@ -2345,8 +2354,10 @@ export function MerchantPortalContent({
         nextRatePercent
       );
       setStorePricingMode(merchantStorePricingModeFromApi(result.pricingMode));
-      setStoreTechnicianPricingRatePercent(result.technicianPricingRatePercent);
-      setContactLog(nextMode === "technician" ? `已切换为技师定价，店铺报价比例 ${result.technicianPricingRatePercent}%。` : "已切换为店铺定价。");
+      setStoreTechnicianPricingRatePercent(normalizeTechnicianSettlementShare(result.technicianPricingRatePercent));
+      setContactLog(nextMode === "technician"
+        ? `已切换为技师定价，结算分成：店铺 ${100 - result.technicianPricingRatePercent}%：${result.technicianPricingRatePercent}% 技师。`
+        : "已切换为店铺定价。");
     } catch {
       setContactLog("定价模式保存失败，请稍后重试。");
     } finally {
@@ -2374,7 +2385,6 @@ export function MerchantPortalContent({
         mode={storePricingMode}
         onMenuOpenChange={updateStorePricingRatioMenuOpen}
         onModeChange={updateStorePricingMode}
-        onRatePercentChange={setStoreTechnicianPricingRatePercent}
         onTechnicianPricingConfirmRequest={requestTechnicianPricingConfirm}
         pending={storePricingModeSaving}
         ratePercent={storeTechnicianPricingRatePercent}
@@ -2831,7 +2841,6 @@ export function MerchantPortalContent({
                   privacyControl={storePrivacyControl}
                   scope="merchant"
                   store={store}
-                  technicianPricingRatePercent={storeTechnicianPricingRatePercent}
                 />
               ) : null}
 

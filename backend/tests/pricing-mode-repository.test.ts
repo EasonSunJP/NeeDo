@@ -64,6 +64,132 @@ const createInput = (shopId: number) => ({
 });
 
 describe("PricingModeRepository", () => {
+  it("authorizes technician shop scope through the active affiliation relation", async () => {
+    const findFirst = jest.fn(async () => ({ id: 3 }));
+    const repository = new PricingModeRepository({
+      technicianProfile: { findFirst }
+    } as unknown as PrismaClient);
+
+    await expect(repository.findTechnicianShopScope(3, 22)).resolves.toEqual({
+      technicianId: 3,
+      shopId: 22
+    });
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 3,
+        OR: expect.arrayContaining([
+          { shopId: 22 },
+          expect.objectContaining({ technicianShopAffiliations: expect.any(Object) })
+        ])
+      })
+    }));
+  });
+
+  it("lists one technician portfolio through any active affiliated shop", async () => {
+    const findMany = jest.fn(async () => [{ ...serviceRecord(1, 10), _count: { bookingOrders: 4 } }]);
+    const count = jest.fn(async () => 1);
+    const repository = new PricingModeRepository({
+      technicianService: { findMany, count }
+    } as unknown as PrismaClient);
+
+    await expect(repository.listPublicTechnicianServices({
+      shopId: 22,
+      technicianId: 3,
+      page: 1,
+      pageSize: 20
+    })).resolves.toMatchObject({ list: [{ id: 1, shopId: 10, usageCount: 4 }] });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        technicianId: 3,
+        technicianProfile: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { shopId: 22 },
+            expect.objectContaining({ technicianShopAffiliations: expect.any(Object) })
+          ])
+        })
+      })
+    }));
+    const query = (findMany as jest.Mock).mock.calls[0]?.[0] as { where: object };
+    expect(query.where).not.toHaveProperty("shopId");
+  });
+
+  it("versions the shop-wide compensation rule with the selected technician settlement share", async () => {
+    const updatedAt = new Date("2026-09-08T00:00:00.000Z");
+    const currentRule = {
+      id: 41,
+      shopId: 1,
+      name: "Global compensation",
+      status: "active",
+      wageMode: "base_plus_commission",
+      baseSalaryJpy: 10_000,
+      hourlyRateJpy: 0,
+      dailyRateJpy: 0,
+      fixedOrderPayJpy: 500,
+      commissionRateBps: 6_000,
+      extensionCommissionRateBps: 6_000,
+      nominationFeeJpy: 1_000,
+      guaranteedMinimumJpy: 0,
+      ndpFeeBearer: "shop",
+      technicianNdpShareBps: 0,
+      bonusRulesJson: [],
+      deductionRulesJson: [],
+      effectiveFrom: null,
+      effectiveTo: null,
+      createdById: 7,
+      updatedById: 7,
+      createdAt: updatedAt,
+      updatedAt,
+      deletedAt: null
+    };
+    const transactionClient = {
+      shop: {
+        update: jest.fn(async () => ({
+          id: 1,
+          pricingMode: "TECHNICIAN",
+          technicianPricingRatePercent: 30,
+          pricingModeUpdatedAt: updatedAt,
+          pricingModeUpdatedBy: 7
+        }))
+      },
+      shopFinanceRuleSet: {
+        findFirst: jest.fn(async () => currentRule),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          ...currentRule,
+          ...data,
+          id: 42,
+          commissionRateBps: 3_000,
+          extensionCommissionRateBps: 3_000
+        }))
+      }
+    };
+    const client = {
+      $transaction: jest.fn((callback: (tx: typeof transactionClient) => unknown) => callback(transactionClient))
+    };
+    const repository = new PricingModeRepository(client as unknown as PrismaClient);
+
+    await expect(repository.updateShopPricingMode(1, "technician", 30, 7)).resolves.toMatchObject({
+      shopId: 1,
+      pricingMode: "technician",
+      technicianPricingRatePercent: 30
+    });
+    expect(transactionClient.shopFinanceRuleSet.updateMany).toHaveBeenCalledWith({
+      where: { shopId: 1, status: "active", deletedAt: null },
+      data: { status: "archived", updatedById: 7 }
+    });
+    expect(transactionClient.shopFinanceRuleSet.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        shopId: 1,
+        wageMode: "base_plus_commission",
+        baseSalaryJpy: 10_000,
+        commissionRateBps: 3_000,
+        extensionCommissionRateBps: 3_000,
+        createdById: 7,
+        updatedById: 7
+      })
+    });
+  });
+
   it("keeps pricing-mode reads and updates usable when the rate column has not been migrated yet", async () => {
     const updatedAt = new Date("2026-06-02T12:00:00.000Z");
     const shop = {
@@ -80,7 +206,17 @@ describe("PricingModeRepository", () => {
         pricingModeUpdatedBy: 7
       })
     };
-    const repository = new PricingModeRepository({ shop } as unknown as PrismaClient);
+    const shopFinanceRuleSet = {
+      findFirst: jest.fn(async () => null),
+      updateMany: jest.fn(async () => ({ count: 0 })),
+      create: jest.fn(async () => ({}))
+    };
+    const repository = new PricingModeRepository({
+      shop,
+      shopFinanceRuleSet,
+      $transaction: jest.fn((callback: (transaction: { shop: typeof shop; shopFinanceRuleSet: typeof shopFinanceRuleSet }) => unknown) =>
+        callback({ shop, shopFinanceRuleSet }))
+    } as unknown as PrismaClient);
 
     await expect(repository.findShopPricingMode(1)).resolves.toMatchObject({
       shopId: 1,
@@ -94,16 +230,16 @@ describe("PricingModeRepository", () => {
       })
     );
 
-    await expect(repository.updateShopPricingMode(1, "technician", 200, 7)).resolves.toMatchObject({
+    await expect(repository.updateShopPricingMode(1, "technician", 100, 7)).resolves.toMatchObject({
       shopId: 1,
       pricingMode: "technician",
-      technicianPricingRatePercent: 200,
+      technicianPricingRatePercent: 100,
       updatedBy: 7
     });
     expect(shop.update).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        data: expect.not.objectContaining({ technicianPricingRatePercent: 200 }),
+        data: expect.not.objectContaining({ technicianPricingRatePercent: 100 }),
         select: expect.not.objectContaining({ technicianPricingRatePercent: true })
       })
     );
@@ -117,7 +253,7 @@ describe("PricingModeRepository", () => {
     await expect(repository.findShopPricingMode(1)).resolves.toMatchObject({
       shopId: 1,
       pricingMode: "technician",
-      technicianPricingRatePercent: 200
+      technicianPricingRatePercent: 100
     });
   });
 

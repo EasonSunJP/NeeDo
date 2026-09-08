@@ -15,6 +15,10 @@ import type {
   CompensationRuleSet,
   CompensationWageMode
 } from "../services/compensation-engine.service";
+import {
+  readCompensationBasisVersion,
+  type CompensationBasisVersion
+} from "../services/compensation-basis";
 
 type DecimalLike = {
   toString: () => string;
@@ -57,10 +61,10 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
       return null;
     }
 
-    const activeCompensationRule = await this.findActiveCompensationRule(
-      order.shopId,
-      order.technicianProfileId
-    );
+    const savedBasisVersion = readCompensationBasisVersion(order.serviceSnapshotJson);
+    const activeCompensationRule = savedBasisVersion
+      ? await this.findCompensationRuleByBasis(order.shopId, savedBasisVersion)
+      : await this.findActiveCompensationRule(order.shopId, order.technicianProfileId);
 
     return this.mapOrder(order, activeCompensationRule);
   }
@@ -174,6 +178,28 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
     });
 
     return fallback ? this.mapShopRule(fallback, technicianProfileId) : null;
+  }
+
+  private async findCompensationRuleByBasis(
+    shopId: number,
+    basisVersion: CompensationBasisVersion
+  ): Promise<CompensationRuleSet | null> {
+    const [sourceType, rawId] = basisVersion.split(":") as [
+      "shop_default" | "technician_override",
+      string
+    ];
+    const id = Number(rawId);
+    if (sourceType === "technician_override") {
+      const profile = await this.client.technicianCompensationProfile.findFirst({
+        where: { id, shopId }
+      });
+      return profile ? this.mapTechnicianProfile(profile) : null;
+    }
+
+    const rule = await this.client.shopFinanceRuleSet.findFirst({
+      where: { id, shopId }
+    });
+    return rule ? this.mapShopRule(rule, null) : null;
   }
 
   private orderInclude() {

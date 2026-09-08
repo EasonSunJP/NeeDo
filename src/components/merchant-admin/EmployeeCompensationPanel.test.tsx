@@ -122,6 +122,7 @@ describe("EmployeeCompensationPanel", () => {
     expect(container.textContent).toContain("固定工资 + 分成");
     expect(container.textContent).toContain("230,000");
     expect(container.textContent).toContain("20%");
+    expect(container.textContent).toContain("店铺 80%：20% 技师");
     expect(container.textContent).toContain("服务完成分成");
     expect(container.textContent).toContain("加钟分成");
     expect(container.textContent).toContain("60%");
@@ -156,6 +157,7 @@ describe("EmployeeCompensationPanel", () => {
       setInputValue(extensionCommission, "65");
       setInputValue(nominationFee, "1800");
     });
+    expect(container.textContent).toContain("店铺 78%：22% 技师");
     await act(async () => button("保存薪酬规则").click());
 
     expect(onSave).toHaveBeenCalledWith(

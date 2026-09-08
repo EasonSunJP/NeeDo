@@ -3495,8 +3495,8 @@ model Service {
 
 model TechnicianService {
   id                  Int                           @id @default(autoincrement())
-  publicId String @unique(map: "technician_services_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
-  shopId              Int                           @map("shop_id")
+  publicId            String                        @unique(map: "technician_services_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)
+  shopId              Int?                          @map("shop_id")
   technicianId        Int                           @map("technician_id")
   sourceShopServiceId Int?                          @map("source_shop_service_id")
   name                String                        @db.VarChar(160)
@@ -3520,15 +3520,15 @@ model TechnicianService {
   updatedAt           DateTime                      @updatedAt @map("updated_at")
   deletedAt           DateTime?                     @map("deleted_at")
 
-  shop              Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile TechnicianProfile @relation(fields: [technicianId], references: [id], onDelete: Restrict)
-  sourceShopService Service?          @relation("TechnicianServiceSourceShopService", fields: [sourceShopServiceId], references: [id], onDelete: SetNull)
-  category          Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  creator           User?             @relation("TechnicianServiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updater           User?             @relation("TechnicianServiceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-  scheduleSlots     ScheduleSlot[]
-  bookingOrders     BookingOrder[]
-  exchangeClaims    ExchangeClaim[]
+  shop                      Shop?                      @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile         TechnicianProfile          @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+  sourceShopService         Service?                   @relation("TechnicianServiceSourceShopService", fields: [sourceShopServiceId], references: [id], onDelete: SetNull)
+  category                  Category                   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  creator                   User?                      @relation("TechnicianServiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater                   User?                      @relation("TechnicianServiceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  scheduleSlots             ScheduleSlot[]
+  bookingOrders             BookingOrder[]
+  exchangeClaims            ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
 
   @@index([shopId, technicianId, isActive, deletedAt])

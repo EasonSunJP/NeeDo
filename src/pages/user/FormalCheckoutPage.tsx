@@ -21,6 +21,7 @@ import {
   type CoreServiceDetail,
   type CoreTechnicianCard
 } from "../../features/core-read/api";
+import { pricingModeApi } from "../../features/pricing-mode/api";
 import { cn, yen } from "../../lib/utils";
 import { SocialProfileMiniCard } from "../../shared/profile-card/SocialProfileMiniCard";
 import { mapCoreServiceCardToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
@@ -112,7 +113,15 @@ function SectionTitle({ children }: { children: string }) {
   return <h2 className="px-1 text-sm font-black tracking-wide text-[color:var(--client-primary)]">{children}</h2>;
 }
 
-export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
+type FormalCheckoutPageProps =
+  | { serviceId: number; shopId?: never; technicianId?: never; technicianServiceId?: never }
+  | { serviceId?: never; shopId: number; technicianId: number; technicianServiceId: number };
+
+export function FormalCheckoutPage(props: FormalCheckoutPageProps) {
+  const shopServiceId = props.serviceId;
+  const technicianServiceId = props.technicianServiceId;
+  const technicianServiceShopId = props.shopId;
+  const technicianServiceTechnicianId = props.technicianId;
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -121,6 +130,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [loadError, setLoadError] = useState("");
   const [revision, setRevision] = useState(0);
   const [service, setService] = useState<CoreServiceDetail | null>(null);
+  const [serviceBookingMetadata, setServiceBookingMetadata] = useState<{ tags: string[]; usageCount: number } | null>(null);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
   const [checkoutNowMs, setCheckoutNowMs] = useState(() => Date.now());
   const [selectedTechnicianDetail, setSelectedTechnicianDetail] = useState<CoreTechnicianCard | null>(null);
@@ -154,6 +164,10 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
   const [activeProgressStep, setActiveProgressStep] = useState(0);
   const selectedDayWindow = useMemo(() => getTokyoDayWindow(selectedDate), [selectedDate]);
   const persistedSlotId = persistedCheckoutScheduleSlotId(location.state);
+  const requestedTechnicianId = searchParams.get("technician");
+  const shopServiceTechnicianId = requestedTechnicianId && /^[1-9]\d*$/.test(requestedTechnicianId)
+    ? Number(requestedTechnicianId)
+    : undefined;
 
   const updateHomeAddress = (field: keyof JapaneseRouteAddress, value: string) => {
     estimateRequestVersionRef.current += 1;
@@ -168,11 +182,64 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     let active = true;
     setLoadStatus("loading");
     setLoadError("");
+    setServiceBookingMetadata(null);
+
+    const serviceRequest = shopServiceId
+      ? coreReadApi.getServiceDetail(shopServiceId).then(async (serviceDetail) => {
+          const navigation = await pricingModeApi.getBookingNavigation(serviceDetail.shop.id, { page: 1, pageSize: 100 });
+          const bookingService = navigation.entry === "service_menu"
+            ? navigation.services.list.find((item) => item.id === shopServiceId)
+            : null;
+          if (!bookingService) throw new Error("Shop service is unavailable in the current pricing mode");
+          setServiceBookingMetadata({ tags: bookingService.tags, usageCount: bookingService.usageCount });
+          return serviceDetail;
+        })
+      : Promise.all([
+          coreReadApi.getShopDetail(technicianServiceShopId!),
+          coreReadApi.listCategories({ page: 1, pageSize: 100 }),
+          pricingModeApi.listPublicTechnicianServices(
+            technicianServiceShopId!,
+            technicianServiceTechnicianId!,
+            { page: 1, pageSize: 100 }
+          )
+        ]).then(([shop, categories, technicianServices]): CoreServiceDetail => {
+          const technicianService = technicianServices.list.find((item) => item.id === technicianServiceId);
+          const category = categories.list.find((item) => item.id === technicianService?.categoryId);
+          const technician = shop.technicians.find((item) => item.id === technicianServiceTechnicianId) ?? null;
+          if (!technicianService || !category) throw new Error("Technician service is unavailable");
+          setServiceBookingMetadata({ tags: technicianService.tags, usageCount: technicianService.usageCount });
+          return {
+            id: technicianService.id,
+            publicId: technicianService.publicId,
+            name: technicianService.name,
+            description: technicianService.description,
+            category,
+            shop,
+            technician,
+            city: shop.city,
+            priceAmount: String(technicianService.priceAmount),
+            currency: technicianService.currency,
+            durationMinutes: technicianService.durationMinutes,
+            usageCount: technicianService.usageCount,
+            coverUrl: technicianService.coverImageUrl ?? technicianService.images[0] ?? shop.coverUrl,
+            reviewSummary: technician?.reviewSummary ?? {
+              ratingAverage: "0",
+              reviewCount: 0,
+              latestReviewAt: null,
+              highlights: []
+            },
+            serviceMode: "store",
+            mediaAssets: [],
+            createdAt: technicianService.createdAt,
+            updatedAt: technicianService.updatedAt
+          };
+        });
 
     Promise.all([
-      coreReadApi.getServiceDetail(serviceId),
+      serviceRequest,
       bookingApi.listAvailability({
-        serviceId,
+        ...(shopServiceId ? { serviceId: shopServiceId } : { technicianServiceId }),
+        ...(shopServiceId && shopServiceTechnicianId ? { technicianId: shopServiceTechnicianId } : {}),
         from: selectedDayWindow.from,
         to: selectedDayWindow.to,
         includeUnavailable: true,
@@ -196,6 +263,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
       .catch((error: unknown) => {
         if (!active) return;
         setService(null);
+        setServiceBookingMetadata(null);
         setSlots([]);
         setSelectedSlotId(null);
         setLoadError(describeCheckoutError(error));
@@ -204,7 +272,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
     return () => {
       active = false;
     };
-  }, [persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId]);
+  }, [persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, shopServiceId, shopServiceTechnicianId, technicianServiceId, technicianServiceShopId, technicianServiceTechnicianId]);
 
   useEffect(() => {
     const nextBoundaryMs = slots.reduce<number | null>((earliest, slot) => {
@@ -513,7 +581,7 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
         ? { fulfillmentMode: "home" as const, serviceLocation: { countryCode: "JP" as const, admin1Code: selectedAdmin1Code, admin2Code: selectedAdmin2Code }, fulfillmentAddress: Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress, travelEstimatePublicId: estimate!.publicId }
         : { fulfillmentMode: "store" as const };
       const order = await bookingApi.createBooking({
-        serviceId,
+        ...(shopServiceId ? { serviceId: shopServiceId } : { technicianServiceId: technicianServiceId! }),
         scheduleSlotId: freshSelectedSlot.id,
         ...fulfillment,
         paymentMethod,
@@ -576,6 +644,12 @@ export function FormalCheckoutPage({ serviceId }: { serviceId: number }) {
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[0] = node)}>
             <SectionTitle>套餐</SectionTitle>
             <UnifiedServiceInfoCard data={mapCoreServiceCardToUnifiedData(service)} detailTo={`/services/${service.id}`} />
+            {serviceBookingMetadata ? (
+              <div className="flex flex-wrap items-center gap-2 px-1 text-xs font-bold text-[color:var(--client-muted)]">
+                <span>已使用 {serviceBookingMetadata.usageCount} 次</span>
+                {serviceBookingMetadata.tags.map((tag) => <span className="rounded-full border px-2 py-1" key={tag}>{tag}</span>)}
+              </div>
+            ) : null}
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[1] = node)}>

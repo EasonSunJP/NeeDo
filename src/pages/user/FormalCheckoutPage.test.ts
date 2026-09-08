@@ -6,11 +6,13 @@ import { translations } from "../../i18n/translations";
 
 describe("formal customer checkout", () => {
   it("routes numeric services into an isolated API-only checkout", () => {
-    expect(checkoutSource).toContain("isBookingApiId(serviceId)");
-    expect(checkoutSource).toContain("? <FormalCheckoutPage serviceId={Number(serviceId)} />");
-    expect(formalSource).toContain("coreReadApi.getServiceDetail(serviceId)");
+    expect(checkoutSource).toContain("parseCheckoutServiceRoute(serviceId, searchParams)");
+    expect(checkoutSource).toContain('<FormalCheckoutPage serviceId={route.serviceId} />');
+    expect(checkoutSource).toContain("technicianServiceId={route.serviceId}");
+    expect(formalSource).toContain("coreReadApi.getServiceDetail(shopServiceId)");
     expect(formalSource).toContain("bookingApi.listAvailability");
     expect(formalSource).toContain("bookingApi.createBooking");
+    expect(formalSource).toContain("technicianServiceId: technicianServiceId!");
     expect(formalSource).toContain("isCheckoutSlotBookable(slot, Date.now())");
     expect(formalSource).toContain("scheduleSlotId: freshSelectedSlot.id");
     expect(formalSource).toContain("navigate(`/orders/${order.id}`");

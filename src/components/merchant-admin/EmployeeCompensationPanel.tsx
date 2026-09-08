@@ -44,6 +44,11 @@ const ndpBearerLabels: Record<ShopFinanceNdpBearer, string> = {
   split: "店铺与员工分摊",
 };
 
+function compensationSplitLabel(technicianSharePercent: number) {
+  const technicianShare = Math.min(100, Math.max(0, technicianSharePercent));
+  return `店铺 ${100 - technicianShare}%：${technicianShare}% 技师`;
+}
+
 function toDraft(
   result: EmployeeCompensationResult | null,
 ): TechnicianCompensationProfileInput {
@@ -256,7 +261,7 @@ export function EmployeeCompensationPanel({
                 </label>
               ))}
               <label className="text-sm font-black text-white/80">
-                <span className="mb-2 block">{t("服务完成分成")} · %</span>
+                <span className="mb-2 block">{t("服务完成分成")} · {compensationSplitLabel(draft.commissionRatePercent ?? 0)}</span>
                 <input
                   className={fieldClassName}
                   data-testid="employee-compensation-commission"
@@ -356,7 +361,7 @@ export function EmployeeCompensationPanel({
                 ["时薪", yen(profile.hourlyRateJpy)],
                 ["日薪", yen(profile.dailyRateJpy)],
                 ["单次报酬", yen(profile.fixedOrderPayJpy)],
-                ["服务完成分成", `${profile.commissionRatePercent}%`],
+                ["服务完成分成", compensationSplitLabel(profile.commissionRatePercent)],
                 ["加钟分成", `${profile.extensionCommissionRatePercent}%`],
                 ["指名费", yen(profile.nominationFeeJpy)],
                 ["保障最低额", yen(profile.guaranteedMinimumJpy)],

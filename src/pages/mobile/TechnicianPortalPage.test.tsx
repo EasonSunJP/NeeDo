@@ -16,7 +16,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile || (!technician && !publicDetailHidden))");
     expect(source).not.toContain("if (!formalTechnicianProfileId || !technician?.shop || !selfProfile)");
     expect(source).toContain("technician: CoreTechnicianDetail | null");
-    expect(source).toContain("当前没有可用的正式店铺，暂时无法新增服务");
+    expect(source).not.toContain("当前没有可用的正式店铺，暂时无法新增服务");
     expect(source).toContain("技师资料加载失败");
     expect(source).toContain("正在加载技师资料");
     expect(source).toContain("<TechnicianPortalContent");
@@ -140,8 +140,9 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(servicesSource).toContain("pricingModeApi.listMyTechnicianServices");
     expect(servicesSource).toContain("pricingModeApi.reorderMyTechnicianServices");
     expect(servicesSource).toContain("pricingModeApi.createTechnicianService");
-    expect(servicesSource).toContain("pricingModeApi.updateTechnicianService");
-    expect(servicesSource).toContain("pricingModeApi.deleteTechnicianService");
+    expect(servicesSource).toContain("pricingModeApi.createMyTechnicianService");
+    expect(servicesSource).toContain("pricingModeApi.updateMyTechnicianService");
+    expect(servicesSource).toContain("pricingModeApi.deleteMyTechnicianService");
     expect(servicesSource).toContain("pricingModeApi.uploadTechnicianServiceCover");
     expect(servicesSource).toContain("pricingModeApi.removeTechnicianServiceCover");
     expect(servicesSource).toContain("<TechnicianServiceCoverField");
@@ -154,7 +155,9 @@ describe("TechnicianPortalPage formal approved UI", () => {
       'pendingCoverOperation === "remove" ? "重试移除封面" : pendingCoverOperation === "upload" ? "重试上传封面" : "完成并关闭"'
     );
     expect(servicesSource).toContain('setError("服务数量已达到 5 个上限")');
-    expect(servicesSource).toContain("service.shopId");
+    expect(servicesSource).toContain("saved.shopId");
+    expect(servicesSource).toContain("coreReadApi.listCategories");
+    expect(servicesSource).toContain('aria-label="服务分类"');
     expect(servicesSource).toContain("当前没有已保存的正式技师服务");
     expect(servicesSource).toContain("<UnifiedServiceInfoCard");
     expect(servicesSource).toContain('label="上移"');
