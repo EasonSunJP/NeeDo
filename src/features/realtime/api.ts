@@ -232,6 +232,7 @@ export type RealtimeSocialPost = {
   content: string;
   createdAt: string;
   id: number;
+  isPinned?: boolean;
   media: unknown;
   replyCount: number;
   replyToPostId: number | null;
@@ -555,6 +556,12 @@ export const realtimeApi = {
   },
   updateSocialPost(id: number, input: RealtimeSocialUpdatePostInput) {
     return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { body: input, method: "PATCH" });
+  },
+  pinSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/pin`, { method: "PUT" });
+  },
+  unpinSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/pin`, { method: "DELETE" });
   },
   likeSocialPost(id: number) {
     return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/like`, { method: "PUT" });

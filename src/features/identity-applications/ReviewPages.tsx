@@ -157,7 +157,7 @@ export function TechnicianApplicationsReviewPage({ embedded = false }: { embedde
             <div className="grid gap-3 sm:grid-cols-3">
               <ApplicationButton disabled={busy} onClick={() => void download()} tone="secondary">{t("下载 Excel 简历")}</ApplicationButton>
               <ApplicationButton disabled={busy} onClick={() => void contact()} tone="secondary">{t("联系")}</ApplicationButton>
-              <ApplicationButton disabled={busy || !reviewableStatus(selected.status)} onClick={() => void approve()}>OK</ApplicationButton>
+              <ApplicationButton disabled={busy || !reviewableStatus(selected.status)} onClick={() => void approve()}>{t("审核通过")}</ApplicationButton>
             </div>
             {reviewableStatus(selected.status) ? <div className="flex gap-3"><ApplicationField label="驳回原因" required><ApplicationInput onChange={(event) => setRejectionReason(event.target.value)} value={rejectionReason} /></ApplicationField><ApplicationButton className="self-end" disabled={busy || !rejectionReason.trim()} onClick={() => void reject()} tone="danger">{t("驳回")}</ApplicationButton></div> : null}
             <ApplicationButton className="w-full" onClick={() => setSelected(null)} tone="secondary">{t("返回申请列表")}</ApplicationButton>
@@ -303,7 +303,7 @@ export function MerchantApplicationsReviewPage({ embedded = false }: { embedded?
           {selected.media.length ? <ApplicationCard className="grid gap-4 sm:grid-cols-2">{selected.media.map((media) => <figure key={media.id}><ProtectedApplicationImage alt={t(media.purpose)} applicationId={selected.applicationId} className="aspect-[4/3]" mediaId={media.id} /><figcaption className="mt-2 text-center text-xs font-bold text-[color:var(--client-muted)]">{t(media.purpose)}</figcaption></figure>)}</ApplicationCard> : null}
           <ApplicationNotice>{t("试用期计算：开启日当月剩余少于 15 天时，自动额外增加同等剩余天数；剩余正好 15 天或大于 15 天时，当月计为试用第一个月。")}</ApplicationNotice>
           <ApplicationCard className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2"><ApplicationButton disabled={busy || !reviewableStatus(selected.status)} onClick={() => void review(true)}>OK</ApplicationButton><ApplicationButton disabled={busy || !rejectionReason.trim() || !reviewableStatus(selected.status)} onClick={() => void review(false)} tone="danger">{t("驳回")}</ApplicationButton></div>
+            <div className="grid gap-3 sm:grid-cols-2"><ApplicationButton disabled={busy || !reviewableStatus(selected.status)} onClick={() => void review(true)}>{t("审核通过")}</ApplicationButton><ApplicationButton disabled={busy || !rejectionReason.trim() || !reviewableStatus(selected.status)} onClick={() => void review(false)} tone="danger">{t("驳回")}</ApplicationButton></div>
             {reviewableStatus(selected.status) ? <ApplicationField label="驳回原因" required><ApplicationInput onChange={(event) => setRejectionReason(event.target.value)} value={rejectionReason} /></ApplicationField> : null}
             <ApplicationButton className="w-full" onClick={() => setApplicationId(null)} tone="secondary">{t("返回申请列表")}</ApplicationButton>
           </ApplicationCard>

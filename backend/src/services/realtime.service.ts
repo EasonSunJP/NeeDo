@@ -1023,6 +1023,35 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return result.post;
   }
 
+  public async setSocialPostPin(
+    auth: AuthenticatedAccessContext,
+    postId: number,
+    active: boolean,
+    context: AuthRequestContext
+  ) {
+    const scope = await this.resolvePersonalIdentityScope(auth);
+    const post = await this.repository.setSocialPostPin({
+      postId,
+      authorUserId: auth.userId,
+      authorIdentityId: scope.identityId,
+      active,
+      context
+    });
+    if (!post) {
+      throw this.notFoundError("error.realtime.social_post_not_found");
+    }
+
+    this.eventGateway.publish({
+      id: this.createEventId(),
+      type: "social.post.updated",
+      recipientUserId: auth.userId,
+      recipientIdentityId: scope.identityId,
+      payload: post,
+      createdAt: new Date().toISOString()
+    });
+    return post;
+  }
+
   public async listSocialPosts(auth: AuthenticatedAccessContext, input: SocialPostListInput) {
     const scope = await this.resolvePersonalIdentityScope(auth);
     return this.repository.listSocialPosts(
