@@ -100,7 +100,7 @@ type DirectoryProfileBase = {
 
 export type TechnicianContactService = {
   id: number;
-  shopId: number;
+  shopId: number | null;
   name: string;
   priceAmount: number;
   currency: string;

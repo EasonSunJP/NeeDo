@@ -17,7 +17,7 @@ import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read/api";
+import { coreReadApi, type CoreCategory, type CoreTechnicianDetail } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import type { BookingOrder, BookingScheduleSlot } from "../../features/booking/api";
 import {
@@ -493,7 +493,7 @@ function upsertTechnicianService(
   if (existingIndex < 0) return [...current, saved];
   return current.map((service) => service.id === saved.id ? saved : service);
 }
-function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, privacySlot, profile, technician = null }: {
+export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, privacySlot, profile, technician = null }: {
   defaultShopId: number | null;
   defaultCategoryId: number | null;
   privacySlot?: ReactNode;
@@ -501,13 +501,14 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
   technician?: CoreTechnicianDetail | null;
 }) {
   const [services, setServices] = useState<TechnicianServicePayload[]>([]);
+  const [categories, setCategories] = useState<CoreCategory[]>([]);
   const [pricingMode, setPricingMode] = useState<ShopPricingMode | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [deleteArmedId, setDeleteArmedId] = useState<number | null>(null);
-  const [draft, setDraft] = useState({ name: "", priceAmount: "", durationMinutes: "60", description: "" });
+  const [draft, setDraft] = useState({ name: "", priceAmount: "", durationMinutes: "60", description: "", categoryId: defaultCategoryId ?? 0 });
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [removeCover, setRemoveCover] = useState(false);
   const [persistedAfterPartialSave, setPersistedAfterPartialSave] = useState<TechnicianServicePayload | null>(null);
@@ -521,16 +522,27 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
     setLoading(true);
     setError("");
     try {
-      const [serviceResult, modeResult] = await Promise.all([
-        pricingModeApi.listMyTechnicianServices({ page: 1, pageSize: 5, activeOnly: false }),
+      const serviceResult = await pricingModeApi.listMyTechnicianServices({
+        page: 1,
+        pageSize: 5,
+        activeOnly: false
+      });
+      const [modeResult, categoryResult] = await Promise.allSettled([
         defaultShopId
           ? pricingModeApi.getBookingNavigation(defaultShopId, { page: 1, pageSize: 1 })
-          : Promise.resolve(null)
+          : Promise.resolve(null),
+        coreReadApi.listCategories({ page: 1, pageSize: 100 })
       ]);
       setServices(serviceResult.list);
-      setPricingMode(modeResult?.pricingMode ?? null);
+      setPricingMode(modeResult.status === "fulfilled" ? modeResult.value?.pricingMode ?? null : null);
+      setCategories(
+        categoryResult.status === "fulfilled"
+          ? categoryResult.value.list.filter((category) => category.isActive)
+          : []
+      );
     } catch (loadError) {
       setServices([]);
+      setCategories([]);
       setPricingMode(null);
       setError(describeServiceError(loadError));
     } finally {
@@ -553,7 +565,9 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
     setCoverFile(null);
     setRemoveCover(false);
     setPersistedAfterPartialSave(null);
-    setDraft(service ? { name: service.name, priceAmount: String(service.priceAmount), durationMinutes: String(service.durationMinutes), description: service.description ?? "" } : { name: "", priceAmount: "", durationMinutes: "60", description: "" });
+    setDraft(service
+      ? { name: service.name, priceAmount: String(service.priceAmount), durationMinutes: String(service.durationMinutes), description: service.description ?? "", categoryId: service.categoryId }
+      : { name: "", priceAmount: "", durationMinutes: "60", description: "", categoryId: defaultCategoryId ?? 0 });
   };
   const save = async () => {
     if (saving || editingId === null) return;
@@ -562,9 +576,9 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
       setError("");
       try {
         let saved = persistedAfterPartialSave;
-        if (pendingCoverOperation === "upload" && coverFile) {
+        if (pendingCoverOperation === "upload" && coverFile && saved.shopId) {
           saved = await pricingModeApi.uploadTechnicianServiceCover(saved.shopId, saved.id, coverFile);
-        } else if (pendingCoverOperation === "remove" && saved.coverImageUrl) {
+        } else if (pendingCoverOperation === "remove" && saved.coverImageUrl && saved.shopId) {
           saved = await pricingModeApi.removeTechnicianServiceCover(saved.shopId, saved.id);
         }
         const completedService = saved;
@@ -594,12 +608,7 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
       return;
     }
     const existing = typeof editingId === "number" ? services.find((item) => item.id === editingId) : null;
-    const targetShopId = existing?.shopId ?? defaultShopId;
-    if (!targetShopId) { setError("当前没有可用的正式店铺，暂时无法新增服务"); return; }
-    const categoryId = existing?.categoryId
-      ?? services.find((service) => service.shopId === targetShopId)?.categoryId
-      ?? defaultCategoryId
-      ?? services[0]?.categoryId;
+    const categoryId = draft.categoryId || existing?.categoryId || defaultCategoryId || services[0]?.categoryId;
     if (!categoryId) { setError("当前没有可用的正式服务分类，暂时无法新增服务"); return; }
     setSaving(true);
     setError("");
@@ -609,8 +618,12 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
       if (!persistedAfterPartialSave) {
         try {
           saved = existing
-            ? await pricingModeApi.updateTechnicianService(existing.shopId, existing.id, body)
-            : await pricingModeApi.createTechnicianService(targetShopId, { ...body, sortOrder: services.length });
+            ? existing.shopId
+              ? await pricingModeApi.updateTechnicianService(existing.shopId, existing.id, body)
+              : await pricingModeApi.updateMyTechnicianService(existing.id, body)
+            : defaultShopId
+              ? await pricingModeApi.createTechnicianService(defaultShopId, { ...body, sortOrder: services.length })
+              : await pricingModeApi.createMyTechnicianService({ ...body, sortOrder: services.length });
           const persistedService = saved;
           setServices((current) => upsertTechnicianService(current, persistedService));
         } catch (saveError) {
@@ -620,9 +633,9 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
       }
       if (!saved) return;
       try {
-        if (pendingCoverOperation === "upload" && coverFile) {
+        if (pendingCoverOperation === "upload" && coverFile && saved.shopId) {
           saved = await pricingModeApi.uploadTechnicianServiceCover(saved.shopId, saved.id, coverFile);
-        } else if (pendingCoverOperation === "remove" && saved.coverImageUrl) {
+        } else if (pendingCoverOperation === "remove" && saved.coverImageUrl && saved.shopId) {
           saved = await pricingModeApi.removeTechnicianServiceCover(saved.shopId, saved.id);
         }
         const completedService = saved;
@@ -633,7 +646,8 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
           name: saved.name,
           priceAmount: String(saved.priceAmount),
           durationMinutes: String(saved.durationMinutes),
-          description: saved.description ?? ""
+          description: saved.description ?? "",
+          categoryId: saved.categoryId
         });
         setPersistedAfterPartialSave(saved);
         setEditingId(saved.id);
@@ -655,7 +669,11 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
     setSaving(true);
     setError("");
     try {
-      await pricingModeApi.deleteTechnicianService(service.shopId, service.id);
+      if (service.shopId) {
+        await pricingModeApi.deleteTechnicianService(service.shopId, service.id);
+      } else {
+        await pricingModeApi.deleteMyTechnicianService(service.id);
+      }
       setServices((current) => current.filter((item) => item.id !== service.id));
       closeAndResetServiceEditor();
     } catch (deleteError) {
@@ -705,15 +723,18 @@ function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, priva
   const editor = editingId !== null ? (
     <article className={cn(surface.panel, "rounded-[22px] border p-4")} data-testid="technician-service-card">
       <div className="space-y-3">
-        <TechnicianServiceCoverField
-          disabled={saving}
-          onFileChange={(file) => { setCoverFile(file); setError(""); }}
-          onRemovePersisted={(remove) => { setRemoveCover(remove); setError(""); }}
-          onValidationError={setError}
-          persistedUrl={editorService?.coverImageUrl ?? null}
-          removePersisted={removeCover}
-          selectedFile={coverFile}
-        />
+        {editorService?.shopId || defaultShopId ? (
+          <TechnicianServiceCoverField
+            disabled={saving}
+            onFileChange={(file) => { setCoverFile(file); setError(""); }}
+            onRemovePersisted={(remove) => { setRemoveCover(remove); setError(""); }}
+            onValidationError={setError}
+            persistedUrl={editorService?.coverImageUrl ?? null}
+            removePersisted={removeCover}
+            selectedFile={coverFile}
+          />
+        ) : null}
+        <label className="block text-xs font-bold"><span className={surface.muted}>服务分类</span><select aria-label="服务分类" className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} onChange={(event) => setDraft((current) => ({ ...current, categoryId: Number(event.target.value) }))} value={draft.categoryId}><option value={0}>服务分类</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         <label className="block text-xs font-bold"><span className={surface.muted}>服务名称</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} value={draft.name} /></label>
         <div className="grid grid-cols-2 gap-2">
           <label className="block text-xs font-bold"><span className={surface.muted}>价格</span><input className={cn(surface.metric, "mt-1 h-10 w-full rounded-[14px] border px-3 text-sm font-black outline-none disabled:opacity-60")} disabled={saving || Boolean(persistedAfterPartialSave)} inputMode="numeric" onChange={(event) => setDraft((current) => ({ ...current, priceAmount: event.target.value }))} value={draft.priceAmount} /></label>
@@ -794,7 +815,7 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
     next.set("period", period);
     setSearchParams(next, { replace: true });
   };
-  const defaultCategoryId = technician?.services[0]?.category.id ?? null;
+  const defaultCategoryId = technician?.services[0]?.category.id ?? technician?.shop?.serviceCategories[0]?.id ?? null;
 
   useEffect(() => {
     if (searchParams.get("meTab") === "services") {

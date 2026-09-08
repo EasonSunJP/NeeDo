@@ -64,9 +64,9 @@ export function getActiveTechnicianProfileId(session: AuthSession | null | undef
   return session.currentIdentity.scopeId;
 }
 
-export async function loadAllTechnicianServices(shopId: number): Promise<TechnicianServicePayload[]> {
+export async function loadAllTechnicianServices(_shopId: number): Promise<TechnicianServicePayload[]> {
   const pageSize = 100;
-  const firstPage = await pricingModeApi.listTechnicianServices(shopId, {
+  const firstPage = await pricingModeApi.listMyTechnicianServices({
     activeOnly: true,
     page: 1,
     pageSize
@@ -75,7 +75,7 @@ export async function loadAllTechnicianServices(shopId: number): Promise<Technic
   const services = [...firstPage.list];
 
   for (let page = 2; page <= pages; page += 1) {
-    const response = await pricingModeApi.listTechnicianServices(shopId, {
+    const response = await pricingModeApi.listMyTechnicianServices({
       activeOnly: true,
       page,
       pageSize

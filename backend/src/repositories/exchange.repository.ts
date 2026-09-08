@@ -327,7 +327,7 @@ type ExchangeTechnicianServiceRecord = NonNullable<
 >;
 type ExchangeIntelligenceShopRecord =
   | ExchangeShopServiceRecord["shop"]
-  | ExchangeTechnicianServiceRecord["shop"];
+  | NonNullable<ExchangeTechnicianServiceRecord["shop"]>;
 
 type PrioritizedDemandRow = {
   id: number | bigint;
@@ -761,6 +761,9 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     });
     if (!service) return { kind: "not_found" };
     if (service.technicianId !== input.actor.scopeId) return { kind: "forbidden" };
+    if (service.shopId === null || service.shop === null) {
+      return { kind: "unavailable" };
+    }
     const affiliation = await this.client.technicianShopAffiliation.findFirst({
       where: {
         technicianProfileId: input.actor.scopeId,
@@ -1408,9 +1411,10 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     } else if (technicianBinding && record.technicianService) {
       const service = record.technicianService;
       const profile = service.technicianProfile;
-      const shopPublicId = this.publicShopId(service.shop);
+      const shop = service.shop;
+      const shopPublicId = shop ? this.publicShopId(shop) : null;
       const technicianPublicId = this.publicTechnicianId(profile);
-      const affiliationActive = profile.technicianShopAffiliations.some(
+      const affiliationActive = service.shopId !== null && profile.technicianShopAffiliations.some(
         (affiliation) =>
           affiliation.shopId === service.shopId &&
           affiliation.workStatus === "ACTIVE" &&
@@ -1432,7 +1436,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         profile.user.isActive &&
         profile.user.deletedAt === null &&
         affiliationActive &&
-        this.shopAvailable(service.shop) &&
+        shop !== null &&
+        this.shopAvailable(shop) &&
         shopPublicId !== null &&
         technicianPublicId !== null;
       serviceAvailable =
@@ -1447,17 +1452,19 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         this.jpyInteger(service.priceAmount) !== null &&
         service.durationMinutes > 0 &&
         service.publicId.trim().length > 0;
-      if (publisherAvailable && shopPublicId && technicianPublicId) {
+      if (publisherAvailable && shop && shopPublicId && technicianPublicId) {
         publisherCard = this.mapTechnicianPublisherCard(
           service,
+          shop,
           shopPublicId,
           technicianPublicId,
           serviceAvailable
         );
       }
-      if (publisherAvailable && serviceAvailable && shopPublicId && technicianPublicId) {
+      if (publisherAvailable && serviceAvailable && shop && shopPublicId && technicianPublicId) {
         serviceCard = this.mapTechnicianServiceCard(
           service,
+          shop,
           shopPublicId,
           technicianPublicId,
           record.serviceNameSnapshot!,
@@ -1528,6 +1535,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
 
   private mapTechnicianPublisherCard(
     service: ExchangeTechnicianServiceRecord,
+    shop: ExchangeIntelligenceShopRecord,
     shopPublicId: string,
     publicId: string,
     isBookable: boolean
@@ -1547,7 +1555,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       avatarUrl:
         this.mediaUrlByUsage(profile.mediaAssets, "avatar") ??
         profile.user.avatarBootstrapUrl,
-      shop: { publicId: shopPublicId, name: service.shop.name },
+      shop: { publicId: shopPublicId, name: shop.name },
       status: profile.status,
       isBookable,
       yearsExperience: profile.yearsExperience,
@@ -1597,6 +1605,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
 
   private mapTechnicianServiceCard(
     service: ExchangeTechnicianServiceRecord,
+    shop: ExchangeIntelligenceShopRecord,
     shopPublicId: string,
     technicianPublicId: string,
     serviceName: string,
@@ -1624,7 +1633,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       durationMinutes,
       serviceMode,
       shopPublicId,
-      shopAddress: service.shop.address,
+      shopAddress: shop.address,
       detailPath: `/stores/${shopPublicId}/technicians/${technicianPublicId}/services`
     };
   }

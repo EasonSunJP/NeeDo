@@ -815,4 +815,35 @@ describe("ImChatComposer", () => {
     expect(stylesSource).toContain("padding-bottom: calc(var(--im-composer-overlay-height, 85px) + 12px)");
     expect(stylesSource).toContain("min-width: 36px");
   });
+
+  it("keeps tall drafts and media scrollable inside a height-constrained composer", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          actions={[{ icon: "photo", key: "image", label: "相册", run: vi.fn() }]}
+          draft={Array.from({ length: 7 }, () => "输入窗口检查").join("\n")}
+          isNight
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel="emoji"
+          pendingImage={{ fileName: "layout.png", previewUrl: "blob:layout" }}
+        />
+      );
+    });
+
+    const editorShell = container.querySelector<HTMLElement>("[data-im-composer-editor-shell='true']");
+    expect(editorShell).not.toBeNull();
+    expect(editorShell?.classList.contains("max-h-full")).toBe(true);
+    expect(editorShell?.classList.contains("overflow-y-auto")).toBe(true);
+    expect(stylesSource).toMatch(/\.im-chat-composer-root \{[^}]*max-height: 100%;[^}]*flex: 0 1 auto;/s);
+    expect(stylesSource).toMatch(/\.im-composer-input-shell \{[^}]*flex: 0 1 auto;[^}]*overflow: hidden;/s);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: min\(72px, 40%\);/s);
+
+    await act(async () => root.unmount());
+  });
 });

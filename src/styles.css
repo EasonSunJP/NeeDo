@@ -2476,27 +2476,33 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
 }
 
 .im-chat-composer-root {
-  flex: 0 0 auto;
+  display: flex;
+  min-height: 0;
+  max-height: 100%;
+  flex: 0 1 auto;
+  flex-direction: column;
   overflow-x: clip;
+  overflow-y: hidden;
   background: transparent;
 }
 
 .im-chat-composer-root:has(.im-composer-panel) {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
   flex-shrink: 1;
 }
 
 .im-chat-composer-stack {
   min-height: 0;
+  max-height: 100%;
+  flex: 0 1 auto;
+  overflow: hidden;
   width: min(100%, calc(var(--client-bottom-nav-max-width, 880px) - 24px));
   gap: 8px;
 }
 
 .im-composer-input-shell {
-  flex-shrink: 0;
+  flex: 0 1 auto;
   min-height: 56px;
+  overflow: hidden;
 }
 
 .im-composer-icon-button {
@@ -2505,8 +2511,9 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
 }
 
 .im-composer-panel {
-  min-height: 0;
+  min-height: min(72px, 40%);
   max-height: min(42dvh, calc(var(--im-visual-viewport-height, 100dvh) * 0.42));
+  flex: 1 1 96px;
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior: contain;

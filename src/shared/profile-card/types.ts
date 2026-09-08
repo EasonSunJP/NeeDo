@@ -16,7 +16,7 @@ export type TechnicianFormalMetrics = {
 export type TechnicianFormalContactService = {
   id: number;
   publicId?: string;
-  shopId: number;
+  shopId: number | null;
   shopPublicId?: string | null;
   shopAddress?: string | null;
   name: string;

@@ -26,6 +26,7 @@ import {
 } from "../../features/core-read/api";
 import { getExchangePost } from "../../features/exchange/api";
 import type { ExchangePost } from "../../features/exchange/types";
+import { pricingModeApi } from "../../features/pricing-mode/api";
 import { cn, yen } from "../../lib/utils";
 import {
   mapExchangeIntelligencePublisherToProfileData,
@@ -58,7 +59,7 @@ type LoadStatus = "loading" | "success" | "error";
 type TechnicianLoadStatus = "idle" | "loading" | "error";
 export type CheckoutCatalogRef =
   | { type: "shop_service"; id: number }
-  | { type: "technician_service"; id: number };
+  | { type: "technician_service"; id: number; shopId?: number; technicianId?: number };
 
 type CheckoutServiceContext = {
   catalogRef: CheckoutCatalogRef;
@@ -204,6 +205,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [searchParams] = useSearchParams();
   const serviceId = catalogRef.type === "shop_service" ? catalogRef.id : null;
   const technicianServiceId = catalogRef.type === "technician_service" ? catalogRef.id : null;
+  const technicianServiceShopId = catalogRef.type === "technician_service" ? catalogRef.shopId : undefined;
+  const technicianServiceTechnicianId = catalogRef.type === "technician_service" ? catalogRef.technicianId : undefined;
   const exchangePostParam = searchParams.get("exchangePost");
   const exchangePostId = exchangePostParam && /^[1-9]\d*$/u.test(exchangePostParam)
     ? Number(exchangePostParam)
@@ -248,6 +251,10 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [activeProgressStep, setActiveProgressStep] = useState(0);
   const selectedDayWindow = useMemo(() => getTokyoDayWindow(selectedDate), [selectedDate]);
   const persistedSlotId = persistedCheckoutScheduleSlotId(location.state);
+  const requestedTechnicianId = searchParams.get("technician");
+  const shopServiceTechnicianId = requestedTechnicianId && /^[1-9]\d*$/.test(requestedTechnicianId)
+    ? Number(requestedTechnicianId)
+    : undefined;
 
   const updateHomeAddress = (field: keyof JapaneseRouteAddress, value: string) => {
     estimateRequestVersionRef.current += 1;
@@ -262,46 +269,116 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     let active = true;
     setLoadStatus("loading");
     setLoadError("");
-
     const servicePromise: Promise<CheckoutServiceContext> = serviceId !== null
-      ? coreReadApi.getServiceDetail(serviceId).then((serviceDetail) => ({
-          catalogRef: { type: "shop_service", id: serviceId },
-          publicId: serviceDetail.publicId,
-          serviceInfo: mapCoreServiceCardToUnifiedData(serviceDetail),
-          serviceDetailPath: `/services/${serviceDetail.id}`,
-          serviceMode: serviceDetail.serviceMode,
-          shop: {
-            name: serviceDetail.shop.name,
-            city: serviceDetail.shop.city,
-            address: serviceDetail.shop.address,
-            contactPath: `/stores/${serviceDetail.shop.id}`
-          },
-          coreService: serviceDetail,
-          technicianPublisher: null
-        }))
-      : bookingApi.getTechnicianServiceBookingContext(technicianServiceId!).then((bookingContext: TechnicianServiceBookingContext) => {
-          if (bookingContext.target.id !== technicianServiceId) {
-            throw new CheckoutSourceError("技师服务资料与预约链接不一致，请返回后重试");
-          }
+      ? coreReadApi.getServiceDetail(serviceId).then(async (serviceDetail) => {
+          const bookingMetadata = await pricingModeApi
+            .getBookingNavigation(serviceDetail.shop.id, { page: 1, pageSize: 100 })
+            .then((navigation) => navigation.entry === "service_menu"
+              ? navigation.services.list.find((item) => item.id === serviceId) ?? null
+              : null)
+            .catch(() => null);
+          const serviceInfo = mapCoreServiceCardToUnifiedData(serviceDetail);
           return {
-            catalogRef: { type: "technician_service" as const, id: technicianServiceId! },
-            publicId: bookingContext.serviceCard.publicId,
-            serviceInfo: mapTechnicianBookingContextServiceToUnifiedData(
-              bookingContext.serviceCard,
-              serviceModeLabel(bookingContext.serviceCard.serviceMode)
-            ),
-            serviceDetailPath: bookingContext.serviceCard.detailPath,
-            serviceMode: bookingContext.serviceCard.serviceMode,
+            catalogRef: { type: "shop_service", id: serviceId },
+            publicId: serviceDetail.publicId,
+            serviceInfo: bookingMetadata
+              ? {
+                  ...serviceInfo,
+                  tags: bookingMetadata.tags,
+                  usageCount: bookingMetadata.usageCount
+                }
+              : serviceInfo,
+            serviceDetailPath: `/services/${serviceDetail.id}`,
+            serviceMode: serviceDetail.serviceMode,
             shop: {
-              name: bookingContext.shopCard.name,
-              city: "",
-              address: bookingContext.shopCard.address,
-              contactPath: bookingContext.shopCard.detailPath
+              name: serviceDetail.shop.name,
+              city: serviceDetail.shop.city,
+              address: serviceDetail.shop.address,
+              contactPath: `/stores/${serviceDetail.shop.id}`
             },
-            coreService: null,
-            technicianPublisher: bookingContext.technicianCard
+            coreService: serviceDetail,
+            technicianPublisher: null
           };
-        });
+        })
+      : technicianServiceShopId && technicianServiceTechnicianId
+        ? Promise.all([
+            coreReadApi.getShopDetail(technicianServiceShopId),
+            coreReadApi.listCategories({ page: 1, pageSize: 100 }),
+            pricingModeApi.listPublicTechnicianServices(
+              technicianServiceShopId,
+              technicianServiceTechnicianId,
+              { page: 1, pageSize: 100 }
+            )
+          ]).then(([shop, categories, technicianServices]) => {
+            const technicianService = technicianServices.list.find((item) => item.id === technicianServiceId);
+            const category = categories.list.find((item) => item.id === technicianService?.categoryId);
+            const technician = shop.technicians.find((item) => item.id === technicianServiceTechnicianId) ?? null;
+            if (!technicianService || !category || !technician) {
+              throw new CheckoutSourceError("技师服务资料与预约链接不一致，请返回后重试");
+            }
+            const serviceDetail: CoreServiceDetail = {
+              id: technicianService.id,
+              publicId: technicianService.publicId,
+              name: technicianService.name,
+              description: technicianService.description,
+              category,
+              shop,
+              technician,
+              city: shop.city,
+              priceAmount: String(technicianService.priceAmount),
+              currency: technicianService.currency,
+              durationMinutes: technicianService.durationMinutes,
+              usageCount: technicianService.usageCount,
+              coverUrl: technicianService.coverImageUrl ?? technicianService.images[0] ?? shop.coverUrl,
+              reviewSummary: technician.reviewSummary,
+              serviceMode: "store",
+              mediaAssets: [],
+              createdAt: technicianService.createdAt,
+              updatedAt: technicianService.updatedAt
+            };
+            return {
+              catalogRef,
+              publicId: technicianService.publicId,
+              serviceInfo: {
+                ...mapCoreServiceCardToUnifiedData(serviceDetail),
+                tags: technicianService.tags,
+                usageCount: technicianService.usageCount
+              },
+              serviceDetailPath: `/stores/${shop.publicId}/technicians/${technician.publicId}/services`,
+              serviceMode: "store",
+              shop: {
+                name: shop.name,
+                city: shop.city,
+                address: shop.address,
+                contactPath: `/stores/${shop.id}`
+              },
+              coreService: serviceDetail,
+              technicianPublisher: null
+            };
+          })
+        : bookingApi.getTechnicianServiceBookingContext(technicianServiceId!).then((bookingContext: TechnicianServiceBookingContext) => {
+            if (bookingContext.target.id !== technicianServiceId) {
+              throw new CheckoutSourceError("技师服务资料与预约链接不一致，请返回后重试");
+            }
+            return {
+              catalogRef,
+              publicId: bookingContext.serviceCard.publicId,
+              serviceInfo: mapTechnicianBookingContextServiceToUnifiedData(
+                bookingContext.serviceCard,
+                serviceModeLabel(bookingContext.serviceCard.serviceMode)
+              ),
+              serviceDetailPath: bookingContext.serviceCard.detailPath,
+              serviceMode: bookingContext.serviceCard.serviceMode,
+              shop: {
+                name: bookingContext.shopCard.name,
+                city: "",
+                address: bookingContext.shopCard.address,
+                contactPath: bookingContext.shopCard.detailPath
+              },
+              coreService: null,
+              technicianPublisher: bookingContext.technicianCard
+            };
+          });
     const exchangePromise = exchangePostParam === null
       ? Promise.resolve<ExchangePost | null>(null)
       : exchangePostId === null
@@ -320,6 +397,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
         const availability = await loadAvailabilityWindow({
           serviceId: serviceId ?? undefined,
           technicianServiceId: technicianServiceId ?? undefined,
+          ...(serviceId && shopServiceTechnicianId ? { technicianId: shopServiceTechnicianId } : {}),
           from: availabilityWindow.from,
           to: availabilityWindow.to,
           includeUnavailable: true
@@ -356,7 +434,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     return () => {
       active = false;
     };
-  }, [catalogRef.id, catalogRef.type, exchangePostId, exchangePostParam, persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId, technicianServiceId]);
+  }, [catalogRef.id, catalogRef.type, exchangePostId, exchangePostParam, persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId, shopServiceTechnicianId, technicianServiceId, technicianServiceShopId, technicianServiceTechnicianId]);
 
   useEffect(() => {
     const nextBoundaryMs = slots.reduce<number | null>((earliest, slot) => {

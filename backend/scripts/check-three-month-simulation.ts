@@ -835,7 +835,14 @@ const main = async (): Promise<void> => {
         isActive: true,
         deletedAt: null
       },
-      select: { id: true, email: true }
+      select: {
+        id: true,
+        email: true,
+        identities: {
+          where: { isActive: true, deletedAt: null },
+          select: { id: true, type: true }
+        }
+      }
     });
     assert(fixedRealtimeAccounts.length === 3, "fixed realtime test accounts are missing");
     const fixedRealtimeUserIdByEmail = new Map(
@@ -846,24 +853,49 @@ const main = async (): Promise<void> => {
       "customer@example.com",
       "fixed customer user"
     );
-    const fixedCounterpartUserIds = [
-      getRequiredId(
-        fixedRealtimeUserIdByEmail,
-        "technician@example.com",
-        "fixed technician user"
-      ),
-      getRequiredId(
-        fixedRealtimeUserIdByEmail,
-        "merchant@example.com",
-        "fixed merchant user"
-      )
+    const fixedRealtimeAccountByEmail = new Map(
+      fixedRealtimeAccounts.map((account) => [account.email, account])
+    );
+    const getFixedIdentityId = (email: string, type: string): number => {
+      const account = getRequiredId(fixedRealtimeAccountByEmail, email, "fixed realtime account");
+      const identity = account.identities.find((candidate) => candidate.type === type);
+      assert(identity, `missing ${type} identity for ${email}`);
+      return identity.id;
+    };
+    const fixedCustomerIdentityId = getFixedIdentityId("customer@example.com", "customer");
+    const fixedCounterparts = [
+      {
+        userId: getRequiredId(
+          fixedRealtimeUserIdByEmail,
+          "technician@example.com",
+          "fixed technician user"
+        ),
+        identityId: getFixedIdentityId("technician@example.com", "technician"),
+        messagePrefix: "conversation-formal-preview-customer-fixed-technician-account-"
+      },
+      {
+        userId: getRequiredId(
+          fixedRealtimeUserIdByEmail,
+          "merchant@example.com",
+          "fixed merchant user"
+        ),
+        identityId: getFixedIdentityId("merchant@example.com", "merchant"),
+        messagePrefix: "conversation-formal-preview-customer-fixed-merchant-account-"
+      }
     ];
+    const fixedCounterpartUserIds = fixedCounterparts.map((counterpart) => counterpart.userId);
     const fixedRealtimeContacts = await prisma.contact.count({
       where: {
         deletedAt: null,
-        OR: fixedCounterpartUserIds.flatMap((counterpartUserId) => [
-          { ownerUserId: fixedCustomerUserId, contactUserId: counterpartUserId },
-          { ownerUserId: counterpartUserId, contactUserId: fixedCustomerUserId }
+        OR: fixedCounterparts.flatMap((counterpart) => [
+          {
+            ownerIdentityId: fixedCustomerIdentityId,
+            contactIdentityId: counterpart.identityId
+          },
+          {
+            ownerIdentityId: counterpart.identityId,
+            contactIdentityId: fixedCustomerIdentityId
+          }
         ])
       }
     });
@@ -876,15 +908,29 @@ const main = async (): Promise<void> => {
           { participants: { some: { userId: { in: fixedCounterpartUserIds }, deletedAt: null } } }
         ]
       },
-      select: { id: true }
+      select: { id: true, messages: { where: { deletedAt: null }, select: { metadata: true } } }
     });
+    const fixedSeedConversations = fixedRealtimeConversations.filter((conversation) =>
+      conversation.messages.some((message) => {
+        const metadata = readJsonRecord(message.metadata);
+        return (
+          metadata?.namespace === SIMULATION_NAMESPACE &&
+          metadata.dataset === "im" &&
+          fixedCounterparts.some(
+            (counterpart) =>
+              typeof metadata.messageKey === "string" &&
+              metadata.messageKey.startsWith(counterpart.messagePrefix)
+          )
+        );
+      })
+    );
     assert(
-      fixedRealtimeConversations.length === 2,
-      `expected 2 fixed realtime conversations, found ${fixedRealtimeConversations.length}`
+      fixedSeedConversations.length === 2,
+      `expected 2 fixed realtime conversations, found ${fixedSeedConversations.length}`
     );
     const fixedRealtimeMessages = await prisma.message.count({
       where: {
-        conversationId: { in: fixedRealtimeConversations.map((conversation) => conversation.id) },
+        conversationId: { in: fixedSeedConversations.map((conversation) => conversation.id) },
         deletedAt: null
       }
     });
@@ -1449,7 +1495,7 @@ const main = async (): Promise<void> => {
           focusedCustomerMessages: focusedCustomerMessages.length,
           focusedCustomerContacts: focusedCustomerContacts.length,
           fixedRealtimeContacts,
-          fixedRealtimeConversations: fixedRealtimeConversations.length,
+          fixedRealtimeConversations: fixedSeedConversations.length,
           fixedRealtimeMessages,
           experienceEligibleUsers,
           activeExperienceAccounts,

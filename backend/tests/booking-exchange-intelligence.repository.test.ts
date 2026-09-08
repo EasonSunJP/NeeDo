@@ -171,7 +171,15 @@ const createHarness = (
       ])
     },
     customerProfile: { findFirst: jest.fn().mockResolvedValue({ membershipLevel: "black" }) },
-    technicianProfile: { update: jest.fn().mockResolvedValue({ id: 91 }) },
+    technicianProfile: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue({ id: 91 })
+    },
+    technicianShopAffiliation: {
+      findFirst: jest.fn().mockResolvedValue({ id: 1, relationshipType: "DIRECT" })
+    },
+    technicianCompensationProfile: { findFirst: jest.fn().mockResolvedValue(null) },
+    shopFinanceRuleSet: { findFirst: jest.fn().mockResolvedValue(null) },
     exchangeMatchParticipant: { findFirst: jest.fn().mockResolvedValue(null) },
     exchangeIntelligence: {
       findFirst: jest.fn().mockResolvedValue(
@@ -188,6 +196,7 @@ const createHarness = (
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     bookingOrder: {
+      count: jest.fn().mockResolvedValue(0),
       findFirst: jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
         where.createIdempotencyKey ? persistedOrder : null
       ),

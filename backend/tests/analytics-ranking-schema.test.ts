@@ -14,7 +14,7 @@ describe("formal analytics ranking schema", () => {
     "prisma/migrations/20260902100000_analytics_ranking_identity_permission/migration.sql";
 
   it("adds a real immutable UUID to every technician service", () => {
-    expect(schema).toContain(
+    expect(compact(schema)).toContain(
       'publicId String @unique(map: "technician_services_public_id_key") @default(uuid()) @map("public_id") @db.Char(36)'
     );
 

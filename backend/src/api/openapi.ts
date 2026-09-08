@@ -6915,7 +6915,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer", minimum: 1 },
-          shopId: { type: "integer", minimum: 1 },
+          shopId: { type: "integer", nullable: true, minimum: 1 },
           name: { type: "string", minLength: 1, maxLength: 120 },
           priceAmount: { type: "integer", minimum: 0 },
           currency: { type: "string", minLength: 3, maxLength: 3 },
@@ -6997,7 +6997,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           id: { type: "integer", minimum: 1 },
           publicId: { type: "string", format: "uuid" },
-          shopId: { type: "integer", minimum: 1 },
+          shopId: { type: ["integer", "null"], minimum: 1 },
           technicianId: { type: "integer", minimum: 1 },
           sourceShopServiceId: { type: ["integer", "null"], minimum: 1 },
           name: { type: "string", minLength: 1, maxLength: 120 },
@@ -7011,7 +7011,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           coverImageUrl: { type: ["string", "null"] },
           images: { type: "array", items: { type: "string" } },
           tags: { type: "array", items: { type: "string" } },
-          shop: { $ref: "#/components/schemas/TechnicianServiceShop" },
+          shop: {
+            oneOf: [
+              { $ref: "#/components/schemas/TechnicianServiceShop" },
+              { type: "null" }
+            ]
+          },
           isActive: { type: "boolean" },
           isBookable: { type: "boolean" },
           isRecommended: { type: "boolean" },
@@ -20553,8 +20558,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   technicianPricingRatePercent: {
                     type: "integer",
                     minimum: 10,
-                    maximum: 200,
-                    description: "Shop-facing price rate applied to technician service prices."
+                    maximum: 100,
+                    description: "Shop-wide technician settlement share. The shop share is the remainder to 100 percent."
                   }
                 }
               }
@@ -20627,6 +20632,64 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.identity.forbidden")
+        }
+      },
+      post: {
+        tags: ["Pricing Mode"],
+        summary: "Create a technician-owned profile service",
+        description: "Creates a service in the authenticated technician's global portfolio without requiring a shop affiliation.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:services:write",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["name", "categoryId", "priceAmount", "durationMinutes"],
+                properties: {
+                  name: { type: "string", minLength: 1, maxLength: 160 },
+                  description: { type: ["string", "null"], maxLength: 2000 },
+                  categoryId: { type: "integer", minimum: 1 },
+                  priceAmount: { type: "integer", minimum: 0, maximum: 10000000 },
+                  currency: { type: "string", minLength: 3, maxLength: 3 },
+                  durationMinutes: { type: "integer", minimum: 1, maximum: 1440 },
+                  tags: { type: "array", maxItems: 20, items: { type: "string", maxLength: 40 } }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Technician service created", { $ref: "#/components/schemas/TechnicianService" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden"),
+          "409": jsonErrorResponse("error.technician_service.limit_reached")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technicians/me/services/{serviceId}`]: {
+      put: {
+        tags: ["Pricing Mode"],
+        summary: "Update a service in the authenticated technician's global portfolio",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:services:write",
+        parameters: [{ name: "serviceId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        responses: {
+          "200": jsonDataResponse("Technician service updated", { $ref: "#/components/schemas/TechnicianService" }),
+          "404": jsonErrorResponse("error.technician_service.not_found")
+        }
+      },
+      delete: {
+        tags: ["Pricing Mode"],
+        summary: "Soft-delete a service in the authenticated technician's global portfolio",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:services:write",
+        parameters: [{ name: "serviceId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        responses: {
+          "200": { description: "Technician service soft deleted" },
+          "404": jsonErrorResponse("error.technician_service.not_found")
         }
       }
     },

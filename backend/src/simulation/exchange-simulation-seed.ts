@@ -215,6 +215,7 @@ export const discoverExchangeSimulationActors = async (
   }
   const technicianBindings = new Map<number, ExchangeSimulationServiceBinding>();
   for (const service of technicianServices) {
+    if (service.shopId === null || service.shop === null) continue;
     if (
       technicianBindings.has(service.technicianId) ||
       !activeAffiliations.has(`${service.technicianId}:${service.shopId}`)

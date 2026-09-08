@@ -89,10 +89,9 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("技师列表");
     expect(pageSource).toContain("const shouldRenderTechnicianShowcase = technicianBlock.visible;");
     expect(pageSource).toContain("function StoreTechnicianServiceListRow");
-    expect(pageSource).toContain("technicianPricingRatePercent?: number");
-    expect(pageSource).toContain("const effectiveTechnicianPricingRatePercent = isTechnicianPricingActive");
-    expect(pageSource).toContain("bookingNavigation?.technicianPricingRatePercent");
-    expect(pageSource).toContain("quoteRatePercent={effectiveTechnicianPricingRatePercent}");
+    expect(pageSource).toContain("mapBookingNavigationServiceToMenuCard");
+    expect(pageSource).toContain('bookingNavigation?.entry === "service_menu"');
+    expect(pageSource).not.toContain("quoteRatePercent");
     expect(pageSource).toContain('<SectionTitle showInfo={false} title="技师列表" />');
     expect(pageSource).toContain("<SectionTitle showInfo={false} title={technicianBlock.name}>");
     expect(pageSource).toContain("{serviceMenuHomePackageSection}");
@@ -189,9 +188,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).toContain("serviceListTo");
     expect(technicianRowSource).toContain("to={serviceListTo}");
     expect(technicianRowSource).toContain("查看技师服务列表");
-    expect(technicianRowSource).toContain("quoteRatePercent = 100");
-    expect(technicianRowSource).toContain("const displayedPrice = Number.isFinite(price) && price > 0 ? Math.round((price * quoteRatePercent) / 100) : price;");
-    expect(technicianRowSource).toContain("yen(displayedPrice)");
+    expect(technicianRowSource).not.toContain("quoteRatePercent");
+    expect(technicianRowSource).toContain("yen(price)");
     expect(technicianRowSource).toContain('className="flex min-w-0 flex-col justify-between rounded-[14px] py-1 pl-1.5 pr-1.5 text-left active:scale-[0.99]"');
     expect(technicianRowSource).toContain('className={cn("min-w-0", (isMerchantEditable || showSelectionAction) && "pr-12")}');
     expect(technicianRowSource).toContain("py-2 pl-3 pr-11");

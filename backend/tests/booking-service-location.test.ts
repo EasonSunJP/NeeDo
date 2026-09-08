@@ -118,6 +118,8 @@ const createRepositoryHarness = (options?: {
       )
     },
     customerProfile: { findFirst: jest.fn(async () => ({ membershipLevel: "regular" })) },
+    technicianCompensationProfile: { findFirst: jest.fn().mockResolvedValue(null) },
+    shopFinanceRuleSet: { findFirst: jest.fn().mockResolvedValue(null) },
     scheduleSlot: {
       findFirst: jest.fn(async () => ({ ...slot, bookedCount: state.bookedCount })),
       updateMany: jest.fn(async () => {
@@ -126,6 +128,7 @@ const createRepositoryHarness = (options?: {
       })
     },
     bookingOrder: {
+      count: jest.fn().mockResolvedValue(0),
       findMany: jest.fn(async () => []),
       updateMany: jest.fn(async () => ({ count: 0 })),
       findFirst: jest.fn(async () => null),

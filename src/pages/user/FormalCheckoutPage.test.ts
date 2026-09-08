@@ -5,16 +5,18 @@ import progressSource from "./formal-checkout/CheckoutProgressNav.tsx?raw";
 import { translations } from "../../i18n/translations";
 
 describe("formal customer checkout", () => {
-  it("routes typed numeric service references into an isolated API-only checkout", () => {
-    expect(checkoutSource).toContain("isBookingApiId(serviceId)");
+  it("routes shop, scoped technician, and Intelligence technician services into API-only checkout", () => {
     expect(checkoutSource).toContain("isBookingApiId(technicianServiceId)");
+    expect(checkoutSource).toContain("parseCheckoutServiceRoute(serviceId, searchParams)");
     expect(checkoutSource).toContain('type: "shop_service"');
     expect(checkoutSource).toContain('type: "technician_service"');
     expect(formalSource).toContain("coreReadApi.getServiceDetail(serviceId)");
+    expect(formalSource).toContain("pricingModeApi.listPublicTechnicianServices");
     expect(formalSource).toContain("bookingApi.getTechnicianServiceBookingContext");
     expect(formalSource).toContain("getExchangePost");
     expect(formalSource).toContain("loadAvailabilityWindow");
     expect(formalSource).toContain("bookingApi.createBooking");
+    expect(formalSource).toContain("technicianServiceId: catalogRef.id");
     expect(formalSource).toContain("isCheckoutSlotBookable(slot, Date.now())");
     expect(formalSource).toContain("scheduleSlotId: freshSelectedSlot.id");
     expect(formalSource).toContain("navigate(`/orders/${order.id}`");
@@ -89,7 +91,7 @@ describe("formal customer checkout", () => {
 
   it("renders the formal package through the unified service information card", () => {
     expect(formalSource).toContain("UnifiedServiceInfoCard");
-    expect(formalSource).toContain("serviceInfo: mapCoreServiceCardToUnifiedData(serviceDetail)");
+    expect(formalSource).toContain("const serviceInfo = mapCoreServiceCardToUnifiedData(serviceDetail)");
     expect(formalSource).toContain("<UnifiedServiceInfoCard data={displayServiceInfo}");
     expect(formalSource).toContain("mapExchangeIntelligenceServiceToUnifiedData");
     expect(formalSource).toContain("mapTechnicianBookingContextServiceToUnifiedData");

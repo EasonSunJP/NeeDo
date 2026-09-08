@@ -135,6 +135,7 @@ export class TechnicianServiceBookingContextRepository {
     record: ContextRecord,
     now: Date
   ): TechnicianServiceBookingContextPayload | null {
+    if (record.shopId === null || record.shop === null) return null;
     const shopPublicId = record.shop.publicIdentifier?.publicId;
     const technicianPublicId =
       record.technicianProfile.user.identities[0]?.publicIdentifier?.publicId;

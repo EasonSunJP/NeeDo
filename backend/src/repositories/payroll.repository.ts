@@ -261,6 +261,10 @@ export class PayrollRepository implements PayrollRepositoryPort {
       }
     });
     const fallback = fallbackRule ? this.mapShopRule(fallbackRule) : this.defaultRule(input.shopId);
+    const historicalRules = await this.findHistoricalCompensationRules(
+      input.shopId,
+      financials.map((financial) => financial.compensationBasisVersion)
+    );
 
     return financials.flatMap((financial) => {
       const technicianProfileId = financial.technicianProfileId;
@@ -294,10 +298,54 @@ export class PayrollRepository implements PayrollRepositoryPort {
           bPlatformFeeActualNdp: financial.bPlatformFeeActualNdp,
           serviceIncomeStatus:
             financial.serviceIncomeStatus === "confirmed" ? "confirmed" : "reported",
-          compensationRule: profileByTechnician.get(technicianProfileId) ?? fallback
+          compensationRule:
+            (financial.compensationBasisVersion
+              ? historicalRules.get(financial.compensationBasisVersion)
+              : undefined) ??
+            profileByTechnician.get(technicianProfileId) ??
+            fallback
         }
       ];
     });
+  }
+
+  private async findHistoricalCompensationRules(
+    shopId: number,
+    basisVersions: Array<string | null>
+  ): Promise<Map<string, CompensationRuleSet>> {
+    const technicianRuleIds = new Set<number>();
+    const shopRuleIds = new Set<number>();
+    basisVersions.forEach((basis) => {
+      const match = basis?.match(/^(technician_override|shop_default):(\d+)$/);
+      if (!match) return;
+      const id = Number(match[2]);
+      if (match[1] === "technician_override") technicianRuleIds.add(id);
+      else shopRuleIds.add(id);
+    });
+
+    const [technicianRules, shopRules] = await Promise.all([
+      technicianRuleIds.size > 0
+        ? this.client.technicianCompensationProfile.findMany({
+            where: { id: { in: [...technicianRuleIds] }, shopId }
+          })
+        : Promise.resolve([]),
+      shopRuleIds.size > 0
+        ? this.client.shopFinanceRuleSet.findMany({
+            where: { id: { in: [...shopRuleIds] }, shopId }
+          })
+        : Promise.resolve([])
+    ]);
+
+    return new Map([
+      ...technicianRules.map((rule) => [
+        `technician_override:${rule.id}`,
+        this.mapTechnicianRule(rule)
+      ] as const),
+      ...shopRules.map((rule) => [
+        `shop_default:${rule.id}`,
+        this.mapShopRule(rule)
+      ] as const)
+    ]);
   }
 
   public async savePayRunDraft(input: PayRunDraftSaveInput): Promise<PayRunPayload> {

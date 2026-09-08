@@ -143,7 +143,7 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
               actionSlot={scope === "user" ? (
                 <PrimaryButton
                   className="h-9 px-3 text-xs"
-                  to={service.id > 0 ? `/checkout/technician-service/${service.id}` : "/categories"}
+                  to={`/checkout/${service.id > 0 ? `technician-service-${service.id}` : "svc-fallback"}?shop=${apiShopId ?? ""}&technician=${apiTechnicianId ?? ""}`}
                 >
                   预约这个服务
                 </PrimaryButton>

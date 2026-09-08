@@ -50,9 +50,9 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> => {
         updatedBy: actorUserId
       })
     ),
-    findTechnicianShopScope: jest.fn(async (_technicianId: number) => {
+    findTechnicianShopScope: jest.fn(async (_technicianId: number, shopId: number) => {
       void _technicianId;
-      return { technicianId: 3, shopId: 1 };
+      return { technicianId: 3, shopId };
     }),
     listTechnicianServices: jest.fn(async (_input) => {
       void _input;
@@ -184,12 +184,12 @@ describe("PricingModeService", () => {
       context,
       1,
       "technician",
-      200
+      110
     );
 
     expect(result.pricingMode).toBe("technician");
-    expect(result.technicianPricingRatePercent).toBe(200);
-    expect(repository.updateShopPricingMode).toHaveBeenCalledWith(1, "technician", 200, 7);
+    expect(result.technicianPricingRatePercent).toBe(100);
+    expect(repository.updateShopPricingMode).toHaveBeenCalledWith(1, "technician", 100, 7);
     expect(auditLogService.record).toHaveBeenCalledWith(
       expect.objectContaining({
         actor: merchantActor,
@@ -199,7 +199,7 @@ describe("PricingModeService", () => {
           previousPricingMode: "merchant",
           nextPricingMode: "technician",
           previousTechnicianPricingRatePercent: 100,
-          nextTechnicianPricingRatePercent: 200
+          nextTechnicianPricingRatePercent: 100
         }
       })
     );
@@ -231,7 +231,7 @@ describe("PricingModeService", () => {
       tags: ["推荐"]
     });
 
-    expect(repository.findTechnicianShopScope).toHaveBeenCalledWith(3);
+    expect(repository.findTechnicianShopScope).toHaveBeenCalledWith(3, 1);
     expect(repository.createTechnicianService).toHaveBeenCalledWith(
       expect.objectContaining({
         shopId: 1,
@@ -248,6 +248,42 @@ describe("PricingModeService", () => {
       })
     );
     expect(auditLogService.record).not.toHaveBeenCalled();
+  });
+
+  it("accepts the same technician in another actively affiliated shop without changing the portfolio", async () => {
+    const repository = createRepository();
+    const service = new PricingModeService(repository, { record: jest.fn() });
+
+    await service.listTechnicianServices(technicianActor, context, 2, {
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(repository.findTechnicianShopScope).toHaveBeenCalledWith(3, 2);
+    expect(repository.listTechnicianServices).toHaveBeenCalledWith(expect.objectContaining({
+      shopId: 2,
+      technicianId: 3
+    }));
+  });
+
+  it("creates an independent technician service without requiring a shop", async () => {
+    const repository = createRepository();
+    const service = new PricingModeService(repository, { record: jest.fn() });
+
+    await service.createMyTechnicianService(technicianActor, context, {
+      name: "独立服务",
+      categoryId: 2,
+      priceAmount: 6800,
+      currency: "JPY",
+      durationMinutes: 45
+    });
+
+    expect(repository.findTechnicianShopScope).not.toHaveBeenCalled();
+    expect(repository.createTechnicianService).toHaveBeenCalledWith(expect.objectContaining({
+      shopId: null,
+      technicianId: 3,
+      name: "独立服务"
+    }));
   });
 
   it("lists and reorders the authenticated technician profile across shop contexts", async () => {
@@ -347,34 +383,12 @@ describe("PricingModeService", () => {
     });
   });
 
-  it("returns public technician services with the shop technician pricing rate applied", async () => {
+  it("keeps the customer-facing technician service price independent from settlement share", async () => {
     const repository = createRepository();
     repository.findShopPricingMode.mockResolvedValueOnce({
       shopId: 1,
       pricingMode: "technician",
-      technicianPricingRatePercent: 200,
-      updatedAt: now,
-      updatedBy: 7
-    });
-    const service = new PricingModeService(repository, { record: jest.fn() });
-
-    const result = await service.listPublicTechnicianServices(1, 3, { page: 1, pageSize: 20 });
-
-    expect(result.list[0]?.priceAmount).toBe(17600);
-    expect(repository.listPublicTechnicianServices).toHaveBeenCalledWith({
-      shopId: 1,
-      technicianId: 3,
-      page: 1,
-      pageSize: 20
-    });
-  });
-
-  it("still returns technician services in merchant pricing mode without applying the shop rate", async () => {
-    const repository = createRepository();
-    repository.findShopPricingMode.mockResolvedValueOnce({
-      shopId: 1,
-      pricingMode: "merchant",
-      technicianPricingRatePercent: 200,
+      technicianPricingRatePercent: 30,
       updatedAt: now,
       updatedBy: 7
     });
@@ -389,5 +403,22 @@ describe("PricingModeService", () => {
       page: 1,
       pageSize: 20
     });
+  });
+
+  it("does not expose technician services as bookable in merchant pricing mode", async () => {
+    const repository = createRepository();
+    repository.findShopPricingMode.mockResolvedValueOnce({
+      shopId: 1,
+      pricingMode: "merchant",
+      technicianPricingRatePercent: 30,
+      updatedAt: now,
+      updatedBy: 7
+    });
+    const service = new PricingModeService(repository, { record: jest.fn() });
+
+    const result = await service.listPublicTechnicianServices(1, 3, { page: 1, pageSize: 20 });
+
+    expect(result).toEqual({ list: [], total: 0, page: 1, page_size: 20 });
+    expect(repository.listPublicTechnicianServices).not.toHaveBeenCalled();
   });
 });

@@ -291,7 +291,7 @@ function buildFormalTechnicianProfileCard(
       systemId: profile.user.userIdLabel,
       name: identityCard.displayName,
       nickname: identityCard.displayName,
-      storeId: details.services[0] ? String(details.services[0].shopId) : "",
+      storeId: details.services[0]?.shopId ? String(details.services[0].shopId) : "",
       role: "therapist",
       status: "available",
       rating,

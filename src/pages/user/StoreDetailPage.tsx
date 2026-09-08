@@ -44,6 +44,8 @@ import {
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
+import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
+import { canAddShopService, SHOP_SERVICE_LIMIT } from "../../features/pricing-mode/shopServiceLimit";
 import { ShopServiceTaxonomyEditor } from "../../features/shop-taxonomy/ShopServiceTaxonomyEditor";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
@@ -99,7 +101,6 @@ type StoreDetailExperienceProps = {
   onEditFocus?: (focus: StoreDisplayExternalEditorMode) => void;
   pricingControl?: ReactNode;
   pricingMode?: "store" | "technician";
-  technicianPricingRatePercent?: number;
   privacyControl?: ReactNode;
   scope?: "user" | "merchant";
   serviceCardsOverride?: UnifiedServiceInfoCardData[];
@@ -1291,7 +1292,7 @@ function StoreTechnicianServiceListRow({
   onSelect,
   onToggleVisibility,
   profileTo,
-  quoteRatePercent = 100,
+  hideServicePreview = false,
   selected,
   serviceListTo,
   technician,
@@ -1303,7 +1304,7 @@ function StoreTechnicianServiceListRow({
   onSelect?: () => void;
   onToggleVisibility?: () => void;
   profileTo: string;
-  quoteRatePercent?: number;
+  hideServicePreview?: boolean;
   selected?: boolean;
   serviceListTo: string;
   technician: Technician;
@@ -1314,9 +1315,8 @@ function StoreTechnicianServiceListRow({
   const recommendedService = getStoreRecommendedServiceForTechnician(technician, fallbackServices);
   const packageInfo = recommendedService?.packages[0];
   const price = packageInfo?.price ?? recommendedService?.priceFrom ?? Number.parseInt(technician.bidBudgetMin ?? "", 10);
-  const displayedPrice = Number.isFinite(price) && price > 0 ? Math.round((price * quoteRatePercent) / 100) : price;
   const duration = packageInfo?.durationMinutes ?? 60;
-  const priceLabel = Number.isFinite(displayedPrice) && displayedPrice > 0 ? yen(displayedPrice) : "预约确认";
+  const priceLabel = Number.isFinite(price) && price > 0 ? yen(price) : "预约确认";
   const serviceName = recommendedService?.name ?? technician.skills[0] ?? "预约服务";
   const favoriteCount = Math.max(0, technician.orderCount);
   const shareCount = 0;
@@ -1399,12 +1399,18 @@ function StoreTechnicianServiceListRow({
           >
             <AppIcon className="h-4 w-4" name="info" />
           </span>
-          <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]">推荐服务</p>
-          <h4 className="mt-1.5 line-clamp-2 text-[14px] font-black leading-5 text-[color:var(--client-text)]">{serviceName}</h4>
-          <p className="mt-1 flex min-w-0 items-baseline gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
-            <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
-            <span className="min-w-0 truncate">/ {duration}分钟(含税)</span>
-          </p>
+          {hideServicePreview ? (
+            <p className="py-2 text-[13px] font-black text-[color:var(--client-text)]">选择该技师并查看服务</p>
+          ) : (
+            <>
+              <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]">推荐服务</p>
+              <h4 className="mt-1.5 line-clamp-2 text-[14px] font-black leading-5 text-[color:var(--client-text)]">{serviceName}</h4>
+              <p className="mt-1 flex min-w-0 items-baseline gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
+                <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
+                <span className="min-w-0 truncate">/ {duration}分钟(含税)</span>
+              </p>
+            </>
+          )}
         </div>
       </Link>
     </article>
@@ -1531,15 +1537,16 @@ function StoreMenuCoverImage({
   );
 }
 
-function MerchantAddServiceButton({ onAdd }: { onAdd: () => void }) {
+function MerchantAddServiceButton({ disabled, onAdd }: { disabled: boolean; onAdd: () => void }) {
   return (
     <button
       className="focus-ring inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_16%,var(--client-surface)_84%)] px-4 text-sm font-black text-[color:var(--client-text)] shadow-[0_14px_28px_color-mix(in_srgb,var(--client-primary)_10%,transparent)]"
+      disabled={disabled}
       onClick={onAdd}
       type="button"
     >
       <AppIcon className="h-4 w-4 text-[color:var(--client-primary)]" name="plus" />
-      添加服务
+      {disabled ? `服务已达上限 ${SHOP_SERVICE_LIMIT}/${SHOP_SERVICE_LIMIT}` : "添加服务"}
     </button>
   );
 }
@@ -2698,7 +2705,6 @@ export function StoreDetailExperience({
   scope = "user",
   serviceCardsOverride,
   store,
-  technicianPricingRatePercent,
   techniciansOverride,
   presentationOverride,
   transportSummary,
@@ -2725,9 +2731,6 @@ export function StoreDetailExperience({
   const isTechnicianPricingEntry =
     !isMerchantEditable && bookingNavigation?.pricingMode === "technician";
   const isTechnicianPricingActive = isMerchantEditable ? pricingMode === "technician" : isTechnicianPricingEntry;
-  const effectiveTechnicianPricingRatePercent = isTechnicianPricingActive
-    ? technicianPricingRatePercent ?? bookingNavigation?.technicianPricingRatePercent ?? 100
-    : 100;
   const heroBlock = useMemo(() => getStoreDecorationBlockConfig(store, "hero"), [store.id, store.uiDecoration]);
   const bookingBlock = useMemo(() => getStoreDecorationBlockConfig(store, "booking"), [store.id, store.uiDecoration]);
   const menuBlock = useMemo(() => getStoreDecorationBlockConfig(store, "menu"), [store.id, store.uiDecoration]);
@@ -2782,20 +2785,28 @@ export function StoreDetailExperience({
     [industry, presentationOverride, store, store.presentation]
   );
   const seatCards = useMemo(() => buildSeatCards(store, industry), [industry, store]);
+  const formalBookingMenuCards = useMemo(
+    () => bookingNavigation?.entry === "service_menu"
+      ? bookingNavigation.services.list.map((service) => mapBookingNavigationServiceToMenuCard(service, store.cover))
+      : [],
+    [bookingNavigation, store.cover]
+  );
   const baseMenuCards = useMemo(
-    () => (formalApiOnly ? [] : buildMenuCards(store, industry)),
-    [formalApiOnly, industry, store]
+    () => (formalApiOnly ? formalBookingMenuCards : buildMenuCards(store, industry)),
+    [formalApiOnly, formalBookingMenuCards, industry, store]
   );
   const serviceInfoById = useMemo(
     () => new Map((serviceCardsOverride ?? []).map((service) => [service.id, service])),
     [serviceCardsOverride]
   );
   const menuCards = useMemo(
-    () => mergeMenuCardOverrides(baseMenuCards, config.menuCards).map((menuCard) => ({
-      ...menuCard,
-      serviceInfo: serviceInfoById.get(menuCard.sourceServiceId) ?? menuCard.serviceInfo ?? mapStoreMenuConfigToUnifiedData(menuCard, store)
-    })),
-    [baseMenuCards, config.menuCards, serviceInfoById, store]
+    () => (formalApiOnly && !isMerchantEditable
+      ? baseMenuCards
+      : mergeMenuCardOverrides(baseMenuCards, config.menuCards).map((menuCard) => ({
+          ...menuCard,
+          serviceInfo: serviceInfoById.get(menuCard.sourceServiceId) ?? menuCard.serviceInfo ?? mapStoreMenuConfigToUnifiedData(menuCard, store)
+        }))),
+    [baseMenuCards, config.menuCards, formalApiOnly, isMerchantEditable, serviceInfoById, store]
   );
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
   const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
@@ -3136,6 +3147,7 @@ export function StoreDetailExperience({
     });
   };
   const addMerchantMenuCard = () => {
+    if (!canAddShopService(menuCards.length)) return;
     const nextMenuCard = buildNextStoreMenuCard({
       images,
       menuCards,
@@ -3217,7 +3229,7 @@ export function StoreDetailExperience({
               } : undefined}
               onToggleVisibility={() => toggleTechnicianDisplayVisibility(technician)}
               profileTo={getScopedTechnicianDynamicPath(scope, technician)}
-              quoteRatePercent={effectiveTechnicianPricingRatePercent}
+              hideServicePreview={isTechnicianPricingActive && !isMerchantEditable}
               selected={selectable ? active : undefined}
               serviceListTo={getTechnicianServiceListTo(technician.id)}
               technician={technician}
@@ -3294,7 +3306,7 @@ export function StoreDetailExperience({
             );
           })}
           {isMerchantEditable ? (
-            <MerchantAddServiceButton onAdd={addMerchantMenuCard} />
+            <MerchantAddServiceButton disabled={!canAddShopService(menuCards.length)} onAdd={addMerchantMenuCard} />
           ) : null}
           </div>
         ) : null}

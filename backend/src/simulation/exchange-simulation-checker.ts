@@ -251,6 +251,8 @@ export const checkFormalExchangeSimulation = async (
         `Intelligence ${post.id} must bind exactly one formal service.`
       );
       const boundService = shopService ?? technicianService!;
+      const boundShop = boundService.shop;
+      assert(boundShop, `Intelligence ${post.id} service is not scoped to a shop.`);
       assert(
         post.intelligence.serviceNameSnapshot === boundService.name &&
           post.intelligence.serviceDurationSnapshot === boundService.durationMinutes,
@@ -267,12 +269,12 @@ export const checkFormalExchangeSimulation = async (
         `Intelligence ${post.id} category is unavailable.`
       );
       assert(
-        boundService.shop.status === "published" &&
-          !boundService.shop.deletedAt &&
-          boundService.shop.publicIdentifier?.kind === "SHOP" &&
-          boundService.shop.publicIdentifier.status === "ACTIVE" &&
-          !boundService.shop.publicIdentifier.deletedAt &&
-          boundService.shop.entitySuspensions.length === 0,
+        boundShop.status === "published" &&
+          !boundShop.deletedAt &&
+          boundShop.publicIdentifier?.kind === "SHOP" &&
+          boundShop.publicIdentifier.status === "ACTIVE" &&
+          !boundShop.publicIdentifier.deletedAt &&
+          boundShop.entitySuspensions.length === 0,
         `Intelligence ${post.id} shop is unavailable.`
       );
       if (shopService) {

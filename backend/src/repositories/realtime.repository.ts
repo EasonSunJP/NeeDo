@@ -208,7 +208,7 @@ export type CreateFriendRequestOutcome =
 
 export interface TechnicianContactServicePayload {
   id: number;
-  shopId: number;
+  shopId: number | null;
   name: string;
   priceAmount: number;
   currency: string;

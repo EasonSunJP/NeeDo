@@ -251,6 +251,8 @@ const createPendingReplacementHarness = (
     customerProfile: {
       findFirst: jest.fn().mockResolvedValue({ membershipLevel: "standard" })
     },
+    technicianCompensationProfile: { findFirst: jest.fn().mockResolvedValue(null) },
+    shopFinanceRuleSet: { findFirst: jest.fn().mockResolvedValue(null) },
     shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
     scheduleSlot: {
       findUnique: jest.fn(
@@ -278,6 +280,7 @@ const createPendingReplacementHarness = (
       })
     },
     bookingOrder: {
+      count: jest.fn().mockResolvedValue(0),
       findMany: jest.fn(async ({ where }: { where: BookingWhere }) => {
         if (where.customerUserId !== undefined) {
           const selected = working.orders

@@ -20,7 +20,7 @@ export type PaginatedPricingData<TItem> = {
 export type TechnicianServicePayload = {
   id: number;
   publicId: string;
-  shopId: number;
+  shopId: number | null;
   technicianId: number;
   sourceShopServiceId: number | null;
   name: string;
@@ -34,7 +34,7 @@ export type TechnicianServicePayload = {
   coverImageUrl: string | null;
   images: string[];
   tags: string[];
-  shop: { publicId: string | null; name: string; address: string };
+  shop: { publicId: string | null; name: string; address: string } | null;
   isActive: boolean;
   isBookable: boolean;
   isRecommended: boolean;
@@ -60,6 +60,9 @@ export type BookingNavigationService = {
   currency: string;
   durationMinutes: number;
   coverUrl: string | null;
+  description: string | null;
+  tags: string[];
+  usageCount: number;
 };
 
 export type BookingNavigationResponse =
@@ -144,6 +147,26 @@ export const pricingModeApi = {
     return httpClient.request<TechnicianServicePayload>(`/technicians/me/shops/${shopId}/services`, {
       body,
       method: "POST"
+    });
+  },
+
+  createMyTechnicianService(body: TechnicianServiceBody) {
+    return httpClient.request<TechnicianServicePayload>("/technicians/me/services", {
+      body,
+      method: "POST"
+    });
+  },
+
+  updateMyTechnicianService(serviceId: number, body: Partial<TechnicianServiceBody>) {
+    return httpClient.request<TechnicianServicePayload>(`/technicians/me/services/${serviceId}`, {
+      body,
+      method: "PUT"
+    });
+  },
+
+  deleteMyTechnicianService(serviceId: number) {
+    return httpClient.request<{ deleted: true }>(`/technicians/me/services/${serviceId}`, {
+      method: "DELETE"
     });
   },
 

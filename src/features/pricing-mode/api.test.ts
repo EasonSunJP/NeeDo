@@ -132,4 +132,26 @@ describe("pricingModeApi technician portfolio", () => {
       { method: "DELETE" }
     );
   });
+
+  it("creates and updates technician-owned services without a shop scope", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    const body = {
+      name: "独立服务",
+      categoryId: 2,
+      priceAmount: 6800,
+      durationMinutes: 45
+    };
+
+    await pricingModeApi.createMyTechnicianService(body);
+    await pricingModeApi.updateMyTechnicianService(17, { priceAmount: 7200 });
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/technicians/me/services", {
+      body,
+      method: "POST"
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/technicians/me/services/17", {
+      body: { priceAmount: 7200 },
+      method: "PUT"
+    });
+  });
 });

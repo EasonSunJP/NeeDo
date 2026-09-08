@@ -50,18 +50,21 @@ No remote environment was used or modified during this verification.
 
 - Frontend typecheck/lint: `npm run lint`
 - Frontend production build: `npm run build`
-- Frontend affected suites: 10 files / 97 tests passed
-- Frontend full suite: 487 files / 3,315 tests passed
+- Frontend affected suites before final integration: 10 files / 97 tests passed
+- Frontend post-`main` integration suites: 7 files / 104 tests passed
+- Frontend full suite: 493 files / 3,331 tests passed
 - Backend lint: `npm run lint`
 - Backend build: `npm run build`
 - Backend affected suites: 12 suites / 68 tests passed
-- Backend full suite: all 771 test files completed in nine isolated batches;
-  every runnable suite passed. The partitioned run replaced the monolithic
-  process after it reached the 4 GB heap ceiling. One stale travel-fare checker
-  type guard exposed during the batch run was repaired and its 3 tests passed
-  on rerun.
+- Backend full suite: all 779 test files completed in nine isolated batches.
+  Two stale post-migration test fixtures/contracts exposed during the batch run
+  were repaired, and one transient local HTTP parse failure was checked in
+  isolation; the three affected suites passed 33 / 33 tests on rerun. The
+  partitioned run replaces the monolithic process after it reached the 4 GB
+  heap ceiling. A stale travel-fare checker type guard exposed during the
+  earlier run was also repaired and its 3 tests passed on rerun.
 - Prisma client generation and schema validation passed
-- Prisma migration status: 155 migrations, database schema up to date
+- Prisma migration status: 157 migrations, database schema up to date
 - Scratch-database Intelligence checker passed the full migration chain, three
   publications and four booking variants, including an onsite booking with a
   consumed route estimate, immutable travel-fare snapshot, customer service
@@ -74,3 +77,10 @@ No remote environment was used or modified during this verification.
 The scoped tests, full frontend and backend test inventories, static checks,
 builds, migration checks, scratch integration checker, and authenticated
 browser acceptance above are the local release evidence for this batch.
+
+The final merge with the latest local `main` also regenerated Prisma after the
+technician-service shop relation became optional. Booking, Exchange,
+Intelligence cards, the formal booking-context repository, and simulation
+checks now reject unscoped shop-dependent Intelligence paths instead of
+dereferencing a missing shop, while scoped independent technician-service
+checkout remains available through its explicit shop and technician route.

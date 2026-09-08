@@ -76,7 +76,9 @@ describe("unified service-information-card usage", () => {
     expect(source.merchantOrders).toContain("actionSlot={<DispatchStatusBadge");
     expect(source.merchantOrders).toContain("selectServicePackage(selection)");
     expect(source.technicianServices).toMatch(/services\.map\([\s\S]*<UnifiedServiceInfoCard[\s\S]*mapTechnicianServiceToUnifiedData\(service\)/u);
-    expect(source.technicianServices).toContain("/checkout/technician-service/${service.id}");
+    expect(source.technicianServices).toContain("technician-service-${service.id}");
+    expect(source.technicianServices).toContain("shop=${apiShopId");
+    expect(source.technicianServices).toContain("technician=${apiTechnicianId");
   });
 
   it("uses the shared profile and service cards for Intelligence detail", () => {

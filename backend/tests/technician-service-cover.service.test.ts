@@ -92,9 +92,9 @@ const createRepository = (
   return {
     findShopPricingMode: jest.fn(),
     updateShopPricingMode: jest.fn(),
-    findTechnicianShopScope: jest.fn(async (_technicianId: number) => {
+    findTechnicianShopScope: jest.fn(async (_technicianId: number, shopId: number) => {
       void _technicianId;
-      return { technicianId: 3, shopId: 1 };
+      return { technicianId: 3, shopId };
     }),
     listTechnicianServices: jest.fn(),
     listTechnicianServicesByProfile: jest.fn(),
