@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import {
   ContactEventTimelinePanel,
   type ContactEventTimelineEntry
@@ -14,7 +14,7 @@ import type { BookingOrder } from "../booking/api";
 import { loadEveryTechnicianOrder } from "../scheduling/window-loader";
 import { cn } from "../../lib/utils";
 
-type WorkspaceTab = "calendar" | "settings";
+export type WorkspaceTab = "calendar" | "settings";
 
 const schedulePanelClass =
   "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] shadow-[var(--client-shadow)]";
@@ -92,7 +92,8 @@ export function FormalTechnicianScheduleWorkspace({
   profileName,
   searchQuery = "",
   shopId,
-  shopName
+  shopName,
+  tab
 }: {
   dataCenterPeriod?: "last7days" | "last30days" | "week" | "month" | "year";
   initialSelectedDate?: string;
@@ -102,9 +103,9 @@ export function FormalTechnicianScheduleWorkspace({
   searchQuery?: string;
   shopId: number | null;
   shopName: string;
+  tab: WorkspaceTab;
 }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<WorkspaceTab>("calendar");
   const [statusOrders, setStatusOrders] = useState<BookingOrder[]>([]);
   const [statusLoadState, setStatusLoadState] = useState<"loading" | "success" | "error">("loading");
   const calendarTechnician = useMemo<UnifiedCalendarTechnician>(() => ({
@@ -149,18 +150,6 @@ export function FormalTechnicianScheduleWorkspace({
 
   return (
     <div className="text-[color:var(--client-text)]" data-testid="formal-technician-schedule-workspace">
-      <div className="mb-4">
-        <FeatureSegmentedTabs
-          items={[
-            { label: "我的排班", value: "calendar" },
-            { label: "排班设置", value: "settings" }
-          ]}
-          onChange={setTab}
-          value={tab}
-          variant="header"
-        />
-      </div>
-
       <div className="space-y-4">
         {dataCenterPeriodLabel ? <p className="rounded-2xl border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] px-4 py-2.5 text-xs font-black text-[color:var(--client-muted)]">数据中心期间：{dataCenterPeriodLabel}</p> : null}
         {tab === "settings" ? (

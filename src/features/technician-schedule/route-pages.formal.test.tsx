@@ -32,6 +32,29 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ session: technicianSession }) }));
+vi.mock("../../components/client-ui/AppScaffold", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../components/client-ui/AppScaffold")>();
+  return {
+    ...actual,
+    FeatureSegmentedTabs: ({
+      items,
+      onChange,
+      value
+    }: {
+      items: Array<{ label: string; value: "calendar" | "settings" }>;
+      onChange: (value: "calendar" | "settings") => void;
+      value: "calendar" | "settings";
+    }) => (
+      <div className="client-feature-segmented-tabs" data-active-tab={value}>
+        {items.map((item) => (
+          <button key={item.value} onClick={() => onChange(item.value)} type="button">
+            {item.label}
+          </button>
+        ))}
+      </div>
+    )
+  };
+});
 vi.mock("../booking/useOrderRealtimeRefresh", () => ({ useOrderRealtimeRefresh: vi.fn() }));
 vi.mock("../exchange/ExchangeOrderCancellationPanel", () => ({
   ExchangeOrderCancellationPanel: ({
@@ -114,8 +137,8 @@ vi.mock("./FormalScheduleRangeEditor", () => ({
   )
 }));
 vi.mock("./FormalTechnicianScheduleWorkspace", () => ({
-  FormalTechnicianScheduleWorkspace: ({ profileAvatarUrl, profileName, shopId, shopName }: { profileAvatarUrl?: string | null; profileName: string; shopId: number | null; shopName: string }) => (
-    <section data-avatar={profileAvatarUrl ?? ""} data-can-create={String(shopId !== null)} data-testid="formal-technician-schedule-workspace">{profileName}:{shopName}</section>
+  FormalTechnicianScheduleWorkspace: ({ profileAvatarUrl, profileName, shopId, shopName, tab }: { profileAvatarUrl?: string | null; profileName: string; shopId: number | null; shopName: string; tab?: "calendar" | "settings" }) => (
+    <section data-active-tab={tab ?? ""} data-avatar={profileAvatarUrl ?? ""} data-can-create={String(shopId !== null)} data-testid="formal-technician-schedule-workspace">{profileName}:{shopName}</section>
   )
 }));
 
@@ -466,6 +489,16 @@ describe("formal technician schedule routes", () => {
     expect(container.querySelector('button[aria-label="关闭排班"]')).not.toBeNull();
     expect(container.querySelector("nav")).toBeNull();
     expect(mocks.scheduleResource).toHaveBeenCalledWith(technicianSession, null);
+
+    const header = container.querySelector(".client-floating-header-host");
+    expect(header).not.toBeNull();
+    expect(Array.from(header?.querySelectorAll("button") ?? []).map((button) => button.textContent?.trim()))
+      .toEqual(expect.arrayContaining(["我的排班", "排班设置"]));
+    expect(container.querySelectorAll(".client-feature-segmented-tabs")).toHaveLength(1);
+
+    await click("排班设置");
+    expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.getAttribute("data-active-tab"))
+      .toBe("settings");
   });
 
   it("renders a numeric formal schedule detail", async () => {

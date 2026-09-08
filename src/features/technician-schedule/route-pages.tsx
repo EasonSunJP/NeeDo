@@ -6,6 +6,7 @@ import { useAuth } from "../../auth/AuthProvider";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { technicianNavItems } from "../../components/mobile/navItems";
+import { FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { SchedulePageHeader } from "../../components/scheduling/SchedulePageHeader";
 import { Button } from "../../components/ui/Button";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
@@ -28,7 +29,10 @@ import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
 import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
 import type { ExchangeCancellation } from "../exchange/types";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
-import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
+import {
+  FormalTechnicianScheduleWorkspace,
+  type WorkspaceTab
+} from "./FormalTechnicianScheduleWorkspace";
 import {
   parsePositiveRouteId,
   useFormalTechnicianOrderResource,
@@ -169,6 +173,7 @@ export function TechnicianScheduleIndexRoutePage() {
   const { session } = useAuth();
   const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("calendar");
   const resource = useFormalTechnicianScheduleResource(session, null);
   const dataCenterPeriod = readDataCenterPeriod(searchParams.get("period"));
   const initialSelectedDate = tokyoDateKey(searchParams.get("from"));
@@ -190,6 +195,17 @@ export function TechnicianScheduleIndexRoutePage() {
         ariaLabel="搜索排班"
         backLabel="返回技师首页"
         closeLabel="关闭排班"
+        footer={(
+          <FeatureSegmentedTabs
+            items={[
+              { label: "我的排班", value: "calendar" },
+              { label: "排班设置", value: "settings" }
+            ]}
+            onChange={setWorkspaceTab}
+            value={workspaceTab}
+            variant="header"
+          />
+        )}
         onBack={handleBack}
         onChange={setSearchQuery}
         onClose={() => navigate("/technician", { replace: true })}
@@ -213,6 +229,7 @@ export function TechnicianScheduleIndexRoutePage() {
         searchQuery={searchQuery}
         shopId={resource.data.shopId}
         shopName={resource.data.shopName}
+        tab={workspaceTab}
       /> : null}
     </TechnicianSchedulePageShell>
   );

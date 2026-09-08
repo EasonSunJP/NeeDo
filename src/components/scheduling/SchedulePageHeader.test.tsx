@@ -55,4 +55,20 @@ describe("SchedulePageHeader", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("uses only the shared header gap between the search row and footer", async () => {
+    await act(async () => root.render(
+      <SchedulePageHeader
+        footer={<div data-testid="schedule-header-footer">排班标签</div>}
+        onBack={vi.fn()}
+        onChange={vi.fn()}
+        onClose={vi.fn()}
+        placeholder="搜索排班"
+        value=""
+      />
+    ));
+
+    const footer = container.querySelector<HTMLElement>('[data-testid="schedule-header-footer"]');
+    expect(footer?.parentElement?.classList.contains("mt-3")).toBe(false);
+  });
 });
