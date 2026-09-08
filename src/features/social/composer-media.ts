@@ -23,12 +23,39 @@ export function isSocialComposerPublishReady({
   text: string;
   media: SocialMediaItem[];
 }) {
-  const hasContent = text.trim().length > 0 || media.length > 0;
-  const hasOnlyUploadedImages = media.every(
-    (item) => item.type === "image" && /^[a-f0-9]{64}$/u.test(item.mediaAssetPublicId ?? "")
-  );
+  return text.trim().length > 0 || media.length > 0;
+}
 
-  return hasContent && hasOnlyUploadedImages;
+export function areSocialComposerMediaUploadsComplete(media: SocialMediaItem[]) {
+  return media.every(hasFormalSocialMediaAsset);
+}
+
+export async function resolveSocialComposerMediaUploads(
+  media: SocialMediaItem[],
+  uploadTasks: ReadonlyMap<string, Promise<SocialMediaItem>>
+) {
+  const resolvedMedia = await Promise.all(media.map(async (item) => {
+    if (hasFormalSocialMediaAsset(item)) {
+      return item;
+    }
+
+    const uploadTask = uploadTasks.get(item.id);
+    if (!uploadTask) {
+      throw new Error("error.social.media_upload_unavailable");
+    }
+
+    return uploadTask;
+  }));
+
+  if (!areSocialComposerMediaUploadsComplete(resolvedMedia)) {
+    throw new Error("error.social.media_upload_unavailable");
+  }
+
+  return resolvedMedia;
+}
+
+function hasFormalSocialMediaAsset(item: SocialMediaItem) {
+  return item.type === "image" && /^[a-f0-9]{64}$/u.test(item.mediaAssetPublicId ?? "");
 }
 
 export function getSocialComposerErrorMessage(error: unknown) {

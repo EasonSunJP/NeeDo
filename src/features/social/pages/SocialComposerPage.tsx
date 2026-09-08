@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { MobileShell } from "../../../components/mobile/MobileShell";
 import { cn } from "../../../lib/utils";
+import { emitShareFeedback } from "../../../lib/shareFeedback";
 import { resolveCustomerMembership } from "../../../shared/profile-card/customerMembership";
 import {
   ComposerCommentPermissionSelector,
@@ -18,9 +19,11 @@ import {
   summarizeVisibility
 } from "../components/UnifiedComposerUi";
 import {
+  areSocialComposerMediaUploadsComplete,
   getSocialComposerErrorMessage,
   getSocialImageValidationError,
-  isSocialComposerPublishReady
+  isSocialComposerPublishReady,
+  resolveSocialComposerMediaUploads
 } from "../composer-media";
 import { buildSocialLocationOptions } from "../composer-location";
 import { SocialPostItem } from "../components/SocialUi";
@@ -28,7 +31,7 @@ import { useSocial } from "../context";
 import { loadFormalSocialMentionCandidates } from "../formal-contacts";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
 import { realtimeApi } from "../../realtime/api";
-import type { SocialCommentPermission, SocialComposerDraft, SocialMentionCandidate, SocialPost, SocialPostType, SocialProfile, SocialVisibility } from "../types";
+import type { SocialCommentPermission, SocialComposerDraft, SocialMediaItem, SocialMentionCandidate, SocialPost, SocialPostType, SocialProfile, SocialVisibility } from "../types";
 import {
   isValidSocialPostMediaSet,
   nextId,
@@ -125,11 +128,15 @@ export function SocialComposerPage() {
   const [mediaUploadStateById, setMediaUploadStateById] = useState<Record<string, "uploading" | "failed">>({});
   const mediaFileByIdRef = useRef(new Map<string, File>());
   const mediaPreviewUrlByIdRef = useRef(new Map<string, string>());
+  const mediaUploadTaskByIdRef = useRef(new Map<string, Promise<SocialMediaItem>>());
+  const publishStartedRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   const clearTransientMedia = useCallback(() => {
     mediaPreviewUrlByIdRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
     mediaPreviewUrlByIdRef.current.clear();
     mediaFileByIdRef.current.clear();
+    mediaUploadTaskByIdRef.current.clear();
     setMediaUploadStateById({});
   }, []);
 
@@ -163,8 +170,13 @@ export function SocialComposerPage() {
     setLocationQuery("");
   }, [clearTransientMedia, draftKey, editPost?.id, initialAuthorKey, postTypeOptions, quotePostId, selectedAuthorFromQuery, textLimit]);
 
-  useEffect(() => () => {
-    mediaPreviewUrlByIdRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      mediaPreviewUrlByIdRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+    };
   }, []);
 
   useEffect(() => {
@@ -207,7 +219,16 @@ export function SocialComposerPage() {
   );
   const isDirty = currentSignature !== initialSignature;
   const hasValidMediaSet = isValidSocialPostMediaSet(media);
-  const canPublish = hasValidMediaSet && isSocialComposerPublishReady({ text, media });
+  const mediaUploadsComplete = areSocialComposerMediaUploadsComplete(media);
+  const canPublish = hasValidMediaSet &&
+    isSocialComposerPublishReady({ text, media }) &&
+    (!editPostId || mediaUploadsComplete);
+  const failedMediaUploadStateById = useMemo(
+    () => Object.fromEntries(
+      Object.entries(mediaUploadStateById).filter(([, status]) => status === "failed")
+    ) as Record<string, "failed">,
+    [mediaUploadStateById]
+  );
   const detectedLink = useMemo(() => text.match(linkPattern)?.[1], [text]);
   const handleTextChange = (value: string) => {
     setText(value.slice(0, textLimit));
@@ -317,37 +338,49 @@ export function SocialComposerPage() {
 
   const uploadMediaFile = useCallback(async (mediaId: string, file: File) => {
     setMediaUploadStateById((current) => ({ ...current, [mediaId]: "uploading" }));
+    const uploadTask = realtimeApi.uploadSocialMedia(file).then<SocialMediaItem>((uploaded) => ({
+      id: mediaId,
+      type: "image",
+      url: uploaded.url,
+      alt: file.name,
+      mediaAssetPublicId: uploaded.publicId
+    }));
+    mediaUploadTaskByIdRef.current.set(mediaId, uploadTask);
 
     try {
-      const uploaded = await realtimeApi.uploadSocialMedia(file);
+      const uploadedMedia = await uploadTask;
 
       if (mediaFileByIdRef.current.get(mediaId) !== file) {
         return;
       }
 
-      setMedia((current) => current.map((item) =>
-        item.id === mediaId
-          ? { ...item, mediaAssetPublicId: uploaded.publicId, url: uploaded.url }
-          : item
-      ));
+      if (isMountedRef.current) {
+        setMedia((current) => current.map((item) =>
+          item.id === mediaId ? { ...item, ...uploadedMedia } : item
+        ));
+      }
       const previewUrl = mediaPreviewUrlByIdRef.current.get(mediaId);
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
       }
       mediaPreviewUrlByIdRef.current.delete(mediaId);
       mediaFileByIdRef.current.delete(mediaId);
-      setMediaUploadStateById((current) => {
-        const next = { ...current };
-        delete next[mediaId];
-        return next;
-      });
+      if (isMountedRef.current) {
+        setMediaUploadStateById((current) => {
+          const next = { ...current };
+          delete next[mediaId];
+          return next;
+        });
+      }
     } catch (error) {
       if (mediaFileByIdRef.current.get(mediaId) !== file) {
         return;
       }
 
-      setMediaUploadStateById((current) => ({ ...current, [mediaId]: "failed" }));
-      setMediaError(getSocialComposerErrorMessage(error));
+      if (isMountedRef.current) {
+        setMediaUploadStateById((current) => ({ ...current, [mediaId]: "failed" }));
+        setMediaError(getSocialComposerErrorMessage(error));
+      }
     }
   }, []);
 
@@ -414,6 +447,7 @@ export function SocialComposerPage() {
     }
     mediaPreviewUrlByIdRef.current.delete(mediaId);
     mediaFileByIdRef.current.delete(mediaId);
+    mediaUploadTaskByIdRef.current.delete(mediaId);
     setMediaUploadStateById((current) => {
       const next = { ...current };
       delete next[mediaId];
@@ -448,38 +482,64 @@ export function SocialComposerPage() {
     navigate(-1);
   };
 
-  const handlePublish = async () => {
-    if (!canPublish || !author) {
+  const handlePublish = () => {
+    if (!canPublish || !author || publishStartedRef.current) {
       if (!hasValidMediaSet) {
         setMediaError("一条动态最多发布 9 张图片。");
-      } else if (media.some((item) => !item.mediaAssetPublicId)) {
+      } else if (editPostId && !mediaUploadsComplete) {
         setMediaError("图片正在上传，请稍候。失败的图片可以点击重试。");
       }
 
       return;
     }
 
+    publishStartedRef.current = true;
     setIsPublishing(true);
     setMediaError("");
-    try {
-      const nextPost = await (editPostId
-        ? updatePost({
-          actorKey: initialAuthorKey,
-          postId: editPostId,
-          text,
-          media,
-          visibility,
-          visibilityTagIds,
-          visibilityProfileKeys,
-          includeRelatedPeople,
-          commentPermission,
-          locationLabel: locationLabel || undefined,
-          mentionUserIds,
-          postType: editPost?.postType ?? postType
-          })
-        : createPost({
+
+    if (editPostId) {
+      void (async () => {
+        try {
+          const nextPost = await updatePost({
+            actorKey: initialAuthorKey,
+            postId: editPostId,
+            text,
+            media,
+            visibility,
+            visibilityTagIds,
+            visibilityProfileKeys,
+            includeRelatedPeople,
+            commentPermission,
+            locationLabel: locationLabel || undefined,
+            mentionUserIds,
+            postType: editPost?.postType ?? postType
+          });
+
+          if (nextPost) {
+            clearDraft(draftKey);
+            navigate(socialPaths.timeline(scope), { replace: true });
+          }
+        } catch (error) {
+          publishStartedRef.current = false;
+          setMediaError(getSocialComposerErrorMessage(error));
+        } finally {
+          setIsPublishing(false);
+        }
+      })();
+      return;
+    }
+
+    const submissionMedia = [...media];
+    const submissionUploadTasks = new Map(mediaUploadTaskByIdRef.current);
+    const publishNewPostInBackground = async () => {
+      try {
+        const uploadedMedia = await resolveSocialComposerMediaUploads(
+          submissionMedia,
+          submissionUploadTasks
+        );
+        const nextPost = await createPost({
           authorKey: initialAuthorKey,
-          media,
+          media: uploadedMedia,
           quotePostId,
           text,
           visibility,
@@ -490,17 +550,22 @@ export function SocialComposerPage() {
           locationLabel: locationLabel || undefined,
           mentionUserIds,
           postType
-          }));
+        });
 
-      if (nextPost) {
-        clearDraft(draftKey);
-        navigate(socialPaths.timeline(scope), { replace: true });
+        if (nextPost) {
+          clearDraft(draftKey);
+        }
+      } catch (error) {
+        emitShareFeedback({
+          type: "toast",
+          message: getSocialComposerErrorMessage(error),
+          tone: "danger"
+        });
       }
-    } catch (error) {
-      setMediaError(getSocialComposerErrorMessage(error));
-    } finally {
-      setIsPublishing(false);
-    }
+    };
+
+    navigate(socialPaths.timeline(scope), { replace: true });
+    void publishNewPostInBackground();
   };
 
   if (!author) {
@@ -637,7 +702,7 @@ export function SocialComposerPage() {
                   onOpenPicker={() => undefined}
                   onRemove={handleRemoveMedia}
                   onRetry={handleRetryMediaUpload}
-                  uploadStateById={mediaUploadStateById}
+                  uploadStateById={editPostId ? mediaUploadStateById : failedMediaUploadStateById}
                 />
               </div>
             </div>
