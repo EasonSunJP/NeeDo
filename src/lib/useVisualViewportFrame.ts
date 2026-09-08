@@ -72,15 +72,16 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         return;
       }
 
-      const useInstalledIosViewport = Boolean(
+      const installPlatform = detectPwaInstallPlatform(window.navigator);
+      const useInstalledMobileViewport = Boolean(
         viewport &&
         isPwaStandaloneWindow(window) &&
-        detectPwaInstallPlatform(window.navigator) === "ios"
+        (installPlatform === "ios" || installPlatform === "android")
       );
-      if (useInstalledIosViewport) {
-        // Installed iOS PWAs can report a 100dvh layout box that extends below
-        // the actually visible viewport. Bound the fixed room to the same
-        // visible frame used while the keyboard is open.
+      if (useInstalledMobileViewport) {
+        // Installed mobile PWAs can keep a layout viewport whose 100dvh does
+        // not match the visible app surface. Bound the fixed room to the same
+        // visual frame used while the keyboard is open.
         element.style.setProperty(
           "--im-visual-viewport-height",
           `${Math.max(1, Math.ceil(viewport!.height))}px`
