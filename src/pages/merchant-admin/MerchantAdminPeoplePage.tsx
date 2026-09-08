@@ -60,8 +60,8 @@ function normalizeModule(value: string | null): PeopleModule {
   return value === "users" || value === "reviews" ? value : "staff";
 }
 
-function relationshipLabel(value: EmployeeRelationshipType) {
-  return value === "exclusive" ? "专属技师" : "合作技师";
+function relationshipLabel(_value: EmployeeRelationshipType) {
+  return "合作技师";
 }
 
 function workStatusLabel(value: EmployeeWorkStatus) {
@@ -106,11 +106,8 @@ function describeEmployeeMutationError(error: unknown, language: Language) {
       message = "当前身份没有维护本店员工资料的权限";
     } else if (error.status === 404) {
       message = "该员工已不属于当前店铺，请刷新列表";
-    } else if (
-      error.status === 409 ||
-      error.message === "error.technician_affiliation.exclusive_conflict"
-    ) {
-      message = "该员工与其他店铺的专属从属关系冲突";
+    } else if (error.status === 409) {
+      message = "员工从属关系已发生变化，请刷新后重试";
     } else if (error.status >= 500) {
       message = "员工资料服务暂时不可用，请稍后重试";
     }

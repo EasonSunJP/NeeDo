@@ -175,10 +175,7 @@ function createDayGrid(
       {
         technicianId: employee.needoId,
         technicianName: employee.displayName,
-        technicianSubtitle:
-          employee.affiliation.relationshipType === "exclusive"
-            ? "专属技师"
-            : "合作技师",
+        technicianSubtitle: "合作技师",
         technicianAvatar: employee.avatarUrl ?? "",
         scheduledHours: cells.filter((cell) => cell.status !== "idle").length,
         cells,
@@ -255,10 +252,7 @@ export function createEmployeeScheduleCalendarData(
     {
       id: `employee:${employee.needoId}`,
       label: employee.displayName,
-      caption:
-        employee.affiliation.relationshipType === "exclusive"
-          ? "专属技师"
-          : "合作技师",
+      caption: "合作技师",
       accent: "var(--admin-accent, var(--client-primary))",
       avatar: employee.avatarUrl ?? undefined,
     },

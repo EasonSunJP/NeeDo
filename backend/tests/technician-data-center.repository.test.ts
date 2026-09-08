@@ -119,7 +119,11 @@ describe("TechnicianDataCenterRepository", () => {
 
     expect(result).toMatchObject({
       technician: { id: 31, userId: 9, displayName: "Misaki" },
-      affiliation: { shopId: 73, shopName: "GINZA Calm Body Lab" },
+      affiliation: {
+        shopId: 73,
+        shopName: "GINZA Calm Body Lab",
+        relationshipType: "partner"
+      },
       incomeModel: {
         commissionRatePercent: 50,
         extensionCommissionRatePercent: 70,

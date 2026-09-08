@@ -275,9 +275,7 @@ export class ShopEmployeeDirectoryRepository implements ShopEmployeeDirectoryRep
         technicianIsCurrent && affiliation && technicianIdentifier
           ? {
               needoId: technicianIdentifier.publicId,
-              relationshipType: affiliation.relationshipType.toLowerCase() as
-                | "exclusive"
-                | "partner",
+              relationshipType: "partner",
               workStatus: affiliation.workStatus.toLowerCase() as ShopEmployeeDirectoryStatus
             }
           : null

@@ -211,4 +211,25 @@ describe("ShopEmployeeDirectoryRepository", () => {
       /"(?:id|shopEmployeeId|userId|roleId|affiliationId|identityId)":/
     );
   });
+
+  it("normalizes a legacy exclusive row to the public partner contract", async () => {
+    const legacyTechnician = {
+      ...technicianEmployeeRecord,
+      technicianShopAffiliation: {
+        ...technicianEmployeeRecord.technicianShopAffiliation,
+        relationshipType: "EXCLUSIVE"
+      }
+    };
+    const client = {
+      shopEmployee: {
+        findMany: jest.fn().mockResolvedValue([legacyTechnician]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    };
+    const repository = new ShopEmployeeDirectoryRepository(client as never, () => now);
+
+    const result = await repository.listCurrentShopEmployees({ shopId: 16 });
+
+    expect(result.list[0]?.technician?.relationshipType).toBe("partner");
+  });
 });

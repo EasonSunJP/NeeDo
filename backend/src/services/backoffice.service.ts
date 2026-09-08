@@ -159,14 +159,14 @@ const DASHBOARD_METRIC_METADATA: Record<DashboardMetricKey, DashboardMetricMetad
     "consumables_sales"
   ),
   dedicated_technician_commission: metricMetadata(
-    "Natural-month daily base allocation plus settled share for dedicated technicians",
-    "SUM(natural-month daily base allocation + settled share)",
+    "Natural-month daily base allocation plus settled share for technicians affiliated with one shop",
+    "SUM(single-shop natural-month daily base allocation + settled share)",
     "jpy",
     "dedicated_technician_commission"
   ),
   part_time_technician_commission: metricMetadata(
-    "Natural-month daily base allocation plus settled share across associated shops",
-    "SUM(natural-month daily base allocation + settled share across associated shops)",
+    "Natural-month daily base allocation plus settled share for technicians affiliated with multiple shops",
+    "SUM(multi-shop natural-month daily base allocation + settled share per shop)",
     "jpy",
     "part_time_technician_commission"
   ),

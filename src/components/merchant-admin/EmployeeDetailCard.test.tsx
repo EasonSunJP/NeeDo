@@ -58,7 +58,7 @@ const employee: MerchantEmployee = {
   },
   affiliation: {
     id: 987,
-    relationshipType: "exclusive",
+    relationshipType: "partner",
     workStatus: "active",
     startsAt: "2026-06-01T00:00:00.000Z",
     endsAt: null,
@@ -289,9 +289,8 @@ describe("EmployeeDetailCard", () => {
 
     expect(container.textContent).toContain("NEEDO-S-47");
     expect(container.textContent).toContain("斉藤 健太");
-    expect(container.textContent).toContain("专属技师");
-    expect(container.textContent).toContain("雇佣形式");
-    expect(container.textContent).toContain("正式员工");
+    expect(container.textContent).toContain("合作技师");
+    expect(container.textContent).not.toContain("雇佣形式");
     expect(container.textContent).toContain("在职");
     expect(container.textContent).toContain("LifeDance 渋谷店");
     expect(container.textContent).toContain("kenta@example.jp");
@@ -306,6 +305,15 @@ describe("EmployeeDetailCard", () => {
     expect(container.textContent).toContain("员工动态");
     expect(container.textContent).toContain("LifeDance 管理员（基本资料）：更新了姓名、城市");
     expect(container.textContent).toContain("员工日程 · NEEDO-S-47");
+  });
+
+  it("keeps the affiliation relationship fixed to partner", async () => {
+    await renderCard();
+    await act(async () => button("从属与账号").click());
+    await act(async () => button("编辑从属关系").click());
+
+    expect(container.querySelector('option[value="exclusive"]')).toBeNull();
+    expect(container.textContent).not.toContain("专属技师");
   });
 
   it("uses the shared event timeline and persists comments through the parent", async () => {
@@ -457,7 +465,6 @@ describe("EmployeeDetailCard", () => {
   });
 
   it("provides exact merchant-card copy in every supported non-source language", () => {
-    expect(translateText("专属技师", "zh-Hant")).toBe("專屬技師");
     expect(translateText("合作技师", "ja")).toBe("パートナースタッフ");
     expect(translateText("工作状态", "en")).toBe("Work Status");
     expect(translateText("保存从属关系", "ko")).toBe("소속 관계 저장");

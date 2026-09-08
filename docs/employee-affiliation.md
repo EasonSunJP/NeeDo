@@ -22,8 +22,9 @@ User
 
 `relationshipType`：
 
-- `exclusive`：专属技师。只能有一个当前店铺关系。
-- `partner`：合作技师或临时工。允许同时从属多个店铺，但不能与任一当前专属关系共存。
+- 对外与业务写入合同只有 `partner`（合作技师）。
+- 同一技师可以同时与一个或多个店铺建立当前关系；系统不设置“专属技师”约束。
+- 数据库中的 `EXCLUSIVE` 枚举和值仅为历史数据与回滚兼容保留。读取旧行时统一投影为 `partner`，新写入统一保存 `PARTNER`。
 
 `workStatus`：
 
@@ -32,7 +33,7 @@ User
 - 当前关系的 `activeKey` 固定为 `technician:<technicianProfileId>:shop:<shopId>`。
 - 结束关系时只把状态改为 `ended`、记录 `endsAt` 并清空 `activeKey`；不得删除历史行。
 
-创建或切换专属/合作关系时，仓库在数据库事务内对全局 `technician_profiles.id` 执行 `FOR UPDATE`，随后读取全部当前从属并检查互斥规则。相同技师/店铺的当前行还受唯一 `activeKey` 约束。
+更新合作关系时只处理当前 JWT 店铺范围内的从属记录，不读取或阻止其他店铺的当前关系。相同技师/店铺的当前行仍受唯一 `activeKey` 约束。
 
 ## 正式 API、作用域与权限
 
@@ -43,7 +44,7 @@ PATCH /api/v1/merchant-admin/employees/:needoId/profile
 PUT /api/v1/merchant-admin/employees/:needoId/affiliation
 ```
 
-- 列表支持 `page`、`pageSize`、`keyword`、`relationshipType`、`workStatus`。
+- 列表支持 `page`、`pageSize`、`keyword`、`relationshipType=partner`、`workStatus`。
 - path 中的 `needoId` 只接受技师 `s##########`。
 - 客户端不允许传 `shopId`；店铺只取自 JWT 当前 `shop` identity scope。
 - 未从属当前店铺、错误类别公开号和不存在的目标使用相同安全 404，不能借错误差异枚举其他店铺员工。
@@ -94,9 +95,9 @@ ENV_FILE=.env.dev npm run check:unified-identifier-cutover -- --batch-size=100
 ENV_FILE=.env.dev npm run backfill:technician-shop-affiliations -- --mode=dry-run --batch-size=100
 ```
 
-映射规则：
+历史回填映射规则：
 
-- legacy `FULL_TIME` → `exclusive`
+- legacy `FULL_TIME` → 数据库存储兼容值 `exclusive`，但所有当前 API/UI 均返回 `partner`
 - legacy `TEMPORARY` → `partner`
 - legacy `INDEPENDENT` 只有在同店存在未删除的 `TechnicianService`、`Service`、`BookingOrder`、`ScheduleSlot` 或 active `TechnicianCompensationProfile` 证据时，才映射为 `partner`
 - `shopId=null` 的全局档案跳过
@@ -109,7 +110,7 @@ ENV_FILE=.env.dev npm run backfill:technician-shop-affiliations -- --mode=dry-ru
 - `SHOP_NOT_ACTIVE`
 - `INDEPENDENT_RELATION_UNVERIFIED`
 - `AFFILIATION_MISMATCH`
-- `EXCLUSIVE_CONFLICT`
+- `EXCLUSIVE_CONFLICT`（仅旧版回填诊断兼容；当前业务写入不再产生）
 
 任何问题都会在写入前 fail closed。不得为了让报告变绿而猜测独立技师的店铺关系。dry-run 干净且备份存在后，才可执行：
 

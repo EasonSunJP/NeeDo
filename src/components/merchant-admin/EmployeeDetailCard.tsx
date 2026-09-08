@@ -136,12 +136,8 @@ function createAffiliationDraft(employee: MerchantEmployee): AffiliationDraft {
   };
 }
 
-function relationshipLabel(value: EmployeeRelationshipType) {
-  return value === "exclusive" ? "专属技师" : "合作技师";
-}
-
-function employmentFormLabel(value: EmployeeRelationshipType) {
-  return value === "exclusive" ? "正式员工" : "临时工";
+function relationshipLabel(_value: EmployeeRelationshipType) {
+  return "合作技师";
 }
 
 function workStatusLabel(value: EmployeeWorkStatus) {
@@ -406,7 +402,6 @@ export function EmployeeDetailCard({
         <dl className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] border-t border-white/10 bg-white/[0.035]">
           {[
             ["所属店铺", employee.affiliation.shop.name],
-            ["雇佣形式", t(employmentFormLabel(employee.affiliation.relationshipType))],
             ["邮箱", employee.email],
             ["手机号码", employee.phone || t("未填写")],
             ["账号状态", t(employee.account.isActive ? "启用" : "停用")],
@@ -665,7 +660,6 @@ export function EmployeeDetailCard({
                   }
                   value={affiliationDraft.relationshipType}
                 >
-                  <option value="exclusive">{t("专属技师")}</option>
                   <option value="partner">{t("合作技师")}</option>
                 </select>
               </label>

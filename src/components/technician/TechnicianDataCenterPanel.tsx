@@ -148,7 +148,7 @@ function IncomeModelDialog({ data, onClose }: { data: TechnicianDataCenterPayloa
         </div>
         {model ? (
           <dl className="mt-5 divide-y divide-[color:var(--client-line)] text-sm">
-            <div className="py-3"><dt className="text-xs font-bold text-[color:var(--client-muted)]">收入归属</dt><dd className="mt-1 font-black">{data.affiliation ? `${data.affiliation.shopName}店铺专属技师` : "当前技师收入模型"}</dd></div>
+            <div className="py-3"><dt className="text-xs font-bold text-[color:var(--client-muted)]">收入归属</dt><dd className="mt-1 font-black">{data.affiliation ? `${data.affiliation.shopName}店铺合作技师` : "当前技师收入模型"}</dd></div>
             <div className="py-3"><dt className="text-xs font-bold text-[color:var(--client-muted)]">入社日期</dt><dd className="mt-1 font-black">{formatDate(data.technician.employmentStartedAt ?? data.affiliation?.startsAt ?? null)}</dd></div>
             <div className="py-3"><dt className="text-xs font-bold text-[color:var(--client-muted)]">收入形式版本</dt><dd className="mt-1 font-black">{formatDate(model.updatedAt)}更新 · V{model.version}</dd></div>
             <div className="grid grid-cols-2 gap-x-4 py-3">

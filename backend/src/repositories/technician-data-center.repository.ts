@@ -145,7 +145,7 @@ export class TechnicianDataCenterRepository implements TechnicianDataCenterRepos
         ? {
             shopId: affiliation.shopId,
             shopName: affiliation.shop.name,
-            relationshipType: affiliation.relationshipType,
+            relationshipType: "partner",
             startsAt: affiliation.startsAt.toISOString()
           }
         : null,

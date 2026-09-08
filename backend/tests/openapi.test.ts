@@ -5,6 +5,33 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("publishes partner as the only active employee affiliation relationship", () => {
+    const document = createOpenApiDocument(env) as any;
+    const schemas = document.components.schemas;
+
+    expect(schemas.MerchantEmployeeAffiliation.properties.relationshipType.enum).toEqual([
+      "partner"
+    ]);
+    expect(schemas.ShopEmployeeDirectoryTechnician.properties.relationshipType.enum).toEqual([
+      "partner"
+    ]);
+    expect(schemas.MerchantEmployeeScheduleProjection.properties.employee.properties.relationshipType.enum).toEqual([
+      "partner"
+    ]);
+    expect(schemas.MerchantEmployeeAffiliationInput.properties.relationshipType.enum).toEqual([
+      "partner"
+    ]);
+
+    const listParameters =
+      document.paths["/api/v1/merchant-admin/employees"].get.parameters;
+    expect(
+      listParameters.find((parameter: any) => parameter.name === "relationshipType").schema.enum
+    ).toEqual(["partner"]);
+    expect(
+      document.paths["/api/v1/merchant-admin/employees/{needoId}/affiliation"].put.responses
+    ).not.toHaveProperty("409");
+  });
+
   it("documents shop creator, platform commission, and the protected SaaS detail endpoint", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, Record<string, Record<string, unknown>>>;

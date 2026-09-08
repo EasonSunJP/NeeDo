@@ -2476,10 +2476,6 @@ const merchantEmployeeErrorResponses = {
     description:
       "error.technician_affiliation.not_found — employee is absent from the authenticated shop"
   },
-  "409": {
-    description:
-      "error.technician_affiliation.exclusive_conflict — exclusive and multi-shop relationships conflict"
-  }
 };
 
 const merchantPreviewShopHeaderParameter = {
@@ -13829,7 +13825,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["id", "relationshipType", "workStatus", "startsAt", "endsAt", "shop"],
         properties: {
           id: { type: "integer", minimum: 1, readOnly: true },
-          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          relationshipType: { type: "string", enum: ["partner"] },
           workStatus: {
             type: "string",
             enum: ["active", "on_leave", "suspended", "ended"]
@@ -13929,7 +13925,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["needoId", "relationshipType", "workStatus"],
         properties: {
           needoId: { type: "string", pattern: "^s[0-9]{10}$" },
-          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          relationshipType: { type: "string", enum: ["partner"] },
           workStatus: {
             type: "string",
             enum: ["active", "on_leave", "suspended"]
@@ -14105,7 +14101,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               needoId: { type: "string", pattern: "^s[0-9]{10}$" },
               displayName: { type: "string" },
               avatarUrl: { type: ["string", "null"], format: "uri-reference" },
-              relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+              relationshipType: { type: "string", enum: ["partner"] },
               workStatus: {
                 type: "string",
                 enum: ["active", "on_leave", "suspended", "ended"]
@@ -14138,7 +14134,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["relationshipType", "workStatus", "startsAt", "endsAt"],
         properties: {
-          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          relationshipType: { type: "string", enum: ["partner"] },
           workStatus: {
             type: "string",
             enum: ["active", "on_leave", "suspended", "ended"]
@@ -17589,7 +17585,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "relationshipType",
             in: "query",
-            schema: { type: "string", enum: ["exclusive", "partner"] }
+            schema: { type: "string", enum: ["partner"] }
           },
           {
             name: "workStatus",
