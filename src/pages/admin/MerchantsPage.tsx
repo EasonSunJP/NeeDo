@@ -11,7 +11,7 @@ import { merchantSaasBillingApi } from "../../api/merchantSaasBilling";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { MerchantAccountDetailDrawer } from "../../components/admin/MerchantAccountDetailDrawer";
-import { MerchantBillingCard } from "../../components/admin/MerchantBillingCard";
+import { MerchantAccountCollection } from "../../components/admin/MerchantAccountCollection";
 import { MerchantBillingEditorDialog } from "../../components/admin/MerchantBillingEditorDialog";
 import { MerchantSuspensionDialog } from "../../components/admin/MerchantSuspensionDialog";
 import { ModuleShell } from "../../components/admin/ModuleShell";
@@ -22,12 +22,9 @@ import { Drawer } from "../../components/ui/Drawer";
 import { Tabs } from "../../components/ui/Tabs";
 import { coreReadApi, type CoreCategory } from "../../features/core-read/api";
 import { translateMerchantBillingText } from "../../features/merchant-saas-billing/i18n";
-import {
-  isMerchantGroup,
-  type MerchantAccountCard
-} from "../../features/merchant-saas-billing/model";
+import type { MerchantAccountCard } from "../../features/merchant-saas-billing/model";
 import { useI18n } from "../../i18n/I18nProvider";
-import { startMerchantAdminPreview } from "../../auth/merchantAdminPreview";
+import { openMerchantAdminPreviewWindow, startMerchantAdminPreview } from "../../auth/merchantAdminPreview";
 import { yen } from "../../lib/utils";
 import { readPositiveIntegerSearchParam } from "./adminSearchParams";
 
@@ -71,7 +68,6 @@ export function MerchantsPage({ embeddedDetail }: {
   const [services, setServices] = useState<BackofficeServicePayload[]>([]);
   const [categories, setCategories] = useState<CoreCategory[]>([]);
   const [billingAccounts, setBillingAccounts] = useState<MerchantAccountCard[]>([]);
-  const [expandedGroups, setExpandedGroups] = useState<number[]>([]);
   const [billingEditorCard, setBillingEditorCard] = useState<MerchantAccountCard | null>(null);
   const [businessSettingsCard, setBusinessSettingsCard] = useState<MerchantAccountCard | null>(null);
   const [billingDetailCard, setBillingDetailCard] = useState<MerchantAccountCard | null>(null);
@@ -213,11 +209,12 @@ export function MerchantsPage({ embeddedDetail }: {
     void mutate(async () => setSelectedService(await backofficeRealDataApi.updateService("backoffice", selectedService.id, serviceDraft)));
   };
 
-  const openMerchantAdminPreview = (card: MerchantAccountCard) => {
+  const openMerchantAdminPreview = (card: MerchantAccountCard, selectedShopId?: number) => {
     const query = searchParams.toString();
     const preview = startMerchantAdminPreview(
       card,
-      `/admin/merchants${query ? `?${query}` : ""}`
+      `/admin/merchants${query ? `?${query}` : ""}`,
+      selectedShopId,
     );
 
     if (!preview) {
@@ -225,7 +222,9 @@ export function MerchantsPage({ embeddedDetail }: {
       return;
     }
 
-    navigate("/merchant-admin");
+    if (!openMerchantAdminPreviewWindow()) {
+      setError(t("浏览器阻止了新页面，请允许弹出窗口后重试"));
+    }
   };
 
   const serviceDetailDrawer = (
@@ -257,62 +256,13 @@ export function MerchantsPage({ embeddedDetail }: {
         {loading ? <p className="mt-6 text-sm font-bold text-ink/50">正在读取正式数据...</p> : null}
 
         {active === "店铺列表" ? (
-          <section className="mt-4 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white px-4 py-3 shadow-panel">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-moss">Merchant SaaS ledger</p>
-                <p className="mt-1 text-sm font-semibold text-ink/55">{t("集团以 1 张卡片显示；展开后可在同一边框内管理集团与旗下店铺。")}</p>
-              </div>
-              <Badge tone="blue">{billingAccounts.length} {t("个独立账单主体")}</Badge>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              {billingAccounts.map((card) => {
-                const expanded = isMerchantGroup(card) && expandedGroups.includes(card.id);
-                const commonProps = {
-                  onEditBilling: () => setBillingEditorCard(card),
-                  onOpenBusinessSettings: () => setBusinessSettingsCard(card),
-                  onOpenMerchantAdminPreview: () => openMerchantAdminPreview(card),
-                  onViewDetails: () => setBillingDetailCard(card)
-                };
-
-                if (!isMerchantGroup(card)) {
-                  return <MerchantBillingCard card={card} key={`shop-${card.id}`} {...commonProps} />;
-                }
-
-                return (
-                  <section
-                    className={`rounded-2xl transition xl:col-span-2 ${expanded ? "border-2 border-coral/70 bg-coral/[0.035] p-3 shadow-[0_14px_45px_rgba(232,95,114,0.09)]" : ""}`}
-                    key={`merchant-${card.id}`}
-                  >
-                    {expanded ? <p className="mb-2 px-1 text-[11px] font-black uppercase tracking-[0.18em] text-coral">{t("集团账户边界")} · {card.name}</p> : null}
-                    <MerchantBillingCard
-                      card={card}
-                      expanded={expanded}
-                      onToggleExpanded={() => setExpandedGroups((current) => current.includes(card.id) ? current.filter((id) => id !== card.id) : [...current, card.id])}
-                      {...commonProps}
-                    />
-                    {expanded ? (
-                      <div className="mt-3 grid gap-3 xl:grid-cols-2">
-                        {card.shops.map((shop) => (
-                          <MerchantBillingCard
-                            card={shop}
-                            key={`merchant-${card.id}-shop-${shop.id}`}
-                            nested
-                            onEditBilling={() => setBillingEditorCard(shop)}
-                            onOpenBusinessSettings={() => setBusinessSettingsCard(shop)}
-                            onOpenMerchantAdminPreview={() => openMerchantAdminPreview(shop)}
-                            onViewDetails={() => setBillingDetailCard(shop)}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                  </section>
-                );
-              })}
-              {!loading && billingAccounts.length === 0 ? <p className="text-sm text-ink/50">{t("暂无商家或店铺数据")}</p> : null}
-            </div>
-          </section>
+          <MerchantAccountCollection
+            accounts={billingAccounts}
+            onEditBilling={setBillingEditorCard}
+            onOpenBusinessSettings={setBusinessSettingsCard}
+            onOpenMerchantAdminPreview={openMerchantAdminPreview}
+            onViewDetails={setBillingDetailCard}
+          />
         ) : null}
 
         {active === "服务项目" ? <div className="mt-4 space-y-4"><div className="flex justify-end"><Button onClick={() => setCreateServiceOpen(true)} variant="secondary">新增服务项目</Button></div><DataTable columns={[
@@ -347,7 +297,7 @@ export function MerchantsPage({ embeddedDetail }: {
         onClose={() => setBusinessSettingsCard(null)}
       />
 
-      <MerchantAccountDetailDrawer card={billingDetailCard} onClose={() => setBillingDetailCard(null)} />
+      <MerchantAccountDetailDrawer card={billingDetailCard} onClose={() => setBillingDetailCard(null)} onOpenMerchantAdminPreview={openMerchantAdminPreview} />
 
       <Drawer open={createShopOpen} title="创建店铺与负责人账号" onClose={() => setCreateShopOpen(false)}>
         <form className="space-y-4" onSubmit={createShop}>

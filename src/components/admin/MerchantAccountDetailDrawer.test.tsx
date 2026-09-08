@@ -60,3 +60,22 @@ it("shows an empty group without requesting a group ID as a shop", async () => {
   expect(container.querySelector("[data-shop-id]")).toBeNull();
   expect(container.textContent).toContain("暂无旗下店铺");
 });
+
+it("opens the currently selected child shop in read-only merchant admin", async () => {
+  const onOpenMerchantAdminPreview = vi.fn();
+  await act(async () => root.render(
+    <MerchantAccountDetailDrawer
+      card={group}
+      onClose={() => undefined}
+      onOpenMerchantAdminPreview={onOpenMerchantAdminPreview}
+    />,
+  ));
+  await click("店铺展示");
+  const select = container.querySelector("select")!;
+  await act(async () => {
+    select.value = "22";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await click("打开该店铺后台");
+  expect(onOpenMerchantAdminPreview).toHaveBeenCalledWith(group, 22);
+});

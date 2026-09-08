@@ -18,11 +18,13 @@ describe("master data pages", () => {
 
   it("shows formal merchant SaaS account type, payment mode, and monthly fee controls", () => {
     const pageSource = read("./MerchantsPage.tsx");
+    const collectionSource = read("../../components/admin/MerchantAccountCollection.tsx");
     const cardSource = read("../../components/admin/MerchantBillingCard.tsx");
 
     expect(pageSource).toContain("merchantSaasBillingApi.listAccounts");
-    expect(pageSource).toContain("MerchantBillingCard");
-    expect(pageSource).toContain("expandedGroups");
+    expect(pageSource).toContain("MerchantAccountCollection");
+    expect(collectionSource).toContain("MerchantBillingCard");
+    expect(collectionSource).toContain("expandedGroups");
     expect(cardSource).toContain("账号类型");
     expect(cardSource).toContain("付费模式");
     expect(cardSource).toContain("月费");
@@ -106,9 +108,8 @@ describe("master data pages", () => {
   it("uses merchant-scoped customers and NeeDoID employees without merchant demo data", () => {
     const source = read("../merchant-admin/MerchantAdminPeoplePage.tsx");
     expect(source).not.toContain("getMerchantAdminDemo");
-    expect(source).toMatch(
-      /backofficeRealDataApi\.customers\(\s*"merchant-admin"/,
-    );
+    expect(source).toContain("merchantEmployeeApi.list(query)");
+    expect(source).toContain('<UnifiedUserDirectory onSelect={openCustomer} scope="merchant" />');
     expect(source).toContain("merchantEmployeeApi.list(");
     expect(source).toContain("merchantEmployeeApi.detail(needoId)");
     expect(source).toContain("merchantEmployeeApi.updateProfile(");
@@ -122,9 +123,8 @@ describe("master data pages", () => {
     expect(source).not.toContain(
       'backofficeRealDataApi.technician("merchant-admin"',
     );
-    expect(source).toContain('backofficeRealDataApi.customer("merchant-admin"');
     expect(source).toContain("EmployeeDetailCard");
     expect(source).not.toContain("FormalTechnicianDetailPanel");
-    expect(source).toContain("FormalCustomerDetailPanel");
+    expect(source).toContain("UnifiedUserDetailDrawer");
   });
 });
