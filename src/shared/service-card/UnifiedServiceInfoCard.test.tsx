@@ -33,13 +33,15 @@ describe("UnifiedServiceInfoCard", () => {
       "两小时家庭日常保洁",
       "￥1,000/60分钟",
       "利用回数：18",
-      "店铺 ID：shop0000000217",
-      "店铺地址：東京都中央区銀座1-2-3",
       "厨房、浴室、地面一站式整理。",
       "银座"
     ];
 
     expect(markup).toContain('data-testid="unified-service-info-card"');
+    expect(text).not.toContain("店铺 ID");
+    expect(text).not.toContain("shop0000000217");
+    expect(text).not.toContain("店铺地址");
+    expect(text).not.toContain("東京都中央区銀座1-2-3");
     facts.slice(1).reduce((previousIndex, fact) => {
       const currentIndex = text.indexOf(fact);
       expect(currentIndex).toBeGreaterThan(previousIndex);
@@ -88,8 +90,8 @@ describe("UnifiedServiceInfoCard", () => {
     expect(text).toContain("￥1,000/时长未读取");
     expect(text).not.toContain("/0分钟");
     expect(text).toContain("利用回数：未读取");
-    expect(text).toContain("店铺 ID：未读取");
-    expect(text).toContain("店铺地址：未公开");
+    expect(text).not.toContain("店铺 ID");
+    expect(text).not.toContain("店铺地址");
     expect(text).toContain("暂无简介");
     expect(text).toContain("暂无标签");
   });

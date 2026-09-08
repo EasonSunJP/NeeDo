@@ -210,7 +210,7 @@ describe("iPhone standalone viewport", () => {
 
   it("uses dynamic height for iPhone standalone without trusting screen pixel height", async () => {
     const { root, frame } = await mountIphoneFrame();
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("759px");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
     await act(async () => root.unmount());
   });
@@ -222,16 +222,20 @@ describe("iPhone standalone viewport", () => {
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("420px");
     Object.defineProperty(viewport, "height", { value: 759, configurable: true });
     await act(async () => viewport.dispatchEvent(new Event("resize")));
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("759px");
     await act(async () => root.unmount());
   });
 
   it("keeps dynamic sizing across rotation without retaining portrait screen pixels", async () => {
-    const { root, frame } = await mountIphoneFrame();
+    const { root, frame, viewport } = await mountIphoneFrame();
     vi.stubGlobal("innerWidth", 852);
     vi.stubGlobal("innerHeight", 393);
+    Object.defineProperties(viewport, {
+      height: { configurable: true, value: 393 },
+      width: { configurable: true, value: 852 }
+    });
     await act(async () => window.dispatchEvent(new Event("resize")));
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("393px");
     await act(async () => root.unmount());
   });
 
@@ -246,7 +250,7 @@ describe("iPhone standalone viewport", () => {
     const { root, frame } = await mountIphoneFrame();
     vi.stubGlobal("innerWidth", 320);
     await act(async () => window.dispatchEvent(new Event("resize")));
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("759px");
     await act(async () => root.unmount());
   });
 });

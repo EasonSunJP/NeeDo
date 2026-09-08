@@ -1,4 +1,5 @@
 import { useLayoutEffect, type RefObject } from "react";
+import { detectPwaInstallPlatform, isPwaStandaloneWindow } from "./pwaInstall";
 
 const isKeyboardEditor = (element: Element | null): boolean => {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
@@ -71,8 +72,36 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         return;
       }
 
-      // iOS standalone can retain an oversized fixed-position layout viewport.
-      // Keep the room bounded by the dynamic viewport when the keyboard is closed.
+      const useInstalledIosViewport = Boolean(
+        viewport &&
+        isPwaStandaloneWindow(window) &&
+        detectPwaInstallPlatform(window.navigator) === "ios"
+      );
+      if (useInstalledIosViewport) {
+        // Installed iOS PWAs can report a 100dvh layout box that extends below
+        // the actually visible viewport. Bound the fixed room to the same
+        // visible frame used while the keyboard is open.
+        element.style.setProperty(
+          "--im-visual-viewport-height",
+          `${Math.max(1, Math.ceil(viewport!.height))}px`
+        );
+        element.style.setProperty(
+          "--im-visual-viewport-top",
+          `${Math.max(0, Math.floor(viewport!.offsetTop))}px`
+        );
+        element.style.setProperty("--im-visual-viewport-bottom", "auto");
+        element.style.setProperty(
+          "--im-visual-viewport-width",
+          `${Math.max(1, Math.floor(viewport!.width))}px`
+        );
+        element.style.setProperty(
+          "--im-visual-viewport-left",
+          `${Math.max(0, Math.floor(viewport!.offsetLeft))}px`
+        );
+        element.style.setProperty("--im-visual-viewport-right", "auto");
+        return;
+      }
+
       element.style.setProperty("--im-visual-viewport-height", "100dvh");
       element.style.setProperty("--im-visual-viewport-top", "0px");
       element.style.setProperty("--im-visual-viewport-bottom", "auto");

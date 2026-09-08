@@ -843,7 +843,7 @@ describe("ImChatComposer", () => {
     expect(stylesSource).toMatch(/\.im-chat-composer-root \{[^}]*max-height: 100%;[^}]*flex: 0 1 auto;/s);
     expect(stylesSource).toMatch(/\.im-composer-input-shell \{[^}]*flex: 0 1 auto;[^}]*overflow: hidden;/s);
     expect(stylesSource).toMatch(/\.im-chat-composer-root:has\(\.im-composer-panel\) \.im-chat-composer-stack \{[^}]*gap: 4px;/s);
-    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: 42px;/s);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: min\(72px, 40%\);/s);
 
     await act(async () => root.unmount());
   });

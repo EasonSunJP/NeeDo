@@ -746,7 +746,7 @@ export class RealtimeService implements OrderStatusNotificationPort {
     const targetIdentityId =
       auth.userId === targetUserId
         ? scope.identityId
-        : await this.requireCanonicalTargetIdentity(targetUserId);
+        : null;
     const profile = await this.repository.getDirectoryProfile(
       auth.userId,
       scope.identityId,

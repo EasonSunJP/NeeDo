@@ -997,13 +997,21 @@ const createFixture = async () => {
         viewerUserId: number,
         viewerIdentityId: number,
         targetUserId: number,
-        targetIdentityId: number
+        targetIdentityId: number | null
       ) => {
         const targetUser = users.find((user) => user.id === targetUserId);
         if (!targetUser) return null;
+        const contextContact = contacts.find(
+          (item) =>
+            item.ownerIdentityId === viewerIdentityId && item.contactUserId === targetUserId
+        );
+        const resolvedTargetIdentityId =
+          targetIdentityId ?? contextContact?.contactIdentityId ?? targetUser.identities[0]?.id;
+        if (!resolvedTargetIdentityId) return null;
         const contact = contacts.find(
           (item) =>
-            item.ownerIdentityId === viewerIdentityId && item.contactIdentityId === targetIdentityId
+            item.ownerIdentityId === viewerIdentityId &&
+            item.contactIdentityId === resolvedTargetIdentityId
         );
         const friendRequest = [...friendRequests]
           .reverse()
@@ -1011,8 +1019,8 @@ const createFixture = async () => {
             (item) =>
               item.status === "pending" &&
               ((item.requesterIdentityId === viewerIdentityId &&
-                item.targetIdentityId === targetIdentityId) ||
-                (item.requesterIdentityId === targetIdentityId &&
+                item.targetIdentityId === resolvedTargetIdentityId) ||
+                (item.requesterIdentityId === resolvedTargetIdentityId &&
                   item.targetIdentityId === viewerIdentityId))
           );
         return {

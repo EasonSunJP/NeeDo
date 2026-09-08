@@ -245,7 +245,8 @@ describe("RealtimeService fuzzy search", () => {
       service.getDirectoryProfile({ userId: 41, currentIdentityId: 410 } as never, 167)
     ).resolves.toBe(profile);
 
-    expect(repository.getDirectoryProfile).toHaveBeenCalledWith(41, 410, 167, 1670);
+    expect(repository.getDirectoryProfile).toHaveBeenCalledWith(41, 410, 167, null);
+    expect(repository.findCanonicalIdentityIdForUser).not.toHaveBeenCalled();
     expect(eventGateway.publish).not.toHaveBeenCalled();
   });
 

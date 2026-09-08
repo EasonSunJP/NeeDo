@@ -173,6 +173,72 @@ describe("RealtimeRepository formal identity payloads", () => {
     expect(result?.user.username).toBe("Eason");
   });
 
+  it("keeps the contacted identity name when an account has multiple identity names", async () => {
+    const dbNow = new Date("2026-09-08T00:00:00.000Z");
+    const client = {
+      $queryRaw: jest.fn(async () => [{ dbNow }]),
+      user: {
+        findFirst: jest.fn(async () => ({
+          id: 237,
+          needoId: "u0000000237",
+          username: "旧账号名",
+          avatarUrl: null,
+          identities: [
+            {
+              id: 2370,
+              type: "customer",
+              scopeType: "customer_profile",
+              scopeId: 41,
+              displayName: "Eason",
+              isDefault: true
+            },
+            {
+              id: 2380,
+              type: "operations",
+              scopeType: null,
+              scopeId: null,
+              displayName: "LifeDance 管理员",
+              isDefault: false
+            }
+          ],
+          platformMembershipEntitlements: [],
+          membershipAdjustments: [],
+          customerProfile: {
+            id: 41,
+            displayName: "Eason",
+            bio: null,
+            city: null,
+            isPublic: true,
+            gender: "private",
+            age: null,
+            heightCm: null,
+            languages: [],
+            visibility: "public",
+            deletedAt: null,
+            reviewSummary: null
+          },
+          technicianProfile: null
+        }))
+      },
+      contact: {
+        findFirst: jest.fn(async ({ where }: { where: { contactUserId?: number } }) =>
+          where.contactUserId ? { id: 4056, contactIdentityId: 2380, blockedAt: null } : null
+        )
+      },
+      friendRequest: { findFirst: jest.fn(async () => null) }
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).getDirectoryProfile(
+      137,
+      1370,
+      237,
+      null
+    );
+
+    expect(result?.identityCard.displayName).toBe("LifeDance 管理员");
+    expect(result?.user.username).toBe("LifeDance 管理员");
+  });
+
   it("keeps the former direct peer available for the retained history owner", async () => {
     const createdAt = new Date("2026-08-25T00:00:00.000Z");
     const client = {
