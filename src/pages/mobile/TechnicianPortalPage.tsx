@@ -865,10 +865,10 @@ function TechnicianPortalContent({ initialSelfProfile, technician, walletSummary
       {activeView === "me" ? (
         <>
           <MobileFullscreenHeader
-            action={<IconButton icon="settings" label="打开技师设置" to={technicianPortalConfig.settingsPath} />}
             footer={<FeatureSegmentedTabs items={[{ label: "信息卡", value: "info" }, { label: "数据中心", value: "data" }]} onChange={(value) => updateMeTab(value as TechnicianMeTab)} value={meTab} variant="header" />}
             maxWidth="880px"
             onBack={() => navigate("/technician")}
+            onClose={() => navigate("/technician")}
             title="个人中心"
           />
           <div className="space-y-4 px-4 pb-32 pt-4">

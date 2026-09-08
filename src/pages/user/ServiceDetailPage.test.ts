@@ -52,4 +52,25 @@ describe("ServiceDetailPage formal service routes", () => {
       "cleaning"
     ]);
   });
+
+  it("uses the shared glass header with only favorite, forward, and close actions", () => {
+    const content = serviceDetailSource.slice(
+      serviceDetailSource.indexOf("function ServiceDetailContent"),
+      serviceDetailSource.indexOf("export function ServiceDetailPage")
+    );
+
+    expect(serviceDetailSource).toMatch(/import \{[^}]*MobileFullscreenHeader[^}]*\} from "\.\.\/\.\.\/components\/mobile\/MobileFullscreenHeader"/);
+    expect(content).toContain("<MobileFullscreenHeader");
+    expect(content).toContain('title="服务详情"');
+    expect(content).toContain("onBack={() => navigate(-1)}");
+    expect(content).toContain("onClose={() => navigate(-1)}");
+    expect(content.indexOf('label="收藏"')).toBeLessThan(content.indexOf('label="转发"'));
+    expect(content.indexOf('label="转发"')).toBeLessThan(content.indexOf('closeLabel="关闭服务详情"'));
+    expect(serviceDetailSource).toContain('favorite: "heart"');
+    expect(serviceDetailSource).toContain('forward: "share"');
+    expect(serviceDetailSource).not.toContain('like: "heart"');
+    expect(serviceDetailSource).not.toContain('favorite: "star"');
+    expect(serviceDetailSource).not.toContain('translate: "globe"');
+    expect(content).not.toContain("safe-header-top");
+  });
 });

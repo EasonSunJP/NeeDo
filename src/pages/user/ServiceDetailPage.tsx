@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName, type IconName } from "../../components/client-ui/AppScaffold";
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
-import { MobileFullscreenBackButton, MobileFullscreenCloseButton } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
@@ -24,12 +24,10 @@ export function buildServiceTagLabels(serviceAreas: string[], tags: string[]) {
   return Array.from(new Set([...serviceAreas, ...tags])).slice(0, 12);
 }
 
-type ServiceTopActionIconName = "like" | "favorite" | "translate" | "forward";
+type ServiceTopActionIconName = "favorite" | "forward";
 
 const serviceTopActionIconMap: Record<ServiceTopActionIconName, IconName> = {
-  like: "heart",
-  favorite: "star",
-  translate: "globe",
+  favorite: "heart",
   forward: "share"
 };
 
@@ -102,9 +100,12 @@ function ServiceDetailStatus({
 
   return (
     <MobileFullscreenPage>
-      <div className="pointer-events-none absolute inset-x-0 safe-floating-top z-[90] px-4">
-        <MobileFullscreenBackButton className="pointer-events-auto" onBack={() => navigate(-1)} />
-      </div>
+      <MobileFullscreenHeader
+        closeLabel="关闭服务详情"
+        onBack={() => navigate(-1)}
+        onClose={() => navigate(-1)}
+        title="服务详情"
+      />
       <main className="flex min-h-0 flex-1 items-center justify-center px-5 py-16">
         <section className={cn(mobileDetailCardClassName, "w-full max-w-[420px] text-center")}>
           <Badge tone="blue">服务详情</Badge>
@@ -130,9 +131,7 @@ function ServiceDetailContent() {
     [serviceQuery.data]
   );
   const [selectedPackageId, setSelectedPackageId] = useState("");
-  const [liked, setLiked] = useState(false);
   const [favorited, setFavorited] = useState(false);
-  const [translated, setTranslated] = useState(false);
   const [forwarded, setForwarded] = useState(false);
   const [heroPreviewOpen, setHeroPreviewOpen] = useState(false);
 
@@ -169,31 +168,21 @@ function ServiceDetailContent() {
 
   return (
     <MobileFullscreenPage>
-      <div
-        aria-hidden="true"
-        className="absolute inset-x-0 top-0 z-10 h-[var(--client-sticky-tab-single-spacer)] border-b border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-bg)]"
+      <MobileFullscreenHeader
+         action={(
+           <>
+             <ServiceTopActionButton active={favorited} label="收藏" name="favorite" onClick={() => setFavorited((current) => !current)} />
+             <ServiceTopActionButton active={forwarded} label="转发" name="forward" onClick={() => setForwarded((current) => !current)} />
+           </>
+         )}
+        closeLabel="关闭服务详情"
+        info={`${service.fastestArrival} · ${service.serviceAreas.slice(0, 2).join(" / ")}`}
+        onBack={() => navigate(-1)}
+        onClose={() => navigate(-1)}
+        title="服务详情"
       />
-      <div className="pointer-events-none absolute inset-x-0 safe-floating-top z-[90] px-4">
-        <MobileFullscreenBackButton className="pointer-events-auto" onBack={() => navigate(-1)} />
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 safe-floating-top z-[90] flex justify-end px-4">
-        <div className="pointer-events-auto flex items-center gap-1.5">
-          <ServiceTopActionButton active={liked} label="点赞" name="like" onClick={() => setLiked((current) => !current)} />
-          <ServiceTopActionButton active={favorited} label="收藏" name="favorite" onClick={() => setFavorited((current) => !current)} />
-          <ServiceTopActionButton active={translated} label="翻译" name="translate" onClick={() => setTranslated((current) => !current)} />
-          <ServiceTopActionButton active={forwarded} label="转发" name="forward" onClick={() => setForwarded((current) => !current)} />
-        </div>
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 safe-header-top px-4 pb-3 text-[color:var(--client-text)]">
-        <div className="min-w-0 pl-[56px] pr-[212px]">
-          <div className="truncate text-base font-black">服务详情</div>
-          <p className="mt-0.5 truncate text-[11px] font-bold leading-5 text-ink/45">
-            {service.fastestArrival} · {service.serviceAreas.slice(0, 2).join(" / ")}
-          </p>
-        </div>
-      </div>
 
-      <main className="scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+8.5rem)] pt-[var(--client-sticky-tab-single-spacer)]">
+      <main className="scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+8.5rem)] pt-4">
         <ServiceDetailHero onPreview={() => setHeroPreviewOpen(true)} service={service} />
 
         <section className={mobileDetailCardClassName}>

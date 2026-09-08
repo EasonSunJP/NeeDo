@@ -205,10 +205,16 @@ describe("TechnicianPortalPage formal approved UI", () => {
   });
 
   it("uses the shared personal-center header while retaining all profile tabs in the same container", () => {
-    expect(source).toContain("<MobileFullscreenHeader");
-    expect(source).toContain('title="个人中心"');
-    expect(source).toContain('label="打开技师设置"');
-    expect(source).toContain("footer={");
+    const meHeaderSource = source.slice(
+      source.indexOf('{activeView === "me" ? ('),
+      source.indexOf('<div className="space-y-4 px-4', source.indexOf('{activeView === "me" ? ('))
+    );
+
+    expect(meHeaderSource).toContain("<MobileFullscreenHeader");
+    expect(meHeaderSource).toContain('title="个人中心"');
+    expect(meHeaderSource).toContain('onClose={() => navigate("/technician")}');
+    expect(meHeaderSource).not.toContain('label="打开技师设置"');
+    expect(meHeaderSource).toContain("footer={");
     expect(source).toContain('className="space-y-4 px-4 pb-32 pt-4"');
     expect(source).not.toContain("<FloatingHomeHeader panelClassName=\"relative overflow-hidden\" stacked>");
   });

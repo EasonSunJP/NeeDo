@@ -38,7 +38,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(scheduleHeaderSource).toContain('<strong className="truncate text-sm font-black">{activeTabLabel}</strong>');
     expect(scheduleHeaderSource).toContain('<MobileFullscreenCloseButton label={`关闭${activeTabLabel}`} onClose={() => onExit?.()} />');
     expect(scheduleHeaderSource).toContain("<FeatureSegmentedTabs");
-    expect(shellSource).toContain("showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}");
+    expect(shellSource).toContain('showBottomNav={activeView !== "me" && !isMerchantScheduleView && !merchantProfileEditing}');
     expect(merchantSource).toContain('activeView === "schedule" && "relative z-30"');
     expect(schedulePanelSource).toContain("onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("appointmentSearchQuery={merchantAppointmentSearchQuery}");
@@ -123,10 +123,12 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain('<MerchantIdentityInfoCard onEditingChange={setMerchantProfileEditing} />');
     expect(meHeaderSource).toContain("<MobileFullscreenHeader");
     expect(meHeaderSource).toContain('title="个人中心"');
+    expect(meHeaderSource).toContain('onClose={() => navigate("/merchant")}');
+    expect(meHeaderSource).not.toContain('label="打开设置中心"');
     expect(meHeaderSource).toContain("footer={");
     expect(meHeaderSource).not.toContain("<SharedHomeHeader");
     expect(merchantSource).toContain('? "space-y-4 pt-4"');
-    expect(merchantSource).toContain('showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}');
+    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && !isMerchantScheduleView && !merchantProfileEditing}');
   });
 
   it("keeps the personal-center status panel inside the same mobile content inset", () => {
@@ -215,5 +217,25 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(dashboardHeroSource).toContain('className="client-feature-aura absolute inset-0"');
     expect(dashboardHeroSource).not.toContain("<img");
     expect(dashboardHeroSource).not.toContain("imageBank.salon");
+  });
+
+  it("renders merchant appointment services through the same direct user-side card", () => {
+    const dashboardAppointments = merchantSource.slice(
+      merchantSource.indexOf("{pendingOrders.slice(0, 4).map"),
+      merchantSource.indexOf('title="员工状态"')
+    );
+    const orderList = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "orders" && ('),
+      merchantSource.indexOf('{activeView === "staff" && (')
+    );
+
+    expect(merchantSource).toContain('import { UnifiedServiceInfoCard } from "../../shared/service-card"');
+    expect(dashboardAppointments).toContain("<UnifiedServiceInfoCard");
+    expect(dashboardAppointments).toContain("data={buildOrderServiceMiniCardData(order)}");
+    expect(dashboardAppointments).not.toContain("<OrderServiceMiniCard");
+    expect(dashboardAppointments).not.toContain("预约详情");
+    expect(dashboardAppointments).not.toContain("merchant-dashboard-appointment-service");
+    expect(orderList).toContain("<UnifiedServiceInfoCard");
+    expect(orderList).not.toContain("<OrderServiceMiniCard");
   });
 });

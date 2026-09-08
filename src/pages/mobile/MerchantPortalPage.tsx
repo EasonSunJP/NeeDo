@@ -11,7 +11,7 @@ import {
 } from "../../api/backofficeRealData";
 import { FormalTechnicianDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import { TechnicianProfilePanel } from "../../components/admin/TechnicianProfilePanel";
-import { AppIcon, FeatureSegmentedTabs, IconButton } from "../../components/client-ui/AppScaffold";
+import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { MerchantIdentityInfoCard } from "../../components/merchant/MerchantIdentityInfoCard";
 import {
   createCustomContactCategoryDraft,
@@ -35,7 +35,7 @@ import {
   type ContactInfoStatusFilter,
   type ContactInfoStatusItem
 } from "../../components/mobile/ContactInfoStatusPanel";
-import { OrderServiceMiniCard } from "../../components/mobile/OrderServiceMiniCard";
+import { buildOrderServiceMiniCardData } from "../../components/mobile/OrderServiceMiniCard";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { merchantNavItems, roleBasedTabConfig } from "../../components/mobile/navItems";
@@ -84,6 +84,7 @@ import {
 } from "../../lib/merchantStaffRoles";
 import { SocialProfileMiniCard, buildTechnicianInfoCardData, buildUserInfoCardData } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
+import { UnifiedServiceInfoCard } from "../../shared/service-card";
 import { updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import type { Order, Store, Technician } from "../../types/domain";
@@ -2422,7 +2423,7 @@ export function MerchantPortalContent({
       className={isMerchantDataCenterView ? "merchant-analytics-clean-shell" : undefined}
       navItems={merchantNavItems}
       navPanelStyle={activeView === "me" ? "plain" : "default"}
-      showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}
+      showBottomNav={activeView !== "me" && !isMerchantScheduleView && !merchantProfileEditing}
       showTopEdgeMask={activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
     >
       {activeView === "dashboard" ? (
@@ -2445,7 +2446,6 @@ export function MerchantPortalContent({
       ) : null}
       {activeView === "me" ? (
         <MobileFullscreenHeader
-          action={<IconButton icon="settings" label="打开设置中心" to={merchantPortalConfig.settingsPath} />}
           footer={<FeatureSegmentedTabs
             items={[
               { label: "信息卡", value: "info" },
@@ -2458,6 +2458,7 @@ export function MerchantPortalContent({
           />}
           maxWidth="880px"
           onBack={() => navigate("/merchant")}
+          onClose={() => navigate("/merchant")}
           title="个人中心"
         />
       ) : null}
@@ -2520,28 +2521,13 @@ export function MerchantPortalContent({
                 </SectionTitle>
               </div>
               <div className="space-y-3">
-                {pendingOrders.slice(0, 4).map((order, index) => {
-                  const orderProvider = getMerchantOrderProvider(order, store, technicians);
-
-                  return (
-                    <article
-                      className="rounded-[28px] border border-line bg-white p-3 shadow-panel"
-                      key={order.id}
-                    >
-                      <OrderServiceMiniCard
-                        className="merchant-dashboard-appointment-service"
-                        contactTo={`/merchant/messages?chat=${getMerchantCustomerConversationId(order.customerId)}`}
-                        detailTo={`/merchant/orders/${order.id}`}
-                        order={order}
-                        provider={orderProvider}
-                        topTags={[{ label: index === 0 ? "优先处理" : "待跟进", tone: index === 0 ? "yellow" : "purple" }]}
-                      />
-                      <Button className="mt-3 w-full" size="sm" to={`/merchant/orders/${order.id}`}>
-                        预约详情
-                      </Button>
-                    </article>
-                  );
-                })}
+                {pendingOrders.slice(0, 4).map((order) => (
+                  <UnifiedServiceInfoCard
+                    data={buildOrderServiceMiniCardData(order)}
+                    detailTo={`/merchant/orders/${order.id}`}
+                    key={order.id}
+                  />
+                ))}
               </div>
             </section>
 
@@ -2606,12 +2592,9 @@ export function MerchantPortalContent({
             <section className="space-y-3">
               {filteredStoreOrders.map((order) => (
                 <div className="space-y-2" key={order.id}>
-                  <OrderServiceMiniCard
-                    contactTo={`/merchant/messages?chat=${getMerchantCustomerConversationId(order.customerId)}`}
+                  <UnifiedServiceInfoCard
+                    data={buildOrderServiceMiniCardData(order)}
                     detailTo={`/merchant/orders/${order.id}`}
-                    order={order}
-                    provider={getMerchantOrderProvider(order, store, technicians)}
-                    topTags={[{ label: statusLabel(order.status), tone: "neutral" }]}
                   />
                 </div>
               ))}

@@ -504,9 +504,9 @@ function UserCenterDataStatus({
     <MobileShell showBottomNav={false} navPanelStyle="plain" showTopEdgeMask={false}>
       <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
         <MobileFullscreenHeader
-          action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
           info="账号资料、订单入口与服务权益都统一收在这里。"
           onBack={() => navigate("/", { replace: true })}
+          onClose={() => navigate("/", { replace: true })}
           showSpacer={false}
           title="个人中心"
         />
@@ -990,9 +990,9 @@ function CompleteUserCenterPage({
     <MobileShell showBottomNav={false} navPanelStyle="plain" showTopEdgeMask={false}>
       <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
         <MobileFullscreenHeader
-          action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
           info="账号资料、订单入口与服务权益都统一收在这里。"
           onBack={() => navigate("/", { replace: true })}
+          onClose={() => navigate("/", { replace: true })}
           showSpacer={false}
           title="个人中心"
         />
