@@ -59,7 +59,7 @@ const baseBooking: BackofficeOrderPayload = {
 const technicianDetail: BackofficeTechnicianDetailPayload = {
   id: 31,
   userId: 1031,
-  needoId: "u0000001031",
+  needoId: "s0000001031",
   displayName: "佐藤 美香",
   email: "mika@example.jp",
   avatarUrl: "/images/mika.jpg",
@@ -77,7 +77,7 @@ const technicianDetail: BackofficeTechnicianDetailPayload = {
   yearsExperience: 6,
   isRecommended: true,
   account: {
-    needoId: "u0000001031",
+    needoId: "s0000001031",
     username: "mika.sato",
     email: "mika@example.jp",
     phone: "+819012345678",
@@ -212,6 +212,7 @@ describe("formal profile tab accessibility", () => {
     expect(markup.match(/role="tab"/g)).toHaveLength(8);
     expect(markup).toContain('role="tablist"');
     expect(markup).toContain("overflow-x-auto");
+    expect(markup).toContain("NeeDoID s0000001031");
     assertExactTabRelationships(markup, 8);
   });
 
@@ -365,7 +366,7 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
       }} />
     );
 
-    for (const exactId of ["NeeDoID u0000001031", "shop #3008", "shop #4008"]) {
+    for (const exactId of ["NeeDoID s0000001031", "shop #3008", "shop #4008"]) {
       expect(markup).toContain(exactId);
     }
     for (const groupedId of ["#2031", "#1031", "#2,031", "#1,031", "shop #3,008", "shop #4,008"]) {

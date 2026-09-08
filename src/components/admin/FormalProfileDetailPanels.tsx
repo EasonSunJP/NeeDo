@@ -32,6 +32,7 @@ import {
 } from "../../i18n/translations";
 import { AdminEventTimeline } from "./AdminEventTimeline";
 import { cn } from "../../lib/utils";
+import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import type { PlatformManagedUserDetail } from "../../features/platform-user-management/types";
 import { membershipTierText, privacyModeText, privacyScopeText } from "../../features/platform-user-management/i18n";
 import {
@@ -414,6 +415,7 @@ export function FormalTabs<TTab extends string>({
   onChange: (tab: TTab) => void;
 }) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const { scrollRef, dragScrollProps } = useHorizontalDragScroll({});
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
     const nextIndex = resolveFormalTabKeyboardIndex(event.key, currentIndex, items.length);
@@ -430,8 +432,10 @@ export function FormalTabs<TTab extends string>({
   return (
     <div className="border-b border-line bg-white px-4 py-3 sm:px-5">
       <div
+        {...dragScrollProps}
         aria-label={localization.t("详情分类")}
-        className="scrollbar-none flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-full border border-line bg-paper p-1"
+        className="scrollbar-none flex w-fit max-w-full cursor-grab select-none items-center gap-1 overflow-x-auto rounded-full border border-line bg-paper p-1 active:cursor-grabbing"
+        ref={scrollRef}
         role="tablist"
       >
         {items.map((item, index) => {

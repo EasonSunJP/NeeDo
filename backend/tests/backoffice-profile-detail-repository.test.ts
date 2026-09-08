@@ -71,6 +71,7 @@ function createClient(withTechnicianReview = true, options: FixtureOptions = {})
         }
       : null,
     user: {
+      needoId: "u0000000061",
       username: "Technician account",
       email: "technician@example.com",
       phone: null,
@@ -90,12 +91,19 @@ function createClient(withTechnicianReview = true, options: FixtureOptions = {})
         }
       ],
       identities: [
-        { type: "technician", scopeType: "shop", scopeId: 11, displayName: "Technician" },
+        {
+          type: "customer",
+          scopeType: "global",
+          scopeId: null,
+          displayName: "User account",
+          publicIdentifier: { publicId: "u0000000061", kind: "U" }
+        },
         {
           type: "technician",
           scopeType: "technician_profile",
           scopeId: 31,
-          displayName: "Technician profile"
+          displayName: "Technician profile",
+          publicIdentifier: { publicId: "s0000000061", kind: "S" }
         },
         {
           type: "technician",
@@ -206,11 +214,33 @@ describe("BackofficeRepository profile details", () => {
     const detail = await repository.getTechnicianDetail({ scope: "merchant", shopId: 11, id: 31 });
 
     expect(client.technicianProfile.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 31, shopId: 11, deletedAt: null } })
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 31,
+          shopId: 11,
+          deletedAt: null,
+          user: expect.objectContaining({
+            deletedAt: null,
+            identities: {
+              some: expect.objectContaining({
+                type: "technician",
+                publicIdentifier: {
+                  is: { kind: "S", status: "ACTIVE", deletedAt: null }
+                }
+              })
+            }
+          })
+        })
+      })
     );
     expect(detail).toMatchObject({
       id: 31,
-      account: { email: "technician@example.com", isActive: true },
+      needoId: "s0000000061",
+      account: {
+        needoId: "s0000000061",
+        email: "technician@example.com",
+        isActive: true
+      },
       statistics: { bookingCount: 3, completedCount: 2, completedRevenueJpy: 18000 },
       reviewSummary: { ratingAverage: 4.8, reviewCount: 12 },
       unavailableMetrics: ["acceptanceRate", "lateness", "shiftPreferences"]
