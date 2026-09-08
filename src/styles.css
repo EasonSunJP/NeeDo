@@ -2490,6 +2490,10 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   flex-shrink: 1;
 }
 
+.im-chat-composer-root:has(.im-composer-panel) .im-chat-composer-stack {
+  gap: 4px;
+}
+
 .im-chat-composer-stack {
   min-height: 0;
   max-height: 100%;
@@ -2511,7 +2515,7 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
 }
 
 .im-composer-panel {
-  min-height: min(72px, 40%);
+  min-height: 42px;
   max-height: min(42dvh, calc(var(--im-visual-viewport-height, 100dvh) * 0.42));
   flex: 1 1 96px;
   overflow-x: clip;
