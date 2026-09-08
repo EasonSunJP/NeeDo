@@ -186,18 +186,23 @@ export function FormalCheckoutPage(props: FormalCheckoutPageProps) {
 
     const serviceRequest = shopServiceId
       ? coreReadApi.getServiceDetail(shopServiceId).then(async (serviceDetail) => {
-          const bookingMetadata = await pricingModeApi
-            .getBookingNavigation(serviceDetail.shop.id, { page: 1, pageSize: 100 })
-            .then((navigation) => {
-              const bookingService = navigation.entry === "service_menu"
-                ? navigation.services.list.find((item) => item.id === shopServiceId)
-                : null;
-              return bookingService
-                ? { tags: bookingService.tags, usageCount: bookingService.usageCount }
-                : null;
-            })
-            .catch(() => null);
-          return { detail: serviceDetail, bookingMetadata };
+          const navigation = await pricingModeApi.getBookingNavigation(
+            serviceDetail.shop.id,
+            { page: 1, pageSize: 100 }
+          );
+          const bookingService = navigation.entry === "service_menu"
+            ? navigation.services.list.find((item) => item.id === shopServiceId)
+            : null;
+          if (!bookingService) {
+            throw new Error("Shop service is unavailable in the current pricing mode");
+          }
+          return {
+            detail: serviceDetail,
+            bookingMetadata: {
+              tags: bookingService.tags,
+              usageCount: bookingService.usageCount
+            }
+          };
         })
       : Promise.all([
           coreReadApi.getShopDetail(technicianServiceShopId!),

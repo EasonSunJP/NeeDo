@@ -618,9 +618,7 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
       if (!persistedAfterPartialSave) {
         try {
           saved = existing
-            ? existing.shopId
-              ? await pricingModeApi.updateTechnicianService(existing.shopId, existing.id, body)
-              : await pricingModeApi.updateMyTechnicianService(existing.id, body)
+            ? await pricingModeApi.updateMyTechnicianService(existing.id, body)
             : defaultShopId
               ? await pricingModeApi.createTechnicianService(defaultShopId, { ...body, sortOrder: services.length })
               : await pricingModeApi.createMyTechnicianService({ ...body, sortOrder: services.length });
@@ -669,11 +667,7 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
     setSaving(true);
     setError("");
     try {
-      if (service.shopId) {
-        await pricingModeApi.deleteTechnicianService(service.shopId, service.id);
-      } else {
-        await pricingModeApi.deleteMyTechnicianService(service.id);
-      }
+      await pricingModeApi.deleteMyTechnicianService(service.id);
       setServices((current) => current.filter((item) => item.id !== service.id));
       closeAndResetServiceEditor();
     } catch (deleteError) {
