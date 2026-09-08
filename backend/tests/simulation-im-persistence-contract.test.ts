@@ -43,6 +43,19 @@ describe("three-month simulation IM persistence", () => {
     expect(seedSource).toContain(
       "const previewCustomerDisplayName = previewCustomerAccount.displayName;"
     );
+    expect(seedSource).toContain("userExperienceAccount.upsert");
+    expect(seedSource).toContain("experienceEligibleUsers");
+  });
+
+  it("links the fixed technician and merchant test accounts to the shared customer", () => {
+    expect(seedSource).toContain('"technician@example.com"');
+    expect(seedSource).toContain('"merchant@example.com"');
+    expect(seedSource).toContain("fixedPreviewConversations");
+    expect(seedSource).toContain("fixedPreviewContacts");
+    expect(checkSource).toContain("fixedRealtimeContacts");
+    expect(checkSource).toContain("fixedRealtimeConversations");
+    expect(checkSource).toContain("activeExperienceAccounts");
+    expect(checkSource).toContain("const getRequiredId = <Key, Value>");
   });
 
   it("keeps the focused customer-100 account linked to an expanded real IM dataset", () => {

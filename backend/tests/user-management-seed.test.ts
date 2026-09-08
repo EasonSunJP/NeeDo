@@ -22,8 +22,20 @@ import {
   provisionRequiredTestAccountPortalData,
   shouldSeedRequiredTestAccounts
 } from "../prisma/seed";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 describe("user management seed contract", () => {
+  it("creates an active experience account with every seeded customer foundation", () => {
+    const seedSource = readFileSync(resolve(__dirname, "../prisma/seed.ts"), "utf8");
+    const foundation = seedSource.slice(
+      seedSource.indexOf("const ensureSeedCustomerFoundation"),
+      seedSource.indexOf("export const upsertSeedUser")
+    );
+    expect(foundation).toContain("userExperienceAccount.upsert");
+    expect(foundation).toContain("update: { deletedAt: null }");
+  });
+
   it("defines the Step 04 system roles in the required order", () => {
     expect(SYSTEM_ROLE_CODES).toEqual([
       "admin",

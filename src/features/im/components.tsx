@@ -2849,9 +2849,10 @@ function ImRichMessageText({
       {parts.map((part, index) =>
         part.type === "judgement" ? (
           <span
-            className="mx-0.5 inline-flex align-[-0.3em]"
+            className="mx-0.5 inline-flex select-none align-[-0.3em] [-webkit-touch-callout:none]"
             data-im-message-judgement={part.value}
             key={`judgement-${part.value}-${index}`}
+            onContextMenu={(event) => event.preventDefault()}
           >
             <ImReactionValue judgementDisplay="summary" value={part.value} />
           </span>

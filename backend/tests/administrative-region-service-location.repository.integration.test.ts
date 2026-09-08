@@ -280,6 +280,7 @@ describeIntegration("administrative-region shop assignment MySQL transactions", 
   it("creates a shop, formal shop/support identifiers, assignment, and audit atomically", async () => {
     await withRollback(async (transaction, client) => {
       const shop = await createRepository(client).createShop({
+        createdById: actorUserId,
         ownerEmail: `${marker}-owner@needo.test`,
         ownerUsername: "Formal Shop Owner",
         ownerPasswordHash: "prepared-password-hash",
@@ -339,6 +340,7 @@ describeIntegration("administrative-region shop assignment MySQL transactions", 
     const ownerEmail = `${marker}-invalid-owner@needo.test`;
     await expect(
       createRepository(prisma).createShop({
+        createdById: actorUserId,
         ownerEmail,
         ownerUsername: "Invalid Region Owner",
         ownerPasswordHash: "prepared-password-hash",
@@ -360,6 +362,7 @@ describeIntegration("administrative-region shop assignment MySQL transactions", 
     const ownerEmail = `${marker}-missing-verifier@needo.test`;
     await expect(
       createRepository(prisma).createShop({
+        createdById: actorUserId,
         ownerEmail,
         ownerUsername: "Missing Verifier Owner",
         ownerPasswordHash: "prepared-password-hash",
