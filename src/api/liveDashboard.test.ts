@@ -70,6 +70,29 @@ describe("live dashboard API contracts", () => {
       .toThrow("error.dashboard.invalid_snapshot");
   });
 
+  it("requires formal current-day and previous-day order evidence for map heat", () => {
+    const nationalScope = { country: "JP", period: "today" } as const;
+    const nationalPayload = {
+      ...payload,
+      scope: { country: "JP", admin1: null, admin2: null, breadcrumbs: [{ level: "country", code: "JP", name: "日本" }] },
+      children: [{
+        code: "13",
+        name: "東京都",
+        orderCount: 8,
+        currentDayOrderCount: 5,
+        previousDayOrderCount: 3,
+        confirmedPayments: { jpy: 9000, ndp: 0, testNdp: 0 }
+      }]
+    };
+    expect(requireLiveDashboardSnapshot(nationalPayload, nationalScope).children[0]).toMatchObject({
+      currentDayOrderCount: 5,
+      previousDayOrderCount: 3
+    });
+    const { previousDayOrderCount: _missing, ...invalidChild } = nationalPayload.children[0];
+    expect(() => requireLiveDashboardSnapshot({ ...nationalPayload, children: [invalidChild] }, nationalScope))
+      .toThrow("error.dashboard.invalid_snapshot");
+  });
+
   it("rejects unsafe totals, invalid hierarchy, and lists beyond formal caps", () => {
     expect(() => requireLiveDashboardSnapshot({ ...payload, coverage: { ...payload.coverage, total: 3 } }, requestedScope))
       .toThrow("error.dashboard.invalid_snapshot");

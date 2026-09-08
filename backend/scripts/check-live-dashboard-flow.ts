@@ -1183,6 +1183,7 @@ const independentDirectSnapshot = async (
   period: "today" | "last7days" | "last30days"
 ): Promise<LiveDashboardSnapshotFacts> => {
   const window = independentDashboardWindow(period);
+  const dailyWindow = independentDashboardWindow("today");
   const trendWindow = independentDashboardWindow("last7days");
   const childLevel = scope.admin1Code ? "ADMIN2" : "ADMIN1";
   const childCode = scope.admin1Code
@@ -1196,6 +1197,8 @@ const independentDirectSnapshot = async (
           code: string;
           name: string;
           orderCount: bigint;
+          currentDayOrderCount: bigint;
+          previousDayOrderCount: bigint;
           confirmedPaymentJpy: Prisma.Decimal;
           confirmedPaymentNdp: Prisma.Decimal;
           confirmedPaymentTestNdp: Prisma.Decimal;
@@ -1210,6 +1213,26 @@ const independentDirectSnapshot = async (
             AND booking.starts_at < ${window.toExclusive}
             AND booking.created_at <= ${EVALUATED_AT} AND booking.deleted_at IS NULL
           AND location.resolution_status = ${"verified"}
+          GROUP BY ${childCode}
+        ), current_day_order_counts AS (
+          SELECT ${childCode} AS child_code, COUNT(booking.id) AS order_count
+          FROM booking_orders AS booking
+          LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+          INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
+          WHERE booking.starts_at >= ${dailyWindow.fromInclusive}
+            AND booking.starts_at < ${dailyWindow.toExclusive}
+            AND booking.created_at <= ${EVALUATED_AT} AND booking.deleted_at IS NULL
+            AND location.resolution_status = ${"verified"}
+          GROUP BY ${childCode}
+        ), previous_day_order_counts AS (
+          SELECT ${childCode} AS child_code, COUNT(booking.id) AS order_count
+          FROM booking_orders AS booking
+          LEFT JOIN booking_service_locations AS location ON location.booking_order_id = booking.id
+          INNER JOIN shops AS shop ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopePredicate(scope.admin1Code, scope.admin2Code)}
+          WHERE booking.starts_at >= ${dailyWindow.previousFromInclusive}
+            AND booking.starts_at < ${dailyWindow.previousToExclusive}
+            AND booking.created_at <= ${EVALUATED_AT} AND booking.deleted_at IS NULL
+            AND location.resolution_status = ${"verified"}
           GROUP BY ${childCode}
         ), payments AS (
           SELECT ${childCode} AS child_code,
@@ -1234,6 +1257,8 @@ const independentDirectSnapshot = async (
         )
         SELECT child.official_code AS code, locale.name AS name,
           COALESCE(order_counts.order_count, 0) AS orderCount,
+          COALESCE(current_day_order_counts.order_count, 0) AS currentDayOrderCount,
+          COALESCE(previous_day_order_counts.order_count, 0) AS previousDayOrderCount,
           COALESCE(payments.confirmed_jpy, 0) AS confirmedPaymentJpy,
           COALESCE(payments.confirmed_ndp, 0) AS confirmedPaymentNdp,
           COALESCE(payments.confirmed_test_ndp, 0) AS confirmedPaymentTestNdp
@@ -1244,6 +1269,8 @@ const independentDirectSnapshot = async (
         INNER JOIN administrative_region_locales AS locale
           ON locale.region_id = child.id AND locale.locale = ${"ja"} AND locale.deleted_at IS NULL
         LEFT JOIN order_counts ON order_counts.child_code = child.official_code
+        LEFT JOIN current_day_order_counts ON current_day_order_counts.child_code = child.official_code
+        LEFT JOIN previous_day_order_counts ON previous_day_order_counts.child_code = child.official_code
         LEFT JOIN payments ON payments.child_code = child.official_code
         WHERE child.country_code = ${"JP"} AND child.level = ${childLevel}
           AND child.deleted_at IS NULL ORDER BY child.official_code ASC
@@ -1478,6 +1505,8 @@ const independentDirectSnapshot = async (
       code: row.code,
       name: row.name,
       orderCount: numeric(row.orderCount),
+      currentDayOrderCount: numeric(row.currentDayOrderCount),
+      previousDayOrderCount: numeric(row.previousDayOrderCount),
       confirmedPayments: {
         jpy: numeric(row.confirmedPaymentJpy),
         ndp: numeric(row.confirmedPaymentNdp),

@@ -21,6 +21,8 @@ const cachedFacts = (): CachedLiveDashboardFacts => ({
       code: "13",
       name: "Tokyo",
       orderCount: 2,
+      currentDayOrderCount: 2,
+      previousDayOrderCount: 1,
       confirmedPayments: { jpy: 12000, ndp: 100, testNdp: 0 }
     }
   ],

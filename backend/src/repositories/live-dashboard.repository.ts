@@ -24,6 +24,10 @@ interface ChildRow {
   name?: unknown;
   orderCount?: NumericValue;
   order_count?: NumericValue;
+  currentDayOrderCount?: NumericValue;
+  current_day_order_count?: NumericValue;
+  previousDayOrderCount?: NumericValue;
+  previous_day_order_count?: NumericValue;
   confirmedPaymentJpy?: NumericValue;
   confirmed_payment_jpy?: NumericValue;
   confirmedPaymentNdp?: NumericValue;
@@ -147,10 +151,11 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
   public async getSnapshotFacts(input: LiveDashboardInput): Promise<LiveDashboardSnapshotFacts> {
     this.assertInput(input);
     const window = resolveDashboardWindow({ period: input.period }, input.evaluatedAt);
+    const dailyWindow = resolveDashboardWindow({ period: "today" }, input.evaluatedAt);
     const trendWindow = resolveDashboardWindow({ period: "last7days" }, input.evaluatedAt);
 
     return this.client.$transaction(
-      (transaction) => this.readSnapshot(transaction, input, window, trendWindow),
+      (transaction) => this.readSnapshot(transaction, input, window, dailyWindow, trendWindow),
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
     );
   }
@@ -159,6 +164,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
     client: QueryClient,
     input: LiveDashboardInput,
     window: DashboardWindow,
+    dailyWindow: DashboardWindow,
     trendWindow: DashboardWindow
   ): Promise<LiveDashboardSnapshotFacts> {
     const [
@@ -173,7 +179,7 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       technicianRankingRows,
       coverageRows
     ] = await Promise.all([
-      this.queryChildren(client, input, window),
+      this.queryChildren(client, input, window, dailyWindow),
       this.queryHeadlineOrders(client, input, window),
       this.queryHeadlineEntities(client, input, window),
       this.queryMoneyOrders(client, input, window),
@@ -250,7 +256,8 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
   private queryChildren(
     client: QueryClient,
     input: LiveDashboardInput,
-    window: DashboardWindow
+    window: DashboardWindow,
+    dailyWindow: DashboardWindow
   ): Promise<ChildRow[]> {
     if (input.scope.admin2Code) return Promise.resolve([]);
     const childLevel = input.scope.admin1Code ? "ADMIN2" : "ADMIN1";
@@ -283,6 +290,32 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
           AND booking.deleted_at IS NULL
           AND location.resolution_status = ${"VERIFIED"}
         GROUP BY ${childRegionCode}
+      ), child_current_day_order_counts AS (
+        SELECT ${childRegionCode} AS child_code, COUNT(booking.id) AS order_count
+        FROM booking_orders AS booking
+        LEFT JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id
+        INNER JOIN shops AS shop
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
+        WHERE booking.starts_at >= ${dailyWindow.fromInclusive}
+          AND booking.starts_at < ${dailyWindow.toExclusive}
+          AND booking.created_at <= ${input.evaluatedAt}
+          AND booking.deleted_at IS NULL
+          AND location.resolution_status = ${"VERIFIED"}
+        GROUP BY ${childRegionCode}
+      ), child_previous_day_order_counts AS (
+        SELECT ${childRegionCode} AS child_code, COUNT(booking.id) AS order_count
+        FROM booking_orders AS booking
+        LEFT JOIN booking_service_locations AS location
+          ON location.booking_order_id = booking.id
+        INNER JOIN shops AS shop
+          ON shop.id = booking.shop_id AND shop.deleted_at IS NULL AND ${scopedLocation(input.scope)}
+        WHERE booking.starts_at >= ${dailyWindow.previousFromInclusive}
+          AND booking.starts_at < ${dailyWindow.previousToExclusive}
+          AND booking.created_at <= ${input.evaluatedAt}
+          AND booking.deleted_at IS NULL
+          AND location.resolution_status = ${"VERIFIED"}
+        GROUP BY ${childRegionCode}
       ), child_confirmed_payments AS (
         SELECT ${childRegionCode} AS child_code,
                COALESCE(SUM(checkout.checkout_amount_jpy), 0) AS confirmed_payment_jpy,
@@ -310,6 +343,8 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       SELECT child.official_code AS code,
              COALESCE(locale.name, child.official_code) AS name,
              COALESCE(order_counts.order_count, 0) AS orderCount,
+             COALESCE(current_day_orders.order_count, 0) AS currentDayOrderCount,
+             COALESCE(previous_day_orders.order_count, 0) AS previousDayOrderCount,
              COALESCE(payments.confirmed_payment_jpy, 0) AS confirmedPaymentJpy,
              COALESCE(payments.confirmed_payment_ndp, 0) AS confirmedPaymentNdp,
              COALESCE(payments.confirmed_payment_test_ndp, 0) AS confirmedPaymentTestNdp
@@ -321,6 +356,10 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
         AND locale.deleted_at IS NULL
       LEFT JOIN child_order_counts AS order_counts
         ON order_counts.child_code = child.official_code
+      LEFT JOIN child_current_day_order_counts AS current_day_orders
+        ON current_day_orders.child_code = child.official_code
+      LEFT JOIN child_previous_day_order_counts AS previous_day_orders
+        ON previous_day_orders.child_code = child.official_code
       LEFT JOIN child_confirmed_payments AS payments
         ON payments.child_code = child.official_code
       WHERE child.country_code = ${input.scope.countryCode}
@@ -729,6 +768,8 @@ export class LiveDashboardRepository implements LiveDashboardRepositoryPort {
       code: this.nonEmptyString(row.code),
       name: this.nonEmptyString(row.name),
       orderCount: this.safeInteger(row.orderCount ?? row.order_count),
+      currentDayOrderCount: this.safeInteger(row.currentDayOrderCount ?? row.current_day_order_count),
+      previousDayOrderCount: this.safeInteger(row.previousDayOrderCount ?? row.previous_day_order_count),
       confirmedPayments: this.money(
         row.confirmedPaymentJpy ?? row.confirmed_payment_jpy,
         row.confirmedPaymentNdp ?? row.confirmed_payment_ndp,
