@@ -5,6 +5,11 @@ import { AppError } from "../src/utils/app-error";
 const occurredAt = new Date("2026-09-01T10:00:00.000Z");
 const actor = { userId: 41, roles: ["customer"], currentIdentityType: "customer" };
 const homeTravelInput = {
+  serviceLocation: {
+    countryCode: "JP" as const,
+    admin1Code: "JP-13",
+    admin2Code: "13102"
+  },
   fulfillmentAddress: {
     countryCode: "JP" as const,
     postalCode: "104-0061",
@@ -55,11 +60,11 @@ describe("booking global eKYC policy", () => {
     "passes the authenticated user, %s mode and server time to the shared gate",
     async (fulfillmentMode) => {
       const state = fixture();
-      await state.service.createBooking(actor, {
-        scheduleSlotId: 11,
-        fulfillmentMode,
-        ...(fulfillmentMode === "home" ? homeTravelInput : {})
-      });
+      const input =
+        fulfillmentMode === "home"
+          ? { scheduleSlotId: 11, fulfillmentMode: "home" as const, ...homeTravelInput }
+          : { scheduleSlotId: 11, fulfillmentMode: "store" as const };
+      await state.service.createBooking(actor, input);
       expect(state.enforcement.assertServiceEkyc).toHaveBeenCalledWith(
         41,
         fulfillmentMode,
