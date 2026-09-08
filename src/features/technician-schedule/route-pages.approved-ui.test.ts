@@ -21,7 +21,8 @@ describe("approved formal technician schedule UI", () => {
     expect(routeSource).toContain("FormalTechnicianScheduleWorkspace");
     expect(routeSource).toContain('navItems={technicianNavItems}');
     expect(routeSource).toContain("SchedulePageHeader");
-    expect(workspaceSource).toContain("FeatureSegmentedTabs");
+    expect(routeSource).toContain("FeatureSegmentedTabs");
+    expect(workspaceSource).not.toContain("FeatureSegmentedTabs");
     expect(routeSource).toContain("showBottomNav={false}");
     expect(workspaceSource).not.toContain("ScheduleSearchField");
     expect(routeSource).not.toContain("FormalRoutePage");

@@ -78,12 +78,6 @@ async function waitFor(assertion: () => void) {
   throw lastError;
 }
 
-async function click(label: string) {
-  const button = Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.trim() === label);
-  if (!button) throw new Error(`Missing button: ${label}`);
-  await act(async () => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-}
-
 describe("FormalTechnicianScheduleWorkspace", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -103,6 +97,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
           profileName="正式技师"
           shopId={11}
           shopName="正式店铺"
+          tab="calendar"
         />
       </MemoryRouter>
     ));
@@ -132,14 +127,25 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     }));
     expect(container.textContent).toContain("数据中心期间：近7天");
 
-    await click("排班设置");
+    await act(async () => root.render(
+      <MemoryRouter>
+        <FormalTechnicianScheduleWorkspace
+          dataCenterPeriod="last7days"
+          initialSelectedDate="2026-08-26"
+          profileAvatarUrl="/media/technician.jpg"
+          profileId={31}
+          profileName="正式技师"
+          shopId={11}
+          shopName="正式店铺"
+          tab="settings"
+        />
+      </MemoryRouter>
+    ));
     expect(container.querySelector('[data-testid="formal-order-panel"]')).not.toBeNull();
   });
 
   it("forwards the formal schedule search to the shared calendar", async () => {
     await waitFor(() => expect(container.querySelector('[data-testid="shared-unified-calendar"]')).not.toBeNull());
-    expect(container.textContent).toContain("我的排班");
-    expect(container.textContent).toContain("排班设置");
     await act(async () => root.render(
       <MemoryRouter>
         <FormalTechnicianScheduleWorkspace
@@ -151,6 +157,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
           searchQuery="预约"
           shopId={11}
           shopName="正式店铺"
+          tab="calendar"
         />
       </MemoryRouter>
     ));
@@ -177,6 +184,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
           profileName="独立技师"
           shopId={null}
           shopName="独立技师"
+          tab="calendar"
         />
       </MemoryRouter>
     ));
@@ -188,7 +196,18 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     }));
     expect(container.querySelector('button[aria-label="新建正式排班"]')).toBeNull();
 
-    await click("排班设置");
+    await act(async () => root.render(
+      <MemoryRouter>
+        <FormalTechnicianScheduleWorkspace
+          profileAvatarUrl={null}
+          profileId={31}
+          profileName="独立技师"
+          shopId={null}
+          shopName="独立技师"
+          tab="settings"
+        />
+      </MemoryRouter>
+    ));
     expect(container.textContent).toContain("可查看当前技师的正式日程；创建可预约时段需要先关联店铺。");
     expect(container.textContent).not.toContain("新建正式排班");
   });
