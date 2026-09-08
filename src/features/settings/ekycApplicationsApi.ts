@@ -3,7 +3,7 @@ import type { Paginated } from "../identity-applications/api";
 import type { EkycProfile } from "./ekycProfileModel";
 export type EkycApplicationStatus = "submitted" | "approved" | "rejected" | "withdrawn";
 export type EkycApplicationSummary = {
-  id: number; userId: number; status: EkycApplicationStatus; version: number;
+  id: number; userId: number; userPublicId: string; status: EkycApplicationStatus; version: number;
   createdAt: string; updatedAt: string; reviewedAt: string | null;
   reviewNote: string | null; rejectionReason: string | null;
 };

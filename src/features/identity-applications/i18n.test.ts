@@ -33,10 +33,17 @@ describe("identity application translations", () => {
     }
   });
 
-  it("localizes the legal and bank-name rules without losing their meaning", () => {
+  it("localizes the activation and affiliate withdrawal rules without losing their meaning", () => {
     expect(translateText("确认并开启", "ja")).toBe("確認して有効化");
-    expect(translateText("法人名义申请时，银行账户名义必须与法人名称一致。", "en")).toContain("must match");
-    expect(translateText("个人名义申请时，银行账户名义必须与 eKYC 姓名一致。", "ja")).toContain("eKYC");
+    expect(translateText("联盟营销赚取的 NDP 在提现时必须完成 eKYC 并填写银行账户；银行账户名义人必须与 eKYC 姓名一致。", "en")).toContain("exactly matches");
+  });
+
+  it("localizes the merchant bank declaration rule without claiming a name match", () => {
+    const source = "银行账户名义仅按填写内容登记，不与申请人或法人名称进行一致性判断。";
+    for (const language of ["zh-Hant", "ja", "en", "ko"] as const) {
+      expect(translateText(source, language)).not.toBe(source);
+      expect(translateText(source, language).toLowerCase()).not.toContain("must match");
+    }
   });
 
   it("keeps the exact 15-day boundary in every supported non-Chinese locale", () => {

@@ -36,6 +36,8 @@ export function ApplicationReviewActions({ application, onError, onReapply, onWi
       })}>{t(application.type === "merchant" ? "切换为店铺身份" : "切换为技师身份")}</ApplicationButton>
       : <div className="flex gap-3"><ApplicationButton disabled={busy} tone="secondary" onClick={() => void run(async () => {
         await identityApplicationsApi.withdraw(application.id, application.version);
+        const result = await refreshSession();
+        if (!result.ok) { onError(result.message); return; }
         onWithdrawn();
       })}>{t("撤回")}</ApplicationButton><ApplicationButton className="min-w-0 flex-1" disabled>{t("审核中")}</ApplicationButton></div>}
   </ApplicationBottomAction>;

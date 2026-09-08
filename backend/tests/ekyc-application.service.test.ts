@@ -25,6 +25,7 @@ const profile = {
 const row = (): EkycApplicationRecord => ({
   id: 7,
   userId: 2,
+  userPublicId: "u0000000002",
   status: "submitted",
   version: 1,
   profileEncrypted: cipher.seal(JSON.stringify(profile)),
@@ -53,6 +54,7 @@ describe("manual eKYC service", () => {
     expect(repo.create).not.toHaveBeenCalled();
     expect(result.list[0]).not.toHaveProperty("profile");
     expect(result.list[0]).not.toHaveProperty("profileEncrypted");
+    expect(result.list[0]).toMatchObject({ userId: 2, userPublicId: "u0000000002" });
   });
   it("isolates owner details", async () => {
     const { service } = setup();

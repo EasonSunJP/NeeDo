@@ -103,6 +103,7 @@ describe("MerchantApplicationsReviewPage pending deep links", () => {
     });
     expect(identityApplicationsApi.getMerchantReview).toHaveBeenCalledWith(31);
     expect(container.textContent).toContain("新宿店");
+    expect(container.textContent).not.toContain("名义一致校验");
 
     const back = Array.from(container.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("返回申请列表")

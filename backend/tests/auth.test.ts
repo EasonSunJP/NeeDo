@@ -1177,6 +1177,7 @@ describe("verified email registration and formal password authentication", () =>
       platformAccessPolicyService: {
         assertPublicBusinessAccess: jest.fn(async () => undefined),
         assertAuthenticatedAccess: jest.fn(async () => undefined),
+        getAvailablePaymentMethods: jest.fn(async () => ["cash", "ndp"] as ("cash" | "ndp")[]),
         assertSelfRegistrationEnabled: jest.fn(async () => undefined),
         assertGoogleLoginEnabled: jest.fn(async () => undefined),
         getPasswordLoginVerificationPolicy: jest.fn(async () => ({
@@ -1241,6 +1242,7 @@ describe("verified email registration and formal password authentication", () =>
       platformAccessPolicyService: {
         assertPublicBusinessAccess: jest.fn(async () => undefined),
         assertAuthenticatedAccess: jest.fn(async () => undefined),
+        getAvailablePaymentMethods: jest.fn(async () => ["cash", "ndp"] as ("cash" | "ndp")[]),
         assertSelfRegistrationEnabled,
         assertGoogleLoginEnabled,
         getPasswordLoginVerificationPolicy: jest.fn(async () => ({
@@ -2037,6 +2039,29 @@ describe("verified email registration and formal password authentication", () =>
             rejectionReason: null
           }
         ]);
+      });
+  });
+
+  it("returns a withdrawn technician application to the available-to-apply state", async () => {
+    const fixture = await createAuthFixture();
+    fixture.customerUser.identityApplications[0]!.status = "withdrawn";
+    const loginResponse = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "customer@example.com", password: "Abcd@1234" })
+      .expect(200);
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.identityAvailability).toContainEqual({
+          kind: "technician",
+          state: "available_to_apply",
+          identityId: null,
+          applicationId: null,
+          rejectionReason: null
+        });
       });
   });
 

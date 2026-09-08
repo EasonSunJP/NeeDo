@@ -11,7 +11,6 @@ import type {
   MerchantApplicationRejectionResult,
   RejectMerchantApplicationRepositoryInput
 } from "../services/merchant-application-review.service";
-import { BankAccountHolderService } from "../services/bank-account-holder.service";
 import type { SensitiveFieldCipherService } from "../services/sensitive-field-cipher.service";
 import { AppError } from "../utils/app-error";
 import { buildIdentityActivationTransactionInput } from "../services/identity-activation.service";
@@ -50,7 +49,6 @@ const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date
             accountType: true,
             accountNumberEncrypted: true,
             accountHolderEncrypted: true,
-            holderMatchHash: true,
             verificationSource: true,
             verificationStatus: true,
             verifiedAt: true,
@@ -81,7 +79,7 @@ const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date
           },
           orderBy: [{ verifiedAt: "desc" as const }, { id: "desc" as const }],
           take: 1,
-          select: { nameMatchHash: true }
+          select: { id: true }
         }
       }
     },
@@ -158,7 +156,6 @@ const maskHolder = (holderName: string): string => {
 
 export class MerchantApplicationReviewRepository implements MerchantApplicationReviewRepositoryPort {
   private readonly identityActivation: IdentityActivationRepository;
-  private readonly holder = new BankAccountHolderService();
 
   public constructor(
     private readonly client: PrismaClient,
@@ -540,17 +537,6 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
     const contract =
       detail.contractAcceptance?.deletedAt === null ? detail.contractAcceptance : null;
     const applicantKind = detail.applicantKind as "corporate" | "individual";
-    const expectedHolderHash =
-      applicantKind === "corporate" && detail.corporateLegalNameKana
-        ? this.cipher.matchHash(
-            this.holder.normalizeForMatch("corporate", detail.corporateLegalNameKana)
-          )
-        : bank?.verificationSource === "applicant_declaration"
-          ? this.cipher.matchHash(
-              this.holder.normalizeForMatch("individual", detail.representativeNameKana)
-            )
-          : (row.applicant.ekycVerifications[0]?.nameMatchHash ?? null);
-
     return {
       applicationId: row.id,
       applicantUserId: row.userId,
@@ -608,8 +594,6 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
             accountHolderMasked: maskHolder(this.cipher.open(bank.accountHolderEncrypted)),
             verificationSource: bank.verificationSource,
             verificationStatus: bank.verificationStatus,
-            holderMatched:
-              expectedHolderHash !== null && expectedHolderHash === bank.holderMatchHash,
             verifiedAt: bank.verifiedAt
           }
         : null,

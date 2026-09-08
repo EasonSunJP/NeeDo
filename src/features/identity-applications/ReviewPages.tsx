@@ -272,7 +272,7 @@ export function MerchantApplicationsReviewPage({ embedded = false }: { embedded?
   };
 
   return (
-    <ReviewShell embedded={embedded} backTo="/admin/merchants" info="核对代表者、eKYC、法人资料、银行名义、服务展示及合同证据后批准或驳回店铺身份。" title={embedded ? "店铺申请管理" : "店铺身份申请审核"}>
+    <ReviewShell embedded={embedded} backTo="/admin/merchants" info="核对代表者、eKYC、法人资料、银行账户登记、服务展示及合同证据后批准或驳回店铺身份。" title={embedded ? "店铺申请管理" : "店铺身份申请审核"}>
       {error ? <ApplicationNotice tone="error">{t(error)}</ApplicationNotice> : null}
       {!selected ? (
         <ApplicationCard className="space-y-2">
@@ -294,7 +294,6 @@ export function MerchantApplicationsReviewPage({ embedded = false }: { embedded?
             <DetailRow label="eKYC" value={t(selected.eKycVerified ? "已验证" : "未验证")} />
             <DetailRow label="银行账户" value={selected.bankAccount ? `${selected.bankAccount.bankName} ${selected.bankAccount.branchName} · ${selected.bankAccount.accountNumberMasked}` : "—"} />
             <DetailRow label="账户名义人" value={selected.bankAccount?.accountHolderMasked} />
-            <DetailRow label="名义一致校验" value={t(selected.bankAccount?.holderMatched ? "一致" : "不一致")} />
             <DetailRow label="合同版本" value={selected.contractAcceptance?.contractVersion} />
             <DetailRow label="合同回执" value={selected.contractAcceptance?.receiptId} />
             <DetailRow label="服务种类" value={selected.serviceCategories.map((category) => category.label).join("、")} />

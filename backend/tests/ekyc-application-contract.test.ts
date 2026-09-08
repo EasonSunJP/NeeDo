@@ -10,6 +10,7 @@ describe("manual eKYC deployment contract", () => {
       "identityConfirmed"
     );
     expect(JSON.stringify(paths)).toContain("profile");
+    expect(JSON.stringify(paths)).toContain("userPublicId");
   });
   it("grants new permissions exactly wherever analogous existing owner/read/review permissions are granted", () => {
     for (const permissions of Object.values(buildRolePermissionAssignments())) {

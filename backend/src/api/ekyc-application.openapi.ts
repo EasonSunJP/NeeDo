@@ -54,6 +54,7 @@ const profile = {
 const summaryProperties = {
   id: int,
   userId: int,
+  userPublicId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
   status,
   version: int,
   createdAt: date,

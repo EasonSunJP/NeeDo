@@ -10,10 +10,7 @@ export interface MerchantBankBindingContext {
   status: string;
   version: number;
   applicantKind: "corporate" | "individual";
-  corporateLegalNameKana: string | null;
-  representativeNameKana: string;
   currentBankAccountId: number | null;
-  verifiedEkycNameKanaEncrypted: string | null;
 }
 
 export interface BindMerchantBankAccountInput {
@@ -59,20 +56,18 @@ export interface ProtectedBankAccountProjection {
   branchName: string;
   accountType: string;
   accountNumberMasked: string;
-  holderMatched: true;
   verifiedAt: Date | null;
   applicationVersion: number;
 }
 
 export type BoundProtectedBankAccountRecord = Omit<
   ProtectedBankAccountProjection,
-  "accountNumberMasked" | "holderMatched"
+  "accountNumberMasked"
 >;
 
 export interface ProtectedBankAccountRepositoryPort {
   findMerchantBindingContext: (
-    applicationId: number,
-    now: Date
+    applicationId: number
   ) => Promise<MerchantBankBindingContext | null>;
   bindVerifiedMerchantAccount: (
     input: BindVerifiedMerchantBankAccountRepositoryInput
@@ -90,10 +85,7 @@ export class ProtectedBankAccountService {
   public async bindMerchantAccount(
     input: BindMerchantBankAccountInput
   ): Promise<ProtectedBankAccountProjection> {
-    const context = await this.repository.findMerchantBindingContext(
-      input.applicationId,
-      input.now
-    );
+    const context = await this.repository.findMerchantBindingContext(input.applicationId);
     if (!context || context.userId !== input.userId) {
       throw new AppError({
         code: ERROR_CODES.NOT_FOUND,
@@ -108,36 +100,12 @@ export class ProtectedBankAccountService {
       throw this.conflict("error.identity_application.version_conflict");
     }
 
-    const eKycNameKana =
-      context.verifiedEkycNameKanaEncrypted === null
-        ? undefined
-        : this.cipher.open(context.verifiedEkycNameKanaEncrypted);
     const ekyc = await this.ekycPolicy.evaluateApplicationEkyc(input.userId, "merchant", input.now);
-    if (ekyc.required && (!ekyc.verified || (context.applicantKind === "individual" && !eKycNameKana))) {
+    if (ekyc.required && !ekyc.verified) {
       throw this.conflict("error.identity_application.ekyc_required");
-    }
-    const declared = context.applicantKind === "individual" && !eKycNameKana;
-    try {
-      if (declared) {
-        const expected = this.holder.normalizeKatakana(context.representativeNameKana);
-        if (!expected || expected !== this.holder.normalizeKatakana(input.accountHolderName)) throw new Error("holder mismatch");
-      } else this.holder.assertMatches({
-        applicantKind: context.applicantKind,
-        bankHolderName: input.accountHolderName,
-        corporateLegalNameKana: context.corporateLegalNameKana ?? undefined,
-        eKycNameKana
-      });
-    } catch {
-      throw this.conflict("error.bank_account.holder_name_mismatch");
     }
 
     const normalizedHolder = this.holder.normalizeKatakana(input.accountHolderName);
-    const normalizedMatchValue = this.holder.normalizeForMatch(
-      context.applicantKind,
-      input.accountHolderName
-    );
-    const verificationSource =
-      context.applicantKind === "corporate" ? "corporate_registration" : declared ? "applicant_declaration" : "ekyc";
     const result = await this.repository.bindVerifiedMerchantAccount({
       userId: input.userId,
       applicationId: input.applicationId,
@@ -151,24 +119,23 @@ export class ProtectedBankAccountService {
       accountNumberEncrypted: this.cipher.seal(input.accountNumber.trim()),
       accountHolderEncrypted: this.cipher.seal(input.accountHolderName.trim()),
       accountHolderNormalizedEncrypted: this.cipher.seal(normalizedHolder),
-      holderMatchHash: this.cipher.matchHash(normalizedMatchValue),
-      verificationSource,
-      verificationStatus: declared ? "declared" : "verified",
-      verifiedAt: declared ? null : input.now,
+      holderMatchHash: this.cipher.matchHash(normalizedHolder),
+      verificationSource: "applicant_declaration",
+      verificationStatus: "declared",
+      verifiedAt: null,
       boundAt: input.now,
       auditMetadata: {
         applicationId: input.applicationId,
         applicantKind: context.applicantKind,
-        verificationStatus: declared ? "declared" : "verified",
-        verificationSource,
+        verificationStatus: "declared",
+        verificationSource: "applicant_declaration",
         ekycPolicy: ekyc
       }
     });
 
     return {
       ...result,
-      accountNumberMasked: this.cipher.maskAccountNumber(input.accountNumber),
-      holderMatched: true
+      accountNumberMasked: this.cipher.maskAccountNumber(input.accountNumber)
     };
   }
 

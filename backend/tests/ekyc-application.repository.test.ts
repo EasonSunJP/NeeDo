@@ -5,9 +5,9 @@ const setup = () => {
     user: { updateMany: jest.fn(async () => ({ count: 1 })) },
     ekycApplication: {
       findFirst: jest.fn(async () => null),
-      create: jest.fn(async () => ({ id: 7, userId: 2, status: "submitted", version: 1 })),
+      create: jest.fn(async () => ({ id: 7, userId: 2, status: "submitted", version: 1, user: { needoId: "u0000000002" } })),
       updateMany: jest.fn(async () => ({ count: 1 })),
-      findUniqueOrThrow: jest.fn(async () => ({ id: 7, userId: 2, status: "approved", version: 2 }))
+      findUniqueOrThrow: jest.fn(async () => ({ id: 7, userId: 2, status: "approved", version: 2, user: { needoId: "u0000000002" } }))
     },
     ekycVerification: {
       findFirst: jest.fn(async () => null),
@@ -21,6 +21,39 @@ const setup = () => {
   return { tx, repo: new EkycApplicationRepository(client) };
 };
 describe("manual eKYC transactional persistence", () => {
+  it("projects the applicant public NeeDo ID for review lists", async () => {
+    const application = {
+      id: 7,
+      userId: 2,
+      status: "submitted",
+      version: 1,
+      profileEncrypted: "sealed",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      reviewedAt: null,
+      reviewerUserId: null,
+      reviewNote: null,
+      rejectionReason: null,
+      deletedAt: null,
+      user: { needoId: "u0000000002" }
+    };
+    const findMany = jest.fn(async () => [application]);
+    const client = {
+      ekycApplication: { findMany, count: jest.fn(async () => 1) },
+      $transaction: jest.fn(async (queries: Promise<unknown>[]) => Promise.all(queries))
+    } as unknown as PrismaClient;
+
+    const result = await new EkycApplicationRepository(client).list(undefined, {
+      page: 1,
+      page_size: 20
+    });
+
+    expect(result.list[0]).toMatchObject({ userId: 2, userPublicId: "u0000000002" });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ include: { user: { select: { needoId: true } } } })
+    );
+  });
+
   it("locks applicant before checking active applications and only creates submitted data", async () => {
     const { tx, repo } = setup();
     await repo.create({ userId: 2, profileEncrypted: "sealed", now: new Date() });
@@ -28,9 +61,9 @@ describe("manual eKYC transactional persistence", () => {
     expect(tx.user.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
       tx.ekycApplication.findFirst.mock.invocationCallOrder[0]
     );
-    expect(tx.ekycApplication.create).toHaveBeenCalledWith({
+    expect(tx.ekycApplication.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: "submitted", version: 1, activeUserId: 2 })
-    });
+    }));
     expect(tx.ekycVerification.create).not.toHaveBeenCalled();
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ actorId: 2, action: "ekyc_application.submitted" })
