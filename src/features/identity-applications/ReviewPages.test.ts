@@ -7,7 +7,8 @@ describe("identity application review pages", () => {
     expect(source).toContain("contactTechnicianApplicant(selected.applicationId)");
     expect(source).toContain("approveTechnicianApplication(selected.applicationId, selected.version)");
     expect(source).toContain("technician-application-${selected.applicationId}.xlsx");
-    expect(source).toContain(">OK</ApplicationButton>");
+    expect(source).toContain('{t("审核通过")}</ApplicationButton>');
+    expect(source).not.toContain(">OK</ApplicationButton>");
   });
 
   it("shows protected evidence and masked bank details to operations review", () => {

@@ -118,7 +118,12 @@ describe("MerchantApplicationReviewRepository", () => {
         protectedBankAccount: { findFirst: jest.fn().mockResolvedValue({ id: 81 }) },
         contractAcceptance: { findFirst: jest.fn().mockResolvedValue({ id: 91 }) },
         merchantAccount: { create: jest.fn().mockResolvedValue({ id: 51 }) },
-        shop: { create: jest.fn().mockResolvedValue({ id: 61 }) },
+        shop: {
+          create: jest.fn().mockResolvedValue({ id: 61 }),
+          update: jest.fn().mockResolvedValue({ id: 61, shopNo: "8274936150" })
+        },
+        customerSupportAccount: { create: jest.fn().mockResolvedValue({ id: 62 }) },
+        vanityNumberReservation: { findFirst: jest.fn().mockResolvedValue(null) },
         merchantApplicationServiceCategory: {
           findMany: jest
             .fn()
@@ -139,7 +144,17 @@ describe("MerchantApplicationReviewRepository", () => {
         saasBillingProfile: { create: jest.fn().mockResolvedValue({ id: 81 }) },
         saasFreePeriod: { create: jest.fn().mockResolvedValue({ id: 82 }) },
         role: { findFirst: jest.fn().mockResolvedValue({ id: 6, code: "merchant_owner" }) },
-        publicIdentifier: { create: jest.fn().mockResolvedValue({ id: 301 }) },
+        publicIdentifier: {
+          create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+            id: 301,
+            status: "ACTIVE",
+            userIdentityId: null,
+            shopId: null,
+            merchantAccountId: null,
+            customerSupportAccountId: null,
+            ...data
+          }))
+        },
         userIdentity: {
           findFirst: jest.fn().mockResolvedValue({ id: 109, user: { accountNo: "8274936150" } }),
           create: jest.fn().mockResolvedValue({
@@ -161,7 +176,12 @@ describe("MerchantApplicationReviewRepository", () => {
       const client = {
         $transaction: jest.fn(async (callback: (database: typeof tx) => unknown) => callback(tx))
       } as unknown as PrismaClient;
-      const repository = new MerchantApplicationReviewRepository(client, cipher, () => reviewedAt);
+      const repository = new MerchantApplicationReviewRepository(
+        client,
+        cipher,
+        () => reviewedAt,
+        () => "8274936150"
+      );
 
       await expect(
         repository.approveInTransaction({
@@ -245,6 +265,37 @@ describe("MerchantApplicationReviewRepository", () => {
       });
       expect(tx.shop.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ ownerUserId: 7, name: "NeeDo 银座店", status: "published" })
+      });
+      expect(tx.customerSupportAccount.create).toHaveBeenCalledWith({
+        data: {
+          shopId: 61,
+          type: "SHOP",
+          displayName: "NeeDo 银座店 Customer Support"
+        }
+      });
+      expect(tx.publicIdentifier.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          publicId: "shop8274936150",
+          numberPart: "8274936150",
+          kind: "SHOP",
+          shopId: 61,
+          loginAllowed: false,
+          searchable: true
+        })
+      });
+      expect(tx.publicIdentifier.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          publicId: "cs8274936150",
+          numberPart: "8274936150",
+          kind: "CUSTOMER_SUPPORT",
+          customerSupportAccountId: 62,
+          loginAllowed: false,
+          searchable: true
+        })
+      });
+      expect(tx.shop.update).toHaveBeenCalledWith({
+        where: { id: 61 },
+        data: { shopNo: "8274936150" }
       });
       expect(tx.saasBillingProfile.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
