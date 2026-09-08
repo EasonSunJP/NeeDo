@@ -11,7 +11,7 @@ import {
 } from "../../api/backofficeRealData";
 import { FormalTechnicianDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import { TechnicianProfilePanel } from "../../components/admin/TechnicianProfilePanel";
-import { AppIcon, FeatureSegmentedTabs, IconButton } from "../../components/client-ui/AppScaffold";
+import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { MerchantIdentityInfoCard } from "../../components/merchant/MerchantIdentityInfoCard";
 import {
   createCustomContactCategoryDraft,
@@ -2423,7 +2423,7 @@ export function MerchantPortalContent({
       className={isMerchantDataCenterView ? "merchant-analytics-clean-shell" : undefined}
       navItems={merchantNavItems}
       navPanelStyle={activeView === "me" ? "plain" : "default"}
-      showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}
+      showBottomNav={activeView !== "me" && !isMerchantScheduleView && !merchantProfileEditing}
       showTopEdgeMask={activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
     >
       {activeView === "dashboard" ? (
@@ -2446,7 +2446,6 @@ export function MerchantPortalContent({
       ) : null}
       {activeView === "me" ? (
         <MobileFullscreenHeader
-          action={<IconButton icon="settings" label="打开设置中心" to={merchantPortalConfig.settingsPath} />}
           footer={<FeatureSegmentedTabs
             items={[
               { label: "信息卡", value: "info" },
@@ -2459,6 +2458,7 @@ export function MerchantPortalContent({
           />}
           maxWidth="880px"
           onBack={() => navigate("/merchant")}
+          onClose={() => navigate("/merchant")}
           title="个人中心"
         />
       ) : null}

@@ -60,6 +60,11 @@ describe("UserCenterPage", () => {
     expect(source).not.toContain("<MobileFullscreenPage");
   });
 
+  it("uses the shared close control instead of a settings action in every user-center state", () => {
+    expect(source.match(/onClose=\{\(\) => navigate\("\/", \{ replace: true \}\)\}/g)).toHaveLength(2);
+    expect(source).not.toContain('action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}');
+  });
+
   it("turns the card action into edit and a red cancel X", () => {
     expect(source).not.toContain('to="/me/settings/account"');
     expect(source).toContain('icon={isEditingProfile ? "x" : "edit"}');
