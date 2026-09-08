@@ -13,7 +13,9 @@ export const STAGING_TEST_SUPER_ADMIN_EMAILS = [
   "collintest@lifedance.com"
 ] as const;
 
-const DEFAULT_DISPLAY_NAMES: Readonly<Record<(typeof STAGING_TEST_SUPER_ADMIN_EMAILS)[number], string>> = {
+const DEFAULT_DISPLAY_NAMES: Readonly<
+  Record<(typeof STAGING_TEST_SUPER_ADMIN_EMAILS)[number], string>
+> = {
   "adminb@lifedance.com": "LifeDance 管理员 B",
   "adminc@lifedance.com": "LifeDance 管理员 C",
   "admind@lifedance.com": "LifeDance 管理员 D",
@@ -45,7 +47,11 @@ export const parseStagingTestSuperAdminProvisioningConfig = (
   const parsed = configSchema.parse(env);
   const databaseUrl = new URL(parsed.DATABASE_URL);
   const databaseName = databaseUrl.pathname.replace(/^\/+/, "");
-  if (databaseUrl.protocol !== "mysql:" || databaseUrl.hostname !== "mysql" || databaseName !== "needo_staging") {
+  if (
+    databaseUrl.protocol !== "mysql:" ||
+    databaseUrl.hostname !== "mysql" ||
+    databaseName !== "needo_staging"
+  ) {
     throw new Error("STAGING_TEST_SUPER_ADMIN_DATABASE_BOUNDARY_REJECTED");
   }
   return {
@@ -163,7 +169,11 @@ const ensureIdentity = async (
     deletedAt: null
   };
   return existing
-    ? tx.userIdentity.update({ where: { id: existing.id }, data, include: { publicIdentifier: true } })
+    ? tx.userIdentity.update({
+        where: { id: existing.id },
+        data,
+        include: { publicIdentifier: true }
+      })
     : tx.userIdentity.create({
         data: {
           userId: input.userId,
@@ -231,7 +241,10 @@ export class StagingTestSuperAdminProvisioningRepository {
             },
             select: { id: true, passwordHash: true }
           });
-          assert(passwordSource?.passwordHash, "STAGING_TEST_SUPER_ADMIN_PASSWORD_SOURCE_NOT_FOUND");
+          assert(
+            passwordSource?.passwordHash,
+            "STAGING_TEST_SUPER_ADMIN_PASSWORD_SOURCE_NOT_FOUND"
+          );
 
           const shop = await tx.shop.findFirst({
             where: { shopNo: input.shopNo, status: "published", deletedAt: null },
@@ -313,7 +326,9 @@ export class StagingTestSuperAdminProvisioningRepository {
               }
             });
             const affiliation = await tx.technicianShopAffiliation.upsert({
-              where: { activeKey: `staging-test-super-admin:${user.id}:shop:${shop.id}:technician` },
+              where: {
+                activeKey: `staging-test-super-admin:${user.id}:shop:${shop.id}:technician`
+              },
               create: {
                 technicianProfileId: technicianProfile.id,
                 shopId: shop.id,
@@ -385,7 +400,10 @@ export class StagingTestSuperAdminProvisioningRepository {
                 kind: "NEEDO",
                 userIdentityId: platformIdentity.id
               }));
-            assert(primaryIdentifier.kind === "NEEDO", `STAGING_TEST_SUPER_ADMIN_PLATFORM_ID_INVALID:${email}`);
+            assert(
+              primaryIdentifier.kind === "NEEDO",
+              `STAGING_TEST_SUPER_ADMIN_PLATFORM_ID_INVALID:${email}`
+            );
             await tx.user.update({
               where: { id: user.id },
               data: {
@@ -396,13 +414,20 @@ export class StagingTestSuperAdminProvisioningRepository {
             });
 
             for (const identity of identities) {
-              if (identity.publicIdentifier || identity.type === "customer" || identity.type === "platform") continue;
+              if (
+                identity.publicIdentifier ||
+                identity.type === "customer" ||
+                identity.type === "platform"
+              )
+                continue;
               await allocator.registerPersonAlias({
                 kind: identity.type === "technician" ? "S" : "B",
                 userIdentityId: identity.id
               });
             }
-            const merchantIdentity = identities.find((identity) => identity.type === "merchant_staff");
+            const merchantIdentity = identities.find(
+              (identity) => identity.type === "merchant_staff"
+            );
             assert(merchantIdentity, `STAGING_TEST_SUPER_ADMIN_MERCHANT_IDENTITY_MISSING:${email}`);
             await tx.merchantIdentityProfile.upsert({
               where: { identityId: merchantIdentity.id },
@@ -459,9 +484,7 @@ export class StagingTestSuperAdminProvisioningRepository {
 }
 
 export class StagingTestSuperAdminProvisioningService {
-  public constructor(
-    private readonly repository: StagingTestSuperAdminProvisioningRepository
-  ) {}
+  public constructor(private readonly repository: StagingTestSuperAdminProvisioningRepository) {}
 
   public async provision(
     config: StagingTestSuperAdminProvisioningConfig
@@ -471,7 +494,10 @@ export class StagingTestSuperAdminProvisioningService {
       shopNo: config.shopNo,
       passwordSourceEmail: config.passwordSourceEmail
     });
-    assert(result.accounts.length === STAGING_TEST_SUPER_ADMIN_EMAILS.length, "STAGING_TEST_SUPER_ADMIN_POSTCONDITION_FAILED");
+    assert(
+      result.accounts.length === STAGING_TEST_SUPER_ADMIN_EMAILS.length,
+      "STAGING_TEST_SUPER_ADMIN_POSTCONDITION_FAILED"
+    );
     for (const account of result.accounts) {
       assert(
         ["platform", "customer", "technician", "merchant_staff"].every((type) =>
