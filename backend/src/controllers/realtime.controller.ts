@@ -318,6 +318,26 @@ export class RealtimeController {
     );
   });
 
+  public pinSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    return this.service.setSocialPostPin(
+      getAuthenticatedAccess(response),
+      params.id,
+      true,
+      getRequestContext(request)
+    );
+  });
+
+  public unpinSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    return this.service.setSocialPostPin(
+      getAuthenticatedAccess(response),
+      params.id,
+      false,
+      getRequestContext(request)
+    );
+  });
+
   public getSocialPost = this.createHandler((request, response) => {
     const params = socialPostIdParamSchema.parse(request.params);
 

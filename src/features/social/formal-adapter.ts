@@ -155,7 +155,7 @@ export function mapFormalSocialPost(post: RealtimeSocialPost): SocialPost {
     repostCount: counters?.reposts ?? 0,
     viewCount: counters?.views ?? 1,
     bookmarkCount: counters?.bookmarks ?? 0,
-    isPinned: false,
+    isPinned: Boolean(post.isPinned),
     visibility: toSocialVisibility(post.visibility),
     locationLabel: envelope.locationLabel,
     status: "published",
@@ -198,13 +198,22 @@ export function mapFormalSocialProfiles(posts: RealtimeSocialPost[]) {
     return [{
       ...profile,
       coverImage: profile.coverImage || envelope.items[0]?.thumbnailUrl || envelope.items[0]?.url || "",
-      location: envelope.locationLabel
+      location: envelope.locationLabel,
+      ...(post.isPinned ? { pinnedPostId: String(post.id) } : {})
     }];
   });
 
-  return Object.fromEntries(
-    profiles.map((profile) => [`${profile.entityType}:${profile.id}`, profile])
-  );
+  return profiles.reduce<Record<string, SocialProfile>>((result, profile) => {
+    const key = `${profile.entityType}:${profile.id}`;
+    const previous = result[key];
+    result[key] = {
+      ...profile,
+      ...(profile.pinnedPostId ?? previous?.pinnedPostId
+        ? { pinnedPostId: profile.pinnedPostId ?? previous?.pinnedPostId }
+        : {})
+    };
+    return result;
+  }, {});
 }
 
 export function buildFormalSocialMediaEnvelope(input: {

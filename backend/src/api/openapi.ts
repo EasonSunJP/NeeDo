@@ -29469,6 +29469,34 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/social/posts/{id}/pin`]: {
+      put: {
+        tags: ["Step 13 Realtime"],
+        summary: "Pin the authenticated author's root social post",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post with isPinned=true" },
+          "403": { description: "Missing social-post:create permission" },
+          "404": { description: "Post is missing, is a reply, or is not owned by the active identity" }
+        }
+      },
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Unpin the authenticated author's root social post",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Authoritative post with isPinned=false" },
+          "403": { description: "Missing social-post:create permission" },
+          "404": { description: "Post is missing, is a reply, or is not owned by the active identity" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/social/posts/{id}/like`]: {
       put: {
         tags: ["Step 13 Realtime"],

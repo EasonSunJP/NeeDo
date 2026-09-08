@@ -495,6 +495,13 @@ describe("formal social provider gate", () => {
     expect(createSource).toContain('throw new Error("error.auth.operation_superseded")');
   });
 
+  it("persists pin and unpin through the formal API instead of the unavailable fallback", () => {
+    expect(source).toContain("const togglePinPost = async");
+    expect(source).toContain("realtimeApi.pinSocialPost");
+    expect(source).toContain("realtimeApi.unpinSocialPost");
+    expect(source).not.toContain("togglePinPost: formalSocialMutationUnavailable");
+  });
+
   it("leaves mounted posts unchanged when a formal reply create rejects", async () => {
     const posts = [makeSocialPost({ id: "700", replyCount: 2 })];
     expect(behavior.createFormalSocialPost).toBeTypeOf("function");

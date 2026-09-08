@@ -5407,6 +5407,7 @@ model SocialPost {
   bookmarks      SocialPostBookmark[]
   views          SocialPostView[]
   shares         SocialPostShare[]
+  pinnedByIdentity UserIdentity? @relation("UserIdentityPinnedSocialPost")
 
   @@index([authorUserId])
   @@index([authorIdentityId])
@@ -5580,6 +5581,7 @@ model UserIdentity {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
+  pinnedSocialPostId Int? @unique(map: "user_identities_pinned_social_post_id_key") @map("pinned_social_post_id")
 
   user                       User                          @relation(fields: [userId], references: [id], onDelete: Restrict)
   publicIdentifier           PublicIdentifier?
@@ -5616,6 +5618,7 @@ model UserIdentity {
   requestedFriendRequests    FriendRequest[]               @relation("FriendRequestRequesterIdentity")
   targetedFriendRequests     FriendRequest[]               @relation("FriendRequestTargetIdentity")
   socialPosts                SocialPost[]                  @relation("SocialPostAuthorIdentity")
+  pinnedSocialPost           SocialPost?                   @relation("UserIdentityPinnedSocialPost", fields: [pinnedSocialPostId], references: [id], onDelete: SetNull)
   socialPostLikes            SocialPostLike[]              @relation("SocialPostLikeActorIdentity")
   socialPostBookmarks        SocialPostBookmark[]          @relation("SocialPostBookmarkActorIdentity")
   socialPostViews            SocialPostView[]              @relation("SocialPostViewActorIdentity")

@@ -360,6 +360,20 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     controller.updateSocialPost
   );
   router.put(
+    "/social/posts/:id/pin",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.updateSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.pinSocialPost
+  );
+  router.delete(
+    "/social/posts/:id/pin",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.updateSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.unpinSocialPost
+  );
+  router.put(
     "/social/posts/:id/like",
     authenticate(),
     authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),

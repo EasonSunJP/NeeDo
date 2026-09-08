@@ -294,6 +294,7 @@ export interface SocialPostPayload {
   visibility: SocialPostVisibilityPayload;
   createdAt: Date;
   updatedAt: Date;
+  isPinned: boolean;
   author: SocialPostAuthorPayload;
   viewerFollowsAuthor: boolean;
   authorFollowsViewer: boolean;
@@ -650,6 +651,14 @@ export interface UpdateSocialPostInput extends CreateSocialPostInput {
   postId: number;
 }
 
+export interface SetSocialPostPinInput {
+  postId: number;
+  authorUserId: number;
+  authorIdentityId?: number;
+  active: boolean;
+  context: AuthRequestContext;
+}
+
 export type UpdateSocialPostResult = CreateSocialPostResult;
 
 export interface SocialPostListInput extends PaginationInput {
@@ -801,6 +810,7 @@ export interface RealtimeRepositoryPort {
   expireDueFriendRequests: (input: { batchSize: number }) => Promise<FriendRequestPayload[]>;
   createSocialPost: (input: CreateSocialPostInput) => Promise<CreateSocialPostResult>;
   updateSocialPost: (input: UpdateSocialPostInput) => Promise<UpdateSocialPostResult | null>;
+  setSocialPostPin: (input: SetSocialPostPinInput) => Promise<SocialPostPayload | null>;
   listSocialPosts: (
     identityId: number,
     input: SocialPostListInput,
@@ -865,7 +875,7 @@ const socialPostInclude = {
     select: socialAuthorSelect
   },
   authorIdentity: {
-    select: { id: true, type: true, displayName: true }
+    select: { id: true, type: true, displayName: true, pinnedSocialPostId: true }
   },
   _count: {
     select: {
@@ -3919,6 +3929,63 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
+  public async setSocialPostPin(input: SetSocialPostPinInput): Promise<SocialPostPayload | null> {
+    return this.client.$transaction(async (transaction) => {
+      const authorIdentityId = input.authorIdentityId ??
+        await this.findCanonicalIdentityId(transaction, input.authorUserId);
+      if (!authorIdentityId) {
+        throw new AppError({
+          code: ERROR_CODES.IDENTITY_NOT_FOUND,
+          message: "error.auth.identity_not_found",
+          statusCode: 403
+        });
+      }
+
+      const post = await transaction.socialPost.findFirst({
+        where: {
+          id: input.postId,
+          authorUserId: input.authorUserId,
+          authorIdentityId,
+          replyToPostId: null,
+          deletedAt: null
+        },
+        include: socialPostInclude
+      });
+      if (!post) return null;
+
+      const previousPinnedPostId = post.authorIdentity.pinnedSocialPostId;
+      if (input.active) {
+        await transaction.userIdentity.update({
+          where: { id: authorIdentityId },
+          data: { pinnedSocialPostId: post.id }
+        });
+      } else {
+        await transaction.userIdentity.updateMany({
+          where: { id: authorIdentityId, pinnedSocialPostId: post.id },
+          data: { pinnedSocialPostId: null }
+        });
+      }
+
+      await transaction.auditLog.create({
+        data: {
+          actorId: input.authorUserId,
+          action: input.active ? "social.post.pinned" : "social.post.unpinned",
+          targetType: "SocialPost",
+          targetId: post.id,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent ?? null,
+          metadata: { previousPinnedPostId } satisfies Prisma.InputJsonValue
+        }
+      });
+
+      const updatedPost = await transaction.socialPost.findUniqueOrThrow({
+        where: { id: post.id },
+        include: socialPostInclude
+      });
+      return this.mapSocialPost(updatedPost, authorIdentityId, authorIdentityId);
+    });
+  }
+
   public async listSocialPosts(
     identityId: number,
     input: SocialPostListInput,
@@ -5971,6 +6038,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       visibility: this.socialPostVisibilityFromDb(socialPost.visibility),
       createdAt: socialPost.createdAt,
       updatedAt: socialPost.updatedAt,
+      isPinned: socialPost.authorIdentity.pinnedSocialPostId === socialPost.id,
       viewerFollowsAuthor:
         viewerIdentityId === authorIdentityId ||
         relationshipMap.follows.has(`${viewerIdentityId}:${authorIdentityId}`),
