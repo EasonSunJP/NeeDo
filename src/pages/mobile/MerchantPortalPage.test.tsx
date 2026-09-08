@@ -125,6 +125,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(meHeaderSource).toContain('title="个人中心"');
     expect(meHeaderSource).toContain("footer={");
     expect(meHeaderSource).not.toContain("<SharedHomeHeader");
+    expect(merchantSource).toContain('? "space-y-4 pt-4"');
     expect(merchantSource).toContain('showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}');
   });
 

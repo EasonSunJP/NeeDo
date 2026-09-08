@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read/api";
 import { technicianProfileApi, type TechnicianSelfProfile } from "../../features/core-read/technicianProfileApi";
 import { pricingModeApi, type TechnicianServicePayload } from "../../features/pricing-mode/api";
+import { walletApi, type WalletSummary } from "../../features/wallet/api";
 import { TechnicianProfileInfoView, fromTechnicianSelfProfile } from "../../shared/technician-profile";
 import { TechnicianPortalPage } from "./TechnicianPortalPage";
 import source from "./TechnicianPortalPage.tsx?raw";
@@ -159,6 +160,13 @@ const independentProfile: TechnicianSelfProfile = {
   employmentType: "independent"
 };
 
+const walletSummary: WalletSummary = {
+  activeCurrency: "TEST_NDP",
+  hasTestNdpWallet: true,
+  ndp: { available: 12_500, frozen: 0 },
+  testNdp: { available: 800, frozen: 0 }
+};
+
 let container: HTMLDivElement;
 let root: Root | null;
 
@@ -257,6 +265,7 @@ function renderProfile() {
       null,
       createElement(TechnicianProfileInfoView, {
         model,
+        walletSummary,
         privacySlot: createElement("div", { "data-testid": "technician-profile-privacy-control" }, "隐私模式")
       })
     )
@@ -270,6 +279,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     document.body.appendChild(container);
     root = null;
     vi.spyOn(pricingModeApi, "listMyTechnicianServices").mockResolvedValue({ list: [], total: 0, page: 1, page_size: 5 });
+    vi.spyOn(walletApi, "getMyWalletSummary").mockResolvedValue(walletSummary);
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:service-cover") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
   });
@@ -299,6 +309,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(text).toContain("手法细致");
     expect(text).not.toContain("手法细致 ×1");
     expect(text).toContain("沟通耐心 ×2");
+    expect(text).toContain("NDP12,500Test NDP 800");
   });
 
   it("keeps the service section borderless while each shared service body remains framed", () => {
@@ -411,9 +422,11 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     await flushUntil(() => expect(container.textContent).toContain("基础信息"));
 
     expect(container.textContent).not.toContain("技师资料加载失败");
-    expect(container.textContent).toContain("接单率未读取");
-    expect(container.textContent).toContain("评价未读取");
-    expect(container.textContent).toContain("完成订单数未读取");
+    expect(container.textContent).toContain("接单率100%");
+    expect(container.textContent).toContain("评价5.0/5");
+    expect(container.textContent).toContain("完成订单数0");
+    expect(container.querySelector('[data-testid="technician-profile-info-view"]')?.textContent).not.toContain("未读取");
+    expect(container.querySelector('button[aria-label="开启隐私模式"]')).not.toBeNull();
   });
   it("shows an honest retry state when formal technician metrics fail to load", async () => {
     vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(independentProfile);

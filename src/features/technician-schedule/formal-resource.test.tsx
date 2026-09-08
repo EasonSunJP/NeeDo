@@ -209,6 +209,7 @@ function ScheduleProbe({ session = technicianSession, slotId = 17 }: { session?:
       <span data-testid="loading">{String(resource.loading)}</span>
       <span data-testid="slot">{resource.data?.slot?.id ?? "null"}</span>
       <span data-testid="services">{resource.data?.services.map((service) => service.id).join(",") ?? "null"}</span>
+      <span data-testid="shop">{resource.data?.shopName ?? "null"}</span>
       <span data-testid="error">{resource.error ?? "null"}</span>
       <button type="button" onClick={resource.retry}>retry</button>
     </div>
@@ -299,46 +300,42 @@ describe("formal technician schedule resources", () => {
   });
 
   it("loads a formal technician profile, services, and owned slot without fallback data", async () => {
-    let resolveProfile!: (value: CoreTechnicianDetail) => void;
-    apiMocks.getTechnicianDetail.mockReturnValue(
-      new Promise<CoreTechnicianDetail>((resolve) => {
-        resolveProfile = resolve;
-      })
-    );
     apiMocks.listMyTechnicianServices.mockResolvedValue({
       list: [makeService(102, 1)], total: 1, page: 1, page_size: 100
     });
     apiMocks.getTechnicianSlot.mockResolvedValue(slot);
 
     await act(async () => root.render(<ScheduleProbe />));
-    expect(container.querySelector('[data-testid="loading"]')?.textContent).toBe("true");
-    await act(async () => resolveProfile(profile));
     await waitFor(() => expect(container.querySelector('[data-testid="slot"]')?.textContent).toBe("17"));
 
     expect(container.querySelector('[data-testid="services"]')?.textContent).toBe("102");
     expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("null");
-    expect(apiMocks.getTechnicianDetail).toHaveBeenCalledWith(31);
+    expect(apiMocks.getTechnicianDetail).not.toHaveBeenCalled();
     expect(apiMocks.getMine).toHaveBeenCalledTimes(1);
     expect(apiMocks.getTechnicianSlot).toHaveBeenCalledWith(17);
   });
 
-  it("reports the persisted missing-shop state without querying the public technician directory", async () => {
+  it("loads the formal schedule context for an independent technician without a shop", async () => {
     apiMocks.getMine.mockResolvedValue({ ...selfProfile, shopId: null });
+    apiMocks.listMyTechnicianServices.mockResolvedValue({
+      list: [makeService(102, 1, { shopId: null, shop: null })], total: 1, page: 1, page_size: 100
+    });
 
     await act(async () => root.render(<ScheduleProbe slotId={null} />));
-    await waitFor(() => expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("error.technician.shop_required"));
+    await waitFor(() => expect(container.querySelector('[data-testid="services"]')?.textContent).toBe("102"));
 
     expect(apiMocks.getMine).toHaveBeenCalledTimes(1);
     expect(apiMocks.getTechnicianDetail).not.toHaveBeenCalled();
-    expect(apiMocks.listMyTechnicianServices).not.toHaveBeenCalled();
+    expect(apiMocks.listMyTechnicianServices).toHaveBeenCalledTimes(1);
     expect(apiMocks.getTechnicianSlot).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="shop"]')?.textContent).toBe("独立技师");
+    expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("null");
   });
 
   it("keeps schedule data empty after an API error and retries the formal request", async () => {
-    apiMocks.getTechnicianDetail
+    apiMocks.listMyTechnicianServices
       .mockRejectedValueOnce(new ApiClientError("error.network.timeout", 408, 408))
-      .mockResolvedValueOnce(profile);
-    apiMocks.listMyTechnicianServices.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
+      .mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 100 });
     apiMocks.getTechnicianSlot.mockResolvedValue(slot);
 
     await act(async () => root.render(<ScheduleProbe />));
@@ -347,7 +344,7 @@ describe("formal technician schedule resources", () => {
 
     await act(async () => container.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     await waitFor(() => expect(container.querySelector('[data-testid="slot"]')?.textContent).toBe("17"));
-    expect(apiMocks.getTechnicianDetail).toHaveBeenCalledTimes(2);
+    expect(apiMocks.listMyTechnicianServices).toHaveBeenCalledTimes(2);
   });
 
   it("loads a formal order and retries after a rejected order request", async () => {

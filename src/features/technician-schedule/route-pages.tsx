@@ -212,7 +212,7 @@ export function TechnicianScheduleIndexRoutePage() {
         profileName={resource.data.profile.displayName}
         searchQuery={searchQuery}
         shopId={resource.data.shopId}
-        shopName={resource.data.profile.shop?.name ?? "--"}
+        shopName={resource.data.shopName}
       /> : null}
     </TechnicianSchedulePageShell>
   );

@@ -10,7 +10,7 @@ import { UserCenterPage } from "./UserCenterPage";
 
 const testState = vi.hoisted(() => ({
   getMine: vi.fn(),
-  getMyWallet: vi.fn(),
+  getMyWalletSummary: vi.fn(),
   getMyExperience: vi.fn(),
   getPlatformMembership: vi.fn(),
   listOrders: vi.fn(),
@@ -48,7 +48,7 @@ vi.mock("../../features/core-read/customerProfileApi", () => ({
 }));
 
 vi.mock("../../features/wallet/api", () => ({
-  walletApi: { getMyWallet: testState.getMyWallet }
+  walletApi: { getMyWalletSummary: testState.getMyWalletSummary }
 }));
 
 vi.mock("../../features/platform-membership/api", () => ({
@@ -183,15 +183,11 @@ describe("UserCenterPage inline profile editing", () => {
     testState.previewCustomer = null;
     testState.getMine.mockResolvedValue(savedProfile);
     testState.refreshSession.mockResolvedValue({ ok: true });
-    testState.getMyWallet.mockResolvedValue({
-      availableBalance: 5_000,
-      createdAt: "2026-08-26T00:00:00.000Z",
-      currency: "NDP",
-      frozenBalance: 0,
-      id: 7,
-      ownerId: 12,
-      ownerType: "user",
-      updatedAt: "2026-08-26T00:00:00.000Z"
+    testState.getMyWalletSummary.mockResolvedValue({
+      activeCurrency: "NDP",
+      hasTestNdpWallet: false,
+      ndp: { available: 5_000, frozen: 0 },
+      testNdp: { available: 0, frozen: 0 }
     });
     testState.listOrders.mockResolvedValue({ list: [], page: 1, page_size: 1, total: 0 });
     testState.getMyExperience.mockResolvedValue({
@@ -228,22 +224,17 @@ describe("UserCenterPage inline profile editing", () => {
     container.remove();
   });
 
-  it("labels the active wallet as Test NDP from the server currency", async () => {
-    testState.getMyWallet.mockResolvedValue({
-      availableBalance: 100_000,
-      createdAt: "2026-08-26T00:00:00.000Z",
-      currency: "TEST_NDP",
-      frozenBalance: 0,
-      id: 7,
-      ownerId: 12,
-      ownerType: "user",
-      updatedAt: "2026-08-26T00:00:00.000Z"
+  it("keeps formal NDP primary and shows Test NDP as secondary wallet data", async () => {
+    testState.getMyWalletSummary.mockResolvedValue({
+      activeCurrency: "TEST_NDP",
+      hasTestNdpWallet: true,
+      ndp: { available: 5_000, frozen: 0 },
+      testNdp: { available: 100_000, frozen: 0 }
     });
 
     await renderUserCenter();
 
-    expect(container.textContent).toContain("Test NDP");
-    expect(container.textContent).toContain("100,000");
+    expect(container.textContent).toContain("NDP5,000Test NDP 100,000");
   });
 
   it("keeps the saved privacy value in view and restores it after cancelling an edited draft", async () => {

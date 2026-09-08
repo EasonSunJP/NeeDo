@@ -25,7 +25,7 @@ const periodOptions: Array<{ value: TechnicianDataCenterPeriod; label: string }>
 ];
 
 const panelClassName =
-  "technician-data-center-panel rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_92%,var(--client-bg)),color-mix(in_srgb,var(--client-bg)_96%,black))] text-[color:var(--client-text)] shadow-[var(--client-shadow)]";
+  "technician-data-center-panel rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_12%,transparent),transparent_40%),linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)),color-mix(in_srgb,var(--client-elevated)_72%,var(--client-bg)))] text-[color:var(--client-text)] shadow-[var(--client-shadow)]";
 
 function formatHours(minutes: number) {
   const hours = minutes / 60;
@@ -83,7 +83,7 @@ export function TechnicianDualTrendChart({ points }: { points: TechnicianDualTre
         </div>
         <div className="shrink-0 text-right text-[11px] font-black text-[color:var(--client-muted)]">
           <p>{yen(incomePeak)} 峰值</p>
-          <p className="mt-1 text-cyan-300">{formatHours(workPeak)} 峰值</p>
+          <p className="mt-1 text-[color:var(--client-accent)]">{formatHours(workPeak)} 峰值</p>
         </div>
       </div>
 
@@ -101,8 +101,8 @@ export function TechnicianDualTrendChart({ points }: { points: TechnicianDualTre
           ) : null}
           {showWork ? (
             <g data-series="work">
-              <polyline fill="none" points={pointsAttribute(workCoordinates)} stroke="#67e8f9" strokeDasharray="10 9" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
-              {workCoordinates.map((coordinate, index) => <circle cx={coordinate.x} cy={coordinate.y} fill="var(--client-bg)" key={points[index]?.key} r="5" stroke="#67e8f9" strokeWidth="3" />)}
+              <polyline fill="none" points={pointsAttribute(workCoordinates)} stroke="var(--client-accent)" strokeDasharray="10 9" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+              {workCoordinates.map((coordinate, index) => <circle cx={coordinate.x} cy={coordinate.y} fill="var(--client-bg)" key={points[index]?.key} r="5" stroke="var(--client-accent)" strokeWidth="3" />)}
             </g>
           ) : null}
           {incomeCoordinates.map((coordinate, index) => (
@@ -126,11 +126,11 @@ export function TechnicianDualTrendChart({ points }: { points: TechnicianDualTre
         <button
           aria-label={`${showWork ? "隐藏" : "显示"}工作趋势`}
           aria-pressed={showWork}
-          className={cn("focus-ring flex min-h-11 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black", showWork ? "border-cyan-300/65 bg-cyan-300/10 text-cyan-200" : "border-[color:var(--client-line)] text-[color:var(--client-muted)] opacity-65")}
+          className={cn("focus-ring flex min-h-11 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black", showWork ? "border-[color:color-mix(in_srgb,var(--client-accent)_65%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-accent)_10%,transparent)] text-[color:var(--client-accent)]" : "border-[color:var(--client-line)] text-[color:var(--client-muted)] opacity-65")}
           onClick={() => setShowWork((current) => !current)}
           type="button"
         >
-          <span className="h-1 w-7 rounded-full bg-cyan-300" />工作趋势
+          <span className="h-1 w-7 rounded-full bg-[color:var(--client-accent)]" />工作趋势
         </button>
       </div>
     </section>

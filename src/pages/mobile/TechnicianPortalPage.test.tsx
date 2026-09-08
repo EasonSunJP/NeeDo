@@ -13,7 +13,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).not.toContain("formalTechnicianSelfProfileQuery.data?.shopId");
     expect(source).toContain("formalTechnicianProfileQuery.error");
     expect(source).toContain('const publicDetailHidden = formalTechnicianProfileQuery.error === "error.technician.not_found"');
-    expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile || (!technician && !publicDetailHidden))");
+    expect(source).toContain("if (!formalTechnicianProfileId || !selfProfile || !walletSummary || (!technician && !publicDetailHidden))");
     expect(source).not.toContain("if (!formalTechnicianProfileId || !technician?.shop || !selfProfile)");
     expect(source).toContain("technician: CoreTechnicianDetail | null");
     expect(source).not.toContain("当前没有可用的正式店铺，暂时无法新增服务");
@@ -195,6 +195,9 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain('next.set("period", period)');
     expect(source).toContain('showBottomNav={activeView !== "me"}');
     expect(source).toContain("确认详细排班记录");
+    expect(source).toContain('data-testid="technician-data-center-schedule-action"');
+    expect(source).toContain("client-nav-aligned-panel");
+    expect(source).not.toContain("<StickyBottomBar>\n               <PrimaryButton className=\"w-full\" onClick={() => navigate(`/technician/schedule?period=");
     expect(source).toContain('period=${dataCenterPeriod}');
     expect(source).toContain("onRangeLoaded={setDataCenterRange}");
     expect(source).toContain('from=${encodeURIComponent(dataCenterRange.startsAt)}');
@@ -206,13 +209,16 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(source).toContain('title="个人中心"');
     expect(source).toContain('label="打开技师设置"');
     expect(source).toContain("footer={");
+    expect(source).toContain('className="space-y-4 px-4 pb-32 pt-4"');
     expect(source).not.toContain("<FloatingHomeHeader panelClassName=\"relative overflow-hidden\" stacked>");
   });
 
   it("builds the personal-center view only from formal profile, detail, and service payloads", () => {
     expect(source).toContain("fromTechnicianSelfProfile(profile, technician, services)");
     expect(source).toContain("<TechnicianProfileInfoView");
-    expect(source).not.toContain('data-testid="technician-profile-ndp-card"');
+    expect(source).toContain("walletApi.getMyWalletSummary()");
+    expect(source).toContain("walletSummary={walletSummary}");
+    expect(source).toContain('ariaLabel="开启隐私模式"');
   });
 
   it("permanently excludes the simplified and mock production implementations", () => {

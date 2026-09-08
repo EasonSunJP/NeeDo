@@ -2465,7 +2465,7 @@ export function MerchantPortalContent({
       <div
         className={cn(
           activeView === "me"
-            ? "space-y-4 pt-0"
+            ? "space-y-4 pt-4"
             : activeView === "schedule" || activeView === "staff"
               ? "px-4 pb-4 pt-0"
               : activeView === "dashboard"

@@ -304,6 +304,7 @@ describe("Step 11 wallet ledger and finance APIs", () => {
       .expect((response) => {
         expect(response.body.data).toEqual({
           activeCurrency: "TEST_NDP",
+          hasTestNdpWallet: true,
           ndp: { available: 999, frozen: 12 },
           testNdp: { available: 100_000, frozen: 0 }
         });

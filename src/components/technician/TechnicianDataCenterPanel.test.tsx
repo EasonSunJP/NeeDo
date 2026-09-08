@@ -48,6 +48,9 @@ describe("TechnicianDualTrendChart", () => {
     );
     expect(container.querySelector('[data-series="income"]')).not.toBeNull();
     expect(container.querySelector('[data-series="work"]')).not.toBeNull();
+    expect(container.querySelector('[data-series="work"] polyline')?.getAttribute("stroke")).toBe("var(--client-accent)");
+    expect(workLegend?.className).toContain("var(--client-accent)");
+    expect(workLegend?.className).not.toContain("cyan");
     expect(incomeLegend?.getAttribute("aria-pressed")).toBe("true");
     expect(workLegend?.getAttribute("aria-pressed")).toBe("true");
 

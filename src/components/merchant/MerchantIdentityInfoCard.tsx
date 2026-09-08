@@ -9,6 +9,8 @@ import {
 } from "../../features/core-read/merchantProfileApi";
 import { copyTextToClipboard } from "../../lib/share";
 import { cn } from "../../lib/utils";
+import { walletApi, type WalletSummary } from "../../features/wallet/api";
+import { formatWalletAmount, hasTestNdpWallet } from "../../features/wallet/presentation";
 import { IconButton, StickyBottomBar } from "../client-ui/AppScaffold";
 import { AvatarImage } from "../ui/AvatarImage";
 import { KycVerifiedBadge } from "../ui/KycVerifiedBadge";
@@ -92,6 +94,7 @@ function privacySummary(visibility: MerchantProfileVisibility) {
 
 export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?: (editing: boolean) => void }) {
   const [profile, setProfile] = useState<MerchantIdentityProfile | null>(null);
+  const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -107,8 +110,8 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
     let active = true;
     setLoading(true);
     setError("");
-    merchantProfileApi.getMine()
-      .then((next) => { if (active) { setProfile(next); setDraft(toDraft(next)); } })
+    Promise.all([merchantProfileApi.getMine(), walletApi.getMyWalletSummary()])
+      .then(([next, wallet]) => { if (active) { setProfile(next); setDraft(toDraft(next)); setWalletSummary(wallet); } })
       .catch((loadError) => { if (active) setError(profileError(loadError)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -192,10 +195,23 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
   };
 
   if (loading) return <section aria-live="polite" className={cn(surface.shell, "rounded-[28px] border p-8 text-center text-sm font-black")}>正在加载商户信息卡</section>;
-  if (!profile || !draft) return <section className={cn(surface.shell, "rounded-[28px] border p-8 text-center")} role="alert"><p className="text-sm font-black">{error || "商户信息卡不可用"}</p><button className="mt-4 rounded-full bg-[color:var(--client-primary)] px-5 py-2 text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => setRevision((value) => value + 1)} type="button">重新加载</button></section>;
+  if (!profile || !draft || !walletSummary) return <section className={cn(surface.shell, "rounded-[28px] border p-8 text-center")} role="alert"><p className="text-sm font-black">{error || "商户信息卡不可用"}</p><button className="mt-4 rounded-full bg-[color:var(--client-primary)] px-5 py-2 text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => setRevision((value) => value + 1)} type="button">重新加载</button></section>;
 
   const avatar = draft.avatarDataUrl ?? profile.avatarUrl;
   const visible = editing ? draft : toDraft(profile);
+  const testNdp = hasTestNdpWallet(walletSummary)
+    ? formatWalletAmount(walletSummary.testNdp.available)
+    : null;
+  const privacyControl = (
+    <div className={cn(surface.panel, "relative z-30 rounded-[18px] border p-3")} data-testid="merchant-profile-privacy-control">
+      <div className="flex items-center justify-between gap-3">
+        <button className="min-w-0 flex-1 text-left" disabled={!editing || visible.visibility === "public"} onClick={() => setPrivacyMenuOpen((open) => !open)} type="button"><p className={cn(surface.muted, "text-xs font-bold")}>隐私模式</p><strong className="mt-1 block truncate text-sm">{privacySummary(visible.visibility)}</strong></button>
+        <ToggleSwitch ariaLabel="开启隐私模式" checked={visible.visibility !== "public"} disabled={!editing || saving} onChange={updatePrivacyEnabled} />
+      </div>
+      <PrivacyModeConfirmDialog onCancel={() => setPrivacyConfirmOpen(false)} onConfirm={confirmPrivacy} open={privacyConfirmOpen} />
+      {editing && visible.visibility !== "public" && privacyMenuOpen ? <div className={cn(surface.shell, "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)]")} data-testid="merchant-profile-privacy-options">{privacyOptions.map((option) => <button className={cn("rounded-[18px] border px-3 py-3 text-left", visible.visibility === option.value ? surface.chip : surface.panel)} key={option.value} onClick={() => { update({ visibility: option.value }); setPrivacyMenuOpen(false); }} type="button"><strong className="block text-sm">{option.label}</strong><span className="mt-1 block text-xs font-bold opacity-70">{option.description}</span></button>)}</div> : null}
+    </div>
+  );
   return (
     <>
       <section className={cn(surface.shell, "relative z-30 overflow-visible rounded-[28px] border p-4 shadow-[var(--client-shadow)]")} data-testid="merchant-identity-info-card">
@@ -214,15 +230,13 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
             {editing ? <input aria-label="商户姓名" className="min-w-0 border-0 bg-transparent text-lg font-black outline-none" onChange={(event) => update({ displayName: event.target.value })} value={draft.displayName} /> : <h1 className="break-words text-lg font-black leading-tight">{profile.displayName}<KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" /></h1>}
             <button aria-label="复制 NeeDo ID" className={cn(surface.muted, "mt-2 truncate text-left text-xs font-bold")} onClick={() => void copyNeedoId()} type="button">ID {profile.publicId}</button>
             {copyStatus ? <p aria-live="polite" className={cn(surface.muted, "mt-1 text-xs font-bold")} role="status">{copyStatus === "copied" ? "已复制" : "复制失败，请手动复制"}</p> : null}
-            <div className={cn(surface.panel, "relative z-30 mt-auto rounded-[18px] border p-3")} data-testid="merchant-profile-privacy-control">
-              <div className="flex items-center justify-between gap-3">
-                <button className="min-w-0 flex-1 text-left" disabled={!editing || visible.visibility === "public"} onClick={() => setPrivacyMenuOpen((open) => !open)} type="button"><p className={cn(surface.muted, "text-xs font-bold")}>隐私模式</p><strong className="mt-1 block truncate text-sm">{privacySummary(visible.visibility)}</strong></button>
-                <ToggleSwitch ariaLabel="开启隐私模式" checked={visible.visibility !== "public"} disabled={!editing || saving} onChange={updatePrivacyEnabled} />
-              </div>
-              <PrivacyModeConfirmDialog onCancel={() => setPrivacyConfirmOpen(false)} onConfirm={confirmPrivacy} open={privacyConfirmOpen} />
-              {editing && visible.visibility !== "public" && privacyMenuOpen ? <div className={cn(surface.shell, "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)]")} data-testid="merchant-profile-privacy-options">{privacyOptions.map((option) => <button className={cn("rounded-[18px] border px-3 py-3 text-left", visible.visibility === option.value ? surface.chip : surface.panel)} key={option.value} onClick={() => { update({ visibility: option.value }); setPrivacyMenuOpen(false); }} type="button"><strong className="block text-sm">{option.label}</strong><span className="mt-1 block text-xs font-bold opacity-70">{option.description}</span></button>)}</div> : null}
-            </div>
           </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-2" data-testid="merchant-profile-metrics">
+          <div className={cn(surface.metric, "min-w-0 rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>NDP</p><strong className="mt-1 block truncate text-lg">{formatWalletAmount(walletSummary.ndp.available)}</strong>{testNdp !== null ? <span className={cn(surface.muted, "mt-1 block truncate text-[10px] font-bold")}>Test NDP {testNdp}</span> : null}</div>
+          <div className={cn(surface.metric, "min-w-0 rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>利用回数</p><strong className="mt-1 block text-lg">-</strong></div>
+          <div className={cn(surface.metric, "min-w-0 rounded-[18px] border p-3")}><p className={cn(surface.muted, "text-[11px] font-bold")}>评价</p><strong className="mt-1 block text-lg">-</strong></div>
         </div>
 
         <div className="my-4 h-px bg-[color:var(--client-line)]" />
@@ -244,6 +258,7 @@ export function MerchantIdentityInfoCard({ onEditingChange }: { onEditingChange?
             <div className={cn(surface.panel, "overflow-hidden rounded-[24px] border px-5 py-4")}><p className={cn(surface.muted, "text-xs font-bold")}>自我介绍</p><p className={cn(surface.muted, "mt-2 text-sm leading-6")}>{profile.bio || "未设置"}</p></div>
           </div>
         )}
+        <div className="mt-3">{privacyControl}</div>
         {error ? <p className="mt-3 text-sm font-black text-red-500" role="alert">{error}</p> : null}
       </section>
       {editing ? <StickyBottomBar><button className="w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-60" disabled={saving} onClick={() => void save()} type="button">{saving ? "正在保存资料" : "保存并退出编辑模式"}</button></StickyBottomBar> : null}

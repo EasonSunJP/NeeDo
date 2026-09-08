@@ -167,4 +167,29 @@ describe("FormalTechnicianScheduleWorkspace", () => {
       title: "状态记录"
     }));
   });
+
+  it("keeps an independent technician's formal calendar visible without exposing shop-required creation", async () => {
+    await act(async () => root.render(
+      <MemoryRouter>
+        <FormalTechnicianScheduleWorkspace
+          profileAvatarUrl={null}
+          profileId={31}
+          profileName="独立技师"
+          shopId={null}
+          shopName="独立技师"
+        />
+      </MemoryRouter>
+    ));
+
+    expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({
+      currentTechnician: expect.objectContaining({ id: "31", storeId: "" }),
+      formalOnly: true,
+      scope: "technician"
+    }));
+    expect(container.querySelector('button[aria-label="新建正式排班"]')).toBeNull();
+
+    await click("排班设置");
+    expect(container.textContent).toContain("可查看当前技师的正式日程；创建可预约时段需要先关联店铺。");
+    expect(container.textContent).not.toContain("新建正式排班");
+  });
 });
