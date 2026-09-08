@@ -6,7 +6,23 @@ export const imMessageInclude = {
   reactions: {
     where: { deletedAt: null },
     include: {
-      user: { select: { id: true, username: true, avatarUrl: true } }
+      user: {
+        select: {
+          id: true,
+          username: true,
+          avatarUrl: true,
+          customerProfile: { select: { displayName: true, deletedAt: true } },
+          technicianProfile: { select: { displayName: true, deletedAt: true } }
+        }
+      },
+      identity: {
+        select: {
+          id: true,
+          type: true,
+          displayName: true,
+          merchantIdentityProfile: { select: { displayName: true, deletedAt: true } }
+        }
+      }
     },
     orderBy: { id: "asc" as const }
   }

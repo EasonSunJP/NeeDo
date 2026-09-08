@@ -56,8 +56,6 @@ function ServiceCardContent({ data, hasActions }: { data: UnifiedServiceInfoCard
 
         <div className="mt-2 space-y-1 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">
           <p>利用回数：<span className="font-black text-[color:var(--client-text)]">{data.usageCount ?? "未读取"}</span></p>
-          <p>店铺 ID：<span className="font-black text-[color:var(--client-text)]">{data.shopPublicId ?? "未读取"}</span></p>
-          <p>店铺地址：<span className="font-black text-[color:var(--client-text)]">{data.shopAddress ?? "未公开"}</span></p>
         </div>
 
         <p className="mt-2 line-clamp-2 text-[12px] font-bold leading-5 text-[color:var(--client-muted)]">

@@ -797,7 +797,7 @@ export interface RealtimeRepositoryPort {
     viewerUserId: number,
     viewerIdentityId: number,
     targetUserId: number,
-    targetIdentityId: number
+    targetIdentityId: number | null
   ) => Promise<DirectoryProfilePayload | null>;
   createFriendRequest: (input: CreateFriendRequestInput) => Promise<CreateFriendRequestOutcome>;
   listFriendRequests: (
@@ -2906,7 +2906,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     viewerUserId: number,
     viewerIdentityId: number,
     targetUserId: number,
-    targetIdentityId: number
+    targetIdentityId: number | null
   ): Promise<DirectoryProfilePayload | null> {
     const databaseClock = await this.client.$queryRaw<Array<{ dbNow: Date }>>(
       Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS dbNow`
@@ -3026,12 +3026,30 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     if (!user) {
       return null;
     }
-    const identityCard = await this.buildDirectoryIdentityCard(user, targetIdentityId);
+    const contextContact = targetIdentityId === null
+      ? await this.client.contact.findFirst({
+          where: {
+            ownerIdentityId: viewerIdentityId,
+            contactUserId: targetUserId,
+            deletedAt: null
+          },
+          select: { id: true, contactIdentityId: true, blockedAt: true },
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+        })
+      : null;
+    const resolvedTargetIdentityId =
+      targetIdentityId ??
+      contextContact?.contactIdentityId ??
+      this.findCanonicalParticipantIdentity(user.identities)?.id;
+    if (!resolvedTargetIdentityId) {
+      return null;
+    }
+    const identityCard = await this.buildDirectoryIdentityCard(user, resolvedTargetIdentityId);
     const directoryParticipant = this.mapParticipant({
       ...user,
       username: identityCard.displayName
     });
-    if (viewerUserId === targetUserId && viewerIdentityId === targetIdentityId) {
+    if (viewerUserId === targetUserId && viewerIdentityId === resolvedTargetIdentityId) {
       return {
         user: directoryParticipant,
         identityCard,
@@ -3040,15 +3058,19 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         friendRequest: null
       };
     }
-    const contact = await this.client.contact.findFirst({
-      where: {
-        ownerIdentityId: viewerIdentityId,
-        contactIdentityId: targetIdentityId,
-        deletedAt: null,
-        blockedAt: null
-      },
-      select: { id: true }
-    });
+    const contact =
+      contextContact?.contactIdentityId === resolvedTargetIdentityId &&
+      contextContact.blockedAt === null
+        ? { id: contextContact.id }
+        : await this.client.contact.findFirst({
+            where: {
+              ownerIdentityId: viewerIdentityId,
+              contactIdentityId: resolvedTargetIdentityId,
+              deletedAt: null,
+              blockedAt: null
+            },
+            select: { id: true }
+          });
     const technicianContactDetails =
       contact && identityCard.entityType === "technician" && user.technicianProfile
         ? await this.loadTechnicianContactDetails(user.technicianProfile.id, dbNow)
@@ -3056,7 +3078,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const reciprocalContact = contact
       ? await this.client.contact.findFirst({
           where: {
-            ownerIdentityId: targetIdentityId,
+            ownerIdentityId: resolvedTargetIdentityId,
             contactIdentityId: viewerIdentityId,
             source: "friend_request",
             deletedAt: null,
@@ -3081,8 +3103,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         expiresAt: { gt: dbNow },
         deletedAt: null,
         OR: [
-          { requesterIdentityId: viewerIdentityId, targetIdentityId },
-          { requesterIdentityId: targetIdentityId, targetIdentityId: viewerIdentityId }
+          { requesterIdentityId: viewerIdentityId, targetIdentityId: resolvedTargetIdentityId },
+          { requesterIdentityId: resolvedTargetIdentityId, targetIdentityId: viewerIdentityId }
         ]
       },
       include: friendRequestInclude,
@@ -5499,7 +5521,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       const people = reactions.get(reaction.emoji) ?? [];
       people.push({
         userId: reaction.user.id,
-        username: reaction.user.username,
+        username: this.resolveParticipantDisplayName(reaction.user, reaction.identity),
         avatarUrl: reaction.user.avatarUrl
       });
       reactions.set(reaction.emoji, people);
@@ -5606,9 +5628,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return identity?.displayName?.trim() || user.username;
   }
 
-  private findCanonicalParticipantIdentity(
-    identities: ImParticipantIdentityRecord[]
-  ): ImParticipantIdentityRecord | undefined {
+  private findCanonicalParticipantIdentity<T extends { type: string }>(
+    identities: T[]
+  ): T | undefined {
     return identities.find((identity) =>
       ["customer", "user", "u"].includes(identity.type.toLowerCase())
     ) ?? identities[0];
@@ -5626,10 +5648,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         )
       ) ??
       user.identities[0];
+    const profileBackedIdentityTypes = [
+      "customer",
+      "user",
+      "u",
+      "technician",
+      "merchant",
+      "merchant_owner",
+      "merchant_staff"
+    ];
     const fallback: DirectoryIdentityCardPayload = {
       entityType: "account",
       profileId: null,
-      displayName: user.username,
+      displayName:
+        identity && !profileBackedIdentityTypes.includes(identity.type)
+          ? identity.displayName?.trim() || user.username
+          : user.username,
       identityLabel: identity?.type ?? null,
       verified: false,
       creditValue: null,

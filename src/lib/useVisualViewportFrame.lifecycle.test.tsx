@@ -10,6 +10,7 @@ afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = undefined;
   document.body.replaceChildren();
+  delete document.documentElement.dataset.needoDisplayMode;
   vi.unstubAllGlobals();
 });
 
@@ -41,6 +42,23 @@ async function setup() {
 const heightOf = (frame: HTMLElement) => frame.style.getPropertyValue("--im-visual-viewport-height");
 
 describe("chat visual viewport lifecycle", () => {
+  it("bounds an installed iPhone PWA room to the visible viewport when the keyboard is closed", async () => {
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"
+    });
+    const { viewport, setViewport, frame } = await setup();
+
+    await act(async () => {
+      setViewport(876);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+
+    expect(heightOf(frame)).toBe("876px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+  });
+
   it("keeps the room inside a keyboard viewport even when focus pans its top edge", async () => {
     const { viewport, setViewport, frame, editor } = await setup();
     await act(async () => {

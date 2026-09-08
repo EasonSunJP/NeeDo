@@ -63,7 +63,17 @@ function createMessageRecord(reactions: ReactionState[], reactionVersion = 0) {
         user: {
           id: reaction.userId,
           username: reaction.userId === 7 ? "LifeDance 管理员" : `用户 ${reaction.userId}`,
-          avatarUrl: null
+          avatarUrl: null,
+          customerProfile: reaction.userId === 7
+            ? { displayName: "Eason", deletedAt: null }
+            : null,
+          technicianProfile: null
+        },
+        identity: {
+          id: reaction.identityId,
+          type: "customer",
+          displayName: "旧身份名",
+          merchantIdentityProfile: null
         }
       }))
   };
@@ -234,6 +244,9 @@ describe("RealtimeRepository message reactions", () => {
     expect(
       emoji.status === "updated" ? emoji.message.reactions.map(({ emoji }) => emoji) : []
     ).toEqual(["OK", "😂"]);
+    expect(
+      emoji.status === "updated" ? emoji.message.reactions[0]?.people[0]?.username : undefined
+    ).toBe("Eason");
     expect(fixture.getReactionVersion()).toBe(2);
     expect(fixture.lockCalls).toHaveLength(2);
   });

@@ -2515,7 +2515,7 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
 }
 
 .im-composer-panel {
-  min-height: 42px;
+  min-height: min(72px, 40%);
   max-height: min(42dvh, calc(var(--im-visual-viewport-height, 100dvh) * 0.42));
   flex: 1 1 96px;
   overflow-x: clip;
