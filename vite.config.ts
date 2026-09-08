@@ -325,10 +325,12 @@ export default defineConfig(({ command, mode }) => {
     test: {
       exclude: [
         "backend/**",
+        "deploy/staging/runtime-contract.test.mjs",
         "deploy/staging/release-publication-contract.test.mjs",
         "dist/**",
         "node_modules/**",
         "**/node_modules/**",
+        "scripts/aws-staging-application-lib.test.mjs",
         "scripts/release-notes.test.mjs",
         ".codex-*/**",
         ".worktrees/**",
