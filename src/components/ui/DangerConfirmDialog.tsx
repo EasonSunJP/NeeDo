@@ -1,6 +1,14 @@
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { translateText } from "../../i18n/translations";
+import { registerTranslationEntries, translateText } from "../../i18n/translations";
 import { ClientActionDialog } from "./ClientActionDialog";
+
+registerTranslationEntries({
+  "强制取消预约": { "zh-Hant": "強制取消預約", ja: "予約を強制キャンセル", en: "Force-cancel booking", ko: "예약 강제 취소" },
+  "强制取消预约可能引起用户差评，并会降低接单率数值。是否真的要取消此预约？": { "zh-Hant": "強制取消預約可能引起使用者負評，並會降低接單率數值。是否確定取消此預約？", ja: "予約を強制キャンセルすると低評価につながり、受注率の数値が下がる可能性があります。本当にこの予約をキャンセルしますか？", en: "Force-cancelling may result in a poor customer review and lower the acceptance-rate metric. Do you really want to cancel this booking?", ko: "예약을 강제로 취소하면 사용자에게 낮은 평가를 받고 수락률 수치가 낮아질 수 있습니다. 정말 이 예약을 취소하시겠습니까?" },
+  "确定取消预约": { "zh-Hant": "確定取消預約", ja: "予約をキャンセル", en: "Cancel booking", ko: "예약 취소 확인" },
+  "正在取消预约": { "zh-Hant": "正在取消預約", ja: "予約をキャンセル中", en: "Cancelling booking", ko: "예약 취소 중" },
+  "预约取消失败，请稍后重试": { "zh-Hant": "預約取消失敗，請稍後再試", ja: "予約をキャンセルできませんでした。しばらくしてからもう一度お試しください", en: "The booking could not be cancelled. Try again later", ko: "예약을 취소하지 못했습니다. 잠시 후 다시 시도하세요" }
+});
 
 export function DangerConfirmDialog({
   cancelLabel = "取消",
