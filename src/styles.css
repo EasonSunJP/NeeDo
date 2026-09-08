@@ -2481,12 +2481,21 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   background: transparent;
 }
 
+.im-chat-composer-root:has(.im-composer-panel) {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  flex-shrink: 1;
+}
+
 .im-chat-composer-stack {
+  min-height: 0;
   width: min(100%, calc(var(--client-bottom-nav-max-width, 880px) - 24px));
   gap: 8px;
 }
 
 .im-composer-input-shell {
+  flex-shrink: 0;
   min-height: 56px;
 }
 
@@ -2497,7 +2506,7 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
 
 .im-composer-panel {
   min-height: 0;
-  max-height: 42dvh;
+  max-height: min(42dvh, calc(var(--im-visual-viewport-height, 100dvh) * 0.42));
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2536,7 +2545,7 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
     padding-inline: 6px;
   }
 
-  .im-composer-panel {
+  .im-composer-panel-content {
     padding: 12px;
   }
 }
@@ -8132,7 +8141,7 @@ html.im-conversation-scroll-lock #root {
   height: 100vh;
   height: 100svh;
   height: 100dvh;
-  height: var(--im-visual-viewport-height, auto);
+  height: var(--im-visual-viewport-height, 100dvh);
   max-height: none;
   top: var(--im-visual-viewport-top, 0px);
   bottom: var(--im-visual-viewport-bottom, 0px);

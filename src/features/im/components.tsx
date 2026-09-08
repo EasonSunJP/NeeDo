@@ -812,7 +812,7 @@ export function ImChatComposer({
   const composerInputShellClass =
     "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
   const composerIconButtonClass = "im-composer-icon-button shrink-0 text-[color:var(--client-muted)]";
-  const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel p-4";
+  const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel";
   const composerActionButtonClass =
     "min-w-0 rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-1.5 py-3 text-center text-[color:var(--client-text)] transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface)_90%)] sm:px-3 sm:py-4";
   const composerActionIconClass =
@@ -920,18 +920,20 @@ export function ImChatComposer({
 
         {panel === "emoji" ? (
           <div className={cn(composerPanelClass, "overscroll-contain")} data-im-composer-panel="emoji">
-            <ReactionCatalog
-              disabled={disabled}
-              expanded
-              onSelect={selectReactionValue}
-              recentValues={visibleRecentReactions}
-            />
+            <div className="im-composer-panel-content p-4">
+              <ReactionCatalog
+                disabled={disabled}
+                expanded
+                onSelect={selectReactionValue}
+                recentValues={visibleRecentReactions}
+              />
+            </div>
           </div>
         ) : null}
 
         {panel === "more" && actions.length > 0 ? (
           <div className={composerPanelClass} data-im-composer-panel="more">
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+            <div className="im-composer-panel-content grid grid-cols-4 gap-2 p-4 sm:gap-3">
               {actions.map((action) => (
                 <button className={composerActionButtonClass} disabled={disabled} key={action.key} onClick={action.run} type="button">
                   <span className={composerActionIconClass}>

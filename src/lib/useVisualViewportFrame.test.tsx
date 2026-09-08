@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe("useVisualViewportFrame", () => {
-  it("uses the visual viewport only while an editor has keyboard focus", async () => {
+  it("keeps the visual viewport through blur until the keyboard viewport recovers", async () => {
     const visualViewport = new EventTarget() as VisualViewport;
     Object.defineProperties(visualViewport, {
       height: { configurable: true, value: 720 },
@@ -59,9 +59,15 @@ describe("useVisualViewportFrame", () => {
     });
     await act(async () => visualViewport.dispatchEvent(new Event("resize")));
 
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("680px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("18px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("380px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("8px");
+    Object.defineProperty(visualViewport, "height", { configurable: true, value: 844 });
+    await act(async () => visualViewport.dispatchEvent(new Event("resize")));
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("0px");
@@ -93,12 +99,12 @@ describe("useVisualViewportFrame", () => {
     Object.defineProperty(viewport, "height", { configurable: true, value: 780 });
     await act(async () => window.dispatchEvent(new Event("pageshow")));
     expect(document.activeElement).toBe(container.querySelector("textarea"));
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
     await act(async () => root.unmount());
   });
 
-  it("anchors the frame to all four edges when standalone PWA pixel metrics are stale", async () => {
+  it("uses dynamic viewport height when standalone PWA pixel metrics are stale", async () => {
     const visualViewport = new EventTarget() as VisualViewport;
     Object.defineProperties(visualViewport, {
       height: { configurable: true, value: 690 },
@@ -122,9 +128,9 @@ describe("useVisualViewportFrame", () => {
     await act(async () => root.render(<Harness />));
 
     const frame = container.querySelector<HTMLElement>("[data-testid='frame']");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("0px");
@@ -160,9 +166,9 @@ describe("iPhone standalone viewport", () => {
     return { root, viewport, frame: container.firstElementChild as HTMLElement };
   }
 
-  it("fills the iPhone display when standalone inset sizing excludes safe areas", async () => {
+  it("uses dynamic height for iPhone standalone without trusting screen pixel height", async () => {
     const { root, frame } = await mountIphoneFrame();
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("852px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
     await act(async () => root.unmount());
   });
@@ -174,23 +180,23 @@ describe("iPhone standalone viewport", () => {
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("420px");
     Object.defineProperty(viewport, "height", { value: 759, configurable: true });
     await act(async () => viewport.dispatchEvent(new Event("resize")));
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("852px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
     await act(async () => root.unmount());
   });
 
-  it("resolves landscape from the matching screen width without retaining portrait height", async () => {
+  it("keeps dynamic sizing across rotation without retaining portrait screen pixels", async () => {
     const { root, frame } = await mountIphoneFrame();
     vi.stubGlobal("innerWidth", 852);
     vi.stubGlobal("innerHeight", 393);
     await act(async () => window.dispatchEvent(new Event("resize")));
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("393px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
     await act(async () => root.unmount());
   });
 
   it("keeps ordinary Safari constrained to the browser viewport", async () => {
     const { root, frame } = await mountIphoneFrame(false);
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
     await act(async () => root.unmount());
   });
 
@@ -198,7 +204,7 @@ describe("iPhone standalone viewport", () => {
     const { root, frame } = await mountIphoneFrame();
     vi.stubGlobal("innerWidth", 320);
     await act(async () => window.dispatchEvent(new Event("resize")));
-    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
     await act(async () => root.unmount());
   });
 });
