@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AppIcon, IconButton, floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
-import { featureCarouselFrameClassName, FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
+import { featureCarouselFrameClassName } from "../../components/client-ui/FeatureCarousel";
 import {
   FloatingHomeHeader,
   floatingHeaderGlassPanelClassName,
@@ -27,10 +27,11 @@ import {
   type EntityTarget
 } from "../../features/entity-engagement/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { PublishedCarousel } from "../../features/content-publication/PublishedCarousel";
 import { resolveSearchOrigin } from "../../features/location/searchOrigin";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
-import { getCategoryHeroImage, type HomeCategoryId } from "../../lib/homeCategories";
+import { type HomeCategoryId } from "../../lib/homeCategories";
 import { shareContent } from "../../lib/share";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { useHomeLayoutStore } from "../../state/homeLayoutStore";
@@ -45,33 +46,6 @@ import {
 } from "../../shared/profile-card";
 import { mapServiceItemToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import { canRunCategorySearch, parseCategorySearchDraft } from "./categorySearch";
-
-const categoryDescriptionMap: Record<HomeCategoryId, string> = {
-  cleaning: "日常保洁、深度保洁、厨卫清洁、退房清扫",
-  massage: "肩颈、腰背、全身、深夜到家",
-  recycle: "旧家电、家具、纸箱、搬家杂物",
-  pet: "喂养、遛狗、猫砂清理、洗护接送",
-  business: "办公室保洁、商旅按摩、接待预约、企业月结",
-  dining: "聚餐订位、包间预约、门店到店服务",
-  repair: "水电、门锁、家具、墙面小修",
-  laundry: "洗护、熨烫、取送、衣物整理",
-  moving: "同城搬家、行李搬运、小型货运",
-  appliance: "空调、洗衣机、油烟机、浴室干燥机",
-  install: "灯具、家电、家具、门锁安装",
-  beauty: "美甲、美睫、妆发、上门护理",
-  nanny: "保姆、月嫂、育儿陪护、住家服务",
-  care: "陪护、康养、术后护理、长期照料",
-  deep: "重油污、水垢、空置房、重点区域清洁",
-  storage: "收纳规划、衣橱整理、空间归位",
-  homecare: "木地板、沙发、家居保养维护",
-  guide: "景点讲解、路线规划、陪同接待",
-  property: "看房陪同、租住咨询、区域介绍",
-  tutor: "语言辅导、数学陪练、升学答疑",
-  sports: "健身陪练、拉伸放松、基础体能训练",
-  legal: "合同说明、法务咨询、纠纷整理",
-  renovation: "局部翻新、家具安装、小型改造",
-  other: "临时陪同、代办跑腿、非标准化需求"
-};
 
 type PopularSearchTag = {
   id: string;
@@ -370,9 +344,13 @@ export function CategoryPage() {
         return explicitCategoryIds;
       }
 
+      if (entityFilter !== "all") {
+        return [];
+      }
+
       return ["cleaning"];
     },
-    [appliedCustomLabels, appliedTagIds, searchParams]
+    [appliedCustomLabels, appliedTagIds, entityFilter, searchParams]
   );
   const searchCategoryIds = useMemo(
     () => uniqueStrings(
@@ -509,7 +487,7 @@ export function CategoryPage() {
     availableCategories[0] ??
     null;
   const appliedSearchKeywords = appliedCustomLabels;
-  const hasAppliedSearch = appliedTagIds.length > 0 || appliedSearchKeywords.length > 0;
+  const hasAppliedSearch = entityFilter !== "all" || appliedTagIds.length > 0 || appliedSearchKeywords.length > 0;
   const relatedServices = useMemo(
     () => [...apiServices]
       .sort((left, right) => right.sales - left.sales || right.rating - left.rating)
@@ -655,37 +633,6 @@ export function CategoryPage() {
     }
   };
 
-  const categoryHeroSlides = useMemo<FeatureCarouselSlide[]>(() => {
-    if (!activeCategory) {
-      return [];
-    }
-
-    const serviceSlides = relatedServices.slice(0, 3).map((service) => ({
-      id: `category-service-${service.id}`,
-      badge: t("全部分类"),
-      title: t(activeCategory.name),
-      caption: `${t(service.name)} · ${t(service.summary)}`,
-      cta: t("查看服务"),
-      image: service.cover,
-      to: `/services/${service.id}`
-    }));
-
-    if (serviceSlides.length > 0) {
-      return serviceSlides;
-    }
-
-    return uniqueById([activeCategory, ...filteredCategories])
-      .slice(0, 3)
-      .map((category) => ({
-        id: `category-fallback-${category.id}`,
-        badge: t("全部分类"),
-        title: t(category.name),
-        caption: t(categoryDescriptionMap[category.id as HomeCategoryId] ?? "从上方标签快速切换查看当前分类内容。"),
-        cta: t("进入分类"),
-        image: getCategoryHeroImage(category.id as HomeCategoryId),
-        to: `/categories?category=${category.id}`
-      }));
-  }, [activeCategory, filteredCategories, language, relatedServices]);
   const appliedSearchChips = useMemo(() => {
     const chips: Array<
       | { kind: "entity"; key: string; label: string; value: CategoryEntityFilter }
@@ -985,7 +932,7 @@ export function CategoryPage() {
 
         <div className="space-y-4 px-4 pb-28 pt-4">
           <section className="space-y-3">
-            <FeatureCarousel autoRotateMs={5200} cardHeightClassName="h-[204px]" slides={categoryHeroSlides} />
+            <PublishedCarousel scene="user-home" cardHeightClassName="h-[204px]" />
 
             <div className="flex flex-wrap items-center gap-2 px-1">
               {appliedSearchChips.length > 0 ? (
