@@ -186,13 +186,18 @@ export function FormalCheckoutPage(props: FormalCheckoutPageProps) {
 
     const serviceRequest = shopServiceId
       ? coreReadApi.getServiceDetail(shopServiceId).then(async (serviceDetail) => {
-          const navigation = await pricingModeApi.getBookingNavigation(serviceDetail.shop.id, { page: 1, pageSize: 100 });
-          const bookingService = navigation.entry === "service_menu"
-            ? navigation.services.list.find((item) => item.id === shopServiceId)
-            : null;
-          if (!bookingService) throw new Error("Shop service is unavailable in the current pricing mode");
-          setServiceBookingMetadata({ tags: bookingService.tags, usageCount: bookingService.usageCount });
-          return serviceDetail;
+          const bookingMetadata = await pricingModeApi
+            .getBookingNavigation(serviceDetail.shop.id, { page: 1, pageSize: 100 })
+            .then((navigation) => {
+              const bookingService = navigation.entry === "service_menu"
+                ? navigation.services.list.find((item) => item.id === shopServiceId)
+                : null;
+              return bookingService
+                ? { tags: bookingService.tags, usageCount: bookingService.usageCount }
+                : null;
+            })
+            .catch(() => null);
+          return { detail: serviceDetail, bookingMetadata };
         })
       : Promise.all([
           coreReadApi.getShopDetail(technicianServiceShopId!),
@@ -202,13 +207,12 @@ export function FormalCheckoutPage(props: FormalCheckoutPageProps) {
             technicianServiceTechnicianId!,
             { page: 1, pageSize: 100 }
           )
-        ]).then(([shop, categories, technicianServices]): CoreServiceDetail => {
+        ]).then(([shop, categories, technicianServices]) => {
           const technicianService = technicianServices.list.find((item) => item.id === technicianServiceId);
           const category = categories.list.find((item) => item.id === technicianService?.categoryId);
           const technician = shop.technicians.find((item) => item.id === technicianServiceTechnicianId) ?? null;
           if (!technicianService || !category) throw new Error("Technician service is unavailable");
-          setServiceBookingMetadata({ tags: technicianService.tags, usageCount: technicianService.usageCount });
-          return {
+          return { detail: {
             id: technicianService.id,
             publicId: technicianService.publicId,
             name: technicianService.name,
@@ -232,7 +236,7 @@ export function FormalCheckoutPage(props: FormalCheckoutPageProps) {
             mediaAssets: [],
             createdAt: technicianService.createdAt,
             updatedAt: technicianService.updatedAt
-          };
+          }, bookingMetadata: { tags: technicianService.tags, usageCount: technicianService.usageCount } };
         });
 
     Promise.all([
@@ -247,14 +251,16 @@ export function FormalCheckoutPage(props: FormalCheckoutPageProps) {
         pageSize: 100
       })
     ])
-      .then(([serviceDetail, availability]) => {
+      .then(([loadedService, availability]) => {
         if (!active) return;
+        const serviceDetail = loadedService.detail;
         const formalSlots = availability.list
           .slice()
           .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.id - right.id);
         const requestedTime = searchParams.get("time");
 
         setService(serviceDetail);
+        setServiceBookingMetadata(loadedService.bookingMetadata);
         setSlots(formalSlots);
         setSelectedSlotId(resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, persistedSlotId));
         setFulfillmentMode(resolveFulfillmentMode(serviceDetail, searchParams.get("mode")));

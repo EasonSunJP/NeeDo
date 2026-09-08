@@ -522,16 +522,24 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
     setLoading(true);
     setError("");
     try {
-      const [serviceResult, modeResult, categoryResult] = await Promise.all([
-        pricingModeApi.listMyTechnicianServices({ page: 1, pageSize: 5, activeOnly: false }),
+      const serviceResult = await pricingModeApi.listMyTechnicianServices({
+        page: 1,
+        pageSize: 5,
+        activeOnly: false
+      });
+      const [modeResult, categoryResult] = await Promise.allSettled([
         defaultShopId
-          ? pricingModeApi.getShopPricingMode(defaultShopId)
+          ? pricingModeApi.getBookingNavigation(defaultShopId, { page: 1, pageSize: 1 })
           : Promise.resolve(null),
         coreReadApi.listCategories({ page: 1, pageSize: 100 })
       ]);
       setServices(serviceResult.list);
-      setPricingMode(modeResult?.pricingMode ?? null);
-      setCategories(categoryResult.list.filter((category) => category.isActive));
+      setPricingMode(modeResult.status === "fulfilled" ? modeResult.value?.pricingMode ?? null : null);
+      setCategories(
+        categoryResult.status === "fulfilled"
+          ? categoryResult.value.list.filter((category) => category.isActive)
+          : []
+      );
     } catch (loadError) {
       setServices([]);
       setCategories([]);
@@ -600,7 +608,7 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
       return;
     }
     const existing = typeof editingId === "number" ? services.find((item) => item.id === editingId) : null;
-    const categoryId = draft.categoryId;
+    const categoryId = draft.categoryId || existing?.categoryId || defaultCategoryId || services[0]?.categoryId;
     if (!categoryId) { setError("当前没有可用的正式服务分类，暂时无法新增服务"); return; }
     setSaving(true);
     setError("");
@@ -610,7 +618,9 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
       if (!persistedAfterPartialSave) {
         try {
           saved = existing
-            ? await pricingModeApi.updateMyTechnicianService(existing.id, body)
+            ? existing.shopId
+              ? await pricingModeApi.updateTechnicianService(existing.shopId, existing.id, body)
+              : await pricingModeApi.updateMyTechnicianService(existing.id, body)
             : defaultShopId
               ? await pricingModeApi.createTechnicianService(defaultShopId, { ...body, sortOrder: services.length })
               : await pricingModeApi.createMyTechnicianService({ ...body, sortOrder: services.length });
@@ -659,7 +669,11 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
     setSaving(true);
     setError("");
     try {
-      await pricingModeApi.deleteMyTechnicianService(service.id);
+      if (service.shopId) {
+        await pricingModeApi.deleteTechnicianService(service.shopId, service.id);
+      } else {
+        await pricingModeApi.deleteMyTechnicianService(service.id);
+      }
       setServices((current) => current.filter((item) => item.id !== service.id));
       closeAndResetServiceEditor();
     } catch (deleteError) {
