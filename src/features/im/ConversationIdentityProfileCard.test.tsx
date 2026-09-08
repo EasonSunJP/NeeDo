@@ -100,8 +100,8 @@ describe("ConversationIdentityProfileCard", () => {
     expect(markup).toContain("max-w-full");
     expect(markup).toContain("break-words");
     expect(markup).not.toContain("truncate text-xs font-black text-[color:var(--client-primary)]");
-    expect(markup).toContain('<div class="mt-4" data-im-language-section="true">');
-    expect(markup).not.toContain('<div class="mt-3 rounded-[18px] border');
+    expect(markup).toContain('data-im-language-section="true"');
+    expect(markup).toContain('data-im-language-card="true"');
     expect(markup).toContain("自我介绍");
     expect(markup).not.toContain("积分");
     expect(markup).not.toContain("利用次数");
@@ -222,6 +222,27 @@ describe("ConversationIdentityProfileCard", () => {
     expect(markup).toContain('data-im-bio-section="true"');
     expect(markup).toContain("自我介绍");
     expect(markup.match(/未设置/g)).toHaveLength(2);
+  });
+
+  it.each([
+    ["free", "免费会员"],
+    ["silver", "白银会员"],
+    ["gold", "黄金会员"],
+    ["black_diamond", "黑钻会员"],
+  ])("renders the formal %s membership tier without collapsing it", (tier, expectedLabel) => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryRouter>
+          <ConversationIdentityProfileCard
+            identityCard={{ ...identityCard, identityLabel: tier }}
+            user={user}
+            viewerScope="user"
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(markup).toContain(expectedLabel);
   });
 
   it.each([

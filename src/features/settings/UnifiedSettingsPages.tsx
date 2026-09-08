@@ -2131,11 +2131,8 @@ function UserProfileSettingsPage({
       nickname: customer.nickname?.trim() || customer.name,
       age: customer.age ?? technician?.age ?? "",
       height: customer.height ?? technician?.height ?? "",
-      languages: customer.languages?.length ? [...customer.languages] : technician?.languages?.length ? [...technician.languages] : ["日本語"],
-      bio:
-        customer.bio ??
-        technician?.bio ??
-        "可在这里补充你的语言偏好、常用预约习惯和其他说明。"
+      languages: customer.languages?.length ? [...customer.languages] : technician?.languages?.length ? [...technician.languages] : [],
+      bio: customer.bio ?? technician?.bio ?? ""
     }),
     [customer, technician]
   );
@@ -2148,7 +2145,7 @@ function UserProfileSettingsPage({
   const toggleLanguage = (language: string) => {
     setDraft((current) => {
       if (current.languages.includes(language)) {
-        return current.languages.length === 1 ? current : { ...current, languages: current.languages.filter((item) => item !== language) };
+        return { ...current, languages: current.languages.filter((item) => item !== language) };
       }
 
       return { ...current, languages: [...current.languages, language] };

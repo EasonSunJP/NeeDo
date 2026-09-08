@@ -1,5 +1,6 @@
 import type { Language, TranslationEntry } from "../../i18n/translations";
-import type { PlatformTierCode, UserPrivacyScope } from "./types";
+import { platformMembershipTierText } from "../../shared/profile-card/platformMembershipTierText";
+import type { UserPrivacyScope } from "./types";
 
 const zh = {
   userList: "用户列表",
@@ -139,20 +140,18 @@ export const platformUserManagementTranslations: Record<string, TranslationEntry
 export type PlatformUserManagementCopyKey = CopyKey;
 
 const directoryValueCopy: Record<Language, {
-  membership: Record<PlatformTierCode, string>;
   privacyEnabled: string;
   privacyDisabled: string;
   privacyScope: Record<UserPrivacyScope, string>;
 }> = {
-  zh: { membership: { free: "免费会员", silver: "白银会员", gold: "黄金会员", black_diamond: "黑钻会员" }, privacyEnabled: "已开启", privacyDisabled: "未开启", privacyScope: { public: "公开", privateAll: "完全隐私", limited: "部分公开", network: "仅关系用户" } },
-  "zh-Hant": { membership: { free: "免費會員", silver: "白銀會員", gold: "黃金會員", black_diamond: "黑鑽會員" }, privacyEnabled: "已開啟", privacyDisabled: "未開啟", privacyScope: { public: "公開", privateAll: "完全隱私", limited: "部分公開", network: "僅關係使用者" } },
-  ja: { membership: { free: "無料会員", silver: "シルバー会員", gold: "ゴールド会員", black_diamond: "ブラックダイヤ会員" }, privacyEnabled: "オン", privacyDisabled: "オフ", privacyScope: { public: "公開", privateAll: "完全非公開", limited: "一部公開", network: "関係者のみ" } },
-  en: { membership: { free: "Free membership", silver: "Silver membership", gold: "Gold membership", black_diamond: "Black Diamond membership" }, privacyEnabled: "On", privacyDisabled: "Off", privacyScope: { public: "Public", privateAll: "Fully private", limited: "Limited", network: "Connections only" } },
-  ko: { membership: { free: "무료 회원", silver: "실버 회원", gold: "골드 회원", black_diamond: "블랙 다이아 회원" }, privacyEnabled: "켜짐", privacyDisabled: "꺼짐", privacyScope: { public: "공개", privateAll: "완전 비공개", limited: "일부 공개", network: "관계 사용자만" } }
+  zh: { privacyEnabled: "已开启", privacyDisabled: "未开启", privacyScope: { public: "公开", privateAll: "完全隐私", limited: "部分公开", network: "仅关系用户" } },
+  "zh-Hant": { privacyEnabled: "已開啟", privacyDisabled: "未開啟", privacyScope: { public: "公開", privateAll: "完全隱私", limited: "部分公開", network: "僅關係使用者" } },
+  ja: { privacyEnabled: "オン", privacyDisabled: "オフ", privacyScope: { public: "公開", privateAll: "完全非公開", limited: "一部公開", network: "関係者のみ" } },
+  en: { privacyEnabled: "On", privacyDisabled: "Off", privacyScope: { public: "Public", privateAll: "Fully private", limited: "Limited", network: "Connections only" } },
+  ko: { privacyEnabled: "켜짐", privacyDisabled: "꺼짐", privacyScope: { public: "공개", privateAll: "완전 비공개", limited: "일부 공개", network: "관계 사용자만" } }
 };
 
-export const membershipTierText = (code: PlatformTierCode, language: Language) =>
-  directoryValueCopy[language].membership[code];
+export const membershipTierText = platformMembershipTierText;
 
 export const privacyModeText = (enabled: boolean, language: Language) =>
   directoryValueCopy[language][enabled ? "privacyEnabled" : "privacyDisabled"];

@@ -337,6 +337,24 @@ describe("UserCenterPage inline profile editing", () => {
     expect(nickname?.className).toContain("[field-sizing:content]");
   });
 
+  it("renders empty formal languages and biography honestly without inventing profile data", async () => {
+    testState.getMine.mockResolvedValueOnce({
+      ...savedProfile,
+      bio: null,
+      languages: []
+    });
+
+    await renderUserCenter();
+
+    expect(container.textContent).not.toContain("可在这里补充你的语言偏好");
+    expect(container.textContent).not.toContain("日本語");
+    expect(container.textContent?.match(/未设置/g)?.length).toBeGreaterThanOrEqual(2);
+
+    await click(findIconButton("编辑资料"));
+    expect(container.querySelector<HTMLTextAreaElement>('textarea[data-profile-field="bio"]')?.value).toBe("");
+    expect(findButton("日本語").className).not.toContain("client-primary-soft");
+  });
+
   it("places the edit-state privacy control after the basic-information labels", async () => {
     await renderUserCenter();
     await click(findIconButton("编辑资料"));

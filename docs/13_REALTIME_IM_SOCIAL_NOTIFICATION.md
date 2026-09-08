@@ -423,6 +423,14 @@
 - 正式前端只相信响应和 SSE 中相互一致的服务端 action / `recallMode`。`standard` 保留现有占位和发送方草稿回填；`traceless` 清理终态媒体、按消息 ID 删除气泡、从剩余消息重建会话摘要并补拉权威启动数据。无痕删除屏障优先于陈旧历史、延迟乐观响应、重复或乱序 SSE，不能重新出现撤回残留。
 - 本轮只完成本地代码与自动化验证边界：未新增或应用 migration，未推送、未部署到 staging/production，且未进行已认证双账号浏览器验收。后续发布前仍须在独立授权步骤中应用/核对正式数据库状态，并验证有权益与无权益账号的双方窗口、刷新历史、预览、未读数、SSE 与移动端显示。
 
+## 6.30 个人中心与 IM 联系人资料一致性（2026-09-08，本地）
+
+- 用户个人中心、资料编辑页和 Core Read 适配器不再把空语言伪装成 `日本語`，也不再把示例说明写成正式自我介绍。正式值为空时只在展示层显示“未设置”，保存 payload 保持空数组或空字符串。
+- `GET /api/v1/im/directory/:userId` 的客户会员标签改为使用数据库时钟解析正式平台会员数据：当前有效的人工 adjustment 优先，其次是当前 entitlement；没有正式记录时返回 `free`。已授予 entitlement 可继续引用后来归档的不可变 tier version，与 `PlatformMembershipService.resolveMembershipAt` 的规则一致，不读取旧 `CustomerProfile.membershipLevel`。
+- 会话列表和联系人列表在正式 IM store 进入 ready 状态时刷新 bootstrap，使联系人行、会话头像和显示名重新读取权威 participant。会话信息页同时使用本次 DirectoryProfile 响应中的 `user` 与 `identityCard`，避免新简介/语言配旧头像或旧 NeeDo ID。
+- 联系人卡保持既有隐私裁剪，只显示该身份允许公开的字段；语言与自我介绍统一使用独立信息面板。平台四个会员等级分别显示为免费、白银、黄金和黑钻，并补齐繁中、日文、英文、韩文翻译，不再把白银合并为黄金。
+- 本切片不新增表、migration、mock 或浏览器存储资料源；只在本地修改和验证，未推送、未部署 staging，也未修改远程环境。
+
 ---
 
 ## 7. 给 Codex 的命令

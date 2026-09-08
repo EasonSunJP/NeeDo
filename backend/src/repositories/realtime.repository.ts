@@ -992,6 +992,11 @@ type DirectoryProfileUserRecord = {
       tier: { code: PlatformMembershipTierCode };
     };
   }>;
+  membershipAdjustments: Array<{
+    tierVersion: {
+      tier: { code: PlatformMembershipTierCode };
+    } | null;
+  }>;
   customerProfile: {
     id: number;
     displayName: string;
@@ -2947,6 +2952,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             }
           },
           orderBy: [{ startsAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: {
+            tierVersion: {
+              select: { tier: { select: { code: true } } }
+            }
+          }
+        },
+        membershipAdjustments: {
+          where: {
+            deletedAt: null,
+            supersededAt: null,
+            effectiveFrom: { lte: dbNow },
+            tierVersionId: { not: null }
+          },
+          orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
           take: 1,
           select: {
             tierVersion: {
@@ -5740,7 +5760,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   private directoryMembershipTierCode(user: DirectoryProfileUserRecord): string {
-    const code = user.platformMembershipEntitlements?.[0]?.tierVersion.tier.code;
+    const code =
+      user.membershipAdjustments?.[0]?.tierVersion?.tier.code ??
+      user.platformMembershipEntitlements?.[0]?.tierVersion.tier.code;
     if (code === PlatformMembershipTierCode.SILVER) return "silver";
     if (code === PlatformMembershipTierCode.GOLD) return "gold";
     if (code === PlatformMembershipTierCode.BLACK_DIAMOND) return "black_diamond";

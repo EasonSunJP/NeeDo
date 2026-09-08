@@ -429,7 +429,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
           deletedAt: null
         }
       },
-      technicianProfile: null
+      technicianProfile: null,
+      membershipAdjustments: []
     };
     const client = {
       $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),

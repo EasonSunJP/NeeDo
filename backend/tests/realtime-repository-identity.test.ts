@@ -529,6 +529,7 @@ describe("RealtimeRepository customer membership projection", () => {
           platformMembershipEntitlements: [
             { tierVersion: { tier: { code: "BLACK_DIAMOND" } } }
           ],
+          membershipAdjustments: [],
           customerProfile: {
             id: 3,
             displayName: "Eason",
@@ -561,6 +562,84 @@ describe("RealtimeRepository customer membership projection", () => {
       expect.objectContaining({
         select: expect.objectContaining({
           platformMembershipEntitlements: expect.objectContaining({
+            where: expect.objectContaining({
+              tierVersion: expect.objectContaining({
+                status: { in: ["PUBLISHED", "ARCHIVED"] }
+              })
+            }),
+            take: 1
+          }),
+          membershipAdjustments: expect.objectContaining({ take: 1 })
+        })
+      })
+    );
+  });
+
+  it("uses the latest effective membership adjustment before an entitlement", async () => {
+    const dbNow = new Date("2026-09-08T03:00:00.000Z");
+    const client = {
+      $queryRaw: jest.fn(async () => [{ dbNow }]),
+      user: {
+        findFirst: jest.fn(async () => ({
+          id: 2,
+          needoId: "u0000000002",
+          username: "Eason",
+          avatarUrl: null,
+          identities: [
+            {
+              id: 20,
+              type: "customer",
+              scopeType: "customer_profile",
+              scopeId: 3,
+              displayName: "Eason",
+              isDefault: true
+            }
+          ],
+          platformMembershipEntitlements: [
+            { tierVersion: { tier: { code: "GOLD" } } }
+          ],
+          membershipAdjustments: [
+            { tierVersion: { tier: { code: "FREE" } } }
+          ],
+          customerProfile: {
+            id: 3,
+            displayName: "Eason",
+            bio: null,
+            city: null,
+            membershipLevel: "gold",
+            isPublic: true,
+            gender: "private",
+            age: null,
+            heightCm: null,
+            languages: [],
+            visibility: "public",
+            deletedAt: null,
+            reviewSummary: null
+          },
+          technicianProfile: null
+        }))
+      }
+    };
+
+    const result = await new RealtimeRepository(
+      client as unknown as PrismaClient
+    ).getDirectoryProfile(2, 20, 2, 20);
+
+    expect(result?.identityCard).toMatchObject({
+      entityType: "user",
+      identityLabel: "free"
+    });
+    expect(client.user.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          membershipAdjustments: expect.objectContaining({
+            where: {
+              deletedAt: null,
+              supersededAt: null,
+              effectiveFrom: { lte: dbNow },
+              tierVersionId: { not: null }
+            },
+            orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
             take: 1
           })
         })
@@ -578,6 +657,8 @@ describe("RealtimeRepository customer membership projection", () => {
           needoId: "u0000000002",
           username: "Eason",
           avatarUrl: null,
+          membershipAdjustments: [],
+          platformMembershipEntitlements: [],
           identities: [
             {
               id: 20,

@@ -580,6 +580,13 @@ describe("UnifiedSettingsProfilePage", () => {
     expect(profileRouteSource).toContain("SettingsProfileResourceState");
   });
 
+  it("keeps empty formal languages and biography empty in the user profile draft", () => {
+    expect(userProfileSource).toContain("languages: customer.languages?.length ? [...customer.languages] : technician?.languages?.length ? [...technician.languages] : []");
+    expect(userProfileSource).toContain('bio: customer.bio ?? technician?.bio ?? ""');
+    expect(userProfileSource).not.toContain('current.languages.length === 1 ? current');
+    expect(userProfileSource).not.toContain('"可在这里补充你的语言偏好、常用预约习惯和其他说明。"');
+  });
+
   it("loads and saves the technician profile through the formal technician profile API", () => {
     const profileRouteSource = source.slice(
       source.indexOf("function FormalTechnicianProfileSettingsPage"),
