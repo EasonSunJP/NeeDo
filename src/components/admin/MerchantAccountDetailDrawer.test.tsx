@@ -12,7 +12,7 @@ vi.mock("../../pages/user/StoreDetailPage", () => ({
 }));
 const shop: ShopCard = {
   id: 21, type: "single_shop", name: "测试店铺", city: "東京都", address: "渋谷", phone: null,
-  status: "published", ownerEmail: null, coverUrl: null, ratingAverage: 0, reviewCount: 0,
+  status: "published", ownerEmail: null, createdBy: null, platformCommissionRatePercent: 0, coverUrl: null, ratingAverage: 0, reviewCount: 0,
   technicianCount: 1, suspension: null, createdAt: "2026-09-07T00:00:00Z",
   billing: { subjectType: "shop", subjectId: 21, cadence: "monthly", monthlyFeeJpy: 9800, annualFeeJpy: 98000,
     cadenceLocked: false, amountLocked: false, state: "paid", trialStatus: "completed", trialStartedAt: null,

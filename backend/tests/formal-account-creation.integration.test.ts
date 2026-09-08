@@ -83,6 +83,8 @@ describeIntegration("formal account creation integration", () => {
       ownerEmail: `${marker}-owner@needo.test`,
       ownerPasswordHash: "prepared-password-hash",
       ownerUsername: "Shop Owner",
+      createdById: managed.id,
+      verifiedById: managed.id,
       name: "Formal Integration Shop",
       city: "Tokyo",
       address: "Tokyo"
@@ -90,6 +92,8 @@ describeIntegration("formal account creation integration", () => {
     if (!shop.ownerUserId) throw new Error("shop owner user was not created");
     userIds.push(shop.ownerUserId);
     shopIds.push(shop.id);
+    const persistedShop = await prisma.shop.findUniqueOrThrow({ where: { id: shop.id } });
+    expect(persistedShop.createdById).toBe(managed.id);
     const owner = await prisma.user.findUniqueOrThrow({
       where: { id: shop.ownerUserId },
       include: {

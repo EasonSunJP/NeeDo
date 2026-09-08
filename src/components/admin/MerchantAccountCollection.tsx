@@ -176,9 +176,20 @@ export function MerchantAccountCollection({
               sortValue: ({ shop }) => shop.name,
               width: "230px",
             },
-            { key: "creator", title: t("创建者"), render: ({ shop }) => shop.ownerEmail ?? t("未绑定"), filterValue: ({ shop }) => shop.ownerEmail ?? t("未绑定"), width: "220px" },
+            {
+              key: "creator",
+              title: t("创建者"),
+              render: ({ shop }) => shop.createdBy ? (
+                <div className="max-w-[220px]">
+                  <p className="truncate font-black text-ink">{shop.createdBy.displayName}</p>
+                  <p className="mt-1 truncate text-xs font-bold text-ink/45">{shop.createdBy.needoId}</p>
+                </div>
+              ) : t("未记录"),
+              filterValue: ({ shop }) => shop.createdBy ? `${shop.createdBy.displayName} ${shop.createdBy.needoId}` : t("未记录"),
+              width: "220px",
+            },
             { key: "region", title: t("地区"), render: ({ shop }) => shop.city, filterValue: ({ shop }) => shop.city, width: "160px" },
-            { key: "commission", title: t("平台抽成"), render: () => "0%", sortValue: () => 0, width: "130px" },
+            { key: "commission", title: t("平台抽成"), render: ({ shop }) => `${shop.platformCommissionRatePercent}%`, sortValue: ({ shop }) => shop.platformCommissionRatePercent, width: "130px" },
             { key: "monthlyFee", title: t("月费"), render: ({ shop }) => shop.billing.cadence === "free" ? t("免费") : formatJpy(shop.billing.monthlyFeeJpy, language), sortValue: ({ shop }) => shop.billing.cadence === "free" ? 0 : shop.billing.monthlyFeeJpy, width: "150px" },
             {
               key: "status",

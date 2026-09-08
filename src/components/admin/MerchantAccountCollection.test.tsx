@@ -17,6 +17,13 @@ const shop = (id: number, name: string): ShopCard => ({
   phone: "090-0000-0000",
   status: "published",
   ownerEmail: `owner-${id}@needo.test`,
+  createdBy: {
+    userId: 7,
+    needoId: "U0000000007",
+    displayName: "运营建档人",
+    email: "operator@needo.test",
+  },
+  platformCommissionRatePercent: 0,
   coverUrl: null,
   ratingAverage: 4.8,
   reviewCount: 18,
@@ -93,6 +100,9 @@ it("keeps information cards as the default and switches to a shop-scoped list", 
   expect(container.querySelectorAll("tbody tr")).toHaveLength(3);
   expect(container.textContent).toContain("店名");
   expect(container.textContent).toContain("创建者");
+  expect(container.textContent).toContain("运营建档人");
+  expect(container.textContent).toContain("U0000000007");
+  expect(container.textContent).not.toContain("owner-21@needo.test");
   expect(container.textContent).toContain("地区");
   expect(container.textContent).toContain("平台抽成");
   expect(container.textContent).toContain("0%");

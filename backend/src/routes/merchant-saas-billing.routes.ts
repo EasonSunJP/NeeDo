@@ -95,6 +95,13 @@ export const createMerchantSaasBillingRoutes = (
     validateRequest({ params: merchantAccountIdParamSchema }),
     controller.getMerchantAccount
   );
+  router.get(
+    "/backoffice/shops/:id/saas-account",
+    authenticate(),
+    authorize(MERCHANT_SAAS_BILLING_ROUTE_PERMISSIONS.read),
+    validateRequest({ params: shopBillingParamSchema }),
+    controller.getShopAccount
+  );
   router.patch(
     "/backoffice/merchant-accounts/:id/billing-profile",
     authenticate(),

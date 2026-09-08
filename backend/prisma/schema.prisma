@@ -1233,6 +1233,7 @@ model User {
   requestedWalletAdjustments            WalletAdjustmentRequest[]           @relation("WalletAdjustmentRequestedBy")
   reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
   ownedShops                            Shop[]                              @relation("ShopOwner")
+  createdShops                          Shop[]                              @relation("ShopCreatedBy")
   technicianProfile                     TechnicianProfile?
   customerProfile                       CustomerProfile?
   affiliateProfile                      AffiliateProfile?
@@ -1748,6 +1749,7 @@ model Shop {
   id                           Int             @id @default(autoincrement())
   shopNo                       String?         @unique @map("shop_no") @db.Char(10)
   ownerUserId                  Int?            @map("owner_user_id")
+  createdById                  Int?            @map("created_by_id")
   name                         String          @db.VarChar(160)
   description                  String?         @db.Text
   city                         String          @db.VarChar(100)
@@ -1766,6 +1768,7 @@ model Shop {
   deletedAt                    DateTime?       @map("deleted_at")
 
   owner                      User?                                 @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  creator                    User?                                 @relation("ShopCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   pricingModeUpdater         User?                                 @relation("ShopPricingModeUpdatedBy", fields: [pricingModeUpdatedBy], references: [id], onDelete: SetNull)
   services                   Service[]
   technicianServices         TechnicianService[]
@@ -1828,6 +1831,7 @@ model Shop {
   serviceLocation            ShopServiceLocation?
 
   @@index([ownerUserId])
+  @@index([createdById], map: "shops_created_by_id_idx")
   @@index([city])
   @@index([latitude, longitude], map: "shops_coordinates_idx")
   @@index([status])

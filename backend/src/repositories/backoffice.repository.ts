@@ -1458,6 +1458,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         const shop = await transaction.shop.create({
           data: {
             ownerUserId: owner.id,
+            createdById: input.createdById,
             name: input.name,
             description: input.description ?? null,
             city: input.city,

@@ -231,6 +231,7 @@ export class MerchantApplicationReviewRepository implements MerchantApplicationR
       const shop = await transaction.shop.create({
         data: {
           ownerUserId: input.applicantUserId,
+          createdById: input.reviewerUserId,
           name: input.shopName,
           description: stringFromRecord(input.showcaseDraft, "description"),
           city:

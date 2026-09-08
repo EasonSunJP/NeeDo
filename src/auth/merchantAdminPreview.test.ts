@@ -17,6 +17,8 @@ const shop: ShopCard = {
   phone: null,
   status: "published",
   ownerEmail: null,
+  createdBy: null,
+  platformCommissionRatePercent: 0,
   coverUrl: null,
   ratingAverage: 0,
   reviewCount: 0,

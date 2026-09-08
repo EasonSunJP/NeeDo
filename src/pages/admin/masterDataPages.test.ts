@@ -23,6 +23,7 @@ describe("master data pages", () => {
 
     expect(pageSource).toContain("merchantSaasBillingApi.listAccounts");
     expect(pageSource).toContain("MerchantAccountCollection");
+    expect(pageSource).toContain("refreshMerchantAccountCard");
     expect(collectionSource).toContain("MerchantBillingCard");
     expect(collectionSource).toContain("expandedGroups");
     expect(cardSource).toContain("账号类型");
