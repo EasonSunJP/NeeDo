@@ -51,3 +51,4 @@ VITE_LEGACY_AUTHORIZATION='' VITE_LEGACY_AUTH_BASE_URL='' npm run build
 - SaaS 列表和详情接口正式返回 `createdBy` 与 `platformCommissionRatePercent`。当前产品规则为 `0%`，数值由后端合同返回，前端不再硬编码。
 - 新增 `GET /api/v1/backoffice/shops/:id/saas-account`。单店详情使用该接口，集团使用原集团详情接口；均要求 `backoffice:merchant-accounts:read` 并写读取审计。
 - 抽屉先显示列表快照，同时刷新正式详情；失败时保留内容并提供重试，快速切换时旧请求不会覆盖当前店铺。
+- 本地 `needo_dev` 已通过标准 Prisma 流程应用 `20260908193000_shop_creator_contract`；物理字段、索引、外键和 migration 记录核对通过。隔离运营 API 的正式登录、账单列表与单店 SaaS 详情均返回 200，字段合同一致，详情读取审计已落库。
