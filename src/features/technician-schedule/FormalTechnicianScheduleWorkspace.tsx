@@ -100,7 +100,7 @@ export function FormalTechnicianScheduleWorkspace({
   profileId: number;
   profileName: string;
   searchQuery?: string;
-  shopId: number;
+  shopId: number | null;
   shopName: string;
 }) {
   const navigate = useNavigate();
@@ -111,7 +111,7 @@ export function FormalTechnicianScheduleWorkspace({
     avatar: profileAvatarUrl ?? "",
     id: String(profileId),
     name: profileName,
-    storeId: String(shopId)
+    storeId: shopId === null ? "" : String(shopId)
   }), [profileAvatarUrl, profileId, profileName, shopId]);
   const statusTimelineEntries = useMemo(() => buildStatusTimelineEntries(statusOrders), [statusOrders]);
   const statusRecordTarget = statusOrders[0] ?? null;
@@ -171,15 +171,17 @@ export function FormalTechnicianScheduleWorkspace({
                 <p className="text-[11px] font-black text-[color:var(--client-muted)]">{shopName}</p>
                 <h2 className="mt-1 text-xl font-black">正式排班设置</h2>
               </div>
-              <Link
+              {shopId !== null ? <Link
                 className="inline-flex h-11 items-center gap-2 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-needo-text)]"
                 to="/technician/schedule/new"
               >
                 <AppIcon className="h-4 w-4" name="plus" />新建正式排班
-              </Link>
+              </Link> : null}
             </div>
             <p className="mt-3 text-xs font-bold leading-5 text-[color:var(--client-muted)]">
-              新增、编辑和锁定都会写入当前技师身份的正式排班接口；本页不创建浏览器排班记录。
+              {shopId === null
+                ? "可查看当前技师的正式日程；创建可预约时段需要先关联店铺。"
+                : "新增、编辑和锁定都会写入当前技师身份的正式排班接口；本页不创建浏览器排班记录。"}
             </p>
           </section>
           <section
@@ -221,14 +223,14 @@ export function FormalTechnicianScheduleWorkspace({
             showCommentComposer={Boolean(statusRecordTarget)}
             title="状态记录"
           />
-          <button
+          {shopId !== null ? <button
             aria-label="新建正式排班"
             className="fixed bottom-[calc(env(safe-area-inset-bottom)+24px)] right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_18px_42px_color-mix(in_srgb,var(--client-primary)_40%,transparent)]"
             onClick={() => navigate("/technician/schedule/new")}
             type="button"
           >
             <AppIcon name="plus" />
-          </button>
+          </button> : null}
           </>
         )}
       </div>

@@ -114,8 +114,8 @@ vi.mock("./FormalScheduleRangeEditor", () => ({
   )
 }));
 vi.mock("./FormalTechnicianScheduleWorkspace", () => ({
-  FormalTechnicianScheduleWorkspace: ({ profileAvatarUrl, profileName, shopName }: { profileAvatarUrl?: string | null; profileName: string; shopName: string }) => (
-    <section data-avatar={profileAvatarUrl ?? ""} data-testid="formal-technician-schedule-workspace">{profileName}:{shopName}</section>
+  FormalTechnicianScheduleWorkspace: ({ profileAvatarUrl, profileName, shopId, shopName }: { profileAvatarUrl?: string | null; profileName: string; shopId: number | null; shopName: string }) => (
+    <section data-avatar={profileAvatarUrl ?? ""} data-can-create={String(shopId !== null)} data-testid="formal-technician-schedule-workspace">{profileName}:{shopName}</section>
   )
 }));
 
@@ -424,7 +424,7 @@ describe("formal technician schedule routes", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     mocks.scheduleResource.mockReturnValue({
-      data: { profile, services: [service], shopId: 11, slot },
+      data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot },
       error: null,
       loading: false,
       retry: mocks.retrySchedule
@@ -449,7 +449,7 @@ describe("formal technician schedule routes", () => {
 
   it("renders the main technician schedule route from formal resources only", async () => {
     mocks.scheduleResource.mockReturnValue({
-      data: { profile, services: [service], shopId: 11, slot: null },
+      data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: null },
       error: null,
       loading: false,
       retry: mocks.retrySchedule
@@ -493,19 +493,25 @@ describe("formal technician schedule routes", () => {
     expect(mocks.retrySchedule).toHaveBeenCalledTimes(1);
   });
 
-  it("explains that an unassigned technician must link a shop before scheduling", async () => {
+  it("renders an unaffiliated technician schedule and keeps creation unavailable", async () => {
     mocks.scheduleResource.mockReturnValue({
-      data: null,
-      error: "error.technician.shop_required",
+      data: {
+        profile: { id: 31, displayName: "独立技师", avatarUrl: null },
+        shopId: null,
+        shopName: "独立技师",
+        services: [],
+        slot: null
+      },
+      error: null,
       loading: false,
       retry: mocks.retrySchedule
     });
 
     await render("/technician/schedule");
 
-    expect(container.textContent).toContain("暂未关联店铺");
-    expect(container.textContent).toContain("关联店铺并配置正式服务后即可使用排班");
-    expect(container.textContent).not.toContain("error.technician.shop_required");
+    expect(container.textContent).toContain("独立技师:独立技师");
+    expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.getAttribute("data-can-create")).toBe("false");
     expect(container.querySelector('input[aria-label="搜索排班"]')).not.toBeNull();
     expect(container.querySelector('button[aria-label="关闭排班"]')).not.toBeNull();
     expect(container.querySelector("nav")).toBeNull();
@@ -529,7 +535,7 @@ describe("formal technician schedule routes", () => {
 
   it("creates a slot from real services and navigates to its persisted numeric ID", async () => {
     mocks.scheduleResource.mockReturnValue({
-      data: { profile, services: [service], shopId: 11, slot: null },
+      data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: null },
       error: null,
       loading: false,
       retry: mocks.retrySchedule
@@ -568,7 +574,7 @@ describe("formal technician schedule routes", () => {
 
   it("keeps conflict and in-use failures visible without local navigation", async () => {
     mocks.scheduleResource.mockReturnValue({
-      data: { profile, services: [service], shopId: 11, slot: null },
+      data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: null },
       error: null,
       loading: false,
       retry: mocks.retrySchedule
@@ -580,7 +586,7 @@ describe("formal technician schedule routes", () => {
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule/new");
 
     mocks.scheduleResource.mockReturnValue({
-      data: { profile, services: [service], shopId: 11, slot },
+      data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot },
       error: null,
       loading: false,
       retry: mocks.retrySchedule

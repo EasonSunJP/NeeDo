@@ -17,6 +17,7 @@ export type Wallet = {
 
 export type WalletSummary = {
   activeCurrency: "NDP" | "TEST_NDP";
+  hasTestNdpWallet: boolean;
   ndp: { available: number; frozen: number };
   testNdp: { available: number; frozen: number };
 };

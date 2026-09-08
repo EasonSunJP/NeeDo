@@ -1715,6 +1715,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("BookingOrder");
     expect(response.body.components.schemas).toHaveProperty("Wallet");
     expect(response.body.components.schemas).toHaveProperty("WalletSummary");
+    expect(response.body.components.schemas.WalletSummary.required).toContain("hasTestNdpWallet");
     expect(response.body.components.schemas).toHaveProperty("BackofficeNdpSummary");
     expect(response.body.components.schemas.BackofficeNdpSummary.required).toEqual(
       expect.arrayContaining(["todayNdpConsumption", "platformNetRevenue", "settleableNdp"])

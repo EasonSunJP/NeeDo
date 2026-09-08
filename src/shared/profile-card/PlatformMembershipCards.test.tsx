@@ -37,6 +37,24 @@ describe("shared platform membership cards", () => {
     expect(privacy).toBeGreaterThan(labels);
   });
 
+  it("keeps formal NDP primary and renders Test NDP as a secondary balance", () => {
+    const markup = renderToStaticMarkup(
+      <PlatformMembershipDetailCard
+        {...profile}
+        points="12,500"
+        pointsLabel="NDP"
+        testPoints="800"
+        theme={theme}
+      />
+    );
+
+    expect(markup).toContain("NDP");
+    expect(markup).toContain("12,500");
+    expect(markup).toContain('data-testid="platform-membership-test-ndp"');
+    expect(markup).toContain("Test NDP 800");
+    expect(markup.indexOf("12,500")).toBeLessThan(markup.indexOf("Test NDP 800"));
+  });
+
   it("omits level for technician/shop cards and truncates the simple card", () => {
     const markup = renderToStaticMarkup(<PlatformMembershipSimpleCard {...profile} bio={"long ".repeat(80)} entityKind="technician" simpleBottomColor={theme.simpleBottomColor} simpleTopColor={theme.simpleTopColor} />);
     expect(markup.toLowerCase()).toContain(theme.simpleTopColor.toLowerCase());

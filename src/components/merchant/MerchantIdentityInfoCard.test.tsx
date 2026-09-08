@@ -23,6 +23,7 @@ const profile = {
 const mocks = vi.hoisted(() => ({
   copyTextToClipboard: vi.fn(),
   getMine: vi.fn(),
+  getMyWalletSummary: vi.fn(),
   updateMine: vi.fn()
 }));
 
@@ -33,6 +34,10 @@ vi.mock("../../features/core-read/merchantProfileApi", () => ({
     getMine: mocks.getMine,
     updateMine: mocks.updateMine
   }
+}));
+
+vi.mock("../../features/wallet/api", () => ({
+  walletApi: { getMyWalletSummary: mocks.getMyWalletSummary }
 }));
 
 import { MerchantIdentityInfoCard } from "./MerchantIdentityInfoCard";
@@ -46,6 +51,12 @@ describe("MerchantIdentityInfoCard", () => {
   beforeEach(() => {
     mocks.copyTextToClipboard.mockReset().mockResolvedValue(true);
     mocks.getMine.mockReset().mockResolvedValue(profile);
+    mocks.getMyWalletSummary.mockReset().mockResolvedValue({
+      activeCurrency: "TEST_NDP",
+      hasTestNdpWallet: true,
+      ndp: { available: 12_500, frozen: 0 },
+      testNdp: { available: 800, frozen: 0 }
+    });
     mocks.updateMine.mockReset().mockResolvedValue(profile);
     container = document.createElement("div");
     document.body.append(container);
@@ -92,5 +103,19 @@ describe("MerchantIdentityInfoCard", () => {
 
     expect(mocks.copyTextToClipboard).toHaveBeenCalledWith("b0000000109");
     await waitFor(() => expect(container.textContent).toContain("已复制"));
+  });
+
+  it("uses the shared metric rhythm with formal NDP and inapplicable manager statistics", async () => {
+    await act(async () => root.render(<MerchantIdentityInfoCard />));
+    await waitFor(() => expect(container.textContent).toContain("12,500"));
+
+    const card = container.querySelector('[data-testid="merchant-identity-info-card"]');
+    const metrics = card?.querySelector('[data-testid="merchant-profile-metrics"]');
+    expect(mocks.getMyWalletSummary).toHaveBeenCalledTimes(1);
+    expect(metrics?.textContent).toContain("NDP12,500Test NDP 800");
+    expect(metrics?.textContent).toContain("利用回数-");
+    expect(metrics?.textContent).toContain("评价-");
+    expect(metrics?.className).toContain("grid-cols-3");
+    expect(card?.textContent?.indexOf("评价-")).toBeLessThan(card?.textContent?.indexOf("基础信息") ?? -1);
   });
 });

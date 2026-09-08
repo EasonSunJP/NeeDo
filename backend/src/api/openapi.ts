@@ -11620,9 +11620,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       WalletSummary: {
         type: "object",
         additionalProperties: false,
-        required: ["activeCurrency", "ndp", "testNdp"],
+        required: ["activeCurrency", "hasTestNdpWallet", "ndp", "testNdp"],
         properties: {
           activeCurrency: { type: "string", enum: ["NDP", "TEST_NDP"] },
+          hasTestNdpWallet: { type: "boolean" },
           ndp: { $ref: "#/components/schemas/WalletBalance" },
           testNdp: { $ref: "#/components/schemas/WalletBalance" }
         }

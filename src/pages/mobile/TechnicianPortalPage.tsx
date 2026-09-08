@@ -37,6 +37,7 @@ import { TechnicianServiceCoverField } from "../../features/pricing-mode/Technic
 import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { cn, yen } from "../../lib/utils";
+import { walletApi, type WalletSummary } from "../../features/wallet/api";
 import {
   mapTechnicianServiceToUnifiedData as fromTechnicianServicePayload,
   UnifiedServiceInfoCard
@@ -162,17 +163,29 @@ function TechnicianPortalDataGate() {
       scope: persistentCacheScope
     }
   );
+  const formalWalletSummaryQuery = useCoreReadQuery(
+    () => formalTechnicianProfileId ? walletApi.getMyWalletSummary() : null,
+    [formalTechnicianProfileId, revision],
+    {
+      enabled: Boolean(formalTechnicianProfileId),
+      force: revision > 0,
+      key: `technician:wallet-summary:${formalTechnicianProfileId ?? "missing"}`,
+      scope: persistentCacheScope
+    }
+  );
   const technician = formalTechnicianProfileQuery.data;
   const selfProfile = formalTechnicianSelfProfileQuery.data;
+  const walletSummary = formalWalletSummaryQuery.data;
   const publicDetailHidden = formalTechnicianProfileQuery.error === "error.technician.not_found";
   const error = formalTechnicianSelfProfileQuery.error
+    ?? formalWalletSummaryQuery.error
     ?? (publicDetailHidden ? null : formalTechnicianProfileQuery.error);
 
-  if (!formalTechnicianProfileId || !selfProfile || (!technician && !publicDetailHidden)) {
+  if (!formalTechnicianProfileId || !selfProfile || !walletSummary || (!technician && !publicDetailHidden)) {
     return <ResourceState error={error} retry={() => setRevision((current) => current + 1)} />;
   }
 
-  return <TechnicianPortalContent initialSelfProfile={selfProfile} technician={technician} />;
+  return <TechnicianPortalContent initialSelfProfile={selfProfile} technician={technician} walletSummary={walletSummary} />;
 }
 
 function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
@@ -375,11 +388,12 @@ function describeProfileMutationError(error: unknown) {
   return "暂时无法保存，请稍后重试";
 }
 
-function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technician, onSaved }: {
+function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technician, walletSummary, onSaved }: {
   defaultCategoryId: number | null;
   defaultShopId: number | null;
   profile: TechnicianSelfProfile;
   technician: CoreTechnicianDetail | null;
+  walletSummary: WalletSummary;
   onSaved: (profile: TechnicianSelfProfile) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -425,8 +439,10 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
     : visibilityOptions.find((item) => item.value === profile.visibility)?.label ?? "隐私模式";
   const readOnlyPrivacy = (
     <section className={cn(surface.panel, "rounded-[18px] border p-3")} data-testid="technician-profile-privacy-control">
-      <p className={cn(surface.muted, "text-xs font-bold")}>隐私模式</p>
-      <strong className="mt-1 block text-sm">{visibilityLabel}</strong>
+      <div className="flex items-center justify-between gap-3">
+        <div><p className={cn(surface.muted, "text-xs font-bold")}>隐私模式</p><strong className="mt-1 block text-sm">{visibilityLabel}</strong></div>
+        <ToggleSwitch ariaLabel="开启隐私模式" checked={profile.visibility !== "public"} disabled onChange={() => undefined} size="md" />
+      </div>
     </section>
   );
   const editModel = fromTechnicianSelfProfile(profile, technician, []);
@@ -477,6 +493,7 @@ function TechnicianInfoCard({ defaultCategoryId, defaultShopId, profile, technic
           privacySlot={editing ? undefined : readOnlyPrivacy}
           profile={editing ? undefined : profile}
           technician={technician}
+          walletSummary={walletSummary}
         />
       </div>
       {editing ? (
@@ -507,12 +524,13 @@ function upsertTechnicianService(
   if (existingIndex < 0) return [...current, saved];
   return current.map((service) => service.id === saved.id ? saved : service);
 }
-export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, privacySlot, profile, technician = null }: {
+export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId, privacySlot, profile, technician = null, walletSummary = null }: {
   defaultShopId: number | null;
   defaultCategoryId: number | null;
   privacySlot?: ReactNode;
   profile?: TechnicianSelfProfile;
   technician?: CoreTechnicianDetail | null;
+  walletSummary?: WalletSummary | null;
 }) {
   const [services, setServices] = useState<TechnicianServicePayload[]>([]);
   const [categories, setCategories] = useState<CoreCategory[]>([]);
@@ -757,7 +775,7 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
   const addAndState = (
     <div className="space-y-3" data-testid="technician-service-management-controls">
       <div className="flex items-center justify-between gap-3">
-        <p className={cn(surface.muted, "text-xs font-bold")}>店铺当前定价模式：{pricingMode === "technician" ? "技师定价" : pricingMode === "merchant" ? "店铺定价" : "未读取"}</p>
+        <p className={cn(surface.muted, "text-xs font-bold")}>店铺当前定价模式：{pricingMode === "technician" ? "技师定价" : pricingMode === "merchant" ? "店铺定价" : defaultShopId ? "未设置" : "个人定价"}</p>
         {services.length < 5 ? <button className={cn(surface.chip, "rounded-full border px-3 py-2 text-xs font-black")} disabled={saving || editingId !== null} onClick={() => openEditor()} type="button">添加服务 {services.length}/5</button> : null}
       </div>
       {error ? <div className="flex items-center justify-between gap-3" role="alert"><p className="text-xs font-bold text-red-500">{error}</p><button className="shrink-0 rounded-full border px-3 py-2 text-xs font-black" disabled={saving} onClick={() => void load()} type="button">重新加载服务</button></div> : null}
@@ -773,6 +791,7 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
           model={fromTechnicianSelfProfile(profile, technician, services)}
           privacySlot={privacySlot}
           serviceAction={serviceAction}
+          walletSummary={walletSummary}
         />
         {addAndState}
       </div>
@@ -798,9 +817,10 @@ function DataCenter({ period, onPeriodChange, onRangeLoaded }: {
   return <TechnicianDataCenterPanel onPeriodChange={onPeriodChange} onRangeLoaded={onRangeLoaded} period={period} />;
 }
 
-function TechnicianPortalContent({ initialSelfProfile, technician }: {
+function TechnicianPortalContent({ initialSelfProfile, technician, walletSummary }: {
   initialSelfProfile: TechnicianSelfProfile;
   technician: CoreTechnicianDetail | null;
+  walletSummary: WalletSummary;
 }) {
   const { view } = useParams();
   const navigate = useNavigate();
@@ -851,7 +871,7 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
             onBack={() => navigate("/technician")}
             title="个人中心"
           />
-          <div className="space-y-4 px-4 pb-32 pt-1">
+          <div className="space-y-4 px-4 pb-32 pt-4">
             {meTab === "info" ? (
               <TechnicianInfoCard
                 defaultCategoryId={defaultCategoryId}
@@ -859,16 +879,19 @@ function TechnicianPortalContent({ initialSelfProfile, technician }: {
                 onSaved={setSelfProfile}
                 profile={selfProfile}
                 technician={technician}
+                walletSummary={walletSummary}
               />
             ) : null}
              {meTab === "data" ? <DataCenter onPeriodChange={updateDataCenterPeriod} onRangeLoaded={setDataCenterRange} period={dataCenterPeriod} /> : null}
           </div>
            {meTab === "data" && dataCenterRange ? (
-             <StickyBottomBar>
+             <div className="safe-nav-bottom pointer-events-none fixed inset-x-0 bottom-0 z-[100] flex justify-center pb-3 pt-2" data-testid="technician-data-center-schedule-action">
+               <div className="client-nav-aligned-panel pointer-events-auto">
                <PrimaryButton className="w-full" onClick={() => navigate(`/technician/schedule?period=${dataCenterPeriod}&from=${encodeURIComponent(dataCenterRange.startsAt)}&to=${encodeURIComponent(dataCenterRange.endsAt)}`)}>
                 确认详细排班记录
               </PrimaryButton>
-            </StickyBottomBar>
+               </div>
+            </div>
           ) : null}
         </>
       ) : null}

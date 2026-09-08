@@ -59,13 +59,22 @@ const model: TechnicianProfileInfoModel = {
   ]
 };
 
-function renderView(viewModel = model) {
+function renderView(
+  viewModel = model,
+  walletSummary = {
+    activeCurrency: "TEST_NDP" as const,
+    hasTestNdpWallet: true,
+    ndp: { available: 12_500, frozen: 0 },
+    testNdp: { available: 800, frozen: 0 }
+  }
+) {
   return renderToStaticMarkup(
     createElement(
       MemoryRouter,
       null,
       createElement(TechnicianProfileInfoView, {
         model: viewModel,
+        walletSummary,
         privacySlot: createElement("div", null, "隐私模式"),
         serviceAction: () => createElement("button", { type: "button" }, "编辑服务")
       })
@@ -113,7 +122,29 @@ describe("TechnicianProfileInfoView", () => {
     expect(custom).toBeLessThan(privacy);
     expect(privacy).toBeLessThan(services);
     expect(markup).toContain('data-testid="technician-profile-completed-orders"');
+    expect(markup).toContain('data-testid="technician-profile-wallet"');
+    expect(markup).toContain('data-testid="technician-profile-secondary-metrics"');
+    expect(markup).toContain("NDP");
+    expect(markup).toContain("12,500");
+    expect(markup).toContain("Test NDP 800");
     expect(markup).toContain('data-testid="technician-profile-services"');
+  });
+
+  it("uses product defaults instead of unread labels when aggregate data is absent", () => {
+    const markup = renderView({
+      ...model,
+      acceptanceRatePercent: null,
+      ratingAverage: null,
+      reviewCount: null,
+      completedOrderCount: null
+    });
+    const text = markup.replace(/<[^>]+>/g, "");
+
+    expect(text).toContain("接单率100%");
+    expect(text).toContain("评价5.0/5");
+    expect(text).toContain("0 次");
+    expect(text).toContain("完成订单数0");
+    expect(text).not.toContain("未读取");
   });
 
   it("always shows four fixed counts and only shows custom multipliers above one", () => {

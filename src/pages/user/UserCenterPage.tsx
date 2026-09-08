@@ -16,7 +16,8 @@ import type { Language } from "../../i18n/translations";
 import { bookingApi, type BookingOrderStatus } from "../../features/booking/api";
 import { mapCoreCustomerToCustomer } from "../../features/core-read/api";
 import { customerProfileApi, type CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
-import { walletApi, type Wallet } from "../../features/wallet/api";
+import { walletApi, type WalletSummary } from "../../features/wallet/api";
+import { formatWalletAmount, hasTestNdpWallet } from "../../features/wallet/presentation";
 import { customerShopMembershipApi } from "../../features/shop-member/api";
 import { platformMembershipSelfApi, type MyExperienceSummary, type MyPlatformMembership } from "../../features/platform-membership/api";
 import { CurrentMembershipBenefits } from "../../features/platform-membership/CurrentMembershipBenefits";
@@ -35,7 +36,7 @@ type FormalUserCenterData = {
   membership: MyPlatformMembership;
   orderCounts: FormalOrderCounts;
   profile: CustomerSelfProfile;
-  wallet: Wallet;
+  wallet: WalletSummary;
 };
 
 const emptyFormalOrderCounts: FormalOrderCounts = {
@@ -540,7 +541,7 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
 
     Promise.all([
       customerProfileApi.getMine(),
-      walletApi.getMyWallet(),
+      walletApi.getMyWalletSummary(),
       Promise.all(
         formalOrderStatuses.map(async (status) => {
           const page = await bookingApi.listOrders({ page: 1, pageSize: 1, status });
@@ -633,8 +634,11 @@ function CompleteUserCenterPage({
     : userProfile;
   const displayName = limitUserProfileName(getUserProfileDisplayName(currentCustomer, profileDraft));
   const profileNameEditorWidth = getUserProfileNameEditorWidth(profileNameOverride || displayName);
-  const points = formalData.wallet.availableBalance;
-  const pointsLabel = formalData.wallet.currency === "TEST_NDP" ? "Test NDP" : "NDP";
+  const points = formalData.wallet.ndp.available;
+  const pointsLabel = "NDP";
+  const testPoints = hasTestNdpWallet(formalData.wallet)
+    ? formatWalletAmount(formalData.wallet.testNdp.available)
+    : null;
   const usageCount = Object.values(formalData.orderCounts).reduce((sum, count) => sum + count, 0);
   const creditScore = formatCustomerCreditScore(currentCustomer);
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
@@ -1029,6 +1033,7 @@ function CompleteUserCenterPage({
                 onNeedoIdClick={() => void copyNeedoId()}
                 points={points.toLocaleString("en-US")}
                 pointsLabel={pointsLabel}
+                testPoints={testPoints}
                 theme={formalData.membership.theme}
                 tierLabel={platformMembershipTierLabels[formalData.membership.tierCode]}
                 usageCount={usageCount}
@@ -1134,7 +1139,7 @@ function CompleteUserCenterPage({
 
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   {[
-                    { label: pointsLabel, value: points.toLocaleString("en-US") },
+                    { label: pointsLabel, value: points.toLocaleString("en-US"), secondary: testPoints === null ? undefined : `Test NDP ${testPoints}` },
                     { label: "利用次数", value: `${usageCount}` },
                     { label: "信用值", value: creditScore, suffix: "/5" }
                   ].map((item) => (
@@ -1144,6 +1149,7 @@ function CompleteUserCenterPage({
                         <strong className={cn("block text-[20px] leading-none", item.label === "信用值" ? membershipSurface.accent : "")}>{item.value}</strong>
                         {item.suffix ? <span className={cn("pb-0.5 text-xs font-black leading-none", membershipSurface.muted)}>{item.suffix}</span> : null}
                       </div>
+                      {item.secondary ? <p className={cn("mt-1 text-[10px] font-bold", membershipSurface.muted)}>{item.secondary}</p> : null}
                     </div>
                   ))}
                 </div>

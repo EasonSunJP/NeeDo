@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiClientError } from "../../api/httpClient";
 import type { AuthSession } from "../../auth/rbac";
 import { bookingApi, type BookingOrder, type BookingScheduleSlot } from "../booking/api";
-import { coreReadApi, type CoreTechnicianDetail } from "../core-read/api";
-import { technicianProfileApi } from "../core-read/technicianProfileApi";
+import { technicianProfileApi, type TechnicianSelfProfile } from "../core-read/technicianProfileApi";
 import {
   pricingModeApi,
   type TechnicianServicePayload
@@ -13,8 +12,9 @@ import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheS
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 
 export type FormalTechnicianScheduleContext = {
-  profile: CoreTechnicianDetail;
-  shopId: number;
+  profile: Pick<TechnicianSelfProfile, "id" | "displayName" | "avatarUrl">;
+  shopId: number | null;
+  shopName: string;
   services: TechnicianServicePayload[];
   slot: BookingScheduleSlot | null;
 };
@@ -30,7 +30,6 @@ type ResourceValue<T> = Omit<FormalResourceState<T>, "retry">;
 
 const technicianIdentityError = "error.auth.identity_forbidden";
 const invalidRouteIdError = "error.request.invalid";
-const missingShopError = "error.technician.shop_required";
 
 function normalizeFormalResourceError(error: unknown): string {
   if (error instanceof ApiClientError) {
@@ -66,7 +65,7 @@ export function getActiveTechnicianProfileId(session: AuthSession | null | undef
   return session.currentIdentity.scopeId;
 }
 
-export async function loadAllTechnicianServices(_shopId: number): Promise<TechnicianServicePayload[]> {
+export async function loadAllTechnicianServices(_shopId?: number): Promise<TechnicianServicePayload[]> {
   const pageSize = 100;
   const firstPage = await pricingModeApi.listMyTechnicianServices({
     activeOnly: true,
@@ -96,7 +95,7 @@ export function useFormalTechnicianScheduleResource(
 ): FormalResourceState<FormalTechnicianScheduleContext> {
   const technicianProfileId = getActiveTechnicianProfileId(session);
   const cacheScope = getAuthenticatedPersistentCacheScope();
-  const cacheKey = `technician:schedule-context:${technicianProfileId ?? "missing"}:slot:${slotId ?? "new"}`;
+  const cacheKey = `technician:schedule-context:v2:${technicianProfileId ?? "missing"}:slot:${slotId ?? "new"}`;
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<ResourceValue<FormalTechnicianScheduleContext>>(() => {
     const cached = cacheScope
@@ -132,14 +131,25 @@ export function useFormalTechnicianScheduleResource(
       : () => undefined;
     const loadFromServer = async () => {
       const selfProfile = await technicianProfileApi.getMine();
-      if (!selfProfile.shopId) throw new Error(missingShopError);
-      const profile = await coreReadApi.getTechnicianDetail(technicianProfileId);
-      if (!profile.shop || profile.shop.id !== selfProfile.shopId) throw new Error(missingShopError);
       const [services, slot] = await Promise.all([
-        loadAllTechnicianServices(profile.shop.id),
+        loadAllTechnicianServices(),
         slotId === null ? Promise.resolve(null) : schedulingApi.getTechnicianSlot(slotId)
       ]);
-      return { profile, shopId: profile.shop.id, services, slot };
+      return {
+        profile: {
+          avatarUrl: selfProfile.avatarUrl,
+          displayName: selfProfile.displayName,
+          id: selfProfile.id
+        },
+        shopId: selfProfile.shopId,
+        shopName: selfProfile.shopId
+          ? services.find((service) => service.shopId === selfProfile.shopId)?.shop?.name
+            ?? slot?.shopName
+            ?? "关联店铺"
+          : "独立技师",
+        services,
+        slot
+      };
     };
     void (async () => {
       try {

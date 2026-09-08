@@ -86,6 +86,7 @@ export interface WalletPayload {
 
 export interface WalletSummaryPayload {
   activeCurrency: LedgerCurrency;
+  hasTestNdpWallet: boolean;
   ndp: {
     available: number;
     frozen: number;
@@ -3798,6 +3799,7 @@ export class LedgerService
 
     return {
       activeCurrency,
+      hasTestNdpWallet: Boolean(testNdp),
       ndp: {
         available: ndp?.availableBalance ?? 0,
         frozen: ndp?.frozenBalance ?? 0

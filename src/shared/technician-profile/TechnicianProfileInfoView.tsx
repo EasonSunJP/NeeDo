@@ -2,6 +2,8 @@ import { useState, type ReactNode } from "react";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { copyTextToClipboard } from "../../lib/share";
 import { cn } from "../../lib/utils";
+import type { WalletSummary } from "../../features/wallet/api";
+import { formatWalletAmount, hasTestNdpWallet } from "../../features/wallet/presentation";
 import {
   getServiceReviewStampVisual,
   splitMaxReviewStampLabel
@@ -14,6 +16,7 @@ type TechnicianProfileInfoViewProps = {
   model: TechnicianProfileInfoModel;
   privacySlot?: ReactNode;
   serviceAction?: (service: UnifiedServiceInfoCardData, index: number) => ReactNode;
+  walletSummary?: WalletSummary | null;
 };
 
 const panelClassName = "rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,var(--client-primary)_12%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)]";
@@ -32,7 +35,7 @@ function genderLabel(gender: TechnicianProfileInfoModel["gender"]) {
 }
 
 function formatRating(value: number | null) {
-  return value === null ? "未读取" : `${value.toFixed(1)}/5`;
+  return `${(value ?? 5).toFixed(1)}/5`;
 }
 
 function ReviewStampLabel({ label }: { label: string }) {
@@ -89,7 +92,7 @@ export function TechnicianReviewTagSummaryView({ model }: { model: TechnicianPro
   );
 }
 
-export function TechnicianProfileInfoView({ className, model, privacySlot, serviceAction }: TechnicianProfileInfoViewProps) {
+export function TechnicianProfileInfoView({ className, model, privacySlot, serviceAction, walletSummary }: TechnicianProfileInfoViewProps) {
   const [copyStatus, setCopyStatus] = useState<"" | "copied" | "failed">("");
   const copyNeedoId = async () => {
     setCopyStatus(await copyTextToClipboard(model.publicId) ? "copied" : "failed");
@@ -116,12 +119,19 @@ export function TechnicianProfileInfoView({ className, model, privacySlot, servi
 
         <div className="mt-4 grid grid-cols-3 gap-2">
           <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>从业年数</p><strong className="mt-1 block truncate text-lg">{model.yearsExperience} 年</strong></div>
-          <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>接单率</p><strong className="mt-1 block truncate text-lg">{model.acceptanceRatePercent === null ? "未读取" : `${model.acceptanceRatePercent}%`}</strong></div>
-          <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>评价</p><strong className="mt-1 block truncate text-lg">{formatRating(model.ratingAverage)}</strong><span className={cn("mt-1 block truncate text-[10px] font-bold", mutedClassName)}>{model.reviewCount === null ? "未读取" : `${model.reviewCount} 次`}</span></div>
+          <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>接单率</p><strong className="mt-1 block truncate text-lg">{model.acceptanceRatePercent ?? 100}%</strong></div>
+          <div className={cn(panelClassName, "min-w-0 p-3")}><p className={cn("text-[11px] font-bold", mutedClassName)}>评价</p><strong className="mt-1 block truncate text-lg">{formatRating(model.ratingAverage)}</strong><span className={cn("mt-1 block truncate text-[10px] font-bold", mutedClassName)}>{model.reviewCount ?? 0} 次</span></div>
         </div>
-        <div className={cn(panelClassName, "mt-2 p-3")} data-testid="technician-profile-completed-orders">
-          <p className={cn("text-[11px] font-bold", mutedClassName)}>完成订单数</p>
-          <strong className="mt-1 block text-xl">{model.completedOrderCount === null ? "未读取" : model.completedOrderCount.toLocaleString("ja-JP")}</strong>
+        <div className={cn("mt-2 grid gap-2", walletSummary ? "grid-cols-2" : "grid-cols-1")} data-testid="technician-profile-secondary-metrics">
+          {walletSummary ? <div className={cn(panelClassName, "min-w-0 p-3")} data-testid="technician-profile-wallet">
+            <p className={cn("text-[11px] font-bold", mutedClassName)}>NDP</p>
+            <strong className="mt-1 block truncate text-xl">{formatWalletAmount(walletSummary.ndp.available)}</strong>
+            {hasTestNdpWallet(walletSummary) ? <span className={cn("mt-1 block truncate text-[10px] font-bold", mutedClassName)}>Test NDP {formatWalletAmount(walletSummary.testNdp.available)}</span> : null}
+          </div> : null}
+          <div className={cn(panelClassName, "min-w-0 p-3")} data-testid="technician-profile-completed-orders">
+            <p className={cn("text-[11px] font-bold", mutedClassName)}>完成订单数</p>
+            <strong className="mt-1 block text-xl">{(model.completedOrderCount ?? 0).toLocaleString("ja-JP")}</strong>
+          </div>
         </div>
 
         <div className="my-4 h-px bg-[color:var(--client-line)]" />

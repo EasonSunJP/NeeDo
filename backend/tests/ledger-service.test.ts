@@ -524,6 +524,7 @@ describe("LedgerService wallet mutations", () => {
       })
     ).resolves.toEqual({
       activeCurrency: "TEST_NDP",
+      hasTestNdpWallet: true,
       ndp: { available: 0, frozen: 0 },
       testNdp: { available: 100_000, frozen: 1_000 }
     });
