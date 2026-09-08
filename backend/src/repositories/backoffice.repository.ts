@@ -17,7 +17,7 @@ import { UserBootstrapKeyAllocator } from "../services/user-bootstrap-key.servic
 import { IdentifierAllocator, formatPersonId } from "../services/public-identifier.service";
 import { PublicIdentifierRepository } from "./public-identifier.repository";
 import { ERROR_CODES } from "../constants/error-codes";
-import { AppError } from "../utils/app-error";
+import { AppError, createInternalError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { LedgerCurrencyService } from "../services/ledger-currency.service";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
@@ -467,6 +467,16 @@ type TechnicianRecord = Prisma.TechnicianProfileGetPayload<{
         email: true;
         avatarUrl: true;
         avatarBootstrapUrl: true;
+        identities: {
+          select: {
+            publicIdentifier: {
+              select: {
+                publicId: true;
+                kind: true;
+              };
+            };
+          };
+        };
       };
     };
     mediaAssets: true;
@@ -1134,7 +1144,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     input: ScopedEntityInput
   ): Promise<BackofficeTechnicianDetailPayload | null> {
     const profile = await this.client.technicianProfile.findFirst({
-      where: this.technicianMutationWhere(input, input.id),
+      where: {
+        ...this.technicianMutationWhere(input, input.id),
+        user: this.formalTechnicianUserWhere()
+      },
       include: this.technicianDetailInclude(input)
     });
     if (!profile) return null;
@@ -1254,15 +1267,16 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       legacyServices.length > PROFILE_DETAIL_SERVICE_LIMIT ||
       mergedServices.length > PROFILE_DETAIL_SERVICE_LIMIT;
     const services = mergedServices.slice(0, PROFILE_DETAIL_SERVICE_LIMIT);
+    const technician = this.mapTechnician(profile);
 
     return {
-      ...this.mapTechnician(profile),
+      ...technician,
       workStatus:(await projectWorkStatuses(this.client,[profile.id])).get(profile.id)!,
       bio: profile.bio,
       yearsExperience: profile.yearsExperience,
       isRecommended: profile.isRecommended,
       updatedAt: profile.updatedAt.toISOString(),
-      account: this.mapAccount(profile.user, input, "technician"),
+      account: this.mapAccount(profile.user, input, "technician", technician.needoId),
       statistics: {
         bookingCount: Object.values(statusTotals).reduce((total, count) => total + count, 0),
         completedCount: statusTotals.completed ?? 0,
@@ -2609,6 +2623,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   ): Prisma.TechnicianProfileWhereInput {
     return {
       deletedAt: null,
+      user: this.formalTechnicianUserWhere(),
       ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
       ...(input.status ? { status: input.status } : {}),
       ...(input.keyword
@@ -2622,6 +2637,24 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             ]
           }
         : {})
+    };
+  }
+
+  private formalTechnicianUserWhere(): Prisma.UserWhereInput {
+    return {
+      deletedAt: null,
+      identities: { some: this.formalTechnicianIdentityWhere() }
+    };
+  }
+
+  private formalTechnicianIdentityWhere(): Prisma.UserIdentityWhereInput {
+    return {
+      type: "technician",
+      isActive: true,
+      deletedAt: null,
+      publicIdentifier: {
+        is: { kind: "S", status: "ACTIVE", deletedAt: null }
+      }
     };
   }
 
@@ -2746,7 +2779,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       },
       identities: {
         where: { isActive: true, deletedAt: null, ...merchantIdentityScope },
-        select: { type: true, scopeType: true, scopeId: true, displayName: true }
+        select: {
+          type: true,
+          scopeType: true,
+          scopeId: true,
+          displayName: true,
+          publicIdentifier: { select: { publicId: true, kind: true } }
+        }
       }
     } satisfies Prisma.UserSelect;
   }
@@ -2957,7 +2996,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           needoId: true,
           email: true,
           avatarUrl: true,
-          avatarBootstrapUrl: true
+          avatarBootstrapUrl: true,
+          identities: {
+            where: this.formalTechnicianIdentityWhere(),
+            orderBy: { id: "asc" as const },
+            take: 1,
+            select: {
+              publicIdentifier: { select: { publicId: true, kind: true } }
+            }
+          }
         }
       },
       mediaAssets: {
@@ -3283,10 +3330,20 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   private mapTechnician(technician: TechnicianRecord): BackofficeTechnicianPayload {
+    const technicianNeedoId = technician.user.identities.find(
+      (identity) => identity.publicIdentifier?.kind === "S"
+    )?.publicIdentifier?.publicId;
+
+    if (!technicianNeedoId) {
+      throw createInternalError(
+        new Error(`Technician profile ${technician.id} has no canonical public identifier`)
+      );
+    }
+
     return {
       id: technician.id,
       userId: technician.userId,
-      needoId: technician.user.needoId,
+      needoId: technicianNeedoId,
       displayName: technician.displayName,
       email: technician.user.email,
       avatarUrl: technician.mediaAssets?.[0]?.url ?? technician.user.avatarBootstrapUrl,
@@ -3356,7 +3413,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       }>;
     },
     input: ScopedEntityInput,
-    profileIdentityType: "technician" | "customer"
+    profileIdentityType: "technician" | "customer",
+    needoIdOverride?: string
   ): BackofficeAccountPayload {
     const profileScopeType =
       profileIdentityType === "technician" ? "technician_profile" : "customer_profile";
@@ -3381,7 +3439,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         : account.identities;
 
     return {
-      needoId: account.needoId,
+      needoId: needoIdOverride ?? account.needoId,
       username: account.username,
       email: account.email,
       phone: account.phone,
