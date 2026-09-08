@@ -84,6 +84,14 @@ and [error handling](https://developers.deepl.com/docs/best-practices/error-hand
 
 ### Verified registration and account-security variables
 
+- `AUTH_REGISTRATION_ENABLED`: environment-level registration boundary. When
+  `false`, both registration start and verification fail closed before request
+  validation or side effects. The database policy remains an additional runtime
+  control.
+- `AUTH_GOOGLE_ENABLED`: environment-level Google authentication boundary. When
+  `false`, every Google sign-in/link/unlink entry point fails closed and
+  `GOOGLE_AUTH_CLIENT_ID` may be omitted. When `true`, the client ID remains
+  mandatory and production validation requires a real Google Web OAuth client ID.
 - `AUTH_VERIFICATION_SECRET`: dedicated secret, at least 32 characters and
   different from both JWT secrets. It HMACs OTP digests/cooldown identities and
   derives the AES-GCM key for Google nonce encryption. It does not encrypt the

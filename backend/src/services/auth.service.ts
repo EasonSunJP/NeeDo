@@ -254,6 +254,7 @@ export class AuthService {
   }
 
   public async initializeGoogleLogin(): Promise<GoogleLoginInitializationPayload> {
+    this.assertGoogleAuthEnabled();
     await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const nonce = await this.verificationChallengeStore.createGoogleNonce({});
     return {
@@ -267,6 +268,7 @@ export class AuthService {
   public async getGoogleLinkStatus(
     auth: AuthenticatedAccessContext
   ): Promise<GoogleLinkStatusPayload> {
+    this.assertGoogleAuthEnabled();
     const user = await this.getActiveAccountSecurityUser(auth);
     const status = await this.accountSecurityRepository().getGoogleBindingStatus(user.id);
     return {
@@ -280,6 +282,7 @@ export class AuthService {
   public async initializeAuthenticatedGoogleLink(
     auth: AuthenticatedAccessContext
   ): Promise<GoogleLoginInitializationPayload> {
+    this.assertGoogleAuthEnabled();
     await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     await this.getActiveAccountSecurityUser(auth);
     const nonce = await this.verificationChallengeStore.createGoogleNonce({ userId: auth.userId });
@@ -296,6 +299,7 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleAccountSecurityChallengePayload> {
+    this.assertGoogleAuthEnabled();
     await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     void context;
     const user = await this.getActiveAccountSecurityUser(auth);
@@ -340,6 +344,7 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<AuthenticatedGoogleLinkVerificationPayload> {
+    this.assertGoogleAuthEnabled();
     await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
       challengeId,
@@ -447,6 +452,7 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleAccountSecurityChallengePayload> {
+    this.assertGoogleAuthEnabled();
     void context;
     const user = await this.getActiveAccountSecurityUser(auth);
     const status = await this.accountSecurityRepository().getGoogleBindingStatus(user.id);
@@ -464,6 +470,7 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleUnlinkVerificationPayload> {
+    this.assertGoogleAuthEnabled();
     if (
       this.sessionStore.getGoogleUnlinkCompletion &&
       (await this.sessionStore.getGoogleUnlinkCompletion({
@@ -520,6 +527,7 @@ export class AuthService {
     input: { credential: string; nonceChallengeId: string },
     context: AuthRequestContext
   ): Promise<GoogleCredentialResult> {
+    this.assertGoogleAuthEnabled();
     await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const nonce = await this.verificationChallengeStore.readGoogleNonce({
       challengeId: input.nonceChallengeId
@@ -599,6 +607,7 @@ export class AuthService {
     otp: string,
     context: AuthRequestContext
   ): Promise<VerifiedGoogleRegistrationPayload> {
+    this.assertGoogleAuthEnabled();
     await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
       challengeId,
@@ -1082,6 +1091,7 @@ export class AuthService {
     token: string,
     challengeId: string
   ): Promise<GoogleUnlinkVerificationPayload> {
+    this.assertGoogleAuthEnabled();
     const payload = this.tokenService.verifyAccessToken(token);
     const userId = this.getUserIdFromToken(payload);
     const user = await this.repository.findUserById(userId);
@@ -1603,6 +1613,16 @@ export class AuthService {
       });
     }
     return repository as AuthRepositoryPort & GoogleAuthRepositoryPort;
+  }
+
+  private assertGoogleAuthEnabled(): void {
+    if (this.config.AUTH_GOOGLE_ENABLED === false) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.google_auth_unavailable",
+        statusCode: 503
+      });
+    }
   }
 
   private async getActiveAccountSecurityUser(

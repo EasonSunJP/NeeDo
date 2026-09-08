@@ -119,6 +119,22 @@ describe("production safety", () => {
     await expect(importEnv()).rejects.toThrow("GOOGLE_AUTH_CLIENT_ID");
   });
 
+  it("allows an absent Google client ID only when Google auth is explicitly disabled", async () => {
+    setValidProductionEnv();
+    process.env.AUTH_GOOGLE_ENABLED = "false";
+    delete process.env.GOOGLE_AUTH_CLIENT_ID;
+
+    await expect(importEnv()).resolves.toBeUndefined();
+  });
+
+  it("still rejects an absent Google client ID when Google auth is explicitly enabled", async () => {
+    setValidProductionEnv();
+    process.env.AUTH_GOOGLE_ENABLED = "true";
+    delete process.env.GOOGLE_AUTH_CLIENT_ID;
+
+    await expect(importEnv()).rejects.toThrow("GOOGLE_AUTH_CLIENT_ID");
+  });
+
   it.each([
     "AUTH_ACTION_RATE_LIMIT_WINDOW_MS",
     "AUTH_REGISTRATION_RATE_LIMIT_MAX",
