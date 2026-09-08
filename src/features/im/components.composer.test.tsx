@@ -67,7 +67,8 @@ async function waitForRuntimeTranslation() {
 }
 
 describe("ImChatComposer", () => {
-  it("anchors the closed-keyboard chat frame to the same viewport bottom as home navigation", async () => {
+  it("bounds the closed-keyboard chat frame to the dynamic viewport despite stale iOS window dimensions", async () => {
+    vi.stubGlobal("innerHeight", 1018);
     const visualViewport = new EventTarget() as VisualViewport;
     Object.defineProperties(visualViewport, {
       height: { configurable: true, value: 690 },
@@ -94,10 +95,10 @@ describe("ImChatComposer", () => {
     });
 
     const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
-    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
-    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
-    expect(stylesSource).toContain("bottom: var(--im-visual-viewport-bottom, 0px)");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(stylesSource).toContain("height: var(--im-visual-viewport-height, 100dvh)");
 
     await act(async () => root.unmount());
   });
@@ -138,6 +139,19 @@ describe("ImChatComposer", () => {
     expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("20px");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
 
+    // iOS can keep focus in the composer when the keyboard is dismissed.
+    await act(async () => {
+      Object.defineProperties(visualViewport, {
+        height: { configurable: true, value: 844 },
+        offsetTop: { configurable: true, value: 0 }
+      });
+      visualViewport.dispatchEvent(new Event("resize"));
+    });
+    expect(document.activeElement).toBe(editor);
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+
     await act(async () => root.unmount());
   });
 
@@ -173,8 +187,8 @@ describe("ImChatComposer", () => {
     });
 
     const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
-    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("auto");
-    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
 
     await act(async () => root.unmount());
   });
@@ -789,7 +803,7 @@ describe("ImChatComposer", () => {
     expect(stylesSource).toContain(".im-chat-composer-stack");
     expect(stylesSource).toContain("gap: 8px");
     expect(stylesSource).toContain(".im-composer-panel");
-    expect(stylesSource).toContain("max-height: 42dvh");
+    expect(stylesSource).toContain("max-height: min(42dvh, calc(var(--im-visual-viewport-height, 100dvh) * 0.42))");
     expect(stylesSource).toContain("overflow-y: auto");
     expect(stylesSource).toContain("@media (pointer: coarse)");
     expect(stylesSource).toContain("@media (prefers-reduced-motion: reduce)");

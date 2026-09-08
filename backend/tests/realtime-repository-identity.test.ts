@@ -2,6 +2,177 @@ import type { PrismaClient } from "@prisma/client";
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
 
 describe("RealtimeRepository formal identity payloads", () => {
+  it("uses the current customer profile name in direct conversations", async () => {
+    const createdAt = new Date("2026-09-08T00:00:00.000Z");
+    const client = {
+      conversation: {
+        findMany: jest.fn(async () => [{
+          id: 91,
+          type: "DIRECT",
+          title: null,
+          friendshipPairKey: "1370:2370",
+          createdByUserId: 137,
+          createdAt,
+          updatedAt: createdAt,
+          deletedAt: null,
+          participants: [{
+            id: 1,
+            conversationId: 91,
+            userId: 237,
+            identityId: 2370,
+            role: "member",
+            unreadCount: 0,
+            isPinned: false,
+            isMuted: false,
+            hiddenAt: null,
+            createdAt,
+            updatedAt: createdAt,
+            deletedAt: null,
+            identity: { id: 2370, type: "customer", displayName: "旧身份名" },
+            user: {
+              id: 237,
+              needoId: "u0000000237",
+              username: "旧账号名",
+              avatarUrl: null,
+              customerProfile: { displayName: "Eason", deletedAt: null },
+              technicianProfile: null
+            }
+          }],
+          messages: []
+        }]),
+        count: jest.fn(async () => 1)
+      }
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).listConversations(1370, {
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result.list[0]?.participants[0]?.username).toBe("Eason");
+  });
+
+  it("uses the current customer profile name in contacts", async () => {
+    const createdAt = new Date("2026-09-08T00:00:00.000Z");
+    const client = {
+      contact: {
+        findMany: jest.fn(async () => [{
+          id: 4056,
+          ownerUserId: 137,
+          ownerIdentityId: 1370,
+          contactUserId: 237,
+          contactIdentityId: 2370,
+          nickname: null,
+          source: "friend_request",
+          blockedAt: null,
+          createdAt,
+          updatedAt: createdAt,
+          deletedAt: null,
+          contactIdentity: { id: 2370, type: "customer", displayName: "旧身份名" },
+          contactUser: {
+            id: 237,
+            needoId: "u0000000237",
+            username: "旧账号名",
+            avatarUrl: null,
+            customerProfile: { displayName: "Eason", deletedAt: null },
+            technicianProfile: null
+          }
+        }]),
+        count: jest.fn(async () => 1)
+      }
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).listContacts(1370, {
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result.list[0]?.contactUser.username).toBe("Eason");
+  });
+
+  it("searches and returns the current customer profile name for add-friend candidates", async () => {
+    const client = {
+      user: {
+        findMany: jest.fn(async () => [{
+          id: 237,
+          needoId: "u0000000237",
+          username: "旧账号名",
+          avatarUrl: null,
+          identities: [{ id: 2370, type: "customer", displayName: "旧身份名", isDefault: true }],
+          customerProfile: { displayName: "Eason", deletedAt: null },
+          technicianProfile: null
+        }]),
+        count: jest.fn(async () => 1)
+      }
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).searchDirectory(137, {
+      ownerIdentityId: 1370,
+      query: "Eason",
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result.list[0]?.username).toBe("Eason");
+    expect(client.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { customerProfile: { is: { displayName: { contains: "Eason" }, deletedAt: null } } }
+          ])
+        })
+      })
+    );
+  });
+
+  it("returns the current profile name to the IM store after opening contact information", async () => {
+    const dbNow = new Date("2026-09-08T00:00:00.000Z");
+    const client = {
+      $queryRaw: jest.fn(async () => [{ dbNow }]),
+      user: {
+        findFirst: jest.fn(async () => ({
+          id: 237,
+          needoId: "u0000000237",
+          username: "旧账号名",
+          avatarUrl: null,
+          identities: [{
+            id: 2370,
+            type: "customer",
+            scopeType: "customer_profile",
+            scopeId: 41,
+            displayName: "旧身份名",
+            isDefault: true
+          }],
+          customerProfile: {
+            id: 41,
+            displayName: "Eason",
+            bio: null,
+            city: null,
+            membershipLevel: "standard",
+            isPublic: true,
+            gender: "private",
+            age: null,
+            heightCm: null,
+            languages: [],
+            visibility: "public",
+            deletedAt: null,
+            reviewSummary: null
+          },
+          technicianProfile: null
+        }))
+      }
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).getDirectoryProfile(
+      237,
+      2370,
+      237,
+      2370
+    );
+
+    expect(result?.user.username).toBe("Eason");
+  });
+
   it("keeps the former direct peer available for the retained history owner", async () => {
     const createdAt = new Date("2026-08-25T00:00:00.000Z");
     const client = {
@@ -79,12 +250,19 @@ describe("RealtimeRepository formal identity payloads", () => {
         deletedAt: null,
         user: { isActive: true, deletedAt: null }
       },
-      select: {
+      select: expect.objectContaining({
         id: true,
+        type: true,
         user: {
-          select: { id: true, needoId: true, username: true, avatarUrl: true }
+          select: expect.objectContaining({
+            id: true,
+            needoId: true,
+            username: true,
+            avatarUrl: true,
+            customerProfile: expect.any(Object)
+          })
         }
-      }
+      })
     });
   });
 
@@ -145,16 +323,18 @@ describe("RealtimeRepository formal identity payloads", () => {
       expect.objectContaining({
         include: expect.objectContaining({
           participants: expect.objectContaining({
-            include: {
+            include: expect.objectContaining({
+              identity: expect.objectContaining({ select: expect.objectContaining({ type: true }) }),
               user: {
-                select: {
+                select: expect.objectContaining({
                   id: true,
                   needoId: true,
                   username: true,
-                  avatarUrl: true
-                }
+                  avatarUrl: true,
+                  customerProfile: expect.any(Object)
+                })
               }
-            }
+            })
           })
         })
       })
@@ -206,16 +386,18 @@ describe("RealtimeRepository formal identity payloads", () => {
     });
     expect(client.contact.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        include: {
+        include: expect.objectContaining({
+          contactIdentity: expect.objectContaining({ select: expect.objectContaining({ type: true }) }),
           contactUser: {
-            select: {
+            select: expect.objectContaining({
               id: true,
               needoId: true,
               username: true,
-              avatarUrl: true
-            }
+              avatarUrl: true,
+              customerProfile: expect.any(Object)
+            })
           }
-        }
+        })
       })
     );
   });

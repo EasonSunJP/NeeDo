@@ -1,5 +1,4 @@
 import { useLayoutEffect, type RefObject } from "react";
-import { isPwaStandaloneWindow } from "./pwaInstall";
 
 const isKeyboardEditor = (element: Element | null): boolean => {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
@@ -9,20 +8,7 @@ const isKeyboardEditor = (element: Element | null): boolean => {
   return element instanceof HTMLElement && element.isContentEditable;
 };
 
-// In an installed iPhone app with viewport-fit=cover, WebKit can size a
-// fixed inset frame against the safe-area viewport instead of the full display.
-// Screen dimensions are CSS pixels and only apply here to a full-width iPhone
-// standalone window. Browser chrome and iPad windowed modes retain inset sizing.
-function iphoneStandaloneDisplayHeight(): number | undefined {
-  if (!/iPhone|iPod/i.test(window.navigator.userAgent) || !isPwaStandaloneWindow(window)) {
-    return undefined;
-  }
-  const { width, height } = window.screen;
-  if (!(width > 0 && height > 0)) return undefined;
-  if (Math.abs(window.innerWidth - width) < 1) return height;
-  if (Math.abs(window.innerWidth - height) < 1) return width;
-  return undefined;
-}
+const minimumKeyboardViewportReduction = 80;
 
 export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T | null>) {
   useLayoutEffect(() => {
@@ -44,14 +30,23 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       properties.map((property) => [property, element.style.getPropertyValue(property)])
     );
 
+    let keyboardFrameActive = false;
+
     const updateFrame = () => {
       const viewport = window.visualViewport;
-      // Focus survives keyboard dismissal on iOS. Only constrain the frame when
-      // the software keyboard actually reduces the visible viewport.
       const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+      const keyboardViewportReduction = viewport
+        ? Math.max(0, layoutHeight - viewport.height)
+        : 0;
       const keyboardOpen = Boolean(
-        viewport && isKeyboardEditor(document.activeElement) && layoutHeight - viewport.height > 100
+        viewport &&
+        (keyboardFrameActive || isKeyboardEditor(document.activeElement)) &&
+        keyboardViewportReduction >= minimumKeyboardViewportReduction
       );
+
+      // Panning changes the origin, not the amount of visible height. Keep a
+      // detected keyboard frame through blur until the viewport expands again.
+      keyboardFrameActive = keyboardOpen;
 
       if (keyboardOpen) {
         element.style.setProperty(
@@ -75,10 +70,11 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         return;
       }
 
-      const displayHeight = iphoneStandaloneDisplayHeight();
-      element.style.setProperty("--im-visual-viewport-height", displayHeight ? `${displayHeight}px` : "auto");
+      // iOS standalone can retain an oversized fixed-position layout viewport.
+      // Keep the room bounded by the dynamic viewport when the keyboard is closed.
+      element.style.setProperty("--im-visual-viewport-height", "100dvh");
       element.style.setProperty("--im-visual-viewport-top", "0px");
-      element.style.setProperty("--im-visual-viewport-bottom", displayHeight ? "auto" : "0px");
+      element.style.setProperty("--im-visual-viewport-bottom", "auto");
       element.style.setProperty("--im-visual-viewport-width", "auto");
       element.style.setProperty("--im-visual-viewport-left", "0px");
       element.style.setProperty("--im-visual-viewport-right", "0px");

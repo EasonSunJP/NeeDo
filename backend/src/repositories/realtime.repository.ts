@@ -878,14 +878,34 @@ const socialPostInclude = {
   }
 } satisfies Prisma.SocialPostInclude;
 
+const imParticipantUserSelect = {
+  id: true,
+  needoId: true,
+  username: true,
+  avatarUrl: true,
+  customerProfile: {
+    select: { displayName: true, deletedAt: true }
+  },
+  technicianProfile: {
+    select: { displayName: true, deletedAt: true }
+  }
+} satisfies Prisma.UserSelect;
+
+const imParticipantIdentitySelect = {
+  id: true,
+  type: true,
+  displayName: true,
+  merchantIdentityProfile: {
+    select: { displayName: true, deletedAt: true }
+  }
+} satisfies Prisma.UserIdentitySelect;
+
 const contactInclude = {
   contactUser: {
-    select: {
-      id: true,
-      needoId: true,
-      username: true,
-      avatarUrl: true
-    }
+    select: imParticipantUserSelect
+  },
+  contactIdentity: {
+    select: imParticipantIdentitySelect
   }
 } satisfies Prisma.ContactInclude;
 
@@ -912,14 +932,8 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
   include: {
     participants: {
       include: {
-        user: {
-          select: {
-            id: true;
-            needoId: true;
-            username: true;
-            avatarUrl: true;
-          };
-        };
+        user: { select: typeof imParticipantUserSelect };
+        identity: { select: typeof imParticipantIdentitySelect };
       };
     };
     messages: {
@@ -930,6 +944,12 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
 
 type MessageRecord = Prisma.MessageGetPayload<{ include: typeof messageInclude }>;
 type ContactRecord = Prisma.ContactGetPayload<{ include: typeof contactInclude }>;
+type ImParticipantUserRecord = Prisma.UserGetPayload<{
+  select: typeof imParticipantUserSelect;
+}>;
+type ImParticipantIdentityRecord = Prisma.UserIdentityGetPayload<{
+  select: typeof imParticipantIdentitySelect;
+}>;
 type FriendRequestRecord = Prisma.FriendRequestGetPayload<{
   include: typeof friendRequestInclude;
 }>;
@@ -2563,7 +2583,15 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       id: { not: userId },
       isActive: true,
       deletedAt: null,
-      OR: [{ username: { contains: query } }, { needoId: { contains: query } }],
+      OR: [
+        { username: { contains: query } },
+        { needoId: { contains: query } },
+        {
+          customerProfile: {
+            is: { displayName: { contains: query }, deletedAt: null }
+          }
+        }
+      ],
       NOT: {
         contactEntries: {
           some: {
@@ -2574,10 +2602,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       }
     };
     const select = {
-      id: true,
-      needoId: true,
-      username: true,
-      avatarUrl: true
+      ...imParticipantUserSelect,
+      identities: {
+        where: { isActive: true, deletedAt: null },
+        select: imParticipantIdentitySelect,
+        orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
+      }
     } satisfies Prisma.UserSelect;
     const [list, total] = await Promise.all([
       this.client.user.findMany({
@@ -2591,12 +2621,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((user) => ({
-        userId: user.id,
-        needoId: user.needoId,
-        username: user.username,
-        avatarUrl: user.avatarUrl
-      })),
+      list.map((user) =>
+        this.mapParticipant(
+          user,
+          undefined,
+          this.findCanonicalParticipantIdentity(user.identities)
+        )
+      ),
       total,
       pagination
     );
@@ -2966,9 +2997,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       return null;
     }
     const identityCard = await this.buildDirectoryIdentityCard(user, targetIdentityId);
+    const directoryParticipant = this.mapParticipant({
+      ...user,
+      username: identityCard.displayName
+    });
     if (viewerUserId === targetUserId && viewerIdentityId === targetIdentityId) {
       return {
-        user: this.mapParticipant(user),
+        user: directoryParticipant,
         identityCard,
         relationship: "self",
         contactId: null,
@@ -3002,7 +3037,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       : null;
     if (contact && reciprocalContact) {
       return {
-        user: this.mapParticipant(user),
+        user: directoryParticipant,
         identityCard,
         relationship: "friend",
         contactId: contact.id,
@@ -3025,7 +3060,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
 
     return {
-      user: this.mapParticipant(user),
+      user: directoryParticipant,
       identityCard,
       relationship: friendRequest
         ? friendRequest.requesterIdentityId === viewerIdentityId
@@ -5202,12 +5237,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         where: { deletedAt: null },
         include: {
           user: {
-            select: {
-              id: true,
-              needoId: true,
-              username: true,
-              avatarUrl: true
-            }
+            select: imParticipantUserSelect
+          },
+          identity: {
+            select: imParticipantIdentitySelect
           }
         }
       },
@@ -5249,12 +5282,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       type: this.conversationTypeFromDb(conversation.type),
       title: conversation.title,
       participants: conversation.participants.map((participant) =>
-        this.mapParticipant(participant.user, participant.role)
+        this.mapParticipant(participant.user, participant.role, participant.identity)
       ),
       directPeer:
         conversation.type === ConversationType.DIRECT
           ? activeDirectPeer
-            ? this.mapParticipant(activeDirectPeer.user, activeDirectPeer.role)
+            ? this.mapParticipant(
+                activeDirectPeer.user,
+                activeDirectPeer.role,
+                activeDirectPeer.identity
+              )
             : (missingDirectPeer ?? null)
           : null,
       lastMessage:
@@ -5343,14 +5380,19 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         user: { isActive: true, deletedAt: null }
       },
       select: {
-        id: true,
+        ...imParticipantIdentitySelect,
         user: {
-          select: { id: true, needoId: true, username: true, avatarUrl: true }
+          select: imParticipantUserSelect
         }
       }
     });
     const participantByIdentityId = new Map(
-      identities.map((identity) => [identity.id, this.mapParticipant(identity.user)] as const)
+      identities.map(
+        (identity) => [
+          identity.id,
+          this.mapParticipant(identity.user, undefined, identity)
+        ] as const
+      )
     );
     const peerByConversationId = new Map<number, ParticipantPayload>();
     for (const [conversationId, peerIdentityId] of missingPeerIdentityIdByConversationId) {
@@ -5426,7 +5468,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       ownerIdentityId: contact.ownerIdentityId,
       contactUserId: contact.contactUserId,
       contactIdentityId: contact.contactIdentityId,
-      contactUser: this.mapParticipant(contact.contactUser),
+      contactUser: this.mapParticipant(
+        contact.contactUser,
+        undefined,
+        contact.contactIdentity
+      ),
       nickname: contact.nickname,
       source: contact.source,
       isBlocked: contact.blockedAt !== null,
@@ -5435,21 +5481,50 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   private mapParticipant(
-    user: {
-      id: number;
-      needoId: string;
-      username: string;
-      avatarUrl: string | null;
-    },
-    role?: string
+    user: Pick<ImParticipantUserRecord, "id" | "needoId" | "username" | "avatarUrl"> &
+      Partial<Pick<ImParticipantUserRecord, "customerProfile" | "technicianProfile">>,
+    role?: string,
+    identity?: ImParticipantIdentityRecord | null
   ): ParticipantPayload {
     return {
       userId: user.id,
       needoId: user.needoId,
-      username: user.username,
+      username: this.resolveParticipantDisplayName(user, identity),
       avatarUrl: user.avatarUrl,
       ...(role === "owner" || role === "admin" || role === "member" ? { role } : {})
     };
+  }
+
+  private resolveParticipantDisplayName(
+    user: Pick<ImParticipantUserRecord, "username"> &
+      Partial<Pick<ImParticipantUserRecord, "customerProfile" | "technicianProfile">>,
+    identity?: ImParticipantIdentityRecord | null
+  ): string {
+    const identityType = identity?.type?.toLowerCase();
+    if (
+      ["customer", "user", "u"].includes(identityType ?? "") &&
+      user.customerProfile?.deletedAt === null
+    ) {
+      return user.customerProfile.displayName.trim() || user.username;
+    }
+    if (identityType === "technician" && user.technicianProfile?.deletedAt === null) {
+      return user.technicianProfile.displayName.trim() || user.username;
+    }
+    if (
+      ["merchant", "merchant_owner", "merchant_staff"].includes(identityType ?? "") &&
+      identity?.merchantIdentityProfile?.deletedAt === null
+    ) {
+      return identity.merchantIdentityProfile.displayName.trim() || user.username;
+    }
+    return identity?.displayName?.trim() || user.username;
+  }
+
+  private findCanonicalParticipantIdentity(
+    identities: ImParticipantIdentityRecord[]
+  ): ImParticipantIdentityRecord | undefined {
+    return identities.find((identity) =>
+      ["customer", "user", "u"].includes(identity.type.toLowerCase())
+    ) ?? identities[0];
   }
 
   private async buildDirectoryIdentityCard(
