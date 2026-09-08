@@ -811,6 +811,12 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       filterTimelinePosts({ posts: state.posts, profiles, follows: state.follows, friends: state.friends, actorKey: key, filter, locationContext });
     const createPost = async (input: SocialCreatePostInput) => {
       if (!session || input.authorKey !== actorKey) throw new Error("error.auth.forbidden");
+      if (!shouldCommitFormalSocialRequest(
+        formalSessionKey,
+        currentFormalSessionKeyRef.current
+      )) {
+        throw new Error("error.auth.operation_superseded");
+      }
       if (input.visibility && !["public", "followers"].includes(input.visibility)) {
         throw new Error("error.social.visibility_unavailable");
       }
