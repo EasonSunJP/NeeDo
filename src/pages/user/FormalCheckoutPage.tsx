@@ -271,12 +271,15 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     setLoadError("");
     const servicePromise: Promise<CheckoutServiceContext> = serviceId !== null
       ? coreReadApi.getServiceDetail(serviceId).then(async (serviceDetail) => {
-          const bookingMetadata = await pricingModeApi
+          const navigation = await pricingModeApi
             .getBookingNavigation(serviceDetail.shop.id, { page: 1, pageSize: 100 })
-            .then((navigation) => navigation.entry === "service_menu"
-              ? navigation.services.list.find((item) => item.id === serviceId) ?? null
-              : null)
             .catch(() => null);
+          const bookingMetadata = navigation?.entry === "service_menu"
+            ? navigation.services.list.find((item) => item.id === serviceId) ?? null
+            : null;
+          if (navigation && !bookingMetadata) {
+            throw new CheckoutSourceError("当前定价模式下该服务不可预约，请返回店铺刷新");
+          }
           const serviceInfo = mapCoreServiceCardToUnifiedData(serviceDetail);
           return {
             catalogRef: { type: "shop_service", id: serviceId },
