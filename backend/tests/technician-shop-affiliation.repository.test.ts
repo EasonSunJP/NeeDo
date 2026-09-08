@@ -110,13 +110,27 @@ describe("TechnicianShopAffiliationRepository", () => {
           shopId: 16,
           activeKey: { not: null },
           deletedAt: null,
-          relationshipType: "PARTNER",
           workStatus: "ACTIVE"
         }),
         skip: 0,
         take: 20
       })
     );
+  });
+
+  it("normalizes a legacy exclusive row to the single collaboration relationship", async () => {
+    const repository = new TechnicianShopAffiliationRepository({
+      technicianShopAffiliation: {
+        findMany: jest.fn().mockResolvedValue([employeeRecord({ relationshipType: "EXCLUSIVE" })]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as unknown as PrismaClient);
+
+    await expect(
+      repository.listCurrentShopEmployees({ shopId: 16, page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({
+      list: [{ affiliation: { relationshipType: "partner" } }]
+    });
   });
 
   it("finds details only through the technician identity inside the current shop", async () => {
@@ -469,10 +483,13 @@ describe("TechnicianShopAffiliationRepository", () => {
     expect(tx.technicianProfile.update).not.toHaveBeenCalled();
   });
 
-  it("locks the global technician profile and rejects an exclusive relationship when another shop is current", async () => {
+  it("allows a collaboration relationship when the technician already has three current shops including a legacy exclusive row", async () => {
     const tx = transactionClient();
+    tx.technicianShopAffiliation.findFirst.mockResolvedValueOnce(null);
     tx.technicianShopAffiliation.findMany.mockResolvedValue([
-      { id: 72, shopId: 20, relationshipType: "PARTNER" }
+      { id: 72, shopId: 20, relationshipType: "EXCLUSIVE" },
+      { id: 73, shopId: 21, relationshipType: "PARTNER" },
+      { id: 74, shopId: 22, relationshipType: "PARTNER" }
     ]);
     const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));
 
@@ -481,23 +498,28 @@ describe("TechnicianShopAffiliationRepository", () => {
         shopId: 16,
         technicianIdentityId: 86,
         actorUserId: 7,
-        relationshipType: "exclusive",
+        relationshipType: "partner",
         workStatus: "active",
         startsAt,
         endsAt: null
       })
-    ).resolves.toBe("exclusive_conflict");
+    ).resolves.toMatchObject({ affiliation: { relationshipType: "partner" } });
 
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
-    expect(tx.technicianShopAffiliation.create).not.toHaveBeenCalled();
-    expect(tx.technicianShopAffiliation.update).not.toHaveBeenCalled();
+    expect(tx.technicianShopAffiliation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          shopId: 16,
+          technicianProfileId: 47,
+          relationshipType: "PARTNER"
+        })
+      })
+    );
   });
 
   it("allows the current shop to convert its own exclusive relationship to partner", async () => {
     const tx = transactionClient();
-    tx.technicianShopAffiliation.findMany.mockResolvedValue([
-      { id: 91, shopId: 16, relationshipType: "EXCLUSIVE" }
-    ]);
+    tx.technicianShopAffiliation.findFirst.mockResolvedValueOnce({ id: 91 });
     tx.technicianShopAffiliation.update.mockResolvedValue(
       employeeRecord({ relationshipType: "PARTNER" })
     );
@@ -533,6 +555,7 @@ describe("TechnicianShopAffiliationRepository", () => {
 
   it("allows a partner relationship to coexist across affiliated shops", async () => {
     const tx = transactionClient();
+    tx.technicianShopAffiliation.findFirst.mockResolvedValueOnce(null);
     tx.technicianShopAffiliation.findMany.mockResolvedValue([
       { id: 72, shopId: 20, relationshipType: "PARTNER" }
     ]);
@@ -564,9 +587,7 @@ describe("TechnicianShopAffiliationRepository", () => {
   it("ends the current relationship without deleting its history", async () => {
     const endsAt = new Date("2026-08-29T00:00:00.000Z");
     const tx = transactionClient();
-    tx.technicianShopAffiliation.findMany.mockResolvedValue([
-      { id: 91, shopId: 16, relationshipType: "PARTNER" }
-    ]);
+    tx.technicianShopAffiliation.findFirst.mockResolvedValueOnce({ id: 91 });
     tx.technicianShopAffiliation.update.mockResolvedValue(
       employeeRecord({ workStatus: "ENDED", endsAt })
     );
@@ -598,6 +619,7 @@ describe("TechnicianShopAffiliationRepository", () => {
 
   it("creates a new current row when an earlier relationship has already ended", async () => {
     const tx = transactionClient();
+    tx.technicianShopAffiliation.findFirst.mockResolvedValueOnce(null);
     const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));
 
     await repository.upsertCurrentAffiliation({
@@ -622,6 +644,7 @@ describe("TechnicianShopAffiliationRepository", () => {
 
   it("does not manufacture an ended history row when no current relationship exists", async () => {
     const tx = transactionClient();
+    tx.technicianShopAffiliation.findFirst.mockResolvedValueOnce(null);
     const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));
 
     await expect(

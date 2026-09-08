@@ -377,24 +377,6 @@ describe("TechnicianShopAffiliationService", () => {
     });
   });
 
-  it("maps repository conflicts to one non-leaking 409", async () => {
-    const { service, repository } = setup();
-    repository.upsertCurrentAffiliation.mockResolvedValue("exclusive_conflict");
-
-    await expect(
-      service.upsertCurrentShopAffiliation(actorForShop(16), context, "s0000000047", {
-        relationshipType: "exclusive",
-        workStatus: "active",
-        startsAt: new Date("2026-08-01T00:00:00.000Z"),
-        endsAt: null
-      })
-    ).rejects.toMatchObject({
-      code: ERROR_CODES.TECHNICIAN_AFFILIATION_CONFLICT,
-      message: "error.technician_affiliation.exclusive_conflict",
-      statusCode: 409
-    });
-  });
-
   it("forbids writes from a read-only merchant preview", async () => {
     const { service, repository } = setup();
 
