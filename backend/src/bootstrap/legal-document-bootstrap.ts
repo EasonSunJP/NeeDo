@@ -3,15 +3,16 @@ import type { ContractType } from "../services/contract-acceptance.service";
 export type SupportedContractLanguage = "zh-CN" | "ja" | "en";
 
 export const LEGAL_CONTRACT_EFFECTIVE_AT = new Date("2026-08-26T00:00:00.000Z");
+export const MERCHANT_CONTRACT_EFFECTIVE_AT = new Date("2026-09-08T00:00:00.000Z");
 export const LEGAL_CONTRACT_VERSIONS: Readonly<Record<ContractType, string>> = {
-  merchant: "merchant-2026-08-26-v1",
+  merchant: "merchant-2026-09-08-v2",
   affiliate: "affiliate-2026-08-26-v1"
 };
 
 export const AFFILIATE_CONTRACT_TEXT: Readonly<Record<SupportedContractLanguage, string>> = {
   "zh-CN": `NeeDo 联盟营销规则及合同
 
-生效日：2026 年 8 月 26 日
+生效日：2026 年 9 月 8 日
 
 本合同由使用 NeeDo 联盟营销服务的注册用户（以下简称“联盟营销者”）与 NeeDo 服务运营方（以下简称“NeeDo”）订立。联盟营销者在已登录状态下完整阅读本规则及合同，分别确认“已阅读”和“同意”，并点击“同意合同并确认开启联盟营销”或同等含义的按钮后，视为以电子方式作出同意。
 
@@ -89,8 +90,8 @@ export const MERCHANT_CONTRACT_TEXT: Readonly<Record<SupportedContractLanguage, 
 第一条（店铺服务）
 商户负责合法提供店铺服务、维护真实的服务展示、价格、预约、人员和营业信息，并遵守日本适用的消费者保护、广告、劳动、税务、支付和个人信息法律。NeeDo 提供平台与商户 SaaS 功能，不替代商户对实际服务承担的责任。
 
-第二条（申请主体与银行名义）
-法人名义申请必须提交法人登记资料和代表者身份证明，并使用与核验法人名称一致的法人名义银行账户；代表者个人账户不能代替法人账户。个人名义申请必须完成 eKYC，并使用与 eKYC 核验姓名一致的本人银行账户。名义按全角片假名标准化后比较，不允许人工绕过不一致。
+第二条（申请主体与银行账户）
+法人名义申请必须提交法人登记资料和代表者身份证明；个人名义申请必须按照平台当前政策完成 eKYC。银行账户资料按申请人填写内容登记，平台不将账户名义与申请人、代表者或法人名称进行一致性判断。商户应保证银行资料真实、准确并及时更新。
 
 第三条（收费与试用）
 当前标准月费为每月 9,800 日元；最终应付金额、计费对象及免收费条件以运营后台确认的正式计费资料和届时有效费率为准。运营批准日为权限开启日。若开启当月剩余少于 15 天，该月剩余天数作为额外免费期，之后三个完整自然月为试用期；若剩余正好 15 天或多于 15 天，当月计作试用第一个月，试用至第三个计入月份的月末。
@@ -114,9 +115,9 @@ NeeDo 可以核验申请资料并批准或拒绝。批准后创建店铺身份�
 最终确认：本人有权代表申请主体，已完整阅读并理解收费规则及 NeeDo 合同，确认资料真实，同意以电子方式订立并提交店铺申请。`,
   ja: `NeeDo 加盟店サービス規約・契約
 
-効力発生日：2026年8月26日
+効力発生日：2026年9月8日
 
-申請者は、店舗表示、法人又は個人の申請主体、代表者、証明書類、銀行口座及び連絡先が正確であることを表明します。法人申請は確認済み法人名義と一致する法人口座を使用し、代表者個人口座は認めません。個人申請は有効な eKYC 氏名と口座名義が全角カタカナ正規化後に一致する必要があり、手動例外はありません。
+申請者は、店舗表示、法人又は個人の申請主体、代表者、証明書類、銀行口座及び連絡先が正確であることを表明します。法人申請には法人登記資料と代表者の本人確認資料が必要で、個人申請には現行ポリシーに従った eKYC が必要です。口座名義は入力内容どおりに登録し、申請者名、代表者名又は法人名との一致判定は行いません。
 
 標準月額料金は 9,800 円です。運営承認日を権限開始日とし、開始月の残日数が15日未満の場合は当該残期間を追加無料期間として、その後3暦月を試用期間とします。残日数がちょうど15日又は15日を超える場合は開始月を試用第1月として数えます。8月20日開始なら9月から11月が3か月の試用で12月1日から課金、8月10日開始なら8月から10月が試用で11月1日から課金です。
 
@@ -125,9 +126,9 @@ NeeDo 可以核验申请资料并批准或拒绝。批准后创建店铺身份�
 最終確認：申請主体を代表する権限を有し、料金規則と NeeDo 契約を全文確認し、電子契約及び店舗申請の提出に同意します。`,
   en: `NeeDo Merchant Service Rules and Agreement
 
-Effective date: 26 August 2026
+Effective date: 8 September 2026
 
-The applicant represents that the shop display, legal or individual applicant, representative, documents, bank account, and contact details are accurate. A corporate application requires a corporate account matching the verified legal entity; a representative's personal account is not accepted. An individual application requires valid eKYC and an exactly matching normalized full-width-katakana account holder, without manual override.
+The applicant represents that the shop display, legal or individual applicant, representative, documents, bank account, and contact details are accurate. Corporate applications require corporate registration and representative identity evidence, while individual applications require eKYC under the current platform policy. The account holder is recorded as entered and is not compared with the applicant, representative, or legal entity name.
 
 The standard monthly fee is JPY 9,800. Operations approval is the activation date. If fewer than 15 days remain in that month, the remainder is an extra free period and the following three full calendar months are the trial. If exactly 15 or more days remain, the activation month is trial month one. An activation on 20 August is followed by full trial months September to November and billing from 1 December. An activation on 10 August counts August to October and bills from 1 November.
 
@@ -145,6 +146,7 @@ export interface LegalDocumentBootstrapRecord {
   contractType: ContractType;
   titles: Readonly<Record<SupportedContractLanguage, string>>;
   bodies: Readonly<Record<SupportedContractLanguage, string>>;
+  version: number;
   publishedAt: Date;
 }
 
@@ -162,7 +164,8 @@ export const LEGAL_DOCUMENT_BOOTSTRAP: readonly LegalDocumentBootstrapRecord[] =
       en: "NeeDo Merchant Service Rules and Agreement"
     },
     bodies: MERCHANT_CONTRACT_TEXT,
-    publishedAt: LEGAL_CONTRACT_EFFECTIVE_AT
+    version: 2,
+    publishedAt: MERCHANT_CONTRACT_EFFECTIVE_AT
   },
   {
     slug: "affiliate-agreement",
@@ -177,6 +180,7 @@ export const LEGAL_DOCUMENT_BOOTSTRAP: readonly LegalDocumentBootstrapRecord[] =
       en: "NeeDo Affiliate Marketing Rules and Agreement"
     },
     bodies: AFFILIATE_CONTRACT_TEXT,
+    version: 1,
     publishedAt: LEGAL_CONTRACT_EFFECTIVE_AT
   }
 ];

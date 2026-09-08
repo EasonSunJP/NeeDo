@@ -3,6 +3,7 @@ import { NeedoContractCatalogService } from "../src/services/needo-contract-cata
 import {
   AFFILIATE_CONTRACT_TEXT,
   LEGAL_CONTRACT_EFFECTIVE_AT,
+  MERCHANT_CONTRACT_EFFECTIVE_AT,
   MERCHANT_CONTRACT_TEXT
 } from "../src/bootstrap/legal-document-bootstrap";
 
@@ -18,11 +19,11 @@ describe("NeedoContractCatalogService", () => {
         internalPath: `/me/settings/${slug}`,
         displayLocations: [],
         locale,
-        version: 1,
+        version: type === "merchant" ? 2 : 1,
         title: body.split("\n", 1)[0],
         body,
         contentHash: "stored-release-hash",
-        publishedAt: LEGAL_CONTRACT_EFFECTIVE_AT,
+        publishedAt: type === "merchant" ? MERCHANT_CONTRACT_EFFECTIVE_AT : LEGAL_CONTRACT_EFFECTIVE_AT,
         publishedByUserId: 1
       };
     })
@@ -43,7 +44,9 @@ describe("NeedoContractCatalogService", () => {
 
   it("includes the merchant fee, exact 15-day boundary, and all examples in its contract", async () => {
     const contract = await catalog.getCurrent("merchant", "zh-CN");
-    expect(contract.version).toBe("merchant-2026-08-26-v1");
+    expect(contract.version).toBe("merchant-2026-09-08-v2");
+    expect(contract.text).toContain("不将账户名义与申请人、代表者或法人名称进行一致性判断");
+    expect(contract.text).not.toContain("不允许人工绕过不一致");
     expect(contract.text).toContain("9,800");
     expect(contract.text).toContain("正好剩余 15 天");
     expect(contract.text).toContain("8 月 20 日");

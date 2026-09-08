@@ -13,8 +13,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async findMerchantBindingContext(
-    applicationId: number,
-    now: Date
+    applicationId: number
   ): Promise<MerchantBankBindingContext | null> {
     const application = await this.client.identityApplication.findFirst({
       where: { id: applicationId, type: "merchant", deletedAt: null },
@@ -26,24 +25,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
         merchantDetail: {
           select: {
             applicantKind: true,
-            corporateLegalNameKana: true,
-            representativeNameKana: true,
             bankAccountId: true
-          }
-        },
-        applicant: {
-          select: {
-            ekycVerifications: {
-              where: {
-                status: "verified",
-                verifiedAt: { not: null, lte: now },
-                deletedAt: null,
-                OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
-              },
-              orderBy: [{ verifiedAt: "desc" }, { id: "desc" }],
-              take: 1,
-              select: { verifiedNameKanaEncrypted: true }
-            }
           }
         }
       }
@@ -58,11 +40,7 @@ export class ProtectedBankAccountRepository implements ProtectedBankAccountRepos
       status: application.status,
       version: application.version,
       applicantKind: application.merchantDetail.applicantKind as "corporate" | "individual",
-      corporateLegalNameKana: application.merchantDetail.corporateLegalNameKana,
-      representativeNameKana: application.merchantDetail.representativeNameKana,
-      currentBankAccountId: application.merchantDetail.bankAccountId,
-      verifiedEkycNameKanaEncrypted:
-        application.applicant.ekycVerifications[0]?.verifiedNameKanaEncrypted ?? null
+      currentBankAccountId: application.merchantDetail.bankAccountId
     };
   }
 

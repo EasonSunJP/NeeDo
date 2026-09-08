@@ -60,7 +60,7 @@ it("reviews normalized entries and retains them when returning to edit, without 
 
 it("restores a submitted snapshot, never submits on entry, and withdraws with its version", async () => {
   const profile = { familyName: "山田", givenName: "太郎", familyNameKana: "ヤマダ", givenNameKana: "タロウ", birthYear: "1992", birthMonth: "2", birthDay: "29", sex: "male", postalCode: "1600022", city: "東京都", street: "新宿1", building: "", occupation: "employee", otherOccupation: "" };
-  const application = { id: 7, userId: 41, status: "submitted" as const, version: 3, createdAt: "2026-09-07", updatedAt: "2026-09-07", reviewedAt: null, reviewNote: null, rejectionReason: null, profile };
+  const application = { id: 7, userId: 41, userPublicId: "u0000000041", status: "submitted" as const, version: 3, createdAt: "2026-09-07", updatedAt: "2026-09-07", reviewedAt: null, reviewNote: null, rejectionReason: null, profile };
   vi.mocked(ekycApplicationsApi.listMine).mockResolvedValue({ list: [application], total: 1, page: 1, page_size: 20 });
   vi.spyOn(ekycApplicationsApi, "getMine").mockResolvedValue(application);
   const submit = vi.spyOn(ekycApplicationsApi, "submit");

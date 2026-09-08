@@ -122,8 +122,7 @@ const createFixture = (permissionCodes = ["identity-application:own", "bank-acco
       branchName: "本店",
       accountType: "ordinary",
       accountNumberMasked: "•••4567",
-      holderMatched: true,
-      verifiedAt: now,
+      verifiedAt: null,
       applicationVersion: 2
     }))
   };
@@ -340,9 +339,9 @@ describe("identity application applicant HTTP API", () => {
       .expect((response) => {
         expect(response.body.data).toMatchObject({
           accountNumberMasked: "•••4567",
-          holderMatched: true,
           applicationVersion: 2
         });
+        expect(response.body.data).not.toHaveProperty("holderMatched");
         expect(JSON.stringify(response.body)).not.toContain("1234567");
         expect(JSON.stringify(response.body)).not.toContain("カ）ニード");
       });

@@ -50,7 +50,6 @@ const corporateApplication = (
     accountHolderMasked: "カ*********ド",
     verificationSource: "corporate_registration",
     verificationStatus: "verified",
-    holderMatched: true,
     verifiedAt: new Date("2026-08-15T02:00:00.000Z")
   },
   eKycVerified: false,
@@ -106,6 +105,34 @@ const createRepository = (): jest.Mocked<MerchantApplicationReviewRepositoryPort
 });
 
 describe("MerchantApplicationReviewService", () => {
+  it("approves a recorded bank account without requiring holder-name match evidence", async () => {
+    const repository = createRepository();
+    repository.findById.mockResolvedValue(corporateApplication({
+      bankAccount: {
+        ...corporateApplication().bankAccount!,
+        verificationSource: "applicant_declaration",
+        verificationStatus: "declared",
+        verifiedAt: null
+      }
+    }));
+
+    await new MerchantApplicationReviewService(
+      repository,
+      applicationEkycPolicy(true, true)
+    ).approve({
+      applicationId: 41,
+      reviewerUserId: 9,
+      expectedVersion: 3,
+      now: exactFifteenDays
+    });
+
+    expect(repository.approveInTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bankVerification: { status: "declared", source: "applicant_declaration" }
+      })
+    );
+  });
+
   it.each([false, true])("permits a declared individual bank only when eKYC is not required (%s)", async required => {
     const repository = createRepository();
     repository.findById.mockResolvedValue(corporateApplication({ applicantKind: "individual", eKycVerified: false, bankAccount: { ...corporateApplication().bankAccount!, verificationSource: "applicant_declaration", verificationStatus: "declared", verifiedAt: null } }));
@@ -143,15 +170,6 @@ describe("MerchantApplicationReviewService", () => {
   it.each([
     ["corporate registration", { media: corporateApplication().media.slice(1) }],
     ["verified corporate bank", { bankAccount: null }],
-    [
-      "corporate verification source",
-      {
-        bankAccount: {
-          ...corporateApplication().bankAccount!,
-          verificationSource: "ekyc" as const
-        }
-      }
-    ],
     ["merchant contract", { contractAcceptance: null }],
     ["submitted snapshot hash", { submittedSnapshotHash: null }]
   ] as const)("rejects a corporate approval missing %s", async (_label, overrides) => {
@@ -169,7 +187,7 @@ describe("MerchantApplicationReviewService", () => {
     expect(repository.approveInTransaction).not.toHaveBeenCalled();
   });
 
-  it("requires individual eKYC and an eKYC-matched bank account", async () => {
+  it("requires individual eKYC independently of the recorded bank account", async () => {
     const repository = createRepository();
     repository.findById.mockResolvedValue(
       corporateApplication({

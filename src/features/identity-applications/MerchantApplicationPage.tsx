@@ -102,7 +102,12 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
   const [customBank, setCustomBank] = useState(false);
   const [editingSavedBank, setEditingSavedBank] = useState(false);
   const savedBank = application?.reviewEvidence?.bankAccount;
-  const reuseSavedBank = !editingSavedBank && Boolean(application?.merchantDetail?.bankAccountId && application.merchantDetail.bankVerificationStatus === "verified" && savedBank?.verificationStatus === "verified");
+  const reuseSavedBank = !editingSavedBank && Boolean(
+    application?.merchantDetail?.bankAccountId &&
+    ["verified", "declared"].includes(application.merchantDetail.bankVerificationStatus ?? "") &&
+    savedBank &&
+    ["verified", "declared"].includes(savedBank.verificationStatus)
+  );
   const hasSavedRegistration = application?.merchantDetail?.mediaPurposes.includes("corporate_registration") ?? false;
   const bankText = (source: string) => translateBankResumeText(source, language);
   const [showcaseImage, setShowcaseImage] = useState<File | null>(retainedDraft?.showcaseImage ?? null);
@@ -466,7 +471,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
       {step === 1 ? (
         <>
           <ApplicationCard className="space-y-4">
-            <ApplicationNotice>{t(form.applicantKind === "corporate" ? "法人名义申请时，银行账户名义必须与法人名称一致。" : "银行账户名义必须与申请资料中的姓名片假名一致；要求 eKYC 时，以认证姓名为准。")}</ApplicationNotice>
+            <ApplicationNotice>{t("银行账户名义仅按填写内容登记，不与申请人或法人名称进行一致性判断。")}</ApplicationNotice>
             {form.applicantKind === "individual" ? <ApplicationNotice>{t("如尚未完成 eKYC，请先在用户设置的验证与资质页面完成认证。")}</ApplicationNotice> : null}
             {reuseSavedBank && savedBank ? <div className="space-y-4">
               <p className="text-sm font-medium">{bankText("已保存的银行账户")}</p>
@@ -494,7 +499,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
               <ApplicationField label="支店名称" required><ApplicationInput onChange={(event) => updateBank("branchName", event.target.value)} value={bank.branchName} /></ApplicationField>
               <ApplicationField as="div" label="账户类型" required><MerchantAccountTypeSelect onChange={(value) => updateBank("accountType", value)} value={bank.accountType} /></ApplicationField>
               <ApplicationField label="账号" required><ApplicationInput inputMode="numeric" onChange={(event) => updateBank("accountNumber", event.target.value)} value={bank.accountNumber} /></ApplicationField>
-              <ApplicationField hint={form.applicantKind === "corporate" ? "必须与法人名称片假名一致" : "必须与 eKYC 姓名一致"} label="账户名义人" required><ApplicationInput onChange={(event) => updateBank("accountHolderName", event.target.value)} value={bank.accountHolderName} /></ApplicationField>
+              <ApplicationField label="账户名义人" required><ApplicationInput onChange={(event) => updateBank("accountHolderName", event.target.value)} value={bank.accountHolderName} /></ApplicationField>
             </div>
             )}
             {form.applicantKind === "corporate" ? hasSavedRegistration ? <p className="text-sm text-[color:var(--client-muted)]">{bankText("法人登记资料已保存")}</p> : <ApplicationField as="div" hint="JPEG 或 PNG" label="法人登记资料" required><ApplicationFileUpload accept="image/jpeg,image/png" file={corporateRegistration} label={t("法人登记资料")} onChange={setCorporateRegistration} /></ApplicationField> : null}
@@ -502,7 +507,7 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
           <ApplicationBottomAction>
             <div className="flex gap-3">
               <ApplicationButton disabled={busy} onClick={() => setStep(0)} tone="secondary">{t("上一步")}</ApplicationButton>
-              <ApplicationButton className="min-w-0 flex-1" disabled={busy} onClick={() => void saveBankAndIdentity()}>{busy ? t("校验中") : t("下一步：收费规则与合同")}</ApplicationButton>
+              <ApplicationButton className="min-w-0 flex-1" disabled={busy} onClick={() => void saveBankAndIdentity()}>{busy ? t("保存中") : t("下一步：收费规则与合同")}</ApplicationButton>
             </div>
           </ApplicationBottomAction>
         </>

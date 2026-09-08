@@ -14,6 +14,7 @@ import type { SensitiveFieldCipherService } from "./sensitive-field-cipher.servi
 export interface EkycApplicationRecord {
   id: number;
   userId: number;
+  userPublicId: string;
   status: string;
   version: number;
   profileEncrypted: string;
@@ -156,6 +157,7 @@ export class EkycApplicationService {
     return {
       id: row.id,
       userId: row.userId,
+      userPublicId: row.userPublicId,
       status: row.status,
       version: row.version,
       createdAt: row.createdAt,

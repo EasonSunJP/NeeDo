@@ -2354,7 +2354,10 @@ export class AuthService {
       const application =
         kind === "technician" || kind === "merchant"
           ? applications.find(
-              (candidate) => candidate.type === kind && candidate.deletedAt === null
+              (candidate) =>
+                candidate.type === kind &&
+                candidate.deletedAt === null &&
+                ["draft", "submitted", "under_review", "rejected"].includes(candidate.status)
             )
           : undefined;
       if (!application) {

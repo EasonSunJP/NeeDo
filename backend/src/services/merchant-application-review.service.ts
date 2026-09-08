@@ -18,7 +18,6 @@ export interface MerchantApplicationBankProjection {
   accountHolderMasked: string;
   verificationSource: string;
   verificationStatus: string;
-  holderMatched: boolean;
   verifiedAt: Date | null;
 }
 
@@ -209,7 +208,7 @@ export class MerchantApplicationReviewService {
     this.assertVersion(application.version, input.expectedVersion);
     const ekyc = await this.ekycPolicy.evaluateApplicationEkyc(application.applicantUserId, "merchant", input.now);
     if (ekyc.required && !ekyc.verified) throw this.conflict("error.identity_application.ekyc_required");
-    this.assertApprovalEvidence(application, ekyc.required);
+    this.assertApprovalEvidence(application);
 
     const trial = this.billingPolicy.calculateInitialTrial(input.now);
     return this.repository.approveInTransaction({
@@ -282,7 +281,7 @@ export class MerchantApplicationReviewService {
     return application;
   }
 
-  private assertApprovalEvidence(application: MerchantApplicationReviewRecord, requireEkyc: boolean): void {
+  private assertApprovalEvidence(application: MerchantApplicationReviewRecord): void {
     if (!application.submittedSnapshotHash || !application.showcaseDraft) {
       throw this.conflict("error.identity_application.submitted_snapshot_invalid");
     }
@@ -299,14 +298,11 @@ export class MerchantApplicationReviewService {
     }
 
     const bank = application.bankAccount;
-    const declared = !requireEkyc && application.applicantKind === "individual" && bank?.verificationSource === "applicant_declaration";
-    const expectedSource = application.applicantKind === "corporate" ? "corporate_registration" : declared ? "applicant_declaration" : "ekyc";
     if (
       !bank ||
-      bank.verificationStatus !== (declared ? "declared" : "verified") ||
-      bank.holderMatched !== true ||
-      bank.verificationSource !== expectedSource ||
-      (!declared && bank.verifiedAt === null)
+      !["declared", "verified"].includes(bank.verificationStatus) ||
+      !bank.verificationSource.trim() ||
+      (bank.verificationStatus === "verified" && bank.verifiedAt === null)
     ) {
       throw this.conflict("error.identity_application.bank_verification_required");
     }

@@ -336,6 +336,34 @@ describe("IdentityApplicationService", () => {
     expect(repository.submit).toHaveBeenCalled();
   });
 
+  it("submits an eKYC-verified individual merchant with a declared bank account", async () => {
+    const repository = createRepository();
+    repository.findById.mockResolvedValue(application({
+      type: "merchant",
+      technicianDetail: null,
+      merchantDetail: merchantDetail({
+        applicantKind: "individual",
+        corporateLegalName: null,
+        corporateLegalNameKana: null,
+        bankVerificationStatus: "declared",
+        eKycVerified: true,
+        mediaPurposes: []
+      })
+    }));
+
+    await new IdentityApplicationService(
+      repository,
+      applicationEkycPolicy(true, true)
+    ).submit({
+      userId: 3,
+      applicationId: 11,
+      expectedVersion: 1,
+      now: new Date("2026-08-26T05:00:00.000Z")
+    });
+
+    expect(repository.submit).toHaveBeenCalled();
+  });
+
   it("enforces corporate and individual merchant submission evidence", async () => {
     const corporate = createRepository();
     corporate.findById.mockResolvedValue(

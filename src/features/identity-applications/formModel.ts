@@ -103,8 +103,7 @@ export function merchantApplicationErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   const messages: Record<string, string> = {
     "error.contract.unavailable": "合同暂时无法读取，请重试或联系平台客服。",
-    "error.identity_application.ekyc_required": "未找到可用于银行账户核验的 eKYC 认证资料，请在本人验证页面核对状态或联系平台客服。",
-    "error.bank_account.holder_name_mismatch": "账户名义与已验证的本人姓名或法人名称不一致，请核对片假名。",
+    "error.identity_application.ekyc_required": "个人名义申请需要有效的 eKYC 认证，请在本人验证页面核对状态或联系平台客服。",
     "error.identity_application.version_conflict": "申请资料已变更。本页填写内容已保留，请复制后重新打开申请。",
     "error.identity_application.submitted_snapshot_locked": "申请已提交，不能继续修改。请重新打开申请查看进度。"
   };

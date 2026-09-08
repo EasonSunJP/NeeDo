@@ -36,6 +36,7 @@ export interface SystemLegalDocumentSource {
   releases: Partial<Record<LegalDocumentLocale, {
     title: string;
     body: string;
+    version?: number;
     publishedAt: Date;
   }>>;
 }
@@ -200,6 +201,7 @@ const contractSources = (): SystemLegalDocumentSource[] => {
         {
           title: source.titles[locale],
           body: source.bodies[locale],
+          version: source.version,
           publishedAt: source.publishedAt
         }
       ])
@@ -297,12 +299,38 @@ const backfillDocument = async (
         releaseSource.title,
         releaseSource.body
       );
+      const releaseVersion = releaseSource.version ?? 1;
+      const releases = await transaction.legalDocumentRelease.findMany({
+        where: { documentId: document.id, locale: dbLocale, deletedAt: null },
+        orderBy: [{ version: "asc" }, { id: "asc" }]
+      });
+      const exact = releases.find(
+        (release) =>
+          release.version === releaseVersion &&
+          release.title === releaseSource.title &&
+          release.body === releaseSource.body &&
+          release.contentHash === contentHash &&
+          release.publishedAt.getTime() === releaseSource.publishedAt.getTime()
+      );
+      if (exact) {
+        results.push({ slug: source.slug, locale, status: "verified" });
+        continue;
+      }
+      const latestVersion = releases.length > 0
+        ? Math.max(...releases.map((release) => release.version))
+        : 0;
+      if (latestVersion >= releaseVersion) {
+        results.push({ slug: source.slug, locale, status: "conflict" });
+        continue;
+      }
       const draft = await transaction.legalDocumentDraft.findFirst({
         where: { documentId: document.id, locale: dbLocale, deletedAt: null }
       });
       if (draft && (draft.title !== releaseSource.title || draft.body !== releaseSource.body)) {
-        results.push({ slug: source.slug, locale, status: "conflict" });
-        continue;
+        await transaction.legalDocumentDraft.update({
+          where: { id: draft.id },
+          data: { title: releaseSource.title, body: releaseSource.body }
+        });
       }
       if (!draft) {
         await transaction.legalDocumentDraft.create({
@@ -314,27 +342,17 @@ const backfillDocument = async (
           }
         });
       }
-      const releases = await transaction.legalDocumentRelease.findMany({
-        where: { documentId: document.id, locale: dbLocale, deletedAt: null },
-        orderBy: [{ version: "asc" }, { id: "asc" }]
-      });
       if (releases.length > 0) {
-        const exact = releases.find(
-          (release) =>
-            release.version === 1 &&
-            release.title === releaseSource.title &&
-            release.body === releaseSource.body &&
-            release.contentHash === contentHash &&
-            release.publishedAt.getTime() === releaseSource.publishedAt.getTime()
-        );
-        results.push({ slug: source.slug, locale, status: exact ? "verified" : "conflict" });
-        continue;
+        await transaction.legalDocumentRelease.updateMany({
+          where: { documentId: document.id, locale: dbLocale, activeKey: "active", deletedAt: null },
+          data: { activeKey: null }
+        });
       }
       const release = await transaction.legalDocumentRelease.create({
         data: {
           documentId: document.id,
           locale: dbLocale,
-          version: 1,
+          version: releaseVersion,
           activeKey: "active",
           title: releaseSource.title,
           body: releaseSource.body,
@@ -354,7 +372,7 @@ const backfillDocument = async (
             slug: source.slug,
             locale,
             releasePublicId: release.publicId,
-            version: 1,
+            version: releaseVersion,
             contentHash
           }
         }

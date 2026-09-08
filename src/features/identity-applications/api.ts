@@ -135,7 +135,7 @@ export type MerchantReview = {
   showcaseDraft: Record<string, unknown> | null;
   serviceCategories: Array<{ id: number; code: string; label: string; qualificationPolicy: string }>;
   businessKeywords: Array<{ id: number; code: string; categoryId: number; label: string; qualificationPolicy: string }>;
-  bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string; accountHolderMasked: string; holderMatched: boolean; verificationStatus: string; verificationSource: string } | null;
+  bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string; accountHolderMasked: string; verificationStatus: string; verificationSource: string } | null;
   eKycVerified: boolean;
   contractAcceptance: { contractVersion: string; contentHash: string; language: string; receiptId: string; acceptedAt: string } | null;
   media: Array<{ id: number; purpose: string; url: string; mimeType: string }>;
@@ -165,7 +165,7 @@ export const identityApplicationsApi = {
     return httpClient.request<IdentityApplication>(`/identity-applications/${id}/merchant-showcase`, { body, method: "PATCH" });
   },
   bindMerchantBankAccount(id: number, body: BankAccountInput & { expectedVersion: number }) {
-    return httpClient.request<{ applicationVersion: number; accountNumberMasked: string; holderMatched: true }>(`/identity-applications/${id}/merchant-bank-account`, { body, method: "PATCH" });
+    return httpClient.request<{ applicationVersion: number; accountNumberMasked: string }>(`/identity-applications/${id}/merchant-bank-account`, { body, method: "PATCH" });
   },
   uploadMedia(id: number, purpose: string, expectedVersion: number, file: File) {
     return httpClient.request<{ id: number; applicationVersion: number }>(`/identity-applications/${id}/media`, {

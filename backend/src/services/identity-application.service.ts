@@ -371,7 +371,7 @@ export class IdentityApplicationService {
 
     const ekyc = await this.ekycPolicy.evaluateApplicationEkyc(input.userId, application.type, input.now);
     if (ekyc.required && !ekyc.verified) throw this.conflict("error.identity_application.ekyc_required");
-    const submittedSnapshot = { ...this.buildSubmittedSnapshot(application, ekyc.required), ekycPolicy: ekyc };
+    const submittedSnapshot = { ...this.buildSubmittedSnapshot(application), ekycPolicy: ekyc };
     return this.repository.submit({
       applicationId: application.id,
       expectedVersion: input.expectedVersion,
@@ -469,7 +469,7 @@ export class IdentityApplicationService {
     }
   }
 
-  private buildSubmittedSnapshot(application: IdentityApplicationRecord, requireEkyc: boolean): Record<string, unknown> {
+  private buildSubmittedSnapshot(application: IdentityApplicationRecord): Record<string, unknown> {
     if (application.type === "technician") {
       if (!application.technicianDetail?.applicantName.trim()) {
         throw this.validation("error.identity_application.technician_name_required");
@@ -482,12 +482,12 @@ export class IdentityApplicationService {
     if (!detail) {
       throw this.validation("error.identity_application.merchant_detail_required");
     }
-    this.assertMerchantSubmission(detail, requireEkyc);
+    this.assertMerchantSubmission(detail);
 
     return { type: "merchant", detail };
   }
 
-  private assertMerchantSubmission(detail: MerchantApplicationDetailRecord, requireEkyc: boolean): void {
+  private assertMerchantSubmission(detail: MerchantApplicationDetailRecord): void {
     const requiredValues = [
       detail.representativeName,
       detail.representativeNameKana,
@@ -510,7 +510,10 @@ export class IdentityApplicationService {
         throw this.validation("error.identity_application.corporate_registration_required");
       }
     }
-    if (!detail.bankAccountId || (detail.bankVerificationStatus !== "verified" && (requireEkyc || detail.bankVerificationStatus !== "declared"))) {
+    if (
+      !detail.bankAccountId ||
+      !["verified", "declared"].includes(detail.bankVerificationStatus ?? "")
+    ) {
       throw this.conflict("error.identity_application.bank_verification_required");
     }
     if (!detail.contractAcceptanceId) {

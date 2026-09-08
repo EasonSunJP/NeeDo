@@ -23,8 +23,13 @@ it("renders exactly one red retry button on rejection", async () => {
 });
 it("withdraws the current version and leaves pending only after success", async () => {
   const withdraw = vi.spyOn(identityApplicationsApi, "withdraw").mockResolvedValue({ ...application, status: "withdrawn", version: 9 });
+  auth.refreshSession.mockResolvedValue({ ok: true, session: { id: 41, portal: "user" } });
   await render("under_review"); const buttons = container.querySelectorAll("button"); expect(buttons[0].textContent).toBe("撤回"); expect(buttons[1].disabled).toBe(true); expect(buttons[1].textContent).toBe("审核中");
-  await act(async () => buttons[0].click()); expect(withdraw).toHaveBeenCalledWith(19, 8); expect(callbacks.onWithdrawn).toHaveBeenCalledOnce();
+  await act(async () => buttons[0].click());
+  expect(withdraw).toHaveBeenCalledWith(19, 8);
+  expect(auth.refreshSession).toHaveBeenCalledWith();
+  expect(auth.refreshSession.mock.invocationCallOrder[0]).toBeLessThan(callbacks.onWithdrawn.mock.invocationCallOrder[0]);
+  expect(callbacks.onWithdrawn).toHaveBeenCalledOnce();
 });
 it("does not navigate or lose pending state when withdrawal conflicts", async () => {
   vi.spyOn(identityApplicationsApi, "withdraw").mockRejectedValue(new Error("conflict")); await render("submitted");

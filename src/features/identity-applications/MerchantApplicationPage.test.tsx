@@ -180,7 +180,7 @@ describe("MerchantApplicationPage behavior", () => {
     vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [{ ...corporateDraft, merchantDetail: {
       ...corporateDraft.merchantDetail!, applicantKind
     } }], total: 1, page: 1, page_size: 20 });
-    vi.spyOn(identityApplicationsApi, "bindMerchantBankAccount").mockResolvedValue({ applicationVersion: 6, accountNumberMasked: "•••4567", holderMatched: true });
+    vi.spyOn(identityApplicationsApi, "bindMerchantBankAccount").mockResolvedValue({ applicationVersion: 6, accountNumberMasked: "•••4567" });
     vi.spyOn(identityApplicationsApi, "getCurrentContract").mockResolvedValue({ type: "merchant", version: "1", effectiveAt: "2026-08-01T00:00:00Z", language: "zh-CN", text: "合同", contentHash: "a".repeat(64) });
     await render();
     await act(async () => button("下一步：银行与身份").click());
@@ -208,7 +208,7 @@ describe("MerchantApplicationPage behavior", () => {
     saved.reviewEvidence!.bankAccount!.verificationStatus = verificationStatus;
     vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [saved], total: 1, page: 1, page_size: 20 });
     vi.mocked(identityApplicationsApi.updateMerchantShowcase).mockResolvedValue({ ...saved, version: 4 });
-    vi.spyOn(identityApplicationsApi, "bindMerchantBankAccount").mockResolvedValue({ applicationVersion: 5, accountNumberMasked: "•••7654", holderMatched: true });
+    vi.spyOn(identityApplicationsApi, "bindMerchantBankAccount").mockResolvedValue({ applicationVersion: 5, accountNumberMasked: "•••7654" });
     vi.spyOn(identityApplicationsApi, "getCurrentContract").mockResolvedValue({ type: "merchant", version: "1", effectiveAt: "2026-08-01T00:00:00Z", language: "zh-CN", text: "合同", contentHash: "a".repeat(64) });
     await render();
     await act(async () => button("下一步：银行与身份").click());
@@ -224,13 +224,13 @@ describe("MerchantApplicationPage behavior", () => {
     expect(identityApplicationsApi.uploadMedia).not.toHaveBeenCalled();
     expect(button("提交申请")).toBeTruthy();
   });
-  it("does not reuse a saved account whose evidence is not verified", async () => {
+  it("reuses a saved declared account without rebinding", async () => {
     await resumeBank("declared");
-    expect(input("账号").value).toBe("");
-    expect(container.textContent).not.toContain("•••4567");
+    expect(container.textContent).toContain("•••4567");
+    expect(container.querySelector('input[inputmode="numeric"]')).toBeNull();
     await act(async () => button("下一步：收费规则与合同").click());
     expect(identityApplicationsApi.bindMerchantBankAccount).not.toHaveBeenCalled();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("请选择银行");
+    expect(button("提交申请")).toBeTruthy();
   });
   it("requires explicit edit and empty sensitive inputs before rebinding without sending masks", async () => {
     await resumeBank();
@@ -344,15 +344,24 @@ describe("MerchantApplicationPage behavior", () => {
     await chooseBank("0009");
     for (const [label, value] of [["支店代码", "001"], ["支店名称", "本店"], ["账号", "1234567"], ["账户名义人", "ヤマダタロウ"]]) await enter(label, value);
     await act(async () => button("下一步：收费规则与合同").click());
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("未找到可用于银行账户核验的 eKYC 认证资料");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("个人名义申请需要有效的 eKYC 认证");
     expect(container.querySelector('[role="alert"]')?.textContent).not.toContain("error.");
     expect(input("账号").value).toBe("1234567");
     expect(input("账户名义人").value).toBe("ヤマダタロウ");
   });
 
+  it("states that merchant bank details are recorded without applicant-name matching", async () => {
+    vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [corporateDraft], total: 1, page: 1, page_size: 20 });
+    await render();
+    await act(async () => button("下一步：银行与身份").click());
+    expect(container.textContent).toContain("银行账户名义仅按填写内容登记，不与申请人或法人名称进行一致性判断。");
+    expect(container.textContent).not.toContain("必须与法人名称片假名一致");
+    expect(container.textContent).not.toContain("必须与 eKYC 姓名一致");
+  });
+
   it("retains the successful upload version when bank binding fails and is retried", async () => {
     vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({ list: [corporateDraft], total: 1, page: 1, page_size: 20 });
-    vi.spyOn(identityApplicationsApi, "bindMerchantBankAccount").mockRejectedValue(new Error("error.bank_account.holder_name_mismatch"));
+    vi.spyOn(identityApplicationsApi, "bindMerchantBankAccount").mockRejectedValue(new Error("error.identity_application.version_conflict"));
     await render();
     await act(async () => button("下一步：银行与身份").click());
     await chooseBank("0009");

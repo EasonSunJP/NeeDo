@@ -6,10 +6,28 @@ import {
   type EkycDecision,
   type EkycListQuery
 } from "../services/ekyc-application.service";
+
+const applicantInclude = {
+  user: { select: { needoId: true } }
+} satisfies Prisma.EkycApplicationInclude;
+
+type EkycApplicationWithApplicant = Prisma.EkycApplicationGetPayload<{
+  include: typeof applicantInclude;
+}>;
+
+const toApplicationRecord = ({ user, ...application }: EkycApplicationWithApplicant) => ({
+  ...application,
+  userPublicId: user.needoId
+});
+
 export class EkycApplicationRepository implements EkycApplicationRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
-  public find(id: number) {
-    return this.client.ekycApplication.findFirst({ where: { id, deletedAt: null } });
+  public async find(id: number) {
+    const row = await this.client.ekycApplication.findFirst({
+      where: { id, deletedAt: null },
+      include: applicantInclude
+    });
+    return row ? toApplicationRecord(row) : null;
   }
   public async list(userId: number | undefined, query: EkycListQuery) {
     const where: Prisma.EkycApplicationWhereInput = {
@@ -20,13 +38,19 @@ export class EkycApplicationRepository implements EkycApplicationRepositoryPort 
     const [list, total] = await this.client.$transaction([
       this.client.ekycApplication.findMany({
         where,
+        include: applicantInclude,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip: (query.page - 1) * query.page_size,
         take: query.page_size
       }),
       this.client.ekycApplication.count({ where })
     ]);
-    return { list, total, page: query.page, page_size: query.page_size };
+    return {
+      list: list.map(toApplicationRecord),
+      total,
+      page: query.page,
+      page_size: query.page_size
+    };
   }
   public async create(input: { userId: number; profileEncrypted: string; now: Date }) {
     return this.transaction(async (tx) => {
@@ -63,7 +87,8 @@ export class EkycApplicationRepository implements EkycApplicationRepositoryPort 
           profileEncrypted: input.profileEncrypted,
           status: "submitted",
           version: 1
-        }
+        },
+        include: applicantInclude
       });
       await tx.auditLog.create({
         data: {
@@ -74,7 +99,7 @@ export class EkycApplicationRepository implements EkycApplicationRepositoryPort 
           metadata: { applicationId: row.id, userId: input.userId, status: "submitted" }
         }
       });
-      return row;
+      return toApplicationRecord(row);
     });
   }
   public async decide(input: EkycDecision) {
@@ -127,7 +152,9 @@ export class EkycApplicationRepository implements EkycApplicationRepositoryPort 
           }
         }
       });
-      return tx.ekycApplication.findUniqueOrThrow({ where: { id: input.id } });
+      return tx.ekycApplication
+        .findUniqueOrThrow({ where: { id: input.id }, include: applicantInclude })
+        .then(toApplicationRecord);
     });
   }
   private async transaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {

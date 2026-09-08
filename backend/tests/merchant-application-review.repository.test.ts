@@ -1,11 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
 import { MerchantApplicationReviewRepository } from "../src/repositories/merchant-application-review.repository";
-import { BankAccountHolderService } from "../src/services/bank-account-holder.service";
 import { SensitiveFieldCipherService } from "../src/services/sensitive-field-cipher.service";
 
 const key = "merchant-review-test-key-at-least-32-characters";
 const cipher = new SensitiveFieldCipherService(key);
-const holder = new BankAccountHolderService();
 const reviewedAt = new Date("2026-08-16T15:00:00.000Z");
 
 describe("MerchantApplicationReviewRepository", () => {
@@ -25,8 +23,7 @@ describe("MerchantApplicationReviewRepository", () => {
     });
     expect(count.mock.calls[0][0].where.status).toEqual(findMany.mock.calls[0][0].where.status);
   });
-  it("returns masked bank fields, match evidence, and gates sensitive documents", async () => {
-    const normalized = holder.normalizeForMatch("corporate", "カブシキガイシャニード");
+  it("returns masked recorded bank fields and gates sensitive documents", async () => {
     const identityApplication = {
       findFirst: jest.fn().mockResolvedValue({
         id: 41,
@@ -56,7 +53,7 @@ describe("MerchantApplicationReviewRepository", () => {
             accountType: "ordinary",
             accountNumberEncrypted: cipher.seal("1234567"),
             accountHolderEncrypted: cipher.seal("カ）ニード"),
-            holderMatchHash: cipher.matchHash(normalized),
+            holderMatchHash: cipher.matchHash("カ)ニード"),
             verificationSource: "corporate_registration",
             verificationStatus: "verified",
             verifiedAt: reviewedAt,
@@ -88,12 +85,12 @@ describe("MerchantApplicationReviewRepository", () => {
       () => reviewedAt
     );
 
-    await expect(repository.findById(41, true)).resolves.toMatchObject({
+    const result = await repository.findById(41, true);
+    expect(result).toMatchObject({
       applicationId: 41,
       bankAccount: {
         accountNumberMasked: "•••4567",
-        accountHolderMasked: "カ•••ド",
-        holderMatched: true
+        accountHolderMasked: "カ•••ド"
       },
       media: [
         {
@@ -103,6 +100,7 @@ describe("MerchantApplicationReviewRepository", () => {
         }
       ]
     });
+    expect(result?.bankAccount).not.toHaveProperty("holderMatched");
     expect(identityApplication.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 41, type: "merchant", deletedAt: null, status: { not: "draft" } }
