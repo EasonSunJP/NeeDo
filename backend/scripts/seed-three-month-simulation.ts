@@ -41,6 +41,7 @@ import {
   orderFormalTestAccountExports
 } from "../src/simulation/formal-test-account-export";
 import { syncFormalSocialAccountProfile } from "../src/simulation/formal-social-account-profile";
+import { resolveSimulationMessageExpiresAt } from "../src/simulation/simulation-message-retention";
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
 import { migrateLifeDanceAdminOwnership } from "../src/simulation/lifedance-admin-ownership";
 import {
@@ -109,6 +110,7 @@ const main = async (): Promise<void> => {
   assert(existsSync(envFile), `environment file was not found: ${envFile}`);
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
+  const simulationSeededAt = new Date();
 
   const seedConfig = getSimulationSeedConfig(process.env);
   const [
@@ -1199,10 +1201,11 @@ const main = async (): Promise<void> => {
                         conversation.firstKey === previewCustomerKey
                     },
                     createdAt,
-                    expiresAt:
-                      imPolicy.textRetentionSeconds === null
-                        ? null
-                        : new Date(createdAt.getTime() + imPolicy.textRetentionSeconds * 1_000),
+                    expiresAt: resolveSimulationMessageExpiresAt({
+                      createdAt,
+                      seededAt: simulationSeededAt,
+                      retentionSeconds: imPolicy.textRetentionSeconds
+                    }),
                     recallDeadlineAt: new Date(
                       createdAt.getTime() + imPolicy.recallWindowSeconds * 1_000
                     ),
