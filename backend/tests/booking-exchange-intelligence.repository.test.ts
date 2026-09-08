@@ -103,7 +103,12 @@ interface BookingCreateDataFixture extends Record<string, unknown> {
   statusHistory: { create: Record<string, unknown> };
 }
 
-const createHarness = (overrides: { intelligence?: Record<string, unknown> | null } = {}) => {
+const createHarness = (
+  overrides: {
+    intelligence?: Record<string, unknown> | null;
+    slot?: Record<string, unknown>;
+  } = {}
+) => {
   let persistedOrder: Record<string, unknown> | null = null;
   const create = jest.fn(async ({ data }: { data: BookingCreateDataFixture }) => {
     persistedOrder = {
@@ -166,6 +171,8 @@ const createHarness = (overrides: { intelligence?: Record<string, unknown> | nul
       ])
     },
     customerProfile: { findFirst: jest.fn().mockResolvedValue({ membershipLevel: "black" }) },
+    technicianProfile: { update: jest.fn().mockResolvedValue({ id: 91 }) },
+    exchangeMatchParticipant: { findFirst: jest.fn().mockResolvedValue(null) },
     exchangeIntelligence: {
       findFirst: jest.fn().mockResolvedValue(
         overrides.intelligence === undefined
@@ -177,7 +184,7 @@ const createHarness = (overrides: { intelligence?: Record<string, unknown> | nul
     },
     shop: { update: jest.fn().mockResolvedValue({ id: 11 }) },
     scheduleSlot: {
-      findFirst: jest.fn().mockResolvedValue(slot),
+      findFirst: jest.fn().mockResolvedValue({ ...slot, ...overrides.slot }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     bookingOrder: {
@@ -282,6 +289,34 @@ describe("BookingRepository Exchange Intelligence source", () => {
       })
     ).resolves.toEqual({ intelligenceBookingError: "unavailable" });
     expect(harness.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a shop-service Intelligence booking to use an assigned shop technician slot", async () => {
+    const harness = createHarness({
+      slot: {
+        technicianProfileId: 91,
+        technicianProfile: { id: 91, userId: 191, displayName: "Assigned technician" }
+      }
+    });
+
+    await expect(
+      harness.repository.createBooking({
+        customerUserId: 7,
+        serviceId: 41,
+        scheduleSlotId: 51,
+        exchangeIntelligencePostId: 61,
+        idempotencyKey: "intelligence-booking-assigned-technician",
+        fulfillmentMode: "store",
+        serviceLocation: { source: "SHOP_LOCATION" }
+      })
+    ).resolves.toMatchObject({
+      order: {
+        id: 301,
+        exchangeIntelligencePostId: 61,
+        technicianProfileId: 91
+      }
+    });
+    expect(harness.tx.scheduleSlot.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a different requested service before changing slot capacity", async () => {

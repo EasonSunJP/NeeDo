@@ -199,7 +199,7 @@ const makeReplacementSlot = (id: number, bookedCount: number, status: "AVAILABLE
   capacity: 2,
   bookedCount,
   status,
-  deletedAt: null,
+  deletedAt: null as Date | null,
   service: {
     id: 11,
     publicId: "svc-replacement-11",
@@ -220,14 +220,19 @@ const makeReplacementSlot = (id: number, bookedCount: number, status: "AVAILABLE
 
 const relationIsNull = (order: PendingReplacementOrder) => order.exchangeMatchParticipant == null;
 
-const createPendingReplacementHarness = (options: { linkAfterSelection?: boolean } = {}) => {
+const createPendingReplacementHarness = (
+  options: { deletedPendingSlot?: boolean; linkAfterSelection?: boolean } = {}
+) => {
   let committed: PendingReplacementHarnessState = {
     orders: [
       makePendingReplacementOrder(501, 601, null),
       makePendingReplacementOrder(502, 602, { id: 81 })
     ],
     slots: [
-      makeReplacementSlot(601, 1, "BOOKED"),
+      {
+        ...makeReplacementSlot(601, 1, "BOOKED"),
+        deletedAt: options.deletedPendingSlot ? new Date("2026-09-02T00:00:00.000Z") : null
+      },
       makeReplacementSlot(602, 1, "BOOKED"),
       makeReplacementSlot(603, 0, "AVAILABLE")
     ],
@@ -248,6 +253,10 @@ const createPendingReplacementHarness = (options: { linkAfterSelection?: boolean
     },
     shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
     scheduleSlot: {
+      findUnique: jest.fn(
+        async ({ where }: { where: { id: number } }) =>
+          working.slots.find((slot) => slot.id === where.id) ?? null
+      ),
       findFirst: jest.fn(
         async ({ where }: { where: { id: number } }) =>
           working.slots.find((slot) => slot.id === where.id) ?? null
@@ -605,6 +614,7 @@ describe("BookingRepository order list scope", () => {
         },
         shop: { update: jest.fn().mockResolvedValue({ id: 16 }) },
         scheduleSlot: {
+          findUnique: jest.fn().mockResolvedValue({ deletedAt: null }),
           findFirst: scheduleFindFirst,
           updateMany: releasePendingSlot
         },
@@ -696,6 +706,39 @@ serviceLocation: { source: "SHOP_LOCATION" }
     expect(invalidateSupersededAffiliate).toHaveBeenCalledWith(
       expect.objectContaining({ bookingOrderId: 501, actorUserId: 101 })
     );
+  });
+
+  it("replaces a pending order whose old schedule slot was already soft-deleted", async () => {
+    const harness = createPendingReplacementHarness({ deletedPendingSlot: true });
+    const repository = new BookingRepository(harness.client as never);
+
+    const result = await repository.createBooking({
+      customerUserId: 101,
+      serviceId: 11,
+      scheduleSlotId: 603,
+      fulfillmentMode: "store",
+      serviceLocation: { source: "SHOP_LOCATION" }
+    });
+
+    expect(result).toMatchObject({
+      order: { id: 701, status: "pending", scheduleSlotId: 603 },
+      supersededOrders: [{ order: { id: 501, status: "cancelled" } }]
+    });
+    expect(harness.state()).toMatchObject({
+      orders: expect.arrayContaining([
+        expect.objectContaining({ id: 501, status: "CANCELLED" }),
+        expect.objectContaining({ id: 701, status: "PENDING", scheduleSlotId: 603 })
+      ]),
+      slots: expect.arrayContaining([
+        expect.objectContaining({
+          id: 601,
+          bookedCount: 1,
+          status: "BOOKED",
+          deletedAt: new Date("2026-09-02T00:00:00.000Z")
+        }),
+        expect.objectContaining({ id: 603, bookedCount: 1 })
+      ])
+    });
   });
 
   it("rolls back all local replacement writes when a selected pending order gains an Exchange link", async () => {

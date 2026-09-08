@@ -459,12 +459,13 @@ describe("formal checkout technician-card round trip", () => {
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
     vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(harukaDetail);
     vi.spyOn(exchangeApi, "getExchangePost").mockResolvedValue(intelligencePost);
-    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
-      list: slots,
-      total: slots.length,
-      page: 1,
-      page_size: 100
-    });
+    const fillerSlots = Array.from({ length: 100 }, (_, index) => ({
+      ...makeSlot(1_000 + index, "2026-09-03T02:15:00.000Z"),
+      serviceId: 999
+    }));
+    const listAvailability = vi.spyOn(bookingApi, "listAvailability").mockImplementation(async ({ page }) => page === 1
+      ? { list: fillerSlots, total: fillerSlots.length + slots.length, page: 1, page_size: 100 }
+      : { list: slots, total: fillerSlots.length + slots.length, page: 2, page_size: 100 });
     const createBooking = vi.spyOn(bookingApi, "createBooking").mockResolvedValue({
       ...createdOrder,
       exchangeIntelligencePostId: 61,
@@ -487,6 +488,24 @@ describe("formal checkout technician-card round trip", () => {
     });
 
     await waitFor(() => expect(container.textContent).toContain("来源情报 · #61"));
+    expect(listAvailability).toHaveBeenCalledWith({
+      serviceId: 31,
+      technicianServiceId: undefined,
+      from: intelligencePost.serviceStartAt,
+      to: intelligencePost.serviceEndAt,
+      includeUnavailable: true,
+      page: 1,
+      pageSize: 100
+    });
+    expect(listAvailability).toHaveBeenNthCalledWith(2, {
+      serviceId: 31,
+      technicianServiceId: undefined,
+      from: intelligencePost.serviceStartAt,
+      to: intelligencePost.serviceEndAt,
+      includeUnavailable: true,
+      page: 2,
+      pageSize: 100
+    });
     expect(container.textContent).toContain("￥7,000");
     expect(container.textContent).toContain("￥8,800");
     expect(container.textContent).not.toContain("08:00");
@@ -525,7 +544,7 @@ describe("formal checkout technician-card round trip", () => {
     await act(async () => {
       root.render(
         <ClientThemeProvider>
-          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&exchangePost=61"]}>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&exchangePost=61&mode=store"]}>
             <Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes>
           </MemoryRouter>
         </ClientThemeProvider>
@@ -537,7 +556,7 @@ describe("formal checkout technician-card round trip", () => {
     expect(createBooking).not.toHaveBeenCalled();
   });
 
-  it("fails closed when an Intelligence source requires home travel checkout", async () => {
+  it("routes an onsite Intelligence source through the formal home travel checkout", async () => {
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
     vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue({ ...service, serviceMode: "home" });
     vi.spyOn(exchangeApi, "getExchangePost").mockResolvedValue({
@@ -550,21 +569,36 @@ describe("formal checkout technician-card round trip", () => {
       }
     });
     vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: 3, page: 1, page_size: 100 });
-    const createBooking = vi.spyOn(bookingApi, "createBooking");
+    vi.spyOn(travelFareApi, "createEstimate").mockResolvedValue({ publicId: "00000000-0000-4000-8000-000000000078", distanceMeters: 4200, durationSeconds: 900, fareAmountJpy: 800, policyVersionPublicId: "00000000-0000-4000-8000-000000000031", policyVersion: 2, bandMaximumDistanceMeters: 5000, expiresAt: "2026-09-02T22:10:00.000Z", cached: false });
+    const createBooking = vi.spyOn(bookingApi, "createBooking").mockResolvedValue({ ...createdOrder, fulfillmentMode: "home", exchangeIntelligencePostId: 61, paymentAmountJpy: 8_300 });
 
     await act(async () => {
       root.render(
         <ClientThemeProvider>
           <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&exchangePost=61"]}>
-            <Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes>
+            <Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /><Route element={<LocationProbe />} path="/orders/:orderId" /></Routes>
           </MemoryRouter>
         </ClientThemeProvider>
       );
     });
 
-    await waitFor(() => expect(container.textContent).toContain("上门情报预约需等待正式路程估算接入"));
-    expect(container.textContent).not.toContain("确定预约");
-    expect(createBooking).not.toHaveBeenCalled();
+    await waitFor(() => expect(container.textContent).toContain("估算交通费"));
+    const confirm = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.includes("确定预约"))!;
+    expect(confirm.disabled).toBe(true);
+    await changeInput("邮政编码", "104-0061"); await changeInput("都道府县", "東京都"); await changeInput("市区町村", "中央区"); await changeInput("街道地址", "銀座1-2-3");
+    await click([...container.querySelectorAll("button")].find((button) => button.textContent === "估算交通费")!);
+    await waitFor(() => expect(container.textContent).toContain("正式交通费 ¥800"));
+    await click(confirm);
+    await waitFor(() => expect(createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exchangeIntelligencePostId: 61,
+        fulfillmentMode: "home",
+        scheduleSlotId: 102,
+        travelEstimatePublicId: "00000000-0000-4000-8000-000000000078"
+      }),
+      expect.stringMatching(/^[a-f0-9]{32}$/)
+    ));
   });
 
   it("directly reloads the explicit technician-service route and submits the exact Intelligence target", async () => {

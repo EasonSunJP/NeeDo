@@ -17,6 +17,10 @@ describe("Exchange intelligence booking formal-flow checker", () => {
     expect(source).toContain("INFORMATION_SCHEMA.COLUMNS");
     expect(source).toContain("INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS");
     expect(source).toContain("exchange_intelligences_service_binding_check");
+    expect(source).toContain("client.administrativeRegion.create");
+    expect(source).toContain("client.administrativeRegionLocale.create");
+    expect(source).toContain("client.shopServiceLocation.createMany");
+    expect(source).toContain("client.bookingServiceLocation.findMany");
     expect(source).toContain("BookingService");
     expect(source).toContain("exchangeIntelligencePostId");
     expect(source).toContain("WITHDRAWN");

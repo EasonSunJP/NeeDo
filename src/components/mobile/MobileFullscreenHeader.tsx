@@ -73,6 +73,7 @@ export function MobileFullscreenBackButton({
 
 export function MobileFullscreenHeader({
   title,
+  center,
   info,
   infoLabel,
   subtitle,
@@ -90,6 +91,7 @@ export function MobileFullscreenHeader({
   showSpacer = true
 }: {
   title: ReactNode;
+  center?: ReactNode;
   info?: ReactNode;
   infoLabel?: string;
   subtitle?: ReactNode;
@@ -143,17 +145,21 @@ export function MobileFullscreenHeader({
             )}
           >
             <div className="flex min-h-10 flex-col justify-center">
-              <TitleWithInfo
-                as="h1"
-                info={headerInfo}
-                label={
-                  infoLabel ??
-                  (typeof title === "string" ? `${title} 说明` : "查看页面说明")
-                }
-                title={title}
-                titleClassName={cn("truncate text-[18px] font-black leading-none", dark ? "text-white" : "text-current")}
-                variant={dark ? "dark" : "client"}
-              />
+              {center ? (
+                <div className="min-w-0">{center}</div>
+              ) : (
+                <TitleWithInfo
+                  as="h1"
+                  info={headerInfo}
+                  label={
+                    infoLabel ??
+                    (typeof title === "string" ? `${title} 说明` : "查看页面说明")
+                  }
+                  title={title}
+                  titleClassName={cn("truncate text-[18px] font-black leading-none", dark ? "text-white" : "text-current")}
+                  variant={dark ? "dark" : "client"}
+                />
+              )}
             </div>
           </div>
           {hasRightControls ? (

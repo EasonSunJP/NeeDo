@@ -77,8 +77,13 @@ function paymentEvidenceLabel(evidence: OrderCheckout["paymentEvidence"]) {
   return "尚无收款凭证";
 }
 
-function bookingPaymentMethodLabel(method: BookingOrder["paymentMethod"]) {
-  if (method === "onsite" || method === "cash") return "到店后确认付款";
+function bookingPaymentMethodLabel(
+  method: BookingOrder["paymentMethod"],
+  fulfillmentMode: BookingOrder["fulfillmentMode"]
+) {
+  if (method === "onsite" || method === "cash") {
+    return fulfillmentMode === "home" ? "服务现场确认付款" : "到店后确认付款";
+  }
   if (method === "bank_transfer") return "银行转账";
   if (method === "ndp") return "NDP 支付";
   return "其他支付方式";
@@ -115,15 +120,6 @@ function ProfileSection({ children, title }: { children: ReactNode; title: strin
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="min-w-0 rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 py-4 shadow-panel">
-      <p className="text-[11px] font-black text-[color:var(--client-muted)]">{label}</p>
-      <p className="mt-1 truncate text-sm font-black text-[color:var(--client-text)]">{value}</p>
-    </div>
-  );
-}
-
 function buildBookingOrderSnapshotServiceData(order: BookingOrder): UnifiedServiceInfoCardData {
   const snapshotPrice = Number(order.servicePriceSnapshot ?? order.priceAmount);
 
@@ -139,6 +135,29 @@ function buildBookingOrderSnapshotServiceData(order: BookingOrder): UnifiedServi
     shopAddress: null,
     description: null,
     tags: []
+  };
+}
+
+function buildBookingOrderServiceData(
+  order: BookingOrder,
+  service: CoreServiceDetail | null
+): UnifiedServiceInfoCardData {
+  const snapshot = buildBookingOrderSnapshotServiceData(order);
+  const paymentMethod = bookingPaymentMethodLabel(order.paymentMethod, order.fulfillmentMode);
+
+  if (!service) {
+    return { ...snapshot, tags: [paymentMethod] };
+  }
+
+  const live = mapCoreServiceCardToUnifiedData(service);
+  return {
+    ...live,
+    name: snapshot.name,
+    priceAmount: snapshot.priceAmount,
+    currency: snapshot.currency,
+    durationMinutes: snapshot.durationMinutes,
+    tags: [...live.tags.filter((tag) => tag !== paymentMethod), paymentMethod],
+    catalogPriceAmount: null
   };
 }
 
@@ -507,16 +526,10 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
 
           <ProfileSection title="服务">
             <UnifiedServiceInfoCard
-              data={orderService ? mapCoreServiceCardToUnifiedData(orderService) : buildBookingOrderSnapshotServiceData(order)}
+              data={buildBookingOrderServiceData(order, orderService)}
               detailTo={orderService ? `/services/${orderService.id}` : undefined}
             />
           </ProfileSection>
-
-          <div className="grid grid-cols-3 gap-2">
-            <SummaryStat label="金额" value={yen(order.paymentAmountJpy)} />
-            <SummaryStat label="支付手段" value={bookingPaymentMethodLabel(order.paymentMethod)} />
-            <SummaryStat label="来源" value="App" />
-          </div>
 
           <ProfileSection title="店铺 / 服务方">
             {displayShop ? (

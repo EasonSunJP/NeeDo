@@ -772,7 +772,7 @@ export function DispatchOverviewWorkspace({
   const [dateKey, setDateKey] = useState(getTodayDateKey);
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false);
   const [scheduleDetailReturnView, setScheduleDetailReturnView] = useState<ScheduleCycleCalendarBoardView | null>(null);
-  const scheduleSearchQuery = "";
+  const [scheduleSearchQuery, setScheduleSearchQuery] = useState("");
   const scheduleStatusFilter: ScheduleDetailStatusFilter = "all";
   const [contactReplacementFlows, setContactReplacementFlows] = useState<Record<string, ContactReplacementFlow>>({});
   const [contactStatusExtraTimeline, setContactStatusExtraTimeline] = useState<Record<string, MobileContactStatusTimelineEvent[]>>({});
@@ -886,6 +886,11 @@ export function DispatchOverviewWorkspace({
 
     setView(scheduleDetailReturnView);
     setScheduleDetailReturnView(null);
+  };
+  const closeScheduleDetail = () => {
+    setScheduleDetailOpen(false);
+    setScheduleDetailReturnView(null);
+    setScheduleSearchQuery("");
   };
 
   useEffect(() => {
@@ -1845,15 +1850,24 @@ export function DispatchOverviewWorkspace({
       {isMobileSurface && scheduleDetailOpen ? (
         <MobileFullscreenPage className="z-[90]" innerClassName="client-mobile-schedule-detail__inner">
           <MobileFullscreenHeader
+            center={(
+              <label className="flex h-10 min-w-0 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-3 text-[color:var(--client-muted)] focus-within:ring-2 focus-within:ring-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)]">
+                <AppIcon className="h-4 w-4 shrink-0" name="search" />
+                <input
+                  aria-label={t("搜索排班")}
+                  className="min-w-0 flex-1 bg-transparent text-[13px] font-bold text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
+                  onChange={(event) => setScheduleSearchQuery(event.target.value)}
+                  placeholder={t("搜索技师、服务、预约")}
+                  type="search"
+                  value={scheduleSearchQuery}
+                />
+              </label>
+            )}
             className="client-mobile-schedule-detail__floating-header"
             closeLabel="关闭排班表"
-            onBack={scheduleDetailReturnView ? returnToScheduleDetailSourceView : undefined}
-            onClose={() => {
-              setScheduleDetailOpen(false);
-              setScheduleDetailReturnView(null);
-            }}
+            onBack={scheduleDetailReturnView ? returnToScheduleDetailSourceView : closeScheduleDetail}
+            onClose={closeScheduleDetail}
             showSpacer={false}
-            subtitle={schedulePeriodLabel}
             title="周期排班表"
           />
           <div className="scrollbar-none client-mobile-schedule-detail__refractive-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-3">

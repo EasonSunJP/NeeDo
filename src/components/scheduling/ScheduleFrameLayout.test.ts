@@ -92,11 +92,15 @@ describe("shared schedule frame layout", () => {
     expect(stepModeSelectionSource).toContain("<InfoTooltipTrigger");
   });
 
-  it("keeps the mode-selection action buttons free of a shared outer dock", () => {
-    expect(stepModeSelectionSource).toContain('className="flex flex-wrap items-center justify-center gap-3"');
-    expect(stepModeSelectionSource).not.toContain('isMobileSurface && "schedule-wizard-action-dock rounded-[28px] p-2"');
-    expect(stepModeSelectionSource).toContain('className={cn(secondaryButtonClass, "min-w-[132px]")}');
-    expect(stepModeSelectionSource).toContain('className={cn(primaryButtonClass, "min-w-[196px]")}');
+  it("floats mobile mode-selection actions in the same safe-area frame as the home navigation", () => {
+    expect(stepModeSelectionSource).toContain('data-schedule-wizard-bottom-actions="true"');
+    expect(stepModeSelectionSource).toContain('"pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full pt-10"');
+    expect(stepModeSelectionSource).toContain('maxWidth: "var(--client-bottom-nav-max-width, 880px)"');
+    expect(stepModeSelectionSource).toContain('paddingLeft: "var(--client-bottom-nav-inline-gap, 12px)"');
+    expect(stepModeSelectionSource).toContain('pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)]');
+    expect(stepModeSelectionSource).toContain('isMobileSurface && "pb-[calc(env(safe-area-inset-bottom,0px)+8.5rem)]"');
+    expect(stepModeSelectionSource).toContain('isMobileSurface ? "w-full min-w-0" : "min-w-[132px]"');
+    expect(stepModeSelectionSource).toContain('isMobileSurface ? "w-full min-w-0" : "min-w-[196px]"');
   });
 
   it("does not apply page theme background classes to the user calendar table itself", () => {

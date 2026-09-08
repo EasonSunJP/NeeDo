@@ -183,6 +183,7 @@ async function main(): Promise<void> {
       { BookingService },
       { RealtimeRepository },
       { RealtimeService },
+      { hashRouteAddress, shopAddressToJapaneseRouteAddress },
       { bookingCreateBodySchema },
       { PrismaClient },
       { PrismaMariaDb }
@@ -194,6 +195,7 @@ async function main(): Promise<void> {
       import("../src/services/booking.service"),
       import("../src/repositories/realtime.repository"),
       import("../src/services/realtime.service"),
+      import("../src/services/route-estimate.service"),
       import("../src/validators/booking.validator"),
       import("@prisma/client"),
       import("@prisma/adapter-mariadb")
@@ -246,6 +248,70 @@ async function main(): Promise<void> {
         }
       })
     ]);
+    const tokyoRegion = await client.administrativeRegion.create({
+      data: {
+        countryCode: "JP",
+        officialCode: "13",
+        level: "ADMIN1",
+        source: "NeeDo intelligence booking checker",
+        sourceVersion: "N03-20260101"
+      }
+    });
+    const [shibuyaRegion, shinjukuRegion] = await Promise.all([
+      client.administrativeRegion.create({
+        data: {
+          countryCode: "JP",
+          officialCode: "13113",
+          level: "ADMIN2",
+          parentId: tokyoRegion.id,
+          source: "NeeDo intelligence booking checker",
+          sourceVersion: "N03-20260101"
+        }
+      }),
+      client.administrativeRegion.create({
+        data: {
+          countryCode: "JP",
+          officialCode: "13104",
+          level: "ADMIN2",
+          parentId: tokyoRegion.id,
+          source: "NeeDo intelligence booking checker",
+          sourceVersion: "N03-20260101"
+        }
+      })
+    ]);
+    await Promise.all([
+      client.administrativeRegionLocale.create({
+        data: { regionId: tokyoRegion.id, locale: "JA", name: "東京都" }
+      }),
+      client.administrativeRegionLocale.create({
+        data: { regionId: shibuyaRegion.id, locale: "JA", name: "渋谷区" }
+      }),
+      client.administrativeRegionLocale.create({
+        data: { regionId: shinjukuRegion.id, locale: "JA", name: "新宿区" }
+      })
+    ]);
+    await client.shopServiceLocation.createMany({
+      data: [
+        {
+          shopId: shop.id,
+          countryCode: "JP",
+          admin1RegionId: tokyoRegion.id,
+          admin2RegionId: shibuyaRegion.id,
+          datasetVersion: "N03-20260101",
+          verifiedAt: now,
+          verifiedById: shopOwnerUser.id
+        },
+        {
+          shopId: technicianShop.id,
+          countryCode: "JP",
+          admin1RegionId: tokyoRegion.id,
+          admin2RegionId: shinjukuRegion.id,
+          datasetVersion: "N03-20260101",
+          verifiedAt: now,
+          verifiedById: technicianUser.id
+        }
+      ]
+    });
     const technicianProfile = await client.technicianProfile.create({
       data: {
         userId: technicianUser.id,
@@ -349,7 +415,7 @@ async function main(): Promise<void> {
     const category = await client.category.create({
       data: { code: `${database}-category`, name: "Formal Care", isActive: true }
     });
-    const [shopService, technicianSourceService] = await Promise.all([
+    const [shopService, homeService, technicianSourceService] = await Promise.all([
       client.service.create({
         data: {
           categoryId: category.id,
@@ -359,6 +425,20 @@ async function main(): Promise<void> {
           city: "Tokyo",
           serviceMode: "store",
           priceAmount: 12_000,
+          currency: "JPY",
+          durationMinutes: 60,
+          status: "published"
+        }
+      }),
+      client.service.create({
+        data: {
+          categoryId: category.id,
+          shopId: shop.id,
+          name: "Formal Home Care",
+          description: "Formal onsite Intelligence service description",
+          city: "Tokyo",
+          serviceMode: "home",
+          priceAmount: 14_000,
           currency: "JPY",
           durationMinutes: 60,
           status: "published"
@@ -406,7 +486,7 @@ async function main(): Promise<void> {
         activeKey: `${database}:affiliation`
       }
     });
-    const [shopSlot, raceSlot, rollbackSlot, outsideSlot, technicianSlot] = await Promise.all([
+    const [shopSlot, raceSlot, rollbackSlot, outsideSlot, technicianSlot, homeSlot, homeRollbackSlot] = await Promise.all([
       client.scheduleSlot.create({
         data: {
           serviceId: shopService.id,
@@ -454,6 +534,26 @@ async function main(): Promise<void> {
           technicianProfileId: technicianProfile.id,
           startsAt: atHours(9),
           endsAt: atHours(10),
+          capacity: 1,
+          status: "AVAILABLE"
+        }
+      }),
+      client.scheduleSlot.create({
+        data: {
+          serviceId: homeService.id,
+          shopId: shop.id,
+          startsAt: atHours(16),
+          endsAt: atHours(17),
+          capacity: 1,
+          status: "AVAILABLE"
+        }
+      }),
+      client.scheduleSlot.create({
+        data: {
+          serviceId: homeService.id,
+          shopId: shop.id,
+          startsAt: atHours(18),
+          endsAt: atHours(19),
           capacity: 1,
           status: "AVAILABLE"
         }
@@ -572,6 +672,21 @@ async function main(): Promise<void> {
       },
       `${database}:publish-technician`
     );
+    const homePost = await exchange.publish(
+      shopAccess,
+      {
+        type: "intelligence",
+        title: "Formal onsite campaign",
+        detail: "Book the exact formal home service with travel evidence",
+        contentLocale: "ja",
+        serviceStartAt: atHours(15),
+        serviceEndAt: atHours(20),
+        expiresAt: atHours(21),
+        serviceRef: `shop:${homeService.id}`,
+        campaignPriceJpy: 9_000
+      },
+      `${database}:publish-home`
+    );
     assert.equal(shopPost.intelligence?.booking.available, true);
     assert.deepEqual(shopPost.intelligence?.booking.target, {
       type: "shop_service",
@@ -590,6 +705,9 @@ async function main(): Promise<void> {
       technicianPost.intelligence?.serviceCard?.shopPublicId,
       technicianShopPublic.publicId
     );
+    assert.equal(homePost.intelligence?.serviceMode, "onsite");
+    assert.equal(homePost.intelligence?.booking.target?.id, homeService.id);
+    assert.equal(homePost.intelligence?.serviceCard?.campaignPriceJpy, 9_000);
 
     const realtime = new RealtimeService(new RealtimeRepository(client), {
       publish: () => undefined,
@@ -621,6 +739,71 @@ async function main(): Promise<void> {
           fulfillmentMode: "store",
           paymentMethod: "onsite",
           exchangeIntelligencePostId: shopPost.id
+        },
+        key
+      );
+    const destination = {
+      countryCode: "JP" as const,
+      postalCode: "150-0002",
+      prefecture: "東京都",
+      city: "渋谷区",
+      addressLine1: "渋谷1-2-3",
+      building: "NeeDo 301"
+    };
+    const policy = await client.shopTravelFarePolicyVersion.create({
+      data: {
+        shopId: shop.id,
+        version: 1,
+        effectiveFrom: atHours(-1),
+        publishedByUserId: shopOwnerUser.id,
+        reason: "Intelligence onsite persistence checker"
+      }
+    });
+    const fareBand = await client.shopTravelFareBand.create({
+      data: {
+        policyVersionId: policy.id,
+        ordinal: 0,
+        maximumDistanceMeters: 10_000,
+        fareAmountJpy: 800
+      }
+    });
+    const createHomeEstimate = (slotId: number, requestId: string) =>
+      client.routeEstimate.create({
+        data: {
+          customerUserId: customerUser.id,
+          shopId: shop.id,
+          serviceId: homeService.id,
+          scheduleSlotId: slotId,
+          policyVersionId: policy.id,
+          matchedBandId: fareBand.id,
+          providerCode: "checker",
+          providerRequestId: requestId,
+          originAddressHash: hashRouteAddress(
+            shopAddressToJapaneseRouteAddress({ city: shop.city, address: shop.address })
+          ),
+          destinationAddressHash: hashRouteAddress(destination),
+          distanceMeters: 4_200,
+          durationSeconds: 900,
+          fareAmountJpy: 800,
+          expiresAt: atHours(1)
+        }
+      });
+    const bookHome = (slotId: number, estimatePublicId: string, key: string) =>
+      booking.createBooking(
+        customerActor,
+        {
+          serviceId: homeService.id,
+          scheduleSlotId: slotId,
+          fulfillmentMode: "home",
+          paymentMethod: "onsite",
+          serviceLocation: {
+            countryCode: "JP",
+            admin1Code: tokyoRegion.officialCode,
+            admin2Code: shibuyaRegion.officialCode
+          },
+          fulfillmentAddress: destination,
+          travelEstimatePublicId: estimatePublicId,
+          exchangeIntelligencePostId: homePost.id
         },
         key
       );
@@ -752,12 +935,18 @@ async function main(): Promise<void> {
     );
 
     const rollbackKey = `${database}:rollback`;
+    const homeRollbackKey = `${database}:rollback-home`;
+    const homeRollbackEstimate = await createHomeEstimate(
+      homeRollbackSlot.id,
+      `${database}:estimate-rollback-home`
+    );
     const rollbackTrigger = `${database}_rollback_guard`;
     await admin.query(`
       CREATE TRIGGER \`${rollbackTrigger}\` BEFORE INSERT ON audit_logs FOR EACH ROW
       BEGIN
         IF NEW.action = 'booking.exchange_intelligence.create'
-          AND CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.scheduleSlotId')) AS UNSIGNED) = ${rollbackSlot.id}
+          AND CAST(JSON_UNQUOTE(JSON_EXTRACT(NEW.metadata, '$.scheduleSlotId')) AS UNSIGNED)
+            IN (${rollbackSlot.id}, ${homeRollbackSlot.id})
         THEN
           SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'intelligence checker injected transaction failure';
         END IF;
@@ -768,23 +957,36 @@ async function main(): Promise<void> {
         () => bookShop(rollbackSlot.id, rollbackKey),
         "injected transaction failure"
       );
+      await reject(
+        () => bookHome(homeRollbackSlot.id, homeRollbackEstimate.publicId, homeRollbackKey),
+        "injected onsite transaction failure"
+      );
     } finally {
       await admin.query(`DROP TRIGGER \`${rollbackTrigger}\``);
     }
-    const [rollbackOrderCount, rollbackAuditCount, rollbackSlotAfter] = await Promise.all([
-      client.bookingOrder.count({ where: { createIdempotencyKey: rollbackKey } }),
+    const [rollbackOrderCount, rollbackAuditCount, rollbackSlotAfter, homeRollbackSlotAfter, homeRollbackEstimateAfter] = await Promise.all([
+      client.bookingOrder.count({ where: { createIdempotencyKey: { in: [rollbackKey, homeRollbackKey] } } }),
       client.auditLog.count({
         where: {
           action: "booking.exchange_intelligence.create",
-          metadata: { path: "$.scheduleSlotId", equals: rollbackSlot.id }
+          OR: [
+            { metadata: { path: "$.scheduleSlotId", equals: rollbackSlot.id } },
+            { metadata: { path: "$.scheduleSlotId", equals: homeRollbackSlot.id } }
+          ]
         }
       }),
-      client.scheduleSlot.findUniqueOrThrow({ where: { id: rollbackSlot.id } })
+      client.scheduleSlot.findUniqueOrThrow({ where: { id: rollbackSlot.id } }),
+      client.scheduleSlot.findUniqueOrThrow({ where: { id: homeRollbackSlot.id } }),
+      client.routeEstimate.findUniqueOrThrow({ where: { id: homeRollbackEstimate.id } })
     ]);
     assert.equal(rollbackOrderCount, 0, "injected failure left a booking order");
     assert.equal(rollbackAuditCount, 0, "injected failure left a booking audit");
     assert.equal(rollbackSlotAfter.bookedCount, 0, "injected failure consumed slot capacity");
     assert.equal(rollbackSlotAfter.status, "AVAILABLE", "injected failure changed slot state");
+    assert.equal(homeRollbackSlotAfter.bookedCount, 0, "onsite rollback consumed slot capacity");
+    assert.equal(homeRollbackSlotAfter.status, "AVAILABLE", "onsite rollback changed slot state");
+    assert.equal(homeRollbackEstimateAfter.consumedAt, null, "onsite rollback consumed route estimate");
+    assert.equal(homeRollbackEstimateAfter.consumedByBookingOrderId, null, "onsite rollback linked route estimate");
 
     const shopKey = `${database}:booking-shop`;
     const shopOrder = await bookShop(shopSlot.id, shopKey);
@@ -800,6 +1002,15 @@ async function main(): Promise<void> {
         exchangeIntelligencePostId: technicianPost.id
       },
       `${database}:booking-technician`
+    );
+    const homeEstimate = await createHomeEstimate(homeSlot.id, `${database}:estimate-home`);
+    const homeKey = `${database}:booking-home`;
+    const homeOrder = await bookHome(homeSlot.id, homeEstimate.publicId, homeKey);
+    const homeReplay = await bookHome(homeSlot.id, homeEstimate.publicId, homeKey);
+    assert.equal(homeReplay.id, homeOrder.id, "onsite booking idempotency replay changed the order");
+    await reject(
+      () => bookHome(homeRollbackSlot.id, homeRollbackEstimate.publicId, homeKey),
+      "onsite booking idempotency fingerprint conflict"
     );
     const independentClients = [
       new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl), log: ["error"] }),
@@ -850,9 +1061,18 @@ async function main(): Promise<void> {
     const orderIds = [
       shopOrder.id,
       technicianOrder.id,
+      homeOrder.id,
       ...raceResults.flatMap((result) => (result.status === "fulfilled" ? [result.value.id] : []))
     ];
-    const [orders, histories, notifications, bookingAudits, publicationAudits, travelSnapshots] =
+    const [
+      orders,
+      histories,
+      notifications,
+      bookingAudits,
+      publicationAudits,
+      travelSnapshots,
+      bookingLocations
+    ] =
       await Promise.all([
         client.bookingOrder.findMany({ where: { id: { in: orderIds } }, orderBy: { id: "asc" } }),
         client.orderStatusHistory.findMany({ where: { bookingOrderId: { in: orderIds } } }),
@@ -863,17 +1083,32 @@ async function main(): Promise<void> {
         client.auditLog.findMany({
           where: {
             action: "exchange.post.publish",
-            targetId: { in: [shopPost.id, technicianPost.id] }
+            targetId: { in: [shopPost.id, technicianPost.id, homePost.id] }
           }
         }),
-        client.bookingTravelFareSnapshot.count({ where: { bookingOrderId: { in: orderIds } } })
+        client.bookingTravelFareSnapshot.count({ where: { bookingOrderId: { in: orderIds } } }),
+        client.bookingServiceLocation.findMany({
+          where: { bookingOrderId: { in: orderIds } },
+          orderBy: { bookingOrderId: "asc" }
+        })
       ]);
-    assert.equal(orders.length, 3, "expected three committed intelligence bookings");
-    assert.equal(histories.length, 3, "each booking must have one initial history row");
-    assert.equal(bookingAudits.length, 3, "each booking must have one source audit row");
-    assert.equal(publicationAudits.length, 2, "each formal publication must have one audit row");
-    assert.equal(notifications.length, 3, "each booking must notify its provider identity once");
-    assert.equal(travelSnapshots, 0, "store intelligence booking must not create travel state");
+    assert.equal(orders.length, 4, "expected four committed intelligence bookings");
+    assert.equal(histories.length, 4, "each booking must have one initial history row");
+    assert.equal(bookingAudits.length, 4, "each booking must have one source audit row");
+    assert.equal(publicationAudits.length, 3, "each formal publication must have one audit row");
+    assert.equal(notifications.length, 4, "each booking must notify its provider identity once");
+    assert.equal(travelSnapshots, 1, "only onsite Intelligence booking must create travel state");
+    assert.equal(bookingLocations.length, 4, "each booking must persist one service location");
+    assert(
+      bookingLocations.every(
+        (location) =>
+          location.countryCode === "JP" &&
+          location.admin1RegionCode === "13" &&
+          location.resolutionStatus === "VERIFIED" &&
+          location.datasetVersion === "N03-20260101"
+      ),
+      "booking service-location evidence is incomplete"
+    );
     assert(
       orders.every(
         (order) =>
@@ -887,12 +1122,58 @@ async function main(): Promise<void> {
     );
     const persistedShopOrder = orders.find((order) => order.id === shopOrder.id)!;
     const persistedTechnicianOrder = orders.find((order) => order.id === technicianOrder.id)!;
+    const persistedHomeOrder = orders.find((order) => order.id === homeOrder.id)!;
     assert.equal(persistedShopOrder.serviceId, shopService.id);
     assert.equal(persistedShopOrder.technicianServiceId, null);
     assert.equal(persistedShopOrder.priceAmount.toString(), "10000");
     assert.equal(persistedTechnicianOrder.serviceId, null);
     assert.equal(persistedTechnicianOrder.technicianServiceId, technicianService.id);
     assert.equal(persistedTechnicianOrder.priceAmount.toString(), "11000");
+    assert.equal(persistedHomeOrder.serviceId, homeService.id);
+    assert.equal(persistedHomeOrder.fulfillmentMode, "home");
+    assert.equal(persistedHomeOrder.exchangeIntelligencePostId, homePost.id);
+    assert.equal(persistedHomeOrder.priceAmount.toString(), "9000");
+    assert.equal(
+      persistedHomeOrder.paymentAmountJpy,
+      9_000,
+      "booking-stage payment amount must retain the immutable service campaign amount"
+    );
+    assert.equal(
+      bookingAudits.filter((audit) => audit.targetId === homeOrder.id).length,
+      1,
+      "onsite Intelligence booking must have exactly one source audit"
+    );
+    assert.equal(
+      notifications.filter((notification) => {
+        const payload = notification.payload;
+        return payload !== null && typeof payload === "object" && !Array.isArray(payload)
+          && payload.orderId === homeOrder.id;
+      }).length,
+      1,
+      "onsite Intelligence booking must notify its provider exactly once"
+    );
+    const persistedHomeLocation = bookingLocations.find(
+      (location) => location.bookingOrderId === homeOrder.id
+    );
+    assert.equal(persistedHomeLocation?.source, "CUSTOMER_SERVICE_LOCATION");
+    assert(
+      bookingLocations
+        .filter((location) => location.bookingOrderId !== homeOrder.id)
+        .every((location) => location.source === "SHOP_LOCATION"),
+      "store booking location source changed"
+    );
+    const [persistedTravelSnapshot, consumedHomeEstimate] = await Promise.all([
+      client.bookingTravelFareSnapshot.findUniqueOrThrow({ where: { bookingOrderId: homeOrder.id } }),
+      client.routeEstimate.findUniqueOrThrow({ where: { id: homeEstimate.id } })
+    ]);
+    assert.equal(persistedTravelSnapshot.fareAmountJpy, 800);
+    assert.equal(
+      Number(persistedHomeOrder.priceAmount) + persistedTravelSnapshot.fareAmountJpy,
+      9_800,
+      "onsite checkout total must compose campaign service amount and immutable travel fare"
+    );
+    assert.equal(consumedHomeEstimate.consumedByBookingOrderId, homeOrder.id);
+    assert(consumedHomeEstimate.consumedAt, "onsite booking did not consume route estimate");
     await reject(
       () => admin.query("DELETE FROM exchange_posts WHERE id = ?", [shopPost.id]),
       "source post deletion while referenced"
@@ -903,17 +1184,19 @@ async function main(): Promise<void> {
       migrations: "full-chain",
       physicalColumns: 7,
       constraints: { check: 1, indexes: 4, restrictForeignKeys: 3 },
-      publications: 2,
+      publications: 3,
       bookingOrders: orders.length,
       cardsVerified: true,
       sourceSnapshotsVerified: true,
+      serviceLocationsVerified: bookingLocations.length,
       idempotencyVerified: true,
       concurrencyVerified: true,
       rollbackVerified: true,
       notifications: notifications.length,
       audits: bookingAudits.length + publicationAudits.length,
+      onsiteTravelPersistenceVerified: true,
       travelStateSeparated: true,
-      negativeCases: 14,
+      negativeCases: 16,
       cleanup: "pending"
     };
   } finally {

@@ -345,6 +345,40 @@ describe("formal user order detail", () => {
     expect(container.textContent).toContain("模拟双方同意取消");
   });
 
+  it("shows the immutable booked price and payment method in the service card without duplicate summary cards", async () => {
+    mocks.getOrder.mockResolvedValue({
+      ...makeOrder("pending"),
+      paymentAmountJpy: 6000,
+      priceAmount: "6000.00",
+      serviceNameSnapshot: "ボディケア 60分",
+      servicePriceSnapshot: "6000.00",
+      serviceDurationSnapshot: 60
+    });
+    mocks.getServiceDetail.mockResolvedValue({
+      ...coreService,
+      name: "ボディケア 60分",
+      priceAmount: "8000.00",
+      durationMinutes: 60
+    });
+
+    await render();
+
+    await waitFor(() => expect(container.textContent).toContain("￥6,000/60分钟"));
+    expect(container.textContent).toContain("到店后确认付款");
+    expect(container.textContent).not.toContain("¥8,000");
+    expect(container.textContent).not.toContain("金额");
+    expect(container.textContent).not.toContain("来源");
+  });
+
+  it("labels onsite payment neutrally for a home-service booking", async () => {
+    mocks.getOrder.mockResolvedValue({ ...makeOrder("pending"), fulfillmentMode: "home" });
+
+    await render();
+
+    await waitFor(() => expect(container.textContent).toContain("服务现场确认付款"));
+    expect(container.textContent).not.toContain("到店后确认付款");
+  });
+
   it("reconstructs countdown and real catalog, proposes and decides add-ons, then uses formal early end", async () => {
     mocks.getOrder.mockResolvedValue(makeOrder("inService"));
     mocks.createAddOn.mockResolvedValue(makeOrder("inService"));

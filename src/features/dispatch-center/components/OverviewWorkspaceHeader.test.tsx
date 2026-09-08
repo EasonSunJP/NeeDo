@@ -41,11 +41,18 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
 
     expect(scheduleDetailSource).toContain("<MobileFullscreenHeader");
     expect(scheduleDetailSource).toContain('className="client-mobile-schedule-detail__floating-header"');
+    expect(source).toContain('const [scheduleSearchQuery, setScheduleSearchQuery] = useState("");');
+    expect(scheduleDetailSource).toContain('aria-label={t("搜索排班")}');
+    expect(scheduleDetailSource).toContain('placeholder={t("搜索技师、服务、预约")}');
+    expect(scheduleDetailSource).toContain('onChange={(event) => setScheduleSearchQuery(event.target.value)}');
     expect(source).toContain("const [scheduleDetailReturnView, setScheduleDetailReturnView] = useState<ScheduleCycleCalendarBoardView | null>(null);");
     expect(source).toContain("const changeScheduleDetailView = (nextView: ScheduleCycleCalendarBoardView) => {");
     expect(source).toContain("const returnToScheduleDetailSourceView = () => {");
-    expect(scheduleDetailSource).toContain("onBack={scheduleDetailReturnView ? returnToScheduleDetailSourceView : undefined}");
-    expect(scheduleDetailSource).toContain("setScheduleDetailReturnView(null);");
+    expect(scheduleDetailSource).toContain("onBack={scheduleDetailReturnView ? returnToScheduleDetailSourceView : closeScheduleDetail}");
+    expect(scheduleDetailSource).toContain("onClose={closeScheduleDetail}");
+    expect(source).toContain("const closeScheduleDetail = () => {");
+    expect(source).toContain("setScheduleDetailReturnView(null);");
+    expect(source).toContain('setScheduleSearchQuery("");');
     expect(scheduleDetailSource).toContain("showSpacer={false}");
     expect(scheduleDetailSource).toContain("client-mobile-schedule-detail__refractive-scroll");
     expect(scheduleDetailSource).toContain('className="client-mobile-schedule-detail__calendar-board"');
@@ -55,6 +62,7 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
     expect(scheduleDetailSource).not.toContain("client-mobile-schedule-detail__solid-header");
     expect(scheduleDetailSource).not.toContain("client-mobile-schedule-detail__header shrink-0");
     expect(scheduleDetailSource).not.toContain("bg-transparent text-ink backdrop-blur-none");
+    expect(scheduleDetailSource).not.toContain("subtitle={schedulePeriodLabel}");
   });
 
   it("moves the mobile detailed schedule action from the summary card to a fixed bottom control", () => {

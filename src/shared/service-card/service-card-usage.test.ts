@@ -71,7 +71,7 @@ describe("unified service-information-card usage", () => {
     expect(source.checkout).toContain("mapExchangeIntelligenceServiceToUnifiedData");
     expect(source.orderMiniCard).toMatch(/<UnifiedServiceInfoCard[\s\S]*data=\{serviceCardData\}/u);
     expect(countJsx(source.userOrder, "UnifiedServiceInfoCard")).toBeGreaterThanOrEqual(4);
-    expect(source.userOrder).toContain("data={orderService ? mapCoreServiceCardToUnifiedData(orderService) : buildBookingOrderSnapshotServiceData(order)}");
+    expect(source.userOrder).toContain("data={buildBookingOrderServiceData(order, orderService)}");
     expect(countJsx(source.merchantOrders, "UnifiedServiceInfoCard")).toBeGreaterThanOrEqual(4);
     expect(source.merchantOrders).toContain("actionSlot={<DispatchStatusBadge");
     expect(source.merchantOrders).toContain("selectServicePackage(selection)");

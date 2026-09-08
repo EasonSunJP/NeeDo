@@ -18,6 +18,7 @@ import {
   type ManualPaymentMethod,
   type TechnicianServiceBookingContext
 } from "../../features/booking/api";
+import { loadAvailabilityWindow } from "../../features/booking/window-loaders";
 import {
   coreReadApi,
   type CoreServiceDetail,
@@ -118,8 +119,9 @@ function describeEstimateError(error: unknown) {
 }
 
 function resolveFulfillmentMode(serviceMode: string, requestedMode: string | null): FulfillmentMode {
-  if (requestedMode === "home" || requestedMode === "store") return requestedMode;
-  return serviceMode === "home" || serviceMode === "onsite" ? "home" : "store";
+  if (serviceMode === "home" || serviceMode === "onsite") return "home";
+  if (serviceMode === "store") return "store";
+  return requestedMode === "home" ? "home" : "store";
 }
 
 export function slotInsideIntelligenceWindow(
@@ -157,9 +159,6 @@ function ensureIntelligenceCheckoutSource(post: ExchangePost, catalogRef: Checko
   }
   if (!post.intelligence.publisherCard || !post.intelligence.serviceCard) {
     throw new CheckoutSourceError("来源情报的正式服务资料不完整，请稍后重试");
-  }
-  if (post.intelligence.booking.serviceMode !== "store") {
-    throw new CheckoutSourceError("上门情报预约需等待正式路程估算接入，请返回情报详情");
   }
   return post.intelligence;
 }
@@ -309,23 +308,27 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
         ? Promise.reject<ExchangePost | null>(new CheckoutSourceError("来源情报链接无效，请返回后重新进入预约"))
         : getExchangePost(String(exchangePostId));
 
-    Promise.all([
-      servicePromise,
-      bookingApi.listAvailability({
-        serviceId: serviceId ?? undefined,
-        technicianServiceId: technicianServiceId ?? undefined,
-        from: selectedDayWindow.from,
-        to: selectedDayWindow.to,
-        includeUnavailable: true,
-        page: 1,
-        pageSize: 100
-      }),
-      exchangePromise
-    ])
-      .then(([serviceContext, availability, sourcePost]) => {
-        if (!active) return;
+    Promise.all([servicePromise, exchangePromise])
+      .then(async ([serviceContext, sourcePost]) => {
         const source = sourcePost ? ensureIntelligenceCheckoutSource(sourcePost, catalogRef) : null;
-        const formalSlots = availability.list
+        const availabilityWindow = source
+          ? {
+              from: source.booking.serviceWindow.startsAt,
+              to: source.booking.serviceWindow.endsAt
+            }
+          : selectedDayWindow;
+        const availability = await loadAvailabilityWindow({
+          serviceId: serviceId ?? undefined,
+          technicianServiceId: technicianServiceId ?? undefined,
+          from: availabilityWindow.from,
+          to: availabilityWindow.to,
+          includeUnavailable: true
+        });
+        return { serviceContext, availability, source };
+      })
+      .then(({ serviceContext, availability, source }) => {
+        if (!active) return;
+        const formalSlots = availability
           .filter((slot) => catalogRef.type === "shop_service"
             ? slot.serviceId === catalogRef.id && slot.technicianServiceId === null
             : slot.technicianServiceId === catalogRef.id && slot.serviceId === null)
@@ -338,7 +341,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
         setIntelligenceSource(source);
         setSlots(formalSlots);
         setSelectedSlotId(resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, persistedSlotId));
-        setFulfillmentMode(resolveFulfillmentMode(serviceContext.serviceMode, searchParams.get("mode")));
+        setFulfillmentMode(resolveFulfillmentMode(source?.serviceMode ?? serviceContext.serviceMode, searchParams.get("mode")));
         setLoadStatus("success");
       })
       .catch((error: unknown) => {
@@ -505,7 +508,8 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     return () => window.clearTimeout(timeoutId);
   }, [estimate]);
 
-  const supportsBothModes = service?.serviceMode === "both" || service?.serviceMode === "flexible";
+  const checkoutServiceMode = intelligenceSource?.serviceMode ?? service?.serviceMode;
+  const supportsBothModes = checkoutServiceMode === "both" || checkoutServiceMode === "flexible";
   const canSubmitBooking = Boolean(selectedSlot) && (
     fulfillmentMode === "store" ||
     Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")

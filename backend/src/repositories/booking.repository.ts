@@ -1519,6 +1519,11 @@ export class BookingRepository implements BookingRepositoryPort {
                 );
               }
               for (const [scheduleSlotId, releaseCount] of slotReleaseCounts) {
+                const supersededSlot = await tx.scheduleSlot.findUnique({
+                  where: { id: scheduleSlotId },
+                  select: { deletedAt: true }
+                });
+                if (supersededSlot?.deletedAt) continue;
                 const released = await tx.scheduleSlot.updateMany({
                   where: {
                     id: scheduleSlotId,
@@ -1594,7 +1599,8 @@ export class BookingRepository implements BookingRepositoryPort {
               (slot.startsAt.getTime() < intelligenceSource.serviceStartAt.getTime() ||
                 slot.endsAt.getTime() > intelligenceSource.serviceEndAt.getTime() ||
                 slot.shopId !== intelligenceSource.shopId ||
-                slot.technicianProfileId !== intelligenceSource.technicianProfileId ||
+                (intelligenceSource.technicianProfileId !== null &&
+                  slot.technicianProfileId !== intelligenceSource.technicianProfileId) ||
                 serviceSource.serviceId !== intelligenceSource.serviceId ||
                 serviceSource.technicianServiceId !== intelligenceSource.technicianServiceId ||
                 (intelligenceSource.serviceMode === "store" && input.fulfillmentMode !== "store") ||
