@@ -6,6 +6,8 @@ import {
   MessageRecallMode,
   MessageType,
   NotificationType,
+  PlatformMembershipTierCode,
+  PlatformMembershipVersionStatus,
   Prisma,
   SocialPostVisibility
 } from "@prisma/client";
@@ -955,12 +957,16 @@ type DirectoryProfileUserRecord = {
     displayName: string | null;
     isDefault: boolean;
   }>;
+  platformMembershipEntitlements: Array<{
+    tierVersion: {
+      tier: { code: PlatformMembershipTierCode };
+    };
+  }>;
   customerProfile: {
     id: number;
     displayName: string;
     bio: string | null;
     city: string | null;
-    membershipLevel: string;
     isPublic: boolean;
     gender: string;
     age: number | null;
@@ -2882,13 +2888,37 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           },
           orderBy: [{ isDefault: "desc" }, { id: "asc" }]
         },
+        platformMembershipEntitlements: {
+          where: {
+            deletedAt: null,
+            startsAt: { lte: dbNow },
+            supersededAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: dbNow } }],
+            tierVersion: {
+              status: {
+                in: [
+                  PlatformMembershipVersionStatus.PUBLISHED,
+                  PlatformMembershipVersionStatus.ARCHIVED
+                ]
+              },
+              deletedAt: null,
+              tier: { deletedAt: null }
+            }
+          },
+          orderBy: [{ startsAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: {
+            tierVersion: {
+              select: { tier: { select: { code: true } } }
+            }
+          }
+        },
         customerProfile: {
           select: {
             id: true,
             displayName: true,
             bio: true,
             city: true,
-            membershipLevel: true,
             isPublic: true,
             gender: true,
             age: true,
@@ -5475,7 +5505,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         entityType: "user",
         profileId: profile.id,
         displayName: profile.displayName,
-        identityLabel: profile.membershipLevel,
+        identityLabel: this.directoryMembershipTierCode(user),
         verified: false,
         creditValue: review?.ratingAverage.toString() ?? null,
         creditReviewCount: review?.reviewCount ?? 0,
@@ -5565,6 +5595,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
 
     return fallback;
+  }
+
+  private directoryMembershipTierCode(user: DirectoryProfileUserRecord): string {
+    const code = user.platformMembershipEntitlements?.[0]?.tierVersion.tier.code;
+    if (code === PlatformMembershipTierCode.SILVER) return "silver";
+    if (code === PlatformMembershipTierCode.GOLD) return "gold";
+    if (code === PlatformMembershipTierCode.BLACK_DIAMOND) return "black_diamond";
+    return "free";
   }
 
   private async loadTechnicianContactDetails(

@@ -9,8 +9,15 @@ import type { DirectoryIdentityCard, ImRoleType, ImUser } from "./model";
 
 function identityLabel(card: DirectoryIdentityCard) {
   if (card.entityType === "user") {
-    return card.identityLabel
-      ? resolveCustomerMembership(card.identityLabel).label
+    const formalTierLabels: Record<string, string> = {
+      free: "免费会员",
+      silver: "白银会员",
+      gold: "黄金会员",
+      black_diamond: "黑钻会员",
+    };
+    const normalizedLabel = card.identityLabel?.trim().toLowerCase();
+    return normalizedLabel
+      ? formalTierLabels[normalizedLabel] ?? resolveCustomerMembership(normalizedLabel).label
       : "用户";
   }
 

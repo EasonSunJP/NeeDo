@@ -323,6 +323,120 @@ describe("RealtimeRepository formal identity payloads", () => {
   });
 });
 
+describe("RealtimeRepository customer membership projection", () => {
+  it("uses the active platform entitlement instead of the legacy customer profile level", async () => {
+    const dbNow = new Date("2026-09-08T03:00:00.000Z");
+    const client = {
+      $queryRaw: jest.fn(async () => [{ dbNow }]),
+      user: {
+        findFirst: jest.fn(async () => ({
+          id: 2,
+          needoId: "u0000000002",
+          username: "Eason",
+          avatarUrl: null,
+          identities: [
+            {
+              id: 20,
+              type: "customer",
+              scopeType: "customer_profile",
+              scopeId: 3,
+              displayName: "Eason",
+              isDefault: true
+            }
+          ],
+          platformMembershipEntitlements: [
+            { tierVersion: { tier: { code: "BLACK_DIAMOND" } } }
+          ],
+          customerProfile: {
+            id: 3,
+            displayName: "Eason",
+            bio: null,
+            city: null,
+            membershipLevel: "standard",
+            isPublic: true,
+            gender: "private",
+            age: 99,
+            heightCm: { toString: () => "199" },
+            languages: ["ja"],
+            visibility: "public",
+            deletedAt: null,
+            reviewSummary: null
+          },
+          technicianProfile: null
+        }))
+      }
+    };
+
+    const result = await new RealtimeRepository(
+      client as unknown as PrismaClient
+    ).getDirectoryProfile(2, 20, 2, 20);
+
+    expect(result?.identityCard).toMatchObject({
+      entityType: "user",
+      identityLabel: "black_diamond"
+    });
+    expect(client.user.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          platformMembershipEntitlements: expect.objectContaining({
+            take: 1
+          })
+        })
+      })
+    );
+  });
+
+  it("falls back to free when a compatibility projection omits entitlements", async () => {
+    const dbNow = new Date("2026-09-08T03:00:00.000Z");
+    const client = {
+      $queryRaw: jest.fn(async () => [{ dbNow }]),
+      user: {
+        findFirst: jest.fn(async () => ({
+          id: 2,
+          needoId: "u0000000002",
+          username: "Eason",
+          avatarUrl: null,
+          identities: [
+            {
+              id: 20,
+              type: "customer",
+              scopeType: "customer_profile",
+              scopeId: 3,
+              displayName: "Eason",
+              isDefault: true
+            }
+          ],
+          customerProfile: {
+            id: 3,
+            displayName: "Eason",
+            bio: null,
+            city: null,
+            membershipLevel: "gold",
+            isPublic: true,
+            gender: "private",
+            age: 99,
+            heightCm: { toString: () => "199" },
+            languages: ["ja"],
+            visibility: "public",
+            deletedAt: null,
+            reviewSummary: null
+          },
+          technicianProfile: null
+        }))
+      }
+    };
+
+    const result = await new RealtimeRepository(
+      client as unknown as PrismaClient
+    ).getDirectoryProfile(2, 20, 2, 20);
+
+    expect(result?.identityCard).toMatchObject({
+      entityType: "user",
+      identityLabel: "free"
+    });
+  });
+});
+
 describe("RealtimeRepository technician contact privacy", () => {
   const dbNow = new Date("2026-09-01T09:00:00.000Z");
   const technicianUser = {

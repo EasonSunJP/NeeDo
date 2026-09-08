@@ -36,6 +36,27 @@ const identityCard: DirectoryIdentityCard = {
 };
 
 describe("ConversationIdentityProfileCard", () => {
+  it.each([
+    ["free", "免费会员"],
+    ["silver", "白银会员"],
+    ["gold", "黄金会员"],
+    ["black_diamond", "黑钻会员"],
+  ])("renders the formal platform membership tier %s", (tierCode, label) => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryRouter>
+          <ConversationIdentityProfileCard
+            identityCard={{ ...identityCard, identityLabel: tierCode }}
+            user={user}
+            viewerScope="user"
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(markup).toContain(label);
+  });
+
   it("keeps user basic fields but removes city and credit from user-side conversation settings", () => {
     const markup = renderToStaticMarkup(
       <I18nProvider>

@@ -407,6 +407,9 @@ describe("RealtimeRepository friend request lifecycle", () => {
           isDefault: true
         }
       ],
+      platformMembershipEntitlements: [
+        { tierVersion: { tier: { code: "GOLD" } } }
+      ],
       customerProfile: {
         id: 73,
         displayName: "Mia",
@@ -451,7 +454,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         entityType: "user",
         profileId: 73,
         displayName: "Mia",
-        identityLabel: "premium",
+        identityLabel: "gold",
         verified: false,
         creditValue: "5.00",
         creditReviewCount: 28,
