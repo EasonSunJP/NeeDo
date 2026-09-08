@@ -115,7 +115,11 @@ describe("RealtimeRepository group privacy message countdown", () => {
           conversationId: 3,
           deletedAt: null,
           expiredAt: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }]
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }]
+            })
+          ])
         })
       })
     );

@@ -390,7 +390,8 @@ export async function runBookingExpiryRollbackCheck(): Promise<void> {
         customerUserId: fixture.customerUserId,
         serviceId: fixture.serviceId,
         scheduleSlotId: fixture.targetSlotId,
-        fulfillmentMode: "store"
+        fulfillmentMode: "store",
+        serviceLocation: { source: "SHOP_LOCATION" }
       });
       replacementAttempt = replacement;
       void replacement.then(

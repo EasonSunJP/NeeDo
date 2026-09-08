@@ -34,7 +34,9 @@ describe("merchant technician list identity data", () => {
           }
         ]),
         count: jest.fn(async () => 1)
-      }
+      },
+      technicianWorkState: { findMany: jest.fn(async () => []) },
+      bookingOrder: { findMany: jest.fn(async () => []) }
     };
     const repository = new BackofficeRepository(client as never);
 

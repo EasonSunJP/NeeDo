@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import unifiedCalendarSource from "../../components/scheduling/UnifiedUserCalendar.tsx?raw";
+import schedulingWindowLoaderSource from "../scheduling/window-loader.ts?raw";
 import routeSource from "./route-pages.tsx?raw";
 import workspaceSource from "./FormalTechnicianScheduleWorkspace.tsx?raw";
 
@@ -40,7 +41,8 @@ describe("approved formal technician schedule UI", () => {
   it("loads the shared calendar in formal-only mode without legacy store imports", () => {
     const combinedSource = `${routeSource}\n${workspaceSource}`;
     expect(workspaceSource).toContain("formalOnly");
-    expect(unifiedCalendarSource).toContain("schedulingApi.listSlots");
+    expect(unifiedCalendarSource).toContain("loadManagedScheduleWindow");
+    expect(schedulingWindowLoaderSource).toContain("schedulingApi.listSlots");
     expect(combinedSource).not.toContain("formalRuntimeFallbacks");
     expect(combinedSource).not.toContain("entityStore");
     expect(combinedSource).not.toContain("scheduleStore");

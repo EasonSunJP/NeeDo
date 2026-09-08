@@ -167,9 +167,15 @@ function createClient(withTechnicianReview = true, options: FixtureOptions = {})
       ]),
       aggregate: jest.fn(async () => ({ _sum: { priceAmount: money(18000) } })),
       findMany: jest.fn(
-        async (input: { where?: { startsAt?: { gte?: Date }; status?: { in?: string[] } } }) => {
+        async (input: {
+          where?: {
+            startsAt?: { gte?: Date };
+            status?: string | { in?: string[] };
+          };
+        }) => {
+          if (input.where?.status === "IN_SERVICE") return [];
           if (input.where?.startsAt?.gte) {
-            return input.where.status?.in
+            return typeof input.where.status === "object" && input.where.status?.in
               ? [booking(4, "CONFIRMED")]
               : [booking(3, "COMPLETED"), booking(4, "CONFIRMED")];
           }
@@ -177,6 +183,7 @@ function createClient(withTechnicianReview = true, options: FixtureOptions = {})
         }
       )
     },
+    technicianWorkState: { findMany: jest.fn(async () => []) },
     scheduleSlot: {
       findMany: jest.fn(async (input: { select?: unknown }) =>
         input.select ? (options.scheduleSlots ?? []) : []

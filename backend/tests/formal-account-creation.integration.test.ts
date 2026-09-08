@@ -87,7 +87,8 @@ describeIntegration("formal account creation integration", () => {
       verifiedById: managed.id,
       name: "Formal Integration Shop",
       city: "Tokyo",
-      address: "Tokyo"
+      address: "Tokyo",
+      verifiedById: managed.id
     });
     if (!shop.ownerUserId) throw new Error("shop owner user was not created");
     userIds.push(shop.ownerUserId);

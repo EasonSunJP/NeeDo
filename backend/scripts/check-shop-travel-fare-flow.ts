@@ -244,6 +244,12 @@ async function runFlow(transaction: PrismaTypes.TransactionClient): Promise<void
     serviceId: service.id,
     scheduleSlotId: slot.id,
     fulfillmentMode: "home",
+    serviceLocation: {
+      source: "CUSTOMER_SERVICE_LOCATION",
+      countryCode: "JP",
+      admin1Code: "13",
+      admin2Code: "13102"
+    },
     paymentMethod: "onsite",
     fulfillmentAddress: destination,
     travelEstimatePublicId: estimatePayload.publicId,
@@ -468,6 +474,12 @@ async function runConcurrentConsumptionCheck(client: PrismaClient): Promise<void
     serviceId: created.serviceId,
     scheduleSlotId: created.slotId,
     fulfillmentMode: "home" as const,
+    serviceLocation: {
+      source: "CUSTOMER_SERVICE_LOCATION" as const,
+      countryCode: "JP" as const,
+      admin1Code: "13",
+      admin2Code: "13102"
+    },
     paymentMethod: "onsite" as const,
     fulfillmentAddress: destination,
     travelEstimatePublicId: created.estimatePublicId,
