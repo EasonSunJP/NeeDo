@@ -471,7 +471,7 @@ export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): 
     gender: customer.gender,
     age: customer.age === null || customer.age === undefined ? undefined : String(customer.age),
     height: customer.heightCm === null || customer.heightCm === undefined ? undefined : `${customer.heightCm}cm`,
-    languages: customer.languages?.length ? customer.languages : ["日本語"],
+    languages: customer.languages ? [...customer.languages] : [],
     bio: customer.bio ?? undefined,
     creditRating: reviewCount > 0 ? "A" : undefined,
     points: 0,

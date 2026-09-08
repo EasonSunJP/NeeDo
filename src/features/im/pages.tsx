@@ -1777,6 +1777,13 @@ export function ImConversationListPage() {
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
   const [conversationActionError, setConversationActionError] = useState("");
+  useEffect(() => {
+    if (store.status !== "ready") {
+      return;
+    }
+
+    void store.refresh();
+  }, [store.refresh, store.status]);
   const [pinnedCollapsed, setPinnedCollapsed] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -2290,6 +2297,13 @@ export function ImContactsListPage() {
   const [contactQuery, setContactQuery] = useState(contactQueryFromParams);
   const deferredContactQuery = useDeferredValue(contactQuery);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  useEffect(() => {
+    if (store.status !== "ready") {
+      return;
+    }
+
+    void store.refresh();
+  }, [store.refresh, store.status]);
   const contactDeletion = useFriendDeletionConfirmation<ContactRelation>({
     deleteContact: store.deleteContact,
   });
@@ -7988,7 +8002,7 @@ export function ImConversationInfoPage() {
             <ConversationIdentityProfileCard
               detailTo={infoIdentityCardDetailTo}
               identityCard={infoIdentityCard}
-              user={user}
+              user={conversationDirectoryProfile?.user ?? user}
               viewerScope={scope}
             />
           )

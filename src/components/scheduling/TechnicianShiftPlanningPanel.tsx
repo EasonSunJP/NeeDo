@@ -388,15 +388,7 @@ export function TechnicianShiftPlanningPanel({
   }, [policy]);
 
   const isStoreDirectAssignContext = scheduleContext.context === "STORE_DIRECT_ASSIGN";
-  const canEdit = isStoreDirectAssignContext
-    ? false
-    : scheduleContext.requiresStoreConfirmation
-    ? policy
-      ? policy.status === "opened" || policy.status === "reopened"
-      : false
-    : policy
-      ? policy.status !== "cancelled"
-      : true;
+  const canEdit = isStoreDirectAssignContext ? false : policy ? policy.status !== "cancelled" : true;
   const inheritedRules = new Set(policy?.forceInheritedRules ?? []);
   const importOptions = useMemo(
     () =>
@@ -535,26 +527,17 @@ export function TechnicianShiftPlanningPanel({
   const longPeriod = isLongSchedulingRange(policy.startDate, policy.endDate);
   const isSelfFinalContext = scheduleContext.context === "INDIVIDUAL_SELF_FINAL" || scheduleContext.context === "STORE_TECH_SELF_FINAL";
   const usesFinalBookableProjection = isSelfFinalContext || isStoreDirectAssignContext;
-  const usesStoreApplicationLeaveActions = scheduleContext.requiresStoreConfirmation || isStoreDirectAssignContext;
+  const usesStoreApplicationLeaveActions = isStoreDirectAssignContext;
   const summaryCards: Array<[string, string]> = [
     [
-      scheduleContext.context === "STORE_CONFIRM_REQUIRED" ? "商户开放" : isStoreDirectAssignContext ? "商户安排" : "店铺约束",
-      scheduleContext.context === "STORE_CONFIRM_REQUIRED"
-        ? formatDayHourSummary(storeOpenDayHourSummary)
-        : isStoreDirectAssignContext
-          ? formatDayHourSummary(finalBookableDayHourSummary)
-          : formatDayHourSummary(storeOpenDayHourSummary),
+      isStoreDirectAssignContext ? "商户安排" : "店铺约束",
+      isStoreDirectAssignContext ? formatDayHourSummary(finalBookableDayHourSummary) : formatDayHourSummary(storeOpenDayHourSummary),
     ],
     [
-      isStoreDirectAssignContext ? "我的确认" : isSelfFinalContext ? "我的发布" : "我的反馈",
+      isStoreDirectAssignContext ? "我的确认" : "我的发布",
       isStoreDirectAssignContext
         ? "只读 / 可申请"
-        : isSelfFinalContext
-          ? formatDayHourSummary({ dayCount: technicianFeedbackSummary.availableDayCount, hourCount: counts.availableCount })
-          : formatDayHourRatio(
-              { dayCount: technicianFeedbackSummary.availableDayCount, hourCount: technicianFeedbackSummary.availableHourCount },
-              storeOpenDayHourSummary
-            )
+        : formatDayHourSummary({ dayCount: technicianFeedbackSummary.availableDayCount, hourCount: counts.availableCount })
     ],
     [
       usesFinalBookableProjection ? "最终可预约" : "最终确认",
@@ -596,17 +579,13 @@ export function TechnicianShiftPlanningPanel({
     {
       step: "oneClick",
       title: "自动模式",
-      caption: scheduleContext.requiresStoreConfirmation
-        ? "先完成规则设定，再由系统按商户开放时段、个人偏好和历史模板自动生成反馈。"
-        : "先完成发布规则，再由系统按店铺允许时段和个人偏好自动生成上班时间。",
+      caption: "先完成发布规则，再由系统按店铺允许时段和个人偏好自动生成上班时间。",
       badge: "默认自动"
     },
     {
       step: "manual",
       title: "手动模式",
-      caption: scheduleContext.requiresStoreConfirmation
-        ? "先进入排班设置，再按日期和小时手动生成反馈，最后等待商户确定排班。"
-        : "先进入发布设置，再手动生成上班时间，通过店铺校验后进入最终可预约投影。",
+      caption: "先进入发布设置，再手动生成上班时间，通过店铺校验后进入最终可预约投影。",
       badge: "手动"
     }
   ];
@@ -814,9 +793,7 @@ export function TechnicianShiftPlanningPanel({
         });
         const disabled = storeSlotStatus === "closed" || !canEdit;
         const active = override?.status === "available";
-        const hint = disabled
-          ? `${scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺关闭"}：${formatHourLabel(hour)}`
-          : `${active ? (scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班") : "不可排班"} · ${formatHourLabel(hour)}`;
+        const hint = disabled ? `店铺关闭：${formatHourLabel(hour)}` : `${active ? "可发布上班" : "不可排班"} · ${formatHourLabel(hour)}`;
         return {
           active,
           className: cn(
@@ -893,11 +870,7 @@ export function TechnicianShiftPlanningPanel({
         : current
     );
     setAutoSummary(result.summary);
-    setMessage(
-      scheduleContext.requiresStoreConfirmation
-        ? `按规则自动生成反馈已完成：生成 ${result.summary.generatedAvailableCount} 格可上班反馈，可继续按模板或按日微调后再提交。`
-        : `一键生成已完成：生成 ${result.summary.generatedAvailableCount} 格可发布上班时间，可继续微调后再发布。`
-    );
+    setMessage(`一键生成已完成：生成 ${result.summary.generatedAvailableCount} 格可发布上班时间，可继续微调后再发布。`);
   };
 
   const submitResponse = () => {
@@ -914,15 +887,7 @@ export function TechnicianShiftPlanningPanel({
       specialRules: draft.specialRules,
       slotOverrides: draft.dayOverrides
     });
-    setMessage(
-      response
-        ? scheduleContext.requiresStoreConfirmation
-          ? "排班反馈已更新，商户端会看到“已更新”状态。"
-          : "上班时间已重新发布，最终可预约时间投影已同步更新。"
-        : scheduleContext.requiresStoreConfirmation
-          ? "排班反馈已提交，商户端已收到通知。"
-          : "上班时间已发布，通过校验的时段会直接对用户可预约。"
-    );
+    setMessage(response ? "上班时间已重新发布，最终可预约时间投影已同步更新。" : "上班时间已发布，通过校验的时段会直接对用户可预约。");
   };
 
   const renderInheritedHint = (disabled: boolean) => {
@@ -999,9 +964,7 @@ export function TechnicianShiftPlanningPanel({
               onClick={() => onStepChange?.("rules")}
               size="lg"
             >
-              {selectedPlanningMethod === "manual"
-                ? scheduleContext.requiresStoreConfirmation ? "下一步：排班设置" : "下一步：发布设置"
-                : scheduleContext.requiresStoreConfirmation ? "下一步：规则设定" : "下一步：发布规则设定"}
+              {selectedPlanningMethod === "manual" ? "下一步：发布设置" : "下一步：发布规则设定"}
             </Button>
           </div>
         </section>
@@ -1046,9 +1009,8 @@ export function TechnicianShiftPlanningPanel({
           </div>
           <div className="flex flex-wrap gap-2">
             <PlanningBadge tone="blue">{policy.startDate} - {policy.endDate}</PlanningBadge>
-            {scheduleContext.requiresStoreConfirmation && policy.feedbackDeadlineAt ? <PlanningBadge tone="yellow">反馈截止 {policy.feedbackDeadlineAt.slice(5, 16).replace("T", " ")}</PlanningBadge> : null}
             <PlanningBadge tone={canEdit ? "green" : "red"}>
-              {canEdit ? (scheduleContext.requiresStoreConfirmation ? "当前可提交反馈" : "当前可发布") : isStoreDirectAssignContext ? "商户直接排班只读" : "当前只读"}
+              {canEdit ? "当前可发布" : isStoreDirectAssignContext ? "商户直接排班只读" : "当前只读"}
             </PlanningBadge>
           </div>
         </div>
@@ -1063,13 +1025,9 @@ export function TechnicianShiftPlanningPanel({
           <>
             <ShiftMatrixEditor
               accent="technician"
-              activeLabel={scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班"}
-              caption={
-                scheduleContext.requiresStoreConfirmation
-                  ? "直接点选本周期可接受时段。灰色格子表示商户未开放或当前周期不可编辑。"
-                  : "直接点选本周期可发布上班时段。灰色格子表示店铺不允许发布或当前周期不可编辑。"
-              }
-              disabledLabel={scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺不允许发布"}
+              activeLabel="可发布上班"
+              caption="直接点选本周期可发布上班时段。灰色格子表示店铺不允许发布或当前周期不可编辑。"
+              disabledLabel="店铺不允许发布"
               dayActionMode={usesStoreApplicationLeaveActions ? "leave" : "availability"}
               getCellDisabled={(dayIndex, hour) =>
                 !canEdit || !getEditableTemplateCellState({
@@ -1085,8 +1043,8 @@ export function TechnicianShiftPlanningPanel({
               }
               getCellHint={(dayIndex, hour, active, disabled) =>
                 disabled
-                  ? `${scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺未允许发布"}：${formatHourLabel(hour)}`
-                  : `${active ? (scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班") : "不可排班"} · ${formatHourLabel(hour)}`
+                  ? `店铺未允许发布：${formatHourLabel(hour)}`
+                  : `${active ? "可发布上班" : "不可排班"} · ${formatHourLabel(hour)}`
               }
               getDayActionState={getTemplateDayActionState}
               inactiveLabel="不可排班"
@@ -1098,7 +1056,7 @@ export function TechnicianShiftPlanningPanel({
               startDate={draft.startDate}
               stickyAxis={false}
               templateType={draft.templateType}
-              title={scheduleContext.requiresStoreConfirmation ? "手动反馈表" : "手动发布表"}
+              title="手动发布表"
             />
             <div className="mt-4 flex justify-end">
               <Button
@@ -1106,7 +1064,7 @@ export function TechnicianShiftPlanningPanel({
                 onClick={() => onStepChange?.("manual")}
                 size="lg"
               >
-                {scheduleContext.requiresStoreConfirmation ? "下一步：生成反馈" : "下一步：生成上班"}
+                下一步：生成上班
               </Button>
             </div>
           </>
@@ -1514,7 +1472,7 @@ export function TechnicianShiftPlanningPanel({
               onClick={() => onStepChange?.(selectedPlanningMethod)}
               size="lg"
             >
-              {scheduleContext.requiresStoreConfirmation ? "下一步：自动生成反馈" : "下一步：自动生成上班"}
+              下一步：自动生成上班
             </Button>
           </div>
         </>
@@ -1525,20 +1483,8 @@ export function TechnicianShiftPlanningPanel({
           <section className={planningSectionClass}>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <PlanningSectionHeading
-                info={
-                  activeStep === "oneClick"
-                    ? scheduleContext.requiresStoreConfirmation
-                      ? "生成时会同时参考商户开放时段、商户强制规则、你的个人规则，以及你选择的历史模板或当前模板。"
-                      : "生成时会同时参考店铺允许发布时段、店铺规则、你的个人规则，以及你选择的历史模板或当前模板。"
-                    : scheduleContext.requiresStoreConfirmation
-                      ? "手动提交反馈会直接编辑本周期可上班 / 不可上班时段，保存后进入商户最终确认流程。"
-                      : "手动发布会直接编辑本周期上班时间，发布后进入最终可预约投影。"
-                }
-                title={
-                  activeStep === "oneClick"
-                    ? scheduleContext.requiresStoreConfirmation ? "自动生成反馈" : "根据店铺规则生成可发布上班时间"
-                    : scheduleContext.requiresStoreConfirmation ? "生成反馈" : "生成上班时间"
-                }
+                info={activeStep === "oneClick" ? "生成时会同时参考店铺允许发布时段、店铺规则、你的个人规则，以及你选择的历史模板或当前模板。" : "手动发布会直接编辑本周期上班时间，发布后进入最终可预约投影。"}
+                title={activeStep === "oneClick" ? "根据店铺规则生成可发布上班时间" : "生成上班时间"}
               />
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -1552,7 +1498,7 @@ export function TechnicianShiftPlanningPanel({
                 </Button>
                 {activeStep === "oneClick" ? (
                   <Button className="bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" disabled={!canEdit} size="sm" onClick={runOneClickGeneration}>
-                    {scheduleContext.requiresStoreConfirmation ? "一键生成" : "一键生成并预览发布"}
+                    一键生成并预览发布
                   </Button>
                 ) : null}
               </div>
@@ -1630,9 +1576,9 @@ export function TechnicianShiftPlanningPanel({
             {activeStep === "oneClick" && autoSummary ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {([
-                  [scheduleContext.requiresStoreConfirmation ? "商户开放" : "店铺允许发布", `${autoSummary.openSlotCount} 格`, "green" as const],
-                  [scheduleContext.requiresStoreConfirmation ? "生成可接受" : "生成可发布", `${autoSummary.generatedAvailableCount} 格`, "blue" as const],
-                  [scheduleContext.requiresStoreConfirmation ? "生成不可接受" : "生成不可发布", `${autoSummary.generatedUnavailableCount} 格`, "yellow" as const],
+                  ["店铺允许发布", `${autoSummary.openSlotCount} 格`, "green" as const],
+                  ["生成可发布", `${autoSummary.generatedAvailableCount} 格`, "blue" as const],
+                  ["生成不可发布", `${autoSummary.generatedUnavailableCount} 格`, "yellow" as const],
                   ["差异覆盖", `${autoSummary.overrideCount} 条`, "neutral" as const]
                 ] as Array<[string, string, BadgeTone]>).map(([label, value, tone]) => (
                   <article className={cn(planningInsetClass, "p-3")} key={label}>
@@ -1650,17 +1596,13 @@ export function TechnicianShiftPlanningPanel({
           <section className={planningSectionClass}>
             <ShiftMatrixEditor
               accent="technician"
-              activeLabel={scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班"}
+              activeLabel="可发布上班"
               caption={
                 activeStep === "oneClick"
-                  ? scheduleContext.requiresStoreConfirmation
-                    ? "一键生成后可继续直接微调模板。灰色格子表示商户未开放或当前周期不可编辑。"
-                    : "一键生成后可继续直接微调模板。灰色格子表示店铺不允许发布或当前周期不可编辑。"
-                  : scheduleContext.requiresStoreConfirmation
-                    ? "直接点选本周期可接受时段。灰色格子表示商户未开放或当前周期不可编辑。"
-                    : "直接点选本周期可发布上班时段。灰色格子表示店铺不允许发布或当前周期不可编辑。"
+                  ? "一键生成后可继续直接微调模板。灰色格子表示店铺不允许发布或当前周期不可编辑。"
+                  : "直接点选本周期可发布上班时段。灰色格子表示店铺不允许发布或当前周期不可编辑。"
               }
-              disabledLabel={scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺不允许发布"}
+              disabledLabel="店铺不允许发布"
               dayActionMode={usesStoreApplicationLeaveActions ? "leave" : "availability"}
               getCellDisabled={(dayIndex, hour) =>
                 !canEdit || !getEditableTemplateCellState({
@@ -1676,8 +1618,8 @@ export function TechnicianShiftPlanningPanel({
               }
               getCellHint={(dayIndex, hour, active, disabled) =>
                 disabled
-                  ? `${scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺未允许发布"}：${formatHourLabel(hour)}`
-                  : `${active ? (scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班") : "不可排班"} · ${formatHourLabel(hour)}`
+                  ? `店铺未允许发布：${formatHourLabel(hour)}`
+                  : `${active ? "可发布上班" : "不可排班"} · ${formatHourLabel(hour)}`
               }
               getDayActionState={getTemplateDayActionState}
               inactiveLabel="不可排班"
@@ -1689,22 +1631,14 @@ export function TechnicianShiftPlanningPanel({
               startDate={draft.startDate}
               stickyAxis={false}
               templateType={draft.templateType}
-              title={
-                activeStep === "oneClick"
-                  ? scheduleContext.requiresStoreConfirmation ? "自动生成反馈预览" : "发布结果预览"
-                  : scheduleContext.requiresStoreConfirmation ? "手动反馈表" : "手动发布表"
-              }
+              title={activeStep === "oneClick" ? "发布结果预览" : "手动发布表"}
             />
           </section>
 
           <section className={planningSectionClass}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <PlanningSectionHeading
-                info={
-                  activeStep === "oneClick"
-                    ? scheduleContext.requiresStoreConfirmation ? "生成完成后仍可按日期、按小时进一步修正可接受与不可接受排班。" : "生成完成后仍可按日期、按小时进一步修正可发布与不可发布时段。"
-                    : scheduleContext.requiresStoreConfirmation ? "按日期、按小时补充单日手动反馈，结果会和模板一起提交。" : "按日期、按小时补充单日手动发布，结果会和模板一起发布。"
-                }
+                info={activeStep === "oneClick" ? "生成完成后仍可按日期、按小时进一步修正可发布与不可发布时段。" : "按日期、按小时补充单日手动发布，结果会和模板一起发布。"}
                 title="按日微调"
               />
               <input
@@ -1720,7 +1654,7 @@ export function TechnicianShiftPlanningPanel({
 
             <div className="mt-3 flex flex-wrap gap-2">
               <PlanningBadge tone="neutral">不可排班</PlanningBadge>
-              <PlanningBadge tone="yellow">{scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺关闭"}</PlanningBadge>
+              <PlanningBadge tone="yellow">店铺关闭</PlanningBadge>
             </div>
 
             <ScheduleMatrixGrid
@@ -1739,21 +1673,11 @@ export function TechnicianShiftPlanningPanel({
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="text-sm font-semibold text-[color:var(--client-muted)]">
                   {canEdit
-                    ? scheduleContext.requiresStoreConfirmation
-                      ? `当前已经选择 ${counts.availableCount} 格可接受排班。保存后商户端会收到新的反馈结果。`
-                      : `当前已经选择 ${counts.availableCount} 格可发布上班时间。发布后通过校验的时段会直接进入最终可预约时间。`
-                    : scheduleContext.requiresStoreConfirmation
-                      ? "当前周期已锁定或已确认，如需变更请等待商户重新开放。"
-                      : "当前时段暂不可发布，可能是店铺黑屏、营业时间限制或当前周期只读。"}
+                    ? `当前已经选择 ${counts.availableCount} 格可发布上班时间。发布后通过校验的时段会直接进入最终可预约时间。`
+                    : "当前时段暂不可发布，可能是店铺黑屏、营业时间限制或当前周期只读。"}
                 </div>
                 <Button className="bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] lg:min-w-[220px]" disabled={!canEdit} onClick={submitResponse}>
-                  {response
-                    ? scheduleContext.requiresStoreConfirmation
-                      ? "更新排班反馈"
-                      : "更新并重新发布"
-                    : scheduleContext.requiresStoreConfirmation
-                      ? "提交排班反馈"
-                      : "发布上班时间"}
+                  {response ? "更新并重新发布" : "发布上班时间"}
                 </Button>
               </div>
             </div>
@@ -1783,9 +1707,9 @@ export function TechnicianShiftPlanningPanel({
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {([
-              [isStoreDirectAssignContext ? "确认状态" : isSelfFinalContext ? "发布状态" : "反馈状态", isStoreDirectAssignContext ? "商户已正式安排" : response ? getResponseStatusLabel(response.responseStatus) : "未提交", "green" as const],
-              [usesFinalBookableProjection ? "最终可预约" : "商户已确认", `${usesFinalBookableProjection ? finalAvailableCount : confirmedCount} 格`, "blue" as const],
-              [usesFinalBookableProjection ? "冲突 / 占用" : "候补 / 调整", `${usesFinalBookableProjection ? `${finalConflictCount} / ${finalBookableSlots.filter((slot) => slot.status === "booked").length}` : waitlistedCount} 格`, "yellow" as const],
+              [isStoreDirectAssignContext ? "确认状态" : "发布状态", isStoreDirectAssignContext ? "商户已正式安排" : response ? getResponseStatusLabel(response.responseStatus) : "未提交", "green" as const],
+              ["最终可预约", `${finalAvailableCount} 格`, "blue" as const],
+              ["冲突 / 占用", `${finalConflictCount} / ${finalBookableSlots.filter((slot) => slot.status === "booked").length} 格`, "yellow" as const],
               ["结果通知", `${confirmationNotifications.length} 条`, "neutral" as const]
             ] as Array<[string, string, BadgeTone]>).map(([label, value, tone]) => (
               <article className={planningSectionClass} key={label}>
@@ -1800,13 +1724,12 @@ export function TechnicianShiftPlanningPanel({
 
           <section className={planningSectionClass}>
             <div className="flex items-center justify-between gap-3">
-              <PlanningSectionHeading title={usesFinalBookableProjection ? "已进入最终可预约时间的结果" : "商户最终确认后的排班"} />
-              <PlanningBadge tone="yellow">{usesFinalBookableProjection ? finalBookableSlots.length : confirmedShifts.length} 格</PlanningBadge>
+              <PlanningSectionHeading title="已进入最终可预约时间的结果" />
+              <PlanningBadge tone="yellow">{finalBookableSlots.length} 格</PlanningBadge>
             </div>
 
             <div className="mt-3 space-y-2">
-              {usesFinalBookableProjection ? (
-                finalBookableSlots.length > 0 ? finalBookableSlots.map((slot) => (
+              {finalBookableSlots.length > 0 ? finalBookableSlots.map((slot) => (
                   <article className={cn(planningInsetClass, "px-3 py-3")} key={slot.id}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
@@ -1822,25 +1745,6 @@ export function TechnicianShiftPlanningPanel({
                   <div className="rounded-2xl border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3 py-4 text-sm font-semibold text-[color:var(--client-muted)]">
                     {isStoreDirectAssignContext ? "暂无新的排班需求。商户直接排班生效后会同步到这里。" : "当前还没有进入最终可预约时间的发布结果，先在第二步生成并发布上班时间即可。"}
                   </div>
-                )
-              ) : confirmedShifts.length > 0 ? confirmedShifts.map((shift) => (
-                <article className={cn(planningInsetClass, "px-3 py-3")} key={shift.id}>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <strong className="text-sm font-black text-[color:var(--client-text)]">{shift.date} {formatHourLabel(shift.hour)}</strong>
-                      <p className="mt-1 text-xs text-[color:var(--client-muted)]">
-                        {shift.source === "manual" ? "商户手动处理" : "系统一键确认"} · {shift.confirmedAt.slice(5, 16).replace("T", " ")}
-                      </p>
-                    </div>
-                    <PlanningBadge tone={shift.shiftStatus === "confirmed" ? "blue" : shift.shiftStatus === "waitlisted" ? "yellow" : "red"}>
-                      {getConfirmedShiftStatusLabel(shift.shiftStatus)}
-                    </PlanningBadge>
-                  </div>
-                </article>
-              )) : (
-                <div className="rounded-2xl border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3 py-4 text-sm font-semibold text-[color:var(--client-muted)]">
-                  当前周期还没有商户最终确认结果，先在第二步提交你的排班反馈即可。
-                </div>
               )}
             </div>
           </section>

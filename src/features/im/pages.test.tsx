@@ -655,6 +655,28 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(infoSource).not.toContain("<ContactSummaryCard");
   });
 
+  it("refreshes authoritative IM identities when conversation and contact lists become ready", () => {
+    const conversationsStart = source.indexOf("export function ImConversationListPage");
+    const contactsStart = source.indexOf("export function ImContactsListPage", conversationsStart);
+    const contactsEnd = source.indexOf("export function ImFriendRequestsPage", contactsStart);
+    const conversationsSource = source.slice(conversationsStart, contactsStart);
+    const contactsSource = source.slice(contactsStart, contactsEnd);
+
+    [conversationsSource, contactsSource].forEach((pageSource) => {
+      expect(pageSource).toContain('if (store.status !== "ready")');
+      expect(pageSource).toContain("void store.refresh();");
+      expect(pageSource).toContain("[store.refresh, store.status]");
+    });
+  });
+
+  it("renders the directory response user in the conversation identity card", () => {
+    const start = source.indexOf("export function ImConversationInfoPage");
+    const end = source.indexOf("export function ImConversationSearchPage", start);
+    const infoSource = source.slice(start, end);
+
+    expect(infoSource).toContain("user={conversationDirectoryProfile?.user ?? user}");
+  });
+
   it("routes both friend-deletion entry points through the shared confirmation flow", () => {
     const contactsStart = source.indexOf("export function ImContactsListPage");
     const contactsEnd = source.indexOf("export function ImFriendRequestsPage", contactsStart);

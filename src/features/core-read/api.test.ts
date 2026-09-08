@@ -317,4 +317,23 @@ describe("core read API adapter", () => {
     });
     expect(customer).toMatchObject({ id: "9", systemId: "u3141592653", name: "Aya Customer", memberLevel: "standard" });
   });
+
+  it("preserves an explicitly empty formal customer language list", () => {
+    const customer = mapCoreCustomerToCustomer({
+      id: 9,
+      publicId: "u3141592653",
+      displayName: "Aya Customer",
+      city: "Tokyo",
+      bio: null,
+      avatarUrl: null,
+      languages: [],
+      membershipLevel: "standard",
+      reviewSummary,
+      createdAt: coreService.createdAt,
+      updatedAt: coreService.updatedAt
+    } satisfies CoreCustomerProfile);
+
+    expect(customer.languages).toEqual([]);
+    expect(customer.bio).toBeUndefined();
+  });
 });

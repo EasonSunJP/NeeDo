@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import storeSource from "./store.ts?raw";
 import { addDays } from "./domain";
 import {
-  closeDispatchFeedback,
   createDispatchCycleDraft,
   getDispatchCenterSnapshot,
   getDispatchCycleList,
@@ -21,28 +20,20 @@ describe("dispatch center scheduling workflow", () => {
     resetDispatchCenterStore();
   });
 
-  it("starts new cycles at mode selection and moves collect-confirm cycles through feedback then final confirmation", () => {
+  it("starts new cycles in technician self-scheduling and skips the retired feedback-collection step", () => {
     const cycle = createDispatchCycleDraft("store-1");
 
     expect(cycle.currentStep).toBe(1);
+    expect(cycle.mode).toBe("TECH_SELF_FINAL");
+    expect(cycle.feedbackDeadline).toBeNull();
 
-    const saved = saveDispatchCycleDraft({ ...cycle, currentStep: 2, mode: "STORE_COLLECT_CONFIRM" });
+    const saved = saveDispatchCycleDraft({ ...cycle, currentStep: 2 });
     expect(saved.ok).toBe(true);
 
     const launched = launchDispatchCycle(cycle.id, "store-1");
     expect(launched.ok).toBe(true);
-    expect(launched.cycle?.currentStep).toBe(3);
-    expect(launched.cycle?.status).toBe("collecting_feedback");
-
-    const closed = closeDispatchFeedback(cycle.id, "store-1");
-    expect(closed.ok).toBe(true);
-    expect(closed.cycle?.currentStep).toBe(4);
-    expect(closed.cycle?.status).toBe("feedback_closed");
-
-    const confirmed = runDispatchAutoConfirm(cycle.id, "store-1");
-    expect(confirmed.ok).toBe(true);
-    const storedCycle = getDispatchCycleList("store-1").find((item) => item.id === cycle.id);
-    expect(storedCycle?.status).toBe("final_confirming");
+    expect(launched.cycle?.currentStep).toBe(4);
+    expect(launched.cycle?.status).toBe("final_confirming");
   });
 
   it("publishes direct-assign cycles without collecting feedback", () => {

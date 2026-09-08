@@ -1,8 +1,8 @@
 export type ShiftTemplateType = "day" | "week" | "month";
 export type ScheduleOwnerType = "store" | "technician";
-export type StoreScheduleMode = "TECHNICIAN_SELF_FINAL" | "STORE_CONFIRM_REQUIRED" | "STORE_DIRECT_ASSIGN";
+export type StoreScheduleMode = "TECHNICIAN_SELF_FINAL" | "STORE_DIRECT_ASSIGN";
 export type StoreScheduleModeStatus = "draft" | "scheduled" | "active" | "archived";
-export type ScheduleContextType = "INDIVIDUAL_SELF_FINAL" | "STORE_TECH_SELF_FINAL" | "STORE_CONFIRM_REQUIRED" | "STORE_DIRECT_ASSIGN";
+export type ScheduleContextType = "INDIVIDUAL_SELF_FINAL" | "STORE_TECH_SELF_FINAL" | "STORE_DIRECT_ASSIGN";
 export type EditableSlotScope = "published_availability" | "store_application";
 export type StorePlanningStatus = "draft" | "opened" | "locked" | "partially_confirmed" | "confirmed" | "reopened" | "cancelled";
 export type StoreOpenSlotStatus = "closed" | "opened" | "locked";
@@ -99,7 +99,6 @@ export type ScheduleContext = {
   mode: StoreScheduleMode | null;
   context: ScheduleContextType;
   canSelfPublish: boolean;
-  requiresStoreConfirmation: boolean;
   editableSlotScope: EditableSlotScope;
   storeRules: {
     businessHoursRequired: boolean;

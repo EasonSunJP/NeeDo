@@ -27,7 +27,7 @@ import {
   useCustomContactCategories
 } from "../../components/mobile/ContactDirectory";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
-import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import {
@@ -905,16 +905,14 @@ function MerchantHomeContactStatusPanel({
 
 function MerchantScheduleHeaderTabs({
   appointmentSearchQuery = "",
-  onAppointmentBack,
   onAppointmentSearchQueryChange,
-  showAppointmentsToolbar = false,
+  onExit,
   value,
   onChange
 }: {
   appointmentSearchQuery?: string;
-  onAppointmentBack?: () => void;
   onAppointmentSearchQueryChange?: (value: string) => void;
-  showAppointmentsToolbar?: boolean;
+  onExit?: () => void;
   value: MerchantSchedulePrimaryTab;
   onChange: (value: MerchantSchedulePrimaryTab) => void;
 }) {
@@ -923,22 +921,23 @@ function MerchantScheduleHeaderTabs({
     { label: "预约一览", value: "appointments" },
     { label: "排班", value: "planning" }
   ];
+  const activeTabLabel = tabs.find((tab) => tab.value === value)?.label ?? "现状确认";
 
   return (
     <FloatingHomeHeader
       className="relative z-10"
       panelClassName="relative overflow-hidden"
     >
-      {showAppointmentsToolbar ? (
-        <div className="flex items-center gap-2" data-page-drag-ignore="true">
-          <button
-            aria-label="返回商户首页"
-            className="focus-ring grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]"
-            onClick={onAppointmentBack}
-            type="button"
-          >
-            <AppIcon className="h-5 w-5" name="back" />
-          </button>
+      <div className="flex items-center gap-2" data-page-drag-ignore="true">
+        <button
+          aria-label="返回商户首页"
+          className="focus-ring grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]"
+          onClick={onExit}
+          type="button"
+        >
+          <AppIcon className="h-5 w-5" name="back" />
+        </button>
+        {value === "appointments" ? (
           <label className="focus-within:ring-focus flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]">
             <span className="sr-only">搜索预约</span>
             <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
@@ -949,8 +948,13 @@ function MerchantScheduleHeaderTabs({
               value={appointmentSearchQuery}
             />
           </label>
-        </div>
-      ) : null}
+        ) : (
+          <div className="flex h-11 min-w-0 flex-1 items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]">
+            <strong className="truncate text-sm font-black">{activeTabLabel}</strong>
+          </div>
+        )}
+        <MobileFullscreenCloseButton label={`关闭${activeTabLabel}`} onClose={() => onExit?.()} />
+      </div>
       <FeatureSegmentedTabs items={tabs} onChange={onChange} value={value} variant="header" />
     </FloatingHomeHeader>
   );
@@ -1758,7 +1762,7 @@ export function MerchantPortalContent({
     ? orders.find((order) => order.customerId === selectedContactCustomer.id) ?? orders[0]
     : orders[0];
   const merchantSchedulePrimaryTab = getMerchantScheduleTab(searchParams.get("tab"));
-  const isMerchantAppointmentsView = activeView === "schedule" && merchantSchedulePrimaryTab === "appointments";
+  const isMerchantScheduleView = activeView === "schedule";
   const merchantStaffTab = getMerchantStaffTab(searchParams.get("staffType"));
   const formalStaffJoin = useMemo(() => {
     const missingTechnicianIds: string[] = [];
@@ -2407,7 +2411,7 @@ export function MerchantPortalContent({
       className={isMerchantDataCenterView ? "merchant-analytics-clean-shell" : undefined}
       navItems={merchantNavItems}
       navPanelStyle={activeView === "me" ? "plain" : "default"}
-      showBottomNav={!isMerchantAppointmentsView && !merchantProfileEditing}
+      showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}
       showTopEdgeMask={activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
     >
       {activeView === "dashboard" ? (
@@ -2777,10 +2781,9 @@ export function MerchantPortalContent({
           <>
             <MerchantScheduleHeaderTabs
               appointmentSearchQuery={merchantAppointmentSearchQuery}
-              onAppointmentBack={() => navigate("/merchant")}
               onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}
               onChange={updateMerchantSchedulePrimaryTab}
-              showAppointmentsToolbar={merchantSchedulePrimaryTab === "appointments"}
+              onExit={() => navigate("/merchant")}
               value={merchantSchedulePrimaryTab}
             />
             {merchantSchedulePrimaryTab === "current" ? (

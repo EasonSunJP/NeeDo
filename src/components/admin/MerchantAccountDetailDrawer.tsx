@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { Drawer } from "../ui/Drawer";
 import { Tabs } from "../ui/Tabs";
+import { Button } from "../ui/Button";
 import { DetailGrid } from "./DetailGrid";
 import { UnifiedFormalStoreDetail } from "../../pages/user/StoreDetailPage";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -22,17 +23,31 @@ const presentationStyle = {
   "--client-primary-contrast": "var(--admin-on-accent, #fff)"
 } as CSSProperties;
 
-export function MerchantAccountDetailDrawer({ card, onClose }: { card: MerchantAccountCard | null; onClose: () => void }) {
+export function MerchantAccountDetailDrawer({
+  card,
+  onClose,
+  onOpenMerchantAdminPreview,
+}: {
+  card: MerchantAccountCard | null;
+  onClose: () => void;
+  onOpenMerchantAdminPreview?: (card: MerchantAccountCard, selectedShopId?: number) => void;
+}) {
   const { language } = useI18n();
   const t = (source: string) => translateMerchantBillingText(source, language);
   return (
     <Drawer open={Boolean(card)} title={t("商家 / 门店详情")} onClose={onClose}>
-      {card ? <MerchantAccountDetailContent key={`${card.type}-${card.id}`} card={card} /> : null}
+      {card ? <MerchantAccountDetailContent key={`${card.type}-${card.id}`} card={card} onOpenMerchantAdminPreview={onOpenMerchantAdminPreview} /> : null}
     </Drawer>
   );
 }
 
-function MerchantAccountDetailContent({ card }: { card: MerchantAccountCard }) {
+function MerchantAccountDetailContent({
+  card,
+  onOpenMerchantAdminPreview,
+}: {
+  card: MerchantAccountCard;
+  onOpenMerchantAdminPreview?: (card: MerchantAccountCard, selectedShopId?: number) => void;
+}) {
   const { language } = useI18n();
   const t = (source: string) => translateMerchantBillingText(source, language);
   const [active, setActive] = useState("店铺 SaaS 情报");
@@ -42,7 +57,14 @@ function MerchantAccountDetailContent({ card }: { card: MerchantAccountCard }) {
   const tabs = ["店铺 SaaS 情报", "店铺展示"];
   return (
     <div className="min-w-0 space-y-4">
-      <Tabs items={tabs.map(t)} active={t(active)} onChange={(label) => setActive(tabs.find((tab) => t(tab) === label) ?? tabs[0])} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs items={tabs.map(t)} active={t(active)} onChange={(label) => setActive(tabs.find((tab) => t(tab) === label) ?? tabs[0])} />
+        {selectedShop && onOpenMerchantAdminPreview ? (
+          <Button size="sm" variant="dark" onClick={() => onOpenMerchantAdminPreview(card, selectedShop.id)}>
+            {t("打开该店铺后台")}
+          </Button>
+        ) : null}
+      </div>
       {active === "店铺 SaaS 情报" ? (
           <DetailGrid
             items={[

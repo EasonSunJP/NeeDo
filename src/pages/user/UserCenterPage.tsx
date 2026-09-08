@@ -239,10 +239,8 @@ function buildUserProfile(customer: Customer) {
     age: customer.age?.trim() || "",
     height: customer.height?.trim() || "",
     gender: formatCustomerGenderLabel(customer.gender),
-    languages: customer.languages?.length ? [...customer.languages] : ["日本語"],
-    bio:
-      customer.bio?.trim() ||
-      "可在这里补充你的语言偏好、常用预约习惯和其他说明，方便门店与技师更准确地理解你的需求。"
+    languages: customer.languages?.length ? [...customer.languages] : [],
+    bio: customer.bio?.trim() || ""
   };
 }
 
@@ -1252,17 +1250,19 @@ function CompleteUserCenterPage({
                       </div>
                       <div className={cn("mt-3 rounded-[18px] border p-3", membershipSurface.panel)}>
                         <p className={cn("text-xs font-bold", membershipSurface.label)}>语言能力</p>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {visibleProfile.languages.map((language) => (
-                            <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", membershipSurface.chip)} key={language}>
-                              {language}
-                            </span>
-                          ))}
-                        </div>
+                        {visibleProfile.languages.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {visibleProfile.languages.map((language) => (
+                              <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", membershipSurface.chip)} key={language}>
+                                {language}
+                              </span>
+                            ))}
+                          </div>
+                        ) : <p className={cn("mt-2 text-sm font-semibold", membershipSurface.muted)}>未设置</p>}
                       </div>
                       <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", membershipSurface.panel)}>
                         <p className={cn("text-xs font-bold", membershipSurface.label)}>自我介绍</p>
-                        <p className={cn("mt-2 text-sm leading-6", membershipSurface.muted)}>{visibleProfile.bio}</p>
+                        <p className={cn("mt-2 text-sm leading-6", membershipSurface.muted)}>{visibleProfile.bio || "未设置"}</p>
                       </div>
                     </>
                   )}

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import scheduleCycleBoardSource from "./ScheduleCycleBoard.tsx?raw";
 import cycleBoardSource from "./ScheduleCycleCalendarBoard.tsx?raw";
 import scheduleGridSource from "../../features/dispatch-center/components/ScheduleGrid.tsx?raw";
-import stepFeedbackCollectionSource from "../../features/scheduling/automation/StepFeedbackCollection.tsx?raw";
 import stepModeSelectionSource from "../../features/scheduling/automation/StepModeSelection.tsx?raw";
 import scheduleSearchFieldSource from "./ScheduleSearchField.tsx?raw";
 import unifiedCalendarSource from "./UnifiedUserCalendar.tsx?raw";
@@ -84,13 +83,6 @@ describe("shared schedule frame layout", () => {
     expect(scheduleGridSource).toContain("floatingHeaderControlButtonClassName");
     expect(scheduleGridSource).toContain('cn(floatingHeaderControlButtonClassName, "h-11 w-11 p-2 text-[color:var(--client-primary)]")');
     expect(scheduleGridSource).toContain("!collapsedTechnicians && !(isMobileSurface && onToggleCollapsed)");
-  });
-
-  it("does not draw an extra frame around the feedback deadline label", () => {
-    expect(stepFeedbackCollectionSource).toContain('className="ml-auto flex min-w-0 shrink items-center justify-end gap-2"');
-    expect(stepFeedbackCollectionSource).toContain('className="min-w-0 justify-center truncate rounded-xl px-2.5 py-1 text-sm"');
-    expect(stepFeedbackCollectionSource).not.toContain('"ml-auto flex h-10 min-w-0 shrink items-center justify-end gap-2 rounded-full border px-3"');
-    expect(stepFeedbackCollectionSource).not.toContain("const deadlineClass");
   });
 
   it("keeps mode-card info triggers outside selection buttons", () => {

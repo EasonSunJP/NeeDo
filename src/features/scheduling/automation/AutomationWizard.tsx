@@ -22,7 +22,6 @@ import {
 } from "../../dispatch-center/store";
 import { getCycleModeLabel, getCycleStatusLabel, type DispatchCycle, type DispatchStep } from "../../dispatch-center/domain";
 import { StepCreateCycle } from "./StepCreateCycle";
-import { StepFeedbackCollection } from "./StepFeedbackCollection";
 import { StepFinalConfirmation } from "./StepFinalConfirmation";
 import { StepModeSelection } from "./StepModeSelection";
 
@@ -31,7 +30,6 @@ type CycleSlot = SchedulingCycleSlotKey;
 const stepItems: Array<{ step: DispatchStep; label: string }> = [
   { step: 1, label: "模式选择" },
   { step: 2, label: "规则设定" },
-  { step: 3, label: "技师反馈" },
   { step: 4, label: "最终确认" }
 ];
 
@@ -118,7 +116,6 @@ function CycleWorkflowPanel({
   cycle,
   onDelete,
   onMessage,
-  hideFeedbackMatrix = false,
   hideFinalConfirmationBoard = false,
   operatorId,
   scheduleStickyTop,
@@ -128,7 +125,6 @@ function CycleWorkflowPanel({
 }: {
   cycle: DispatchCycle;
   onDelete: (cycle: DispatchCycle) => void;
-  hideFeedbackMatrix?: boolean;
   hideFinalConfirmationBoard?: boolean;
   onMessage: (message: string) => void;
   operatorId: string;
@@ -163,9 +159,6 @@ function CycleWorkflowPanel({
       ) : null}
       {cycle.currentStep === 2 ? (
         <StepCreateCycle cycle={cycle} onCycleChange={() => undefined} onMessage={onMessage} operatorId={operatorId} storeId={storeId} surface={surface} />
-      ) : null}
-      {cycle.currentStep === 3 ? (
-        <StepFeedbackCollection cycle={cycle} hideMatrix={hideFeedbackMatrix} onMessage={onMessage} operatorId={operatorId} surface={surface} />
       ) : null}
       {cycle.currentStep === 4 ? (
         <StepFinalConfirmation
@@ -296,7 +289,6 @@ export function AutomationWizard({
               {shouldShowNextCycleBoard ? (
                 <CycleWorkflowPanel
                   cycle={activeCycle}
-                  hideFeedbackMatrix
                   hideFinalConfirmationBoard
                   onDelete={deleteCycle}
                   onMessage={setMessage}

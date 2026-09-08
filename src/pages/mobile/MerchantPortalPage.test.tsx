@@ -12,7 +12,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).not.toContain("stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0]");
   });
 
-  it("places appointment list navigation controls above the schedule tabs and hides the shared bottom nav", () => {
+  it("uses one fullscreen toolbar and hides the shared bottom nav across all merchant schedule tabs", () => {
     const scheduleHeaderSource = merchantSource.slice(
       merchantSource.indexOf("function MerchantScheduleHeaderTabs"),
       merchantSource.indexOf("function MerchantStaffHeaderTabs")
@@ -26,19 +26,25 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf("{activeView === \"contacts\" && (")
     );
 
-    expect(merchantSource).toContain('const isMerchantAppointmentsView = activeView === "schedule" && merchantSchedulePrimaryTab === "appointments";');
-    expect(scheduleHeaderSource).toContain("showAppointmentsToolbar");
+    expect(merchantSource).toContain('const isMerchantScheduleView = activeView === "schedule";');
+    expect(merchantSource).toContain('import { MobileFullscreenCloseButton, MobileFullscreenHeader }');
     expect(scheduleHeaderSource).toContain('className="relative z-10"');
     expect(scheduleHeaderSource).toContain('className="flex items-center gap-2"');
     expect(scheduleHeaderSource).toContain('aria-label="返回商户首页"');
+    expect(scheduleHeaderSource).toContain('const activeTabLabel = tabs.find((tab) => tab.value === value)?.label ?? "现状确认";');
     expect(scheduleHeaderSource).toContain('placeholder="搜索预约、客户、员工、状态"');
     expect(scheduleHeaderSource).toContain('name="search"');
+    expect(scheduleHeaderSource).toContain('{value === "appointments" ? (');
+    expect(scheduleHeaderSource).toContain('<strong className="truncate text-sm font-black">{activeTabLabel}</strong>');
+    expect(scheduleHeaderSource).toContain('<MobileFullscreenCloseButton label={`关闭${activeTabLabel}`} onClose={() => onExit?.()} />');
     expect(scheduleHeaderSource).toContain("<FeatureSegmentedTabs");
-    expect(shellSource).toContain("showBottomNav={!isMerchantAppointmentsView && !merchantProfileEditing}");
+    expect(shellSource).toContain("showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}");
     expect(merchantSource).toContain('activeView === "schedule" && "relative z-30"');
     expect(schedulePanelSource).toContain("onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("appointmentSearchQuery={merchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("searchQuery={merchantAppointmentSearchQuery}");
+    expect(schedulePanelSource).toContain('onExit={() => navigate("/merchant")}');
+    expect(schedulePanelSource).not.toContain("showAppointmentsToolbar");
   });
 
   it("keeps the approved appointment calendar as the first booking surface", () => {
@@ -119,7 +125,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(meHeaderSource).toContain('title="个人中心"');
     expect(meHeaderSource).toContain("footer={");
     expect(meHeaderSource).not.toContain("<SharedHomeHeader");
-    expect(merchantSource).toContain('showBottomNav={!isMerchantAppointmentsView && !merchantProfileEditing}');
+    expect(merchantSource).toContain('showBottomNav={!isMerchantScheduleView && !merchantProfileEditing}');
   });
 
   it("keeps the personal-center status panel inside the same mobile content inset", () => {
