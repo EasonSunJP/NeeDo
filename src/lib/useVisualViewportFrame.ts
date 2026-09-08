@@ -38,10 +38,11 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       const keyboardViewportReduction = viewport
         ? Math.max(0, layoutHeight - viewport.height)
         : 0;
+      const editorFocused = isKeyboardEditor(document.activeElement);
       const keyboardOpen = Boolean(
         viewport &&
-        (keyboardFrameActive || isKeyboardEditor(document.activeElement)) &&
-        keyboardViewportReduction >= minimumKeyboardViewportReduction
+        ((editorFocused && keyboardViewportReduction >= minimumKeyboardViewportReduction) ||
+          (keyboardFrameActive && keyboardViewportReduction > 0))
       );
 
       // Panning changes the origin, not the amount of visible height. Keep a
@@ -80,10 +81,15 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       element.style.setProperty("--im-visual-viewport-right", "0px");
     };
 
+    const refreshRestoredFrame = () => {
+      keyboardFrameActive = false;
+      updateFrame();
+    };
+
     updateFrame();
     window.addEventListener("resize", updateFrame);
-    window.addEventListener("pageshow", updateFrame);
-    document.addEventListener("visibilitychange", updateFrame);
+    window.addEventListener("pageshow", refreshRestoredFrame);
+    document.addEventListener("visibilitychange", refreshRestoredFrame);
     document.addEventListener("focusin", updateFrame);
     document.addEventListener("focusout", updateFrame);
     window.visualViewport?.addEventListener("resize", updateFrame);
@@ -91,8 +97,8 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
 
     return () => {
       window.removeEventListener("resize", updateFrame);
-      window.removeEventListener("pageshow", updateFrame);
-      document.removeEventListener("visibilitychange", updateFrame);
+      window.removeEventListener("pageshow", refreshRestoredFrame);
+      document.removeEventListener("visibilitychange", refreshRestoredFrame);
       document.removeEventListener("focusin", updateFrame);
       document.removeEventListener("focusout", updateFrame);
       window.visualViewport?.removeEventListener("resize", updateFrame);

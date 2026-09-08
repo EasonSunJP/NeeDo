@@ -75,6 +75,48 @@ describe("useVisualViewportFrame", () => {
     await act(async () => root.unmount());
   });
 
+  it("keeps the shrinking visual viewport through the final keyboard-dismissal frames", async () => {
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 600 },
+      offsetTop: { configurable: true, value: 240 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 0 }
+    });
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: visualViewport });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 956 });
+
+    function Harness() {
+      const ref = useRef<HTMLDivElement | null>(null);
+      useVisualViewportFrame(ref);
+      return <div data-testid="frame" ref={ref}><textarea /></div>;
+    }
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<Harness />));
+    const frame = container.querySelector<HTMLElement>("[data-testid='frame']")!;
+    const editor = container.querySelector("textarea")!;
+
+    await act(async () => editor.focus());
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("600px");
+    await act(async () => editor.blur());
+
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 900 },
+      offsetTop: { configurable: true, value: 0 }
+    });
+    await act(async () => visualViewport.dispatchEvent(new Event("resize")));
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("900px");
+
+    Object.defineProperty(visualViewport, "height", { configurable: true, value: 956 });
+    await act(async () => visualViewport.dispatchEvent(new Event("resize")));
+    expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+
+    await act(async () => root.unmount());
+  });
+
   it("restores the bottom edge when a focused editor returns without a software keyboard", async () => {
     const viewport = new EventTarget() as VisualViewport;
     Object.defineProperties(viewport, {

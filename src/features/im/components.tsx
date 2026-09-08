@@ -810,7 +810,7 @@ export function ImChatComposer({
     });
   };
   const composerInputShellClass =
-    "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
+    "im-composer-editor-shell min-h-[40px] min-w-0 max-h-full flex-1 overflow-y-auto overscroll-contain rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
   const composerIconButtonClass = "im-composer-icon-button shrink-0 text-[color:var(--client-muted)]";
   const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel";
   const composerActionButtonClass =
@@ -857,7 +857,7 @@ export function ImChatComposer({
               <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
             </button>
           )}
-          <div className={composerInputShellClass}>
+          <div className={composerInputShellClass} data-im-composer-editor-shell="true">
             {pendingImage ? (
               <div className="mb-2 w-fit max-w-full pr-1 pt-1" data-im-composer-pending-image="true">
                 <div className="relative w-fit max-w-full">
