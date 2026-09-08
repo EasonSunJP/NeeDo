@@ -31,6 +31,7 @@ import type { ExchangeCancellation } from "../../features/exchange/types";
 import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
+import { OrderDetailFactGrid, OrderDetailSection } from "../../shared/order-detail/OrderDetailSections";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { serviceReviewSpecialTags } from "../../shared/order-detail/serviceReviewTagCatalog";
 import { getScopedTechnicianDynamicPath, SocialProfileMiniCard } from "../../shared/profile-card";
@@ -93,31 +94,6 @@ function getRemainingSeconds(expectedEndsAt: string | null | undefined, now: num
   if (!expectedEndsAt) return 0;
   const target = new Date(expectedEndsAt).getTime();
   return Number.isFinite(target) ? Math.max(0, Math.ceil((target - now) / 1000)) : 0;
-}
-
-function DetailRows({ rows, title }: { rows: Array<[string, ReactNode]>; title: string }) {
-  return (
-    <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
-      <h2 className="text-base font-black text-[color:var(--client-text)]">{title}</h2>
-      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-        {rows.map(([label, value]) => (
-          <div className="rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3" key={label}>
-            <dt className="text-[11px] font-black text-[color:var(--client-muted)]">{label}</dt>
-            <dd className="mt-1 text-sm font-black text-[color:var(--client-text)]">{value}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}
-
-function ProfileSection({ children, title }: { children: ReactNode; title: string }) {
-  return (
-    <section className="space-y-3">
-      <h2 className="text-base font-black text-[color:var(--client-muted)]">{title}</h2>
-      {children}
-    </section>
-  );
 }
 
 function buildBookingOrderSnapshotServiceData(order: BookingOrder): UnifiedServiceInfoCardData {
@@ -524,14 +500,14 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
 
           {profileLoadError ? <p className="rounded-[18px] bg-amber-500/10 px-4 py-3 text-xs font-black text-amber-500">{profileLoadError}</p> : null}
 
-          <ProfileSection title="服务">
+          <OrderDetailSection title="服务">
             <UnifiedServiceInfoCard
               data={buildBookingOrderServiceData(order, orderService)}
               detailTo={orderService ? `/services/${orderService.id}` : undefined}
             />
-          </ProfileSection>
+          </OrderDetailSection>
 
-          <ProfileSection title="店铺 / 服务方">
+          <OrderDetailSection title="店铺 / 服务方">
             {displayShop ? (
               <SocialProfileMiniCard
                 detailTo={`/stores/${displayShop.id}`}
@@ -542,9 +518,9 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
             ) : (
               <Link className="block rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 text-base font-black shadow-panel" to={`/stores/${order.shopId}`}>{order.shopName}</Link>
             )}
-          </ProfileSection>
+          </OrderDetailSection>
 
-          <ProfileSection title="技师 / 担当">
+          <OrderDetailSection title="技师 / 担当">
             {displayTechnician ? (
               <SocialProfileMiniCard
                 detailTo={getScopedTechnicianDynamicPath("user", displayTechnician)}
@@ -558,9 +534,9 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
                 <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺确认担当后将在此显示正式技师资料。</p>
               </section>
             )}
-          </ProfileSection>
+          </OrderDetailSection>
 
-          <DetailRows title="预约情报" rows={[
+          <OrderDetailFactGrid title="预约情报" rows={[
             ["预约状态", formalStatusLabel(order.status)],
             ["预约编号", order.orderNo],
             ["服务", order.serviceName],
@@ -635,7 +611,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
 
           {checkoutStatus === "loading" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-5 text-center text-sm font-black">正在加载正式结算</section> : null}
           {checkoutStatus === "error" ? <section className="rounded-[24px] border border-red-400/35 bg-red-500/10 p-5 text-center" role="alert"><h2 className="text-base font-black text-red-500">正式结算加载失败</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkoutError}</p><button className="mt-4 h-11 w-full rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => setCheckoutRevision((value) => value + 1)} type="button">重新加载正式结算</button></section> : null}
-          {checkoutStatus === "success" && checkout ? <DetailRows title="正式结算" rows={[
+          {checkoutStatus === "success" && checkout ? <OrderDetailFactGrid title="正式结算" rows={[
             ["基础金额", yen(checkout.baseAmountJpy)],
             ["追加服务", yen(checkout.addOnAmountJpy)],
             ["优惠", `-${yen(checkout.discountAmountJpy)}`],

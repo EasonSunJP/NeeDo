@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,8 @@ import type { BookingOrder, OrderCheckout } from "../../features/booking/api";
 import type { CoreServiceDetail } from "../../features/core-read/api";
 
 const mocks = vi.hoisted(() => ({
+  cancelOrder: vi.fn(),
+  exchangeLinked: false,
   getCheckout: vi.fn(),
   getCustomerProfile: vi.fn(),
   getOrder: vi.fn(),
@@ -26,6 +28,7 @@ vi.mock("../../features/booking/api", async () => {
   return {
     ...actual,
     bookingApi: {
+      cancelOrder: mocks.cancelOrder,
       getCheckout: mocks.getCheckout,
       getOrder: mocks.getOrder
     }
@@ -53,25 +56,42 @@ vi.mock("../../components/mobile/MobileShell", () => ({ MobileShell: ({ children
 vi.mock("../../components/mobile/MobileFullscreenPage", () => ({ MobileFullscreenPage: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock("../../components/mobile/MobileFullscreenHeader", () => ({ MobileFullscreenHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock("../../components/mobile/MobileBottomActionBar", () => ({ MobileBottomActionBar: ({ children }: { children: React.ReactNode }) => <footer>{children}</footer> }));
+vi.mock("../../components/client-ui/AppScaffold", () => ({
+  AppTopBar: ({ actions, closeLabel, onBack, onClose, title }: { actions?: React.ReactNode; closeLabel?: string; onBack?: () => void; onClose?: () => void; title: string }) => (
+    <header>
+      <button aria-label="返回" onClick={onBack} type="button">返回</button>
+      <h1>{title}</h1>
+      {actions}
+      <button aria-label={closeLabel} onClick={onClose} type="button">关闭</button>
+    </header>
+  ),
+  PageScaffold: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
+}));
 vi.mock("../../components/mobile/ContactEventTimeline", () => ({ ContactEventTimelinePanel: ({ title }: { title: string }) => <section>{title}</section> }));
 vi.mock("../../features/exchange/ExchangeOrderCancellationPanel", () => ({
   ExchangeOrderCancellationPanel: ({
     onCancellationChange,
+    onLinkedChange,
     orderId
   }: {
     onCancellationChange?: (payload: { orderId: number; orderStatus: "cancelled" }) => void;
+    onLinkedChange?: (linked: boolean) => void;
     orderId: number;
-  }) => (
-    <button
-      onClick={() => onCancellationChange?.({ orderId, orderStatus: "cancelled" })}
-      type="button"
-    >
-      模拟双方同意取消
-    </button>
-  )
+  }) => {
+    useEffect(() => onLinkedChange?.(mocks.exchangeLinked), [onLinkedChange]);
+
+    return (
+      <button
+        onClick={() => onCancellationChange?.({ orderId, orderStatus: "cancelled" })}
+        type="button"
+      >
+        模拟双方同意取消
+      </button>
+    );
+  }
 }));
 vi.mock("../../components/ui/Button", () => ({
-  Button: ({ children, to }: { children: React.ReactNode; to?: string }) => to ? <a href={to}>{children}</a> : <button type="button">{children}</button>
+  Button: ({ children, disabled, to }: { children: React.ReactNode; disabled?: boolean; to?: string }) => to && !disabled ? <a href={to}>{children}</a> : <button disabled={disabled} type="button">{children}</button>
 }));
 vi.mock("../../shared/order-detail/OrderDynamicStatusCard", () => ({ OrderDynamicStatusCard: ({ order }: { order: { status: string } }) => <div>{order.status}</div> }));
 vi.mock("../../shared/profile-card", () => ({
@@ -201,6 +221,8 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     mocks.getOrder.mockResolvedValue(order);
+    mocks.cancelOrder.mockImplementation(async () => ({ ...order, status: "cancelled" }));
+    mocks.exchangeLinked = false;
     mocks.getCheckout.mockResolvedValue(checkout);
     mocks.listMerchantOrders.mockResolvedValue({
       list: [{ id: order.id, customerProfileId: 7, customerName: "LifeDance 管理员" }],
@@ -239,6 +261,78 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
     expect(container.textContent).toContain("佐藤 美咲");
     expect(container.textContent).toContain("￥14,500");
     expect(container.textContent).toContain("NDP 账本已结算");
+    expect(container.textContent).toContain("预约详情");
+    expect(container.textContent).not.toContain("预约订单详情");
+    expect(container.querySelector('[aria-label="关闭预约详情"]')).not.toBeNull();
+    expect(container.textContent).toContain("联系用户");
+    expect(container.textContent).toContain("联系技师");
+    expect(container.textContent).not.toContain("服务验证码");
+    expect(container.textContent).not.toContain("服务开始");
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "追加服务")).toBe(false);
+  });
+
+  it("requires the shared red warning before force-cancelling a normal booking", async () => {
+    const confirmedOrder = {
+      ...order,
+      status: "confirmed" as const,
+      paymentStatus: "pending" as const,
+      paymentMethod: "onsite" as const,
+      paymentAmountJpy: 0,
+      serviceVerificationCode: "392104"
+    };
+    mocks.getOrder.mockResolvedValue(confirmedOrder);
+    mocks.cancelOrder.mockResolvedValue({ ...confirmedOrder, status: "cancelled" });
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/merchant/orders/46397"]}><Routes><Route path="/merchant/orders/:orderId" element={<MerchantOrderDetailRoutePage />} /></Routes></MemoryRouter>);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const cancelButton = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === "取消预约");
+    expect(cancelButton).not.toBeUndefined();
+    expect(container.textContent).not.toContain("服务验证码");
+
+    await act(async () => cancelButton!.click());
+    expect(container.querySelector('[role="alertdialog"]')?.textContent).toMatch(/降低接单率数值|lower the acceptance-rate metric/u);
+
+    const confirmButton = Array.from(container.querySelectorAll("button")).find((item) => /确定取消预约|Cancel booking/u.test(item.textContent ?? ""));
+    await act(async () => confirmButton!.click());
+
+    expect(mocks.cancelOrder).toHaveBeenCalledWith(order.id, "商户从预约详情强制取消");
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  it("does not offer force cancellation for an Exchange-linked booking", async () => {
+    mocks.exchangeLinked = true;
+    mocks.getOrder.mockResolvedValue({ ...order, status: "confirmed", paymentStatus: "pending", paymentMethod: "onsite" });
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/merchant/orders/46397"]}><Routes><Route path="/merchant/orders/:orderId" element={<MerchantOrderDetailRoutePage />} /></Routes></MemoryRouter>);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(Array.from(container.querySelectorAll("button")).some((item) => item.textContent === "取消预约")).toBe(false);
+  });
+
+  it("keeps the warning open and shows the formal API error when cancellation fails", async () => {
+    mocks.getOrder.mockResolvedValue({ ...order, status: "confirmed", paymentStatus: "pending", paymentMethod: "onsite" });
+    mocks.cancelOrder.mockRejectedValue(new ApiClientError("error.booking.conflict", 409, 409));
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/merchant/orders/46397"]}><Routes><Route path="/merchant/orders/:orderId" element={<MerchantOrderDetailRoutePage />} /></Routes></MemoryRouter>);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const cancelButton = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === "取消预约");
+    await act(async () => cancelButton!.click());
+    const confirmButton = Array.from(container.querySelectorAll("button")).find((item) => /确定取消预约|Cancel booking/u.test(item.textContent ?? ""));
+    await act(async () => confirmButton!.click());
+
+    expect(container.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(container.querySelector('[role="alert"]')?.textContent).toMatch(/预约状态已经变化|reservation status has changed/iu);
   });
 
   it("shows the order price before payment and does not invent payment selection", async () => {

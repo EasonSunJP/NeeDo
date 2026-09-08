@@ -36,4 +36,24 @@ describe("MerchantOrderRoutePages service cards", () => {
     expect(cardBuilder).not.toMatch(/scenario === "restaurant" \? 120 : 90/u);
     expect(cardBuilder).not.toMatch(/scenario === "restaurant" \? "2 小时" : "90 分钟"/u);
   });
+
+  it("uses the user booking-detail scaffold and shared sections for formal merchant orders", () => {
+    const start = source.indexOf("function FormalMerchantOrderDetailContent");
+    const end = source.indexOf("function MerchantOrderDetailContent", start);
+    const formalDetail = source.slice(start, end);
+
+    expect(formalDetail).toContain("<PageScaffold");
+    expect(formalDetail).toContain("<AppTopBar");
+    expect(formalDetail).toContain('title="预约详情"');
+    expect(formalDetail).toContain("<OrderDynamicStatusCard");
+    expect(formalDetail).toContain("<OrderDetailSection");
+    expect(formalDetail).toContain("<OrderDetailFactGrid");
+    expect(formalDetail).toContain("<DangerConfirmDialog");
+    expect(formalDetail).toContain("联系用户");
+    expect(formalDetail).toContain("联系技师");
+    expect(formalDetail).toContain('detailTo={`/merchant/stores/${store.id}`}');
+    expect(formalDetail).not.toContain("服务验证码");
+    expect(formalDetail).not.toContain("服务开始");
+    expect(formalDetail).not.toContain(">追加服务</button>");
+  });
 });

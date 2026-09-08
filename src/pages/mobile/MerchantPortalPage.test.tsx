@@ -215,4 +215,24 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(dashboardHeroSource).not.toContain("<img");
     expect(dashboardHeroSource).not.toContain("imageBank.salon");
   });
+
+  it("renders merchant appointment services through the same direct user-side card", () => {
+    const dashboardAppointments = merchantSource.slice(
+      merchantSource.indexOf("{pendingOrders.slice(0, 4).map"),
+      merchantSource.indexOf('title="员工状态"')
+    );
+    const orderList = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "orders" && ('),
+      merchantSource.indexOf('{activeView === "staff" && (')
+    );
+
+    expect(merchantSource).toContain('import { UnifiedServiceInfoCard } from "../../shared/service-card"');
+    expect(dashboardAppointments).toContain("<UnifiedServiceInfoCard");
+    expect(dashboardAppointments).toContain("data={buildOrderServiceMiniCardData(order)}");
+    expect(dashboardAppointments).not.toContain("<OrderServiceMiniCard");
+    expect(dashboardAppointments).not.toContain("预约详情");
+    expect(dashboardAppointments).not.toContain("merchant-dashboard-appointment-service");
+    expect(orderList).toContain("<UnifiedServiceInfoCard");
+    expect(orderList).not.toContain("<OrderServiceMiniCard");
+  });
 });

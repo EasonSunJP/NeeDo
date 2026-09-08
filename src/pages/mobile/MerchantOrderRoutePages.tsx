@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { backofficeRealDataApi, type BackofficeOrderPayload } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
+import { AppTopBar, PageScaffold } from "../../components/client-ui/AppScaffold";
 import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
@@ -12,6 +13,7 @@ import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPa
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { buildOrderServiceMiniCardData } from "../../components/mobile/OrderServiceMiniCard";
 import { Button } from "../../components/ui/Button";
+import { DangerConfirmDialog } from "../../components/ui/DangerConfirmDialog";
 import { emptyOrders as orders, emptyServices as services } from "../../data/formalRuntimeFallbacks";
 import {
   bookingApi,
@@ -36,10 +38,11 @@ import { buildFormalOrderTimelineEvents } from "../../features/order-performance
 import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
 import type { ExchangeCancellation } from "../../features/exchange/types";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
-import { getMerchantCustomerConversationId } from "../../lib/messageCenter";
+import { getMerchantCustomerConversationId, getMerchantTechnicianConversationId, getMessagePath } from "../../lib/messageCenter";
 import { readNavigationReturnTarget } from "../../lib/navigationReturn";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
+import { OrderDetailFactGrid, OrderDetailSection } from "../../shared/order-detail/OrderDetailSections";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { getScopedTechnicianDynamicPath, SocialProfileMiniCard, type SocialProfileMiniData } from "../../shared/profile-card";
 import {
@@ -1037,6 +1040,17 @@ function formalCheckoutEvidenceLabel(evidence: OrderCheckout["paymentEvidence"])
   return "尚无收款凭证";
 }
 
+function describeFormalMerchantCancellationError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) return "登录状态已失效，请重新登录";
+    if (error.status === 403) return "当前身份没有取消该预约的权限";
+    if (error.status === 404) return "预约不存在或已不可见";
+    if (error.status === 409) return "预约状态已经变化，请重新加载后再操作";
+    if (error.status >= 500) return "预约取消失败，请稍后重试";
+  }
+  return "预约取消失败，请稍后重试";
+}
+
 function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
   const navigate = useNavigate();
   const [order, setOrder] = useState<BookingOrder | null>(null);
@@ -1049,6 +1063,10 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
   const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const [revision, setRevision] = useState(0);
+  const [exchangeOrderLinked, setExchangeOrderLinked] = useState<boolean | null>(null);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [cancelPending, setCancelPending] = useState(false);
+  const [cancelError, setCancelError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -1086,6 +1104,9 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
       setShopProfile(shopResult.status === "fulfilled" ? shopResult.value : null);
       setTechnicianProfile(technicianResult.status === "fulfilled" ? technicianResult.value : null);
       setCustomerProfile(customerResult.status === "fulfilled" ? customerResult.value : null);
+      setExchangeOrderLinked(null);
+      setCancelConfirmOpen(false);
+      setCancelError("");
       setLoadStatus("success");
     };
 
@@ -1103,152 +1124,203 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
     };
   }, [orderId, revision]);
 
-  const service = serviceProfile ? mapCoreServiceToServiceItem(serviceProfile) : null;
   const store = shopProfile ? mapCoreShopToStore(shopProfile) : null;
   const technician = technicianProfile ? mapCoreTechnicianToTechnician(technicianProfile) : null;
   const totalAmount = checkout?.checkoutAmountJpy ?? (order ? Number(order.priceAmount) : null);
   const paymentLabel = checkout?.paymentMethod === "other" ? checkout.otherMethod?.label ?? "其他方式" : checkout?.paymentMethod === "ndp" ? "NDP" : checkout?.paymentMethod === "cash" ? "现金" : order?.paymentMethod === "onsite" ? "到店支付" : order?.paymentMethod === "bank_transfer" ? "银行转账" : order?.paymentMethod === "ndp" ? "NDP" : order?.paymentMethod === "cash" ? "现金" : "未选择";
+  const canForceCancel = Boolean(order && (order.status === "pending" || order.status === "confirmed") && exchangeOrderLinked === false);
   const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
     if (payload.orderStatus !== "cancelled") return;
     setOrder((current) => current?.id === payload.orderId
       ? { ...current, status: "cancelled" }
       : current);
   }, []);
+  const forceCancelOrder = async () => {
+    if (!order || cancelPending || !canForceCancel) return;
+
+    setCancelPending(true);
+    setCancelError("");
+    try {
+      const cancelled = await bookingApi.cancelOrder(order.id, "商户从预约详情强制取消");
+      setOrder(cancelled);
+      setCancelConfirmOpen(false);
+    } catch (error) {
+      setCancelError(describeFormalMerchantCancellationError(error));
+    } finally {
+      setCancelPending(false);
+    }
+  };
+  const closeCancelDialog = () => {
+    if (cancelPending) return;
+    setCancelConfirmOpen(false);
+    setCancelError("");
+  };
 
   return (
-    <MobileFullscreenPage>
-      <MobileFullscreenHeader className={fullscreenHeaderClassName} onBack={() => navigate(-1)} title="预约订单详情" />
-      <main className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
-        {loadStatus === "loading" ? (
-          <section className="rounded-[24px] bg-[color:var(--client-surface)] px-4 py-10 text-center text-sm font-black">正在加载本店正式订单</section>
+    <PageScaffold contentClassName="space-y-4 pb-36" navItems={[]}>
+      <AppTopBar
+        actions={canForceCancel ? (
+          <button
+            aria-label="取消预约"
+            className="focus-ring h-10 rounded-full bg-red-500 px-4 text-sm font-black text-white shadow-[0_10px_24px_rgba(239,68,68,0.28)]"
+            onClick={() => {
+              setCancelError("");
+              setCancelConfirmOpen(true);
+            }}
+            type="button"
+          >
+            取消预约
+          </button>
         ) : null}
-        {loadStatus === "error" ? (
-          <section className="rounded-[24px] border border-red-400/35 bg-red-500/10 px-4 py-8 text-center" role="alert">
-            <h2 className="text-base font-black text-red-500">本店订单加载失败</h2>
-            <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{loadError}</p>
-            <button className="mt-4 h-11 w-full rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => setRevision((value) => value + 1)} type="button">重新加载本店订单</button>
-          </section>
-        ) : null}
-        {loadStatus === "success" && order && merchantOrder ? (
-          <>
-            <section className="rounded-[24px] bg-[color:var(--client-surface)] px-4 py-4">
-              <p className="text-xs font-bold text-[color:var(--client-muted)]">动态状态</p>
-              <h2 className="mt-2 text-lg font-black">{formalMerchantOrderStatusLabel(order.status)}</h2>
-            </section>
+        closeLabel="关闭预约详情"
+        onBack={() => navigate(-1)}
+        onClose={() => navigate("/merchant", { replace: true })}
+        title="预约详情"
+      />
 
-            <section>
-              <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">服务</h2>
-              <UnifiedServiceInfoCard
-                actionSlot={<DispatchStatusBadge label={formalMerchantOrderStatusLabel(order.status)} tone="muted" />}
-                data={serviceProfile
-                  ? mapCoreServiceCardToUnifiedData(serviceProfile)
-                  : buildOrderServiceMiniCardData(mapBookingOrderToDomainOrder(order))}
-                detailTo={serviceProfile ? `/services/${serviceProfile.id}` : undefined}
-              />
-            </section>
+      {loadStatus === "loading" ? (
+        <section className="rounded-[24px] bg-[color:var(--client-surface)] px-4 py-10 text-center text-sm font-black">正在加载本店正式订单</section>
+      ) : null}
+      {loadStatus === "error" ? (
+        <section className="rounded-[24px] border border-red-400/35 bg-red-500/10 px-4 py-8 text-center" role="alert">
+          <h2 className="text-base font-black text-red-500">本店订单加载失败</h2>
+          <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{loadError}</p>
+          <button className="mt-4 h-11 w-full rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={() => setRevision((value) => value + 1)} type="button">重新加载本店订单</button>
+        </section>
+      ) : null}
 
+      {loadStatus === "success" && order && merchantOrder ? (
+        <>
+          <OrderDynamicStatusCard order={mapBookingOrderToDomainOrder(order)} providerName={order.shopName} />
+
+          <OrderDetailSection title="服务">
+            <UnifiedServiceInfoCard
+              data={serviceProfile
+                ? mapCoreServiceCardToUnifiedData(serviceProfile)
+                : buildOrderServiceMiniCardData(mapBookingOrderToDomainOrder(order))}
+              detailTo={serviceProfile ? `/services/${serviceProfile.id}` : undefined}
+            />
             <div className="grid grid-cols-3 gap-2">
               {[
                 ["金额", totalAmount !== null && Number.isFinite(totalAmount) ? yen(totalAmount) : "未读取"],
                 ["支付", paymentLabel],
                 ["状态", formalMerchantOrderStatusLabel(order.status)]
               ].map(([label, value]) => (
-                <div className="rounded-[18px] bg-[color:var(--client-surface)] px-3 py-3" key={label}>
+                <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-3" key={label}>
                   <p className="text-[10px] font-black text-[color:var(--client-muted)]">{label}</p>
                   <strong className="mt-1 block truncate text-xs font-black">{value}</strong>
                 </div>
               ))}
             </div>
+          </OrderDetailSection>
 
-            <section>
-              <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">用户</h2>
-              {customerProfile ? (
-                <SocialProfileMiniCard
-                  data={buildFormalOrderPersonCard(customerProfile, "user")}
-                  detailTo={getScopedProfileDetailPath("merchant", "user", String(customerProfile.id))}
-                  showAction={false}
-                  showLevel={false}
-                  showSocialStats={false}
-                  topTags={[{ label: "预约者", tone: "purple" }]}
-                />
-              ) : (
-                <section className="rounded-[24px] bg-[color:var(--client-surface)] p-4 text-base font-black">{merchantOrder.customerName}</section>
-              )}
-            </section>
-
-            <section>
-              <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">技师 / 担当</h2>
-              {technician ? (
-                <SocialProfileMiniCard
-                  detailTo={getScopedTechnicianDynamicPath("merchant", technician)}
-                  showAction={false}
-                  data={buildFormalOrderPersonCard(technicianProfile!, "technician")}
-                  showLevel={false}
-                  showSocialStats={false}
-                  topTags={[{ label: "担当技师", tone: "green" }]}
-                />
-              ) : (
-                <section className="rounded-[24px] bg-[color:var(--client-surface)] p-4 text-base font-black">{order.technicianName ?? "尚未指定担当技师"}</section>
-              )}
-            </section>
-
-            <section className="overflow-hidden rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] shadow-panel">
-              <h2 className="border-b border-[color:var(--client-line)] px-4 py-3 text-base font-black">预约情报</h2>
-              <div className="divide-y divide-[color:var(--client-line)]">
-                {[
-                  ["预约编号", order.orderNo],
-                  ["预约状态", formalMerchantOrderStatusLabel(order.status)],
-                  ["预约时间", formatApiOrderDateTime(order.startsAt)],
-                  ["预约结束", formatApiOrderDateTime(order.endsAt)],
-                  ["服务方式", order.fulfillmentMode === "store" ? "到店服务" : "上门服务"],
-                  ["店铺", order.shopName],
-                  ["担当", order.technicianName ?? "尚未指定"],
-                  ["备注", order.note ?? "无特别备注"]
-                ].map(([label, value]) => (
-                  <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 px-4 py-3 text-sm" key={label}>
-                    <span className="font-black text-[color:var(--client-muted)]">{label}</span>
-                    <strong className="min-w-0 break-words font-black">{value}</strong>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {checkout ? (
-              <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
-                <h2 className="text-base font-black">正式结算</h2>
-                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                  {[
-                    ["基础金额", yen(checkout.baseAmountJpy)],
-                    ["追加服务", yen(checkout.addOnAmountJpy)],
-                    ["应付总额", yen(checkout.checkoutAmountJpy)],
-                    ["支付凭证", formalCheckoutEvidenceLabel(checkout.paymentEvidence)]
-                  ].map(([label, value]) => (
-                    <div className="rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3" key={label}>
-                      <dt className="text-[10px] font-black text-[color:var(--client-muted)]">{label}</dt>
-                      <dd className="mt-1 font-black">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </section>
-            ) : null}
-
-            <ContactEventTimelinePanel events={buildFormalOrderTimelineEvents(order)} title="联系信息" />
-            {order.status === "pending" || order.status === "confirmed" || order.status === "cancelled" ? (
-              <ExchangeOrderCancellationPanel
-                onCancellationChange={handleExchangeCancellationChange}
-                orderId={order.id}
+          <OrderDetailSection title="用户">
+            {customerProfile ? (
+              <SocialProfileMiniCard
+                data={buildFormalOrderPersonCard(customerProfile, "user")}
+                detailTo={getScopedProfileDetailPath("merchant", "user", String(customerProfile.id))}
+                showAction={false}
+                showLevel={false}
+                showSocialStats={false}
+                topTags={[{ label: "预约者", tone: "purple" }]}
               />
-            ) : null}
-          </>
-        ) : null}
-      </main>
+            ) : (
+              <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 text-base font-black shadow-panel">{merchantOrder.customerName}</section>
+            )}
+          </OrderDetailSection>
+
+          <OrderDetailSection title="店铺 / 服务方">
+            {store ? (
+              <SocialProfileMiniCard
+                detailTo={`/merchant/stores/${store.id}`}
+                showAction={false}
+                store={store}
+                topTags={[{ label: "服务方", tone: "purple" }]}
+              />
+            ) : (
+              <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 text-base font-black shadow-panel">{order.shopName}</section>
+            )}
+          </OrderDetailSection>
+
+          <OrderDetailSection title="技师 / 担当">
+            {technician ? (
+              <SocialProfileMiniCard
+                data={buildFormalOrderPersonCard(technicianProfile!, "technician")}
+                detailTo={getScopedTechnicianDynamicPath("merchant", technician)}
+                showAction={false}
+                showLevel={false}
+                showSocialStats={false}
+                topTags={[{ label: "担当技师", tone: "green" }]}
+              />
+            ) : (
+              <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
+                <p className="text-sm font-black">{order.technicianName ?? "尚未指定担当技师"}</p>
+                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺确认担当后将在此显示正式技师资料。</p>
+              </section>
+            )}
+          </OrderDetailSection>
+
+          <OrderDetailFactGrid title="预约情报" rows={[
+            ["预约状态", formalMerchantOrderStatusLabel(order.status)],
+            ["预约编号", order.orderNo],
+            ["服务", order.serviceName],
+            ["服务方式", order.fulfillmentMode === "store" ? "到店服务" : "上门服务"],
+            ["店铺", order.shopName],
+            ["预约时间", formatApiOrderDateTime(order.startsAt)],
+            ["结束时间", formatApiOrderDateTime(order.endsAt)],
+            ["担当", order.technicianName ?? "尚未指定"],
+            ["备注", order.note ?? "无特别备注"]
+          ]} />
+
+          {checkout ? (
+            <OrderDetailFactGrid title="正式结算" rows={[
+              ["基础金额", yen(checkout.baseAmountJpy)],
+              ["追加服务", yen(checkout.addOnAmountJpy)],
+              ["应付总额", yen(checkout.checkoutAmountJpy)],
+              ["支付凭证", formalCheckoutEvidenceLabel(checkout.paymentEvidence)]
+            ]} />
+          ) : null}
+
+          <ContactEventTimelinePanel events={buildFormalOrderTimelineEvents(order)} title="订单追踪信息" />
+          {order.status === "pending" || order.status === "confirmed" || order.status === "cancelled" ? (
+            <ExchangeOrderCancellationPanel
+              onCancellationChange={handleExchangeCancellationChange}
+              onLinkedChange={setExchangeOrderLinked}
+              orderId={order.id}
+            />
+          ) : null}
+        </>
+      ) : null}
+
       {loadStatus === "success" && order ? (
         <MobileBottomActionBar contentClassName="grid grid-cols-2 gap-2">
-          <Button to={`/merchant/messages?chat=${getMerchantCustomerConversationId(String(order.customerUserId))}`} variant="secondary">联系用户</Button>
-          <Button to="/merchant-admin/orders">订单中心</Button>
+          <Button
+            to={getMessagePath("merchant", getMerchantCustomerConversationId(String(order.customerUserId)), `/merchant/orders/${order.id}`)}
+            variant="secondary"
+          >
+            联系用户
+          </Button>
+          {technician ? (
+            <Button to={getMessagePath("merchant", getMerchantTechnicianConversationId(technician.id), `/merchant/orders/${order.id}`)}>
+              联系技师
+            </Button>
+          ) : (
+            <Button aria-label="联系技师（尚未指定担当）" disabled>联系技师</Button>
+          )}
         </MobileBottomActionBar>
       ) : null}
-    </MobileFullscreenPage>
+
+      <DangerConfirmDialog
+        confirmLabel="确定取消预约"
+        description="强制取消预约可能引起用户差评，并会降低接单率数值。是否真的要取消此预约？"
+        error={cancelError || undefined}
+        onCancel={closeCancelDialog}
+        onConfirm={forceCancelOrder}
+        open={cancelConfirmOpen}
+        pending={cancelPending}
+        title="强制取消预约"
+      />
+    </PageScaffold>
   );
 }
 
@@ -1800,13 +1872,13 @@ function MerchantOrderDispatchContent() {
 export function MerchantOrderDetailRoutePage() {
   const { orderId } = useParams();
 
+  if (isBookingApiId(orderId)) {
+    return <FormalMerchantOrderDetailContent orderId={Number(orderId)} />;
+  }
+
   return (
     <MobileShell navItems={[]}>
-      {isBookingApiId(orderId) ? (
-        <FormalMerchantOrderDetailContent orderId={Number(orderId)} />
-      ) : (
-        <MerchantOrderDetailContent />
-      )}
+      <MerchantOrderDetailContent />
     </MobileShell>
   );
 }
