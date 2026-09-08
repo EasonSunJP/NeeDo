@@ -21,7 +21,7 @@ describe("Jest suite runner", () => {
   });
 
   it("accepts a positive shard override and rejects invalid values", () => {
-    expect(resolveShardCount(undefined)).toBe(4);
+    expect(resolveShardCount(undefined)).toBe(12);
     expect(resolveShardCount("6")).toBe(6);
     expect(() => resolveShardCount("0")).toThrow("JEST_SHARD_COUNT");
     expect(() => resolveShardCount("abc")).toThrow("JEST_SHARD_COUNT");

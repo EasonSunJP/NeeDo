@@ -1,6 +1,6 @@
 const { spawnSync } = require("node:child_process");
 
-const DEFAULT_SHARD_COUNT = 4;
+const DEFAULT_SHARD_COUNT = 12;
 
 const resolveShardCount = (value) => {
   if (value === undefined || value.trim() === "") {
