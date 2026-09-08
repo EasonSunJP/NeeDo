@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const workspaceRoot = path.resolve(
@@ -9,6 +9,10 @@ const workspaceRoot = path.resolve(
   "..",
 );
 const translationsPath = path.join(workspaceRoot, "src/i18n/translations.ts");
+const ekycTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/settings/ekycI18n.ts",
+);
 const identityTranslationsPath = path.join(
   workspaceRoot,
   "src/features/identity-applications/i18n.ts",
@@ -36,6 +40,10 @@ const orderPerformanceTranslationsPath = path.join(
 const platformUserManagementTranslationsPath = path.join(
   workspaceRoot,
   "src/features/platform-user-management/i18n.ts",
+);
+const platformMembershipTierTextPath = path.join(
+  workspaceRoot,
+  "src/shared/profile-card/platformMembershipTierText.ts",
 );
 const travelFareTranslationsPath = path.join(
   workspaceRoot,
@@ -142,6 +150,7 @@ async function readCodeFiles(directory) {
 }
 
 let identityTranslationsPromise;
+let ekycTranslationsPromise;
 let affiliateProfileTranslationsPromise;
 let affiliateMarketplaceTranslationsPromise;
 let dashboardTranslationsPromise;
@@ -149,6 +158,26 @@ let operationsAnalyticsTranslationsPromise;
 let orderPerformanceTranslationsPromise;
 let platformUserManagementTranslationsPromise;
 let travelFareTranslationsPromise;
+
+async function loadEkycTranslations() {
+  ekycTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(ekycTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return {
+      translations: loaded.ekycTranslations ?? {},
+      chineseErrors: loaded.ekycChineseErrors ?? {},
+    };
+  })();
+
+  return ekycTranslationsPromise;
+}
 
 async function loadIdentityTranslations() {
   identityTranslationsPromise ??= (async () => {
@@ -256,16 +285,49 @@ async function loadOrderPerformanceTranslations() {
 
 async function loadPlatformUserManagementTranslations() {
   platformUserManagementTranslationsPromise ??= (async () => {
-    const source = await fs.readFile(platformUserManagementTranslationsPath, "utf8");
-    const transpiled = ts.transpileModule(source, {
+    const [source, membershipTierSource] = await Promise.all([
+      fs.readFile(platformUserManagementTranslationsPath, "utf8"),
+      fs.readFile(platformMembershipTierTextPath, "utf8"),
+    ]);
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const outputDirectory = path.join(workspaceRoot, "exports", "i18n");
+    const membershipTierFileName = `platform-membership-tier-text-audit-${token}.mjs`;
+    const membershipTierFile = path.join(outputDirectory, membershipTierFileName);
+    const translationsFile = path.join(
+      outputDirectory,
+      `platform-user-management-audit-${token}.mjs`,
+    );
+    const membershipTierTranspiled = ts.transpileModule(membershipTierSource, {
       compilerOptions: {
         module: ts.ModuleKind.ES2022,
         target: ts.ScriptTarget.ES2022,
       },
     }).outputText;
-    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
-    const loaded = await import(`data:text/javascript;base64,${encoded}`);
-    return loaded.platformUserManagementTranslations ?? {};
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText.replace(
+      "../../shared/profile-card/platformMembershipTierText",
+      `./${membershipTierFileName}`,
+    );
+
+    await fs.mkdir(outputDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(membershipTierFile, membershipTierTranspiled, "utf8"),
+      fs.writeFile(translationsFile, transpiled, "utf8"),
+    ]);
+
+    try {
+      const loaded = await import(pathToFileURL(translationsFile).href);
+      return loaded.platformUserManagementTranslations ?? {};
+    } finally {
+      await Promise.all([
+        fs.unlink(membershipTierFile).catch(() => {}),
+        fs.unlink(translationsFile).catch(() => {}),
+      ]);
+    }
   })();
 
   return platformUserManagementTranslationsPromise;
@@ -289,6 +351,8 @@ async function loadTravelFareTranslations() {
 }
 
 async function loadTranslationsFromSource(sourceCode) {
+  const { translations: ekycTranslations, chineseErrors: ekycChineseErrors } =
+    await loadEkycTranslations();
   const identityTranslations = await loadIdentityTranslations();
   const affiliateProfileTranslations = await loadAffiliateProfileTranslations();
   const affiliateMarketplaceTranslations =
@@ -299,6 +363,9 @@ async function loadTranslationsFromSource(sourceCode) {
   const platformUserManagementTranslations = await loadPlatformUserManagementTranslations();
   const travelFareTranslations = await loadTravelFareTranslations();
   const standaloneSource = sourceCode.replace(
+    /import\s+\{\s*ekycTranslations\s*,\s*ekycChineseErrors\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const ekycTranslations = ${JSON.stringify(ekycTranslations)};\nconst ekycChineseErrors = ${JSON.stringify(ekycChineseErrors)};`,
+  ).replace(
     /import\s+\{\s*identityApplicationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const identityApplicationTranslations = ${JSON.stringify(identityTranslations)};`,
   ).replace(
@@ -340,7 +407,7 @@ async function loadTranslationsFromSource(sourceCode) {
   await fs.writeFile(tempFile, transpiled, "utf8");
 
   try {
-    const loaded = await import(`file://${tempFile}`);
+    const loaded = await import(pathToFileURL(tempFile).href);
     return {
       ...operationsAnalyticsTranslations,
       ...platformUserManagementTranslations,

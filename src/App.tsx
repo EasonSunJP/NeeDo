@@ -1,5 +1,3 @@
-import { EkycReviewPage } from "./features/settings/EkycReviewPage";
-import { MerchantBackofficeApplicationReviewPage, OperationsShopApplicationReviewPage } from "./features/identity-applications/BackofficeReviewPages";
 import { Component, lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
@@ -231,6 +229,9 @@ const AccountCompliancePage = lazy(() => import("./features/auth/AccountComplian
 const AdminNotificationComposePage = lazy(() => import("./pages/admin/AdminNotificationComposePage").then((module) => ({ default: module.AdminNotificationComposePage })));
 const AdminNotificationsPage = lazy(() => import("./pages/admin/AdminNotificationsPage").then((module) => ({ default: module.AdminNotificationsPage })));
 const MerchantAdminNotificationsPage = lazy(() => import("./pages/merchant-admin/MerchantAdminNotificationsPage").then((module) => ({ default: module.MerchantAdminNotificationsPage })));
+const EkycReviewPage = lazy(() => import("./features/settings/EkycReviewPage").then((module) => ({ default: module.EkycReviewPage })));
+const MerchantBackofficeApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages").then((module) => ({ default: module.MerchantBackofficeApplicationReviewPage })));
+const OperationsShopApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages").then((module) => ({ default: module.OperationsShopApplicationReviewPage })));
 
 type SplashPortal = "user" | "business" | "businessAdmin" | "merchant" | "technician" | "admin" | "merchantAdmin";
 
@@ -1381,7 +1382,7 @@ export default function App() {
               <Route path="/merchant-admin/stage-layout" element={protectFeature("merchant", "store.stage-layout.view", <MerchantAdminStageLayoutPage />, "/merchant-admin")} />
               <Route path="/merchant-admin/inventory" element={protectFeature("merchant", "store.inventory.view", <MerchantAdminInventoryPage />, "/merchant-admin")} />
               <Route path="/merchant-admin/finance" element={protect("merchant", <MerchantAdminFinancePage />)} />
-              <Route path="/merchant-admin/employee-applications" element={protectPermission("merchant", "merchant:technician-application:read", <MerchantBackofficeApplicationReviewPage />)} />
+              <Route path="/merchant-admin/employee-applications" element={protectPermission("merchant", "merchant:technician-application:read", <Suspense fallback={null}><MerchantBackofficeApplicationReviewPage /></Suspense>)} />
               <Route path="/merchant-admin/people" element={protect("merchant", <MerchantAdminPeoplePage />)} />
               <Route path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read", <MerchantAdminNotificationsPage view="list" />)} />
               <Route path="/merchant-admin/notifications/compose" element={protectPermission("merchant", "merchant-admin:notice:create", <MerchantAdminNotificationsPage view="compose" />)} />
@@ -1490,8 +1491,8 @@ export default function App() {
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
               <Route path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
               <Route path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
-              <Route path="/admin/application-reviews/ekyc" element={protectPermission("admin", "ops:ekyc-application:read", <EkycReviewPage />)} />
-              <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <OperationsShopApplicationReviewPage />)} />
+              <Route path="/admin/application-reviews/ekyc" element={protectPermission("admin", "ops:ekyc-application:read", <Suspense fallback={null}><EkycReviewPage /></Suspense>)} />
+              <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <Suspense fallback={null}><OperationsShopApplicationReviewPage /></Suspense>)} />
               <Route path="/admin/inventory" element={protect("admin", <InventoryPage />)} />
               <Route path="/admin/floorplan" element={protect("admin", <FloorplanPage />)} />
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />

@@ -184,6 +184,33 @@ describe("production route chunk boundaries", () => {
     ).toHaveLength(2);
   });
 
+  it("loads application review workspaces only after entering their protected routes", () => {
+    expect(appSource).not.toContain(
+      'import { EkycReviewPage } from "./features/settings/EkycReviewPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { MerchantBackofficeApplicationReviewPage, OperationsShopApplicationReviewPage } from "./features/identity-applications/BackofficeReviewPages";'
+    );
+    expect(appSource).toContain(
+      'const EkycReviewPage = lazy(() => import("./features/settings/EkycReviewPage")'
+    );
+    expect(appSource).toContain(
+      'const MerchantBackofficeApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages")'
+    );
+    expect(appSource).toContain(
+      'const OperationsShopApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages")'
+    );
+    expect(appSource).toContain(
+      'path="/admin/application-reviews/ekyc" element={protectPermission("admin", "ops:ekyc-application:read", <Suspense fallback={null}><EkycReviewPage /></Suspense>)}'
+    );
+    expect(appSource).toContain(
+      'path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <Suspense fallback={null}><OperationsShopApplicationReviewPage /></Suspense>)}'
+    );
+    expect(appSource).toContain(
+      'path="/merchant-admin/employee-applications" element={protectPermission("merchant", "merchant:technician-application:read", <Suspense fallback={null}><MerchantBackofficeApplicationReviewPage /></Suspense>)}'
+    );
+  });
+
   it("routes the accepted technician schedule index directly to the formal-only page", () => {
     expect(appSource).toContain(
       'path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)}'
