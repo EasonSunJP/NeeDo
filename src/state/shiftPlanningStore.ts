@@ -788,9 +788,7 @@ export function switchStoreScheduleMode(input: StoreScheduleModeSwitchInput) {
           payload:
             input.mode === "TECHNICIAN_SELF_FINAL"
               ? "商户已切换为技师自主排班模式，发布后的上班时间会直接进入最终可预约时间。"
-              : input.mode === "STORE_DIRECT_ASSIGN"
-                ? "商户已切换为商户直接排班模式，正式班表由商户安排；你可以确认收到或申请更改。"
-                : "商户已切换为商户确认模式，后续需在开放时段内提交排班反馈并等待确认。",
+              : "商户已切换为商户直接排班模式，正式班表由商户安排；你可以确认收到或申请更改。",
           scheduledAt: now
         })
       )
@@ -813,7 +811,7 @@ export function markShiftPlanningNotificationRead(notificationId: string) {
 
 export function syncDispatchProjectionForStore(input: {
   storeId: string;
-  mode: "TECH_SELF_FINAL" | "STORE_COLLECT_CONFIRM" | "STORE_ASSIGN_FINAL" | "INDIVIDUAL_SELF_FINAL";
+  mode: "TECH_SELF_FINAL" | "STORE_ASSIGN_FINAL" | "INDIVIDUAL_SELF_FINAL";
   slots: Array<{
     id: string;
     cycleId: string;
@@ -829,11 +827,7 @@ export function syncDispatchProjectionForStore(input: {
   hydrate();
   const now = new Date().toISOString();
   const nextMode: StoreScheduleMode =
-    input.mode === "TECH_SELF_FINAL"
-      ? "TECHNICIAN_SELF_FINAL"
-      : input.mode === "STORE_ASSIGN_FINAL"
-        ? "STORE_DIRECT_ASSIGN"
-        : "STORE_CONFIRM_REQUIRED";
+    input.mode === "STORE_ASSIGN_FINAL" ? "STORE_DIRECT_ASSIGN" : "TECHNICIAN_SELF_FINAL";
   const activeConfig = state.modeConfigs.find((config) => config.storeId === input.storeId && config.status === "active");
 
   if (activeConfig) {
@@ -872,11 +866,7 @@ export function syncDispatchProjectionForStore(input: {
               ? "blocked_by_store"
               : "available";
       const nextContext: FinalBookableSlot["context"] =
-        nextMode === "TECHNICIAN_SELF_FINAL"
-          ? "STORE_TECH_SELF_FINAL"
-          : nextMode === "STORE_DIRECT_ASSIGN"
-            ? "STORE_DIRECT_ASSIGN"
-            : "STORE_CONFIRM_REQUIRED";
+        nextMode === "TECHNICIAN_SELF_FINAL" ? "STORE_TECH_SELF_FINAL" : "STORE_DIRECT_ASSIGN";
       const nextSourceType: FinalBookableSlot["sourceType"] = nextMode === "TECHNICIAN_SELF_FINAL" ? "technician_published" : "store_confirmed";
 
       return {
@@ -921,7 +911,7 @@ export function ensureStorePlanningCycle(storeId: string) {
     state.modeConfigs.push({
       id: createId("mode"),
       storeId,
-      mode: "STORE_CONFIRM_REQUIRED",
+      mode: "TECHNICIAN_SELF_FINAL",
       scopeType: "global",
       scopeValue: null,
       effectiveFrom: new Date().toISOString(),

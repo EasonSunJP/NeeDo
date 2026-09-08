@@ -1771,9 +1771,6 @@ export function DispatchOverviewWorkspace({
               </div>
             ) : null}
 
-            <Button className="h-12 w-full text-[15px] font-black" disabled={formalScheduleLoading || Boolean(formalScheduleError)} onClick={() => setScheduleDetailOpen(true)}>
-              {formalScheduleLoading ? t("加载正式排班中") : t("查看详细排班表")}
-            </Button>
           </div>
         ) : (
           <div className="mt-4">
@@ -1811,6 +1808,21 @@ export function DispatchOverviewWorkspace({
           onFilterChange={setContactStatusFilter}
           onSelect={setSelectedContactStatusItem}
         />
+      ) : null}
+
+      {isMobileSurface ? (
+        <div
+          className="safe-bottom fixed bottom-0 left-1/2 z-[80] w-full max-w-[480px] -translate-x-1/2 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]"
+          data-testid="merchant-current-schedule-detail-action"
+        >
+          <Button
+            className="h-14 w-full text-[15px] font-black shadow-[0_18px_46px_color-mix(in_srgb,var(--client-primary)_28%,rgba(0,0,0,0.28))]"
+            disabled={formalScheduleLoading || Boolean(formalScheduleError)}
+            onClick={() => setScheduleDetailOpen(true)}
+          >
+            {formalScheduleLoading ? t("加载正式排班中") : t("查看详细排班表")}
+          </Button>
+        </div>
       ) : null}
 
       {!isMobileSurface ? (

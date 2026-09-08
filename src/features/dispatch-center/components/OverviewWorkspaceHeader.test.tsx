@@ -57,6 +57,18 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
     expect(scheduleDetailSource).not.toContain("bg-transparent text-ink backdrop-blur-none");
   });
 
+  it("moves the mobile detailed schedule action from the summary card to a fixed bottom control", () => {
+    const summaryStart = source.indexOf('title={t("当前周期班表")}');
+    const summaryEnd = source.indexOf("{isMobileSurface ? (\n        <ContactInfoStatusPanel", summaryStart);
+    const summarySource = source.slice(summaryStart, summaryEnd);
+
+    expect(summarySource).not.toContain('t("查看详细排班表")');
+    expect(source).toContain('data-testid="merchant-current-schedule-detail-action"');
+    expect(source).toContain('className="safe-bottom fixed bottom-0 left-1/2 z-[80] w-full max-w-[480px] -translate-x-1/2 px-4');
+    expect(source).toContain('onClick={() => setScheduleDetailOpen(true)}');
+    expect(source).toContain('{formalScheduleLoading ? t("加载正式排班中") : t("查看详细排班表")}');
+  });
+
   it("keeps schedule content aligned under the shared glass header without a local solid wrapper", () => {
     expect(styles).toContain(".client-mobile-schedule-detail__refractive-scroll");
     expect(styles).toContain("--client-mobile-schedule-detail-grid-header-top: calc(env(safe-area-inset-top, 0px) + 58px);");
