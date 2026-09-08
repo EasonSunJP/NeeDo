@@ -461,6 +461,10 @@ describe("formal technician schedule routes", () => {
     expect(container.textContent).toContain("正式技师");
     expect(container.textContent).toContain("正式店铺");
     expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.textContent).toBe("正式技师:正式店铺");
+    expect(container.querySelector('button[aria-label="返回技师首页"]')).not.toBeNull();
+    expect(container.querySelector('input[aria-label="搜索排班"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="关闭排班"]')).not.toBeNull();
+    expect(container.querySelector("nav")).toBeNull();
     expect(mocks.scheduleResource).toHaveBeenCalledWith(technicianSession, null);
   });
 
@@ -502,6 +506,9 @@ describe("formal technician schedule routes", () => {
     expect(container.textContent).toContain("暂未关联店铺");
     expect(container.textContent).toContain("关联店铺并配置正式服务后即可使用排班");
     expect(container.textContent).not.toContain("error.technician.shop_required");
+    expect(container.querySelector('input[aria-label="搜索排班"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="关闭排班"]')).not.toBeNull();
+    expect(container.querySelector("nav")).toBeNull();
   });
 
   it("locks a slot with the formal API and requires two clicks before deletion", async () => {

@@ -6,6 +6,7 @@ import { useAuth } from "../../auth/AuthProvider";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { technicianNavItems } from "../../components/mobile/navItems";
+import { SchedulePageHeader } from "../../components/scheduling/SchedulePageHeader";
 import { Button } from "../../components/ui/Button";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
@@ -67,6 +68,7 @@ function TechnicianSchedulePageShell({
   subtitle,
   backTo = "/technician/schedule",
   showHeader = true,
+  showBottomNav = true,
   action,
   children
 }: {
@@ -74,13 +76,14 @@ function TechnicianSchedulePageShell({
   subtitle?: string;
   backTo?: string;
   showHeader?: boolean;
+  showBottomNav?: boolean;
   action?: ReactNode;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
   const { isNight } = useClientTheme();
   return (
-    <MobileShell navItems={technicianNavItems}>
+    <MobileShell navItems={technicianNavItems} showBottomNav={showBottomNav}>
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
         {showHeader ? (
           <MobileFullscreenHeader
@@ -94,7 +97,9 @@ function TechnicianSchedulePageShell({
         ) : null}
         <main className={showHeader
           ? "min-h-0 flex-1 px-4 py-3 pb-24"
-          : "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden px-4 pb-[calc(220px+env(safe-area-inset-bottom))] pt-0 [overflow-x:clip]"
+          : showBottomNav
+            ? "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden px-4 pb-[calc(220px+env(safe-area-inset-bottom))] pt-0 [overflow-x:clip]"
+            : "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden px-4 pb-[calc(96px+env(safe-area-inset-bottom))] pt-0 [overflow-x:clip]"
         }>{children}</main>
       </div>
     </MobileShell>
@@ -160,43 +165,55 @@ function ScheduleResourceErrorPanel({
 }
 
 export function TechnicianScheduleIndexRoutePage() {
+  const navigate = useNavigate();
   const { session } = useAuth();
   const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState("");
   const resource = useFormalTechnicianScheduleResource(session, null);
   const dataCenterPeriod = readDataCenterPeriod(searchParams.get("period"));
   const initialSelectedDate = tokyoDateKey(searchParams.get("from"));
 
-  if (resource.loading) {
-    return <TechnicianSchedulePageShell backTo="/technician" showHeader={false} title="排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></TechnicianSchedulePageShell>;
-  }
-  if (resource.error || !resource.data) {
-    return (
-      <TechnicianSchedulePageShell backTo="/technician" showHeader={false} title="排班与预约">
+  const handleBack = () => {
+    const historyIndex = typeof window !== "undefined"
+      ? (window.history.state as { idx?: number } | null)?.idx
+      : undefined;
+    if (typeof historyIndex === "number" && historyIndex > 0) {
+      navigate(-1);
+      return;
+    }
+    navigate("/technician");
+  };
+
+  return (
+    <TechnicianSchedulePageShell backTo="/technician" showBottomNav={false} showHeader={false} title="排班与预约">
+      <SchedulePageHeader
+        ariaLabel="搜索排班"
+        backLabel="返回技师首页"
+        closeLabel="关闭排班"
+        onBack={handleBack}
+        onChange={setSearchQuery}
+        onClose={() => navigate("/technician", { replace: true })}
+        placeholder="搜索排班、预约、服务、状态"
+        value={searchQuery}
+      />
+      {resource.loading ? <LoadingPanel label="正在读取正式排班与预约" /> : null}
+      {resource.error || (!resource.loading && !resource.data) ? (
         <ScheduleResourceErrorPanel
           error={resource.error ?? "error.schedule.profile_not_found"}
           onRetry={resource.retry}
           title="正式排班资源加载失败"
         />
-      </TechnicianSchedulePageShell>
-    );
-  }
-
-  return (
-    <TechnicianSchedulePageShell
-      backTo="/technician"
-      showHeader={false}
-      subtitle={`${resource.data.profile.displayName} · ${resource.data.profile.shop?.name ?? "--"}`}
-      title="排班与预约"
-    >
-      <FormalTechnicianScheduleWorkspace
+      ) : null}
+      {resource.data ? <FormalTechnicianScheduleWorkspace
         dataCenterPeriod={dataCenterPeriod}
         initialSelectedDate={initialSelectedDate}
         profileAvatarUrl={resource.data.profile.avatarUrl}
         profileId={resource.data.profile.id}
         profileName={resource.data.profile.displayName}
+        searchQuery={searchQuery}
         shopId={resource.data.shopId}
         shopName={resource.data.profile.shop?.name ?? "--"}
-      />
+      /> : null}
     </TechnicianSchedulePageShell>
   );
 }
