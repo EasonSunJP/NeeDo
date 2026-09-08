@@ -5,6 +5,7 @@ import { TimelineBubbleDisclosure } from "./TimelineBubbleDisclosure";
 export type ContactEventTimelineTone = "neutral" | "red" | "green" | "accent";
 
 export type ContactEventTimelineEntry = {
+  actions?: ReactNode;
   actorAvatarSrc?: string;
   actorName?: ReactNode;
   actorRole?: ReactNode;
@@ -217,6 +218,7 @@ export function ContactEventTimeline({
                   </p>
                 </div>
               ) : null}
+              {event.actions ? <div className="mt-2 flex justify-end pl-10 sm:pl-[50px]">{event.actions}</div> : null}
             </div>
           </div>
         );

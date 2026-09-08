@@ -1453,7 +1453,7 @@ export default function App() {
               <Route path="/admin/analytics" element={protectPermission("admin", "page:dashboard", <Navigate replace to="/admin" />)} />
               <Route path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <Suspense fallback={null}><DashboardMetricDetailPage /></Suspense>)} />
               <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="backoffice" /></Suspense>)} />
-              <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
+              <Route path="/admin/operation-timeline" element={protectPermission("admin", "backoffice:dashboard:read", <OperationTimelinePage />)} />
               <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
               <Route path="/admin/notifications/compose" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />
               <Route path="/admin/notifications/compose/:publicId" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />

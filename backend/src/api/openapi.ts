@@ -1,6 +1,7 @@
 import { ekycApplicationOpenApiPaths } from "./ekyc-application.openapi";
 import { accountActivityOpenApiPaths } from "./account-activity.openapi";
 import { operationsMemberOpenApiPaths } from "./operations-member.openapi";
+import { releasePublicationOpenApiPaths } from "./release-publication.openapi";
 import { workStatusOpenApiPaths } from './work-status.openapi';
 import { sosOpenApiPaths } from "./sos.openapi";
 import { Router } from "express";
@@ -15796,6 +15797,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    ...releasePublicationOpenApiPaths(config.API_PREFIX),
     ...operationsMemberOpenApiPaths(config.API_PREFIX),
     ...ekycApplicationOpenApiPaths(config.API_PREFIX),
     ...accountActivityOpenApiPaths(config.API_PREFIX),

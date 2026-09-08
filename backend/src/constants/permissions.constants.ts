@@ -698,6 +698,13 @@ export const SYSTEM_PERMISSIONS = [
     "读取运营后台真实指标"
   ),
   createPermission(
+    "backoffice:releases:write",
+    "维护运营发布时间线",
+    "api",
+    "backoffice",
+    "附理由补录和更正发布时间线"
+  ),
+  createPermission(
     "backoffice:dashboard-detail:read",
     "运营后台 Dashboard 指标详情",
     "api",
@@ -2333,6 +2340,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
   "menu:admin-console",
   "backoffice:dashboard:read",
+  "backoffice:releases:write",
   "backoffice:dashboard-detail:read",
   "backoffice.member.analytics.view",
   "backoffice:analytics-ranking:read",

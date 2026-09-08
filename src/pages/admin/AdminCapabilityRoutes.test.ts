@@ -115,13 +115,12 @@ describe("operations timeline production capability gate", () => {
     expect(timelineSource).not.toContain("sortedTimeline");
   });
 
-  it("states the persistence, workflow, permission, and export prerequisites", () => {
-    expect(timelineSource).toContain("正式运营时间线尚未启用");
-    expect(timelineSource).toContain("OperationEvent 与 OperationalIncident 表和 migration");
-    expect(timelineSource).toContain("创建、指派、跟进、解决与归档状态机 API");
-    expect(timelineSource).toContain("跨城市 RBAC 与不可变审计链路");
-    expect(timelineSource).toContain("服务端筛选、分页、聚合与导出合同");
-    expect(timelineSource).toContain("当前不会展示模拟运营记录、负责人、城市、优先级或处理状态");
+  it("reads formal version publications without enabling incident management", () => {
+    expect(timelineSource).toContain("releasePublicationsApi");
+    expect(timelineSource).toContain("AdminEventTimeline");
+    expect(timelineSource).toContain("FormalTimelinePagination");
+    expect(timelineSource).not.toContain("正式运营时间线尚未启用");
+    expect(timelineSource).toContain("showCommentComposer={false}");
   });
 });
 
@@ -136,7 +135,7 @@ describe("formal official notification workspaces", () => {
   it("uses the formal paginated management, lifecycle, and inbox APIs", () => {
     expect(notificationsSource).toContain("OfficialNoticeManagement");
     expect(notificationComposeSource).toContain("OfficialNoticeComposer");
-    for (const method of ["listManaged", "createManaged", "cancelManaged", "archiveManaged", "retryManaged", "listInbox", "markRead"]) {
+    for (const method of ["listManaged", "createDraft", "updateDraft", "planDraft", "cancelManaged", "archiveManaged", "retryManaged", "listInbox", "markRead"]) {
       expect(notificationWorkspaceSource).toContain(`officialNoticesApi.${method}`);
     }
     expect(notificationWorkspaceSource).toContain("受众由服务端按当前权限与店铺范围生成快照");
@@ -147,9 +146,11 @@ describe("formal official notification workspaces", () => {
   it("registers separately permissioned platform and merchant management routes", () => {
     expect(appSource).toContain('path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice"');
     expect(appSource).toContain('path="/admin/notifications/inbox" element={protect("admin"');
-    expect(appSource).toContain('["button:backoffice-official-notice-create", "button:backoffice-official-notice-send"]');
+    expect(appSource).toContain('path="/admin/notifications/compose" element={protectPermission("admin", "button:backoffice-official-notice-create"');
+    expect(notificationWorkspaceSource).toContain('"button:backoffice-official-notice-send"');
     expect(appSource).toContain('path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read"');
-    expect(appSource).toContain('["merchant-admin:notice:create", "merchant-admin:notice:send"]');
+    expect(appSource).toContain('path="/merchant-admin/notifications/compose" element={protectPermission("merchant", "merchant-admin:notice:create"');
+    expect(notificationWorkspaceSource).toContain('"merchant-admin:notice:send"');
     expect(appSource).toContain('path="/merchant-admin/notifications/inbox" element={protect("merchant"');
     expect(adminLayoutSource).toContain('permission: "page:backoffice-official-notice"');
     expect(merchantAdminLayoutSource).toContain('rbacPermission: "merchant-admin:notice:read"');
