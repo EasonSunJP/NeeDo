@@ -5,6 +5,7 @@ describe("live dashboard OpenAPI", () => {
   it("documents strict hierarchy input, auth/RBAC, cache state, and the no-PII response", () => {
     const document = createOpenApiDocument(env) as {
       paths: Record<string, { get?: Record<string, unknown> }>;
+      components: { schemas: Record<string, unknown> };
     };
     const operation = document.paths["/api/v1/backoffice/dashboard/live-snapshot"]?.get;
 
@@ -29,6 +30,8 @@ describe("live dashboard OpenAPI", () => {
     );
     expect(JSON.stringify(operation)).toContain("cacheStatus");
     expect(JSON.stringify(operation)).toContain("freshnessSeconds");
+    expect(JSON.stringify(document.components.schemas.LiveDashboardChildRegion)).toContain("currentDayOrderCount");
+    expect(JSON.stringify(document.components.schemas.LiveDashboardChildRegion)).toContain("previousDayOrderCount");
     expect(JSON.stringify(operation)).not.toMatch(/customerEmail|customerPhone|customerAddress/i);
   });
 });

@@ -33,9 +33,10 @@ describe("live dashboard responsive layout contract", () => {
     expect(block(".live-dashboard-trend-chart svg")).not.toContain("110px");
   });
 
-  it("hides only the graphic on portrait phones and uses a scrollable single column", () => {
+  it("keeps the touch map visible on portrait phones in a scrollable single column", () => {
     const portrait = styles.slice(styles.indexOf("@media (max-width: 767px) and (orientation: portrait)"));
-    expect(portrait).toMatch(/\.live-dashboard-map-graphic\s*\{[^}]*display:\s*none/);
+    expect(portrait).toMatch(/\.live-dashboard-map-graphic\s*\{[^}]*display:\s*grid/);
+    expect(portrait).toMatch(/\.live-dashboard-map-stage\s*\{[^}]*min-height:\s*300px/);
     expect(portrait).toMatch(/\.live-dashboard-shell\s*\{[^}]*overflow-y:\s*auto/);
     expect(portrait).toMatch(/\.live-dashboard-shell\s*\{[^}]*overflow-x:\s*clip/);
     expect(portrait).toMatch(/\.live-dashboard-canvas\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);

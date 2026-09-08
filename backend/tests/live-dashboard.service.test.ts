@@ -78,6 +78,8 @@ const childFact = (code: string, name: string) => ({
   code,
   name,
   orderCount: 0,
+  currentDayOrderCount: 0,
+  previousDayOrderCount: 0,
   confirmedPayments: { jpy: 0, ndp: 0, testNdp: 0 }
 });
 const serializedFacts = (value: LiveDashboardSnapshotFacts): CachedLiveDashboardFacts =>

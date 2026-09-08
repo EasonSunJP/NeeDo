@@ -10,7 +10,7 @@ type ViewBox = readonly [number, number, number, number];
 export const IDENTITY_VIEWPORT: MapViewport = Object.freeze({ scale: 1, x: 0, y: 0 });
 
 const MIN_SCALE = 1;
-const MAX_SCALE = 4;
+export const MAP_MAX_SCALE = 8;
 const ZOOM_STEP = 0.5;
 
 const isFiniteNumber = (value: number): boolean => Number.isFinite(value);
@@ -68,7 +68,7 @@ function keepContentVisible(viewport: MapViewport, viewBox: ViewBox, contentPoin
 
 function isValidViewport(viewport: MapViewport, viewBox: ViewBox): boolean {
   if (!isFiniteNumber(viewport.scale) || !isFiniteNumber(viewport.x) || !isFiniteNumber(viewport.y)) return false;
-  if (viewport.scale < MIN_SCALE || viewport.scale > MAX_SCALE) return false;
+  if (viewport.scale < MIN_SCALE || viewport.scale > MAP_MAX_SCALE) return false;
   const normalized = clampViewport(viewport, viewBox);
   return normalized.x === viewport.x && normalized.y === viewport.y;
 }
@@ -87,10 +87,29 @@ export function zoomMapViewport(
   if (!isValidViewBox(viewBox) || !center.every(isFiniteNumber)) return currentOrIdentity(current, viewBox);
   const validCurrent = currentOrIdentity(current, viewBox);
   const nextScale = direction === "in"
-    ? Math.min(MAX_SCALE, validCurrent.scale + ZOOM_STEP)
+    ? Math.min(MAP_MAX_SCALE, validCurrent.scale + ZOOM_STEP)
     : Math.max(MIN_SCALE, validCurrent.scale - ZOOM_STEP);
   if (nextScale === validCurrent.scale) return keepContentVisible(validCurrent, viewBox, contentPoints);
 
+  const ratio = nextScale / validCurrent.scale;
+  return keepContentVisible({
+    scale: nextScale,
+    x: center[0] - (center[0] - validCurrent.x) * ratio,
+    y: center[1] - (center[1] - validCurrent.y) * ratio
+  }, viewBox, contentPoints);
+}
+
+export function scaleMapViewport(
+  current: MapViewport,
+  requestedScale: number,
+  center: Point,
+  viewBox: ViewBox,
+  contentPoints: readonly Point[] = []
+): MapViewport {
+  if (!isValidViewBox(viewBox) || !center.every(isFiniteNumber) || !isFiniteNumber(requestedScale)) return currentOrIdentity(current, viewBox);
+  const validCurrent = currentOrIdentity(current, viewBox);
+  const nextScale = clamp(requestedScale, MIN_SCALE, MAP_MAX_SCALE);
+  if (nextScale === validCurrent.scale) return keepContentVisible(validCurrent, viewBox, contentPoints);
   const ratio = nextScale / validCurrent.scale;
   return keepContentVisible({
     scale: nextScale,

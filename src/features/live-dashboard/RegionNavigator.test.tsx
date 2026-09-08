@@ -240,7 +240,7 @@ describe("RegionNavigator", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const onSelectRegion = vi.fn();
     await act(async () => root.render(<RegionNavigator breadcrumbs={breadcrumbs} fallbackChildren={[
-      { code: "13103", name: "港区", orderCount: 0, confirmedPayments: { jpy: 0, ndp: 0, testNdp: 0 } }
+      { code: "13103", name: "港区", orderCount: 0, currentDayOrderCount: 0, previousDayOrderCount: 0, confirmedPayments: { jpy: 0, ndp: 0, testNdp: 0 } }
     ]} onSelectRegion={onSelectRegion} scope={scope} />));
     const municipality = container.querySelector<HTMLSelectElement>('select[aria-label="市区町村"]')!;
     expect(municipality.textContent).toContain("港区");

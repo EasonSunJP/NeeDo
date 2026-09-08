@@ -44,6 +44,8 @@ const createHarness = () => {
             code: "13",
             name: "東京都",
             orderCount: 2n,
+            currentDayOrderCount: 3n,
+            previousDayOrderCount: 1n,
             confirmedPaymentJpy: 12_000n,
             confirmedPaymentNdp: 500n,
             confirmedPaymentTestNdp: 40n
@@ -56,6 +58,8 @@ const createHarness = () => {
             code: "13104",
             name: "新宿区",
             orderCount: 1n,
+            currentDayOrderCount: 2n,
+            previousDayOrderCount: 4n,
             confirmedPaymentJpy: 7_000n,
             confirmedPaymentNdp: 300n,
             confirmedPaymentTestNdp: 0n
@@ -286,6 +290,8 @@ describe("LiveDashboardRepository", () => {
 
     expect(snapshot.children[0]).toMatchObject({
       orderCount: 2,
+      currentDayOrderCount: 3,
+      previousDayOrderCount: 1,
       confirmedPayments: { jpy: 12_000, ndp: 500, testNdp: 40 }
     });
     const query = harness.queries.find((candidate) =>
@@ -293,10 +299,12 @@ describe("LiveDashboardRepository", () => {
     );
     const sql = queryText(query!);
     expect(sql).toMatch(/child_order_counts AS \([\s\S]*booking\.starts_at >=/u);
+    expect(sql).toMatch(/child_current_day_order_counts AS \([\s\S]*booking\.starts_at >=/u);
+    expect(sql).toMatch(/child_previous_day_order_counts AS \([\s\S]*booking\.starts_at >=/u);
     expect(sql).toMatch(/child_confirmed_payments AS \([\s\S]*booking\.payment_confirmed_at >=/u);
     expect(sql).toContain("booking.payment_confirmed_at <=");
     expect(sql).not.toContain("LEFT JOIN shops AS shop");
-    expect(sql.match(/INNER JOIN shops AS shop/gu) ?? []).toHaveLength(2);
+    expect(sql.match(/INNER JOIN shops AS shop/gu) ?? []).toHaveLength(4);
     expect(query?.values?.filter((value) => value === evaluatedAt).length).toBeGreaterThanOrEqual(
       2
     );

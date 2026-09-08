@@ -189,6 +189,8 @@ export class LiveDashboardService {
         code: child.code,
         name: childNames.get(child.code) ?? child.name,
         orderCount: child.orderCount,
+        currentDayOrderCount: child.currentDayOrderCount,
+        previousDayOrderCount: child.previousDayOrderCount,
         confirmedPayments: projectMoney(child.confirmedPayments)
       })),
       headline: {
@@ -302,6 +304,8 @@ export class LiveDashboardService {
         code: child.code,
         name: child.name,
         orderCount: child.orderCount,
+        currentDayOrderCount: child.currentDayOrderCount,
+        previousDayOrderCount: child.previousDayOrderCount,
         confirmedPayments: { ...child.confirmedPayments }
       })),
       headline: { ...facts.headline },

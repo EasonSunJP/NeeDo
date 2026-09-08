@@ -98,6 +98,7 @@ export function LiveDashboardPage() {
               <JapanRegionMap
                 breadcrumbs={state.snapshot.scope.breadcrumbs}
                 children={state.snapshot.children}
+                evaluatedAt={state.snapshot.evaluatedAt}
                 onSelectRegion={selectScope}
                 scope={scope}
               />

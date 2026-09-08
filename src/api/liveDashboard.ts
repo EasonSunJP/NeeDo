@@ -58,6 +58,8 @@ const snapshotSchema = z.strictObject({
     code: z.string().regex(/^(?:\d{2}|\d{5})$/u),
     name: requiredText,
     orderCount: nonNegativeInteger,
+    currentDayOrderCount: nonNegativeInteger,
+    previousDayOrderCount: nonNegativeInteger,
     confirmedPayments: money
   })),
   headline: z.strictObject({

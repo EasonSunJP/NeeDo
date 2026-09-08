@@ -3624,11 +3624,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       LiveDashboardChildRegion: {
         type: "object",
         additionalProperties: false,
-        required: ["code", "name", "orderCount", "confirmedPayments"],
+        required: ["code", "name", "orderCount", "currentDayOrderCount", "previousDayOrderCount", "confirmedPayments"],
         properties: {
           code: { type: "string", pattern: "^\\d{2,5}$" },
           name: { type: "string" },
           orderCount: { type: "integer", minimum: 0 },
+          currentDayOrderCount: { type: "integer", minimum: 0 },
+          previousDayOrderCount: { type: "integer", minimum: 0 },
           confirmedPayments: { $ref: "#/components/schemas/LiveDashboardMoney" }
         }
       },

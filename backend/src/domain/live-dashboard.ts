@@ -29,6 +29,8 @@ export interface LiveDashboardChildRegion {
   code: string;
   name: string;
   orderCount: number;
+  currentDayOrderCount: number;
+  previousDayOrderCount: number;
   confirmedPayments: LiveMoney;
 }
 

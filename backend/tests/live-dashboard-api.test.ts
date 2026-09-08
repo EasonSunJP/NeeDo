@@ -63,6 +63,8 @@ const facts: LiveDashboardSnapshotFacts = {
       code: "13",
       name: "東京都",
       orderCount: 1,
+      currentDayOrderCount: 1,
+      previousDayOrderCount: 2,
       confirmedPayments: { jpy: 9000, ndp: 0, testNdp: 0 }
     }
   ],

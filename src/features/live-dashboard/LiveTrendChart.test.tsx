@@ -13,20 +13,21 @@ describe("LiveTrendChart geometry", () => {
     const points = values.map((value, i) => ({ key: String(i), label: `09-0${i + 1}`, orderCount: value, confirmedPayments: { jpy: value * 10000, ndp: 0, testNdp: 0 } }));
     act(() => root.render(<LiveTrendChart points={points} ordersLabel="Orders" paymentsLabel="Payments" />));
     const svg = container.querySelector("svg")!;
-    expect(svg.getAttribute("preserveAspectRatio")).toBe("xMidYMid meet");
+    expect(svg.getAttribute("preserveAspectRatio")).toBe("none");
+    expect(svg.querySelectorAll("text")).toHaveLength(0);
     expect(svg.querySelector("[data-chart-plot]")).toBeTruthy();
-    expect(svg.querySelector("[data-chart-axis]")).toBeTruthy();
+    expect(container.querySelector("[data-chart-axis]")).toBeTruthy();
     const baseline = Number(svg.querySelector("[data-chart-baseline]")?.getAttribute("data-y"));
-    const labels = [...svg.querySelectorAll(".live-dashboard-chart-label")];
+    const labels = [...container.querySelectorAll(".live-dashboard-chart-label")];
     expect(labels).toHaveLength(values.length);
-    labels.forEach((label) => expect(Number(label.getAttribute("y")) - baseline).toBeGreaterThanOrEqual(16));
+    labels.forEach((label) => expect(label.closest("svg")).toBeNull());
     svg.querySelectorAll("polyline").forEach((line) => {
       const positions = line.getAttribute("points")!.split(" ").map((point) => point.split(",").map(Number));
-      if (values.some((value) => value > 0)) expect(Math.min(...positions.map(([, y]) => y))).toBe(18);
+      if (values.some((value) => value > 0)) expect(Math.min(...positions.map(([, y]) => y))).toBe(8);
       positions.forEach(([x, y]) => {
-        expect(x).toBeGreaterThanOrEqual(22);
-        expect(x).toBeLessThanOrEqual(382);
-        expect(y).toBeGreaterThanOrEqual(18);
+        expect(x).toBeGreaterThanOrEqual(8);
+        expect(x).toBeLessThanOrEqual(392);
+        expect(y).toBeGreaterThanOrEqual(8);
         expect(y).toBeLessThanOrEqual(baseline);
         if (values.every((value) => value === 0)) expect(y).toBe(baseline);
       });

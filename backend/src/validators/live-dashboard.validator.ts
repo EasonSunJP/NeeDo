@@ -107,6 +107,8 @@ export const cachedLiveDashboardFactsSchema = z
           code: z.string().regex(/^(?:\d{2}|\d{5})$/),
           name: requiredText,
           orderCount: safeNonNegativeInteger,
+          currentDayOrderCount: safeNonNegativeInteger,
+          previousDayOrderCount: safeNonNegativeInteger,
           confirmedPayments: liveMoneySchema
         })
         .strict()
