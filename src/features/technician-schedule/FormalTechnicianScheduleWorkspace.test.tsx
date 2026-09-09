@@ -141,7 +141,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     expect(container.textContent).not.toContain("状态记录");
   });
 
-  it("keeps an independent technician's formal calendar visible without exposing shop-required creation", async () => {
+  it("keeps an independent technician's formal calendar and technician creation modes available", async () => {
     await act(async () => root.render(
       <MemoryRouter>
         <FormalTechnicianScheduleWorkspace
@@ -158,8 +158,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({
       currentTechnician: expect.objectContaining({ id: "31", storeId: "" }),
       formalOnly: true,
-      scope: "technician",
-      technicianWorkActionsEnabled: false
+      scope: "technician"
     }));
     expect(container.textContent).not.toContain("新建正式排班");
 
