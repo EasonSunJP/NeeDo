@@ -53,6 +53,8 @@ describe("UnifiedServiceInfoCard", () => {
     expect(markup).toContain("min-h-[104px]");
     expect(markup).toContain("min-h-[160px]");
     expect(markup).toContain("[overflow-wrap:anywhere]");
+    expect(markup).toContain("line-clamp-2");
+    expect(markup).toContain("pt-[52px]");
     expect(markup).not.toContain("border-t border-white/10");
   });
 

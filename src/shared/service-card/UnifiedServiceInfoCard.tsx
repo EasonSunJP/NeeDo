@@ -78,7 +78,7 @@ function ServiceCardContent({ data, hasActions }: { data: UnifiedServiceInfoCard
   );
 }
 
-function ServiceShowcaseContent({ data }: { data: UnifiedServiceInfoCardData }) {
+function ServiceShowcaseContent({ data, hasActions }: { data: UnifiedServiceInfoCardData; hasActions: boolean }) {
   const visibleTags = data.tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 5);
   const showCatalogPrice = data.catalogPriceAmount !== null && data.catalogPriceAmount !== undefined && data.catalogPriceAmount > data.priceAmount;
 
@@ -88,7 +88,10 @@ function ServiceShowcaseContent({ data }: { data: UnifiedServiceInfoCardData }) 
         className="grid min-h-[104px] grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)] items-end bg-[radial-gradient(circle_at_18%_0%,color-mix(in_srgb,var(--client-primary)_13%,transparent),transparent_45%),repeating-linear-gradient(72deg,transparent_0,transparent_7px,color-mix(in_srgb,var(--client-primary)_5%,transparent)_8px,color-mix(in_srgb,var(--client-primary)_5%,transparent)_9px),linear-gradient(110deg,#071611,#020807_62%,#030a0b)] px-4 pb-3"
         data-testid="unified-service-showcase-header"
       >
-        <h3 className="col-start-2 min-w-0 max-w-full break-words pl-3 text-[clamp(17px,4.3vw,25px)] font-black leading-tight tracking-[-0.02em] text-white [overflow-wrap:anywhere]">
+        <h3 className={cn(
+          "col-start-2 min-w-0 max-w-full break-words pl-3 text-[clamp(17px,4.3vw,25px)] font-black leading-tight tracking-[-0.02em] text-white [overflow-wrap:anywhere] line-clamp-2",
+          hasActions ? "pt-[52px]" : undefined
+        )}>
           {data.name}
         </h3>
       </header>
@@ -153,7 +156,7 @@ export function UnifiedServiceInfoCard({ actionSlot, className, data, detailTo, 
   const hasActions = Boolean(actionSlot);
   const isShowcase = variant === "showcase";
   const content = isShowcase
-    ? <ServiceShowcaseContent data={data} />
+    ? <ServiceShowcaseContent data={data} hasActions={hasActions} />
     : <ServiceCardContent data={data} hasActions={hasActions} />;
   const interactiveClassName = "focus-ring block text-left";
 

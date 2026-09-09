@@ -1,7 +1,9 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import storeDetailSource from "../../pages/user/StoreDetailPage.tsx?raw";
 import appScaffoldSource from "./AppScaffold.tsx?raw";
-import { getAdaptiveTabLabelClass } from "./AppScaffold";
+import { getAdaptiveTabLabelClass, IconButton } from "./AppScaffold";
 
 describe("FeatureSegmentedTabs adaptive labels", () => {
   it("lightly compresses dense four-character labels without touching short labels", () => {
@@ -80,5 +82,20 @@ describe("IconMetricAction shared shell", () => {
     expect(appScaffoldSource).toContain("text-[color:var(--client-primary)]");
     expect(appScaffoldSource).not.toContain("white_92%");
     expect(appScaffoldSource).not.toContain("white_82%");
+  });
+});
+
+describe("IconButton disabled semantics", () => {
+  it("keeps an unavailable action as a native disabled button", () => {
+    const markup = renderToStaticMarkup(createElement(IconButton, {
+      disabled: true,
+      icon: "up",
+      label: "上移",
+      onClick: () => undefined
+    }));
+
+    expect(markup).toMatch(/^<button /u);
+    expect(markup).toContain('aria-label="上移"');
+    expect(markup).toContain("disabled");
   });
 });

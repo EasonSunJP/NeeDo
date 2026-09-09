@@ -287,13 +287,15 @@ export function IconButton({
   label,
   to,
   onClick,
-  className
+  className,
+  disabled = false
 }: {
   icon: IconName;
   label: string;
   to?: string;
   onClick?: () => void;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <InteractiveWrapper
@@ -302,6 +304,7 @@ export function IconButton({
         "focus-ring inline-flex h-11 w-11 items-center justify-center rounded-full border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] backdrop-blur",
         className
       )}
+      disabled={disabled}
       onClick={onClick}
       to={to}
     >
