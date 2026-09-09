@@ -11,6 +11,11 @@ vi.mock("./api", async (original) => ({
   workStatusApi: { snapshot: vi.fn(), update: vi.fn() },
 }));
 vi.mock("./refresh", () => ({ subscribeWorkStatusRefresh: () => () => {} }));
+vi.mock("../technician-schedule/TechnicianAutomationQuickSwitches", () => ({
+  TechnicianAutomationQuickSwitches: () => (
+    <div data-testid="technician-automation-quick-switches">自动化快捷开关</div>
+  ),
+}));
 const snapshot = {
   technicianProfileId: 31,
   status: "resting",
@@ -32,6 +37,34 @@ afterEach(async () => {
   container.remove();
 });
 describe("work status submission", () => {
+  it("shows the synchronized automation switches only after the technician is on duty", async () => {
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <WorkStatusControls />
+        </MemoryRouter>,
+      ),
+    );
+    expect(
+      container.querySelector('[data-testid="technician-automation-quick-switches"]'),
+    ).toBeNull();
+
+    vi.mocked(workStatusApi.update).mockResolvedValue({
+      ...snapshot,
+      status: "on_duty",
+      version: 4,
+    } as never);
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[data-status="on_duty"]')!
+        .click(),
+    );
+
+    expect(
+      container.querySelector('[data-testid="technician-automation-quick-switches"]'),
+    ).not.toBeNull();
+  });
+
   it("opens the freshly reported active service even when today's suggested order differs", async () => {
     function RouteProbe() {
       return <output>{useLocation().pathname}</output>;

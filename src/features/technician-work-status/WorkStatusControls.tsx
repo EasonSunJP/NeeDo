@@ -9,6 +9,7 @@ import {
 } from "./api";
 import { useWorkStatus } from "./hooks";
 import { useWorkText } from "./i18n";
+import { TechnicianAutomationQuickSwitches } from "../technician-schedule/TechnicianAutomationQuickSwitches";
 const buttons = [
   { status: "on_duty", icon: "●", tone: "duty" },
   { status: "traveling", icon: "↗", tone: "travel" },
@@ -150,18 +151,23 @@ export function WorkStatusControls({
         className="mt-3 rounded-[20px] bg-[color:var(--client-elevated)] px-4 py-3"
         aria-live="polite"
       >
-        <p className="text-xs text-[color:var(--client-muted)]">
-          {t("synced")}
-        </p>
-        <p className="mt-1 font-bold">
-          {saving
-            ? t("saving")
-            : snapshot
-              ? t(snapshot.status)
-              : loading
-                ? t("loading")
-                : t("unsynced")}
-        </p>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-[color:var(--client-muted)]">
+              {t("synced")}
+            </p>
+            <p className="mt-1 font-bold">
+              {saving
+                ? t("saving")
+                : snapshot
+                  ? t(snapshot.status)
+                  : loading
+                    ? t("loading")
+                    : t("unsynced")}
+            </p>
+          </div>
+          {snapshot?.status === "on_duty" ? <TechnicianAutomationQuickSwitches /> : null}
+        </div>
       </div>
       {error || saveError ? (
         <p role="alert" className="mt-3 text-sm text-red-500">
