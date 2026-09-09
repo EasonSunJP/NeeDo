@@ -64,13 +64,19 @@ describe("TechnicianAutomationSettingsPanel", () => {
     await act(async () => Promise.resolve());
     await act(async () => Promise.resolve());
 
-    const enabled = container.querySelector('[aria-label="启用自动接单"]') as HTMLInputElement;
-    expect(enabled.checked).toBe(false);
+    const enabled = container.querySelector('[aria-label="启用自动接单"]') as HTMLButtonElement;
+    expect(enabled.tagName).toBe("BUTTON");
+    expect(enabled.getAttribute("role")).toBe("switch");
+    expect(enabled.getAttribute("aria-checked")).toBe("false");
     await act(async () => enabled.click());
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
 
+    const saveButton = container.querySelector('[data-testid="automation-save"]') as HTMLButtonElement;
+    expect(saveButton.parentElement).toBe(container.querySelector('[data-testid="technician-booking-automation-settings"]'));
+    expect(saveButton.className).toContain("fixed");
+
     await act(async () => {
-      (container.querySelector('[data-testid="automation-save"]') as HTMLButtonElement).click();
+      saveButton.click();
     });
     await act(async () => Promise.resolve());
 
@@ -79,5 +85,37 @@ describe("TechnicianAutomationSettingsPanel", () => {
       expectedVersion: 1
     }));
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("matches the application form visual for the three customer rule selects", async () => {
+    await act(async () => root.render(
+      <TechnicianAutomationSettingsPanel kind="booking" />
+    ));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+
+    const labels = ["最低已完成订单", "客户来源", "客户类型"];
+    labels.forEach((labelText) => {
+      const label = Array.from(container.querySelectorAll("label"))
+        .find((candidate) => candidate.textContent?.startsWith(labelText));
+      const select = label?.querySelector("select");
+      expect(select?.className).toContain("min-h-12");
+      expect(select?.className).toContain("rounded-[18px]");
+      expect(select?.className).toContain("text-[15px]");
+    });
+  });
+
+  it("keeps save highlighted and handles an unchanged setting without a write", async () => {
+    await act(async () => root.render(
+      <TechnicianAutomationSettingsPanel kind="booking" />
+    ));
+    await act(async () => Promise.resolve());
+    await act(async () => Promise.resolve());
+
+    const saveButton = container.querySelector('[data-testid="automation-save"]') as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(false);
+    await act(async () => saveButton.click());
+    expect(mocks.updateSetting).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("当前设置已是最新");
   });
 });

@@ -493,16 +493,17 @@ describe("formal technician schedule routes", () => {
     const header = container.querySelector(".client-floating-header-host");
     expect(header).not.toBeNull();
     expect(Array.from(header?.querySelectorAll("button") ?? []).map((button) => button.textContent?.trim()))
-      .toEqual(expect.arrayContaining(["我的排班", "接单设置Test", "抢单设置Test"]));
+      .toEqual(expect.arrayContaining(["我的排班", "接单设置", "抢单设置"]));
     expect(container.querySelectorAll('[role="tab"]')).toHaveLength(3);
+    expect(container.querySelectorAll('[data-testid="automation-tab-corner-badge"]')).toHaveLength(2);
 
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     await act(async () => (container.querySelector('button[aria-label="标记设置未保存"]') as HTMLButtonElement).click());
-    await click("接单设置Test");
+    await click("接单设置");
     expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.getAttribute("data-active-tab"))
       .toBe("calendar");
     expect(confirm).toHaveBeenCalledWith("当前设置尚未保存，确定离开吗？");
-    await click("接单设置Test");
+    await click("接单设置");
     expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.getAttribute("data-active-tab"))
       .toBe("bookingSettings");
   });

@@ -31,7 +31,7 @@ export function TechnicianScheduleAutomationTabs({
   return (
     <div
       aria-label="技师排班页面"
-      className="grid grid-cols-3 gap-1 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] p-1"
+      className="grid grid-cols-3 gap-2 pt-1"
       role="tablist"
     >
       {tabs.map((item) => (
@@ -39,7 +39,7 @@ export function TechnicianScheduleAutomationTabs({
           <button
             aria-selected={value === item.value}
             className={cn(
-              "flex min-h-11 w-full items-center justify-center gap-1 rounded-[14px] px-1.5 text-[11px] font-black transition",
+              "flex min-h-12 w-full items-center justify-center rounded-full px-2 text-[15px] font-black transition",
               value === item.value
                 ? "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-sm"
                 : "text-[color:var(--client-muted)]"
@@ -49,16 +49,23 @@ export function TechnicianScheduleAutomationTabs({
             type="button"
           >
             <span className="truncate">{item.label}</span>
-            {item.description ? <TestFeatureBadge className="min-h-4 shrink-0 px-1 py-0 text-[8px]" /> : null}
           </button>
           {item.description ? (
-            <InfoTooltipTrigger
-              className="absolute right-0.5 top-0.5 h-4 w-4 border-0 bg-transparent text-[9px]"
-              content={item.description}
-              iconClassName="text-[9px]"
-              label={`${item.label}说明`}
-              panelMode="sheet"
-            />
+            <>
+              <span
+                className="pointer-events-none absolute right-5 top-0 z-10 -translate-y-1/2"
+                data-testid="automation-tab-corner-badge"
+              >
+                <TestFeatureBadge className="min-h-4 px-1.5 py-0 text-[8px]" />
+              </span>
+              <InfoTooltipTrigger
+                className="absolute left-[calc(50%+34px)] top-1/2 h-4 w-4 -translate-y-1/2 text-[9px]"
+                content={item.description}
+                iconClassName="text-[9px]"
+                label={`${item.label}说明`}
+                panelMode="sheet"
+              />
+            </>
           ) : null}
         </div>
       ))}
