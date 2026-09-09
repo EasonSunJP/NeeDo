@@ -192,7 +192,6 @@ export function UnifiedServiceInfoCard({
       kind="service"
       metrics={metrics}
       onOpenDetails={onOpenDetails}
-      size="tall"
     />
   );
 }

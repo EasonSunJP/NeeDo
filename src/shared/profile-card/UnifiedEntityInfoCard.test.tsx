@@ -47,7 +47,7 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).toContain("justify-start");
   });
 
-  it("uses only a detail chevron at the bottom right of a linked simple card", () => {
+  it("keeps a linked shop simple card content-sized with only a bottom-right detail chevron", () => {
     const markup = render(
       { kind: "shop", id: "shop-1", name: "港区店", imageUrl: "/shop.jpg", description: "深夜护理", address: "東京都港区", languages: [], tags: ["按摩"], rating: 4.8, reviewCount: 21, distanceKm: 1.2, favoriteCount: 5, shareCount: 2 },
       { detailTo: "/stores/shop-1" },
@@ -59,8 +59,9 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).not.toContain("items-start gap-1.5");
     expect(markup).toContain("rotate-180");
     expect(markup).not.toContain('name="minus"');
-    expect(markup).toContain('data-card-size="tall"');
-    expect(markup).toContain("sm:aspect-[16/9]");
+    expect(markup).toContain('data-card-size="default"');
+    expect(markup).not.toContain("min-h-[320px]");
+    expect(markup).not.toContain("aspect-[16/9]");
   });
 
   it("renders a compact user name card without metrics or language tags", () => {

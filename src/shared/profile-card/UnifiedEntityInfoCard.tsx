@@ -233,7 +233,6 @@ export function UnifiedEntityInfoCard({
       kind={data.kind}
       metrics={metrics}
       onOpenDetails={onOpenDetails}
-      size={data.kind === "shop" ? "tall" : "default"}
     />
   );
 }

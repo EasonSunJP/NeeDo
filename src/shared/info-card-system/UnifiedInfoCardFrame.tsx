@@ -90,7 +90,6 @@ export function UnifiedInfoCardFrame({
   kind,
   metrics,
   onOpenDetails,
-  size = "default",
 }: {
   actionSlot?: ReactNode;
   ariaLabel: string;
@@ -100,17 +99,15 @@ export function UnifiedInfoCardFrame({
   kind: "service" | "shop" | "technician" | "user";
   metrics?: UnifiedCardMetric[];
   onOpenDetails?: () => void;
-  size?: "default" | "tall";
 }) {
   return (
     <article
       className={cn(
         "relative overflow-hidden rounded-[20px] border border-[#244047] bg-[#031014] text-[#f7f9f7] shadow-[0_24px_60px_rgba(0,0,0,0.32)] sm:rounded-[30px]",
-        size === "tall" && "min-h-[320px] sm:aspect-[16/9] sm:min-h-0",
         className,
       )}
       data-card-kind={kind}
-      data-card-size={size}
+      data-card-size="default"
       data-testid="unified-info-card"
     >
       <UnifiedCardMetricRail metrics={metrics ?? []} />
