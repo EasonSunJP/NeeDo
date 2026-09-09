@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { cn } from "../../lib/utils";
+import { identityApplicationsApi } from "../identity-applications/api";
 import { merchantPrimaryModules, type MerchantPrimaryModule } from "./merchantModules";
 
 function chunkModules(modules: MerchantPrimaryModule[], size: number) {
@@ -82,20 +83,50 @@ export function MerchantPrimaryNavCarousel({
   className?: string;
   modules?: MerchantPrimaryModule[];
 }) {
-  const { canAccessFeature } = useAuth();
+  const { canAccessFeature, session } = useAuth();
   const viewportRef = useRef<HTMLDivElement>(null);
   const [activePage, setActivePage] = useState(0);
+  const [hasNewStaffApplication, setHasNewStaffApplication] = useState(false);
   const visibleModules = useMemo(
     () => modules.filter((module) => !module.permission || canAccessFeature("merchant", module.permission)),
     [canAccessFeature, modules]
   );
   const pages = useMemo(() => chunkModules(visibleModules, 4), [visibleModules]);
 
+  useEffect(() => {
+    let active = true;
+
+    if (session?.portal !== "merchant") {
+      setHasNewStaffApplication(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    void identityApplicationsApi
+      .listTechnicianReviews({ page: 1, pageSize: 1, status: "submitted" })
+      .then((result) => {
+        if (active) {
+          setHasNewStaffApplication(result.total > 0);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setHasNewStaffApplication(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [session?.portal, session?.merchantShopPublicId]);
+
   return (
     <section className={cn("rounded-[28px] border border-line bg-white p-3 shadow-panel", className)}>
       <div
-        className="scrollbar-none flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain md:grid md:grid-cols-7 md:gap-2 md:overflow-visible"
+        className="scrollbar-none -mt-2 flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain pt-2 md:mt-0 md:grid md:grid-cols-7 md:gap-2 md:overflow-visible md:pt-0"
         data-scroll-drag-ignore="true"
+        data-testid="merchant-primary-module-viewport"
         onScroll={() => {
           const viewport = viewportRef.current;
 
@@ -122,6 +153,12 @@ export function MerchantPrimaryNavCarousel({
                 to={module.route}
               >
                 {module.badge === "Test" ? <TestFeatureBadge className="absolute -right-1 -top-1 min-h-4 px-1.5 py-0 text-[8px]" /> : null}
+                {module.key === "staff" && hasNewStaffApplication ? (
+                  <span
+                    aria-label="有新的员工审核申请"
+                    className="pointer-events-none absolute -right-1 -top-1 z-30 h-4 w-4 rounded-full border-2 border-[color:var(--client-surface)] bg-red-500 shadow-[0_6px_16px_rgba(239,68,68,0.5)]"
+                  />
+                ) : null}
                 <span className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-[13px] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]">
                   <MerchantPrimaryIcon icon={module.icon} />
                 </span>
