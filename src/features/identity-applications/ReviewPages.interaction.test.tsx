@@ -100,7 +100,11 @@ describe("TechnicianApplicationsReviewPage", () => {
     await flush();
 
     expect(container.querySelectorAll('[aria-label="查看申请"]')).toHaveLength(2);
-    expect(container.querySelector('[aria-label="审核已通过"]')?.textContent).toBe("✓");
+    const approvedMark = container.querySelector<HTMLElement>('[aria-label="审核已通过"]');
+    expect(approvedMark?.className).toContain("h-12");
+    expect(approvedMark?.className).toContain("bg-[color:var(--client-primary)]");
+    expect(approvedMark?.className).toContain("text-[#06100b]");
+    expect(approvedMark?.querySelector("svg")).not.toBeNull();
     expect(container.querySelector('[aria-label="审核未通过"]')?.textContent).toBe("×");
     expect(container.querySelector('[data-application-status="approved"]')).not.toBeNull();
     expect(container.querySelector('[data-application-status="rejected"]')).not.toBeNull();

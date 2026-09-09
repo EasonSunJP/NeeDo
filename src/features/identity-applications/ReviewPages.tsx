@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { SettingsDetailPage } from "../../components/client-ui/SettingsDirectory";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -33,9 +34,9 @@ function TechnicianApplicationCardStatus({ status, t }: { status: TechnicianRevi
     return (
       <span
         aria-label={t("审核已通过")}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_44%,#22c55e)] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] text-lg font-black text-[color:color-mix(in_srgb,var(--client-primary)_35%,#22c55e)]"
+        className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b] shadow-[0_14px_30px_color-mix(in_srgb,var(--client-primary)_36%,transparent)]"
       >
-        ✓
+        <AppIcon className="h-5 w-5" name="check" />
       </span>
     );
   }
