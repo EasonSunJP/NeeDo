@@ -406,13 +406,15 @@ export function FormalTabs<TTab extends string>({
   idPrefix,
   items,
   localization,
-  onChange
+  onChange,
+  variant = "default"
 }: {
   active: TTab;
   idPrefix: string;
   items: TTab[];
   localization: FormalLocalization;
   onChange: (tab: TTab) => void;
+  variant?: "default" | "flat";
 }) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const { scrollRef, dragScrollProps } = useHorizontalDragScroll({});
@@ -430,11 +432,17 @@ export function FormalTabs<TTab extends string>({
   };
 
   return (
-    <div className="border-b border-line bg-white px-4 py-3 sm:px-5">
+    <div
+      className={variant === "flat" ? "py-1" : "border-b border-line bg-white px-4 py-3 sm:px-5"}
+      data-formal-tabs-variant={variant}
+    >
       <div
         {...dragScrollProps}
         aria-label={localization.t("详情分类")}
-        className="scrollbar-none flex w-fit max-w-full cursor-grab select-none items-center gap-1 overflow-x-auto rounded-full border border-line bg-paper p-1 active:cursor-grabbing"
+        className={cn(
+          "scrollbar-none flex w-fit max-w-full cursor-grab select-none items-center gap-1 overflow-x-auto active:cursor-grabbing",
+          variant === "default" && "rounded-full border border-line bg-paper p-1"
+        )}
         ref={scrollRef}
         role="tablist"
       >

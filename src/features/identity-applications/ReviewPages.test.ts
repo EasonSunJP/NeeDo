@@ -11,6 +11,14 @@ describe("identity application review pages", () => {
     expect(source).not.toContain(">OK</ApplicationButton>");
   });
 
+  it("allows the shared employee header search to filter the embedded review queue", () => {
+    expect(source).toContain("searchQuery = \"\"");
+    expect(source).toContain("const visibleItems = items.filter");
+    expect(source).toContain("normalizedSearchQuery");
+    expect(source).toContain("visibleItems.length === 0");
+    expect(source).toContain("visibleItems.map((item)");
+  });
+
   it("shows protected evidence and masked bank details to operations review", () => {
     expect(source).toContain("<ProtectedApplicationImage");
     expect(source).toContain("selected.bankAccount.accountNumberMasked");

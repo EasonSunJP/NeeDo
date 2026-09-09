@@ -27,7 +27,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   return <div className="grid gap-1 border-b border-[color:var(--client-line)] py-3 last:border-b-0 sm:grid-cols-[9rem_1fr]"><dt className="text-xs font-black text-[color:var(--client-muted)]">{translateText(label, language)}</dt><dd className="break-words text-sm font-bold text-[color:var(--client-text)]">{value || "—"}</dd></div>;
 }
 
-export function TechnicianApplicationsReviewPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function TechnicianApplicationsReviewPage({ embedded = false, searchQuery = "" }: { embedded?: boolean; searchQuery?: string } = {}) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
   const [items, setItems] = useState<TechnicianReview[]>([]);
@@ -35,6 +35,14 @@ export function TechnicianApplicationsReviewPage({ embedded = false }: { embedde
   const [rejectionReason, setRejectionReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const visibleItems = items.filter((item) => !normalizedSearchQuery || [
+    item.applicantName,
+    item.phone,
+    item.city,
+    item.status,
+    String(item.applicationId)
+  ].some((value) => (value ?? "").toLowerCase().includes(normalizedSearchQuery)));
 
   const load = async () => {
     setError("");
@@ -130,7 +138,7 @@ export function TechnicianApplicationsReviewPage({ embedded = false }: { embedde
       {error ? <ApplicationNotice tone="error">{t(error)}</ApplicationNotice> : null}
       {!selected ? (
         <ApplicationCard className="space-y-2">
-          {items.length === 0 ? <ApplicationNotice>{t("暂无技师入驻申请")}</ApplicationNotice> : items.map((item) => (
+          {visibleItems.length === 0 ? <ApplicationNotice>{t("暂无技师入驻申请")}</ApplicationNotice> : visibleItems.map((item) => (
             <button className="flex w-full items-center justify-between rounded-[20px] border border-[color:var(--client-line)] p-4 text-left" key={item.applicationId} onClick={() => void open(item.applicationId)} type="button">
               <span><span className="block text-sm font-black text-[color:var(--client-text)]">{item.applicantName}</span><span className="mt-1 block text-xs text-[color:var(--client-muted)]">#{item.applicationId} · {t(item.status)}</span></span>
               <span className="text-xl text-[color:var(--client-primary)]">›</span>

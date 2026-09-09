@@ -424,15 +424,14 @@ export function EmployeeDetailCard({
         </dl>
       </section>
 
-      <section className="overflow-hidden rounded-[24px] border border-line bg-paper shadow-sm">
-        <FormalTabs
-          active={activeTab}
-          idPrefix={panelId}
-          items={employeeDetailTabs}
-          localization={tabLocalization}
-          onChange={setActiveTab}
-        />
-      </section>
+      <FormalTabs
+        active={activeTab}
+        idPrefix={panelId}
+        items={employeeDetailTabs}
+        localization={tabLocalization}
+        onChange={setActiveTab}
+        variant="flat"
+      />
 
       {error ? (
         <div

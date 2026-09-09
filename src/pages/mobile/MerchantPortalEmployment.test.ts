@@ -52,7 +52,8 @@ vi.mock("../../components/client-ui/AppScaffold", async () => {
   const actual = await vi.importActual<typeof import("../../components/client-ui/AppScaffold")>("../../components/client-ui/AppScaffold");
   return {
     ...actual,
-    FeatureSegmentedTabs: () => null
+    FeatureSegmentedTabs: ({ items, onChange }: { items: Array<{ label: React.ReactNode; value: string }>; onChange: (value: string) => void }) =>
+      createElement("div", null, items.map((item) => createElement("button", { key: item.value, onClick: () => onChange(item.value), type: "button" }, item.label)))
   };
 });
 
@@ -86,7 +87,7 @@ const testStore: Store = {
 const testTechnicians: Technician[] = [
   {
     id: "28",
-    systemId: "tech-system-1",
+    systemId: "s0000000001",
     name: "技师甲",
     nickname: "甲",
     storeId: "store-1",
@@ -105,7 +106,7 @@ const testTechnicians: Technician[] = [
   },
   {
     id: "29",
-    systemId: "tech-system-2",
+    systemId: "s0000000002",
     name: "技师乙",
     nickname: "乙",
     storeId: "store-1",
@@ -127,7 +128,7 @@ const testTechnicians: Technician[] = [
 const formalTechnicians = testTechnicians.map((technician, index) => ({
   id: index + 28,
   userId: index + 11,
-  needoId: `s00000000${index + 1}`,
+  needoId: technician.systemId,
   displayName: technician.name,
   email: `${technician.id}@example.com`,
   avatarUrl: technician.avatar,
@@ -184,10 +185,10 @@ async function renderStaffPage() {
 
 describe("MerchantPortal formal employment data", () => {
   it("joins persisted technician employment types from the protected merchant API", () => {
-    expect(source).toContain('backofficeRealDataApi.technicians("merchant-admin"');
+    expect(source).toContain("loadEveryMerchantTechnicianPage");
     expect(source).toContain("toMerchantStaffEmploymentType");
-    expect(source).toContain("formalStaffById");
-    expect(source).toContain("无法读取正式员工数据");
+    expect(source).toContain("formalStaffByNeedoId");
+    expect(source).not.toContain("正式员工档案缺少雇佣类型");
   });
 
   it("does not infer employment from identity labels or array position", () => {
@@ -272,6 +273,38 @@ describe("MerchantPortal formal employment data", () => {
       expect(container.querySelector('label[for="merchant-staff-salary-input"]')).not.toBeNull();
     });
 
+    it("loads every formal classification page before joining by canonical NeeDoID", async () => {
+      vi.mocked(backofficeRealDataApi.technicians).mockImplementation(async (_scope, query) => {
+        if (query?.page === 2) {
+          return { list: [formalTechnicians[1]], total: 101, page: 2, page_size: 100 };
+        }
+        return { list: [formalTechnicians[0]], total: 101, page: 1, page_size: 100 };
+      });
+
+      await renderStaffPage();
+
+      expect(backofficeRealDataApi.technicians).toHaveBeenCalledWith("merchant-admin", expect.objectContaining({ page: 2 }));
+      expect(container.querySelector('img[src="/tech-1.jpg"]')).not.toBeNull();
+      expect(container.querySelector('img[src="/tech-2.jpg"]')).not.toBeNull();
+    });
+
+    it("keeps temporary employees in All and separates them in the Temporary tab", async () => {
+      await renderStaffPage();
+
+      expect(container.querySelector('img[src="/tech-1.jpg"]')).not.toBeNull();
+      expect(container.querySelector('img[src="/tech-2.jpg"]')).not.toBeNull();
+      const temporaryTab = [...container.querySelectorAll("button")].find((button) => button.textContent?.trim() === "临时");
+      expect(temporaryTab).toBeDefined();
+      await act(async () => {
+        temporaryTab?.click();
+        await Promise.resolve();
+      });
+
+      expect(container.querySelector('img[src="/tech-1.jpg"]')).toBeNull();
+      expect(container.querySelector('img[src="/tech-2.jpg"]')).not.toBeNull();
+      expect(container.textContent).not.toContain("总务一");
+    });
+
     it("keeps role rename, add, delete, and technician detail navigation interactive", async () => {
       await renderStaffPage();
 
@@ -309,8 +342,22 @@ describe("MerchantPortal formal employment data", () => {
       await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent?.trim() === "删除")?.click());
       expect(container.textContent).not.toContain("新增员工");
 
-      const detailLink = container.querySelector<HTMLAnchorElement>('a[href="/merchant/staff/28"]');
+      const detailLink = container.querySelector<HTMLAnchorElement>('a[href="/merchant/staff/s0000000001"]');
       expect(detailLink).not.toBeNull();
+    });
+
+    it("filters both formal technicians and manual employees from the shared header search", async () => {
+      await renderStaffPage();
+
+      const search = container.querySelector<HTMLInputElement>('input[aria-label="搜索员工"]');
+      expect(search).not.toBeNull();
+      await act(async () => {
+        if (search) setInputValue(search, "技师乙");
+      });
+
+      expect(container.textContent).toContain("乙");
+      expect(container.textContent).not.toContain("甲");
+      expect(container.textContent).not.toContain("总务一");
     });
   });
 });

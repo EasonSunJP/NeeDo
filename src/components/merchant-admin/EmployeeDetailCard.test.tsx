@@ -256,6 +256,8 @@ describe("EmployeeDetailCard", () => {
   it("uses six mounted detail tabs and preserves an in-progress profile draft", async () => {
     await renderCard();
 
+    expect(container.querySelector('[data-formal-tabs-variant="flat"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="employee-detail-tabs-shell"]')).toBeNull();
     expect(button("基础资料").getAttribute("aria-selected")).toBe("true");
     expect(
       container.querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')

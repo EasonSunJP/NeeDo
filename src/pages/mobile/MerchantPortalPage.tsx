@@ -6,13 +6,12 @@ import type { ReactNode } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import {
   backofficeRealDataApi,
-  type BackofficeTechnicianDetailPayload,
   type BackofficeTechnicianPayload
 } from "../../api/backofficeRealData";
-import { FormalTechnicianDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
-import { TechnicianProfilePanel } from "../../components/admin/TechnicianProfilePanel";
 import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
+import { TechnicianProfilePanel } from "../../components/admin/TechnicianProfilePanel";
 import { MerchantIdentityInfoCard } from "../../components/merchant/MerchantIdentityInfoCard";
+import { MerchantEmployeeDetailWorkspace } from "../../components/merchant-admin/MerchantEmployeeDetailWorkspace";
 import {
   createCustomContactCategoryDraft,
   CustomContactCategoryEditor,
@@ -54,6 +53,7 @@ import {
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { DispatchOverviewWorkspace } from "../../features/dispatch-center/components/OverviewWorkspace";
+import { TechnicianApplicationsReviewPage } from "../../features/identity-applications/ReviewPages";
 import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/route-pages";
 import { ImScopeProvider } from "../../features/im/scope";
 import { useImStore } from "../../features/im/store";
@@ -67,6 +67,8 @@ import {
   resolveSettlementSplit
 } from "../../features/pricing-mode/settlementSplit";
 import { AutomationWizard } from "../../features/scheduling/automation/AutomationWizard";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { partitionDirectoryContacts } from "../../lib/contactDirectory";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getStoreCardDecorationConfig } from "../../lib/storeUiDecoration";
@@ -98,7 +100,7 @@ import { ShopAnalyticsDashboard } from "../../features/shop-analytics/ShopAnalyt
 type MerchantView = "dashboard" | "orders" | "messages" | "schedule" | "staff" | "contacts" | "moments" | "me";
 type MerchantMeTab = "info" | "service" | "data";
 type MerchantSchedulePrimaryTab = "current" | "appointments" | "planning";
-type MerchantStaffTab = "all" | "fullTime" | "partTime";
+type MerchantStaffTab = "all" | "fullTime" | "partTime" | "review";
 type StaffStatus = "出勤" | "休息" | "服务中" | "可指派" | "移动中" | "退勤" | "未同步";
 type MerchantEmployeeRoleDraft = (typeof merchantStaffRoleQuickOptions)[number] | "custom";
 type MerchantManualEmployeeStatus = "在岗" | "休息" | "待入职";
@@ -109,7 +111,7 @@ type MerchantManualEmployee = {
   roleName: string;
   salaryMonthly: number;
   status: MerchantManualEmployeeStatus;
-  employmentType: Exclude<MerchantStaffTab, "all">;
+  employmentType: "fullTime" | "partTime";
 };
 type MerchantStoreStaffEntry = {
   employmentType: MerchantStaffEmploymentType;
@@ -332,7 +334,7 @@ function getMerchantStaffDetailPath(id: string) {
   return `/merchant/staff/${encodeURIComponent(id)}`;
 }
 
-function getMerchantAddStaffPath(staffType: Exclude<MerchantStaffTab, "all">, roleName?: string) {
+function getMerchantAddStaffPath(staffType: "fullTime" | "partTime", roleName?: string) {
   const params = new URLSearchParams({
     intent: "add-staff",
     staffType
@@ -350,7 +352,7 @@ function normalizeMerchantManualEmployees(list: MerchantManualEmployee[]): Merch
     .filter((employee) => employee.name.trim().length > 0 && employee.roleName.trim().length > 0)
     .map((employee, index) => {
       const status: MerchantManualEmployeeStatus = employee.status === "休息" || employee.status === "待入职" ? employee.status : "在岗";
-      const employmentType: Exclude<MerchantStaffTab, "all"> = employee.employmentType === "partTime" ? "partTime" : "fullTime";
+      const employmentType: "fullTime" | "partTime" = employee.employmentType === "partTime" ? "partTime" : "fullTime";
 
       return {
         id: employee.id || `manual-employee-${index}`,
@@ -449,11 +451,18 @@ function getMerchantScheduleTab(value?: string | null): MerchantSchedulePrimaryT
 }
 
 function getMerchantStaffTab(value?: string | null): MerchantStaffTab {
-  if (value === "fullTime" || value === "partTime") {
+  if (value === "fullTime" || value === "partTime" || value === "review") {
     return value;
   }
 
   return "all";
+}
+
+function merchantStaffTabMatchesEmployment(tab: MerchantStaffTab, employmentType: MerchantStaffEmploymentType | "fullTime" | "partTime") {
+  if (tab === "review") return false;
+  if (tab === "all") return true;
+  if (tab === "partTime") return employmentType === "partTime";
+  return employmentType !== "partTime";
 }
 
 function getMerchantStaffStatus(technician: Technician): StaffStatus {
@@ -472,6 +481,23 @@ function formalMerchantWorkLabel(status?: WorkStatus): StaffStatus {
   return status === "on_duty" ? "可指派" : status === "in_service" ? "服务中" : status === "traveling" ? "移动中" : status === "resting" ? "休息" : status === "off_duty" ? "退勤" : "未同步";
 }
 
+async function loadEveryMerchantTechnicianPage() {
+  const pageSize = 100;
+  const first = await backofficeRealDataApi.technicians("merchant-admin", { page: 1, pageSize, status: "published" });
+  const effectivePageSize = Math.max(1, first.page_size);
+  const pageCount = Math.ceil(first.total / effectivePageSize);
+  if (pageCount <= 1) return first.list;
+
+  const remaining = await Promise.all(
+    Array.from({ length: pageCount - 1 }, (_, index) => backofficeRealDataApi.technicians("merchant-admin", {
+      page: index + 2,
+      pageSize,
+      status: "published"
+    }))
+  );
+  return [first, ...remaining].flatMap((page) => page.list);
+}
+
 function getMerchantStaffStatusTopTag(status: StaffStatus) {
   return {
     label: status,
@@ -486,7 +512,7 @@ function getMerchantEmploymentTopTag(employmentType: MerchantStaffEmploymentType
   };
 }
 
-function MerchantAddStaffButton({ staffType }: { staffType: Exclude<MerchantStaffTab, "all"> }) {
+function MerchantAddStaffButton({ staffType }: { staffType: "fullTime" | "partTime" }) {
   const label = `添加${getMerchantStaffEmploymentLabel(staffType)}`;
 
   return (
@@ -969,25 +995,47 @@ function MerchantScheduleHeaderTabs({
 }
 
 function MerchantStaffHeaderTabs({
+  onExit,
+  onSearchQueryChange,
+  searchQuery,
   value,
   onChange
 }: {
+  onExit: () => void;
+  onSearchQueryChange: (value: string) => void;
+  searchQuery: string;
   value: MerchantStaffTab;
   onChange: (value: MerchantStaffTab) => void;
 }) {
+  const { language } = useOptionalI18n();
+  const t = (source: string) => translateText(source, language);
   const tabs: Array<{ label: string; value: MerchantStaffTab }> = [
     { label: "全部", value: "all" },
-    { label: "正社员", value: "fullTime" },
-    { label: "临时工", value: "partTime" }
+    { label: "员工", value: "fullTime" },
+    { label: "临时", value: "partTime" },
+    { label: "审核", value: "review" }
   ];
 
   return (
-    <FloatingHomeHeader
-      className="relative z-10"
-      panelClassName="relative overflow-hidden"
-    >
-      <FeatureSegmentedTabs items={tabs} onChange={onChange} value={value} variant="header" />
-    </FloatingHomeHeader>
+    <MobileFullscreenHeader
+      center={(
+        <label className="focus-within:ring-focus flex h-10 min-w-0 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3 text-[color:var(--client-text)]">
+          <span className="sr-only">搜索员工</span>
+          <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
+          <input
+            aria-label="搜索员工"
+            className="min-w-0 flex-1 bg-transparent text-sm font-black outline-none placeholder:text-[color:var(--client-muted)]"
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+            placeholder={t("搜索员工、NeeDoID 或状态")}
+            value={searchQuery}
+          />
+        </label>
+      )}
+      footer={<FeatureSegmentedTabs items={tabs} onChange={onChange} value={value} variant="header" />}
+      onBack={onExit}
+      onClose={onExit}
+      title="员工"
+    />
   );
 }
 
@@ -1106,39 +1154,13 @@ function MerchantIncomeTrendPreview({
 export function MerchantStaffDetailRoutePage() {
   const { staffId } = useParams();
   const navigate = useNavigate();
-  const { technicians } = useEntityStore();
-  const entityTechnician = technicians.find((tech) => tech.id === staffId);
-  const technicianApiId = staffId ? getMerchantTechnicianApiId(staffId) : null;
-  const [formalDetail, setFormalDetail] = useState<BackofficeTechnicianDetailPayload | null>(null);
-  const [formalDetailStatus, setFormalDetailStatus] = useState<"error" | "idle" | "loading" | "ready">("idle");
-  const technician = technicianApiId === null ? entityTechnician : undefined;
-
-  useEffect(() => {
-    if (technicianApiId === null) {
-      setFormalDetailStatus(entityTechnician ? "ready" : "error");
-      return undefined;
-    }
-
-    let active = true;
-    setFormalDetailStatus("loading");
-    setFormalDetail(null);
-    backofficeRealDataApi.technician("merchant-admin", technicianApiId)
-      .then((detail) => {
-        if (!active) return;
-        setFormalDetail(detail);
-        setFormalDetailStatus("ready");
-      })
-      .catch(() => {
-        if (!active) return;
-        setFormalDetailStatus("error");
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [entityTechnician, technicianApiId]);
-
-  const displayName = formalDetail?.displayName ?? (technician ? (technician.nickname ? `${technician.nickname} / ${technician.name}` : technician.name) : "员工详情");
+  const { language } = useOptionalI18n();
+  const t = (source: string) => translateText(source, language);
+  const [detailTitle, setDetailTitle] = useState(t("员工详细信息"));
+  const updateDetailTitle = useCallback(
+    (employee: { displayName: string } | null) => setDetailTitle(employee?.displayName ?? translateText("员工详细信息", language)),
+    [language]
+  );
   const closePage = () => {
     if (typeof window !== "undefined") {
       const historyState = window.history.state as { idx?: number } | null;
@@ -1155,36 +1177,21 @@ export function MerchantStaffDetailRoutePage() {
   return (
     <MobileFullscreenPage>
       <MobileFullscreenHeader
+        info={t("与店铺后台使用同一份正式员工档案")}
         onBack={closePage}
+        onClose={closePage}
         showSpacer={false}
-        subtitle={formalDetail || technician ? "员工详细信息卡" : formalDetailStatus === "loading" ? "正在读取员工资料" : "员工资料不可用"}
-        title={displayName}
+        title={detailTitle}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+124px)] pt-[calc(env(safe-area-inset-top)+86px)]">
-        {formalDetail ? (
-          <FormalTechnicianDetailPanel detail={formalDetail} workStatusScope="merchant-admin" />
-        ) : technician ? (
-          <div className="space-y-3">
-            <SocialProfileMiniCard
-              showAction={false}
-              data={buildFormalMerchantStaffCard(technician)}
-              showLevel={false}
-              showSocialStats={false}
-              topTags={[getMerchantStaffStatusTopTag(getMerchantStaffStatus(technician))]}
-            />
-            <TechnicianProfilePanel context="merchant" showSummaryCard={false} technician={technician} />
-          </div>
-        ) : formalDetailStatus === "loading" ? (
-          <section className="rounded-[24px] border border-line bg-white p-5 text-center shadow-panel">
-            <h2 className="text-base font-black text-ink">正在读取员工资料</h2>
-            <p className="mt-2 text-sm font-bold leading-6 text-ink/55">正在从店铺正式员工档案加载，请稍候。</p>
-          </section>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-[calc(env(safe-area-inset-top)+86px)] sm:px-4">
+        {staffId ? (
+          <MerchantEmployeeDetailWorkspace needoId={staffId} onEmployeeChange={updateDetailTitle} />
         ) : (
           <section className="rounded-[24px] border border-line bg-white p-5 text-center shadow-panel">
-            <h2 className="text-base font-black text-ink">员工不存在</h2>
-            <p className="mt-2 text-sm font-bold leading-6 text-ink/55">当前员工资料可能已被移除，或链接已经失效。</p>
+            <h2 className="text-base font-black text-ink">{t("员工不存在")}</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-ink/55">{t("当前链接没有包含有效的员工 NeeDoID。")}</p>
             <Button className="mt-4" to="/merchant/staff">
-              返回员工列表
+              {t("返回员工列表")}
             </Button>
           </section>
         )}
@@ -1672,6 +1679,7 @@ export function MerchantPortalContent({
   const [staffHrStatusFilter, setStaffHrStatusFilter] = useState<MerchantContactStatusFilter>("active");
   const [appointmentContactStatusFilter, setAppointmentContactStatusFilter] = useState<MerchantContactStatusFilter>("active");
   const [merchantAppointmentSearchQuery, setMerchantAppointmentSearchQuery] = useState("");
+  const [staffSearchQuery, setStaffSearchQuery] = useState("");
   const [generalContactStatusFilter, setGeneralContactStatusFilter] = useState<MerchantContactStatusFilter>("active");
   const staffIdParam = searchParams.get("staffId");
   const [manualEmployees, setManualEmployees] = useState<MerchantManualEmployee[]>(() => getInitialMerchantManualEmployees());
@@ -1682,12 +1690,16 @@ export function MerchantPortalContent({
   const [employeeSalaryDraft, setEmployeeSalaryDraft] = useState("");
   const [pendingStaffDelete, setPendingStaffDelete] = useState<MerchantPendingStaffDelete | null>(null);
   const [staffRoleNameOverrides, setStaffRoleNameOverrides] = useState<Record<string, string>>(() => getInitialMerchantStaffRoleLabelOverrides());
-  const [formalStaffById, setFormalStaffById] = useState<Map<number, BackofficeTechnicianPayload>>(() => new Map());
+  const [formalStaffByNeedoId, setFormalStaffByNeedoId] = useState<Map<string, BackofficeTechnicianPayload>>(() => new Map());
   const [formalStaffEmploymentLoaded, setFormalStaffEmploymentLoaded] = useState(false);
   const [formalStaffEmploymentError, setFormalStaffEmploymentError] = useState("");
   const [workRevision, setWorkRevision] = useState(0);
   useEffect(() => subscribeWorkStatusRefresh(() => setWorkRevision(value => value + 1)), []);
   const technicianRoleName = getResolvedMerchantStaffRoleName(merchantTechnicianRoleName, staffRoleNameOverrides);
+  const formalStaffById = useMemo(
+    () => new Map([...formalStaffByNeedoId.values()].map((technician) => [technician.id, technician])),
+    [formalStaffByNeedoId]
+  );
 
   useEffect(() => {
     let active = true;
@@ -1695,21 +1707,21 @@ export function MerchantPortalContent({
     setFormalStaffEmploymentLoaded(false);
 
     if (!session || session.portal !== "merchant") {
-      setFormalStaffById(new Map());
+      setFormalStaffByNeedoId(new Map());
       return () => {
         active = false;
       };
     }
 
-    backofficeRealDataApi.technicians("merchant-admin", { page: 1, pageSize: 100, status: "published" })
-      .then((result) => {
+    loadEveryMerchantTechnicianPage()
+      .then((technicians) => {
         if (!active) return;
-        setFormalStaffById(new Map(result.list.map((technician) => [technician.id, technician])));
+        setFormalStaffByNeedoId(new Map(technicians.map((technician) => [technician.needoId, technician])));
         setFormalStaffEmploymentLoaded(true);
       })
       .catch((loadError: unknown) => {
         if (!active) return;
-        setFormalStaffById(new Map());
+        setFormalStaffByNeedoId(new Map());
         setFormalStaffEmploymentLoaded(true);
         setFormalStaffEmploymentError(loadError instanceof Error && loadError.message.trim()
           ? loadError.message
@@ -1775,37 +1787,46 @@ export function MerchantPortalContent({
   const merchantSchedulePrimaryTab = getMerchantScheduleTab(searchParams.get("tab"));
   const isMerchantScheduleView = activeView === "schedule";
   const merchantStaffTab = getMerchantStaffTab(searchParams.get("staffType"));
-  const formalStaffJoin = useMemo(() => {
-    const missingTechnicianIds: string[] = [];
-    const entries = storeTechnicians.flatMap((technician): MerchantStoreStaffEntry[] => {
-      const technicianApiId = getMerchantTechnicianApiId(technician.id);
-      const formalEmployment = technicianApiId === null ? null : formalStaffById.get(technicianApiId)?.employmentType;
+  const normalizedStaffSearchQuery = staffSearchQuery.trim().toLowerCase();
+  const storeStaffEntries = useMemo(() => {
+    return storeTechnicians.flatMap((technician): MerchantStoreStaffEntry[] => {
+      const formalStaff = formalStaffByNeedoId.get(technician.systemId);
+      const formalEmployment = formalStaff?.employmentType;
       const employmentType = formalEmployment ? toMerchantStaffEmploymentType(formalEmployment) : null;
-      if (!employmentType) {
-        missingTechnicianIds.push(technician.id);
-        return [];
-      }
-      return [{ employmentType, status: formalMerchantWorkLabel(technicianApiId === null ? undefined : formalStaffById.get(technicianApiId)?.workStatus), technician }];
+      if (!employmentType) return [];
+      return [{ employmentType, status: formalMerchantWorkLabel(formalStaff?.workStatus), technician }];
     });
-    return { entries, missingTechnicianIds };
-  }, [formalStaffById, staffStatuses, storeTechnicians]);
-  const storeStaffEntries = formalStaffJoin.entries;
-  const formalStaffJoinError = formalStaffEmploymentError || (
-    formalStaffEmploymentLoaded && formalStaffJoin.missingTechnicianIds.length > 0
-      ? `正式员工档案缺少雇佣类型：${formalStaffJoin.missingTechnicianIds.join(", ")}`
-      : ""
-  );
+  }, [formalStaffByNeedoId, storeTechnicians]);
+  const formalStaffJoinError = formalStaffEmploymentError;
   const filteredStoreStaffEntries = useMemo(
-    () => storeStaffEntries.filter((entry) => merchantStaffTab === "all" || entry.employmentType === merchantStaffTab),
-    [merchantStaffTab, storeStaffEntries]
+    () => storeStaffEntries.filter((entry) => {
+      if (!merchantStaffTabMatchesEmployment(merchantStaffTab, entry.employmentType)) return false;
+      if (!normalizedStaffSearchQuery) return true;
+      const formalStaff = formalStaffByNeedoId.get(entry.technician.systemId);
+      return [
+        entry.technician.name,
+        entry.technician.nickname ?? "",
+        entry.technician.systemId,
+        entry.status,
+        getMerchantStaffEmploymentLabel(entry.employmentType),
+        formalStaff?.email ?? "",
+        ...(entry.technician.skills ?? [])
+      ].some((value) => value.toLowerCase().includes(normalizedStaffSearchQuery));
+    }),
+    [formalStaffByNeedoId, merchantStaffTab, normalizedStaffSearchQuery, storeStaffEntries]
   );
   const manualEmployeesForStore = useMemo(
     () => manualEmployees.filter((employee) => employee.storeId === store.id),
     [manualEmployees, store.id]
   );
   const filteredManualEmployees = useMemo(
-    () => manualEmployeesForStore.filter((employee) => merchantStaffTab === "all" || employee.employmentType === merchantStaffTab),
-    [manualEmployeesForStore, merchantStaffTab]
+    () => manualEmployeesForStore.filter((employee) => {
+      if (!merchantStaffTabMatchesEmployment(merchantStaffTab, employee.employmentType)) return false;
+      if (!normalizedStaffSearchQuery) return true;
+      return [employee.name, employee.roleName, employee.status, getMerchantStaffEmploymentLabel(employee.employmentType)]
+        .some((value) => value.toLowerCase().includes(normalizedStaffSearchQuery));
+    }),
+    [manualEmployeesForStore, merchantStaffTab, normalizedStaffSearchQuery]
   );
   const manualPersonnelMonthlyCost = manualEmployeesForStore.reduce((sum, employee) => sum + employee.salaryMonthly, 0);
   const manualPersonnelCost = filteredManualEmployees.reduce((sum, employee) => sum + employee.salaryMonthly, 0);
@@ -1856,8 +1877,9 @@ export function MerchantPortalContent({
       return;
     }
 
-    if (technicians.some((tech) => tech.id === staffIdParam)) {
-      navigate(getMerchantStaffDetailPath(staffIdParam), { replace: true });
+    const technician = technicians.find((tech) => tech.id === staffIdParam || tech.systemId === staffIdParam);
+    if (technician) {
+      navigate(getMerchantStaffDetailPath(technician.systemId), { replace: true });
     }
   }, [activeView, navigate, staffIdParam, technicians]);
 
@@ -1956,7 +1978,7 @@ export function MerchantPortalContent({
 
     const roleEmployeeCount = manualEmployeesForStore.filter((employee) => employee.roleName === resolvedRoleName).length;
     const salaryMonthly = parseMerchantEmployeeSalary(employeeSalaryDraft);
-    const employmentType: Exclude<MerchantStaffTab, "all"> = merchantStaffTab === "partTime" ? "partTime" : "fullTime";
+    const employmentType: "fullTime" | "partTime" = merchantStaffTab === "partTime" ? "partTime" : "fullTime";
 
     setManualEmployees((current) => [
       ...current,
@@ -2046,7 +2068,7 @@ export function MerchantPortalContent({
       entityCardData: {
         ...buildTechnicianInfoCardData(tech),
         cardUi: technicianCardUi,
-        detailPath: getMerchantStaffDetailPath(tech.id)
+        detailPath: getMerchantStaffDetailPath(tech.systemId)
       },
       entityCardVariant: "compact" as const
     })),
@@ -2134,7 +2156,7 @@ export function MerchantPortalContent({
           entityCardData: {
             ...buildTechnicianInfoCardData(newestTechnician),
             cardUi: technicianCardUi,
-            detailPath: getMerchantStaffDetailPath(newestTechnician.id)
+            detailPath: getMerchantStaffDetailPath(newestTechnician.systemId)
           },
           entityCardVariant: "compact" as const
         }] : []),
@@ -2423,7 +2445,7 @@ export function MerchantPortalContent({
       className={isMerchantDataCenterView ? "merchant-analytics-clean-shell" : undefined}
       navItems={merchantNavItems}
       navPanelStyle={activeView === "me" ? "plain" : "default"}
-      showBottomNav={activeView !== "me" && !isMerchantScheduleView && !merchantProfileEditing}
+      showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !merchantProfileEditing}
       showTopEdgeMask={activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
     >
       {activeView === "dashboard" ? (
@@ -2545,7 +2567,7 @@ export function MerchantPortalContent({
                   return (
                     <SocialProfileMiniCard
                       className="cursor-pointer"
-                      detailTo={getMerchantStaffDetailPath(technician.id)}
+                      detailTo={getMerchantStaffDetailPath(technician.systemId)}
                       key={technician.id}
                       showAction={false}
                       data={buildFormalMerchantStaffCard(technician)}
@@ -2611,8 +2633,18 @@ export function MerchantPortalContent({
           <>
             <MerchantStaffHeaderTabs
               onChange={updateMerchantStaffTab}
+              onExit={() => navigate("/merchant")}
+              onSearchQueryChange={setStaffSearchQuery}
+              searchQuery={staffSearchQuery}
               value={merchantStaffTab}
             />
+            {merchantStaffTab === "review" ? (
+              <div className="mt-3">
+                <TechnicianApplicationsReviewPage embedded searchQuery={staffSearchQuery} />
+              </div>
+            ) : null}
+            {merchantStaffTab !== "review" ? (
+              <>
             {formalStaffJoinError ? (
               <div className="mb-3 rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-700">
                 无法读取正式员工数据：{formalStaffJoinError}
@@ -2656,7 +2688,7 @@ export function MerchantPortalContent({
                               />
                             )}
                             className="cursor-pointer"
-                            detailTo={getMerchantStaffDetailPath(technician.id)}
+                            detailTo={getMerchantStaffDetailPath(technician.systemId)}
                             key={technician.id}
                             data={buildFormalMerchantStaffCard(technician)}
                             showLevel={false}
@@ -2768,6 +2800,8 @@ export function MerchantPortalContent({
                   添加员工
                 </button>
             </section>
+              </>
+            ) : null}
           </>
         )}
 
@@ -2957,7 +2991,7 @@ export function MerchantPortalContent({
             items={homeContactStatusItems}
             onFilterChange={setHomeContactStatusFilter}
           />
-        ) : activeView === "staff" ? (
+        ) : activeView === "staff" && merchantStaffTab !== "review" ? (
           <MerchantHomeContactStatusPanel
             emptyDetail="当前筛选条件下没有员工人事信息。"
             filter={staffHrStatusFilter}
