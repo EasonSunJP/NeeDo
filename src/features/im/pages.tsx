@@ -99,7 +99,8 @@ import {
   ImTopBar,
   MessageBubble,
   SectionTag,
-  ToggleRow
+  ToggleRow,
+  type ImChatComposerPanel
 } from "./components";
 import {
   UnifiedChatHeaderAction,
@@ -4599,6 +4600,8 @@ export function ImBlacklistPage() {
 
 export function ImContactTagsPage() {
   const { scope, store, config } = useImRuntime();
+  const { isNight } = useClientTheme();
+  const [tagComposerPanel, setTagComposerPanel] = useState<ImChatComposerPanel>(null);
   const navigate = useNavigate();
   const [tagSearchOpen, setTagSearchOpen] = useState(false);
   const [addTagOpen, setAddTagOpen] = useState(false);
@@ -4662,6 +4665,7 @@ export function ImContactTagsPage() {
     setNewTagName("");
     setTagQuery("");
     setAddTagOpen(false);
+    setTagComposerPanel(null);
   };
 
   return (
@@ -4751,17 +4755,19 @@ export function ImContactTagsPage() {
       </div>
       <ImBottomSheet onClose={() => setAddTagOpen(false)} open={addTagOpen} title="添加标签">
         <div className="space-y-3 pb-2">
-          <input
-            className="w-full rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] px-4 py-3 text-[15px] text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
-            onChange={(event) => setNewTagName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                addManualTag();
-              }
-            }}
+          <ImChatComposer
+            draft={newTagName}
+            embedded
+            isNight={isNight}
+            onDraftChange={(value) => setNewTagName(serializeImComposerMessage(value).content)}
+            onPanelChange={setTagComposerPanel}
+            onSend={addManualTag}
+            panel={tagComposerPanel}
             placeholder="输入标签名称"
-            type="text"
-            value={newTagName}
+            showMore={false}
+            showSend={false}
+            showVoice={false}
+            submitOnEnter
           />
           <div className="flex gap-2">
             <Button className="flex-1" onClick={() => setAddTagOpen(false)} variant="secondary">取消</Button>
