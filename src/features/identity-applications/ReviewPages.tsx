@@ -27,6 +27,32 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   return <div className="grid gap-1 border-b border-[color:var(--client-line)] py-3 last:border-b-0 sm:grid-cols-[9rem_1fr]"><dt className="text-xs font-black text-[color:var(--client-muted)]">{translateText(label, language)}</dt><dd className="break-words text-sm font-bold text-[color:var(--client-text)]">{value || "—"}</dd></div>;
 }
 
+function TechnicianApplicationCardStatus({ status, t }: { status: TechnicianReview["status"]; t: (source: string) => string }) {
+  if (status === "approved") {
+    return (
+      <span
+        aria-label={t("审核已通过")}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_44%,#22c55e)] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] text-lg font-black text-[color:color-mix(in_srgb,var(--client-primary)_35%,#22c55e)]"
+      >
+        ✓
+      </span>
+    );
+  }
+
+  if (status === "rejected") {
+    return (
+      <span
+        aria-label={t("审核未通过")}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-accent)_55%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-accent)_14%,transparent)] text-xl font-black text-[color:var(--client-accent)]"
+      >
+        ×
+      </span>
+    );
+  }
+
+  return <span aria-label={t("查看申请")} className="shrink-0 text-xl text-[color:var(--client-primary)]">›</span>;
+}
+
 export function TechnicianApplicationsReviewPage({ embedded = false, searchQuery = "" }: { embedded?: boolean; searchQuery?: string } = {}) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
@@ -138,10 +164,10 @@ export function TechnicianApplicationsReviewPage({ embedded = false, searchQuery
       {error ? <ApplicationNotice tone="error">{t(error)}</ApplicationNotice> : null}
       {!selected ? (
         <ApplicationCard className="space-y-2">
-          {visibleItems.length === 0 ? <ApplicationNotice>{t("暂无技师入驻申请")}</ApplicationNotice> : visibleItems.map((item) => (
-            <button className="flex w-full items-center justify-between rounded-[20px] border border-[color:var(--client-line)] p-4 text-left" key={item.applicationId} onClick={() => void open(item.applicationId)} type="button">
+          {visibleItems.length === 0 ? <ApplicationNotice><span data-testid="technician-applications-empty">{t("暂无申请")}</span></ApplicationNotice> : visibleItems.map((item) => (
+            <button className="flex w-full items-center justify-between gap-3 rounded-[20px] border border-[color:var(--client-line)] p-4 text-left" data-application-status={item.status} key={item.applicationId} onClick={() => void open(item.applicationId)} type="button">
               <span><span className="block text-sm font-black text-[color:var(--client-text)]">{item.applicantName}</span><span className="mt-1 block text-xs text-[color:var(--client-muted)]">#{item.applicationId} · {t(item.status)}</span></span>
-              <span className="text-xl text-[color:var(--client-primary)]">›</span>
+              <TechnicianApplicationCardStatus status={item.status} t={t} />
             </button>
           ))}
         </ApplicationCard>

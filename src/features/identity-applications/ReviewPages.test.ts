@@ -19,6 +19,15 @@ describe("identity application review pages", () => {
     expect(source).toContain("visibleItems.map((item)");
   });
 
+  it("keeps each technician application card clickable across review outcomes", () => {
+    expect(source).toContain("TechnicianApplicationCardStatus");
+    expect(source).toContain('label={t("审核已通过")}');
+    expect(source).toContain('label={t("审核未通过")}');
+    expect(source).toContain('label={t("查看申请")}');
+    expect(source).toContain('data-application-status={item.status}');
+    expect(source).toContain('t("暂无申请")');
+  });
+
   it("shows protected evidence and masked bank details to operations review", () => {
     expect(source).toContain("<ProtectedApplicationImage");
     expect(source).toContain("selected.bankAccount.accountNumberMasked");
