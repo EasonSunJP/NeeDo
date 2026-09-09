@@ -148,7 +148,7 @@ export function MerchantPrimaryNavCarousel({
             {page.map((module) => (
               <Link
                 className={cn(
-                  "relative grid aspect-square grid-rows-[30px_auto] content-center items-start justify-items-center gap-1 rounded-[18px] border px-2 py-1.5 text-center transition before:hidden sm:grid-rows-[34px_auto] sm:content-center sm:gap-1.5 sm:py-3",
+                  "relative grid aspect-square grid-rows-[24px_auto] content-center items-start justify-items-center gap-0.5 rounded-[18px] border px-1 py-1 text-center transition before:hidden min-[380px]:grid-rows-[30px_auto] min-[380px]:gap-1 min-[380px]:px-2 min-[380px]:py-1.5 sm:grid-rows-[34px_auto] sm:content-center sm:gap-1.5 sm:py-3",
                   activeModule === module.key
                     ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
                     : "border-line bg-white text-[color:var(--client-text)] hover:border-[color:var(--client-primary)]"
@@ -163,11 +163,11 @@ export function MerchantPrimaryNavCarousel({
                     className="pointer-events-none absolute -right-1 -top-1 z-30 h-4 w-4 rounded-full border-2 border-[color:var(--client-surface)] bg-red-500 shadow-[0_6px_16px_rgba(239,68,68,0.5)]"
                   />
                 ) : null}
-                <span className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[13px] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)] sm:h-[34px] sm:w-[34px]">
+                <span className="inline-flex h-[24px] w-[24px] items-center justify-center rounded-[11px] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)] min-[380px]:h-[30px] min-[380px]:w-[30px] min-[380px]:rounded-[13px] sm:h-[34px] sm:w-[34px]">
                   <MerchantPrimaryIcon icon={module.icon} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[13px] font-black leading-4">{module.labelZh}</span>
+                  <span className="block text-[12px] font-black leading-[14px] min-[380px]:text-[13px] min-[380px]:leading-4">{module.labelZh}</span>
                   <span className="mt-1 hidden truncate text-[10px] font-bold text-ink/38 sm:block">{module.labelJa}</span>
                 </span>
               </Link>
