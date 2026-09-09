@@ -13834,7 +13834,7 @@ export const translations: TranslationMap = {
   "首家店铺": { "zh-Hant": "首家店鋪", ja: "最初の店舗", en: "First shop", ko: "첫 번째 매장" },
   "家有效合作店铺": { "zh-Hant": "家有效合作店鋪", ja: "件の有効な提携店舗", en: "active partner shops", ko: "개의 유효한 제휴 매장" },
   "需要入住店铺": { "zh-Hant": "需要入駐店鋪", ja: "店舗への所属が必要です", en: "A shop is required", ko: "매장 소속이 필요합니다" },
-  "当前没有有效合作店铺，技师身份已暂停工作功能。提交申请并由店铺通过后即可继续使用。": { "zh-Hant": "目前沒有有效合作店鋪，技師身份的工作功能已暫停。提交申請並由店鋪通過後即可繼續使用。", ja: "有効な提携店舗がないため、スタッフ機能は一時停止されています。申請先の店舗で承認されると再開できます。", en: "Technician work features are paused because there is no active partner shop. Submit an application and continue after the shop approves it.", ko: "유효한 제휴 매장이 없어 스태프 업무 기능이 일시 중지되었습니다. 신청한 매장의 승인을 받으면 다시 이용할 수 있습니다." },
+  "当前没有有效合作店铺。你仍可进入技师端查看内容；提交入住申请并经店铺通过后，才可开启出勤、可排班和手动预约。": { "zh-Hant": "目前沒有有效合作店鋪。你仍可進入技師端查看內容；提交入駐申請並經店鋪通過後，才可開啟出勤、可排班和手動預約。", ja: "現在、有効な提携店舗はありません。技師画面の閲覧はできますが、所属申請が店舗に承認されるまで、出勤・予約受付可能時間・手動予約は利用できません。", en: "There is no active partner shop. You can still view the technician portal, but attendance, availability, and manual bookings require an approved shop application.", ko: "현재 유효한 제휴 매장이 없습니다. 기술자 화면은 계속 볼 수 있지만, 매장 소속 신청이 승인되어야 출근, 예약 가능 시간 및 수동 예약을 사용할 수 있습니다." },
   "店铺信息暂时无法获取，请稍后重试。": { "zh-Hant": "暫時無法取得店鋪資訊，請稍後重試。", ja: "店舗情報を取得できません。しばらくしてから再試行してください。", en: "Shop information is temporarily unavailable. Please try again later.", ko: "매장 정보를 가져올 수 없습니다. 잠시 후 다시 시도해 주세요." },
   "正在读取入住店铺…": { "zh-Hant": "正在讀取入駐店鋪…", ja: "所属店舗を読み込んでいます…", en: "Loading joined shops…", ko: "소속 매장을 불러오는 중…" },
   "店铺公开 ID 待补齐": { "zh-Hant": "店鋪公開 ID 待補齊", ja: "店舗公開IDは未登録です", en: "Shop public ID pending", ko: "매장 공개 ID 미등록" },

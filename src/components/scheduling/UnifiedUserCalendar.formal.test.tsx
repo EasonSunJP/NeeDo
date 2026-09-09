@@ -434,6 +434,27 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(manual?.getAttribute("aria-checked")).toBe("true");
   });
 
+  it("keeps the personal calendar available but hides technician booking actions without a shop", async () => {
+    await act(async () => root.render(
+      <MemoryRouter>
+        <I18nProvider>
+          <UnifiedUserCalendar
+            currentTechnician={{ ...technicianFixture, storeId: "" }}
+            formalOnly
+            scope="technician"
+            technicianWorkActionsEnabled={false}
+          />
+        </I18nProvider>
+      </MemoryRouter>
+    ));
+    await waitFor(() => expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="新增行程"]')?.click());
+
+    expect(container.querySelector('input[placeholder="新增标题"]')).not.toBeNull();
+    expect(container.querySelector('[role="switch"][aria-label="可排班"]')).toBeNull();
+    expect(container.querySelector('[role="switch"][aria-label="手动预约"]')).toBeNull();
+  });
+
   it("opens the approved calendar-source menu without enabling local calendar persistence", async () => {
     testState.loadCustomerOrderWindow.mockResolvedValue([]);
     const storageWrite = vi.spyOn(Storage.prototype, "setItem");

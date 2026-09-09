@@ -209,6 +209,7 @@ export type UnifiedUserCalendarProps = {
   searchQuery?: string;
   showSourceDrawer?: boolean;
   scope?: UnifiedCalendarScope;
+  technicianWorkActionsEnabled?: boolean;
   technicians?: Technician[];
 };
 
@@ -5098,6 +5099,7 @@ export function UnifiedUserCalendar({
   searchQuery = "",
   showSourceDrawer = !formalOnly,
   scope = "user",
+  technicianWorkActionsEnabled = true,
   technicians: providedTechnicians
 }: UnifiedUserCalendarProps) {
   const navigate = useNavigate();
@@ -6023,8 +6025,8 @@ export function UnifiedUserCalendar({
           onClose={() => setEditorDraft(null)}
           onSave={saveDraft}
           syncContactOptions={syncContactOptions}
-          technicianCreationMode={activeScope === "technician" ? technicianCreationMode : undefined}
-          onTechnicianCreationModeChange={activeScope === "technician" ? setTechnicianCreationMode : undefined}
+          technicianCreationMode={activeScope === "technician" && technicianWorkActionsEnabled ? technicianCreationMode : undefined}
+          onTechnicianCreationModeChange={activeScope === "technician" && technicianWorkActionsEnabled ? setTechnicianCreationMode : undefined}
         />
       ) : null}
       {displayActiveEvent ? (

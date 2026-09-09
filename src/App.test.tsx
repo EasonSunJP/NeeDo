@@ -107,8 +107,11 @@ describe("portal identity switching boundaries", () => {
     );
   });
 
-  it("keeps technician shop stays accessible while zero-shop identities are paused", () => {
+  it("shows the shop-stay prompt only on explicit technician switching without blocking the portal", () => {
     expect(appSource).toContain("function RequireTechnicianShop");
+    expect(appSource).toContain("settingsSwitchedFromPortal");
+    expect(appSource).toContain('settingsPortalTarget === "technician"');
+    expect(appSource).toContain("technicianShopStayReturnTo");
     expect(appSource).toContain('location.pathname.startsWith("/technician/shop-stays")');
     expect(appSource).toContain('path="/technician/shop-stays"');
     expect(appSource).toContain('path="/technician/shop-stays/apply"');

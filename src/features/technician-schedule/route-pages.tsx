@@ -537,7 +537,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   }, [creationMode, defaultRange.startsAt, resource.data, selectedServiceId, slotId]);
 
   useEffect(() => {
-    if (slotId || creationMode !== "manualBooking") return;
+    if (slotId || creationMode !== "manualBooking" || resource.data?.shopId === null) return;
     let active = true;
     setContactsLoading(true);
     void automationApi.listContacts().then((page) => {
@@ -550,7 +550,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
       if (active) setContactsLoading(false);
     });
     return () => { active = false; };
-  }, [creationMode, slotId]);
+  }, [creationMode, resource.data?.shopId, slotId]);
 
   if (resource.loading) {
     return <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}><LoadingPanel label="正在读取技师服务与排班" /></TechnicianSchedulePageShell>;
@@ -559,6 +559,17 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
     return (
       <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}>
         <ScheduleResourceErrorPanel error={resource.error ?? "error.api"} onRetry={resource.retry} title="正式排班资源加载失败" />
+      </TechnicianSchedulePageShell>
+    );
+  }
+  if (resource.data.shopId === null) {
+    return (
+      <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}>
+        <ScheduleResourceErrorPanel
+          error="error.technician.shop_required"
+          onRetry={resource.retry}
+          title="正式排班资源加载失败"
+        />
       </TechnicianSchedulePageShell>
     );
   }

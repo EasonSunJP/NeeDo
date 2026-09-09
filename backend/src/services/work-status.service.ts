@@ -117,6 +117,13 @@ export class WorkStatusService {
         const shops = [...new Set(obligations.map((o) => o.shopId))];
         if (shops.length === 1) shopId = shops[0]!;
       }
+      if (
+        shopId === null &&
+        present(input.status) &&
+        !(await unit.hasActiveAffiliation(scope.technicianProfileId, now))
+      ) {
+        throw workError("shop_required", 403);
+      }
       const epoch = await unit.epoch(now);
       for (const obligation of affected.filter(
         (o) =>

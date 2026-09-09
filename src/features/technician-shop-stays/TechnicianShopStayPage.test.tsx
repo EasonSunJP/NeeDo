@@ -131,5 +131,75 @@ describe("TechnicianShopStayPage", () => {
     }
     expect(container.textContent).toContain("需要入住店铺");
     expect(container.textContent).toContain("追加");
+    expect(container.textContent).toContain("仍可进入技师端查看内容");
+    expect(container.textContent).toContain("才可开启出勤、可排班和手动预约");
+  });
+
+  it("returns to the pre-switch page from back and enters the technician portal from close", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue({
+      ...profile,
+      shopAccessStatus: "requires_shop",
+      shopAffiliations: [],
+    });
+
+    const renderAtPrompt = async () => {
+      await act(async () =>
+        root.render(
+          <MemoryRouter
+            initialEntries={[{
+              pathname: "/technician/shop-stays",
+              state: { technicianShopStayReturnTo: "/me/settings/portal" },
+            }]}
+          >
+            <Routes>
+              <Route element={<TechnicianShopStayPage />} path="/technician/shop-stays" />
+              <Route element={<div data-testid="pre-switch-page">切换前页面</div>} path="/me/settings/portal" />
+              <Route element={<div data-testid="technician-portal">技师端</div>} path="/technician" />
+            </Routes>
+          </MemoryRouter>,
+        ),
+      );
+    };
+
+    await renderAtPrompt();
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('button[aria-label="返回"]')?.click(),
+    );
+    expect(container.querySelector('[data-testid="pre-switch-page"]')).not.toBeNull();
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await renderAtPrompt();
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('button[aria-label="关闭"]')?.click(),
+    );
+    expect(container.querySelector('[data-testid="technician-portal"]')).not.toBeNull();
+  });
+
+  it("uses the shared red danger treatment for the zero-shop notice", async () => {
+    vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue({
+      ...profile,
+      shopAccessStatus: "requires_shop",
+      shopAffiliations: [],
+    });
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <TechnicianShopStayPage />
+        </MemoryRouter>,
+      ),
+    );
+    for (
+      let attempt = 0;
+      attempt < 20 && !container.textContent?.includes("需要入住店铺");
+      attempt += 1
+    ) {
+      await act(async () => Promise.resolve());
+    }
+
+    const notice = container.querySelector('[data-testid="technician-shop-required-notice"]');
+    expect(notice?.getAttribute("role")).toBe("alert");
+    expect(notice?.className).toContain("border-[#ff4d5e]");
+    expect(notice?.className).toContain("bg-[#26060b]");
   });
 });

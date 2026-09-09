@@ -304,7 +304,13 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
           </div>
         </section>
 
-        <WorkStatusControls serviceOrderId={(todayOrders.find(order => order.status === "inService") ?? todayOrders.find(order => order.status === "confirmed"))?.id} onChooseService={() => setTasksPanelTab("orders")} shopId={profile.shopId} onChanged={() => setStatusRevision(value => value + 1)} />
+        <WorkStatusControls
+          disabled={profile.shopAccessStatus === "requires_shop"}
+          serviceOrderId={(todayOrders.find(order => order.status === "inService") ?? todayOrders.find(order => order.status === "confirmed"))?.id}
+          onChooseService={() => setTasksPanelTab("orders")}
+          shopId={profile.shopId}
+          onChanged={() => setStatusRevision(value => value + 1)}
+        />
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
