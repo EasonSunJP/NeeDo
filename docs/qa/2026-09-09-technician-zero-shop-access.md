@@ -23,4 +23,3 @@
 - 无店铺日程仍可查看私人行程、但不显示可排班/手动预约测试。
 - 工作状态 Service/Repository 定向测试。
 - 前端全量 Vitest、TypeScript 检查、i18n 检查与 production build。
-
