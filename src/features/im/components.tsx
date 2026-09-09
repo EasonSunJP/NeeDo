@@ -4281,7 +4281,7 @@ export function MessageBubble({
 
     if (message.type === "voice") {
       return (
-        <div className="min-w-[200px] space-y-2">
+        <div className="w-full space-y-2">
           <div className="flex items-center gap-2">
             <ImIcon className="h-4 w-4" name="mic" />
             <div className="h-0.5 flex-1 rounded-full bg-black/20" />
@@ -4289,7 +4289,7 @@ export function MessageBubble({
           </div>
           {mediaLoad.failed ? (
             <button
-              className="block w-full max-w-[220px] rounded-2xl bg-black/10"
+              className="block w-full rounded-2xl bg-black/10"
               onClick={(event) => {
                 event.stopPropagation();
                 mediaLoad.retry();
@@ -4300,7 +4300,7 @@ export function MessageBubble({
             </button>
           ) : (
             <audio
-              className="block h-10 w-full max-w-[220px]"
+              className="block h-10 w-full"
               controls
               key={mediaLoad.key}
               onError={mediaLoad.onError}
@@ -4779,7 +4779,9 @@ export function MessageBubble({
           "flex flex-col",
           message.type === "contact-card"
             ? "max-w-[calc(100%-3.25rem)]"
-            : "max-w-[78%]",
+            : message.type === "voice"
+              ? "w-[calc(100%-3.25rem)] max-w-[320px]"
+              : "max-w-[78%]",
           isMine ? "items-end" : "items-start",
         )}
       >
@@ -4794,6 +4796,7 @@ export function MessageBubble({
         <div
           className={cn(
             "inline-flex min-w-0 max-w-full overflow-hidden",
+            message.type === "voice" && "w-full",
             bubbleShellClass,
           )}
           data-im-message-bubble="true"
