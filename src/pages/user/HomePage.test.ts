@@ -228,6 +228,7 @@ describe("HomePage quick action compact height", () => {
     expect(rendererStart).toBeGreaterThan(-1);
     expect(rendererEnd).toBeGreaterThan(rendererStart);
     expect(quickActionRenderer).toContain("h-[76px]");
+    expect(quickActionRenderer).toContain("before:hidden");
     expect(quickActionRenderer).toContain("grid-rows-[30px_28px]");
     expect(quickActionRenderer).toContain("gap-1");
     expect(quickActionRenderer).toContain("py-1.5");

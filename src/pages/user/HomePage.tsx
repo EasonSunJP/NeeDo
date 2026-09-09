@@ -1248,7 +1248,7 @@ export function HomePage() {
 
               return (
                 <Link
-                  className="grid h-[76px] min-w-0 grid-rows-[30px_28px] items-start justify-items-center gap-1 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_100%,transparent),color-mix(in_srgb,var(--client-surface)_86%,transparent))] px-2 py-1.5 text-center shadow-[0_12px_26px_rgba(0,0,0,0.09)]"
+                  className="grid h-[76px] min-w-0 grid-rows-[30px_28px] items-start justify-items-center gap-1 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_100%,transparent),color-mix(in_srgb,var(--client-surface)_86%,transparent))] px-2 py-1.5 text-center shadow-[0_12px_26px_rgba(0,0,0,0.09)] before:hidden"
                   key={item.id}
                   to={item.to}
                 >
