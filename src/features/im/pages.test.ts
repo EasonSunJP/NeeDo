@@ -20,6 +20,18 @@ import componentsSource from "./components.tsx?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
+  it("renders the add-tag editor and footer actions inside one glass container", () => {
+    const pageStart = pagesSource.indexOf("export function ImContactTagsPage");
+    const pageEnd = pagesSource.indexOf("export function ImServiceAccountsPage", pageStart);
+    const pageSource = pagesSource.slice(pageStart, pageEnd);
+
+    expect(pageStart).toBeGreaterThan(-1);
+    expect(pageSource).toContain('data-im-tag-composer-card="true"');
+    expect(pageSource).toContain('className="client-liquid-glass-surface im-composer-glass');
+    expect(pageSource.indexOf("<ImChatComposer")).toBeLessThan(pageSource.indexOf(">取消</Button>"));
+    expect(pageSource.indexOf(">取消</Button>")).toBeLessThan(pageSource.indexOf(">添加</Button>"));
+  });
+
   it("renders the header quick menu outside the glass header clipping context", () => {
     const componentStart = pagesSource.indexOf("function ImHeaderQuickMenu");
     const componentEnd = pagesSource.indexOf("export function ImMessagesEntryPage", componentStart);
