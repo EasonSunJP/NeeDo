@@ -183,19 +183,24 @@ describe("TechnicianProfileInfoView", () => {
     expect(markup).not.toContain("错误元气");
   });
 
-  it("renders the four approved icons in one compact four-column row", () => {
+  it("renders four theme-aware borderless icon stamps with compact labels", () => {
     const markup = renderView();
+    const specialAt = markup.indexOf('data-testid="technician-info-special-tags"');
+    const specialTag = markup.slice(markup.lastIndexOf("<section", specialAt), markup.indexOf(">", specialAt) + 1);
 
     expect(markup).toContain('class="social-profile-review-stamps mt-2 grid grid-cols-4 gap-1 px-0.5 pt-1.5"');
     expect(markup).toContain("review-stamp-appeal.svg");
     expect(markup).toContain("review-stamp-service.svg");
     expect(markup).toContain("review-stamp-empathy.svg");
     expect(markup).toContain("review-stamp-energy.svg");
-    expect(styles).toContain("aspect-ratio: auto;");
-    expect(styles).toContain("min-height: 72px;");
-    expect(styles).toContain("width: 32px;");
-    expect(styles).toContain("right: -2px;");
-    expect(styles).toContain("padding: 3px 5px;");
+    expect(specialTag).not.toContain("border");
+    expect(specialTag).not.toContain("panelClassName");
+    expect(styles).toMatch(/\.social-profile-review-stamps \.service-review-stamp \{[\s\S]*?border: 0;[\s\S]*?background: none;[\s\S]*?box-shadow: none;/);
+    expect(styles).toMatch(/\.social-profile-review-stamps \.service-review-stamp::before,[\s\S]*?content: none;/);
+    expect(styles).toContain("--profile-review-stamp-color:");
+    expect(styles).toContain("var(--client-primary)");
+    expect(styles).toContain("var(--client-warning)");
+    expect(styles).toContain("var(--client-accent)");
   });
 
   it("injects service actions without adding an outer service frame", () => {

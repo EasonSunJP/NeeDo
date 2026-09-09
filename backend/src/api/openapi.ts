@@ -28476,6 +28476,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "status",
             in: "query",
+            description:
+              "When omitted, returns submitted, under_review, approved, and rejected applications; withdrawn applications remain available only through an explicit status filter.",
             schema: {
               type: "string",
               enum: ["submitted", "under_review", "approved", "rejected", "withdrawn"]

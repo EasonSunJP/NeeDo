@@ -337,6 +337,16 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     expect(serviceCardTag).toContain("border");
   });
 
+  it("uses the shared borderless special-tag presentation in the personal center", () => {
+    const markup = renderProfile();
+    const specialAt = markup.indexOf('data-testid="technician-info-special-tags"');
+    const specialTag = markup.slice(markup.lastIndexOf("<section", specialAt), markup.indexOf(">", specialAt) + 1);
+
+    expect(specialAt).toBeGreaterThan(-1);
+    expect(specialTag).not.toContain("border");
+    expect(markup).toContain("social-profile-review-stamps");
+  });
+
   it("renders formal technician services without requesting the merchant-scoped pricing endpoint", async () => {
     vi.spyOn(technicianProfileApi, "getMine").mockResolvedValue(profile);
     vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(employedTechnician);
