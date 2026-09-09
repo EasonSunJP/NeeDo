@@ -36,7 +36,9 @@ const makeRepository = (): jest.Mocked<EntityEngagementRepositoryPort> => ({
   resolveTarget: jest.fn(async (target) => ({
     ...target,
     shopId: target.targetType === "shop" ? 7 : null,
-    technicianProfileId: target.targetType === "technician" ? 8 : null
+    technicianProfileId: target.targetType === "technician" ? 8 : null,
+    serviceId: target.targetType === "service" ? 9 : null,
+    technicianServiceId: target.targetType === "technician_service" ? 10 : null
   })),
   recordSystemShare: jest.fn(async (input) => ({
     status: "created" as const,

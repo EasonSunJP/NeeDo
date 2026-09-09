@@ -77,21 +77,35 @@ describe("IM contact-card OpenAPI contract", () => {
         "nickname",
         "avatarUrl",
         "entityKind",
+        "entityPublicId",
         "ekycVerified",
         "level",
         "bio",
         "tierCode",
         "themeVersionPublicId",
         "simpleTopColor",
-        "simpleBottomColor"
+        "simpleBottomColor",
+        "languages",
+        "rating",
+        "completedOrderCount",
+        "favoriteCount",
+        "shareCount",
+        "specialReviewTags"
       ],
       properties: {
         entityKind: { enum: ["customer", "technician", "shop", "service"] },
+        entityPublicId: { type: ["string", "null"], maxLength: 191 },
         level: { type: ["integer", "null"], minimum: 1, maximum: 100 },
         bio: { type: ["string", "null"], maxLength: 500 },
         tierCode: { enum: ["free", "silver", "gold", "black_diamond", null] },
         simpleTopColor: { pattern: "^#[0-9A-Fa-f]{6}$" },
-        simpleBottomColor: { pattern: "^#[0-9A-Fa-f]{6}$" }
+        simpleBottomColor: { pattern: "^#[0-9A-Fa-f]{6}$" },
+        languages: { type: "array", maxItems: 12 },
+        rating: { type: ["number", "null"], minimum: 0, maximum: 5 },
+        completedOrderCount: { type: ["integer", "null"], minimum: 0 },
+        favoriteCount: { type: ["integer", "null"], minimum: 0 },
+        shareCount: { type: ["integer", "null"], minimum: 0 },
+        specialReviewTags: { type: "array", maxItems: 8 }
       }
     });
     expect(schemas.LegacyImContactCardMetadata).toMatchObject({

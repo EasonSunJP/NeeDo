@@ -810,7 +810,7 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
     <section className="space-y-3" data-testid="technician-profile-services">
       <h2 className="px-1 text-lg font-black">服务信息</h2>
       {services.map((service, index) => (
-        <UnifiedServiceInfoCard actionSlot={serviceAction(fromTechnicianServicePayload(service), index)} data={fromTechnicianServicePayload(service)} key={service.id} variant="showcase" />
+        <UnifiedServiceInfoCard actionSlot={serviceAction(fromTechnicianServicePayload(service), index)} data={fromTechnicianServicePayload(service)} key={service.id} />
       ))}
       {addAndState}
     </section>

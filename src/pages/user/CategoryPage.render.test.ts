@@ -250,10 +250,13 @@ describe("CategoryPage formal category state", () => {
 
     expect(html).toContain("LifeDance Wellness 渋谷");
     expect(html).toContain("橘 ひかり");
-    expect(html).toContain("肩颈调理");
-    expect(html).toMatch(/接单率[\s\S]*98[\s\S]*%/);
-    expect(html).toContain('aria-label="收藏 技师 橘 ひかり"');
-    expect(html).toContain(">154</span>");
+    expect(html).toContain("完单次数");
+    expect(html).toContain("1280");
+    expect(html).toContain("距离");
+    expect(html).toContain('aria-label="收藏 橘 ひかり"');
+    expect(html).toContain(">154</div>");
+    expect(html).not.toContain("肩颈调理");
+    expect(html).not.toContain("接单率");
     expect(html).toContain("包间");
     expect(html).not.toContain(">放松<");
   });
@@ -282,8 +285,9 @@ describe("CategoryPage formal category state", () => {
 
     expect(html).toContain("LifeDance Wellness 渋谷");
     expect(html).toContain("橘 ひかり");
-    expect(html).not.toContain("收藏");
-    expect(html).not.toContain("分享");
+    expect(html).toContain("收藏");
+    expect(html).toContain("分享");
+    expect(html).toContain("未读取");
     expect(html).not.toContain("接单率");
     expect(html).not.toContain("肩颈调理");
   });
@@ -407,7 +411,13 @@ describe("CategoryPage formal category state", () => {
         { targetType: "shop", publicId: shop.publicId },
         { targetType: "technician", publicId: technician.publicId }
       ]);
-      expect(container.querySelector('button[aria-label="取消收藏 店铺 LifeDance Wellness 渋谷"]')).not.toBeNull();
+      await expect
+        .poll(() =>
+          container.querySelector(
+            'button[aria-label="取消收藏 LifeDance Wellness 渋谷"]',
+          ),
+        )
+        .not.toBeNull();
     } finally {
       await act(async () => root.unmount());
       container.remove();

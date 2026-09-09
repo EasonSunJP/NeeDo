@@ -43,7 +43,7 @@ const serviceRecord = (id: number, shopId: number, deletedAt: Date | null = null
       deletedAt: null
     }
   },
-  _count: { bookingOrders: 7 }
+  _count: { bookingOrders: 7, entityFavorites: 11, entityShareEvents: 5 }
 });
 
 const createInput = (shopId: number) => ({
@@ -359,7 +359,9 @@ describe("PricingModeRepository", () => {
           select: {
             bookingOrders: {
               where: { status: "COMPLETED", deletedAt: null }
-            }
+            },
+            entityFavorites: { where: { deletedAt: null } },
+            entityShareEvents: { where: { deletedAt: null } }
           }
         }
       }),
@@ -389,6 +391,8 @@ describe("PricingModeRepository", () => {
           id: 21,
           publicId: "00000000-0000-4000-8000-000000000021",
           usageCount: 7,
+          favoriteCount: 11,
+          shareCount: 5,
           shop: {
             publicId: "shop0000000009",
             name: "Shop 9",
@@ -412,7 +416,9 @@ describe("PricingModeRepository", () => {
             select: {
               bookingOrders: {
                 where: { status: "COMPLETED", deletedAt: null }
-              }
+              },
+              entityFavorites: { where: { deletedAt: null } },
+              entityShareEvents: { where: { deletedAt: null } }
             }
           }
         }

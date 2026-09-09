@@ -17,13 +17,32 @@ const imContactCardV2Schema = z
     nickname: boundedRequiredString(160),
     avatarUrl: safeDisplayUrlSchema.nullable(),
     entityKind: z.enum(["customer", "technician", "shop", "service"]),
+    entityPublicId: boundedRequiredString(191).nullable().default(null),
     ekycVerified: z.boolean(),
     level: z.number().int().min(1).max(100).nullable(),
     bio: z.string().max(500).nullable(),
     tierCode: z.enum(["free", "silver", "gold", "black_diamond"]).nullable(),
     themeVersionPublicId: boundedRequiredString(191).nullable(),
     simpleTopColor: colorSchema.nullable(),
-    simpleBottomColor: colorSchema.nullable()
+    simpleBottomColor: colorSchema.nullable(),
+    languages: z.array(z.string().trim().min(1).max(80)).max(12).default([]),
+    rating: z.number().min(0).max(5).nullable().default(null),
+    completedOrderCount: z.number().int().nonnegative().nullable().default(null),
+    favoriteCount: z.number().int().nonnegative().nullable().default(null),
+    shareCount: z.number().int().nonnegative().nullable().default(null),
+    specialReviewTags: z
+      .array(
+        z
+          .object({
+            code: boundedRequiredString(80),
+            label: boundedRequiredString(80),
+            icon: boundedRequiredString(8),
+            count: z.number().int().nonnegative()
+          })
+          .strict()
+      )
+      .max(8)
+      .default([])
   })
   .strict();
 

@@ -130,7 +130,7 @@ describe("TechnicianProfileInfoView", () => {
     expect(markup).toContain('data-testid="technician-profile-services"');
   });
 
-  it("uses product defaults instead of unread labels when aggregate data is absent", () => {
+  it("uses profile defaults without inventing unavailable service-card aggregates", () => {
     const markup = renderView({
       ...model,
       acceptanceRatePercent: null,
@@ -144,7 +144,7 @@ describe("TechnicianProfileInfoView", () => {
     expect(text).toContain("评价5.0/5");
     expect(text).toContain("0 次");
     expect(text).toContain("完成订单数0");
-    expect(text).not.toContain("未读取");
+    expect(text).toContain("未读取");
   });
 
   it("always shows four fixed counts and only shows custom multipliers above one", () => {

@@ -15,6 +15,7 @@ import {
 } from "./ApplicationUi";
 import { identityApplicationsApi, type MerchantReview, type TechnicianReview } from "./api";
 import { mergePendingMerchantReviews } from "../../components/admin/adminOperatorSummaryModel";
+import { UnifiedEntityInfoCard } from "../../shared/profile-card/UnifiedEntityInfoCard";
 
 const reviewableStatus = (status: string) => status === "submitted" || status === "under_review";
 
@@ -165,12 +166,29 @@ export function TechnicianApplicationsReviewPage({ embedded = false, searchQuery
     <ReviewShell embedded={embedded} backTo="/merchant" info="查看申请资料和照片，批准入驻、联系申请人或下载包含全部资料和图片的 Excel 简历。" title={embedded ? "员工申请管理" : "技师入驻申请"}>
       {error ? <ApplicationNotice tone="error">{t(error)}</ApplicationNotice> : null}
       {!selected ? (
-        <ApplicationCard className="space-y-2">
+        <ApplicationCard className="space-y-3 overflow-visible">
           {visibleItems.length === 0 ? <ApplicationNotice><span data-testid="technician-applications-empty">{t("暂无申请")}</span></ApplicationNotice> : visibleItems.map((item) => (
-            <button className="flex w-full items-center justify-between gap-3 rounded-[20px] border border-[color:var(--client-line)] p-4 text-left" data-application-status={item.status} key={item.applicationId} onClick={() => void open(item.applicationId)} type="button">
-              <span><span className="block text-sm font-black text-[color:var(--client-text)]">{item.applicantName}</span><span className="mt-1 block text-xs text-[color:var(--client-muted)]">#{item.applicationId} · {t(item.status)}</span></span>
-              <TechnicianApplicationCardStatus status={item.status} t={t} />
-            </button>
+            <div data-application-status={item.status} key={item.applicationId}>
+              <UnifiedEntityInfoCard
+                actionSlot={<TechnicianApplicationCardStatus status={item.status} t={t} />}
+                data={{
+                  kind: "technician",
+                  id: String(item.applicantUserId),
+                  name: item.applicantName,
+                  imageUrl: item.media.find((media) => media.purpose === "portrait")?.url ?? null,
+                  description: item.bio,
+                  languages: [],
+                  tags: [...item.skills, ...item.serviceAreas],
+                  rating: null,
+                  completedOrderCount: null,
+                  distanceKm: null,
+                  favoriteCount: null,
+                  shareCount: null,
+                }}
+                language={language}
+                onOpenDetails={() => void open(item.applicationId)}
+              />
+            </div>
           ))}
         </ApplicationCard>
       ) : (

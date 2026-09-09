@@ -330,7 +330,7 @@ describe("TechnicianPortalPage approved personal-center profile", () => {
     const markup = renderProfile();
     const serviceSectionAt = markup.indexOf('data-testid="technician-profile-services"');
     const serviceSectionTag = markup.slice(markup.lastIndexOf("<section", serviceSectionAt), markup.indexOf(">", serviceSectionAt) + 1);
-    const serviceCardAt = markup.indexOf('data-testid="unified-service-info-card"');
+    const serviceCardAt = markup.indexOf('data-card-kind="service"');
     const serviceCardTag = markup.slice(markup.lastIndexOf("<article", serviceCardAt), markup.indexOf(">", serviceCardAt) + 1);
 
     expect(serviceSectionTag).not.toContain("border");

@@ -41,6 +41,8 @@ export interface TechnicianServicePayload {
   currency: string;
   durationMinutes: number;
   usageCount: number;
+  favoriteCount: number;
+  shareCount: number;
   taxIncluded: true;
   coverImageUrl: string | null;
   images: string[];

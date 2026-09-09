@@ -3494,8 +3494,11 @@ describe("GET /api/v1/openapi.json", () => {
       expect(operation.responses["409"].description).toContain("idempotency");
     }
     expect(needoShare.requestBody.content["application/json"].schema.required).toEqual(
-      expect.arrayContaining(["conversationId", "recipientIdentityId", "idempotencyKey"])
+      expect.arrayContaining(["conversationId", "idempotencyKey"])
     );
+    expect(
+      needoShare.requestBody.content["application/json"].schema.properties
+    ).not.toHaveProperty("recipientIdentityId");
 
     expect(search.parameters).toEqual(
       expect.arrayContaining([

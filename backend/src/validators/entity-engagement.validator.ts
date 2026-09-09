@@ -12,6 +12,18 @@ export const entityTargetSchema = z.discriminatedUnion("targetType", [
       targetType: z.literal("technician"),
       publicId: z.string().regex(/^s\d{10}$/u)
     })
+    .strict(),
+  z
+    .object({
+      targetType: z.literal("service"),
+      publicId: z.string().uuid()
+    })
+    .strict(),
+  z
+    .object({
+      targetType: z.literal("technician_service"),
+      publicId: z.string().uuid()
+    })
     .strict()
 ]);
 
@@ -21,7 +33,7 @@ export const entityFavoriteListQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     pageSize: z.coerce.number().int().positive().max(100).default(20),
-    targetType: z.enum(["shop", "technician"]).optional()
+    targetType: z.enum(["shop", "technician", "service", "technician_service"]).optional()
   })
   .strict();
 
@@ -34,7 +46,6 @@ export const entityFavoriteStatusesBodySchema = z
 export const needoEntityShareBodySchema = z
   .object({
     conversationId: z.number().int().positive().max(2_147_483_647),
-    recipientIdentityId: z.number().int().positive().max(2_147_483_647),
     idempotencyKey: z.string().uuid()
   })
   .strict();

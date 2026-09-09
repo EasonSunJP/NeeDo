@@ -172,6 +172,7 @@ export function buildTechnicianInfoCardData(technician: Technician): TechnicianI
     age: technician.age,
     serviceTypes: technician.skills,
     languages: technician.languages,
+    completedOrderCount: technician.orderCount,
     supportForeigner: technician.canServeForeigners,
     paymentMethods,
     prepayRequired: technician.paymentMethods?.includes("prepay"),

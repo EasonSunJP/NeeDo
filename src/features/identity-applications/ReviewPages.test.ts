@@ -20,6 +20,8 @@ describe("identity application review pages", () => {
   });
 
   it("keeps each technician application card clickable across review outcomes", () => {
+    expect(source).toContain("UnifiedEntityInfoCard");
+    expect(source).toContain('kind: "technician"');
     expect(source).toContain("TechnicianApplicationCardStatus");
     expect(source).toContain('label={t("审核已通过")}');
     expect(source).toContain('label={t("审核未通过")}');

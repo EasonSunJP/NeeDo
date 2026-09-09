@@ -7,6 +7,7 @@ import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { serializeContactCardSnapshotV2, type ImContactCardV2 } from "../domain/im-contact-card";
 import { imMessageInclude, persistImMessageInTransaction } from "./im-message-send.transaction";
+import { loadTechnicianReviewTagSummary } from "./technician-review-tag-summary.repository";
 
 const contactCardMembershipVersionSelect = {
   publicId: true,
@@ -76,15 +77,36 @@ export async function persistImContactCardInTransaction(
       avatarUrl: true,
       identities: {
         where: { isActive: true, deletedAt: null },
-        select: { id: true, type: true },
+        select: {
+          id: true,
+          type: true,
+          publicIdentifier: { select: { publicId: true, deletedAt: true, status: true } }
+        },
         orderBy: [{ isDefault: "desc" }, { id: "asc" }]
       },
       customerProfile: {
         select: {
           bio: true,
+          languages: true,
           isPublic: true,
           visibility: true,
           deletedAt: true
+        }
+      },
+      technicianProfile: {
+        select: {
+          id: true,
+          bio: true,
+          languages: true,
+          deletedAt: true,
+          reviewSummary: { select: { ratingAverage: true } },
+          performanceSummary: { select: { completedOrderCount: true, deletedAt: true } },
+          _count: {
+            select: {
+              entityFavorites: { where: { deletedAt: null } },
+              entityShareEvents: { where: { deletedAt: null } }
+            }
+          }
         }
       },
       ekycVerifications: {
@@ -158,22 +180,67 @@ export async function persistImContactCardInTransaction(
   const membership = customerProfile
     ? await resolveContactCardMembershipVersion(tx, target.id, input.transactionNow)
     : null;
+  const technicianProfile =
+    target.technicianProfile?.deletedAt === null ? target.technicianProfile : null;
+  const technicianTags =
+    entityKind === "technician" && technicianProfile
+      ? await loadTechnicianReviewTagSummary(tx as never, technicianProfile.id)
+      : null;
+  const specialIcons: Record<string, string> = {
+    appeal_max: "✨",
+    service_max: "💙",
+    emotion_max: "💛",
+    energy_max: "☀️"
+  };
   const contactCard: ImContactCardV2 = {
     targetUserPublicId: target.needoId,
     needoId: target.needoId,
     nickname: target.username,
     avatarUrl: target.avatarUrl,
     entityKind,
+    entityPublicId:
+      entityKind === "technician"
+        ? (target.identities.find(
+            (identity) =>
+              ["technician", "service", "s"].includes(identity.type) &&
+              identity.publicIdentifier?.deletedAt === null &&
+              identity.publicIdentifier.status === "ACTIVE"
+          )?.publicIdentifier?.publicId ?? null)
+        : null,
     ekycVerified: target.ekycVerifications.length > 0,
     level: experience?.currentLevel ?? null,
     bio:
-      customerProfile?.isPublic && customerProfile.visibility === "public"
-        ? boundedBio(customerProfile.bio)
-        : null,
+      entityKind === "technician"
+        ? boundedBio(technicianProfile?.bio ?? null)
+        : customerProfile?.isPublic && customerProfile.visibility === "public"
+          ? boundedBio(customerProfile.bio)
+          : null,
     tierCode: membership ? normalizeTierCode(membership.tier.code) : null,
     themeVersionPublicId: membership?.publicId ?? null,
     simpleTopColor: membership?.simpleTopColor ?? null,
-    simpleBottomColor: membership?.simpleBottomColor ?? null
+    simpleBottomColor: membership?.simpleBottomColor ?? null,
+    languages:
+      entityKind === "technician"
+        ? stringArray(technicianProfile?.languages)
+        : customerProfile?.isPublic && customerProfile.visibility === "public"
+          ? stringArray(customerProfile.languages)
+          : [],
+    rating:
+      entityKind === "technician"
+        ? Number(technicianProfile?.reviewSummary?.ratingAverage ?? 0)
+        : null,
+    completedOrderCount:
+      entityKind === "technician" && technicianProfile?.performanceSummary?.deletedAt === null
+        ? technicianProfile.performanceSummary.completedOrderCount
+        : null,
+    favoriteCount:
+      entityKind === "technician" ? (technicianProfile?._count.entityFavorites ?? 0) : null,
+    shareCount:
+      entityKind === "technician" ? (technicianProfile?._count.entityShareEvents ?? 0) : null,
+    specialReviewTags: (technicianTags?.special ?? []).map((tag) => ({
+      ...tag,
+      icon: specialIcons[tag.code] ?? "✦"
+    }))
   };
   const metadata = serializeContactCardSnapshotV2(contactCard);
   const messageOutcome = await persistImMessageInTransaction(tx, {
@@ -254,6 +321,14 @@ export function contactCardRequestFingerprint(input: {
       })
     )
     .digest("hex");
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .slice(0, 12)
+    : [];
 }
 
 function normalizeTierCode(value: string): ImContactCardV2["tierCode"] {

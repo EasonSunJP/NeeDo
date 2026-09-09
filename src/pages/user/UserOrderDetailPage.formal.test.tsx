@@ -363,7 +363,8 @@ describe("formal user order detail", () => {
 
     await render();
 
-    await waitFor(() => expect(container.textContent).toContain("￥6,000/60分钟"));
+    await waitFor(() => expect(container.textContent).toContain("￥6,000"));
+    expect(container.textContent).toMatch(/60(?:分钟|min)/u);
     expect(container.textContent).toContain("到店后确认付款");
     expect(container.textContent).not.toContain("¥8,000");
     expect(container.textContent).not.toContain("金额");

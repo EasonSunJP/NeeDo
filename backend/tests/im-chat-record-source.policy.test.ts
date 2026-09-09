@@ -109,7 +109,19 @@ describe("IM chat-record authoritative snapshot type contract", () => {
       snapshotMetadata: {
         snapshotVersion: 1,
         type: "contact-card",
-        display: { contactCard: { snapshotVersion: 2, ...contactCard } }
+        display: {
+          contactCard: {
+            snapshotVersion: 2,
+            ...contactCard,
+            entityPublicId: null,
+            rating: null,
+            completedOrderCount: null,
+            favoriteCount: null,
+            shareCount: null,
+            languages: [],
+            specialReviewTags: []
+          }
+        }
       }
     });
   });

@@ -383,6 +383,8 @@ const serviceRecordForApi = (id: number, shopId: number | null) => ({
   currency: "JPY",
   durationMinutes: 60,
   usageCount: 7,
+  favoriteCount: 11,
+  shareCount: 5,
   taxIncluded: true as const,
   coverImageUrl: null,
   images: [],

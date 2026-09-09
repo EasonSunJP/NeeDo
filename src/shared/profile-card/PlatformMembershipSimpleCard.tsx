@@ -1,110 +1,120 @@
-import type { KeyboardEvent, ReactNode } from "react";
-import { cn } from "../../lib/utils";
-import { resolveReadableTextColor } from "./platformMembershipTheme";
-
-const defaultSimpleTopColor = "#0d2f27";
-const defaultSimpleBottomColor = "#132630";
+import { useEffect, useState, type ReactNode } from "react";
+import { coreReadApi } from "../../features/core-read/api";
+import { useHomeLayoutStore } from "../../state/homeLayoutStore";
+import { useHomeLocationPreference } from "../../state/homeLocationStore";
+import type { SpecialReviewTag } from "./SpecialReviewIconRow";
+import { UnifiedEntityInfoCard } from "./UnifiedEntityInfoCard";
 
 export type PlatformMembershipSimpleCardProps = {
   actionSlot?: ReactNode;
   avatarUrl: string | null;
   bio: string;
   className?: string;
+  completedOrderCount?: number | null;
   displayName: string;
   ekycVerified: boolean;
   entityKind: "customer" | "technician" | "shop" | "service";
+  entityPublicId?: string | null;
+  favoriteCount?: number | null;
+  languages?: string[];
   level: number | null;
   needoId: string;
   onOpenDetails?: () => void;
+  rating?: number | null;
+  reviewCount?: number | null;
+  shareCount?: number | null;
   simpleBottomColor?: string | null;
   simpleTopColor?: string | null;
+  specialReviewTags?: SpecialReviewTag[];
 };
 
-export function PlatformMembershipSimpleCard({
-  actionSlot,
-  avatarUrl,
-  bio,
-  className,
-  displayName,
-  ekycVerified,
-  entityKind,
-  level,
-  needoId,
-  onOpenDetails,
-  simpleBottomColor,
-  simpleTopColor,
-}: PlatformMembershipSimpleCardProps) {
-  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (!onOpenDetails || (event.key !== "Enter" && event.key !== " ")) {
+function useTechnicianDistance(
+  entityKind: PlatformMembershipSimpleCardProps["entityKind"],
+  publicId: string | null | undefined,
+) {
+  const { config } = useHomeLayoutStore();
+  const { state: locationPreference } = useHomeLocationPreference();
+  const selectedLocation =
+    config.locations.find((location) => location.id === config.selectedLocationId) ??
+    config.locations[0];
+  const coordinates =
+    locationPreference.coordinates ?? selectedLocation?.coordinates;
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (
+      entityKind !== "technician" ||
+      !publicId ||
+      !/^s\d{10}$/u.test(publicId) ||
+      !coordinates
+    ) {
+      setDistanceKm(null);
       return;
     }
+    let active = true;
+    void coreReadApi
+      .getTechnicianDetail(publicId, {
+        latitude: coordinates.lat,
+        longitude: coordinates.lng,
+      })
+      .then((detail) => {
+        if (active) setDistanceKm(detail.distanceKm ?? null);
+      })
+      .catch(() => {
+        if (active) setDistanceKm(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [coordinates?.lat, coordinates?.lng, entityKind, publicId]);
 
-    event.preventDefault();
-    onOpenDetails();
-  };
-  const showLevel = entityKind === "customer" && level !== null;
-  const resolvedTopColor = simpleTopColor ?? defaultSimpleTopColor;
-  const resolvedBottomColor = simpleBottomColor ?? defaultSimpleBottomColor;
-  const topTextColor = resolveReadableTextColor(resolvedTopColor);
-  const bottomTextColor = resolveReadableTextColor(resolvedBottomColor);
+  return distanceKm;
+}
+
+/**
+ * Compatibility name retained because membership and IM flows already import
+ * it. Theme colors and level no longer create a second card design.
+ */
+export function PlatformMembershipSimpleCard(
+  props: PlatformMembershipSimpleCardProps,
+) {
+  const publicId = props.entityPublicId ?? null;
+  const distanceKm = useTechnicianDistance(props.entityKind, publicId);
+  const kind =
+    props.entityKind === "technician"
+      ? "technician"
+      : props.entityKind === "shop" || props.entityKind === "service"
+        ? "shop"
+        : "user";
+  const engagementTarget =
+    kind === "technician" && publicId && /^s\d{10}$/u.test(publicId)
+      ? { targetType: "technician" as const, publicId }
+      : kind === "shop" && publicId && /^shop\d{10}$/u.test(publicId)
+        ? { targetType: "shop" as const, publicId }
+        : null;
 
   return (
-    <article
-      aria-label={onOpenDetails ? `${displayName} contact card` : undefined}
-      className={cn(
-        "relative w-[338px] max-w-[84vw] overflow-hidden rounded-[28px] border border-white/10 shadow-[0_12px_30px_rgba(0,0,0,0.22)]",
-        onOpenDetails && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]",
-        className,
-      )}
-      data-platform-membership-simple-card="true"
-      onClick={onOpenDetails}
-      onKeyDown={handleKeyDown}
-      role={onOpenDetails ? "button" : undefined}
-      tabIndex={onOpenDetails ? 0 : undefined}
-    >
-      <div
-        className="min-h-[84px] px-4 pb-4 pl-[116px] pt-4"
-        style={{ backgroundColor: resolvedTopColor, color: topTextColor }}
-      >
-        <div className="flex min-w-0 items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <strong className="truncate text-[18px] font-black leading-6">{displayName}</strong>
-              {ekycVerified ? (
-                <span
-                  aria-label="eKYC verified"
-                  className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#85d20a] text-[10px] font-black leading-none text-[#071106]"
-                  title="eKYC verified"
-                >
-                  ✓
-                </span>
-              ) : null}
-              {showLevel ? (
-                <span className="shrink-0 text-[12px] font-black opacity-80">Lv.{level}</span>
-              ) : null}
-            </div>
-          </div>
-          {actionSlot ? <div className="shrink-0" onClick={(event) => event.stopPropagation()}>{actionSlot}</div> : null}
-        </div>
-      </div>
-
-      <div
-        className="min-h-[112px] px-4 pb-4 pl-[116px] pt-3"
-        style={{ backgroundColor: resolvedBottomColor, color: bottomTextColor }}
-      >
-        <p className="truncate text-[12px] font-bold opacity-70">ID {needoId}</p>
-        <p className="mt-2 line-clamp-2 min-h-10 text-[13px] leading-5 opacity-85">{bio || "未设置"}</p>
-      </div>
-
-      <div className="absolute left-4 top-[48px] h-[88px] w-[88px] overflow-hidden rounded-[24px] border-2 border-white/42 bg-black/20 shadow-[0_10px_24px_rgba(0,0,0,0.28)]">
-        {avatarUrl ? (
-          <img alt="" className="h-full w-full object-cover" src={avatarUrl} />
-        ) : (
-          <span className="grid h-full w-full place-items-center text-2xl font-black text-white/80">
-            {displayName.slice(0, 1)}
-          </span>
-        )}
-      </div>
-    </article>
+    <UnifiedEntityInfoCard
+      actionSlot={props.actionSlot}
+      className={props.className}
+      data={{
+        kind,
+        id: publicId ?? props.needoId,
+        name: props.displayName,
+        imageUrl: props.avatarUrl,
+        description: props.bio || null,
+        languages: props.languages ?? [],
+        tags: [],
+        rating: props.rating ?? null,
+        reviewCount: props.reviewCount ?? null,
+        completedOrderCount: props.completedOrderCount ?? null,
+        distanceKm,
+        favoriteCount: props.favoriteCount ?? null,
+        shareCount: props.shareCount ?? null,
+        engagementTarget,
+        specialReviewTags: props.specialReviewTags ?? [],
+      }}
+      onOpenDetails={props.onOpenDetails}
+    />
   );
 }

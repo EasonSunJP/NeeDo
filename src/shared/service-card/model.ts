@@ -6,6 +6,15 @@ export type UnifiedServiceInfoCardData = {
   currency: string;
   durationMinutes: number | null;
   usageCount: number | null;
+  engagementTarget?: {
+    targetType: "service" | "technician_service";
+    publicId: string;
+  } | null;
+  favoriteCount?: number | null;
+  shareCount?: number | null;
+  isFavorited?: boolean;
+  isBookable?: boolean | null;
+  distanceKm?: number | null;
   shopPublicId: string | null;
   shopAddress: string | null;
   description: string | null;

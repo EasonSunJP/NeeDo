@@ -70,12 +70,14 @@ describe("shared platform membership cards", () => {
     expect(markup.match(/English/g)).toHaveLength(1);
   });
 
-  it("omits level for technician/shop cards and truncates the simple card", () => {
+  it("routes membership simple cards through the unified design", () => {
     const markup = renderToStaticMarkup(<PlatformMembershipSimpleCard {...profile} bio={"long ".repeat(80)} entityKind="technician" simpleBottomColor={theme.simpleBottomColor} simpleTopColor={theme.simpleTopColor} />);
-    expect(markup.toLowerCase()).toContain(theme.simpleTopColor.toLowerCase());
-    expect(markup.toLowerCase()).toContain(theme.simpleBottomColor.toLowerCase());
+    expect(markup).toContain('data-testid="unified-info-card"');
+    expect(markup).toContain('data-card-kind="technician"');
+    expect(markup.toLowerCase()).not.toContain(theme.simpleTopColor.toLowerCase());
+    expect(markup.toLowerCase()).not.toContain(theme.simpleBottomColor.toLowerCase());
     expect(markup).not.toContain("Lv.37");
-    expect(markup).toContain("line-clamp-2");
+    expect(markup).toContain("line-clamp-3");
   });
 
   it("centrally resolves readable foregrounds without enforcing theme contrast", () => {

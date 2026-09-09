@@ -160,7 +160,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(servicesSource).toContain('aria-label="服务分类"');
     expect(servicesSource).toContain("当前没有已保存的正式技师服务");
     expect(servicesSource).toContain("<UnifiedServiceInfoCard");
-    expect(servicesSource).toContain('variant="showcase"');
+    expect(servicesSource).not.toContain('variant="showcase"');
     expect(servicesSource).toContain('label="上移"');
     expect(servicesSource).toContain('label="下移"');
     expect(servicesSource).toContain('label="编辑"');

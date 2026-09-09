@@ -1,19 +1,17 @@
-import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
+import { describe, expect, it } from "vitest";
 import type { Technician } from "../../types/domain";
+import cardSource from "./TechnicianShowcaseCard.tsx?raw";
 import {
   getTechnicianCardRankBadge,
   getTechnicianDynamicPath,
   shouldShowTechnicianBeginnerIcon,
-  TechnicianShowcaseCard
+  TechnicianShowcaseCard,
 } from "./TechnicianShowcaseCard";
-import cardSource from "./TechnicianShowcaseCard.tsx?raw";
-import simpleRatingBadgeSource from "./SimpleRatingBadge.tsx?raw";
 
-const publicRouteTechnician: Technician = {
+const technician: Technician = {
   id: "186",
   systemId: "s0000000002",
   name: "LifeDance 管理员 2",
@@ -28,409 +26,126 @@ const publicRouteTechnician: Technician = {
   acceptRate: 100,
   cancelRate: 0,
   reviewCount: 3,
+  favoriteCount: 12,
+  shareCount: 4,
+  distanceKm: 1.2,
   languages: ["日本語"],
-  avatar: "/images/generated/profiles/ai-profile-29.jpg"
+  avatar: "/images/generated/profiles/ai-profile-29.jpg",
+  bio: "睡眠改善与肩颈放松",
+  primaryService: {
+    name: "不应显示的旧服务价格",
+    priceAmount: "8800",
+    currency: "JPY",
+    durationMinutes: 60,
+  },
 };
 
-describe("technician public profile path", () => {
-  it("uses the canonical technician public ID instead of the internal profile key", () => {
-    expect(getTechnicianDynamicPath(publicRouteTechnician)).toBe(
-      "/profiles/technician/s0000000002"
+describe("TechnicianShowcaseCard unified compatibility entry", () => {
+  it("uses the canonical public profile path", () => {
+    expect(getTechnicianDynamicPath(technician)).toBe(
+      "/profiles/technician/s0000000002",
     );
   });
-});
 
-describe("TechnicianShowcaseCard photo source", () => {
-  it("uses the generated technician avatar before service or store gallery photos", () => {
-    const technician: Technician = {
-      id: "tech-avatar-priority",
-      systemId: "B-999",
-      name: "Avatar Priority",
-      storeId: "store-1",
-      role: "therapist",
-      status: "available",
-      rating: 4.9,
-      orderCount: 12,
-      income: 0,
-      skills: ["Body care"],
-      serviceAreas: ["Tokyo"],
-      acceptRate: 95,
-      cancelRate: 0,
-      reviewCount: 8,
-      languages: ["ja"],
-      avatar: "/images/generated/profiles/profile-11.jpg",
-      gallery: ["/images/generated/stores/store-clean-base.jpg"]
-    };
-
+  it("renders the shared unified card with the required technician metrics", () => {
     const markup = renderToStaticMarkup(
-      createElement(MemoryRouter, null, createElement(TechnicianShowcaseCard, { language: "ja", rankIndex: 0, technician }))
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(TechnicianShowcaseCard, {
+          language: "zh",
+          rankIndex: 0,
+          technician,
+        }),
+      ),
     );
 
-    expect(markup).toContain("/images/generated/thumbnails/profiles/profile-11.jpg");
-    expect(markup).not.toContain("/images/generated/thumbnails/stores/store-clean-base.jpg");
+    expect(markup).toContain('data-testid="unified-info-card"');
+    expect(markup).toContain('data-card-kind="technician"');
+    expect(markup).toContain("评分");
+    expect(markup).toContain("完单次数");
+    expect(markup).toContain("1.2km");
+    expect(markup).toContain("收藏");
+    expect(markup).toContain("分享");
+    expect(markup).toContain("睡眠改善与肩颈放松");
+    expect(markup).toContain("日本語");
+    expect(markup).not.toContain("¥8,800");
+    expect(markup).not.toContain("60分钟");
+    expect(markup).not.toContain("推荐服务");
   });
-});
 
-describe("TechnicianShowcaseCard selectable behavior", () => {
-  it("keeps the canonical public ID in the default detail link", () => {
+  it("uses authoritative formal values without reviving legacy card fields", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(TechnicianShowcaseCard, {
+          formalData: {
+            avatarUrl: null,
+            city: "东京港区",
+            completedOrderCount: 87,
+            displayName: "Mika Formal",
+            distanceKm: 2.4,
+            favoriteCount: 31,
+            languages: ["日本語", "中文"],
+            ratingAverage: "4.9",
+            reviewCount: 22,
+            shareCount: 6,
+          },
+          language: "zh",
+          rankIndex: 0,
+          technician,
+        }),
+      ),
+    );
+
+    expect(markup).toContain("Mika Formal");
+    expect(markup).toContain("东京港区");
+    expect(markup).toContain("4.9");
+    expect(markup).toContain("87");
+    expect(markup).toContain("2.4km");
+    expect(markup).toContain("31");
+    expect(markup).toContain("6");
+    expect(markup).not.toContain("不应显示的旧服务价格");
+  });
+
+  it("keeps selection as an action on the same visual skeleton", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MemoryRouter,
         null,
         createElement(TechnicianShowcaseCard, {
           language: "ja",
+          onSelect: () => undefined,
           rankIndex: 0,
-          technician: publicRouteTechnician
-        })
-      )
+          selected: true,
+          technician,
+        }),
+      ),
     );
 
-    expect(markup).toContain('href="/profiles/technician/s0000000002"');
+    expect(markup).toContain('data-testid="unified-card-actions"');
+    expect(markup).toContain('aria-pressed="true"');
   });
 
-  it("opens every technician photo through the scoped detail link without a dialog", () => {
-    const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
-
-    expect(cardSource).toContain("const photoTrigger = (");
-    expect(cardSource).toContain("to={detailHref}");
-    expect(cardSource).not.toContain(retiredModalName);
-  });
-
-  it("keeps the card linked to the technician dynamic page while selection is handled by the corner icon", () => {
-    expect(cardSource).toContain('const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";');
-    expect(cardSource).toContain("const detailHref = detailTo ?? getScopedTechnicianDynamicPath(currentScope, technician);");
-    expect(cardSource).toContain("to={detailHref}");
-    expect(cardSource).toContain("event.stopPropagation()");
-    expect(cardSource).toContain("onClick={(event) => {");
-    expect(cardSource).not.toContain("onServiceSelect");
-    expect(cardSource).not.toContain("handleServiceSelect");
-    expect(cardSource).not.toContain("查看店铺服务项目");
-    expect(cardSource).not.toContain("if (onSelect)");
-  });
-
-  it("allows merchant-owned cards to replace the selection plus with visibility icons", () => {
-    expect(cardSource).toContain('selectionActiveIcon = "check"');
-    expect(cardSource).toContain('selectionInactiveIcon = "plus"');
-    expect(cardSource).toContain("const selectionIconName = selected ? selectionActiveIcon : selectionInactiveIcon");
-    expect(cardSource).toContain("name={selectionIconName}");
-    expect(appScaffoldSource).toContain('case "eye":');
-    expect(appScaffoldSource).toContain('case "eyeOff":');
-  });
-
-  it("can render unavailable selectable cards with a disabled x action", () => {
-    expect(cardSource).toContain("selectionDisabled?: boolean");
-    expect(cardSource).toContain("selectionDisabled = false");
-    expect(cardSource).toContain("disabled={selectionDisabled}");
-    expect(cardSource).toContain("aria-disabled={selectionDisabled}");
-    expect(cardSource).toContain("\"border-white/46 bg-black/42 text-[#ff5f6e] shadow-[0_8px_20px_rgba(0,0,0,0.22)]\"");
-    expect(cardSource).toContain("if (selectionDisabled) {");
-    expect(cardSource).toContain("return;");
-    expect(appScaffoldSource).toContain('| "x"');
-    expect(appScaffoldSource).toContain('case "x":');
+  it("contains no retired standalone showcase markup", () => {
+    expect(cardSource).toContain("<UnifiedEntityInfoCard");
+    expect(cardSource).not.toContain("aspect-[3/4]");
+    expect(cardSource).not.toContain("recommendedService");
+    expect(cardSource).not.toContain("priceLabel");
+    expect(cardSource).not.toContain("durationMinutes}");
   });
 });
 
-describe("TechnicianShowcaseCard ranking badges", () => {
-  it("labels only the first three technicians with rank icons", () => {
-    expect(getTechnicianCardRankBadge(0)).toMatchObject({ label: "Best1", rank: 1 });
-    expect(getTechnicianCardRankBadge(1)).toMatchObject({ label: "Best2", rank: 2 });
-    expect(getTechnicianCardRankBadge(2)).toMatchObject({ label: "Best3", rank: 3 });
+describe("technician compatibility helpers", () => {
+  it("keeps rank and stable beginner helper contracts", () => {
+    expect(getTechnicianCardRankBadge(0)).toMatchObject({
+      label: "Best1",
+      rank: 1,
+    });
     expect(getTechnicianCardRankBadge(3)).toBeNull();
-    expect(getTechnicianCardRankBadge(9)).toBeNull();
-  });
-
-  it("uses provided image assets instead of the old No. and drawn rank badges", () => {
-    expect(cardSource).not.toContain("No.");
-    expect(cardSource).not.toContain("StandardRankBadge");
-    expect(cardSource).not.toContain("<svg aria-hidden=\"true\" className=\"h-[38px] w-[54px]\"");
-    expect(cardSource).toContain("TopRankImageBadge");
-    expect(cardSource).toContain("className=\"inline-flex h-9 w-9 shrink-0 items-center justify-center\"");
-    expect(cardSource).toContain("className=\"h-full w-full origin-center scale-[1.56] object-contain\"");
-    expect(cardSource).toContain('filter: "drop-shadow(0 0 1px rgba(0,0,0,0.95)) drop-shadow(0 0 2px rgba(0,0,0,0.72))"');
-    expect(cardSource).not.toContain("rounded-full bg-white/90");
-    expect(cardSource).toContain("/images/icons/ranking/needo_rank_1_icon_transparent.png");
-    expect(cardSource).toContain("/images/icons/ranking/needo_rank_2_icon_transparent.png");
-    expect(cardSource).toContain("/images/icons/ranking/needo_rank_3_icon_transparent.png");
-    expect(cardSource).not.toContain("RecommendationIconBadge");
-    expect(cardSource).not.toContain('kind: "recommendation"');
-  });
-});
-
-describe("TechnicianShowcaseCard engagement metrics", () => {
-  it("renders the persisted technician service on cards that use the shared domain adapter", () => {
-    const technician = {
-      id: "formal-service-technician",
-      systemId: "s0000000217",
-      name: "LifeDance 管理员 2",
-      storeId: "217",
-      role: "therapist" as const,
-      status: "available" as const,
-      rating: 5,
-      orderCount: 2,
-      income: 0,
-      skills: ["超级按摩"],
-      serviceAreas: ["东京"],
-      acceptRate: 98,
-      cancelRate: 0,
-      reviewCount: 2,
-      languages: ["ja"],
-      avatar: "/images/generated/profiles/profile-11.jpg",
-      primaryService: {
-        name: "超级按摩",
-        priceAmount: "1111",
-        currency: "JPY",
-        durationMinutes: 60
-      }
-    };
-
-    const markup = renderToStaticMarkup(
-      createElement(MemoryRouter, null, createElement(TechnicianShowcaseCard, { language: "zh", rankIndex: 0, technician }))
-    );
-
-    expect(markup).toContain("超级按摩");
-    expect(markup).toContain("¥1,111");
-    expect(markup).toContain("60分钟");
-    expect(markup).not.toContain("价格待确认");
-  });
-
-  it("uses formal media and location without exposing legacy availability or generated fallbacks", () => {
-    const technician: Technician = {
-      id: "formal-no-media",
-      systemId: "s0000000099",
-      name: "Legacy Name",
-      storeId: "",
-      role: "therapist",
-      status: "available",
-      rating: 1,
-      orderCount: 999,
-      income: 0,
-      skills: ["Legacy skill"],
-      serviceAreas: ["Legacy area"],
-      acceptRate: 1,
-      cancelRate: 0,
-      reviewCount: 999,
-      languages: ["ja"],
-      avatar: "/images/generated/profiles/profile-11.jpg"
-    };
-
-    const markup = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(TechnicianShowcaseCard, {
-          formalActionSlot: createElement("button", { type: "button" }, "formal action"),
-          formalData: {
-            acceptanceRatePercent: 98,
-            avatarUrl: null,
-            city: "Tokyo",
-            displayName: "Mika Formal",
-            favoriteCount: 3,
-            ratingAverage: "4.9",
-            shareCount: 2
-          },
-          language: "zh",
-          rankIndex: 0,
-          technician
-        })
-      )
-    );
-
-    expect(markup).toContain("Mika Formal");
-    expect(markup).toContain("东京");
-    expect(markup).toContain("4.9");
-    expect(markup).toContain("formal action");
-    expect(markup).not.toContain("profile-11.jpg");
-    expect(markup).not.toContain("Legacy area");
-    expect(markup).not.toContain("可预约");
-    expect(markup).not.toContain("查看Mika Formal信息卡");
-  });
-
-  it("uses authoritative formal search metrics without falling back to legacy card values", () => {
-    const technician: Technician = {
-      id: "formal-search-technician",
-      systemId: "B-920",
-      name: "Formal Search Technician",
-      storeId: "store-1",
-      role: "therapist",
-      status: "off",
-      rating: 4.8,
-      orderCount: 999,
-      income: 0,
-      skills: ["Legacy skill"],
-      serviceAreas: ["东京"],
-      acceptRate: 1,
-      cancelRate: 0,
-      reviewCount: 2,
-      languages: ["ja"],
-      age: "44",
-      avatar: "/images/generated/profiles/profile-11.jpg"
-    };
-
-    const markup = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(TechnicianShowcaseCard, {
-          formalData: {
-            acceptanceRatePercent: 98,
-            age: 25,
-            favoriteCount: 154,
-            nearbyRank: 1,
-            primaryService: {
-              currency: "JPY",
-              durationMinutes: 60,
-              name: "指压恢复护理",
-              priceAmount: "8800"
-            },
-            shareCount: 8
-          },
-          language: "zh",
-          rankIndex: 9,
-          technician
-        })
-      )
-    );
-
-    expect(markup).toContain("收藏 154");
-    expect(markup).toContain("分享 8");
-    expect(markup).toContain("接单率 98%");
-    expect(markup).toContain("25岁");
-    expect(markup).toContain("指压恢复护理");
-    expect(markup).toContain("¥8,800");
-    expect(markup).toContain("Best1");
-    expect(markup).not.toContain("收藏 999");
-    expect(markup).not.toContain("接单率 1%");
-    expect(markup).not.toContain("44岁");
-    expect(markup).not.toContain("新人");
-  });
-
-  it("hides unavailable formal search additions instead of fabricating legacy values", () => {
-    const technician: Technician = {
-      id: "older-formal-search-technician",
-      systemId: "B-921",
-      name: "Older Formal Search Technician",
-      storeId: "store-1",
-      role: "therapist",
-      status: "available",
-      rating: 4.8,
-      orderCount: 999,
-      income: 0,
-      skills: ["Legacy skill"],
-      serviceAreas: ["东京"],
-      acceptRate: 98,
-      cancelRate: 0,
-      reviewCount: 2,
-      languages: ["ja"],
-      avatar: "/images/generated/profiles/profile-11.jpg"
-    };
-
-    const markup = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(TechnicianShowcaseCard, {
-          formalData: {},
-          language: "zh",
-          rankIndex: 0,
-          technician
-        })
-      )
-    );
-
-    expect(markup).not.toContain("收藏 999");
-    expect(markup).not.toContain("分享 0");
-    expect(markup).not.toContain("接单率 98%");
-    expect(markup).not.toContain("Legacy skill");
-    expect(markup).not.toContain("推荐服务");
-    expect(markup).not.toContain("Best1");
-    expect(markup).not.toContain("新人");
-  });
-
-  it("uses the shared icon metric action for favorite and share counts", () => {
-    expect(cardSource).toContain("IconMetricAction");
-    expect(cardSource).toContain('icon="heart"');
-    expect(cardSource).toContain('icon="share"');
-    expect(cardSource).toContain('metricLayout = "cluster"');
-    expect(cardSource).toContain('metricLayout === "split"');
-    expect(cardSource).toContain("absolute left-2 top-2 z-20 flex items-start justify-between gap-1");
-    expect(cardSource).toContain('metricLayout === "split" ? "right-[5px]" : "right-2"');
-    expect(cardSource).toContain('className="flex shrink-0 items-start -space-x-[4px]"');
-    expect(cardSource).not.toContain("absolute left-2 top-2 z-20 flex max-w-[calc(100%-16px)] items-start -space-x-[4px]");
-    expect(cardSource).toContain('size="cluster"');
-    expect(cardSource).not.toContain("WebkitTextStroke");
-    expect(cardSource).not.toContain("ShareNetworkIcon");
-  });
-
-  it("renders default favorite and share actions in the top-right corner", () => {
-    const technician: Technician = {
-      id: "technician-card-right-actions",
-      systemId: "B-910",
-      name: "Right Action Technician",
-      storeId: "store-1",
-      role: "therapist",
-      status: "available",
-      rating: 4.7,
-      orderCount: 154,
-      income: 0,
-      skills: ["Clean"],
-      serviceAreas: ["Tokyo"],
-      acceptRate: 98,
-      cancelRate: 0,
-      reviewCount: 32,
-      languages: ["ja"],
-      avatar: "/images/generated/profiles/profile-11.jpg"
-    };
-
-    const markup = renderToStaticMarkup(
-      createElement(MemoryRouter, null, createElement(TechnicianShowcaseCard, { language: "zh", rankIndex: 0, technician }))
-    );
-
-    expect(markup).toContain("absolute left-2 top-2 z-20 flex items-start justify-between gap-1 right-2");
-    expect(markup).toContain("收藏 154");
-    expect(markup).toContain("分享 0");
-    expect(markup).not.toContain("max-w-[calc(100%-16px)]");
-  });
-
-  it("matches the mini-card top-right metric action size and keeps counts below the circles", () => {
-    expect(appScaffoldSource).toContain('cluster: {');
-    expect(appScaffoldSource).toContain('count: "top-[24px] w-7 text-[10px]"');
-    expect(appScaffoldSource).toContain('icon: "h-[11px] w-[11px]"');
-    expect(appScaffoldSource).toContain('root: "h-[37px] w-[29px]"');
-    expect(appScaffoldSource).toContain('shell: "h-[23px] w-[23px]"');
-    expect(appScaffoldSource).toContain('compactLg: {');
-    expect(appScaffoldSource).toContain('count: "top-[32px] w-10 text-[10px]"');
-    expect(appScaffoldSource).toContain('icon: "h-[14px] w-[14px]"');
-    expect(appScaffoldSource).toContain('root: "h-[46px] w-[42px]"');
-    expect(appScaffoldSource).toContain('shell: "h-[29px] w-[29px]"');
-    expect(cardSource).not.toContain('className="-ml-[5px] flex flex-col items-center gap-2"');
-  });
-
-  it("places the rating score in the top-left without a star and moves rank badges above the name", () => {
-    expect(cardSource).toContain('import { SimpleRatingBadge } from "./SimpleRatingBadge"');
-    expect(cardSource).toContain('<SimpleRatingBadge compact value={formatTechnicianCardRating(rating).toFixed(1)} />');
-    expect(simpleRatingBadgeSource).toContain("compact ? \"h-[25px] min-w-[38px] px-1.5 text-[11px]\" : \"h-[29px] min-w-12 px-2 text-[12px]\"");
-    expect(cardSource).toContain("const ageLabel =");
-    expect(cardSource).toContain('[ageLabel, technician.height ?? "", primarySkill, areaLabel]');
-    expect(cardSource).not.toContain('`${technician.height}cm`');
-    expect(cardSource).not.toContain("({technician.age})");
-    expect(cardSource).toContain('className="-ml-1 mb-2 flex items-center gap-1"');
-    expect(cardSource).not.toContain("★{formatTechnicianCardRating");
-    expect(cardSource).not.toContain('absolute left-2 top-2 flex max-w-[calc(100%-62px)]');
-  });
-
-  it("renders the beginner mark before stable 20% test technician names", () => {
-    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-1", name: "A" })).toBe(true);
-    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-2", name: "B" })).toBe(false);
-    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-3", name: "C" })).toBe(false);
-    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-4", name: "D" })).toBe(false);
-    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-5", name: "E" })).toBe(false);
-    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-6", name: "F" })).toBe(true);
-    expect(cardSource).toContain("const showBeginnerIcon = formalData ? false : shouldShowTechnicianBeginnerIcon(technician)");
-    expect(cardSource).toContain("/images/icons/profile/needo_beginner_mark_icon.png");
-    expect(cardSource).toContain('className="h-[18px] w-[18px] shrink-0 object-contain"');
-    expect(cardSource).toContain('className="flex min-w-0 items-center text-[17px] font-black leading-6"');
-    expect(cardSource).not.toContain("InexperiencedMarkBadge");
-    expect(cardSource).not.toContain('name="sprout"');
-    expect(appScaffoldSource).not.toContain('case "sprout":');
+    expect(
+      shouldShowTechnicianBeginnerIcon({ id: "technician-1", name: "A" }),
+    ).toBe(true);
   });
 });

@@ -221,7 +221,17 @@ const createFixture = async () => {
           publicId: "shop0000000001",
           isFavorited: true,
           favoriteCount: 2,
-          favoritedAt: now
+          favoritedAt: now,
+          card: {
+            kind: "shop" as const,
+            name: "LifeDance 港区店",
+            description: "ウェルネス",
+            address: "東京都港区",
+            imageUrl: "/media/shop.jpg",
+            rating: 4.8,
+            reviewCount: 32,
+            shareCount: 5
+          }
         }
       ],
       total: 1,
@@ -231,7 +241,9 @@ const createFixture = async () => {
     resolveTarget: jest.fn(async (target) => ({
       ...target,
       shopId: target.targetType === "shop" ? 7 : null,
-      technicianProfileId: target.targetType === "technician" ? 8 : null
+      technicianProfileId: target.targetType === "technician" ? 8 : null,
+      serviceId: target.targetType === "service" ? 9 : null,
+      technicianServiceId: target.targetType === "technician_service" ? 10 : null
     })),
     recordSystemShare: jest.fn(async (input) => ({
       status: "created" as const,
@@ -381,7 +393,7 @@ describe("entity favorites API", () => {
     const needoResponse = await request(fixture.app)
       .post("/api/v1/entities/shop/shop0000000001/shares/needo")
       .set("Authorization", `Bearer ${token}`)
-      .send({ conversationId: 91, recipientIdentityId: 11, idempotencyKey })
+      .send({ conversationId: 91, idempotencyKey })
       .expect(200);
     expect(needoResponse.body.data).toMatchObject({
       eventId: 22,
@@ -393,7 +405,6 @@ describe("entity favorites API", () => {
       expect.objectContaining({ userId: 42 }),
       expect.objectContaining({
         conversationId: 91,
-        recipientIdentityId: 11,
         target: expect.objectContaining({ shopId: 7 }),
         requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
       })

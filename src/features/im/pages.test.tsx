@@ -1731,10 +1731,10 @@ describe("ImConversationRoomPage formal contact-card picker", () => {
     })];
 
     const view = await renderConversationRoom(store);
-    await expect.poll(() => view.container.querySelector("[data-platform-membership-simple-card='true']")).not.toBeNull();
+    await expect.poll(() => view.container.querySelector("[data-testid='unified-info-card'][data-card-kind='user']")).not.toBeNull();
     expect(view.container.textContent).toContain("山田花子");
-    expect(view.container.textContent).toContain("Lv.12");
-    expect(view.container.textContent).toContain("ID u0000000201");
+    expect(view.container.textContent).not.toContain("Lv.12");
+    expect(view.container.textContent).not.toContain("ID u0000000201");
     expect(view.container.textContent).toContain("预约前请先确认时间、语言和付款方式。");
     await act(async () => view.root.unmount());
   });
@@ -1774,10 +1774,10 @@ describe("ImConversationRoomPage formal contact-card picker", () => {
 
     const view = await renderRoutedConversationRoom(store);
     await expect.poll(() => view.container.querySelector<HTMLElement>(
-      "[data-platform-membership-simple-card='true']",
+      "[data-testid='unified-info-card'][data-card-kind='user']",
     )).toBeTruthy();
     await act(async () => {
-      view.container.querySelector<HTMLElement>("[data-platform-membership-simple-card='true']")!.click();
+      view.container.querySelector<HTMLElement>("button[aria-label='查看用户 山田花子']")!.click();
       await Promise.resolve();
       await Promise.resolve();
     });

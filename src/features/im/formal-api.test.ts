@@ -67,10 +67,10 @@ describe("formal IM adapter", () => {
 
   it("declares self in both formal directory profile contracts", () => {
     const relationshipContract =
-      'relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";';
+      /relationship:\s*(?:\|\s*)?"none"\s*\|\s*"friend"\s*\|\s*"incoming_pending"\s*\|\s*"outgoing_pending"\s*\|\s*"self";/u;
 
-    expect(realtimeApiSource).toContain(relationshipContract);
-    expect(imModelSource).toContain(relationshipContract);
+    expect(realtimeApiSource).toMatch(relationshipContract);
+    expect(imModelSource).toMatch(relationshipContract);
   });
 
   it("maps real conversations and reciprocal contacts into the original IM model", async () => {

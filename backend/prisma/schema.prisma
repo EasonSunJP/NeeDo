@@ -2289,6 +2289,8 @@ model EntityFavorite {
   userId              Int       @map("user_id")
   shopId              Int?      @map("shop_id")
   technicianProfileId Int?      @map("technician_profile_id")
+  serviceId           Int?      @map("service_id")
+  technicianServiceId Int?      @map("technician_service_id")
   activeKey           String?   @unique(map: "entity_favorites_active_key_key") @map("active_key") @db.VarChar(191)
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
@@ -2297,10 +2299,14 @@ model EntityFavorite {
   user              User               @relation("EntityFavoriteOwner", fields: [userId], references: [id], onDelete: Restrict)
   shop              Shop?              @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  service           Service?           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  technicianService TechnicianService? @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
 
   @@index([userId, deletedAt], map: "entity_favorites_user_deleted_idx")
   @@index([shopId, deletedAt], map: "entity_favorites_shop_deleted_idx")
   @@index([technicianProfileId, deletedAt], map: "entity_favorites_technician_deleted_idx")
+  @@index([serviceId, deletedAt], map: "entity_favorites_service_deleted_idx")
+  @@index([technicianServiceId, deletedAt], map: "entity_favorites_technician_service_deleted_idx")
   @@index([deletedAt], map: "entity_favorites_deleted_idx")
   @@map("entity_favorites")
 }
@@ -2311,6 +2317,8 @@ model EntityShareEvent {
   actorIdentityId     Int                @map("actor_identity_id")
   shopId              Int?               @map("shop_id")
   technicianProfileId Int?               @map("technician_profile_id")
+  serviceId           Int?               @map("service_id")
+  technicianServiceId Int?               @map("technician_service_id")
   channel             EntityShareChannel
   recipientUserId     Int?               @map("recipient_user_id")
   recipientIdentityId Int?               @map("recipient_identity_id")
@@ -2326,6 +2334,8 @@ model EntityShareEvent {
   actorIdentity     UserIdentity       @relation("EntityShareActorIdentity", fields: [actorIdentityId], references: [id], onDelete: Restrict)
   shop              Shop?              @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  service           Service?           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  technicianService TechnicianService? @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
   recipientUser     User?              @relation("EntityShareRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
   recipientIdentity UserIdentity?      @relation("EntityShareRecipientIdentity", fields: [recipientIdentityId], references: [id], onDelete: Restrict)
   conversation      Conversation?      @relation(fields: [conversationId], references: [id], onDelete: Restrict)
@@ -2340,6 +2350,10 @@ model EntityShareEvent {
   @@index([shopId, deletedAt], map: "entity_share_events_shop_deleted_idx")
   @@index([technicianProfileId, createdAt], map: "entity_share_events_technician_created_idx")
   @@index([technicianProfileId, deletedAt], map: "entity_share_events_technician_deleted_idx")
+  @@index([serviceId, createdAt], map: "entity_share_events_service_created_idx")
+  @@index([serviceId, deletedAt], map: "entity_share_events_service_deleted_idx")
+  @@index([technicianServiceId, createdAt], map: "entity_share_events_technician_service_created_idx")
+  @@index([technicianServiceId, deletedAt], map: "entity_share_events_technician_service_deleted_idx")
   @@index([conversationId], map: "entity_share_events_conversation_idx")
   @@index([deletedAt], map: "entity_share_events_deleted_idx")
   @@map("entity_share_events")
@@ -3550,6 +3564,8 @@ model Service {
   exchangeIntelligences ExchangeIntelligence[]
   carouselSlides        CarouselSlide[]
   routeEstimates        RouteEstimate[]
+  entityFavorites       EntityFavorite[]
+  entityShareEvents     EntityShareEvent[]
 
   @@index([categoryId])
   @@index([shopId])
@@ -3600,6 +3616,8 @@ model TechnicianService {
   exchangeClaims            ExchangeClaim[]
   exchangeMatchParticipants ExchangeMatchParticipant[]
   exchangeIntelligences ExchangeIntelligence[]
+  entityFavorites       EntityFavorite[]
+  entityShareEvents     EntityShareEvent[]
 
   @@index([shopId, technicianId, isActive, deletedAt])
   @@index([shopId, isRecommended, isActive, deletedAt])

@@ -41,6 +41,8 @@ const publishedShopWithoutServices = {
   name: "LifeDance Wellness 渋谷",
   city: "Tokyo",
   address: "1-2-3 Shibuya",
+  latitude: { toString: () => "35.6580340" },
+  longitude: { toString: () => "139.7016360" },
   mediaAssets: [],
   publicIdentifier: activeShopIdentifier,
   reviewSummary: null,
@@ -203,6 +205,31 @@ describe("CoreReadRepository multi-entity search", () => {
         take: 20
       })
     );
+  });
+
+  it("computes shop distance from supplied origin and persisted coordinates only", async () => {
+    const fixture = createRepositoryFixture();
+
+    const withOrigin = await fixture.repository.searchShops({
+      entityType: "shop",
+      keywords: [],
+      categoryIds: [],
+      latitude: 35.681236,
+      longitude: 139.767125,
+      page: 1,
+      pageSize: 20
+    });
+    const withoutOrigin = await fixture.repository.searchShops({
+      entityType: "shop",
+      keywords: [],
+      categoryIds: [],
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(withOrigin.list[0]?.distanceKm).toBeGreaterThan(0);
+    expect(withOrigin.list[0]?.distanceKm).toBeLessThan(10);
+    expect(withoutOrigin.list[0]).not.toHaveProperty("distanceKm");
   });
 
   it("searches published technicians directly without requiring a service", async () => {
@@ -416,7 +443,9 @@ describe("CoreReadRepository multi-entity search", () => {
             select: {
               bookingOrders: {
                 where: { status: "COMPLETED", deletedAt: null }
-              }
+              },
+              entityFavorites: { where: { deletedAt: null } },
+              entityShareEvents: { where: { deletedAt: null } }
             }
           }
         })
@@ -598,7 +627,8 @@ describe("CoreReadRepository multi-entity search", () => {
       bio: "肩颈护理",
       serviceArea: "港区",
       yearsExperience: 8,
-      shop: null,
+      shop: publishedShopWithoutServices,
+      technicianShopAffiliations: [],
       services: [],
       status: "published",
       deletedAt: null,
@@ -617,7 +647,10 @@ describe("CoreReadRepository multi-entity search", () => {
     };
     const repository = new CoreReadRepository(client as never);
 
-    await expect(repository.findTechnicianDetail(41)).resolves.toMatchObject({
+    await expect(repository.findTechnicianDetail(41, {
+      latitude: 35.658034,
+      longitude: 139.701636
+    })).resolves.toMatchObject({
       id: 41,
       gender: "female",
       heightCm: 164,
@@ -625,6 +658,7 @@ describe("CoreReadRepository multi-entity search", () => {
       yearsExperience: 8,
       completedOrderCount: 1280,
       acceptanceRatePercent: 98,
+      distanceKm: 0,
       reviewTagSummary: {
         special: [
           { code: "appeal_max", label: "魅力max", count: 0 },

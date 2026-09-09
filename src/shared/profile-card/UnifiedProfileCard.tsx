@@ -1,6 +1,7 @@
-import { BaseInfoCard } from "../info-card";
 import type { InfoCardData, InfoCardVariant } from "../info-card";
+import type { Language } from "../../i18n/translations";
 import type { ExchangeIntelligencePublisherProfileProjection } from "./types";
+import { SocialProfileMiniCard } from "./SocialProfileMiniCard";
 
 function finiteMetric(value: string | null) {
   if (value === null) return undefined;
@@ -90,6 +91,7 @@ export function mapExchangeIntelligencePublisherToProfileData(
     highlightChips: [...publisher.languages, ...publisher.serviceAreas],
     detailPath: publisher.detailPath,
     languages: publisher.languages,
+    completedOrderCount: publisher.completedOrderCount ?? undefined,
     acceptanceRate: publisher.acceptanceRatePercent ?? undefined
   };
 }
@@ -99,13 +101,17 @@ export function UnifiedProfileCard({
   variant,
   dark,
   detailTo,
+  language,
   onOpenDetails
 }: {
   data: InfoCardData;
   variant: InfoCardVariant;
   dark?: boolean;
   detailTo?: string;
+  language?: Language;
   onOpenDetails?: () => void;
 }) {
-  return <BaseInfoCard dark={dark} data={data} detailTo={detailTo} onOpenDetails={onOpenDetails} variant={variant} />;
+  void dark;
+  void variant;
+  return <SocialProfileMiniCard data={data} detailTo={detailTo} language={language} onOpenDetails={onOpenDetails} />;
 }

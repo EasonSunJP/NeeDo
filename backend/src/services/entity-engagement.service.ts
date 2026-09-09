@@ -69,7 +69,6 @@ export class EntityEngagementService {
     publicId: string,
     input: {
       conversationId: number;
-      recipientIdentityId: number;
       idempotencyKey: string;
     }
   ): Promise<EntityShareReceipt> {
@@ -93,8 +92,7 @@ export class EntityEngagementService {
         actorIdentityId,
         targetType,
         publicId,
-        conversationId: input.conversationId,
-        recipientIdentityId: input.recipientIdentityId
+        conversationId: input.conversationId
       })
     });
   }

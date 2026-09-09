@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import centerSource from "./UserCenterPage.tsx?raw";
 
 describe("formal customer center integration", () => {
+  const compactSource = centerSource.replace(/\s+/gu, " ");
+
   it("keeps authenticated customers on the single complete user-center design", () => {
     expect(centerSource).not.toContain("FormalUserCenterPage");
     expect(centerSource).not.toContain("LegacyUserCenterPage");
@@ -17,7 +19,7 @@ describe("formal customer center integration", () => {
     expect(centerSource).not.toContain("getCustomerLevelLabel");
     expect(centerSource).toContain("formalData.wallet.ndp.available");
     expect(centerSource).toContain("hasTestNdpWallet(formalData.wallet)");
-    expect(centerSource).toContain("secondary: testPoints === null ? undefined : `Test NDP ${testPoints}`");
+    expect(compactSource).toContain("secondary: testPoints === null ? undefined : `Test NDP ${testPoints}`");
     expect(centerSource).toContain('data-testid="user-profile-privacy-control"');
     expect(centerSource).toContain("afterDetailsSlot={profilePrivacyControl}");
     expect(centerSource).toContain("我的订单");
@@ -26,7 +28,7 @@ describe("formal customer center integration", () => {
   });
 
   it("derives each reservation count from a status-filtered paginated API total", () => {
-    expect(centerSource).toContain("bookingApi.listOrders({ page: 1, pageSize: 1, status })");
+    expect(compactSource).toContain("bookingApi.listOrders({ page: 1, pageSize: 1, status, });");
     expect(centerSource).toContain('"pending"');
     expect(centerSource).toContain('"confirmed"');
     expect(centerSource).toContain('"inService"');

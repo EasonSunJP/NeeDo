@@ -6,135 +6,53 @@ import type { UnifiedServiceInfoCardData } from "./model";
 import { UnifiedServiceInfoCard } from "./UnifiedServiceInfoCard";
 
 const formalService: UnifiedServiceInfoCardData = {
-  id: "71",
-  coverUrl: "/service.jpg",
-  name: "两小时家庭日常保洁",
-  priceAmount: 1000,
-  currency: "JPY",
-  durationMinutes: 60,
-  usageCount: 18,
-  shopPublicId: "shop0000000217",
-  shopAddress: "東京都中央区銀座1-2-3",
-  description: "厨房、浴室、地面一站式整理。",
-  tags: ["银座", "东京站", "日本桥"]
+  id: "71", coverUrl: "/service.jpg", name: "两小时家庭日常保洁", priceAmount: 1000,
+  currency: "JPY", durationMinutes: 60, usageCount: 18,
+  engagementTarget: { targetType: "service", publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+  favoriteCount: 27, shareCount: 6, isBookable: true, distanceKm: 1.24,
+  shopPublicId: "shop0000000217", shopAddress: "東京都中央区銀座1-2-3",
+  description: "厨房、浴室、地面一站式整理。", tags: ["银座", "东京站", "日本桥"]
 };
 
 describe("UnifiedServiceInfoCard", () => {
-  it("renders the approved technician-profile showcase composition from formal facts", () => {
-    const markup = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(UnifiedServiceInfoCard, {
-          actionSlot: createElement("button", { type: "button" }, "编辑服务"),
-          data: formalService,
-          detailTo: "/services/71",
-          variant: "showcase"
-        })
-      )
-    );
+  it("renders the only approved neon split-card skeleton and metric order", () => {
+    const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, {
+      actionSlot: createElement("button", { type: "button" }, "编辑服务"), data: formalService, detailTo: "/services/71"
+    })));
+    const text = markup.replace(/<[^>]+>/gu, "");
+    expect(markup).toContain('data-testid="unified-info-card"');
+    expect(markup).toContain('data-card-kind="service"');
+    expect(markup).toContain("#b8ff4a");
+    expect(markup).toContain("sm:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]");
+    expect(markup).not.toContain("data-variant");
+    expect(markup).not.toContain("showcase");
+    ["可预约", "利用次数", "距离你", "收藏", "分享"].reduce((lastIndex, item) => {
+      const nextIndex = text.indexOf(item); expect(nextIndex).toBeGreaterThan(lastIndex); return nextIndex;
+    }, -1);
+  });
 
-    expect(markup).toContain('data-variant="showcase"');
-    expect(markup).toContain('data-testid="unified-service-showcase-header"');
-    expect(markup).toMatch(/<header class="[^"]*items-end[^"]*pb-3[^"]*" data-testid="unified-service-showcase-header"/u);
-    expect(markup).toContain('data-testid="unified-service-showcase-cover"');
-    expect(markup).toContain('data-testid="unified-service-showcase-body"');
-    expect(markup).toContain('data-testid="unified-service-showcase-body-grid"');
-    expect(markup).toContain('data-testid="unified-service-showcase-facts"');
-    expect(markup).toContain("两小时家庭日常保洁");
-    expect(markup).toContain("利用回数：");
-    expect(markup).toContain("18");
-    expect(markup).toContain("银座");
-    expect(markup).toContain("厨房、浴室、地面一站式整理。");
-    expect(markup).toContain("￥1,000");
+  it("keeps duration and price as image overlays and content actions outside navigation", () => {
+    const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, {
+      actionSlot: createElement("button", { type: "button" }, "编辑服务"), data: formalService, detailTo: "/services/71"
+    })));
+    expect(markup).toContain('data-testid="unified-card-duration-overlay"');
+    expect(markup).toContain('data-testid="unified-card-price-overlay"');
     expect(markup).toContain("60分钟");
+    expect(markup).toContain("￥1,000");
     expect(markup.indexOf("</a>")).toBeLessThan(markup.indexOf("编辑服务"));
-    expect(markup).toMatch(/class="[^"]*absolute right-3 top-3[^"]*" data-testid="unified-service-info-actions"/u);
-    expect(markup).toContain("grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)]");
-    expect(markup).toContain("min-h-[104px]");
-    expect(markup).not.toContain("min-h-[160px]");
-    expect(markup).toContain("-mt-10");
-    expect(markup).toContain("w-[calc(100%-1rem)]");
-    expect(markup).not.toContain("absolute -top-10");
-    expect(markup).toContain("[overflow-wrap:anywhere]");
-    expect(markup).toContain("line-clamp-2");
-    expect(markup).toContain("pt-[52px]");
-    expect(markup).not.toContain("border-t border-white/10");
   });
 
-  it("renders formal service facts in the single approved order", () => {
-    const markup = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(UnifiedServiceInfoCard, { data: formalService, detailTo: "/services/71" })
-      )
-    );
-    const text = markup.replace(/<[^>]+>/g, "");
-    const facts = [
-      "两小时家庭日常保洁",
-      "￥1,000/60分钟",
-      "利用回数：18",
-      "厨房、浴室、地面一站式整理。",
-      "银座"
-    ];
-
-    expect(markup).toContain('data-testid="unified-service-info-card"');
-    expect(text).not.toContain("店铺 ID");
-    expect(text).not.toContain("shop0000000217");
-    expect(text).not.toContain("店铺地址");
-    expect(text).not.toContain("東京都中央区銀座1-2-3");
-    facts.slice(1).reduce((previousIndex, fact) => {
-      const currentIndex = text.indexOf(fact);
-      expect(currentIndex).toBeGreaterThan(previousIndex);
-      return currentIndex;
-    }, text.indexOf(facts[0]));
-  });
-
-  it("keeps management actions outside the navigation link", () => {
-    const markup = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(UnifiedServiceInfoCard, {
-          actionSlot: createElement("button", { type: "button" }, "服务上移"),
-          data: formalService,
-          detailTo: "/services/71"
-        })
-      )
-    );
-
-    expect(markup.indexOf("</a>")).toBeLessThan(markup.indexOf("服务上移"));
-  });
-
-  it("shows honest unavailable states when formal values are missing", () => {
-    const markup = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(UnifiedServiceInfoCard, {
-          data: {
-            ...formalService,
-            coverUrl: null,
-            description: null,
-            durationMinutes: null,
-            shopAddress: null,
-            shopPublicId: null,
-            tags: [],
-            usageCount: null
-          }
-        })
-      )
-    );
-    const text = markup.replace(/<[^>]+>/g, "");
-
+  it("uses honest unavailable states and never invents zero distance or engagement", () => {
+    const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, { data: {
+      ...formalService, coverUrl: null, description: null, durationMinutes: null, distanceKm: null,
+      favoriteCount: null, shareCount: null, usageCount: null, tags: []
+    }})));
+    const text = markup.replace(/<[^>]+>/gu, "");
     expect(text).toContain("暂无公开图片");
-    expect(text).toContain("￥1,000/时长未读取");
-    expect(text).not.toContain("/0分钟");
-    expect(text).toContain("利用回数：未读取");
-    expect(text).not.toContain("店铺 ID");
-    expect(text).not.toContain("店铺地址");
+    expect(text).toContain("时长未读取");
+    expect(text).toContain("距离未读取");
     expect(text).toContain("暂无简介");
     expect(text).toContain("暂无标签");
+    expect(text).not.toContain("0km");
   });
 });

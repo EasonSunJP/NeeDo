@@ -55,6 +55,8 @@ const servicePayload = (coverImageUrl: string | null = url): TechnicianServicePa
   currency: "JPY",
   durationMinutes: 60,
   usageCount: 7,
+  favoriteCount: 11,
+  shareCount: 5,
   taxIncluded: true,
   coverImageUrl,
   images: [],

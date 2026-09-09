@@ -16,7 +16,7 @@ const shopWithoutAvatar: ShopInfoCardData = {
 };
 
 describe("BaseInfoCard", () => {
-  it("keeps a detail-header fallback visual at its requested fixed size", () => {
+  it("treats legacy variants as compatibility inputs for the single unified design", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MemoryRouter,
@@ -28,12 +28,10 @@ describe("BaseInfoCard", () => {
         }),
       ),
     );
-    const fallbackClass =
-      markup.match(/<div class="([^"]+)">店铺<\/div>/)?.[1] ?? "";
-
-    expect(fallbackClass).toContain("h-16");
-    expect(fallbackClass).toContain("w-16");
-    expect(fallbackClass).not.toContain("h-full");
-    expect(fallbackClass).not.toContain("w-full");
+    expect(markup).toContain('data-testid="unified-info-card"');
+    expect(markup).toContain('data-card-kind="shop"');
+    expect(markup).toContain("LifeDance Wellness 渋谷");
+    expect(markup).toContain('href="/profiles/shop/shop6333731099"');
+    expect(markup).not.toContain("detailHeader");
   });
 });

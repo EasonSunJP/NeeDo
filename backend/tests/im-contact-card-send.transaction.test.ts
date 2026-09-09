@@ -16,6 +16,7 @@ const targetCustomer = {
   identities: [{ id: 520, type: "customer" }],
   customerProfile: {
     bio: "公開プロフィール",
+    languages: ["日本語", "中文"],
     isPublic: true,
     visibility: "public",
     deletedAt: null,
@@ -161,13 +162,20 @@ describe("persistImContactCardInTransaction", () => {
         nickname: "佐藤花子",
         avatarUrl: "/media/sato.jpg",
         entityKind: "customer",
+        entityPublicId: null,
         ekycVerified: true,
         level: 38,
         bio: "公開プロフィール",
         tierCode: "gold",
         themeVersionPublicId: "20000000-0000-4000-8000-000000000003",
         simpleTopColor: "#493613",
-        simpleBottomColor: "#241B0A"
+        simpleBottomColor: "#241B0A",
+        languages: ["日本語", "中文"],
+        rating: null,
+        completedOrderCount: null,
+        favoriteCount: null,
+        shareCount: null,
+        specialReviewTags: []
       }
     });
     expect(tx.user.findFirst).toHaveBeenCalledWith(
@@ -246,7 +254,17 @@ describe("persistImContactCardInTransaction", () => {
   it("never creates or displays a level for a technician-only target", async () => {
     const technician = {
       ...targetCustomer,
-      identities: [{ id: 520, type: "technician" }],
+      identities: [
+        {
+          id: 520,
+          type: "technician",
+          publicIdentifier: {
+            publicId: "s0000000052",
+            deletedAt: null,
+            status: "ACTIVE"
+          }
+        }
+      ],
       customerProfile: null,
       ekycVerifications: []
     };
@@ -261,6 +279,7 @@ describe("persistImContactCardInTransaction", () => {
     expect(storedMetadata()).toMatchObject({
       contactCard: {
         entityKind: "technician",
+        entityPublicId: "s0000000052",
         ekycVerified: false,
         level: null,
         tierCode: null
