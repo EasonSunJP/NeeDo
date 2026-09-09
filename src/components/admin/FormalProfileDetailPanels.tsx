@@ -4,6 +4,7 @@ import { UserPublishedPosts } from "../../features/platform-user-management/User
 import "../../features/platform-user-management/userLogTranslations";
 import type { WorkStatusTarget } from "../../features/technician-work-status/api";
 import {
+  useEffect,
   useId,
   useRef,
   useState,
@@ -38,6 +39,7 @@ import { membershipTierText, privacyModeText, privacyScopeText } from "../../fea
 import {
   type ContactEventTimelineEntry
 } from "../mobile/ContactEventTimeline";
+import { NavigationPageIndicators } from "../ui/NavigationPageIndicators";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { DetailGrid } from "./DetailGrid";
 import {
@@ -407,6 +409,7 @@ export function FormalTabs<TTab extends string>({
   items,
   localization,
   onChange,
+  pageSize,
   variant = "default"
 }: {
   active: TTab;
@@ -414,10 +417,44 @@ export function FormalTabs<TTab extends string>({
   items: TTab[];
   localization: FormalLocalization;
   onChange: (tab: TTab) => void;
+  pageSize?: number;
   variant?: "default" | "flat";
 }) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const { scrollRef, dragScrollProps } = useHorizontalDragScroll({});
+  const normalizedPageSize = pageSize && pageSize > 0 ? Math.floor(pageSize) : items.length;
+  const tabPages = Array.from(
+    { length: Math.max(1, Math.ceil(items.length / Math.max(1, normalizedPageSize))) },
+    (_, pageIndex) => items
+      .slice(pageIndex * normalizedPageSize, (pageIndex + 1) * normalizedPageSize)
+      .map((item, itemIndex) => ({ item, index: pageIndex * normalizedPageSize + itemIndex }))
+  );
+  const [activePage, setActivePage] = useState(() => Math.floor(Math.max(0, items.indexOf(active)) / Math.max(1, normalizedPageSize)));
+  const { scrollRef, dragScrollProps } = useHorizontalDragScroll({
+    onScrollLeftChange: (scrollLeft, element) => {
+      if (tabPages.length <= 1) return;
+      const nextPage = Math.round(scrollLeft / Math.max(1, element.clientWidth));
+      setActivePage(Math.min(Math.max(nextPage, 0), tabPages.length - 1));
+    }
+  });
+
+  const scrollToPage = (pageIndex: number, behavior: ScrollBehavior = "smooth") => {
+    const viewport = scrollRef.current;
+    const nextPage = Math.min(Math.max(pageIndex, 0), tabPages.length - 1);
+    const left = (viewport?.clientWidth ?? 0) * nextPage;
+    if (viewport && typeof viewport.scrollTo === "function") {
+      viewport.scrollTo({ behavior, left });
+    } else if (viewport) {
+      viewport.scrollLeft = left;
+    }
+    setActivePage(nextPage);
+  };
+
+  useEffect(() => {
+    const selectedIndex = items.indexOf(active);
+    if (selectedIndex < 0 || tabPages.length <= 1) return;
+    const selectedPage = Math.floor(selectedIndex / normalizedPageSize);
+    if (selectedPage !== activePage) scrollToPage(selectedPage, "auto");
+  }, [active]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
     const nextIndex = resolveFormalTabKeyboardIndex(event.key, currentIndex, items.length);
@@ -428,6 +465,8 @@ export function FormalTabs<TTab extends string>({
 
     event.preventDefault();
     onChange(items[nextIndex]);
+    const nextPage = Math.floor(nextIndex / Math.max(1, normalizedPageSize));
+    if (nextPage !== activePage) scrollToPage(nextPage);
     tabRefs.current[nextIndex]?.focus();
   };
 
@@ -440,41 +479,63 @@ export function FormalTabs<TTab extends string>({
         {...dragScrollProps}
         aria-label={localization.t("详情分类")}
         className={cn(
-          "scrollbar-none flex w-fit max-w-full cursor-grab select-none items-center gap-1 overflow-x-auto active:cursor-grabbing",
+          "scrollbar-none flex max-w-full cursor-grab select-none overflow-x-auto active:cursor-grabbing",
+          tabPages.length > 1
+            ? "w-full snap-x snap-mandatory overscroll-x-contain"
+            : "w-fit items-center gap-1",
           variant === "default" && "rounded-full border border-line bg-paper p-1"
         )}
         ref={scrollRef}
         role="tablist"
       >
-        {items.map((item, index) => {
-          const selected = item === active;
+        {tabPages.map((page, pageIndex) => (
+          <div
+            className={cn(
+              "flex items-center gap-1",
+              tabPages.length > 1 && "min-w-full snap-start"
+            )}
+            data-formal-tabs-page={pageIndex}
+            key={`formal-tabs-page-${pageIndex}`}
+          >
+            {page.map(({ item, index }) => {
+              const selected = item === active;
 
-          return (
-            <button
-              aria-controls={`${idPrefix}-panel-${index}`}
-              aria-selected={selected}
-              className={cn(
-                "focus-ring h-9 shrink-0 rounded-full border border-transparent px-4 text-sm font-black transition",
-                selected
-                  ? "bg-[color:var(--admin-text,#172033)] text-[color:var(--admin-bg-soft,#fff)] shadow-sm"
-                  : "bg-transparent text-ink/60 hover:bg-white hover:text-ink"
-              )}
-              id={`${idPrefix}-tab-${index}`}
-              key={item}
-              onClick={() => onChange(item)}
-              onKeyDown={(event) => handleKeyDown(event, index)}
-              ref={(node) => {
-                tabRefs.current[index] = node;
-              }}
-              role="tab"
-              tabIndex={selected ? 0 : -1}
-              type="button"
-            >
-              {localization.t(item)}
-            </button>
-          );
-        })}
+              return (
+                <button
+                  aria-controls={`${idPrefix}-panel-${index}`}
+                  aria-selected={selected}
+                  className={cn(
+                    "focus-ring h-9 shrink-0 rounded-full border border-transparent px-4 text-sm font-black transition",
+                    selected
+                      ? "bg-[color:var(--admin-text,#172033)] text-[color:var(--admin-bg-soft,#fff)] shadow-sm"
+                      : "bg-transparent text-ink/60 hover:bg-white hover:text-ink"
+                  )}
+                  id={`${idPrefix}-tab-${index}`}
+                  key={item}
+                  onClick={() => onChange(item)}
+                  onKeyDown={(event) => handleKeyDown(event, index)}
+                  ref={(node) => {
+                    tabRefs.current[index] = node;
+                  }}
+                  role="tab"
+                  tabIndex={selected ? 0 : -1}
+                  type="button"
+                >
+                  {localization.t(item)}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </div>
+      <NavigationPageIndicators
+        activePage={activePage}
+        ariaLabel={localization.t("详情分类分页")}
+        className="mt-3"
+        getPageLabel={(pageNumber) => localization.t("切换到第 {page} 页").replace("{page}", String(pageNumber))}
+        onSelectPage={scrollToPage}
+        pageCount={tabPages.length}
+      />
     </div>
   );
 }

@@ -79,4 +79,33 @@ describe("FormalTabs desktop pointer interaction", () => {
     expect(tabList.scrollLeft).toBe(70);
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("groups overflowing tabs into snap pages and lets indicators navigate them", async () => {
+    await act(async () => {
+      root.render(
+        <FormalTabs
+          active="基础资料"
+          idPrefix="employee"
+          items={["基础资料", "从属与账号", "员工日程", "薪酬与分成", "结算记录", "员工动态"]}
+          localization={localization}
+          onChange={() => {}}
+          pageSize={4}
+        />
+      );
+    });
+
+    const tabList = container.querySelector<HTMLDivElement>('[role="tablist"]')!;
+    Object.defineProperty(tabList, "clientWidth", { configurable: true, value: 320 });
+    const scrollTo = vi.fn();
+    tabList.scrollTo = scrollTo;
+
+    expect(container.querySelectorAll('[data-formal-tabs-page]')).toHaveLength(2);
+    const secondPage = container.querySelector<HTMLButtonElement>(
+      '[data-navigation-page-index="1"]',
+    )!;
+    await act(async () => secondPage.click());
+
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "smooth", left: 320 });
+    expect(secondPage.getAttribute("aria-current")).toBe("page");
+  });
 });

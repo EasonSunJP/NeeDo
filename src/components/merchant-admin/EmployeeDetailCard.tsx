@@ -430,6 +430,7 @@ export function EmployeeDetailCard({
         items={employeeDetailTabs}
         localization={tabLocalization}
         onChange={setActiveTab}
+        pageSize={4}
         variant="flat"
       />
 

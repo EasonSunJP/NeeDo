@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
+import { NavigationPageIndicators } from "../../components/ui/NavigationPageIndicators";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { identityApplicationsApi } from "../identity-applications/api";
 import { merchantPrimaryModules, type MerchantPrimaryModule } from "./merchantModules";
@@ -84,6 +87,7 @@ export function MerchantPrimaryNavCarousel({
   modules?: MerchantPrimaryModule[];
 }) {
   const { canAccessFeature, session } = useAuth();
+  const { language } = useOptionalI18n();
   const viewportRef = useRef<HTMLDivElement>(null);
   const [activePage, setActivePage] = useState(0);
   const [hasNewStaffApplication, setHasNewStaffApplication] = useState(false);
@@ -180,23 +184,18 @@ export function MerchantPrimaryNavCarousel({
           </div>
         ))}
       </div>
-      {pages.length > 1 ? (
-        <div className="mt-3 flex items-center justify-center gap-2 md:hidden">
-          {pages.map((_, index) => (
-            <button
-              aria-label={`切换到第 ${index + 1} 页`}
-              className={cn("h-1.5 rounded-full transition", activePage === index ? "w-5 bg-[color:var(--client-primary)]" : "w-1.5 bg-ink/18")}
-              key={`merchant-primary-dot-${index}`}
-              onClick={() => {
-                const viewport = viewportRef.current;
-                viewport?.scrollTo({ left: viewport.clientWidth * index, behavior: "smooth" });
-                setActivePage(index);
-              }}
-              type="button"
-            />
-          ))}
-        </div>
-      ) : null}
+      <NavigationPageIndicators
+        activePage={activePage}
+        ariaLabel={translateText("店铺导航分页", language)}
+        className="mt-3 md:hidden"
+        getPageLabel={(pageNumber) => translateText("切换到第 {page} 页", language).replace("{page}", String(pageNumber))}
+        onSelectPage={(pageIndex) => {
+          const viewport = viewportRef.current;
+          viewport?.scrollTo({ left: viewport.clientWidth * pageIndex, behavior: "smooth" });
+          setActivePage(pageIndex);
+        }}
+        pageCount={pages.length}
+      />
     </section>
   );
 }

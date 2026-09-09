@@ -82,4 +82,24 @@ describe("MerchantPrimaryNavCarousel", () => {
 
     expect(container.querySelector('[aria-label="有新的员工审核申请"]')).toBeNull();
   });
+
+  it("keeps inactive page indicators visibly distinct instead of transparent", async () => {
+    vi.spyOn(identityApplicationsApi, "listTechnicianReviews").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 1
+    });
+
+    await act(async () => root.render(
+      <MemoryRouter><MerchantPrimaryNavCarousel /></MemoryRouter>
+    ));
+    await flush();
+
+    const indicators = container.querySelectorAll<HTMLButtonElement>('[data-navigation-page-indicator]');
+    expect(indicators).toHaveLength(2);
+    expect(indicators[0]?.getAttribute("aria-current")).toBe("page");
+    expect(indicators[1]?.style.backgroundColor).not.toBe("");
+    expect(indicators[1]?.getAttribute("data-navigation-page-state")).toBe("inactive");
+  });
 });
