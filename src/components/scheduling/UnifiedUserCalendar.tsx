@@ -217,7 +217,6 @@ export type UnifiedUserCalendarProps = {
   searchQuery?: string;
   showSourceDrawer?: boolean;
   scope?: UnifiedCalendarScope;
-  technicianWorkActionsEnabled?: boolean;
   technicians?: Technician[];
 };
 
@@ -5167,7 +5166,6 @@ export function UnifiedUserCalendar({
   searchQuery = "",
   showSourceDrawer = !formalOnly,
   scope = "user",
-  technicianWorkActionsEnabled = true,
   technicians: providedTechnicians
 }: UnifiedUserCalendarProps) {
   const navigate = useNavigate();
@@ -6226,11 +6224,11 @@ export function UnifiedUserCalendar({
           onOpenParticipantFlow={() => setParticipantFlowOpen(true)}
           onAvailabilityCapacityChange={activeScope === "technician" ? setAvailabilityCapacity : undefined}
           onSave={saveDraft}
-          saveDisabled={activeScope === "technician" && technicianWorkActionsEnabled && technicianCreationMode === "availability"
+          saveDisabled={activeScope === "technician" && technicianCreationMode === "availability"
             ? !Number.isInteger(availabilityCapacity) || availabilityCapacity < 1 || availabilityCapacity > 100
             : false}
-          technicianCreationMode={activeScope === "technician" && technicianWorkActionsEnabled ? technicianCreationMode : undefined}
-          onTechnicianCreationModeChange={activeScope === "technician" && technicianWorkActionsEnabled ? setTechnicianCreationMode : undefined}
+          technicianCreationMode={activeScope === "technician" ? technicianCreationMode : undefined}
+          onTechnicianCreationModeChange={activeScope === "technician" ? setTechnicianCreationMode : undefined}
         />
       ) : null}
       {editorDraft && participantFlowOpen && (!formalOnly || activeScope !== "merchant") ? (

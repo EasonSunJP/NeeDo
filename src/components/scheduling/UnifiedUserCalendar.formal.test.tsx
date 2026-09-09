@@ -444,7 +444,7 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(manual?.getAttribute("aria-checked")).toBe("true");
   });
 
-  it("keeps the personal calendar available but hides technician booking actions without a shop", async () => {
+  it("keeps technician creation modes visible for an independent technician", async () => {
     await act(async () => root.render(
       <MemoryRouter>
         <I18nProvider>
@@ -452,7 +452,6 @@ describe("UnifiedUserCalendar formal-only mode", () => {
             currentTechnician={{ ...technicianFixture, storeId: "" }}
             formalOnly
             scope="technician"
-            technicianWorkActionsEnabled={false}
           />
         </I18nProvider>
       </MemoryRouter>
@@ -461,8 +460,8 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="新增行程"]')?.click());
 
     expect(container.querySelector('input[placeholder="新增标题"]')).not.toBeNull();
-    expect(container.querySelector('[role="switch"][aria-label="可排班"]')).toBeNull();
-    expect(container.querySelector('[role="switch"][aria-label="手动预约"]')).toBeNull();
+    expect(container.querySelector('[role="switch"][aria-label="可排班"]')).not.toBeNull();
+    expect(container.querySelector('[role="switch"][aria-label="手动预约"]')).not.toBeNull();
   });
 
   it("creates technician availability inside the shared calendar editor without opening the legacy schedule page", async () => {
