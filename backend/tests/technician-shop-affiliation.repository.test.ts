@@ -401,7 +401,7 @@ describe("TechnicianShopAffiliationRepository", () => {
       expect.objectContaining({
         kind: "availability",
         startsAt: "2026-08-29T12:00:00.000Z",
-        endsAt: "2026-08-29T13:00:00.000Z"
+        endsAt: "2026-08-29T16:00:00.000Z"
       }),
       {
         projectionId: "busy-redacted:2026-08-29T13:00:00.000Z:2026-08-29T15:00:00.000Z",
@@ -413,12 +413,7 @@ describe("TechnicianShopAffiliationRepository", () => {
         title: "其他店铺已有确认安排",
         isClickable: false,
         isEditable: false
-      },
-      expect.objectContaining({
-        kind: "availability",
-        startsAt: "2026-08-29T15:00:00.000Z",
-        endsAt: "2026-08-29T16:00:00.000Z"
-      })
+      }
     ]);
     const serialized = JSON.stringify(result?.find((event) => event.kind === "busy_redacted"));
     expect(serialized).not.toMatch(/shop|order|service|customer|price|address|note|participant/i);

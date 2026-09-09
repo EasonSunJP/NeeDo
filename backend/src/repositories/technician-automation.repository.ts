@@ -183,7 +183,14 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         fulfillmentMode: true,
         paymentMethod: true,
         serviceLocation: { select: { admin1RegionCode: true, admin2RegionCode: true } },
-        scheduleSlot: { select: { startsAt: true, endsAt: true, deletedAt: true } },
+        scheduleSlot: {
+          select: {
+            startsAt: true,
+            endsAt: true,
+            deletedAt: true,
+            availability: { select: { startsAt: true, endsAt: true, isActive: true, deletedAt: true } }
+          }
+        },
         technicianProfile: {
           select: {
             id: true,
@@ -191,6 +198,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
             status: true,
             verifiedAt: true,
             deletedAt: true,
+            workState: true,
             user: { select: { isActive: true, deletedAt: true } },
             automationSettings: {
               where: { kind: DatabaseTechnicianAutomationKind.BOOKING, enabled: true, deletedAt: null },
@@ -254,15 +262,19 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         now: new Date(),
         startsAt: order.startsAt,
         endsAt: order.endsAt,
-        actualScheduleAvailable:
+        actualScheduleAvailable: Boolean(
           !order.scheduleSlot.deletedAt &&
-          order.startsAt >= order.scheduleSlot.startsAt &&
-          order.endsAt <= order.scheduleSlot.endsAt,
+          order.scheduleSlot.availability?.isActive &&
+          !order.scheduleSlot.availability.deletedAt &&
+          order.startsAt >= order.scheduleSlot.availability.startsAt &&
+          order.endsAt <= order.scheduleSlot.availability.endsAt
+        ),
         hasBufferedConflict: customer.hasBufferedConflict,
         hardBlockReasons: [
           ...(profile.user.isActive && !profile.user.deletedAt ? [] : ["account_disabled"]),
           ...(profile.status === "published" && !profile.deletedAt ? [] : ["technician_unavailable"]),
-          ...(profile.verifiedAt ? [] : ["technician_qualification_required"])
+          ...(profile.verifiedAt ? [] : ["technician_qualification_required"]),
+          ...(this.isOnline(profile.workState?.status ?? null) ? [] : ["technician_not_on_duty"])
         ],
         areaCode: order.serviceLocation
           ? `${order.serviceLocation.admin1RegionCode ?? ""}/${order.serviceLocation.admin2RegionCode ?? ""}`
@@ -282,7 +294,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         serviceMode: order.fulfillmentMode === "home" ? "home" : "store",
         paymentMethod: this.mapPaymentMethod(order.paymentMethod),
         serviceId: order.technicianServiceId ?? order.serviceId ?? 0,
-        technicianOnline: null,
+        technicianOnline: this.isOnline(profile.workState?.status ?? null),
         tagsMatch: true
       }
     };
@@ -302,6 +314,14 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         endsAt: { lte: post.serviceEndAt },
         status: "AVAILABLE",
         deletedAt: null,
+        availability: {
+          is: {
+            isActive: true,
+            startsAt: { lte: post.serviceStartAt },
+            endsAt: { gte: post.serviceEndAt },
+            deletedAt: null
+          }
+        },
         OR: [
           { service: { is: { status: "published", deletedAt: null } } },
           { technicianService: { is: { isActive: true, isBookable: true, reviewStatus: "APPROVED", deletedAt: null } } }
@@ -321,11 +341,13 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
                 shop: { is: { deletedAt: null } }
               }
             },
-            automationSettings: { some: { kind: DatabaseTechnicianAutomationKind.REQUEST, enabled: true, deletedAt: null } }
+            automationSettings: { some: { kind: DatabaseTechnicianAutomationKind.REQUEST, enabled: true, deletedAt: null } },
+            workState: { is: { status: "ON_DUTY", deletedAt: null } }
           }
         }
       },
       include: {
+        availability: true,
         service: { select: { id: true } },
         technicianService: { select: { id: true } },
         technicianProfile: {
@@ -408,7 +430,12 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           now,
           startsAt: slot.startsAt,
           endsAt: slot.endsAt,
-          actualScheduleAvailable: true,
+          actualScheduleAvailable: Boolean(
+            slot.availability?.isActive &&
+            !slot.availability.deletedAt &&
+            slot.startsAt >= slot.availability.startsAt &&
+            slot.endsAt <= slot.availability.endsAt
+          ),
           hasBufferedConflict: bufferedBooking > 0,
           hardBlockReasons: [],
           areaCode: post.areaLabel,

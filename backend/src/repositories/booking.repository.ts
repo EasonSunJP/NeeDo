@@ -453,6 +453,7 @@ export interface ScheduleSlotPayload {
   priceAmount: string;
   currency: string;
   durationMinutes: number;
+  availabilitySourceType?: "shop" | "technician" | null;
 }
 
 export interface OrderStatusHistoryPayload {
@@ -913,6 +914,7 @@ type DecimalLike = {
 
 type SlotRecord = Prisma.ScheduleSlotGetPayload<{
   include: {
+    availability: true;
     service: true;
     technicianService: true;
     shop: {
@@ -1227,24 +1229,15 @@ export class BookingRepository implements BookingRepositoryPort {
           return { outcome: "duration_mismatch" };
         }
         if (
-          target.technicianProfileId &&
-          (await this.hasConfirmedBookingOverlap(
-            transaction,
-            target.technicianProfileId,
-            input.startsAt,
-            input.endsAt
-          ))
-        ) {
-          return { outcome: "conflict" };
-        }
-        if (
           await this.hasScheduleOverlap(
             transaction,
             target.shopId,
             target.technicianProfileId,
             target.serviceId,
             input.startsAt,
-            input.endsAt
+            input.endsAt,
+            undefined,
+            input.scope === "technician" ? "TECHNICIAN" : "SHOP"
           )
         ) {
           return { outcome: "conflict" };
@@ -1336,7 +1329,8 @@ export class BookingRepository implements BookingRepositoryPort {
             existing.serviceId,
             startsAt,
             endsAt,
-            existing.id
+            existing.id,
+            existing.availability?.sourceType ?? (input.scope === "technician" ? "TECHNICIAN" : "SHOP")
           ))
         ) {
           return { outcome: "conflict" };
@@ -4077,7 +4071,8 @@ export class BookingRepository implements BookingRepositoryPort {
     serviceId: number | null,
     startsAt: Date,
     endsAt: Date,
-    excludeId?: number
+    excludeId?: number,
+    sourceType?: "SHOP" | "TECHNICIAN"
   ): Promise<boolean> {
     return Boolean(
       await transaction.scheduleSlot.findFirst({
@@ -4085,7 +4080,10 @@ export class BookingRepository implements BookingRepositoryPort {
           deletedAt: null,
           ...(excludeId ? { id: { not: excludeId } } : {}),
           ...(technicianProfileId
-            ? { shopId, technicianProfileId }
+            ? {
+                technicianProfileId,
+                ...(sourceType ? { availability: { is: { sourceType } } } : {})
+              }
             : { shopId, serviceId, technicianProfileId: null }),
           startsAt: { lt: endsAt },
           endsAt: { gt: startsAt }
@@ -4169,6 +4167,7 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private slotInclude() {
     return {
+      availability: true,
       service: true,
       technicianService: true,
       shop: {
@@ -5056,7 +5055,12 @@ export class BookingRepository implements BookingRepositoryPort {
       technicianName: slot.technicianProfile?.displayName ?? null,
       priceAmount: this.formatDecimal(priceAmount, 2),
       currency,
-      durationMinutes
+      durationMinutes,
+      availabilitySourceType: slot.availability?.sourceType === "SHOP"
+        ? "shop"
+        : slot.availability?.sourceType === "TECHNICIAN"
+          ? "technician"
+          : null
     };
   }
 

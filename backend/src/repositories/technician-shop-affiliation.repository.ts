@@ -98,33 +98,6 @@ function mergeScheduleRanges(ranges: ScheduleRange[]): ScheduleRange[] {
   return merged;
 }
 
-function subtractScheduleRanges(
-  range: ScheduleRange,
-  busyRanges: ScheduleRange[]
-): ScheduleRange[] {
-  return busyRanges.reduce<ScheduleRange[]>(
-    (segments, busy) => {
-      return segments.flatMap((segment) => {
-        if (
-          busy.endsAt.getTime() <= segment.startsAt.getTime() ||
-          busy.startsAt.getTime() >= segment.endsAt.getTime()
-        ) {
-          return [segment];
-        }
-        const next: ScheduleRange[] = [];
-        if (busy.startsAt.getTime() > segment.startsAt.getTime()) {
-          next.push({ startsAt: segment.startsAt, endsAt: busy.startsAt });
-        }
-        if (busy.endsAt.getTime() < segment.endsAt.getTime()) {
-          next.push({ startsAt: busy.endsAt, endsAt: segment.endsAt });
-        }
-        return next;
-      });
-    },
-    [range]
-  );
-}
-
 const employeeAffiliationSelect = Prisma.validator<Prisma.TechnicianShopAffiliationSelect>()({
   id: true,
   relationshipType: true,
@@ -452,7 +425,6 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       };
     });
     const sharedAvailabilityEvents: EmployeeScheduleEvent[] = sharedAvailability
-      .flatMap((availability) => subtractScheduleRanges(availability, busyRanges))
       .map((range) => ({
         projectionId: `availability:${range.startsAt.toISOString()}:${range.endsAt.toISOString()}`,
         kind: "availability",

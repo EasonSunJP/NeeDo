@@ -5,8 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  calendarProps: vi.fn(),
-  timelineProps: vi.fn()
+  calendarProps: vi.fn()
 }));
 
 vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
@@ -17,12 +16,6 @@ vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
 }));
 vi.mock("./TechnicianAutomationSettingsPanel", () => ({
   TechnicianAutomationSettingsPanel: ({ kind }: { kind: "booking" | "request" }) => <div data-kind={kind} data-testid="automation-settings-panel">自动设置</div>
-}));
-vi.mock("../../components/mobile/ContactEventTimeline", () => ({
-  ContactEventTimelinePanel: (props: Record<string, unknown>) => {
-    mocks.timelineProps(props);
-    return <div data-testid="formal-status-timeline">状态记录</div>;
-  }
 }));
 vi.mock("../../components/mobile/FloatingHomeHeader", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../components/mobile/FloatingHomeHeader")>();
@@ -63,7 +56,6 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-01T09:00:00+09:00"));
     mocks.calendarProps.mockClear();
-    mocks.timelineProps.mockClear();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -92,7 +84,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
   it("renders the shared formal parallel calendar and keeps booking settings available", async () => {
     await waitFor(() => expect(container.querySelector('[data-testid="shared-unified-calendar"]')).not.toBeNull());
     expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({
-      displayMode: "parallel",
+      displayMode: "personal",
       formalOnly: true,
       scope: "technician",
       searchQuery: "",
@@ -144,15 +136,9 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({ searchQuery: "预约" }));
   });
 
-  it("keeps the approved three-column formal status timeline below the shared calendar", async () => {
-    await waitFor(() => expect(container.querySelector('[data-testid="formal-status-timeline"]')).not.toBeNull());
-    expect(mocks.timelineProps).toHaveBeenLastCalledWith(expect.objectContaining({
-      commentAuthorAvatarSrc: "/media/technician.jpg",
-      commentAuthorName: "正式技师",
-      emptyLabel: "暂无执行 / 异常记录",
-      layout: "three-column",
-      title: "状态记录"
-    }));
+  it("removes the obsolete bottom status record without deleting calendar data", async () => {
+    await waitFor(() => expect(container.querySelector('[data-testid="shared-unified-calendar"]')).not.toBeNull());
+    expect(container.textContent).not.toContain("状态记录");
   });
 
   it("keeps an independent technician's formal calendar visible without exposing shop-required creation", async () => {
@@ -174,7 +160,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
       formalOnly: true,
       scope: "technician"
     }));
-    expect(container.querySelector('button[aria-label="新建正式排班"]')).toBeNull();
+    expect(container.textContent).not.toContain("新建正式排班");
 
     await act(async () => root.render(
       <MemoryRouter>

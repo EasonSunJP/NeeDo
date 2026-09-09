@@ -7,7 +7,7 @@ import workspaceSource from "./FormalTechnicianScheduleWorkspace.tsx?raw";
 describe("approved formal technician schedule UI", () => {
   it("reuses the shared user and merchant calendar system for every technician view", () => {
     expect(workspaceSource).toContain("<UnifiedUserCalendar");
-    expect(workspaceSource).toContain('displayMode="parallel"');
+    expect(workspaceSource).toContain('displayMode="personal"');
     expect(workspaceSource).toContain("formalOnly");
     expect(workspaceSource).toContain("showSourceDrawer");
     expect(workspaceSource).not.toContain("function DayTimeline");
@@ -37,7 +37,8 @@ describe("approved formal technician schedule UI", () => {
     expect(unifiedCalendarSource).toContain('data-calendar-time-tag="true"');
     expect(workspaceSource).toContain("TechnicianAutomationSettingsPanel");
     expect(workspaceSource).toContain('tab === "bookingSettings" || tab === "requestSettings"');
-    expect(workspaceSource).toContain('aria-label="新建正式排班"');
+    expect(unifiedCalendarSource).toContain('ariaLabel="新增行程"');
+    expect(workspaceSource).not.toContain("状态记录");
   });
 
   it("loads the shared calendar in formal-only mode without legacy store imports", () => {

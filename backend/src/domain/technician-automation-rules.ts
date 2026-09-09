@@ -71,6 +71,7 @@ export function evaluateTechnicianAutomationRules(
 
   pass("schedule:available", context.actualScheduleAvailable, "schedule:unavailable");
   pass("schedule:no_buffered_conflict", !context.hasBufferedConflict, "schedule:conflict");
+  pass("online:available", context.technicianOnline === true, context.technicianOnline === null ? "online:unavailable" : "online:offline");
 
   const leadMinutes = Math.floor((context.startsAt.getTime() - context.now.getTime()) / 60_000);
   pass("time:lead", leadMinutes >= rules.minLeadMinutes, "time:lead_too_short");
@@ -88,9 +89,6 @@ export function evaluateTechnicianAutomationRules(
   }
 
   if (kind === "request") {
-    if (rules.onlyOnline) {
-      pass("online:available", context.technicianOnline === true, context.technicianOnline === null ? "online:unavailable" : "online:offline");
-    }
     const startLimitMinutes = {
       immediate: 15,
       within_1_hour: 60,

@@ -193,6 +193,7 @@ export type BookingScheduleSlot = {
   priceAmount: string;
   currency: string;
   durationMinutes: number;
+  availabilitySourceType?: "shop" | "technician" | null;
 };
 
 export type AdministrativeRegionReference = {

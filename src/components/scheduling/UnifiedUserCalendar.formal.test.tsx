@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,14 +7,27 @@ import { I18nProvider } from "../../i18n/I18nProvider";
 import type { BookingScheduleSlot } from "../../features/booking/api";
 import type { Customer, Store, Technician } from "../../types/domain";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
-import { getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedUserCalendar } from "./UnifiedUserCalendar";
+import { getBookingConflictEventIds, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedUserCalendar } from "./UnifiedUserCalendar";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const testState = vi.hoisted(() => ({
+  createCalendarEvent: vi.fn(),
+  deleteCalendarEvent: vi.fn(),
+  listCalendarEvents: vi.fn(),
   legacyListOrders: vi.fn(),
   loadCustomerOrderWindow: vi.fn(),
-  listScheduleSlots: vi.fn()
+  listScheduleSlots: vi.fn(),
+  updateCalendarEvent: vi.fn()
+}));
+
+vi.mock("../../features/scheduling/calendar-event-api", () => ({
+  calendarEventApi: {
+    create: testState.createCalendarEvent,
+    remove: testState.deleteCalendarEvent,
+    list: testState.listCalendarEvents,
+    update: testState.updateCalendarEvent
+  }
 }));
 
 vi.mock("../../features/booking/window-loaders", () => ({
@@ -75,9 +88,16 @@ vi.mock("../../features/im/store", () => ({
 }));
 
 vi.mock("../mobile/FloatingActionButton", () => ({
-  FloatingActionButton: ({ ariaLabel }: { ariaLabel: string }) => (
-    <button aria-label={ariaLabel} type="button">floating action</button>
+  FloatingActionButton: ({ ariaLabel, onClick }: { ariaLabel: string; onClick?: () => void }) => (
+    <button aria-label={ariaLabel} onClick={onClick} type="button">floating action</button>
   )
+}));
+vi.mock("../mobile/MobileFullscreenPage", () => ({
+  MobileFullscreenPage: ({ children }: { children: ReactNode }) => <section>{children}</section>
+}));
+vi.mock("../mobile/MobileFullscreenHeader", () => ({
+  MobileFullscreenCloseButton: () => null,
+  MobileFullscreenHeader: ({ title }: { title: string }) => <header>{title}</header>
 }));
 
 const customerFixture: Customer = {
@@ -165,6 +185,7 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     testState.legacyListOrders.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
     testState.loadCustomerOrderWindow.mockRejectedValue(new Error("schedule unavailable"));
     testState.listScheduleSlots.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
+    testState.listCalendarEvents.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
   });
 
   afterEach(async () => {
@@ -234,6 +255,16 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(midnight[0]?.endTime).toBe("24:00");
   });
 
+  it("marks only overlapping real bookings as conflicts", () => {
+    const base = { sourceId: "user", calendarId: "user:me", calendarLabel: "我的行程", date: "2026-09-09", subtitle: "", badge: "预约", readOnly: true } as const;
+    const bookingA = { ...base, id: "booking-a", orderId: "A", startTime: "20:00", endTime: "21:30", title: "预约A" };
+    const bookingB = { ...base, id: "booking-b", orderId: "B", startTime: "21:00", endTime: "22:00", title: "预约B" };
+    const privateEvent = { ...base, id: "private", orderId: undefined, startTime: "20:30", endTime: "22:00", title: "私人日程" };
+    const availability = { ...base, id: "availability", orderId: undefined, scheduleSlotId: 3, startTime: "18:00", endTime: "24:00", title: "自由排班" };
+    expect([...getBookingConflictEventIds([bookingA, bookingB, privateEvent, availability])].sort()).toEqual(["booking-a", "booking-b"]);
+    expect(getBookingConflictEventIds([bookingA, privateEvent, availability])).toEqual(new Set());
+  });
+
   it.each([["available", "可预约"], ["booked", "已预约"], ["blocked", "已锁定"]] as const)("keeps the persisted %s slot status visible on compact cards", async (status, badge) => {
     const event = getFormalScheduleEvents([{ id: 906, status,
       startsAt: "2026-09-06T00:00:00", endsAt: "2026-09-06T01:00:00", serviceName: "正式服务"
@@ -253,7 +284,7 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(testState.listScheduleSlots).not.toHaveBeenCalled();
   });
 
-  it("does not replace a failed formal request with local events", async () => {
+  it("does not replace a failed formal request with browser events and still exposes formal creation", async () => {
     const storageWrite = vi.spyOn(Storage.prototype, "setItem");
     await act(async () => {
       root.render(
@@ -269,7 +300,7 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(container.textContent).not.toContain("local fixture event");
     const retryButton = Array.from(container.querySelectorAll("button")).find((button) => /重试|再试|retry/i.test(button.textContent ?? ""));
     expect(retryButton).toBeDefined();
-    expect(container.querySelector('button[aria-label="新增行程"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull();
     expect(testState.legacyListOrders).not.toHaveBeenCalled();
     expect(storageWrite.mock.calls.filter(([key]) => key === "needo.user-unified-calendar.v1")).toHaveLength(0);
 
@@ -277,6 +308,64 @@ describe("UnifiedUserCalendar formal-only mode", () => {
       retryButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await waitFor(() => expect(testState.loadCustomerOrderWindow).toHaveBeenCalledTimes(2));
+  });
+
+  it("creates a formal user event from the FAB instead of browser storage", async () => {
+    testState.loadCustomerOrderWindow.mockResolvedValue([]);
+    testState.createCalendarEvent.mockResolvedValue({
+      id: 42,
+      title: "正式私人日程",
+      startsAt: `${todayKey()}T10:00:00.000Z`,
+      endsAt: `${todayKey()}T11:00:00.000Z`,
+      allDay: false,
+      reminderMinutes: 30,
+      repeatRule: "none",
+      location: "",
+      url: "",
+      note: "",
+      visibility: "private",
+      participantIdentityIds: [],
+      imageUrls: [],
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem");
+    await act(async () => root.render(
+      <MemoryRouter><I18nProvider><UnifiedUserCalendar currentCustomer={customerFixture} formalOnly /></I18nProvider></MemoryRouter>
+    ));
+    await waitFor(() => expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="新增行程"]')?.click());
+    const title = container.querySelector<HTMLInputElement>('input[placeholder="新增标题"]');
+    expect(title).not.toBeNull();
+    await act(async () => {
+      if (title) {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        setter?.call(title, "正式私人日程");
+        title.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      container.querySelector<HTMLButtonElement>('button[aria-label="完成新增行程"]')?.click();
+    });
+    await waitFor(() => expect(testState.createCalendarEvent).toHaveBeenCalled());
+    expect(storageWrite.mock.calls.filter(([key]) => key === "needo.user-unified-calendar.v1")).toHaveLength(0);
+  });
+
+  it("shows mutually exclusive availability and manual-booking switches only in the technician editor", async () => {
+    await act(async () => root.render(
+      <MemoryRouter><I18nProvider><UnifiedUserCalendar currentTechnician={technicianFixture} formalOnly scope="technician" /></I18nProvider></MemoryRouter>
+    ));
+    await waitFor(() => expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="新增行程"]')?.click());
+    const availability = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="可排班"]');
+    const manual = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="手动预约"]');
+    expect(availability).not.toBeNull();
+    expect(manual).not.toBeNull();
+    expect(availability?.getAttribute("aria-checked")).toBe("false");
+    await act(async () => availability?.click());
+    expect(availability?.getAttribute("aria-checked")).toBe("true");
+    await act(async () => manual?.click());
+    expect(availability?.getAttribute("aria-checked")).toBe("false");
+    expect(manual?.getAttribute("aria-checked")).toBe("true");
   });
 
   it("opens the approved calendar-source menu without enabling local calendar persistence", async () => {
@@ -360,13 +449,13 @@ describe("UnifiedUserCalendar formal-only mode", () => {
       </MemoryRouter>
     );
     await act(async () => root.render(view));
-    await waitFor(() => expect(container.textContent).toContain("缓存排班"));
+    await waitFor(() => expect(container.textContent).toContain("自由排班"));
 
     await act(async () => root.unmount());
     root = createRoot(container);
     await act(async () => root.render(view));
 
-    expect(container.textContent).toContain("缓存排班");
+    expect(container.textContent).toContain("自由排班");
     expect(testState.listScheduleSlots).toHaveBeenCalledTimes(1);
   });
 });

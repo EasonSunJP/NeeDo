@@ -387,7 +387,7 @@ describe("BookingRepository order list scope", () => {
     expect(bookingOrder.count).toHaveBeenCalledWith({ where });
   });
 
-  it("creates an affiliated merchant plan as shop-private and limits plan overlap to that shop", async () => {
+  it("creates an affiliated merchant plan without trimming it around an existing booking", async () => {
     const startsAt = new Date("2026-08-29T13:00:00.000Z");
     const endsAt = new Date("2026-08-29T14:00:00.000Z");
     const scheduleFindFirst = jest.fn().mockResolvedValue(null);
@@ -431,7 +431,7 @@ describe("BookingRepository order list scope", () => {
         findFirst: scheduleFindFirst,
         create: jest.fn().mockResolvedValue(createdSlot)
       },
-      bookingOrder: { findFirst: jest.fn().mockResolvedValue(null) },
+      bookingOrder: { findFirst: jest.fn().mockResolvedValue({ id: 700 }) },
       availability: { create: availabilityCreate }
     };
     const repository = new BookingRepository({
@@ -450,11 +450,13 @@ describe("BookingRepository order list scope", () => {
       })
     ).resolves.toMatchObject({ outcome: "ok" });
 
-    expect(scheduleFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ shopId: 16, technicianProfileId: 47 })
+    expect(scheduleFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        technicianProfileId: 47,
+        availability: { is: { sourceType: "SHOP" } }
       })
-    );
+    }));
+    expect(scheduleFindFirst.mock.calls[0]?.[0]?.where).not.toHaveProperty("shopId");
     expect(availabilityCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         sourceType: "SHOP",

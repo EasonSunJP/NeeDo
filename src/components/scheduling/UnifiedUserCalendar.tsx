@@ -12,6 +12,7 @@ import { bookingApi, mapBookingOrderToDomainOrder, type BookingOrder, type Booki
 import { loadCustomerOrderWindow } from "../../features/booking/window-loaders";
 import { mapScheduleSlotToCalendarItem } from "../../features/scheduling/api";
 import { loadEveryScopedOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
+import { calendarEventApi, type FormalCalendarEvent, type FormalCalendarEventInput } from "../../features/scheduling/calendar-event-api";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
 import type { DispatchArrangement } from "../../features/dispatch-center/domain";
 import { getDisplayName, type ContactRelation, type Conversation, type ImRoleType, type ImUser } from "../../features/im/model";
@@ -67,6 +68,7 @@ export type UnifiedCalendarSourceId = "user" | "technician" | "merchant" | "todo
 export type UnifiedCalendarTechnician = Pick<Technician, "id" | "name" | "storeId" | "avatar"> &
   Partial<Omit<Technician, "id" | "name" | "storeId" | "avatar">>;
 type CalendarRepeatRule = "none" | "daily" | "weekly" | "monthly" | "yearly";
+type TechnicianCreationMode = "private" | "availability" | "manualBooking";
 
 type CalendarAttachment = {
   id: string;
@@ -142,6 +144,7 @@ export type UnifiedCalendarEvent = {
   creatorEntityType?: ImUser["entityType"];
   creatorEntityId?: string;
   participants?: UnifiedCalendarParticipant[];
+  bookingConflict?: boolean;
 };
 
 type FormalCalendarCacheValue = {
@@ -550,6 +553,72 @@ function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOp
   }));
 }
 
+function getFormalPersonalCalendarEvents(events: FormalCalendarEvent[], creator?: CalendarEventCreator): UnifiedCalendarEvent[] {
+  return events.flatMap((event) => getFormalCalendarSegments(event.startsAt, event.endsAt).map((segment) => ({
+    ...segment,
+    id: `calendar-event-${event.id}-${segment.date}`,
+    sourceId: "user" as const,
+    calendarId: "formal:personal",
+    calendarLabel: "我的行程",
+    endDate: segment.date,
+    title: event.title,
+    subtitle: event.location || "个人行程",
+    badge: "个人行程",
+    readOnly: false,
+    location: event.location,
+    note: event.note,
+    url: event.url,
+    images: event.imageUrls.map((dataUrl, index) => ({ id: `formal-image-${event.id}-${index}`, name: `图片 ${index + 1}`, dataUrl })),
+    reminder: event.reminderMinutes === null ? "不提醒" : event.reminderMinutes === 60 ? "1 小时前" : `${event.reminderMinutes} 分钟前`,
+    allDay: event.allDay,
+    repeatRule: event.repeatRule,
+    syncContactLabels: [],
+    visibility: event.visibility === "participants" ? "参加者" : "仅自己",
+    participants: [],
+    ...getCalendarCreatorFields(creator)
+  })));
+}
+
+function formalCalendarEventId(eventId: string): number | null {
+  const match = /^calendar-event-(\d+)-/.exec(eventId);
+  return match ? Number(match[1]) : null;
+}
+
+function reminderMinutes(label: string): number | null {
+  if (label === "10 分钟前") return 10;
+  if (label === "30 分钟前") return 30;
+  if (label === "1 小时前") return 60;
+  return null;
+}
+
+function toFormalCalendarEventInput(draft: CalendarEditorDraft): FormalCalendarEventInput {
+  const date = draft.date || getTodayDateKey();
+  const startTime = draft.allDay ? "00:00" : draft.startTime || "10:00";
+  let endDate = draft.allDay ? date : draft.endDate || date;
+  let endTime = draft.allDay ? "23:59" : draft.endTime || "";
+  if (`${endDate}T${endTime}` <= `${date}T${startTime}`) {
+    endDate = date;
+    endTime = addMinutesToTime(startTime, 60);
+  }
+  const participantIdentityIds = draft.syncContactIds
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  return {
+    title: draft.title.trim() || "（无标题）",
+    startsAt: new Date(`${date}T${startTime}:00`).toISOString(),
+    endsAt: new Date(`${endDate}T${endTime}:00`).toISOString(),
+    allDay: draft.allDay,
+    reminderMinutes: reminderMinutes(draft.reminder),
+    repeatRule: normalizeCalendarRepeatRule(draft.repeatRule),
+    location: draft.location.trim(),
+    url: draft.url.trim(),
+    note: draft.note.trim(),
+    visibility: participantIdentityIds.length ? "participants" : "private",
+    participantIdentityIds,
+    imageUrls: draft.images.map((image) => image.dataUrl),
+  };
+}
+
 function getOrderEvents(
   currentCustomer: Customer,
   orderRows: Order[],
@@ -621,7 +690,11 @@ export function getFormalScheduleEvents(slots: BookingScheduleSlot[], scope: "me
       sourceId: scope,
       calendarId: slot.technicianProfileId ? getTechnicianCalendarLaneId(String(slot.technicianProfileId)) : "merchant:unassigned",
       calendarLabel: slot.technicianName ?? "未指定技师",
-      title: item.title,
+      title: scope === "technician"
+        ? slot.availabilitySourceType === "shop"
+          ? `${slot.shopName}店铺排班（可排班日程）`
+          : "自由排班"
+        : item.title,
       subtitle: item.subtitle,
       badge: item.badge,
       readOnly: true,
@@ -630,13 +703,13 @@ export function getFormalScheduleEvents(slots: BookingScheduleSlot[], scope: "me
   });
 }
 
-export function getFormalMerchantOrderEvents(orders: BookingOrder[]): UnifiedCalendarEvent[] {
+export function getFormalMerchantOrderEvents(orders: BookingOrder[], sourceId: "merchant" | "technician" = "merchant"): UnifiedCalendarEvent[] {
   return orders.filter((order) => order.status !== "cancelled").flatMap((order) =>
     getFormalCalendarSegments(order.startsAt, order.endsAt).map((segment) => ({
       ...segment,
       id: `formal-order-${order.id}-${segment.date}`,
       orderId: String(order.id),
-      sourceId: "merchant" as const,
+      sourceId,
       calendarId: order.technicianProfileId ? getTechnicianCalendarLaneId(String(order.technicianProfileId)) : "merchant:unassigned",
       calendarLabel: order.technicianName ?? "未指定技师",
       title: getCalendarBookingTitle(String(order.id), order.serviceName),
@@ -1867,6 +1940,28 @@ function groupEventsByDate(events: UnifiedCalendarEvent[]) {
   }, {});
 }
 
+export function getBookingConflictEventIds(events: UnifiedCalendarEvent[]): Set<string> {
+  const conflicts = new Set<string>();
+  const bookings = events.filter((event) => Boolean(event.orderId));
+  for (let leftIndex = 0; leftIndex < bookings.length; leftIndex += 1) {
+    const left = bookings[leftIndex]!;
+    for (let rightIndex = leftIndex + 1; rightIndex < bookings.length; rightIndex += 1) {
+      const right = bookings[rightIndex]!;
+      if (left.date !== right.date || left.orderId === right.orderId) continue;
+      if (timeToMinutes(left.startTime) < timeToMinutes(right.endTime) && timeToMinutes(right.startTime) < timeToMinutes(left.endTime)) {
+        conflicts.add(left.id);
+        conflicts.add(right.id);
+      }
+    }
+  }
+  return conflicts;
+}
+
+function markBookingConflicts(events: UnifiedCalendarEvent[]): UnifiedCalendarEvent[] {
+  const conflicts = getBookingConflictEventIds(events);
+  return events.map((event) => conflicts.has(event.id) ? { ...event, bookingConflict: true } : event);
+}
+
 type TimelineAutoScrollAnchor = {
   eventKey: string;
   startMinute: number;
@@ -2501,8 +2596,11 @@ function CalendarEventCard({
     <button
       className={cn(
         "focus-ring h-full w-full overflow-hidden rounded-[16px] border px-3 py-2.5 text-left shadow-[0_12px_24px_color-mix(in_srgb,var(--calendar-accent)_12%,transparent)] transition active:scale-[0.99]",
-        "border-[color:color-mix(in_srgb,var(--calendar-accent)_38%,transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--calendar-soft)_88%,var(--client-elevated)),color-mix(in_srgb,var(--client-elevated)_88%,transparent))]"
+        event.bookingConflict
+          ? "border-2 border-red-500 bg-[color:color-mix(in_srgb,#ef4444_12%,var(--client-elevated))] shadow-[0_12px_26px_rgba(239,68,68,0.28)]"
+          : "border-[color:color-mix(in_srgb,var(--calendar-accent)_38%,transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--calendar-soft)_88%,var(--client-elevated)),color-mix(in_srgb,var(--client-elevated)_88%,transparent))]"
       )}
+      data-booking-conflict={event.bookingConflict ? "true" : undefined}
       data-calendar-event-card="true"
       onClick={() => onOpen(event)}
       style={getEventStyle(event)}
@@ -2510,7 +2608,7 @@ function CalendarEventCard({
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[color:var(--calendar-accent)]" />
-        <span className="truncate text-[11px] font-black text-[color:var(--calendar-text)]">{badgeLabel}</span>
+        <span className={cn("truncate text-[11px] font-black", event.bookingConflict ? "text-red-500" : "text-[color:var(--calendar-text)]")}>{event.bookingConflict ? "预约冲突" : badgeLabel}</span>
         {!compact ? <span className="truncate text-[10px] font-black text-[color:var(--client-muted)]">{source.shortLabel}</span> : null}
       </div>
       <strong className={cn("mt-1 block truncate font-black text-[color:var(--client-text)]", compact ? "text-[12px]" : "text-sm")}>{event.title}</strong>
@@ -4390,13 +4488,17 @@ function CalendarEventEditorPage({
   onChange,
   onClose,
   onSave,
-  syncContactOptions
+  syncContactOptions,
+  technicianCreationMode,
+  onTechnicianCreationModeChange
 }: {
   draft: CalendarEditorDraft;
   onChange: (draft: CalendarEditorDraft) => void;
   onClose: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   syncContactOptions: SyncContactOption[];
+  technicianCreationMode?: TechnicianCreationMode;
+  onTechnicianCreationModeChange?: (mode: TechnicianCreationMode) => void;
 }) {
   const [syncContactFilterMode, setSyncContactFilterMode] = useState<SyncContactFilterMode>("common");
   const syncFilterOptions: Array<{ value: SyncContactFilterMode; label: string; detail: string; emptyCaption: string }> = [
@@ -4467,6 +4569,36 @@ function CalendarEventEditorPage({
         data-scroll-drag-ignore="true"
       >
         <div className="space-y-3">
+        {technicianCreationMode && onTechnicianCreationModeChange ? (
+          <section className="grid grid-cols-2 gap-3" aria-label="日程业务类型">
+            {([
+              ["availability", "可排班"],
+              ["manualBooking", "手动预约"]
+            ] as const).map(([mode, label]) => {
+              const active = technicianCreationMode === mode;
+              return (
+                <button
+                  aria-checked={active}
+                  aria-label={label}
+                  className={cn(
+                    "focus-ring flex min-h-12 items-center justify-between rounded-full border px-4 text-sm font-black transition",
+                    active
+                      ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
+                      : "border-[color:var(--client-line)] bg-[color:var(--client-elevated)] text-[color:var(--client-muted)]"
+                  )}
+                  onClick={() => onTechnicianCreationModeChange(active ? "private" : mode)}
+                  role="switch"
+                  type="button"
+                >
+                  <span>{label}</span>
+                  <span aria-hidden="true" className={cn("relative h-6 w-11 rounded-full transition", active ? "bg-[color:var(--client-primary)]" : "bg-[color:var(--client-line)]") }>
+                    <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition", active ? "left-[22px]" : "left-0.5")} />
+                  </span>
+                </button>
+              );
+            })}
+          </section>
+        ) : null}
         <input
           className={cn(inputClass, "h-12 text-base")}
           onChange={(event) => onChange({ ...draft, title: event.target.value })}
@@ -4951,12 +5083,14 @@ export function UnifiedUserCalendar({
   const [birthdayContactQuery, setBirthdayContactQuery] = useState("");
   const [localEvents, setLocalEvents] = useState<LocalCalendarEvent[]>(() => formalOnly ? [] : loadLocalCalendarEvents());
   const [editorDraft, setEditorDraft] = useState<CalendarEditorDraft | null>(null);
+  const [technicianCreationMode, setTechnicianCreationMode] = useState<TechnicianCreationMode>("private");
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
   const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<MerchantAppointmentStatusFilter>("all");
   const [formalOrders, setFormalOrders] = useState<Order[]>(() => cachedFormalData?.orders ?? []);
   const [formalMerchantOrders, setFormalMerchantOrders] = useState<BookingOrder[]>(() => cachedFormalData?.merchantOrders ?? []);
   const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>(() => cachedFormalData?.scheduleSlots ?? []);
+  const [formalCalendarEvents, setFormalCalendarEvents] = useState<FormalCalendarEvent[]>([]);
   const [formalDataLoading, setFormalDataLoading] = useState(() => cachedFormalData === undefined);
   const [formalDataError, setFormalDataError] = useState("");
   const [formalDataReloadKey, setFormalDataReloadKey] = useState(0);
@@ -4993,8 +5127,14 @@ export function UnifiedUserCalendar({
         const orders = await loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" });
         return { orders: [], merchantOrders: orders, scheduleSlots: [] };
       }
-      const slots = await loadManagedScheduleWindow(activeScope === "merchant" ? "merchant-admin" : "technician", { from, to });
-      return { orders: [], merchantOrders: [], scheduleSlots: slots };
+      const scope = activeScope === "merchant" ? "merchant-admin" : "technician";
+      const [slots, orders] = await Promise.all([
+        loadManagedScheduleWindow(scope, { from, to }),
+        activeScope === "technician"
+          ? loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" })
+          : Promise.resolve([]),
+      ]);
+      return { orders: [], merchantOrders: orders, scheduleSlots: slots };
     };
     const applyFormalData = (data: FormalCalendarCacheValue) => {
       if (!isCurrentRequest()) return;
@@ -5047,6 +5187,22 @@ export function UnifiedUserCalendar({
       unsubscribe();
     };
   }, [activeScope, formalCacheKey, formalCacheScope, formalDataReloadKey, formalOnly, isMerchantAppointmentStatusMode, period.endDate, period.startDate]);
+
+  useEffect(() => {
+    if (!formalOnly || activeScope === "merchant") {
+      setFormalCalendarEvents([]);
+      return;
+    }
+    let alive = true;
+    const from = parseDateKey(period.startDate);
+    const to = parseDateKey(addDays(period.endDate, 1));
+    void calendarEventApi.list({ from, to }).then((response) => {
+      if (alive) setFormalCalendarEvents(response.list);
+    }).catch((error) => {
+      if (alive) setFormalDataError((current) => current || (error instanceof Error ? error.message : String(error)));
+    });
+    return () => { alive = false; };
+  }, [activeScope, formalDataReloadKey, formalOnly, period.endDate, period.startDate]);
 
   useEffect(() => {
     if (!formalOnly) {
@@ -5131,27 +5287,32 @@ export function UnifiedUserCalendar({
 
   const allEvents = useMemo(() => {
     const birthdayEvents = formalOnly ? [] : getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
-    const localCalendarEvents = formalOnly ? [] : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
+    const localCalendarEvents = formalOnly
+      ? getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator)
+      : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
     const neeDoEvents = activeScope === "user" && currentCustomer
       ? getOrderEvents(currentCustomer, formalOrders, formalOnly)
       : isMerchantAppointmentStatusMode
         ? getFormalMerchantOrderEvents(formalMerchantOrders)
       : activeScope === "merchant" || activeScope === "technician"
-        ? getFormalScheduleEvents(formalScheduleSlots, activeScope)
+        ? [
+            ...getFormalScheduleEvents(formalScheduleSlots, activeScope),
+            ...(activeScope === "technician" ? getFormalMerchantOrderEvents(formalMerchantOrders, "technician") : []),
+          ]
         : [];
 
     if (isMerchantAppointmentStatusMode) {
-      return [
+      return markBookingConflicts([
         ...localCalendarEvents,
         ...neeDoEvents
-      ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
+      ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents));
     }
 
-    return [
+    return markBookingConflicts([
       ...localCalendarEvents,
       ...neeDoEvents,
       ...birthdayEvents
-    ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
+    ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents));
   }, [
     activeScope,
     birthdayContactOptions,
@@ -5165,6 +5326,7 @@ export function UnifiedUserCalendar({
     formalOrders,
     formalScheduleSlots,
     formalMerchantOrders,
+    formalCalendarEvents,
     formalOnly,
     imStore.users,
     isMerchantAppointmentStatusMode,
@@ -5333,6 +5495,7 @@ export function UnifiedUserCalendar({
   };
 
   const openCreate = (date = selectedDate, startTime?: string, endTime?: string, calendarId?: string, calendarLabel?: string) => {
+    setTechnicianCreationMode("private");
     const defaultCalendarTarget = getDefaultLocalCalendarTarget(activeScope);
     const resolvedCalendarId = calendarId ?? defaultCalendarTarget.calendarId;
     const resolvedCalendarLabel = calendarLabel ?? defaultCalendarTarget.calendarLabel;
@@ -5362,8 +5525,43 @@ export function UnifiedUserCalendar({
     });
   };
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
     if (!editorDraft) {
+      return;
+    }
+
+    if (formalOnly) {
+      try {
+        const input = toFormalCalendarEventInput(editorDraft);
+        if (activeScope === "technician" && technicianCreationMode !== "private") {
+          const query = new URLSearchParams({
+            mode: technicianCreationMode,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt
+          });
+          navigate(`/technician/schedule/new?${query.toString()}`);
+          setEditorDraft(null);
+          return;
+        }
+        const id = formalCalendarEventId(editorDraft.id);
+        const current = id === null ? null : formalCalendarEvents.find((event) => event.id === id) ?? null;
+        const saved = current
+          ? await calendarEventApi.update(current.id, { ...input, expectedVersion: current.version })
+          : await calendarEventApi.create(input, globalThis.crypto?.randomUUID?.() ?? `calendar-${Date.now()}`);
+        setFormalCalendarEvents((events) => current
+          ? events.map((event) => event.id === saved.id ? saved : event)
+          : [...events, saved]);
+        const start = new Date(saved.startsAt);
+        const pad = (value: number) => String(value).padStart(2, "0");
+        const savedDate = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+        setSelectedDate(savedDate);
+        setAnchorDate(savedDate);
+        setView("day");
+        setFormalDataError("");
+        setEditorDraft(null);
+      } catch (error) {
+        setFormalDataError(error instanceof Error ? error.message : String(error));
+      }
       return;
     }
 
@@ -5411,6 +5609,37 @@ export function UnifiedUserCalendar({
   };
 
   const openEdit = (event: UnifiedCalendarEvent) => {
+    if (formalOnly) {
+      const id = formalCalendarEventId(event.id);
+      const formalEvent = id === null ? null : formalCalendarEvents.find((item) => item.id === id);
+      if (!formalEvent) return;
+      const start = new Date(formalEvent.startsAt);
+      const end = new Date(formalEvent.endsAt);
+      const pad = (value: number) => String(value).padStart(2, "0");
+      const dateValue = (value: Date) => `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+      const timeValue = (value: Date) => `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+      setActiveEvent(null);
+      setEditorDraft({
+        id: event.id,
+        calendarId: "formal:personal",
+        calendarLabel: "我的行程",
+        date: dateValue(start),
+        endDate: dateValue(end),
+        startTime: timeValue(start),
+        endTime: timeValue(end),
+        title: formalEvent.title,
+        location: formalEvent.location,
+        note: formalEvent.note,
+        url: formalEvent.url,
+        images: formalEvent.imageUrls.map((dataUrl, index) => ({ id: `formal-image-${index}`, name: `图片 ${index + 1}`, dataUrl })),
+        reminder: formalEvent.reminderMinutes === null ? "不提醒" : formalEvent.reminderMinutes === 60 ? "1 小时前" : `${formalEvent.reminderMinutes} 分钟前`,
+        allDay: formalEvent.allDay,
+        repeatRule: formalEvent.repeatRule,
+        syncContactIds: formalEvent.participantIdentityIds.map(String),
+        visibility: formalEvent.visibility === "participants" ? "参加者" : "仅自己"
+      });
+      return;
+    }
     const localEvent = localEvents.find((item) => item.id === event.id);
     if (!localEvent) {
       return;
@@ -5439,6 +5668,16 @@ export function UnifiedUserCalendar({
   };
 
   const deleteEvent = (event: UnifiedCalendarEvent) => {
+    if (formalOnly) {
+      const id = formalCalendarEventId(event.id);
+      const current = id === null ? null : formalCalendarEvents.find((item) => item.id === id);
+      if (!current) return;
+      void calendarEventApi.remove(current.id, current.version).then(() => {
+        setFormalCalendarEvents((events) => events.filter((item) => item.id !== current.id));
+        setActiveEvent(null);
+      }).catch((error) => setFormalDataError(error instanceof Error ? error.message : String(error)));
+      return;
+    }
     setLocalEvents((current) => current.filter((item) => item.id !== event.id));
     setActiveEvent(null);
   };
@@ -5654,7 +5893,7 @@ export function UnifiedUserCalendar({
             date={selectedDate}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={selectedDateEvents}
-            onCreate={formalOnly ? undefined : openCreate}
+            onCreate={formalOnly && activeScope === "merchant" ? undefined : openCreate}
             onOpen={openCalendarEvent}
           />
         </div>
@@ -5664,7 +5903,7 @@ export function UnifiedUserCalendar({
             dates={view === "threeDay" ? getThreeDayDates(anchorDate) : getWeekDates(anchorDate)}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={searchedVisiblePeriodEvents}
-            onCreate={formalOnly ? undefined : openCreate}
+            onCreate={formalOnly && activeScope === "merchant" ? undefined : openCreate}
             onOpen={openCalendarEvent}
             onSelectDate={openDateInDayView}
             selectedDate={selectedDate}
@@ -5685,7 +5924,7 @@ export function UnifiedUserCalendar({
         <UnifiedCalendarAgendaView
           dates={period.dates}
           events={searchedVisiblePeriodEvents}
-          onCreate={formalOnly ? undefined : (date) => openCreate(date)}
+          onCreate={formalOnly && activeScope === "merchant" ? undefined : (date) => openCreate(date)}
           onExtendFuture={() => extendAgendaDateWindow(1)}
           onExtendPast={() => extendAgendaDateWindow(-1)}
           onOpen={openCalendarEvent}
@@ -5695,16 +5934,24 @@ export function UnifiedUserCalendar({
         />
       )}
 
-      {!formalOnly && editorDraft ? (
-        <CalendarEventEditorPage draft={editorDraft} onChange={setEditorDraft} onClose={() => setEditorDraft(null)} onSave={saveDraft} syncContactOptions={syncContactOptions} />
+      {editorDraft && (!formalOnly || activeScope !== "merchant") ? (
+        <CalendarEventEditorPage
+          draft={editorDraft}
+          onChange={setEditorDraft}
+          onClose={() => setEditorDraft(null)}
+          onSave={saveDraft}
+          syncContactOptions={syncContactOptions}
+          technicianCreationMode={activeScope === "technician" ? technicianCreationMode : undefined}
+          onTechnicianCreationModeChange={activeScope === "technician" ? setTechnicianCreationMode : undefined}
+        />
       ) : null}
       {displayActiveEvent ? (
         <UnifiedCalendarEventDetailPage
           event={displayActiveEvent}
           onBack={() => setActiveEvent(null)}
           onContactCreator={displayActiveEvent.creatorUserId && displayActiveEvent.creatorUserId !== imStore.currentUserId ? openCreatorChat : undefined}
-          onDelete={formalOnly || displayActiveEvent.readOnly ? undefined : deleteEvent}
-          onEdit={formalOnly || displayActiveEvent.readOnly ? undefined : openEdit}
+          onDelete={displayActiveEvent.readOnly ? undefined : deleteEvent}
+          onEdit={displayActiveEvent.readOnly ? undefined : openEdit}
           onOpenAppointmentDetail={(event) => {
             const appointmentDetailId = getCalendarAppointmentDetailId(event);
 
@@ -5746,7 +5993,7 @@ export function UnifiedUserCalendar({
         sourceCounts={sourceCounts}
         sourceVisibility={sourceVisibility}
       /> : null}
-      {!formalOnly ? <FloatingActionButton
+      {(!formalOnly || activeScope !== "merchant") ? <FloatingActionButton
         ariaLabel="新增行程"
         onClick={() => openCreate(selectedDate)}
         storageKey={`needo.fab.schedule-create.${activeScope}`}
