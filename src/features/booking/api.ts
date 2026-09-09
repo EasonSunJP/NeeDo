@@ -346,6 +346,16 @@ export type CreateBookingInput = CreateBookingBaseInput &
       }
   );
 
+export type CreateTechnicianManualBookingInput = {
+  customerIdentityId: number;
+  expectedPriceAmountJpy: number;
+  startsAt: string;
+  endsAt: string;
+  paymentMethod?: ManualPaymentMethod;
+  note?: string;
+} &
+  ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
+
 export type TechnicianServiceBookingContext = {
   target: { type: "technician_service"; id: number };
   serviceCard: TechnicianServiceBookingContextServiceCardProjection;
@@ -449,6 +459,16 @@ export const bookingApi = {
         paymentMethod: input.paymentMethod ?? "onsite"
       },
       headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined
+    });
+  },
+  createTechnicianManualBooking(input: CreateTechnicianManualBookingInput, idempotencyKey: string) {
+    return httpClient.request<BookingOrder>("/technician/manual-bookings", {
+      body: {
+        ...input,
+        paymentMethod: input.paymentMethod ?? "onsite"
+      },
+      headers: { "Idempotency-Key": idempotencyKey },
+      method: "POST"
     });
   },
   listOrders(query: OrderListQuery = {}) {

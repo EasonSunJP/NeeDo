@@ -4097,6 +4097,8 @@ model ScheduleSlot {
   capacity            Int                @default(1)
   bookedCount         Int                @default(0) @map("booked_count")
   status              ScheduleSlotStatus @default(AVAILABLE)
+  manualBookingIdempotencyKey String?     @map("manual_booking_idempotency_key") @db.VarChar(160)
+  manualBookingRequestFingerprint String? @map("manual_booking_request_fingerprint") @db.Char(64)
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
   deletedAt           DateTime?          @map("deleted_at")
@@ -4119,6 +4121,7 @@ model ScheduleSlot {
   @@index([technicianProfileId, shopId, startsAt, endsAt, deletedAt], map: "schedule_slot_technician_shop_range_deleted_idx")
   @@index([startsAt, endsAt])
   @@index([status])
+  @@unique([technicianProfileId, manualBookingIdempotencyKey], map: "schedule_slots_technician_manual_booking_idempotency_key")
   @@index([deletedAt])
   @@map("schedule_slots")
 }

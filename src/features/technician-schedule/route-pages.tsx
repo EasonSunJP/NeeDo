@@ -24,6 +24,7 @@ import {
 } from "../booking/api";
 import { useOrderRealtimeRefresh } from "../booking/useOrderRealtimeRefresh";
 import { schedulingApi } from "../scheduling/api";
+import { automationApi, type TechnicianAutomationContactPage } from "./automation-api";
 import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
 import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
 import type { ExchangeCancellation } from "../exchange/types";
@@ -436,12 +437,36 @@ function createDefaultScheduleRange() {
   return { startsAt, endsAt };
 }
 
+type TechnicianScheduleCreationMode = "availability" | "manualBooking";
+
+function readScheduleCreationMode(value: string | null): TechnicianScheduleCreationMode {
+  return value === "manualBooking" ? "manualBooking" : "availability";
+}
+
+function readScheduleQueryDate(value: string | null, fallback: Date): Date {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : fallback;
+}
+
 function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   const { session } = useAuth();
   const resource = useFormalTechnicianScheduleResource(session, slotId);
   const navigate = useNavigate();
-  const defaultRange = useMemo(createDefaultScheduleRange, []);
+  const [searchParams] = useSearchParams();
+  const defaultRange = useMemo(() => {
+    const fallback = createDefaultScheduleRange();
+    const startsAt = readScheduleQueryDate(searchParams.get("startsAt"), fallback.startsAt);
+    const endsAt = readScheduleQueryDate(searchParams.get("endsAt"), new Date(startsAt.getTime() + 60 * 60_000));
+    return endsAt > startsAt ? { startsAt, endsAt } : fallback;
+  }, [searchParams]);
+  const [creationMode, setCreationMode] = useState<TechnicianScheduleCreationMode>(() => readScheduleCreationMode(searchParams.get("mode")));
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [contacts, setContacts] = useState<TechnicianAutomationContactPage["list"]>([]);
+  const [selectedCustomerIdentityId, setSelectedCustomerIdentityId] = useState<number | null>(null);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"onsite" | "bank_transfer">("onsite");
+  const [note, setNote] = useState("");
   const [startsAt, setStartsAt] = useState(defaultRange.startsAt);
   const [endsAt, setEndsAt] = useState(defaultRange.endsAt);
   const [capacity, setCapacity] = useState(1);
@@ -463,6 +488,22 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
       setEndsAt(new Date(startsAt.getTime() + firstService.durationMinutes * 60_000));
     }
   }, [resource.data, slotId]);
+
+  useEffect(() => {
+    if (slotId || creationMode !== "manualBooking") return;
+    let active = true;
+    setContactsLoading(true);
+    void automationApi.listContacts().then((page) => {
+      if (!active) return;
+      setContacts(page.list);
+      setSelectedCustomerIdentityId((current) => current ?? page.list[0]?.identityId ?? null);
+    }).catch(() => {
+      if (active) setActionError("联系人读取失败，请稍后重试");
+    }).finally(() => {
+      if (active) setContactsLoading(false);
+    });
+    return () => { active = false; };
+  }, [creationMode, slotId]);
 
   if (resource.loading) {
     return <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}><LoadingPanel label="正在读取技师服务与排班" /></TechnicianSchedulePageShell>;
@@ -487,13 +528,34 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   const actualDuration = Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000);
   const validCapacity = Number.isInteger(capacity) && capacity >= 1 && capacity <= 100;
   const validFuture = Boolean(slotId) || startsAt.getTime() > Date.now();
-  const canSave = Boolean(selectedServiceId) && requiredDuration > 0 && actualDuration === requiredDuration && validCapacity && validFuture && !pending;
+  const canSave = Boolean(selectedServiceId)
+    && requiredDuration > 0
+    && actualDuration === requiredDuration
+    && validCapacity
+    && validFuture
+    && (slotId !== null || creationMode === "availability" || Boolean(selectedCustomerIdentityId))
+    && !contactsLoading
+    && !pending;
 
   const save = async () => {
     if (!canSave || !selectedServiceId) return;
     setPending(true);
     setActionError("");
     try {
+      if (!slotId && creationMode === "manualBooking") {
+        if (!selectedCustomerIdentityId || !selectedService) return;
+        const order = await bookingApi.createTechnicianManualBooking({
+          customerIdentityId: selectedCustomerIdentityId,
+          expectedPriceAmountJpy: selectedService.priceAmount,
+          technicianServiceId: selectedServiceId,
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+          paymentMethod,
+          ...(note.trim() ? { note: note.trim() } : {})
+        }, createBookingIdempotencyKey());
+        navigate(`/technician/orders/${order.id}`);
+        return;
+      }
       const saved = slotId
         ? await schedulingApi.updateSlot("technician", slotId, { startsAt, endsAt, capacity })
         : await schedulingApi.createSlot("technician", {
@@ -516,6 +578,33 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
       title={slotId ? "编辑正式排班" : "新建正式排班"}
     >
       <div className="space-y-4">
+        {!slotId ? (
+          <section aria-label="日程类型" className="grid grid-cols-2 gap-3">
+            {(["availability", "manualBooking"] as const).map((mode) => {
+              const checked = creationMode === mode;
+              const label = mode === "availability" ? "可排班" : "手动预约";
+              return (
+                <button
+                  aria-checked={checked}
+                  aria-label={label}
+                  className={`min-h-14 rounded-full border px-4 text-base font-black transition ${checked
+                    ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[var(--client-glow)]"
+                    : "border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-muted)]"
+                  }`}
+                  onClick={() => {
+                    setCreationMode(mode);
+                    setActionError("");
+                  }}
+                  role="switch"
+                  type="button"
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </section>
+        ) : null}
+
         <section className={panelClass}>
           <label className="block text-sm font-black">
             服务
@@ -555,6 +644,49 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
               value={capacity}
             />
           </label>
+          {!slotId && creationMode === "manualBooking" ? (
+            <>
+              <label className="mt-4 block text-sm font-black">
+                预约客户
+                <select
+                  aria-label="预约客户"
+                  className={fieldClass}
+                  disabled={contactsLoading}
+                  onChange={(event) => setSelectedCustomerIdentityId(Number(event.target.value) || null)}
+                  value={selectedCustomerIdentityId ?? ""}
+                >
+                  <option value="">{contactsLoading ? "正在读取联系人" : "请选择联系人"}</option>
+                  {contacts.map((contact) => (
+                    <option key={contact.identityId} value={contact.identityId}>
+                      {contact.displayName} · {contact.publicId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="mt-4 block text-sm font-black">
+                支付方式
+                <select
+                  aria-label="支付方式"
+                  className={fieldClass}
+                  onChange={(event) => setPaymentMethod(event.target.value as "onsite" | "bank_transfer")}
+                  value={paymentMethod}
+                >
+                  <option value="onsite">现场支付</option>
+                  <option value="bank_transfer">银行转账</option>
+                </select>
+              </label>
+              <label className="mt-4 block text-sm font-black">
+                备注
+                <textarea
+                  aria-label="备注"
+                  className={`${fieldClass} min-h-24 py-3`}
+                  maxLength={500}
+                  onChange={(event) => setNote(event.target.value)}
+                  value={note}
+                />
+              </label>
+            </>
+          ) : null}
         </section>
 
         <section className={panelClass}>
@@ -579,7 +711,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
         {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
 
         <Button className="w-full" disabled={!canSave} onClick={() => void save()}>
-          {pending ? "保存中" : "保存正式排班"}
+          {pending ? "保存中" : creationMode === "manualBooking" && !slotId ? "创建手动预约" : "保存正式排班"}
         </Button>
       </div>
     </TechnicianSchedulePageShell>

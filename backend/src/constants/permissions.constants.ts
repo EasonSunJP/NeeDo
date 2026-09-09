@@ -483,6 +483,7 @@ export const SYSTEM_PERMISSIONS = [
   ),
 
   createPermission("booking:create", "创建预约", "api", "booking", "创建 Booking 免费预约订单"),
+  createPermission("technician:booking:manual-create", "技师手动预约", "api", "booking", "技师为正式联系人创建人工预约订单"),
   createPermission("order:list", "订单列表", "api", "order", "分页查看订单列表"),
   createPermission("order:read", "订单详情", "api", "order", "查看订单详情与状态历史"),
   createPermission("order:confirm", "确认接单", "api", "order", "服务方确认接单"),
@@ -2703,6 +2704,7 @@ export const buildRolePermissionAssignments = (): Record<
     "technician:services:write",
     TECHNICIAN_AUTOMATION_PERMISSIONS.read,
     TECHNICIAN_AUTOMATION_PERMISSIONS.write,
+    "technician:booking:manual-create",
     CALENDAR_EVENT_PERMISSIONS.read,
     CALENDAR_EVENT_PERMISSIONS.write,
     "technician:payslip:read",

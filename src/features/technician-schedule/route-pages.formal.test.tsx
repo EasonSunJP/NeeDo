@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   cancelOrder: vi.fn(),
   confirmReceipt: vi.fn(),
   confirmOrder: vi.fn(),
+  createTechnicianManualBooking: vi.fn(),
   createReview: vi.fn(),
   createSlot: vi.fn(),
   deleteSlot: vi.fn(),
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   getCheckout: vi.fn(),
   getOrder: vi.fn(),
   getOwnReview: vi.fn(),
+  listContacts: vi.fn(),
   orderResource: vi.fn(),
   rejectAddOn: vi.fn(),
   retryOrder: vi.fn(),
@@ -90,6 +92,7 @@ vi.mock("../booking/api", async () => {
       cancelOrder: mocks.cancelOrder,
       confirmReceipt: mocks.confirmReceipt,
       confirmOrder: mocks.confirmOrder,
+      createTechnicianManualBooking: mocks.createTechnicianManualBooking,
       createReview: mocks.createReview,
       endService: mocks.endService,
       getCheckout: mocks.getCheckout,
@@ -106,6 +109,9 @@ vi.mock("../scheduling/api", () => ({
     deleteSlot: mocks.deleteSlot,
     updateSlot: mocks.updateSlot
   }
+}));
+vi.mock("./automation-api", () => ({
+  automationApi: { listContacts: mocks.listContacts }
 }));
 vi.mock("./formal-resource", async () => {
   const actual = await vi.importActual<typeof import("./formal-resource")>("./formal-resource");
@@ -455,6 +461,12 @@ describe("formal technician schedule routes", () => {
     mocks.orderResource.mockReturnValue({
       data: makeOrder("pending"), error: null, loading: false, retry: mocks.retryOrder
     });
+    mocks.listContacts.mockResolvedValue({
+      list: [{ identityId: 71, publicId: "u0000000071", displayName: "山田花子", avatarUrl: null }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
   });
 
   afterEach(async () => {
@@ -589,6 +601,36 @@ describe("formal technician schedule routes", () => {
       expect.objectContaining({ technicianServiceId: 102, capacity: 1 })
     ));
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule/events/17");
+  });
+
+  it("creates a formal manual booking from the mutually exclusive editor mode without creating availability", async () => {
+    mocks.scheduleResource.mockReturnValue({
+      data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: null },
+      error: null,
+      loading: false,
+      retry: mocks.retrySchedule
+    });
+    mocks.createTechnicianManualBooking.mockResolvedValue(makeOrder("pending"));
+    await render("/technician/schedule/new?mode=manualBooking&startsAt=2026-09-10T01%3A00%3A00.000Z&endsAt=2026-09-10T02%3A00%3A00.000Z");
+
+    await waitFor(() => expect(container.textContent).toContain("山田花子"));
+    expect(container.querySelectorAll('[role="switch"]')).toHaveLength(2);
+    expect(container.querySelector('[role="switch"][aria-label="手动预约"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(container.querySelector('[role="switch"][aria-label="可排班"]')?.getAttribute("aria-checked")).toBe("false");
+
+    await click("创建手动预约");
+    await waitFor(() => expect(mocks.createTechnicianManualBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerIdentityId: 71,
+        expectedPriceAmountJpy: 10_000,
+        technicianServiceId: 102,
+        startsAt: "2026-09-10T01:00:00.000Z",
+        endsAt: "2026-09-10T02:00:00.000Z"
+      }),
+      expect.stringMatching(/^[a-f0-9]{32}$/)
+    ));
+    expect(mocks.createSlot).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/orders/29");
   });
 
   it("updates only the persisted slot time and capacity in edit mode", async () => {

@@ -42,7 +42,8 @@ import {
   startServiceBodySchema,
   scheduleSlotCreateBodySchema,
   scheduleSlotListQuerySchema,
-  scheduleSlotUpdateBodySchema
+  scheduleSlotUpdateBodySchema,
+  technicianManualBookingBodySchema
 } from "../validators/booking.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 import { createUserExperienceServiceForRoutes } from "./user-experience-service.factory";
@@ -67,7 +68,8 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   merchantPaymentWrite: "merchant-admin:order-payment:write",
   backofficePaymentWrite: "backoffice:order-payment:write",
   scheduleList: "schedule:slots:list",
-  scheduleWrite: "schedule:slots:write"
+  scheduleWrite: "schedule:slots:write",
+  manualCreate: "technician:booking:manual-create"
 } as const;
 
 export const createBookingRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
@@ -163,6 +165,13 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.create),
     validateRequest({ body: bookingCreateBodySchema }),
     controller.createBooking
+  );
+  router.post(
+    "/technician/manual-bookings",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.manualCreate),
+    validateRequest({ body: technicianManualBookingBodySchema }),
+    controller.createTechnicianManualBooking
   );
   router.get(
     "/orders",

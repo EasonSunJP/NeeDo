@@ -227,6 +227,7 @@ export interface AvailabilityListInput extends PaginationInput {
 }
 export interface BookingCreateRepositoryInput {
   customerUserId: number;
+  createdByUserId?: number;
   expectedPriceAmountJpy?: number;
   orderType?: BookingOrderTypePayload;
   serviceId?: number;
@@ -369,6 +370,8 @@ export type ScheduleSlotCreateInput = ScheduleScope & {
   startsAt: Date;
   endsAt: Date;
   capacity: number;
+  createAvailability?: boolean;
+  manualBookingIdempotencyKey?: string;
 };
 
 export type ScheduleSlotUpdateInput = ScheduleScope & {
@@ -390,8 +393,8 @@ export type OrderTransitionActorContext = {
 };
 
 export type ScheduleMutationResult =
-  | { outcome: "ok"; slot: ScheduleSlotPayload }
-  | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" | "suspended" };
+  | { outcome: "ok"; slot: ScheduleSlotPayload; idempotentReplay?: boolean }
+  | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" | "suspended" | "idempotency_conflict" };
 
 interface OrderTransitionRepositoryBaseInput {
   id: number;
@@ -837,6 +840,7 @@ export type OrderTransitionGuardedResult =
   | { outcome: "invalid_state" | "schedule_conflict" | "exchange_cancellation_required" };
 
 export interface BookingRepositoryPort {
+  findActiveCustomerUserIdByIdentityId?: (identityId: number) => Promise<number | null>;
   listAvailableSlots: (
     input: AvailabilityListInput
   ) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
@@ -1228,7 +1232,27 @@ export class BookingRepository implements BookingRepositoryPort {
         if (!this.matchesServiceDuration(input.startsAt, input.endsAt, target.durationMinutes)) {
           return { outcome: "duration_mismatch" };
         }
+        const manualBookingRequestFingerprint = input.manualBookingIdempotencyKey
+          ? this.manualBookingScheduleRequestFingerprint(input, target)
+          : null;
+        if (input.manualBookingIdempotencyKey) {
+          const replay = await transaction.scheduleSlot.findFirst({
+            where: {
+              technicianProfileId: target.technicianProfileId,
+              manualBookingIdempotencyKey: input.manualBookingIdempotencyKey,
+              deletedAt: null
+            },
+            include: this.slotInclude()
+          });
+          if (replay) {
+            if (replay.manualBookingRequestFingerprint !== manualBookingRequestFingerprint) {
+              return { outcome: "idempotency_conflict" };
+            }
+            return { outcome: "ok", slot: this.mapSlot(replay), idempotentReplay: true };
+          }
+        }
         if (
+          input.createAvailability !== false &&
           await this.hasScheduleOverlap(
             transaction,
             target.shopId,
@@ -1242,21 +1266,23 @@ export class BookingRepository implements BookingRepositoryPort {
         ) {
           return { outcome: "conflict" };
         }
-        const availability = await transaction.availability.create({
-          data: {
-            shopId: target.shopId,
-            technicianProfileId: target.technicianProfileId,
-            sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
-            visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
-            startsAt: input.startsAt,
-            endsAt: input.endsAt,
-            capacity: input.capacity,
-            isActive: true
-          }
-        });
+        const availability = input.createAvailability === false
+          ? null
+          : await transaction.availability.create({
+              data: {
+                shopId: target.shopId,
+                technicianProfileId: target.technicianProfileId,
+                sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
+                visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
+                startsAt: input.startsAt,
+                endsAt: input.endsAt,
+                capacity: input.capacity,
+                isActive: true
+              }
+            });
         const created = await transaction.scheduleSlot.create({
           data: {
-            availabilityId: availability.id,
+            availabilityId: availability?.id ?? null,
             serviceId: target.serviceId,
             technicianServiceId: target.technicianServiceId,
             shopId: target.shopId,
@@ -1264,6 +1290,8 @@ export class BookingRepository implements BookingRepositoryPort {
             startsAt: input.startsAt,
             endsAt: input.endsAt,
             capacity: input.capacity,
+            manualBookingIdempotencyKey: input.manualBookingIdempotencyKey ?? null,
+            manualBookingRequestFingerprint,
             status: "AVAILABLE"
           },
           include: this.slotInclude()
@@ -1414,10 +1442,10 @@ export class BookingRepository implements BookingRepositoryPort {
             if (!(await this.lockCustomerUser(tx, input.customerUserId))) {
               return null;
             }
-            const createRequestFingerprint = input.exchangeIntelligencePostId
+            const createRequestFingerprint = input.idempotencyKey
               ? this.bookingCreateRequestFingerprint(input)
               : null;
-            if (input.exchangeIntelligencePostId && input.idempotencyKey) {
+            if (input.idempotencyKey) {
               const replay = await tx.bookingOrder.findFirst({
                 where: {
                   customerUserId: input.customerUserId,
@@ -1827,7 +1855,7 @@ export class BookingRepository implements BookingRepositoryPort {
                 serviceId: serviceSource.serviceId,
                 technicianServiceId: serviceSource.technicianServiceId,
                 exchangeIntelligencePostId: intelligenceSource?.postId ?? null,
-                createIdempotencyKey: intelligenceSource ? input.idempotencyKey : null,
+                createIdempotencyKey: input.idempotencyKey ?? null,
                 createRequestFingerprint,
                 shopId: slot.shopId,
                 technicianProfileId: slot.technicianProfileId,
@@ -1880,7 +1908,7 @@ export class BookingRepository implements BookingRepositoryPort {
                   create: {
                     fromStatus: null,
                     toStatus: "PENDING",
-                    actorUserId: input.customerUserId
+                    actorUserId: input.createdByUserId ?? input.customerUserId
                   }
                 }
               },
@@ -1899,6 +1927,22 @@ export class BookingRepository implements BookingRepositoryPort {
                     serviceRef: intelligenceSource.serviceRef,
                     scheduleSlotId: slot.id,
                     campaignPriceJpy: intelligenceSource.campaignPriceJpy
+                  }
+                })
+              });
+            }
+
+            if (input.createdByUserId && input.createdByUserId !== input.customerUserId) {
+              await tx.auditLog.create({
+                data: toAuditLogCreateData({
+                  actorId: input.createdByUserId,
+                  action: "booking.technician_manual.create",
+                  targetType: "booking_order",
+                  targetId: order.id,
+                  metadata: {
+                    customerUserId: input.customerUserId,
+                    scheduleSlotId: slot.id,
+                    technicianProfileId: slot.technicianProfileId
                   }
                 })
               });
@@ -2051,6 +2095,29 @@ export class BookingRepository implements BookingRepositoryPort {
           exchangeIntelligencePostId: input.exchangeIntelligencePostId ?? null
         })
       )
+      .digest("hex");
+  }
+
+  private manualBookingScheduleRequestFingerprint(
+    input: ScheduleSlotCreateInput,
+    target: {
+      serviceId: number | null;
+      technicianServiceId: number | null;
+      shopId: number;
+      technicianProfileId: number | null;
+    }
+  ): string {
+    return createHash("sha256")
+      .update(JSON.stringify({
+        serviceId: target.serviceId,
+        technicianServiceId: target.technicianServiceId,
+        shopId: target.shopId,
+        technicianProfileId: target.technicianProfileId,
+        startsAt: input.startsAt.toISOString(),
+        endsAt: input.endsAt.toISOString(),
+        capacity: input.capacity,
+        createAvailability: input.createAvailability !== false
+      }))
       .digest("hex");
   }
 
@@ -5421,6 +5488,21 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private serviceOwnerTypeFromDb(value: string): "shop" | "technician" {
     return value === "TECHNICIAN" ? "technician" : "shop";
+  }
+
+  public async findActiveCustomerUserIdByIdentityId(identityId: number): Promise<number | null> {
+    const identity = await this.client.userIdentity.findFirst({
+      where: {
+        id: identityId,
+        type: "customer",
+        scopeType: "customer_profile",
+        isActive: true,
+        deletedAt: null,
+        user: { is: { isActive: true, deletedAt: null } }
+      },
+      select: { userId: true }
+    });
+    return identity?.userId ?? null;
   }
 
   private createOrderNo(): string {

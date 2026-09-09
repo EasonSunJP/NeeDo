@@ -98,6 +98,37 @@ describe("bookingApi", () => {
     });
   });
 
+  it("creates a technician manual booking with its explicit customer, time range, and idempotency", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
+
+    await bookingApi.createTechnicianManualBooking({
+      customerIdentityId: 71,
+      expectedPriceAmountJpy: 10_000,
+      technicianServiceId: 102,
+      startsAt: "2026-09-10T01:00:00.000Z",
+      endsAt: "2026-09-10T02:00:00.000Z",
+      paymentMethod: "onsite",
+      note: "技师人工添加"
+    }, "manual-booking-0000000001");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/technician/manual-bookings",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Idempotency-Key": "manual-booking-0000000001" }),
+        method: "POST"
+      })
+    );
+    expect(lastRequestBody()).toEqual({
+      customerIdentityId: 71,
+      expectedPriceAmountJpy: 10_000,
+      technicianServiceId: 102,
+      startsAt: "2026-09-10T01:00:00.000Z",
+      endsAt: "2026-09-10T02:00:00.000Z",
+      paymentMethod: "onsite",
+      note: "技师人工添加"
+    });
+  });
+
   it("loads the authenticated technician-service booking context", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       code: 0,

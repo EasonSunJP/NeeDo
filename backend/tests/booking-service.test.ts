@@ -5,6 +5,7 @@ import type {
   BookingRepositoryPort,
   ConfirmManualPaymentRepositoryInput,
   LegacyServicePaymentMethodPayload,
+  ScheduleSlotCreateInput,
   ScheduleSlotPayload
 } from "../src/repositories/booking.repository";
 import {
@@ -32,7 +33,9 @@ const technicianActor: AuthenticatedAccessContext = {
   roles: ["technician"],
   permissions: ["schedule:slots:list"],
   currentIdentityScopeType: "technician_profile",
-  currentIdentityScopeId: 31
+  currentIdentityScopeId: 31,
+  currentIdentityId: 301,
+  currentIdentityType: "technician"
 };
 
 type Assert<T extends true> = T;
@@ -148,6 +151,7 @@ const makeOrder = (
 const createRepository = (order: BookingOrderPayload | null): jest.Mocked<BookingRepositoryPort> =>
   ({
     listAvailableSlots: jest.fn(),
+    findActiveCustomerUserIdByIdentityId: jest.fn(async () => 44),
     createBooking: jest.fn(async () => order),
     listOrders: jest.fn(),
     findOrderById: jest.fn(async () => order),
@@ -210,6 +214,49 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("creates a technician manual booking for the selected formal customer and preserves the technician actor", async () => {
+    const order = makeOrder("pending");
+    const repository = createRepository(order);
+    repository.createScheduleSlot = jest.fn(async (input: ScheduleSlotCreateInput) => {
+      void input;
+      return { outcome: "ok" as const, slot: scheduleSlot };
+    });
+    repository.deleteScheduleSlot = jest.fn();
+    const auditLogService = { record: jest.fn(async () => undefined) };
+    const service = new BookingService(repository, undefined, undefined, auditLogService);
+
+    await expect(service.createTechnicianManualBooking(
+      technicianActor,
+      {
+        customerIdentityId: 404,
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        startsAt: scheduleSlot.startsAt,
+        endsAt: scheduleSlot.endsAt,
+        paymentMethod: "onsite",
+        note: "现场手动预约"
+      },
+      "manual-booking-key-1",
+      { ip: "127.0.0.1", userAgent: "jest" }
+    )).resolves.toBe(order);
+
+    expect(repository.findActiveCustomerUserIdByIdentityId).toHaveBeenCalledWith(404);
+    expect(auditLogService.record).toHaveBeenCalledWith(expect.objectContaining({
+      action: "technician.schedule_slot.create",
+      targetId: scheduleSlot.id
+    }));
+    expect(repository.createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      customerUserId: 44,
+      createdByUserId: 3,
+      idempotencyKey: "manual-booking-key-1"
+    }));
+    expect(repository.createScheduleSlot).toHaveBeenCalledWith(expect.objectContaining({
+      createAvailability: false,
+      manualBookingIdempotencyKey: "manual-booking-key-1",
+      scope: "technician",
+      technicianProfileId: 31
+    }));
+  });
   it("publishes compact regional order and invalidation events only after booking commit", async () => {
     const order = makeOrder("pending");
     const repository = createRepository(order);

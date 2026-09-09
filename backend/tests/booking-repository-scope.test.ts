@@ -475,6 +475,18 @@ describe("BookingRepository order list scope", () => {
     expect(source).toContain('input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY"');
   });
 
+  it("serializes and fingerprints technician manual-booking schedule creation for idempotent retries", async () => {
+    const source = readFileSync(
+      require.resolve("../src/repositories/booking.repository.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("await this.lockScheduleOwner(transaction, target.shopId, target.technicianProfileId)");
+    expect(source).toContain("manualBookingIdempotencyKey: input.manualBookingIdempotencyKey");
+    expect(source).toContain("manualBookingRequestFingerprint !== manualBookingRequestFingerprint");
+    expect(source).toContain("idempotentReplay: true");
+  });
+
   it("reads only a schedule slot owned by the active technician scope", async () => {
     const scheduleSlot = {
       findFirst: jest.fn(async () => null)

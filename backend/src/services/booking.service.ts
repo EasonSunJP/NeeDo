@@ -92,6 +92,17 @@ export type BookingCreateInput = BookingCreateBaseInput &
       }
   );
 
+export type TechnicianManualBookingInput = {
+  customerIdentityId: number;
+  expectedPriceAmountJpy: number;
+  serviceId?: number;
+  technicianServiceId?: number;
+  startsAt: Date;
+  endsAt: Date;
+  paymentMethod: "onsite" | "bank_transfer";
+  note?: string;
+};
+
 export interface ManualPaymentConfirmInput {
   method: "onsite" | "bank_transfer";
   amountJpy: number;
@@ -276,9 +287,10 @@ export class BookingService {
   public async createBooking(
     actor: AuthenticatedBookingActor,
     input: BookingCreateInput,
-    rawIdempotencyKey?: string
+    rawIdempotencyKey?: string,
+    authority?: { customerUserId: number; createdByUserId: number }
   ): Promise<BookingOrderPayload> {
-    if (!this.isCustomerSharedIdentity(actor)) {
+    if (!authority && !this.isCustomerSharedIdentity(actor)) {
       throw new AppError({
         code: ERROR_CODES.IDENTITY_FORBIDDEN,
         message: "error.auth.identity_forbidden",
@@ -286,7 +298,7 @@ export class BookingService {
       });
     }
     await this.userPolicyEnforcementService?.assertServiceEkyc(
-      actor.userId,
+      authority?.customerUserId ?? actor.userId,
       input.fulfillmentMode,
       this.now()
     );
@@ -312,9 +324,9 @@ export class BookingService {
     }
     const selector = selectAffiliatePromotion(input);
     let idempotencyKey: string | undefined;
-    if (input.exchangeIntelligencePostId) {
+    if (input.exchangeIntelligencePostId || rawIdempotencyKey !== undefined) {
       const parsedKey = exchangeIdempotencyKeySchema.safeParse(rawIdempotencyKey);
-      if (!parsedKey.success || selector) {
+      if (!parsedKey.success || (input.exchangeIntelligencePostId && selector)) {
         throw new AppError({
           code: ERROR_CODES.VALIDATION,
           message: "error.validation",
@@ -327,7 +339,8 @@ export class BookingService {
       (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null
     );
     const repositoryInput: BookingCreateRepositoryInput = {
-      customerUserId: actor.userId,
+      customerUserId: authority?.customerUserId ?? actor.userId,
+      createdByUserId: authority?.createdByUserId ?? actor.userId,
       expectedPriceAmountJpy: input.expectedPriceAmountJpy,
       orderType: input.orderType ?? "booking",
       serviceId: input.serviceId,
@@ -474,6 +487,63 @@ export class BookingService {
       result.order.id
     ]);
     return result.order;
+  }
+
+  public async createTechnicianManualBooking(
+    actor: AuthenticatedAccessContext,
+    input: TechnicianManualBookingInput,
+    rawIdempotencyKey: string,
+    context: AuthRequestContext
+  ): Promise<BookingOrderPayload> {
+    if (
+      actor.currentIdentityType !== "technician" ||
+      actor.currentIdentityScopeType !== "technician_profile" ||
+      !actor.currentIdentityScopeId ||
+      !actor.currentIdentityId ||
+      !this.repository.findActiveCustomerUserIdByIdentityId
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.auth.identity_forbidden",
+        statusCode: 403
+      });
+    }
+    const customerUserId = await this.repository.findActiveCustomerUserIdByIdentityId(
+      input.customerIdentityId
+    );
+    if (!customerUserId) throw this.notFoundError();
+    const scope = this.getScheduleScope(actor);
+    const scheduleResult = await this.repository.createScheduleSlot({
+      ...scope,
+      serviceId: input.serviceId,
+      technicianServiceId: input.technicianServiceId,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+      capacity: 1,
+      createAvailability: false,
+      manualBookingIdempotencyKey: rawIdempotencyKey
+    });
+    const slot = this.requireScheduleMutation(scheduleResult);
+    if (scheduleResult.outcome === "ok" && !scheduleResult.idempotentReplay) {
+      await this.recordScheduleMutation(actor, context, scope, "create", slot);
+    }
+    try {
+      return await this.createBooking(actor, {
+        expectedPriceAmountJpy: input.expectedPriceAmountJpy,
+        serviceId: input.serviceId,
+        technicianServiceId: input.technicianServiceId,
+        scheduleSlotId: slot.id,
+        fulfillmentMode: "store",
+        paymentMethod: input.paymentMethod,
+        note: input.note
+      }, rawIdempotencyKey, {
+        customerUserId,
+        createdByUserId: actor.userId
+      });
+    } catch (error) {
+      await this.repository.deleteScheduleSlot({ ...scope, id: slot.id }).catch(() => undefined);
+      throw error;
+    }
   }
 
   public async listOrders(
@@ -1507,6 +1577,13 @@ export class BookingService {
       throw new AppError({
         code: ERROR_CODES.SCHEDULE_SLOT_IN_USE,
         message: "error.schedule.slot_in_use",
+        statusCode: 409
+      });
+    }
+    if (result.outcome === "idempotency_conflict") {
+      throw new AppError({
+        code: ERROR_CODES.BOOKING_CREATE_IDEMPOTENCY_CONFLICT,
+        message: "error.booking.create_idempotency_conflict",
         statusCode: 409
       });
     }

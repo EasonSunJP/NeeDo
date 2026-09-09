@@ -23,7 +23,9 @@ import {
   startServiceBodySchema,
   scheduleSlotCreateBodySchema,
   scheduleSlotListQuerySchema,
-  scheduleSlotUpdateBodySchema
+  scheduleSlotUpdateBodySchema,
+  technicianManualBookingBodySchema,
+  technicianManualBookingIdempotencySchema
 } from "../validators/booking.validator";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 
@@ -67,6 +69,28 @@ export class BookingController {
         ...(rawIdempotencyKey === undefined ? [] : [rawIdempotencyKey])
       );
       await this.automationProcessor?.processBooking(created.id).catch(() => undefined);
+      response.status(201).json(successResponse(created));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createTechnicianManualBooking = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const body = technicianManualBookingBodySchema.parse(request.body);
+      const idempotencyKey = technicianManualBookingIdempotencySchema.parse(
+        request.get("Idempotency-Key")
+      );
+      const created = await this.bookingService.createTechnicianManualBooking(
+        this.getActor(response),
+        body,
+        idempotencyKey,
+        getRequestContext(request)
+      );
       response.status(201).json(successResponse(created));
     } catch (error) {
       next(error);

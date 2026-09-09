@@ -174,6 +174,25 @@ export const bookingCreateBodySchema = z
     }
   });
 
+export const technicianManualBookingBodySchema = z.object({
+  customerIdentityId: z.coerce.number().int().positive(),
+  expectedPriceAmountJpy: z.coerce.number().int().nonnegative(),
+  serviceId: z.coerce.number().int().positive().optional(),
+  technicianServiceId: z.coerce.number().int().positive().optional(),
+  startsAt: isoDateSchema,
+  endsAt: isoDateSchema,
+  paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
+  note: z.string().trim().max(500).optional()
+}).strict().refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
+  message: "Exactly one of serviceId or technicianServiceId is required",
+  path: ["serviceId"]
+}).refine((value) => value.endsAt > value.startsAt, {
+  message: "endsAt must be after startsAt",
+  path: ["endsAt"]
+});
+
+export const technicianManualBookingIdempotencySchema = idempotencyKeySchema;
+
 export const orderIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });
@@ -462,6 +481,7 @@ export const scheduleSlotUpdateBodySchema = z
 
 export type AvailabilityListQuery = z.infer<typeof availabilityListQuerySchema>;
 export type BookingCreateBody = z.infer<typeof bookingCreateBodySchema>;
+export type TechnicianManualBookingBody = z.infer<typeof technicianManualBookingBodySchema>;
 export type OrderIdParams = z.infer<typeof orderIdParamSchema>;
 export type OrderAddOnIdParams = z.infer<typeof orderAddOnIdParamsSchema>;
 export type OrderConfirmBody = z.infer<typeof orderConfirmBodySchema>;
