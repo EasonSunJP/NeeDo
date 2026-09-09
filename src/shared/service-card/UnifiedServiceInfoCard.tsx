@@ -32,19 +32,6 @@ const countLabel = (value: number | null | undefined, unavailable: string) =>
         maximumFractionDigits: 1,
       }).format(Math.max(0, value));
 
-const formatPrice = (amount: number, currency: string) => {
-  const value = new Intl.NumberFormat("ja-JP", {
-    maximumFractionDigits: 0,
-  }).format(Number.isFinite(amount) ? Math.max(0, amount) : 0);
-  return currency.toUpperCase() === "JPY"
-    ? `￥${value}`
-    : `${currency.toUpperCase()} ${value}`;
-};
-
-const formatDuration = (value: number | null, minute: string, unavailable: string) =>
-  value !== null && Number.isFinite(value) && value > 0
-    ? `${value}${minute}`
-    : unavailable;
 const formatDistance = (value: number | null | undefined, unavailable: string) =>
   value !== null && value !== undefined && Number.isFinite(value)
     ? `${value.toFixed(value < 10 ? 1 : 0)}km`
@@ -141,20 +128,7 @@ export function UnifiedServiceInfoCard({
     },
   ];
   const image = (
-    <UnifiedCardImage alt={data.name} language={language} src={data.coverUrl}>
-      <span
-        className="absolute left-2 top-2 rounded-full bg-black/80 px-2.5 py-1 text-[10px] font-black text-[#f7f9f7] sm:left-4 sm:top-4 sm:px-4 sm:py-2 sm:text-[15px]"
-        data-testid="unified-card-duration-overlay"
-      >
-        {formatDuration(data.durationMinutes, text.minute, text.durationUnavailable)}
-      </span>
-      <strong
-        className="absolute bottom-0 left-0 rounded-tr-[22px] bg-black/80 px-3 py-2 text-[clamp(18px,6vw,42px)] font-black tracking-[-0.04em] text-[#b8ff4a] sm:rounded-tr-[34px] sm:px-5 sm:py-3"
-        data-testid="unified-card-price-overlay"
-      >
-        {formatPrice(data.priceAmount, data.currency)}
-      </strong>
-    </UnifiedCardImage>
+    <UnifiedCardImage alt={data.name} language={language} src={data.coverUrl} />
   );
   const details = (
     <UnifiedCardDetails
@@ -170,7 +144,7 @@ export function UnifiedServiceInfoCard({
       ariaLabel={`${text.viewService} ${data.name}`}
       body={
         <div
-          className="grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-2 p-2 pt-0 sm:gap-6 sm:p-6 sm:pt-0"
+          className="grid grid-cols-[minmax(110px,30%)_minmax(0,1fr)] gap-3 p-3 pt-0 sm:gap-7 sm:p-6 sm:pt-0"
           data-testid="unified-card-body"
         >
           {image}

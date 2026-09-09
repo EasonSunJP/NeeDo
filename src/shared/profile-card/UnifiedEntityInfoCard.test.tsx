@@ -20,7 +20,7 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).toContain('data-testid="unified-card-metric-separator"');
     expect(markup).not.toContain("[&amp;:not(:last-child)]:border-r");
     expect(markup).not.toContain("grid-cols-2");
-    expect(markup).toContain("grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]");
+    expect(markup).toContain("grid-cols-[minmax(110px,30%)_minmax(0,1fr)]");
     expect(markup).not.toContain("grid grid-cols-1");
     ["评分", "完单次数", "距离", "收藏", "分享"].reduce((index, item) => { const next = text.indexOf(item); expect(next).toBeGreaterThan(index); return next; }, -1);
     expect(markup).toContain('data-testid="special-review-icon"');
@@ -39,6 +39,7 @@ describe("UnifiedEntityInfoCard", () => {
     );
     expect(markup).toContain('data-testid="unified-card-detail-arrow"');
     expect(markup).toContain('data-icon="chevron-right"');
+    expect(markup).toContain('data-testid="unified-card-location-icon"');
     expect(markup).toContain("rotate-180");
     expect(markup).not.toContain('name="minus"');
   });
@@ -48,7 +49,7 @@ describe("UnifiedEntityInfoCard", () => {
     const text = markup.replace(/<[^>]+>/gu, "");
     expect(markup).toContain('data-card-kind="user"');
     expect(markup).not.toContain('data-testid="unified-card-metrics"');
-    expect(markup).toContain("grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]");
+    expect(markup).toContain("grid-cols-[minmax(110px,30%)_minmax(0,1fr)]");
     expect(text).toContain("LifeDance");
     expect(text).toContain("喜欢旅行");
     expect(text).toContain("中文");

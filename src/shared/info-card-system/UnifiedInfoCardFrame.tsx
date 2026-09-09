@@ -15,7 +15,7 @@ export type UnifiedCardMetric = {
 function UnifiedMetricIcon({ name }: { name: IconName }) {
   return (
     <AppIcon
-      className="h-5 w-5 shrink-0 sm:h-7 sm:w-7"
+      className="h-6 w-6 shrink-0 sm:h-8 sm:w-8"
       name={name}
     />
   );
@@ -34,17 +34,17 @@ export function UnifiedCardMetricRail({
     >
       {metrics.map((metric, index) => (
         <Fragment key={metric.label}>
-          <div className="relative flex min-h-[48px] min-w-0 flex-1 items-center justify-center gap-1 px-1 text-[#b8ff4a] sm:min-h-[62px] sm:gap-2 sm:px-3">
+          <div className="relative flex min-h-[52px] min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-[#b8ff4a] sm:min-h-[66px] sm:gap-2 sm:px-3">
             {metric.action ? (
               <div className="pointer-events-auto">{metric.action}</div>
             ) : (
               <UnifiedMetricIcon name={metric.icon} />
             )}
             <div className="min-w-0">
-              <div className="truncate text-[9px] font-black leading-4 text-[#f7f9f7] sm:text-[14px] sm:leading-5">
+              <div className="truncate text-[10px] font-black leading-4 text-[#f7f9f7] sm:text-[15px] sm:leading-5">
                 {metric.value}
               </div>
-              <div className="truncate text-[8px] font-bold leading-3 text-[#9aacb5] sm:text-[11px] sm:leading-4">
+              <div className="truncate text-[9px] font-bold leading-3 text-[#9aacb5] sm:text-[12px] sm:leading-4">
                 {metric.label}
               </div>
             </div>
@@ -52,7 +52,7 @@ export function UnifiedCardMetricRail({
           {index < metrics.length - 1 ? (
             <span
               aria-hidden="true"
-              className="h-8 w-px shrink-0 bg-[#244047] sm:h-12"
+              className="h-8 w-px shrink-0 bg-[#244047] sm:h-11"
               data-testid="unified-card-metric-separator"
             />
           ) : null}
@@ -181,12 +181,12 @@ export function UnifiedCardDetails({
     new Set(tags.map((tag) => tag.trim()).filter(Boolean)),
   ).slice(0, 8);
   return (
-    <div className="flex min-w-0 flex-col justify-start px-1 pb-11 pt-3 sm:px-2 sm:pb-16 sm:pt-8">
+    <div className="flex min-w-0 flex-col justify-start px-1 pb-11 pt-2 sm:px-2 sm:pb-14 sm:pt-5">
       <h3 className="break-words text-[clamp(16px,4.5vw,36px)] font-black leading-tight tracking-[-0.025em] text-[#f7f9f7] [overflow-wrap:anywhere]">
         {name}
       </h3>
       {children}
-      <p className="mt-2 line-clamp-3 text-[10px] font-bold leading-4 text-[#9aacb5] sm:mt-3 sm:text-[14px] sm:leading-6">
+      <p className="mt-2 line-clamp-3 text-[12px] font-bold leading-[1.55] text-[#9aacb5] sm:mt-3 sm:text-[17px] sm:leading-7">
         {description ?? text.noDescription}
       </p>
       <div
@@ -196,14 +196,14 @@ export function UnifiedCardDetails({
         {visibleTags.length > 0 ? (
           visibleTags.map((tag) => (
             <span
-              className="rounded-full border border-[#648f25] px-2 py-0.5 text-[8px] font-black text-[#b8ff4a] sm:px-3 sm:py-1 sm:text-[11px]"
+              className="rounded-full border border-[#648f25] px-2.5 py-1 text-[10px] font-black text-[#b8ff4a] sm:px-4 sm:py-1.5 sm:text-[14px]"
               key={tag}
             >
               {tag}
             </span>
           ))
         ) : (
-          <span className="text-[8px] font-bold text-[#9aacb5] sm:text-[11px]">{text.noTags}</span>
+          <span className="text-[10px] font-bold text-[#9aacb5] sm:text-[13px]">{text.noTags}</span>
         )}
       </div>
     </div>
