@@ -5649,6 +5649,36 @@ model Notification {
   @@map("notifications")
 }
 
+model CalendarEvent {
+  id                       Int      @id @default(autoincrement())
+  ownerIdentityId          Int      @map("owner_identity_id")
+  idempotencyKey           String   @map("idempotency_key") @db.VarChar(191)
+  payloadFingerprint       String   @map("payload_fingerprint") @db.Char(64)
+  title                    String   @db.VarChar(200)
+  startsAt                 DateTime @map("starts_at")
+  endsAt                   DateTime @map("ends_at")
+  allDay                   Boolean  @default(false) @map("all_day")
+  reminderMinutes          Int?     @map("reminder_minutes")
+  repeatRule               String   @default("none") @map("repeat_rule") @db.VarChar(20)
+  location                 String   @default("") @db.VarChar(300)
+  url                      String   @default("") @db.VarChar(1000)
+  note                     String   @default("") @db.Text
+  visibility               String   @default("private") @db.VarChar(20)
+  participantIdentityIds   Json     @map("participant_identity_ids")
+  imageUrls                Json     @map("image_urls")
+  version                  Int      @default(1)
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+  deletedAt                DateTime? @map("deleted_at")
+
+  ownerIdentity UserIdentity @relation(fields: [ownerIdentityId], references: [id], onDelete: Restrict)
+
+  @@unique([ownerIdentityId, idempotencyKey], map: "calendar_events_owner_idempotency_key")
+  @@index([ownerIdentityId, startsAt, endsAt, deletedAt], map: "calendar_events_owner_range_deleted_idx")
+  @@index([deletedAt])
+  @@map("calendar_events")
+}
+
 model UserIdentity {
   id          Int       @id @default(autoincrement())
   userId      Int       @map("user_id")
@@ -5716,6 +5746,7 @@ model UserIdentity {
   createdEntityShareEvents   EntityShareEvent[]            @relation("EntityShareActorIdentity")
   receivedEntityShareEvents  EntityShareEvent[]            @relation("EntityShareRecipientIdentity")
   merchantIdentityProfile    MerchantIdentityProfile?
+  ownedCalendarEvents        CalendarEvent[]
 
   @@index([userId])
   @@index([type])

@@ -196,6 +196,11 @@ export const TECHNICIAN_AUTOMATION_PERMISSIONS = {
   write: "technician:automation-settings:write"
 } as const;
 
+export const CALENDAR_EVENT_PERMISSIONS = {
+  read: "calendar-events:read",
+  write: "calendar-events:write"
+} as const;
+
 export const SYSTEM_PERMISSIONS = [
   { code: "sos:create", name: "发送求救", type: "api", module: "sos", description: "Booking SOS create", isSystem: true },
   { code: "sos:list", name: "查看求救", type: "api", module: "sos", description: "Booking SOS list", isSystem: true },
@@ -1627,6 +1632,8 @@ export const SYSTEM_PERMISSIONS = [
     "technician",
     "保存本人 Booking 自动接受和 Request 自动应募规则"
   ),
+  createPermission(CALENDAR_EVENT_PERMISSIONS.read, "读取个人日程", "api", "calendar", "读取当前身份的正式个人日程"),
+  createPermission(CALENDAR_EVENT_PERMISSIONS.write, "维护个人日程", "api", "calendar", "创建、修改和软删除当前身份的正式个人日程"),
 
   createPermission("menu:dashboard", "仪表盘菜单", "menu", "menu", "显示仪表盘菜单"),
   createPermission("page:dashboard", "仪表盘页面", "page", "dashboard", "访问仪表盘页面"),
@@ -2270,7 +2277,9 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   "wallet:read",
   "wallet:ledger:list",
   "wallet:adjustment:create",
-  "wallet:adjustment:list"
+  "wallet:adjustment:list",
+  CALENDAR_EVENT_PERMISSIONS.read,
+  CALENDAR_EVENT_PERMISSIONS.write
 ] as const satisfies readonly SystemPermissionCode[];
 
 const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
@@ -2694,6 +2703,8 @@ export const buildRolePermissionAssignments = (): Record<
     "technician:services:write",
     TECHNICIAN_AUTOMATION_PERMISSIONS.read,
     TECHNICIAN_AUTOMATION_PERMISSIONS.write,
+    CALENDAR_EVENT_PERMISSIONS.read,
+    CALENDAR_EVENT_PERMISSIONS.write,
     "technician:payslip:read",
     "technician:payslip:confirm",
     "technician:payslip:dispute",

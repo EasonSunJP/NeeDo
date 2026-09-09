@@ -3,6 +3,7 @@ import { accountActivityOpenApiPaths } from "./account-activity.openapi";
 import { operationsMemberOpenApiPaths } from "./operations-member.openapi";
 import { releasePublicationOpenApiPaths } from "./release-publication.openapi";
 import { workStatusOpenApiPaths } from './work-status.openapi';
+import { calendarEventOpenApiPaths } from "./calendar-event.openapi";
 import { sosOpenApiPaths } from "./sos.openapi";
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
@@ -16328,6 +16329,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     ...accountActivityOpenApiPaths(config.API_PREFIX),
     ...sosOpenApiPaths,
     ...workStatusOpenApiPaths,
+    ...calendarEventOpenApiPaths(config.API_PREFIX),
     ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
