@@ -238,7 +238,52 @@ git add src/components/client-ui/AppScaffold.tsx src/components/client-ui/AppSca
 git commit -m "fix(cards): cut out completed seal check"
 ```
 
-### Task 3: Verify, integrate local main, and accept both light and dark themes
+### Task 3: Restore compact height for the four homepage primary actions
+
+**Files:**
+- Modify: `src/pages/user/HomePage.tsx`
+- Modify: `src/pages/user/HomePage.test.ts`
+- Modify: `src/features/merchant-navigation/MerchantPrimaryNavCarousel.tsx`
+- Modify: `src/features/merchant-navigation/MerchantPrimaryNavCarousel.test.tsx`
+
+**Interfaces:**
+- Consumes: unchanged user quick-action destinations and `merchantPrimaryModules` data.
+- Produces: an exact compact mobile height contract shared by the four visible user and merchant homepage actions.
+
+- [ ] **Step 1: Add failing compact-height tests**
+
+In `HomePage.test.ts`, scope the assertion to the quick-action renderer and require the mobile link to use an exact `h-[76px]` envelope with `grid-rows-[30px_28px]`, `gap-1`, and `py-1.5`; reject the content-expanding `min-h-[76px]` / inner `min-h-[28px]` combination.
+
+In `MerchantPrimaryNavCarousel.test.tsx`, render the first page and assert every visible module link uses the same mobile `h-[76px] grid-rows-[30px_28px] gap-1 py-1.5` contract. Allow the existing taller bilingual desktop layout only behind `sm:` responsive prefixes. Assert mobile empty placeholders, when present, use the same exact height.
+
+- [ ] **Step 2: Verify RED**
+
+Run:
+
+```bash
+npm test -- --run \
+  src/pages/user/HomePage.test.ts \
+  src/features/merchant-navigation/MerchantPrimaryNavCarousel.test.tsx
+```
+
+Expected: FAIL because the user action's fixed grid content expands beyond its minimum and merchant actions still use the taller mobile minimum.
+
+- [ ] **Step 3: Implement the compact mobile contract**
+
+In `HomePage.tsx`, set each action link to exact mobile height `h-[76px]`, rows `30px / 28px`, `gap-1`, and `py-1.5`; set the icon frame to `30px`; set the label wrapper to `h-[28px]`. Preserve all routes, titles, localization handling, colors, and four-column order.
+
+In `MerchantPrimaryNavCarousel.tsx`, apply the same 76px mobile layout to module links and empty placeholders. Preserve the existing bilingual layout at `sm` and above with responsive `sm:min-h-[82px] sm:h-auto`, `sm:grid-rows-[34px_1fr]`, `sm:gap-1.5`, `sm:py-3`, and the 34px icon frame. Do not change paging, permissions, badges, routes, or module order.
+
+- [ ] **Step 4: Verify GREEN and commit**
+
+Run the two focused suites, `npm run lint`, and `git diff --check`. Then commit only the four files:
+
+```bash
+git add src/pages/user/HomePage.tsx src/pages/user/HomePage.test.ts src/features/merchant-navigation/MerchantPrimaryNavCarousel.tsx src/features/merchant-navigation/MerchantPrimaryNavCarousel.test.tsx
+git commit -m "fix(home): restore compact primary actions"
+```
+
+### Task 4: Verify, integrate local main, and accept both light and dark themes
 
 **Files:**
 - Verify: `src/shared/info-card-system/UnifiedInfoCardFrame.tsx`
@@ -247,7 +292,7 @@ git commit -m "fix(cards): cut out completed seal check"
 - Verify: `src/shared/service-card/UnifiedServiceInfoCard.tsx`
 
 **Interfaces:**
-- Consumes: Task 1 and 2 commits on `codex/fix-compact-card-height` plus prior local-main merge `34c2fdf6`.
+- Consumes: Task 1, 2, and 3 commits on `codex/fix-compact-card-height` plus prior local-main merge `34c2fdf6`.
 - Produces: second local-main merge and 5180 browser evidence for active-theme changes and transparent cutout.
 
 - [ ] **Step 1: Run focused regression tests**
@@ -262,7 +307,11 @@ npm test -- --run \
   src/shared/service-card/ServiceCardEngagementActions.test.ts \
   src/shared/profile-card/UnifiedEntityInfoCard.test.tsx \
   src/shared/service-card/UnifiedServiceInfoCard.test.tsx \
-  src/shared/service-card/mappers.test.ts
+  src/shared/service-card/mappers.test.ts \
+  src/features/im/components.forwarded-cards.test.tsx \
+  src/features/im/pages.test.ts \
+  src/pages/user/HomePage.test.ts \
+  src/features/merchant-navigation/MerchantPrimaryNavCarousel.test.tsx
 ```
 
 Expected: all selected suites PASS.
@@ -308,6 +357,7 @@ Using the existing authenticated 5180 user session at a 440px mobile viewport:
 3. Select one dark UI theme and verify the same elements change with that theme rather than retaining light colors.
 4. Zoom or inspect the second metric icon: the seal uses the theme primary color and its check reveals the actual card background; there is no fixed white check.
 5. Reconfirm compact height and that shop/service/technician completed counts remain separately scoped.
+6. Reconfirm the four visible user homepage primary actions are exactly 76px high at the mobile viewport; verify the merchant carousel component has the same mobile height contract without changing paging or badges.
 
 - [ ] **Step 6: Final report**
 
