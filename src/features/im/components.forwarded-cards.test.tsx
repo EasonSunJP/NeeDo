@@ -93,6 +93,7 @@ describe("MessageBubble forwarded cards", () => {
     expect(socialBubble?.className).toContain("bg-[color:var(--client-primary)]");
     expect(socialBubble?.className).toContain("text-[color:var(--client-primary-contrast)]");
     expect(socialCard?.className).toContain("w-full");
+    expect(socialCard?.className).toContain("!max-w-full");
     expect(socialCard?.className).toContain("border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]");
     expect(socialCard?.className).toContain("bg-[color:var(--client-surface)]");
     expect(socialCard?.className).toContain("text-[color:var(--client-text)]");

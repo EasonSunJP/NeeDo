@@ -4517,7 +4517,7 @@ export function MessageBubble({
       const card = message.ext.socialPostCard;
       return (
         <button
-          className="block w-full overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-left text-[color:var(--client-text)]"
+          className="block w-full !max-w-full overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-left text-[color:var(--client-text)]"
           onClick={() => onOpenSocialPost?.(card.postId)}
           type="button"
         >
