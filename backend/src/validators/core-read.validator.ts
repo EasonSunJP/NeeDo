@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTENT_LOCALES } from "../constants/content-locales";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -16,6 +17,10 @@ export const coreReadServiceIdParamSchema = z.object({
 export const coreReadShopIdParamSchema = z.object({
   id: z.union([z.coerce.number().int().positive(), z.string().regex(/^shop\d{10}$/)])
 });
+
+export const coreReadShopDetailQuerySchema = z.object({
+  locale: z.enum(CONTENT_LOCALES).optional()
+}).strict();
 
 export const coreReadTechnicianIdParamSchema = z.object({
   id: z.union([z.coerce.number().int().positive(), z.string().regex(/^s\d{10}$/)])

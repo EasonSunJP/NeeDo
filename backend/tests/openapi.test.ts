@@ -5,6 +5,21 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents the five-locale merchant shop presentation and public locale projection", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+    };
+    const workspace = document.paths["/api/v1/merchant-admin/shop/presentation"]?.get;
+    const update = document.paths["/api/v1/merchant-admin/shop/presentation/locales/{locale}"]?.put;
+    const upload = document.paths["/api/v1/merchant-admin/shop/presentation/media"]?.post;
+    const shopDetail = document.paths["/api/v1/shops/{id}"]?.get as { parameters?: Array<{ name?: string; schema?: { enum?: string[] } }> };
+
+    expect(workspace).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "merchant-admin:shop:read" });
+    expect(update).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "merchant-admin:shop:write" });
+    expect(upload).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "merchant-admin:shop:write" });
+    expect(shopDetail.parameters?.find((parameter) => parameter.name === "locale")?.schema?.enum).toEqual(["ja", "en", "ko", "zh-CN", "zh-TW"]);
+  });
+
   it("publishes partner as the only active employee affiliation relationship", () => {
     type Schema = {
       enum?: string[];

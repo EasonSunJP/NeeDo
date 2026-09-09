@@ -13,6 +13,7 @@ import {
   coreReadIdParamSchema,
   coreReadServiceIdParamSchema,
   coreReadShopIdParamSchema,
+  coreReadShopDetailQuerySchema,
   coreReadTechnicianIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
@@ -54,7 +55,7 @@ export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDepende
   router.get("/search", validateRequest({ query: coreSearchQuerySchema }), controller.search);
   router.get(
     "/shops/:id",
-    validateRequest({ params: coreReadShopIdParamSchema }),
+    validateRequest({ params: coreReadShopIdParamSchema, query: coreReadShopDetailQuerySchema }),
     controller.getShopDetail
   );
   router.get(
