@@ -579,8 +579,8 @@ export const coreReadApi = {
     );
   },
 
-  getShopDetail(id: number | string) {
-    return httpClient.request<CoreShopDetail>(`/shops/${id}`, { auth: false });
+  getShopDetail(id: number | string, query: { locale?: "ja" | "en" | "ko" | "zh-CN" | "zh-TW" } = {}) {
+    return httpClient.request<CoreShopDetail>(`/shops/${id}`, { auth: false, query });
   },
 
   getTechnicianDetail(

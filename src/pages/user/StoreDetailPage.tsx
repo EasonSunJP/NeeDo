@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import {
+  backofficeRealDataApi,
+  type ShopPresentationLocale,
+  type ShopPresentationWorkspacePayload
+} from "../../api/backofficeRealData";
+import {
   AppIcon,
   AppTopBar,
   EmptyStatePanel,
@@ -25,6 +30,7 @@ import { MomentActionBar } from "../../components/mobile/MomentActionBar";
 import { OfferInfoCard } from "../../components/mobile/OfferInfoCard";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { AvatarImage } from "../../components/ui/AvatarImage";
+import { DangerConfirmDialog } from "../../components/ui/DangerConfirmDialog";
 import { ImageAdjustmentEditor } from "../../components/ui/ImageAdjustmentEditor";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
@@ -46,12 +52,13 @@ import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
 import { canAddShopService, SHOP_SERVICE_LIMIT } from "../../features/pricing-mode/shopServiceLimit";
+import { applyShopPresentationLocale, buildShopPresentationContent, mergeUploadedCarouselImage } from "../../features/shop-presentation/model";
 import { ShopServiceTaxonomyEditor } from "../../features/shop-taxonomy/ShopServiceTaxonomyEditor";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
-import { translateText, type Language } from "../../i18n/translations";
+import { registerTranslationEntries, translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
 import { buildStoreCheckoutRoute } from "../../lib/storeBookingRoute";
@@ -77,6 +84,20 @@ import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEnt
 import type { SocialPost } from "../../features/social/types";
 import type { Order, OrderStatus, Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
 
+registerTranslationEntries({
+  "同步": { "zh-Hant": "同步", ja: "同期", en: "Sync", ko: "동기화" },
+  "同步所有语言版本": { "zh-Hant": "同步所有語言版本", ja: "すべての言語版を同期", en: "Sync all language versions", ko: "모든 언어 버전 동기화" },
+  "将会用当前语言版本的图片和文字覆盖其他语言版本，真的要执行同步吗？": {
+    "zh-Hant": "目前語言版本的圖片和文字將覆蓋其他語言版本。確定要執行同步嗎？",
+    ja: "現在の言語版の画像と文章で、ほかの言語版を上書きします。本当に同期しますか？",
+    en: "The current language version's images and text will overwrite every other language version. Do you want to sync?",
+    ko: "현재 언어 버전의 이미지와 텍스트가 다른 모든 언어 버전을 덮어씁니다. 동기화하시겠습니까?"
+  },
+  "确认同步": { "zh-Hant": "確認同步", ja: "同期する", en: "Confirm sync", ko: "동기화 확인" },
+  "正在同步": { "zh-Hant": "正在同步", ja: "同期中", en: "Syncing", ko: "동기화 중" },
+  "同步失败，请重新读取后再试": { "zh-Hant": "同步失敗，請重新讀取後再試", ja: "同期できませんでした。再読み込みしてからもう一度お試しください", en: "Sync failed. Reload the drafts and try again.", ko: "동기화하지 못했습니다. 초안을 다시 불러온 후 재시도하세요." }
+});
+
 type StoreTab = "home" | "seats" | "menu" | "moments" | "offers" | "map";
 type StoreIndustry = StorePresentationIndustry;
 type StoreDisplayEditorMode = "gallery" | "basic" | "presentation" | "menu" | "technician";
@@ -86,6 +107,19 @@ type ActiveStoreDisplayEditor = {
   mode: StoreDisplayEditorMode;
   target: string;
 };
+const shopPresentationLocales: Array<{ code: ShopPresentationLocale; label: string; shortLabel: string }> = [
+  { code: "ja", label: "日本語", shortLabel: "日" },
+  { code: "en", label: "English", shortLabel: "EN" },
+  { code: "ko", label: "한국어", shortLabel: "한" },
+  { code: "zh-CN", label: "简体中文", shortLabel: "简" },
+  { code: "zh-TW", label: "繁體中文", shortLabel: "繁" }
+];
+
+function languageToShopPresentationLocale(language: Language): ShopPresentationLocale {
+  if (language === "ja" || language === "en" || language === "ko") return language;
+  if (language === "zh-Hant") return "zh-TW";
+  return "zh-CN";
+}
 type PendingStoreImageEdit = {
   apply: (editedImage: string) => void;
   aspectRatio: number;
@@ -2019,39 +2053,34 @@ function StoreDisplayInlineEditor({
   images,
   industry,
   mode,
-  store
+  store,
+  onGalleryChange,
+  onPresentationChange,
+  onStoreChange
 }: {
   config: StorePresentationConfig;
   images: string[];
   industry: StoreIndustry;
   mode: StoreDisplayEditorMode;
   store: Store;
+  onGalleryChange?: (images: string[]) => void;
+  onPresentationChange?: <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => void;
+  onStoreChange?: (changes: Partial<Store>) => void;
 }) {
   const updateBasicStoreField = (key: (typeof storeBasicEditorFields)[number]["key"], value: string) => {
-    updateStoreEntity(store.id, { [key]: value } as Partial<Pick<Store, (typeof storeBasicEditorFields)[number]["key"]>>);
+    onStoreChange?.({ [key]: value } as Partial<Store>);
   };
   const updatePresentationField = <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => {
-    updateStoreEntity(store.id, {
-      presentation: normalizeStorePresentationConfig({ ...config, [key]: value }, industry)
-    });
+    onPresentationChange?.(key, value);
   };
   const updateOfferField = <Key extends keyof StoreOfferConfig>(offerIndex: number, key: Key, value: StoreOfferConfig[Key]) => {
-    updateStoreEntity(store.id, {
-      presentation: normalizeStorePresentationConfig(
-        {
-          ...config,
-          offers: config.offers.map((offer, index) => (index === offerIndex ? { ...offer, [key]: value } : offer))
-        },
-        industry
-      )
-    });
+    onPresentationChange?.(
+      "offers",
+      config.offers.map((offer, index) => (index === offerIndex ? { ...offer, [key]: value } : offer))
+    );
   };
   const updateGallery = (nextImages: string[]) => {
-    const gallery = nextImages.filter(Boolean).slice(0, 5);
-    updateStoreEntity(store.id, {
-      cover: gallery[0] ?? store.cover,
-      gallery
-    });
+    onGalleryChange?.(nextImages.filter(Boolean).slice(0, 5));
   };
   const editorTitle = mode === "gallery" ? "编辑图片" : mode === "basic" ? "编辑资料" : "编辑展示文字";
 
@@ -2112,7 +2141,7 @@ function StoreDisplayInlineEditor({
             <span className="text-xs font-bold text-[color:var(--client-muted)]">店铺标签</span>
             <textarea
               className="min-h-[78px] rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-3 py-2 text-[color:var(--client-text)] outline-none"
-              onChange={(event) => updateStoreEntity(store.id, { tags: textToList(event.target.value) })}
+              onChange={(event) => onStoreChange?.({ tags: textToList(event.target.value) })}
               value={listToText(store.tags)}
             />
           </label>
@@ -2599,8 +2628,8 @@ function CompactMenuCard({
           <EditableMenuChipInputs editing={editing} items={item.tags} onChange={(tags) => updateField("tags", tags)} slotCount={3} solid={solidTags} wrap={false}>
             <InlineEditableText
               className="min-w-0 truncate whitespace-nowrap rounded-[9px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-muted)]"
-              editing={editing}
-              onChange={(value) => updateField("duration", value)}
+              editing={false}
+              onChange={() => undefined}
               value={item.duration}
             />
             <InlineEditableText
@@ -2629,8 +2658,8 @@ function CompactMenuCard({
           <div className="mt-2 flex min-w-0 items-center justify-between gap-2 sm:flex-wrap sm:justify-start sm:gap-x-3 sm:gap-y-1">
             <InlineEditableText
               className="min-w-[88px] shrink-0 text-[22px] font-black tracking-[-0.04em] text-[color:var(--client-primary)] sm:w-[112px]"
-              editing={editing}
-              onChange={(value) => updateField("priceLabel", value)}
+              editing={false}
+              onChange={() => undefined}
               value={item.priceLabel}
             />
             {showSelectAction ? (
@@ -2704,7 +2733,7 @@ export function StoreDetailExperience({
   privacyControl,
   scope = "user",
   serviceCardsOverride,
-  store,
+  store: sourceStore,
   techniciansOverride,
   presentationOverride,
   transportSummary,
@@ -2716,18 +2745,59 @@ export function StoreDetailExperience({
   const { language } = useI18n();
   const { customers, technicians } = useEntityStore();
   const displayedTechnicians = techniciansOverride ?? technicians;
-  const storeApiId = useMemo(() => storeDetailRouteEntityIdToApiId(store.id), [store.id]);
+  const storeApiId = useMemo(() => storeDetailRouteEntityIdToApiId(sourceStore.id), [sourceStore.id]);
   const [bookingNavigation, setBookingNavigation] = useState<BookingNavigationResponse | null>(null);
   const { getActorForScope, getProfilePosts } = useSocial();
   const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
-  const industry = detectStoreIndustry(store);
+  const industry = detectStoreIndustry(sourceStore);
   const socialActorKey = getActorForScope(scope);
   const isMerchantShell =
     typeof window !== "undefined" && (window.location.pathname.includes("merchant") || window.location.hash.startsWith("#/merchant"));
-  const isMerchantOwnedStore = Boolean(session && session.linkedStoreId === store.id && session.allowedPortals.includes("merchant"));
+  const isMerchantOwnedStore = Boolean(session && session.linkedStoreId === sourceStore.id && session.allowedPortals.includes("merchant"));
   const isMerchantEditable = Boolean(
     onEditFocus || scope === "merchant" || (isMerchantOwnedStore && (session?.portal === "merchant" || isMerchantShell))
   );
+  const [editableStore, setEditableStore] = useState(sourceStore);
+  const store = isMerchantEditable ? editableStore : sourceStore;
+  const [presentationLocale, setPresentationLocale] = useState<ShopPresentationLocale>(() => languageToShopPresentationLocale(language));
+  const [presentationWorkspace, setPresentationWorkspace] = useState<ShopPresentationWorkspacePayload | null>(null);
+  const [presentationDrafts, setPresentationDrafts] = useState<Partial<Record<ShopPresentationLocale, Store>>>({});
+  const [presentationSaveState, setPresentationSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("idle");
+  const [presentationError, setPresentationError] = useState("");
+  const [presentationSyncConfirmOpen, setPresentationSyncConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    setEditableStore(sourceStore);
+    setPresentationWorkspace(null);
+    setPresentationDrafts({});
+    setPresentationSaveState("idle");
+    setPresentationError("");
+    setPresentationSyncConfirmOpen(false);
+  }, [sourceStore.id]);
+
+  useEffect(() => {
+    if (!isMerchantEditable || presentationWorkspace) return;
+    let mounted = true;
+    setPresentationSaveState("loading");
+    backofficeRealDataApi.merchantShopPresentation()
+      .then((workspace) => {
+        if (!mounted) return;
+        const drafts = Object.fromEntries(shopPresentationLocales.map(({ code }) => [
+          code,
+          applyShopPresentationLocale(sourceStore, workspace.locales[code], workspace.media, workspace.services)
+        ])) as Record<ShopPresentationLocale, Store>;
+        setPresentationWorkspace(workspace);
+        setPresentationDrafts(drafts);
+        setEditableStore(drafts[presentationLocale]);
+        setPresentationSaveState("idle");
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        setPresentationError(error instanceof Error ? error.message : "error.shop_presentation.load_failed");
+        setPresentationSaveState("error");
+      });
+    return () => { mounted = false; };
+  }, [isMerchantEditable, presentationLocale, presentationWorkspace, sourceStore]);
   const isTechnicianPricingEntry =
     !isMerchantEditable && bookingNavigation?.pricingMode === "technician";
   const isTechnicianPricingActive = isMerchantEditable ? pricingMode === "technician" : isTechnicianPricingEntry;
@@ -2928,7 +2998,7 @@ export function StoreDetailExperience({
     setLightboxIndex(null);
     setActiveEditor(null);
     setDisplayedTaxonomyLabels(store.tags);
-  }, [industry, primaryCheckoutTarget, routeTechnicianId, routeTime, routeVisitDate, store.alwaysBookable, store.id, store.nextSlot]);
+  }, [routeTechnicianId, routeTime, routeVisitDate, sourceStore.id]);
 
   useEffect(() => {
     setActiveImageIndex((current) => Math.min(current, Math.max(0, images.length - 1)));
@@ -3062,44 +3132,48 @@ export function StoreDetailExperience({
     );
   const canForwardOfferToNeedo = session?.portal === "merchant" && session.linkedStoreId === store.id && !isMerchantEditable;
   const updateBasicStoreField = (key: StoreBasicEditorFieldKey, value: string) => {
-    updateStoreEntity(store.id, { [key]: value } as Partial<Pick<Store, StoreBasicEditorFieldKey>>);
+    setEditableStore((current) => ({ ...current, [key]: value }));
   };
   const updatePresentationField = <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => {
-    updateStoreEntity(store.id, {
-      presentation: normalizeStorePresentationConfig({ ...config, [key]: value }, industry)
-    });
+    setEditableStore((current) => ({
+      ...current,
+      presentation: normalizeStorePresentationConfig({ ...current.presentation, [key]: value }, industry)
+    }));
   };
   const updateOfferField = <Key extends keyof StoreOfferConfig>(offerIndex: number, key: Key, value: StoreOfferConfig[Key]) => {
-    updateStoreEntity(store.id, {
+    setEditableStore((current) => ({
+      ...current,
       presentation: normalizeStorePresentationConfig(
         {
-          ...config,
-          offers: config.offers.map((offer, index) => (index === offerIndex ? { ...offer, [key]: value } : offer))
+          ...current.presentation,
+          offers: normalizeStorePresentationConfig(current.presentation, industry).offers.map((offer, index) => (index === offerIndex ? { ...offer, [key]: value } : offer))
         },
         industry
       )
-    });
+    }));
   };
   const updateMenuCards = (nextMenuCards: MenuCard[]) => {
-    updateStoreEntity(store.id, {
+    setEditableStore((current) => ({
+      ...current,
       presentation: normalizeStorePresentationConfig(
         {
-          ...config,
+          ...current.presentation,
           menuCards: nextMenuCards
         },
         industry
       )
-    });
+    }));
   };
   const updateMenuCard = (menuIndex: number, nextMenuCard: MenuCard) => {
     updateMenuCards(menuCards.map((menuCard, index) => (index === menuIndex ? nextMenuCard : menuCard)));
   };
   const updateGallery = (nextImages: string[]) => {
     const gallery = nextImages.filter(Boolean).slice(0, 5);
-    updateStoreEntity(store.id, {
+    setEditableStore((current) => ({
+      ...current,
       cover: gallery[0] ?? store.cover,
       gallery
-    });
+    }));
   };
   const openStoreImageEditor = (source: string, apply: (editedImage: string) => void, options?: Partial<Pick<PendingStoreImageEdit, "aspectRatio" | "description" | "frameClassName" | "frameWidth" | "title">>) => {
     setPendingStoreImageEdit({
@@ -3124,41 +3198,81 @@ export function StoreDetailExperience({
       setSelectedTechnicianId("");
     }
   };
+  const uploadPresentationImage = async (files: FileList | null, altText: string) => {
+    const file = files?.[0];
+    if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) return null;
+    setPresentationSaveState("saving");
+    setPresentationError("");
+    try {
+      const uploaded = await backofficeRealDataApi.uploadMerchantShopPresentationMedia(file, altText);
+      setPresentationWorkspace((current) => current ? {
+        ...current,
+        media: { ...current.media, [uploaded.publicId]: { url: uploaded.url, altText } }
+      } : current);
+      setPresentationSaveState("idle");
+      return uploaded.url;
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "error.shop_presentation.media_invalid");
+      setPresentationSaveState("error");
+      return null;
+    }
+  };
+  const formalPresentationMediaUrls = new Set(
+    Object.values(presentationWorkspace?.media ?? {}).map((media) => media.url)
+  );
+  const formalCarouselImageCount = new Set(images.filter((image) => formalPresentationMediaUrls.has(image))).size;
   const replaceGalleryImage = async (imageIndex: number, files: FileList | null) => {
-    const [nextImage] = await readImageFilesAsDataUrls(files, 1);
-
+    const nextImage = await uploadPresentationImage(files, `${store.name} 首页轮播图 ${imageIndex + 1}`);
     if (!nextImage) {
       return;
     }
-
-    openStoreImageEditor(nextImage, (editedImage) => updateGallery(images.map((image, index) => (index === imageIndex ? editedImage : image))), {
-      aspectRatio: storeHeroGalleryAspectRatio,
-      frameClassName: storeHeroGalleryRadiusClassName,
-      frameWidth: storeHeroGalleryEditorFrameWidth,
-      title: "展示图片编辑"
-    });
+    updateGallery(mergeUploadedCarouselImage({
+      images,
+      formalMediaUrls: formalPresentationMediaUrls,
+      uploadedUrl: nextImage,
+      replaceIndex: imageIndex
+    }));
+  };
+  const addGalleryImage = async (files: FileList | null) => {
+    if (formalCarouselImageCount >= 5) return;
+    const nextImage = await uploadPresentationImage(files, `${store.name} 首页轮播图 ${formalCarouselImageCount + 1}`);
+    if (nextImage) {
+      updateGallery(mergeUploadedCarouselImage({
+        images,
+        formalMediaUrls: formalPresentationMediaUrls,
+        uploadedUrl: nextImage
+      }));
+    }
   };
   const replaceMenuCardImage = async (menuIndex: number, files: FileList | null) => {
-    const [nextImage] = await readImageFilesAsDataUrls(files, 1);
-
+    const nextImage = await uploadPresentationImage(files, `${store.name} 服务套餐图片`);
     if (!nextImage) {
       return;
     }
-
-    openStoreImageEditor(nextImage, (editedImage) => updateMenuCard(menuIndex, { ...menuCards[menuIndex], cover: editedImage }), {
-      aspectRatio: getStoreMenuImageEditorAspectRatio(packageCardUi),
-      frameClassName: storeMenuCoverRadiusClassName,
-      frameWidth: storeMenuCoverReferenceWidth,
-      title: "菜单图片编辑"
-    });
+    updateMenuCard(menuIndex, { ...menuCards[menuIndex], cover: nextImage });
   };
   const addMerchantMenuCard = () => {
-    if (!canAddShopService(menuCards.length)) return;
-    const nextMenuCard = buildNextStoreMenuCard({
-      images,
-      menuCards,
-      store
-    });
+    if (!canAddShopService(menuCards.length) || !presentationWorkspace) return;
+    const usedServiceIds = new Set(menuCards.map((item) => Number(item.sourceServiceId)));
+    const service = presentationWorkspace.services.find((item) => !usedServiceIds.has(item.id));
+    if (!service) return;
+    const amount = Number(service.priceAmount);
+    const nextMenuCard: MenuCard = {
+      id: `shop-service-${service.id}`,
+      sourceServiceId: String(service.id),
+      name: service.name,
+      subtitle: service.description,
+      duration: `${service.durationMinutes} 分钟`,
+      priceLabel: Number.isFinite(amount)
+        ? new Intl.NumberFormat("ja-JP", { style: "currency", currency: service.currency, maximumFractionDigits: 0 }).format(amount)
+        : `${service.priceAmount} ${service.currency}`,
+      audience: "",
+      tags: [],
+      cover: service.coverMediaAssetPublicId
+        ? presentationWorkspace.media[service.coverMediaAssetPublicId]?.url ?? store.cover
+        : store.cover,
+      highlights: []
+    };
     const nextMenuCardEditorTarget = activeTab === "menu" ? `menu-${nextMenuCard.id}` : `home-menu-${nextMenuCard.id}`;
 
     setServiceMenuCollapsed(false);
@@ -3176,6 +3290,67 @@ export function StoreDetailExperience({
 
     setActiveEditor((current) => (current?.target === target ? null : { mode: focus, target }));
   };
+  const switchPresentationLocale = (locale: ShopPresentationLocale) => {
+    if (locale === presentationLocale) return;
+    setPresentationDrafts((current) => ({ ...current, [presentationLocale]: editableStore }));
+    const nextStore = presentationDrafts[locale];
+    if (nextStore) setEditableStore(nextStore);
+    setPresentationLocale(locale);
+    setPresentationSaveState("idle");
+    setPresentationError("");
+  };
+  const savePresentationLocale = async () => {
+    if (!presentationWorkspace) return;
+    setPresentationSaveState("saving");
+    setPresentationError("");
+    try {
+      const publicIdByUrl = new Map(Object.entries(presentationWorkspace.media).map(([publicId, item]) => [item.url, publicId]));
+      const content = buildShopPresentationContent(editableStore, publicIdByUrl);
+      const saved = await backofficeRealDataApi.updateMerchantShopPresentationLocale(
+        presentationLocale,
+        presentationWorkspace.locales[presentationLocale].lockVersion,
+        content
+      );
+      setPresentationWorkspace((current) => current ? {
+        ...current,
+        locales: { ...current.locales, [presentationLocale]: saved }
+      } : current);
+      setPresentationDrafts((current) => ({ ...current, [presentationLocale]: editableStore }));
+      setPresentationSaveState("saved");
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "error.shop_presentation.save_failed");
+      setPresentationSaveState("error");
+    }
+  };
+  const synchronizePresentationLocales = async () => {
+    if (!presentationWorkspace) return;
+    setPresentationSaveState("saving");
+    setPresentationError("");
+    try {
+      const publicIdByUrl = new Map(Object.entries(presentationWorkspace.media).map(([publicId, media]) => [media.url, publicId]));
+      const content = buildShopPresentationContent(editableStore, publicIdByUrl);
+      const expectedLockVersions = Object.fromEntries(
+        shopPresentationLocales.map(({ code }) => [code, presentationWorkspace.locales[code].lockVersion])
+      ) as Record<ShopPresentationLocale, number>;
+      const locales = await backofficeRealDataApi.synchronizeMerchantShopPresentationLocales(
+        presentationLocale,
+        expectedLockVersions,
+        content
+      );
+      const drafts = Object.fromEntries(shopPresentationLocales.map(({ code }) => [
+        code,
+        applyShopPresentationLocale(sourceStore, locales[code], presentationWorkspace.media, presentationWorkspace.services)
+      ])) as Record<ShopPresentationLocale, Store>;
+      setPresentationWorkspace((current) => current ? { ...current, locales } : current);
+      setPresentationDrafts(drafts);
+      setEditableStore(drafts[presentationLocale]);
+      setPresentationSyncConfirmOpen(false);
+      setPresentationSaveState("saved");
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "同步失败，请重新读取后再试");
+      setPresentationSaveState("error");
+    }
+  };
   const isMerchantEditorActive = (target: string) => !onEditFocus && activeEditor?.target === target;
   const renderMerchantEditor = (
     focus: StoreDisplayEditorMode,
@@ -3192,7 +3367,75 @@ export function StoreDetailExperience({
         onClick={() => handleMerchantEditFocus(focus, target)}
       />
     ) : null;
-  const renderActiveInlineEditor = (_target: string) => null;
+  const renderActiveInlineEditor = (target: string) => {
+    if (!isMerchantEditorActive(target)) return null;
+    if (activeEditor?.mode === "basic") {
+      return (
+        <StoreDisplayInlineEditor
+          config={config}
+          images={images}
+          industry={industry}
+          mode="basic"
+          onGalleryChange={updateGallery}
+          onPresentationChange={updatePresentationField}
+          onStoreChange={(changes) => setEditableStore((current) => ({ ...current, ...changes }))}
+          store={store}
+        />
+      );
+    }
+    if (target === "hero-gallery") {
+      return (
+        <StoreDisplayEditorPanel title="轮播图文字">
+          <StoreDisplayEditorInput label="轮播简介" multiline onChange={(value) => updatePresentationField("subtitle", value)} rows={3} value={config.subtitle} />
+        </StoreDisplayEditorPanel>
+      );
+    }
+    return null;
+  };
+  const presentationLocaleRail = isMerchantEditable && activeEditor ? (
+    <aside
+      aria-label="店铺展示语言"
+      className="fixed right-2 top-1/2 z-[70] flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur"
+      data-testid="shop-presentation-locale-rail"
+    >
+      {shopPresentationLocales.map((locale) => (
+        <button
+          aria-label={locale.label}
+          aria-pressed={presentationLocale === locale.code}
+          className={cn(
+            "focus-ring flex h-9 min-w-9 items-center justify-center rounded-[12px] px-2 text-[11px] font-black",
+            presentationLocale === locale.code
+              ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-ink)]"
+              : "text-[color:var(--client-muted)]"
+          )}
+          key={locale.code}
+          onClick={() => switchPresentationLocale(locale.code)}
+          title={locale.label}
+          type="button"
+        >
+          {locale.shortLabel}
+        </button>
+      ))}
+      <div className="my-0.5 h-px w-6 bg-[color:var(--client-line)]" />
+      <button
+        className="focus-ring rounded-[12px] bg-[color:var(--client-primary)] px-2 py-2 text-[10px] font-black text-[color:var(--client-primary-ink)] disabled:opacity-45"
+        disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
+        onClick={() => { void savePresentationLocale(); }}
+        type="button"
+      >
+        {presentationSaveState === "saving" ? "保存中" : presentationSaveState === "saved" ? "已保存" : "保存"}
+      </button>
+      <button
+        className="focus-ring rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-danger)_48%,transparent)] px-2 py-2 text-[10px] font-black text-[color:var(--client-danger)] disabled:opacity-45"
+        disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
+        onClick={() => setPresentationSyncConfirmOpen(true)}
+        type="button"
+      >
+        同步
+      </button>
+      {presentationError ? <span className="sr-only" role="alert">{presentationError}</span> : null}
+    </aside>
+  ) : null;
 
   const toggleOfferLike = (offerId: string) => {
     setLikedOfferIds((current) => (current.includes(offerId) ? current.filter((item) => item !== offerId) : [...current, offerId]));
@@ -3312,7 +3555,10 @@ export function StoreDetailExperience({
             );
           })}
           {isMerchantEditable ? (
-            <MerchantAddServiceButton disabled={!canAddShopService(menuCards.length)} onAdd={addMerchantMenuCard} />
+            <MerchantAddServiceButton
+              disabled={!canAddShopService(menuCards.length) || !presentationWorkspace?.services.some((service) => !menuCards.some((menu) => Number(menu.sourceServiceId) === service.id))}
+              onAdd={addMerchantMenuCard}
+            />
           ) : null}
           </div>
         ) : null}
@@ -3472,6 +3718,20 @@ export function StoreDetailExperience({
                       ) : null}
                     </div>
                   ))}
+                  {heroGalleryEditing && formalCarouselImageCount < 5 ? (
+                    <label className="focus-ring flex h-16 w-16 shrink-0 cursor-pointer items-center justify-center rounded-[20px] border border-dashed border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] text-center text-[11px] font-black text-[color:var(--client-primary)]">
+                      新增<br />轮播图
+                      <input
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(event) => {
+                          void addGalleryImage(event.target.files);
+                          event.target.value = "";
+                        }}
+                        type="file"
+                      />
+                    </label>
+                  ) : null}
                 </div>
                 {renderActiveInlineEditor("hero-gallery")}
               </div>
@@ -4072,7 +4332,7 @@ export function StoreDetailExperience({
           </div>
         </div>
       ) : null;
-  const fullscreenEditor = activeEditor ? (
+  const fullscreenEditor = activeEditor && !isMerchantEditable ? (
     <StoreDisplayFullscreenEditor
       config={config}
       fallbackMenuCard={activeEditor.menuCard}
@@ -4099,6 +4359,22 @@ export function StoreDetailExperience({
       title={pendingStoreImageEdit.title}
     />
   ) : null;
+  const presentationSyncDialog = (
+    <DangerConfirmDialog
+      confirmLabel="确认同步"
+      description="将会用当前语言版本的图片和文字覆盖其他语言版本，真的要执行同步吗？"
+      error={presentationSyncConfirmOpen && presentationSaveState === "error" ? "同步失败，请重新读取后再试" : undefined}
+      onCancel={() => {
+        setPresentationSyncConfirmOpen(false);
+        setPresentationError("");
+      }}
+      onConfirm={synchronizePresentationLocales}
+      open={presentationSyncConfirmOpen}
+      pending={presentationSaveState === "saving"}
+      pendingLabel="正在同步"
+      title="同步所有语言版本"
+    />
+  );
 
   if (embedded) {
     const hasMerchantControls = Boolean(pricingControl || privacyControl);
@@ -4126,9 +4402,11 @@ export function StoreDetailExperience({
           {renderActiveInlineEditor("basic-card")}
         </section>
         <div className="relative z-0">{content}</div>
+        {presentationLocaleRail}
         {lightbox}
         {fullscreenEditor}
         {storeImageEditor}
+        {presentationSyncDialog}
       </div>
     );
   }
@@ -4190,6 +4468,7 @@ export function StoreDetailExperience({
       </FloatingHomeHeader>
 
       <div className="space-y-3">{content}</div>
+      {presentationLocaleRail}
 
       <div
         aria-hidden="true"
@@ -4208,6 +4487,7 @@ export function StoreDetailExperience({
       {lightbox}
       {fullscreenEditor}
       {storeImageEditor}
+      {presentationSyncDialog}
     </PageScaffold>
   );
 }
@@ -4292,9 +4572,9 @@ export function UnifiedFormalStoreDetail({
   const { language } = useI18n();
   const [revision, setRevision] = useState(0);
   const query = useCoreReadQuery(
-    () => coreReadApi.getShopDetail(shopId),
-    [shopId, revision],
-    { force: revision > 0, key: `core:shop:${shopId}` }
+    () => coreReadApi.getShopDetail(shopId, { locale: languageToShopPresentationLocale(language) }),
+    [language, shopId, revision],
+    { force: revision > 0, key: `core:shop:${shopId}:${languageToShopPresentationLocale(language)}` }
   );
 
   if (query.loading) {

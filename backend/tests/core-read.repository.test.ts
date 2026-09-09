@@ -112,6 +112,73 @@ const publishedTechnicianWithoutServices = {
 };
 
 describe("shop detail affiliated technician roster", () => {
+  it("projects a saved locale and its ordered carousel media on the public shop detail", async () => {
+    const media = {
+      id: 91,
+      entityType: "shop_presentation_upload",
+      entityId: 21,
+      categoryId: null,
+      serviceId: null,
+      shopId: 21,
+      technicianProfileId: null,
+      customerProfileId: null,
+      ownerUserId: 7,
+      ownerIdentityId: 70,
+      url: "/media/content/localized.webp",
+      mimeType: "image/webp",
+      usageType: "shop_presentation_draft",
+      width: null,
+      height: null,
+      altText: "base",
+      sortOrder: 0,
+      isActive: true,
+      checksumSha256: "a".repeat(64),
+      purgeAt: null,
+      purgedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null
+    };
+    const shop = {
+      ...publishedShopWithoutServices,
+      mediaAssets: [media],
+      services: [],
+      technicians: [],
+      technicianShopAffiliations: [],
+      description: "Base description",
+      phone: null,
+      latitude: null,
+      longitude: null,
+      createdAt: now,
+      updatedAt: now
+    };
+    const client = {
+      shop: { findFirst: jest.fn(async () => shop) },
+      shopPresentationLocale: { findFirst: jest.fn(async () => ({
+        content: {
+          storeName: "日本語店名",
+          description: "日本語説明",
+          address: "東京都港区",
+          area: "港区",
+          rankLabel: "おすすめ",
+          businessHours: "11:00-23:00",
+          subtitle: "すぐ予約可能",
+          station: "麻布十番駅",
+          distance: "徒歩3分",
+          parking: "近隣駐車場",
+          routeGuide: "A9出口",
+          paymentMethods: [],
+          equipment: [],
+          carousel: [{ mediaAssetPublicId: "a".repeat(64), altText: "日本語画像" }],
+          serviceMenus: []
+        }
+      })) }
+    };
+    const result = await new CoreReadRepository(client as never).findShopDetail(21, "ja");
+    expect(result).toMatchObject({ name: "日本語店名", description: "日本語説明", city: "港区", address: "東京都港区", coverUrl: media.url });
+    expect(result?.mediaAssets).toEqual([expect.objectContaining({ url: media.url, altText: "日本語画像" })]);
+  });
+
   it("includes active partner technicians with real avatars once alongside primary staff", async () => {
     const partner = { ...publishedTechnicianWithoutServices, id: 42, displayName: "合作技师", user: { ...publishedTechnicianWithoutServices.user, avatarBootstrapUrl: "/media/partner.jpg" } };
     const findFirst = jest.fn(async () => ({

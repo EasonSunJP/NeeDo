@@ -1,5 +1,16 @@
 # 12 — 运营后台与商户后台真实数据接入
 
+## 店铺前端五语言展示编辑
+
+- 商户在原店铺展示页内编辑，不再进入新的全屏编辑页；编辑状态右侧提供日语、英语、韩语、简体中文、繁体中文切换。
+- `GET /api/v1/merchant-admin/shop/presentation` 返回五个语言草稿以及当前店铺可引用的正式媒体与服务。
+- `PUT /api/v1/merchant-admin/shop/presentation/locales/:locale` 只更新所选语言，使用 `expectedLockVersion` 防止覆盖并在事务内写入审计日志。
+- `POST /api/v1/merchant-admin/shop/presentation/locales/:locale/sync` 在通用红框确认后，以当前语言页面内草稿的图片和文字原子覆盖五个语言记录；请求必须携带五个版本的 `expectedLockVersions`，同步后各语言仍保持独立记录和后续编辑能力。
+- `POST /api/v1/merchant-admin/shop/presentation/media` 接收 JPEG、PNG 或 WebP 原始字节，创建绑定当前店铺和商户身份的 `MediaAsset`；首页轮播图限制为 1–5 张。
+- 店铺还没有正式轮播媒体时，页面可继续显示只读兜底图；首次“新增轮播图”会用新上传的正式媒体建立轮播，不会把无法保存的兜底 URL 混入语言草稿。
+- 服务套餐只本地化名称、说明、适用对象、标签、亮点和图片；价格、币种、时长及服务归属继续来自正式 `Service`。
+- 公开 `GET /api/v1/shops/:id?locale=...` 按请求语言投影已保存的店铺、轮播图和服务展示文案，没有该语言记录时回退正式基础资料。
+
 > 本文档用于指导 Codex 执行 Step 12。  
 > 每次只执行本 Step，不要跨步骤开发。  
 > 完成后必须通过验收，再进入下一 Step。

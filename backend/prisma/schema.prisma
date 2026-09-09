@@ -1251,6 +1251,7 @@ model User {
   reviewedWalletAdjustments             WalletAdjustmentRequest[]           @relation("WalletAdjustmentReviewedBy")
   ownedShops                            Shop[]                              @relation("ShopOwner")
   createdShops                          Shop[]                              @relation("ShopCreatedBy")
+  updatedShopPresentationLocales        ShopPresentationLocale[]            @relation("ShopPresentationLocaleUpdatedBy")
   technicianProfile                     TechnicianProfile?
   customerProfile                       CustomerProfile?
   affiliateProfile                      AffiliateProfile?
@@ -1791,6 +1792,7 @@ model Shop {
   technicianServices         TechnicianService[]
   technicians                TechnicianProfile[]
   mediaAssets                MediaAsset[]
+  presentationLocales        ShopPresentationLocale[]
   reviewSummary              ReviewSummary?
   availabilities             Availability[]
   scheduleSlots              ScheduleSlot[]
@@ -3684,6 +3686,26 @@ model MediaAsset {
   @@index([purgeAt])
   @@index([deletedAt])
   @@map("media_assets")
+}
+
+model ShopPresentationLocale {
+  id          Int           @id @default(autoincrement())
+  shopId      Int           @map("shop_id")
+  locale      ContentLocale
+  content     Json
+  lockVersion Int           @default(1) @map("lock_version")
+  updatedById Int           @map("updated_by_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  deletedAt   DateTime?     @map("deleted_at")
+
+  shop      Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  updatedBy User @relation("ShopPresentationLocaleUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([shopId, locale], map: "shop_presentation_locales_shop_id_locale_key")
+  @@index([shopId, deletedAt], map: "shop_presentation_locales_shop_deleted_idx")
+  @@index([updatedById], map: "shop_presentation_locales_updated_by_idx")
+  @@map("shop_presentation_locales")
 }
 
 model OfficialAnnouncement {

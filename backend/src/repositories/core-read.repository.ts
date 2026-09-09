@@ -10,6 +10,9 @@ import type {
   Shop,
   TechnicianProfile
 } from "@prisma/client";
+import { ContentLocale } from "@prisma/client";
+import type { ContentLocaleCode } from "../constants/content-locales";
+import { shopPresentationContentSchema } from "../validators/shop-presentation.validator";
 import { prisma } from "../prisma/client";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import type {
@@ -254,7 +257,7 @@ export interface CoreReadRepositoryPort {
     radiusKm: number
   ) => Promise<NearbyTechnicianCandidate[]>;
   loadTechnicianCardsByRankedIds: (ids: number[]) => Promise<Map<number, TechnicianCardPayload>>;
-  findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
+  findShopDetail: (id: number | string, locale?: ContentLocaleCode) => Promise<ShopDetailPayload | null>;
   findTechnicianDetail: (
     id: number | string,
     coordinates?: { latitude?: number; longitude?: number }
@@ -742,7 +745,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     );
   }
 
-  public async findShopDetail(id: number | string): Promise<ShopDetailPayload | null> {
+  public async findShopDetail(id: number | string, locale?: ContentLocaleCode): Promise<ShopDetailPayload | null> {
     const now = new Date();
     const shop = await this.client.shop.findFirst({
       where: {
@@ -782,7 +785,45 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       }
     });
 
-    return shop ? this.mapShopDetail(shop) : null;
+    if (!shop) return null;
+    const payload = this.mapShopDetail(shop);
+    if (!locale) return payload;
+    const localeMap: Record<ContentLocaleCode, ContentLocale> = {
+      "zh-CN": ContentLocale.ZH_CN,
+      "zh-TW": ContentLocale.ZH_TW,
+      en: ContentLocale.EN,
+      ja: ContentLocale.JA,
+      ko: ContentLocale.KO
+    };
+    const translation = await this.client.shopPresentationLocale.findFirst({
+      where: { shopId: shop.id, locale: localeMap[locale], deletedAt: null }
+    });
+    if (!translation) return payload;
+    const content = shopPresentationContentSchema.parse(translation.content);
+    const shopAssetByPublicId = new Map(shop.mediaAssets.flatMap((asset) => asset.checksumSha256 ? [[asset.checksumSha256, asset]] : []));
+    const localizedAssets = content.carousel.flatMap((item) => {
+      const asset = shopAssetByPublicId.get(item.mediaAssetPublicId);
+      return asset ? [{ ...this.mapMediaAsset(asset), altText: item.altText }] : [];
+    });
+    const menuByServiceId = new Map(content.serviceMenus.map((item) => [item.serviceId, item]));
+    return {
+      ...payload,
+      name: content.storeName,
+      description: content.description,
+      city: content.area,
+      address: content.address,
+      coverUrl: localizedAssets[0]?.url ?? payload.coverUrl,
+      mediaAssets: localizedAssets.length ? localizedAssets : payload.mediaAssets,
+      services: payload.services.map((service) => {
+        const menu = menuByServiceId.get(service.id);
+        if (!menu) return service;
+        const source = shop.services.find((item) => item.id === service.id);
+        const cover = menu.coverMediaAssetPublicId
+          ? source?.mediaAssets.find((asset) => asset.checksumSha256 === menu.coverMediaAssetPublicId)?.url
+          : undefined;
+        return { ...service, name: menu.name, description: menu.description, coverUrl: cover ?? service.coverUrl };
+      })
+    };
   }
 
   public async findTechnicianDetail(

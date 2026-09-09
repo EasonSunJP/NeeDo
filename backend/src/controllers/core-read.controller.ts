@@ -7,6 +7,7 @@ import {
   coreReadIdParamSchema,
   coreReadServiceIdParamSchema,
   coreReadShopIdParamSchema,
+  coreReadShopDetailQuerySchema,
   coreReadTechnicianIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
@@ -144,7 +145,10 @@ export class CoreReadController {
     try {
       response
         .status(200)
-        .json(successResponse(await this.coreReadService.getShopDetail(this.getShopId(request))));
+        .json(successResponse(await this.coreReadService.getShopDetail(
+          this.getShopId(request),
+          coreReadShopDetailQuerySchema.parse(request.query).locale
+        )));
     } catch (error) {
       next(error);
     }
