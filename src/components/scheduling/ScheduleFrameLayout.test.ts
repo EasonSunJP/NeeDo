@@ -19,6 +19,11 @@ describe("shared schedule frame layout", () => {
     expect(cycleBoardSource).not.toContain("rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[var(--client-shadow)]");
   });
 
+  it("uses the themed schedule view menu instead of a native select popup", () => {
+    expect(cycleBoardSource).toContain("<ScheduleViewPicker");
+    expect(cycleBoardSource).not.toContain('<select\n            aria-label="切换排班展示范围"');
+  });
+
   it("uses the same frameless calendar surface for user schedules and cycle schedules", () => {
     expect(unifiedCalendarSource).toContain("export function UnifiedCalendarSurface");
     expect(unifiedCalendarSource).toContain('data-unified-user-calendar="true"');

@@ -35,6 +35,7 @@ import { Button } from "../ui/Button";
 type EmployeeSchedulePanelProps = {
   employee: MerchantEmployee;
   readOnly?: boolean;
+  scheduleSurface?: "desktop" | "mobile";
 };
 
 const statusPriority: Record<DispatchScheduleCellStatus, number> = {
@@ -265,7 +266,7 @@ export function createEmployeeScheduleCalendarData(
   };
 }
 
-export function EmployeeSchedulePanel({ employee, readOnly = false }: EmployeeSchedulePanelProps) {
+export function EmployeeSchedulePanel({ employee, readOnly = false, scheduleSurface = "desktop" }: EmployeeSchedulePanelProps) {
   const { language } = useOptionalI18n();
   const t = (source: string) => translateText(source, language);
   const [dateKey, setDateKey] = useState(getTodayDateKey());
@@ -375,7 +376,7 @@ export function EmployeeSchedulePanel({ employee, readOnly = false }: EmployeeSc
             onViewChange={changeView}
             storeId={employee.affiliation.shop.publicId}
             subtitle={`${employee.displayName} · ${t("正式日程")}`}
-            surface="desktop"
+            surface={scheduleSurface}
             view={view}
           />
         </div>

@@ -109,6 +109,7 @@ describe("MerchantPortalPage store privacy control", () => {
 
     expect(employeeDetailWorkspaceSource).toContain("merchantEmployeeApi.detail(needoId)");
     expect(employeeDetailWorkspaceSource).toContain("<EmployeeDetailCard");
+    expect(employeeDetailWorkspaceSource).toContain('scheduleSurface="mobile"');
     expect(staffDetailSource).not.toContain('backofficeRealDataApi.technician("merchant-admin"');
     expect(employeeDetailWorkspaceSource).toContain("正在读取员工详细信息卡");
   });
