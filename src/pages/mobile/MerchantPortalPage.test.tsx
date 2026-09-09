@@ -277,4 +277,19 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(orderList).toContain("<UnifiedServiceInfoCard");
     expect(orderList).not.toContain("<OrderServiceMiniCard");
   });
+
+  it("removes the extra employee-list containers so shared cards use the available width", () => {
+    const roleSection = merchantSource.slice(
+      merchantSource.indexOf("function MerchantStaffRoleSection"),
+      merchantSource.indexOf("function getMerchantOrderProvider"),
+    );
+    const employeeStatus = merchantSource.slice(
+      merchantSource.indexOf('title="员工状态"'),
+      merchantSource.indexOf('activeView === "staff"'),
+    );
+
+    expect(roleSection).toContain('<section className="space-y-3">');
+    expect(roleSection).not.toContain("rounded-[28px]");
+    expect(employeeStatus).not.toContain("rounded-[28px] border border-line bg-white p-4 shadow-panel");
+  });
 });

@@ -115,6 +115,7 @@ export function PlatformMembershipSimpleCard(
         specialReviewTags: props.specialReviewTags ?? [],
       }}
       onOpenDetails={props.onOpenDetails}
+      showLanguageTags={false}
     />
   );
 }

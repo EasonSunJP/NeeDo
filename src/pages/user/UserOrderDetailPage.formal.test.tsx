@@ -82,6 +82,7 @@ vi.mock("../../features/exchange/ExchangeOrderCancellationPanel", () => ({
   }
 }));
 vi.mock("../../components/client-ui/AppScaffold", () => ({
+  AppIcon: ({ name }: { name: string }) => <span data-app-icon={name} />,
   AppTopBar: ({ title }: { title: string }) => <header>{title}</header>,
   PageScaffold: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
   PrimaryButton: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => <button onClick={onClick} type="button">{children}</button>

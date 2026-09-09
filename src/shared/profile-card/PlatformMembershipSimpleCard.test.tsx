@@ -24,8 +24,8 @@ describe("PlatformMembershipSimpleCard unified compatibility entry", () => {
     expect(markup).toContain('data-card-kind="user"');
     expect(markup).toContain("山田花子");
     expect(markup).toContain("预约前请先确认时间、语言和付款方式。");
-    expect(markup).toContain("日本語");
-    expect(markup).toContain("中文");
+    expect(markup).not.toContain("日本語");
+    expect(markup).not.toContain("中文");
     expect(markup).not.toContain('data-testid="unified-card-metrics"');
     expect(markup).not.toContain("Lv.12");
     expect(markup).not.toContain("ID u0000000201");
@@ -53,15 +53,17 @@ describe("PlatformMembershipSimpleCard unified compatibility entry", () => {
         ],
       }),
     );
+    const text = markup.replace(/<[^>]+>/gu, "");
 
     expect(markup).toContain('data-card-kind="technician"');
     expect(markup).toContain('data-testid="unified-card-metrics"');
-    expect(markup).toContain("评分");
-    expect(markup).toContain("完单次数");
-    expect(markup).toContain("收藏");
-    expect(markup).toContain("分享");
-    expect(markup).toContain("服务max");
-    expect(markup).toContain("17");
+    expect(text).not.toContain("评分");
+    expect(text).not.toContain("完单次数");
+    expect(text).not.toContain("收藏");
+    expect(text).not.toContain("分享");
+    expect(text).not.toContain("日本語");
+    expect(markup).toContain('title="服务max"');
+    expect(text).toContain("17");
     expect(markup).not.toContain("Lv.");
   });
 });

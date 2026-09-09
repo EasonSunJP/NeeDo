@@ -493,10 +493,10 @@ describe("ImChatRecordDetailPage", () => {
   });
 
   it.each([
-    ["zh-Hant", ["可預約", "利用次數", "待確認", "邀請對象：", "提醒："]],
-    ["ja", ["予約可能", "利用回数", "確認待ち", "邀请対象：", "リマインド："]],
-    ["en", ["Bookable", "Uses", "Pending Confirmation", "Invitee:", "Remind:"]],
-    ["ko", ["예약 가능", "이용 횟수", "확인 대기", "초대 대상:", "Ti Xing:"]],
+    ["zh-Hant", ["待確認", "邀請對象：", "提醒："]],
+    ["ja", ["確認待ち", "邀请対象：", "リマインド："]],
+    ["en", ["Pending Confirmation", "Invitee:", "Remind:"]],
+    ["ko", ["확인 대기", "초대 대상:", "Ti Xing:"]],
   ] as const)("localizes static service and schedule labels in %s without changing authored snapshot fields", async (language, expectedStaticLabels) => {
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(() => callback(0), 1));
     vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));

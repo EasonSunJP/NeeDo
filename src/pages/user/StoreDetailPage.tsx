@@ -2791,7 +2791,7 @@ export function StoreDetailExperience({
       : [],
     [bookingNavigation, store.cover]
   );
-  const baseMenuCards = useMemo(
+  const baseMenuCards = useMemo<MenuCard[]>(
     () => (formalApiOnly ? formalBookingMenuCards : buildMenuCards(store, industry)),
     [formalApiOnly, formalBookingMenuCards, industry, store]
   );
@@ -2799,13 +2799,19 @@ export function StoreDetailExperience({
     () => new Map((serviceCardsOverride ?? []).map((service) => [service.id, service])),
     [serviceCardsOverride]
   );
-  const menuCards = useMemo(
-    () => (formalApiOnly && !isMerchantEditable
+  const menuCards = useMemo(() => {
+    const sourceCards = formalApiOnly && !isMerchantEditable
       ? baseMenuCards
-      : mergeMenuCardOverrides(baseMenuCards, config.menuCards).map((menuCard) => ({
-          ...menuCard,
-          serviceInfo: serviceInfoById.get(menuCard.sourceServiceId) ?? menuCard.serviceInfo ?? mapStoreMenuConfigToUnifiedData(menuCard, store)
-        }))),
+      : mergeMenuCardOverrides(baseMenuCards, config.menuCards);
+
+    return sourceCards.map((menuCard) => ({
+      ...menuCard,
+      serviceInfo:
+        serviceInfoById.get(menuCard.sourceServiceId) ??
+        menuCard.serviceInfo ??
+        mapStoreMenuConfigToUnifiedData(menuCard, store),
+    }));
+  },
     [baseMenuCards, config.menuCards, formalApiOnly, isMerchantEditable, serviceInfoById, store]
   );
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);

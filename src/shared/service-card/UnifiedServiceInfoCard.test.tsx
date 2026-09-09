@@ -27,7 +27,7 @@ describe("UnifiedServiceInfoCard", () => {
     expect(markup).toContain('data-testid="unified-card-metric-separator"');
     expect(markup).not.toContain("[&amp;:not(:last-child)]:border-r");
     expect(markup).not.toContain("grid-cols-2");
-    expect(markup).toContain("grid-cols-[minmax(110px,30%)_minmax(0,1fr)]");
+    expect(markup).toContain("grid-cols-[minmax(132px,38%)_minmax(0,1fr)]");
     expect(markup).not.toContain("grid grid-cols-1");
     expect(markup).not.toContain("data-variant");
     expect(markup).not.toContain("showcase");
@@ -35,9 +35,10 @@ describe("UnifiedServiceInfoCard", () => {
     expect(markup).toContain("aspect-square");
     expect(markup).toContain("rounded-[18px]");
     expect(markup).toContain("justify-start");
-    ["可预约", "利用次数", "距离你", "收藏", "分享"].reduce((lastIndex, item) => {
+    ["可预约", "18", "1.2km", "27", "6"].reduce((lastIndex, item) => {
       const nextIndex = text.indexOf(item); expect(nextIndex).toBeGreaterThan(lastIndex); return nextIndex;
     }, -1);
+    expect(text).not.toMatch(/利用次数|距离你|收藏|分享/u);
   });
 
   it("uses the shared chevron when no contextual action replaces it", () => {
@@ -48,14 +49,14 @@ describe("UnifiedServiceInfoCard", () => {
     expect(markup).toContain('data-icon="chevron-right"');
   });
 
-  it("keeps the compact image free of duration and price overlays", () => {
+  it("restores the duration and price overlays on the service image", () => {
     const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, {
       actionSlot: createElement("button", { type: "button" }, "编辑服务"), data: formalService, detailTo: "/services/71"
     })));
-    expect(markup).not.toContain('data-testid="unified-card-duration-overlay"');
-    expect(markup).not.toContain('data-testid="unified-card-price-overlay"');
-    expect(markup).not.toContain("60分钟");
-    expect(markup).not.toContain("￥1,000");
+    expect(markup).toContain('data-testid="unified-card-duration-overlay"');
+    expect(markup).toContain('data-testid="unified-card-price-overlay"');
+    expect(markup).toContain("60分钟");
+    expect(markup).toContain("￥1,000");
     expect(markup.indexOf("</a>")).toBeLessThan(markup.indexOf("编辑服务"));
   });
 
@@ -66,8 +67,8 @@ describe("UnifiedServiceInfoCard", () => {
     }})));
     const text = markup.replace(/<[^>]+>/gu, "");
     expect(text).toContain("暂无公开图片");
-    expect(text).not.toContain("时长未读取");
-    expect(text).toContain("距离未读取");
+    expect(text).not.toMatch(/未读取|距离未读取/u);
+    expect(text).toContain("-");
     expect(text).toContain("暂无简介");
     expect(text).toContain("暂无标签");
     expect(text).not.toContain("0km");

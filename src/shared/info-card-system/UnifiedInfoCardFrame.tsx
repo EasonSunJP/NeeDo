@@ -29,30 +29,25 @@ export function UnifiedCardMetricRail({
   if (metrics.length === 0) return null;
   return (
     <div
-      className="pointer-events-none relative z-20 flex items-center px-2 py-2 sm:px-5 sm:py-4"
+      className="pointer-events-none relative z-20 flex items-center px-2 py-1.5 sm:px-5 sm:py-3"
       data-testid="unified-card-metrics"
     >
       {metrics.map((metric, index) => (
         <Fragment key={metric.label}>
-          <div className="relative flex min-h-[52px] min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-[#b8ff4a] sm:min-h-[66px] sm:gap-2 sm:px-3">
+          <div aria-label={metric.label} className="relative flex min-h-[44px] min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-[#b8ff4a] sm:min-h-[56px] sm:gap-2 sm:px-3">
             {metric.action ? (
               <div className="pointer-events-auto">{metric.action}</div>
             ) : (
               <UnifiedMetricIcon name={metric.icon} />
             )}
-            <div className="min-w-0">
-              <div className="truncate text-[10px] font-black leading-4 text-[#f7f9f7] sm:text-[15px] sm:leading-5">
-                {metric.value}
-              </div>
-              <div className="truncate text-[9px] font-bold leading-3 text-[#9aacb5] sm:text-[12px] sm:leading-4">
-                {metric.label}
-              </div>
+            <div className="min-w-0 truncate text-[11px] font-black leading-4 text-[#f7f9f7] sm:text-[16px] sm:leading-5">
+              {metric.value}
             </div>
           </div>
           {index < metrics.length - 1 ? (
             <span
               aria-hidden="true"
-              className="h-8 w-px shrink-0 bg-[#244047] sm:h-11"
+              className="h-7 w-px shrink-0 bg-[#244047] sm:h-10"
               data-testid="unified-card-metric-separator"
             />
           ) : null}
@@ -164,16 +159,20 @@ export function UnifiedCardImage({
 }
 
 export function UnifiedCardDetails({
+  afterDescription,
   children,
   description,
   language = "zh",
   name,
+  showEmptyTags = true,
   tags,
 }: {
+  afterDescription?: ReactNode;
   children?: ReactNode;
   description: string | null;
   language?: Language;
   name: string;
+  showEmptyTags?: boolean;
   tags: string[];
 }) {
   const text = getUnifiedCardCopy(language);
@@ -189,6 +188,7 @@ export function UnifiedCardDetails({
       <p className="mt-2 line-clamp-3 text-[12px] font-bold leading-[1.55] text-[#9aacb5] sm:mt-3 sm:text-[17px] sm:leading-7">
         {description ?? text.noDescription}
       </p>
+      {afterDescription}
       <div
         className="mt-2 flex min-h-5 flex-wrap items-center gap-1 sm:mt-4 sm:min-h-7 sm:gap-2"
         data-testid="unified-card-tags"
@@ -202,9 +202,9 @@ export function UnifiedCardDetails({
               {tag}
             </span>
           ))
-        ) : (
+        ) : showEmptyTags ? (
           <span className="text-[10px] font-bold text-[#9aacb5] sm:text-[13px]">{text.noTags}</span>
-        )}
+        ) : null}
       </div>
     </div>
   );
