@@ -702,6 +702,7 @@ export function getFormalScheduleEvents(slots: BookingScheduleSlot[], scope: "me
       ...segment,
       id: `${item.id}-${segment.date}`,
       scheduleSlotId: slot.id,
+      availabilitySourceType: slot.availabilitySourceType ?? undefined,
       sourceId: scope,
       calendarId: slot.technicianProfileId ? getTechnicianCalendarLaneId(String(slot.technicianProfileId)) : "merchant:unassigned",
       calendarLabel: slot.technicianName ?? "未指定技师",
