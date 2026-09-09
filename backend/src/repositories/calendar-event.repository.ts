@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
+import { BookingOrderStatus } from "@prisma/client";
 import type { Prisma, CalendarEvent, PrismaClient } from "@prisma/client";
+import {
+  projectParticipantBusyRanges,
+  type CalendarParticipantBusyRange,
+} from "../domain/calendar-participant-availability";
 import { prisma } from "../prisma/client";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
@@ -32,6 +37,25 @@ export interface CalendarEventListInput {
   page: number;
   pageSize: number;
 }
+
+export interface CalendarParticipantBusyListInput {
+  viewerIdentityId: number;
+  participantIdentityIds: number[];
+  from: Date;
+  to: Date;
+  page: number;
+  pageSize: number;
+}
+
+export type CalendarParticipantBusyListResult =
+  | {
+      outcome: "ok";
+      list: CalendarParticipantBusyRange[];
+      total: number;
+      page: number;
+      page_size: number;
+    }
+  | { outcome: "forbidden" };
 
 export interface CalendarEventCreateInput {
   ownerIdentityId: number;
@@ -79,6 +103,9 @@ export interface CalendarEventRepositoryPort {
     page: number;
     page_size: number;
   }>;
+  listParticipantBusy(
+    input: CalendarParticipantBusyListInput,
+  ): Promise<CalendarParticipantBusyListResult>;
   create(
     input: CalendarEventCreateInput,
     audit: AuditLogCreateInput,
@@ -156,6 +183,116 @@ export class CalendarEventRepository implements CalendarEventRepositoryPort {
       this.client.calendarEvent.count({ where }),
     ]);
     return { list: rows.map(toPayload), total, page: input.page, page_size: input.pageSize };
+  }
+
+  public async listParticipantBusy(
+    input: CalendarParticipantBusyListInput,
+  ): Promise<CalendarParticipantBusyListResult> {
+    const participantIdentityIds = Array.from(new Set(input.participantIdentityIds));
+    const authorizedContacts = await this.client.contact.findMany({
+      where: {
+        ownerIdentityId: input.viewerIdentityId,
+        contactIdentityId: { in: participantIdentityIds },
+        blockedAt: null,
+        deletedAt: null,
+        contactIdentity: { isActive: true, deletedAt: null },
+        contactUser: { isActive: true, deletedAt: null },
+      },
+      select: {
+        contactIdentityId: true,
+        contactUserId: true,
+        contactUser: { select: { technicianProfile: { select: { id: true } } } },
+      },
+    });
+    const authorizedIds = new Set(authorizedContacts.map((contact) => contact.contactIdentityId));
+    if (participantIdentityIds.some((identityId) => !authorizedIds.has(identityId))) {
+      return { outcome: "forbidden" };
+    }
+
+    const calendarWhere: Prisma.CalendarEventWhereInput = {
+      ownerIdentityId: { in: participantIdentityIds },
+      startsAt: { lt: input.to },
+      endsAt: { gt: input.from },
+      deletedAt: null,
+    };
+    const participantIdentityByUserId = new Map(
+      authorizedContacts.map((contact) => [contact.contactUserId, contact.contactIdentityId]),
+    );
+    const participantIdentityByTechnicianId = new Map(
+      authorizedContacts.flatMap((contact) => contact.contactUser.technicianProfile
+        ? [[contact.contactUser.technicianProfile.id, contact.contactIdentityId] as const]
+        : []),
+    );
+    const [calendarRows, bookingRows] = await Promise.all([
+      this.client.calendarEvent.findMany({
+        where: calendarWhere,
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        select: {
+          ownerIdentityId: true,
+          startsAt: true,
+          endsAt: true,
+        },
+      }),
+      this.client.bookingOrder.findMany({
+        where: {
+          deletedAt: null,
+          status: { in: [BookingOrderStatus.CONFIRMED, BookingOrderStatus.IN_SERVICE] },
+          startsAt: { lt: input.to },
+          endsAt: { gt: input.from },
+          OR: [
+            { customerUserId: { in: [...participantIdentityByUserId.keys()] } },
+            { technicianProfileId: { in: [...participantIdentityByTechnicianId.keys()] } },
+          ],
+        },
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        select: {
+          customerUserId: true,
+          technicianProfileId: true,
+          startsAt: true,
+          endsAt: true,
+        },
+      }),
+    ]);
+
+    const bookingBusySources = bookingRows.flatMap((row) => {
+      const identities = new Set<number>();
+      const customerIdentityId = participantIdentityByUserId.get(row.customerUserId);
+      if (customerIdentityId) identities.add(customerIdentityId);
+      if (row.technicianProfileId) {
+        const technicianIdentityId = participantIdentityByTechnicianId.get(row.technicianProfileId);
+        if (technicianIdentityId) identities.add(technicianIdentityId);
+      }
+      return [...identities].map((participantIdentityId) => ({
+        participantIdentityId,
+        startsAt: row.startsAt,
+        endsAt: row.endsAt,
+      }));
+    });
+    const projected = projectParticipantBusyRanges([
+      ...calendarRows.map((row) => ({
+        participantIdentityId: row.ownerIdentityId,
+        startsAt: row.startsAt,
+        endsAt: row.endsAt,
+      })),
+      ...bookingBusySources,
+    ]);
+    const uniqueSorted = Array.from(new Map(projected.map((range) => [
+      `${range.participantIdentityId}:${range.startsAt}:${range.endsAt}`,
+      range,
+    ])).values()).sort((left, right) => (
+      left.startsAt.localeCompare(right.startsAt) ||
+      left.participantIdentityId - right.participantIdentityId ||
+      left.endsAt.localeCompare(right.endsAt)
+    ));
+    const offset = (input.page - 1) * input.pageSize;
+
+    return {
+      outcome: "ok",
+      list: uniqueSorted.slice(offset, offset + input.pageSize),
+      total: uniqueSorted.length,
+      page: input.page,
+      page_size: input.pageSize,
+    };
   }
 
   public async create(

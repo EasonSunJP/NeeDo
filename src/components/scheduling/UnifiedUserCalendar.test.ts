@@ -98,6 +98,14 @@ describe("UnifiedUserCalendar event editor page", () => {
     expect(source).not.toContain("选择同步联系人");
     expect(source).not.toContain("最近联系多的通讯录中的人");
   });
+
+  it("opens the two-step participant flow from the shared event editor", () => {
+    expect(source).toContain("<CalendarParticipantFlow");
+    expect(source).toContain("setParticipantFlowOpen(true)");
+    expect(source).toContain("spanDraftAcrossLanes");
+    expect(source).toContain("draftRangeValue");
+    expect(source).not.toContain("visibleSyncContactOptions.map");
+  });
 });
 
 describe("UnifiedUserCalendar multi-day interactions", () => {

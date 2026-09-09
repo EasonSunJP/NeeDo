@@ -515,13 +515,13 @@ describe("UnifiedUserCalendar formal-only mode", () => {
       </MemoryRouter>
     );
     await act(async () => root.render(view));
-    await waitFor(() => expect(container.textContent).toContain("自由排班"));
+    await waitFor(() => expect(container.querySelector('[data-calendar-availability-strip="true"]')).not.toBeNull());
 
     await act(async () => root.unmount());
     root = createRoot(container);
     await act(async () => root.render(view));
 
-    expect(container.textContent).toContain("自由排班");
+    expect(container.querySelector('[data-calendar-availability-strip="true"]')).not.toBeNull();
     expect(testState.listScheduleSlots).toHaveBeenCalledTimes(1);
   });
 });

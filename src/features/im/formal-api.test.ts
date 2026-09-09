@@ -117,7 +117,9 @@ describe("formal IM adapter", () => {
         {
           id: 31,
           ownerUserId: 100,
+          ownerIdentityId: 1100,
           contactUserId: 201,
+          contactIdentityId: 1201,
           contactUser: {
             userId: 201,
             needoId: "u0000000201",
@@ -168,6 +170,7 @@ describe("formal IM adapter", () => {
       id: "31",
       ownerUserId: "100",
       targetUserId: "201",
+      contactIdentityId: "1201",
       remarkName: "小林技师",
       relationStatus: "active",
     });

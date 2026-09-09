@@ -28,6 +28,20 @@ export class CalendarEventService {
     return this.repository.list({ ...input, ownerIdentityId });
   }
 
+  public async listParticipantBusy(
+    actor: AuthenticatedAccessContext,
+    input: Omit<Parameters<CalendarEventRepositoryPort["listParticipantBusy"]>[0], "viewerIdentityId">,
+  ) {
+    const viewerIdentityId = await this.resolveOwnerIdentityId(actor);
+    const result = await this.repository.listParticipantBusy({ ...input, viewerIdentityId });
+    if (result.outcome === "ok") return result;
+    throw new AppError({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.calendar_event.participant_forbidden",
+      statusCode: 403,
+    });
+  }
+
   public async create(
     actor: AuthenticatedAccessContext,
     input: Omit<CalendarEventCreateInput, "ownerIdentityId" | "idempotencyKey">,
@@ -150,4 +164,3 @@ export class CalendarEventService {
     });
   }
 }
-
