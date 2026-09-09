@@ -185,6 +185,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         serviceLocation: { select: { admin1RegionCode: true, admin2RegionCode: true } },
         scheduleSlot: {
           select: {
+            availabilityId: true,
             startsAt: true,
             endsAt: true,
             deletedAt: true,
@@ -241,15 +242,30 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     });
     if (!identity?.publicIdentifier) return null;
     const rules = technicianAutomationRulesSchema.parse(setting.rules);
-    const customer = await this.loadCustomerEvidence(
-      order.customerUserId,
-      profile.id,
-      identity.id,
-      order.startsAt,
-      order.endsAt,
-      rules.bufferMinutes,
-      order.id
-    );
+    const [customer, availabilityCount] = await Promise.all([
+      this.loadCustomerEvidence(
+        order.customerUserId,
+        profile.id,
+        identity.id,
+        order.startsAt,
+        order.endsAt,
+        rules.bufferMinutes,
+        order.id
+      ),
+      this.client.availability.count({
+        where: {
+          technicianProfileId: profile.id,
+          isActive: true,
+          deletedAt: null,
+          startsAt: { lte: order.startsAt },
+          endsAt: { gte: order.endsAt },
+          OR: [
+            { isScheduleControlWindow: true },
+            ...(order.scheduleSlot.availabilityId ? [{ id: order.scheduleSlot.availabilityId }] : [])
+          ]
+        }
+      })
+    ]);
     return {
       settingId: setting.id,
       technicianProfileId: profile.id,
@@ -262,13 +278,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         now: new Date(),
         startsAt: order.startsAt,
         endsAt: order.endsAt,
-        actualScheduleAvailable: Boolean(
-          !order.scheduleSlot.deletedAt &&
-          order.scheduleSlot.availability?.isActive &&
-          !order.scheduleSlot.availability.deletedAt &&
-          order.startsAt >= order.scheduleSlot.availability.startsAt &&
-          order.endsAt <= order.scheduleSlot.availability.endsAt
-        ),
+        actualScheduleAvailable: !order.scheduleSlot.deletedAt && availabilityCount > 0,
         hasBufferedConflict: customer.hasBufferedConflict,
         hardBlockReasons: [
           ...(profile.user.isActive && !profile.user.deletedAt ? [] : ["account_disabled"]),
@@ -314,14 +324,6 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         endsAt: { lte: post.serviceEndAt },
         status: "AVAILABLE",
         deletedAt: null,
-        availability: {
-          is: {
-            isActive: true,
-            startsAt: { lte: post.serviceStartAt },
-            endsAt: { gte: post.serviceEndAt },
-            deletedAt: null
-          }
-        },
         OR: [
           { service: { is: { status: "published", deletedAt: null } } },
           { technicianService: { is: { isActive: true, isBookable: true, reviewStatus: "APPROVED", deletedAt: null } } }
@@ -371,12 +373,30 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       orderBy: [{ startsAt: "asc" }, { id: "asc" }],
       take: 200
     });
+    if (slots.length === 0) return [];
+    const candidateAvailability = await this.client.availability.findMany({
+      where: {
+        technicianProfileId: { in: slots.flatMap((slot) => slot.technicianProfileId ? [slot.technicianProfileId] : []) },
+        isActive: true,
+        deletedAt: null,
+        OR: [
+          { isScheduleControlWindow: true },
+          { id: { in: slots.flatMap((slot) => slot.availabilityId ? [slot.availabilityId] : []) } }
+        ]
+      },
+      select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true }
+    });
     const firstSlotByTechnician = new Map<number, (typeof slots)[number]>();
     for (const slot of slots) {
       const hasActiveShopAffiliation = slot.technicianProfile?.technicianShopAffiliations.some(
         (affiliation) => affiliation.shopId === slot.shopId
       );
-      if (slot.technicianProfileId && hasActiveShopAffiliation && !firstSlotByTechnician.has(slot.technicianProfileId)) {
+      const hasAvailability = candidateAvailability.some((window) =>
+        window.technicianProfileId === slot.technicianProfileId &&
+        window.startsAt <= slot.startsAt &&
+        window.endsAt >= slot.endsAt
+      );
+      if (slot.technicianProfileId && hasActiveShopAffiliation && hasAvailability && !firstSlotByTechnician.has(slot.technicianProfileId)) {
         firstSlotByTechnician.set(slot.technicianProfileId, slot);
       }
     }
@@ -430,12 +450,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           now,
           startsAt: slot.startsAt,
           endsAt: slot.endsAt,
-          actualScheduleAvailable: Boolean(
-            slot.availability?.isActive &&
-            !slot.availability.deletedAt &&
-            slot.startsAt >= slot.availability.startsAt &&
-            slot.endsAt <= slot.availability.endsAt
-          ),
+          actualScheduleAvailable: true,
           hasBufferedConflict: bufferedBooking > 0,
           hardBlockReasons: [],
           areaCode: post.areaLabel,

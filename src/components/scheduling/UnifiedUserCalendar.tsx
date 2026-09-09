@@ -13,6 +13,7 @@ import { loadCustomerOrderWindow } from "../../features/booking/window-loaders";
 import { mapScheduleSlotToCalendarItem } from "../../features/scheduling/api";
 import { loadEveryScopedOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
 import { calendarEventApi, type FormalCalendarEvent, type FormalCalendarEventInput } from "../../features/scheduling/calendar-event-api";
+import { availabilityWindowApi, type AvailabilityWindow } from "../../features/scheduling/availability-window-api";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
 import type { DispatchArrangement } from "../../features/dispatch-center/domain";
 import { getDisplayName, type ContactRelation, type Conversation, type ImRoleType, type ImUser } from "../../features/im/model";
@@ -113,6 +114,8 @@ export type UnifiedCalendarLane = {
 export type UnifiedCalendarEvent = {
   id: string;
   scheduleSlotId?: number;
+  availabilityWindowId?: number;
+  availabilitySourceType?: AvailabilityWindow["sourceType"];
   sourceId: UnifiedCalendarSourceId;
   calendarId?: string;
   calendarLabel?: string;
@@ -151,6 +154,7 @@ type FormalCalendarCacheValue = {
   orders: Order[];
   merchantOrders: BookingOrder[];
   scheduleSlots: BookingScheduleSlot[];
+  availabilityWindows: AvailabilityWindow[];
 };
 
 type LocalCalendarEvent = {
@@ -701,6 +705,26 @@ export function getFormalScheduleEvents(slots: BookingScheduleSlot[], scope: "me
       detailTargetType: "none" as const
     }));
   });
+}
+
+export function getFormalAvailabilityWindowEvents(
+  windows: AvailabilityWindow[],
+  scope: "merchant" | "technician"
+): UnifiedCalendarEvent[] {
+  return windows.flatMap((window) => getFormalCalendarSegments(window.startsAt, window.endsAt).map((segment) => ({
+    ...segment,
+    id: `availability-window-${window.id}-${segment.date}`,
+    availabilityWindowId: window.id,
+    availabilitySourceType: window.sourceType,
+    sourceId: scope,
+    calendarId: getTechnicianCalendarLaneId(String(window.technicianProfileId)),
+    calendarLabel: window.sourceType === "shop" ? window.shopName : "自由排班",
+    title: window.sourceType === "shop" ? `${window.shopName}店铺排班（可排班日程）` : "自由排班",
+    subtitle: "可排班 ≠ 当前空闲",
+    badge: "可排班",
+    readOnly: scope !== "technician",
+    detailTargetType: "none" as const
+  })));
 }
 
 export function getFormalMerchantOrderEvents(orders: BookingOrder[], sourceId: "merchant" | "technician" = "merchant"): UnifiedCalendarEvent[] {
@@ -4222,6 +4246,7 @@ export function UnifiedCalendarEventDetailPage({
   const [detailMode, setDetailMode] = useState<"detail" | "participants">("detail");
   const [status, setStatus] = useState<"已承诺" | "辞退" | "保留">("已承诺");
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
+  const [scheduleImpactAction, setScheduleImpactAction] = useState<"edit" | "delete" | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const source = sourceConfigs[event.sourceId];
   const creatorLabel = event.creatorLabel?.trim() || source.label;
@@ -4247,7 +4272,19 @@ export function UnifiedCalendarEventDetailPage({
       return;
     }
     closeActionSheet();
+    if (event.availabilityWindowId && scheduleImpactAction !== "delete") {
+      setScheduleImpactAction("delete");
+      return;
+    }
     onDelete?.(event);
+  };
+  const handleEdit = () => {
+    if (!canEdit) return;
+    if (event.availabilityWindowId && scheduleImpactAction !== "edit") {
+      setScheduleImpactAction("edit");
+      return;
+    }
+    onEdit?.(event);
   };
 
   useEffect(() => {
@@ -4363,6 +4400,25 @@ export function UnifiedCalendarEventDetailPage({
         </button>
         <EventDetailField icon="bell" label="提醒时间" value={event.reminder ?? "5 分前"} />
         <EventDetailField icon="clock" label="重复" value={repeatLabel && repeatLabel !== "不重复" ? repeatLabel : undefined} />
+        {scheduleImpactAction ? (
+          <section className="rounded-[18px] border-2 border-red-500 bg-red-500/10 px-4 py-4" role="alert">
+            <p className="text-sm font-black leading-6 text-red-500">
+              {event.availabilitySourceType === "shop"
+                ? "这是店铺安排的可排班日程。修改或取消可能影响店铺安排；该时段若已有确定预约，预约记录仍会保留。是否真的执行？"
+                : "修改或取消可排班时间不会删除已有预约，但会影响之后的自动接单与自动抢单。是否真的执行？"}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button className="focus-ring min-h-11 rounded-full border border-[color:var(--client-line)] font-black" onClick={() => setScheduleImpactAction(null)} type="button">返回</button>
+              <button
+                className="focus-ring min-h-11 rounded-full bg-red-500 font-black text-white"
+                onClick={() => scheduleImpactAction === "edit" ? onEdit?.(event) : onDelete?.(event)}
+                type="button"
+              >
+                {scheduleImpactAction === "edit" ? "确认修改排班" : "确认取消排班"}
+              </button>
+            </div>
+          </section>
+        ) : null}
         {canOpenAppointmentDetail ? (
           <button
             className="focus-ring flex w-full items-center justify-between gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_36%,transparent)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-left text-[color:var(--client-primary-strong)] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_12%,transparent)] transition active:scale-[0.99]"
@@ -4391,7 +4447,7 @@ export function UnifiedCalendarEventDetailPage({
   const headerActions = detailMode === "detail" ? (
     <>
       <EventDetailIconButton disabled={!onSync} icon="share" label="同步行程" onClick={onSync ? () => onSync(event) : undefined} />
-      <EventDetailIconButton disabled={!canEdit} icon="edit" label="编辑行程" onClick={canEdit ? () => onEdit?.(event) : undefined} />
+      <EventDetailIconButton disabled={!canEdit} icon="edit" label="编辑行程" onClick={canEdit ? handleEdit : undefined} />
       <div className="relative" ref={actionMenuRef}>
         <EventDetailIconButton icon="more" label="更多行程操作" onClick={() => setActionSheetOpen((current) => !current)} tone="primary" />
         {actionSheetOpen ? (
@@ -5090,6 +5146,7 @@ export function UnifiedUserCalendar({
   const [formalOrders, setFormalOrders] = useState<Order[]>(() => cachedFormalData?.orders ?? []);
   const [formalMerchantOrders, setFormalMerchantOrders] = useState<BookingOrder[]>(() => cachedFormalData?.merchantOrders ?? []);
   const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>(() => cachedFormalData?.scheduleSlots ?? []);
+  const [formalAvailabilityWindows, setFormalAvailabilityWindows] = useState<AvailabilityWindow[]>(() => cachedFormalData?.availabilityWindows ?? []);
   const [formalCalendarEvents, setFormalCalendarEvents] = useState<FormalCalendarEvent[]>([]);
   const [formalDataLoading, setFormalDataLoading] = useState(() => cachedFormalData === undefined);
   const [formalDataError, setFormalDataError] = useState("");
@@ -5115,32 +5172,34 @@ export function UnifiedUserCalendar({
           const from = parseDateKey(period.startDate);
           const to = parseDateKey(addDays(period.endDate, 1));
           const orders = await loadFormalCustomerOrderPeriod(from, to);
-          return { orders: orders.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [] };
+          return { orders: orders.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [], availabilityWindows: [] };
         }
         const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
-        return { orders: response.list.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [] };
+        return { orders: response.list.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [], availabilityWindows: [] };
       }
       const from = parseDateKey(period.startDate);
       const to = parseDateKey(period.endDate);
       to.setDate(to.getDate() + 1);
       if (isMerchantAppointmentStatusMode) {
         const orders = await loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" });
-        return { orders: [], merchantOrders: orders, scheduleSlots: [] };
+        return { orders: [], merchantOrders: orders, scheduleSlots: [], availabilityWindows: [] };
       }
       const scope = activeScope === "merchant" ? "merchant-admin" : "technician";
-      const [slots, orders] = await Promise.all([
+      const [slots, orders, availabilityWindows] = await Promise.all([
         loadManagedScheduleWindow(scope, { from, to }),
         activeScope === "technician"
           ? loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" })
           : Promise.resolve([]),
+        availabilityWindowApi.listAll(scope, { from, to })
       ]);
-      return { orders: [], merchantOrders: orders, scheduleSlots: slots };
+      return { orders: [], merchantOrders: orders, scheduleSlots: slots, availabilityWindows };
     };
     const applyFormalData = (data: FormalCalendarCacheValue) => {
       if (!isCurrentRequest()) return;
       setFormalOrders(data.orders);
       setFormalMerchantOrders(data.merchantOrders);
       setFormalScheduleSlots(data.scheduleSlots);
+      setFormalAvailabilityWindows(data.availabilityWindows ?? []);
       setFormalDataError("");
       setFormalDataLoading(false);
     };
@@ -5175,6 +5234,7 @@ export function UnifiedUserCalendar({
             setFormalOrders([]);
             setFormalMerchantOrders([]);
             setFormalScheduleSlots([]);
+            setFormalAvailabilityWindows([]);
           }
         }
       } finally {
@@ -5296,6 +5356,7 @@ export function UnifiedUserCalendar({
         ? getFormalMerchantOrderEvents(formalMerchantOrders)
       : activeScope === "merchant" || activeScope === "technician"
         ? [
+            ...getFormalAvailabilityWindowEvents(formalAvailabilityWindows, activeScope),
             ...getFormalScheduleEvents(formalScheduleSlots, activeScope),
             ...(activeScope === "technician" ? getFormalMerchantOrderEvents(formalMerchantOrders, "technician") : []),
           ]
@@ -5324,6 +5385,7 @@ export function UnifiedUserCalendar({
     dispatchSnapshot.arrangements,
     effectiveMerchantLaneMode,
     formalOrders,
+    formalAvailabilityWindows,
     formalScheduleSlots,
     formalMerchantOrders,
     formalCalendarEvents,
@@ -5610,6 +5672,19 @@ export function UnifiedUserCalendar({
 
   const openEdit = (event: UnifiedCalendarEvent) => {
     if (formalOnly) {
+      if (event.availabilityWindowId) {
+        const window = formalAvailabilityWindows.find((item) => item.id === event.availabilityWindowId);
+        if (!window) return;
+        const query = new URLSearchParams({
+          availabilityWindowId: String(window.id),
+          mode: "availability",
+          startsAt: window.startsAt,
+          endsAt: window.endsAt
+        });
+        setActiveEvent(null);
+        navigate(`/technician/schedule/new?${query.toString()}`);
+        return;
+      }
       const id = formalCalendarEventId(event.id);
       const formalEvent = id === null ? null : formalCalendarEvents.find((item) => item.id === id);
       if (!formalEvent) return;
@@ -5669,6 +5744,13 @@ export function UnifiedUserCalendar({
 
   const deleteEvent = (event: UnifiedCalendarEvent) => {
     if (formalOnly) {
+      if (event.availabilityWindowId) {
+        void availabilityWindowApi.delete("technician", event.availabilityWindowId).then(() => {
+          setFormalAvailabilityWindows((windows) => windows.filter((window) => window.id !== event.availabilityWindowId));
+          setActiveEvent(null);
+        }).catch((error) => setFormalDataError(error instanceof Error ? error.message : String(error)));
+        return;
+      }
       const id = formalCalendarEventId(event.id);
       const current = id === null ? null : formalCalendarEvents.find((item) => item.id === id);
       if (!current) return;

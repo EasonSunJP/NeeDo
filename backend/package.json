@@ -51,6 +51,7 @@
     "check:order-fulfillment-checkout": "tsx scripts/check-order-fulfillment-checkout-flow.ts && tsx scripts/check-order-checkout-concurrency.ts",
     "check:multishop-pricing-settlement": "tsx scripts/check-multishop-pricing-settlement-flow.ts",
     "check:technician-order-automation": "tsx scripts/check-technician-order-automation-flow.ts",
+    "check:availability-booking-separation": "tsx scripts/check-availability-booking-separation-flow.ts",
     "check:agent-settlement": "tsx scripts/check-agent-settlement-flow.ts",
     "check:dashboard-overview": "tsx scripts/check-dashboard-overview-flow.ts",
     "check:shop-travel-fare-flow": "tsx scripts/check-shop-travel-fare-flow.ts",

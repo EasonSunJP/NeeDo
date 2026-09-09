@@ -3,6 +3,9 @@ import type { BookingService } from "../services/booking.service";
 import type { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import { successResponse } from "../utils/api-response";
 import {
+  availabilityWindowCreateBodySchema,
+  availabilityWindowListQuerySchema,
+  availabilityWindowUpdateBodySchema,
   availabilityListQuerySchema,
   bookingCreateBodySchema,
   createOrderAddOnBodySchema,
@@ -54,6 +57,46 @@ export class BookingController {
     } catch (error) {
       next(error);
     }
+  };
+
+  public listAvailabilityWindows = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.listAvailabilityWindows(
+        getAuthenticatedAccess(response),
+        availabilityWindowListQuerySchema.parse(request.query)
+      )));
+    } catch (error) { next(error); }
+  };
+
+  public createAvailabilityWindow = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(201).json(successResponse(await this.bookingService.createAvailabilityWindow(
+        getAuthenticatedAccess(response),
+        availabilityWindowCreateBodySchema.parse(request.body),
+        getRequestContext(request)
+      )));
+    } catch (error) { next(error); }
+  };
+
+  public updateAvailabilityWindow = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.updateAvailabilityWindow(
+        getAuthenticatedAccess(response),
+        this.getOrderId(request),
+        availabilityWindowUpdateBodySchema.parse(request.body),
+        getRequestContext(request)
+      )));
+    } catch (error) { next(error); }
+  };
+
+  public deleteAvailabilityWindow = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.deleteAvailabilityWindow(
+        getAuthenticatedAccess(response),
+        this.getOrderId(request),
+        getRequestContext(request)
+      )));
+    } catch (error) { next(error); }
   };
 
   public createBooking = async (

@@ -21,6 +21,7 @@ type FormalScheduleRangeEditorProps = {
   durationMinutes: number;
   onChange: (startsAt: Date, endsAt: Date) => void;
   disabled?: boolean;
+  mode?: "service" | "availability";
 };
 
 type PointerMode = "select" | "move" | "resize-start" | "resize-end";
@@ -87,7 +88,8 @@ export function FormalScheduleRangeEditor({
   endsAt,
   durationMinutes,
   onChange,
-  disabled = false
+  disabled = false,
+  mode = "service"
 }: FormalScheduleRangeEditorProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
   const pointerSessionRef = useRef<PointerSession | null>(null);
@@ -191,9 +193,9 @@ export function FormalScheduleRangeEditor({
         <span data-testid="formal-schedule-range-value">
           {minuteLabel(range.startMinute)}–{minuteLabel(range.endMinute)}
         </span>
-        <span>服务时长 {durationMinutes} 分钟</span>
+        <span>{mode === "availability" ? `可排班时长 ${rangeDuration} 分钟` : `服务时长 ${durationMinutes} 分钟`}</span>
       </div>
-      {rangeDuration !== durationMinutes ? (
+      {mode === "service" && rangeDuration !== durationMinutes ? (
         <p className="text-xs font-bold text-amber-500" role="status">
           当前时间范围为 {rangeDuration} 分钟，与服务时长不一致
         </p>

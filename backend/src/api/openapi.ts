@@ -10984,6 +10984,43 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           status: { type: "string", enum: ["available", "blocked"] }
         }
       },
+      AvailabilityWindow: {
+        type: "object",
+        required: ["id", "shopId", "technicianProfileId", "sourceType", "visibility", "startsAt", "endsAt", "capacity", "isActive", "shopName", "createdAt", "updatedAt"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          shopId: { type: "integer", minimum: 1 },
+          technicianProfileId: { type: "integer", minimum: 1 },
+          sourceType: { type: "string", enum: ["shop", "technician"] },
+          visibility: { type: "string", enum: ["shop_only", "affiliated_shops"] },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          capacity: { type: "integer", minimum: 1, maximum: 100 },
+          isActive: { type: "boolean" },
+          shopName: { type: "string" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AvailabilityWindowCreateInput: {
+        type: "object",
+        required: ["startsAt", "endsAt"],
+        properties: {
+          technicianProfileId: { type: "integer", minimum: 1 },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          capacity: { type: "integer", minimum: 1, maximum: 100, default: 1 }
+        }
+      },
+      AvailabilityWindowUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        properties: {
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          capacity: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       OrderStatusHistory: {
         type: "object",
         required: ["id", "orderId", "fromStatus", "toStatus", "actorUserId", "reason", "createdAt"],
@@ -28708,6 +28745,55 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "409": { description: "Slot has an active booking" }
         }
       }
+    },
+    [`${config.API_PREFIX}/technician/availability-windows`]: {
+      get: {
+        tags: ["Schedule"], summary: "List independent availability control windows for the authenticated technician", security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated technician availability windows" } }
+      },
+      post: {
+        tags: ["Schedule"], summary: "Create an independent free availability control window", security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AvailabilityWindowCreateInput" } } } },
+        responses: { "201": { description: "Availability window created" }, "409": { description: "Overlapping control window" } }
+      }
+    },
+    [`${config.API_PREFIX}/technician/availability-windows/{id}`]: {
+      patch: {
+        tags: ["Schedule"], summary: "Update a technician-visible availability control window", security: [{ bearerAuth: [] }], parameters: [idPathParameter()],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AvailabilityWindowUpdateInput" } } } },
+        responses: { "200": { description: "Availability window updated" }, "409": { description: "Overlapping control window" } }
+      },
+      delete: { tags: ["Schedule"], summary: "Soft-delete a technician-visible availability control window", security: [{ bearerAuth: [] }], parameters: [idPathParameter()], responses: { "200": { description: "Availability window soft-deleted" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/availability-windows`]: {
+      get: {
+        tags: ["Schedule"], summary: "List shop-controlled availability windows", security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "technicianProfileId", in: "query", schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Paginated shop availability windows" } }
+      },
+      post: {
+        tags: ["Schedule"], summary: "Create a unique shop-controlled technician availability window", security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AvailabilityWindowCreateInput" } } } },
+        responses: { "201": { description: "Shop availability window created" }, "409": { description: "Another control window overlaps" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/availability-windows/{id}`]: {
+      patch: {
+        tags: ["Schedule"], summary: "Update a shop-controlled availability window", security: [{ bearerAuth: [] }], parameters: [idPathParameter()],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AvailabilityWindowUpdateInput" } } } },
+        responses: { "200": { description: "Shop availability window updated" } }
+      },
+      delete: { tags: ["Schedule"], summary: "Soft-delete a shop-controlled availability window", security: [{ bearerAuth: [] }], parameters: [idPathParameter()], responses: { "200": { description: "Shop availability window soft-deleted" } } }
     },
     [`${config.API_PREFIX}/technician/automation-settings/{kind}`]: {
       get: {

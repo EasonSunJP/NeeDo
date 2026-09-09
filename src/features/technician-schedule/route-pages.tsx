@@ -24,6 +24,7 @@ import {
 } from "../booking/api";
 import { useOrderRealtimeRefresh } from "../booking/useOrderRealtimeRefresh";
 import { schedulingApi } from "../scheduling/api";
+import { availabilityWindowApi } from "../scheduling/availability-window-api";
 import { automationApi, type TechnicianAutomationContactPage } from "./automation-api";
 import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
 import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
@@ -287,6 +288,12 @@ function slotStatusLabel(status: BookingScheduleSlot["status"]): string {
 
 function scheduleMutationError(error: unknown): string {
   if (error instanceof ApiClientError) {
+    if (error.message === "error.availability.shop_control_conflict") {
+      return "当前时段已有店铺排班，可排班开关已自动关闭，请选择店铺排班以外的时间";
+    }
+    if (error.message === "error.availability.conflict") {
+      return "当前时段已有可排班日程，请先修改已有日程或选择其他时间";
+    }
     if (error.code === 40911 || error.message === "error.schedule.conflict") {
       return "时间与已有排班冲突，请调整后重试";
     }
@@ -472,7 +479,7 @@ function createDefaultScheduleRange() {
   return { startsAt, endsAt };
 }
 
-type TechnicianScheduleCreationMode = "availability" | "manualBooking";
+type TechnicianScheduleCreationMode = "availability" | "manualBooking" | null;
 
 function readScheduleCreationMode(value: string | null): TechnicianScheduleCreationMode {
   return value === "manualBooking" ? "manualBooking" : "availability";
@@ -489,6 +496,8 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   const resource = useFormalTechnicianScheduleResource(session, slotId);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const availabilityWindowId = parsePositiveRouteId(searchParams.get("availabilityWindowId") ?? undefined);
+  const isAvailabilityEdit = slotId === null && availabilityWindowId !== null;
   const impactConfirmed = slotId !== null && searchParams.get("impactConfirmed") === "true";
   const defaultRange = useMemo(() => {
     const fallback = createDefaultScheduleRange();
@@ -496,7 +505,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
     const endsAt = readScheduleQueryDate(searchParams.get("endsAt"), new Date(startsAt.getTime() + 60 * 60_000));
     return endsAt > startsAt ? { startsAt, endsAt } : fallback;
   }, [searchParams]);
-  const [creationMode, setCreationMode] = useState<TechnicianScheduleCreationMode>(() => readScheduleCreationMode(searchParams.get("mode")));
+  const [creationMode, setCreationMode] = useState<TechnicianScheduleCreationMode>(() => isAvailabilityEdit ? "availability" : readScheduleCreationMode(searchParams.get("mode")));
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
   const [contacts, setContacts] = useState<TechnicianAutomationContactPage["list"]>([]);
   const [selectedCustomerIdentityId, setSelectedCustomerIdentityId] = useState<number | null>(null);
@@ -521,9 +530,11 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
     const firstService = resource.data.services[0];
     if (firstService && selectedServiceId === null) {
       setSelectedServiceId(firstService.id);
-      setEndsAt(new Date(startsAt.getTime() + firstService.durationMinutes * 60_000));
+      if (creationMode === "manualBooking") {
+        setEndsAt(new Date(defaultRange.startsAt.getTime() + firstService.durationMinutes * 60_000));
+      }
     }
-  }, [resource.data, slotId]);
+  }, [creationMode, defaultRange.startsAt, resource.data, selectedServiceId, slotId]);
 
   useEffect(() => {
     if (slotId || creationMode !== "manualBooking") return;
@@ -563,10 +574,13 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   const requiredDuration = resource.data.slot?.durationMinutes ?? selectedService?.durationMinutes ?? 0;
   const actualDuration = Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000);
   const validCapacity = Number.isInteger(capacity) && capacity >= 1 && capacity <= 100;
-  const validFuture = Boolean(slotId) || startsAt.getTime() > Date.now();
-  const canSave = Boolean(selectedServiceId)
-    && requiredDuration > 0
-    && actualDuration === requiredDuration
+  const validFuture = Boolean(slotId) || isAvailabilityEdit || startsAt.getTime() > Date.now();
+  const validDuration = creationMode === "availability"
+    ? actualDuration >= 15 && actualDuration <= 24 * 60
+    : requiredDuration > 0 && actualDuration === requiredDuration;
+  const canSave = Boolean(creationMode)
+    && (creationMode === "availability" || Boolean(selectedServiceId))
+    && validDuration
     && validCapacity
     && validFuture
     && (slotId !== null || creationMode === "availability" || Boolean(selectedCustomerIdentityId))
@@ -574,7 +588,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
     && !pending;
 
   const save = async () => {
-    if (!canSave || !selectedServiceId) return;
+    if (!canSave || !creationMode || (creationMode !== "availability" && !selectedServiceId)) return;
     setPending(true);
     setActionError("");
     try {
@@ -583,7 +597,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
         const order = await bookingApi.createTechnicianManualBooking({
           customerIdentityId: selectedCustomerIdentityId,
           expectedPriceAmountJpy: selectedService.priceAmount,
-          technicianServiceId: selectedServiceId,
+          technicianServiceId: selectedService.id,
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
           paymentMethod,
@@ -592,21 +606,27 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
         navigate(`/technician/orders/${order.id}`);
         return;
       }
-      const saved = slotId
-        ? await schedulingApi.updateSlot("technician", slotId, {
-            startsAt,
-            endsAt,
-            capacity,
-            ...(impactConfirmed ? { impactConfirmed: true } : {})
-          })
-        : await schedulingApi.createSlot("technician", {
-            technicianServiceId: selectedServiceId,
-            startsAt,
-            endsAt,
-            capacity
-          });
+      if (!slotId && creationMode === "availability") {
+        if (availabilityWindowId) {
+          await availabilityWindowApi.update("technician", availabilityWindowId, { startsAt, endsAt, capacity });
+        } else {
+          await availabilityWindowApi.create("technician", { startsAt, endsAt, capacity });
+        }
+        navigate("/technician/schedule");
+        return;
+      }
+      if (!slotId) return;
+      const saved = await schedulingApi.updateSlot("technician", slotId, {
+        startsAt,
+        endsAt,
+        capacity,
+        ...(impactConfirmed ? { impactConfirmed: true } : {})
+      });
       navigate(`/technician/schedule/events/${saved.id}`);
     } catch (error) {
+      if (error instanceof ApiClientError && error.message === "error.availability.shop_control_conflict") {
+        setCreationMode(null);
+      }
       setActionError(scheduleMutationError(error));
     } finally {
       setPending(false);
@@ -616,10 +636,10 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   return (
     <TechnicianSchedulePageShell
       subtitle={resource.data.profile.displayName}
-      title={slotId ? "编辑正式排班" : "新建正式排班"}
+      title={slotId || isAvailabilityEdit ? "编辑正式排班" : "新建正式排班"}
     >
       <div className="space-y-4">
-        {!slotId ? (
+        {!slotId && !isAvailabilityEdit ? (
           <section aria-label="日程类型" className="grid grid-cols-2 gap-3">
             {(["availability", "manualBooking"] as const).map((mode) => {
               const checked = creationMode === mode;
@@ -633,7 +653,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
                     : "border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-muted)]"
                   }`}
                   onClick={() => {
-                    setCreationMode(mode);
+                    setCreationMode(checked ? null : mode);
                     setActionError("");
                   }}
                   role="switch"
@@ -646,7 +666,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
           </section>
         ) : null}
 
-        <section className={panelClass}>
+        {slotId || creationMode === "manualBooking" ? <section className={panelClass}>
           <label className="block text-sm font-black">
             服务
             {slotId ? (
@@ -728,31 +748,51 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
               </label>
             </>
           ) : null}
-        </section>
+        </section> : (
+          <section className={panelClass}>
+            <h2 className="text-base font-black">自由排班</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-[color:var(--client-muted)]">
+              该时间范围表示您愿意接受预约；已有预约只占用其中一段时间，不会缩短或关闭此范围。
+            </p>
+            <label className="mt-4 block text-sm font-black">
+              同时可接数量
+              <input
+                className={fieldClass}
+                max={100}
+                min={1}
+                name="capacity"
+                onChange={(event) => setCapacity(Number(event.target.value))}
+                type="number"
+                value={capacity}
+              />
+            </label>
+          </section>
+        )}
 
         <section className={panelClass}>
           <h2 className="mb-3 text-sm font-black">选择日期内的时间范围</h2>
           <FormalScheduleRangeEditor
             disabled={pending}
-            durationMinutes={requiredDuration || 60}
+            durationMinutes={creationMode === "availability" ? Math.max(15, actualDuration) : requiredDuration || 60}
             endsAt={endsAt}
             onChange={(nextStart, nextEnd) => {
               setStartsAt(nextStart);
               setEndsAt(nextEnd);
             }}
             startsAt={startsAt}
+            mode={creationMode === "availability" ? "availability" : "service"}
           />
         </section>
 
         {!validFuture ? <p className="text-sm font-black text-red-500">新排班的开始时间必须在未来</p> : null}
         {!validCapacity ? <p className="text-sm font-black text-red-500">容量必须为 1 到 100 的整数</p> : null}
-        {requiredDuration > 0 && actualDuration !== requiredDuration ? (
+        {creationMode !== "availability" && requiredDuration > 0 && actualDuration !== requiredDuration ? (
           <p className="text-sm font-black text-red-500">时间范围必须与服务时长 {requiredDuration} 分钟一致</p>
         ) : null}
         {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
 
         <Button className="w-full" disabled={!canSave} onClick={() => void save()}>
-          {pending ? "保存中" : creationMode === "manualBooking" && !slotId ? "创建手动预约" : "保存正式排班"}
+          {pending ? "保存中" : creationMode === "manualBooking" && !slotId ? "创建手动预约" : creationMode === "availability" && !slotId ? isAvailabilityEdit ? "保存可排班修改" : "保存可排班" : "保存正式排班"}
         </Button>
       </div>
     </TechnicianSchedulePageShell>

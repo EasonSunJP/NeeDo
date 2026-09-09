@@ -1,8 +1,26 @@
 import {
   availabilityListQuerySchema,
+  availabilityWindowListQuerySchema,
   bookingCreateBodySchema,
   orderListQuerySchema
 } from "../src/validators/booking.validator";
+
+describe("availabilityWindowListQuerySchema", () => {
+  it("accepts a bounded range and rejects reversed or unbounded calendar reads", () => {
+    expect(availabilityWindowListQuerySchema.safeParse({
+      from: "2026-09-01T00:00:00.000Z",
+      to: "2026-09-30T00:00:00.000Z"
+    }).success).toBe(true);
+    expect(availabilityWindowListQuerySchema.safeParse({
+      from: "2026-10-01T00:00:00.000Z",
+      to: "2026-09-01T00:00:00.000Z"
+    }).success).toBe(false);
+    expect(availabilityWindowListQuerySchema.safeParse({
+      from: "2026-01-01T00:00:00.000Z",
+      to: "2026-12-31T00:00:00.000Z"
+    }).success).toBe(false);
+  });
+});
 
 describe("availabilityListQuerySchema", () => {
   const base = {

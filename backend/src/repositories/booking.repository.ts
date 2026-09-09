@@ -225,6 +225,47 @@ export interface AvailabilityListInput extends PaginationInput {
   from: Date;
   to: Date;
 }
+
+export type AvailabilityWindowPayload = {
+  id: number;
+  shopId: number;
+  technicianProfileId: number;
+  sourceType: "shop" | "technician";
+  visibility: "shop_only" | "affiliated_shops";
+  startsAt: Date;
+  endsAt: Date;
+  capacity: number;
+  isActive: boolean;
+  shopName: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type AvailabilityWindowListInput = ScheduleScope & PaginationInput & {
+  from: Date;
+  to: Date;
+  technicianProfileId?: number;
+};
+
+export type AvailabilityWindowCreateInput = ScheduleScope & {
+  technicianProfileId?: number;
+  startsAt: Date;
+  endsAt: Date;
+  capacity: number;
+};
+
+export type AvailabilityWindowUpdateInput = ScheduleScope & {
+  id: number;
+  startsAt?: Date;
+  endsAt?: Date;
+  capacity?: number;
+};
+
+export type AvailabilityWindowDeleteInput = ScheduleScope & { id: number };
+
+export type AvailabilityWindowMutationResult =
+  | { outcome: "ok"; window: AvailabilityWindowPayload }
+  | { outcome: "not_found" | "conflict" | "shop_control_conflict" | "suspended" };
 export interface BookingCreateRepositoryInput {
   customerUserId: number;
   createdByUserId?: number;
@@ -845,6 +886,18 @@ export interface BookingRepositoryPort {
   listAvailableSlots: (
     input: AvailabilityListInput
   ) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
+  listAvailabilityWindows?: (
+    input: AvailabilityWindowListInput
+  ) => Promise<PaginatedResponse<AvailabilityWindowPayload>>;
+  createAvailabilityWindow?: (
+    input: AvailabilityWindowCreateInput
+  ) => Promise<AvailabilityWindowMutationResult>;
+  updateAvailabilityWindow?: (
+    input: AvailabilityWindowUpdateInput
+  ) => Promise<AvailabilityWindowMutationResult>;
+  deleteAvailabilityWindow?: (
+    input: AvailabilityWindowDeleteInput
+  ) => Promise<AvailabilityWindowMutationResult>;
   createBooking: (
     input: BookingCreateRepositoryInput,
     options?: BookingCreateRepositoryOptions
@@ -932,6 +985,10 @@ type SlotRecord = Prisma.ScheduleSlotGetPayload<{
     };
     technicianProfile: true;
   };
+}>;
+
+type AvailabilityWindowRecord = Prisma.AvailabilityGetPayload<{
+  include: { shop: true };
 }>;
 
 type OrderRecord = Prisma.BookingOrderGetPayload<{
@@ -1155,6 +1212,146 @@ export class BookingRepository implements BookingRepositoryPort {
     return slot?.shopId ?? null;
   }
 
+  public async listAvailabilityWindows(
+    input: AvailabilityWindowListInput
+  ): Promise<PaginatedResponse<AvailabilityWindowPayload>> {
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.AvailabilityWhereInput = {
+      isScheduleControlWindow: true,
+      isActive: true,
+      deletedAt: null,
+      startsAt: { lt: input.to },
+      endsAt: { gt: input.from },
+      ...(input.scope === "technician"
+        ? { technicianProfileId: input.technicianProfileId }
+        : {
+            shopId: input.shopId,
+            ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {})
+          })
+    };
+    const [records, total] = await Promise.all([
+      this.client.availability.findMany({
+        where,
+        include: { shop: true },
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }]
+      }),
+      this.client.availability.count({ where })
+    ]);
+    return buildPaginatedResponse(records.map((record) => this.mapAvailabilityWindow(record)), total, pagination);
+  }
+
+  public createAvailabilityWindow(
+    input: AvailabilityWindowCreateInput
+  ): Promise<AvailabilityWindowMutationResult> {
+    return this.client.$transaction(async (transaction) => {
+      const target = await this.resolveAvailabilityWindowTarget(transaction, input);
+      if (!target) return { outcome: "not_found" };
+      if (await this.isShopSuspendedInTransaction(transaction, target.shopId)) {
+        return { outcome: "suspended" };
+      }
+      await this.lockScheduleOwner(transaction, target.shopId, target.technicianProfileId);
+      const conflict = await this.findAvailabilityControlConflict(
+        transaction,
+        target.technicianProfileId,
+        input.startsAt,
+        input.endsAt
+      );
+      if (conflict) {
+        return { outcome: conflict.sourceType === "SHOP" ? "shop_control_conflict" : "conflict" };
+      }
+      const created = await transaction.availability.create({
+        data: {
+          shopId: target.shopId,
+          technicianProfileId: target.technicianProfileId,
+          sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
+          visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          capacity: input.capacity,
+          isActive: true,
+          isScheduleControlWindow: true
+        },
+        include: { shop: true }
+      });
+      return { outcome: "ok", window: this.mapAvailabilityWindow(created) };
+    });
+  }
+
+  public updateAvailabilityWindow(
+    input: AvailabilityWindowUpdateInput
+  ): Promise<AvailabilityWindowMutationResult> {
+    return this.client.$transaction(async (transaction) => {
+      const existing = await transaction.availability.findFirst({
+        where: {
+          id: input.id,
+          isScheduleControlWindow: true,
+          isActive: true,
+          deletedAt: null,
+          ...(input.scope === "technician"
+            ? { technicianProfileId: input.technicianProfileId }
+            : { shopId: input.shopId })
+        },
+        include: { shop: true }
+      });
+      if (!existing?.technicianProfileId) return { outcome: "not_found" };
+      if (await this.isShopSuspendedInTransaction(transaction, existing.shopId)) {
+        return { outcome: "suspended" };
+      }
+      await this.lockScheduleOwner(transaction, existing.shopId, existing.technicianProfileId);
+      const startsAt = input.startsAt ?? existing.startsAt;
+      const endsAt = input.endsAt ?? existing.endsAt;
+      const conflict = await this.findAvailabilityControlConflict(
+        transaction,
+        existing.technicianProfileId,
+        startsAt,
+        endsAt,
+        existing.id
+      );
+      if (conflict) {
+        return { outcome: conflict.sourceType === "SHOP" ? "shop_control_conflict" : "conflict" };
+      }
+      const updated = await transaction.availability.update({
+        where: { id: existing.id },
+        data: {
+          startsAt,
+          endsAt,
+          capacity: input.capacity ?? existing.capacity
+        },
+        include: { shop: true }
+      });
+      return { outcome: "ok", window: this.mapAvailabilityWindow(updated) };
+    });
+  }
+
+  public deleteAvailabilityWindow(
+    input: AvailabilityWindowDeleteInput
+  ): Promise<AvailabilityWindowMutationResult> {
+    return this.client.$transaction(async (transaction) => {
+      const existing = await transaction.availability.findFirst({
+        where: {
+          id: input.id,
+          isScheduleControlWindow: true,
+          isActive: true,
+          deletedAt: null,
+          ...(input.scope === "technician"
+            ? { technicianProfileId: input.technicianProfileId }
+            : { shopId: input.shopId })
+        },
+        include: { shop: true }
+      });
+      if (!existing?.technicianProfileId) return { outcome: "not_found" };
+      await this.lockScheduleOwner(transaction, existing.shopId, existing.technicianProfileId);
+      const deleted = await transaction.availability.update({
+        where: { id: existing.id },
+        data: { isActive: false, deletedAt: new Date() },
+        include: { shop: true }
+      });
+      return { outcome: "ok", window: this.mapAvailabilityWindow(deleted) };
+    });
+  }
+
   public async listCancellableOrdersForScheduleSlot(
     scheduleSlotId: number
   ): Promise<BookingOrderPayload[]> {
@@ -1173,9 +1370,17 @@ export class BookingRepository implements BookingRepositoryPort {
   public async findTechnicianShopId(technicianProfileId: number): Promise<number | null> {
     const technician = await this.client.technicianProfile.findFirst({
       where: { id: technicianProfileId, deletedAt: null },
-      select: { shopId: true }
+      select: {
+        shopId: true,
+        technicianShopAffiliations: {
+          where: { workStatus: "ACTIVE", endsAt: null, deletedAt: null, shop: { is: { deletedAt: null } } },
+          select: { shopId: true },
+          orderBy: { id: "asc" },
+          take: 1
+        }
+      }
     });
-    return technician?.shopId ?? null;
+    return technician?.shopId ?? technician?.technicianShopAffiliations[0]?.shopId ?? null;
   }
 
   public async isShopSuspended(shopId: number): Promise<boolean> {
@@ -3946,6 +4151,63 @@ export class BookingRepository implements BookingRepositoryPort {
       : { technicianProfileId: scope.technicianProfileId };
   }
 
+  private async resolveAvailabilityWindowTarget(
+    transaction: Prisma.TransactionClient,
+    input: AvailabilityWindowCreateInput
+  ): Promise<{ shopId: number; technicianProfileId: number } | null> {
+    if (input.scope === "merchant") {
+      if (!input.technicianProfileId) return null;
+      const eligible = await this.hasActiveScheduleAffiliation(
+        transaction,
+        input.shopId,
+        input.technicianProfileId
+      );
+      return eligible ? { shopId: input.shopId, technicianProfileId: input.technicianProfileId } : null;
+    }
+    const profile = await transaction.technicianProfile.findFirst({
+      where: { id: input.technicianProfileId, status: "published", deletedAt: null },
+      select: {
+        id: true,
+        shopId: true,
+        technicianShopAffiliations: {
+          where: {
+            workStatus: "ACTIVE",
+            startsAt: { lte: new Date() },
+            endsAt: null,
+            deletedAt: null,
+            shop: { is: { status: "published", deletedAt: null } }
+          },
+          select: { shopId: true },
+          orderBy: { id: "asc" },
+          take: 1
+        }
+      }
+    });
+    const shopId = profile?.shopId ?? profile?.technicianShopAffiliations[0]?.shopId ?? null;
+    return profile && shopId ? { shopId, technicianProfileId: profile.id } : null;
+  }
+
+  private findAvailabilityControlConflict(
+    transaction: Prisma.TransactionClient,
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date,
+    excludeId?: number
+  ) {
+    return transaction.availability.findFirst({
+      where: {
+        technicianProfileId,
+        isScheduleControlWindow: true,
+        isActive: true,
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        startsAt: { lt: endsAt },
+        endsAt: { gt: startsAt }
+      },
+      select: { id: true, sourceType: true, shopId: true }
+    });
+  }
+
   private manualPaymentScopeWhere(scope: ManualPaymentScope): Prisma.BookingOrderWhereInput {
     return scope.scope === "merchant" ? { shopId: scope.shopId } : {};
   }
@@ -5145,6 +5407,23 @@ export class BookingRepository implements BookingRepositoryPort {
         : slot.availability?.sourceType === "TECHNICIAN"
           ? "technician"
           : null
+    };
+  }
+
+  private mapAvailabilityWindow(record: AvailabilityWindowRecord): AvailabilityWindowPayload {
+    return {
+      id: record.id,
+      shopId: record.shopId,
+      technicianProfileId: record.technicianProfileId!,
+      sourceType: record.sourceType === "SHOP" ? "shop" : "technician",
+      visibility: record.visibility === "SHOP_ONLY" ? "shop_only" : "affiliated_shops",
+      startsAt: record.startsAt,
+      endsAt: record.endsAt,
+      capacity: record.capacity,
+      isActive: record.isActive,
+      shopName: record.shop.name,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt
     };
   }
 

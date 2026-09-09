@@ -129,7 +129,7 @@ describe("shared schedule frame layout", () => {
   it("does not add local theme backgrounds around the technician schedule calendar", () => {
     expect(technicianScheduleSource).toContain('data-testid="formal-technician-schedule-workspace"');
     expect(technicianScheduleSource).toContain("<UnifiedUserCalendar");
-    expect(technicianScheduleSource).toContain('displayMode="parallel"');
+    expect(technicianScheduleSource).toContain('displayMode="personal"');
     expect(technicianScheduleSource).toContain("formalOnly");
     expect(technicianScheduleSource).toContain("showSourceDrawer");
     expect(technicianScheduleSource).not.toContain("function DayTimeline");

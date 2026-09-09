@@ -139,10 +139,28 @@ const createFixture = async (options: { technicianPermissions?: string[] } = {})
     currency: "JPY",
     durationMinutes: 60
   };
+  const availabilityWindow = {
+    id: 88,
+    shopId: 11,
+    technicianProfileId: 31,
+    sourceType: "technician",
+    visibility: "affiliated_shops",
+    startsAt,
+    endsAt: new Date(startsAt.getTime() + 6 * 60 * 60_000),
+    capacity: 1,
+    isActive: true,
+    shopName: "Aoyama Studio",
+    createdAt: startsAt,
+    updatedAt: startsAt
+  };
   let auditFailure = false;
   const auditLogs: Array<Record<string, unknown>> = [];
   const bookingRepository = {
     listAvailableSlots: jest.fn(),
+    listAvailabilityWindows: jest.fn(async () => ({ list: [availabilityWindow], total: 1, page: 1, page_size: 20 })),
+    createAvailabilityWindow: jest.fn(async () => ({ outcome: "ok", window: availabilityWindow })),
+    updateAvailabilityWindow: jest.fn(async () => ({ outcome: "ok", window: availabilityWindow })),
+    deleteAvailabilityWindow: jest.fn(async () => ({ outcome: "ok", window: availabilityWindow })),
     createBooking: jest.fn(),
     listOrders: jest.fn(),
     findOrderById: jest.fn(),
@@ -200,6 +218,31 @@ const createFixture = async (options: { technicianPermissions?: string[] } = {})
 };
 
 describe("schedule slot write APIs", () => {
+  it("creates and lists independent technician availability windows through authenticated formal routes", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("technician@example.com");
+    const auth = { Authorization: `Bearer ${token}` };
+    const windowEndsAt = new Date(startsAt.getTime() + 6 * 60 * 60_000);
+
+    await request(fixture.app)
+      .post("/api/v1/technician/availability-windows")
+      .set(auth)
+      .send({ startsAt: startsAt.toISOString(), endsAt: windowEndsAt.toISOString(), capacity: 1 })
+      .expect(201)
+      .expect((response) => expect(response.body.data.sourceType).toBe("technician"));
+    await request(fixture.app)
+      .get(`/api/v1/technician/availability-windows?from=${encodeURIComponent(startsAt.toISOString())}&to=${encodeURIComponent(windowEndsAt.toISOString())}`)
+      .set(auth)
+      .expect(200)
+      .expect((response) => expect(response.body.data.list).toHaveLength(1));
+
+    expect(fixture.bookingRepository.createAvailabilityWindow).toHaveBeenCalledWith(expect.objectContaining({
+      scope: "technician",
+      technicianProfileId: 31
+    }));
+    expect(fixture.auditLogs.some((entry) => entry.action === "technician.availability_window.create")).toBe(true);
+  });
+
   it("reads only the numeric schedule slot in the authenticated technician scope", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("technician@example.com");

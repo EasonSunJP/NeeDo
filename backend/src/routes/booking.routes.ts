@@ -22,6 +22,9 @@ import { PlatformFeePolicyService } from "../services/platform-fee-policy.servic
 import { AffiliateCheckoutService } from "../services/affiliate-checkout.service";
 import { AffiliateLinkTokenService } from "../services/affiliate-link-token.service";
 import {
+  availabilityWindowCreateBodySchema,
+  availabilityWindowListQuerySchema,
+  availabilityWindowUpdateBodySchema,
   availabilityListQuerySchema,
   bookingCreateBodySchema,
   createOrderAddOnBodySchema,
@@ -357,6 +360,12 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
       validateRequest({ params: orderIdParamSchema, query: scheduleSlotDeleteQuerySchema }),
       controller.deleteScheduleSlot
     );
+  });
+  ["/merchant-admin/availability-windows", "/technician/availability-windows"].forEach((path) => {
+    router.get(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList), validateRequest({ query: availabilityWindowListQuerySchema }), controller.listAvailabilityWindows);
+    router.post(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ body: availabilityWindowCreateBodySchema }), controller.createAvailabilityWindow);
+    router.patch(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema, body: availabilityWindowUpdateBodySchema }), controller.updateAvailabilityWindow);
+    router.delete(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema }), controller.deleteAvailabilityWindow);
   });
 
   return router;

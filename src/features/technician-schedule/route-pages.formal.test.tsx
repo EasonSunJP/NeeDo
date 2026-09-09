@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   createTechnicianManualBooking: vi.fn(),
   createReview: vi.fn(),
   createSlot: vi.fn(),
+  createAvailabilityWindow: vi.fn(),
+  updateAvailabilityWindow: vi.fn(),
   deleteSlot: vi.fn(),
   endService: vi.fn(),
   exchangeOrderLinked: false,
@@ -108,6 +110,12 @@ vi.mock("../scheduling/api", () => ({
     createSlot: mocks.createSlot,
     deleteSlot: mocks.deleteSlot,
     updateSlot: mocks.updateSlot
+  }
+}));
+vi.mock("../scheduling/availability-window-api", () => ({
+  availabilityWindowApi: {
+    create: mocks.createAvailabilityWindow,
+    update: mocks.updateAvailabilityWindow
   }
 }));
 vi.mock("./automation-api", () => ({
@@ -614,22 +622,71 @@ describe("formal technician schedule routes", () => {
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule");
   });
 
-  it("creates a slot from real services and navigates to its persisted numeric ID", async () => {
+  it("creates an arbitrary-length free availability window without creating a service slot", async () => {
     mocks.scheduleResource.mockReturnValue({
       data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: null },
       error: null,
       loading: false,
       retry: mocks.retrySchedule
     });
-    mocks.createSlot.mockResolvedValue(slot);
-    await render("/technician/schedule/new");
+    mocks.createAvailabilityWindow.mockResolvedValue({ id: 88 });
+    await render("/technician/schedule/new?mode=availability&startsAt=2026-09-10T09%3A00%3A00.000Z&endsAt=2026-09-10T15%3A00%3A00.000Z");
 
-    await click("保存正式排班");
-    await waitFor(() => expect(mocks.createSlot).toHaveBeenCalledWith(
+    await click("保存可排班");
+    await waitFor(() => expect(mocks.createAvailabilityWindow).toHaveBeenCalledWith(
       "technician",
-      expect.objectContaining({ technicianServiceId: 102, capacity: 1 })
+      expect.objectContaining({
+        startsAt: new Date("2026-09-10T09:00:00.000Z"),
+        endsAt: new Date("2026-09-10T15:00:00.000Z"),
+        capacity: 1
+      })
     ));
-    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule/events/17");
+    expect(mocks.createSlot).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule");
+  });
+
+  it("creates free availability even when the technician has no bookable service yet", async () => {
+    mocks.scheduleResource.mockReturnValue({
+      data: { profile, services: [], shopId: 11, shopName: "正式店铺", slot: null },
+      error: null,
+      loading: false,
+      retry: mocks.retrySchedule
+    });
+    mocks.createAvailabilityWindow.mockResolvedValue({ id: 89 });
+    await render("/technician/schedule/new?mode=availability&startsAt=2026-09-10T09%3A00%3A00.000Z&endsAt=2026-09-10T15%3A00%3A00.000Z");
+
+    await click("保存可排班");
+    await waitFor(() => expect(mocks.createAvailabilityWindow).toHaveBeenCalledWith(
+      "technician",
+      expect.objectContaining({
+        startsAt: new Date("2026-09-10T09:00:00.000Z"),
+        endsAt: new Date("2026-09-10T15:00:00.000Z")
+      })
+    ));
+    expect(mocks.createSlot).not.toHaveBeenCalled();
+  });
+
+  it("edits an existing availability window without creating a replacement", async () => {
+    mocks.scheduleResource.mockReturnValue({
+      data: { profile, services: [], shopId: 11, shopName: "正式店铺", slot: null },
+      error: null,
+      loading: false,
+      retry: mocks.retrySchedule
+    });
+    mocks.updateAvailabilityWindow.mockResolvedValue({ id: 89 });
+    await render("/technician/schedule/new?mode=availability&availabilityWindowId=89&startsAt=2026-09-10T09%3A00%3A00.000Z&endsAt=2026-09-10T15%3A00%3A00.000Z");
+
+    expect(container.querySelectorAll('[role="switch"]')).toHaveLength(0);
+    await click("保存可排班修改");
+    await waitFor(() => expect(mocks.updateAvailabilityWindow).toHaveBeenCalledWith(
+      "technician",
+      89,
+      expect.objectContaining({
+        startsAt: new Date("2026-09-10T09:00:00.000Z"),
+        endsAt: new Date("2026-09-10T15:00:00.000Z")
+      })
+    ));
+    expect(mocks.createAvailabilityWindow).not.toHaveBeenCalled();
   });
 
   it("creates a formal manual booking from the mutually exclusive editor mode without creating availability", async () => {
@@ -691,9 +748,10 @@ describe("formal technician schedule routes", () => {
       retry: mocks.retrySchedule
     });
     mocks.createSlot.mockRejectedValue(new ApiClientError("error.schedule.conflict", 40911, 409));
+    mocks.createAvailabilityWindow.mockRejectedValue(new ApiClientError("error.availability.conflict", 40911, 409));
     await render("/technician/schedule/new");
-    await click("保存正式排班");
-    await waitFor(() => expect(container.textContent).toContain("时间与已有排班冲突"));
+    await click("保存可排班");
+    await waitFor(() => expect(container.textContent).toContain("已有可排班日程"));
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule/new");
 
     mocks.scheduleResource.mockReturnValue({
@@ -714,6 +772,24 @@ describe("formal technician schedule routes", () => {
     await click("再次点击确认删除");
     await waitFor(() => expect(container.textContent).toContain("已有预约，无法修改或删除"));
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule/events/17");
+  });
+
+  it("turns the availability switch off when a shop already controls that time", async () => {
+    mocks.scheduleResource.mockReturnValue({
+      data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: null },
+      error: null,
+      loading: false,
+      retry: mocks.retrySchedule
+    });
+    mocks.createAvailabilityWindow.mockRejectedValue(
+      new ApiClientError("error.availability.shop_control_conflict", 40911, 409)
+    );
+    await render("/technician/schedule/new");
+
+    await click("保存可排班");
+    await waitFor(() => expect(container.textContent).toContain("可排班开关已自动关闭"));
+    expect(container.querySelector('[role="switch"][aria-label="可排班"]')?.getAttribute("aria-checked")).toBe("false");
+    expect(container.querySelector('[role="switch"][aria-label="手动预约"]')?.getAttribute("aria-checked")).toBe("false");
   });
 
   it("shows shift transfer as an unavailable formal capability with no mutation action", async () => {

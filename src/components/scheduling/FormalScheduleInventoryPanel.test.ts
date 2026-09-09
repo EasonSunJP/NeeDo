@@ -36,7 +36,7 @@ describe("FormalScheduleInventoryPanel", () => {
     expect(merchantSource).toContain("currentStore={store}");
     expect(merchantSource).not.toContain("<FormalScheduleInventoryPanel");
     expect(technicianSource).toContain("<UnifiedUserCalendar");
-    expect(technicianSource).toContain('displayMode="parallel"');
+    expect(technicianSource).toContain('displayMode="personal"');
     expect(technicianSource).toContain("formalOnly");
     expect(technicianSource).toContain("showSourceDrawer");
     expect(technicianSource).toContain("<TechnicianAutomationSettingsPanel");

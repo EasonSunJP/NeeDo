@@ -1,5 +1,8 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
 import type {
+  AvailabilityWindowCreateInput,
+  AvailabilityWindowListInput,
+  AvailabilityWindowUpdateInput,
   BookingRepositoryPort,
   ScheduleListInput,
   ScheduleSlotCreateInput,
@@ -29,6 +32,20 @@ const slot: ScheduleSlotPayload = {
   currency: "JPY",
   durationMinutes: 60
 };
+const availabilityWindow = {
+  id: 88,
+  shopId: 11,
+  technicianProfileId: 31,
+  sourceType: "technician" as const,
+  visibility: "affiliated_shops" as const,
+  startsAt: new Date("2026-08-26T09:00:00.000Z"),
+  endsAt: new Date("2026-08-26T15:00:00.000Z"),
+  capacity: 1,
+  isActive: true,
+  shopName: "Aoyama Studio",
+  createdAt: now,
+  updatedAt: now
+};
 
 const actor = (overrides: Partial<AuthenticatedAccessContext>): AuthenticatedAccessContext => ({
   userId: 1,
@@ -43,6 +60,22 @@ const actor = (overrides: Partial<AuthenticatedAccessContext>): AuthenticatedAcc
 const repository = (result: "ok" | "conflict" = "ok") =>
   ({
     listAvailableSlots: jest.fn(),
+    listAvailabilityWindows: jest.fn(async (input: AvailabilityWindowListInput) => {
+      void input;
+      return { list: [availabilityWindow], total: 1, page: 1, page_size: 20 };
+    }),
+    createAvailabilityWindow: jest.fn(async (input: AvailabilityWindowCreateInput) => {
+      void input;
+      return result === "ok" ? { outcome: "ok" as const, window: availabilityWindow } : { outcome: "shop_control_conflict" as const };
+    }),
+    updateAvailabilityWindow: jest.fn(async (input: AvailabilityWindowUpdateInput) => {
+      void input;
+      return { outcome: "ok" as const, window: availabilityWindow };
+    }),
+    deleteAvailabilityWindow: jest.fn(async (input) => {
+      void input;
+      return { outcome: "ok" as const, window: availabilityWindow };
+    }),
     createBooking: jest.fn(),
     listOrders: jest.fn(),
     findOrderById: jest.fn(),
@@ -83,6 +116,53 @@ const audit = { record: jest.fn(async () => undefined) };
 const context = { ip: "127.0.0.1", userAgent: "schedule-test" };
 
 describe("BookingService schedule scope", () => {
+  it("creates an independent six-hour free availability window without service-duration or booking exclusion", async () => {
+    const repo = repository();
+    const service = new BookingService(repo, undefined, undefined, audit);
+    const technician = actor({
+      currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 31,
+      roles: ["technician"]
+    });
+
+    await expect(service.createAvailabilityWindow(technician, {
+      startsAt: availabilityWindow.startsAt,
+      endsAt: availabilityWindow.endsAt,
+      capacity: 1
+    }, context)).resolves.toBe(availabilityWindow);
+
+    expect(repo.createAvailabilityWindow).toHaveBeenCalledWith(expect.objectContaining({
+      scope: "technician",
+      technicianProfileId: 31,
+      startsAt: availabilityWindow.startsAt,
+      endsAt: availabilityWindow.endsAt
+    }));
+    expect(repo.findOrderById).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({
+      action: "technician.availability_window.create",
+      targetType: "Availability"
+    }));
+  });
+
+  it("reports the controlling shop conflict instead of trimming an overlapping free window", async () => {
+    const technician = actor({
+      currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 31,
+      roles: ["technician"]
+    });
+    await expect(new BookingService(repository("conflict"), undefined, undefined, audit)
+      .createAvailabilityWindow(technician, {
+        startsAt: availabilityWindow.startsAt,
+        endsAt: availabilityWindow.endsAt,
+        capacity: 1
+      }, context)).rejects.toMatchObject({
+        code: ERROR_CODES.SCHEDULE_CONFLICT,
+        message: "error.availability.shop_control_conflict"
+      });
+  });
+
   it("derives merchant shop scope and records schedule mutations", async () => {
     const repo = repository();
     const service = new BookingService(repo, undefined, undefined, audit);

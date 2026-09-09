@@ -118,6 +118,40 @@ export const availabilityListQuerySchema = z
     path: ["to"]
   });
 
+export const availabilityWindowListQuerySchema = z.object({
+  ...paginationQuerySchema,
+  from: isoDateSchema,
+  to: isoDateSchema,
+  technicianProfileId: z.coerce.number().int().positive().optional()
+}).strict().superRefine((value, context) => {
+  if (value.from >= value.to) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "from must be earlier than to", path: ["to"] });
+  }
+  if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "date range must not exceed 93 days", path: ["to"] });
+  }
+});
+
+export const availabilityWindowCreateBodySchema = z.object({
+  technicianProfileId: z.coerce.number().int().positive().optional(),
+  startsAt: isoDateSchema,
+  endsAt: isoDateSchema,
+  capacity: z.coerce.number().int().positive().max(100).default(1)
+}).strict().superRefine((value, context) => {
+  const duration = value.endsAt.getTime() - value.startsAt.getTime();
+  if (duration <= 0) context.addIssue({ code: z.ZodIssueCode.custom, message: "startsAt must be earlier than endsAt", path: ["endsAt"] });
+  if (duration > 24 * 60 * 60 * 1000) context.addIssue({ code: z.ZodIssueCode.custom, message: "availability window must not exceed 24 hours", path: ["endsAt"] });
+});
+
+export const availabilityWindowUpdateBodySchema = z.object({
+  startsAt: isoDateSchema.optional(),
+  endsAt: isoDateSchema.optional(),
+  capacity: z.coerce.number().int().positive().max(100).optional()
+}).strict().superRefine((value, context) => {
+  if (!value.startsAt && !value.endsAt && value.capacity === undefined) context.addIssue({ code: z.ZodIssueCode.custom, message: "At least one field is required" });
+  if (value.startsAt && value.endsAt && value.startsAt >= value.endsAt) context.addIssue({ code: z.ZodIssueCode.custom, message: "startsAt must be earlier than endsAt", path: ["endsAt"] });
+});
+
 const bookingBaseSchema = z.object({
   expectedPriceAmountJpy: z.coerce.number().int().nonnegative(),
   serviceId: z.coerce.number().int().positive().optional(),
@@ -485,6 +519,9 @@ export const scheduleSlotDeleteQuerySchema = z
   .strict();
 
 export type AvailabilityListQuery = z.infer<typeof availabilityListQuerySchema>;
+export type AvailabilityWindowListQuery = z.infer<typeof availabilityWindowListQuerySchema>;
+export type AvailabilityWindowCreateBody = z.infer<typeof availabilityWindowCreateBodySchema>;
+export type AvailabilityWindowUpdateBody = z.infer<typeof availabilityWindowUpdateBodySchema>;
 export type BookingCreateBody = z.infer<typeof bookingCreateBodySchema>;
 export type TechnicianManualBookingBody = z.infer<typeof technicianManualBookingBodySchema>;
 export type OrderIdParams = z.infer<typeof orderIdParamSchema>;

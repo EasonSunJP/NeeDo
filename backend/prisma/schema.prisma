@@ -4068,6 +4068,7 @@ model Availability {
   endsAt              DateTime               @map("ends_at")
   capacity            Int                    @default(1)
   isActive            Boolean                @default(true) @map("is_active")
+  isScheduleControlWindow Boolean             @default(false) @map("is_schedule_control_window")
   createdAt           DateTime               @default(now()) @map("created_at")
   updatedAt           DateTime               @updatedAt @map("updated_at")
   deletedAt           DateTime?              @map("deleted_at")
@@ -4081,6 +4082,7 @@ model Availability {
   @@index([technicianProfileId, visibility, startsAt, endsAt, deletedAt], map: "availability_technician_visibility_range_idx")
   @@index([startsAt, endsAt])
   @@index([isActive])
+  @@index([technicianProfileId, isScheduleControlWindow, startsAt, endsAt, deletedAt], map: "availability_schedule_control_window_idx")
   @@index([deletedAt])
   @@map("availabilities")
 }

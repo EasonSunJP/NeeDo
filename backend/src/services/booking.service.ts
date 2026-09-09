@@ -2,6 +2,11 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { createHash } from "node:crypto";
 import { logger } from "../config/logger";
 import type {
+  AvailabilityWindowCreateInput,
+  AvailabilityWindowListInput,
+  AvailabilityWindowMutationResult,
+  AvailabilityWindowPayload,
+  AvailabilityWindowUpdateInput,
   AvailabilityListInput,
   BookingCreateRepositoryOptions,
   BookingCreateRepositoryInput,
@@ -199,6 +204,57 @@ export class BookingService {
 
   public listAvailableSlots(input: AvailabilityListInput) {
     return this.repository.listAvailableSlots(input);
+  }
+
+  public listAvailabilityWindows(
+    actor: AuthenticatedAccessContext,
+    input: Omit<AvailabilityWindowListInput, keyof ScheduleScope>
+  ): Promise<PaginatedResponse<AvailabilityWindowPayload>> {
+    if (!this.repository.listAvailabilityWindows) throw this.dependencyUnavailableError();
+    return this.repository.listAvailabilityWindows({ ...input, ...this.getScheduleScope(actor) });
+  }
+
+  public async createAvailabilityWindow(
+    actor: AuthenticatedAccessContext,
+    input: Omit<AvailabilityWindowCreateInput, keyof ScheduleScope>,
+    context: AuthRequestContext
+  ): Promise<AvailabilityWindowPayload> {
+    if (!this.repository.createAvailabilityWindow) throw this.dependencyUnavailableError();
+    const scope = this.getScheduleScope(actor);
+    const window = this.requireAvailabilityWindowMutation(
+      await this.repository.createAvailabilityWindow({ ...input, ...scope })
+    );
+    await this.recordAvailabilityWindowMutation(actor, context, scope, "create", window);
+    return window;
+  }
+
+  public async updateAvailabilityWindow(
+    actor: AuthenticatedAccessContext,
+    id: number,
+    input: Omit<AvailabilityWindowUpdateInput, keyof ScheduleScope | "id">,
+    context: AuthRequestContext
+  ): Promise<AvailabilityWindowPayload> {
+    if (!this.repository.updateAvailabilityWindow) throw this.dependencyUnavailableError();
+    const scope = this.getScheduleScope(actor);
+    const window = this.requireAvailabilityWindowMutation(
+      await this.repository.updateAvailabilityWindow({ ...input, ...scope, id })
+    );
+    await this.recordAvailabilityWindowMutation(actor, context, scope, "update", window);
+    return window;
+  }
+
+  public async deleteAvailabilityWindow(
+    actor: AuthenticatedAccessContext,
+    id: number,
+    context: AuthRequestContext
+  ): Promise<AvailabilityWindowPayload> {
+    if (!this.repository.deleteAvailabilityWindow) throw this.dependencyUnavailableError();
+    const scope = this.getScheduleScope(actor);
+    const window = this.requireAvailabilityWindowMutation(
+      await this.repository.deleteAvailabilityWindow({ ...scope, id })
+    );
+    await this.recordAvailabilityWindowMutation(actor, context, scope, "delete", window);
+    return window;
   }
 
   public async listScheduleSlots(
@@ -1617,6 +1673,45 @@ export class BookingService {
           ? "error.schedule.duration_mismatch"
           : "error.schedule.conflict",
       statusCode: 409
+    });
+  }
+
+  private requireAvailabilityWindowMutation(
+    result: AvailabilityWindowMutationResult
+  ): AvailabilityWindowPayload {
+    if (result.outcome === "ok") return result.window;
+    if (result.outcome === "suspended") throw this.suspendedError();
+    if (result.outcome === "not_found") {
+      throw new AppError({ code: ERROR_CODES.NOT_FOUND, message: "error.availability.window_not_found", statusCode: 404 });
+    }
+    throw new AppError({
+      code: ERROR_CODES.SCHEDULE_CONFLICT,
+      message: result.outcome === "shop_control_conflict"
+        ? "error.availability.shop_control_conflict"
+        : "error.availability.conflict",
+      statusCode: 409
+    });
+  }
+
+  private async recordAvailabilityWindowMutation(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    scope: ScheduleScope,
+    operation: "create" | "update" | "delete",
+    window: AvailabilityWindowPayload
+  ): Promise<void> {
+    if (!this.auditLogService) throw new Error("Availability audit log service is required");
+    await this.auditLogService.record({
+      actor,
+      action: `${scope.scope === "merchant" ? "merchant_admin" : "technician"}.availability_window.${operation}`,
+      targetType: "Availability",
+      targetId: window.id,
+      context,
+      metadata: {
+        shopId: window.shopId,
+        technicianProfileId: window.technicianProfileId,
+        sourceType: window.sourceType
+      }
     });
   }
 

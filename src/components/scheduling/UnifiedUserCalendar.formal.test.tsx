@@ -7,7 +7,7 @@ import { I18nProvider } from "../../i18n/I18nProvider";
 import type { BookingScheduleSlot } from "../../features/booking/api";
 import type { Customer, Store, Technician } from "../../types/domain";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
-import { getBookingConflictEventIds, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedUserCalendar } from "./UnifiedUserCalendar";
+import { getBookingConflictEventIds, getFormalAvailabilityWindowEvents, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedCalendarEventDetailPage, UnifiedUserCalendar } from "./UnifiedUserCalendar";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -15,6 +15,7 @@ const testState = vi.hoisted(() => ({
   createCalendarEvent: vi.fn(),
   deleteCalendarEvent: vi.fn(),
   listCalendarEvents: vi.fn(),
+  listAllAvailabilityWindows: vi.fn(),
   legacyListOrders: vi.fn(),
   loadCustomerOrderWindow: vi.fn(),
   listScheduleSlots: vi.fn(),
@@ -28,6 +29,10 @@ vi.mock("../../features/scheduling/calendar-event-api", () => ({
     list: testState.listCalendarEvents,
     update: testState.updateCalendarEvent
   }
+}));
+
+vi.mock("../../features/scheduling/availability-window-api", () => ({
+  availabilityWindowApi: { listAll: testState.listAllAvailabilityWindows }
 }));
 
 vi.mock("../../features/booking/window-loaders", () => ({
@@ -97,7 +102,7 @@ vi.mock("../mobile/MobileFullscreenPage", () => ({
 }));
 vi.mock("../mobile/MobileFullscreenHeader", () => ({
   MobileFullscreenCloseButton: () => null,
-  MobileFullscreenHeader: ({ title }: { title: string }) => <header>{title}</header>
+  MobileFullscreenHeader: ({ action, title }: { action?: ReactNode; title: string }) => <header>{title}{action}</header>
 }));
 
 const customerFixture: Customer = {
@@ -185,6 +190,7 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     testState.legacyListOrders.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
     testState.loadCustomerOrderWindow.mockRejectedValue(new Error("schedule unavailable"));
     testState.listScheduleSlots.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
+    testState.listAllAvailabilityWindows.mockResolvedValue([]);
     testState.listCalendarEvents.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
   });
 
@@ -263,6 +269,66 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     const availability = { ...base, id: "availability", orderId: undefined, scheduleSlotId: 3, startTime: "18:00", endTime: "24:00", title: "自由排班" };
     expect([...getBookingConflictEventIds([bookingA, bookingB, privateEvent, availability])].sort()).toEqual(["booking-a", "booking-b"]);
     expect(getBookingConflictEventIds([bookingA, privateEvent, availability])).toEqual(new Set());
+  });
+
+  it("projects a full independent availability range without subtracting its booking occupancy", () => {
+    const events = getFormalAvailabilityWindowEvents([{
+      id: 77,
+      shopId: 17,
+      technicianProfileId: 48,
+      sourceType: "technician",
+      visibility: "affiliated_shops",
+      startsAt: "2026-09-09T18:00:00+09:00",
+      endsAt: "2026-09-10T00:00:00+09:00",
+      capacity: 1,
+      isActive: true,
+      shopName: "Formal Shop",
+      createdAt: "2026-09-01T00:00:00Z",
+      updatedAt: "2026-09-01T00:00:00Z"
+    }], "technician");
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      availabilityWindowId: 77,
+      availabilitySourceType: "technician",
+      startTime: "18:00",
+      endTime: "24:00",
+      readOnly: false,
+      title: "自由排班"
+    });
+  });
+
+  it("requires the red impact confirmation before editing a shop-controlled availability window", async () => {
+    const onEdit = vi.fn();
+    const event = getFormalAvailabilityWindowEvents([{
+      id: 78,
+      shopId: 17,
+      technicianProfileId: 48,
+      sourceType: "shop",
+      visibility: "shop_only",
+      startsAt: "2026-09-09T10:00:00+09:00",
+      endsAt: "2026-09-09T15:00:00+09:00",
+      capacity: 1,
+      isActive: true,
+      shopName: "正式店铺",
+      createdAt: "2026-09-01T00:00:00Z",
+      updatedAt: "2026-09-01T00:00:00Z"
+    }], "technician")[0]!;
+    await act(async () => root.render(
+      <MemoryRouter>
+        <I18nProvider>
+          <UnifiedCalendarEventDetailPage event={event} onBack={() => {}} onEdit={onEdit} />
+        </I18nProvider>
+      </MemoryRouter>
+    ));
+
+    const edit = container.querySelector('button[aria-label="编辑行程"]') as HTMLButtonElement;
+    await act(async () => edit.click());
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("影响店铺安排");
+    const confirm = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("确认修改排班"));
+    await act(async () => confirm?.click());
+    expect(onEdit).toHaveBeenCalledWith(event);
   });
 
   it.each([["available", "可预约"], ["booked", "已预约"], ["blocked", "已锁定"]] as const)("keeps the persisted %s slot status visible on compact cards", async (status, badge) => {
