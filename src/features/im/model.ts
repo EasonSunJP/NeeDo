@@ -377,6 +377,7 @@ export type MessageExt = {
     address: string;
     rating: number;
     reviewCount: number;
+    completedOrderCount: number;
     favoriteCount: number;
     shareCount: number;
     tags: string[];

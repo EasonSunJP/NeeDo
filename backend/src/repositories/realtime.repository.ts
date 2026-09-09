@@ -6345,6 +6345,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           reviewSummary: { select: { ratingAverage: true, reviewCount: true } },
           _count: {
             select: {
+              bookingOrders: { where: { status: "COMPLETED", deletedAt: null } },
               entityFavorites: { where: { deletedAt: null } },
               entityShareEvents: { where: { deletedAt: null } }
             }
@@ -6362,6 +6363,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             address: shop.address,
             rating: Number(shop.reviewSummary?.ratingAverage ?? 0),
             reviewCount: shop.reviewSummary?.reviewCount ?? 0,
+            completedOrderCount: shop._count.bookingOrders,
             favoriteCount: shop._count.entityFavorites,
             shareCount: shop._count.entityShareEvents + 1,
             tags: []

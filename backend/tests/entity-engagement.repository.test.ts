@@ -156,6 +156,85 @@ describe("EntityEngagementRepository", () => {
     expect(client.entityFavorite.findMany).toHaveBeenCalledTimes(1);
   });
 
+  it("returns the filtered completed booking count for favorite shop cards", async () => {
+    const createdAt = new Date("2026-09-09T00:00:00.000Z");
+    const client = {
+      entityFavorite: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              createdAt,
+              shopId: 7,
+              technicianProfileId: null,
+              serviceId: null,
+              technicianServiceId: null,
+              shop: {
+                name: "LifeDance 港区店",
+                description: "深夜疗愈",
+                address: "東京都港区麻布十番",
+                publicIdentifier: { publicId: "shop0000000001" },
+                mediaAssets: [],
+                reviewSummary: {
+                  ratingAverage: "4.9",
+                  reviewCount: 32,
+                  deletedAt: null
+                },
+                _count: {
+                  bookingOrders: 1999,
+                  entityShareEvents: 8
+                }
+              },
+              service: null,
+              technicianService: null,
+              technicianProfile: null
+            }
+          ])
+          .mockResolvedValueOnce([
+            {
+              shopId: 7,
+              technicianProfileId: null,
+              serviceId: null,
+              technicianServiceId: null
+            }
+          ]),
+        count: jest.fn(async () => 1),
+        groupBy: jest.fn(async () => [{ shopId: 7, _count: { _all: 3 } }])
+      }
+    };
+    const repository = new EntityEngagementRepository(client as never);
+
+    await expect(
+      repository.listFavorites({ userId: 42, page: 1, pageSize: 20, targetType: "shop" })
+    ).resolves.toMatchObject({
+      list: [
+        {
+          card: {
+            kind: "shop",
+            reviewCount: 32,
+            completedOrderCount: 1999
+          }
+        }
+      ]
+    });
+    expect(client.entityFavorite.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        select: expect.objectContaining({
+          shop: expect.objectContaining({
+            select: expect.objectContaining({
+              _count: {
+                select: expect.objectContaining({
+                  bookingOrders: { where: { status: "COMPLETED", deletedAt: null } }
+                })
+              }
+            })
+          })
+        })
+      })
+    );
+  });
+
   it("counts a successful system share once for a repeated idempotency key", async () => {
     const event = {
       id: 21,

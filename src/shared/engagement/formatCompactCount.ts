@@ -2,7 +2,8 @@ export function formatCompactCount(value: number): string {
   const normalized = Number.isFinite(value)
     ? Math.max(0, Math.floor(value))
     : 0;
-  return normalized < 1000
-    ? String(normalized)
-    : `${Math.floor(normalized / 1000)}k`;
+  if (normalized < 1000) return String(normalized);
+  const truncatedTenths = Math.floor(normalized / 100);
+  const compact = truncatedTenths / 10;
+  return `${Number.isInteger(compact) ? compact.toFixed(0) : compact.toFixed(1)}k`;
 }

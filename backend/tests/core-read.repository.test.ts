@@ -47,6 +47,7 @@ const publishedShopWithoutServices = {
   publicIdentifier: activeShopIdentifier,
   reviewSummary: null,
   _count: {
+    bookingOrders: 1999,
     entityFavorites: 1540,
     entityShareEvents: 29
   },
@@ -237,6 +238,7 @@ describe("CoreReadRepository multi-entity search", () => {
         {
           name: "LifeDance Wellness 渋谷",
           publicId: "shop5831047296",
+          completedOrderCount: 1999,
           favoriteCount: 1540,
           shareCount: 29,
           serviceCategories: [{ code: "wellness", label: "リラクゼーション" }],
@@ -267,6 +269,15 @@ describe("CoreReadRepository multi-entity search", () => {
               }
             }
           ])
+        }),
+        include: expect.objectContaining({
+          _count: {
+            select: expect.objectContaining({
+              bookingOrders: {
+                where: { status: "COMPLETED", deletedAt: null }
+              }
+            })
+          }
         }),
         skip: 0,
         take: 20

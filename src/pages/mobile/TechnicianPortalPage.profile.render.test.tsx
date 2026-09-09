@@ -161,6 +161,7 @@ const employedTechnician: CoreTechnicianDetail = {
     address: "東京都港区",
     coverUrl: null,
     reviewSummary: { ratingAverage: "4.90", reviewCount: 88, latestReviewAt: null, highlights: [] },
+    completedOrderCount: 0,
     favoriteCount: 0,
     shareCount: 0,
     serviceCategories: [],

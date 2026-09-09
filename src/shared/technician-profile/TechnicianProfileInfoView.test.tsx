@@ -50,7 +50,7 @@ const model: TechnicianProfileInfoModel = {
       priceAmount: 8800,
       currency: "JPY",
       durationMinutes: 60,
-      usageCount: 18,
+      completedOrderCount: 18,
       shopPublicId: "shop0000000071",
       shopAddress: "東京都港区",
       description: "肩颈放松",

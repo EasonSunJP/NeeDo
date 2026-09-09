@@ -612,7 +612,7 @@ function buildOrderServiceCardData(order: Order, service: ServiceItem, matchedSe
     name: order.itemName,
     priceAmount: order.amount,
     durationMinutes: snapshotData.durationMinutes ?? formalData?.durationMinutes ?? null,
-    usageCount: formalData?.usageCount ?? null,
+    completedOrderCount: formalData?.completedOrderCount ?? null,
     shopPublicId: formalData?.shopPublicId ?? null,
     shopAddress: formalData?.shopAddress ?? null,
     description: formalData?.description ?? null,

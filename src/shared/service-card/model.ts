@@ -5,7 +5,7 @@ export type UnifiedServiceInfoCardData = {
   priceAmount: number;
   currency: string;
   durationMinutes: number | null;
-  usageCount: number | null;
+  completedOrderCount: number | null;
   engagementTarget?: {
     targetType: "service" | "technician_service";
     publicId: string;

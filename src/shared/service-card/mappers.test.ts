@@ -36,7 +36,7 @@ describe("unified service-card mappers", () => {
       catalogPriceAmount: 12_250,
       currency: "JPY",
       durationMinutes: 90,
-      usageCount: null,
+      completedOrderCount: null,
       shopPublicId: "shop0000000061",
       shopAddress: "東京都中央区銀座3-4-12",
       description: "肩颈与足部深层护理",
@@ -71,14 +71,16 @@ describe("unified service-card mappers", () => {
       reviewSummary: { highlights: ["可中文沟通", "女性技师可选"] }
     } as CoreServiceCard;
 
-    expect(mapCoreServiceCardToUnifiedData(service)).toEqual({
+    const result = mapCoreServiceCardToUnifiedData(service);
+
+    expect(result).toEqual({
       id: "71",
       coverUrl: "/service.jpg",
       name: "两小时家庭日常保洁",
       priceAmount: 1000,
       currency: "JPY",
       durationMinutes: 60,
-      usageCount: 18,
+      completedOrderCount: 18,
       engagementTarget: { targetType: "service", publicId: "service0000000071" },
       favoriteCount: 27,
       shareCount: 6,
@@ -89,6 +91,8 @@ describe("unified service-card mappers", () => {
       description: "厨房、浴室、地面一站式整理。",
       tags: ["家庭保洁", "東京都", "可中文沟通", "女性技师可选"]
     });
+    expect(result.completedOrderCount).toBe(service.usageCount);
+    expect(result).not.toHaveProperty("usageCount");
   });
 
   it("maps technician-managed services with their public shop id", () => {
@@ -113,11 +117,13 @@ describe("unified service-card mappers", () => {
       }
     } as TechnicianServicePayload;
 
-    expect(mapTechnicianServiceToUnifiedData(service)).toMatchObject({
+    const result = mapTechnicianServiceToUnifiedData(service);
+
+    expect(result).toMatchObject({
       id: "9",
       coverUrl: "/service-9.jpg",
       priceAmount: 1111,
-      usageCount: 2,
+      completedOrderCount: 2,
       engagementTarget: {
         targetType: "technician_service",
         publicId: "service0000000009"
@@ -128,6 +134,8 @@ describe("unified service-card mappers", () => {
       shopPublicId: "shop0000000217",
       shopAddress: "東京都中央区銀座1-2-3"
     });
+    expect(result.completedOrderCount).toBe(service.usageCount);
+    expect(result).not.toHaveProperty("usageCount");
   });
 
   it("marks legacy utilization unavailable instead of reading ServiceItem.sales", () => {
@@ -146,7 +154,7 @@ describe("unified service-card mappers", () => {
     expect(mapServiceItemToUnifiedData(service)).toMatchObject({
       id: "legacy-1",
       coverUrl: null,
-      usageCount: null,
+      completedOrderCount: null,
       shopPublicId: null,
       durationMinutes: 60
     });
@@ -193,7 +201,7 @@ describe("unified service-card mappers", () => {
       priceAmount: 9800,
       currency: "JPY",
       durationMinutes: 90,
-      usageCount: null,
+      completedOrderCount: null,
       shopPublicId: null,
       shopAddress: "東京都中央区銀座1-2-3",
       description: "适合日常放松",

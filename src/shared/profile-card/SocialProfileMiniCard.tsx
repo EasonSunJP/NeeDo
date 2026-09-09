@@ -140,7 +140,7 @@ export function buildServiceMiniCardData(
     scoreValue: "",
     followerCount: 0,
     followingCount: 0,
-    usageCount: serviceInfo.usageCount ?? undefined,
+    usageCount: serviceInfo.completedOrderCount ?? undefined,
     serviceTags: service.tags,
     serviceInfo,
     detailPath: `/services/${service.id}`,

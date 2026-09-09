@@ -105,7 +105,7 @@ function EntityFavoriteCardView({
           priceAmount: favorite.card.priceAmount,
           currency: favorite.card.currency,
           durationMinutes: favorite.card.durationMinutes,
-          usageCount: favorite.card.usageCount,
+          completedOrderCount: favorite.card.usageCount,
           engagementTarget: target as Extract<
             EntityTarget,
             { targetType: "service" | "technician_service" }
@@ -138,6 +138,7 @@ function EntityFavoriteCardView({
               tags: [],
               rating: favorite.card.rating,
               reviewCount: favorite.card.reviewCount,
+              completedOrderCount: favorite.card.completedOrderCount,
               favoriteCount: favorite.favoriteCount,
               shareCount: favorite.card.shareCount,
               engagementTarget: target,

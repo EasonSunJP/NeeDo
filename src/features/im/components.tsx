@@ -4439,7 +4439,7 @@ export function MessageBubble({
               priceAmount: numericPrice,
               currency: card.currency ?? "JPY",
               durationMinutes: numericDuration,
-              usageCount: card.usageCount ?? null,
+              completedOrderCount: card.usageCount ?? null,
               engagementTarget: card.targetType
                 ? { targetType: card.targetType, publicId: card.serviceId }
                 : null,
@@ -4469,6 +4469,7 @@ export function MessageBubble({
               kind: "shop",
               id: card.publicId,
               imageUrl: card.imageUrl,
+              completedOrderCount: card.completedOrderCount,
               languages: [],
               engagementTarget: { targetType: "shop", publicId: card.publicId },
             }}

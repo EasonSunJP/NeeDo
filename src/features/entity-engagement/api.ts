@@ -20,6 +20,7 @@ export type EntityFavoriteCard =
       imageUrl: string | null;
       rating: number;
       reviewCount: number;
+      completedOrderCount: number;
       shareCount: number;
     }
   | {
