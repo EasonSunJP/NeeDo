@@ -40,6 +40,7 @@ async function setup() {
   return { viewport, setViewport, frame, editor };
 }
 const heightOf = (frame: HTMLElement) => frame.style.getPropertyValue("--im-visual-viewport-height");
+const roomHeightOf = (frame: HTMLElement) => frame.style.getPropertyValue("--im-conversation-room-height");
 
 describe("chat visual viewport lifecycle", () => {
   it("bounds an installed iPhone PWA room to the visible viewport when the keyboard is closed", async () => {
@@ -56,7 +57,9 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("876px");
+    expect(roomHeightOf(frame)).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
   it("bounds an installed Android PWA room to the visible viewport when the keyboard is closed", async () => {
@@ -73,7 +76,9 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("876px");
+    expect(roomHeightOf(frame)).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
   it("restores an installed Android PWA room after the keyboard closes", async () => {
@@ -90,6 +95,8 @@ describe("chat visual viewport lifecycle", () => {
       viewport.dispatchEvent(new Event("resize"));
     });
     expect(heightOf(frame)).toBe("540px");
+    expect(roomHeightOf(frame)).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("416px");
 
     await act(async () => {
       editor.blur();
@@ -97,6 +104,8 @@ describe("chat visual viewport lifecycle", () => {
       viewport.dispatchEvent(new Event("resize"));
     });
     expect(heightOf(frame)).toBe("876px");
+    expect(roomHeightOf(frame)).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
   it("keeps Android browser tabs on the dynamic CSS viewport", async () => {
@@ -112,6 +121,8 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("100dvh");
+    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
   });
 
   it("keeps the room inside a keyboard viewport even when focus pans its top edge", async () => {
@@ -122,7 +133,28 @@ describe("chat visual viewport lifecycle", () => {
       viewport.dispatchEvent(new Event("resize"));
     });
     expect(heightOf(frame)).toBe("600px");
+    expect(roomHeightOf(frame)).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("300px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("56px");
+  });
+
+  it("anchors an iPhone Safari room to the keyboard edge without leaving a visual gap", async () => {
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(518, 72);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+
+    expect(heightOf(frame)).toBe("518px");
+    expect(roomHeightOf(frame)).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("72px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("366px");
   });
 
   it("does not expand beneath a still-open keyboard when the editor blurs", async () => {

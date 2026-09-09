@@ -2,6 +2,8 @@
 
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
@@ -9,6 +11,7 @@ import { UnifiedConversationItem, UnifiedConversationPreviewText } from "./chat-
 import source from "./chat-home.tsx?raw";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -77,11 +80,19 @@ describe("UnifiedChatHomePage spacing", () => {
   });
 
   it("uses an internal scroll container so list dragging does not pull the page shell", () => {
-    expect(source).toContain('const unifiedChatHomeShellClassName = "client-glass-page-surface relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-transparent";');
+    expect(source).toContain('const unifiedChatHomeShellClassName = "im-chat-home-shell client-glass-page-surface relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-transparent";');
     expect(source).toContain("overflow-y-auto");
     expect(source).toContain("overscroll-y-contain");
     expect(source).toContain("useIosScrollContainer(contentRef);");
     expect(source).toContain('data-im-home-scroll="true"');
+  });
+
+  it("keeps old Android Chromium on a solid themed surface with non-white border fallbacks", () => {
+    expect(source).toContain("im-chat-home-shell");
+    expect(stylesSource).toContain("@supports not (color: color-mix(in srgb, black, white))");
+    expect(stylesSource).toContain(".client-shell .im-chat-home-shell");
+    expect(stylesSource).toContain("background: var(--client-bg) !important");
+    expect(stylesSource).toContain("border-color: var(--client-line)");
   });
 
   it("supports a compact search header that keeps actions beside the search field", () => {

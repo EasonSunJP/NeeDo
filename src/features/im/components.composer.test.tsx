@@ -98,7 +98,7 @@ describe("ImChatComposer", () => {
     expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
-    expect(stylesSource).toContain("height: var(--im-visual-viewport-height, 100dvh)");
+    expect(stylesSource).toContain("height: var(--im-conversation-room-height, 100dvh)");
 
     await act(async () => root.unmount());
   });
@@ -137,7 +137,8 @@ describe("ImChatComposer", () => {
     const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("480px");
     expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("20px");
-    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(shell?.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("344px");
 
     // iOS can keep focus in the composer when the keyboard is dismissed.
     await act(async () => {
@@ -816,6 +817,32 @@ describe("ImChatComposer", () => {
     expect(stylesSource).toContain("min-width: 36px");
   });
 
+  it("gives the shared emoji and attachment panel a two-row mobile height while preserving short-viewport shrink", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[data-im-composer-control='emoji-chat']")?.click();
+    });
+    expect(container.querySelector("[data-im-composer-panel='emoji']")?.classList.contains("im-composer-panel")).toBe(true);
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[data-im-composer-control='emoji-chat']")?.click();
+      container.querySelector<HTMLButtonElement>("[aria-label='打开更多功能']")?.click();
+    });
+    expect(container.querySelector("[data-im-composer-panel='more']")?.classList.contains("im-composer-panel")).toBe(true);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: min\(232px, calc\(var\(--im-visual-viewport-height, 100dvh\) \* 0\.42\)\);/s);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*height: min\(340px, calc\(var\(--im-visual-viewport-height, 100dvh\) \* 0\.42\)\);/s);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*flex: 0 1 min\(340px, calc\(var\(--im-visual-viewport-height, 100dvh\) \* 0\.42\)\);/s);
+
+    await act(async () => root.unmount());
+  });
+
   it("keeps tall drafts and media scrollable inside a height-constrained composer", async () => {
     const container = document.createElement("div");
     document.body.append(container);
@@ -843,7 +870,7 @@ describe("ImChatComposer", () => {
     expect(stylesSource).toMatch(/\.im-chat-composer-root \{[^}]*max-height: 100%;[^}]*flex: 0 1 auto;/s);
     expect(stylesSource).toMatch(/\.im-composer-input-shell \{[^}]*flex: 0 1 auto;[^}]*overflow: hidden;/s);
     expect(stylesSource).toMatch(/\.im-chat-composer-root:has\(\.im-composer-panel\) \.im-chat-composer-stack \{[^}]*gap: 4px;/s);
-    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: min\(72px, 40%\);/s);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: min\(232px, calc\(var\(--im-visual-viewport-height, 100dvh\) \* 0\.42\)\);/s);
 
     await act(async () => root.unmount());
   });
