@@ -142,6 +142,7 @@ import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
 import { NeedoPet, NeedoPetRunningSprite } from "./components/ui/NeedoPet";
 import { clearNeedoStorage } from "./lib/browserStorage";
+import { isReducedClientPerformanceProfile } from "./lib/clientPerformance";
 import { isNonFatalBrowserRuntimeError } from "./lib/share";
 import { useEntityStore } from "./state/entityStore";
 import { preloadNeedoPetAssets } from "./state/needoPetAssets";
@@ -524,8 +525,12 @@ function EntityStoreBootstrap() {
   return null;
 }
 
-function NeedoPetAssetBootstrap() {
+function NeedoPetAssetBootstrap({ disabled }: { disabled: boolean }) {
   useEffect(() => {
+    if (disabled) {
+      return undefined;
+    }
+
     let cancelled = false;
     let startTimer: number | null = null;
     let retryTimer: number | null = null;
@@ -559,7 +564,7 @@ function NeedoPetAssetBootstrap() {
         window.clearTimeout(retryTimer);
       }
     };
-  }, []);
+  }, [disabled]);
 
   return null;
 }
@@ -706,7 +711,7 @@ function getSplashThemeClassName(portal: SplashPortal, clientTheme: ReturnType<t
   ].join(" ");
 }
 
-function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPortal }) {
+function SplashScreen({ onDone, portal, reducedPerformance }: { onDone: () => void; portal: SplashPortal; reducedPerformance: boolean }) {
   const { theme } = useClientTheme();
   const splashImage = splashImages[portal];
   const copy = splashCopy[portal];
@@ -739,7 +744,7 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
       if (active) {
         setMinimumElapsed(true);
       }
-    }, 920);
+    }, reducedPerformance ? 140 : 920);
 
     return () => {
       active = false;
@@ -747,24 +752,24 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
       preload.onerror = null;
       window.clearTimeout(timer);
     };
-  }, [splashImage]);
+  }, [reducedPerformance, splashImage]);
 
   useEffect(() => {
     if (!imageReady || !minimumElapsed) {
       return;
     }
 
-    const timer = window.setTimeout(onDone, 620);
+    const timer = window.setTimeout(onDone, reducedPerformance ? 80 : 620);
 
     return () => window.clearTimeout(timer);
-  }, [imageReady, minimumElapsed, onDone]);
+  }, [imageReady, minimumElapsed, onDone, reducedPerformance]);
 
   return (
     <div
       className="fixed inset-0 z-[999] overflow-hidden bg-[#090806]"
       data-needo-splash-version={splashVersionLabel}
       style={{
-        backgroundImage: `url('${splashImage}')`,
+        backgroundImage: reducedPerformance ? undefined : `url('${splashImage}')`,
         backgroundPosition: "center",
         backgroundSize: "cover"
       }}
@@ -773,7 +778,7 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
         alt=""
         aria-hidden="true"
         className="absolute inset-0 h-full w-full object-cover"
-        decoding="sync"
+        decoding={reducedPerformance ? "async" : "sync"}
         fetchPriority="high"
         loading="eager"
         src={splashImage}
@@ -781,14 +786,16 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
       <div className={`relative h-full ${themeClassName}`}>
         <div className="absolute inset-0 bg-[color:var(--needo-splash-image-tint)]" />
         <div aria-hidden="true" className="needo-splash-gradient absolute inset-0" />
-        <img
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 h-full w-full object-cover opacity-[0.02]"
-          decoding="sync"
-          loading="eager"
-          src={splashImage}
-        />
+        {!reducedPerformance ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full object-cover opacity-[0.02]"
+            decoding="sync"
+            loading="eager"
+            src={splashImage}
+          />
+        ) : null}
         <div className="needo-splash-version-badge" aria-label={`版本 ${splashVersionLabel}`}>
           ver：{splashVersionLabel}
         </div>
@@ -1063,6 +1070,7 @@ function PlatformAvailabilityGate({ children }: { children: ReactNode }) {
 export default function App() {
   const location = useLocation();
   const currentPortal = getSplashPortal(location.pathname);
+  const reducedPerformance = isReducedClientPerformanceProfile();
   const [splashPortal, setSplashPortal] = useState<SplashPortal | null>(currentPortal);
   const [lastPortal, setLastPortal] = useState<SplashPortal | null>(null);
   const protect = (portal: PortalScope, element: ReactElement) => <RequirePortalAuth portal={portal}>{element}</RequirePortalAuth>;
@@ -1116,12 +1124,12 @@ export default function App() {
             <I18nRuntime>
               <PlatformAvailabilityGate>
               <EntityStoreBootstrap />
-              <NeedoPetAssetBootstrap />
+              <NeedoPetAssetBootstrap disabled={reducedPerformance} />
               <SocialProvider>
-                {splashPortal ? <SplashScreen onDone={completeSplash} portal={splashPortal} /> : null}
+                {splashPortal ? <SplashScreen onDone={completeSplash} portal={splashPortal} reducedPerformance={reducedPerformance} /> : null}
                 <RouteScrollReset />
                 <ShareFeedbackViewport />
-                <NeedoPet disabled={Boolean(splashPortal)} />
+                <NeedoPet disabled={Boolean(splashPortal) || reducedPerformance} />
                 <AccountComplianceGate>
                 <Routes>
               <Route path="/login" element={<LoginPage />} />

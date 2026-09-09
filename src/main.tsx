@@ -4,6 +4,7 @@ import { HashRouter } from "react-router-dom";
 import App from "./App";
 import "./styles.css";
 import { installNativeContextMenuGuard } from "./lib/nativeContextMenuGuard";
+import { syncClientPerformanceProfile } from "./lib/clientPerformance";
 import { getClientPwaThemeColors, getInitialClientThemeState } from "./theme/ClientThemeProvider";
 
 const rootElement = document.getElementById("root")!;
@@ -63,6 +64,7 @@ function syncInitialClientPwaTheme() {
   root.style.setProperty("--needo-pwa-theme-color", colors.themeColor);
   root.style.setProperty("--needo-pwa-status-bg", colors.statusBackground);
   root.style.setProperty("--client-top-chrome-bg", colors.statusBackground);
+  root.style.colorScheme = colors.colorScheme;
 
   if (body) {
     body.style.setProperty("--needo-pwa-theme-color", colors.themeColor);
@@ -76,6 +78,7 @@ function syncInitialClientPwaTheme() {
 
 syncDisplayMode();
 syncInitialClientPwaTheme();
+syncClientPerformanceProfile();
 
 if (displayModeQuery) {
   if (typeof displayModeQuery.addEventListener === "function") {

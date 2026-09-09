@@ -160,6 +160,12 @@ describe("HomePage authenticated customer identity", () => {
       'avatarSrc={session?.avatarUrl ?? currentCustomer?.avatar ?? ""}'
     );
   });
+
+  it("shows the persisted experience level below the home avatar instead of deriving it from review score", () => {
+    expect(homePageSource).toContain("currentCustomer.experienceLevel");
+    expect(homePageSource).toContain("`Lv.${currentCustomer.experienceLevel}`");
+    expect(homePageSource).not.toContain("getCustomerLevelLabel(currentCustomer.activeScore)");
+  });
 });
 
 describe("HomePage quick action icon theme colors", () => {

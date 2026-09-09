@@ -70,6 +70,50 @@ body {
   overscroll-behavior-y: auto;
 }
 
+/* Chromium before color-mix() support drops the themed border declaration and
+   otherwise exposes Tailwind's light default border. Keep legacy Android
+   surfaces coherent while newer engines continue to use the richer colors. */
+@supports not (color: color-mix(in srgb, black, white)) {
+  @layer base {
+    .client-shell :where(.border, .border-x, .border-y, .border-t, .border-r, .border-b, .border-l) {
+      border-color: var(--client-line);
+    }
+  }
+
+  .client-shell .im-chat-home-shell {
+    background: var(--client-bg) !important;
+    background-image: none !important;
+  }
+}
+
+/* Android 9 and constrained Android devices get a paint-light profile. The
+   data and layout stay identical; only continuous motion, large shadows and
+   GPU-heavy glass compositing are reduced. */
+html[data-needo-performance-profile="reduced"] {
+  scroll-behavior: auto !important;
+}
+
+html[data-needo-performance-profile="reduced"] .client-shell,
+html[data-needo-performance-profile="reduced"] .client-shell .client-glass-page-surface {
+  background: var(--client-bg) !important;
+  background-image: none !important;
+}
+
+html[data-needo-performance-profile="reduced"] .client-shell :where(.border, .border-x, .border-y, .border-t, .border-r, .border-b, .border-l) {
+  border-color: var(--client-line) !important;
+}
+
+html[data-needo-performance-profile="reduced"] .client-shell *,
+html[data-needo-performance-profile="reduced"] .needo-splash-theme * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  box-shadow: none !important;
+  transition-duration: 0.01ms !important;
+  will-change: auto !important;
+}
+
 html:has(.client-theme-light-green),
 html:has(.client-theme-jade-light),
 body:has(.client-theme-light-green),
@@ -2509,9 +2553,10 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
 }
 
 .im-composer-panel {
-  min-height: min(72px, 40%);
+  min-height: min(232px, calc(var(--im-visual-viewport-height, 100dvh) * 0.42));
+  height: min(340px, calc(var(--im-visual-viewport-height, 100dvh) * 0.42));
   max-height: min(42dvh, calc(var(--im-visual-viewport-height, 100dvh) * 0.42));
-  flex: 1 1 96px;
+  flex: 0 1 min(340px, calc(var(--im-visual-viewport-height, 100dvh) * 0.42));
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -8146,7 +8191,7 @@ html.im-conversation-scroll-lock #root {
   height: 100vh;
   height: 100svh;
   height: 100dvh;
-  height: var(--im-visual-viewport-height, 100dvh);
+  height: var(--im-conversation-room-height, 100dvh);
   max-height: none;
   top: var(--im-visual-viewport-top, 0px);
   bottom: var(--im-visual-viewport-bottom, 0px);

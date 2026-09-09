@@ -49,6 +49,8 @@ describe("useVisualViewportFrame", () => {
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("390px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("5px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("112px");
 
     input.blur();
     Object.defineProperties(visualViewport, {
@@ -63,6 +65,8 @@ describe("useVisualViewportFrame", () => {
     expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("18px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("380px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("8px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("146px");
     Object.defineProperty(visualViewport, "height", { configurable: true, value: 844 });
     await act(async () => visualViewport.dispatchEvent(new Event("resize")));
     expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
@@ -211,7 +215,8 @@ describe("iPhone standalone viewport", () => {
   it("uses dynamic height for iPhone standalone without trusting screen pixel height", async () => {
     const { root, frame } = await mountIphoneFrame();
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("759px");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     await act(async () => root.unmount());
   });
 
@@ -220,9 +225,13 @@ describe("iPhone standalone viewport", () => {
     Object.defineProperty(viewport, "height", { value: 420, configurable: true });
     await act(async () => frame.querySelector("textarea")!.focus());
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("420px");
+    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("339px");
     Object.defineProperty(viewport, "height", { value: 759, configurable: true });
     await act(async () => viewport.dispatchEvent(new Event("resize")));
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("759px");
+    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     await act(async () => root.unmount());
   });
 

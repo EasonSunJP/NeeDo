@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clientThemes, detectSystemClientTheme, getClientThemeClassName, getInitialClientThemeState, isNightClientTheme } from "./ClientThemeProvider";
+import { clientThemes, detectSystemClientTheme, getClientPwaThemeColors, getClientThemeClassName, getInitialClientThemeState, isNightClientTheme } from "./ClientThemeProvider";
 
 function createStorage(seed: Record<string, string> = {}) {
   const entries = new Map(Object.entries(seed));
@@ -52,6 +52,15 @@ afterEach(() => {
 });
 
 describe("ClientThemeProvider theme boot logic", () => {
+  it("exposes the browser chrome color scheme together with each theme color", () => {
+    expect(getClientPwaThemeColors("neon-pink")).toEqual({
+      colorScheme: "dark",
+      statusBackground: "#080a1a",
+      themeColor: "#080a1a"
+    });
+    expect(getClientPwaThemeColors("light-green").colorScheme).toBe("light");
+  });
+
   it("uses dark-green as the default when the device is in dark mode", () => {
     stubWindow({
       localStorage: createStorage(),
