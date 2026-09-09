@@ -158,7 +158,8 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({
       currentTechnician: expect.objectContaining({ id: "31", storeId: "" }),
       formalOnly: true,
-      scope: "technician"
+      scope: "technician",
+      technicianWorkActionsEnabled: false
     }));
     expect(container.textContent).not.toContain("新建正式排班");
 

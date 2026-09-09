@@ -262,6 +262,18 @@ export class WorkStatusSession {
       select: { id: true }
     });
   }
+  hasActiveAffiliation(id: number, now: Date) {
+    return this.db.technicianShopAffiliation.findFirst({
+      where: {
+        technicianProfileId: id,
+        deletedAt: null,
+        workStatus: "ACTIVE",
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+      },
+      select: { id: true }
+    });
+  }
   incident(key: string) {
     return this.db.technicianAttendanceIncident.findUnique({
       where: { incidentKey: key },

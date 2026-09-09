@@ -37,6 +37,31 @@ afterEach(async () => {
   container.remove();
 });
 describe("work status submission", () => {
+  it("blocks starting work actions without a shop while keeping off-duty available", async () => {
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <WorkStatusControls
+            disabled
+            disabledReason="入住店铺后才可开启出勤与其他工作状态。"
+          />
+        </MemoryRouter>,
+      ),
+    );
+
+    const statusButtons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button[data-status]"),
+    );
+    expect(statusButtons).toHaveLength(5);
+    expect(statusButtons.filter((button) => button.dataset.status !== "off_duty").every((button) => button.disabled)).toBe(true);
+    expect(statusButtons.find((button) => button.dataset.status === "off_duty")?.disabled).toBe(false);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "入住店铺后才可开启出勤与其他工作状态。",
+    );
+    await act(async () => statusButtons[0]?.click());
+    expect(workStatusApi.update).not.toHaveBeenCalled();
+  });
+
   it("shows the synchronized automation switches only after the technician is on duty", async () => {
     await act(async () =>
       root.render(

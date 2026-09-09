@@ -65,6 +65,7 @@ export function FormalTechnicianScheduleWorkspace({
             scope="technician"
             searchQuery={searchQuery}
             showSourceDrawer
+            technicianWorkActionsEnabled={shopId !== null}
           />
         )}
       </div>

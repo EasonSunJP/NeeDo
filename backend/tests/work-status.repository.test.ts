@@ -26,3 +26,27 @@ it("returns an active service across midnight without restricting it to today", 
     select: { id: true, shopId: true }
   });
 });
+
+it("checks for an active shop affiliation at the requested instant", async () => {
+  const findFirst = jest.fn(async () => ({ id: 91 }));
+  const db = {
+    technicianShopAffiliation: { findFirst }
+  };
+  const now = new Date("2026-09-09T04:30:00.000Z");
+
+  await expect(
+    new WorkStatusSession(
+      db as unknown as ConstructorParameters<typeof WorkStatusSession>[0]
+    ).hasActiveAffiliation(12, now)
+  ).resolves.toEqual({ id: 91 });
+  expect(findFirst).toHaveBeenCalledWith({
+    where: {
+      technicianProfileId: 12,
+      deletedAt: null,
+      workStatus: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+    },
+    select: { id: true }
+  });
+});

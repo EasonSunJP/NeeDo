@@ -465,6 +465,7 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(portalPageSource).toContain("const result = await switchPortal(nextPortal);");
     expect(portalPageSource).toContain("if (!result.ok)");
     expect(portalPageSource).toContain("navigate(nextEntry");
+    expect(portalPageSource).toContain("settingsReturnTo:");
   });
 
   it("renders inactive identities as applications instead of selectable radios", () => {
