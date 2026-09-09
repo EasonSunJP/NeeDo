@@ -6,7 +6,9 @@ import type {
   ConfirmManualPaymentRepositoryInput,
   LegacyServicePaymentMethodPayload,
   ScheduleSlotCreateInput,
-  ScheduleSlotPayload
+  ScheduleSlotReadInput,
+  ScheduleSlotPayload,
+  ScheduleSlotUpdateInput
 } from "../src/repositories/booking.repository";
 import {
   bookingOrderStatusFromDb,
@@ -214,6 +216,47 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("cancels affected confirmed bookings through the formal transition before an impact-confirmed schedule edit", async () => {
+    const confirmed = { ...makeOrder("confirmed"), technicianProfileId: 31, scheduleSlotId: scheduleSlot.id };
+    const repository = createRepository(confirmed);
+    repository.findScheduleSlotById = jest.fn(async (input: ScheduleSlotReadInput) => {
+      void input;
+      return scheduleSlot;
+    });
+    repository.listCancellableOrdersForScheduleSlot = jest.fn(async (scheduleSlotId: number) => {
+      void scheduleSlotId;
+      return [confirmed];
+    });
+    repository.updateScheduleSlot = jest.fn(async (input: ScheduleSlotUpdateInput) => {
+      void input;
+      return { outcome: "ok" as const, slot: scheduleSlot };
+    });
+    const auditLogService = { record: jest.fn(async () => undefined) };
+    const service = new BookingService(repository, undefined, undefined, auditLogService);
+
+    await expect(service.updateScheduleSlot(
+      technicianActor,
+      scheduleSlot.id,
+      { startsAt: new Date(scheduleSlot.startsAt.getTime() + 60_000), impactConfirmed: true },
+      { ip: "127.0.0.1", userAgent: "jest" }
+    )).resolves.toBe(scheduleSlot);
+
+    expect(repository.transitionOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: confirmed.id,
+        fromStatus: "confirmed",
+        toStatus: "cancelled",
+        reason: "技师确认修改排班，系统取消受影响预约"
+      }),
+      expect.any(Object)
+    );
+    expect(repository.updateScheduleSlot).toHaveBeenCalledWith(expect.objectContaining({
+      id: scheduleSlot.id,
+      scope: "technician",
+      startsAt: expect.any(Date)
+    }));
+  });
+
   it("creates a technician manual booking for the selected formal customer and preserves the technician actor", async () => {
     const order = makeOrder("pending");
     const repository = createRepository(order);

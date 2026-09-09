@@ -317,6 +317,7 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const [impactAction, setImpactAction] = useState<"edit" | "delete" | null>(null);
 
   useEffect(() => {
     setSlot(resource.data?.slot ?? null);
@@ -355,15 +356,25 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
   };
 
   const deleteSlot = async () => {
-    if (pending || slot.status === "booked") return;
-    if (!deleteArmed) {
+    if (pending) return;
+    const requiresImpactConfirmation = slot.bookedCount > 0 || slot.availabilitySourceType === "shop";
+    if (requiresImpactConfirmation && impactAction !== "delete") {
+      setImpactAction("delete");
+      setDeleteArmed(false);
+      return;
+    }
+    if (!requiresImpactConfirmation && !deleteArmed) {
       setDeleteArmed(true);
       return;
     }
     setPending(true);
     setActionError("");
     try {
-      await schedulingApi.deleteSlot("technician", slot.id);
+      if (requiresImpactConfirmation) {
+        await schedulingApi.deleteSlot("technician", slot.id, { impactConfirmed: true });
+      } else {
+        await schedulingApi.deleteSlot("technician", slot.id);
+      }
       navigate("/technician/schedule");
     } catch (error) {
       setActionError(scheduleMutationError(error));
@@ -371,6 +382,17 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
     } finally {
       setPending(false);
     }
+  };
+
+  const editSlot = () => {
+    if (pending) return;
+    const requiresImpactConfirmation = slot.bookedCount > 0 || slot.availabilitySourceType === "shop";
+    if (requiresImpactConfirmation && impactAction !== "edit") {
+      setImpactAction("edit");
+      setDeleteArmed(false);
+      return;
+    }
+    navigate(`/technician/schedule/events/${slot.id}/edit${requiresImpactConfirmation ? "?impactConfirmed=true" : ""}`);
   };
 
   return (
@@ -402,21 +424,34 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
 
         {actionError ? <section className={panelClass} role="alert"><p className="text-sm font-black text-red-500">{actionError}</p></section> : null}
 
-        {slot.status === "booked" ? (
-          <section className={panelClass}>
-            <p className="text-sm font-bold text-[color:var(--client-muted)]">该时段已有预约，时间、状态和删除操作均由服务端锁定。</p>
+        <section className="grid gap-2 sm:grid-cols-3">
+          <Button disabled={pending} onClick={editSlot} variant="secondary">编辑时段</Button>
+          <Button disabled={pending || slot.status === "booked"} onClick={() => void updateStatus()} variant="secondary">
+            {slot.status === "blocked" ? "恢复可预约" : "锁定时段"}
+          </Button>
+          <Button disabled={pending} onClick={() => void deleteSlot()} variant="danger">
+            {deleteArmed ? "再次点击确认删除" : slot.bookedCount > 0 || slot.availabilitySourceType === "shop" ? "取消排班" : "删除时段"}
+          </Button>
+        </section>
+
+        {impactAction ? (
+          <section className="rounded-[24px] border-2 border-red-500 bg-red-500/10 p-4" role="alert">
+            <p className="text-sm font-black leading-6 text-red-500">
+              {slot.bookedCount > 0
+                ? `该时段已有 ${slot.bookedCount} 个确定预约，本次改动会取消已确定预约并影响您的评价，是否真的执行？`
+                : "这是店铺安排的可排班日程，本次改动可能影响店铺安排，是否真的执行？"}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button onClick={() => setImpactAction(null)} variant="secondary">返回</Button>
+              <Button
+                onClick={() => impactAction === "edit" ? editSlot() : void deleteSlot()}
+                variant="danger"
+              >
+                {impactAction === "edit" ? "确认修改排班" : "确认取消排班"}
+              </Button>
+            </div>
           </section>
-        ) : (
-          <section className="grid gap-2 sm:grid-cols-3">
-            <Button disabled={pending} to={`/technician/schedule/events/${slot.id}/edit`} variant="secondary">编辑时段</Button>
-            <Button disabled={pending} onClick={() => void updateStatus()} variant="secondary">
-              {slot.status === "blocked" ? "恢复可预约" : "锁定时段"}
-            </Button>
-            <Button disabled={pending} onClick={() => void deleteSlot()} variant="danger">
-              {deleteArmed ? "再次点击确认删除" : "删除时段"}
-            </Button>
-          </section>
-        )}
+        ) : null}
       </div>
     </TechnicianSchedulePageShell>
   );
@@ -454,6 +489,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   const resource = useFormalTechnicianScheduleResource(session, slotId);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const impactConfirmed = slotId !== null && searchParams.get("impactConfirmed") === "true";
   const defaultRange = useMemo(() => {
     const fallback = createDefaultScheduleRange();
     const startsAt = readScheduleQueryDate(searchParams.get("startsAt"), fallback.startsAt);
@@ -557,7 +593,12 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
         return;
       }
       const saved = slotId
-        ? await schedulingApi.updateSlot("technician", slotId, { startsAt, endsAt, capacity })
+        ? await schedulingApi.updateSlot("technician", slotId, {
+            startsAt,
+            endsAt,
+            capacity,
+            ...(impactConfirmed ? { impactConfirmed: true } : {})
+          })
         : await schedulingApi.createSlot("technician", {
             technicianServiceId: selectedServiceId,
             startsAt,

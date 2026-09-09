@@ -34,6 +34,7 @@ export type ScheduleSlotUpdateInput = {
   endsAt?: Date;
   capacity?: number;
   status?: "available" | "blocked";
+  impactConfirmed?: boolean;
 };
 
 export type FormalScheduleCalendarItem = {
@@ -111,8 +112,11 @@ export const schedulingApi = {
     await invalidateScheduleCache();
     return slot;
   },
-  async deleteSlot(scope: SchedulingScope, id: number) {
-    const slot = await httpClient.request<BookingScheduleSlot>(`${prefix(scope)}/${id}`, { method: "DELETE" });
+  async deleteSlot(scope: SchedulingScope, id: number, input: { impactConfirmed?: boolean } = {}) {
+    const slot = await httpClient.request<BookingScheduleSlot>(`${prefix(scope)}/${id}`, {
+      method: "DELETE",
+      ...(input.impactConfirmed ? { query: { impactConfirmed: true } } : {})
+    });
     await invalidateScheduleCache();
     return slot;
   }

@@ -22,6 +22,7 @@ import {
   selectPaymentMethodBodySchema,
   startServiceBodySchema,
   scheduleSlotCreateBodySchema,
+  scheduleSlotDeleteQuerySchema,
   scheduleSlotListQuerySchema,
   scheduleSlotUpdateBodySchema,
   technicianManualBookingBodySchema,
@@ -630,7 +631,8 @@ export class BookingController {
             await this.bookingService.deleteScheduleSlot(
               getAuthenticatedAccess(response),
               this.getOrderId(request),
-              getRequestContext(request)
+              getRequestContext(request),
+              scheduleSlotDeleteQuerySchema.parse(request.query)
             )
           )
         );

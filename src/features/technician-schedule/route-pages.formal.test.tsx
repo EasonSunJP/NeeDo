@@ -585,6 +585,35 @@ describe("formal technician schedule routes", () => {
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule");
   });
 
+  it("shows a red impact warning and can cancel a booked shop schedule after explicit confirmation", async () => {
+    const bookedShopSlot = {
+      ...slot,
+      availabilitySourceType: "shop" as const,
+      bookedCount: 1,
+      status: "booked" as const
+    };
+    mocks.scheduleResource.mockReturnValue({
+      data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: bookedShopSlot },
+      error: null,
+      loading: false,
+      retry: mocks.retrySchedule
+    });
+    mocks.deleteSlot.mockResolvedValue(bookedShopSlot);
+    await render("/technician/schedule/events/17");
+
+    await click("取消排班");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("会取消已确定预约并影响您的评价");
+    expect(mocks.deleteSlot).not.toHaveBeenCalled();
+
+    await click("确认取消排班");
+    await waitFor(() => expect(mocks.deleteSlot).toHaveBeenCalledWith(
+      "technician",
+      17,
+      { impactConfirmed: true }
+    ));
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule");
+  });
+
   it("creates a slot from real services and navigates to its persisted numeric ID", async () => {
     mocks.scheduleResource.mockReturnValue({
       data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: null },

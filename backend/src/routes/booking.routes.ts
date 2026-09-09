@@ -41,6 +41,7 @@ import {
   selectPaymentMethodBodySchema,
   startServiceBodySchema,
   scheduleSlotCreateBodySchema,
+  scheduleSlotDeleteQuerySchema,
   scheduleSlotListQuerySchema,
   scheduleSlotUpdateBodySchema,
   technicianManualBookingBodySchema
@@ -353,7 +354,7 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
       `${path}/:id`,
       authenticate(),
       authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite),
-      validateRequest({ params: orderIdParamSchema }),
+      validateRequest({ params: orderIdParamSchema, query: scheduleSlotDeleteQuerySchema }),
       controller.deleteScheduleSlot
     );
   });

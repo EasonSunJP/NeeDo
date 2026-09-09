@@ -465,10 +465,11 @@ export const scheduleSlotUpdateBodySchema = z
     startsAt: isoDateSchema.optional(),
     endsAt: isoDateSchema.optional(),
     capacity: z.coerce.number().int().positive().max(100).optional(),
-    status: z.enum(["available", "blocked"]).optional()
+    status: z.enum(["available", "blocked"]).optional(),
+    impactConfirmed: z.boolean().optional()
   })
   .superRefine((value, context) => {
-    if (Object.keys(value).length === 0)
+    if (!value.startsAt && !value.endsAt && value.capacity === undefined && value.status === undefined)
       context.addIssue({ code: z.ZodIssueCode.custom, message: "At least one field is required" });
     if (value.startsAt && value.endsAt && value.startsAt.getTime() >= value.endsAt.getTime()) {
       context.addIssue({
@@ -478,6 +479,10 @@ export const scheduleSlotUpdateBodySchema = z
       });
     }
   });
+
+export const scheduleSlotDeleteQuerySchema = z
+  .object({ impactConfirmed: strictBooleanQuerySchema.optional() })
+  .strict();
 
 export type AvailabilityListQuery = z.infer<typeof availabilityListQuerySchema>;
 export type BookingCreateBody = z.infer<typeof bookingCreateBodySchema>;

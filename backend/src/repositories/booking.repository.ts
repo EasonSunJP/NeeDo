@@ -380,9 +380,10 @@ export type ScheduleSlotUpdateInput = ScheduleScope & {
   endsAt?: Date;
   capacity?: number;
   status?: "available" | "blocked";
+  impactConfirmed?: boolean;
 };
 
-export type ScheduleSlotDeleteInput = ScheduleScope & { id: number };
+export type ScheduleSlotDeleteInput = ScheduleScope & { id: number; impactConfirmed?: boolean };
 
 export type ScheduleSlotReadInput = ScheduleScope & { id: number };
 
@@ -860,6 +861,7 @@ export interface BookingRepositoryPort {
   isShopSuspended?: (shopId: number) => Promise<boolean>;
   listOrders: (input: OrderListInput) => Promise<PaginatedResponse<BookingOrderPayload>>;
   findOrderById: (id: number) => Promise<BookingOrderPayload | null>;
+  listCancellableOrdersForScheduleSlot?: (scheduleSlotId: number) => Promise<BookingOrderPayload[]>;
   findOrderRealtimeRecipients?: (
     id: number
   ) => Promise<Array<{ identityId: number; userId: number }>>;
@@ -1151,6 +1153,21 @@ export class BookingRepository implements BookingRepositoryPort {
       select: { shopId: true }
     });
     return slot?.shopId ?? null;
+  }
+
+  public async listCancellableOrdersForScheduleSlot(
+    scheduleSlotId: number
+  ): Promise<BookingOrderPayload[]> {
+    const orders = await this.client.bookingOrder.findMany({
+      where: {
+        scheduleSlotId,
+        status: { in: ["PENDING", "CONFIRMED"] },
+        deletedAt: null
+      },
+      include: this.orderInclude(),
+      orderBy: { id: "asc" }
+    });
+    return orders.map((order) => this.mapOrder(order));
   }
 
   public async findTechnicianShopId(technicianProfileId: number): Promise<number | null> {

@@ -263,9 +263,13 @@ export class BookingService {
     context: AuthRequestContext
   ): Promise<ScheduleSlotPayload> {
     const scope = this.getScheduleScope(actor);
+    const { impactConfirmed, ...mutation } = input;
     await this.assertShopNotSuspended((await this.repository.findScheduleSlotShopId?.(id)) ?? null);
+    if (impactConfirmed) {
+      await this.cancelScheduleOrdersForImpact(actor, id, "技师确认修改排班，系统取消受影响预约");
+    }
     const slot = this.requireScheduleMutation(
-      await this.repository.updateScheduleSlot({ ...input, ...scope, id })
+      await this.repository.updateScheduleSlot({ ...mutation, ...scope, id })
     );
     await this.recordScheduleMutation(actor, context, scope, "update", slot);
     return slot;
@@ -274,14 +278,33 @@ export class BookingService {
   public async deleteScheduleSlot(
     actor: AuthenticatedAccessContext,
     id: number,
-    context: AuthRequestContext
+    context: AuthRequestContext,
+    input: { impactConfirmed?: boolean } = {}
   ): Promise<ScheduleSlotPayload> {
     const scope = this.getScheduleScope(actor);
+    if (input.impactConfirmed) {
+      await this.cancelScheduleOrdersForImpact(actor, id, "技师确认取消排班，系统取消受影响预约");
+    }
     const slot = this.requireScheduleMutation(
       await this.repository.deleteScheduleSlot({ ...scope, id })
     );
     await this.recordScheduleMutation(actor, context, scope, "delete", slot);
     return slot;
+  }
+
+  private async cancelScheduleOrdersForImpact(
+    actor: AuthenticatedAccessContext,
+    scheduleSlotId: number,
+    reason: string
+  ): Promise<void> {
+    await this.getScheduleSlot(actor, scheduleSlotId);
+    if (!this.repository.listCancellableOrdersForScheduleSlot) {
+      throw this.dependencyUnavailableError();
+    }
+    const affected = await this.repository.listCancellableOrdersForScheduleSlot(scheduleSlotId);
+    for (const order of affected) {
+      await this.transition(actor, order.id, "cancel", reason);
+    }
   }
 
   public async createBooking(
