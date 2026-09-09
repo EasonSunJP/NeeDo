@@ -2802,7 +2802,12 @@ export function MerchantPortalContent({
               />
             ) : null}
             {merchantSchedulePrimaryTab === "planning" ? (
-              <AutomationWizard operatorId={store.id} storeId={store.id} surface="mobile" />
+              <AutomationWizard
+                operatorId={store.id}
+                storeId={store.id}
+                surface="mobile"
+                technicians={storeTechnicians}
+              />
             ) : null}
           </>
         )}

@@ -8,6 +8,7 @@ import {
   runDispatchAutoConfirm
 } from "../../dispatch-center/store";
 import type { DispatchCycle } from "../../dispatch-center/domain";
+import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
 
 export function StepFinalConfirmation({
   cycle,
@@ -34,7 +35,7 @@ export function StepFinalConfirmation({
   const secondaryButtonClass = isMobileSurface ? "bg-white/80" : undefined;
 
   return (
-    <div className="space-y-5">
+    <div className={cn("space-y-4", isMobileSurface && "pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]")}>
       <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
@@ -42,24 +43,6 @@ export function StepFinalConfirmation({
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge tone={limitSummary.limitReached ? "red" : "blue"}>active {limitSummary.activeCount} / pending {limitSummary.pendingCount}</Badge>
-            <Button
-              className={secondaryButtonClass}
-              variant="secondary"
-              onClick={() => {
-                const result = runDispatchAutoConfirm(cycle.id, operatorId);
-                onMessage(result.ok ? `自动确认完成：${result.summary?.confirmedCount ?? 0} 格确认，${result.summary?.shortageCount ?? 0} 处缺人。` : result.message ?? "自动确认失败。");
-              }}
-            >
-              运行自动确认
-            </Button>
-            <Button
-              onClick={() => {
-                const result = finalizeDispatchCycle(cycle.id, operatorId);
-                onMessage(result.ok ? "最终班表已发布，用户端只会读取最终可预约时间。" : result.message ?? "发布失败。");
-              }}
-            >
-              发布最终班表
-            </Button>
           </div>
         </div>
       </section>
@@ -75,6 +58,32 @@ export function StepFinalConfirmation({
           surface={surface}
         />
       )}
+
+      <ScheduleFloatingActions
+        desktopClassName="flex flex-wrap items-center justify-center gap-3"
+        mobileColumnsClassName="grid-cols-2"
+        surface={surface}
+      >
+        <Button
+          className={cn(secondaryButtonClass, isMobileSurface && "w-full min-w-0")}
+          variant="secondary"
+          onClick={() => {
+            const result = runDispatchAutoConfirm(cycle.id, operatorId);
+            onMessage(result.ok ? `自动确认完成：${result.summary?.confirmedCount ?? 0} 格确认，${result.summary?.shortageCount ?? 0} 处缺人。` : result.message ?? "自动确认失败。");
+          }}
+        >
+          运行自动确认
+        </Button>
+        <Button
+          className={cn(isMobileSurface && "schedule-wizard-primary-action w-full min-w-0")}
+          onClick={() => {
+            const result = finalizeDispatchCycle(cycle.id, operatorId);
+            onMessage(result.ok ? "最终班表已发布，用户端只会读取最终可预约时间。" : result.message ?? "发布失败。");
+          }}
+        >
+          发布最终班表
+        </Button>
+      </ScheduleFloatingActions>
     </div>
   );
 }

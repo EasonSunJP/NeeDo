@@ -12,7 +12,8 @@
 
 - Work only on `codex/merchant-schedule-page-optimization`; do not push or deploy.
 - Do not start, stop, inspect, or modify the service on port 5180.
-- Do not change availability visuals, multi-technician schedule rendering, algorithms, permissions, or cycle-state semantics.
+- Do not change availability visuals, multi-technician schedule rendering, collision algorithms, permissions, or restore the retired merchant-confirm mode.
+- Both current modes use the existing feedback state: technician self-scheduling tracks completed next-cycle schedules; store scheduling tracks confirmations and leave/change requests.
 - Do not add browser mocks, fake APIs, schema changes, or migrations.
 - Use existing schedule components, spacing variables, safe-area variables, and translation infrastructure.
 
@@ -50,11 +51,13 @@ Expected before implementation: failures naming the missing schedule-home labels
 - Consumes: existing `DispatchCycle`, `DispatchFeedbackEntry`, `sendDispatchFeedbackReminder`, `closeDispatchFeedback`, `ScheduleCycleBoard`, and formal `Technician[]` passed by `MerchantPortalPage`.
 - Produces: `getPlanningFeedbackRowsForCycle(cycleId)` and a home component with `onOpenConfirmation` and `onOpenBuilder` callbacks.
 
-- [ ] **Step 1: Add a typed store selector that aggregates technician feedback without mutating state.**
-- [ ] **Step 2: Implement `SchedulePlanningOverview` with selectable statistics, compact cards/empty states, guarded reminder, confirmed early close, and direct mobile floating actions.**
-- [ ] **Step 3: Refactor `AutomationWizard` to initial `home`, `confirmation`, and `builder` views; remove the next/builder cycle tabs from the builder UI.**
-- [ ] **Step 4: Pass the already-loaded formal store technicians from `MerchantPortalPage` and add five-language entries for new visible copy.**
-- [ ] **Step 5: Run the focused tests and verify they pass.**
+- [ ] **Step 1: Add failing store tests proving both current modes enter feedback collection without restoring the old availability-range negotiation.**
+- [ ] **Step 2: Update cycle launch so both modes enter existing feedback collection; store mode materializes draft shift rows without publishing bookable slots before finalization.**
+- [ ] **Step 3: Add a typed store selector that aggregates technician feedback without mutating state.**
+- [ ] **Step 4: Implement `SchedulePlanningOverview` with mode-specific feedback meaning, selectable statistics, compact cards/empty states, guarded reminder, confirmed early close, and direct mobile floating actions.**
+- [ ] **Step 5: Refactor `AutomationWizard` to initial `home`, `confirmation`, and `builder` views; remove the next/builder cycle tabs from the builder UI.**
+- [ ] **Step 6: Pass the already-loaded formal store technicians from `MerchantPortalPage` and add five-language entries for new visible copy.**
+- [ ] **Step 7: Run the focused tests and verify they pass.**
 
 Run: `npm test -- src/features/scheduling/automation/AutomationWizard.test.tsx src/features/scheduling/automation/MerchantConfirmModeRetirement.test.ts`
 
@@ -103,4 +106,3 @@ Expected after implementation: all schedule action-frame assertions pass.
 Run: `npm test -- src/features/scheduling/automation/AutomationWizard.test.tsx src/features/scheduling/automation/StepModeSelection.test.tsx src/features/scheduling/automation/MerchantConfirmModeRetirement.test.ts src/components/scheduling/ScheduleFrameLayout.test.ts src/components/scheduling/SchedulingCycleTabs.test.tsx && npm run lint && npm run build && npm run i18n:audit && git diff --check`
 
 Expected: exit code 0 for every command; browser evidence is reported separately from automated checks.
-

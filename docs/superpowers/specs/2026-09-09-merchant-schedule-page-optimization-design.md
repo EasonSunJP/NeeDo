@@ -8,9 +8,9 @@ Reshape the merchant scheduling tab into a clear three-state flow: a schedule ho
 
 - Keep `ScheduleCycleBoard`, `ScheduleCycleCalendarBoard`, and `ScheduleGrid` as the only multi-technician schedule implementation.
 - Do not change availability visuals, calendar event visuals, collision rules, scheduling algorithms, permissions, or the retired merchant-confirm scheduling mode.
-- Keep the supported modes `TECH_SELF_FINAL`, `STORE_ASSIGN_FINAL`, and the existing compatibility-only `INDIVIDUAL_SELF_FINAL` behavior.
+- Keep the supported modes `TECH_SELF_FINAL`, `STORE_ASSIGN_FINAL`, and the existing compatibility-only `INDIVIDUAL_SELF_FINAL` behavior. Do not restore the retired merchant-confirm mode.
 - Use the current dispatch-center state and actions. Do not add mock APIs, a second cycle state machine, schema changes, or migrations.
-- Treat the document's four-step progress as an overview of the scheduling lifecycle. It does not reactivate the removed `StepFeedbackCollection` component.
+- Treat the document's four-step progress as the common lifecycle for the two current modes. Feedback is not the retired workflow where a merchant publishes an availability range, technicians select agreeable time, and the merchant adjusts it again.
 
 ## Considered approaches
 
@@ -26,7 +26,7 @@ Approach 1 is selected because it removes the duplicate entry without creating a
 
 `SchedulePlanningOverview` receives the resolved next cycle, store-scoped technicians, and existing callbacks. It renders:
 
-- the complete `YYYY年MM月DD日 ～ YYYY年MM月DD日` range;
+- the complete next-cycle date range, formatted for the current interface language;
 - lifecycle progress for mode selection, rule setup, technician feedback, and final confirmation;
 - current status and mode badges;
 - feedback deadline, reminder, and confirmed early-close interaction;
@@ -35,6 +35,13 @@ Approach 1 is selected because it removes the duplicate entry without creating a
 - two direct floating actions: next-cycle confirmation and new cycle.
 
 Feedback rows are aggregated from existing `DispatchFeedbackEntry` records. A technician is submitted when any entry has `submittedAt`, updated when any entry has status `updated`, and pending otherwise. The exception view is a diagnostic projection for technicians whose response includes unavailable time or a non-empty note; it does not alter scheduling or conflict rules.
+
+The meaning is mode-specific and stated directly on the home:
+
+- In technician self-scheduling, technicians create their complete next-cycle schedules. Feedback tracks whether each technician has completed or updated that schedule; the merchant does not publish an availability range for technicians to accept.
+- In store scheduling, the store creates the next-cycle schedule first. Feedback tracks confirmation and leave/change requests from technicians.
+
+Launching either current mode therefore enters the existing `collecting_feedback` state and creates the existing feedback projection. Store scheduling may materialize its draft shift rows for confirmation, but those rows are not published as customer-bookable slots until the existing finalization action runs.
 
 Reminder and early-close actions are enabled only during `collecting_feedback`. Reminder is also disabled when no technicians are pending and is locally guarded after a successful send to avoid duplicate clicks. Early close requires an explicit confirmation before calling the existing state action.
 
@@ -65,4 +72,3 @@ The scheduling surfaces use one section rhythm (`gap-4`), one card rhythm (`gap-
 - Source/layout tests cover the shared direct floating action frame on mode, rule, and final-confirmation steps and ensure the heavy dock is no longer used.
 - Existing schedule-grid and merchant-confirm-mode retirement tests guard the untouched scheduling behaviors.
 - Run focused Vitest, full TypeScript/lint, production build, and a local browser check on an unused non-5180 port.
-
