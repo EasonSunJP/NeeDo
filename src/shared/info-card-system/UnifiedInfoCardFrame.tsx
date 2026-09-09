@@ -58,20 +58,20 @@ export function UnifiedCardMetricRail({
     >
       {metrics.map((metric, index) => (
         <Fragment key={metric.label}>
-          <div aria-label={metric.label} className="relative flex min-h-[44px] min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-[#b8ff4a] sm:min-h-[56px] sm:gap-2 sm:px-3">
+          <div aria-label={metric.label} className="relative flex min-h-[44px] min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-[color:var(--client-primary)] sm:min-h-[56px] sm:gap-2 sm:px-3">
             {metric.action ? (
               <div className="pointer-events-auto">{metric.action}</div>
             ) : (
               <UnifiedMetricIcon name={metric.icon} />
             )}
-            <div className="flex min-w-0 items-baseline whitespace-nowrap text-[11px] font-black leading-4 text-[#f7f9f7] sm:text-[16px] sm:leading-5">
+            <div className="flex min-w-0 items-baseline whitespace-nowrap text-[11px] font-black leading-4 text-[color:var(--client-text)] sm:text-[16px] sm:leading-5">
               {metric.value}
             </div>
           </div>
           {index < metrics.length - 1 ? (
             <span
               aria-hidden="true"
-              className="h-7 w-px shrink-0 bg-[#244047] sm:h-10"
+              className="h-7 w-px shrink-0 bg-[color:color-mix(in_srgb,var(--client-line)_76%,var(--client-primary)_12%)] sm:h-10"
               data-testid="unified-card-metric-separator"
             />
           ) : null}
@@ -103,7 +103,7 @@ export function UnifiedInfoCardFrame({
   return (
     <article
       className={cn(
-        "relative overflow-hidden rounded-[20px] border border-[#244047] bg-[#031014] text-[#f7f9f7] shadow-[0_24px_60px_rgba(0,0,0,0.32)] sm:rounded-[30px]",
+        "relative overflow-hidden rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_12%)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%)] text-[color:var(--client-text)] shadow-[0_24px_60px_color-mix(in_srgb,var(--client-bg)_32%,transparent)] sm:rounded-[30px]",
         className,
       )}
       data-card-kind={kind}
@@ -137,7 +137,7 @@ export function UnifiedInfoCardFrame({
       {!actionSlot && (detailTo || onOpenDetails) ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-3 right-3 z-20 grid h-9 w-9 place-items-center rounded-full bg-[#b8ff4a] text-[#031014] shadow-[0_0_24px_rgba(184,255,74,0.32)] sm:bottom-5 sm:right-5 sm:h-12 sm:w-12"
+          className="pointer-events-none absolute bottom-3 right-3 z-20 grid h-9 w-9 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_0_24px_color-mix(in_srgb,var(--client-primary)_32%,transparent)] sm:bottom-5 sm:right-5 sm:h-12 sm:w-12"
           data-icon="chevron-right"
           data-testid="unified-card-detail-arrow"
         >
@@ -162,7 +162,7 @@ export function UnifiedCardImage({
   const text = getUnifiedCardCopy(language);
   return (
     <div
-      className="relative isolate aspect-square min-h-0 overflow-hidden rounded-[18px] bg-[#07181b] sm:rounded-[24px]"
+      className="relative isolate aspect-square min-h-0 overflow-hidden rounded-[18px] bg-[color:var(--client-bg-soft)] sm:rounded-[24px]"
       data-testid="unified-card-image"
     >
       {src ? (
@@ -175,7 +175,7 @@ export function UnifiedCardImage({
       ) : (
         <div
           aria-label={`${alt} ${text.noImage}`}
-          className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_20%_15%,rgba(184,255,74,0.14),transparent_42%),linear-gradient(145deg,#07181b,#031014)] px-2 text-center text-[9px] font-black text-[#9aacb5] sm:px-4 sm:text-[12px]"
+          className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_20%_15%,color-mix(in_srgb,var(--client-primary)_14%,transparent),transparent_42%),linear-gradient(145deg,var(--client-bg-soft),var(--client-surface))] px-2 text-center text-[9px] font-black text-[color:var(--client-muted)] sm:px-4 sm:text-[12px]"
           role="img"
         >
           {text.noImage}
@@ -219,7 +219,7 @@ export function UnifiedCardDetails({
       data-card-density={density}
     >
       <h3 className={cn(
-        "break-words font-black leading-tight tracking-[-0.025em] text-[#f7f9f7] [overflow-wrap:anywhere]",
+        "break-words font-black leading-tight tracking-[-0.025em] text-[color:var(--client-text)] [overflow-wrap:anywhere]",
         compact
           ? "text-[clamp(16px,4vw,26px)]"
           : "text-[clamp(16px,4.2vw,30px)]",
@@ -228,7 +228,7 @@ export function UnifiedCardDetails({
       </h3>
       {children}
       <p className={cn(
-        "mt-2 text-[12px] font-bold leading-[1.55] text-[#9aacb5] sm:mt-3 sm:text-[16px] sm:leading-6",
+        "mt-2 text-[12px] font-bold leading-[1.55] text-[color:var(--client-muted)] sm:mt-3 sm:text-[16px] sm:leading-6",
         compact ? "line-clamp-2" : "line-clamp-3",
       )}>
         {description ?? text.noDescription}
@@ -242,14 +242,14 @@ export function UnifiedCardDetails({
           {visibleTags.length > 0 ? (
             visibleTags.map((tag) => (
               <span
-                className="rounded-full border border-[#648f25] px-2.5 py-1 text-[10px] font-black text-[#b8ff4a] sm:px-4 sm:py-1.5 sm:text-[14px]"
+                className="rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] bg-[color:var(--client-primary-soft)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-primary)] sm:px-4 sm:py-1.5 sm:text-[14px]"
                 key={tag}
               >
                 {tag}
               </span>
             ))
           ) : (
-            <span className="text-[10px] font-bold text-[#9aacb5] sm:text-[13px]">{text.noTags}</span>
+            <span className="text-[10px] font-bold text-[color:var(--client-muted)] sm:text-[13px]">{text.noTags}</span>
           )}
         </div>
       ) : null}

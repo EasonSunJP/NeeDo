@@ -330,6 +330,8 @@ describe("IM pages", () => {
     expect(renderStart).toBeGreaterThan(-1);
     expect(renderSource).toContain('className="w-[min(520px,80vw)] max-w-full"');
     expect(renderSource).toContain("<PlatformMembershipSimpleCard");
+    expect(pagesSource).toContain("text-[color:var(--client-muted)]");
+    expect(pagesSource).not.toContain("text-white/68");
   });
 
   it("routes message and visible group-member avatars by the represented account", () => {

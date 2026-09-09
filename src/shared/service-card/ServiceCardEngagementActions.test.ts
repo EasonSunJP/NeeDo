@@ -11,4 +11,10 @@ describe("shared card engagement icons", () => {
     expect(actionSource).not.toContain("⌯");
     expect(frameSource).not.toContain('share: "⌯"');
   });
+
+  it("inherits engagement actions from the active client theme", () => {
+    expect(actionSource).toContain("text-[color:var(--client-primary)]");
+    expect(actionSource).toContain("hover:bg-[color:var(--client-primary-soft)]");
+    expect(actionSource).not.toContain("#b8ff4a");
+  });
 });

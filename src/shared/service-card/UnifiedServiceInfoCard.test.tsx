@@ -25,7 +25,8 @@ describe("UnifiedServiceInfoCard", () => {
     expect(markup).toContain('data-card-size="default"');
     expect(markup).not.toContain("min-h-[320px]");
     expect(markup).not.toContain("aspect-[16/9]");
-    expect(markup).toContain("#b8ff4a");
+    expect(markup).toContain("var(--client-primary)");
+    expect(markup).not.toContain("#b8ff4a");
     expect(markup).toContain("relative z-20 flex items-center");
     expect(markup).toContain('data-testid="unified-card-metric-separator"');
     expect(markup).not.toContain("[&amp;:not(:last-child)]:border-r");

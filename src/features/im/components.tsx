@@ -4125,6 +4125,8 @@ export function MessageBubble({
   const bubbleClass = isMine
     ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
     : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
+  const isForwardedCard =
+    message.type === "chat-record" || message.type === "social-post-card";
   const visibleTranslation =
     translation.visible &&
     typeof translation.content === "string" &&
@@ -4515,7 +4517,7 @@ export function MessageBubble({
       const card = message.ext.socialPostCard;
       return (
         <button
-          className="block w-[292px] max-w-[82vw] overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-left text-[color:var(--client-text)]"
+          className="block w-full overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-left text-[color:var(--client-text)]"
           onClick={() => onOpenSocialPost?.(card.postId)}
           type="button"
         >
@@ -4752,8 +4754,7 @@ export function MessageBubble({
       </div>
     ) : null;
   const bubbleShellClass =
-    (message.type === "contact-card" || message.type === "social-post-card") &&
-    !quotedMessage
+    message.type === "contact-card" && !quotedMessage
       ? "rounded-[24px]"
       : cn("rounded-[20px] px-3 py-2", bubbleClass);
   const contentNode =
@@ -4785,7 +4786,7 @@ export function MessageBubble({
           "flex flex-col",
           message.type === "contact-card"
             ? "max-w-[calc(100%-3.25rem)]"
-            : message.type === "voice"
+            : message.type === "voice" || isForwardedCard
               ? "w-[calc(100%-3.25rem)] max-w-[320px]"
               : "max-w-[78%]",
           isMine ? "items-end" : "items-start",
@@ -4802,7 +4803,7 @@ export function MessageBubble({
         <div
           className={cn(
             "inline-flex min-w-0 max-w-full overflow-hidden",
-            message.type === "voice" && "w-full",
+            (message.type === "voice" || isForwardedCard) && "w-full",
             bubbleShellClass,
           )}
           data-im-message-bubble="true"
