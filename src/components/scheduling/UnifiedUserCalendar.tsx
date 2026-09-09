@@ -2743,6 +2743,7 @@ function getLayoutEvents(events: UnifiedCalendarEvent[]) {
 
 function isAvailabilityMarkerEvent(event: UnifiedCalendarEvent) {
   return Boolean(event.availabilityWindowId)
+    || Boolean(event.availabilitySourceType && !event.orderId)
     || Boolean(event.scheduleSlotId && !event.orderId && (event.availabilitySourceType || event.badge === "可预约"));
 }
 
