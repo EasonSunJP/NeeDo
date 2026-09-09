@@ -3,7 +3,19 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import storeDetailSource from "../../pages/user/StoreDetailPage.tsx?raw";
 import appScaffoldSource from "./AppScaffold.tsx?raw";
-import { getAdaptiveTabLabelClass, IconButton } from "./AppScaffold";
+import { AppIcon, getAdaptiveTabLabelClass, IconButton } from "./AppScaffold";
+
+describe("completed icon", () => {
+  it("renders the filled seal and centered check parts", () => {
+    const markup = renderToStaticMarkup(createElement(AppIcon, { name: "completed" }));
+
+    expect(markup).toContain('data-icon-part="completed-seal"');
+    expect(markup).toContain('fill="currentColor"');
+    expect(markup).toContain('data-icon-part="completed-check"');
+    expect(markup).toContain('stroke="#f7f9f7"');
+    expect(markup).not.toContain("M4.4 15.3A8.2 8.2");
+  });
+});
 
 describe("FeatureSegmentedTabs adaptive labels", () => {
   it("lightly compresses dense four-character labels without touching short labels", () => {
