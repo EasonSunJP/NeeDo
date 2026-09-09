@@ -83,11 +83,13 @@ function ContentSummary({
   locale,
   onOpenImage,
   slide,
+  targetLabel,
 }: {
   label: string;
   locale: ContentLocaleCode;
   onOpenImage: (image: { alt: string; src: string }) => void;
   slide: CarouselReleaseSlide | null;
+  targetLabel?: string;
 }) {
   const { language } = useOptionalI18n();
   if (!slide) {
@@ -116,9 +118,16 @@ function ContentSummary({
         />
       </button>
       <div className="min-w-0">
-        <p className="text-[11px] font-black uppercase tracking-[0.12em] text-ink/40">
-          {label}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-black uppercase tracking-[0.12em] text-ink/40">
+            {label}
+          </p>
+          {copy.badge ? (
+            <span className="rounded-full bg-mint/25 px-2 py-1 text-[11px] font-black text-moss">
+              {copy.badge}
+            </span>
+          ) : null}
+        </div>
         <h3 className="mt-1 truncate text-lg font-black text-ink">
           {copy.title}
         </h3>
@@ -127,6 +136,14 @@ function ContentSummary({
             {copy.caption}
           </p>
         ) : null}
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-ink/50">
+          {targetLabel ? <span>{targetLabel}</span> : null}
+          {copy.ctaLabel ? (
+            <span className="rounded-full border border-line bg-paper px-2 py-1">
+              {copy.ctaLabel}
+            </span>
+          ) : null}
+        </div>
         <p className="mt-2 text-xs font-bold text-ink/40">
           {contentPublicationEditorText("clickToEnlarge", language)}
         </p>
@@ -138,6 +155,7 @@ function ContentSummary({
 export function UserHomeCarouselWorkspace({
   children,
   draft,
+  getTargetLabel,
   locale,
   onLocaleChange,
   onSelectedIndexChange,
@@ -146,6 +164,7 @@ export function UserHomeCarouselWorkspace({
 }: {
   children: ReactNode;
   draft: CarouselRelease | null;
+  getTargetLabel?: (slide: CarouselReleaseSlide) => string;
   locale: ContentLocaleCode;
   onLocaleChange: (locale: ContentLocaleCode) => void;
   onSelectedIndexChange: (index: number) => void;
@@ -160,11 +179,22 @@ export function UserHomeCarouselWorkspace({
     src: string;
   } | null>(null);
   const previewRelease = draft ?? published;
-  const previewSlides = sortedSlides(previewRelease).filter(
-    (slide) => slide.isEnabled,
+  const previewSlides = sortedSlides(previewRelease)
+    .map((slide, sourceIndex) => ({ slide, sourceIndex }))
+    .filter(({ slide }) => slide.isEnabled);
+  const resolvedSourceIndex = previewSlides.some(
+    ({ sourceIndex }) => sourceIndex === activeIndex,
+  )
+    ? activeIndex
+    : (previewSlides[0]?.sourceIndex ?? activeIndex);
+  const currentSlide = sortedSlides(published)[resolvedSourceIndex] ?? null;
+  const replacementSlide = sortedSlides(draft)[resolvedSourceIndex] ?? null;
+  const activePreviewIndex = Math.max(
+    0,
+    previewSlides.findIndex(
+      ({ sourceIndex }) => sourceIndex === resolvedSourceIndex,
+    ),
   );
-  const currentSlide = sortedSlides(published)[activeIndex] ?? null;
-  const replacementSlide = sortedSlides(draft)[activeIndex] ?? null;
 
   useEffect(() => {
     setActiveIndex(selectedIndex);
@@ -183,16 +213,23 @@ export function UserHomeCarouselWorkspace({
       {previewSlides.length > 0 ? (
         <section className="rounded-xl border border-line bg-white p-4 shadow-panel sm:p-5">
           <FeatureCarousel
-            activeIndex={Math.min(activeIndex, previewSlides.length - 1)}
+            activeIndex={Math.min(
+              activePreviewIndex,
+              previewSlides.length - 1,
+            )}
             autoRotateMs={paused ? null : 5000}
             cardHeightClassName="h-[190px] sm:h-[220px]"
             dataNoI18n
-            onActiveIndexChange={selectIndex}
+            onActiveIndexChange={(index) => {
+              const sourceIndex = previewSlides[index]?.sourceIndex;
+              if (sourceIndex !== undefined) selectIndex(sourceIndex);
+            }}
             onSlideClick={(_slide, index) => {
               setPaused(true);
-              selectIndex(index);
+              const sourceIndex = previewSlides[index]?.sourceIndex;
+              if (sourceIndex !== undefined) selectIndex(sourceIndex);
             }}
-            slides={previewSlides.map((slide) =>
+            slides={previewSlides.map(({ slide }) =>
               toFeatureSlide(slide, locale),
             )}
           />
@@ -222,7 +259,10 @@ export function UserHomeCarouselWorkspace({
         ))}
       </nav>
 
-      <section className="rounded-xl border border-line bg-white p-4 shadow-panel sm:p-5">
+      <section
+        className="rounded-xl border border-line bg-white p-4 shadow-panel sm:p-5"
+        data-testid="published-carousel-preview"
+      >
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
           <h2 className="text-base font-black text-ink">
             {contentPublicationEditorText(
@@ -245,6 +285,7 @@ export function UserHomeCarouselWorkspace({
           locale={locale}
           onOpenImage={setFullImage}
           slide={currentSlide}
+          targetLabel={currentSlide ? getTargetLabel?.(currentSlide) : undefined}
         />
       </section>
 
@@ -271,7 +312,10 @@ export function UserHomeCarouselWorkspace({
         </svg>
       </div>
 
-      <section className="rounded-xl border border-moss/30 bg-white p-4 shadow-panel ring-1 ring-mint/30 sm:p-5">
+      <section
+        className="rounded-xl border border-moss/30 bg-white p-4 shadow-panel ring-1 ring-mint/30 sm:p-5"
+        data-testid="draft-carousel-preview"
+      >
         <h2 className="mb-4 border-b border-line pb-3 text-base font-black text-ink">
           {contentPublicationEditorText("replacementContent", language)}
         </h2>
@@ -280,6 +324,9 @@ export function UserHomeCarouselWorkspace({
           locale={locale}
           onOpenImage={setFullImage}
           slide={replacementSlide}
+          targetLabel={
+            replacementSlide ? getTargetLabel?.(replacementSlide) : undefined
+          }
         />
         <div className="mt-5 border-t border-line pt-5">{children}</div>
       </section>

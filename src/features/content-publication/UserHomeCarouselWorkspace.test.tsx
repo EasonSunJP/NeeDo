@@ -133,6 +133,9 @@ describe("UserHomeCarouselWorkspace", () => {
         <MemoryRouter>
           <UserHomeCarouselWorkspace
             draft={release("draft", "新内容")}
+            getTargetLabel={(slide) =>
+              slide.id.startsWith("published") ? "当前目标" : "新目标"
+            }
             locale={"zh-CN" satisfies ContentLocaleCode}
             onLocaleChange={onLocaleChange}
             onSelectedIndexChange={vi.fn()}
@@ -157,6 +160,16 @@ describe("UserHomeCarouselWorkspace", () => {
     ).not.toBeNull();
     expect(container.textContent).toContain("将替换为以下内容");
     expect(container.textContent).toContain("正式编辑控件");
+    const currentPanel = container.querySelector(
+      '[data-testid="published-carousel-preview"]',
+    );
+    expect(currentPanel?.textContent).toContain("精选");
+    expect(currentPanel?.textContent).toContain("查看");
+    expect(currentPanel?.textContent).toContain("当前目标");
+    expect(
+      container.querySelector('[data-testid="draft-carousel-preview"]')
+        ?.textContent,
+    ).toContain("新目标");
 
     await click(
       container.querySelector(
@@ -172,5 +185,37 @@ describe("UserHomeCarouselWorkspace", () => {
 
     await click(container.querySelector('button[role="tab"]')!);
     expect(onLocaleChange).toHaveBeenCalledWith("ja");
+  });
+
+  it("maps visible preview clicks back to the full draft order when disabled slides are hidden", async () => {
+    const onSelectedIndexChange = vi.fn();
+    const draftWithFirstDisabled = release("draft", "新内容");
+    draftWithFirstDisabled.slides[0].isEnabled = false;
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <UserHomeCarouselWorkspace
+            draft={draftWithFirstDisabled}
+            locale="zh-CN"
+            onLocaleChange={vi.fn()}
+            onSelectedIndexChange={onSelectedIndexChange}
+            published={release("published", "当前内容")}
+            selectedIndex={0}
+          >
+            <p>正式编辑控件</p>
+          </UserHomeCarouselWorkspace>
+        </MemoryRouter>,
+      );
+    });
+
+    const visiblePreview = container.querySelector(
+      '[data-testid="feature-carousel"] button',
+    );
+    await click(visiblePreview!);
+
+    expect(onSelectedIndexChange).toHaveBeenCalledWith(1);
+    expect(container.textContent).toContain("当前内容2");
+    expect(container.textContent).toContain("新内容2");
   });
 });

@@ -22,6 +22,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { CarouselReleasePreview } from "./CarouselReleasePreview";
+import { UserHomeCarouselWorkspace } from "./UserHomeCarouselWorkspace";
 import { contentPublicationEditorText } from "./i18n";
 
 export const contentEditorLocales = [
@@ -380,6 +381,20 @@ export function LocalizedCarouselEditor({
     draft?.slides[0] ??
     null;
   const translation = selectedSlide?.translations[state.selectedLocale] ?? null;
+  const orderedDraftSlides = draft
+    ? [...draft.slides].sort(
+        (left, right) => left.sortOrder - right.sortOrder,
+      )
+    : [];
+  const selectedSlideIndex = Math.max(
+    0,
+    orderedDraftSlides.findIndex((slide) => slide.id === selectedSlide?.id),
+  );
+
+  const selectSlideAtIndex = (index: number) => {
+    const slide = orderedDraftSlides[index];
+    if (slide) dispatch({ type: "select-slide", slideId: slide.id });
+  };
 
   useEffect(() => {
     if (!selectedSlide) return;
@@ -1095,6 +1110,28 @@ export function LocalizedCarouselEditor({
     </PermissionGate>
   );
 
+  const resolvedVersionOperations =
+    scene === "user-home" ? (
+      <details
+        className="rounded-xl border border-line bg-white shadow-panel"
+        data-testid="carousel-history"
+      >
+        <summary className="focus-ring cursor-pointer list-none px-5 py-4 text-sm font-black text-ink marker:hidden">
+          <span className="flex items-center justify-between gap-3">
+            {t("historyAndRollback")}
+            <span aria-hidden="true" className="text-moss">
+              ＋
+            </span>
+          </span>
+        </summary>
+        <div className="border-t border-line px-5 pb-5">
+          {versionOperations}
+        </div>
+      </details>
+    ) : (
+      versionOperations
+    );
+
   const content = (() => {
     if (state.load === "loading")
       return (
@@ -1116,38 +1153,39 @@ export function LocalizedCarouselEditor({
           </Button>
         </ErrorMessage>
       );
-    if (!draft)
-      return (
-        <>
-          {state.sceneState?.published ? (
-            <CarouselReleasePreview
-              locale={state.selectedLocale}
-              release={state.sceneState.published}
-            />
-          ) : null}
-          <section className="rounded-lg border border-line bg-white p-5 shadow-panel">
+    if (!draft) {
+      const draftCreationPanel = (
+        <section
+          className={
+            scene === "user-home"
+              ? ""
+              : "rounded-lg border border-line bg-white p-5 shadow-panel"
+          }
+        >
             <h2 className="text-lg font-black text-ink">
               {state.sceneState?.published || state.history.length > 0
                 ? t("cloneFromHistory")
                 : t("createFirstDraft")}
             </h2>
-            <div
-              className="mt-4 flex overflow-x-auto border-b border-line"
-              role="tablist"
-            >
-              {contentEditorLocales.map((locale) => (
-                <button
-                  aria-selected={locale === state.selectedLocale}
-                  className={`focus-ring shrink-0 border-b-2 px-4 py-3 text-sm font-black ${locale === state.selectedLocale ? "border-moss text-moss" : "border-transparent text-ink/45"}`}
-                  key={locale}
-                  onClick={() => dispatch({ type: "select-locale", locale })}
-                  role="tab"
-                  type="button"
-                >
-                  {contentEditorLocaleLabels[locale]}
-                </button>
-              ))}
-            </div>
+            {scene !== "user-home" ? (
+              <div
+                className="mt-4 flex overflow-x-auto border-b border-line"
+                role="tablist"
+              >
+                {contentEditorLocales.map((locale) => (
+                  <button
+                    aria-selected={locale === state.selectedLocale}
+                    className={`focus-ring shrink-0 border-b-2 px-4 py-3 text-sm font-black ${locale === state.selectedLocale ? "border-moss text-moss" : "border-transparent text-ink/45"}`}
+                    key={locale}
+                    onClick={() => dispatch({ type: "select-locale", locale })}
+                    role="tab"
+                    type="button"
+                  >
+                    {contentEditorLocaleLabels[locale]}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             {state.sceneState?.published || state.history.length > 0 ? (
               <PermissionGate permission={editPermission}>
                 <div className="mt-4 grid gap-3 lg:grid-cols-3">
@@ -1247,14 +1285,64 @@ export function LocalizedCarouselEditor({
                 </div>
               </PermissionGate>
             )}
-          </section>
-          {versionOperations}
-        </>
+        </section>
       );
 
-    const form = (readOnly: boolean) => (
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="rounded-lg border border-line bg-white p-5 shadow-panel">
+      return (
+        <>
+          {scene === "user-home" ? (
+            <UserHomeCarouselWorkspace
+              draft={null}
+              getTargetLabel={(slide) =>
+                targetLabel(slide.target, {
+                  announcement: t("announcement"),
+                  none: t("noTarget"),
+                  service: t("service"),
+                  shop: t("shop"),
+                  technician: t("technician"),
+                })
+              }
+              locale={state.selectedLocale}
+              onLocaleChange={(locale) =>
+                dispatch({ type: "select-locale", locale })
+              }
+              onSelectedIndexChange={selectSlideAtIndex}
+              published={state.sceneState?.published ?? null}
+              selectedIndex={0}
+            >
+              {draftCreationPanel}
+            </UserHomeCarouselWorkspace>
+          ) : (
+            <>
+              {state.sceneState?.published ? (
+                <CarouselReleasePreview
+                  locale={state.selectedLocale}
+                  release={state.sceneState.published}
+                />
+              ) : null}
+              {draftCreationPanel}
+            </>
+          )}
+          {resolvedVersionOperations}
+        </>
+      );
+    }
+
+    const form = (readOnly: boolean, compact = false) => (
+      <div
+        className={
+          compact
+            ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]"
+            : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]"
+        }
+      >
+        <section
+          className={
+            compact
+              ? "min-w-0"
+              : "rounded-lg border border-line bg-white p-5 shadow-panel"
+          }
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.14em] text-ink/40">
@@ -1276,23 +1364,25 @@ export function LocalizedCarouselEditor({
             )}
           </div>
 
-          <div
-            className="mt-4 flex overflow-x-auto border-b border-line"
-            role="tablist"
-          >
-            {contentEditorLocales.map((locale) => (
-              <button
-                aria-selected={locale === state.selectedLocale}
-                className={`focus-ring shrink-0 border-b-2 px-4 py-3 text-sm font-black ${locale === state.selectedLocale ? "border-moss text-moss" : "border-transparent text-ink/45"}`}
-                key={locale}
-                onClick={() => dispatch({ type: "select-locale", locale })}
-                role="tab"
-                type="button"
-              >
-                {contentEditorLocaleLabels[locale]}
-              </button>
-            ))}
-          </div>
+          {!compact ? (
+            <div
+              className="mt-4 flex overflow-x-auto border-b border-line"
+              role="tablist"
+            >
+              {contentEditorLocales.map((locale) => (
+                <button
+                  aria-selected={locale === state.selectedLocale}
+                  className={`focus-ring shrink-0 border-b-2 px-4 py-3 text-sm font-black ${locale === state.selectedLocale ? "border-moss text-moss" : "border-transparent text-ink/45"}`}
+                  key={locale}
+                  onClick={() => dispatch({ type: "select-locale", locale })}
+                  role="tab"
+                  type="button"
+                >
+                  {contentEditorLocaleLabels[locale]}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {translation?.isInitialCopy ? (
             <p className="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-bold text-yellow-900">
@@ -1431,32 +1521,34 @@ export function LocalizedCarouselEditor({
             </div>
           ) : null}
 
-          <div className="mt-5 overflow-hidden rounded-lg border border-line bg-paper">
-            <img
-              alt={translation?.imageAltText ?? ""}
-              className="aspect-[15/8] w-full object-cover"
-              src={translation?.imageUrl}
-            />
-            <div className="p-4">
-              <p className="text-xs font-black text-ink/45">
-                {selectedSlide
-                  ? targetLabel(selectedSlide.target, {
-                      announcement: t("announcement"),
-                      none: t("noTarget"),
-                      service: t("service"),
-                      shop: t("shop"),
-                      technician: t("technician"),
-                    })
-                  : ""}
-              </p>
-              <h3 className="mt-1 text-lg font-black text-ink">
-                {translation?.title}
-              </h3>
-              <p className="mt-1 text-sm font-semibold text-ink/60">
-                {translation?.caption}
-              </p>
+          {!compact ? (
+            <div className="mt-5 overflow-hidden rounded-lg border border-line bg-paper">
+              <img
+                alt={translation?.imageAltText ?? ""}
+                className="aspect-[15/8] w-full object-cover"
+                src={translation?.imageUrl}
+              />
+              <div className="p-4">
+                <p className="text-xs font-black text-ink/45">
+                  {selectedSlide
+                    ? targetLabel(selectedSlide.target, {
+                        announcement: t("announcement"),
+                        none: t("noTarget"),
+                        service: t("service"),
+                        shop: t("shop"),
+                        technician: t("technician"),
+                      })
+                    : ""}
+                </p>
+                <h3 className="mt-1 text-lg font-black text-ink">
+                  {translation?.title}
+                </h3>
+                <p className="mt-1 text-sm font-semibold text-ink/60">
+                  {translation?.caption}
+                </p>
+              </div>
             </div>
-          </div>
+          ) : null}
         </section>
 
         <aside className="space-y-4">
@@ -1546,9 +1638,38 @@ export function LocalizedCarouselEditor({
 
     return (
       <>
-        <PermissionGate fallback={form(true)} permission={editPermission}>
-          {form(false)}
-        </PermissionGate>
+        {scene === "user-home" ? (
+          <UserHomeCarouselWorkspace
+            draft={draft}
+            getTargetLabel={(slide) =>
+              targetLabel(slide.target, {
+                announcement: t("announcement"),
+                none: t("noTarget"),
+                service: t("service"),
+                shop: t("shop"),
+                technician: t("technician"),
+              })
+            }
+            locale={state.selectedLocale}
+            onLocaleChange={(locale) =>
+              dispatch({ type: "select-locale", locale })
+            }
+            onSelectedIndexChange={selectSlideAtIndex}
+            published={state.sceneState?.published ?? null}
+            selectedIndex={selectedSlideIndex}
+          >
+            <PermissionGate
+              fallback={form(true, true)}
+              permission={editPermission}
+            >
+              {form(false, true)}
+            </PermissionGate>
+          </UserHomeCarouselWorkspace>
+        ) : (
+          <PermissionGate fallback={form(true)} permission={editPermission}>
+            {form(false)}
+          </PermissionGate>
+        )}
         <section className="mt-5 rounded-lg border border-line bg-white p-5 shadow-panel">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-black text-ink">
@@ -1647,7 +1768,7 @@ export function LocalizedCarouselEditor({
             </div>
           </PermissionGate>
         </section>
-        {versionOperations}
+        {resolvedVersionOperations}
       </>
     );
   })();

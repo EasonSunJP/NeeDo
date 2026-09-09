@@ -91,4 +91,27 @@ describe("FeatureCarousel indicators", () => {
     expect(markup).not.toContain("查看详情");
     expect(markup).not.toContain('data-feature-carousel-cta="true"');
   });
+
+  it("exposes the shared carousel and paused state for controlled admin previews", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <FeatureCarousel
+          activeIndex={0}
+          autoRotateMs={null}
+          onSlideClick={() => undefined}
+          slides={[
+            {
+              id: "admin-preview",
+              title: "Admin preview",
+              image: "/media/content/admin-preview.webp",
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain('data-testid="feature-carousel"');
+    expect(markup).toContain('data-auto-rotate="paused"');
+    expect(markup).toContain("<button");
+  });
 });
