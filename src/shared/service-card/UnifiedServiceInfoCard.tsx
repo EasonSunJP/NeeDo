@@ -96,10 +96,13 @@ function ServiceShowcaseContent({ data, hasActions }: { data: UnifiedServiceInfo
         </h3>
       </header>
 
-      <div className="grid min-h-[160px] grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,#0d2028)]">
-        <div className="relative min-w-0">
+      <div
+        className="grid grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,#0d2028)]"
+        data-testid="unified-service-showcase-body-grid"
+      >
+        <div className="relative min-w-0 self-start">
           <div
-            className="absolute -top-10 bottom-auto left-4 right-0 aspect-square overflow-hidden rounded-[24px] border border-white/10 bg-[color:var(--client-surface)] shadow-[0_10px_28px_rgba(0,0,0,0.34)]"
+            className="-mt-10 ml-4 aspect-square w-[calc(100%-1rem)] overflow-hidden rounded-[24px] border border-white/10 bg-[color:var(--client-surface)] shadow-[0_10px_28px_rgba(0,0,0,0.34)]"
             data-testid="unified-service-showcase-cover"
           >
             {data.coverUrl ? (
