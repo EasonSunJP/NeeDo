@@ -424,6 +424,22 @@ describe("EmployeeDetailCard", () => {
     });
   });
 
+  it("places formal contract termination in the employee detail header", async () => {
+    const onSaveAffiliation = vi.fn(async () => undefined);
+    await renderCard({ onSaveAffiliation });
+
+    await act(async () => button("解约").click());
+    expect(container.textContent).toContain("确认解约");
+    await act(async () => button("确认解约").click());
+
+    expect(onSaveAffiliation).toHaveBeenCalledWith({
+      endsAt: expect.any(String),
+      relationshipType: "partner",
+      startsAt: "2026-06-01T00:00:00.000Z",
+      workStatus: "ended",
+    });
+  });
+
   it("shows the inherited payroll schedule and can save a real employee override", async () => {
     const onSavePayrollPolicy = vi.fn(async () => undefined);
     await renderCard({ onSavePayrollPolicy });

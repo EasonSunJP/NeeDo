@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import type { Language } from "../../i18n/translations";
 import type {
   EntityFavoriteState,
@@ -189,8 +190,13 @@ export function UnifiedEntityInfoCard({
       tags={detailTags}
     >
       {data.kind === "shop" && data.address ? (
-        <p className="mt-1 flex items-start gap-1 text-[9px] font-bold leading-4 text-[#9aacb5] sm:mt-2 sm:gap-2 sm:text-[13px] sm:leading-5">
-          <span className="text-[#b8ff4a]">⌖</span>
+        <p className="mt-1 flex items-start gap-1.5 text-[10px] font-bold leading-4 text-[#9aacb5] sm:mt-2 sm:gap-2 sm:text-[14px] sm:leading-5">
+          <span
+            className="mt-0.5 shrink-0 text-[#b8ff4a]"
+            data-testid="unified-card-location-icon"
+          >
+            <AppIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" name="map" />
+          </span>
           {data.address}
         </p>
       ) : null}
@@ -204,7 +210,10 @@ export function UnifiedEntityInfoCard({
       actionSlot={actionSlot}
       ariaLabel={`${data.kind === "shop" ? text.viewShop : data.kind === "technician" ? text.viewTechnician : text.viewUser} ${data.name}`}
       body={
-        <div className="grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+        <div
+          className="grid grid-cols-[minmax(110px,30%)_minmax(0,1fr)] gap-3 p-3 pt-0 sm:gap-7 sm:p-6 sm:pt-0"
+          data-testid="unified-card-body"
+        >
           <UnifiedCardImage alt={data.name} language={language} src={data.imageUrl} />
           {details}
         </div>

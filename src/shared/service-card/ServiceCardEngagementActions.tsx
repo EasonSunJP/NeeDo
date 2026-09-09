@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import {
   entityEngagementApi,
   toggleFavoriteOptimistically,
@@ -55,7 +56,7 @@ export function ServiceShareAction({
         onClick={() => setOpen(true)}
         type="button"
       >
-        <span aria-hidden="true" className="text-[22px] leading-none sm:text-[27px]">⌯</span>
+        <AppIcon className="h-[22px] w-[22px] sm:h-[27px] sm:w-[27px]" name="share" />
       </button>
       {open ? (
         <EntityShareDestinationSheet
