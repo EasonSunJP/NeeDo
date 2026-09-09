@@ -4641,19 +4641,25 @@ export function UnifiedCalendarEventDetailPage({
 }
 
 function CalendarEventEditorPage({
+  availabilityCapacity,
   draft,
   onChange,
   onClose,
+  onAvailabilityCapacityChange,
   onOpenParticipantFlow,
   onSave,
+  saveDisabled = false,
   technicianCreationMode,
   onTechnicianCreationModeChange
 }: {
+  availabilityCapacity?: number;
   draft: CalendarEditorDraft;
   onChange: (draft: CalendarEditorDraft) => void;
   onClose: () => void;
+  onAvailabilityCapacityChange?: (capacity: number) => void;
   onOpenParticipantFlow: () => void;
   onSave: () => void | Promise<void>;
+  saveDisabled?: boolean;
   technicianCreationMode?: TechnicianCreationMode;
   onTechnicianCreationModeChange?: (mode: TechnicianCreationMode) => void;
 }) {
@@ -4738,6 +4744,31 @@ function CalendarEventEditorPage({
                 </button>
               );
             })}
+          </section>
+        ) : null}
+        {technicianCreationMode === "availability" && availabilityCapacity !== undefined && onAvailabilityCapacityChange ? (
+          <section className={cn(scheduleInsetClass, "space-y-3 px-4 py-4")}>
+            <div>
+              <h2 className="text-base font-black text-[color:var(--client-text)]">自由排班</h2>
+              <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">
+                直接保存到当前日程表；已有预约只占用其中一段时间，不会缩短或关闭此范围。
+              </p>
+            </div>
+            <label className="block text-[11px] font-black text-[color:var(--client-muted)]">
+              同时可接数量
+              <input
+                className={cn(inputClass, "mt-1")}
+                max={100}
+                min={1}
+                name="availabilityCapacity"
+                onChange={(event) => onAvailabilityCapacityChange(Number(event.target.value))}
+                type="number"
+                value={availabilityCapacity}
+              />
+            </label>
+            {!Number.isInteger(availabilityCapacity) || availabilityCapacity < 1 || availabilityCapacity > 100 ? (
+              <p className="text-xs font-black text-red-500" role="alert">容量必须为 1 到 100 的整数</p>
+            ) : null}
           </section>
         ) : null}
         <input
@@ -4903,7 +4934,8 @@ function CalendarEventEditorPage({
           </button>
           <button
             aria-label={`完成${title}`}
-            className="focus-ring flex h-12 min-w-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_16px_36px_color-mix(in_srgb,var(--client-primary)_22%,transparent)]"
+            className="focus-ring flex h-12 min-w-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_16px_36px_color-mix(in_srgb,var(--client-primary)_22%,transparent)] disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={saveDisabled}
             onClick={onSave}
             type="button"
           >
@@ -5177,6 +5209,8 @@ export function UnifiedUserCalendar({
   const [editorDraft, setEditorDraft] = useState<CalendarEditorDraft | null>(null);
   const [participantFlowOpen, setParticipantFlowOpen] = useState(false);
   const [technicianCreationMode, setTechnicianCreationMode] = useState<TechnicianCreationMode>("private");
+  const [availabilityCapacity, setAvailabilityCapacity] = useState(1);
+  const [editingAvailabilityWindowId, setEditingAvailabilityWindowId] = useState<number | null>(null);
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
   const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<MerchantAppointmentStatusFilter>("all");
@@ -5610,6 +5644,8 @@ export function UnifiedUserCalendar({
   const openCreate = (date = selectedDate, startTime?: string, endTime?: string, calendarId?: string, calendarLabel?: string) => {
     setParticipantFlowOpen(false);
     setTechnicianCreationMode("private");
+    setAvailabilityCapacity(1);
+    setEditingAvailabilityWindowId(null);
     const defaultCalendarTarget = getDefaultLocalCalendarTarget(activeScope);
     const resolvedCalendarId = calendarId ?? defaultCalendarTarget.calendarId;
     const resolvedCalendarLabel = calendarLabel ?? defaultCalendarTarget.calendarLabel;
@@ -5647,7 +5683,28 @@ export function UnifiedUserCalendar({
     if (formalOnly) {
       try {
         const input = toFormalCalendarEventInput(editorDraft);
-        if (activeScope === "technician" && technicianCreationMode !== "private") {
+        if (activeScope === "technician" && technicianCreationMode === "availability") {
+          if (!Number.isInteger(availabilityCapacity) || availabilityCapacity < 1 || availabilityCapacity > 100) return;
+          const availabilityInput = {
+            startsAt: new Date(input.startsAt),
+            endsAt: new Date(input.endsAt),
+            capacity: availabilityCapacity
+          };
+          const saved = editingAvailabilityWindowId === null
+            ? await availabilityWindowApi.create("technician", availabilityInput)
+            : await availabilityWindowApi.update("technician", editingAvailabilityWindowId, availabilityInput);
+          setFormalAvailabilityWindows((windows) => editingAvailabilityWindowId === null
+            ? [...windows, saved]
+            : windows.map((window) => window.id === saved.id ? saved : window));
+          setSelectedDate(editorDraft.date);
+          setAnchorDate(editorDraft.date);
+          setView("day");
+          setTechnicianCreationMode("private");
+          setEditingAvailabilityWindowId(null);
+          setEditorDraft(null);
+          return;
+        }
+        if (activeScope === "technician" && technicianCreationMode === "manualBooking") {
           const query = new URLSearchParams({
             mode: technicianCreationMode,
             startsAt: input.startsAt,
@@ -5728,16 +5785,38 @@ export function UnifiedUserCalendar({
       if (event.availabilityWindowId) {
         const window = formalAvailabilityWindows.find((item) => item.id === event.availabilityWindowId);
         if (!window) return;
-        const query = new URLSearchParams({
-          availabilityWindowId: String(window.id),
-          mode: "availability",
-          startsAt: window.startsAt,
-          endsAt: window.endsAt
-        });
+        const start = new Date(window.startsAt);
+        const end = new Date(window.endsAt);
+        const pad = (value: number) => String(value).padStart(2, "0");
+        const dateValue = (value: Date) => `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+        const timeValue = (value: Date) => `${pad(value.getHours())}:${pad(value.getMinutes())}`;
         setActiveEvent(null);
-        navigate(`/technician/schedule/new?${query.toString()}`);
+        setParticipantFlowOpen(false);
+        setTechnicianCreationMode("availability");
+        setAvailabilityCapacity(window.capacity);
+        setEditingAvailabilityWindowId(window.id);
+        setEditorDraft({
+          id: event.id,
+          calendarId: event.calendarId ?? "formal:personal",
+          calendarLabel: event.calendarLabel ?? "我的行程",
+          date: dateValue(start),
+          endDate: dateValue(end),
+          startTime: timeValue(start),
+          endTime: timeValue(end),
+          title: event.title,
+          location: "",
+          note: "",
+          url: "",
+          images: [],
+          reminder: "不提醒",
+          allDay: false,
+          repeatRule: "none",
+          syncContactIds: [],
+          visibility: "未同步"
+        });
         return;
       }
+      setEditingAvailabilityWindowId(null);
       const id = formalCalendarEventId(event.id);
       const formalEvent = id === null ? null : formalCalendarEvents.find((item) => item.id === id);
       if (!formalEvent) return;
@@ -6134,14 +6213,20 @@ export function UnifiedUserCalendar({
 
       {editorDraft && (!formalOnly || activeScope !== "merchant") ? (
         <CalendarEventEditorPage
+          availabilityCapacity={activeScope === "technician" ? availabilityCapacity : undefined}
           draft={editorDraft}
           onChange={setEditorDraft}
           onClose={() => {
             setParticipantFlowOpen(false);
+            setEditingAvailabilityWindowId(null);
             setEditorDraft(null);
           }}
           onOpenParticipantFlow={() => setParticipantFlowOpen(true)}
+          onAvailabilityCapacityChange={activeScope === "technician" ? setAvailabilityCapacity : undefined}
           onSave={saveDraft}
+          saveDisabled={activeScope === "technician" && technicianCreationMode === "availability"
+            ? !Number.isInteger(availabilityCapacity) || availabilityCapacity < 1 || availabilityCapacity > 100
+            : false}
           technicianCreationMode={activeScope === "technician" ? technicianCreationMode : undefined}
           onTechnicianCreationModeChange={activeScope === "technician" ? setTechnicianCreationMode : undefined}
         />
