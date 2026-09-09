@@ -36,6 +36,7 @@ describe("UnifiedServiceInfoCard", () => {
 
     expect(markup).toContain('data-variant="showcase"');
     expect(markup).toContain('data-testid="unified-service-showcase-header"');
+    expect(markup).toMatch(/<header class="[^"]*items-end[^"]*pb-3[^"]*" data-testid="unified-service-showcase-header"/u);
     expect(markup).toContain('data-testid="unified-service-showcase-cover"');
     expect(markup).toContain('data-testid="unified-service-showcase-body"');
     expect(markup).toContain('data-testid="unified-service-showcase-facts"');
@@ -47,6 +48,12 @@ describe("UnifiedServiceInfoCard", () => {
     expect(markup).toContain("￥1,000");
     expect(markup).toContain("60分钟");
     expect(markup.indexOf("</a>")).toBeLessThan(markup.indexOf("编辑服务"));
+    expect(markup).toMatch(/class="[^"]*absolute right-3 top-3[^"]*" data-testid="unified-service-info-actions"/u);
+    expect(markup).toContain("grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)]");
+    expect(markup).toContain("min-h-[104px]");
+    expect(markup).toContain("min-h-[160px]");
+    expect(markup).toContain("[overflow-wrap:anywhere]");
+    expect(markup).not.toContain("border-t border-white/10");
   });
 
   it("renders formal service facts in the single approved order", () => {

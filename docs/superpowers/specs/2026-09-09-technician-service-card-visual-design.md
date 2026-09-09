@@ -19,7 +19,7 @@ Match the technician profile service card to the supplied reference: a dark roun
 - Place the cover as a responsive rounded square that overlaps header and body.
 - Place usage count, service tags, and a two-line description in the body to the right of the cover.
 - Place price and duration as compact factual chips. Preserve honest missing-value states.
-- Keep management actions outside any navigation link and place them in a dedicated footer so they cannot cover the title.
+- Keep management actions outside any navigation link and overlay the up-arrow, down-arrow, and edit buttons at the card's upper-right. Place the service title below that action row, near the bottom of the patterned header.
 
 ## Acceptance
 
@@ -28,4 +28,3 @@ Match the technician profile service card to the supplied reference: a dark roun
 - Technician profile services request the `showcase` variant.
 - A selected JPEG, PNG, or WebP is passed through unchanged to the existing save/upload path.
 - Targeted component tests, technician profile tests, typecheck, and production build pass locally.
-

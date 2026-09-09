@@ -54,6 +54,10 @@ function iconPath(name: IconName) {
   switch (name) {
     case "back":
       return <path d="m14.5 6.5-5 5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
+    case "up":
+      return <path d="m6.5 14.5 5-5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
+    case "down":
+      return <path d="m6.5 9.5 5 5 5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
     case "close":
     case "x":
       return <path d="M7 7 17 17M17 7 7 17" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />;
@@ -237,6 +241,8 @@ function iconPath(name: IconName) {
 
 export type IconName =
   | "back"
+  | "up"
+  | "down"
   | "close"
   | "x"
   | "search"

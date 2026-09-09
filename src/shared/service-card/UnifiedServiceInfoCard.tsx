@@ -85,15 +85,15 @@ function ServiceShowcaseContent({ data }: { data: UnifiedServiceInfoCardData }) 
   return (
     <div className="relative" data-testid="unified-service-showcase-body">
       <header
-        className="grid min-h-[88px] grid-cols-[34%_66%] items-center bg-[radial-gradient(circle_at_18%_0%,color-mix(in_srgb,var(--client-primary)_13%,transparent),transparent_45%),repeating-linear-gradient(72deg,transparent_0,transparent_7px,color-mix(in_srgb,var(--client-primary)_5%,transparent)_8px,color-mix(in_srgb,var(--client-primary)_5%,transparent)_9px),linear-gradient(110deg,#071611,#020807_62%,#030a0b)] px-4"
+        className="grid min-h-[104px] grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)] items-end bg-[radial-gradient(circle_at_18%_0%,color-mix(in_srgb,var(--client-primary)_13%,transparent),transparent_45%),repeating-linear-gradient(72deg,transparent_0,transparent_7px,color-mix(in_srgb,var(--client-primary)_5%,transparent)_8px,color-mix(in_srgb,var(--client-primary)_5%,transparent)_9px),linear-gradient(110deg,#071611,#020807_62%,#030a0b)] px-4 pb-3"
         data-testid="unified-service-showcase-header"
       >
-        <h3 className="col-start-2 min-w-0 pl-3 text-[clamp(17px,4.3vw,25px)] font-black leading-tight tracking-[-0.02em] text-white">
+        <h3 className="col-start-2 min-w-0 max-w-full break-words pl-3 text-[clamp(17px,4.3vw,25px)] font-black leading-tight tracking-[-0.02em] text-white [overflow-wrap:anywhere]">
           {data.name}
         </h3>
       </header>
 
-      <div className="grid min-h-[132px] grid-cols-[34%_66%] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,#0d2028)]">
+      <div className="grid min-h-[160px] grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,#0d2028)]">
         <div className="relative min-w-0">
           <div
             className="absolute -top-10 bottom-auto left-4 right-0 aspect-square overflow-hidden rounded-[24px] border border-white/10 bg-[color:var(--client-surface)] shadow-[0_10px_28px_rgba(0,0,0,0.34)]"
@@ -120,13 +120,13 @@ function ServiceShowcaseContent({ data }: { data: UnifiedServiceInfoCardData }) 
 
           <div className="mt-1.5 flex min-h-5 flex-wrap items-center gap-1" data-testid="unified-service-info-tags">
             {visibleTags.length > 0 ? visibleTags.map((tag) => (
-              <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] font-black leading-4 text-[color:var(--client-muted)]" key={tag}>
+              <span className="max-w-full break-words rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] font-black leading-4 text-[color:var(--client-muted)] [overflow-wrap:anywhere]" key={tag}>
                 {tag}
               </span>
             )) : <span className="text-[11px] font-bold text-[color:var(--client-muted)]">暂无标签</span>}
           </div>
 
-          <p className="mt-1.5 line-clamp-2 text-[12px] font-bold leading-[1.55] text-[color:var(--client-muted)]">
+          <p className="mt-1.5 max-w-full break-words line-clamp-2 text-[12px] font-bold leading-[1.55] text-[color:var(--client-muted)] [overflow-wrap:anywhere]">
             {data.description ?? "暂无简介"}
           </p>
 
@@ -175,12 +175,7 @@ export function UnifiedServiceInfoCard({ actionSlot, className, data, detailTo, 
         <button aria-label={`查看服务 ${data.name}`} className={cn(interactiveClassName, "w-full")} onClick={onOpenDetails} type="button">{content}</button>
       ) : content}
       {actionSlot ? (
-        <div className={cn(
-          "z-10 flex items-center gap-1",
-          isShowcase
-            ? "justify-end border-t border-white/10 bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,#0d2028)] px-3 py-2"
-            : "absolute right-3 top-3"
-        )} data-testid="unified-service-info-actions">
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1" data-testid="unified-service-info-actions">
           {actionSlot}
         </div>
       ) : null}

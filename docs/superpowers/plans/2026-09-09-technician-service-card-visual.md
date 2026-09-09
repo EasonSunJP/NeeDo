@@ -27,7 +27,7 @@
 - Consumes: `UnifiedServiceInfoCardData`
 - Produces: `variant?: "default" | "showcase"`
 
-- [ ] Add a server-rendered test that requests `variant="showcase"` and asserts the title band, overlapping cover, factual metadata, and action footer.
+- [ ] Add a server-rendered test that requests `variant="showcase"` and asserts the title band, overlapping cover, factual metadata, and upper-right action overlay.
 - [ ] Run `npm test -- --run src/shared/service-card/UnifiedServiceInfoCard.test.tsx` and confirm the new test fails because the variant is not implemented.
 - [ ] Implement a focused showcase rendering branch while leaving `variant="default"` behavior unchanged.
 - [ ] Run the same test and confirm every assertion passes.
@@ -63,4 +63,3 @@
 - [ ] Run all affected service-card/profile suites.
 - [ ] Run `npm run lint` and `npm run build`.
 - [ ] Commit the implementation, merge it into local `main`, rerun the same verification on merged `main`, then safely remove only this feature worktree and branch.
-

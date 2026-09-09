@@ -164,6 +164,10 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(servicesSource).toContain('label="上移"');
     expect(servicesSource).toContain('label="下移"');
     expect(servicesSource).toContain('label="编辑"');
+    expect(servicesSource).toContain('icon="up" label="上移"');
+    expect(servicesSource).toContain('icon="down" label="下移"');
+    expect(servicesSource).not.toContain('icon="back" label="上移"');
+    expect(servicesSource).not.toContain('icon="back" label="下移"');
     expect(servicesSource).not.toContain('"default"');
     expect(servicesSource).not.toContain("fake");
   });
