@@ -132,7 +132,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           ? {
               OR: [
                 { displayName: { contains: input.search } },
-                { publicIdentifier: { value: { contains: input.search } } }
+                { publicIdentifier: { is: { publicId: { contains: input.search } } } }
               ]
             }
           : {})
@@ -155,8 +155,8 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     return {
       list: rows.map((row) => ({
         identityId: row.contactIdentityId,
-        publicId: row.contactIdentity.publicIdentifier?.value ?? "",
-        displayName: row.nickname ?? row.contactIdentity.displayName ?? row.contactIdentity.publicIdentifier?.value ?? "",
+        publicId: row.contactIdentity.publicIdentifier?.publicId ?? "",
+        displayName: row.nickname ?? row.contactIdentity.displayName ?? row.contactIdentity.publicIdentifier?.publicId ?? "",
         avatarUrl: row.contactIdentity.user.avatarUrl
       })),
       total,
@@ -180,7 +180,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         priceAmount: true,
         fulfillmentMode: true,
         paymentMethod: true,
-        serviceLocation: { select: { admin1Code: true, admin2Code: true } },
+        serviceLocation: { select: { admin1RegionCode: true, admin2RegionCode: true } },
         scheduleSlot: { select: { startsAt: true, endsAt: true, deletedAt: true } },
         technicianProfile: {
           select: {
@@ -229,7 +229,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
       technicianProfileId: profile.id,
       technicianUserId: profile.userId,
       technicianIdentityId: identity.id,
-      technicianPublicId: identity.publicIdentifier.value,
+      technicianPublicId: identity.publicIdentifier.publicId,
       ruleVersion: setting.version,
       rules,
       context: {
@@ -247,7 +247,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           ...(profile.verifiedAt ? [] : ["technician_qualification_required"])
         ],
         areaCode: order.serviceLocation
-          ? `${order.serviceLocation.admin1Code}/${order.serviceLocation.admin2Code}`
+          ? `${order.serviceLocation.admin1RegionCode ?? ""}/${order.serviceLocation.admin2RegionCode ?? ""}`
           : null,
         distanceKm: null,
         grossAmountJpy: Math.round(Number(order.priceAmount.toString())),
@@ -358,7 +358,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
         technicianProfileId,
         technicianUserId: slot.technicianProfile.userId,
         technicianIdentityId: identity.id,
-        technicianPublicId: identity.publicIdentifier.value,
+        technicianPublicId: identity.publicIdentifier.publicId,
         ruleVersion: setting.version,
         rules,
         scheduleSlotId: slot.id,
@@ -382,7 +382,7 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           customerEkycVerified: customerEvidence.ekycVerified,
           customerIsContact: contactIdentityId !== null,
           referralContactIdentityId: contactIdentityId,
-          completedOrdersWithTechnician,
+          completedOrdersWithTechnician: completedWithTechnician,
           partyType: "single",
           serviceMode: post.demand.serviceMode === "HOME" ? "home" : "store",
           paymentMethod: "other",
