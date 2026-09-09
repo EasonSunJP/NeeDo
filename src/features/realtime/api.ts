@@ -121,10 +121,12 @@ export type RealtimeMessageHistory = PaginatedRealtimeData<RealtimeMessage> & {
 export type RealtimeContact = {
   contactUser: RealtimeParticipant;
   contactUserId: number;
+  contactIdentityId?: number;
   createdAt: string;
   id: number;
   nickname: string | null;
   ownerUserId: number;
+  ownerIdentityId?: number;
   source: string;
   isBlocked: boolean;
 };

@@ -593,6 +593,28 @@ describe("formal technician schedule routes", () => {
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule");
   });
 
+  it("blocks the direct new-schedule route when the technician has no active shop", async () => {
+    mocks.scheduleResource.mockReturnValue({
+      data: {
+        profile: { id: 31, displayName: "独立技师", avatarUrl: null },
+        shopId: null,
+        shopName: "独立技师",
+        services: [],
+        slot: null
+      },
+      error: null,
+      loading: false,
+      retry: mocks.retrySchedule
+    });
+
+    await render("/technician/schedule/new?mode=manualBooking");
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("暂未关联店铺");
+    expect(container.querySelector('[role="switch"][aria-label="手动预约"]')).toBeNull();
+    expect(container.textContent).not.toContain("创建手动预约");
+    expect(mocks.listContacts).not.toHaveBeenCalled();
+  });
+
   it("shows a red impact warning and can cancel a booked shop schedule after explicit confirmation", async () => {
     const bookedShopSlot = {
       ...slot,

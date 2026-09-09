@@ -10,6 +10,13 @@ const copy = {
     "Affected bookings",
     "영향을 받는 예약",
   ],
+  shopRequired: [
+    "入住店铺后才可开启出勤与其他工作状态。",
+    "入駐店鋪後才可開啟出勤與其他工作狀態。",
+    "店舗への所属後に出勤などの勤務状況を開始できます。",
+    "Join a shop before starting attendance or another work status.",
+    "매장에 소속된 후 출근 및 기타 근무 상태를 시작할 수 있습니다.",
+  ],
   title: ["状态同步", "狀態同步", "勤務状況の共有", "Work status", "근무 상태"],
   timeline: [
     "工作时间线",

@@ -431,6 +431,7 @@ const supportedSettingsSuffixes: Record<UnifiedSettingsPortal, Set<string>> = {
 type SettingsNavigationState = {
   settingsSwitchedFromPortal?: boolean;
   settingsPortalTarget?: UnifiedSettingsPortal;
+  settingsReturnTo?: string;
 };
 
 function useSettingsPortalRedirectWithOptions(
@@ -1976,6 +1977,7 @@ export function UnifiedSettingsLanguagePage({ portal }: { portal: UnifiedSetting
 }
 
 export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const location = useLocation();
   const navigate = useNavigate();
   const { language } = useI18n();
   const { session, switchPortal } = useAuth();
@@ -1992,7 +1994,8 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
     const nextEntry = getPortalEntry(nextPortal);
     const nextNavigationState = {
       settingsSwitchedFromPortal: true,
-      settingsPortalTarget: nextPortal
+      settingsPortalTarget: nextPortal,
+      settingsReturnTo: `${location.pathname}${location.search}${location.hash}`
     } satisfies SettingsNavigationState;
     setSwitchError("");
     setSwitchingPortal(nextPortal);

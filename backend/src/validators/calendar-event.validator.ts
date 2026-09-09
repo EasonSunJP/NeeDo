@@ -16,6 +16,25 @@ export const calendarEventListQuerySchema = z.object({
   page_size: z.coerce.number().int().min(1).max(100).default(20),
 }).strict().refine((value) => value.to > value.from, { path: ["to"], message: "to must be after from" });
 
+const participantBusyIds = z.preprocess(
+  (value) => typeof value === "string" ? value.split(",").filter(Boolean) : value,
+  z.array(z.coerce.number().int().positive()).min(1).max(20),
+).transform((items) => Array.from(new Set(items)));
+
+export const calendarParticipantBusyQuerySchema = z.object({
+  from: isoDate,
+  to: isoDate,
+  participant_identity_ids: participantBusyIds,
+  page: z.coerce.number().int().min(1).default(1),
+  page_size: z.coerce.number().int().min(1).max(100).default(20),
+}).strict().refine((value) => value.to > value.from, {
+  path: ["to"],
+  message: "to must be after from",
+}).refine((value) => value.to.getTime() - value.from.getTime() <= 24 * 60 * 60 * 1_000, {
+  path: ["to"],
+  message: "participant busy range cannot exceed 24 hours",
+});
+
 export const calendarEventIdParamSchema = z.object({
   id: z.coerce.number().int().positive(),
 }).strict();

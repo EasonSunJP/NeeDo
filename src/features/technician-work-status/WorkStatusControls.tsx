@@ -18,11 +18,15 @@ const buttons = [
   { status: "off_duty", icon: "■", tone: "off" },
 ] as const;
 export function WorkStatusControls({
+  disabled = false,
+  disabledReason,
   serviceOrderId,
   shopId,
   onChanged,
   onChooseService,
 }: {
+  disabled?: boolean;
+  disabledReason?: string;
   serviceOrderId?: number;
   shopId?: number | null;
   onChanged?: () => void;
@@ -40,6 +44,7 @@ export function WorkStatusControls({
   const [affectedOrders, setAffectedOrders] = useState<AffectedWorkOrder[]>([]);
   const pending = useRef<WorkStatusMutation | null>(null);
   const submit = async (status: WorkStatus, confirmed = false) => {
+    if (disabled && status !== "off_duty") return;
     if (status === "in_service") {
       if (saving) return;
       setSaving(true);
@@ -132,7 +137,7 @@ export function WorkStatusControls({
             type="button"
             data-status={item.status}
             aria-pressed={snapshot?.status === item.status}
-            disabled={!snapshot || saving || error}
+            disabled={(disabled && item.status !== "off_duty") || !snapshot || saving || Boolean(error)}
             key={item.status}
             onClick={() => void submit(item.status)}
             className={`technician-work-status-button technician-work-status--${item.tone} ${snapshot?.status === item.status ? "technician-work-status-button--active" : "technician-work-status-button--idle"} flex min-h-[88px] min-w-0 flex-col items-center justify-center rounded-[20px] border px-1 py-3 disabled:opacity-50`}
@@ -147,6 +152,14 @@ export function WorkStatusControls({
           </button>
         ))}
       </div>
+      {disabled ? (
+        <p
+          className="mt-3 rounded-[18px] border border-[#ff4d5e] bg-[#26060b] px-4 py-3 text-sm font-bold leading-6 text-[#ffd6dc]"
+          role="alert"
+        >
+          {disabledReason ?? t("shopRequired")}
+        </p>
+      ) : null}
       <div
         className="mt-3 rounded-[20px] bg-[color:var(--client-elevated)] px-4 py-3"
         aria-live="polite"
@@ -166,7 +179,7 @@ export function WorkStatusControls({
                     : t("unsynced")}
             </p>
           </div>
-          {snapshot?.status === "on_duty" ? <TechnicianAutomationQuickSwitches /> : null}
+          {!disabled && snapshot?.status === "on_duty" ? <TechnicianAutomationQuickSwitches /> : null}
         </div>
       </div>
       {error || saveError ? (

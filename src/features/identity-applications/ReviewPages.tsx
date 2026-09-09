@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { SettingsDetailPage } from "../../components/client-ui/SettingsDirectory";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import {
   ApplicationButton,
+  ApplicationBottomAction,
   ApplicationCard,
   ApplicationField,
   ApplicationInput,
@@ -25,6 +27,32 @@ function ReviewShell({ title, info, backTo, children, embedded }: { title: strin
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   const { language } = useI18n();
   return <div className="grid gap-1 border-b border-[color:var(--client-line)] py-3 last:border-b-0 sm:grid-cols-[9rem_1fr]"><dt className="text-xs font-black text-[color:var(--client-muted)]">{translateText(label, language)}</dt><dd className="break-words text-sm font-bold text-[color:var(--client-text)]">{value || "—"}</dd></div>;
+}
+
+function TechnicianApplicationCardStatus({ status, t }: { status: TechnicianReview["status"]; t: (source: string) => string }) {
+  if (status === "approved") {
+    return (
+      <span
+        aria-label={t("审核已通过")}
+        className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b] shadow-[0_14px_30px_color-mix(in_srgb,var(--client-primary)_36%,transparent)]"
+      >
+        <AppIcon className="h-5 w-5" name="check" />
+      </span>
+    );
+  }
+
+  if (status === "rejected") {
+    return (
+      <span
+        aria-label={t("审核未通过")}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-accent)_55%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-accent)_14%,transparent)] text-xl font-black text-[color:var(--client-accent)]"
+      >
+        ×
+      </span>
+    );
+  }
+
+  return <span aria-label={t("查看申请")} className="shrink-0 text-xl text-[color:var(--client-primary)]">›</span>;
 }
 
 export function TechnicianApplicationsReviewPage({ embedded = false, searchQuery = "" }: { embedded?: boolean; searchQuery?: string } = {}) {
@@ -138,38 +166,39 @@ export function TechnicianApplicationsReviewPage({ embedded = false, searchQuery
       {error ? <ApplicationNotice tone="error">{t(error)}</ApplicationNotice> : null}
       {!selected ? (
         <ApplicationCard className="space-y-2">
-          {visibleItems.length === 0 ? <ApplicationNotice>{t("暂无技师入驻申请")}</ApplicationNotice> : visibleItems.map((item) => (
-            <button className="flex w-full items-center justify-between rounded-[20px] border border-[color:var(--client-line)] p-4 text-left" key={item.applicationId} onClick={() => void open(item.applicationId)} type="button">
+          {visibleItems.length === 0 ? <ApplicationNotice><span data-testid="technician-applications-empty">{t("暂无申请")}</span></ApplicationNotice> : visibleItems.map((item) => (
+            <button className="flex w-full items-center justify-between gap-3 rounded-[20px] border border-[color:var(--client-line)] p-4 text-left" data-application-status={item.status} key={item.applicationId} onClick={() => void open(item.applicationId)} type="button">
               <span><span className="block text-sm font-black text-[color:var(--client-text)]">{item.applicantName}</span><span className="mt-1 block text-xs text-[color:var(--client-muted)]">#{item.applicationId} · {t(item.status)}</span></span>
-              <span className="text-xl text-[color:var(--client-primary)]">›</span>
+              <TechnicianApplicationCardStatus status={item.status} t={t} />
             </button>
           ))}
         </ApplicationCard>
       ) : (
         <>
-          <ApplicationCard>
-            <dl>
-              <DetailRow label="本人姓名" value={selected.applicantName} />
-              <DetailRow label="联系电话" value={selected.phone} />
-              <DetailRow label="所在城市" value={selected.city} />
-              <DetailRow label="性别" value={selected.gender ? t(selected.gender) : "—"} />
-              <DetailRow label="生日" value={selected.birthDate?.slice(0, 10)} />
-              <DetailRow label="从业年数" value={selected.yearsExperience === null ? "—" : `${selected.yearsExperience} ${t("年")}`} />
-              <DetailRow label="可服务区域" value={selected.serviceAreas.join("、")} />
-              <DetailRow label="擅长项目" value={selected.skills.join("、")} />
-              <DetailRow label="自我介绍" value={selected.bio} />
-            </dl>
-          </ApplicationCard>
-          {selected.media.length ? <ApplicationCard className="grid gap-4 sm:grid-cols-2">{selected.media.map((media) => <figure key={media.id}><ProtectedApplicationImage alt={t(media.purpose === "portrait" ? "本人照片" : "证件照片")} applicationId={selected.applicationId} className="aspect-[4/3]" mediaId={media.id} /><figcaption className="mt-2 text-center text-xs font-bold text-[color:var(--client-muted)]">{t(media.purpose === "portrait" ? "本人照片" : "证件照片")}</figcaption></figure>)}</ApplicationCard> : null}
-          <ApplicationCard className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <ApplicationButton disabled={busy} onClick={() => void download()} tone="secondary">{t("下载 Excel 简历")}</ApplicationButton>
-              <ApplicationButton disabled={busy} onClick={() => void contact()} tone="secondary">{t("联系")}</ApplicationButton>
-              <ApplicationButton disabled={busy || !reviewableStatus(selected.status)} onClick={() => void approve()}>{t("审核通过")}</ApplicationButton>
+          <div className="space-y-5 pb-[calc(env(safe-area-inset-bottom,0px)+8rem)]" data-testid="technician-application-detail-content">
+            <ApplicationCard>
+              <dl>
+                <DetailRow label="本人姓名" value={selected.applicantName} />
+                <DetailRow label="联系电话" value={selected.phone} />
+                <DetailRow label="所在城市" value={selected.city} />
+                <DetailRow label="性别" value={selected.gender ? t(selected.gender) : "—"} />
+                <DetailRow label="生日" value={selected.birthDate?.slice(0, 10)} />
+                <DetailRow label="从业年数" value={selected.yearsExperience === null ? "—" : `${selected.yearsExperience} ${t("年")}`} />
+                <DetailRow label="可服务区域" value={selected.serviceAreas.join("、")} />
+                <DetailRow label="擅长项目" value={selected.skills.join("、")} />
+                <DetailRow label="自我介绍" value={selected.bio} />
+              </dl>
+            </ApplicationCard>
+            {selected.media.length ? <ApplicationCard className="grid gap-4 sm:grid-cols-2">{selected.media.map((media) => <figure key={media.id}><ProtectedApplicationImage alt={t(media.purpose === "portrait" ? "本人照片" : "证件照片")} applicationId={selected.applicationId} className="aspect-[4/3]" mediaId={media.id} /><figcaption className="mt-2 text-center text-xs font-bold text-[color:var(--client-muted)]">{t(media.purpose === "portrait" ? "本人照片" : "证件照片")}</figcaption></figure>)}</ApplicationCard> : null}
+            {reviewableStatus(selected.status) ? <ApplicationCard><div className="flex gap-3"><div className="min-w-0 flex-1"><ApplicationField label="驳回原因" required><ApplicationInput onChange={(event) => setRejectionReason(event.target.value)} value={rejectionReason} /></ApplicationField></div><ApplicationButton className="self-end" disabled={busy || !rejectionReason.trim()} onClick={() => void reject()} tone="danger">{t("驳回")}</ApplicationButton></div></ApplicationCard> : null}
+          </div>
+          <ApplicationBottomAction>
+            <div className="grid grid-cols-3 gap-2" data-testid="technician-application-floating-actions">
+              <ApplicationButton className="px-2 text-[11px] sm:text-sm" disabled={busy} onClick={() => void download()} tone="secondary">{t("下载 Excel 简历")}</ApplicationButton>
+              <ApplicationButton className="px-2 text-xs sm:text-sm" disabled={busy} onClick={() => void contact()} tone="secondary">{t("联系")}</ApplicationButton>
+              <ApplicationButton className="px-2 text-xs sm:text-sm" disabled={busy || !reviewableStatus(selected.status)} onClick={() => void approve()}>{t("审核通过")}</ApplicationButton>
             </div>
-            {reviewableStatus(selected.status) ? <div className="flex gap-3"><ApplicationField label="驳回原因" required><ApplicationInput onChange={(event) => setRejectionReason(event.target.value)} value={rejectionReason} /></ApplicationField><ApplicationButton className="self-end" disabled={busy || !rejectionReason.trim()} onClick={() => void reject()} tone="danger">{t("驳回")}</ApplicationButton></div> : null}
-            <ApplicationButton className="w-full" onClick={() => setSelected(null)} tone="secondary">{t("返回申请列表")}</ApplicationButton>
-          </ApplicationCard>
+          </ApplicationBottomAction>
         </>
       )}
     </ReviewShell>

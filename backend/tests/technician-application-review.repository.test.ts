@@ -4,6 +4,30 @@ import { TechnicianApplicationReviewRepository } from "../src/repositories/techn
 const now = new Date("2026-08-26T05:00:00.000Z");
 
 describe("TechnicianApplicationReviewRepository", () => {
+  it("excludes draft and withdrawn applications from the default shop review queue", async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const client = {
+      $transaction: jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations)),
+      identityApplication: { findMany, count }
+    } as unknown as PrismaClient;
+    const repository = new TechnicianApplicationReviewRepository(client);
+
+    await expect(repository.listForShop(21, { page: 1, pageSize: 20 })).resolves.toEqual({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20
+    });
+    const expectedStatus = { in: ["submitted", "under_review", "approved", "rejected"] };
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: expectedStatus })
+    }));
+    expect(count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ status: expectedStatus })
+    });
+  });
+
   it("returns a technician application only through its target shop scope", async () => {
     const identityApplication = {
       findFirst: jest.fn().mockResolvedValue({

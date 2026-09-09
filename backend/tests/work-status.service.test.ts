@@ -110,6 +110,42 @@ function detectorFixture(obligations: unknown[], history: unknown[] = []) {
     incidents
   };
 }
+
+it("rejects starting a work status without an active shop affiliation", async () => {
+  const fixture = detectorFixture([]);
+  const unit = fixture.unit as typeof fixture.unit & {
+    activeService: jest.Mock;
+    cas: jest.Mock;
+    hasActiveAffiliation: jest.Mock;
+    receipt: jest.Mock;
+    snapshot: jest.Mock;
+    state: jest.Mock;
+  };
+  Object.assign(unit, {
+    receipt: jest.fn().mockResolvedValue(null),
+    state: jest.fn().mockResolvedValue({ version: 0, status: "off_duty" }),
+    activeService: jest.fn().mockResolvedValue(null),
+    hasActiveAffiliation: jest.fn().mockResolvedValue(false),
+    cas: jest.fn(),
+    snapshot: jest.fn().mockResolvedValue({
+      technicianProfileId: 12,
+      status: "on_duty",
+      version: 1
+    })
+  });
+
+  await expect(fixture.service.change(actor, {
+    status: "on_duty",
+    expectedVersion: 0,
+    idempotencyKey: "no-shop-on-duty"
+  })).rejects.toMatchObject({
+    statusCode: 403,
+    data: { reason: "shop_required" }
+  });
+  expect(unit.cas).not.toHaveBeenCalled();
+  expect(unit.append).not.toHaveBeenCalled();
+});
+
 it("detects a cross-midnight committed shift once while retaining null actual time", async () => {
   const f = detectorFixture([
     {

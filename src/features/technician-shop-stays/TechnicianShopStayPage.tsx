@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { useCoreReadQuery } from "../core-read/hooks";
@@ -13,17 +13,28 @@ const workStatusLabel = {
 } as const;
 
 export function TechnicianShopStayPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
   const profile = useCoreReadQuery(() => technicianProfileApi.getMine(), []);
+  const returnTo = (
+    location.state as { technicianShopStayReturnTo?: unknown } | null
+  )?.technicianShopStayReturnTo;
+  const returnToPreSwitchPage = () => {
+    if (typeof returnTo === "string" && returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+      navigate(returnTo, { replace: true });
+      return;
+    }
+    navigate("/technician/me");
+  };
 
   return (
     <MobileShell navItems={[]} navPanelStyle="plain" showBottomNav={false}>
       <MobileFullscreenHeader
         maxWidth="880px"
-        onBack={() => navigate("/technician/me")}
-        onClose={() => navigate("/technician/me")}
+        onBack={returnToPreSwitchPage}
+        onClose={() => navigate("/technician", { replace: true })}
         title={t("入住店铺")}
       />
       <main className="mx-auto w-full max-w-[880px] space-y-4 px-4 pb-32 pt-4">
@@ -39,15 +50,17 @@ export function TechnicianShopStayPage() {
         ) : null}
         {profile.data?.shopAccessStatus === "requires_shop" ? (
           <section
-            className="rounded-[22px] border border-amber-500/35 bg-amber-500/10 p-4"
+            aria-atomic="true"
+            className="rounded-[22px] border border-[#ff4d5e] bg-[#26060b] p-4 text-white shadow-[0_12px_32px_rgba(255,36,64,0.26)]"
             data-testid="technician-shop-required-notice"
+            role="alert"
           >
-            <h2 className="text-base font-black text-[color:var(--client-text)]">
+            <h2 className="text-base font-black text-white">
               {t("需要入住店铺")}
             </h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
+            <p className="mt-2 text-sm font-semibold leading-6 text-[#ffd6dc]">
               {t(
-                "当前没有有效合作店铺，技师身份已暂停工作功能。提交申请并由店铺通过后即可继续使用。",
+                "当前没有有效合作店铺。你仍可进入技师端查看内容；提交入住申请并经店铺通过后，才可开启出勤、可排班和手动预约。",
               )}
             </p>
           </section>

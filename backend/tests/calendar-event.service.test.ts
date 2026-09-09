@@ -43,6 +43,7 @@ const payload: CalendarEventPayload = {
 
 const repository = (): jest.Mocked<CalendarEventRepositoryPort> => ({
   list: jest.fn(),
+  listParticipantBusy: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   remove: jest.fn(),
@@ -115,6 +116,48 @@ describe("CalendarEventService", () => {
     );
   });
 
+  it("returns only contact-authorized participant busy ranges", async () => {
+    const calendarRepository = repository();
+    calendarRepository.listParticipantBusy.mockResolvedValue({
+      outcome: "ok",
+      list: [{
+        participantIdentityId: 21,
+        startsAt: "2026-09-09T09:00:00.000Z",
+        endsAt: "2026-09-09T10:00:00.000Z",
+        status: "locked",
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+    const service = new CalendarEventService(calendarRepository, audit);
+
+    await expect(service.listParticipantBusy(actor("customer"), {
+      participantIdentityIds: [21],
+      from: new Date("2026-09-09T00:00:00.000Z"),
+      to: new Date("2026-09-10T00:00:00.000Z"),
+      page: 1,
+      pageSize: 20,
+    })).resolves.toMatchObject({ total: 1 });
+    expect(calendarRepository.listParticipantBusy).toHaveBeenCalledWith(
+      expect.objectContaining({ viewerIdentityId: 17, participantIdentityIds: [21] }),
+    );
+  });
+
+  it("rejects participant busy reads when any identity is not a current contact", async () => {
+    const calendarRepository = repository();
+    calendarRepository.listParticipantBusy.mockResolvedValue({ outcome: "forbidden" });
+    const service = new CalendarEventService(calendarRepository, audit);
+
+    await expect(service.listParticipantBusy(actor("customer"), {
+      participantIdentityIds: [999],
+      from: new Date("2026-09-09T00:00:00.000Z"),
+      to: new Date("2026-09-10T00:00:00.000Z"),
+      page: 1,
+      pageSize: 20,
+    })).rejects.toMatchObject({ statusCode: 403 });
+  });
+
   it("shares the customer calendar with the affiliate identity through the personal scope resolver", async () => {
     const calendarRepository = repository();
     calendarRepository.list.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 });
@@ -179,4 +222,3 @@ describe("CalendarEventService", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 });
-

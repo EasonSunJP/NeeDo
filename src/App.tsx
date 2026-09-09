@@ -967,11 +967,23 @@ function RequireTechnicianShopStay({ children }: { children: ReactElement }) {
   const location = useLocation();
   const { session } = useAuth();
   const { language } = useI18n();
+  const navigationState = location.state as {
+    settingsPortalTarget?: string;
+    settingsReturnTo?: string;
+    settingsSwitchedFromPortal?: boolean;
+  } | null;
   const isShopStayRoute = location.pathname.startsWith("/technician/shop-stays");
-  const [status, setStatus] = useState<"loading" | "active" | "requires_shop" | "error">(isShopStayRoute ? "active" : "loading");
+  const isTechnicianSwitchEntry = Boolean(
+    navigationState?.settingsSwitchedFromPortal &&
+      navigationState.settingsPortalTarget === "technician"
+  );
+  const shouldCheckTechnicianShopStay = isTechnicianSwitchEntry && !isShopStayRoute;
+  const [status, setStatus] = useState<"loading" | "active" | "requires_shop" | "error">(
+    shouldCheckTechnicianShopStay ? "loading" : "active"
+  );
 
   useEffect(() => {
-    if (isShopStayRoute) {
+    if (!shouldCheckTechnicianShopStay) {
       setStatus("active");
       return;
     }
@@ -987,10 +999,18 @@ function RequireTechnicianShopStay({ children }: { children: ReactElement }) {
     return () => {
       current = false;
     };
-  }, [isShopStayRoute, session?.currentIdentity.id]);
+  }, [session?.currentIdentity.id, shouldCheckTechnicianShopStay]);
 
-  if (isShopStayRoute || status === "active") return children;
-  if (status === "requires_shop") return <Navigate replace to="/technician/shop-stays" />;
+  if (!shouldCheckTechnicianShopStay || status === "active") return children;
+  if (status === "requires_shop") {
+    return (
+      <Navigate
+        replace
+        state={{ technicianShopStayReturnTo: navigationState?.settingsReturnTo }}
+        to="/technician/shop-stays"
+      />
+    );
+  }
   if (status === "loading") return null;
   return (
     <main className="grid min-h-screen place-items-center bg-paper px-6 text-center text-ink">

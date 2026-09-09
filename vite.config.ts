@@ -242,6 +242,10 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "vendor";
   }
 
+  if (normalizedId.endsWith("/src/components/scheduling/UnifiedUserCalendar.tsx")) {
+    return "unified-calendar";
+  }
+
   if (normalizedId.endsWith("/src/features/identity-applications/i18n.ts")) {
     return "identity-applications-i18n";
   }

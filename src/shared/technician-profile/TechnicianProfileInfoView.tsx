@@ -51,7 +51,7 @@ export function TechnicianReviewTagSummaryView({ model }: { model: TechnicianPro
 
   return (
     <>
-      <section className={cn(panelClassName, "p-3")} data-testid="technician-info-special-tags">
+      <section className="px-0.5 py-1" data-testid="technician-info-special-tags">
         <p className={cn("text-xs font-bold", mutedClassName)}>特殊标签</p>
         <div aria-label="评价特殊标签" className="social-profile-review-stamps mt-2 grid grid-cols-4 gap-1 px-0.5 pt-1.5" role="list">
           {fixedReviewStampFallbacks.map((fallback, index) => {

@@ -73,7 +73,7 @@ export class TechnicianApplicationReviewRepository implements TechnicianApplicat
     const where: Prisma.IdentityApplicationWhereInput = {
       type: "technician",
       deletedAt: null,
-      status: query.status ?? { in: ["submitted", "under_review", "approved", "rejected", "withdrawn"] },
+      status: query.status ?? { in: ["submitted", "under_review", "approved", "rejected"] },
       technicianDetail: { targetShopId: shopId, deletedAt: null }
     };
     const [rows, total] = await this.client.$transaction([
