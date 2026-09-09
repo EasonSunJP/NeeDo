@@ -230,4 +230,81 @@ describe("ShopAnalyticsDashboard formal API", () => {
       .map((element) => element.textContent);
     expect(metricValues).toEqual(["￥128,000", "3", "6", "—", "18", "—"]);
   });
+
+  it("renders technician-style peak context and a visible node for every formal bucket", async () => {
+    const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("128,000"));
+
+    expect(container.textContent).toContain("同一期间 · 双独立刻度");
+    expect(container.textContent).toContain("￥70,000 峰值");
+    expect(container.textContent).toContain("5单 峰值");
+    expect(
+      container.querySelectorAll('[data-series="revenue"] [data-chart-node="true"]')
+    ).toHaveLength(dashboard.series.buckets.length);
+    expect(
+      container.querySelectorAll('[data-series="orders"] [data-chart-node="true"]')
+    ).toHaveLength(dashboard.series.buckets.length);
+  });
+
+  it("lets each bottom legend hide and restore only its own series", async () => {
+    const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("128,000"));
+
+    const revenueLegend = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="隐藏营业额趋势"]'
+    );
+    const ordersLegend = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="隐藏订单数趋势"]'
+    );
+    expect(revenueLegend?.getAttribute("aria-pressed")).toBe("true");
+    expect(ordersLegend?.getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => revenueLegend?.click());
+    expect(container.querySelector('[data-series="revenue"]')).toBeNull();
+    expect(container.querySelector('[data-series="orders"]')).not.toBeNull();
+    expect(revenueLegend?.getAttribute("aria-label")).toBe("显示营业额趋势");
+
+    await act(async () => revenueLegend?.click());
+    await act(async () => ordersLegend?.click());
+    expect(container.querySelector('[data-series="revenue"]')).not.toBeNull();
+    expect(container.querySelector('[data-series="orders"]')).toBeNull();
+    expect(ordersLegend?.getAttribute("aria-label")).toBe("显示订单数趋势");
+  });
+
+  it("centers a single zero-value bucket and keeps both nodes on the baseline", async () => {
+    const zeroDashboard: BackofficeDashboardPayload = {
+      ...dashboard,
+      series: {
+        buckets: [{
+          ...dashboard.series.buckets[0]!,
+          key: "2026-09-06",
+          label: "9/6",
+          orderCount: 0,
+          serviceGmvJpy: 0
+        }]
+      }
+    };
+    const loadDashboard = vi.fn().mockResolvedValue(zeroDashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("￥0 峰值"));
+
+    const nodes = container.querySelectorAll<SVGCircleElement>('[data-chart-node="true"]');
+    expect(nodes).toHaveLength(2);
+    nodes.forEach((node) => {
+      expect(node.getAttribute("cx")).toBe("319");
+      expect(node.getAttribute("cy")).toBe("206");
+    });
+    expect(container.textContent).toContain("0单 峰值");
+  });
 });

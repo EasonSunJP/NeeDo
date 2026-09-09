@@ -7,6 +7,7 @@ import {
 } from "../../api/backofficeRealData";
 import type { Customer, Order, Settlement, Store, Technician } from "../../types/domain";
 import { cn, yen } from "../../lib/utils";
+import { buildTrendCoordinates } from "../../lib/technicianWorkTrendChart";
 
 type ShopDashboardLoader = typeof backofficeRealDataApi.dashboard;
 
@@ -34,32 +35,43 @@ function formatCount(value: number) {
   return Math.round(value).toLocaleString("zh-CN");
 }
 
-function buildLinePath(
-  buckets: DashboardBucketPayload[],
-  readValue: (bucket: DashboardBucketPayload) => number
-) {
-  if (buckets.length === 0) return "";
-  const width = 320;
-  const height = 128;
-  const insetX = 12;
-  const insetY = 14;
-  const plotWidth = width - insetX * 2;
-  const plotHeight = height - insetY * 2;
-  const maximum = Math.max(1, ...buckets.map(readValue));
+const shopTrendDimensions = { width: 620, height: 260, left: 42, right: 24, top: 24, bottom: 54 };
 
-  return buckets
-    .map((bucket, index) => {
-      const x = insetX + (plotWidth * index) / Math.max(1, buckets.length - 1);
-      const y = insetY + plotHeight - (readValue(bucket) / maximum) * plotHeight;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
+function pointsAttribute(points: Array<{ x: number; y: number }>) {
+  return points.map(({ x, y }) => `${x},${y}`).join(" ");
+}
+
+function buildShopTrendCoordinates(values: number[]) {
+  const coordinates = buildTrendCoordinates(values, shopTrendDimensions);
+  if (coordinates.length !== 1) return coordinates;
+  const plotWidth = shopTrendDimensions.width - shopTrendDimensions.left - shopTrendDimensions.right;
+  return [{ ...coordinates[0]!, x: shopTrendDimensions.left + plotWidth / 2 }];
 }
 
 function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) {
-  const visibleLabels = buckets.length <= 8
-    ? buckets
-    : buckets.filter((_, index) => index === 0 || index === buckets.length - 1 || index % Math.ceil(buckets.length / 6) === 0);
+  const [showRevenue, setShowRevenue] = useState(true);
+  const [showOrders, setShowOrders] = useState(true);
+  const revenueCoordinates = useMemo(
+    () => buildShopTrendCoordinates(buckets.map((bucket) => bucket.serviceGmvJpy)),
+    [buckets]
+  );
+  const orderCoordinates = useMemo(
+    () => buildShopTrendCoordinates(buckets.map((bucket) => bucket.orderCount)),
+    [buckets]
+  );
+  const visibleLabelIndexes = useMemo(() => {
+    const interval = Math.ceil(buckets.length / 6);
+    return new Set(
+      buckets.flatMap((_, index) => (
+        buckets.length <= 8 || index === 0 || index === buckets.length - 1 || index % interval === 0
+          ? [index]
+          : []
+      ))
+    );
+  }, [buckets]);
+  const revenuePeak = Math.max(...buckets.map((bucket) => bucket.serviceGmvJpy), 0);
+  const orderPeak = Math.max(...buckets.map((bucket) => bucket.orderCount), 0);
+  const usableHeight = shopTrendDimensions.height - shopTrendDimensions.top - shopTrendDimensions.bottom;
 
   if (buckets.length === 0) {
     return (
@@ -71,56 +83,85 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
 
   return (
     <div className="min-w-0 overflow-hidden" data-testid="shop-analytics-trend">
-      <div className="mb-3 flex flex-wrap items-center gap-4 text-[11px] font-black text-[color:var(--client-muted)]">
-        <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[color:var(--client-primary)]" />营业额</span>
-        <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rotate-45 bg-[color:var(--client-accent)]" />订单数</span>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-[17px] font-black">订单趋势</h3>
+          <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
+            同一期间 · 双独立刻度
+          </p>
+        </div>
+        <div className="shrink-0 text-right text-[11px] font-black text-[color:var(--client-muted)]">
+          <p>{yen(revenuePeak)} 峰值</p>
+          <p className="mt-1 text-[color:var(--client-accent)]">{formatCount(orderPeak)}单 峰值</p>
+        </div>
       </div>
-      <div className="rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-bg)_72%,var(--client-primary)_8%)] px-2 pt-2">
+
+      <div className="mt-3 overflow-x-auto">
         <svg
           aria-label="订单趋势"
-          className="block h-auto w-full"
-          preserveAspectRatio="none"
+          className="h-auto min-w-[520px] overflow-visible"
           role="img"
-          viewBox="0 0 320 128"
+          viewBox={`0 0 ${shopTrendDimensions.width} ${shopTrendDimensions.height}`}
         >
-          {[24, 48, 72, 96].map((y) => (
-            <line
-              key={y}
-              stroke="color-mix(in srgb, var(--client-line) 72%, transparent)"
-              strokeDasharray="3 6"
-              vectorEffect="non-scaling-stroke"
-              x1="12"
-              x2="308"
-              y1={y}
-              y2={y}
-            />
-          ))}
-          <path
-            d={buildLinePath(buckets, (bucket) => bucket.serviceGmvJpy)}
-            data-series="revenue"
-            fill="none"
-            stroke="var(--client-primary)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="3"
-            vectorEffect="non-scaling-stroke"
-          />
-          <path
-            d={buildLinePath(buckets, (bucket) => bucket.orderCount)}
-            data-series="orders"
-            fill="none"
-            stroke="var(--client-accent)"
-            strokeDasharray="7 5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.5"
-            vectorEffect="non-scaling-stroke"
-          />
+          {Array.from({ length: 4 }, (_, index) => {
+            const y = shopTrendDimensions.top + (usableHeight / 3) * index;
+            return (
+              <line
+                key={y}
+                stroke="color-mix(in srgb, var(--client-line) 55%, transparent)"
+                strokeDasharray="6 8"
+                x1={shopTrendDimensions.left}
+                x2={shopTrendDimensions.width - shopTrendDimensions.right}
+                y1={y}
+                y2={y}
+              />
+            );
+          })}
+          {showRevenue ? (
+            <g data-series="revenue">
+              <polyline fill="none" points={pointsAttribute(revenueCoordinates)} stroke="var(--client-primary)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" />
+              {revenueCoordinates.map((coordinate, index) => (
+                <circle cx={coordinate.x} cy={coordinate.y} data-chart-node="true" fill="var(--client-bg)" key={buckets[index]?.key} r="6" stroke="var(--client-primary)" strokeWidth="4" />
+              ))}
+            </g>
+          ) : null}
+          {showOrders ? (
+            <g data-series="orders">
+              <polyline fill="none" points={pointsAttribute(orderCoordinates)} stroke="var(--client-accent)" strokeDasharray="10 9" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+              {orderCoordinates.map((coordinate, index) => (
+                <circle cx={coordinate.x} cy={coordinate.y} data-chart-node="true" fill="var(--client-bg)" key={buckets[index]?.key} r="5" stroke="var(--client-accent)" strokeWidth="3" />
+              ))}
+            </g>
+          ) : null}
+          {revenueCoordinates.map((coordinate, index) => visibleLabelIndexes.has(index) ? (
+            <text fill="var(--client-muted)" fontSize="13" fontWeight="800" key={buckets[index]?.key} textAnchor="middle" x={coordinate.x} y={shopTrendDimensions.height - 18}>
+              {buckets[index]?.label}
+            </text>
+          ) : null)}
         </svg>
       </div>
-      <div className="mt-2 flex justify-between gap-2 overflow-hidden text-[10px] font-bold text-[color:var(--client-soft-muted)]" data-no-i18n>
-        {visibleLabels.map((bucket) => <span className="truncate" key={bucket.key}>{bucket.label}</span>)}
+
+      <div aria-label="订单趋势图例" className="mt-2 grid grid-cols-2 gap-2">
+        <button
+          aria-label={`${showRevenue ? "隐藏" : "显示"}营业额趋势`}
+          aria-pressed={showRevenue}
+          className={cn("focus-ring flex min-h-11 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black", showRevenue ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]" : "border-[color:var(--client-line)] text-[color:var(--client-muted)] opacity-65")}
+          onClick={() => setShowRevenue((current) => !current)}
+          type="button"
+        >
+          <span className="h-1 w-7 rounded-full bg-[color:var(--client-primary)]" />营业额
+        </button>
+        <button
+          aria-label={`${showOrders ? "隐藏" : "显示"}订单数趋势`}
+          aria-pressed={showOrders}
+          className={cn("focus-ring flex min-h-11 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black", showOrders ? "border-[color:color-mix(in_srgb,var(--client-accent)_65%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-accent)_10%,transparent)] text-[color:var(--client-accent)]" : "border-[color:var(--client-line)] text-[color:var(--client-muted)] opacity-65")}
+          onClick={() => setShowOrders((current) => !current)}
+          type="button"
+        >
+          <span className="h-1 w-7 rounded-full bg-[color:var(--client-accent)]" />订单数
+        </button>
       </div>
+
       <table className="sr-only" data-no-i18n>
         <caption>订单趋势</caption>
         <thead><tr><th>时段</th><th>营业额</th><th>订单数</th></tr></thead>
@@ -242,12 +283,11 @@ export function ShopAnalyticsDashboard({
           <div className="grid grid-cols-2 gap-2">
             {metricTiles.map((metric) => <MetricTile key={metric.label} {...metric} />)}
           </div>
-          <section className="shop-analytics-chart-panel min-w-0 overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] p-4 text-[color:var(--client-text)] shadow-panel">
-            <h3 className="text-[17px] font-black">订单趋势</h3>
-            <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]" data-no-i18n>
+          <section className="shop-analytics-chart-panel min-w-0 overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_12%,transparent),transparent_40%),linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)),color-mix(in_srgb,var(--client-elevated)_72%,var(--client-bg)))] p-4 text-[color:var(--client-text)] shadow-panel">
+            <ShopAnalyticsTrend buckets={dashboard.series.buckets} />
+            <p className="mt-3 text-center text-[10px] font-bold text-[color:var(--client-soft-muted)]" data-no-i18n>
               {dashboard.filter.from} - {dashboard.filter.to}
             </p>
-            <div className="mt-4"><ShopAnalyticsTrend buckets={dashboard.series.buckets} /></div>
           </section>
         </>
       ) : null}
