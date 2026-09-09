@@ -80,6 +80,7 @@ export function MobileFullscreenHeader({
   onBack,
   onClose,
   action,
+  overlay,
   footer,
   dark = false,
   className,
@@ -98,6 +99,7 @@ export function MobileFullscreenHeader({
   onBack?: () => void;
   onClose?: () => void;
   action?: ReactNode;
+  overlay?: ReactNode;
   footer?: ReactNode;
   dark?: boolean;
   className?: string;
@@ -123,6 +125,7 @@ export function MobileFullscreenHeader({
       className="gap-0"
       frameClassName="z-40"
       maxWidth={maxWidth ?? "480px"}
+      overlay={overlay}
       panelClassName={cn(dark ? mobileFullscreenHeaderDarkSurfaceClassName : mobileFullscreenHeaderSurfaceClassName, className)}
       showSpacer={showSpacer}
       spacerGapPx={0}
