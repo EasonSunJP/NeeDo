@@ -36,6 +36,8 @@ import {
   persistImContactCardInTransaction
 } from "./im-contact-card-send.transaction";
 
+const PUBLISHED_STATUS = "published";
+
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
 export type MessageRecallModePayload = "standard" | "traceless";
@@ -477,7 +479,6 @@ export interface CreateNeedoEntityShareInput {
   actorUserId: number;
   actorIdentityId: number;
   conversationId: number;
-  recipientIdentityId: number;
   target: ResolvedEntityTarget;
   idempotencyKey: string;
   requestFingerprint: string;
@@ -1641,18 +1642,37 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           };
         }
 
-        const recipient = await tx.conversationParticipant.findFirst({
+        const actorParticipant = await tx.conversationParticipant.findFirst({
           where: {
             conversationId: input.conversationId,
-            identityId: input.recipientIdentityId,
+            identityId: input.actorIdentityId,
             deletedAt: null,
             conversation: { deletedAt: null }
           },
-          select: { userId: true, identityId: true }
+          select: {
+            conversation: {
+              select: {
+                type: true,
+                participants: {
+                  where: { deletedAt: null },
+                  select: { userId: true, identityId: true }
+                }
+              }
+            }
+          }
         });
-        if (!recipient || recipient.identityId === input.actorIdentityId) {
+        if (!actorParticipant) return { status: "not_found" };
+        const isDirect = actorParticipant.conversation.type === ConversationType.DIRECT;
+        const recipient = isDirect
+          ? actorParticipant.conversation.participants.find(
+              (participant) => participant.identityId !== input.actorIdentityId
+            )
+          : null;
+        if (isDirect && !recipient) {
           return { status: "recipient_not_found" };
         }
+
+        const snapshot = await this.buildEntityShareMetadata(tx, input.target);
 
         const messageOutcome = await persistImMessageInTransaction(tx, {
           conversationId: input.conversationId,
@@ -1660,11 +1680,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           senderIdentityId: input.actorIdentityId,
           type: MessageType.SYSTEM,
           content: input.target.publicId,
-          metadata: {
-            needoMessageType: "entity-share",
-            targetType: input.target.targetType,
-            publicId: input.target.publicId
-          },
+          metadata: snapshot,
           transactionNow: new Date()
         });
         if (messageOutcome.status !== "created") {
@@ -1677,9 +1693,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             actorIdentityId: input.actorIdentityId,
             shopId: input.target.shopId,
             technicianProfileId: input.target.technicianProfileId,
+            serviceId: input.target.serviceId,
+            technicianServiceId: input.target.technicianServiceId,
             channel: "NEEDO_MESSAGE",
-            recipientUserId: recipient.userId,
-            recipientIdentityId: recipient.identityId,
+            recipientUserId: recipient?.userId ?? null,
+            recipientIdentityId: recipient?.identityId ?? null,
             conversationId: input.conversationId,
             messageId: messageOutcome.message.id,
             idempotencyKey: input.idempotencyKey,
@@ -2404,11 +2422,14 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return this.clearConversationHistory(input, false);
   }
 
-  private async clearConversationHistory(input: {
-    conversationId: number;
-    userId: number;
-    identityId?: number;
-  }, hide: boolean): Promise<ConversationPayload | null> {
+  private async clearConversationHistory(
+    input: {
+      conversationId: number;
+      userId: number;
+      identityId?: number;
+    },
+    hide: boolean
+  ): Promise<ConversationPayload | null> {
     const cleared = await this.client.$transaction(async (tx) => {
       const participant = await tx.conversationParticipant.findFirst({
         where: {
@@ -2637,11 +2658,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     return buildPaginatedResponse(
       list.map((user) =>
-        this.mapParticipant(
-          user,
-          undefined,
-          this.findCanonicalParticipantIdentity(user.identities)
-        )
+        this.mapParticipant(user, undefined, this.findCanonicalParticipantIdentity(user.identities))
       ),
       total,
       pagination
@@ -3026,17 +3043,18 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     if (!user) {
       return null;
     }
-    const contextContact = targetIdentityId === null
-      ? await this.client.contact.findFirst({
-          where: {
-            ownerIdentityId: viewerIdentityId,
-            contactUserId: targetUserId,
-            deletedAt: null
-          },
-          select: { id: true, contactIdentityId: true, blockedAt: true },
-          orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
-        })
-      : null;
+    const contextContact =
+      targetIdentityId === null
+        ? await this.client.contact.findFirst({
+            where: {
+              ownerIdentityId: viewerIdentityId,
+              contactUserId: targetUserId,
+              deletedAt: null
+            },
+            select: { id: true, contactIdentityId: true, blockedAt: true },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+          })
+        : null;
     const resolvedTargetIdentityId =
       targetIdentityId ??
       contextContact?.contactIdentityId ??
@@ -3973,8 +3991,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   public async setSocialPostPin(input: SetSocialPostPinInput): Promise<SocialPostPayload | null> {
     return this.client.$transaction(async (transaction) => {
-      const authorIdentityId = input.authorIdentityId ??
-        await this.findCanonicalIdentityId(transaction, input.authorUserId);
+      const authorIdentityId =
+        input.authorIdentityId ??
+        (await this.findCanonicalIdentityId(transaction, input.authorUserId));
       if (!authorIdentityId) {
         throw new AppError({
           code: ERROR_CODES.IDENTITY_NOT_FOUND,
@@ -5497,10 +5516,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
     const participantByIdentityId = new Map(
       identities.map(
-        (identity) => [
-          identity.id,
-          this.mapParticipant(identity.user, undefined, identity)
-        ] as const
+        (identity) =>
+          [identity.id, this.mapParticipant(identity.user, undefined, identity)] as const
       )
     );
     const peerByConversationId = new Map<number, ParticipantPayload>();
@@ -5577,11 +5594,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       ownerIdentityId: contact.ownerIdentityId,
       contactUserId: contact.contactUserId,
       contactIdentityId: contact.contactIdentityId,
-      contactUser: this.mapParticipant(
-        contact.contactUser,
-        undefined,
-        contact.contactIdentity
-      ),
+      contactUser: this.mapParticipant(contact.contactUser, undefined, contact.contactIdentity),
       nickname: contact.nickname,
       source: contact.source,
       isBlocked: contact.blockedAt !== null,
@@ -5631,9 +5644,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   private findCanonicalParticipantIdentity<T extends { type: string }>(
     identities: T[]
   ): T | undefined {
-    return identities.find((identity) =>
-      ["customer", "user", "u"].includes(identity.type.toLowerCase())
-    ) ?? identities[0];
+    return (
+      identities.find((identity) =>
+        ["customer", "user", "u"].includes(identity.type.toLowerCase())
+      ) ?? identities[0]
+    );
   }
 
   private async buildDirectoryIdentityCard(
@@ -6191,9 +6206,225 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   private entityShareTargetWhere(target: ResolvedEntityTarget): Prisma.EntityShareEventWhereInput {
-    return target.targetType === "shop"
-      ? { shopId: target.shopId }
-      : { technicianProfileId: target.technicianProfileId };
+    if (target.targetType === "shop") return { shopId: target.shopId };
+    if (target.targetType === "technician") {
+      return { technicianProfileId: target.technicianProfileId };
+    }
+    if (target.targetType === "service") return { serviceId: target.serviceId };
+    return { technicianServiceId: target.technicianServiceId };
+  }
+
+  private async buildEntityShareMetadata(
+    tx: Prisma.TransactionClient,
+    target: ResolvedEntityTarget
+  ): Promise<Prisma.InputJsonValue> {
+    if (target.targetType === "service") {
+      const service = await tx.service.findFirstOrThrow({
+        where: { id: target.serviceId as number, deletedAt: null, status: PUBLISHED_STATUS },
+        select: {
+          publicId: true,
+          name: true,
+          description: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true,
+          city: true,
+          category: { select: { name: true } },
+          shop: {
+            select: { name: true, address: true, publicIdentifier: { select: { publicId: true } } }
+          },
+          mediaAssets: {
+            where: { deletedAt: null, isActive: true, usageType: "cover" },
+            select: { url: true },
+            take: 1
+          },
+          _count: {
+            select: {
+              bookingOrders: { where: { status: "COMPLETED", deletedAt: null } },
+              entityFavorites: { where: { deletedAt: null } },
+              entityShareEvents: { where: { deletedAt: null } }
+            }
+          }
+        }
+      });
+      return {
+        needoMessageType: "service-card",
+        needoMessageExt: {
+          serviceCard: {
+            serviceId: service.publicId,
+            name: service.name,
+            cover: service.mediaAssets[0]?.url ?? "",
+            summary: service.description ?? "",
+            priceLabel: `${service.currency} ${service.priceAmount}`,
+            durationLabel: `${service.durationMinutes}分钟`,
+            providerName: service.shop.name,
+            providerId: service.shop.publicIdentifier?.publicId ?? undefined,
+            providerType: "store",
+            href: `/services/${service.publicId}`,
+            tags: [service.category.name, service.city],
+            priceAmount: Number(service.priceAmount),
+            currency: service.currency,
+            durationMinutes: service.durationMinutes,
+            usageCount: service._count.bookingOrders,
+            favoriteCount: service._count.entityFavorites,
+            shareCount: service._count.entityShareEvents + 1,
+            isBookable: true,
+            shopAddress: service.shop.address,
+            targetType: "service"
+          }
+        }
+      } as Prisma.InputJsonValue;
+    }
+    if (target.targetType === "technician_service") {
+      const service = await tx.technicianService.findFirstOrThrow({
+        where: {
+          id: target.technicianServiceId as number,
+          deletedAt: null,
+          isActive: true,
+          reviewStatus: "APPROVED"
+        },
+        select: {
+          publicId: true,
+          name: true,
+          description: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true,
+          coverImageUrl: true,
+          tagsJson: true,
+          isBookable: true,
+          shop: {
+            select: { name: true, address: true, publicIdentifier: { select: { publicId: true } } }
+          },
+          technicianProfile: { select: { displayName: true } },
+          _count: {
+            select: {
+              bookingOrders: { where: { status: "COMPLETED", deletedAt: null } },
+              entityFavorites: { where: { deletedAt: null } },
+              entityShareEvents: { where: { deletedAt: null } }
+            }
+          }
+        }
+      });
+      return {
+        needoMessageType: "service-card",
+        needoMessageExt: {
+          serviceCard: {
+            serviceId: service.publicId,
+            name: service.name,
+            cover: service.coverImageUrl ?? "",
+            summary: service.description ?? "",
+            priceLabel: `${service.currency} ${service.priceAmount}`,
+            durationLabel: `${service.durationMinutes}分钟`,
+            providerName: service.technicianProfile.displayName,
+            providerId: service.shop?.publicIdentifier?.publicId ?? undefined,
+            providerType: "technician",
+            href: `/technician-services/${service.publicId}`,
+            tags: this.jsonStringArray(service.tagsJson),
+            priceAmount: service.priceAmount,
+            currency: service.currency,
+            durationMinutes: service.durationMinutes,
+            usageCount: service._count.bookingOrders,
+            favoriteCount: service._count.entityFavorites,
+            shareCount: service._count.entityShareEvents + 1,
+            isBookable: service.isBookable,
+            shopAddress: service.shop?.address ?? null,
+            targetType: "technician_service"
+          }
+        }
+      } as Prisma.InputJsonValue;
+    }
+    if (target.targetType === "shop") {
+      const shop = await tx.shop.findFirstOrThrow({
+        where: { id: target.shopId as number, deletedAt: null, status: PUBLISHED_STATUS },
+        select: {
+          name: true,
+          address: true,
+          description: true,
+          mediaAssets: {
+            where: { deletedAt: null, isActive: true, usageType: "cover" },
+            select: { url: true },
+            take: 1
+          },
+          reviewSummary: { select: { ratingAverage: true, reviewCount: true } },
+          _count: {
+            select: {
+              entityFavorites: { where: { deletedAt: null } },
+              entityShareEvents: { where: { deletedAt: null } }
+            }
+          }
+        }
+      });
+      return {
+        needoMessageType: "shop-card",
+        needoMessageExt: {
+          shopCard: {
+            publicId: target.publicId,
+            name: shop.name,
+            imageUrl: shop.mediaAssets[0]?.url ?? null,
+            description: shop.description,
+            address: shop.address,
+            rating: Number(shop.reviewSummary?.ratingAverage ?? 0),
+            reviewCount: shop.reviewSummary?.reviewCount ?? 0,
+            favoriteCount: shop._count.entityFavorites,
+            shareCount: shop._count.entityShareEvents + 1,
+            tags: []
+          }
+        }
+      } as Prisma.InputJsonValue;
+    }
+    const technician = await tx.technicianProfile.findFirstOrThrow({
+      where: {
+        id: target.technicianProfileId as number,
+        deletedAt: null,
+        status: PUBLISHED_STATUS,
+        visibility: "public"
+      },
+      select: {
+        displayName: true,
+        bio: true,
+        languages: true,
+        mediaAssets: {
+          where: { deletedAt: null, isActive: true, usageType: "avatar" },
+          select: { url: true },
+          take: 1
+        },
+        reviewSummary: { select: { ratingAverage: true } },
+        performanceSummary: { select: { completedOrderCount: true } },
+        _count: {
+          select: {
+            entityFavorites: { where: { deletedAt: null } },
+            entityShareEvents: { where: { deletedAt: null } }
+          }
+        }
+      }
+    });
+    return {
+      needoMessageType: "technician-card",
+      needoMessageExt: {
+        technicianCard: {
+          publicId: target.publicId,
+          name: technician.displayName,
+          imageUrl: technician.mediaAssets[0]?.url ?? null,
+          description: technician.bio,
+          languages: this.jsonStringArray(technician.languages),
+          rating: Number(technician.reviewSummary?.ratingAverage ?? 0),
+          completedOrderCount: technician.performanceSummary?.completedOrderCount ?? 0,
+          favoriteCount: technician._count.entityFavorites,
+          shareCount: technician._count.entityShareEvents + 1,
+          tags: [],
+          specialReviewTags: []
+        }
+      }
+    } as Prisma.InputJsonValue;
+  }
+
+  private jsonStringArray(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value
+          .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          .slice(0, 8)
+      : [];
   }
 
   private entityShareReceipt(

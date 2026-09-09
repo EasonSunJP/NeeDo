@@ -163,7 +163,7 @@ export function TechnicianProfileInfoView({ className, model, privacySlot, servi
       <section className="space-y-3" data-testid="technician-profile-services">
         <h2 className="px-1 text-lg font-black text-[color:var(--client-text)]">服务信息</h2>
         {model.services.length > 0 ? model.services.map((service, index) => (
-          <UnifiedServiceInfoCard actionSlot={serviceAction?.(service, index)} data={service} key={service.id} variant="showcase" />
+          <UnifiedServiceInfoCard actionSlot={serviceAction?.(service, index)} data={service} key={service.id} />
         )) : <p className={cn("px-1 text-sm font-bold", mutedClassName)}>暂无服务信息</p>}
       </section>
     </div>

@@ -412,12 +412,11 @@ describe("ExchangePostDetailPage", () => {
     await waitFor(() => expect(document.body.textContent).toContain("深层放松护理"));
 
     expect(document.body.querySelector('[data-testid="exchange-intelligence-publisher-card"]')).not.toBeNull();
-    expect(document.body.querySelector('[data-testid="unified-service-info-card"]')).not.toBeNull();
-    expect(document.body.textContent).toContain("shop0000000061");
+    expect(document.body.querySelector('[data-testid="unified-info-card"][data-card-kind="service"]')).not.toBeNull();
     expect(document.body.textContent).toContain("4.8");
     expect(document.body.textContent).toContain("126");
     expect(document.body.textContent).toContain("￥9,800");
-    expect(document.body.textContent).toContain("￥12,250");
+    expect(document.body.textContent).not.toContain("￥12,250");
     expect(document.body.textContent).toContain("90分钟");
     expect(document.body.querySelector('a[href="/profiles/shop/shop0000000061"]')).not.toBeNull();
     expect(document.body.querySelector('a[href="/services/service0000000701"]')).not.toBeNull();
@@ -434,11 +433,7 @@ describe("ExchangePostDetailPage", () => {
     await renderDetail("/needo/posts/62");
     await waitFor(() => expect(document.body.textContent).toContain("佐藤 真央"));
 
-    expect(document.body.textContent).toContain("s0000000062");
-    expect(document.body.textContent).toContain("GINZA Calm Body Lab");
-    expect(document.body.textContent).toContain("8年");
     expect(document.body.textContent).toContain("352");
-    expect(document.body.textContent).toContain("97.5%");
     expect(document.body.textContent).toContain("日本語");
     expect(document.body.querySelector('a[href="/profiles/technician/s0000000062"]')).not.toBeNull();
 
@@ -498,7 +493,7 @@ describe("ExchangePostDetailPage", () => {
 
     expect(document.body.textContent).toContain("Service post details");
     expect(document.body.textContent).toContain("Service posts");
-    expect(document.body.textContent).toContain("Merchant");
+    expect(document.body.textContent).toContain("Rating");
     expect(document.body.textContent).not.toContain("merchant_owner");
     expect(document.body.textContent).not.toContain("情报");
   });

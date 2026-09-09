@@ -63,6 +63,10 @@ describe("unified service-card mappers", () => {
       currency: "JPY",
       durationMinutes: 60,
       usageCount: 18,
+      favoriteCount: 27,
+      shareCount: 6,
+      isBookable: true,
+      distanceKm: 1.24,
       coverUrl: "/service.jpg",
       reviewSummary: { highlights: ["可中文沟通", "女性技师可选"] }
     } as CoreServiceCard;
@@ -75,6 +79,11 @@ describe("unified service-card mappers", () => {
       currency: "JPY",
       durationMinutes: 60,
       usageCount: 18,
+      engagementTarget: { targetType: "service", publicId: "service0000000071" },
+      favoriteCount: 27,
+      shareCount: 6,
+      isBookable: true,
+      distanceKm: 1.24,
       shopPublicId: "shop0000000217",
       shopAddress: "東京都中央区銀座1-2-3",
       description: "厨房、浴室、地面一站式整理。",
@@ -92,6 +101,9 @@ describe("unified service-card mappers", () => {
       currency: "JPY",
       durationMinutes: 60,
       usageCount: 2,
+      favoriteCount: 9,
+      shareCount: 4,
+      isBookable: true,
       coverImageUrl: "/service-9.jpg",
       tags: ["深度保洁"],
       shop: {
@@ -106,6 +118,13 @@ describe("unified service-card mappers", () => {
       coverUrl: "/service-9.jpg",
       priceAmount: 1111,
       usageCount: 2,
+      engagementTarget: {
+        targetType: "technician_service",
+        publicId: "service0000000009"
+      },
+      favoriteCount: 9,
+      shareCount: 4,
+      isBookable: true,
       shopPublicId: "shop0000000217",
       shopAddress: "東京都中央区銀座1-2-3"
     });

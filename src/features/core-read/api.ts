@@ -61,6 +61,7 @@ export type CoreShopCard = {
   reviewSummary: CoreReviewSummary;
   favoriteCount: number;
   shareCount: number;
+  distanceKm?: number;
   serviceCategories: Array<{ id: number; code: string; label: string }>;
   businessKeywords: Array<{ id: number; code: string; label: string; categoryId: number }>;
 };
@@ -104,6 +105,10 @@ export type CoreServiceCard = {
   currency: string;
   durationMinutes: number;
   usageCount: number;
+  favoriteCount?: number;
+  shareCount?: number;
+  isBookable?: boolean;
+  distanceKm?: number;
   coverUrl: string | null;
   reviewSummary: CoreReviewSummary;
 };
@@ -184,6 +189,8 @@ export type CoreServiceListQuery = {
   shopId?: number;
   sort?: CoreReadSort;
   technicianId?: number;
+  latitude?: number;
+  longitude?: number;
 };
 
 export type CoreSearchListQuery = Omit<CoreServiceListQuery, "keyword" | "categoryId"> & {
@@ -400,6 +407,9 @@ export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
     address: shop.address,
     rating: parseRating(shop.reviewSummary),
     reviewCount: shop.reviewSummary.reviewCount,
+    favoriteCount: shop.favoriteCount,
+    shareCount: shop.shareCount,
+    distanceKm: shop.distanceKm,
     priceLabel: priceRangeFromServices(detail?.services),
     tags: uniqueStrings(businessKeywords.map((keyword) => keyword.label)).slice(0, 5),
     openStatus: "open",
@@ -433,14 +443,18 @@ export function mapCoreTechnicianToTechnician(technician: CoreTechnicianCard | C
     role: "therapist",
     status: "available",
     rating: parseRating(technician.reviewSummary),
-    orderCount: technician.reviewSummary.reviewCount,
+    orderCount: technician.completedOrderCount,
     income: 0,
     skills: skills.length > 0 ? skills : ["预约服务"],
     serviceAreas,
     acceptRate: 98,
     cancelRate: 0,
     reviewCount: technician.reviewSummary.reviewCount,
-    languages: ["日本語"],
+    favoriteCount: technician.favoriteCount,
+    shareCount: technician.shareCount,
+    distanceKm: technician.distanceKm,
+    languages: detail?.languages ? [...detail.languages] : ["日本語"],
+    specialReviewTags: detail?.reviewTagSummary.special,
     avatar: technician.avatarUrl ?? fallbackTechnicianAvatar,
     bio: detail?.bio ?? undefined,
     identityLabel: "店铺所属技师",
@@ -532,7 +546,9 @@ export const coreReadApi = {
     return searchEntity<CoreServiceCard>("service", query);
   },
 
-  getHomeRecommendations(query: { city?: string; limit?: number } = {}) {
+  getHomeRecommendations(
+    query: { city?: string; limit?: number; latitude?: number; longitude?: number } = {},
+  ) {
     return httpClient.request<CoreHomeRecommendations>("/home/recommendations", { auth: false, query });
   },
 
@@ -544,8 +560,14 @@ export const coreReadApi = {
     return httpClient.request<CoreShopDetail>(`/shops/${id}`, { auth: false });
   },
 
-  getTechnicianDetail(id: number | string) {
-    return httpClient.request<CoreTechnicianDetail>(`/technicians/${id}`, { auth: false });
+  getTechnicianDetail(
+    id: number | string,
+    query: { latitude?: number; longitude?: number } = {},
+  ) {
+    return httpClient.request<CoreTechnicianDetail>(`/technicians/${id}`, {
+      auth: false,
+      query,
+    });
   },
 
   getCustomerProfile(id: number) {

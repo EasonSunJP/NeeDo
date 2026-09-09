@@ -49,7 +49,9 @@ const technicianServiceCardInclude = {
   },
   _count: {
     select: {
-      bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } }
+      bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } },
+      entityFavorites: { where: { deletedAt: null } },
+      entityShareEvents: { where: { deletedAt: null } }
     }
   }
 } satisfies Prisma.TechnicianServiceInclude;
@@ -790,6 +792,8 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       currency: service.currency,
       durationMinutes: service.durationMinutes,
       usageCount: service._count.bookingOrders,
+      favoriteCount: service._count.entityFavorites,
+      shareCount: service._count.entityShareEvents,
       taxIncluded: true,
       coverImageUrl: service.coverImageUrl,
       images: this.stringArrayFromJson(service.imagesJson),

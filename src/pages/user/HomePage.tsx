@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
+import {
+  AppIcon,
+  FeatureSegmentedTabs,
+} from "../../components/client-ui/AppScaffold";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import {
   FloatingHomeHeader,
@@ -8,7 +11,7 @@ import {
   floatingHeaderInnerClassName,
   floatingHeaderSearchFieldClassName,
   floatingHeaderSearchIconClassName,
-  floatingHeaderSearchTextClassName
+  floatingHeaderSearchTextClassName,
 } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { roleBasedTabConfig } from "../../components/mobile/navItems";
@@ -20,25 +23,40 @@ import {
   coreReadApi,
   mapCoreServiceToServiceItem,
   mapCoreShopToStore,
-  mapCoreTechnicianToTechnician
+  mapCoreTechnicianToTechnician,
 } from "../../features/core-read/api";
-import { bookingApi, mapBookingOrderToDomainOrder } from "../../features/booking/api";
+import {
+  bookingApi,
+  mapBookingOrderToDomainOrder,
+} from "../../features/booking/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import { useCustomerSelfProfile } from "../../features/core-read/useCustomerSelfProfile";
 import { PublishedCarousel } from "../../features/content-publication/PublishedCarousel";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
-import { parseBrowserStorageJson, removeBrowserStorage, writeBrowserStorage } from "../../lib/browserStorage";
+import {
+  parseBrowserStorageJson,
+  removeBrowserStorage,
+  writeBrowserStorage,
+} from "../../lib/browserStorage";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
-import { useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
-import { SocialProfileMiniCard, TechnicianShowcaseCard, buildServiceMiniCardData, getTechnicianDynamicPath } from "../../shared/profile-card";
+import {
+  useClientTheme,
+  type ClientTheme,
+} from "../../theme/ClientThemeProvider";
+import {
+  SocialProfileMiniCard,
+  TechnicianShowcaseCard,
+  buildServiceMiniCardData,
+  getTechnicianDynamicPath,
+} from "../../shared/profile-card";
 import {
   useHomeLayoutStore,
   type HomeLocationOption,
   type HomeRecommendationTabKey,
-  type HomeServiceModuleConfig
+  type HomeServiceModuleConfig,
 } from "../../state/homeLayoutStore";
 import { syncHomeDeviceLocationForAppOpen } from "../../state/homeLocationStore";
 import type { Order, ServiceItem, Store, Technician } from "../../types/domain";
@@ -51,7 +69,7 @@ const currentAppointmentStatuses: Order["status"][] = [
   "scheduled",
   "inService",
   "awaitingCheckout",
-  "awaitingPaymentConfirmation"
+  "awaitingPaymentConfirmation",
 ];
 
 type ServiceRecommendationCardData = {
@@ -75,7 +93,10 @@ type TechnicianRecommendationCardData = {
   technician: Technician;
 };
 
-type RecommendationCardData = ServiceRecommendationCardData | StoreRecommendationCardData | TechnicianRecommendationCardData;
+type RecommendationCardData =
+  | ServiceRecommendationCardData
+  | StoreRecommendationCardData
+  | TechnicianRecommendationCardData;
 
 type ReminderState = {
   order: Order;
@@ -90,7 +111,9 @@ function normalizeText(value: string) {
 }
 
 function getLocationTokens(location: HomeLocationOption) {
-  return [location.city, location.area, location.district ?? "", location.label].filter(Boolean).map(normalizeText);
+  return [location.city, location.area, location.district ?? "", location.label]
+    .filter(Boolean)
+    .map(normalizeText);
 }
 
 function getLocationScore(values: string[], location: HomeLocationOption) {
@@ -114,15 +137,31 @@ function parseDateTime(value: string) {
   const [year = "1970", month = "01", day = "01"] = datePart.split("-");
   const [hour = "00", minute = "00"] = timePart.split(":");
 
-  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), 0, 0);
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    0,
+    0,
+  );
 }
 
 function formatDateTimeLabel(date: Date) {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-function sortByLocation<T>(items: T[], getLocationValues: (item: T) => string[], location: HomeLocationOption) {
-  return [...items].sort((left, right) => getLocationScore(getLocationValues(right), location) - getLocationScore(getLocationValues(left), location));
+function sortByLocation<T>(
+  items: T[],
+  getLocationValues: (item: T) => string[],
+  location: HomeLocationOption,
+) {
+  return [...items].sort(
+    (left, right) =>
+      getLocationScore(getLocationValues(right), location) -
+      getLocationScore(getLocationValues(left), location),
+  );
 }
 
 function getQuickActionTitleClassName(title: string) {
@@ -140,54 +179,82 @@ function getQuickActionTitleClassName(title: string) {
 }
 
 const quickActionIconClassNames: Record<ClientTheme, string> = {
-  "light-green": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
-  "dark-green": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
-  "black-gold": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
-  "vital-mono": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
-  "cool-black-gray": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
-  "neon-pink": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]"
+  "light-green":
+    "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "dark-green":
+    "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "black-gold":
+    "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "vital-mono":
+    "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "cool-black-gray":
+    "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "neon-pink":
+    "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
 };
 
 function getQuickActionIconClassName(theme: ClientTheme) {
   return quickActionIconClassNames[theme];
 }
 
-function getQuickActionTitle(id: string, sourceTitle: string, language: Language) {
+function getQuickActionTitle(
+  id: string,
+  sourceTitle: string,
+  language: Language,
+) {
   const quickActionTitles: Record<string, Partial<Record<Language, string>>> = {
     "nearby-technicians": {
       "zh-Hant": "附近技師",
       ja: "スタッフ探し",
       en: "Find staff",
-      ko: "주변 기사 찾기"
+      ko: "주변 기사 찾기",
     },
     "find-service": {
       "zh-Hant": "查找服務",
       ja: "サービス探し",
       en: "Find services",
-      ko: "서비스 찾기"
+      ko: "서비스 찾기",
     },
     "my-schedule": {
       "zh-Hant": "我的行程",
       ja: "スケジュール",
       en: "My schedule",
-      ko: "내 일정"
-    }
+      ko: "내 일정",
+    },
   };
 
-  return quickActionTitles[id]?.[language] ?? translateText(sourceTitle, language);
+  return (
+    quickActionTitles[id]?.[language] ?? translateText(sourceTitle, language)
+  );
 }
 
 function ChevronIcon({ className }: { className?: string }) {
   return (
-    <svg aria-hidden="true" className={cn("h-4 w-4", className)} fill="none" viewBox="0 0 24 24">
-      <path d="m9 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+    <svg
+      aria-hidden="true"
+      className={cn("h-4 w-4", className)}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="m9 6 6 6-6 6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.9"
+      />
     </svg>
   );
 }
 
 function CalendarClockIcon({ className }: { className?: string }) {
   return (
-    <svg aria-hidden="true" className={cn("h-8 w-8", className)} fill="none" viewBox="0 0 24 24">
+    <svg
+      aria-hidden="true"
+      className={cn("h-8 w-8", className)}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
       <path
         d="M6.5 3.8v3.1M17.5 3.8v3.1M4.3 9.1h15.4M4.3 11.2V7.1c0-1.1.9-2 2-2h11.4c1.1 0 2 .9 2 2v6.2"
         stroke="currentColor"
@@ -202,8 +269,20 @@ function CalendarClockIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth="2"
       />
-      <circle cx="16.8" cy="16.8" r="4.2" stroke="currentColor" strokeWidth="2" />
-      <path d="M16.8 14.2v2.8l1.9 1.1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <circle
+        cx="16.8"
+        cy="16.8"
+        r="4.2"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M16.8 14.2v2.8l1.9 1.1"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
     </svg>
   );
 }
@@ -212,7 +291,7 @@ function HomeSectionHeader({
   title,
   caption,
   actionLabel,
-  actionTo
+  actionTo,
 }: {
   title: string;
   caption?: string;
@@ -229,7 +308,10 @@ function HomeSectionHeader({
         titleClassName="text-[18px] font-black tracking-[-0.02em] text-[color:var(--client-text)]"
       />
       {actionLabel && actionTo ? (
-        <Link className="inline-flex shrink-0 items-center gap-1 text-[12px] font-black text-[color:var(--client-primary)]" to={actionTo}>
+        <Link
+          className="inline-flex shrink-0 items-center gap-1 text-[12px] font-black text-[color:var(--client-primary)]"
+          to={actionTo}
+        >
           {actionLabel}
           <ChevronIcon className="h-3.5 w-3.5" />
         </Link>
@@ -243,7 +325,7 @@ function NearbyTechnicianCard({
   fallbackServices,
   language,
   rankIndex,
-  technician
+  technician,
 }: {
   directService?: ServiceItem;
   fallbackServices: ServiceItem[];
@@ -267,7 +349,7 @@ function NearbyTechnicianCard({
 function ServiceModule({
   location,
   moduleConfig,
-  items
+  items,
 }: {
   location: HomeLocationOption;
   moduleConfig: HomeServiceModuleConfig;
@@ -292,7 +374,10 @@ function ServiceModule({
             ) : null}
           </div>
         </div>
-        <Link className="inline-flex shrink-0 items-center gap-1 text-[12px] font-black text-[color:var(--client-primary)]" to={moduleConfig.targetTo}>
+        <Link
+          className="inline-flex shrink-0 items-center gap-1 text-[12px] font-black text-[color:var(--client-primary)]"
+          to={moduleConfig.targetTo}
+        >
           查看
           <ChevronIcon className="h-3.5 w-3.5" />
         </Link>
@@ -300,7 +385,11 @@ function ServiceModule({
 
       <div className="grid grid-cols-2 gap-3">
         {items.map((service) => (
-          <Link className="group relative block h-[132px] overflow-hidden rounded-[22px] bg-black" key={service.id} to={moduleConfig.targetTo}>
+          <Link
+            className="group relative block h-[132px] overflow-hidden rounded-[22px] bg-black"
+            key={service.id}
+            to={moduleConfig.targetTo}
+          >
             <img
               alt={service.name}
               className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
@@ -308,8 +397,12 @@ function ServiceModule({
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.62)] via-[rgba(0,0,0,0.08)] to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-3 text-white">
-              <p className="line-clamp-1 text-[14px] font-black">{service.name}</p>
-              <p className="mt-1 line-clamp-1 text-[11px] text-white/80">{service.tags[0] ?? service.fastestArrival}</p>
+              <p className="line-clamp-1 text-[14px] font-black">
+                {service.name}
+              </p>
+              <p className="mt-1 line-clamp-1 text-[11px] text-white/80">
+                {service.tags[0] ?? service.fastestArrival}
+              </p>
             </div>
           </Link>
         ))}
@@ -320,21 +413,38 @@ function ServiceModule({
 
 function RecommendationCard({ data }: { data: RecommendationCardData }) {
   if (data.kind === "store") {
-    return <SocialProfileMiniCard detailTo={data.to} showShareAction store={data.store} />;
+    return (
+      <SocialProfileMiniCard
+        detailTo={data.to}
+        showShareAction
+        store={data.store}
+      />
+    );
   }
 
   if (data.kind === "technician") {
-    return <SocialProfileMiniCard detailTo={data.to} showShareAction technician={data.technician} />;
+    return (
+      <SocialProfileMiniCard
+        detailTo={data.to}
+        showShareAction
+        technician={data.technician}
+      />
+    );
   }
 
-  return <SocialProfileMiniCard data={buildServiceMiniCardData(data.service)} detailTo={data.to} />;
+  return (
+    <SocialProfileMiniCard
+      data={buildServiceMiniCardData(data.service)}
+      detailTo={data.to}
+    />
+  );
 }
 
 function ReminderMiniCard({
   cover,
   label,
   title,
-  meta
+  meta,
 }: {
   cover: string;
   label: string;
@@ -344,11 +454,19 @@ function ReminderMiniCard({
   return (
     <div className="flex min-w-0 items-center gap-3 rounded-[18px] bg-white/12 px-3 py-3 backdrop-blur">
       <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[14px] bg-black">
-        <img alt={title} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(cover)} />
+        <img
+          alt={title}
+          className="absolute inset-0 h-full w-full scale-[1.035] object-cover"
+          src={getGeneratedImageThumbnailUrl(cover)}
+        />
       </span>
       <div className="min-w-0">
-        <p className="text-[11px] font-black uppercase tracking-[0.12em] text-white/62">{label}</p>
-        <p className="mt-1 line-clamp-1 text-[13px] font-black text-white">{title}</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.12em] text-white/62">
+          {label}
+        </p>
+        <p className="mt-1 line-clamp-1 text-[13px] font-black text-white">
+          {title}
+        </p>
         <p className="mt-1 line-clamp-1 text-[11px] text-white/72">{meta}</p>
       </div>
     </div>
@@ -360,7 +478,7 @@ function ReminderBanner({
   jumpTo,
   highPriority,
   onClose,
-  visible
+  visible,
 }: {
   reminder: ReminderState;
   jumpTo: string;
@@ -416,7 +534,7 @@ function ReminderBanner({
       aria-modal="true"
       className={cn(
         "pointer-events-none fixed inset-0 z-40 flex items-center justify-center px-4 py-[max(1rem,env(safe-area-inset-top))] transition duration-300",
-        visible ? "opacity-100" : "opacity-0"
+        visible ? "opacity-100" : "opacity-0",
       )}
       role="dialog"
     >
@@ -428,7 +546,7 @@ function ReminderBanner({
             highPriority
               ? "border-[rgba(255,255,255,0.16)] bg-[linear-gradient(135deg,rgba(223,91,82,0.96),rgba(131,41,35,0.92))]"
               : "border-[rgba(255,255,255,0.12)] bg-[linear-gradient(135deg,rgba(16,23,22,0.95),rgba(33,45,41,0.92))]",
-            visible ? "scale-100 translate-y-0" : "scale-[0.98] translate-y-3"
+            visible ? "scale-100 translate-y-0" : "scale-[0.98] translate-y-3",
           )}
           to={jumpTo}
         >
@@ -437,7 +555,9 @@ function ReminderBanner({
               <div className="inline-flex rounded-full bg-white/14 px-3 py-1 text-[11px] font-black tracking-[0.1em] text-white/86">
                 {t("即将开始的预约提醒")}
               </div>
-              <p className="mt-3 text-[18px] font-black leading-6">{reminderTitle}</p>
+              <p className="mt-3 text-[18px] font-black leading-6">
+                {reminderTitle}
+              </p>
               <p className="mt-1 text-[12px] text-white/76">{reminderMeta}</p>
             </div>
             <CloseIconButton
@@ -487,9 +607,15 @@ function getOrderTimeValue(order: Order) {
   return Number.isFinite(createdTime) ? createdTime : 0;
 }
 
-function CurrentAppointmentFloatingButton({ count, latestOrder }: { count: number; latestOrder?: Order }) {
+function CurrentAppointmentFloatingButton({
+  count,
+  latestOrder,
+}: {
+  count: number;
+  latestOrder?: Order;
+}) {
   const timeLabel = latestOrder
-    ? latestOrder.bookedAt.split(" ")[1] ?? latestOrder.bookedAt
+    ? (latestOrder.bookedAt.split(" ")[1] ?? latestOrder.bookedAt)
     : "预约一览";
 
   return (
@@ -509,7 +635,7 @@ function CurrentAppointmentFloatingButton({ count, latestOrder }: { count: numbe
 function HomeCoreReadState({
   description,
   onRetry,
-  title
+  title,
 }: {
   description: string;
   onRetry?: () => void;
@@ -517,8 +643,12 @@ function HomeCoreReadState({
 }) {
   return (
     <div className="rounded-[22px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-6 text-center">
-      <p className="text-[15px] font-black text-[color:var(--client-text)]">{title}</p>
-      <p className="mt-2 text-[12px] leading-5 text-[color:var(--client-muted)]">{description}</p>
+      <p className="text-[15px] font-black text-[color:var(--client-text)]">
+        {title}
+      </p>
+      <p className="mt-2 text-[12px] leading-5 text-[color:var(--client-muted)]">
+        {description}
+      </p>
       {onRetry ? (
         <button
           className="mt-4 inline-flex min-h-10 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-[13px] font-black text-[color:var(--client-on-primary)]"
@@ -537,14 +667,19 @@ function loadDismissedReminder() {
     return null;
   }
 
-  return parseBrowserStorageJson<{ orderId: string; dismissedAt: number } | null>(reminderDismissStorageKey, null, {
+  return parseBrowserStorageJson<{
+    orderId: string;
+    dismissedAt: number;
+  } | null>(reminderDismissStorageKey, null, {
     kind: "session",
     removeOnError: true,
-    silent: true
+    silent: true,
   });
 }
 
-function saveDismissedReminder(value: { orderId: string; dismissedAt: number } | null) {
+function saveDismissedReminder(
+  value: { orderId: string; dismissedAt: number } | null,
+) {
   if (typeof window === "undefined") {
     return;
   }
@@ -552,24 +687,32 @@ function saveDismissedReminder(value: { orderId: string; dismissedAt: number } |
   if (!value) {
     removeBrowserStorage(reminderDismissStorageKey, {
       kind: "session",
-      silent: true
+      silent: true,
     });
     return;
   }
 
   writeBrowserStorage(reminderDismissStorageKey, JSON.stringify(value), {
     kind: "session",
-    silent: true
+    silent: true,
   });
 }
 
-function resolveStoreForOrder(order: Order, storeList: Store[], technicianList: Technician[]) {
+function resolveStoreForOrder(
+  order: Order,
+  storeList: Store[],
+  technicianList: Technician[],
+) {
   if (order.storeName) {
     return storeList.find((item) => item.name === order.storeName) ?? null;
   }
 
-  const matchedTechnician = technicianList.find((item) => item.name === order.technicianName);
-  return storeList.find((item) => item.id === matchedTechnician?.storeId) ?? null;
+  const matchedTechnician = technicianList.find(
+    (item) => item.name === order.technicianName,
+  );
+  return (
+    storeList.find((item) => item.id === matchedTechnician?.storeId) ?? null
+  );
 }
 
 function resolveServiceForOrder(order: Order, serviceList: ServiceItem[]) {
@@ -581,7 +724,7 @@ function resolveServiceForOrder(order: Order, serviceList: ServiceItem[]) {
         service.name,
         service.name.replace("上门", ""),
         service.name.replace(/\d+\s*号套餐/g, "").trim(),
-        ...service.tags
+        ...service.tags,
       ]
         .filter(Boolean)
         .map(normalizeText);
@@ -595,7 +738,9 @@ function resolveServiceForOrder(order: Order, serviceList: ServiceItem[]) {
           return total + 4;
         }
 
-        return orderText.includes(token.replace("服务", "")) ? total + 2 : total;
+        return orderText.includes(token.replace("服务", ""))
+          ? total + 2
+          : total;
       }, 0);
 
       return { service, score };
@@ -613,42 +758,75 @@ export function HomePage() {
   const { customer: currentCustomer } = useCustomerSelfProfile();
   const { config } = useHomeLayoutStore();
   const [userOrders, setUserOrders] = useState<Order[]>([]);
-  const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
-  const [homeRecommendationsRevision, setHomeRecommendationsRevision] = useState(0);
+  const selectedLocation =
+    config.locations.find((item) => item.id === config.selectedLocationId) ??
+    config.locations[0];
+  const [homeRecommendationsRevision, setHomeRecommendationsRevision] =
+    useState(0);
   const homeRecommendationsQuery = useCoreReadQuery(
-    () => loadCoreReadWithTransientRetry(() => coreReadApi.getHomeRecommendations({ limit: 20 })),
-    [homeRecommendationsRevision],
-    { force: homeRecommendationsRevision > 0, key: "core:home-recommendations:limit-20" }
+    () =>
+      loadCoreReadWithTransientRetry(() =>
+        coreReadApi.getHomeRecommendations({
+          limit: 20,
+          ...(selectedLocation?.coordinates
+            ? {
+                latitude: selectedLocation.coordinates.lat,
+                longitude: selectedLocation.coordinates.lng,
+              }
+            : {}),
+        }),
+      ),
+    [
+      homeRecommendationsRevision,
+      selectedLocation?.coordinates?.lat,
+      selectedLocation?.coordinates?.lng,
+    ],
+    {
+      force: homeRecommendationsRevision > 0,
+      key: `core:home-recommendations:limit-20:${selectedLocation?.coordinates?.lat ?? "none"}:${selectedLocation?.coordinates?.lng ?? "none"}`,
+    },
   );
   const apiServices = useMemo(
-    () => homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? [],
-    [homeRecommendationsQuery.data]
+    () =>
+      homeRecommendationsQuery.data?.services.map(
+        mapCoreServiceToServiceItem,
+      ) ?? [],
+    [homeRecommendationsQuery.data],
   );
   const apiStores = useMemo(
     () => homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? [],
-    [homeRecommendationsQuery.data]
+    [homeRecommendationsQuery.data],
   );
   const apiTechnicians = useMemo(
-    () => homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? [],
-    [homeRecommendationsQuery.data]
+    () =>
+      homeRecommendationsQuery.data?.technicians.map(
+        mapCoreTechnicianToTechnician,
+      ) ?? [],
+    [homeRecommendationsQuery.data],
   );
-  const serviceByTechnicianId = useMemo(
-    () => {
-      const apiEntries = (homeRecommendationsQuery.data?.services ?? [])
-        .filter((service) => Boolean(service.technician))
-        .map((service) => [String(service.technician?.id), mapCoreServiceToServiceItem(service)] as const);
+  const serviceByTechnicianId = useMemo(() => {
+    const apiEntries = (homeRecommendationsQuery.data?.services ?? [])
+      .filter((service) => Boolean(service.technician))
+      .map(
+        (service) =>
+          [
+            String(service.technician?.id),
+            mapCoreServiceToServiceItem(service),
+          ] as const,
+      );
 
-      if (apiEntries.length > 0) {
-        return new Map(apiEntries);
-      }
+    if (apiEntries.length > 0) {
+      return new Map(apiEntries);
+    }
 
-      return new Map<string, ServiceItem>();
-    },
-    [homeRecommendationsQuery.data]
-  );
-  const [recommendationTab, setRecommendationTab] = useState<HomeRecommendationTabKey>(config.recommendation.defaultTab);
+    return new Map<string, ServiceItem>();
+  }, [homeRecommendationsQuery.data]);
+  const [recommendationTab, setRecommendationTab] =
+    useState<HomeRecommendationTabKey>(config.recommendation.defaultTab);
   const [now, setNow] = useState(() => new Date());
-  const [dismissedReminder, setDismissedReminder] = useState(() => loadDismissedReminder());
+  const [dismissedReminder, setDismissedReminder] = useState(() =>
+    loadDismissedReminder(),
+  );
   const [reminderVisible, setReminderVisible] = useState(false);
 
   useEffect(() => {
@@ -657,7 +835,10 @@ export function HomePage() {
   }, []);
 
   useEffect(() => {
-    void syncHomeDeviceLocationForAppOpen(config.locations, selectedLocation.id);
+    void syncHomeDeviceLocationForAppOpen(
+      config.locations,
+      selectedLocation.id,
+    );
   }, [config.locations, selectedLocation.id]);
 
   useEffect(() => {
@@ -671,7 +852,8 @@ export function HomePage() {
     }
 
     let active = true;
-    bookingApi.listOrders({ page: 1, pageSize: 100 })
+    bookingApi
+      .listOrders({ page: 1, pageSize: 100 })
       .then((data) => {
         if (active) {
           setUserOrders(data.list.map(mapBookingOrderToDomainOrder));
@@ -695,15 +877,25 @@ export function HomePage() {
   const nearbyTechnicians = useMemo(() => {
     return [...apiTechnicians]
       .sort((left, right) => {
-        const rightLocation = getLocationScore([...right.serviceAreas, ...right.skills, right.bio ?? ""], selectedLocation);
-        const leftLocation = getLocationScore([...left.serviceAreas, ...left.skills, left.bio ?? ""], selectedLocation);
+        const rightLocation = getLocationScore(
+          [...right.serviceAreas, ...right.skills, right.bio ?? ""],
+          selectedLocation,
+        );
+        const leftLocation = getLocationScore(
+          [...left.serviceAreas, ...left.skills, left.bio ?? ""],
+          selectedLocation,
+        );
 
         if (rightLocation !== leftLocation) {
           return rightLocation - leftLocation;
         }
 
         if (config.nearbyTechnician.sortBy === "availability") {
-          return (right.status === "available" ? 1 : 0) - (left.status === "available" ? 1 : 0) || right.reviewCount - left.reviewCount;
+          return (
+            (right.status === "available" ? 1 : 0) -
+              (left.status === "available" ? 1 : 0) ||
+            right.reviewCount - left.reviewCount
+          );
         }
 
         if (config.nearbyTechnician.sortBy === "rating") {
@@ -713,13 +905,24 @@ export function HomePage() {
         return right.reviewCount - left.reviewCount;
       })
       .slice(0, config.nearbyTechnician.limit);
-  }, [apiTechnicians, config.nearbyTechnician.limit, config.nearbyTechnician.sortBy, selectedLocation]);
+  }, [
+    apiTechnicians,
+    config.nearbyTechnician.limit,
+    config.nearbyTechnician.sortBy,
+    selectedLocation,
+  ]);
 
   const recommendationStores = useMemo(
     () =>
       [...apiStores].sort((left, right) => {
-        const rightLocation = getLocationScore([right.area, right.address, ...right.tags, right.description], selectedLocation);
-        const leftLocation = getLocationScore([left.area, left.address, ...left.tags, left.description], selectedLocation);
+        const rightLocation = getLocationScore(
+          [right.area, right.address, ...right.tags, right.description],
+          selectedLocation,
+        );
+        const leftLocation = getLocationScore(
+          [left.area, left.address, ...left.tags, left.description],
+          selectedLocation,
+        );
 
         if (rightLocation !== leftLocation) {
           return rightLocation - leftLocation;
@@ -731,14 +934,20 @@ export function HomePage() {
 
         return right.rating - left.rating;
       }),
-    [apiStores, config.recommendation.tabs.stores.sortBy, selectedLocation]
+    [apiStores, config.recommendation.tabs.stores.sortBy, selectedLocation],
   );
 
   const recommendationTechnicians = useMemo(
     () =>
       [...apiTechnicians].sort((left, right) => {
-        const rightLocation = getLocationScore([...right.serviceAreas, ...right.skills, right.bio ?? ""], selectedLocation);
-        const leftLocation = getLocationScore([...left.serviceAreas, ...left.skills, left.bio ?? ""], selectedLocation);
+        const rightLocation = getLocationScore(
+          [...right.serviceAreas, ...right.skills, right.bio ?? ""],
+          selectedLocation,
+        );
+        const leftLocation = getLocationScore(
+          [...left.serviceAreas, ...left.skills, left.bio ?? ""],
+          selectedLocation,
+        );
 
         if (rightLocation !== leftLocation) {
           return rightLocation - leftLocation;
@@ -750,14 +959,24 @@ export function HomePage() {
 
         return right.reviewCount - left.reviewCount;
       }),
-    [apiTechnicians, config.recommendation.tabs.technicians.sortBy, selectedLocation]
+    [
+      apiTechnicians,
+      config.recommendation.tabs.technicians.sortBy,
+      selectedLocation,
+    ],
   );
 
   const recommendationServices = useMemo(
     () =>
       [...apiServices].sort((left, right) => {
-        const rightLocation = getLocationScore([...right.serviceAreas, right.name, ...right.tags, right.summary], selectedLocation);
-        const leftLocation = getLocationScore([...left.serviceAreas, left.name, ...left.tags, left.summary], selectedLocation);
+        const rightLocation = getLocationScore(
+          [...right.serviceAreas, right.name, ...right.tags, right.summary],
+          selectedLocation,
+        );
+        const leftLocation = getLocationScore(
+          [...left.serviceAreas, left.name, ...left.tags, left.summary],
+          selectedLocation,
+        );
 
         if (rightLocation !== leftLocation) {
           return rightLocation - leftLocation;
@@ -769,7 +988,7 @@ export function HomePage() {
 
         return right.sales - left.sales;
       }),
-    [apiServices, config.recommendation.tabs.services.sortBy, selectedLocation]
+    [apiServices, config.recommendation.tabs.services.sortBy, selectedLocation],
   );
 
   const serviceModuleItems = useMemo(
@@ -778,86 +997,102 @@ export function HomePage() {
         .filter((item) => item.enabled)
         .slice(0, 2)
         .map((moduleConfig) => {
-          const scopedServices = apiServices.filter((service) => moduleConfig.categoryIds.includes(service.categoryId));
+          const scopedServices = apiServices.filter((service) =>
+            moduleConfig.categoryIds.includes(service.categoryId),
+          );
           const matched = sortByLocation(
             scopedServices.length > 0 ? scopedServices : apiServices,
-            (item) => [...item.serviceAreas, item.name, ...item.tags, item.summary],
-            selectedLocation
+            (item) => [
+              ...item.serviceAreas,
+              item.name,
+              ...item.tags,
+              item.summary,
+            ],
+            selectedLocation,
           ).slice(0, moduleConfig.maxItems);
 
           return {
             moduleConfig,
-            items: matched
+            items: matched,
           };
         }),
-    [apiServices, config.serviceModules, selectedLocation]
+    [apiServices, config.serviceModules, selectedLocation],
   );
 
-  const recommendationCards = useMemo<Record<HomeRecommendationTabKey, RecommendationCardData[]>>(
+  const recommendationCards = useMemo<
+    Record<HomeRecommendationTabKey, RecommendationCardData[]>
+  >(
     () => ({
       stores: recommendationStores.map((store) => ({
         kind: "store" as const,
         id: store.id,
         to: `/stores/${store.id}`,
-        store
+        store,
       })),
       technicians: recommendationTechnicians.map((technician) => ({
         kind: "technician" as const,
         id: technician.id,
         to: getTechnicianDynamicPath(technician),
-        technician
+        technician,
       })),
       services: recommendationServices.map((service) => ({
         kind: "service" as const,
         id: service.id,
         to: `/services/${service.id}`,
-        service
-      }))
+        service,
+      })),
     }),
-    [recommendationServices, recommendationStores, recommendationTechnicians]
+    [recommendationServices, recommendationStores, recommendationTechnicians],
   );
 
   const currentRecommendationList = recommendationCards[recommendationTab];
-  const recommendationVisibleLimit = recommendationTab === "technicians" ? 20 : config.recommendation.maxItems;
-  const visibleRecommendationList = currentRecommendationList.slice(0, recommendationVisibleLimit);
-  const shouldShowMore = currentRecommendationList.length > recommendationVisibleLimit;
+  const recommendationVisibleLimit =
+    recommendationTab === "technicians" ? 20 : config.recommendation.maxItems;
+  const visibleRecommendationList = currentRecommendationList.slice(
+    0,
+    recommendationVisibleLimit,
+  );
+  const shouldShowMore =
+    currentRecommendationList.length > recommendationVisibleLimit;
   const quickActionItems = [
     {
       id: "stores",
       title: "店铺预约",
       caption: "到店服务",
       to: "/categories?type=store",
-      icon: "map" as const
+      icon: "map" as const,
     },
     {
       id: "nearby-technicians",
       title: "附近技师",
       caption: "按距离查找",
       to: "/categories?type=technician",
-      icon: "manager" as const
+      icon: "manager" as const,
     },
     {
       id: "find-service",
       title: "查找服务",
       caption: "服务列表",
       to: "/categories?type=service",
-      icon: "search" as const
+      icon: "search" as const,
     },
     {
       id: "my-schedule",
       title: "我的日程",
       caption: "行程管理",
       to: "/schedule",
-      icon: "calendar" as const
-    }
+      icon: "calendar" as const,
+    },
   ];
 
   const activeAppointmentOrders = useMemo(
     () =>
       userOrders
         .filter((order) => currentAppointmentStatuses.includes(order.status))
-        .sort((left, right) => getOrderTimeValue(right) - getOrderTimeValue(left)),
-    [userOrders]
+        .sort(
+          (left, right) => getOrderTimeValue(right) - getOrderTimeValue(left),
+        ),
+    [userOrders],
   );
   const latestActiveAppointment = activeAppointmentOrders[0];
 
@@ -867,18 +1102,26 @@ export function HomePage() {
     }
 
     const candidates = userOrders
-      .filter((order) => order.status === "confirmed" || order.status === "scheduled")
+      .filter(
+        (order) => order.status === "confirmed" || order.status === "scheduled",
+      )
       .map((order) => {
         const start = parseDateTime(order.bookedAt);
-        const minutesUntil = Math.floor((start.getTime() - now.getTime()) / 60_000);
+        const minutesUntil = Math.floor(
+          (start.getTime() - now.getTime()) / 60_000,
+        );
 
         return {
           order,
           start,
-          minutesUntil
+          minutesUntil,
         };
       })
-      .filter((item) => item.minutesUntil >= 0 && item.minutesUntil <= config.reminder.triggerWindowMinutes)
+      .filter(
+        (item) =>
+          item.minutesUntil >= 0 &&
+          item.minutesUntil <= config.reminder.triggerWindowMinutes,
+      )
       .sort((left, right) => left.start.getTime() - right.start.getTime());
 
     const closest = candidates[0];
@@ -892,9 +1135,17 @@ export function HomePage() {
       minutesUntil: closest.minutesUntil,
       startsAt: formatDateTimeLabel(closest.start),
       store: resolveStoreForOrder(closest.order, apiStores, apiTechnicians),
-      service: resolveServiceForOrder(closest.order, apiServices)
+      service: resolveServiceForOrder(closest.order, apiServices),
     };
-  }, [apiServices, apiStores, apiTechnicians, config.reminder.enabled, config.reminder.triggerWindowMinutes, now, userOrders]);
+  }, [
+    apiServices,
+    apiStores,
+    apiTechnicians,
+    config.reminder.enabled,
+    config.reminder.triggerWindowMinutes,
+    now,
+    userOrders,
+  ]);
 
   useEffect(() => {
     if (!reminderState) {
@@ -911,16 +1162,28 @@ export function HomePage() {
   const reminderDismissedRecently =
     reminderState &&
     dismissedReminder?.orderId === reminderState.order.id &&
-    now.getTime() - dismissedReminder.dismissedAt < config.reminder.dismissCooldownMinutes * 60_000;
+    now.getTime() - dismissedReminder.dismissedAt <
+      config.reminder.dismissCooldownMinutes * 60_000;
 
-  const activeReminder = reminderState && !reminderDismissedRecently ? reminderState : null;
+  const activeReminder =
+    reminderState && !reminderDismissedRecently ? reminderState : null;
   const activeReminderJumpTo =
-    activeReminder && config.reminder.jumpTarget === "orders" ? "/orders" : activeReminder ? `/orders/${activeReminder.order.id}` : "/orders";
+    activeReminder && config.reminder.jumpTarget === "orders"
+      ? "/orders"
+      : activeReminder
+        ? `/orders/${activeReminder.order.id}`
+        : "/orders";
 
-  const performanceMetrics = config.platformMetrics.filter((item) => item.enabled);
-  const hasStaticHomeContent = apiServices.length > 0 || apiStores.length > 0 || apiTechnicians.length > 0;
-  const homeCoreLoading = homeRecommendationsQuery.loading && !hasStaticHomeContent;
-  const homeCoreError = hasStaticHomeContent ? null : homeRecommendationsQuery.error;
+  const performanceMetrics = config.platformMetrics.filter(
+    (item) => item.enabled,
+  );
+  const hasStaticHomeContent =
+    apiServices.length > 0 || apiStores.length > 0 || apiTechnicians.length > 0;
+  const homeCoreLoading =
+    homeRecommendationsQuery.loading && !hasStaticHomeContent;
+  const homeCoreError = hasStaticHomeContent
+    ? null
+    : homeRecommendationsQuery.error;
   return (
     <MobileShell>
       <FloatingHomeHeader
@@ -930,7 +1193,11 @@ export function HomePage() {
         <div className={cn(floatingHeaderInnerClassName, "space-y-3")}>
           <SharedHomeHeader
             avatarAlt={currentCustomer?.name ?? session?.username ?? ""}
-            avatarLevelLabel={currentCustomer?.experienceLevel === undefined ? undefined : `Lv.${currentCustomer.experienceLevel}`}
+            avatarLevelLabel={
+              currentCustomer?.experienceLevel === undefined
+                ? undefined
+                : `Lv.${currentCustomer.experienceLevel}`
+            }
             avatarMembershipLevel={currentCustomer?.memberLevel}
             avatarSrc={session?.avatarUrl ?? currentCustomer?.avatar ?? ""}
             avatarTo={userPortalConfig.myPath}
@@ -945,8 +1212,13 @@ export function HomePage() {
             className={cn("focus-ring", floatingHeaderSearchFieldClassName)}
             to="/categories"
           >
-            <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
-            <span className={floatingHeaderSearchTextClassName}>搜索店铺、技师、服务</span>
+            <AppIcon
+              className={floatingHeaderSearchIconClassName}
+              name="search"
+            />
+            <span className={floatingHeaderSearchTextClassName}>
+              搜索店铺、技师、服务
+            </span>
           </Link>
         </div>
       </FloatingHomeHeader>
@@ -956,7 +1228,12 @@ export function HomePage() {
           <ReminderBanner
             highPriority={activeReminder.minutesUntil <= 10}
             jumpTo={activeReminderJumpTo}
-            onClose={() => setDismissedReminder({ orderId: activeReminder.order.id, dismissedAt: Date.now() })}
+            onClose={() =>
+              setDismissedReminder({
+                orderId: activeReminder.order.id,
+                dismissedAt: Date.now(),
+              })
+            }
             reminder={activeReminder}
             visible={reminderVisible}
           />
@@ -978,13 +1255,21 @@ export function HomePage() {
                   <span
                     className={cn(
                       "inline-flex h-[34px] w-[34px] items-center justify-center rounded-[13px]",
-                      getQuickActionIconClassName(theme)
+                      getQuickActionIconClassName(theme),
                     )}
                   >
                     <AppIcon className="h-[18px] w-[18px]" name={item.icon} />
                   </span>
-                  <span className="flex min-h-[28px] w-full items-center justify-center overflow-hidden" data-no-i18n>
-                    <span className={cn("w-full text-[12px] font-black leading-[14px] text-[color:var(--client-text)]", getQuickActionTitleClassName(title))}>
+                  <span
+                    className="flex min-h-[28px] w-full items-center justify-center overflow-hidden"
+                    data-no-i18n
+                  >
+                    <span
+                      className={cn(
+                        "w-full text-[12px] font-black leading-[14px] text-[color:var(--client-text)]",
+                        getQuickActionTitleClassName(title),
+                      )}
+                    >
                       {title}
                     </span>
                   </span>
@@ -995,22 +1280,34 @@ export function HomePage() {
         </section>
 
         <section className="space-y-4">
-          <HomeSectionHeader caption="保持现有推荐逻辑，只在首页重新组织为店铺 / 技师 / 服务三类切换。" title="精选推荐" />
+          <HomeSectionHeader
+            caption="保持现有推荐逻辑，只在首页重新组织为店铺 / 技师 / 服务三类切换。"
+            title="精选推荐"
+          />
           <FeatureSegmentedTabs
-            items={(Object.entries(config.recommendation.tabs) as Array<[HomeRecommendationTabKey, { label: string }]>).map(([key, item]) => ({
+            items={(
+              Object.entries(config.recommendation.tabs) as Array<
+                [HomeRecommendationTabKey, { label: string }]
+              >
+            ).map(([key, item]) => ({
               label: item.label,
-              value: key
+              value: key,
             }))}
             onChange={setRecommendationTab}
             value={recommendationTab}
           />
 
           {homeCoreLoading ? (
-            <HomeCoreReadState description="正在从 /api/v1/home/recommendations 读取首页推荐。" title="正在载入真实推荐" />
+            <HomeCoreReadState
+              description="正在从 /api/v1/home/recommendations 读取首页推荐。"
+              title="正在载入真实推荐"
+            />
           ) : homeCoreError ? (
             <HomeCoreReadState
               description={homeCoreError}
-              onRetry={() => setHomeRecommendationsRevision((current) => current + 1)}
+              onRetry={() =>
+                setHomeRecommendationsRevision((current) => current + 1)
+              }
               title="推荐读取失败"
             />
           ) : visibleRecommendationList.length > 0 ? (
@@ -1020,25 +1317,33 @@ export function HomePage() {
                   card.kind === "technician" ? (
                     <TechnicianShowcaseCard
                       detailTo={card.to}
-                      directService={serviceByTechnicianId.get(card.technician.id)}
+                      directService={serviceByTechnicianId.get(
+                        card.technician.id,
+                      )}
                       fallbackServices={apiServices}
                       key={`${recommendationTab}-${card.id}`}
                       language={language}
                       rankIndex={index}
                       technician={card.technician}
                     />
-                  ) : null
+                  ) : null,
                 )}
               </div>
             ) : (
               <div className="space-y-3">
                 {visibleRecommendationList.map((card) => (
-                  <RecommendationCard data={card} key={`${recommendationTab}-${card.id}`} />
+                  <RecommendationCard
+                    data={card}
+                    key={`${recommendationTab}-${card.id}`}
+                  />
                 ))}
               </div>
             )
           ) : (
-            <HomeCoreReadState description="当前 API 暂无可展示的店铺、技师或服务推荐。" title="暂无推荐内容" />
+            <HomeCoreReadState
+              description="当前 API 暂无可展示的店铺、技师或服务推荐。"
+              title="暂无推荐内容"
+            />
           )}
 
           {!homeCoreLoading && !homeCoreError && shouldShowMore ? (
@@ -1060,11 +1365,16 @@ export function HomePage() {
             title={config.nearbyTechnician.title}
           />
           {homeCoreLoading ? (
-            <HomeCoreReadState description="正在读取真实技师列表。" title="正在载入附近技师" />
+            <HomeCoreReadState
+              description="正在读取真实技师列表。"
+              title="正在载入附近技师"
+            />
           ) : homeCoreError ? (
             <HomeCoreReadState
               description={homeCoreError}
-              onRetry={() => setHomeRecommendationsRevision((current) => current + 1)}
+              onRetry={() =>
+                setHomeRecommendationsRevision((current) => current + 1)
+              }
               title="技师读取失败"
             />
           ) : nearbyTechnicians.length > 0 ? (
@@ -1081,14 +1391,24 @@ export function HomePage() {
               ))}
             </div>
           ) : (
-            <HomeCoreReadState description="当前 API 暂无公开技师资料。" title="暂无技师" />
+            <HomeCoreReadState
+              description="当前 API 暂无公开技师资料。"
+              title="暂无技师"
+            />
           )}
         </section>
 
         {!homeCoreLoading && !homeCoreError
-          ? serviceModuleItems.map(({ moduleConfig, items }) => (
-              items.length > 0 ? <ServiceModule items={items} key={moduleConfig.id} location={selectedLocation} moduleConfig={moduleConfig} /> : null
-            ))
+          ? serviceModuleItems.map(({ moduleConfig, items }) =>
+              items.length > 0 ? (
+                <ServiceModule
+                  items={items}
+                  key={moduleConfig.id}
+                  location={selectedLocation}
+                  moduleConfig={moduleConfig}
+                />
+              ) : null,
+            )
           : null}
 
         {config.platformMetricsVisible && performanceMetrics.length > 0 ? (
@@ -1102,9 +1422,17 @@ export function HomePage() {
                   <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]">
                     <AppIcon name={item.icon} />
                   </span>
-                  <p className="mt-3 text-[20px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">{item.value}</p>
-                  <p className="mt-1 text-[13px] font-black text-[color:var(--client-text)]">{item.label}</p>
-                  {item.caption ? <p className="mt-1 text-[11px] leading-5 text-[color:var(--client-muted)]">{item.caption}</p> : null}
+                  <p className="mt-3 text-[20px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">
+                    {item.value}
+                  </p>
+                  <p className="mt-1 text-[13px] font-black text-[color:var(--client-text)]">
+                    {item.label}
+                  </p>
+                  {item.caption ? (
+                    <p className="mt-1 text-[11px] leading-5 text-[color:var(--client-muted)]">
+                      {item.caption}
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -1112,8 +1440,10 @@ export function HomePage() {
         ) : null}
       </div>
 
-      <CurrentAppointmentFloatingButton count={activeAppointmentOrders.length} latestOrder={latestActiveAppointment} />
-
+      <CurrentAppointmentFloatingButton
+        count={activeAppointmentOrders.length}
+        latestOrder={latestActiveAppointment}
+      />
     </MobileShell>
   );
 }

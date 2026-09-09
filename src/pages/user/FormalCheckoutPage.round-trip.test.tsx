@@ -507,7 +507,7 @@ describe("formal checkout technician-card round trip", () => {
       pageSize: 100
     });
     expect(container.textContent).toContain("￥7,000");
-    expect(container.textContent).toContain("￥8,800");
+    expect(container.textContent).not.toContain("￥8,800");
     expect(container.textContent).not.toContain("08:00");
 
     const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
@@ -634,7 +634,7 @@ describe("formal checkout technician-card round trip", () => {
     expect(getContext).toHaveBeenCalledWith(51);
     expect(container.textContent).toContain("s0000000017");
     expect(container.textContent).toContain("￥7,500");
-    expect(container.textContent).toContain("￥9,000");
+    expect(container.textContent).not.toContain("￥9,000");
     expect(container.querySelector('a[href="/profiles/technician/s0000000017"]')).not.toBeNull();
 
     const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))

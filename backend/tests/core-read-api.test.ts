@@ -215,6 +215,42 @@ describe("Step 08 core read API", () => {
     );
   });
 
+  it("accepts paired current coordinates for service, search, and home card distance", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .get("/api/v1/services?latitude=35.6812&longitude=139.7671")
+      .expect(200);
+    await request(fixture.app)
+      .get("/api/v1/search?keyword=care&latitude=35.6812&longitude=139.7671")
+      .expect(200);
+    await request(fixture.app)
+      .get("/api/v1/home/recommendations?latitude=35.6812&longitude=139.7671")
+      .expect(200);
+    await request(fixture.app)
+      .get("/api/v1/technicians/s1234567890?latitude=35.6812&longitude=139.7671")
+      .expect(200);
+
+    expect(fixture.coreReadRepository.listServices).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: 35.6812, longitude: 139.7671 })
+    );
+    expect(fixture.coreReadRepository.getHomeRecommendations).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: 35.6812, longitude: 139.7671 })
+    );
+    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenCalledWith(
+      "s1234567890",
+      expect.objectContaining({ latitude: 35.6812, longitude: 139.7671 })
+    );
+  });
+
+  it("rejects unpaired coordinates instead of fabricating distance", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app).get("/api/v1/services?latitude=35.6812").expect(400);
+    await request(fixture.app).get("/api/v1/home/recommendations?longitude=139.7671").expect(400);
+    await request(fixture.app).get("/api/v1/technicians/s1234567890?latitude=35.6812").expect(400);
+  });
+
   it("returns home recommendations and search results with stable paginated contracts", async () => {
     const fixture = createFixture();
 
@@ -469,10 +505,11 @@ describe("Step 08 core read API", () => {
       acceptanceRatePercent: 98,
       reviewTagSummary
     });
-    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(1, 1);
+    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(1, 1, {});
     expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(
       2,
-      technicianCard.publicId
+      technicianCard.publicId,
+      {}
     );
   });
 

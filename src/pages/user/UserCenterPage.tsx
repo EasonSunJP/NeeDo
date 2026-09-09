@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type PointerEvent,
+} from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
-import { IconButton, PrimaryButton } from "../../components/client-ui/AppScaffold";
+import {
+  IconButton,
+  PrimaryButton,
+} from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { AvatarImage } from "../../components/ui/AvatarImage";
@@ -13,23 +23,49 @@ import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
-import { bookingApi, type BookingOrderStatus } from "../../features/booking/api";
+import {
+  bookingApi,
+  type BookingOrderStatus,
+} from "../../features/booking/api";
 import { mapCoreCustomerToCustomer } from "../../features/core-read/api";
-import { customerProfileApi, type CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
+import {
+  customerProfileApi,
+  type CustomerSelfProfile,
+} from "../../features/core-read/customerProfileApi";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
-import { formatWalletAmount, hasTestNdpWallet } from "../../features/wallet/presentation";
+import {
+  formatWalletAmount,
+  hasTestNdpWallet,
+} from "../../features/wallet/presentation";
 import { customerShopMembershipApi } from "../../features/shop-member/api";
-import { platformMembershipSelfApi, type MyExperienceSummary, type MyPlatformMembership } from "../../features/platform-membership/api";
+import {
+  platformMembershipSelfApi,
+  type MyExperienceSummary,
+  type MyPlatformMembership,
+} from "../../features/platform-membership/api";
 import { CurrentMembershipBenefits } from "../../features/platform-membership/CurrentMembershipBenefits";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { PlatformMembershipDetailCard } from "../../shared/profile-card/PlatformMembershipDetailCard";
-import { formatCustomerCreditReviewCount, formatCustomerCreditScore, formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
-import { PROFILE_LANGUAGE_OPTIONS, normalizeProfileLanguageLabels } from "../../shared/profile-card/profileLanguages";
+import {
+  formatCustomerCreditReviewCount,
+  formatCustomerCreditScore,
+  formatCustomerGenderLabel,
+} from "../../shared/profile-card/customerProfileLabels";
+import {
+  PROFILE_LANGUAGE_OPTIONS,
+  normalizeProfileLanguageLabels,
+} from "../../shared/profile-card/profileLanguages";
 import type { Customer } from "../../types/domain";
 
-const formalOrderStatuses = ["pending", "confirmed", "inService", "completed", "cancelled"] as const satisfies readonly BookingOrderStatus[];
+const formalOrderStatuses = [
+  "pending",
+  "confirmed",
+  "inService",
+  "completed",
+  "cancelled",
+] as const satisfies readonly BookingOrderStatus[];
 type FormalOrderCounts = Record<(typeof formalOrderStatuses)[number], number>;
 type FormalUserCenterData = {
   activeShopMembershipCount: number | null;
@@ -45,30 +81,53 @@ const emptyFormalOrderCounts: FormalOrderCounts = {
   confirmed: 0,
   inService: 0,
   completed: 0,
-  cancelled: 0
+  cancelled: 0,
 };
 
 const userCenterCollectionInfo: Record<Language, string> = {
-  zh: "已收藏的动态与聊天记录",
-  "zh-Hant": "已收藏的動態與聊天記錄",
-  ja: "お気に入りの投稿とチャット履歴",
-  en: "Bookmarked posts and chat records",
-  ko: "즐겨찾기 게시물 및 채팅 기록"
+  zh: "已收藏的服务、店铺、技师、动态与聊天记录",
+  "zh-Hant": "已收藏的服務、店鋪、技師、動態與聊天記錄",
+  ja: "お気に入りのサービス・店舗・技術者・投稿・チャット履歴",
+  en: "Favorite services, shops, technicians, posts and chat records",
+  ko: "즐겨찾기 서비스, 매장, 기술자, 게시물 및 채팅 기록",
 };
-const platformMembershipTierLabels: Record<MyPlatformMembership["tierCode"], string> = {
+const platformMembershipTierLabels: Record<
+  MyPlatformMembership["tierCode"],
+  string
+> = {
   free: "免费会员",
   silver: "白银会员",
   gold: "黄金会员",
-  black_diamond: "黑钻会员"
+  black_diamond: "黑钻会员",
 };
 
 const accountSettings = [
-  { label: "账号设置", caption: "手机号、邮箱、登录密码", to: "/me/settings/account" },
-  { label: "支付方式", caption: "银行卡、PayPay、现金", to: "/me/settings/account" },
-  { label: "发票记录", caption: "企业抬头与历史发票", to: "/me/settings/account" },
-  { label: "通知设置", caption: "订单、营销、客服提醒", to: "/me/settings/notifications" },
-  { label: "隐私与安全", caption: "登录设备、数据授权", to: "/me/settings/account" },
-  { label: "联系客服", caption: "退款、改期、投诉风控", to: "/support" }
+  {
+    label: "账号设置",
+    caption: "手机号、邮箱、登录密码",
+    to: "/me/settings/account",
+  },
+  {
+    label: "支付方式",
+    caption: "银行卡、PayPay、现金",
+    to: "/me/settings/account",
+  },
+  {
+    label: "发票记录",
+    caption: "企业抬头与历史发票",
+    to: "/me/settings/account",
+  },
+  {
+    label: "通知设置",
+    caption: "订单、营销、客服提醒",
+    to: "/me/settings/notifications",
+  },
+  {
+    label: "隐私与安全",
+    caption: "登录设备、数据授权",
+    to: "/me/settings/account",
+  },
+  { label: "联系客服", caption: "退款、改期、投诉风控", to: "/support" },
 ];
 
 const pagePanelClassName =
@@ -85,10 +144,13 @@ const avatarCropPrimaryButtonClassName =
   "border-[color:color-mix(in_srgb,var(--client-primary)_72%,var(--client-line))] bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_14px_28px_color-mix(in_srgb,var(--client-primary)_18%,transparent)]";
 const avatarCropFrameClassName =
   "relative h-[240px] w-[240px] touch-none overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_58%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-bg)_82%,var(--client-primary)_18%)] shadow-[0_18px_36px_rgba(0,0,0,0.24)] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)]";
-const userProfileGenderOptions: Array<{ label: string; value: NonNullable<Customer["gender"]> }> = [
+const userProfileGenderOptions: Array<{
+  label: string;
+  value: NonNullable<Customer["gender"]>;
+}> = [
   { label: "女", value: "female" },
   { label: "男", value: "male" },
-  { label: "不公开", value: "private" }
+  { label: "不公开", value: "private" },
 ];
 type UserProfileVisibility = "privateAll" | "limited" | "network";
 type UserProfilePrivacyState = {
@@ -108,19 +170,23 @@ const userProfilePrivacyOptions = [
   {
     value: "privateAll",
     label: "对所有人不可见",
-    description: "仅本人可见"
+    description: "仅本人可见",
   },
   {
     value: "limited",
     label: "对好友可见",
-    description: "仅好友可以看到该账号信息"
+    description: "仅好友可以看到该账号信息",
   },
   {
     value: "network",
     label: "对好友以及关联人可见",
-    description: "仅好友以及关联店铺和介绍关系中的关联人可见"
-  }
-] as const satisfies ReadonlyArray<{ value: UserProfileVisibility; label: string; description: string }>;
+    description: "仅好友以及关联店铺和介绍关系中的关联人可见",
+  },
+] as const satisfies ReadonlyArray<{
+  value: UserProfileVisibility;
+  label: string;
+  description: string;
+}>;
 type AvatarCropDrag = {
   pointerId: number;
   startX: number;
@@ -162,7 +228,10 @@ function getAvatarCropBaseScale(crop: AvatarCropState) {
     return 1;
   }
 
-  return Math.max(avatarCropFrameSize / crop.naturalWidth, avatarCropFrameSize / crop.naturalHeight);
+  return Math.max(
+    avatarCropFrameSize / crop.naturalWidth,
+    avatarCropFrameSize / crop.naturalHeight,
+  );
 }
 
 function clampAvatarCrop(crop: AvatarCropState): AvatarCropState {
@@ -179,7 +248,7 @@ function clampAvatarCrop(crop: AvatarCropState): AvatarCropState {
   return {
     ...crop,
     offsetX: clampNumber(crop.offsetX, -maxOffsetX, maxOffsetX),
-    offsetY: clampNumber(crop.offsetY, -maxOffsetY, maxOffsetY)
+    offsetY: clampNumber(crop.offsetY, -maxOffsetY, maxOffsetY),
   };
 }
 
@@ -197,14 +266,22 @@ async function createCroppedAvatarDataUrl(crop: AvatarCropState) {
   const baseScale = getAvatarCropBaseScale({
     ...crop,
     naturalWidth: image.naturalWidth,
-    naturalHeight: image.naturalHeight
+    naturalHeight: image.naturalHeight,
   });
   const effectiveScale = baseScale * crop.scale;
   const sourceSize = avatarCropFrameSize / effectiveScale;
   const centerX = image.naturalWidth / 2 - crop.offsetX / effectiveScale;
   const centerY = image.naturalHeight / 2 - crop.offsetY / effectiveScale;
-  const sourceX = clampNumber(centerX - sourceSize / 2, 0, Math.max(0, image.naturalWidth - sourceSize));
-  const sourceY = clampNumber(centerY - sourceSize / 2, 0, Math.max(0, image.naturalHeight - sourceSize));
+  const sourceX = clampNumber(
+    centerX - sourceSize / 2,
+    0,
+    Math.max(0, image.naturalWidth - sourceSize),
+  );
+  const sourceY = clampNumber(
+    centerY - sourceSize / 2,
+    0,
+    Math.max(0, image.naturalHeight - sourceSize),
+  );
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
 
@@ -215,21 +292,36 @@ async function createCroppedAvatarDataUrl(crop: AvatarCropState) {
     return crop.source;
   }
 
-  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, avatarCropOutputSize, avatarCropOutputSize);
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceSize,
+    sourceSize,
+    0,
+    0,
+    avatarCropOutputSize,
+    avatarCropOutputSize,
+  );
   return canvas.toDataURL("image/jpeg", 0.84);
 }
 
 function getThemeProfileSurfaceClassNames() {
   return {
-    shell: "border-[color:color-mix(in_srgb,var(--client-primary)_30%,var(--client-line))] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_22%,transparent),transparent_34%),linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)),color-mix(in_srgb,var(--client-bg)_94%,black))] text-[color:var(--client-text)]",
-    panel: "border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_14%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_58%,var(--client-bg)_42%)]",
-    metric: "border-[color:color-mix(in_srgb,var(--client-line)_70%,var(--client-primary)_16%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_50%,transparent)]",
+    shell:
+      "border-[color:color-mix(in_srgb,var(--client-primary)_30%,var(--client-line))] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_22%,transparent),transparent_34%),linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)),color-mix(in_srgb,var(--client-bg)_94%,black))] text-[color:var(--client-text)]",
+    panel:
+      "border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_14%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_58%,var(--client-bg)_42%)]",
+    metric:
+      "border-[color:color-mix(in_srgb,var(--client-line)_70%,var(--client-primary)_16%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_50%,transparent)]",
     chip: "border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]",
-    avatar: "border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)]",
+    avatar:
+      "border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)]",
     muted: "text-[color:var(--client-muted)]",
     label: "text-[color:var(--client-soft-muted)]",
     accent: "text-[color:var(--client-primary-strong)]",
-    divider: "bg-[color:color-mix(in_srgb,var(--client-line)_70%,var(--client-primary)_18%)]"
+    divider:
+      "bg-[color:color-mix(in_srgb,var(--client-line)_70%,var(--client-primary)_18%)]",
   };
 }
 
@@ -241,16 +333,22 @@ function buildUserProfile(customer: Customer) {
     height: customer.height?.trim() || "",
     gender: formatCustomerGenderLabel(customer.gender),
     languages: normalizeProfileLanguageLabels(customer.languages ?? []),
-    bio: customer.bio?.trim() || ""
+    bio: customer.bio?.trim() || "",
   };
 }
 
 function getUserProfileNameByteLength(value: string) {
-  return Array.from(value).reduce((sum, character) => sum + (/^[\x00-\x7F]$/.test(character) ? 1 : 2), 0);
+  return Array.from(value).reduce(
+    (sum, character) => sum + (/^[\x00-\x7F]$/.test(character) ? 1 : 2),
+    0,
+  );
 }
 
 function getUserProfileNameEditorWidth(value: string) {
-  const visualUnits = Array.from(value.trim() || "用户").reduce((sum, character) => sum + (/^[\x00-\x7F]$/.test(character) ? 0.62 : 1), 0);
+  const visualUnits = Array.from(value.trim() || "用户").reduce(
+    (sum, character) => sum + (/^[\x00-\x7F]$/.test(character) ? 0.62 : 1),
+    0,
+  );
 
   return `${clampNumber(visualUnits + 0.85, 3.2, 14)}em`;
 }
@@ -262,7 +360,10 @@ function limitUserProfileName(value: string) {
   for (const character of Array.from(value.replace(/[\r\n]+/g, " "))) {
     const characterBytes = getUserProfileNameByteLength(character);
 
-    if (Array.from(nextValue).length >= userProfileNameMaxCharacters || nextBytes + characterBytes > userProfileNameMaxBytes) {
+    if (
+      Array.from(nextValue).length >= userProfileNameMaxCharacters ||
+      nextBytes + characterBytes > userProfileNameMaxBytes
+    ) {
       break;
     }
 
@@ -273,16 +374,18 @@ function limitUserProfileName(value: string) {
   return nextValue;
 }
 
-function getUserProfileDisplayName(customer: Customer, draft?: UserProfileDraft | null) {
-  return (
-    draft?.nickname.trim() ||
-    customer.nickname?.trim() ||
-    customer.name
-  );
+function getUserProfileDisplayName(
+  customer: Customer,
+  draft?: UserProfileDraft | null,
+) {
+  return draft?.nickname.trim() || customer.nickname?.trim() || customer.name;
 }
 
 function formatUserHeightInput(value?: string) {
-  return (value ?? "").trim().replace(/\s*(cm|厘米|センチ|㎝)$/i, "").trim();
+  return (value ?? "")
+    .trim()
+    .replace(/\s*(cm|厘米|センチ|㎝)$/i, "")
+    .trim();
 }
 
 function normalizeUserHeightForStorage(value: string) {
@@ -295,7 +398,10 @@ function normalizeUserHeightForStorage(value: string) {
   return /^\d+(?:\.\d+)?$/.test(height) ? `${height}cm` : height;
 }
 
-function parseOptionalProfileNumber(value: string, options: { field: string; integer?: boolean; max: number; min: number }): number | null {
+function parseOptionalProfileNumber(
+  value: string,
+  options: { field: string; integer?: boolean; max: number; min: number },
+): number | null {
   const trimmed = value.trim();
 
   if (!trimmed) {
@@ -303,7 +409,11 @@ function parseOptionalProfileNumber(value: string, options: { field: string; int
   }
 
   const parsed = Number(trimmed);
-  const valid = Number.isFinite(parsed) && parsed >= options.min && parsed <= options.max && (!options.integer || Number.isInteger(parsed));
+  const valid =
+    Number.isFinite(parsed) &&
+    parsed >= options.min &&
+    parsed <= options.max &&
+    (!options.integer || Number.isInteger(parsed));
 
   if (!valid) {
     throw new Error(options.field);
@@ -324,11 +434,16 @@ function getUserProfilePrivacyLabel(visibility: UserProfileVisibility) {
   }
 }
 
-function getUserProfilePrivacySummary(enabled: boolean, visibility: UserProfileVisibility) {
+function getUserProfilePrivacySummary(
+  enabled: boolean,
+  visibility: UserProfileVisibility,
+) {
   return enabled ? getUserProfilePrivacyLabel(visibility) : "公开可见";
 }
 
-function getPersistedUserProfilePrivacy(visibility?: CustomerSelfProfile["visibility"]): UserProfilePrivacyState {
+function getPersistedUserProfilePrivacy(
+  visibility?: CustomerSelfProfile["visibility"],
+): UserProfilePrivacyState {
   return visibility && visibility !== "public"
     ? { enabled: true, visibility }
     : { enabled: false, visibility: "privateAll" };
@@ -355,23 +470,28 @@ function buildUserProfileDraft(customer: Customer): UserProfileDraft {
     age: profile.age,
     height: formatUserHeightInput(profile.height),
     languages: profile.languages,
-    bio: profile.bio
+    bio: profile.bio,
   };
 }
 
-function readProfileFieldValue<T extends HTMLInputElement | HTMLTextAreaElement>(field: string, fallback: string) {
+function readProfileFieldValue<
+  T extends HTMLInputElement | HTMLTextAreaElement,
+>(field: string, fallback: string) {
   if (typeof document === "undefined") {
     return fallback;
   }
 
-  return document.querySelector<T>(`[data-profile-field="${field}"]`)?.value ?? fallback;
+  return (
+    document.querySelector<T>(`[data-profile-field="${field}"]`)?.value ??
+    fallback
+  );
 }
 
 function AvatarCropEditor({
   crop,
   onApply,
   onCancel,
-  onChange
+  onChange,
 }: {
   crop: AvatarCropState;
   onApply: () => void;
@@ -379,14 +499,19 @@ function AvatarCropEditor({
   onChange: (crop: AvatarCropState) => void;
 }) {
   const baseScale = getAvatarCropBaseScale(crop);
-  const imageWidth = crop.naturalWidth > 0 ? crop.naturalWidth * baseScale : avatarCropFrameSize;
-  const imageHeight = crop.naturalHeight > 0 ? crop.naturalHeight * baseScale : avatarCropFrameSize;
+  const imageWidth =
+    crop.naturalWidth > 0 ? crop.naturalWidth * baseScale : avatarCropFrameSize;
+  const imageHeight =
+    crop.naturalHeight > 0
+      ? crop.naturalHeight * baseScale
+      : avatarCropFrameSize;
   const imageStyle = {
     height: `${imageHeight}px`,
     transform: `translate(-50%, -50%) translate(${crop.offsetX}px, ${crop.offsetY}px) scale(${crop.scale})`,
-    width: `${imageWidth}px`
+    width: `${imageWidth}px`,
   };
-  const updateCrop = (nextCrop: AvatarCropState) => onChange(clampAvatarCrop(nextCrop));
+  const updateCrop = (nextCrop: AvatarCropState) =>
+    onChange(clampAvatarCrop(nextCrop));
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     event.currentTarget.setPointerCapture?.(event.pointerId);
     onChange({
@@ -396,8 +521,8 @@ function AvatarCropEditor({
         startX: event.clientX,
         startY: event.clientY,
         originX: crop.offsetX,
-        originY: crop.offsetY
-      }
+        originY: crop.offsetY,
+      },
     });
   };
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -408,7 +533,7 @@ function AvatarCropEditor({
     updateCrop({
       ...crop,
       offsetX: crop.drag.originX + event.clientX - crop.drag.startX,
-      offsetY: crop.drag.originY + event.clientY - crop.drag.startY
+      offsetY: crop.drag.originY + event.clientY - crop.drag.startY,
     });
   };
   const clearDrag = (event: PointerEvent<HTMLDivElement>) => {
@@ -427,9 +552,18 @@ function AvatarCropEditor({
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-black">头像裁剪</p>
-            <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">拖动图片调整位置，用滑块放大缩小。保存后会按圆角正方形头像框显示。</p>
+            <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">
+              拖动图片调整位置，用滑块放大缩小。保存后会按圆角正方形头像框显示。
+            </p>
           </div>
-          <button className={cn("shrink-0 rounded-full border px-3 py-1.5 text-xs font-black", avatarCropSecondaryButtonClassName)} onClick={onCancel} type="button">
+          <button
+            className={cn(
+              "shrink-0 rounded-full border px-3 py-1.5 text-xs font-black",
+              avatarCropSecondaryButtonClassName,
+            )}
+            onClick={onCancel}
+            type="button"
+          >
             关闭
           </button>
         </div>
@@ -450,7 +584,7 @@ function AvatarCropEditor({
                   updateCrop({
                     ...crop,
                     naturalHeight: event.currentTarget.naturalHeight,
-                    naturalWidth: event.currentTarget.naturalWidth
+                    naturalWidth: event.currentTarget.naturalWidth,
                   });
                 }}
                 src={crop.source}
@@ -463,22 +597,40 @@ function AvatarCropEditor({
           </div>
           <div className="w-full min-w-0 space-y-3">
             <label className="block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">缩放</span>
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">
+                缩放
+              </span>
               <input
                 className="w-full accent-[color:var(--client-primary)]"
                 max="3"
                 min="1"
-                onChange={(event) => updateCrop({ ...crop, scale: Number(event.target.value) })}
+                onChange={(event) =>
+                  updateCrop({ ...crop, scale: Number(event.target.value) })
+                }
                 step="0.01"
                 type="range"
                 value={crop.scale}
               />
             </label>
             <div className="grid grid-cols-2 gap-2">
-              <button className={cn("rounded-[18px] border px-4 py-3 text-sm font-black", avatarCropSecondaryButtonClassName)} onClick={onCancel} type="button">
+              <button
+                className={cn(
+                  "rounded-[18px] border px-4 py-3 text-sm font-black",
+                  avatarCropSecondaryButtonClassName,
+                )}
+                onClick={onCancel}
+                type="button"
+              >
                 取消裁剪
               </button>
-              <button className={cn("rounded-[18px] border px-4 py-3 text-sm font-black", avatarCropPrimaryButtonClassName)} onClick={onApply} type="button">
+              <button
+                className={cn(
+                  "rounded-[18px] border px-4 py-3 text-sm font-black",
+                  avatarCropPrimaryButtonClassName,
+                )}
+                onClick={onApply}
+                type="button"
+              >
                 套用头像
               </button>
             </div>
@@ -492,7 +644,7 @@ function AvatarCropEditor({
 function UserCenterDataStatus({
   error,
   loading,
-  onRetry
+  onRetry,
 }: {
   error?: string;
   loading?: boolean;
@@ -501,7 +653,11 @@ function UserCenterDataStatus({
   const navigate = useNavigate();
 
   return (
-    <MobileShell showBottomNav={false} navPanelStyle="plain" showTopEdgeMask={false}>
+    <MobileShell
+      showBottomNav={false}
+      navPanelStyle="plain"
+      showTopEdgeMask={false}
+    >
       <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
         <MobileFullscreenHeader
           info="账号资料、订单入口与服务权益都统一收在这里。"
@@ -511,11 +667,19 @@ function UserCenterDataStatus({
           title="个人中心"
         />
         <main className="px-4 pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
-          <section className={cn(pagePanelClassName, "py-8 text-center")} aria-live="polite" role={error ? "alert" : undefined}>
+          <section
+            className={cn(pagePanelClassName, "py-8 text-center")}
+            aria-live="polite"
+            role={error ? "alert" : undefined}
+          >
             <h1 className="text-lg font-black text-[color:var(--client-text)]">
               {loading ? "正在加载我的正式数据" : "我的数据加载失败"}
             </h1>
-            {error ? <p className="mt-2 text-sm font-bold leading-6 text-[color:var(--client-muted)]">{error}</p> : null}
+            {error ? (
+              <p className="mt-2 text-sm font-bold leading-6 text-[color:var(--client-muted)]">
+                {error}
+              </p>
+            ) : null}
             {error && onRetry ? (
               <PrimaryButton className="mt-4 w-full" onClick={onRetry}>
                 重新加载我的数据
@@ -528,11 +692,19 @@ function UserCenterDataStatus({
   );
 }
 
-function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: number }) {
-  const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
+function FormalUserCenterDataGate({
+  customerProfileId,
+}: {
+  customerProfileId: number;
+}) {
+  const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
   const [loadError, setLoadError] = useState("");
   const [revision, setRevision] = useState(0);
-  const [formalData, setFormalData] = useState<FormalUserCenterData | null>(null);
+  const [formalData, setFormalData] = useState<FormalUserCenterData | null>(
+    null,
+  );
 
   useEffect(() => {
     let active = true;
@@ -544,31 +716,48 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
       walletApi.getMyWalletSummary(),
       Promise.all(
         formalOrderStatuses.map(async (status) => {
-          const page = await bookingApi.listOrders({ page: 1, pageSize: 1, status });
+          const page = await bookingApi.listOrders({
+            page: 1,
+            pageSize: 1,
+            status,
+          });
           return [status, page.total] as const;
-        })
+        }),
       ),
-      customerShopMembershipApi.list({ page: 1, pageSize: 1, status: "active" })
+      customerShopMembershipApi
+        .list({ page: 1, pageSize: 1, status: "active" })
         .then((result) => result.total)
         .catch(() => null),
       platformMembershipSelfApi.getMyExperience(),
-      platformMembershipSelfApi.getMine()
+      platformMembershipSelfApi.getMine(),
     ])
-      .then(([profile, wallet, counts, activeShopMembershipCount, experience, membership]) => {
-        if (!active) return;
-        if (profile.id !== customerProfileId) {
-          throw new ApiClientError("error.forbidden", 403, 403);
-        }
-        setFormalData({
+      .then(
+        ([
+          profile,
+          wallet,
+          counts,
           activeShopMembershipCount,
           experience,
           membership,
-          profile,
-          wallet,
-          orderCounts: { ...emptyFormalOrderCounts, ...Object.fromEntries(counts) }
-        });
-        setLoadStatus("success");
-      })
+        ]) => {
+          if (!active) return;
+          if (profile.id !== customerProfileId) {
+            throw new ApiClientError("error.forbidden", 403, 403);
+          }
+          setFormalData({
+            activeShopMembershipCount,
+            experience,
+            membership,
+            profile,
+            wallet,
+            orderCounts: {
+              ...emptyFormalOrderCounts,
+              ...Object.fromEntries(counts),
+            },
+          });
+          setLoadStatus("success");
+        },
+      )
       .catch((error: unknown) => {
         if (!active) return;
         setFormalData(null);
@@ -586,14 +775,21 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
   }
 
   if (loadStatus === "error" || !formalData) {
-    return <UserCenterDataStatus error={loadError} onRetry={() => setRevision((current) => current + 1)} />;
+    return (
+      <UserCenterDataStatus
+        error={loadError}
+        onRetry={() => setRevision((current) => current + 1)}
+      />
+    );
   }
 
   return (
     <CompleteUserCenterPage
       formalData={formalData}
       onFormalProfileUpdated={(profile) => {
-        setFormalData((current) => (current ? { ...current, profile } : current));
+        setFormalData((current) =>
+          current ? { ...current, profile } : current,
+        );
       }}
     />
   );
@@ -601,7 +797,7 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
 
 function CompleteUserCenterPage({
   formalData,
-  onFormalProfileUpdated
+  onFormalProfileUpdated,
 }: {
   formalData: FormalUserCenterData;
   onFormalProfileUpdated: (profile: CustomerSelfProfile) => void;
@@ -609,15 +805,25 @@ function CompleteUserCenterPage({
   const navigate = useNavigate();
   const { language } = useOptionalI18n();
   const { refreshSession } = useAuth();
-  const currentCustomer = useMemo(() => mapCoreCustomerToCustomer(formalData.profile), [formalData.profile]);
-  const userProfile = useMemo(() => buildUserProfile(currentCustomer), [currentCustomer]);
+  const currentCustomer = useMemo(
+    () => mapCoreCustomerToCustomer(formalData.profile),
+    [formalData.profile],
+  );
+  const userProfile = useMemo(
+    () => buildUserProfile(currentCustomer),
+    [currentCustomer],
+  );
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileDraft, setProfileDraft] = useState<UserProfileDraft | null>(null);
+  const [profileDraft, setProfileDraft] = useState<UserProfileDraft | null>(
+    null,
+  );
   const [profileNameOverride, setProfileNameOverride] = useState("");
-  const [profilePrivacyDraft, setProfilePrivacyDraft] = useState<UserProfilePrivacyState | null>(null);
+  const [profilePrivacyDraft, setProfilePrivacyDraft] =
+    useState<UserProfilePrivacyState | null>(null);
   const [profilePrivacyMenuOpen, setProfilePrivacyMenuOpen] = useState(false);
-  const [profilePrivacyConfirmOpen, setProfilePrivacyConfirmOpen] = useState(false);
+  const [profilePrivacyConfirmOpen, setProfilePrivacyConfirmOpen] =
+    useState(false);
   const [avatarCrop, setAvatarCrop] = useState<AvatarCropState | null>(null);
   const [profileToastMessage, setProfileToastMessage] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -629,24 +835,39 @@ function CompleteUserCenterPage({
         height: profileDraft.height,
         gender: formatCustomerGenderLabel(profileDraft.gender),
         languages: profileDraft.languages,
-        bio: profileDraft.bio
+        bio: profileDraft.bio,
       }
     : userProfile;
-  const displayName = limitUserProfileName(getUserProfileDisplayName(currentCustomer, profileDraft));
-  const profileNameEditorWidth = getUserProfileNameEditorWidth(profileNameOverride || displayName);
+  const displayName = limitUserProfileName(
+    getUserProfileDisplayName(currentCustomer, profileDraft),
+  );
+  const profileNameEditorWidth = getUserProfileNameEditorWidth(
+    profileNameOverride || displayName,
+  );
   const points = formalData.wallet.ndp.available;
   const pointsLabel = "NDP";
   const testPoints = hasTestNdpWallet(formalData.wallet)
     ? formatWalletAmount(formalData.wallet.testNdp.available)
     : null;
-  const usageCount = Object.values(formalData.orderCounts).reduce((sum, count) => sum + count, 0);
+  const usageCount = Object.values(formalData.orderCounts).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
   const creditScore = formatCustomerCreditScore(currentCustomer);
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
   const levelLabel = `Lv.${formalData.experience.level}`;
   const membershipSurface = getThemeProfileSurfaceClassNames();
-  const savedProfilePrivacy = getPersistedUserProfilePrivacy(formalData.profile.visibility);
-  const activeProfilePrivacy = isEditingProfile && profilePrivacyDraft ? profilePrivacyDraft : savedProfilePrivacy;
-  const profilePrivacySummary = getUserProfilePrivacySummary(activeProfilePrivacy.enabled, activeProfilePrivacy.visibility);
+  const savedProfilePrivacy = getPersistedUserProfilePrivacy(
+    formalData.profile.visibility,
+  );
+  const activeProfilePrivacy =
+    isEditingProfile && profilePrivacyDraft
+      ? profilePrivacyDraft
+      : savedProfilePrivacy;
+  const profilePrivacySummary = getUserProfilePrivacySummary(
+    activeProfilePrivacy.enabled,
+    activeProfilePrivacy.visibility,
+  );
   const nicknameInputRef = useRef<HTMLTextAreaElement>(null);
   const ageInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
@@ -656,21 +877,53 @@ function CompleteUserCenterPage({
     { label: "待服务", count: formalData.orderCounts.confirmed, to: "/orders" },
     { label: "进行中", count: formalData.orderCounts.inService, to: "/orders" },
     { label: "已完成", count: formalData.orderCounts.completed, to: "/orders" },
-    { label: "已取消", count: formalData.orderCounts.cancelled, to: "/orders" }
+    { label: "已取消", count: formalData.orderCounts.cancelled, to: "/orders" },
   ];
-  const serviceTools: Array<{ label: string; info: string; value: number | string; to: string; test?: boolean }> = [
-    { label: "我的收藏", info: userCenterCollectionInfo[language], value: "查看", to: "/me/favorites" },
-    { label: "我的地址", info: "家庭、公司、常用地址", value: "—", to: "/checkout/svc-clean-1" },
+  const serviceTools: Array<{
+    label: string;
+    info: string;
+    value: number | string;
+    to: string;
+    test?: boolean;
+  }> = [
+    {
+      label: "我的收藏",
+      info: userCenterCollectionInfo[language],
+      value: "查看",
+      to: "/me/favorites",
+    },
+    {
+      label: "我的地址",
+      info: "家庭、公司、常用地址",
+      value: "—",
+      to: "/checkout/svc-clean-1",
+    },
     { label: "我的评价", info: "已评价与待回复", value: "—", to: "/me" },
-    { label: "周期预约", info: "保洁、护理、家电维护", value: "—", to: "/categories?type=service" },
-    { label: "会员", info: "查看已加入店铺与会员卡状态", value: formalData.activeShopMembershipCount ?? "—", to: "/me/memberships", test: true },
-    { label: "KYC身份验证", info: "实名、证件、本人确认", value: "去", to: "/me/settings/verification" }
+    {
+      label: "周期预约",
+      info: "保洁、护理、家电维护",
+      value: "—",
+      to: "/categories?type=service",
+    },
+    {
+      label: "会员",
+      info: "查看已加入店铺与会员卡状态",
+      value: formalData.activeShopMembershipCount ?? "—",
+      to: "/me/memberships",
+      test: true,
+    },
+    {
+      label: "KYC身份验证",
+      info: "实名、证件、本人确认",
+      value: "去",
+      to: "/me/settings/verification",
+    },
   ];
   const startProfileEdit = () => {
     const nextDraft = buildUserProfileDraft(currentCustomer);
     const limitedDraft = {
       ...nextDraft,
-      nickname: limitUserProfileName(nextDraft.nickname)
+      nickname: limitUserProfileName(nextDraft.nickname),
     };
 
     setProfileDraft(limitedDraft);
@@ -697,13 +950,18 @@ function CompleteUserCenterPage({
       return;
     }
 
-    const nextPatch = typeof patch.nickname === "string" ? { ...patch, nickname: limitUserProfileName(patch.nickname) } : patch;
+    const nextPatch =
+      typeof patch.nickname === "string"
+        ? { ...patch, nickname: limitUserProfileName(patch.nickname) }
+        : patch;
 
     if (typeof nextPatch.nickname === "string") {
       setProfileNameOverride(nextPatch.nickname);
     }
 
-    setProfileDraft((current) => (current ? { ...current, ...nextPatch } : current));
+    setProfileDraft((current) =>
+      current ? { ...current, ...nextPatch } : current,
+    );
   };
   const toggleProfileLanguage = (language: string) => {
     if (isSavingProfile) {
@@ -719,10 +977,15 @@ function CompleteUserCenterPage({
         ? current.languages.filter((item) => item !== language)
         : [...current.languages, language];
 
-      return { ...current, languages: languages.length > 0 ? languages : [language] };
+      return {
+        ...current,
+        languages: languages.length > 0 ? languages : [language],
+      };
     });
   };
-  const persistProfilePrivacy = async (visibility: CustomerSelfProfile["visibility"]) => {
+  const persistProfilePrivacy = async (
+    visibility: CustomerSelfProfile["visibility"],
+  ) => {
     if (isSavingProfile) {
       return false;
     }
@@ -734,7 +997,9 @@ function CompleteUserCenterPage({
       const updated = await customerProfileApi.updateMine({ visibility });
       onFormalProfileUpdated(updated);
 
-      setProfileToastMessage(visibility === "public" ? "隐私模式已关闭" : "隐私模式设置已保存");
+      setProfileToastMessage(
+        visibility === "public" ? "隐私模式已关闭" : "隐私模式设置已保存",
+      );
       return true;
     } catch {
       setProfileToastMessage("隐私模式保存失败，请重试");
@@ -757,7 +1022,10 @@ function CompleteUserCenterPage({
     setProfilePrivacyConfirmOpen(false);
 
     if (isEditingProfile) {
-      setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled }));
+      setProfilePrivacyDraft((current) => ({
+        ...(current ?? savedProfilePrivacy),
+        enabled,
+      }));
       return;
     }
 
@@ -771,7 +1039,10 @@ function CompleteUserCenterPage({
     setProfilePrivacyConfirmOpen(false);
 
     if (isEditingProfile) {
-      setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled: true }));
+      setProfilePrivacyDraft((current) => ({
+        ...(current ?? savedProfilePrivacy),
+        enabled: true,
+      }));
       setProfilePrivacyMenuOpen(true);
       return;
     }
@@ -782,7 +1053,9 @@ function CompleteUserCenterPage({
       }
     });
   };
-  const updateProfilePrivacyVisibility = (visibility: UserProfileVisibility) => {
+  const updateProfilePrivacyVisibility = (
+    visibility: UserProfileVisibility,
+  ) => {
     if (isSavingProfile) {
       return;
     }
@@ -810,12 +1083,15 @@ function CompleteUserCenterPage({
     }
 
     setAvatarCrop({
-      source: await readImageFileAsDataUrl(file, { maxDimension: 1800, maxStoredBytes: 1_200_000 }),
+      source: await readImageFileAsDataUrl(file, {
+        maxDimension: 1800,
+        maxStoredBytes: 1_200_000,
+      }),
       scale: 1,
       offsetX: 0,
       offsetY: 0,
       naturalWidth: 0,
-      naturalHeight: 0
+      naturalHeight: 0,
     });
     setProfileToastMessage("");
   };
@@ -824,7 +1100,9 @@ function CompleteUserCenterPage({
       return;
     }
 
-    updateProfileDraft({ avatar: await createCroppedAvatarDataUrl(avatarCrop) });
+    updateProfileDraft({
+      avatar: await createCroppedAvatarDataUrl(avatarCrop),
+    });
     setAvatarCrop(null);
     setProfileToastMessage("头像裁剪已套用，点击保存后生效。");
   };
@@ -852,18 +1130,43 @@ function CompleteUserCenterPage({
       return;
     }
 
-    const nicknameValue = limitUserProfileName(profileNameOverride || readProfileFieldValue<HTMLTextAreaElement>("nickname", nicknameInputRef.current?.value ?? profileDraft.nickname));
-    const ageValue = readProfileFieldValue<HTMLInputElement>("age", ageInputRef.current?.value ?? profileDraft.age);
-    const heightValue = readProfileFieldValue<HTMLInputElement>("height", heightInputRef.current?.value ?? profileDraft.height);
-    const bioValue = readProfileFieldValue<HTMLTextAreaElement>("bio", bioInputRef.current?.value ?? profileDraft.bio);
+    const nicknameValue = limitUserProfileName(
+      profileNameOverride ||
+        readProfileFieldValue<HTMLTextAreaElement>(
+          "nickname",
+          nicknameInputRef.current?.value ?? profileDraft.nickname,
+        ),
+    );
+    const ageValue = readProfileFieldValue<HTMLInputElement>(
+      "age",
+      ageInputRef.current?.value ?? profileDraft.age,
+    );
+    const heightValue = readProfileFieldValue<HTMLInputElement>(
+      "height",
+      heightInputRef.current?.value ?? profileDraft.height,
+    );
+    const bioValue = readProfileFieldValue<HTMLTextAreaElement>(
+      "bio",
+      bioInputRef.current?.value ?? profileDraft.bio,
+    );
     let ageNumber: number | null;
     let heightNumber: number | null;
 
     try {
-      ageNumber = parseOptionalProfileNumber(ageValue, { field: "年龄必须是 0 到 150 之间的整数", integer: true, min: 0, max: 150 });
-      heightNumber = parseOptionalProfileNumber(formatUserHeightInput(heightValue), { field: "身高必须是 30 到 250 之间的数字", min: 30, max: 250 });
+      ageNumber = parseOptionalProfileNumber(ageValue, {
+        field: "年龄必须是 0 到 150 之间的整数",
+        integer: true,
+        min: 0,
+        max: 150,
+      });
+      heightNumber = parseOptionalProfileNumber(
+        formatUserHeightInput(heightValue),
+        { field: "身高必须是 30 到 250 之间的数字", min: 30, max: 250 },
+      );
     } catch (error) {
-      setProfileToastMessage(error instanceof Error ? error.message : "资料格式不正确，请检查后重试");
+      setProfileToastMessage(
+        error instanceof Error ? error.message : "资料格式不正确，请检查后重试",
+      );
       return;
     }
     const nextProfile = {
@@ -873,7 +1176,7 @@ function CompleteUserCenterPage({
       age: ageValue.trim(),
       height: normalizeUserHeightForStorage(heightValue),
       languages: profileDraft.languages,
-      bio: bioValue.trim()
+      bio: bioValue.trim(),
     };
     setIsSavingProfile(true);
     setProfileToastMessage("");
@@ -881,13 +1184,17 @@ function CompleteUserCenterPage({
     try {
       const updated = await customerProfileApi.updateMine({
         displayName: nextProfile.nickname,
-        avatarDataUrl: nextProfile.avatar.startsWith("data:image/") ? nextProfile.avatar : undefined,
+        avatarDataUrl: nextProfile.avatar.startsWith("data:image/")
+          ? nextProfile.avatar
+          : undefined,
         gender: nextProfile.gender,
         age: ageNumber,
         heightCm: heightNumber,
         languages: nextProfile.languages,
         bio: nextProfile.bio || null,
-        visibility: activeProfilePrivacy.enabled ? activeProfilePrivacy.visibility : "public"
+        visibility: activeProfilePrivacy.enabled
+          ? activeProfilePrivacy.visibility
+          : "public",
       });
 
       const profileChanged =
@@ -913,20 +1220,47 @@ function CompleteUserCenterPage({
   };
   const profilePrivacyControl = (
     <div
-      className={isEditingProfile ? cn("relative z-30 rounded-[18px] border p-3", membershipSurface.panel) : "relative z-30 rounded-[18px] border p-3"}
+      className={
+        isEditingProfile
+          ? cn(
+              "relative z-30 rounded-[18px] border p-3",
+              membershipSurface.panel,
+            )
+          : "relative z-30 rounded-[18px] border p-3"
+      }
       data-testid="user-profile-privacy-control"
-      style={isEditingProfile ? undefined : { borderColor: formalData.membership.theme.detailItemBorderColor, backgroundColor: formalData.membership.theme.detailItemSurfaceColor }}
+      style={
+        isEditingProfile
+          ? undefined
+          : {
+              borderColor: formalData.membership.theme.detailItemBorderColor,
+              backgroundColor:
+                formalData.membership.theme.detailItemSurfaceColor,
+            }
+      }
     >
       <div className="flex items-center justify-between gap-3">
         <button
-          aria-expanded={activeProfilePrivacy.enabled ? profilePrivacyMenuOpen : undefined}
+          aria-expanded={
+            activeProfilePrivacy.enabled ? profilePrivacyMenuOpen : undefined
+          }
           className="min-w-0 flex-1 text-left disabled:cursor-default"
           disabled={!activeProfilePrivacy.enabled || isSavingProfile}
           onClick={() => setProfilePrivacyMenuOpen((current) => !current)}
           type="button"
         >
-          <p className={isEditingProfile ? cn("text-xs font-bold", membershipSurface.label) : "text-xs font-bold opacity-60"}>隐私模式</p>
-          <strong className="mt-1 block truncate text-sm">{profilePrivacySummary}</strong>
+          <p
+            className={
+              isEditingProfile
+                ? cn("text-xs font-bold", membershipSurface.label)
+                : "text-xs font-bold opacity-60"
+            }
+          >
+            隐私模式
+          </p>
+          <strong className="mt-1 block truncate text-sm">
+            {profilePrivacySummary}
+          </strong>
         </button>
         <ToggleSwitch
           ariaLabel="开启隐私模式"
@@ -943,23 +1277,66 @@ function CompleteUserCenterPage({
       />
       {activeProfilePrivacy.enabled && profilePrivacyMenuOpen ? (
         <div
-          className={isEditingProfile ? cn("absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl", membershipSurface.shell) : "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl"}
+          className={
+            isEditingProfile
+              ? cn(
+                  "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl",
+                  membershipSurface.shell,
+                )
+              : "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl"
+          }
           data-testid="user-profile-privacy-options"
-          style={isEditingProfile ? undefined : { borderColor: formalData.membership.theme.detailOuterBorderColor, backgroundColor: formalData.membership.theme.detailSurfaceColor }}
+          style={
+            isEditingProfile
+              ? undefined
+              : {
+                  borderColor:
+                    formalData.membership.theme.detailOuterBorderColor,
+                  backgroundColor:
+                    formalData.membership.theme.detailSurfaceColor,
+                }
+          }
         >
           {userProfilePrivacyOptions.map((option) => {
             const checked = activeProfilePrivacy.visibility === option.value;
 
             return (
               <div
-                className={isEditingProfile ? cn("rounded-[18px] border px-3 py-3 text-left transition", checked ? membershipSurface.chip : membershipSurface.panel) : "rounded-[18px] border px-3 py-3"}
+                className={
+                  isEditingProfile
+                    ? cn(
+                        "rounded-[18px] border px-3 py-3 text-left transition",
+                        checked
+                          ? membershipSurface.chip
+                          : membershipSurface.panel,
+                      )
+                    : "rounded-[18px] border px-3 py-3"
+                }
                 key={option.value}
-                style={isEditingProfile ? undefined : { borderColor: formalData.membership.theme.detailItemBorderColor, backgroundColor: formalData.membership.theme.detailItemSurfaceColor }}
+                style={
+                  isEditingProfile
+                    ? undefined
+                    : {
+                        borderColor:
+                          formalData.membership.theme.detailItemBorderColor,
+                        backgroundColor:
+                          formalData.membership.theme.detailItemSurfaceColor,
+                      }
+                }
               >
                 <div className="flex items-center gap-3">
                   <button
                     aria-label={`选择${option.label}`}
-                    className={isEditingProfile ? cn("grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black", checked ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]" : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent") : "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black"}
+                    className={
+                      isEditingProfile
+                        ? cn(
+                            "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
+                            checked
+                              ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]"
+                              : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent",
+                          )
+                        : "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black"
+                    }
                     disabled={isSavingProfile}
                     onClick={() => updateProfilePrivacyVisibility(option.value)}
                     type="button"
@@ -970,12 +1347,16 @@ function CompleteUserCenterPage({
                     <button
                       className="min-w-0 truncate text-left text-sm font-black"
                       disabled={isSavingProfile}
-                      onClick={() => updateProfilePrivacyVisibility(option.value)}
+                      onClick={() =>
+                        updateProfilePrivacyVisibility(option.value)
+                      }
                       type="button"
                     >
                       {option.label}
                     </button>
-                    <UserProfilePrivacyInfoButton content={option.description} />
+                    <UserProfilePrivacyInfoButton
+                      content={option.description}
+                    />
                   </div>
                 </div>
               </div>
@@ -987,7 +1368,11 @@ function CompleteUserCenterPage({
   );
 
   return (
-    <MobileShell showBottomNav={false} navPanelStyle="plain" showTopEdgeMask={false}>
+    <MobileShell
+      showBottomNav={false}
+      navPanelStyle="plain"
+      showTopEdgeMask={false}
+    >
       <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
         <MobileFullscreenHeader
           info="账号资料、订单入口与服务权益都统一收在这里。"
@@ -1002,280 +1387,547 @@ function CompleteUserCenterPage({
             "scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pt-[calc(env(safe-area-inset-top)+86px)]",
             isEditingProfile
               ? "scroll-pb-[calc(132px+env(safe-area-inset-bottom))] pb-[calc(132px+env(safe-area-inset-bottom))]"
-              : "pb-[calc(24px+env(safe-area-inset-bottom))]"
+              : "pb-[calc(24px+env(safe-area-inset-bottom))]",
           )}
         >
           {profileToastMessage ? (
             <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+76px)] z-[90] flex justify-center px-6">
-              <div className={profileToastClassName}>
-                {profileToastMessage}
-              </div>
+              <div className={profileToastClassName}>{profileToastMessage}</div>
             </div>
           ) : null}
           <div className="space-y-4">
             {!isEditingProfile ? (
               <>
-              <PlatformMembershipDetailCard
-                actionSlot={<IconButton className="text-ink shadow-[0_14px_30px_rgba(0,0,0,0.22)]" icon="edit" label="编辑资料" onClick={startProfileEdit} />}
-                age={visibleProfile.age ? Number(visibleProfile.age) : null}
-                avatarUrl={visibleProfile.avatar || null}
-                bio={visibleProfile.bio}
-                credit={`${creditScore} /5`}
-                displayName={displayName}
-                ekycVerified={formalData.membership.ekycVerified}
-                entityKind="customer"
-                afterDetailsSlot={profilePrivacyControl}
-                gender={visibleProfile.gender}
-                heightCm={formatUserHeightInput(visibleProfile.height) || null}
-                languages={visibleProfile.languages}
-                level={formalData.experience.level}
-                needoId={currentCustomer.systemId}
-                onNeedoIdClick={() => void copyNeedoId()}
-                points={points.toLocaleString("en-US")}
-                pointsLabel={pointsLabel}
-                testPoints={testPoints}
-                theme={formalData.membership.theme}
-                tierLabel={platformMembershipTierLabels[formalData.membership.tierCode]}
-                usageCount={usageCount}
-              />
-              <CurrentMembershipBenefits language={language} />
+                <PlatformMembershipDetailCard
+                  actionSlot={
+                    <IconButton
+                      className="text-ink shadow-[0_14px_30px_rgba(0,0,0,0.22)]"
+                      icon="edit"
+                      label="编辑资料"
+                      onClick={startProfileEdit}
+                    />
+                  }
+                  age={visibleProfile.age ? Number(visibleProfile.age) : null}
+                  avatarUrl={visibleProfile.avatar || null}
+                  bio={visibleProfile.bio}
+                  credit={`${creditScore} /5`}
+                  displayName={displayName}
+                  ekycVerified={formalData.membership.ekycVerified}
+                  entityKind="customer"
+                  afterDetailsSlot={profilePrivacyControl}
+                  gender={visibleProfile.gender}
+                  heightCm={
+                    formatUserHeightInput(visibleProfile.height) || null
+                  }
+                  languages={visibleProfile.languages}
+                  level={formalData.experience.level}
+                  needoId={currentCustomer.systemId}
+                  onNeedoIdClick={() => void copyNeedoId()}
+                  points={points.toLocaleString("en-US")}
+                  pointsLabel={pointsLabel}
+                  testPoints={testPoints}
+                  theme={formalData.membership.theme}
+                  tierLabel={
+                    platformMembershipTierLabels[formalData.membership.tierCode]
+                  }
+                  usageCount={usageCount}
+                />
+                <CurrentMembershipBenefits language={language} />
               </>
             ) : (
-            <section className={cn("relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft", membershipSurface.shell)}>
-              <div className="relative">
-                <IconButton
-                  className={cn(
-                    "absolute right-0 top-0 z-10 shadow-[0_14px_30px_rgba(0,0,0,0.22)]",
-                    isEditingProfile ? "border-red-400 bg-red-500 text-white hover:bg-red-600" : cn(membershipSurface.metric, "text-ink"),
-                    isSavingProfile ? "cursor-not-allowed opacity-60" : undefined
-                  )}
-                  icon={isEditingProfile ? "x" : "edit"}
-                  label={isEditingProfile ? "取消编辑" : "编辑资料"}
-                  onClick={isSavingProfile ? undefined : isEditingProfile ? cancelProfileEdit : startProfileEdit}
-                />
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="shrink-0">
-                    <div className="relative h-36 w-36">
-                      <AvatarImage
-                        alt="用户头像"
-                        className={cn("h-36 w-36 rounded-[28px] border-[3px] shadow-[0_18px_36px_rgba(0,0,0,0.28)]", membershipSurface.avatar)}
-                        src={visibleProfile.avatar}
-                      />
-                      {isEditingProfile ? (
-                        <>
-                          <input accept="image/*" className="hidden" disabled={isSavingProfile} onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
-                          <IconButton
-                            className={cn(
-                              "absolute bottom-2 right-2 h-10 w-10 border-[2px] text-white shadow-[0_12px_26px_rgba(0,0,0,0.34)]",
-                              membershipSurface.metric
-                            )}
-                            icon="edit"
-                            label="更换头像"
-                            onClick={isSavingProfile ? undefined : () => avatarInputRef.current?.click()}
-                          />
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="flex min-h-36 min-w-0 flex-1 flex-col">
-                    <div className="min-w-0 max-w-[calc(100%-44px)]">
-                      {isEditingProfile && profileDraft ? (
-                        <div className="flex min-w-0 items-start gap-1.5">
-                          <textarea
-                            aria-label="昵称"
-                            autoFocus
-                            className="-ml-0.5 max-h-[79px] min-h-[26px] max-w-[calc(100%-22px)] flex-none resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-0 text-lg font-black leading-tight shadow-none outline-none [appearance:none] [field-sizing:content] [overflow-wrap:anywhere]"
-                            data-profile-field="nickname"
-                            readOnly={isSavingProfile}
-                            onChange={(event) => updateProfileDraft({ nickname: event.currentTarget.value })}
-                            onInput={(event) => updateProfileDraft({ nickname: event.currentTarget.value })}
-                            ref={nicknameInputRef}
-                            rows={1}
-                            style={{ width: profileNameEditorWidth }}
-                            value={profileNameOverride}
-                          />
-                          <KycVerifiedBadge className="mt-1.5" size="label" />
-                        </div>
-                      ) : (
-                        <h1 className="max-w-full overflow-hidden break-all text-lg font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [overflow-wrap:anywhere]">
-                          {displayName}
-                          <KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" />
-                        </h1>
-                      )}
-                    </div>
-                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-                      <CustomerMembershipBadge
-                        className="h-6 w-6"
-                        imageClassName="h-6 w-6"
-                        level={formalData.membership.tierCode}
-                        showFallback={false}
-                      />
-                      <span className={cn("inline-flex h-7 shrink-0 items-center text-[11px] font-black", membershipSurface.muted)}>
-                        {levelLabel}
-                      </span>
-                    </div>
-                    <button
-                      aria-label="复制 NeeDo ID"
-                      className={cn(
-                        "w-full cursor-copy truncate text-left text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]",
-                        membershipSurface.muted
-                      )}
-                      onClick={() => void copyNeedoId()}
-                      type="button"
-                    >
-                      ID {currentCustomer.systemId}
-                    </button>
-                  </div>
-                </div>
-
-                {avatarCrop ? (
-                  <AvatarCropEditor
-                    crop={avatarCrop}
-                    onApply={applyAvatarCrop}
-                    onCancel={() => setAvatarCrop(null)}
-                    onChange={setAvatarCrop}
+              <section
+                className={cn(
+                  "relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft",
+                  membershipSurface.shell,
+                )}
+              >
+                <div className="relative">
+                  <IconButton
+                    className={cn(
+                      "absolute right-0 top-0 z-10 shadow-[0_14px_30px_rgba(0,0,0,0.22)]",
+                      isEditingProfile
+                        ? "border-red-400 bg-red-500 text-white hover:bg-red-600"
+                        : cn(membershipSurface.metric, "text-ink"),
+                      isSavingProfile
+                        ? "cursor-not-allowed opacity-60"
+                        : undefined,
+                    )}
+                    icon={isEditingProfile ? "x" : "edit"}
+                    label={isEditingProfile ? "取消编辑" : "编辑资料"}
+                    onClick={
+                      isSavingProfile
+                        ? undefined
+                        : isEditingProfile
+                          ? cancelProfileEdit
+                          : startProfileEdit
+                    }
                   />
-                ) : null}
-
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  {[
-                    { label: pointsLabel, value: points.toLocaleString("en-US"), secondary: testPoints === null ? undefined : `Test NDP ${testPoints}` },
-                    { label: "利用次数", value: `${usageCount}` },
-                    { label: "信用值", value: creditScore, suffix: "/5" }
-                  ].map((item) => (
-                    <div className={cn("rounded-[18px] border p-3", membershipSurface.metric)} key={item.label}>
-                      <p className={cn("text-xs font-bold", membershipSurface.label)}>{item.label}</p>
-                      <div className="mt-1 flex min-w-0 items-end gap-1">
-                        <strong className={cn("block text-[20px] leading-none", item.label === "信用值" ? membershipSurface.accent : "")}>{item.value}</strong>
-                        {item.suffix ? <span className={cn("pb-0.5 text-xs font-black leading-none", membershipSurface.muted)}>{item.suffix}</span> : null}
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="shrink-0">
+                      <div className="relative h-36 w-36">
+                        <AvatarImage
+                          alt="用户头像"
+                          className={cn(
+                            "h-36 w-36 rounded-[28px] border-[3px] shadow-[0_18px_36px_rgba(0,0,0,0.28)]",
+                            membershipSurface.avatar,
+                          )}
+                          src={visibleProfile.avatar}
+                        />
+                        {isEditingProfile ? (
+                          <>
+                            <input
+                              accept="image/*"
+                              className="hidden"
+                              disabled={isSavingProfile}
+                              onChange={handleAvatarUpload}
+                              ref={avatarInputRef}
+                              type="file"
+                            />
+                            <IconButton
+                              className={cn(
+                                "absolute bottom-2 right-2 h-10 w-10 border-[2px] text-white shadow-[0_12px_26px_rgba(0,0,0,0.34)]",
+                                membershipSurface.metric,
+                              )}
+                              icon="edit"
+                              label="更换头像"
+                              onClick={
+                                isSavingProfile
+                                  ? undefined
+                                  : () => avatarInputRef.current?.click()
+                              }
+                            />
+                          </>
+                        ) : null}
                       </div>
-                      {item.secondary ? <p className={cn("mt-1 text-[10px] font-bold", membershipSurface.muted)}>{item.secondary}</p> : null}
                     </div>
-                  ))}
-                </div>
-                <p className={cn("mt-1 pr-2 text-right text-[10px] font-black leading-none", membershipSurface.muted)}>信用值 {creditReviewLabel}</p>
+                    <div className="flex min-h-36 min-w-0 flex-1 flex-col">
+                      <div className="min-w-0 max-w-[calc(100%-44px)]">
+                        {isEditingProfile && profileDraft ? (
+                          <div className="flex min-w-0 items-start gap-1.5">
+                            <textarea
+                              aria-label="昵称"
+                              autoFocus
+                              className="-ml-0.5 max-h-[79px] min-h-[26px] max-w-[calc(100%-22px)] flex-none resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-0 text-lg font-black leading-tight shadow-none outline-none [appearance:none] [field-sizing:content] [overflow-wrap:anywhere]"
+                              data-profile-field="nickname"
+                              readOnly={isSavingProfile}
+                              onChange={(event) =>
+                                updateProfileDraft({
+                                  nickname: event.currentTarget.value,
+                                })
+                              }
+                              onInput={(event) =>
+                                updateProfileDraft({
+                                  nickname: event.currentTarget.value,
+                                })
+                              }
+                              ref={nicknameInputRef}
+                              rows={1}
+                              style={{ width: profileNameEditorWidth }}
+                              value={profileNameOverride}
+                            />
+                            <KycVerifiedBadge className="mt-1.5" size="label" />
+                          </div>
+                        ) : (
+                          <h1 className="max-w-full overflow-hidden break-all text-lg font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [overflow-wrap:anywhere]">
+                            {displayName}
+                            <KycVerifiedBadge
+                              className="ml-1 inline-flex align-middle"
+                              size="label"
+                            />
+                          </h1>
+                        )}
+                      </div>
+                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                        <CustomerMembershipBadge
+                          className="h-6 w-6"
+                          imageClassName="h-6 w-6"
+                          level={formalData.membership.tierCode}
+                          showFallback={false}
+                        />
+                        <span
+                          className={cn(
+                            "inline-flex h-7 shrink-0 items-center text-[11px] font-black",
+                            membershipSurface.muted,
+                          )}
+                        >
+                          {levelLabel}
+                        </span>
+                      </div>
+                      <button
+                        aria-label="复制 NeeDo ID"
+                        className={cn(
+                          "w-full cursor-copy truncate text-left text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]",
+                          membershipSurface.muted,
+                        )}
+                        onClick={() => void copyNeedoId()}
+                        type="button"
+                      >
+                        ID {currentCustomer.systemId}
+                      </button>
+                    </div>
+                  </div>
 
-                <div className={cn("my-4 h-px", membershipSurface.divider)} />
+                  {avatarCrop ? (
+                    <AvatarCropEditor
+                      crop={avatarCrop}
+                      onApply={applyAvatarCrop}
+                      onCancel={() => setAvatarCrop(null)}
+                      onChange={setAvatarCrop}
+                    />
+                  ) : null}
 
-                <div>
-                  <h2 className="text-lg font-black">基础信息</h2>
-                  {isEditingProfile && profileDraft ? (
-                    <div className="mt-3 space-y-3">
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className={cn("rounded-[18px] border p-3", membershipSurface.panel)}>
-                          <p className={cn("text-xs font-bold", membershipSurface.label)}>性别</p>
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    {[
+                      {
+                        label: pointsLabel,
+                        value: points.toLocaleString("en-US"),
+                        secondary:
+                          testPoints === null
+                            ? undefined
+                            : `Test NDP ${testPoints}`,
+                      },
+                      { label: "利用次数", value: `${usageCount}` },
+                      { label: "信用值", value: creditScore, suffix: "/5" },
+                    ].map((item) => (
+                      <div
+                        className={cn(
+                          "rounded-[18px] border p-3",
+                          membershipSurface.metric,
+                        )}
+                        key={item.label}
+                      >
+                        <p
+                          className={cn(
+                            "text-xs font-bold",
+                            membershipSurface.label,
+                          )}
+                        >
+                          {item.label}
+                        </p>
+                        <div className="mt-1 flex min-w-0 items-end gap-1">
+                          <strong
+                            className={cn(
+                              "block text-[20px] leading-none",
+                              item.label === "信用值"
+                                ? membershipSurface.accent
+                                : "",
+                            )}
+                          >
+                            {item.value}
+                          </strong>
+                          {item.suffix ? (
+                            <span
+                              className={cn(
+                                "pb-0.5 text-xs font-black leading-none",
+                                membershipSurface.muted,
+                              )}
+                            >
+                              {item.suffix}
+                            </span>
+                          ) : null}
+                        </div>
+                        {item.secondary ? (
+                          <p
+                            className={cn(
+                              "mt-1 text-[10px] font-bold",
+                              membershipSurface.muted,
+                            )}
+                          >
+                            {item.secondary}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-1 pr-2 text-right text-[10px] font-black leading-none",
+                      membershipSurface.muted,
+                    )}
+                  >
+                    信用值 {creditReviewLabel}
+                  </p>
+
+                  <div className={cn("my-4 h-px", membershipSurface.divider)} />
+
+                  <div>
+                    <h2 className="text-lg font-black">基础信息</h2>
+                    {isEditingProfile && profileDraft ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div
+                            className={cn(
+                              "rounded-[18px] border p-3",
+                              membershipSurface.panel,
+                            )}
+                          >
+                            <p
+                              className={cn(
+                                "text-xs font-bold",
+                                membershipSurface.label,
+                              )}
+                            >
+                              性别
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {userProfileGenderOptions.map((option) => (
+                                <button
+                                  className={cn(
+                                    "rounded-full border px-2.5 py-1 text-xs font-black",
+                                    profileDraft.gender === option.value
+                                      ? membershipSurface.chip
+                                      : membershipSurface.metric,
+                                  )}
+                                  key={option.value}
+                                  disabled={isSavingProfile}
+                                  onClick={() =>
+                                    updateProfileDraft({ gender: option.value })
+                                  }
+                                  type="button"
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <label
+                            className={cn(
+                              "block rounded-[18px] border p-3",
+                              membershipSurface.panel,
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "block text-xs font-bold",
+                                membershipSurface.label,
+                              )}
+                            >
+                              年龄
+                            </span>
+                            <input
+                              className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
+                              data-profile-field="age"
+                              defaultValue={profileDraft.age}
+                              disabled={isSavingProfile}
+                              inputMode="numeric"
+                              onChange={(event) =>
+                                updateProfileDraft({
+                                  age: event.currentTarget.value,
+                                })
+                              }
+                              onInput={(event) =>
+                                updateProfileDraft({
+                                  age: event.currentTarget.value,
+                                })
+                              }
+                              ref={ageInputRef}
+                            />
+                          </label>
+                          <label
+                            className={cn(
+                              "block rounded-[18px] border p-3",
+                              membershipSurface.panel,
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "block text-xs font-bold",
+                                membershipSurface.label,
+                              )}
+                            >
+                              身高（cm）
+                            </span>
+                            <input
+                              className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
+                              data-profile-field="height"
+                              defaultValue={profileDraft.height}
+                              disabled={isSavingProfile}
+                              inputMode="decimal"
+                              onChange={(event) =>
+                                updateProfileDraft({
+                                  height: formatUserHeightInput(
+                                    event.currentTarget.value,
+                                  ),
+                                })
+                              }
+                              onInput={(event) =>
+                                updateProfileDraft({
+                                  height: formatUserHeightInput(
+                                    event.currentTarget.value,
+                                  ),
+                                })
+                              }
+                              ref={heightInputRef}
+                            />
+                          </label>
+                        </div>
+                        <div
+                          className={cn(
+                            "rounded-[18px] border p-3",
+                            membershipSurface.panel,
+                          )}
+                        >
+                          <p
+                            className={cn(
+                              "text-xs font-bold",
+                              membershipSurface.label,
+                            )}
+                          >
+                            语言能力
+                          </p>
                           <div className="mt-2 flex flex-wrap gap-1.5">
-                            {userProfileGenderOptions.map((option) => (
+                            {PROFILE_LANGUAGE_OPTIONS.map((language) => (
                               <button
                                 className={cn(
                                   "rounded-full border px-2.5 py-1 text-xs font-black",
-                                  profileDraft.gender === option.value ? membershipSurface.chip : membershipSurface.metric
+                                  profileDraft.languages.includes(language)
+                                    ? membershipSurface.chip
+                                    : membershipSurface.metric,
                                 )}
-                                key={option.value}
+                                key={language}
                                 disabled={isSavingProfile}
-                                onClick={() => updateProfileDraft({ gender: option.value })}
+                                onClick={() => toggleProfileLanguage(language)}
                                 type="button"
                               >
-                                {option.label}
+                                {language}
                               </button>
                             ))}
                           </div>
                         </div>
-                        <label className={cn("block rounded-[18px] border p-3", membershipSurface.panel)}>
-                          <span className={cn("block text-xs font-bold", membershipSurface.label)}>年龄</span>
-                          <input
-                            className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
-                            data-profile-field="age"
-                            defaultValue={profileDraft.age}
-                            disabled={isSavingProfile}
-                            inputMode="numeric"
-                            onChange={(event) => updateProfileDraft({ age: event.currentTarget.value })}
-                            onInput={(event) => updateProfileDraft({ age: event.currentTarget.value })}
-                            ref={ageInputRef}
-                          />
-                        </label>
-                        <label className={cn("block rounded-[18px] border p-3", membershipSurface.panel)}>
-                          <span className={cn("block text-xs font-bold", membershipSurface.label)}>身高（cm）</span>
-                          <input
-                            className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
-                            data-profile-field="height"
-                            defaultValue={profileDraft.height}
-                            disabled={isSavingProfile}
-                            inputMode="decimal"
-                            onChange={(event) => updateProfileDraft({ height: formatUserHeightInput(event.currentTarget.value) })}
-                            onInput={(event) => updateProfileDraft({ height: formatUserHeightInput(event.currentTarget.value) })}
-                            ref={heightInputRef}
+                        <label
+                          className={cn(
+                            "block overflow-hidden rounded-[24px] border px-5 py-4",
+                            membershipSurface.panel,
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "block text-xs font-bold",
+                              membershipSurface.label,
+                            )}
+                          >
+                            自我介绍
+                          </span>
+                          <textarea
+                            className="mt-2 min-h-[132px] w-full resize-none bg-transparent text-sm font-bold leading-6 outline-none"
+                            data-profile-field="bio"
+                            defaultValue={profileDraft.bio}
+                            readOnly={isSavingProfile}
+                            onChange={(event) =>
+                              updateProfileDraft({
+                                bio: event.currentTarget.value,
+                              })
+                            }
+                            onInput={(event) =>
+                              updateProfileDraft({
+                                bio: event.currentTarget.value,
+                              })
+                            }
+                            ref={bioInputRef}
                           />
                         </label>
                       </div>
-                      <div className={cn("rounded-[18px] border p-3", membershipSurface.panel)}>
-                        <p className={cn("text-xs font-bold", membershipSurface.label)}>语言能力</p>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                        {PROFILE_LANGUAGE_OPTIONS.map((language) => (
-                            <button
+                    ) : (
+                      <>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          {[
+                            ["性别", visibleProfile.gender],
+                            ["年龄", visibleProfile.age || "未设置"],
+                            [
+                              "身高（cm）",
+                              formatUserHeightInput(visibleProfile.height) ||
+                                "未设置",
+                            ],
+                          ].map(([label, value]) => (
+                            <div
                               className={cn(
-                                "rounded-full border px-2.5 py-1 text-xs font-black",
-                                profileDraft.languages.includes(language) ? membershipSurface.chip : membershipSurface.metric
+                                "rounded-[18px] border p-3",
+                                membershipSurface.panel,
                               )}
-                              key={language}
-                              disabled={isSavingProfile}
-                              onClick={() => toggleProfileLanguage(language)}
-                              type="button"
+                              key={label}
                             >
-                              {language}
-                            </button>
+                              <p
+                                className={cn(
+                                  "text-xs font-bold",
+                                  membershipSurface.label,
+                                )}
+                              >
+                                {label}
+                              </p>
+                              <strong className="mt-1 block truncate text-sm">
+                                {value}
+                              </strong>
+                            </div>
                           ))}
                         </div>
-                      </div>
-                      <label className={cn("block overflow-hidden rounded-[24px] border px-5 py-4", membershipSurface.panel)}>
-                        <span className={cn("block text-xs font-bold", membershipSurface.label)}>自我介绍</span>
-                        <textarea
-                          className="mt-2 min-h-[132px] w-full resize-none bg-transparent text-sm font-bold leading-6 outline-none"
-                          data-profile-field="bio"
-                          defaultValue={profileDraft.bio}
-                          readOnly={isSavingProfile}
-                          onChange={(event) => updateProfileDraft({ bio: event.currentTarget.value })}
-                          onInput={(event) => updateProfileDraft({ bio: event.currentTarget.value })}
-                          ref={bioInputRef}
-                        />
-                      </label>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        {[
-                          ["性别", visibleProfile.gender],
-                          ["年龄", visibleProfile.age || "未设置"],
-                          ["身高（cm）", formatUserHeightInput(visibleProfile.height) || "未设置"]
-                        ].map(([label, value]) => (
-                          <div className={cn("rounded-[18px] border p-3", membershipSurface.panel)} key={label}>
-                            <p className={cn("text-xs font-bold", membershipSurface.label)}>{label}</p>
-                            <strong className="mt-1 block truncate text-sm">{value}</strong>
-                          </div>
-                        ))}
-                      </div>
-                      <div className={cn("mt-3 rounded-[18px] border p-3", membershipSurface.panel)}>
-                        <p className={cn("text-xs font-bold", membershipSurface.label)}>语言能力</p>
-                        {visibleProfile.languages.length > 0 ? (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {visibleProfile.languages.map((language) => (
-                              <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", membershipSurface.chip)} key={language}>
-                                {language}
-                              </span>
-                            ))}
-                          </div>
-                        ) : <p className={cn("mt-2 text-sm font-semibold", membershipSurface.muted)}>未设置</p>}
-                      </div>
-                      <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", membershipSurface.panel)}>
-                        <p className={cn("text-xs font-bold", membershipSurface.label)}>自我介绍</p>
-                        <p className={cn("mt-2 text-sm leading-6", membershipSurface.muted)}>{visibleProfile.bio || "未设置"}</p>
-                      </div>
-                    </>
-                  )}
+                        <div
+                          className={cn(
+                            "mt-3 rounded-[18px] border p-3",
+                            membershipSurface.panel,
+                          )}
+                        >
+                          <p
+                            className={cn(
+                              "text-xs font-bold",
+                              membershipSurface.label,
+                            )}
+                          >
+                            语言能力
+                          </p>
+                          {visibleProfile.languages.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {visibleProfile.languages.map((language) => (
+                                <span
+                                  className={cn(
+                                    "rounded-full border px-2.5 py-1 text-xs font-black",
+                                    membershipSurface.chip,
+                                  )}
+                                  key={language}
+                                >
+                                  {language}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p
+                              className={cn(
+                                "mt-2 text-sm font-semibold",
+                                membershipSurface.muted,
+                              )}
+                            >
+                              未设置
+                            </p>
+                          )}
+                        </div>
+                        <div
+                          className={cn(
+                            "mt-3 overflow-hidden rounded-[24px] border px-5 py-4",
+                            membershipSurface.panel,
+                          )}
+                        >
+                          <p
+                            className={cn(
+                              "text-xs font-bold",
+                              membershipSurface.label,
+                            )}
+                          >
+                            自我介绍
+                          </p>
+                          <p
+                            className={cn(
+                              "mt-2 text-sm leading-6",
+                              membershipSurface.muted,
+                            )}
+                          >
+                            {visibleProfile.bio || "未设置"}
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="mt-3">{profilePrivacyControl}</div>
                 </div>
-                <div className="mt-3">{profilePrivacyControl}</div>
-              </div>
-            </section>
+              </section>
             )}
 
             <section className={pagePanelClassName}>
@@ -1287,16 +1939,33 @@ function CompleteUserCenterPage({
               </div>
               <div className="mt-3 grid grid-cols-5 gap-2">
                 {orderShortcuts.map((item) => (
-                  <Link className={cn(pageInnerCardClassName, "px-1 py-3 text-center text-xs font-bold text-ink/70")} key={item.label} to={item.to}>
-                    <strong className="block text-base text-ink">{item.count}</strong>
+                  <Link
+                    className={cn(
+                      pageInnerCardClassName,
+                      "px-1 py-3 text-center text-xs font-bold text-ink/70",
+                    )}
+                    key={item.label}
+                    to={item.to}
+                  >
+                    <strong className="block text-base text-ink">
+                      {item.count}
+                    </strong>
                     {item.label}
                   </Link>
                 ))}
               </div>
-              <Link className={cn(pageInnerCardClassName, "mt-3 flex items-center justify-between px-3 py-3")} to="/orders">
+              <Link
+                className={cn(
+                  pageInnerCardClassName,
+                  "mt-3 flex items-center justify-between px-3 py-3",
+                )}
+                to="/orders"
+              >
                 <div>
                   <strong className="text-sm">预约一览</strong>
-                  <p className="mt-1 text-xs text-ink/50">查看全部预约、订单状态和详情跳转</p>
+                  <p className="mt-1 text-xs text-ink/50">
+                    查看全部预约、订单状态和详情跳转
+                  </p>
                 </div>
                 <span className="text-lg font-black text-ink/25">›</span>
               </Link>
@@ -1304,9 +1973,21 @@ function CompleteUserCenterPage({
 
             <section className="grid grid-cols-2 gap-3">
               {serviceTools.map((entry) => (
-                <div className={cn(pagePanelClassName, "relative min-h-[74px] px-4 py-3")} key={entry.label}>
-                  {entry.test ? <TestFeatureBadge className="pointer-events-none absolute -right-1 -top-1 z-20 min-h-4 px-1.5 py-0 text-[8px]" /> : null}
-                  <Link aria-label={entry.label} className="absolute inset-0 rounded-[28px]" to={entry.to} />
+                <div
+                  className={cn(
+                    pagePanelClassName,
+                    "relative min-h-[74px] px-4 py-3",
+                  )}
+                  key={entry.label}
+                >
+                  {entry.test ? (
+                    <TestFeatureBadge className="pointer-events-none absolute -right-1 -top-1 z-20 min-h-4 px-1.5 py-0 text-[8px]" />
+                  ) : null}
+                  <Link
+                    aria-label={entry.label}
+                    className="absolute inset-0 rounded-[28px]"
+                    to={entry.to}
+                  />
                   <div className="pointer-events-none relative z-10 flex min-h-[50px] items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-1.5">
@@ -1319,7 +2000,9 @@ function CompleteUserCenterPage({
                         />
                       </div>
                     </div>
-                    <span className="shrink-0 rounded-md bg-mint/20 px-2 py-1 text-xs font-black text-moss">{entry.value}</span>
+                    <span className="shrink-0 rounded-md bg-mint/20 px-2 py-1 text-xs font-black text-moss">
+                      {entry.value}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -1329,10 +2012,19 @@ function CompleteUserCenterPage({
               <h2 className="font-black">账号与服务</h2>
               <div className="mt-3 grid gap-2">
                 {accountSettings.map((entry) => (
-                  <Link className={cn(pageInnerCardClassName, "flex items-center justify-between px-3 py-3")} key={entry.label} to={entry.to}>
+                  <Link
+                    className={cn(
+                      pageInnerCardClassName,
+                      "flex items-center justify-between px-3 py-3",
+                    )}
+                    key={entry.label}
+                    to={entry.to}
+                  >
                     <div>
                       <strong className="text-sm">{entry.label}</strong>
-                      <p className="mt-1 text-xs text-ink/50">{entry.caption}</p>
+                      <p className="mt-1 text-xs text-ink/50">
+                        {entry.caption}
+                      </p>
                     </div>
                     <span className="text-sm font-black text-ink/35">›</span>
                   </Link>
@@ -1364,13 +2056,23 @@ function CompleteUserCenterPage({
 export function UserCenterPage() {
   const { session } = useAuth();
 
-  if (!session || (session.loginMethod !== "password" && session.loginMethod !== "google")) {
+  if (
+    !session ||
+    (session.loginMethod !== "password" && session.loginMethod !== "google")
+  ) {
     return <UserCenterDataStatus error="登录状态已失效，请重新登录" />;
   }
 
-  if (session.currentIdentity.type !== "customer" || !session.currentIdentity.scopeId) {
+  if (
+    session.currentIdentity.type !== "customer" ||
+    !session.currentIdentity.scopeId
+  ) {
     return <UserCenterDataStatus error="当前身份没有读取个人数据的权限" />;
   }
 
-  return <FormalUserCenterDataGate customerProfileId={session.currentIdentity.scopeId} />;
+  return (
+    <FormalUserCenterDataGate
+      customerProfileId={session.currentIdentity.scopeId}
+    />
+  );
 }

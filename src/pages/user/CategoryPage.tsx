@@ -21,7 +21,6 @@ import {
   type CoreTechnicianCard
 } from "../../features/core-read/api";
 import {
-  createSystemShareAttempt,
   entityEngagementApi,
   type EntityFavoriteState,
   type EntityTarget
@@ -32,14 +31,12 @@ import { resolveSearchOrigin } from "../../features/location/searchOrigin";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { type HomeCategoryId } from "../../lib/homeCategories";
-import { shareContent } from "../../lib/share";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { useHomeLayoutStore } from "../../state/homeLayoutStore";
 import { useHomeLocationPreference } from "../../state/homeLocationStore";
 import { cn } from "../../lib/utils";
 import type { ServiceCategory, ServiceItem, Technician } from "../../types/domain";
 import {
-  EntitySearchCardActions,
   SocialProfileMiniCard,
   TechnicianShowcaseCard,
   type SocialProfileMiniData
@@ -125,7 +122,7 @@ function entityTargetKey(target: EntityTarget) {
 
 function buildFormalShopCardData(shop: CoreShopCard): SocialProfileMiniData {
   return {
-    id: String(shop.id),
+    id: shop.publicId,
     entityType: "shop",
     displayName: shop.name,
     avatar: shop.coverUrl ?? "",
@@ -162,6 +159,9 @@ function buildFormalTechnicianInput(technician: CoreTechnicianCard): Technician 
     acceptRate: normalizeMetric(technician.acceptanceRatePercent),
     cancelRate: 0,
     reviewCount: normalizeMetric(technician.reviewSummary.reviewCount),
+    favoriteCount: normalizeMetric(technician.favoriteCount),
+    shareCount: normalizeMetric(technician.shareCount),
+    distanceKm: technician.distanceKm,
     languages: [],
     avatar: technician.avatarUrl ?? ""
   };
@@ -561,7 +561,6 @@ export function CategoryPage() {
     [visibleEngagementTargets]
   );
   const [favoriteStates, setFavoriteStates] = useState<Record<string, EntityFavoriteState>>({});
-  const [shareCounts, setShareCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const visibleKeys = new Set(visibleEngagementTargets.map(entityTargetKey));
@@ -581,18 +580,6 @@ export function CategoryPage() {
         ? current
         : next;
     });
-    setShareCounts((current) => {
-      const next = Object.fromEntries(
-        visibleEngagementTargets.map((target) => {
-          const key = entityTargetKey(target);
-          return [key, current[key] ?? target.shareCount];
-        })
-      );
-      return Object.keys(current).every((key) => visibleKeys.has(key)) && Object.keys(current).length === Object.keys(next).length
-        ? current
-        : next;
-    });
-
     if (!auth?.isAuthenticated || visibleEngagementTargets.length === 0) {
       return undefined;
     }
@@ -619,38 +606,6 @@ export function CategoryPage() {
 
   const getFavoriteState = (target: EntityTarget, fallbackCount: number): EntityFavoriteState =>
     favoriteStates[entityTargetKey(target)] ?? { ...target, favoriteCount: fallbackCount, isFavorited: false };
-
-  const handleFavoriteChange = (state: EntityFavoriteState) => {
-    setFavoriteStates((current) => ({ ...current, [entityTargetKey(state)]: state }));
-  };
-
-  const handleSystemShare = async ({
-    detailPath,
-    displayName,
-    target
-  }: {
-    detailPath: string;
-    displayName: string;
-    target: EntityTarget;
-  }) => {
-    const attempt = createSystemShareAttempt({
-      target,
-      invokeCapability: async () => {
-        const result = await shareContent({
-          title: `${displayName} | NeeDo`,
-          text: displayName,
-          url: detailPath,
-          copiedMessage: "链接已复制，可以转发给联系人"
-        });
-        return result.status === "shared";
-      }
-    });
-    const receipt = await attempt.execute();
-
-    if (receipt) {
-      setShareCounts((current) => ({ ...current, [entityTargetKey(target)]: receipt.shareCount }));
-    }
-  };
 
   const appliedSearchChips = useMemo(() => {
     const chips: Array<
@@ -1061,30 +1016,22 @@ export function CategoryPage() {
                       {shopProfiles.map((item) => {
                         const target: EntityTarget = { targetType: "shop", publicId: item.profile.publicId };
                         const favoriteState = getFavoriteState(target, normalizeMetric(item.profile.favoriteCount));
-                        const shareCount = shareCounts[entityTargetKey(target)] ?? normalizeMetric(item.profile.shareCount);
-                        const hasEngagementMetrics = isFiniteMetric(item.profile.favoriteCount) && isFiniteMetric(item.profile.shareCount);
                         const detailPath = `/stores/${item.profile.id}`;
 
                         return (
                           <SocialProfileMiniCard
-                            actionSlot={hasEngagementMetrics ? (
-                              <EntitySearchCardActions
-                                favoriteCount={favoriteState.favoriteCount}
-                                isFavorited={favoriteState.isFavorited}
-                                language={language}
-                                onFavoriteChange={handleFavoriteChange}
-                                onSystemShare={() => handleSystemShare({ detailPath, displayName: item.profile.name, target })}
-                                publicId={target.publicId}
-                                shareCount={shareCount}
-                                size="compactLg"
-                                targetLabel={`店铺 ${item.profile.name}`}
-                                targetType={target.targetType}
-                              />
-                            ) : undefined}
-                            data={item.cardData}
+                            data={{
+                              ...item.cardData,
+                              favoriteCount: isFiniteMetric(item.profile.favoriteCount)
+                                ? favoriteState.favoriteCount
+                                : undefined,
+                              isFavorited: favoriteState.isFavorited,
+                              shareCount: isFiniteMetric(item.profile.shareCount)
+                                ? item.profile.shareCount
+                                : undefined,
+                            }}
                             detailTo={detailPath}
-                            key={item.id}
-                            showAction={hasEngagementMetrics}
+                            key={`${item.id}-${favoriteState.isFavorited}`}
                           />
                         );
                       })}
@@ -1119,39 +1066,33 @@ export function CategoryPage() {
                       {technicianProfiles.map((item, index) => {
                         const target: EntityTarget = { targetType: "technician", publicId: item.profile.publicId };
                         const favoriteState = getFavoriteState(target, normalizeMetric(item.profile.favoriteCount));
-                        const shareCount = shareCounts[entityTargetKey(target)] ?? normalizeMetric(item.profile.shareCount);
-                        const hasEngagementMetrics = isFiniteMetric(item.profile.favoriteCount) && isFiniteMetric(item.profile.shareCount);
                         const detailPath = `/profiles/technician/${item.profile.publicId}`;
 
                         return (
                           <TechnicianShowcaseCard
                             detailTo={detailPath}
-                            formalActionSlot={hasEngagementMetrics ? (
-                              <EntitySearchCardActions
-                                favoriteCount={favoriteState.favoriteCount}
-                                isFavorited={favoriteState.isFavorited}
-                                language={language}
-                                onFavoriteChange={handleFavoriteChange}
-                                onSystemShare={() => handleSystemShare({ detailPath, displayName: item.profile.displayName, target })}
-                                publicId={target.publicId}
-                                shareCount={shareCount}
-                                targetLabel={`技师 ${item.profile.displayName}`}
-                                targetType={target.targetType}
-                              />
-                            ) : undefined}
                             formalData={{
                               acceptanceRatePercent: item.profile.acceptanceRatePercent,
                               age: item.profile.age,
                               avatarUrl: item.profile.avatarUrl,
                               city: item.profile.city,
+                              completedOrderCount: item.profile.completedOrderCount,
                               displayName: item.profile.displayName,
-                              favoriteCount: hasEngagementMetrics ? favoriteState.favoriteCount : undefined,
+                              distanceKm: item.profile.distanceKm,
+                              favoriteCount: isFiniteMetric(item.profile.favoriteCount)
+                                ? favoriteState.favoriteCount
+                                : undefined,
+                              isFavorited: favoriteState.isFavorited,
+                              languages: item.technician.languages,
                               nearbyRank: item.profile.nearbyRank,
                               primaryService: item.profile.primaryService,
                               ratingAverage: item.profile.reviewSummary.ratingAverage,
-                              shareCount: hasEngagementMetrics ? shareCount : undefined
+                              reviewCount: item.profile.reviewSummary.reviewCount,
+                              shareCount: isFiniteMetric(item.profile.shareCount)
+                                ? item.profile.shareCount
+                                : undefined
                             }}
-                            key={item.id}
+                            key={`${item.id}-${favoriteState.isFavorited}`}
                             language={language}
                             rankIndex={index}
                             technician={item.technician}

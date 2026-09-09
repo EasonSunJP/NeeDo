@@ -15,8 +15,46 @@ export interface EntityFavoriteState extends EntityTarget {
   favoriteCount: number;
 }
 
+export type EntityFavoriteCard =
+  | {
+      kind: "shop";
+      name: string;
+      description: string | null;
+      address: string;
+      imageUrl: string | null;
+      rating: number;
+      reviewCount: number;
+      shareCount: number;
+    }
+  | {
+      kind: "technician";
+      name: string;
+      description: string | null;
+      imageUrl: string | null;
+      languages: string[];
+      rating: number;
+      completedOrderCount: number;
+      shareCount: number;
+    }
+  | {
+      kind: "service";
+      name: string;
+      description: string | null;
+      imageUrl: string | null;
+      priceAmount: number;
+      currency: string;
+      durationMinutes: number;
+      usageCount: number;
+      shareCount: number;
+      isBookable: boolean;
+      shopPublicId: string | null;
+      shopAddress: string | null;
+      tags: string[];
+    };
+
 export interface EntityFavoriteListItem extends EntityFavoriteState {
   favoritedAt: Date;
+  card: EntityFavoriteCard;
 }
 
 export interface EntityShareReceipt extends EntityTarget {
@@ -67,6 +105,7 @@ export interface EntityEngagementRepositoryPort {
 
 interface ResolvedFavoriteListTarget extends ResolvedEntityTarget {
   favoritedAt: Date;
+  card: EntityFavoriteCard;
 }
 
 const activeShopWhere = (publicIds: string[]): Prisma.ShopWhereInput => ({
@@ -265,13 +304,105 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
           technicianProfileId: true,
           serviceId: true,
           technicianServiceId: true,
-          shop: { select: { publicIdentifier: { select: { publicId: true } } } },
-          service: { select: { publicId: true } },
-          technicianService: { select: { publicId: true } },
+          shop: {
+            select: {
+              name: true,
+              description: true,
+              address: true,
+              publicIdentifier: { select: { publicId: true } },
+              mediaAssets: {
+                where: { deletedAt: null, isActive: true },
+                orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                take: 1,
+                select: { url: true }
+              },
+              reviewSummary: {
+                select: { ratingAverage: true, reviewCount: true, deletedAt: true }
+              },
+              _count: {
+                select: { entityShareEvents: { where: { deletedAt: null } } }
+              }
+            }
+          },
+          service: {
+            select: {
+              publicId: true,
+              name: true,
+              description: true,
+              priceAmount: true,
+              currency: true,
+              durationMinutes: true,
+              status: true,
+              category: { select: { name: true } },
+              shop: {
+                select: {
+                  address: true,
+                  publicIdentifier: { select: { publicId: true } }
+                }
+              },
+              mediaAssets: {
+                where: { deletedAt: null, isActive: true },
+                orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                take: 1,
+                select: { url: true }
+              },
+              _count: {
+                select: {
+                  bookingOrders: { where: { status: "COMPLETED", deletedAt: null } },
+                  entityShareEvents: { where: { deletedAt: null } }
+                }
+              }
+            }
+          },
+          technicianService: {
+            select: {
+              publicId: true,
+              name: true,
+              description: true,
+              priceAmount: true,
+              currency: true,
+              durationMinutes: true,
+              coverImageUrl: true,
+              tagsJson: true,
+              isBookable: true,
+              shop: {
+                select: {
+                  address: true,
+                  publicIdentifier: { select: { publicId: true } }
+                }
+              },
+              _count: {
+                select: {
+                  bookingOrders: { where: { status: "COMPLETED", deletedAt: null } },
+                  entityShareEvents: { where: { deletedAt: null } }
+                }
+              }
+            }
+          },
           technicianProfile: {
             select: {
+              displayName: true,
+              bio: true,
+              languages: true,
+              reviewSummary: {
+                select: { ratingAverage: true, deletedAt: true }
+              },
+              performanceSummary: {
+                select: { completedOrderCount: true, deletedAt: true }
+              },
+              mediaAssets: {
+                where: { deletedAt: null, isActive: true },
+                orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                take: 1,
+                select: { url: true }
+              },
+              _count: {
+                select: { entityShareEvents: { where: { deletedAt: null } } }
+              },
               user: {
                 select: {
+                  avatarUrl: true,
+                  avatarBootstrapUrl: true,
                   identities: {
                     where: {
                       deletedAt: null,
@@ -296,7 +427,7 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
     const resolved: ResolvedFavoriteListTarget[] = [];
     rows.forEach((row) => {
       const shopPublicId = row.shop?.publicIdentifier?.publicId;
-      if (row.shopId !== null && shopPublicId) {
+      if (row.shopId !== null && row.shop && shopPublicId) {
         resolved.push({
           targetType: "shop" as const,
           publicId: shopPublicId,
@@ -304,13 +435,27 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
           technicianProfileId: null,
           serviceId: null,
           technicianServiceId: null,
-          favoritedAt: row.createdAt
+          favoritedAt: row.createdAt,
+          card: {
+            kind: "shop",
+            name: row.shop.name,
+            description: row.shop.description,
+            address: row.shop.address,
+            imageUrl: row.shop.mediaAssets[0]?.url ?? null,
+            rating:
+              row.shop.reviewSummary?.deletedAt === null
+                ? Number(row.shop.reviewSummary.ratingAverage)
+                : 0,
+            reviewCount:
+              row.shop.reviewSummary?.deletedAt === null ? row.shop.reviewSummary.reviewCount : 0,
+            shareCount: row.shop._count.entityShareEvents
+          }
         });
         return;
       }
       const technicianPublicId =
         row.technicianProfile?.user.identities[0]?.publicIdentifier?.publicId;
-      if (row.technicianProfileId !== null && technicianPublicId) {
+      if (row.technicianProfileId !== null && row.technicianProfile && technicianPublicId) {
         resolved.push({
           targetType: "technician" as const,
           publicId: technicianPublicId,
@@ -318,11 +463,30 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
           technicianProfileId: row.technicianProfileId,
           serviceId: null,
           technicianServiceId: null,
-          favoritedAt: row.createdAt
+          favoritedAt: row.createdAt,
+          card: {
+            kind: "technician",
+            name: row.technicianProfile.displayName,
+            description: row.technicianProfile.bio,
+            imageUrl:
+              row.technicianProfile.mediaAssets[0]?.url ??
+              row.technicianProfile.user.avatarUrl ??
+              row.technicianProfile.user.avatarBootstrapUrl,
+            languages: this.stringArray(row.technicianProfile.languages),
+            rating:
+              row.technicianProfile.reviewSummary?.deletedAt === null
+                ? Number(row.technicianProfile.reviewSummary.ratingAverage)
+                : 0,
+            completedOrderCount:
+              row.technicianProfile.performanceSummary?.deletedAt === null
+                ? row.technicianProfile.performanceSummary.completedOrderCount
+                : 0,
+            shareCount: row.technicianProfile._count.entityShareEvents
+          }
         });
         return;
       }
-      if (row.serviceId !== null && row.service?.publicId) {
+      if (row.serviceId !== null && row.service) {
         resolved.push({
           targetType: "service",
           publicId: row.service.publicId,
@@ -330,11 +494,26 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
           technicianProfileId: null,
           serviceId: row.serviceId,
           technicianServiceId: null,
-          favoritedAt: row.createdAt
+          favoritedAt: row.createdAt,
+          card: {
+            kind: "service",
+            name: row.service.name,
+            description: row.service.description,
+            imageUrl: row.service.mediaAssets[0]?.url ?? null,
+            priceAmount: Number(row.service.priceAmount),
+            currency: row.service.currency,
+            durationMinutes: row.service.durationMinutes,
+            usageCount: row.service._count.bookingOrders,
+            shareCount: row.service._count.entityShareEvents,
+            isBookable: row.service.status === "published",
+            shopPublicId: row.service.shop.publicIdentifier?.publicId ?? null,
+            shopAddress: row.service.shop.address,
+            tags: [row.service.category.name]
+          }
         });
         return;
       }
-      if (row.technicianServiceId !== null && row.technicianService?.publicId) {
+      if (row.technicianServiceId !== null && row.technicianService) {
         resolved.push({
           targetType: "technician_service",
           publicId: row.technicianService.publicId,
@@ -342,7 +521,22 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
           technicianProfileId: null,
           serviceId: null,
           technicianServiceId: row.technicianServiceId,
-          favoritedAt: row.createdAt
+          favoritedAt: row.createdAt,
+          card: {
+            kind: "service",
+            name: row.technicianService.name,
+            description: row.technicianService.description,
+            imageUrl: row.technicianService.coverImageUrl,
+            priceAmount: row.technicianService.priceAmount,
+            currency: row.technicianService.currency,
+            durationMinutes: row.technicianService.durationMinutes,
+            usageCount: row.technicianService._count.bookingOrders,
+            shareCount: row.technicianService._count.entityShareEvents,
+            isBookable: row.technicianService.isBookable,
+            shopPublicId: row.technicianService.shop?.publicIdentifier?.publicId ?? null,
+            shopAddress: row.technicianService.shop?.address ?? null,
+            tags: this.stringArray(row.technicianService.tagsJson)
+          }
         });
       }
     });
@@ -354,7 +548,7 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
     return buildPaginatedResponse(
       resolved.flatMap((item) => {
         const state = stateByKey.get(`${item.targetType}:${item.publicId}`);
-        return state ? [{ ...state, favoritedAt: item.favoritedAt }] : [];
+        return state ? [{ ...state, favoritedAt: item.favoritedAt, card: item.card }] : [];
       }),
       total,
       input
@@ -736,5 +930,11 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
 
   private isUniqueConstraintError(error: unknown): boolean {
     return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+  }
+
+  private stringArray(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [];
   }
 }

@@ -158,8 +158,11 @@ export class CoreReadService {
     return shop;
   }
 
-  public async getTechnicianDetail(id: number | string): Promise<TechnicianDetailPayload> {
-    const technician = await this.repository.findTechnicianDetail(id);
+  public async getTechnicianDetail(
+    id: number | string,
+    coordinates: { latitude?: number; longitude?: number } = {}
+  ): Promise<TechnicianDetailPayload> {
+    const technician = await this.repository.findTechnicianDetail(id, coordinates);
 
     if (!technician) {
       throw this.notFoundError("error.technician.not_found");

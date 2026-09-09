@@ -11,8 +11,46 @@ export type EntityFavoriteState = EntityTarget & {
   favoriteCount: number;
 };
 
+export type EntityFavoriteCard =
+  | {
+      kind: "shop";
+      name: string;
+      description: string | null;
+      address: string;
+      imageUrl: string | null;
+      rating: number;
+      reviewCount: number;
+      shareCount: number;
+    }
+  | {
+      kind: "technician";
+      name: string;
+      description: string | null;
+      imageUrl: string | null;
+      languages: string[];
+      rating: number;
+      completedOrderCount: number;
+      shareCount: number;
+    }
+  | {
+      kind: "service";
+      name: string;
+      description: string | null;
+      imageUrl: string | null;
+      priceAmount: number;
+      currency: string;
+      durationMinutes: number;
+      usageCount: number;
+      shareCount: number;
+      isBookable: boolean;
+      shopPublicId: string | null;
+      shopAddress: string | null;
+      tags: string[];
+    };
+
 export type EntityFavoriteListItem = EntityFavoriteState & {
   favoritedAt: string;
+  card: EntityFavoriteCard;
 };
 
 export type EntityShareReceipt = EntityTarget & {
@@ -87,7 +125,6 @@ export const entityEngagementApi = {
     target: EntityTarget,
     input: {
       conversationId: number;
-      recipientIdentityId: number;
       idempotencyKey: string;
     },
   ) {

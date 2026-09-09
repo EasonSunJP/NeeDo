@@ -1,190 +1,184 @@
-import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
-import { cn } from "../../lib/utils";
+import { useEffect, useState, type ReactNode } from "react";
+import type { Language } from "../../i18n/translations";
+import {
+  UnifiedCardDetails,
+  UnifiedCardImage,
+  UnifiedInfoCardFrame,
+  type UnifiedCardMetric,
+} from "../info-card-system/UnifiedInfoCardFrame";
+import { getUnifiedCardCopy } from "../info-card-system/copy";
 import type { UnifiedServiceInfoCardData } from "./model";
+import type { EntityFavoriteState } from "../../features/entity-engagement/api";
+import {
+  loadServiceFavoriteState,
+  ServiceFavoriteAction,
+  ServiceShareAction,
+} from "./ServiceCardEngagementActions";
 
 type UnifiedServiceInfoCardProps = {
   actionSlot?: ReactNode;
   className?: string;
   data: UnifiedServiceInfoCardData;
   detailTo?: string;
+  language?: Language;
   onOpenDetails?: () => void;
-  variant?: "default" | "showcase";
 };
 
-function formatPrice(amount: number, currency: string) {
-  const normalized = Number.isFinite(amount) ? Math.max(0, amount) : 0;
-  const price = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 }).format(normalized);
-  return currency.toUpperCase() === "JPY" ? `￥${price}` : `${currency.toUpperCase()} ${price}`;
-}
+const countLabel = (value: number | null | undefined, unavailable: string) =>
+  value === null || value === undefined
+    ? unavailable
+    : new Intl.NumberFormat("zh-CN", {
+        notation: value >= 10_000 ? "compact" : "standard",
+        maximumFractionDigits: 1,
+      }).format(Math.max(0, value));
 
-function formatDuration(durationMinutes: number | null) {
-  return durationMinutes !== null && Number.isFinite(durationMinutes) && durationMinutes > 0
-    ? `${durationMinutes}分钟`
-    : "时长未读取";
-}
+const formatPrice = (amount: number, currency: string) => {
+  const value = new Intl.NumberFormat("ja-JP", {
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(amount) ? Math.max(0, amount) : 0);
+  return currency.toUpperCase() === "JPY"
+    ? `￥${value}`
+    : `${currency.toUpperCase()} ${value}`;
+};
 
-function ServiceCardContent({ data, hasActions }: { data: UnifiedServiceInfoCardData; hasActions: boolean }) {
-  const visibleTags = data.tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 8);
-  const showCatalogPrice = data.catalogPriceAmount !== null && data.catalogPriceAmount !== undefined && data.catalogPriceAmount > data.priceAmount;
+const formatDuration = (value: number | null, minute: string, unavailable: string) =>
+  value !== null && Number.isFinite(value) && value > 0
+    ? `${value}${minute}`
+    : unavailable;
+const formatDistance = (value: number | null | undefined, unavailable: string) =>
+  value !== null && value !== undefined && Number.isFinite(value)
+    ? `${value.toFixed(value < 10 ? 1 : 0)}km`
+    : unavailable;
 
-  return (
-    <div className="grid min-h-[190px] grid-cols-[minmax(112px,36%)_1fr]">
-      <div className="relative min-h-full overflow-hidden bg-[color:var(--client-elevated)]">
-        {data.coverUrl ? (
-          <img alt={data.name} className="absolute inset-0 h-full w-full object-cover" loading="lazy" src={data.coverUrl} />
-        ) : (
-          <div
-            aria-label={`${data.name} 暂无公开图片`}
-            className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_18%,transparent),transparent_48%),linear-gradient(145deg,color-mix(in_srgb,var(--client-elevated)_94%,black),color-mix(in_srgb,var(--client-surface)_88%,black))] px-3 text-center text-[12px] font-black text-[color:var(--client-muted)]"
-            role="img"
-          >
-            暂无公开图片
-          </div>
-        )}
-      </div>
-
-      <div className={cn("min-w-0 px-4 py-3.5", hasActions ? "pr-[118px]" : "")}>
-        <h3 className="text-[17px] font-black leading-6 text-[color:var(--client-text)]">{data.name}</h3>
-        <strong className="mt-1 block text-[19px] font-black tracking-[-0.02em] text-[color:var(--client-primary)]">
-          {formatPrice(data.priceAmount, data.currency)}/{formatDuration(data.durationMinutes)}
-        </strong>
-        {showCatalogPrice ? (
-          <p className="mt-1 text-[12px] font-bold text-[color:var(--client-muted)]">
-            <span className="line-through">{formatPrice(data.catalogPriceAmount!, data.currency)}</span>
-          </p>
-        ) : null}
-
-        <div className="mt-2 space-y-1 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">
-          <p>利用回数：<span className="font-black text-[color:var(--client-text)]">{data.usageCount ?? "未读取"}</span></p>
-        </div>
-
-        <p className="mt-2 line-clamp-2 text-[12px] font-bold leading-5 text-[color:var(--client-muted)]">
-          {data.description ?? "暂无简介"}
-        </p>
-
-        <div className="mt-2 flex min-h-6 flex-wrap items-center gap-1.5" data-testid="unified-service-info-tags">
-          {visibleTags.length > 0 ? visibleTags.map((tag) => (
-            <span
-              className="rounded-full bg-[color:var(--client-primary-soft)] px-2 py-1 text-[10px] font-black leading-3 text-[color:var(--client-primary)]"
-              key={tag}
-            >
-              {tag}
-            </span>
-          )) : <span className="text-[11px] font-bold text-[color:var(--client-muted)]">暂无标签</span>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ServiceShowcaseContent({ data, hasActions }: { data: UnifiedServiceInfoCardData; hasActions: boolean }) {
-  const visibleTags = data.tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 5);
-  const showCatalogPrice = data.catalogPriceAmount !== null && data.catalogPriceAmount !== undefined && data.catalogPriceAmount > data.priceAmount;
-
-  return (
-    <div className="relative" data-testid="unified-service-showcase-body">
-      <header
-        className="grid min-h-[104px] grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)] items-end bg-[radial-gradient(circle_at_18%_0%,color-mix(in_srgb,var(--client-primary)_13%,transparent),transparent_45%),repeating-linear-gradient(72deg,transparent_0,transparent_7px,color-mix(in_srgb,var(--client-primary)_5%,transparent)_8px,color-mix(in_srgb,var(--client-primary)_5%,transparent)_9px),linear-gradient(110deg,#071611,#020807_62%,#030a0b)] px-4 pb-3"
-        data-testid="unified-service-showcase-header"
+export function UnifiedServiceInfoCard({
+  actionSlot,
+  className,
+  data,
+  detailTo,
+  language = "zh",
+  onOpenDetails,
+}: UnifiedServiceInfoCardProps) {
+  const text = getUnifiedCardCopy(language);
+  const target = data.engagementTarget ?? null;
+  const [favoriteState, setFavoriteState] =
+    useState<EntityFavoriteState | null>(() =>
+      target
+        ? {
+            ...target,
+            isFavorited: data.isFavorited ?? false,
+            favoriteCount: data.favoriteCount ?? 0,
+          }
+        : null,
+    );
+  const [shareCount, setShareCount] = useState(data.shareCount ?? null);
+  useEffect(() => {
+    if (!target) return;
+    let active = true;
+    void loadServiceFavoriteState(target)
+      .then((state) => {
+        if (active && state) setFavoriteState(state);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [target?.publicId, target?.targetType]);
+  const metrics: UnifiedCardMetric[] = [
+    {
+      icon: "calendar",
+      label: text.bookable,
+      value:
+        data.isBookable === false
+          ? text.notBookable
+          : data.isBookable === null || data.isBookable === undefined
+            ? text.unavailable
+            : text.bookable,
+    },
+    {
+      icon: "moments",
+      label: text.usage,
+      value: countLabel(data.usageCount, text.unavailable),
+    },
+    {
+      icon: "map",
+      label: text.distanceToYou,
+      value: formatDistance(data.distanceKm, text.distanceUnavailable),
+    },
+    {
+      icon: "heart",
+      label: text.favorite,
+      value: countLabel(
+        favoriteState?.favoriteCount ?? data.favoriteCount,
+        text.unavailable,
+      ),
+      ...(favoriteState
+        ? {
+            action: (
+              <ServiceFavoriteAction
+                onChange={setFavoriteState}
+                state={favoriteState}
+                targetLabel={data.name}
+              />
+            ),
+          }
+        : {}),
+    },
+    {
+      icon: "share",
+      label: text.share,
+      value: countLabel(shareCount, text.unavailable),
+      ...(target
+        ? {
+            action: (
+              <ServiceShareAction
+                onShareCountChange={setShareCount}
+                target={target}
+                targetLabel={data.name}
+              />
+            ),
+          }
+        : {}),
+    },
+  ];
+  const image = (
+    <UnifiedCardImage alt={data.name} language={language} src={data.coverUrl}>
+      <span
+        className="absolute left-4 top-4 rounded-full bg-black/80 px-4 py-2 text-[15px] font-black text-[#f7f9f7]"
+        data-testid="unified-card-duration-overlay"
       >
-        <h3 className={cn(
-          "col-start-2 min-w-0 max-w-full break-words pl-3 text-[clamp(17px,4.3vw,25px)] font-black leading-tight tracking-[-0.02em] text-white [overflow-wrap:anywhere] line-clamp-2",
-          hasActions ? "pt-[52px]" : undefined
-        )}>
-          {data.name}
-        </h3>
-      </header>
-
-      <div
-        className="grid grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,#0d2028)]"
-        data-testid="unified-service-showcase-body-grid"
+        {formatDuration(data.durationMinutes, text.minute, text.durationUnavailable)}
+      </span>
+      <strong
+        className="absolute bottom-0 left-0 rounded-tr-[34px] bg-black/80 px-5 py-3 text-[clamp(24px,7vw,42px)] font-black tracking-[-0.04em] text-[#b8ff4a]"
+        data-testid="unified-card-price-overlay"
       >
-        <div className="relative min-w-0 self-start">
-          <div
-            className="-mt-10 ml-4 aspect-square w-[calc(100%-1rem)] overflow-hidden rounded-[24px] border border-white/10 bg-[color:var(--client-surface)] shadow-[0_10px_28px_rgba(0,0,0,0.34)]"
-            data-testid="unified-service-showcase-cover"
-          >
-            {data.coverUrl ? (
-              <img alt={data.name} className="h-full w-full object-cover" loading="lazy" src={data.coverUrl} />
-            ) : (
-              <div
-                aria-label={`${data.name} 暂无公开图片`}
-                className="grid h-full w-full place-items-center bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_18%,transparent),transparent_50%),linear-gradient(145deg,color-mix(in_srgb,var(--client-elevated)_94%,black),color-mix(in_srgb,var(--client-surface)_88%,black))] px-2 text-center text-[11px] font-black text-[color:var(--client-muted)]"
-                role="img"
-              >
-                暂无公开图片
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="min-w-0 px-3 pb-3 pt-2.5">
-          <p className="text-[12px] font-bold leading-4 text-[color:var(--client-muted)]">
-            利用回数： <span className="text-[14px] font-black text-[color:var(--client-text)]">{data.usageCount ?? "未读取"}</span>
-          </p>
-
-          <div className="mt-1.5 flex min-h-5 flex-wrap items-center gap-1" data-testid="unified-service-info-tags">
-            {visibleTags.length > 0 ? visibleTags.map((tag) => (
-              <span className="max-w-full break-words rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] font-black leading-4 text-[color:var(--client-muted)] [overflow-wrap:anywhere]" key={tag}>
-                {tag}
-              </span>
-            )) : <span className="text-[11px] font-bold text-[color:var(--client-muted)]">暂无标签</span>}
-          </div>
-
-          <p className="mt-1.5 max-w-full break-words line-clamp-2 text-[12px] font-bold leading-[1.55] text-[color:var(--client-muted)] [overflow-wrap:anywhere]">
-            {data.description ?? "暂无简介"}
-          </p>
-
-          <div className="mt-2 flex flex-wrap items-center gap-1.5" data-testid="unified-service-showcase-facts">
-            <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] font-black leading-4 text-[color:var(--client-muted)]">
-              {formatPrice(data.priceAmount, data.currency)}
-            </span>
-            <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] font-black leading-4 text-[color:var(--client-muted)]">
-              {formatDuration(data.durationMinutes)}
-            </span>
-            {showCatalogPrice ? (
-              <span className="text-[10px] font-bold text-[color:var(--client-muted)] line-through">
-                {formatPrice(data.catalogPriceAmount!, data.currency)}
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </div>
+        {formatPrice(data.priceAmount, data.currency)}
+      </strong>
+    </UnifiedCardImage>
   );
-}
-
-export function UnifiedServiceInfoCard({ actionSlot, className, data, detailTo, onOpenDetails, variant = "default" }: UnifiedServiceInfoCardProps) {
-  const hasActions = Boolean(actionSlot);
-  const isShowcase = variant === "showcase";
-  const content = isShowcase
-    ? <ServiceShowcaseContent data={data} hasActions={hasActions} />
-    : <ServiceCardContent data={data} hasActions={hasActions} />;
-  const interactiveClassName = "focus-ring block text-left";
-
+  const details = (
+    <UnifiedCardDetails
+      description={data.description}
+      language={language}
+      name={data.name}
+      tags={data.tags}
+    />
+  );
   return (
-    <article
-      className={cn(
-        "relative overflow-hidden border bg-[color:var(--client-surface)] text-[color:var(--client-text)] shadow-panel",
-        isShowcase
-          ? "rounded-[28px] border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))]"
-          : "rounded-[26px] border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)]",
-        className
-      )}
-      data-variant={variant}
-      data-testid="unified-service-info-card"
-    >
-      {detailTo ? (
-        <Link aria-label={`查看服务 ${data.name}`} className={interactiveClassName} to={detailTo}>{content}</Link>
-      ) : onOpenDetails ? (
-        <button aria-label={`查看服务 ${data.name}`} className={cn(interactiveClassName, "w-full")} onClick={onOpenDetails} type="button">{content}</button>
-      ) : content}
-      {actionSlot ? (
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1" data-testid="unified-service-info-actions">
-          {actionSlot}
+    <UnifiedInfoCardFrame
+      actionSlot={actionSlot}
+      ariaLabel={`${text.viewService} ${data.name}`}
+      body={
+        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+          {image}
+          {details}
         </div>
-      ) : null}
-    </article>
+      }
+      className={className}
+      detailTo={detailTo}
+      kind="service"
+      metrics={metrics}
+      onOpenDetails={onOpenDetails}
+    />
   );
 }

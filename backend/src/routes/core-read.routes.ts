@@ -9,6 +9,7 @@ import { CoreReadService } from "../services/core-read.service";
 import { SearchQueryRecorderService } from "../services/search-query-recorder.service";
 import {
   categoryListQuerySchema,
+  coreReadCoordinateQuerySchema,
   coreReadIdParamSchema,
   coreReadServiceIdParamSchema,
   coreReadShopIdParamSchema,
@@ -58,7 +59,7 @@ export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDepende
   );
   router.get(
     "/technicians/:id",
-    validateRequest({ params: coreReadTechnicianIdParamSchema }),
+    validateRequest({ params: coreReadTechnicianIdParamSchema, query: coreReadCoordinateQuerySchema }),
     controller.getTechnicianDetail
   );
   router.get(

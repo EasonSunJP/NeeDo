@@ -593,6 +593,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
                 }
               )}
               detailTo={post.intelligence.publisherCard.detailPath}
+              language={language}
               variant="detailHeader"
             />
           </div>
@@ -605,6 +606,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
               t(post.intelligence.serviceMode)
             )}
             detailTo={post.intelligence.serviceCard.detailPath}
+            language={language}
           />
         ) : null}
 

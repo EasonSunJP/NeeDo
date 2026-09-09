@@ -840,12 +840,12 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("订单追踪信息");
   });
 
-  it("renders the formal customer as the shared simple profile card with a NeeDoID", async () => {
+  it("renders the formal customer with the unified user name-card fields", async () => {
     await renderOrder(makeOrder("confirmed"));
 
     expect(container.textContent).toContain("用户");
     expect(container.textContent).toContain("预约用户 山田");
-    expect(container.textContent).toContain("u0000000071");
+    expect(container.textContent).not.toContain("u0000000071");
     expect(container.textContent).not.toContain("客户账号");
     expect(container.querySelector("dl")?.textContent).not.toContain("#71");
     expect(container.querySelector('a[href="/technician/profiles/user/17"]')).not.toBeNull();

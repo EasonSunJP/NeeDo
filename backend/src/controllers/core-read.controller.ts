@@ -3,6 +3,7 @@ import type { CoreReadService } from "../services/core-read.service";
 import { successResponse } from "../utils/api-response";
 import {
   categoryListQuerySchema,
+  coreReadCoordinateQuerySchema,
   coreReadIdParamSchema,
   coreReadServiceIdParamSchema,
   coreReadShopIdParamSchema,
@@ -133,11 +134,15 @@ export class CoreReadController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const coordinates = coreReadCoordinateQuerySchema.parse(request.query);
       response
         .status(200)
         .json(
           successResponse(
-            await this.coreReadService.getTechnicianDetail(this.getTechnicianId(request))
+            await this.coreReadService.getTechnicianDetail(
+              this.getTechnicianId(request),
+              coordinates
+            )
           )
         );
     } catch (error) {

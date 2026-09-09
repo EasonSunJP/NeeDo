@@ -34,7 +34,7 @@ it("uses standalone formal shop cards, same-size single selectors and a floating
   expect(search.className).toContain("whitespace-nowrap"); expect(search.className).toContain("shrink-0");
   await act(async () => search.click());
   const cards = container.querySelectorAll("article"); expect(cards).toHaveLength(2); expect(cards[0].closest("section")).toBeNull();
-  expect(cards[0].textContent).toContain("shop7507769538"); expect(cards[0].textContent).not.toContain("店铺 ID"); expect(cards[0].textContent).toContain("4.7"); expect(cards[0].textContent).toContain("肩颈调理");
+  expect(cards[0].textContent).not.toContain("shop7507769538"); expect(cards[0].textContent).not.toContain("店铺 ID"); expect(cards[0].textContent).toContain("港区"); expect(cards[0].textContent).toContain("4.7"); expect(cards[0].textContent).toContain("肩颈调理");
   expect(cards[0].querySelector("img")?.getAttribute("src")).toBe("/media/shop.jpg");
   const radios = container.querySelectorAll<HTMLButtonElement>('[role="radio"]'); expect(radios).toHaveLength(2); expect(radios[0].className).toContain("h-[29px]");
   await act(async () => radios[0].click()); expect(radios[0].getAttribute("aria-checked")).toBe("true");

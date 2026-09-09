@@ -16,6 +16,7 @@ import type {
   Coordinates,
   NearbyTechnicianCandidate
 } from "../services/nearby-technician-ranking.service";
+import { haversineDistanceKm } from "../services/nearby-technician-ranking.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import {
@@ -47,6 +48,8 @@ export interface ServiceListInput extends PaginationInput {
   minPrice?: number;
   maxPrice?: number;
   sort?: CoreReadSort;
+  latitude?: number;
+  longitude?: number;
 }
 
 export type CoreSearchEntityType = "service" | "shop" | "technician";
@@ -62,6 +65,8 @@ export interface CoreSearchInput extends ServiceListInput {
 export interface HomeRecommendationsInput {
   city?: string;
   limit?: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface ReviewSummaryPayload {
@@ -106,6 +111,7 @@ export interface ShopCardPayload {
   reviewSummary: ReviewSummaryPayload;
   favoriteCount: number;
   shareCount: number;
+  distanceKm?: number;
   serviceCategories: Array<{ id: number; code: string; label: string }>;
   businessKeywords: Array<{ id: number; code: string; label: string; categoryId: number }>;
 }
@@ -149,6 +155,10 @@ export interface ServiceCardPayload {
   currency: string;
   durationMinutes: number;
   usageCount: number;
+  favoriteCount: number;
+  shareCount: number;
+  isBookable: boolean;
+  distanceKm?: number;
   coverUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
 }
@@ -228,7 +238,10 @@ export interface CoreReadRepositoryPort {
   ) => Promise<NearbyTechnicianCandidate[]>;
   loadTechnicianCardsByRankedIds: (ids: number[]) => Promise<Map<number, TechnicianCardPayload>>;
   findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
-  findTechnicianDetail: (id: number | string) => Promise<TechnicianDetailPayload | null>;
+  findTechnicianDetail: (
+    id: number | string,
+    coordinates?: { latitude?: number; longitude?: number }
+  ) => Promise<TechnicianDetailPayload | null>;
   findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
 }
 
@@ -280,6 +293,10 @@ type TechnicianCardRecord = TechnicianProfile & {
     avatarBootstrapUrl: string | null;
     identities: Array<{ publicIdentifier: PublicIdentifier | null }>;
   };
+  shop?: { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null } | null;
+  technicianShopAffiliations?: Array<{
+    shop: { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null };
+  }>;
 };
 
 type ServiceRecordBase = Service & {
@@ -287,7 +304,7 @@ type ServiceRecordBase = Service & {
   technicianProfile: TechnicianCardRecord | null;
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
-  _count: { bookingOrders: number };
+  _count: { bookingOrders: number; entityFavorites: number; entityShareEvents: number };
 };
 
 type ServiceCardRecord = ServiceRecordBase & {
@@ -362,7 +379,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((service) => this.mapServiceCard(service)),
+      list.map((service) => this.mapServiceCard(service, undefined, this.originFrom(input))),
       total,
       pagination
     );
@@ -426,9 +443,13 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
     return {
       categories: categories.map((category) => this.mapCategory(category)),
-      services: services.map((service) => this.mapServiceCard(service)),
-      shops: shops.map((shop) => this.mapShopCard(shop)),
-      technicians: technicians.map((technician) => this.mapTechnicianCard(technician))
+      services: services.map((service) =>
+        this.mapServiceCard(service, undefined, this.originFrom(input))
+      ),
+      shops: shops.map((shop) => this.mapShopCard(shop, this.originFrom(input))),
+      technicians: technicians.map((technician) =>
+        this.mapTechnicianCard(technician, this.originFrom(input))
+      )
     };
   }
 
@@ -451,7 +472,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((shop) => this.mapShopCard(shop)),
+      list.map((shop) => this.mapShopCard(shop, this.originFrom(input))),
       total,
       pagination
     );
@@ -611,7 +632,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return shop ? this.mapShopDetail(shop) : null;
   }
 
-  public async findTechnicianDetail(id: number | string): Promise<TechnicianDetailPayload | null> {
+  public async findTechnicianDetail(
+    id: number | string,
+    coordinates: { latitude?: number; longitude?: number } = {}
+  ): Promise<TechnicianDetailPayload | null> {
     const technician = await this.client.technicianProfile.findFirst({
       where: {
         ...(typeof id === "number" ? { id } : {}),
@@ -633,7 +657,11 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     if (!technician) return null;
     const reviewTagSummary = await loadTechnicianReviewTagSummary(this.client, technician.id);
 
-    return this.mapTechnicianDetail(technician, reviewTagSummary);
+    return this.mapTechnicianDetail(
+      technician,
+      reviewTagSummary,
+      this.originFrom(coordinates)
+    );
   }
 
   public async findCustomerProfile(id: number): Promise<CustomerProfilePayload | null> {
@@ -666,7 +694,9 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       reviewSummary: true,
       _count: {
         select: {
-          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } }
+          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } },
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
         }
       }
     };
@@ -682,7 +712,9 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       reviewSummary: true,
       _count: {
         select: {
-          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } }
+          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } },
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
         }
       }
     };
@@ -789,6 +821,19 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
             },
             include: { publicIdentifier: true }
           }
+        }
+      },
+      shop: {
+        select: { latitude: true, longitude: true }
+      },
+      technicianShopAffiliations: {
+        where: {
+          deletedAt: null,
+          workStatus: "ACTIVE" as const,
+          shop: { deletedAt: null, status: PUBLISHED_STATUS }
+        },
+        select: {
+          shop: { select: { latitude: true, longitude: true } }
         }
       }
     };
@@ -1204,9 +1249,11 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
   private mapServiceCard(
     service: ServiceRecordBase | ServiceCardRecord,
-    shopOverride?: ShopCardPayload
+    shopOverride?: ShopCardPayload,
+    origin?: Coordinates
   ): ServiceCardPayload {
-    const shop = shopOverride ?? ("shop" in service ? this.mapShopCard(service.shop) : undefined);
+    const shop =
+      shopOverride ?? ("shop" in service ? this.mapShopCard(service.shop, origin) : undefined);
 
     if (!shop) {
       throw new Error("Service card mapping requires a shop payload.");
@@ -1228,6 +1275,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       currency: service.currency,
       durationMinutes: service.durationMinutes,
       usageCount: service._count.bookingOrders,
+      favoriteCount: service._count.entityFavorites,
+      shareCount: service._count.entityShareEvents,
+      isBookable: service.status === PUBLISHED_STATUS,
+      ...(shop.distanceKm === undefined ? {} : { distanceKm: shop.distanceKm }),
       coverUrl: this.findMediaUrl(service.mediaAssets, "cover"),
       reviewSummary: this.mapReviewSummary(service.reviewSummary)
     };
@@ -1243,7 +1294,8 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private mapShopCard(shop: ShopCardRecord): ShopCardPayload {
+  private mapShopCard(shop: ShopCardRecord, origin?: Coordinates): ShopCardPayload {
+    const distanceKm = this.distanceFrom(origin, shop.latitude, shop.longitude);
     return {
       id: shop.id,
       publicId: this.requirePublicId(shop.publicIdentifier, "SHOP"),
@@ -1254,6 +1306,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       reviewSummary: this.mapReviewSummary(shop.reviewSummary),
       favoriteCount: shop._count.entityFavorites,
       shareCount: shop._count.entityShareEvents,
+      ...(distanceKm === null ? {} : { distanceKm }),
       serviceCategories: (shop.serviceCategorySelections ?? []).flatMap(({ category }) =>
         category.translations[0]
           ? [{ id: category.id, code: category.code, label: category.translations[0].name }]
@@ -1285,10 +1338,16 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       longitude: this.formatNullableDecimal(shop.longitude, 7),
       mediaAssets: shop.mediaAssets.map((asset) => this.mapMediaAsset(asset)),
       services: shop.services.map((service) => this.mapServiceCard(service, shopCard)),
-      technicians: [...new Map([
-        ...shop.technicians,
-        ...(shop.technicianShopAffiliations ?? []).map(affiliation => affiliation.technicianProfile)
-      ].map(technician => [technician.id, technician])).values()]
+      technicians: [
+        ...new Map(
+          [
+            ...shop.technicians,
+            ...(shop.technicianShopAffiliations ?? []).map(
+              (affiliation) => affiliation.technicianProfile
+            )
+          ].map((technician) => [technician.id, technician])
+        ).values()
+      ]
         .sort((left, right) => left.id - right.id)
         .map((technician) => this.mapTechnicianCard(technician)),
       createdAt: shop.createdAt,
@@ -1296,7 +1355,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private mapTechnicianCard(technician: TechnicianCardRecord): TechnicianCardPayload {
+  private mapTechnicianCard(
+    technician: TechnicianCardRecord,
+    origin?: Coordinates
+  ): TechnicianCardPayload {
     const identifier = technician.user.identities.find((identity) =>
       this.isActivePublicIdentifier(identity.publicIdentifier, "S")
     )?.publicIdentifier;
@@ -1304,6 +1366,13 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     const performanceSummary =
       technician.performanceSummary?.deletedAt === null ? technician.performanceSummary : null;
     const primaryService = technician.technicianServices[0] ?? null;
+    const distanceKm = [
+      technician.shop,
+      ...(technician.technicianShopAffiliations ?? []).map((affiliation) => affiliation.shop)
+    ].reduce<number | null>((nearest, shop) => {
+      const candidate = this.distanceFrom(origin, shop?.latitude ?? null, shop?.longitude ?? null);
+      return candidate === null || (nearest !== null && nearest <= candidate) ? nearest : candidate;
+    }, null);
 
     return {
       id: technician.id,
@@ -1329,8 +1398,27 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
             currency: primaryService.currency,
             durationMinutes: primaryService.durationMinutes
           }
-        : null
+        : null,
+      ...(distanceKm === null ? {} : { distanceKm })
     };
+  }
+
+  private originFrom(input: { latitude?: number; longitude?: number }): Coordinates | undefined {
+    return input.latitude === undefined || input.longitude === undefined
+      ? undefined
+      : { latitude: input.latitude, longitude: input.longitude };
+  }
+
+  private distanceFrom(
+    origin: Coordinates | undefined,
+    latitude: Prisma.Decimal | null,
+    longitude: Prisma.Decimal | null
+  ): number | null {
+    if (!origin) return null;
+    const destination = this.toCoordinates(latitude, longitude);
+    if (!destination) return null;
+    const distance = haversineDistanceKm(origin, destination);
+    return Number.isFinite(distance) ? Number(distance.toFixed(2)) : null;
   }
 
   private isPublicTechnicianCard(technician: TechnicianCardRecord): boolean {
@@ -1358,11 +1446,12 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
   private mapTechnicianDetail(
     technician: TechnicianDetailRecord,
-    reviewTagSummary: TechnicianReviewTagSummaryPayload
+    reviewTagSummary: TechnicianReviewTagSummaryPayload,
+    origin?: Coordinates
   ): TechnicianDetailPayload {
     return {
-      ...this.mapTechnicianCard(technician),
-      shop: technician.shop ? this.mapShopCard(technician.shop) : null,
+      ...this.mapTechnicianCard(technician, origin),
+      shop: technician.shop ? this.mapShopCard(technician.shop, origin) : null,
       bio: technician.bio,
       serviceArea: technician.serviceArea,
       gender:

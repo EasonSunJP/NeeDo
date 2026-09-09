@@ -54,11 +54,11 @@ describe("CategoryPage formal entity cards", () => {
     expect(categoryPageSource).not.toContain("mapCoreShopToStore");
     expect(categoryPageSource).not.toContain("mapCoreTechnicianToTechnician");
     expect(categoryPageSource).toContain("formalData={{");
-    expect(categoryPageSource).toContain("EntitySearchCardActions");
     expect(categoryPageSource).toContain("getFavoriteStatuses(");
-    expect(categoryPageSource).toContain("createSystemShareAttempt");
-    expect(categoryPageSource).toContain("formalActionSlot=");
-    expect(categoryPageSource).toContain("actionSlot=");
+    expect(categoryPageSource).toContain("isFavorited: favoriteState.isFavorited");
+    expect(categoryPageSource).not.toContain("EntitySearchCardActions");
+    expect(categoryPageSource).not.toContain("createSystemShareAttempt");
+    expect(categoryPageSource).not.toContain("formalActionSlot=");
     expect(categoryPageSource).not.toContain("DirectSearchProfileCard");
     expect(categoryPageSource).not.toContain("legacyServices");
     expect(categoryPageSource).not.toContain("legacyStores");

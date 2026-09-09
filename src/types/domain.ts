@@ -233,6 +233,9 @@ export interface Store {
   address: string;
   rating: number;
   reviewCount: number;
+  favoriteCount?: number;
+  shareCount?: number;
+  distanceKm?: number;
   priceLabel: string;
   tags: string[];
   openStatus: "open" | "resting" | "closed";
@@ -269,6 +272,10 @@ export interface Technician extends Staff {
   acceptRate: number;
   cancelRate: number;
   reviewCount: number;
+  favoriteCount?: number;
+  shareCount?: number;
+  distanceKm?: number;
+  specialReviewTags?: Array<{ code: string; label: string; count: number }>;
   languages: string[];
   avatar: string;
   accountUsername?: string;

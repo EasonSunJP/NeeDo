@@ -46,7 +46,6 @@ export const entityFavoriteStatusesBodySchema = z
 export const needoEntityShareBodySchema = z
   .object({
     conversationId: z.number().int().positive().max(2_147_483_647),
-    recipientIdentityId: z.number().int().positive().max(2_147_483_647),
     idempotencyKey: z.string().uuid()
   })
   .strict();

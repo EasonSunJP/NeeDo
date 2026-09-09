@@ -1362,7 +1362,9 @@ describe("NeeDo entity-share atomicity", () => {
     targetType: "shop" as const,
     publicId: "shop0000000001",
     shopId: 7,
-    technicianProfileId: null
+    technicianProfileId: null,
+    serviceId: null,
+    technicianServiceId: null
   };
 
   it.each([
@@ -1384,7 +1386,6 @@ describe("NeeDo entity-share atomicity", () => {
       await expect(
         service.createNeedoEntityShare({ userId: 41 } as never, {
           conversationId: 91,
-          recipientIdentityId: 1670,
           target,
           idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
           requestFingerprint: "fingerprint"
@@ -1418,7 +1419,6 @@ describe("NeeDo entity-share atomicity", () => {
     await expect(
       service.createNeedoEntityShare({ userId: 41 } as never, {
         conversationId: 91,
-        recipientIdentityId: 1670,
         target,
         idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
         requestFingerprint: "fingerprint"
@@ -1462,7 +1462,15 @@ describe("NeeDo entity-share atomicity", () => {
       conversationParticipant: {
         findFirst: jest
           .fn()
-          .mockResolvedValueOnce({ userId: 167, identityId: 1670 })
+          .mockResolvedValueOnce({
+            conversation: {
+              type: "DIRECT",
+              participants: [
+                { userId: 41, identityId: 410 },
+                { userId: 167, identityId: 1670 }
+              ]
+            }
+          })
           .mockResolvedValueOnce({
             id: 77,
             createdAt,
@@ -1482,6 +1490,16 @@ describe("NeeDo entity-share atomicity", () => {
       },
       contact: { count: jest.fn(async () => 2) },
       imPolicy: { findFirst: jest.fn(async () => null) },
+      shop: {
+        findFirstOrThrow: jest.fn(async () => ({
+          name: "LifeDance",
+          address: "Tokyo",
+          description: "Wellness",
+          mediaAssets: [],
+          reviewSummary: { ratingAverage: "4.9", reviewCount: 18 },
+          _count: { entityFavorites: 12, entityShareEvents: 3 }
+        }))
+      },
       message: { create: jest.fn(async () => message) },
       conversation: { update: jest.fn() }
     };
@@ -1496,7 +1514,6 @@ describe("NeeDo entity-share atomicity", () => {
         actorUserId: 41,
         actorIdentityId: 410,
         conversationId: 91,
-        recipientIdentityId: 1670,
         target,
         idempotencyKey: "d295f424-8be2-4a8a-a465-1eb538129bb3",
         requestFingerprint: "fingerprint"
@@ -1515,7 +1532,6 @@ describe("NeeDo entity-share atomicity", () => {
         conversationId: 91,
         messageId: 501,
         recipientUserId: 167,
-        recipientIdentityId: 1670,
         channel: "NEEDO_MESSAGE"
       })
     });

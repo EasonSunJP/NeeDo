@@ -2,7 +2,7 @@ import { ekycApplicationOpenApiPaths } from "./ekyc-application.openapi";
 import { accountActivityOpenApiPaths } from "./account-activity.openapi";
 import { operationsMemberOpenApiPaths } from "./operations-member.openapi";
 import { releasePublicationOpenApiPaths } from "./release-publication.openapi";
-import { workStatusOpenApiPaths } from './work-status.openapi';
+import { workStatusOpenApiPaths } from "./work-status.openapi";
 import { calendarEventOpenApiPaths } from "./calendar-event.openapi";
 import { sosOpenApiPaths } from "./sos.openapi";
 import { Router } from "express";
@@ -1979,8 +1979,7 @@ const exchangeOperation = (
 const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> => {
   const base = `${config.API_PREFIX}/exchange/posts`;
   const intelligenceServiceOptionsBase = `${config.API_PREFIX}/exchange/intelligence/service-options`;
-  const technicianServiceContextBase =
-    `${config.API_PREFIX}/technician-services/{id}/booking-context`;
+  const technicianServiceContextBase = `${config.API_PREFIX}/technician-services/{id}/booking-context`;
   const cancellationBase = `${config.API_PREFIX}/exchange/orders/{id}/cancellation`;
   const contextBase = `${config.API_PREFIX}/exchange/request-publication-context`;
   const feeBase = `${config.API_PREFIX}/backoffice/exchange-request-fee`;
@@ -2098,8 +2097,7 @@ const createExchangeOpenApiPaths = (config: AppConfig): Record<string, unknown> 
                 "error.exchange.post_not_found or error.exchange.intelligence_service_not_found — the referenced formal resource does not exist"
             },
             "409": {
-              description:
-                `${exchangeErrorResponses["409"].description}, or error.exchange.intelligence_service_unavailable`
+              description: `${exchangeErrorResponses["409"].description}, or error.exchange.intelligence_service_unavailable`
             },
             "422": {
               description:
@@ -2476,7 +2474,7 @@ const merchantEmployeeErrorResponses = {
   "404": {
     description:
       "error.technician_affiliation.not_found — employee is absent from the authenticated shop"
-  },
+  }
 };
 
 const merchantPreviewShopHeaderParameter = {
@@ -2911,9 +2909,15 @@ const billingProfileRequestBody = {
 const orderRefundErrorResponses = {
   "400": jsonErrorResponse("error.validation — strict request validation failed"),
   "401": jsonErrorResponse("error.auth.token_invalid — missing or invalid access token"),
-  "403": jsonErrorResponse("error.forbidden or error.identity.forbidden — permission or identity denied"),
-  "404": jsonErrorResponse("error.order_refund_case.not_found or error.order_refund_dispute.not_found — unavailable in the authenticated scope"),
-  "409": jsonErrorResponse("error.order_refund_case.invalid_state, error.order_refund_case.version_conflict, error.order_refund_case.idempotency_conflict, error.order_refund_case.active_conflict, or error.order_refund.dispute_required")
+  "403": jsonErrorResponse(
+    "error.forbidden or error.identity.forbidden — permission or identity denied"
+  ),
+  "404": jsonErrorResponse(
+    "error.order_refund_case.not_found or error.order_refund_dispute.not_found — unavailable in the authenticated scope"
+  ),
+  "409": jsonErrorResponse(
+    "error.order_refund_case.invalid_state, error.order_refund_case.version_conflict, error.order_refund_case.idempotency_conflict, error.order_refund_case.active_conflict, or error.order_refund.dispute_required"
+  )
 };
 
 const orderRefundPathParameters = [
@@ -2936,15 +2940,25 @@ const orderRefundCommandOperation = (input: {
   ...(input.parameters ? { parameters: input.parameters } : {}),
   requestBody: {
     required: true,
-    content: { "application/json": { schema: { $ref: `#/components/schemas/${input.inputSchema}` } } }
+    content: {
+      "application/json": { schema: { $ref: `#/components/schemas/${input.inputSchema}` } }
+    }
   },
   responses: {
     ...(input.create
       ? {
-          "201": jsonDataResponse("Refund request created", { $ref: "#/components/schemas/OrderRefundCasePublic" }),
-          "200": jsonDataResponse("Exact idempotent replay of an existing refund request", { $ref: "#/components/schemas/OrderRefundCasePublic" })
+          "201": jsonDataResponse("Refund request created", {
+            $ref: "#/components/schemas/OrderRefundCasePublic"
+          }),
+          "200": jsonDataResponse("Exact idempotent replay of an existing refund request", {
+            $ref: "#/components/schemas/OrderRefundCasePublic"
+          })
         }
-      : { "200": jsonDataResponse("Refund case command completed", { $ref: "#/components/schemas/OrderRefundCasePublic" }) }),
+      : {
+          "200": jsonDataResponse("Refund case command completed", {
+            $ref: "#/components/schemas/OrderRefundCasePublic"
+          })
+        }),
     ...orderRefundErrorResponses,
     ...(input.affiliateInvariant
       ? {
@@ -2974,22 +2988,53 @@ const createOrderRefundCaseOpenApiPaths = (config: AppConfig): Record<string, un
       })
     },
     [`${customerBase}/{caseId}/confirm-receipt`]: {
-      post: orderRefundCommandOperation({ summary: "Confirm the merchant refund was received", permission: userWrite, inputSchema: "OrderRefundUpdateEnvelope", parameters: orderRefundPathParameters, affiliateInvariant: true })
+      post: orderRefundCommandOperation({
+        summary: "Confirm the merchant refund was received",
+        permission: userWrite,
+        inputSchema: "OrderRefundUpdateEnvelope",
+        parameters: orderRefundPathParameters,
+        affiliateInvariant: true
+      })
     },
     [`${customerBase}/{caseId}/complaints`]: {
-      post: orderRefundCommandOperation({ summary: "Open a complaint after the merchant rejected the refund", permission: userWrite, inputSchema: "OrderRefundComplaintInput", parameters: orderRefundPathParameters })
+      post: orderRefundCommandOperation({
+        summary: "Open a complaint after the merchant rejected the refund",
+        permission: userWrite,
+        inputSchema: "OrderRefundComplaintInput",
+        parameters: orderRefundPathParameters
+      })
     },
     [`${merchantBase}/approve`]: {
-      post: orderRefundCommandOperation({ summary: "Approve a scoped merchant refund request", permission: merchantWrite, inputSchema: "OrderRefundDecisionInput", parameters: orderRefundPathParameters })
+      post: orderRefundCommandOperation({
+        summary: "Approve a scoped merchant refund request",
+        permission: merchantWrite,
+        inputSchema: "OrderRefundDecisionInput",
+        parameters: orderRefundPathParameters
+      })
     },
     [`${merchantBase}/reject`]: {
-      post: orderRefundCommandOperation({ summary: "Reject a scoped merchant refund request", permission: merchantWrite, inputSchema: "OrderRefundDecisionInput", parameters: orderRefundPathParameters })
+      post: orderRefundCommandOperation({
+        summary: "Reject a scoped merchant refund request",
+        permission: merchantWrite,
+        inputSchema: "OrderRefundDecisionInput",
+        parameters: orderRefundPathParameters
+      })
     },
     [`${merchantBase}/refund-evidence`]: {
-      post: orderRefundCommandOperation({ summary: "Submit merchant refund evidence without completing the refund", permission: merchantWrite, inputSchema: "OrderRefundEvidenceInput", parameters: orderRefundPathParameters })
+      post: orderRefundCommandOperation({
+        summary: "Submit merchant refund evidence without completing the refund",
+        permission: merchantWrite,
+        inputSchema: "OrderRefundEvidenceInput",
+        parameters: orderRefundPathParameters
+      })
     },
     [`${merchantBase}/complaints`]: {
-      post: orderRefundCommandOperation({ summary: "Open a merchant complaint after merchant rejection", permission: merchantWrite, inputSchema: "OrderRefundComplaintInput", parameters: orderRefundPathParameters })
+      post: orderRefundCommandOperation({
+        summary: "Open a merchant complaint after merchant rejection",
+        permission: merchantWrite,
+        inputSchema: "OrderRefundComplaintInput",
+        parameters: orderRefundPathParameters
+      })
     },
     [`${config.API_PREFIX}/backoffice/refund-disputes`]: {
       get: {
@@ -2999,12 +3044,18 @@ const createOrderRefundCaseOpenApiPaths = (config: AppConfig): Record<string, un
         "x-permission": disputeRead,
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: "page_size",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
           { name: "status", in: "query", schema: { type: "string", enum: ["open", "resolved"] } },
           { name: "search", in: "query", schema: { type: "string", maxLength: 100 } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated persisted refund disputes", { $ref: "#/components/schemas/OrderRefundDisputePage" }),
+          "200": jsonDataResponse("Paginated persisted refund disputes", {
+            $ref: "#/components/schemas/OrderRefundDisputePage"
+          }),
           ...orderRefundErrorResponses
         }
       }
@@ -3014,7 +3065,14 @@ const createOrderRefundCaseOpenApiPaths = (config: AppConfig): Record<string, un
         summary: "Resolve a persisted open refund dispute",
         permission: disputeResolve,
         inputSchema: "OrderRefundDisputeResolutionInput",
-        parameters: [{ name: "disputeId", in: "path", required: true, schema: { type: "string", format: "uuid" } }]
+        parameters: [
+          {
+            name: "disputeId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ]
       })
     }
   };
@@ -3085,13 +3143,55 @@ const orderRefundOpenApiSchemas = {
   OrderRefundCasePublic: {
     type: "object",
     additionalProperties: false,
-    required: ["publicId", "orderNo", "shop", "customer", "status", "responsibility", "refundAmountJpy", "currency", "version", "requestReason", "merchantDecisionNote", "refundReference", "requestedAt", "merchantDecisionAt", "refundSubmittedAt", "customerConfirmedAt", "dispute", "affiliateReward", "createdAt", "updatedAt"],
+    required: [
+      "publicId",
+      "orderNo",
+      "shop",
+      "customer",
+      "status",
+      "responsibility",
+      "refundAmountJpy",
+      "currency",
+      "version",
+      "requestReason",
+      "merchantDecisionNote",
+      "refundReference",
+      "requestedAt",
+      "merchantDecisionAt",
+      "refundSubmittedAt",
+      "customerConfirmedAt",
+      "dispute",
+      "affiliateReward",
+      "createdAt",
+      "updatedAt"
+    ],
     properties: {
       publicId: { type: "string", format: "uuid" },
       orderNo: { type: "string" },
-      shop: { type: "object", additionalProperties: false, required: ["shopNo", "name"], properties: { shopNo: { type: ["string", "null"] }, name: { type: "string" } } },
-      customer: { type: "object", additionalProperties: false, required: ["needoId", "displayName"], properties: { needoId: { type: "string" }, displayName: { type: "string" } } },
-      status: { type: "string", enum: ["merchant_review_pending", "refund_pending", "customer_confirmation_pending", "merchant_rejected", "disputed", "refunded", "dispute_rejected"] },
+      shop: {
+        type: "object",
+        additionalProperties: false,
+        required: ["shopNo", "name"],
+        properties: { shopNo: { type: ["string", "null"] }, name: { type: "string" } }
+      },
+      customer: {
+        type: "object",
+        additionalProperties: false,
+        required: ["needoId", "displayName"],
+        properties: { needoId: { type: "string" }, displayName: { type: "string" } }
+      },
+      status: {
+        type: "string",
+        enum: [
+          "merchant_review_pending",
+          "refund_pending",
+          "customer_confirmation_pending",
+          "merchant_rejected",
+          "disputed",
+          "refunded",
+          "dispute_rejected"
+        ]
+      },
       responsibility: { const: "shop" },
       refundAmountJpy: { type: "integer", minimum: 1 },
       currency: { type: "string", const: "JPY" },
@@ -3106,7 +3206,16 @@ const orderRefundOpenApiSchemas = {
       dispute: {
         type: ["object", "null"],
         additionalProperties: false,
-        required: ["publicId", "status", "resolution", "version", "reason", "openedAt", "resolvedAt", "publicResolutionReason"],
+        required: [
+          "publicId",
+          "status",
+          "resolution",
+          "version",
+          "reason",
+          "openedAt",
+          "resolvedAt",
+          "publicResolutionReason"
+        ],
         properties: {
           publicId: { type: "string", format: "uuid" },
           status: { type: "string", enum: ["open", "resolved"] },
@@ -3501,7 +3610,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           mediaDays: { type: "integer", minimum: 1, maximum: 3650 },
           updatedAt: { type: "string", format: "date-time" }
         },
-        description: "Prospective server retention only. Device-local chat records and media caches are not deleted."
+        description:
+          "Prospective server retention only. Device-local chat records and media caches are not deleted."
       },
       ImRetentionSettingsUpdate: {
         type: "object",
@@ -3516,13 +3626,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       LegalDocumentCatalog: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "slug", "name", "internalPath", "displayLocations", "isEnabled", "lockVersion", "createdAt", "updatedAt"],
+        required: [
+          "publicId",
+          "slug",
+          "name",
+          "internalPath",
+          "displayLocations",
+          "isEnabled",
+          "lockVersion",
+          "createdAt",
+          "updatedAt"
+        ],
         properties: {
           publicId: { type: "string", format: "uuid" },
           slug: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", maxLength: 120 },
           name: { type: "string", minLength: 1, maxLength: 160 },
           internalPath: { type: "string", pattern: "^/(?!/)", maxLength: 500 },
-          displayLocations: { type: "array", maxItems: 30, items: { type: "string", maxLength: 64 } },
+          displayLocations: {
+            type: "array",
+            maxItems: 30,
+            items: { type: "string", maxLength: 64 }
+          },
           isEnabled: { type: "boolean" },
           lockVersion: { type: "integer", minimum: 1 },
           createdAt: { type: "string", format: "date-time" },
@@ -3548,7 +3672,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           slug: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", maxLength: 120 },
           name: { type: "string", minLength: 1, maxLength: 160 },
           internalPath: { type: "string", pattern: "^/(?!/)", maxLength: 500 },
-          displayLocations: { type: "array", maxItems: 30, items: { type: "string", maxLength: 64 } },
+          displayLocations: {
+            type: "array",
+            maxItems: 30,
+            items: { type: "string", maxLength: 64 }
+          },
           isEnabled: { type: "boolean" }
         }
       },
@@ -3560,7 +3688,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           expectedLockVersion: { type: "integer", minimum: 1 },
           name: { type: "string", minLength: 1, maxLength: 160 },
           internalPath: { type: "string", pattern: "^/(?!/)", maxLength: 500 },
-          displayLocations: { type: "array", maxItems: 30, items: { type: "string", maxLength: 64 } },
+          displayLocations: {
+            type: "array",
+            maxItems: 30,
+            items: { type: "string", maxLength: 64 }
+          },
           isEnabled: { type: "boolean" }
         }
       },
@@ -3590,7 +3722,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       LegalDocumentRelease: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "documentId", "locale", "version", "title", "body", "contentHash", "publishedAt", "publishedByUserId"],
+        required: [
+          "publicId",
+          "documentId",
+          "locale",
+          "version",
+          "title",
+          "body",
+          "contentHash",
+          "publishedAt",
+          "publishedByUserId"
+        ],
         properties: {
           publicId: { type: "string", format: "uuid" },
           documentId: { type: "integer", minimum: 1 },
@@ -3611,7 +3753,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           publicId: { type: "string", format: "uuid" },
           locale: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] },
           draft: { oneOf: [{ type: "null" }, { $ref: "#/components/schemas/LegalDocumentDraft" }] },
-          currentRelease: { oneOf: [{ type: "null" }, { $ref: "#/components/schemas/LegalDocumentRelease" }] }
+          currentRelease: {
+            oneOf: [{ type: "null" }, { $ref: "#/components/schemas/LegalDocumentRelease" }]
+          }
         }
       },
       LegalDocumentReleasePage: {
@@ -3628,7 +3772,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       PublicLegalDocumentRelease: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "slug", "internalPath", "displayLocations", "locale", "version", "title", "body", "contentHash", "publishedAt"],
+        required: [
+          "publicId",
+          "slug",
+          "internalPath",
+          "displayLocations",
+          "locale",
+          "version",
+          "title",
+          "body",
+          "contentHash",
+          "publishedAt"
+        ],
         properties: {
           publicId: { type: "string", format: "uuid" },
           slug: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
@@ -3677,7 +3832,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       LiveDashboardChildRegion: {
         type: "object",
         additionalProperties: false,
-        required: ["code", "name", "orderCount", "currentDayOrderCount", "previousDayOrderCount", "confirmedPayments"],
+        required: [
+          "code",
+          "name",
+          "orderCount",
+          "currentDayOrderCount",
+          "previousDayOrderCount",
+          "confirmedPayments"
+        ],
         properties: {
           code: { type: "string", pattern: "^\\d{2,5}$" },
           name: { type: "string" },
@@ -6523,13 +6685,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "nickname",
           "avatarUrl",
           "entityKind",
+          "entityPublicId",
           "ekycVerified",
           "level",
           "bio",
           "tierCode",
           "themeVersionPublicId",
           "simpleTopColor",
-          "simpleBottomColor"
+          "simpleBottomColor",
+          "languages",
+          "rating",
+          "completedOrderCount",
+          "favoriteCount",
+          "shareCount",
+          "specialReviewTags"
         ],
         properties: {
           targetUserPublicId: { type: "string", minLength: 1, maxLength: 191 },
@@ -6544,6 +6713,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "string",
             enum: ["customer", "technician", "shop", "service"]
           },
+          entityPublicId: { type: ["string", "null"], maxLength: 191 },
           ekycVerified: { type: "boolean" },
           level: { type: ["integer", "null"], minimum: 1, maximum: 100 },
           bio: { type: ["string", "null"], maxLength: 500 },
@@ -6559,6 +6729,30 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           simpleBottomColor: {
             type: ["string", "null"],
             pattern: "^#[0-9A-Fa-f]{6}$"
+          },
+          languages: {
+            type: "array",
+            maxItems: 12,
+            items: { type: "string", minLength: 1, maxLength: 80 }
+          },
+          rating: { type: ["number", "null"], minimum: 0, maximum: 5 },
+          completedOrderCount: { type: ["integer", "null"], minimum: 0 },
+          favoriteCount: { type: ["integer", "null"], minimum: 0 },
+          shareCount: { type: ["integer", "null"], minimum: 0 },
+          specialReviewTags: {
+            type: "array",
+            maxItems: 8,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["code", "label", "icon", "count"],
+              properties: {
+                code: { type: "string", minLength: 1, maxLength: 80 },
+                label: { type: "string", minLength: 1, maxLength: 80 },
+                icon: { type: "string", minLength: 1, maxLength: 8 },
+                count: { type: "integer", minimum: 0 }
+              }
+            }
           }
         },
         description:
@@ -7009,10 +7203,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           images: { type: "array", items: { type: "string" } },
           tags: { type: "array", items: { type: "string" } },
           shop: {
-            oneOf: [
-              { $ref: "#/components/schemas/TechnicianServiceShop" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/TechnicianServiceShop" }, { type: "null" }]
           },
           isActive: { type: "boolean" },
           isBookable: { type: "boolean" },
@@ -7882,8 +8073,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["currentLevel", "totalExp", "totalExpUnits"],
         properties: {
           currentLevel: { type: "integer", minimum: 1, maximum: 100 },
-          totalExp: { type: "string", pattern: "^[0-9]+(\\.[0-9]{1,4})?$", description: "Exact decimal EXP amount for display, consistent with the user experience summary." },
-          totalExpUnits: { type: "string", pattern: "^[0-9]+$", deprecated: true, description: "Legacy storage precision; use totalExp for experience amounts." }
+          totalExp: {
+            type: "string",
+            pattern: "^[0-9]+(\\.[0-9]{1,4})?$",
+            description:
+              "Exact decimal EXP amount for display, consistent with the user experience summary."
+          },
+          totalExpUnits: {
+            type: "string",
+            pattern: "^[0-9]+$",
+            deprecated: true,
+            description: "Legacy storage precision; use totalExp for experience amounts."
+          }
         }
       },
       BackofficeManagedUser: {
@@ -7951,13 +8152,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           identityProfiles: {
             type: "array",
-            description: "Operations-only personal identity names and latest application states. Merchant names come from MerchantIdentityProfile, never shop labels. Draft or withdrawn applications are not enabled.",
+            description:
+              "Operations-only personal identity names and latest application states. Merchant names come from MerchantIdentityProfile, never shop labels. Draft or withdrawn applications are not enabled.",
             items: {
               type: "object",
               required: ["type", "status", "displayName"],
               properties: {
                 type: { type: "string", enum: ["technician", "merchant"] },
-                status: { type: "string", enum: ["active", "not_enabled", "under_review", "rejected"] },
+                status: {
+                  type: "string",
+                  enum: ["active", "not_enabled", "under_review", "rejected"]
+                },
                 displayName: { type: ["string", "null"] }
               }
             }
@@ -8004,7 +8209,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           bookingCount: { type: "integer", minimum: 0 },
           testNdpBalance: {
             type: ["object", "null"],
-            description: "Separate TEST_NDP wallet balance. Null when no test wallet exists; never included in ndpBalance or NDP balance filters.",
+            description:
+              "Separate TEST_NDP wallet balance. Null when no test wallet exists; never included in ndpBalance or NDP balance filters.",
             required: ["available", "frozen"],
             properties: {
               available: { type: "integer" },
@@ -8051,7 +8257,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               },
               capabilities: {
                 type: "object",
-                required: ["membershipWrite", "reviewAmend", "refundAmend", "partnerWrite", "timelineCommentWrite"],
+                required: [
+                  "membershipWrite",
+                  "reviewAmend",
+                  "refundAmend",
+                  "partnerWrite",
+                  "timelineCommentWrite"
+                ],
                 properties: {
                   membershipWrite: { type: "boolean" },
                   reviewAmend: { type: "boolean" },
@@ -8060,11 +8272,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   timelineCommentWrite: { type: "boolean" }
                 }
               },
-              audit: { type: "object", required: ["list", "total", "page", "page_size"], properties: {
-                list: { type: "array", items: { $ref: "#/components/schemas/BackofficeAuditEvent" } },
-                total: { type: "integer", minimum: 0 }, page: { type: "integer", minimum: 1 },
-                page_size: { type: "integer", enum: [10, 50] }
-              } }
+              audit: {
+                type: "object",
+                required: ["list", "total", "page", "page_size"],
+                properties: {
+                  list: {
+                    type: "array",
+                    items: { $ref: "#/components/schemas/BackofficeAuditEvent" }
+                  },
+                  total: { type: "integer", minimum: 0 },
+                  page: { type: "integer", minimum: 1 },
+                  page_size: { type: "integer", enum: [10, 50] }
+                }
+              }
             }
           }
         ]
@@ -8097,7 +8317,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["version", "rating", "comment", "tags", "reason", "revisedAt", "revisedBy"],
+              required: [
+                "version",
+                "rating",
+                "comment",
+                "tags",
+                "reason",
+                "revisedAt",
+                "revisedBy"
+              ],
               properties: {
                 version: { type: "integer", minimum: 1 },
                 rating: { type: ["integer", "null"], minimum: 1, maximum: 5 },
@@ -8111,7 +8339,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           order: {
             type: "object",
-            required: ["id", "orderNo", "serviceName", "startsAt", "shopName", "durationMinutes", "note", "paymentMethod", "paymentStatus", "paymentCurrency", "otherPaymentMethod", "addOnCount", "addOnMinutes"],
+            required: [
+              "id",
+              "orderNo",
+              "serviceName",
+              "startsAt",
+              "shopName",
+              "durationMinutes",
+              "note",
+              "paymentMethod",
+              "paymentStatus",
+              "paymentCurrency",
+              "otherPaymentMethod",
+              "addOnCount",
+              "addOnMinutes"
+            ],
             properties: {
               id: { type: "integer", minimum: 1 },
               orderNo: { type: "string" },
@@ -8120,11 +8362,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               shopName: { type: "string" },
               durationMinutes: { type: ["integer", "null"], minimum: 0 },
               note: { type: ["string", "null"] },
-              paymentMethod: { type: "string", enum: ["onsite", "bank_transfer", "cash", "ndp", "other"] },
-              paymentStatus: { type: "string", enum: ["pending", "confirmed", "refund_pending", "refunded"] },
-              paymentCurrency: { type: ["string", "null"], description: "Currency from the checkout ledger; null when unavailable. TEST_NDP is distinct from NDP." },
+              paymentMethod: {
+                type: "string",
+                enum: ["onsite", "bank_transfer", "cash", "ndp", "other"]
+              },
+              paymentStatus: {
+                type: "string",
+                enum: ["pending", "confirmed", "refund_pending", "refunded"]
+              },
+              paymentCurrency: {
+                type: ["string", "null"],
+                description:
+                  "Currency from the checkout ledger; null when unavailable. TEST_NDP is distinct from NDP."
+              },
               otherPaymentMethod: { type: ["string", "null"] },
-              addOnCount: { type: "integer", minimum: 0, description: "Non-deleted ACCEPTED add-ons only" },
+              addOnCount: {
+                type: "integer",
+                minimum: 0,
+                description: "Non-deleted ACCEPTED add-ons only"
+              },
               addOnMinutes: { type: "integer", minimum: 0 }
             }
           },
@@ -8191,7 +8447,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       BackofficeUserUsage: {
         type: "object",
-        required: ["id", "orderNo", "status", "paymentStatus", "serviceName", "shopName", "technicianName", "startsAt", "endsAt", "priceAmount", "currency", "refund"],
+        required: [
+          "id",
+          "orderNo",
+          "status",
+          "paymentStatus",
+          "serviceName",
+          "shopName",
+          "technicianName",
+          "startsAt",
+          "endsAt",
+          "priceAmount",
+          "currency",
+          "refund"
+        ],
         properties: {
           id: { type: "integer", minimum: 1 },
           orderNo: { type: "string" },
@@ -8222,7 +8491,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["id", "type", "code", "occurredAt", "actorName", "body"],
         properties: {
           id: { type: "string" },
-          type: { type: "string", enum: ["order_created", "status", "service", "comment", "refund"] },
+          type: {
+            type: "string",
+            enum: ["order_created", "status", "service", "comment", "refund"]
+          },
           code: { type: "string" },
           occurredAt: { type: "string", format: "date-time" },
           actorName: { type: ["string", "null"] },
@@ -8235,7 +8507,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["order", "timeline"],
         properties: {
           order: { $ref: "#/components/schemas/BackofficeUserUsage" },
-          timeline: { type: "array", items: { $ref: "#/components/schemas/BackofficeUserUsageTimelineEntry" } }
+          timeline: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeUserUsageTimelineEntry" }
+          }
         }
       },
       BackofficeUserUsageCommentInput: {
@@ -8259,7 +8534,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       PlatformPartnerProfile: {
         type: "object",
         additionalProperties: false,
-        required: ["publicId", "partnerType", "startsAt", "endsAt", "permanent", "markedAt", "reason", "user"],
+        required: [
+          "publicId",
+          "partnerType",
+          "startsAt",
+          "endsAt",
+          "permanent",
+          "markedAt",
+          "reason",
+          "user"
+        ],
         properties: {
           publicId: { type: "string", format: "uuid" },
           partnerType: { type: "string", enum: ["agent", "franchisee", "supplier"] },
@@ -9421,10 +9705,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["tierCode", "multiplier", "lockVersion", "effectiveFrom"],
         properties: {
           tierCode: {
-            oneOf: [
-              { $ref: "#/components/schemas/PlatformMembershipTierCode" },
-              { type: "null" }
-            ]
+            oneOf: [{ $ref: "#/components/schemas/PlatformMembershipTierCode" }, { type: "null" }]
           },
           multiplier: { type: ["number", "null"] },
           lockVersion: { type: "integer", minimum: 1 },
@@ -9449,8 +9730,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["id", "needoId", "username", "email", "avatarUrl"],
         properties: {
           id: { type: "integer", minimum: 1 },
-          needoId: { type: "string" }, username: { type: "string" },
-          email: { type: "string", format: "email" }, avatarUrl: { type: ["string", "null"] }
+          needoId: { type: "string" },
+          username: { type: "string" },
+          email: { type: "string", format: "email" },
+          avatarUrl: { type: ["string", "null"] }
         }
       },
       BackofficeUserGroupCreateInput: {
@@ -10070,6 +10353,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" },
           favoriteCount: { type: "integer", minimum: 0 },
           shareCount: { type: "integer", minimum: 0 },
+          distanceKm: {
+            type: "number",
+            format: "double",
+            minimum: 0,
+            description:
+              "Distance from supplied current-location coordinates to persisted shop coordinates."
+          },
           serviceCategories: {
             type: "array",
             items: {
@@ -10178,6 +10468,24 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               targetType: { type: "string", enum: ["technician"] },
               publicId: { type: "string", pattern: "^s[0-9]{10}$" }
             }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["targetType", "publicId"],
+            properties: {
+              targetType: { type: "string", enum: ["service"] },
+              publicId: { type: "string", format: "uuid" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["targetType", "publicId"],
+            properties: {
+              targetType: { type: "string", enum: ["technician_service"] },
+              publicId: { type: "string", format: "uuid" }
+            }
           }
         ]
       },
@@ -10186,8 +10494,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["targetType", "publicId", "isFavorited", "favoriteCount"],
         properties: {
-          targetType: { type: "string", enum: ["shop", "technician"] },
-          publicId: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" },
+          targetType: {
+            type: "string",
+            enum: ["shop", "technician", "service", "technician_service"]
+          },
+          publicId: { type: "string", maxLength: 36 },
           isFavorited: { type: "boolean" },
           favoriteCount: { type: "integer", minimum: 0 }
         }
@@ -10195,13 +10506,105 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       EntityFavoriteListItem: {
         type: "object",
         additionalProperties: false,
-        required: ["targetType", "publicId", "isFavorited", "favoriteCount", "favoritedAt"],
+        required: ["targetType", "publicId", "isFavorited", "favoriteCount", "favoritedAt", "card"],
         properties: {
-          targetType: { type: "string", enum: ["shop", "technician"] },
-          publicId: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" },
+          targetType: {
+            type: "string",
+            enum: ["shop", "technician", "service", "technician_service"]
+          },
+          publicId: { type: "string", maxLength: 36 },
           isFavorited: { type: "boolean" },
           favoriteCount: { type: "integer", minimum: 0 },
-          favoritedAt: { type: "string", format: "date-time" }
+          favoritedAt: { type: "string", format: "date-time" },
+          card: {
+            oneOf: [
+              { $ref: "#/components/schemas/EntityFavoriteShopCard" },
+              { $ref: "#/components/schemas/EntityFavoriteTechnicianCard" },
+              { $ref: "#/components/schemas/EntityFavoriteServiceCard" }
+            ]
+          }
+        }
+      },
+      EntityFavoriteShopCard: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "kind",
+          "name",
+          "description",
+          "address",
+          "imageUrl",
+          "rating",
+          "reviewCount",
+          "shareCount"
+        ],
+        properties: {
+          kind: { type: "string", enum: ["shop"] },
+          name: { type: "string" },
+          description: { type: ["string", "null"] },
+          address: { type: "string" },
+          imageUrl: { type: ["string", "null"] },
+          rating: { type: "number", minimum: 0, maximum: 5 },
+          reviewCount: { type: "integer", minimum: 0 },
+          shareCount: { type: "integer", minimum: 0 }
+        }
+      },
+      EntityFavoriteTechnicianCard: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "kind",
+          "name",
+          "description",
+          "imageUrl",
+          "languages",
+          "rating",
+          "completedOrderCount",
+          "shareCount"
+        ],
+        properties: {
+          kind: { type: "string", enum: ["technician"] },
+          name: { type: "string" },
+          description: { type: ["string", "null"] },
+          imageUrl: { type: ["string", "null"] },
+          languages: { type: "array", items: { type: "string" } },
+          rating: { type: "number", minimum: 0, maximum: 5 },
+          completedOrderCount: { type: "integer", minimum: 0 },
+          shareCount: { type: "integer", minimum: 0 }
+        }
+      },
+      EntityFavoriteServiceCard: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "kind",
+          "name",
+          "description",
+          "imageUrl",
+          "priceAmount",
+          "currency",
+          "durationMinutes",
+          "usageCount",
+          "shareCount",
+          "isBookable",
+          "shopPublicId",
+          "shopAddress",
+          "tags"
+        ],
+        properties: {
+          kind: { type: "string", enum: ["service"] },
+          name: { type: "string" },
+          description: { type: ["string", "null"] },
+          imageUrl: { type: ["string", "null"] },
+          priceAmount: { type: "number", minimum: 0 },
+          currency: { type: "string", minLength: 3, maxLength: 3 },
+          durationMinutes: { type: "integer", minimum: 1 },
+          usageCount: { type: "integer", minimum: 0 },
+          shareCount: { type: "integer", minimum: 0 },
+          isBookable: { type: "boolean" },
+          shopPublicId: { type: ["string", "null"] },
+          shopAddress: { type: ["string", "null"] },
+          tags: { type: "array", items: { type: "string" } }
         }
       },
       EntityFavoritePage: {
@@ -10223,8 +10626,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["targetType", "publicId", "eventId", "messageId", "shareCount", "replayed"],
         properties: {
-          targetType: { type: "string", enum: ["shop", "technician"] },
-          publicId: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" },
+          targetType: {
+            type: "string",
+            enum: ["shop", "technician", "service", "technician_service"]
+          },
+          publicId: { type: "string", maxLength: 36 },
           eventId: { type: "integer", minimum: 1 },
           messageId: { type: ["integer", "null"], minimum: 1 },
           shareCount: { type: "integer", minimum: 0 },
@@ -10246,6 +10652,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "currency",
           "durationMinutes",
           "usageCount",
+          "favoriteCount",
+          "shareCount",
+          "isBookable",
           "coverUrl",
           "reviewSummary"
         ],
@@ -10264,6 +10673,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           currency: { type: "string", example: "JPY" },
           durationMinutes: { type: "integer" },
           usageCount: { type: "integer", minimum: 0 },
+          favoriteCount: { type: "integer", minimum: 0 },
+          shareCount: { type: "integer", minimum: 0 },
+          isBookable: { type: "boolean" },
+          distanceKm: {
+            type: "number",
+            format: "double",
+            minimum: 0,
+            description:
+              "Distance from supplied current-location coordinates to the service shop's persisted coordinates."
+          },
           coverUrl: { type: ["string", "null"] },
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" }
         }
@@ -10566,13 +10985,24 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shopAccessStatus: {
             type: "string",
             enum: ["active", "requires_shop"],
-            description: "Derived from current shop affiliations. requires_shop keeps the technician identity accessible but gates normal technician work until another shop approves the partnership."
+            description:
+              "Derived from current shop affiliations. requires_shop keeps the technician identity accessible but gates normal technician work until another shop approves the partnership."
           },
           shopAffiliations: {
             type: "array",
             items: {
               type: "object",
-              required: ["id", "shopId", "publicId", "name", "city", "address", "relationshipType", "workStatus", "startsAt"],
+              required: [
+                "id",
+                "shopId",
+                "publicId",
+                "name",
+                "city",
+                "address",
+                "relationshipType",
+                "workStatus",
+                "startsAt"
+              ],
               properties: {
                 id: { type: "integer", minimum: 1 },
                 shopId: { type: "integer", minimum: 1 },
@@ -10986,7 +11416,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       AvailabilityWindow: {
         type: "object",
-        required: ["id", "shopId", "technicianProfileId", "sourceType", "visibility", "startsAt", "endsAt", "capacity", "isActive", "shopName", "createdAt", "updatedAt"],
+        required: [
+          "id",
+          "shopId",
+          "technicianProfileId",
+          "sourceType",
+          "visibility",
+          "startsAt",
+          "endsAt",
+          "capacity",
+          "isActive",
+          "shopName",
+          "createdAt",
+          "updatedAt"
+        ],
         properties: {
           id: { type: "integer", minimum: 1 },
           shopId: { type: "integer", minimum: 1 },
@@ -16465,7 +16908,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         operationId: "getImRetentionSettings",
         tags: ["Platform Settings"],
         summary: "Read prospective IM server-retention settings",
-        description: "These limits affect only server copies created after a policy version is published; they do not delete device-local records or caches.",
+        description:
+          "These limits affect only server copies created after a policy version is published; they do not delete device-local records or caches.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:system-settings:read",
         responses: {
@@ -16515,7 +16959,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated legal documents", { $ref: "#/components/schemas/LegalDocumentPage" }),
+          "200": jsonDataResponse("Paginated legal documents", {
+            $ref: "#/components/schemas/LegalDocumentPage"
+          }),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden")
         }
@@ -16526,10 +16972,19 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Create a configurable legal-document entry",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:legal-documents:write",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentCreate" } } } },
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentCreate" } }
+          }
+        },
         responses: {
-          "201": jsonDataResponse("Created legal document", { $ref: "#/components/schemas/LegalDocumentCatalog" }),
-          "400": jsonErrorResponse("error.validation or error.legal_document.internal_path_invalid"),
+          "201": jsonDataResponse("Created legal document", {
+            $ref: "#/components/schemas/LegalDocumentCatalog"
+          }),
+          "400": jsonErrorResponse(
+            "error.validation or error.legal_document.internal_path_invalid"
+          ),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
           "409": jsonErrorResponse("error.legal_document.slug_conflict")
@@ -16543,11 +16998,29 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Update display-link metadata with optimistic locking",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:legal-documents:write",
-        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentMetadataUpdate" } } } },
+        parameters: [
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/LegalDocumentMetadataUpdate" }
+            }
+          }
+        },
         responses: {
-          "200": jsonDataResponse("Updated legal document", { $ref: "#/components/schemas/LegalDocumentCatalog" }),
-          "400": jsonErrorResponse("error.validation or error.legal_document.internal_path_invalid"),
+          "200": jsonDataResponse("Updated legal document", {
+            $ref: "#/components/schemas/LegalDocumentCatalog"
+          }),
+          "400": jsonErrorResponse(
+            "error.validation or error.legal_document.internal_path_invalid"
+          ),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
           "404": jsonErrorResponse("error.legal_document.not_found"),
@@ -16563,11 +17036,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:legal-documents:read",
         parameters: [
-          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
-          { name: "locale", in: "path", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } }
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          {
+            name: "locale",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] }
+          }
         ],
         responses: {
-          "200": jsonDataResponse("Locale draft and current release", { $ref: "#/components/schemas/LegalDocumentLocaleState" }),
+          "200": jsonDataResponse("Locale draft and current release", {
+            $ref: "#/components/schemas/LegalDocumentLocaleState"
+          }),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
           "404": jsonErrorResponse("error.legal_document.not_found")
@@ -16582,12 +17067,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:legal-documents:write",
         parameters: [
-          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
-          { name: "locale", in: "path", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } }
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          {
+            name: "locale",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] }
+          }
         ],
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentDraftUpdate" } } } },
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/LegalDocumentDraftUpdate" }
+            }
+          }
+        },
         responses: {
-          "200": jsonDataResponse("Saved locale draft", { $ref: "#/components/schemas/LegalDocumentDraft" }),
+          "200": jsonDataResponse("Saved locale draft", {
+            $ref: "#/components/schemas/LegalDocumentDraft"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
@@ -16604,12 +17108,29 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:legal-documents:publish",
         parameters: [
-          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
-          { name: "locale", in: "path", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } }
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          {
+            name: "locale",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] }
+          }
         ],
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentPublish" } } } },
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/LegalDocumentPublish" } }
+          }
+        },
         responses: {
-          "201": jsonDataResponse("Published locale release", { $ref: "#/components/schemas/LegalDocumentRelease" }),
+          "201": jsonDataResponse("Published locale release", {
+            $ref: "#/components/schemas/LegalDocumentRelease"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
@@ -16626,13 +17147,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-required-permission": "backoffice:legal-documents:read",
         parameters: [
-          { name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
-          { name: "locale", in: "path", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } },
+          {
+            name: "publicId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" }
+          },
+          {
+            name: "locale",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: {
-          "200": jsonDataResponse("Paginated immutable releases", { $ref: "#/components/schemas/LegalDocumentReleasePage" }),
+          "200": jsonDataResponse("Paginated immutable releases", {
+            $ref: "#/components/schemas/LegalDocumentReleasePage"
+          }),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden or error.identity.forbidden"),
           "404": jsonErrorResponse("error.legal_document.not_found")
@@ -16644,13 +17177,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         operationId: "getPublicLegalDocumentCurrent",
         tags: ["Legal Documents"],
         summary: "Read the exact enabled current locale release",
-        description: "No locale fallback is performed. Disabled entries and locales without a release return 404.",
+        description:
+          "No locale fallback is performed. Disabled entries and locales without a release return 404.",
         parameters: [
-          { name: "slug", in: "path", required: true, schema: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" } },
-          { name: "locale", in: "query", required: true, schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] } }
+          {
+            name: "slug",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+          },
+          {
+            name: "locale",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["zh-CN", "zh-TW", "ja", "en", "ko"] }
+          }
         ],
         responses: {
-          "200": jsonDataResponse("Current public release and configured display link", { $ref: "#/components/schemas/PublicLegalDocumentRelease" }),
+          "200": jsonDataResponse("Current public release and configured display link", {
+            $ref: "#/components/schemas/PublicLegalDocumentRelease"
+          }),
           "400": jsonErrorResponse("error.validation or error.legal_document.locale_not_supported"),
           "404": jsonErrorResponse("error.legal_document.unavailable")
         }
@@ -20169,6 +20715,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 { type: "string", format: "uuid" }
               ]
             }
+          },
+          {
+            name: "latitude",
+            in: "query",
+            required: false,
+            description: "Current latitude; must be provided together with longitude.",
+            schema: { type: "number", minimum: -90, maximum: 90 }
+          },
+          {
+            name: "longitude",
+            in: "query",
+            required: false,
+            description: "Current longitude; must be provided together with latitude.",
+            schema: { type: "number", minimum: -180, maximum: 180 }
           }
         ],
         responses: {
@@ -20330,7 +20890,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/me/entity-favorites/{targetType}/{publicId}`]: {
       put: {
         tags: ["Entity Engagement"],
-        summary: "Add a shop or technician to the authenticated user's favorites",
+        summary: "Add a service, shop, or technician to the authenticated user's favorites",
         description:
           "Favorite ownership is the authenticated NeeDo user account and is independent of the active identity.",
         security: [{ bearerAuth: [] }],
@@ -20340,14 +20900,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "targetType",
             in: "path",
             required: true,
-            schema: { type: "string", enum: ["shop", "technician"] }
+            schema: {
+              type: "string",
+              enum: ["shop", "technician", "service", "technician_service"]
+            }
           },
           {
             name: "publicId",
             in: "path",
             required: true,
-            description: "shop########## for a shop or s########## for a technician.",
-            schema: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" }
+            description: "Public entity identifier; service targets use UUIDs.",
+            schema: { type: "string", maxLength: 36 }
           }
         ],
         responses: {
@@ -20362,7 +20925,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       delete: {
         tags: ["Entity Engagement"],
-        summary: "Remove a shop or technician from the authenticated user's favorites",
+        summary: "Remove a service, shop, or technician from the authenticated user's favorites",
         description: "The operation is idempotent and returns the authoritative aggregate count.",
         security: [{ bearerAuth: [] }],
         "x-permission": "entity-favorite:write",
@@ -20371,13 +20934,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "targetType",
             in: "path",
             required: true,
-            schema: { type: "string", enum: ["shop", "technician"] }
+            schema: {
+              type: "string",
+              enum: ["shop", "technician", "service", "technician_service"]
+            }
           },
           {
             name: "publicId",
             in: "path",
             required: true,
-            schema: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" }
+            schema: { type: "string", maxLength: 36 }
           }
         ],
         responses: {
@@ -20407,7 +20973,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "targetType",
             in: "query",
-            schema: { type: "string", enum: ["shop", "technician"] }
+            schema: {
+              type: "string",
+              enum: ["shop", "technician", "service", "technician_service"]
+            }
           }
         ],
         responses: {
@@ -20480,13 +21049,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "targetType",
             in: "path",
             required: true,
-            schema: { type: "string", enum: ["shop", "technician"] }
+            schema: {
+              type: "string",
+              enum: ["shop", "technician", "service", "technician_service"]
+            }
           },
           {
             name: "publicId",
             in: "path",
             required: true,
-            schema: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" }
+            schema: { type: "string", maxLength: 36 }
           }
         ],
         requestBody: {
@@ -20496,14 +21068,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               schema: {
                 type: "object",
                 additionalProperties: false,
-                required: ["conversationId", "recipientIdentityId", "idempotencyKey"],
+                required: ["conversationId", "idempotencyKey"],
                 properties: {
                   conversationId: { type: "integer", minimum: 1, maximum: safeIntegerMaximum },
-                  recipientIdentityId: {
-                    type: "integer",
-                    minimum: 1,
-                    maximum: safeIntegerMaximum
-                  },
                   idempotencyKey: { type: "string", format: "uuid" }
                 }
               }
@@ -20535,13 +21102,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "targetType",
             in: "path",
             required: true,
-            schema: { type: "string", enum: ["shop", "technician"] }
+            schema: {
+              type: "string",
+              enum: ["shop", "technician", "service", "technician_service"]
+            }
           },
           {
             name: "publicId",
             in: "path",
             required: true,
-            schema: { type: "string", pattern: "^(?:shop|s)[0-9]{10}$" }
+            schema: { type: "string", maxLength: 36 }
           }
         ],
         requestBody: {
@@ -20623,7 +21193,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     type: "integer",
                     minimum: 10,
                     maximum: 100,
-                    description: "Shop-wide technician settlement share. The shop share is the remainder to 100 percent."
+                    description:
+                      "Shop-wide technician settlement share. The shop share is the remainder to 100 percent."
                   }
                 }
               }
@@ -20701,7 +21272,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         tags: ["Pricing Mode"],
         summary: "Create a technician-owned profile service",
-        description: "Creates a service in the authenticated technician's global portfolio without requiring a shop affiliation.",
+        description:
+          "Creates a service in the authenticated technician's global portfolio without requiring a shop affiliation.",
         security: [{ bearerAuth: [] }],
         "x-permission": "technician:services:write",
         requestBody: {
@@ -20725,7 +21297,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         },
         responses: {
-          "201": jsonDataResponse("Technician service created", { $ref: "#/components/schemas/TechnicianService" }),
+          "201": jsonDataResponse("Technician service created", {
+            $ref: "#/components/schemas/TechnicianService"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.identity.forbidden"),
@@ -20739,9 +21313,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Update a service in the authenticated technician's global portfolio",
         security: [{ bearerAuth: [] }],
         "x-permission": "technician:services:write",
-        parameters: [{ name: "serviceId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "serviceId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         responses: {
-          "200": jsonDataResponse("Technician service updated", { $ref: "#/components/schemas/TechnicianService" }),
+          "200": jsonDataResponse("Technician service updated", {
+            $ref: "#/components/schemas/TechnicianService"
+          }),
           "404": jsonErrorResponse("error.technician_service.not_found")
         }
       },
@@ -20750,7 +21328,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Soft-delete a service in the authenticated technician's global portfolio",
         security: [{ bearerAuth: [] }],
         "x-permission": "technician:services:write",
-        parameters: [{ name: "serviceId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "serviceId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         responses: {
           "200": { description: "Technician service soft deleted" },
           "404": jsonErrorResponse("error.technician_service.not_found")
@@ -21253,11 +21833,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   {
                     type: "object",
                     additionalProperties: false,
-                    required: ["expectedPriceAmountJpy", "scheduleSlotId", "fulfillmentMode", "serviceLocation", "fulfillmentAddress", "travelEstimatePublicId"],
-                    oneOf: [
-                      { required: ["serviceId"] },
-                      { required: ["technicianServiceId"] }
+                    required: [
+                      "expectedPriceAmountJpy",
+                      "scheduleSlotId",
+                      "fulfillmentMode",
+                      "serviceLocation",
+                      "fulfillmentAddress",
+                      "travelEstimatePublicId"
                     ],
+                    oneOf: [{ required: ["serviceId"] }, { required: ["technicianServiceId"] }],
                     properties: {
                       expectedPriceAmountJpy: { type: "integer", minimum: 0 },
                       serviceId: { type: "integer", minimum: 1 },
@@ -21309,7 +21893,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               }
             }
           },
-          "400": { description: "Validation failure, travel estimate fields on store service, or error.administrative_region.address_mismatch when home codes disagree with the accepted normalized address" },
+          "400": {
+            description:
+              "Validation failure, travel estimate fields on store service, or error.administrative_region.address_mismatch when home codes disagree with the accepted normalized address"
+          },
           "401": { description: "Authentication required" },
           "403": {
             description:
@@ -21332,7 +21919,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "dateMode",
             in: "query",
-            description: "startsWithin (default) matches order starts; overlaps matches startsAt < to and endsAt > from and requires both bounds. Identity scope is unchanged.",
+            description:
+              "startsWithin (default) matches order starts; overlaps matches startsAt < to and endsAt > from and requires both bounds. Identity scope is unchanged.",
             schema: { type: "string", enum: ["startsWithin", "overlaps"], default: "startsWithin" }
           },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
@@ -23448,19 +24036,61 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] }
           },
-          { name: "tiers", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] } } },
+          {
+            name: "tiers",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: {
+              type: "array",
+              maxItems: 20,
+              items: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] }
+            }
+          },
           { name: "groupCode", in: "query", schema: { type: "string", maxLength: 80 } },
-          { name: "identityType", in: "query", schema: { type: "string", enum: ["platform", "customer", "technician", "merchant", "broker", "scout"] } },
-          { name: "identityTypes", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["platform", "customer", "technician", "merchant", "broker", "scout"] } } },
+          {
+            name: "identityType",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["platform", "customer", "technician", "merchant", "broker", "scout"]
+            }
+          },
+          {
+            name: "identityTypes",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: {
+              type: "array",
+              maxItems: 20,
+              items: {
+                type: "string",
+                enum: ["platform", "customer", "technician", "merchant", "broker", "scout"]
+              }
+            }
+          },
           { name: "source", in: "query", schema: { type: "string", maxLength: 32 } },
           { name: "state", in: "query", schema: { type: "string", enum: ["active", "inactive"] } },
-          { name: "states", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["active", "inactive"] } } },
+          {
+            name: "states",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: { type: "array", items: { type: "string", enum: ["active", "inactive"] } }
+          },
           {
             name: "ekyc",
             in: "query",
             schema: { type: "string", enum: ["verified", "unverified"] }
           },
-          { name: "ekycStates", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["verified", "unverified"] } } },
+          {
+            name: "ekycStates",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: { type: "array", items: { type: "string", enum: ["verified", "unverified"] } }
+          },
           { name: "minLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "maxLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "minExpUnits", in: "query", schema: { type: "integer", minimum: 0 } },
@@ -23470,13 +24100,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "registeredFrom", in: "query", schema: { type: "string", format: "date-time" } },
           { name: "registeredTo", in: "query", schema: { type: "string", format: "date-time" } },
           { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
-          { name: "cities", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", maxLength: 100 } } },
+          {
+            name: "cities",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: { type: "array", maxItems: 20, items: { type: "string", maxLength: 100 } }
+          },
           {
             name: "emailState",
             in: "query",
             schema: { type: "string", enum: ["set", "unset"] }
           },
-          { name: "emailStates", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["set", "unset"] } } },
+          {
+            name: "emailStates",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: { type: "array", items: { type: "string", enum: ["set", "unset"] } }
+          },
           {
             name: "privacy",
             in: "query",
@@ -23485,7 +24127,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"]
             }
           },
-          { name: "privacyScopes", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"] } } },
+          {
+            name: "privacyScopes",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: {
+              type: "array",
+              maxItems: 20,
+              items: {
+                type: "string",
+                enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"]
+              }
+            }
+          },
           { name: "minBookings", in: "query", schema: { type: "integer", minimum: 0 } },
           { name: "maxBookings", in: "query", schema: { type: "integer", minimum: 0 } },
           {
@@ -23528,11 +24183,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Read one all-user management detail",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:users:read",
-        parameters: [idPathParameter("userId"),
+        parameters: [
+          idPathParameter("userId"),
           { name: "audit_page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } },
-          { name: "audit_from", in: "query", description: "Inclusive UTC start; requires audit_to", schema: { type: "string", format: "date-time" } },
-          { name: "audit_to", in: "query", description: "Exclusive UTC end; requires audit_from", schema: { type: "string", format: "date-time" } }
+          {
+            name: "audit_page_size",
+            in: "query",
+            schema: { type: "integer", enum: [10, 50], default: 10 }
+          },
+          {
+            name: "audit_from",
+            in: "query",
+            description: "Inclusive UTC start; requires audit_to",
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "audit_to",
+            in: "query",
+            description: "Exclusive UTC end; requires audit_from",
+            schema: { type: "string", format: "date-time" }
+          }
         ],
         responses: {
           "200": jsonDataResponse("All-user detail", {
@@ -23578,12 +24248,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
           { name: "page_size", in: "query", schema: { type: "integer", enum: [10], default: 10 } },
           { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
-          { name: "period", in: "query", schema: { type: "string", enum: ["last7days", "thisWeek", "last30days", "thisMonth", "thisYear", "custom"], default: "last30days" } },
+          {
+            name: "period",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["last7days", "thisWeek", "last30days", "thisMonth", "thisYear", "custom"],
+              default: "last30days"
+            }
+          },
           { name: "from", in: "query", schema: { type: "string", format: "date" } },
           { name: "to", in: "query", schema: { type: "string", format: "date" } }
         ],
         responses: {
-          "200": jsonDataResponse("User usage page", { $ref: "#/components/schemas/BackofficeUserUsagePage" }),
+          "200": jsonDataResponse("User usage page", {
+            $ref: "#/components/schemas/BackofficeUserUsagePage"
+          }),
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" }
         }
@@ -23598,7 +24278,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "backoffice:users:read",
         parameters: [idPathParameter("userId"), idPathParameter("orderId")],
         responses: {
-          "200": jsonDataResponse("User usage timeline", { $ref: "#/components/schemas/BackofficeUserUsageTimeline" }),
+          "200": jsonDataResponse("User usage timeline", {
+            $ref: "#/components/schemas/BackofficeUserUsageTimeline"
+          }),
           "404": { description: "Order is not owned by this user" }
         }
       }
@@ -23611,8 +24293,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:user-usage:comment",
         parameters: [idPathParameter("userId"), idPathParameter("orderId")],
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeUserUsageCommentInput" } } } },
-        responses: { "201": { description: "Comment appended" }, "404": { description: "Order not found" } }
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeUserUsageCommentInput" }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Comment appended" },
+          "404": { description: "Order not found" }
+        }
       }
     },
     [`${config.API_PREFIX}/backoffice/users/{userId}/usages/{orderId}/refund-amendments`]: {
@@ -23620,12 +24312,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         operationId: "appendBackofficeUserRefundAmendment",
         tags: ["User Management"],
         summary: "Append an administrative refund metadata correction",
-        description: "Does not alter payment status, refund amount, ledger transactions, or original booking refund facts.",
+        description:
+          "Does not alter payment status, refund amount, ledger transactions, or original booking refund facts.",
         security: [{ bearerAuth: [] }],
         "x-permission": "backoffice:user-refund:amend",
         parameters: [idPathParameter("userId"), idPathParameter("orderId")],
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeUserRefundAmendmentInput" } } } },
-        responses: { "201": { description: "Refund amendment appended" }, "404": { description: "Order not found" }, "409": { description: "Version conflict" }, "422": { description: "No refund fact exists" } }
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeUserRefundAmendmentInput" }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Refund amendment appended" },
+          "404": { description: "Order not found" },
+          "409": { description: "Version conflict" },
+          "422": { description: "No refund fact exists" }
+        }
       }
     },
     [`${config.API_PREFIX}/backoffice/reviews/{reviewId}/amendments`]: {
@@ -23667,15 +24372,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           idPathParameter("userId"),
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
-          { name: "partnerType", in: "query", schema: { type: "string", enum: ["agent", "franchisee", "supplier"] } }
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
+          {
+            name: "partnerType",
+            in: "query",
+            schema: { type: "string", enum: ["agent", "franchisee", "supplier"] }
+          }
         ],
         responses: {
           "200": jsonDataResponse("Platform partner validity history", {
             type: "object",
             required: ["list", "total", "page", "page_size"],
             properties: {
-              list: { type: "array", items: { $ref: "#/components/schemas/PlatformPartnerProfile" } },
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/PlatformPartnerProfile" }
+              },
               total: { type: "integer", minimum: 0 },
               page: { type: "integer", minimum: 1 },
               page_size: { type: "integer", minimum: 1 }
@@ -25230,7 +25946,21 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           required: true,
           content: {
             "application/json": {
-              schema: { type: "object", additionalProperties: false, required: ["expectedVersion", "expectedLockVersion"], properties: { expectedVersion: { type: "integer", minimum: 1 }, expectedLockVersion: { type: "integer", minimum: 1 }, effectiveImmediately: { type: "boolean", default: false, description: "Publish with the server current timestamp instead of the scheduled effectiveFrom" } } }
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["expectedVersion", "expectedLockVersion"],
+                properties: {
+                  expectedVersion: { type: "integer", minimum: 1 },
+                  expectedLockVersion: { type: "integer", minimum: 1 },
+                  effectiveImmediately: {
+                    type: "boolean",
+                    default: false,
+                    description:
+                      "Publish with the server current timestamp instead of the scheduled effectiveFrom"
+                  }
+                }
+              }
             }
           }
         },
@@ -26849,19 +27579,61 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             in: "query",
             schema: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] }
           },
-          { name: "tiers", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] } } },
+          {
+            name: "tiers",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: {
+              type: "array",
+              maxItems: 20,
+              items: { type: "string", enum: ["free", "silver", "gold", "black_diamond"] }
+            }
+          },
           { name: "groupCode", in: "query", schema: { type: "string", maxLength: 80 } },
-          { name: "identityType", in: "query", schema: { type: "string", enum: ["platform", "customer", "technician", "merchant", "broker", "scout"] } },
-          { name: "identityTypes", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["platform", "customer", "technician", "merchant", "broker", "scout"] } } },
+          {
+            name: "identityType",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["platform", "customer", "technician", "merchant", "broker", "scout"]
+            }
+          },
+          {
+            name: "identityTypes",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: {
+              type: "array",
+              maxItems: 20,
+              items: {
+                type: "string",
+                enum: ["platform", "customer", "technician", "merchant", "broker", "scout"]
+              }
+            }
+          },
           { name: "source", in: "query", schema: { type: "string", maxLength: 32 } },
           { name: "state", in: "query", schema: { type: "string", enum: ["active", "inactive"] } },
-          { name: "states", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["active", "inactive"] } } },
+          {
+            name: "states",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: { type: "array", items: { type: "string", enum: ["active", "inactive"] } }
+          },
           {
             name: "ekyc",
             in: "query",
             schema: { type: "string", enum: ["verified", "unverified"] }
           },
-          { name: "ekycStates", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["verified", "unverified"] } } },
+          {
+            name: "ekycStates",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: { type: "array", items: { type: "string", enum: ["verified", "unverified"] } }
+          },
           { name: "minLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "maxLevel", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
           { name: "minExpUnits", in: "query", schema: { type: "integer", minimum: 0 } },
@@ -26871,13 +27643,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "registeredFrom", in: "query", schema: { type: "string", format: "date-time" } },
           { name: "registeredTo", in: "query", schema: { type: "string", format: "date-time" } },
           { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
-          { name: "cities", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", maxLength: 100 } } },
+          {
+            name: "cities",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: { type: "array", maxItems: 20, items: { type: "string", maxLength: 100 } }
+          },
           {
             name: "emailState",
             in: "query",
             schema: { type: "string", enum: ["set", "unset"] }
           },
-          { name: "emailStates", in: "query", style: "form", explode: true, schema: { type: "array", items: { type: "string", enum: ["set", "unset"] } } },
+          {
+            name: "emailStates",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: { type: "array", items: { type: "string", enum: ["set", "unset"] } }
+          },
           {
             name: "privacy",
             in: "query",
@@ -26886,7 +27670,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"]
             }
           },
-          { name: "privacyScopes", in: "query", style: "form", explode: true, schema: { type: "array", maxItems: 20, items: { type: "string", enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"] } } },
+          {
+            name: "privacyScopes",
+            in: "query",
+            style: "form",
+            explode: true,
+            schema: {
+              type: "array",
+              maxItems: 20,
+              items: {
+                type: "string",
+                enum: ["enabled", "disabled", "public", "privateAll", "limited", "network"]
+              }
+            }
+          },
           { name: "minBookings", in: "query", schema: { type: "integer", minimum: 0 } },
           { name: "maxBookings", in: "query", schema: { type: "integer", minimum: 0 } },
           {
@@ -26930,11 +27727,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Read a canonical user detail scoped to the authenticated shop",
         security: [{ bearerAuth: [] }],
         "x-permission": "merchant-admin:customers:list",
-        parameters: [idPathParameter("userId"),
+        parameters: [
+          idPathParameter("userId"),
           { name: "audit_page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "audit_page_size", in: "query", schema: { type: "integer", enum: [10, 50], default: 10 } },
-          { name: "audit_from", in: "query", description: "Inclusive UTC start; requires audit_to", schema: { type: "string", format: "date-time" } },
-          { name: "audit_to", in: "query", description: "Exclusive UTC end; requires audit_from", schema: { type: "string", format: "date-time" } }
+          {
+            name: "audit_page_size",
+            in: "query",
+            schema: { type: "integer", enum: [10, 50], default: 10 }
+          },
+          {
+            name: "audit_from",
+            in: "query",
+            description: "Inclusive UTC start; requires audit_to",
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "audit_to",
+            in: "query",
+            description: "Exclusive UTC end; requires audit_from",
+            schema: { type: "string", format: "date-time" }
+          }
         ],
         responses: {
           "200": jsonDataResponse("Scoped user detail", {
@@ -26980,11 +27792,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
           { name: "page_size", in: "query", schema: { type: "integer", enum: [10], default: 10 } },
           { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
-          { name: "period", in: "query", schema: { type: "string", enum: ["last7days", "thisWeek", "last30days", "thisMonth", "thisYear", "custom"], default: "last30days" } },
+          {
+            name: "period",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["last7days", "thisWeek", "last30days", "thisMonth", "thisYear", "custom"],
+              default: "last30days"
+            }
+          },
           { name: "from", in: "query", schema: { type: "string", format: "date" } },
           { name: "to", in: "query", schema: { type: "string", format: "date" } }
         ],
-        responses: { "200": jsonDataResponse("Scoped user usage page", { $ref: "#/components/schemas/BackofficeUserUsagePage" }) }
+        responses: {
+          "200": jsonDataResponse("Scoped user usage page", {
+            $ref: "#/components/schemas/BackofficeUserUsagePage"
+          })
+        }
       }
     },
     [`${config.API_PREFIX}/merchant-admin/users/{userId}/usages/{orderId}`]: {
@@ -26995,7 +27819,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "merchant-admin:customers:list",
         parameters: [idPathParameter("userId"), idPathParameter("orderId")],
-        responses: { "200": jsonDataResponse("Scoped usage timeline", { $ref: "#/components/schemas/BackofficeUserUsageTimeline" }), "404": { description: "Order absent from this shop" } }
+        responses: {
+          "200": jsonDataResponse("Scoped usage timeline", {
+            $ref: "#/components/schemas/BackofficeUserUsageTimeline"
+          }),
+          "404": { description: "Order absent from this shop" }
+        }
       }
     },
     [`${config.API_PREFIX}/merchant-admin/customers/{id}`]: {
@@ -27232,50 +28061,67 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/identity-applications/mine`]: {
-      get: identityWorkflowOperation("List the authenticated user's identity applications with owner-only reviewEvidence: masked bank fields, accepted contract snapshot, protected media IDs, target shop public ID/name and taxonomy labels", {
-        parameters: [
-          {
-            name: "type",
-            in: "query",
-            schema: { type: "string", enum: ["technician", "merchant"] }
-          },
-          {
-            name: "status",
-            in: "query",
-            schema: {
-              type: "string",
-              enum: ["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"]
+      get: identityWorkflowOperation(
+        "List the authenticated user's identity applications with owner-only reviewEvidence: masked bank fields, accepted contract snapshot, protected media IDs, target shop public ID/name and taxonomy labels",
+        {
+          parameters: [
+            {
+              name: "type",
+              in: "query",
+              schema: { type: "string", enum: ["technician", "merchant"] }
+            },
+            {
+              name: "status",
+              in: "query",
+              schema: {
+                type: "string",
+                enum: ["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"]
+              }
+            },
+            { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+            {
+              name: "page_size",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 100 }
             }
-          },
-          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
-          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
-        ]
-      })
+          ]
+        }
+      )
     },
     [`${config.API_PREFIX}/merchants/search`]: {
-      get: identityWorkflowOperation("Search eligible shops by address, formal shop public ID, or name; returns merchantId as the formal shop public ID, coverUrl, rating, reviewCount and keywords", {
-        parameters: [
-          {
-            name: "query",
-            in: "query",
-            required: true,
-            schema: { type: "string", minLength: 1, maxLength: 160 }
-          },
-          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
-          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
-        ]
-      })
+      get: identityWorkflowOperation(
+        "Search eligible shops by address, formal shop public ID, or name; returns merchantId as the formal shop public ID, coverUrl, rating, reviewCount and keywords",
+        {
+          parameters: [
+            {
+              name: "query",
+              in: "query",
+              required: true,
+              schema: { type: "string", minLength: 1, maxLength: 160 }
+            },
+            { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+            {
+              name: "page_size",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          ]
+        }
+      )
     },
     [`${config.API_PREFIX}/identity-applications/technician`]: {
-      post: identityWorkflowOperation("Create an initial technician identity or additional shop partnership application draft", {
-        requestBody: identityJsonBody(
-          {
-            targetShopId: { type: "integer", minimum: 1 },
-            applicantName: { type: "string", minLength: 1, maxLength: 120 }
-          },
-          ["targetShopId", "applicantName"]
-        )
-      })
+      post: identityWorkflowOperation(
+        "Create an initial technician identity or additional shop partnership application draft",
+        {
+          requestBody: identityJsonBody(
+            {
+              targetShopId: { type: "integer", minimum: 1 },
+              applicantName: { type: "string", minLength: 1, maxLength: 120 }
+            },
+            ["targetShopId", "applicantName"]
+          )
+        }
+      )
     },
     [`${config.API_PREFIX}/identity-applications/{id}/technician-profile`]: {
       patch: identityWorkflowOperation("Update technician application profile", {
@@ -27332,7 +28178,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               additionalProperties: true,
               properties: {
                 nearestStation: { type: "string", maxLength: 160 },
-                stationTravelMinutes: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER, nullable: true, description: "Travel time from the nearest station to the shop, in minutes" },
+                stationTravelMinutes: {
+                  type: "integer",
+                  minimum: 0,
+                  maximum: Number.MAX_SAFE_INTEGER,
+                  nullable: true,
+                  description: "Travel time from the nearest station to the shop, in minutes"
+                },
                 stationAccess: { type: "string", maxLength: 255 }
               }
             },
@@ -27387,7 +28239,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               additionalProperties: true,
               properties: {
                 nearestStation: { type: "string", maxLength: 160 },
-                stationTravelMinutes: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER, nullable: true, description: "Travel time from the nearest station to the shop, in minutes" },
+                stationTravelMinutes: {
+                  type: "integer",
+                  minimum: 0,
+                  maximum: Number.MAX_SAFE_INTEGER,
+                  nullable: true,
+                  description: "Travel time from the nearest station to the shop, in minutes"
+                },
                 stationAccess: { type: "string", maxLength: 255 }
               }
             },
@@ -27473,17 +28331,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "merchant-admin:notice:create",
         parameters: [
-          { name: "file_name", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 255 } },
+          {
+            name: "file_name",
+            in: "query",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 255 }
+          },
           { name: "caption", in: "query", schema: { type: "string", minLength: 1, maxLength: 255 } }
         ],
         requestBody: {
           required: true,
-          content: Object.fromEntries([
-            "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "application/pdf", "text/plain"
-          ].map((mimeType) => [mimeType, { schema: { type: "string", format: "binary" } }]))
+          content: Object.fromEntries(
+            [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "video/mp4",
+              "video/webm",
+              "application/pdf",
+              "text/plain"
+            ].map((mimeType) => [mimeType, { schema: { type: "string", format: "binary" } }])
+          )
         },
         responses: {
-          "201": jsonDataResponse("Current-shop notice media uploaded", { $ref: "#/components/schemas/OfficialNoticeMediaUpload" }),
+          "201": jsonDataResponse("Current-shop notice media uploaded", {
+            $ref: "#/components/schemas/OfficialNoticeMediaUpload"
+          }),
           "400": jsonErrorResponse("error.official_notice.media_invalid"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -27500,10 +28373,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "merchant-admin:notice:create",
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/MerchantOfficialNoticeDraftCreate" } } }
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantOfficialNoticeDraftCreate" }
+            }
+          }
         },
         responses: {
-          "201": jsonDataResponse("Current-shop official notice draft saved", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "201": jsonDataResponse("Current-shop official notice draft saved", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -27519,7 +28398,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "merchant-admin:notice:read",
         parameters: [merchantPreviewShopHeaderParameter, announcementPublicIdParameter],
         responses: {
-          "200": jsonDataResponse("Current-shop official notice", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "200": jsonDataResponse("Current-shop official notice", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.official_notice.not_found")
@@ -27535,10 +28416,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [announcementPublicIdParameter],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/MerchantOfficialNoticeDraftUpdate" } } }
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantOfficialNoticeDraftUpdate" }
+            }
+          }
         },
         responses: {
-          "200": jsonDataResponse("Current-shop official notice draft updated", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "200": jsonDataResponse("Current-shop official notice draft updated", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -27556,10 +28443,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [announcementPublicIdParameter],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticePlanDraft" } } }
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticePlanDraft" } }
+          }
         },
         responses: {
-          "200": jsonDataResponse("Current-shop official notice draft planned", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "200": jsonDataResponse("Current-shop official notice draft planned", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -27720,17 +28611,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         "x-permission": "button:backoffice-official-notice-create",
         parameters: [
-          { name: "file_name", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 255 } },
+          {
+            name: "file_name",
+            in: "query",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 255 }
+          },
           { name: "caption", in: "query", schema: { type: "string", minLength: 1, maxLength: 255 } }
         ],
         requestBody: {
           required: true,
-          content: Object.fromEntries([
-            "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "application/pdf", "text/plain"
-          ].map((mimeType) => [mimeType, { schema: { type: "string", format: "binary" } }]))
+          content: Object.fromEntries(
+            [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "video/mp4",
+              "video/webm",
+              "application/pdf",
+              "text/plain"
+            ].map((mimeType) => [mimeType, { schema: { type: "string", format: "binary" } }])
+          )
         },
         responses: {
-          "201": jsonDataResponse("Official notice media uploaded", { $ref: "#/components/schemas/OfficialNoticeMediaUpload" }),
+          "201": jsonDataResponse("Official notice media uploaded", {
+            $ref: "#/components/schemas/OfficialNoticeMediaUpload"
+          }),
           "400": jsonErrorResponse("error.official_notice.media_invalid"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -27747,10 +28653,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "button:backoffice-official-notice-create",
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeDraftCreate" } } }
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OfficialNoticeDraftCreate" }
+            }
+          }
         },
         responses: {
-          "201": jsonDataResponse("Official notice draft saved", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "201": jsonDataResponse("Official notice draft saved", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -27766,7 +28678,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "page:backoffice-official-notice",
         parameters: [announcementPublicIdParameter],
         responses: {
-          "200": jsonDataResponse("Official notice", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "200": jsonDataResponse("Official notice", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
           "404": jsonErrorResponse("error.official_notice.not_found")
@@ -27782,10 +28696,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [announcementPublicIdParameter],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticeDraftUpdate" } } }
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OfficialNoticeDraftUpdate" }
+            }
+          }
         },
         responses: {
-          "200": jsonDataResponse("Official notice draft updated", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "200": jsonDataResponse("Official notice draft updated", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -27806,10 +28726,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [announcementPublicIdParameter],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticePlanDraft" } } }
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OfficialNoticePlanDraft" } }
+          }
         },
         responses: {
-          "200": jsonDataResponse("Official notice draft planned", { $ref: "#/components/schemas/OfficialNoticeProtectedPayload" }),
+          "200": jsonDataResponse("Official notice draft planned", {
+            $ref: "#/components/schemas/OfficialNoticeProtectedPayload"
+          }),
           "400": jsonErrorResponse("error.validation"),
           "401": jsonErrorResponse("error.auth.unauthorized"),
           "403": jsonErrorResponse("error.forbidden"),
@@ -28748,52 +29672,135 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     },
     [`${config.API_PREFIX}/technician/availability-windows`]: {
       get: {
-        tags: ["Schedule"], summary: "List independent availability control windows for the authenticated technician", security: [{ bearerAuth: [] }],
+        tags: ["Schedule"],
+        summary: "List independent availability control windows for the authenticated technician",
+        security: [{ bearerAuth: [] }],
         parameters: [
-          { name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } },
-          { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          {
+            name: "from",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: { "200": { description: "Paginated technician availability windows" } }
       },
       post: {
-        tags: ["Schedule"], summary: "Create an independent free availability control window", security: [{ bearerAuth: [] }],
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AvailabilityWindowCreateInput" } } } },
-        responses: { "201": { description: "Availability window created" }, "409": { description: "Overlapping control window" } }
+        tags: ["Schedule"],
+        summary: "Create an independent free availability control window",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AvailabilityWindowCreateInput" }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Availability window created" },
+          "409": { description: "Overlapping control window" }
+        }
       }
     },
     [`${config.API_PREFIX}/technician/availability-windows/{id}`]: {
       patch: {
-        tags: ["Schedule"], summary: "Update a technician-visible availability control window", security: [{ bearerAuth: [] }], parameters: [idPathParameter()],
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AvailabilityWindowUpdateInput" } } } },
-        responses: { "200": { description: "Availability window updated" }, "409": { description: "Overlapping control window" } }
+        tags: ["Schedule"],
+        summary: "Update a technician-visible availability control window",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AvailabilityWindowUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Availability window updated" },
+          "409": { description: "Overlapping control window" }
+        }
       },
-      delete: { tags: ["Schedule"], summary: "Soft-delete a technician-visible availability control window", security: [{ bearerAuth: [] }], parameters: [idPathParameter()], responses: { "200": { description: "Availability window soft-deleted" } } }
+      delete: {
+        tags: ["Schedule"],
+        summary: "Soft-delete a technician-visible availability control window",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        responses: { "200": { description: "Availability window soft-deleted" } }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/availability-windows`]: {
       get: {
-        tags: ["Schedule"], summary: "List shop-controlled availability windows", security: [{ bearerAuth: [] }],
+        tags: ["Schedule"],
+        summary: "List shop-controlled availability windows",
+        security: [{ bearerAuth: [] }],
         parameters: [
-          { name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } },
-          { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          {
+            name: "from",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
           { name: "technicianProfileId", in: "query", schema: { type: "integer", minimum: 1 } }
         ],
         responses: { "200": { description: "Paginated shop availability windows" } }
       },
       post: {
-        tags: ["Schedule"], summary: "Create a unique shop-controlled technician availability window", security: [{ bearerAuth: [] }],
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AvailabilityWindowCreateInput" } } } },
-        responses: { "201": { description: "Shop availability window created" }, "409": { description: "Another control window overlaps" } }
+        tags: ["Schedule"],
+        summary: "Create a unique shop-controlled technician availability window",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AvailabilityWindowCreateInput" }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Shop availability window created" },
+          "409": { description: "Another control window overlaps" }
+        }
       }
     },
     [`${config.API_PREFIX}/merchant-admin/availability-windows/{id}`]: {
       patch: {
-        tags: ["Schedule"], summary: "Update a shop-controlled availability window", security: [{ bearerAuth: [] }], parameters: [idPathParameter()],
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AvailabilityWindowUpdateInput" } } } },
+        tags: ["Schedule"],
+        summary: "Update a shop-controlled availability window",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AvailabilityWindowUpdateInput" }
+            }
+          }
+        },
         responses: { "200": { description: "Shop availability window updated" } }
       },
-      delete: { tags: ["Schedule"], summary: "Soft-delete a shop-controlled availability window", security: [{ bearerAuth: [] }], parameters: [idPathParameter()], responses: { "200": { description: "Shop availability window soft-deleted" } } }
+      delete: {
+        tags: ["Schedule"],
+        summary: "Soft-delete a shop-controlled availability window",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        responses: { "200": { description: "Shop availability window soft-deleted" } }
+      }
     },
     [`${config.API_PREFIX}/technician/automation-settings/{kind}`]: {
       get: {
@@ -28801,17 +29808,44 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Read the current technician Booking or Request automation setting",
         security: [{ bearerAuth: [] }],
         "x-permission": "technician:automation-settings:read",
-        parameters: [{ name: "kind", in: "path", required: true, schema: { type: "string", enum: ["booking", "request"] } }],
-        responses: { "200": { description: "Server-authoritative setting and rule version" }, "403": { description: "Technician identity required" } }
+        parameters: [
+          {
+            name: "kind",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["booking", "request"] }
+          }
+        ],
+        responses: {
+          "200": { description: "Server-authoritative setting and rule version" },
+          "403": { description: "Technician identity required" }
+        }
       },
       put: {
         tags: ["Technician Automation"],
         summary: "Save validated automation rules with optimistic locking and audit",
         security: [{ bearerAuth: [] }],
         "x-permission": "technician:automation-settings:write",
-        parameters: [{ name: "kind", in: "path", required: true, schema: { type: "string", enum: ["booking", "request"] } }],
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["enabled", "expectedVersion", "rules"] } } } },
-        responses: { "200": { description: "Saved setting re-read from the server" }, "409": { description: "Rule version conflict" } }
+        parameters: [
+          {
+            name: "kind",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["booking", "request"] }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { type: "object", required: ["enabled", "expectedVersion", "rules"] }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Saved setting re-read from the server" },
+          "409": { description: "Rule version conflict" }
+        }
       }
     },
     [`${config.API_PREFIX}/technician/automation-settings/contacts`]: {
@@ -28822,7 +29856,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "x-permission": "technician:automation-settings:read",
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
-          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: "page_size",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+          },
           { name: "search", in: "query", schema: { type: "string", maxLength: 100 } }
         ],
         responses: { "200": { description: "Paginated IM friend identities" } }
@@ -29608,7 +30646,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": {
-            description: "Content-free recall result; the server selects standard or traceless mode from the effective membership benefit",
+            description:
+              "Content-free recall result; the server selects standard or traceless mode from the effective membership benefit",
             content: {
               "application/json": {
                 schema: {
@@ -30220,7 +31259,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Authoritative post with isPinned=true" },
           "403": { description: "Missing social-post:create permission" },
-          "404": { description: "Post is missing, is a reply, or is not owned by the active identity" }
+          "404": {
+            description: "Post is missing, is a reply, or is not owned by the active identity"
+          }
         }
       },
       delete: {
@@ -30233,7 +31274,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Authoritative post with isPinned=false" },
           "403": { description: "Missing social-post:create permission" },
-          "404": { description: "Post is missing, is a reply, or is not owned by the active identity" }
+          "404": {
+            description: "Post is missing, is a reply, or is not owned by the active identity"
+          }
         }
       }
     },

@@ -5963,14 +5963,21 @@ export function ImConversationRoomPage({
         actionSlot={renderContactCardAction(card)}
         avatarUrl={card.avatar || null}
         bio={card.headline ?? ""}
+        completedOrderCount={card.completedOrderCount}
         displayName={card.displayName}
         ekycVerified={card.ekycVerified ?? false}
         entityKind={entityKind}
+        entityPublicId={card.entityPublicId}
+        favoriteCount={card.favoriteCount}
+        languages={card.languages}
         level={card.level ?? null}
         needoId={card.needoId ?? card.userIdLabel ?? card.userId}
         onOpenDetails={() => void openContactCardProfile(card)}
+        rating={card.rating}
+        shareCount={card.shareCount}
         simpleBottomColor={card.simpleBottomColor}
         simpleTopColor={card.simpleTopColor}
+        specialReviewTags={card.specialReviewTags}
       />
     );
   };
