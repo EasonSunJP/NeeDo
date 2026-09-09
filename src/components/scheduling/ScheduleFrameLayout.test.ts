@@ -49,7 +49,12 @@ describe("shared schedule frame layout", () => {
     expect(cycleBoardSource).toContain('view === "threeDay" || view === "week"');
     expect(cycleBoardSource).toContain('view === "month"');
     expect(cycleBoardSource).toContain("<UnifiedCalendarMonthGrid");
-    expect(cycleBoardSource).not.toContain("<UnifiedCalendarMultiDayTimeline");
+  });
+
+  it("lets employee schedules opt into the shared multi-day timeline", () => {
+    expect(cycleBoardSource).toContain('periodViewVariant = "grid"');
+    expect(cycleBoardSource).toContain('periodViewVariant === "timeline"');
+    expect(cycleBoardSource).toContain("<UnifiedCalendarMultiDayTimeline");
   });
 
   it("lets a formal merchant adapter provide the cycle window and matching day grids", () => {

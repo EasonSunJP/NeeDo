@@ -386,6 +386,7 @@ export function EmployeeSchedulePanel({ employee, readOnly = false, scheduleSurf
             onDateChange={setDateKey}
             onOpenCell={() => undefined}
             onViewChange={changeView}
+            periodViewVariant="timeline"
             storeId={employee.affiliation.shop.publicId}
             subtitle={`${employee.displayName} · ${t("正式日程")}`}
             surface={scheduleSurface}
