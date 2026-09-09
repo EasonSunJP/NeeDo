@@ -2570,6 +2570,15 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   bottom: max(env(safe-area-inset-bottom), 6px);
 }
 
+.im-tag-composer-sheet {
+  min-height: 0;
+  height: auto;
+  max-height: min(calc(var(--im-visual-viewport-height, 100dvh) - 24px), 620px);
+  flex: none;
+  overflow-x: clip;
+  overflow-y: auto;
+}
+
 @keyframes im-composer-panel-enter {
   from {
     opacity: 0;

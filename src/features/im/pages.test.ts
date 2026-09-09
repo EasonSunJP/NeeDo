@@ -20,16 +20,23 @@ import componentsSource from "./components.tsx?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
-  it("renders the add-tag editor and footer actions inside one glass container", () => {
+  it("renders the add-tag editor as one glass sheet without a nested outer card", () => {
     const pageStart = pagesSource.indexOf("export function ImContactTagsPage");
     const pageEnd = pagesSource.indexOf("export function ImServiceAccountsPage", pageStart);
     const pageSource = pagesSource.slice(pageStart, pageEnd);
+    const sheetStart = pageSource.indexOf("<ImBottomSheet");
+    const sheetEnd = pageSource.indexOf("</ImBottomSheet>", sheetStart);
+    const sheetSource = pageSource.slice(sheetStart, sheetEnd);
 
     expect(pageStart).toBeGreaterThan(-1);
-    expect(pageSource).toContain('data-im-tag-composer-card="true"');
-    expect(pageSource).toContain('className="client-liquid-glass-surface im-composer-glass');
-    expect(pageSource.indexOf("<ImChatComposer")).toBeLessThan(pageSource.indexOf(">取消</Button>"));
-    expect(pageSource.indexOf(">取消</Button>")).toBeLessThan(pageSource.indexOf(">添加</Button>"));
+    expect(sheetStart).toBeGreaterThan(-1);
+    expect(sheetSource).toContain('presentation="composer"');
+    expect(sheetSource).toContain('panelClassName="im-tag-composer-sheet"');
+    expect(sheetSource).not.toContain('data-im-tag-composer-card="true"');
+    expect(sheetSource).not.toContain('className="client-liquid-glass-surface im-composer-glass');
+    expect(sheetSource.indexOf("<ImChatComposer")).toBeLessThan(sheetSource.indexOf(">取消</Button>"));
+    expect(sheetSource.indexOf(">取消</Button>")).toBeLessThan(sheetSource.indexOf(">添加</Button>"));
+    expect(stylesSource).toMatch(/\.im-tag-composer-sheet \{[^}]*height: auto;[^}]*max-height:/s);
   });
 
   it("renders the header quick menu outside the glass header clipping context", () => {

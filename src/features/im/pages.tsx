@@ -4753,11 +4753,14 @@ export function ImContactTagsPage() {
           />
         )}
       </div>
-      <ImBottomSheet onClose={() => setAddTagOpen(false)} open={addTagOpen} title="添加标签">
-        <div
-          className="client-liquid-glass-surface im-composer-glass space-y-3 rounded-[28px] p-3"
-          data-im-tag-composer-card="true"
-        >
+      <ImBottomSheet
+        onClose={() => setAddTagOpen(false)}
+        open={addTagOpen}
+        panelClassName="im-tag-composer-sheet"
+        presentation="composer"
+        title="添加标签"
+      >
+        <div className="space-y-3 pb-2">
           <ImChatComposer
             draft={newTagName}
             embedded
