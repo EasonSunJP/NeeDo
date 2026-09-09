@@ -49,6 +49,10 @@ const travelFareTranslationsPath = path.join(
   workspaceRoot,
   "src/features/travel-fare/i18n.ts",
 );
+const technicianAutomationTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/technician-schedule/automation-i18n.ts",
+);
 const sourceDirectories = [
   path.join(workspaceRoot, "src"),
   path.join(workspaceRoot, "scripts"),
@@ -61,6 +65,7 @@ const excludedFilePatterns = [
   /src\/features\/operations-analytics\/i18n\.ts$/u,
   /src\/features\/platform-user-management\/i18n\.ts$/u,
   /src\/features\/travel-fare\/i18n\.ts$/u,
+  /src\/features\/technician-schedule\/automation-i18n\.ts$/u,
 ];
 
 function normalizeText(value) {
@@ -158,6 +163,7 @@ let operationsAnalyticsTranslationsPromise;
 let orderPerformanceTranslationsPromise;
 let platformUserManagementTranslationsPromise;
 let travelFareTranslationsPromise;
+let technicianAutomationTranslationsPromise;
 
 async function loadEkycTranslations() {
   ekycTranslationsPromise ??= (async () => {
@@ -350,6 +356,19 @@ async function loadTravelFareTranslations() {
   return travelFareTranslationsPromise;
 }
 
+async function loadTechnicianAutomationTranslations() {
+  technicianAutomationTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(technicianAutomationTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.technicianAutomationTranslations ?? {};
+  })();
+  return technicianAutomationTranslationsPromise;
+}
+
 async function loadTranslationsFromSource(sourceCode) {
   const { translations: ekycTranslations, chineseErrors: ekycChineseErrors } =
     await loadEkycTranslations();
@@ -362,6 +381,7 @@ async function loadTranslationsFromSource(sourceCode) {
   const orderPerformanceTranslations = await loadOrderPerformanceTranslations();
   const platformUserManagementTranslations = await loadPlatformUserManagementTranslations();
   const travelFareTranslations = await loadTravelFareTranslations();
+  const technicianAutomationTranslations = await loadTechnicianAutomationTranslations();
   const standaloneSource = sourceCode.replace(
     /import\s+\{\s*ekycTranslations\s*,\s*ekycChineseErrors\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const ekycTranslations = ${JSON.stringify(ekycTranslations)};\nconst ekycChineseErrors = ${JSON.stringify(ekycChineseErrors)};`,
@@ -389,6 +409,9 @@ async function loadTranslationsFromSource(sourceCode) {
   ).replace(
     /import\s+\{\s*travelFareTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const travelFareTranslations = ${JSON.stringify(travelFareTranslations)};`,
+  ).replace(
+    /import\s+\{\s*technicianAutomationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const technicianAutomationTranslations = ${JSON.stringify(technicianAutomationTranslations)};`,
   );
   const tempFile = path.join(
     workspaceRoot,

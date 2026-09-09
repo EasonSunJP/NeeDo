@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { BookingService } from "../services/booking.service";
+import type { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import { successResponse } from "../utils/api-response";
 import {
   availabilityListQuerySchema,
@@ -27,7 +28,10 @@ import {
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 
 export class BookingController {
-  public constructor(private readonly bookingService: BookingService) {}
+  public constructor(
+    private readonly bookingService: BookingService,
+    private readonly automationProcessor?: Pick<TechnicianAutomationProcessor, "processBooking">
+  ) {}
 
   public listAvailableSlots = async (
     request: Request,
@@ -57,17 +61,13 @@ export class BookingController {
     try {
       const body = bookingCreateBodySchema.parse(request.body);
       const rawIdempotencyKey = request.get("Idempotency-Key");
-      response
-        .status(201)
-        .json(
-          successResponse(
-            await this.bookingService.createBooking(
-              this.getActor(response),
-              body,
-              ...(rawIdempotencyKey === undefined ? [] : [rawIdempotencyKey])
-            )
-          )
-        );
+      const created = await this.bookingService.createBooking(
+        this.getActor(response),
+        body,
+        ...(rawIdempotencyKey === undefined ? [] : [rawIdempotencyKey])
+      );
+      await this.automationProcessor?.processBooking(created.id).catch(() => undefined);
+      response.status(201).json(successResponse(created));
     } catch (error) {
       next(error);
     }

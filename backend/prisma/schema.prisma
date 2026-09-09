@@ -25,6 +25,23 @@ enum BookingOrderStatus {
   @@map("booking_order_status")
 }
 
+enum TechnicianAutomationKind {
+  BOOKING @map("booking")
+  REQUEST @map("request")
+
+  @@map("technician_automation_kind")
+}
+
+enum TechnicianAutomationOutcome {
+  MATCHED        @map("matched")
+  NOT_MATCHED    @map("not_matched")
+  EXECUTED       @map("executed")
+  ACTION_FAILED  @map("action_failed")
+  ALREADY_HANDLED @map("already_handled")
+
+  @@map("technician_automation_outcome")
+}
+
 enum OrderRefundCaseStatus {
   MERCHANT_REVIEW_PENDING       @map("merchant_review_pending")
   REFUND_PENDING                @map("refund_pending")
@@ -2204,6 +2221,8 @@ model TechnicianProfile {
   performanceSummary         TechnicianPerformanceSummary?
   entityFavorites            EntityFavorite[]
   entityShareEvents          EntityShareEvent[]
+  automationSettings         TechnicianAutomationSetting[]
+  automationDecisionLogs     TechnicianAutomationDecisionLog[]
 
   @@index([shopId])
   @@index([shopId, employmentType])
@@ -2214,6 +2233,55 @@ model TechnicianProfile {
   @@index([baseLatitude, baseLongitude], map: "technician_profiles_base_coordinates_idx")
   @@index([deletedAt])
   @@map("technician_profiles")
+}
+
+model TechnicianAutomationSetting {
+  id                  Int                      @id @default(autoincrement())
+  technicianProfileId Int                      @map("technician_profile_id")
+  kind                TechnicianAutomationKind
+  enabled             Boolean                  @default(false)
+  rules               Json
+  version             Int                      @default(1)
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  deletedAt           DateTime?                @map("deleted_at")
+
+  technicianProfile TechnicianProfile                  @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  decisionLogs      TechnicianAutomationDecisionLog[]
+
+  @@unique([technicianProfileId, kind], map: "technician_automation_settings_owner_kind_key")
+  @@index([kind, enabled, deletedAt], map: "technician_automation_settings_kind_enabled_idx")
+  @@index([deletedAt])
+  @@map("technician_automation_settings")
+}
+
+model TechnicianAutomationDecisionLog {
+  id                  Int                         @id @default(autoincrement())
+  settingId           Int?                        @map("setting_id")
+  technicianProfileId Int                         @map("technician_profile_id")
+  kind                TechnicianAutomationKind
+  targetType          String                      @map("target_type") @db.VarChar(40)
+  targetId            Int                         @map("target_id")
+  actionType          String                      @map("action_type") @db.VarChar(40)
+  ruleVersion         Int                         @map("rule_version")
+  outcome             TechnicianAutomationOutcome
+  matchedConditions   Json                        @map("matched_conditions")
+  failedReasons       Json                        @map("failed_reasons")
+  idempotencyKey      String                      @unique @map("idempotency_key") @db.VarChar(191)
+  executedAt          DateTime?                   @map("executed_at")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+  deletedAt           DateTime?                   @map("deleted_at")
+
+  setting           TechnicianAutomationSetting? @relation(fields: [settingId], references: [id], onDelete: SetNull)
+  technicianProfile TechnicianProfile            @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+
+  @@index([settingId])
+  @@index([technicianProfileId, kind, createdAt], map: "technician_automation_decision_logs_owner_kind_idx")
+  @@index([targetType, targetId, actionType], map: "technician_automation_decision_logs_target_idx")
+  @@index([outcome, createdAt], map: "technician_automation_decision_logs_outcome_idx")
+  @@index([deletedAt])
+  @@map("technician_automation_decision_logs")
 }
 
 model EntityFavorite {

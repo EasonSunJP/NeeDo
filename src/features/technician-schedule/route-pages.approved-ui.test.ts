@@ -21,7 +21,8 @@ describe("approved formal technician schedule UI", () => {
     expect(routeSource).toContain("FormalTechnicianScheduleWorkspace");
     expect(routeSource).toContain('navItems={technicianNavItems}');
     expect(routeSource).toContain("SchedulePageHeader");
-    expect(workspaceSource).toContain("FeatureSegmentedTabs");
+    expect(routeSource).toContain("TechnicianScheduleAutomationTabs");
+    expect(workspaceSource).not.toContain("FeatureSegmentedTabs");
     expect(routeSource).toContain("showBottomNav={false}");
     expect(workspaceSource).not.toContain("ScheduleSearchField");
     expect(routeSource).not.toContain("FormalRoutePage");
@@ -34,8 +35,8 @@ describe("approved formal technician schedule UI", () => {
     expect(unifiedCalendarSource).toContain('data-calendar-lane-heading="true"');
     expect(unifiedCalendarSource).toContain('data-calendar-time-row="true"');
     expect(unifiedCalendarSource).toContain('data-calendar-time-tag="true"');
-    expect(workspaceSource).toContain("排班设置");
-    expect(workspaceSource).toContain("FormalTechnicianOrdersPanel");
+    expect(workspaceSource).toContain("TechnicianAutomationSettingsPanel");
+    expect(workspaceSource).toContain('tab === "bookingSettings" || tab === "requestSettings"');
     expect(workspaceSource).toContain('aria-label="新建正式排班"');
   });
 

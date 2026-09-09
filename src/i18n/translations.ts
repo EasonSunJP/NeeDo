@@ -6,6 +6,7 @@ import { dashboardTranslations } from "../features/dashboard/dashboardTranslatio
 import { orderPerformanceTranslations } from "../features/order-performance/i18n";
 import { operationsAnalyticsTranslations } from "../features/operations-analytics/i18n";
 import { travelFareTranslations } from "../features/travel-fare/i18n";
+import { technicianAutomationTranslations } from "../features/technician-schedule/automation-i18n";
 
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
@@ -278,6 +279,7 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  ...technicianAutomationTranslations,
   "实时数据大屏": fourLanguageTranslation("即時數據大屏", "リアルタイムデータ画面", "Live data screen", "실시간 데이터 화면"),
   "NeeDo 实时运营数据": fourLanguageTranslation("NeeDo 即時營運數據", "NeeDo リアルタイム運営データ", "NeeDo live operations", "NeeDo 실시간 운영 데이터"),
   "退出全屏": fourLanguageTranslation("退出全螢幕", "全画面を終了", "Exit fullscreen", "전체 화면 종료"),
@@ -670,11 +672,6 @@ export const translations: TranslationMap = {
   "已确认收款": fourLanguageTranslation("已確認收款", "入金確認済み", "Payment confirmed", "입금 확인 완료"),
   "待确认收款": fourLanguageTranslation("待確認收款", "入金確認待ち", "Awaiting payment confirmation", "입금 확인 대기"),
   "取消处理中": fourLanguageTranslation("正在取消", "キャンセル処理中", "Cancelling", "취소 처리 중"),
-  "强制取消预约": fourLanguageTranslation("強制取消預約", "予約を強制キャンセル", "Force-cancel booking", "예약 강제 취소"),
-  "强制取消预约可能引起用户差评，并会降低接单率数值。是否真的要取消此预约？": fourLanguageTranslation("強制取消預約可能引起使用者負評，並會降低接單率數值。是否確定取消此預約？", "予約を強制キャンセルすると低評価につながり、受注率の数値が下がる可能性があります。本当にこの予約をキャンセルしますか？", "Force-cancelling may result in a poor customer review and lower the acceptance-rate metric. Do you really want to cancel this booking?", "예약을 강제로 취소하면 사용자에게 낮은 평가를 받고 수락률 수치가 낮아질 수 있습니다. 정말 이 예약을 취소하시겠습니까?"),
-  "确定取消预约": fourLanguageTranslation("確定取消預約", "予約をキャンセル", "Cancel booking", "예약 취소 확인"),
-  "正在取消预约": fourLanguageTranslation("正在取消預約", "予約をキャンセル中", "Cancelling booking", "예약 취소 중"),
-  "预约取消失败，请稍后重试": fourLanguageTranslation("預約取消失敗，請稍後再試", "予約をキャンセルできませんでした。しばらくしてからもう一度お試しください", "The booking could not be cancelled. Try again later", "예약을 취소하지 못했습니다. 잠시 후 다시 시도하세요"),
   "当前身份没有创建预约的权限": fourLanguageTranslation("目前身分沒有建立預約的權限", "現在のアカウントには予約を作成する権限がありません", "The current identity cannot create reservations", "현재 계정에는 예약을 생성할 권한이 없습니다"),
   "服务不存在或已停止预约": fourLanguageTranslation("服務不存在或已停止預約", "サービスが存在しないか、予約受付を終了しています", "The service does not exist or is no longer accepting reservations", "서비스가 없거나 예약 접수가 종료되었습니다"),
   "预约状态已变化，请重新选择时段": fourLanguageTranslation("預約狀態已變更，請重新選擇時段", "予約状況が変更されました。時間枠を選び直してください", "Availability has changed. Select a time slot again", "예약 가능 상태가 변경되었습니다. 시간을 다시 선택하세요"),

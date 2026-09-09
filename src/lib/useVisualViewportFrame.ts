@@ -10,6 +10,7 @@ const isKeyboardEditor = (element: Element | null): boolean => {
 };
 
 const minimumKeyboardViewportReduction = 80;
+const installedPwaRestingViewportTolerance = 96;
 
 export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T | null>) {
   useLayoutEffect(() => {
@@ -20,6 +21,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
     }
 
     const properties = [
+      "--im-conversation-room-height",
       "--im-visual-viewport-height",
       "--im-visual-viewport-top",
       "--im-visual-viewport-bottom",
@@ -32,18 +34,34 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
     );
 
     let keyboardFrameActive = false;
+    let installedMobileRestingHeight: number | null = null;
 
     const updateFrame = () => {
       const viewport = window.visualViewport;
       const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+      const installPlatform = detectPwaInstallPlatform(window.navigator);
+      const useInstalledMobileViewport = Boolean(
+        viewport &&
+        isPwaStandaloneWindow(window) &&
+        (installPlatform === "ios" || installPlatform === "android")
+      );
+      const keyboardReferenceHeight = useInstalledMobileViewport && installedMobileRestingHeight !== null
+        ? installedMobileRestingHeight
+        : layoutHeight;
       const keyboardViewportReduction = viewport
-        ? Math.max(0, layoutHeight - viewport.height)
+        ? Math.max(0, keyboardReferenceHeight - viewport.height)
         : 0;
       const editorFocused = isKeyboardEditor(document.activeElement);
+      const keyboardOpenThreshold = useInstalledMobileViewport
+        ? installedPwaRestingViewportTolerance
+        : minimumKeyboardViewportReduction;
+      const keyboardRecoveryThreshold = useInstalledMobileViewport
+        ? installedPwaRestingViewportTolerance
+        : 2;
       const keyboardOpen = Boolean(
         viewport &&
-        ((editorFocused && keyboardViewportReduction >= minimumKeyboardViewportReduction) ||
-          (keyboardFrameActive && keyboardViewportReduction > 0))
+        ((editorFocused && keyboardViewportReduction >= keyboardOpenThreshold) ||
+          (keyboardFrameActive && keyboardViewportReduction > keyboardRecoveryThreshold))
       );
 
       // Panning changes the origin, not the amount of visible height. Keep a
@@ -51,15 +69,26 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       keyboardFrameActive = keyboardOpen;
 
       if (keyboardOpen) {
+        const viewportHeight = `${Math.max(1, Math.ceil(viewport!.height))}px`;
+        const viewportTop = Math.max(0, Math.floor(viewport!.offsetTop));
+        const viewportBottom = Math.max(
+          0,
+          Math.floor(layoutHeight - (viewport!.offsetTop + viewport!.height))
+        );
         element.style.setProperty(
           "--im-visual-viewport-height",
-          `${Math.max(1, Math.ceil(viewport!.height))}px`
+          viewportHeight
         );
+        // Pin both vertical edges to the measured visual viewport. Safari can
+        // keep a larger layout viewport while its keyboard is open; a fixed
+        // pixel height alone then leaves a gap between the composer and the
+        // keyboard during toolbar and keyboard animations.
+        element.style.setProperty("--im-conversation-room-height", "auto");
         element.style.setProperty(
           "--im-visual-viewport-top",
-          `${Math.max(0, Math.floor(viewport!.offsetTop))}px`
+          `${viewportTop}px`
         );
-        element.style.setProperty("--im-visual-viewport-bottom", "auto");
+        element.style.setProperty("--im-visual-viewport-bottom", `${viewportBottom}px`);
         element.style.setProperty(
           "--im-visual-viewport-width",
           `${Math.max(1, Math.floor(viewport!.width))}px`
@@ -72,38 +101,28 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         return;
       }
 
-      const installPlatform = detectPwaInstallPlatform(window.navigator);
-      const useInstalledMobileViewport = Boolean(
-        viewport &&
-        isPwaStandaloneWindow(window) &&
-        (installPlatform === "ios" || installPlatform === "android")
-      );
       if (useInstalledMobileViewport) {
-        // Installed mobile PWAs can keep a layout viewport whose 100dvh does
-        // not match the visible app surface. Bound the fixed room to the same
-        // visual frame used while the keyboard is open.
+        installedMobileRestingHeight = viewport!.height;
+        // The home navigation is fixed to the viewport bottom. Use the same
+        // bottom anchor for the closed-keyboard chat room instead of turning a
+        // possibly stale visualViewport height into an exposed bottom gap.
+        // Keep the pixel height separately so expandable panels can still
+        // size themselves against the actually visible space.
         element.style.setProperty(
           "--im-visual-viewport-height",
           `${Math.max(1, Math.ceil(viewport!.height))}px`
         );
-        element.style.setProperty(
-          "--im-visual-viewport-top",
-          `${Math.max(0, Math.floor(viewport!.offsetTop))}px`
-        );
-        element.style.setProperty("--im-visual-viewport-bottom", "auto");
-        element.style.setProperty(
-          "--im-visual-viewport-width",
-          `${Math.max(1, Math.floor(viewport!.width))}px`
-        );
-        element.style.setProperty(
-          "--im-visual-viewport-left",
-          `${Math.max(0, Math.floor(viewport!.offsetLeft))}px`
-        );
-        element.style.setProperty("--im-visual-viewport-right", "auto");
+        element.style.setProperty("--im-conversation-room-height", "auto");
+        element.style.setProperty("--im-visual-viewport-top", "0px");
+        element.style.setProperty("--im-visual-viewport-bottom", "0px");
+        element.style.setProperty("--im-visual-viewport-width", "auto");
+        element.style.setProperty("--im-visual-viewport-left", "0px");
+        element.style.setProperty("--im-visual-viewport-right", "0px");
         return;
       }
 
       element.style.setProperty("--im-visual-viewport-height", "100dvh");
+      element.style.setProperty("--im-conversation-room-height", "100dvh");
       element.style.setProperty("--im-visual-viewport-top", "0px");
       element.style.setProperty("--im-visual-viewport-bottom", "auto");
       element.style.setProperty("--im-visual-viewport-width", "auto");
@@ -113,6 +132,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
 
     const refreshRestoredFrame = () => {
       keyboardFrameActive = false;
+      installedMobileRestingHeight = null;
       updateFrame();
     };
 

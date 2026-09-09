@@ -43,7 +43,7 @@ export function SchedulePageHeader({
         />
         <MobileFullscreenCloseButton label={closeLabel} onClose={onClose} />
       </div>
-      {footer ? <div className="mt-3">{footer}</div> : null}
+      {footer ? <div>{footer}</div> : null}
     </FloatingHomeHeader>
   );
 }

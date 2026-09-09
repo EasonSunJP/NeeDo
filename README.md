@@ -2786,3 +2786,7 @@ Managed-user lists and membership details now consume exact decimal `totalExp`, 
 ### Application review and configurable eKYC requirements
 
 Operations System Settings now exposes four versioned eKYC requirements, with only customer home bookings enabled by default. Merchant and technician applications restore review details and provide floating withdraw, retry or approved-identity switching actions. Technician shop selection uses formal shop IDs and standalone profile cards. See [implementation and local validation](docs/superpowers/plans/2026-09-07-ekyc-requirements.md).
+
+### Technician booking and Request automation settings
+
+The technician schedule entry keeps the existing formal “我的排班” calendar and adds separate Test-labelled “接单设置” and “抢单设置” tabs. Both settings are versioned, audited, scoped to the active technician identity and disabled by default. Rules use fail-safe AND evaluation: non-matching bookings remain pending, while matching Requests create a formal claim without automatic matching. Apply migration `20260909090000_technician_order_automation` before enabling the feature. The implementation and local verification plan is documented in [technician booking and Request automation](docs/superpowers/plans/2026-09-09-technician-booking-request-automation.md).

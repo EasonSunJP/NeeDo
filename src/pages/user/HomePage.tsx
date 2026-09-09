@@ -34,7 +34,6 @@ import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
 import { useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
 import { SocialProfileMiniCard, TechnicianShowcaseCard, buildServiceMiniCardData, getTechnicianDynamicPath } from "../../shared/profile-card";
-import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import {
   useHomeLayoutStore,
   type HomeLocationOption,
@@ -931,7 +930,7 @@ export function HomePage() {
         <div className={cn(floatingHeaderInnerClassName, "space-y-3")}>
           <SharedHomeHeader
             avatarAlt={currentCustomer?.name ?? session?.username ?? ""}
-            avatarLevelLabel={currentCustomer ? getCustomerLevelLabel(currentCustomer.activeScore) : undefined}
+            avatarLevelLabel={currentCustomer?.experienceLevel === undefined ? undefined : `Lv.${currentCustomer.experienceLevel}`}
             avatarMembershipLevel={currentCustomer?.memberLevel}
             avatarSrc={session?.avatarUrl ?? currentCustomer?.avatar ?? ""}
             avatarTo={userPortalConfig.myPath}

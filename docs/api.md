@@ -446,3 +446,26 @@ Catalog reads accept `locale` (default `ja`) and standard page parameters. The m
 The replacement body is strict JSON with complete `categoryIds` and `keywordIds` arrays, `expectedRevision`, and a 16–160 character `idempotencyKey`. The default server policy permits five categories and five total keywords across all categories. A future paid Option may increase these values through the server quota policy without changing the frontend contract. Duplicate, inactive, foreign-category, over-quota, or unqualified selections return `400`; stale revisions or conflicting key reuse return `409`. Removing a category soft-deletes its dependent keyword selections atomically, and every successful change writes command replay and audit evidence.
 
 Merchant identity applications require one to five category IDs and zero to five keyword IDs. Draft selections are stored in application joins and do not create shop selections. Operations review exposes the selected localized records. Approval copies them into the new shop, creates taxonomy revision 1, and records exact qualifications for every approved non-open category or keyword in the same transaction; rejection creates none.
+
+## Technician Booking and Request Automation
+
+These Test-stage endpoints are scoped to the authenticated technician identity. Settings are disabled by default, validated as strict JSON, versioned with `expectedVersion`, and audited on every successful write. Availability is returned by the backend `entitled` field derived from write permission; the client does not invent eligibility.
+
+| Method | Path | Purpose | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/technician/automation-settings/:kind` | Read `booking` or `request` rules and version | `technician:automation-settings:read` |
+| `PUT` | `/api/v1/technician/automation-settings/:kind` | Replace enabled state and complete rule set | `technician:automation-settings:write` |
+| `GET` | `/api/v1/technician/automation-settings/contacts` | Paginated current-identity IM contact options | `technician:automation-settings:read` |
+
+All enabled rules use AND semantics. Schedule conflicts and platform restrictions are evaluated first, and missing evidence fails safe. A Booking mismatch remains pending for manual handling and is never auto-rejected. A Request match calls the existing claim transaction with Quick auto-matching suppressed, so it creates a real candidate application but the requester still selects the provider. Unique decision keys and rule-version snapshots make trigger retries idempotent and auditable.
+
+The additive migration is `20260909090000_technician_order_automation`. Local verification does not require an HTTP listener:
+
+```bash
+npm --prefix backend run prisma:generate
+npm --prefix backend run build
+npm --prefix backend test -- --runInBand tests/technician-automation-schema.test.ts tests/technician-automation-validator.test.ts tests/technician-automation.service.test.ts tests/technician-automation-api.test.ts tests/technician-automation-openapi.test.ts tests/technician-automation-rules.test.ts tests/technician-automation-processor.test.ts tests/technician-automation-trigger-wiring.test.ts tests/exchange-claim.service.test.ts tests/booking-service.test.ts
+npm run lint
+npm test -- --run src/features/technician-schedule
+npm run build
+```

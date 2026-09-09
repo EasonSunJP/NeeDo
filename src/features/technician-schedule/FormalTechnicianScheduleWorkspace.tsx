@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import {
   ContactEventTimelinePanel,
   type ContactEventTimelineEntry
@@ -9,15 +9,11 @@ import {
   UnifiedUserCalendar,
   type UnifiedCalendarTechnician
 } from "../../components/scheduling/UnifiedUserCalendar";
-import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalTechnicianOrdersPanel";
 import type { BookingOrder } from "../booking/api";
 import { loadEveryTechnicianOrder } from "../scheduling/window-loader";
-import { cn } from "../../lib/utils";
+import { TechnicianAutomationSettingsPanel } from "./TechnicianAutomationSettingsPanel";
 
-type WorkspaceTab = "calendar" | "settings";
-
-const schedulePanelClass =
-  "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] shadow-[var(--client-shadow)]";
+export type WorkspaceTab = "calendar" | "bookingSettings" | "requestSettings";
 
 function timelineDateTime(value: string) {
   const date = new Date(value);
@@ -92,7 +88,8 @@ export function FormalTechnicianScheduleWorkspace({
   profileName,
   searchQuery = "",
   shopId,
-  shopName
+  tab,
+  onDirtyChange
 }: {
   dataCenterPeriod?: "last7days" | "last30days" | "week" | "month" | "year";
   initialSelectedDate?: string;
@@ -102,9 +99,10 @@ export function FormalTechnicianScheduleWorkspace({
   searchQuery?: string;
   shopId: number | null;
   shopName: string;
+  tab: WorkspaceTab;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<WorkspaceTab>("calendar");
   const [statusOrders, setStatusOrders] = useState<BookingOrder[]>([]);
   const [statusLoadState, setStatusLoadState] = useState<"loading" | "success" | "error">("loading");
   const calendarTechnician = useMemo<UnifiedCalendarTechnician>(() => ({
@@ -149,52 +147,13 @@ export function FormalTechnicianScheduleWorkspace({
 
   return (
     <div className="text-[color:var(--client-text)]" data-testid="formal-technician-schedule-workspace">
-      <div className="mb-4">
-        <FeatureSegmentedTabs
-          items={[
-            { label: "我的排班", value: "calendar" },
-            { label: "排班设置", value: "settings" }
-          ]}
-          onChange={setTab}
-          value={tab}
-          variant="header"
-        />
-      </div>
-
       <div className="space-y-4">
         {dataCenterPeriodLabel ? <p className="rounded-2xl border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] px-4 py-2.5 text-xs font-black text-[color:var(--client-muted)]">数据中心期间：{dataCenterPeriodLabel}</p> : null}
-        {tab === "settings" ? (
-        <div className="space-y-4" data-testid="formal-schedule-settings-surface">
-          <section className={cn(schedulePanelClass, "p-4")}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-black text-[color:var(--client-muted)]">{shopName}</p>
-                <h2 className="mt-1 text-xl font-black">正式排班设置</h2>
-              </div>
-              {shopId !== null ? <Link
-                className="inline-flex h-11 items-center gap-2 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-needo-text)]"
-                to="/technician/schedule/new"
-              >
-                <AppIcon className="h-4 w-4" name="plus" />新建正式排班
-              </Link> : null}
-            </div>
-            <p className="mt-3 text-xs font-bold leading-5 text-[color:var(--client-muted)]">
-              {shopId === null
-                ? "可查看当前技师的正式日程；创建可预约时段需要先关联店铺。"
-                : "新增、编辑和锁定都会写入当前技师身份的正式排班接口；本页不创建浏览器排班记录。"}
-            </p>
-          </section>
-          <section
-            className="client-feature-panel rounded-[28px] border p-4 text-white shadow-[var(--client-shadow)]"
-            data-testid="formal-schedule-orders-surface"
-          >
-            <div className="mb-4">
-              <p className="text-[11px] font-black text-white/50">正式服务器数据</p>
-              <h2 className="mt-1 text-xl font-black">预约订单</h2>
-            </div>
-            <FormalTechnicianOrdersPanel />
-          </section>
-        </div>
+        {tab === "bookingSettings" || tab === "requestSettings" ? (
+          <TechnicianAutomationSettingsPanel
+            kind={tab === "bookingSettings" ? "booking" : "request"}
+            onDirtyChange={onDirtyChange}
+          />
         ) : (
           <>
           <UnifiedUserCalendar

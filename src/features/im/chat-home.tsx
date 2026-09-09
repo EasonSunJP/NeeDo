@@ -16,7 +16,7 @@ import { useClientTheme } from "../../theme/ClientThemeProvider";
 import type { Conversation, ImRoleType } from "./model";
 import { ImIcon, PrivateConversationTitle, SwipeActionRow } from "./components";
 
-const unifiedChatHomeShellClassName = "client-glass-page-surface relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-transparent";
+const unifiedChatHomeShellClassName = "im-chat-home-shell client-glass-page-surface relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-transparent";
 const unifiedChatHomeContentClassName = "scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-[calc(env(safe-area-inset-top)+143px)] [-webkit-overflow-scrolling:touch]";
 const unifiedChatHomeCompactContentClassName = "scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-[calc(env(safe-area-inset-top)+92px)] [-webkit-overflow-scrolling:touch]";
 

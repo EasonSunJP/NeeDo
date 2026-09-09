@@ -28707,6 +28707,39 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/technician/automation-settings/{kind}`]: {
+      get: {
+        tags: ["Technician Automation"],
+        summary: "Read the current technician Booking or Request automation setting",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:automation-settings:read",
+        parameters: [{ name: "kind", in: "path", required: true, schema: { type: "string", enum: ["booking", "request"] } }],
+        responses: { "200": { description: "Server-authoritative setting and rule version" }, "403": { description: "Technician identity required" } }
+      },
+      put: {
+        tags: ["Technician Automation"],
+        summary: "Save validated automation rules with optimistic locking and audit",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:automation-settings:write",
+        parameters: [{ name: "kind", in: "path", required: true, schema: { type: "string", enum: ["booking", "request"] } }],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["enabled", "expectedVersion", "rules"] } } } },
+        responses: { "200": { description: "Saved setting re-read from the server" }, "409": { description: "Rule version conflict" } }
+      }
+    },
+    [`${config.API_PREFIX}/technician/automation-settings/contacts`]: {
+      get: {
+        tags: ["Technician Automation"],
+        summary: "Search the current technician identity's real NeeDo IM friends",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "technician:automation-settings:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          { name: "search", in: "query", schema: { type: "string", maxLength: 100 } }
+        ],
+        responses: { "200": { description: "Paginated IM friend identities" } }
+      }
+    },
     [`${config.API_PREFIX}/im/conversations/{targetConversationId}/chat-records`]: {
       post: {
         tags: ["Step 13 Realtime"],

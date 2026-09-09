@@ -15,6 +15,7 @@ const platformUserManagementTranslationsPath = path.join(workspaceRoot, "src", "
 const platformMembershipTierTextPath = path.join(workspaceRoot, "src", "shared", "profile-card", "platformMembershipTierText.ts");
 const orderPerformanceTranslationsPath = path.join(workspaceRoot, "src", "features", "order-performance", "i18n.ts");
 const travelFareTranslationsPath = path.join(workspaceRoot, "src", "features", "travel-fare", "i18n.ts");
+const technicianAutomationTranslationsPath = path.join(workspaceRoot, "src", "features", "technician-schedule", "automation-i18n.ts");
 const outputDir = path.join(workspaceRoot, "exports", "i18n");
 const jsonReportPath = path.join(outputDir, "i18n-quality-report.json");
 const markdownReportPath = path.join(outputDir, "i18n-quality-report.md");
@@ -128,6 +129,7 @@ async function loadTranslations() {
   const platformMembershipTierTextSource = await fs.readFile(platformMembershipTierTextPath, "utf8");
   const orderPerformanceSource = await fs.readFile(orderPerformanceTranslationsPath, "utf8");
   const travelFareSource = await fs.readFile(travelFareTranslationsPath, "utf8");
+  const technicianAutomationSource = await fs.readFile(technicianAutomationTranslationsPath, "utf8");
   const compilerOptions = {
     module: ts.ModuleKind.ES2022,
     target: ts.ScriptTarget.ES2022
@@ -162,6 +164,9 @@ async function loadTranslations() {
   const transpiledTravelFareTranslations = ts.transpileModule(travelFareSource, {
     compilerOptions
   }).outputText;
+  const transpiledTechnicianAutomationTranslations = ts.transpileModule(technicianAutomationSource, {
+    compilerOptions
+  }).outputText;
   const tempToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const identityApplicationTempFileName = `identity-application-translations-quality-${tempToken}.mjs`;
   const ekycTempFileName = `ekyc-translations-quality-${tempToken}.mjs`;
@@ -173,6 +178,7 @@ async function loadTranslations() {
   const platformMembershipTierTextTempFileName = `platform-membership-tier-text-quality-${tempToken}.mjs`;
   const orderPerformanceTempFileName = `order-performance-translations-quality-${tempToken}.mjs`;
   const travelFareTempFileName = `travel-fare-translations-quality-${tempToken}.mjs`;
+  const technicianAutomationTempFileName = `technician-automation-translations-quality-${tempToken}.mjs`;
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       ...compilerOptions
@@ -186,7 +192,8 @@ async function loadTranslations() {
     .replace("../features/operations-analytics/i18n", `./${operationsAnalyticsTempFileName}`)
     .replace("../features/platform-user-management/i18n", `./${platformUserManagementTempFileName}`)
     .replace("../features/order-performance/i18n", `./${orderPerformanceTempFileName}`)
-    .replace("../features/travel-fare/i18n", `./${travelFareTempFileName}`);
+    .replace("../features/travel-fare/i18n", `./${travelFareTempFileName}`)
+    .replace("../features/technician-schedule/automation-i18n", `./${technicianAutomationTempFileName}`);
   const tempFile = path.join(outputDir, `translations-quality-${tempToken}.mjs`);
   const identityApplicationTempFile = path.join(outputDir, identityApplicationTempFileName);
   const ekycTempFile = path.join(outputDir, ekycTempFileName);
@@ -198,6 +205,7 @@ async function loadTranslations() {
   const platformMembershipTierTextTempFile = path.join(outputDir, platformMembershipTierTextTempFileName);
   const orderPerformanceTempFile = path.join(outputDir, orderPerformanceTempFileName);
   const travelFareTempFile = path.join(outputDir, travelFareTempFileName);
+  const technicianAutomationTempFile = path.join(outputDir, technicianAutomationTempFileName);
 
   await fs.mkdir(outputDir, { recursive: true });
   await fs.writeFile(ekycTempFile, transpiledEkycTranslations, "utf8");
@@ -217,6 +225,7 @@ async function loadTranslations() {
   await fs.writeFile(platformMembershipTierTextTempFile, transpiledPlatformMembershipTierText, "utf8");
   await fs.writeFile(orderPerformanceTempFile, transpiledOrderPerformanceTranslations, "utf8");
   await fs.writeFile(travelFareTempFile, transpiledTravelFareTranslations, "utf8");
+  await fs.writeFile(technicianAutomationTempFile, transpiledTechnicianAutomationTranslations, "utf8");
   await fs.writeFile(tempFile, transpiled, "utf8");
 
   try {
@@ -244,6 +253,7 @@ async function loadTranslations() {
     await fs.unlink(platformMembershipTierTextTempFile).catch(() => {});
     await fs.unlink(orderPerformanceTempFile).catch(() => {});
     await fs.unlink(travelFareTempFile).catch(() => {});
+    await fs.unlink(technicianAutomationTempFile).catch(() => {});
   }
 }
 

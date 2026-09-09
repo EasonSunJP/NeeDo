@@ -510,3 +510,14 @@ Codex 完成本步后，必须输出：
 - 本地生产组件几何验收覆盖 375/440/956px 宽度、210/250/320/956px 可见高度、6/34px 底部留白，以及单行/七行、图片、引用、表情和附件组合。18 组均满足输入区不越界、面板可操作、底部无遮罩覆盖；证据位于忽略目录 `outputs/chat-composer-clipping-fix/`。
 - 测试先行验证了旧实现会在键盘关闭尾段提前回到 `100dvh`，且缺少受限高度内的草稿滚动容器；修复后 IM 定向回归 5 files / 155 tests、前端全量 483 files / 3,290 tests、TypeScript lint、formal Vite build 与 production bundle audit 均通过，构建检查 8 个 HTML 入口和 56 个资产。
 - 本节没有修改 IM API、数据库、migration、消息业务逻辑或视觉主题。未在 staging 或物理 iPhone 上验收，未推送、未部署，也未修改任何远程环境。
+
+### 首页等级、聊天面板与移动浏览器视口一致性修复（2026-09-09，本地）
+
+- 首页头像下的等级改为直接读取 `GET /api/v1/customers/me` 经 Core Read 映射的正式 `experienceLevel`，与个人中心使用同一数据字段；不再把评价 `activeScore` 换算成另一套等级。
+- 表情与附件继续共用 `.im-composer-panel`。常规移动视口优先展开至 340px，并保证 232px 的双排可操作下限；极短键盘视口仍按可见高度的 42% 收缩并内部滚动，输入栏不被挤出会话边界。
+- 安装态 iOS/Android PWA 在键盘关闭时使用与首页主导航相同的 `bottom:0` 锚点；独立的可见高度变量只负责面板限高。键盘开启时根据 `visualViewport` 的 top、height 与布局高度计算房间 bottom，以双边锚定替代固定像素房间高度，避免 iPhone Safari 工具栏/键盘动画留下输入栏间隙。
+- 已安装 PWA 的正常可见高度可能天然比布局视口少约一个浏览器安全区；键盘恢复判定改用已记录的 PWA 静止高度及容差，避免键盘关闭后长期保留陈旧的短视口状态。
+- 所有正式 HTML 入口补充 `interactive-widget=resizes-content`。支持该 viewport 策略的 Chromium 会在软键盘出现时同步缩放 Layout Viewport，从浏览器层消除 `position: fixed` 仍锚定旧布局视口的问题；iOS WebKit 不依赖该扩展，继续使用上述 `visualViewport` 双边锚定与 PWA 静止高度恢复。未启用会让键盘覆盖内容的 `navigator.virtualKeyboard.overlaysContent`。
+- 旧 Android Chromium 不支持 `color-mix()` 时，主题边框声明会被丢弃并回退成浅色默认边框，聊天玻璃背景也会露出父级渐变。新增仅在不支持 `color-mix()` 时生效的主题线色与聊天纯色表面回退；现代浏览器视觉不变。浏览器根节点的 `color-scheme` 同步当前明暗主题，减少可控系统/浏览器底栏与页面主题不一致。
+- OPPO Reno A / Android 9 类设备的首登卡顿来自三项叠加：登录跳转后固定约 1.54 秒的过场等待、450ms 后自动开始的约 14MB 宠物动画资源串行加载/解码，以及多层 `backdrop-filter`、阴影和持续动画带来的滚动重绘。启动阶段现在按 Android 版本与公开硬件能力设置 reduced profile；该模式停止宠物资源自动预载和常驻动画，将过场缩短为最多约 220ms、图片改为异步解码，并减少玻璃合成与长动画。它不硬编码 OPPO 型号、不减少 API 数据，现代 Android 保持完整视觉。
+- 本切片未修改 IM API、数据库、migration、消息数据或远程环境；staging 与 Android/iPhone 物理设备仍需在后续获授权发布后验收。
