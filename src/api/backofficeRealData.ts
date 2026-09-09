@@ -1871,6 +1871,16 @@ export const backofficeRealDataApi = {
       { body: { expectedLockVersion, content }, method: "PUT" }
     );
   },
+  synchronizeMerchantShopPresentationLocales(
+    locale: ShopPresentationLocale,
+    expectedLockVersions: Record<ShopPresentationLocale, number>,
+    content: ShopPresentationContent
+  ) {
+    return httpClient.request<Record<ShopPresentationLocale, ShopPresentationLocalePayload>>(
+      `/merchant-admin/shop/presentation/locales/${locale}/sync`,
+      { body: { expectedLockVersions, content }, method: "POST" }
+    );
+  },
   uploadMerchantShopPresentationMedia(file: Blob, altText: string) {
     return httpClient.request<ShopPresentationMediaPayload>("/merchant-admin/shop/presentation/media", {
       body: file,

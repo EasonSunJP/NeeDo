@@ -285,6 +285,16 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("renderActiveInlineEditor");
   });
 
+  it("requires the shared red confirmation before synchronizing the current draft to every locale", () => {
+    expect(pageSource).toContain('import { DangerConfirmDialog }');
+    expect(pageSource).toContain("synchronizeMerchantShopPresentationLocales");
+    expect(pageSource).toContain("expectedLockVersions");
+    expect(pageSource).toContain("将会用当前语言版本的图片和文字覆盖其他语言版本，真的要执行同步吗？");
+    expect(pageSource).toContain('confirmLabel="确认同步"');
+    expect(pageSource).toContain('title="同步所有语言版本"');
+    expect(pageSource).toContain("setPresentationDrafts(drafts)");
+  });
+
   it("uses the working basic-card editor in the embedded merchant header without duplicating the info-card edit button", () => {
     const embeddedHeaderSource = pageSource.slice(pageSource.indexOf("if (embedded)"), pageSource.indexOf('<div className="relative z-0">{content}</div>'));
     const basicInfoCardStart = pageSource.indexOf('<FlatCard className="store-basic-info-block');

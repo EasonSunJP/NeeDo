@@ -1,5 +1,6 @@
 import {
   shopPresentationLocaleParamSchema,
+  shopPresentationLocaleSyncBodySchema,
   shopPresentationLocaleUpdateBodySchema
 } from "../src/validators/shop-presentation.validator";
 
@@ -75,6 +76,18 @@ describe("shop presentation validators", () => {
     expect(() => shopPresentationLocaleUpdateBodySchema.parse({
       ...validBody,
       content: { ...validBody.content, storeName: "x".repeat(161) }
+    })).toThrow();
+  });
+
+  it("requires an optimistic lock version for every locale before synchronization", () => {
+    const expectedLockVersions = { ja: 1, en: 2, ko: 3, "zh-CN": 4, "zh-TW": 5 };
+    expect(shopPresentationLocaleSyncBodySchema.parse({
+      expectedLockVersions,
+      content: validBody.content
+    })).toEqual({ expectedLockVersions, content: validBody.content });
+    expect(() => shopPresentationLocaleSyncBodySchema.parse({
+      expectedLockVersions: { ja: 1, en: 2, ko: 3, "zh-CN": 4 },
+      content: validBody.content
     })).toThrow();
   });
 });

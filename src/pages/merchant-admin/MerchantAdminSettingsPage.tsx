@@ -15,10 +15,13 @@ import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdm
 import { PayrollSchedulePolicyEditor } from "../../components/merchant-admin/PayrollSchedulePolicyEditor";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { coreReadApi, mapCoreShopToStore } from "../../features/core-read/api";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import { describeMerchantReadError } from "../../features/merchant-admin/merchantReadError";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
+import { StoreDetailExperience } from "../user/StoreDetailPage";
+import type { Store } from "../../types/domain";
 
 type ShopDraft = {
   name: string;
@@ -39,10 +42,6 @@ const emptyDraft: ShopDraft = {
 const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
 const unavailableCapabilities = [
-  {
-    title: "封面与轮播尚未启用",
-    description: "店铺身份头像已经进入正式合同；店铺封面、轮播与环境图仍需独立媒体排序和前台展示合同。"
-  },
   {
     title: "营业时段尚未启用",
     description: "需要带时区的 OpeningHours 数据模型、例外日期和店铺范围写 API 后才能开放。"
@@ -82,6 +81,8 @@ export function MerchantAdminSettingsPage() {
   const [searchParams] = useSearchParams();
   const { language } = useOptionalI18n();
   const [shop, setShop] = useState<BackofficeShopPayload | null>(null);
+  const [presentationStore, setPresentationStore] = useState<Store | null>(null);
+  const [presentationLoadError, setPresentationLoadError] = useState("");
   const [draft, setDraft] = useState<ShopDraft>(emptyDraft);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -97,6 +98,7 @@ export function MerchantAdminSettingsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+    setPresentationLoadError("");
     setSaved(false);
     try {
       const page = await loadCoreReadWithTransientRetry(
@@ -105,8 +107,20 @@ export function MerchantAdminSettingsPage() {
       const currentShop = page.list[0] ?? null;
       setShop(currentShop);
       setDraft(currentShop ? createDraft(currentShop) : emptyDraft);
+      if (currentShop) {
+        try {
+          const detail = await loadCoreReadWithTransientRetry(() => coreReadApi.getShopDetail(currentShop.id));
+          setPresentationStore(mapCoreShopToStore(detail));
+        } catch (presentationError) {
+          setPresentationStore(null);
+          setPresentationLoadError(describeMerchantReadError(presentationError, language));
+        }
+      } else {
+        setPresentationStore(null);
+      }
     } catch (loadError) {
       setShop(null);
+      setPresentationStore(null);
       setError(describeMerchantReadError(loadError, language));
     } finally {
       setLoading(false);
@@ -331,6 +345,34 @@ export function MerchantAdminSettingsPage() {
               </div>
             </aside>
           </div>
+        ) : null}
+
+        {shop ? (
+          <section className="mt-5 overflow-hidden rounded-lg border border-line bg-white shadow-panel">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
+              <div>
+                <h2 className="text-lg font-black text-ink">五语言店铺展示</h2>
+                <p className="mt-1 max-w-3xl text-sm font-bold leading-6 text-ink/50">
+                  店铺前端与店铺后台共用同一套展示数据。任一入口保存后，日语、英语、韩语、简体中文和繁体中文都会从同一数据库版本读取。
+                </p>
+              </div>
+              <Badge tone="green">与店铺前端同步</Badge>
+            </div>
+            {presentationLoadError ? (
+              <div className="m-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+                <span>{presentationLoadError}</span>
+                <Button onClick={() => void load()} size="sm" variant="secondary">重新加载五语言展示</Button>
+              </div>
+            ) : presentationStore ? (
+              <div className="bg-[color:var(--client-bg)] p-4 sm:p-5">
+                <StoreDetailExperience embedded scope="merchant" store={presentationStore} />
+              </div>
+            ) : (
+              <p className="m-5 rounded-lg border border-line bg-paper p-4 text-sm font-bold text-ink/55">
+                正在读取五语言店铺展示...
+              </p>
+            )}
+          </section>
         ) : null}
 
         <div className="mt-5">

@@ -13,7 +13,7 @@ import { AuditLogService } from "../services/audit-log.service";
 import { ContentMediaFileStorage } from "../services/content-media.storage";
 import { ContentMediaService } from "../services/content-media.service";
 import { ShopPresentationService } from "../services/shop-presentation.service";
-import { shopPresentationLocaleParamSchema, shopPresentationLocaleUpdateBodySchema, shopPresentationMediaQuerySchema } from "../validators/shop-presentation.validator";
+import { shopPresentationLocaleParamSchema, shopPresentationLocaleSyncBodySchema, shopPresentationLocaleUpdateBodySchema, shopPresentationMediaQuerySchema } from "../validators/shop-presentation.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
 const SHOP_PRESENTATION_PERMISSIONS = {
@@ -51,6 +51,13 @@ export const createShopPresentationRoutes = (config: AppConfig, dependencies: Ap
     createAuthorizeMiddleware(SHOP_PRESENTATION_PERMISSIONS.write),
     validateRequest({ params: shopPresentationLocaleParamSchema, body: shopPresentationLocaleUpdateBodySchema }),
     controller.updateLocale
+  );
+  router.post(
+    "/merchant-admin/shop/presentation/locales/:locale/sync",
+    authenticate(),
+    createAuthorizeMiddleware(SHOP_PRESENTATION_PERMISSIONS.write),
+    validateRequest({ params: shopPresentationLocaleParamSchema, body: shopPresentationLocaleSyncBodySchema }),
+    controller.syncLocale
   );
   router.post(
     "/merchant-admin/shop/presentation/media",

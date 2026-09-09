@@ -91,6 +91,32 @@ describe("ShopPresentationService", () => {
     });
   });
 
+  it("synchronizes all locale drafts from the selected current-language content", async () => {
+    const synchronized = workspace.locales;
+    const repository = {
+      getWorkspace: jest.fn(),
+      updateLocale: jest.fn(),
+      syncLocale: jest.fn(async () => synchronized)
+    } as unknown as jest.Mocked<ShopPresentationRepositoryPort>;
+    const service = new ShopPresentationService(repository, { record: jest.fn() } as never);
+    const expectedLockVersions = { ja: 1, en: 2, ko: 3, "zh-CN": 4, "zh-TW": 5 };
+
+    await expect(service.syncLocale(actor as never, context, "ja", {
+      expectedLockVersions,
+      content
+    })).resolves.toEqual(synchronized);
+    expect(repository.syncLocale).toHaveBeenCalledWith({
+      shopId: 16,
+      sourceLocale: "ja",
+      expectedLockVersions,
+      content,
+      actorUserId: 7,
+      actorIdentityId: 70,
+      context,
+      updatedAt: expect.any(Date)
+    });
+  });
+
   it("rejects preview and non-shop identities before repository access", async () => {
     const repository = { getWorkspace: jest.fn(), updateLocale: jest.fn() };
     const service = new ShopPresentationService(repository as never, { record: jest.fn() } as never);

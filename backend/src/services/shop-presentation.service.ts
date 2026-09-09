@@ -6,6 +6,7 @@ import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.serv
 import { requireMerchantShopId } from "./merchant-shop-scope";
 import type {
   ShopPresentationContent,
+  ShopPresentationLocaleSyncBody,
   ShopPresentationLocaleUpdateBody
 } from "../validators/shop-presentation.validator";
 import { AppError } from "../utils/app-error";
@@ -44,6 +45,16 @@ export interface ShopPresentationRepositoryPort {
     context: AuthRequestContext;
     updatedAt: Date;
   }): Promise<ShopPresentationLocalePayload>;
+  syncLocale(input: {
+    shopId: number;
+    sourceLocale: ContentLocaleCode;
+    expectedLockVersions: Record<ContentLocaleCode, number>;
+    content: ShopPresentationContent;
+    actorUserId: number;
+    actorIdentityId: number;
+    context: AuthRequestContext;
+    updatedAt: Date;
+  }): Promise<Record<ContentLocaleCode, ShopPresentationLocalePayload>>;
 }
 
 export class ShopPresentationService {
@@ -103,6 +114,28 @@ export class ShopPresentationService {
       shopId,
       locale,
       expectedLockVersion: input.expectedLockVersion,
+      content: input.content,
+      actorUserId: actor.userId,
+      actorIdentityId: actor.currentIdentityId,
+      context,
+      updatedAt: this.now()
+    });
+  }
+
+  public async syncLocale(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    sourceLocale: ContentLocaleCode,
+    input: ShopPresentationLocaleSyncBody
+  ): Promise<Record<ContentLocaleCode, ShopPresentationLocalePayload>> {
+    const shopId = this.requireWritableMerchantScope(actor);
+    if (!actor.currentIdentityId) {
+      throw this.identityForbidden();
+    }
+    return this.repository.syncLocale({
+      shopId,
+      sourceLocale,
+      expectedLockVersions: input.expectedLockVersions,
       content: input.content,
       actorUserId: actor.userId,
       actorIdentityId: actor.currentIdentityId,

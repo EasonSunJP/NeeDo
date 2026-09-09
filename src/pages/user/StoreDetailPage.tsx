@@ -30,6 +30,7 @@ import { MomentActionBar } from "../../components/mobile/MomentActionBar";
 import { OfferInfoCard } from "../../components/mobile/OfferInfoCard";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { AvatarImage } from "../../components/ui/AvatarImage";
+import { DangerConfirmDialog } from "../../components/ui/DangerConfirmDialog";
 import { ImageAdjustmentEditor } from "../../components/ui/ImageAdjustmentEditor";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
@@ -51,13 +52,13 @@ import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
 import { canAddShopService, SHOP_SERVICE_LIMIT } from "../../features/pricing-mode/shopServiceLimit";
-import { applyShopPresentationLocale, buildShopPresentationContent } from "../../features/shop-presentation/model";
+import { applyShopPresentationLocale, buildShopPresentationContent, mergeUploadedCarouselImage } from "../../features/shop-presentation/model";
 import { ShopServiceTaxonomyEditor } from "../../features/shop-taxonomy/ShopServiceTaxonomyEditor";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
-import { translateText, type Language } from "../../i18n/translations";
+import { registerTranslationEntries, translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
 import { buildStoreCheckoutRoute } from "../../lib/storeBookingRoute";
@@ -82,6 +83,20 @@ import {
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
 import type { Order, OrderStatus, Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
+
+registerTranslationEntries({
+  "同步": { "zh-Hant": "同步", ja: "同期", en: "Sync", ko: "동기화" },
+  "同步所有语言版本": { "zh-Hant": "同步所有語言版本", ja: "すべての言語版を同期", en: "Sync all language versions", ko: "모든 언어 버전 동기화" },
+  "将会用当前语言版本的图片和文字覆盖其他语言版本，真的要执行同步吗？": {
+    "zh-Hant": "目前語言版本的圖片和文字將覆蓋其他語言版本。確定要執行同步嗎？",
+    ja: "現在の言語版の画像と文章で、ほかの言語版を上書きします。本当に同期しますか？",
+    en: "The current language version's images and text will overwrite every other language version. Do you want to sync?",
+    ko: "현재 언어 버전의 이미지와 텍스트가 다른 모든 언어 버전을 덮어씁니다. 동기화하시겠습니까?"
+  },
+  "确认同步": { "zh-Hant": "確認同步", ja: "同期する", en: "Confirm sync", ko: "동기화 확인" },
+  "正在同步": { "zh-Hant": "正在同步", ja: "同期中", en: "Syncing", ko: "동기화 중" },
+  "同步失败，请重新读取后再试": { "zh-Hant": "同步失敗，請重新讀取後再試", ja: "同期できませんでした。再読み込みしてからもう一度お試しください", en: "Sync failed. Reload the drafts and try again.", ko: "동기화하지 못했습니다. 초안을 다시 불러온 후 재시도하세요." }
+});
 
 type StoreTab = "home" | "seats" | "menu" | "moments" | "offers" | "map";
 type StoreIndustry = StorePresentationIndustry;
@@ -2749,6 +2764,7 @@ export function StoreDetailExperience({
   const [presentationDrafts, setPresentationDrafts] = useState<Partial<Record<ShopPresentationLocale, Store>>>({});
   const [presentationSaveState, setPresentationSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("idle");
   const [presentationError, setPresentationError] = useState("");
+  const [presentationSyncConfirmOpen, setPresentationSyncConfirmOpen] = useState(false);
 
   useEffect(() => {
     setEditableStore(sourceStore);
@@ -2756,6 +2772,7 @@ export function StoreDetailExperience({
     setPresentationDrafts({});
     setPresentationSaveState("idle");
     setPresentationError("");
+    setPresentationSyncConfirmOpen(false);
   }, [sourceStore.id]);
 
   useEffect(() => {
@@ -3200,17 +3217,32 @@ export function StoreDetailExperience({
       return null;
     }
   };
+  const formalPresentationMediaUrls = new Set(
+    Object.values(presentationWorkspace?.media ?? {}).map((media) => media.url)
+  );
+  const formalCarouselImageCount = new Set(images.filter((image) => formalPresentationMediaUrls.has(image))).size;
   const replaceGalleryImage = async (imageIndex: number, files: FileList | null) => {
     const nextImage = await uploadPresentationImage(files, `${store.name} 首页轮播图 ${imageIndex + 1}`);
     if (!nextImage) {
       return;
     }
-    updateGallery(images.map((image, index) => (index === imageIndex ? nextImage : image)));
+    updateGallery(mergeUploadedCarouselImage({
+      images,
+      formalMediaUrls: formalPresentationMediaUrls,
+      uploadedUrl: nextImage,
+      replaceIndex: imageIndex
+    }));
   };
   const addGalleryImage = async (files: FileList | null) => {
-    if (images.length >= 5) return;
-    const nextImage = await uploadPresentationImage(files, `${store.name} 首页轮播图 ${images.length + 1}`);
-    if (nextImage) updateGallery([...images, nextImage]);
+    if (formalCarouselImageCount >= 5) return;
+    const nextImage = await uploadPresentationImage(files, `${store.name} 首页轮播图 ${formalCarouselImageCount + 1}`);
+    if (nextImage) {
+      updateGallery(mergeUploadedCarouselImage({
+        images,
+        formalMediaUrls: formalPresentationMediaUrls,
+        uploadedUrl: nextImage
+      }));
+    }
   };
   const replaceMenuCardImage = async (menuIndex: number, files: FileList | null) => {
     const nextImage = await uploadPresentationImage(files, `${store.name} 服务套餐图片`);
@@ -3290,6 +3322,35 @@ export function StoreDetailExperience({
       setPresentationSaveState("error");
     }
   };
+  const synchronizePresentationLocales = async () => {
+    if (!presentationWorkspace) return;
+    setPresentationSaveState("saving");
+    setPresentationError("");
+    try {
+      const publicIdByUrl = new Map(Object.entries(presentationWorkspace.media).map(([publicId, media]) => [media.url, publicId]));
+      const content = buildShopPresentationContent(editableStore, publicIdByUrl);
+      const expectedLockVersions = Object.fromEntries(
+        shopPresentationLocales.map(({ code }) => [code, presentationWorkspace.locales[code].lockVersion])
+      ) as Record<ShopPresentationLocale, number>;
+      const locales = await backofficeRealDataApi.synchronizeMerchantShopPresentationLocales(
+        presentationLocale,
+        expectedLockVersions,
+        content
+      );
+      const drafts = Object.fromEntries(shopPresentationLocales.map(({ code }) => [
+        code,
+        applyShopPresentationLocale(sourceStore, locales[code], presentationWorkspace.media, presentationWorkspace.services)
+      ])) as Record<ShopPresentationLocale, Store>;
+      setPresentationWorkspace((current) => current ? { ...current, locales } : current);
+      setPresentationDrafts(drafts);
+      setEditableStore(drafts[presentationLocale]);
+      setPresentationSyncConfirmOpen(false);
+      setPresentationSaveState("saved");
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "同步失败，请重新读取后再试");
+      setPresentationSaveState("error");
+    }
+  };
   const isMerchantEditorActive = (target: string) => !onEditFocus && activeEditor?.target === target;
   const renderMerchantEditor = (
     focus: StoreDisplayEditorMode,
@@ -3363,6 +3424,14 @@ export function StoreDetailExperience({
         type="button"
       >
         {presentationSaveState === "saving" ? "保存中" : presentationSaveState === "saved" ? "已保存" : "保存"}
+      </button>
+      <button
+        className="focus-ring rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-danger)_48%,transparent)] px-2 py-2 text-[10px] font-black text-[color:var(--client-danger)] disabled:opacity-45"
+        disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
+        onClick={() => setPresentationSyncConfirmOpen(true)}
+        type="button"
+      >
+        同步
       </button>
       {presentationError ? <span className="sr-only" role="alert">{presentationError}</span> : null}
     </aside>
@@ -3649,7 +3718,7 @@ export function StoreDetailExperience({
                       ) : null}
                     </div>
                   ))}
-                  {heroGalleryEditing && images.length < 5 ? (
+                  {heroGalleryEditing && formalCarouselImageCount < 5 ? (
                     <label className="focus-ring flex h-16 w-16 shrink-0 cursor-pointer items-center justify-center rounded-[20px] border border-dashed border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] text-center text-[11px] font-black text-[color:var(--client-primary)]">
                       新增<br />轮播图
                       <input
@@ -4290,6 +4359,22 @@ export function StoreDetailExperience({
       title={pendingStoreImageEdit.title}
     />
   ) : null;
+  const presentationSyncDialog = (
+    <DangerConfirmDialog
+      confirmLabel="确认同步"
+      description="将会用当前语言版本的图片和文字覆盖其他语言版本，真的要执行同步吗？"
+      error={presentationSyncConfirmOpen && presentationSaveState === "error" ? "同步失败，请重新读取后再试" : undefined}
+      onCancel={() => {
+        setPresentationSyncConfirmOpen(false);
+        setPresentationError("");
+      }}
+      onConfirm={synchronizePresentationLocales}
+      open={presentationSyncConfirmOpen}
+      pending={presentationSaveState === "saving"}
+      pendingLabel="正在同步"
+      title="同步所有语言版本"
+    />
+  );
 
   if (embedded) {
     const hasMerchantControls = Boolean(pricingControl || privacyControl);
@@ -4321,6 +4406,7 @@ export function StoreDetailExperience({
         {lightbox}
         {fullscreenEditor}
         {storeImageEditor}
+        {presentationSyncDialog}
       </div>
     );
   }
@@ -4401,6 +4487,7 @@ export function StoreDetailExperience({
       {lightbox}
       {fullscreenEditor}
       {storeImageEditor}
+      {presentationSyncDialog}
     </PageScaffold>
   );
 }

@@ -16846,6 +16846,43 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/shop/presentation/locales/{locale}/sync`]: {
+      post: {
+        operationId: "synchronizeMerchantShopPresentationLocales",
+        tags: ["Merchant Shop Presentation"],
+        summary: "Atomically overwrite all five locale drafts from the selected locale content",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "merchant-admin:shop:write",
+        parameters: [{ name: "locale", in: "path", required: true, schema: { type: "string", enum: ["ja", "en", "ko", "zh-CN", "zh-TW"] } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["expectedLockVersions", "content"],
+                properties: {
+                  expectedLockVersions: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["ja", "en", "ko", "zh-CN", "zh-TW"],
+                    properties: Object.fromEntries(["ja", "en", "ko", "zh-CN", "zh-TW"].map((locale) => [locale, { type: "integer", minimum: 0 }]))
+                  },
+                  content: { type: "object" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Synchronized locale drafts", { type: "object" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden"),
+          "409": jsonErrorResponse("error.shop_presentation.version_conflict")
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/shop/presentation/media`]: {
       post: {
         operationId: "uploadMerchantShopPresentationMedia",

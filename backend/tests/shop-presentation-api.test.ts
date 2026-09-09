@@ -41,6 +41,13 @@ const createFixture = () => {
   const service = {
     getWorkspace: jest.fn(async () => ({ shopId: 16, locales: { ja: localePayload }, media: {}, services: [] })),
     updateLocale: jest.fn(async () => ({ ...localePayload, lockVersion: 2 })),
+    syncLocale: jest.fn(async () => ({
+      ja: { ...localePayload, lockVersion: 2 },
+      en: { ...localePayload, locale: "en", lockVersion: 1 },
+      ko: { ...localePayload, locale: "ko", lockVersion: 1 },
+      "zh-CN": { ...localePayload, locale: "zh-CN", lockVersion: 1 },
+      "zh-TW": { ...localePayload, locale: "zh-TW", lockVersion: 1 }
+    })),
     uploadMedia: jest.fn(async () => ({ publicId: "a".repeat(64), mediaAssetId: 101, url: "/media/content/a.png", mimeType: "image/png", width: null, height: null, checksumSha256: "a".repeat(64) }))
   };
   const app = createApp(env, {
@@ -76,6 +83,23 @@ describe("merchant shop presentation HTTP API", () => {
       .expect(200)
       .expect(({ body }) => expect(body.data.lockVersion).toBe(2));
     expect(fixture.service.updateLocale).toHaveBeenCalledWith(expect.objectContaining({ userId: 7, currentIdentityId: 70 }), expect.any(Object), "ja", { expectedLockVersion: 1, content });
+  });
+
+  it("synchronizes the current language content through the audited merchant endpoint", async () => {
+    const fixture = createFixture();
+    const expectedLockVersions = { ja: 1, en: 0, ko: 0, "zh-CN": 0, "zh-TW": 0 };
+    await request(fixture.app)
+      .post("/api/v1/merchant-admin/shop/presentation/locales/ja/sync")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({ expectedLockVersions, content })
+      .expect(200)
+      .expect(({ body }) => expect(body.data.en.content).toEqual(content));
+    expect(fixture.service.syncLocale).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, currentIdentityId: 70 }),
+      expect.any(Object),
+      "ja",
+      { expectedLockVersions, content }
+    );
   });
 
   it("uploads raw carousel bytes after auth and query validation", async () => {

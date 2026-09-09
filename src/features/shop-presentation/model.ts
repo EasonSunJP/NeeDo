@@ -6,6 +6,26 @@ import type {
 import { normalizeStorePresentationConfig } from "../../lib/storePresentation";
 import type { Store, StoreMenuConfig } from "../../types/domain";
 
+export function mergeUploadedCarouselImage({
+  images,
+  formalMediaUrls,
+  uploadedUrl,
+  replaceIndex
+}: {
+  images: readonly string[];
+  formalMediaUrls: ReadonlySet<string>;
+  uploadedUrl: string;
+  replaceIndex?: number;
+}): string[] {
+  const candidates = replaceIndex === undefined
+    ? [...images, uploadedUrl]
+    : images.map((image, index) => index === replaceIndex ? uploadedUrl : image);
+  if (replaceIndex !== undefined && !candidates.includes(uploadedUrl)) {
+    candidates.push(uploadedUrl);
+  }
+  return [...new Set(candidates.filter((image) => image === uploadedUrl || formalMediaUrls.has(image)))].slice(0, 5);
+}
+
 export function applyShopPresentationLocale(
   baseStore: Store,
   locale: ShopPresentationLocalePayload,

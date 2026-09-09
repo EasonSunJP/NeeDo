@@ -65,9 +65,21 @@ export const shopPresentationLocaleUpdateBodySchema = z.object({
   content: shopPresentationContentSchema
 }).strict();
 
+export const shopPresentationLocaleSyncBodySchema = z.object({
+  expectedLockVersions: z.object({
+    "zh-CN": z.number().int().nonnegative(),
+    "zh-TW": z.number().int().nonnegative(),
+    en: z.number().int().nonnegative(),
+    ja: z.number().int().nonnegative(),
+    ko: z.number().int().nonnegative()
+  }).strict(),
+  content: shopPresentationContentSchema
+}).strict();
+
 export const shopPresentationMediaQuerySchema = z.object({
   alt_text: requiredText(255).optional()
 }).strict();
 
 export type ShopPresentationContent = z.infer<typeof shopPresentationContentSchema>;
 export type ShopPresentationLocaleUpdateBody = z.infer<typeof shopPresentationLocaleUpdateBodySchema>;
+export type ShopPresentationLocaleSyncBody = z.infer<typeof shopPresentationLocaleSyncBodySchema>;

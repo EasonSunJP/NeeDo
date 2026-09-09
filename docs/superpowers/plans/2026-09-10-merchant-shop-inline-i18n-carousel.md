@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Persist five-language shop display content and keep carousel and service-menu editing inside the existing merchant shop page.
+**Goal:** Persist five-language shop display content, keep carousel and service-menu editing inside the existing merchant shop page, and expose the same editor in merchant settings.
 
-**Architecture:** A shop-scoped presentation service owns five locale rows and validates referenced media and services. The merchant workspace loads and saves this contract, while `StoreDetailExperience` renders controlled inline editing and a fixed language rail. Public shop reads select the requested locale with real-data fallback.
+**Architecture:** A shop-scoped presentation service owns five locale rows and validates referenced media and services. The merchant workspace loads, saves, and atomically synchronizes this contract, while `StoreDetailExperience` renders controlled inline editing and a fixed language rail from both merchant entries. Public shop reads select the requested locale with real-data fallback.
 
 **Tech Stack:** React 18, TypeScript, Vite, Express, Zod, Prisma, MySQL, Jest, Vitest.
 
@@ -35,7 +35,7 @@
 
 **Interfaces:**
 - Consumes: `requireMerchantShopId(actor)`, `ContentLocale`, content media storage, `AuditLogService`.
-- Produces: `GET /api/v1/merchant-admin/shop/presentation`, `PUT /api/v1/merchant-admin/shop/presentation/locales/:locale`, `POST /api/v1/merchant-admin/shop/presentation/media`.
+- Produces: `GET /api/v1/merchant-admin/shop/presentation`, `PUT /api/v1/merchant-admin/shop/presentation/locales/:locale`, `POST /api/v1/merchant-admin/shop/presentation/locales/:locale/sync`, `POST /api/v1/merchant-admin/shop/presentation/media`.
 
 - [ ] Write validator and service tests that require exactly five supported locales, one-to-five carousel items, at most five real service-menu references, safe text limits, matching lock versions, merchant shop scope, same-shop media/service ownership, and audit metadata.
 - [ ] Run the focused Jest tests and confirm failures are caused by missing presentation code.
@@ -43,6 +43,8 @@
 - [ ] Implement repository reads/upserts and upload association using a single transaction for locale validation and update.
 - [ ] Implement Zod, controller, RBAC routes, OpenAPI-visible route constants, app wiring, and audit actions `merchant_admin.shop_presentation.read`, `.locale.update`, and `.media.upload`.
 - [ ] Run focused backend tests and confirm they pass.
+
+The sync request carries all five expected lock versions. The repository validates references and versions before writing all five independent locale rows and one audit record in a single transaction.
 
 ### Task 2: Frontend contract and inline editor
 
@@ -70,6 +72,8 @@
 - [ ] Replace fullscreen merchant editing with current-page inline controls; show inline gallery append/replace and menu content fields while edit mode is active.
 - [ ] Save only the selected locale, reload its returned lock version, surface upload/save errors, and keep draft input after failures.
 - [ ] Run focused frontend tests and confirm they pass.
+
+The language rail also provides a sync action. It opens the shared `DangerConfirmDialog` with the required overwrite warning. `MerchantAdminSettingsPage` embeds the same editor, rather than owning a second presentation state or API contract.
 
 ### Task 3: Localized public projection and full verification
 

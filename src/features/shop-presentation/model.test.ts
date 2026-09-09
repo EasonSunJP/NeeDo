@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyShopPresentationLocale, buildShopPresentationContent } from "./model";
+import { applyShopPresentationLocale, buildShopPresentationContent, mergeUploadedCarouselImage } from "./model";
 import type { ShopPresentationLocalePayload } from "../../api/backofficeRealData";
 import type { Store } from "../../types/domain";
 
@@ -102,5 +102,24 @@ describe("buildShopPresentationContent", () => {
 
   it("rejects browser-only image URLs that were never formally uploaded", () => {
     expect(() => buildShopPresentationContent(baseStore, new Map())).toThrow("error.shop_presentation.media_invalid");
+  });
+});
+
+describe("mergeUploadedCarouselImage", () => {
+  it("replaces non-persisted fallback images when adding the first formal upload", () => {
+    expect(mergeUploadedCarouselImage({
+      images: ["/assets/fallback-shop.jpg"],
+      formalMediaUrls: new Set<string>(),
+      uploadedUrl: "/media/content/formal-carousel.jpg"
+    })).toEqual(["/media/content/formal-carousel.jpg"]);
+  });
+
+  it("keeps formal carousel images while dropping fallback images after replacement", () => {
+    expect(mergeUploadedCarouselImage({
+      images: ["/media/content/first.jpg", "/assets/fallback-shop.jpg"],
+      formalMediaUrls: new Set(["/media/content/first.jpg"]),
+      uploadedUrl: "/media/content/second.jpg",
+      replaceIndex: 1
+    })).toEqual(["/media/content/first.jpg", "/media/content/second.jpg"]);
   });
 });

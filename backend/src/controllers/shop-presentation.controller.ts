@@ -3,7 +3,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "../services/auth.service";
 import type { ContentMediaMimeType } from "../services/content-media.storage";
 import type { ShopPresentationService } from "../services/shop-presentation.service";
-import type { ShopPresentationLocaleUpdateBody } from "../validators/shop-presentation.validator";
+import type { ShopPresentationLocaleSyncBody, ShopPresentationLocaleUpdateBody } from "../validators/shop-presentation.validator";
 import type { ContentLocaleCode } from "../constants/content-locales";
 import { successResponse } from "../utils/api-response";
 import { AppError } from "../utils/app-error";
@@ -23,6 +23,15 @@ export class ShopPresentationController {
       this.context(request),
       request.params.locale as ContentLocaleCode,
       request.body as ShopPresentationLocaleUpdateBody
+    );
+  });
+
+  public syncLocale = this.handle(async (request, response) => {
+    return this.service.syncLocale(
+      this.auth(response),
+      this.context(request),
+      request.params.locale as ContentLocaleCode,
+      request.body as ShopPresentationLocaleSyncBody
     );
   });
 

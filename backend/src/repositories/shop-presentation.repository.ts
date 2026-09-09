@@ -165,6 +165,78 @@ export class ShopPresentationRepository implements ShopPresentationRepositoryPor
     });
   }
 
+  public syncLocale(input: Parameters<ShopPresentationRepositoryPort["syncLocale"]>[0]): Promise<Record<ContentLocaleCode, ShopPresentationLocalePayload>> {
+    return this.client.$transaction(async (transaction) => {
+      await this.validateReferences(transaction, input.shopId, input.content);
+      const existingRows = await transaction.shopPresentationLocale.findMany({
+        where: { shopId: input.shopId, locale: { in: Object.values(localeToDb) } }
+      });
+      const existingByLocale = new Map(existingRows.map((row) => [row.locale, row]));
+
+      for (const locale of CONTENT_LOCALES) {
+        const existing = existingByLocale.get(localeToDb[locale]);
+        const currentLockVersion = existing?.deletedAt ? 0 : existing?.lockVersion ?? 0;
+        if (currentLockVersion !== input.expectedLockVersions[locale]) {
+          throw new AppError({ code: ERROR_CODES.SAAS_BILLING_CONFLICT, message: "error.shop_presentation.version_conflict", statusCode: 409 });
+        }
+      }
+
+      const synchronized = {} as Record<ContentLocaleCode, ShopPresentationLocalePayload>;
+      for (const locale of CONTENT_LOCALES) {
+        const dbLocale = localeToDb[locale];
+        const existing = existingByLocale.get(dbLocale);
+        const row = existing
+          ? await transaction.shopPresentationLocale.update({
+              where: { id: existing.id },
+              data: {
+                content: input.content as Prisma.InputJsonValue,
+                lockVersion: existing.deletedAt ? 1 : { increment: 1 },
+                updatedById: input.actorUserId,
+                updatedAt: input.updatedAt,
+                deletedAt: null
+              }
+            })
+          : await transaction.shopPresentationLocale.create({
+              data: {
+                shopId: input.shopId,
+                locale: dbLocale,
+                content: input.content as Prisma.InputJsonValue,
+                lockVersion: 1,
+                updatedById: input.actorUserId,
+                createdAt: input.updatedAt,
+                updatedAt: input.updatedAt
+              }
+            });
+        synchronized[locale] = {
+          locale,
+          lockVersion: row.lockVersion,
+          content: structuredClone(input.content),
+          updatedAt: row.updatedAt.toISOString()
+        };
+      }
+
+      await transaction.auditLog.create({
+        data: {
+          actorId: input.actorUserId,
+          action: "merchant_admin.shop_presentation.locales_synchronized",
+          targetType: "Shop",
+          targetId: input.shopId,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent ?? null,
+          metadata: {
+            shopId: input.shopId,
+            sourceLocale: input.sourceLocale,
+            targetLocales: CONTENT_LOCALES.filter((locale) => locale !== input.sourceLocale),
+            lockVersions: Object.fromEntries(CONTENT_LOCALES.map((locale) => [locale, synchronized[locale].lockVersion])),
+            actorIdentityId: input.actorIdentityId
+          },
+          createdAt: input.updatedAt
+        }
+      });
+      return synchronized;
+    });
+  }
+
   private async validateReferences(transaction: Prisma.TransactionClient, shopId: number, content: ShopPresentationContent): Promise<void> {
     const serviceIds = [...new Set(content.serviceMenus.map((item) => item.serviceId))];
     if (serviceIds.length) {
