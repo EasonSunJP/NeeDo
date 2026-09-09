@@ -89,6 +89,7 @@ function EntityFavoriteCardView({
               tags: [],
               rating: favorite.card.rating,
               reviewCount: favorite.card.reviewCount,
+              completedOrderCount: favorite.card.completedOrderCount,
               favoriteCount: favorite.favoriteCount,
               shareCount: favorite.card.shareCount,
               engagementTarget: target,

@@ -10538,6 +10538,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "imageUrl",
           "rating",
           "reviewCount",
+          "completedOrderCount",
           "shareCount"
         ],
         properties: {
@@ -10548,6 +10549,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           imageUrl: { type: ["string", "null"] },
           rating: { type: "number", minimum: 0, maximum: 5 },
           reviewCount: { type: "integer", minimum: 0 },
+          completedOrderCount: { type: "integer", minimum: 0 },
           shareCount: { type: "integer", minimum: 0 }
         }
       },

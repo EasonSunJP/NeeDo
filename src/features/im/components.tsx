@@ -4478,6 +4478,7 @@ export function MessageBubble({
               kind: "shop",
               id: card.publicId,
               imageUrl: card.imageUrl,
+              completedOrderCount: card.completedOrderCount,
               languages: [],
               engagementTarget: { targetType: "shop", publicId: card.publicId },
             }}
