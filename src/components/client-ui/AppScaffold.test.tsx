@@ -34,6 +34,8 @@ describe("completed icon", () => {
     expect(maskIds).toHaveLength(2);
     expect(new Set(maskIds).size).toBe(2);
     expect(maskReferences).toHaveLength(2);
+    expect(new Set(maskReferences).size).toBe(2);
+    expect([...new Set(maskReferences)].sort()).toEqual([...new Set(maskIds)].sort());
     maskReferences.forEach((maskId) => {
       expect(maskIds.filter((candidate) => candidate === maskId)).toHaveLength(1);
     });
