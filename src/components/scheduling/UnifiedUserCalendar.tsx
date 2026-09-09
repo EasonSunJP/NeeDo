@@ -257,6 +257,9 @@ const hourRowHeight = 58;
 const timelineTimeColumnWidth = 58;
 const timelineLaneMinWidth = 136;
 const timelineOverflowLaneWidth = 148;
+const availabilityStripInset = 4;
+const availabilityStripWidth = 24;
+const availabilityContentOffset = availabilityStripInset + availabilityStripWidth + 4;
 const scheduleDraftMinDurationMinutes = 30;
 const scheduleDraftSnapMinutes = 15;
 const agendaInitialPastDays = 90;
@@ -2741,6 +2744,16 @@ function isAvailabilityMarkerEvent(event: UnifiedCalendarEvent) {
   return Boolean(event.availabilityWindowId) || Boolean(event.scheduleSlotId && event.badge === "可预约" && !event.orderId);
 }
 
+function getAvailabilityStripLabel(event: UnifiedCalendarEvent) {
+  if (event.availabilitySourceType !== "shop") {
+    return "自由排班";
+  }
+
+  const shopNameFromTitle = event.title.match(/^(.*?)店铺排班/)?.[1]?.trim();
+  const shopName = shopNameFromTitle || event.calendarLabel?.trim() || "店铺";
+  return `${shopName}排班`;
+}
+
 function mergeAvailabilityStripEvents(events: UnifiedCalendarEvent[]) {
   const merged: UnifiedCalendarEvent[] = [];
   const sorted = [...events].sort((left, right) => {
@@ -2751,9 +2764,10 @@ function mergeAvailabilityStripEvents(events: UnifiedCalendarEvent[]) {
   sorted.forEach((event) => {
     const previous = merged.at(-1);
     const sameLane = previous && (previous.calendarId ?? "user:me") === (event.calendarId ?? "user:me");
+    const sameSource = previous && getAvailabilityStripLabel(previous) === getAvailabilityStripLabel(event);
     const touchesPrevious = previous && timeToMinutes(event.startTime) <= timeToMinutes(previous.endTime);
 
-    if (previous && sameLane && touchesPrevious) {
+    if (previous && sameLane && sameSource && touchesPrevious) {
       if (timeToMinutes(event.endTime) > timeToMinutes(previous.endTime)) {
         previous.endTime = event.endTime;
       }
@@ -2764,6 +2778,42 @@ function mergeAvailabilityStripEvents(events: UnifiedCalendarEvent[]) {
   });
 
   return merged;
+}
+
+function CalendarAvailabilityStrip({
+  event,
+  onOpen,
+  style
+}: {
+  event: UnifiedCalendarEvent;
+  onOpen: (event: UnifiedCalendarEvent) => void;
+  style: CSSProperties;
+}) {
+  const label = getAvailabilityStripLabel(event);
+
+  return (
+    <button
+      aria-label={`${event.startTime}-${event.endTime} ${label}`}
+      className="focus-ring absolute z-[12] overflow-hidden rounded-[9px] border border-emerald-200/80 bg-emerald-400/90 text-emerald-950 shadow-[0_0_16px_rgba(52,211,153,0.42)]"
+      data-calendar-availability-strip="true"
+      data-calendar-availability-source={event.availabilitySourceType ?? "technician"}
+      onClick={(clickEvent) => {
+        clickEvent.stopPropagation();
+        onOpen(event);
+      }}
+      style={{ ...style, width: `${availabilityStripWidth}px` }}
+      title={`${event.startTime} - ${event.endTime} ${label}`}
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        className="flex h-full w-full items-center overflow-hidden px-1 py-1.5 text-[9px] font-black leading-none"
+        style={{ letterSpacing: 0, textOrientation: "upright", writingMode: "vertical-rl" }}
+      >
+        {label}
+      </span>
+    </button>
+  );
 }
 
 export type UnifiedCalendarDraftRange = {
@@ -3443,19 +3493,12 @@ function DayTimeline({
                 const calendarIndex = activeCalendarLanes?.findIndex((calendar) => calendar.id === (event.calendarId ?? "user:me")) ?? -1;
                 if (hasParallelCalendars && calendarIndex < 0) return null;
                 return (
-                  <button
-                    aria-label={`${event.calendarLabel ?? "技师"} ${event.startTime}-${event.endTime} 可排班`}
-                    className="focus-ring absolute z-[12] rounded-full border border-emerald-300/70 bg-emerald-400 shadow-[0_0_16px_rgba(52,211,153,0.42)]"
-                    data-calendar-availability-strip="true"
+                  <CalendarAvailabilityStrip
+                    event={event}
                     key={`availability-strip-${event.id}`}
-                    onClick={(clickEvent) => {
-                      clickEvent.stopPropagation();
-                      onOpen(event);
-                    }}
-                    type="button"
+                    onOpen={onOpen}
                     style={{
-                      left: hasParallelCalendars ? `calc(${calendarIndex * parallelColumnWidth}% + 4px)` : "4px",
-                      width: "8px",
+                      left: hasParallelCalendars ? `calc(${calendarIndex * parallelColumnWidth}% + ${availabilityStripInset}px)` : `${availabilityStripInset}px`,
                       top: ((start - dayStartHour * 60) / 60) * hourRowHeight + 4,
                       height: Math.max(((end - start) / 60) * hourRowHeight - 8, 18),
                     }}
@@ -3466,8 +3509,8 @@ function DayTimeline({
               {hasParallelCalendars
                 ? parallelLayouts.map(({ event, start, end, lane, calendarIndex, calendarLaneCount }) => {
                     const calendarHasAvailability = availabilityEvents.some((availability) => availability.calendarId === event.calendarId);
-                    const contentStart = calendarHasAvailability ? 20 : 8;
-                    const contentGutters = calendarHasAvailability ? 28 : 16;
+                    const contentStart = calendarHasAvailability ? availabilityContentOffset : 8;
+                    const contentGutters = calendarHasAvailability ? availabilityContentOffset + 8 : 16;
                     const width =
                       calendarLaneCount > 1
                         ? `calc((${parallelColumnWidth}% - ${contentGutters}px) / ${calendarLaneCount})`
@@ -3496,7 +3539,7 @@ function DayTimeline({
                 : layout.events.map(({ event, start, end, lane }) => {
                     const laneCount = hasOverflowLayout ? layout.laneCount : layout.cappedLaneCount;
                     const displayLane = hasOverflowLayout ? lane : Math.min(lane, laneCount - 1);
-                    const availabilityOffset = availabilityEvents.length > 0 ? 16 : 0;
+                    const availabilityOffset = availabilityEvents.length > 0 ? availabilityContentOffset - 8 : 0;
                     const width = hasOverflowLayout
                       ? timelineOverflowLaneWidth - 12
                       : laneCount > 1 ? `calc((100% - ${18 + availabilityOffset}px) / ${laneCount})` : `calc(100% - ${16 + availabilityOffset}px)`;
@@ -3965,16 +4008,39 @@ export function UnifiedCalendarMultiDayTimeline({
               ) : null}
 
               {dates.map((date, dateIndex) => {
-                const dateLayout = getLayoutEvents((groupedEvents[date] ?? []).sort(sortEvents));
+                const dateEvents = groupedEvents[date] ?? [];
+                const dateAvailabilityEvents = mergeAvailabilityStripEvents(dateEvents.filter(isAvailabilityMarkerEvent));
+                const dateLayout = getLayoutEvents(dateEvents.filter((event) => !isAvailabilityMarkerEvent(event)).sort(sortEvents));
                 const inset = hasThreeDayLayout ? 4 : 2;
+                const contentStartInset = dateAvailabilityEvents.length > 0 ? availabilityContentOffset : inset;
+                const totalContentInset = contentStartInset + inset;
                 const dense = true;
 
                 return (
                   <div
                     className="absolute bottom-0 top-0 border-l border-[color:color-mix(in_srgb,var(--client-line)_38%,transparent)] last:border-r"
+                    data-calendar-date-column={date}
                     key={date}
                     style={{ left: `${dateIndex * dayWidth}%`, width: `${dayWidth}%` }}
                   >
+                    {dateAvailabilityEvents.map((event) => {
+                      const start = Math.max(timeToMinutes(event.startTime), dayStartHour * 60);
+                      const end = Math.min(timeToMinutes(event.endTime), dayEndHour * 60);
+                      if (end <= start) return null;
+
+                      return (
+                        <CalendarAvailabilityStrip
+                          event={event}
+                          key={`availability-strip-${event.id}`}
+                          onOpen={onOpen}
+                          style={{
+                            left: `${availabilityStripInset}px`,
+                            top: ((start - dayStartHour * 60) / 60) * hourRowHeight + 4,
+                            height: Math.max(((end - start) / 60) * hourRowHeight - 8, 18),
+                          }}
+                        />
+                      );
+                    })}
                     {dateLayout.events.map(({ event, start, end, lane }) => {
                       const laneCount = Math.max(1, dateLayout.cappedLaneCount);
                       const displayLane = Math.min(lane, laneCount - 1);
@@ -3986,8 +4052,8 @@ export function UnifiedCalendarMultiDayTimeline({
                           className="absolute z-[2]"
                           key={event.id}
                           style={{
-                            left: laneCount > 1 ? `calc(${inset}px + ${displayLane} * ((100% - ${inset * 2}px) / ${laneCount}))` : inset,
-                            width: laneCount > 1 ? `calc((100% - ${inset * 2}px) / ${laneCount})` : `calc(100% - ${inset * 2}px)`,
+                            left: laneCount > 1 ? `calc(${contentStartInset}px + ${displayLane} * ((100% - ${totalContentInset}px) / ${laneCount}))` : contentStartInset,
+                            width: laneCount > 1 ? `calc((100% - ${totalContentInset}px) / ${laneCount})` : `calc(100% - ${totalContentInset}px)`,
                             top: ((clampedStart - dayStartHour * 60) / 60) * hourRowHeight + 4,
                             height: Math.max(((clampedEnd - clampedStart) / 60) * hourRowHeight - 8, dense ? 34 : 42)
                           }}
@@ -4079,10 +4145,13 @@ export function UnifiedCalendarMonthGrid({
       <div className="grid grid-cols-7">
         {dates.map((date, index) => {
           const dateEvents = eventsByDate[date] ?? [];
+          const availabilityEvents = mergeAvailabilityStripEvents(dateEvents.filter(isAvailabilityMarkerEvent));
+          const contentEvents = dateEvents.filter((event) => !isAvailabilityMarkerEvent(event));
+          const availabilityEvent = availabilityEvents[0];
           const inMonth = date.slice(0, 7) === monthKey;
           const selected = selectedDate === date;
           const isToday = today === date;
-          const overflowCount = Math.max(0, dateEvents.length - 3);
+          const overflowCount = Math.max(0, contentEvents.length - 3);
           const selectDate = () => onSelectDate?.(date);
 
           return (
@@ -4108,6 +4177,25 @@ export function UnifiedCalendarMonthGrid({
               role="button"
               tabIndex={0}
             >
+              {availabilityEvent ? (
+                <button
+                  aria-label={`${formatLongDate(date)} ${getAvailabilityStripLabel(availabilityEvent)}`}
+                  className="focus-ring absolute bottom-1 top-9 z-[2] rounded-r-full border border-l-0 border-emerald-200/80 bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.36)]"
+                  data-calendar-availability-strip="true"
+                  data-calendar-month-availability-strip="true"
+                  onClick={(clickEvent) => {
+                    clickEvent.stopPropagation();
+                    if (onSelectDate) {
+                      onSelectDate(date);
+                      return;
+                    }
+                    onOpen(availabilityEvent);
+                  }}
+                  style={{ left: 0, width: "6px" }}
+                  title={getAvailabilityStripLabel(availabilityEvent)}
+                  type="button"
+                />
+              ) : null}
               <HolidayCornerBadge date={date} />
               <strong
                 className={cn(
@@ -4120,7 +4208,7 @@ export function UnifiedCalendarMonthGrid({
                 {Number(date.slice(-2))}
               </strong>
               <div className="relative z-[2] mt-1 space-y-1">
-                {dateEvents.slice(0, 3).map((event) => (
+                {contentEvents.slice(0, 3).map((event) => (
                   <button
                     className="focus-ring block h-[14px] w-full truncate rounded-[4px] bg-[color:color-mix(in_srgb,var(--calendar-accent)_78%,var(--client-elevated)_22%)] px-0.5 text-left text-[8px] font-black leading-[14px] text-[color:var(--calendar-contrast)]"
                     key={event.id}
@@ -4349,6 +4437,7 @@ export function UnifiedCalendarEventDetailPage({
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
   const [scheduleImpactAction, setScheduleImpactAction] = useState<"edit" | "delete" | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const actionMenuOverlayRef = useRef<HTMLDivElement | null>(null);
   const source = sourceConfigs[event.sourceId];
   const creatorLabel = event.creatorLabel?.trim() || source.label;
   const participants = getEventParticipantFallback(event, creatorLabel, source.label);
@@ -4396,7 +4485,7 @@ export function UnifiedCalendarEventDetailPage({
     const handlePointerDown = (pointerEvent: PointerEvent) => {
       const target = pointerEvent.target;
 
-      if (target instanceof Node && actionMenuRef.current?.contains(target)) {
+      if (target instanceof Node && (actionMenuRef.current?.contains(target) || actionMenuOverlayRef.current?.contains(target))) {
         return;
       }
 
@@ -4551,16 +4640,20 @@ export function UnifiedCalendarEventDetailPage({
       <EventDetailIconButton disabled={!canEdit} icon="edit" label="编辑行程" onClick={canEdit ? handleEdit : undefined} />
       <div className="relative" ref={actionMenuRef}>
         <EventDetailIconButton icon="more" label="更多行程操作" onClick={() => setActionSheetOpen((current) => !current)} tone="primary" />
-        {actionSheetOpen ? (
-          <div className="absolute right-0 top-[calc(100%+10px)] z-[90] w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl">
-            <EventDetailMoreMenuItem icon="plus" label="制作一个复制" onClick={closeActionSheet} />
-            <EventDetailMoreMenuItem icon="share" label="日程转让" onClick={closeActionSheet} />
-            <EventDetailMoreMenuItem danger disabled={!canDelete} icon="trash" label="日程删除" onClick={handleDelete} />
-            <EventDetailMoreMenuItem icon="close" label="取消" onClick={closeActionSheet} />
-          </div>
-        ) : null}
       </div>
     </>
+  ) : null;
+  const headerOverlay = detailMode === "detail" && actionSheetOpen ? (
+    <div
+      className="absolute right-3 top-2 z-[90] w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl"
+      data-calendar-event-more-menu="true"
+      ref={actionMenuOverlayRef}
+    >
+      <EventDetailMoreMenuItem icon="plus" label="制作一个复制" onClick={closeActionSheet} />
+      <EventDetailMoreMenuItem icon="share" label="日程转让" onClick={closeActionSheet} />
+      <EventDetailMoreMenuItem danger disabled={!canDelete} icon="trash" label="日程删除" onClick={handleDelete} />
+      <EventDetailMoreMenuItem icon="close" label="取消" onClick={closeActionSheet} />
+    </div>
   ) : null;
   const statusOptions = ["已承诺", "辞退", "保留"] as const;
 
@@ -4572,6 +4665,7 @@ export function UnifiedCalendarEventDetailPage({
         className="client-mobile-schedule-detail__floating-header"
         info={detailMode === "participants" ? "和通讯录列表一致，只显示当前行程参加者。" : "统一行程详情页，适用于预约、排班和可排班行程。"}
         onBack={detailMode === "participants" ? () => setDetailMode("detail") : onBack}
+        overlay={headerOverlay}
         showSpacer={false}
         title={headerTitle}
       />

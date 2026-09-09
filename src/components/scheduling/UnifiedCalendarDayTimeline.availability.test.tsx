@@ -4,6 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   UnifiedCalendarDayTimeline,
+  UnifiedCalendarMultiDayTimeline,
+  UnifiedCalendarMonthGrid,
   type UnifiedCalendarEvent,
   type UnifiedCalendarLane,
 } from "./UnifiedUserCalendar";
@@ -44,21 +46,25 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
     vi.restoreAllMocks();
   });
 
-  it("renders one continuous narrow availability strip inside each technician lane", async () => {
+  it("renders a readable source-labelled availability strip inside each technician lane", async () => {
     const events = [
       {
-      ...baseEvent,
-      id: "availability-window",
-      availabilityWindowId: 70,
-      calendarId: lanes[0].id,
+        ...baseEvent,
+        id: "availability-window",
+        availabilityWindowId: 70,
+        availabilitySourceType: "technician" as const,
+        calendarId: lanes[0].id,
+        calendarLabel: "自由排班",
       },
       ...Array.from({ length: 8 }, (_, index) => ({
         ...baseEvent,
         id: `availability-hour-${index}`,
         scheduleSlotId: 71 + index,
+        availabilitySourceType: "shop" as const,
         badge: "可预约",
         title: "可预约",
         calendarId: lanes[1].id,
+        calendarLabel: "LifeDance",
         startTime: `${String(8 + index).padStart(2, "0")}:00`,
         endTime: `${String(9 + index).padStart(2, "0")}:00`,
       })),
@@ -69,8 +75,61 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
 
     const strips = Array.from(container.querySelectorAll<HTMLElement>("[data-calendar-availability-strip]"));
     expect(strips).toHaveLength(2);
-    expect(strips.every((strip) => strip.style.width === "8px")).toBe(true);
+    expect(strips.every((strip) => strip.style.width === "24px")).toBe(true);
+    expect(strips.map((strip) => strip.textContent)).toEqual(["自由排班", "LifeDance排班"]);
     expect(container.querySelectorAll("[data-calendar-event-card]")).toHaveLength(0);
+  });
+
+  it.each([3, 7])("keeps availability as a labelled strip on the left edge of each date in the %s-day view", async (dayCount) => {
+    const dates = Array.from({ length: dayCount }, (_, index) => `2026-09-${String(9 + index).padStart(2, "0")}`);
+    const targetDate = dates[Math.min(1, dates.length - 1)]!;
+    const events: UnifiedCalendarEvent[] = [{
+      ...baseEvent,
+      id: `shop-availability-${dayCount}`,
+      availabilityWindowId: 80 + dayCount,
+      availabilitySourceType: "shop",
+      calendarLabel: "LifeDance",
+      date: targetDate,
+    }];
+
+    await act(async () => root.render(
+      <UnifiedCalendarMultiDayTimeline dates={dates} events={events} onOpen={vi.fn()} />,
+    ));
+
+    const strip = container.querySelector<HTMLElement>("[data-calendar-availability-strip]");
+    expect(strip).not.toBeNull();
+    expect(strip?.textContent).toBe("LifeDance排班");
+    expect(strip?.style.left).toBe("4px");
+    expect(strip?.style.width).toBe("24px");
+    expect(strip?.closest(`[data-calendar-date-column="${targetDate}"]`)).not.toBeNull();
+  });
+
+  it("shows availability as an unlabelled thin strip on the left edge of a month cell", async () => {
+    const date = "2026-09-09";
+    const availability: UnifiedCalendarEvent = {
+      ...baseEvent,
+      id: "month-availability",
+      availabilityWindowId: 91,
+      availabilitySourceType: "technician",
+      calendarLabel: "自由排班",
+      date,
+    };
+
+    await act(async () => root.render(
+      <UnifiedCalendarMonthGrid
+        anchorDate={date}
+        dates={[date]}
+        eventsByDate={{ [date]: [availability] }}
+        onOpen={vi.fn()}
+      />,
+    ));
+
+    const strip = container.querySelector<HTMLElement>("[data-calendar-month-availability-strip]");
+    expect(strip).not.toBeNull();
+    expect(strip?.textContent).toBe("");
+    expect(strip?.style.left).toBe("0px");
+    expect(strip?.style.width).toBe("6px");
+    expect(container.textContent).not.toContain("自由排班");
   });
 
   it("spans one controlled draft block across all participant lanes and marks only conflicting lanes", async () => {

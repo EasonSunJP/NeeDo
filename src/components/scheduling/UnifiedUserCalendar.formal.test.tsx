@@ -7,7 +7,7 @@ import { I18nProvider } from "../../i18n/I18nProvider";
 import type { BookingScheduleSlot } from "../../features/booking/api";
 import type { Customer, Store, Technician } from "../../types/domain";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
-import { getBookingConflictEventIds, getFormalAvailabilityWindowEvents, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedCalendarEventDetailPage, UnifiedUserCalendar } from "./UnifiedUserCalendar";
+import { getBookingConflictEventIds, getFormalAvailabilityWindowEvents, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedCalendarEventDetailPage, UnifiedUserCalendar, type UnifiedCalendarEvent } from "./UnifiedUserCalendar";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -108,7 +108,9 @@ vi.mock("../mobile/MobileFullscreenPage", () => ({
 }));
 vi.mock("../mobile/MobileFullscreenHeader", () => ({
   MobileFullscreenCloseButton: () => null,
-  MobileFullscreenHeader: ({ action, title }: { action?: ReactNode; title: string }) => <header>{title}{action}</header>
+  MobileFullscreenHeader: ({ action, overlay, title }: { action?: ReactNode; overlay?: ReactNode; title: string }) => (
+    <header><div className="overflow-hidden">{title}{action}</div>{overlay}</header>
+  )
 }));
 
 const customerFixture: Customer = {
@@ -339,6 +341,32 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     const confirm = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("确认修改排班"));
     await act(async () => confirm?.click());
     expect(onEdit).toHaveBeenCalledWith(event);
+  });
+
+  it("renders the event more menu outside the clipped floating header panel", async () => {
+    const event: UnifiedCalendarEvent = {
+      id: "private-event",
+      sourceId: "technician",
+      date: "2026-09-09",
+      startTime: "10:00",
+      endTime: "11:00",
+      title: "私人日程",
+      subtitle: "",
+      badge: "行程",
+      readOnly: false,
+    };
+    await act(async () => root.render(
+      <MemoryRouter>
+        <I18nProvider>
+          <UnifiedCalendarEventDetailPage event={event} onBack={() => {}} onDelete={() => {}} />
+        </I18nProvider>
+      </MemoryRouter>
+    ));
+
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="更多行程操作"]')?.click());
+    const menuItem = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("制作一个复制"));
+    expect(menuItem).toBeDefined();
+    expect(menuItem?.closest(".overflow-hidden")).toBeNull();
   });
 
   it.each([["available", "可预约"], ["booked", "已预约"], ["blocked", "已锁定"]] as const)("keeps the persisted %s slot status visible on compact cards", async (status, badge) => {
