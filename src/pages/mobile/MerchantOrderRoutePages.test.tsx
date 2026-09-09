@@ -18,10 +18,10 @@ describe("MerchantOrderRoutePages service cards", () => {
   });
 
   it("does not manufacture unavailable order service facts", () => {
-    expect(source).toContain("usageCount: formalData?.usageCount ?? null");
+    expect(source).toContain("completedOrderCount: formalData?.completedOrderCount ?? null");
     expect(source).toContain("shopPublicId: formalData?.shopPublicId ?? null");
     expect(source).toContain("shopAddress: formalData?.shopAddress ?? null");
-    expect(source).not.toMatch(/usageCount\s*:\s*[^\n]*\.sales/u);
+    expect(source).not.toMatch(/completedOrderCount\s*:\s*[^\n]*\.sales/u);
     expect(source).not.toContain("buildServiceMiniCardData");
   });
 

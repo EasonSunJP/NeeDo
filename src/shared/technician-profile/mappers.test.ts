@@ -60,7 +60,7 @@ describe("technician profile information mappers", () => {
       reviewCount: 132,
       completedOrderCount: 1281,
       reviewTagSummary,
-      services: [{ shopPublicId: "shop0000000071", usageCount: 18 }]
+      services: [{ shopPublicId: "shop0000000071", completedOrderCount: 18 }]
     });
   });
 

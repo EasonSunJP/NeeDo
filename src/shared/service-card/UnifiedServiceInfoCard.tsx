@@ -8,6 +8,7 @@ import {
   type UnifiedCardMetric,
 } from "../info-card-system/UnifiedInfoCardFrame";
 import { getUnifiedCardCopy } from "../info-card-system/copy";
+import { formatCompactCount } from "../engagement/formatCompactCount";
 import type { UnifiedServiceInfoCardData } from "./model";
 import type { EntityFavoriteState } from "../../features/entity-engagement/api";
 import {
@@ -25,13 +26,10 @@ type UnifiedServiceInfoCardProps = {
   onOpenDetails?: () => void;
 };
 
-const countLabel = (value: number | null | undefined) =>
-  value === null || value === undefined
+const metricValue = (value: number | null | undefined) =>
+  value === null || value === undefined || !Number.isFinite(value)
     ? "-"
-    : new Intl.NumberFormat("zh-CN", {
-        notation: value >= 10_000 ? "compact" : "standard",
-        maximumFractionDigits: 1,
-      }).format(Math.max(0, value));
+    : formatCompactCount(value);
 
 const formatDuration = (
   value: number | null | undefined,
@@ -98,9 +96,9 @@ export function UnifiedServiceInfoCard({
             : text.bookable,
     },
     {
-      icon: "moments",
-      label: text.usage,
-      value: countLabel(data.usageCount),
+      icon: "completed",
+      label: text.completedOrders,
+      value: metricValue(data.completedOrderCount),
     },
     {
       icon: "map",
@@ -110,7 +108,7 @@ export function UnifiedServiceInfoCard({
     {
       icon: "heart",
       label: text.favorite,
-      value: countLabel(favoriteState?.favoriteCount ?? data.favoriteCount),
+      value: metricValue(favoriteState?.favoriteCount ?? data.favoriteCount),
       ...(favoriteState
         ? {
             action: (
@@ -126,7 +124,7 @@ export function UnifiedServiceInfoCard({
     {
       icon: "share",
       label: text.share,
-      value: countLabel(shareCount),
+      value: metricValue(shareCount),
       ...(target
         ? {
             action: (

@@ -56,7 +56,7 @@ function EntityFavoriteCardView({
           priceAmount: favorite.card.priceAmount,
           currency: favorite.card.currency,
           durationMinutes: favorite.card.durationMinutes,
-          usageCount: favorite.card.usageCount,
+          completedOrderCount: favorite.card.usageCount,
           engagementTarget: target as Extract<
             EntityTarget,
             { targetType: "service" | "technician_service" }

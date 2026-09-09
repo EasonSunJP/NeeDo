@@ -49,9 +49,10 @@ describe("UnifiedEntityInfoCard", () => {
 
   it("keeps a linked shop simple card content-sized with only a bottom-right detail chevron", () => {
     const markup = render(
-      { kind: "shop", id: "shop-1", name: "港区店", imageUrl: "/shop.jpg", description: "深夜护理", address: "東京都港区", languages: [], tags: ["按摩"], rating: 4.8, reviewCount: 21, distanceKm: 1.2, favoriteCount: 5, shareCount: 2 },
+      { kind: "shop", id: "shop-1", name: "港区店", imageUrl: "/shop.jpg", description: "深夜护理", address: "東京都港区", languages: [], tags: ["按摩"], rating: 4.8, reviewCount: 321, completedOrderCount: 1999, distanceKm: 1.2, favoriteCount: 5, shareCount: 2 },
       { detailTo: "/stores/shop-1" },
     );
+    const text = markup.replace(/<[^>]+>/gu, "");
     expect(markup).toContain('data-testid="unified-card-detail-arrow"');
     expect(markup).toContain('data-icon="chevron-right"');
     expect(markup).toContain('data-testid="unified-card-location-icon"');
@@ -62,6 +63,20 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).toContain('data-card-size="default"');
     expect(markup).not.toContain("min-h-[320px]");
     expect(markup).not.toContain("aspect-[16/9]");
+    expect(markup).toContain('data-app-icon="completed"');
+    expect(markup).not.toContain('data-app-icon="moments"');
+    expect(text).toContain("1.9k");
+    expect(text).not.toContain("321");
+  });
+
+  it("renders technician completed orders independently from reviews", () => {
+    const markup = render({ kind: "technician", id: "s0000000002", name: "美咲", imageUrl: null, description: null, languages: [], tags: [], rating: 4.7, reviewCount: 123, completedOrderCount: 1888, distanceKm: null, favoriteCount: null, shareCount: null });
+    const text = markup.replace(/<[^>]+>/gu, "");
+
+    expect(markup).toContain('data-app-icon="completed"');
+    expect(markup).not.toContain('data-app-icon="moments"');
+    expect(text).toContain("1.8k");
+    expect(text).not.toContain("123");
   });
 
   it("renders a compact user name card without metrics or language tags", () => {

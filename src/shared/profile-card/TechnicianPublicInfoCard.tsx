@@ -34,7 +34,7 @@ function mapContactService(service: TechnicianFormalContactService): UnifiedServ
     priceAmount: service.priceAmount,
     currency: service.currency,
     durationMinutes: service.durationMinutes,
-    usageCount: service.usageCount ?? null,
+    completedOrderCount: service.usageCount ?? null,
     shopPublicId: service.shopPublicId?.trim() || null,
     shopAddress: service.shopAddress?.trim() || null,
     description: service.description?.trim() || null,

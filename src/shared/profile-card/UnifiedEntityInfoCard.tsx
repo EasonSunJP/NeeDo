@@ -22,6 +22,7 @@ import {
   ServiceFavoriteAction,
   ServiceShareAction,
 } from "../service-card/ServiceCardEngagementActions";
+import { formatCompactCount } from "../engagement/formatCompactCount";
 
 export type UnifiedEntityInfoCardData = {
   kind: "shop" | "technician" | "user";
@@ -46,7 +47,7 @@ export type UnifiedEntityInfoCardData = {
 const metricValue = (value: number | null | undefined) =>
   value === null || value === undefined || !Number.isFinite(value)
     ? "-"
-    : `${value}`;
+    : formatCompactCount(value);
 const ratingValue = (value: number | null | undefined) =>
   value === null || value === undefined || !Number.isFinite(value)
     ? "-"
@@ -155,9 +156,9 @@ export function UnifiedEntityInfoCard({
               value: ratingValue(data.rating),
             },
             {
-              icon: "moments",
-              label: text.reviews,
-              value: metricValue(data.reviewCount),
+              icon: "completed",
+              label: text.completedOrders,
+              value: metricValue(data.completedOrderCount),
             },
             {
               icon: "map",
