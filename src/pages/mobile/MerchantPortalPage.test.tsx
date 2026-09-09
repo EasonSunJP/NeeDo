@@ -114,6 +114,16 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(employeeDetailWorkspaceSource).toContain("正在读取员工详细信息卡");
   });
 
+  it("keeps termination off technician summary cards and in the formal detail workspace", () => {
+    const staffCardSource = merchantSource.slice(
+      merchantSource.indexOf("group.technicianEntries.map"),
+      merchantSource.indexOf("group.employees.map"),
+    );
+    expect(staffCardSource).toContain("getMerchantStaffDetailPath");
+    expect(staffCardSource).not.toContain("MerchantRemoveStaffIconButton");
+    expect(employeeDetailWorkspaceSource).toContain("<EmployeeDetailCard");
+  });
+
   it("adds the floating privacy menu to the merchant service card only", () => {
     expect(merchantSource).toContain('{ label: "信息卡", value: "info" }');
     expect(merchantSource).toContain('{ label: "店铺展示", value: "service" }');

@@ -2680,13 +2680,6 @@ export function MerchantPortalContent({
                       group.technicianEntries.length > 0 ? (
                         group.technicianEntries.map(({ employmentType, status: staffStatus, technician }) => (
                           <SocialProfileMiniCard
-                            actionSlot={(
-                              <MerchantRemoveStaffIconButton
-                                label={`删除${technician.nickname ?? technician.name}`}
-                                onClick={() => setPendingStaffDelete({ type: "technician", id: technician.id, name: technician.nickname ?? technician.name })}
-                                onCover
-                              />
-                            )}
                             className="cursor-pointer"
                             detailTo={getMerchantStaffDetailPath(technician.systemId)}
                             key={technician.id}

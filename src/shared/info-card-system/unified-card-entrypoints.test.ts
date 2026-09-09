@@ -9,7 +9,7 @@ import showcaseEntrySource from "../profile-card/TechnicianShowcaseCard.tsx?raw"
 import simpleEntrySource from "../profile-card/UnifiedSimpleProfileCard.tsx?raw";
 
 describe("simplified information-card entry points", () => {
-  it("routes every compatibility entry through the unified card system", () => {
+  it("routes simple information cards and chat business cards through the unified card system", () => {
     expect(serviceEntrySource).toContain("SocialProfileMiniCard");
     expect(baseEntrySource).toContain("SocialProfileMiniCard");
     expect(shopEntrySource).toContain("UnifiedSimpleProfileCard");
@@ -17,14 +17,14 @@ describe("simplified information-card entry points", () => {
     expect(simpleEntrySource).toContain("SocialProfileMiniCard");
     expect(socialEntrySource).toContain("UnifiedEntityInfoCard");
     expect(socialEntrySource).toContain("UnifiedServiceInfoCard");
-    expect(showcaseEntrySource).toContain("UnifiedEntityInfoCard");
+    expect(showcaseEntrySource).not.toContain("UnifiedEntityInfoCard");
+    expect(showcaseEntrySource).toContain("aspect-[3/4]");
     expect(membershipEntrySource).toContain("UnifiedEntityInfoCard");
   });
 
   it("keeps retired standalone visual skeletons out of compatibility entries", () => {
     const compatibilitySources = [
       baseEntrySource,
-      showcaseEntrySource,
       membershipEntrySource,
     ].join("\n");
     expect(compatibilitySources).not.toContain("aspect-[3/4]");

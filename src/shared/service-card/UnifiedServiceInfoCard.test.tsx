@@ -23,15 +23,29 @@ describe("UnifiedServiceInfoCard", () => {
     expect(markup).toContain('data-testid="unified-info-card"');
     expect(markup).toContain('data-card-kind="service"');
     expect(markup).toContain("#b8ff4a");
-    expect(markup).toContain("relative z-20 grid grid-cols-5");
+    expect(markup).toContain("relative z-20 flex items-center");
+    expect(markup).toContain('data-testid="unified-card-metric-separator"');
+    expect(markup).not.toContain("[&amp;:not(:last-child)]:border-r");
     expect(markup).not.toContain("grid-cols-2");
     expect(markup).toContain("grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]");
     expect(markup).not.toContain("grid grid-cols-1");
     expect(markup).not.toContain("data-variant");
     expect(markup).not.toContain("showcase");
+    expect(markup).toContain('data-testid="unified-card-body"');
+    expect(markup).toContain("aspect-square");
+    expect(markup).toContain("rounded-[18px]");
+    expect(markup).toContain("justify-start");
     ["可预约", "利用次数", "距离你", "收藏", "分享"].reduce((lastIndex, item) => {
       const nextIndex = text.indexOf(item); expect(nextIndex).toBeGreaterThan(lastIndex); return nextIndex;
     }, -1);
+  });
+
+  it("uses the shared chevron when no contextual action replaces it", () => {
+    const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, {
+      data: formalService, detailTo: "/services/71"
+    })));
+    expect(markup).toContain('data-testid="unified-card-detail-arrow"');
+    expect(markup).toContain('data-icon="chevron-right"');
   });
 
   it("keeps duration and price as image overlays and content actions outside navigation", () => {

@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { IconName } from "../../components/client-ui/AppScaffold";
+import { AppIcon, type IconName } from "../../components/client-ui/AppScaffold";
 import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { getUnifiedCardCopy } from "./copy";
@@ -12,23 +12,12 @@ export type UnifiedCardMetric = {
   action?: ReactNode;
 };
 
-const metricGlyph: Partial<Record<IconName, string>> = {
-  calendar: "▦",
-  heart: "♡",
-  map: "⌖",
-  moments: "◫",
-  share: "⌯",
-  star: "★",
-};
-
 function UnifiedMetricIcon({ name }: { name: IconName }) {
   return (
-    <span
-      aria-hidden="true"
-      className="grid h-5 w-5 shrink-0 place-items-center text-[18px] font-black leading-none sm:h-7 sm:w-7 sm:text-[25px]"
-    >
-      {metricGlyph[name] ?? "•"}
-    </span>
+    <AppIcon
+      className="h-5 w-5 shrink-0 sm:h-7 sm:w-7"
+      name={name}
+    />
   );
 }
 
@@ -40,28 +29,34 @@ export function UnifiedCardMetricRail({
   if (metrics.length === 0) return null;
   return (
     <div
-      className="pointer-events-none relative z-20 grid grid-cols-5 border-b border-[#244047]"
+      className="pointer-events-none relative z-20 flex items-center px-2 py-2 sm:px-5 sm:py-4"
       data-testid="unified-card-metrics"
     >
-      {metrics.map((metric) => (
-        <div
-          className="relative flex min-h-[56px] min-w-0 items-center gap-1 border-[#244047] px-1 py-2 text-[#b8ff4a] sm:min-h-[70px] sm:gap-2 sm:px-3 [&:not(:last-child)]:border-r"
-          key={metric.label}
-        >
-          {metric.action ? (
-            <div className="pointer-events-auto">{metric.action}</div>
-          ) : (
-            <UnifiedMetricIcon name={metric.icon} />
-          )}
-          <div className="min-w-0">
-            <div className="truncate text-[9px] font-black leading-4 text-[#f7f9f7] sm:text-[14px] sm:leading-5">
-              {metric.value}
-            </div>
-            <div className="truncate text-[8px] font-bold leading-3 text-[#9aacb5] sm:text-[11px] sm:leading-4">
-              {metric.label}
+      {metrics.map((metric, index) => (
+        <Fragment key={metric.label}>
+          <div className="relative flex min-h-[48px] min-w-0 flex-1 items-center justify-center gap-1 px-1 text-[#b8ff4a] sm:min-h-[62px] sm:gap-2 sm:px-3">
+            {metric.action ? (
+              <div className="pointer-events-auto">{metric.action}</div>
+            ) : (
+              <UnifiedMetricIcon name={metric.icon} />
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-[9px] font-black leading-4 text-[#f7f9f7] sm:text-[14px] sm:leading-5">
+                {metric.value}
+              </div>
+              <div className="truncate text-[8px] font-bold leading-3 text-[#9aacb5] sm:text-[11px] sm:leading-4">
+                {metric.label}
+              </div>
             </div>
           </div>
-        </div>
+          {index < metrics.length - 1 ? (
+            <span
+              aria-hidden="true"
+              className="h-8 w-px shrink-0 bg-[#244047] sm:h-12"
+              data-testid="unified-card-metric-separator"
+            />
+          ) : null}
+        </Fragment>
       ))}
     </div>
   );
@@ -122,9 +117,11 @@ export function UnifiedInfoCardFrame({
       {!actionSlot && (detailTo || onOpenDetails) ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-2 right-2 z-20 grid h-9 w-9 place-items-center rounded-full bg-[#b8ff4a] text-[26px] font-black leading-none text-[#031014] shadow-[0_0_24px_rgba(184,255,74,0.32)] sm:bottom-4 sm:right-4 sm:h-12 sm:w-12 sm:text-[34px]"
+          className="pointer-events-none absolute bottom-3 right-3 z-20 grid h-9 w-9 place-items-center rounded-full bg-[#b8ff4a] text-[#031014] shadow-[0_0_24px_rgba(184,255,74,0.32)] sm:bottom-5 sm:right-5 sm:h-12 sm:w-12"
+          data-icon="chevron-right"
+          data-testid="unified-card-detail-arrow"
         >
-          ›
+          <AppIcon className="h-5 w-5 rotate-180 sm:h-7 sm:w-7" name="back" />
         </span>
       ) : null}
     </article>
@@ -144,7 +141,7 @@ export function UnifiedCardImage({
 }) {
   const text = getUnifiedCardCopy(language);
   return (
-    <div className="relative min-h-[180px] overflow-hidden bg-[#07181b] sm:min-h-[240px]">
+    <div className="relative aspect-square min-h-0 overflow-hidden rounded-[18px] bg-[#07181b] sm:rounded-[24px]">
       {src ? (
         <img
           alt={alt}
@@ -184,7 +181,7 @@ export function UnifiedCardDetails({
     new Set(tags.map((tag) => tag.trim()).filter(Boolean)),
   ).slice(0, 8);
   return (
-    <div className="flex min-h-[180px] min-w-0 flex-col justify-center px-3 py-3 sm:min-h-[240px] sm:px-7 sm:py-5">
+    <div className="flex min-w-0 flex-col justify-start px-1 pb-11 pt-3 sm:px-2 sm:pb-16 sm:pt-8">
       <h3 className="break-words text-[clamp(16px,4.5vw,36px)] font-black leading-tight tracking-[-0.025em] text-[#f7f9f7] [overflow-wrap:anywhere]">
         {name}
       </h3>

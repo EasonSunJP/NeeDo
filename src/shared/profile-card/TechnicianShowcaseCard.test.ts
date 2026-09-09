@@ -40,14 +40,14 @@ const technician: Technician = {
   },
 };
 
-describe("TechnicianShowcaseCard unified compatibility entry", () => {
+describe("TechnicianShowcaseCard recommendation tile", () => {
   it("uses the canonical public profile path", () => {
     expect(getTechnicianDynamicPath(technician)).toBe(
       "/profiles/technician/s0000000002",
     );
   });
 
-  it("renders the shared unified card with the required technician metrics", () => {
+  it("keeps the original portrait recommendation tile instead of the unified information-card frame", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MemoryRouter,
@@ -60,21 +60,15 @@ describe("TechnicianShowcaseCard unified compatibility entry", () => {
       ),
     );
 
-    expect(markup).toContain('data-testid="unified-info-card"');
-    expect(markup).toContain('data-card-kind="technician"');
-    expect(markup).toContain("评分");
-    expect(markup).toContain("完单次数");
-    expect(markup).toContain("1.2km");
-    expect(markup).toContain("收藏");
-    expect(markup).toContain("分享");
-    expect(markup).toContain("睡眠改善与肩颈放松");
-    expect(markup).toContain("日本語");
-    expect(markup).not.toContain("¥8,800");
-    expect(markup).not.toContain("60分钟");
-    expect(markup).not.toContain("推荐服务");
+    expect(markup).not.toContain('data-testid="unified-info-card"');
+    expect(markup).toContain("aspect-[3/4]");
+    expect(markup).toContain("推荐服务");
+    expect(markup).toContain("¥8,800");
+    expect(markup).toContain("60分钟");
+    expect(markup).toContain("LifeDance 管理员 2");
   });
 
-  it("uses authoritative formal values without reviving legacy card fields", () => {
+  it("uses authoritative formal recommendation values in the portrait tile", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MemoryRouter,
@@ -88,6 +82,12 @@ describe("TechnicianShowcaseCard unified compatibility entry", () => {
             distanceKm: 2.4,
             favoriteCount: 31,
             languages: ["日本語", "中文"],
+            primaryService: {
+              currency: "JPY",
+              durationMinutes: 90,
+              name: "正式推荐服务",
+              priceAmount: "12800",
+            },
             ratingAverage: "4.9",
             reviewCount: 22,
             shareCount: 6,
@@ -100,16 +100,16 @@ describe("TechnicianShowcaseCard unified compatibility entry", () => {
     );
 
     expect(markup).toContain("Mika Formal");
-    expect(markup).toContain("东京港区");
     expect(markup).toContain("4.9");
-    expect(markup).toContain("87");
-    expect(markup).toContain("2.4km");
     expect(markup).toContain("31");
     expect(markup).toContain("6");
+    expect(markup).toContain("正式推荐服务");
+    expect(markup).toContain("¥12,800");
+    expect(markup).toContain("90分钟");
     expect(markup).not.toContain("不应显示的旧服务价格");
   });
 
-  it("keeps selection as an action on the same visual skeleton", () => {
+  it("keeps selection on the portrait card without switching card systems", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MemoryRouter,
@@ -124,16 +124,16 @@ describe("TechnicianShowcaseCard unified compatibility entry", () => {
       ),
     );
 
-    expect(markup).toContain('data-testid="unified-card-actions"');
+    expect(markup).not.toContain('data-testid="unified-card-actions"');
+    expect(markup).toContain("aspect-[3/4]");
     expect(markup).toContain('aria-pressed="true"');
   });
 
-  it("contains no retired standalone showcase markup", () => {
-    expect(cardSource).toContain("<UnifiedEntityInfoCard");
-    expect(cardSource).not.toContain("aspect-[3/4]");
-    expect(cardSource).not.toContain("recommendedService");
-    expect(cardSource).not.toContain("priceLabel");
-    expect(cardSource).not.toContain("durationMinutes}");
+  it("stays independent from the unified business-card and simple-info-card design", () => {
+    expect(cardSource).not.toContain("<UnifiedEntityInfoCard");
+    expect(cardSource).toContain("aspect-[3/4]");
+    expect(cardSource).toContain("recommendedService");
+    expect(cardSource).toContain("priceLabel");
   });
 });
 

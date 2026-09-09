@@ -204,7 +204,10 @@ export function UnifiedEntityInfoCard({
       actionSlot={actionSlot}
       ariaLabel={`${data.kind === "shop" ? text.viewShop : data.kind === "technician" ? text.viewTechnician : text.viewUser} ${data.name}`}
       body={
-        <div className="grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+        <div
+          className="grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-2 p-2 pt-0 sm:gap-6 sm:p-6 sm:pt-0"
+          data-testid="unified-card-body"
+        >
           <UnifiedCardImage alt={data.name} language={language} src={data.imageUrl} />
           {details}
         </div>
