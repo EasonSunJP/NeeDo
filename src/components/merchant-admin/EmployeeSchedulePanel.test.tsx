@@ -28,6 +28,7 @@ vi.mock("../scheduling/ScheduleCycleCalendarBoard", () => ({
   ScheduleCycleCalendarBoard: ({
     dataOverride,
     onViewChange,
+    surface,
   }: {
     dataOverride: {
       events: Array<{ id: string; title: string }>;
@@ -37,8 +38,9 @@ vi.mock("../scheduling/ScheduleCycleCalendarBoard", () => ({
       >;
     };
     onViewChange: (view: string) => void;
+    surface: "desktop" | "mobile";
   }) => (
-    <div data-testid="shared-schedule-board">
+    <div data-surface={surface} data-testid="shared-schedule-board">
       {dataOverride.events.map((event) => {
         const cell = dataOverride.cellByEventId.get(event.id);
         return (
@@ -123,10 +125,11 @@ describe("EmployeeSchedulePanel", () => {
   });
 
   it("reuses the shared board and keeps cross-shop confirmed time generic and non-clickable", async () => {
-    await act(async () => root.render(<EmployeeSchedulePanel employee={employee} />));
+    await act(async () => root.render(<EmployeeSchedulePanel employee={employee} scheduleSurface="mobile" />));
     await flush();
 
     expect(container.querySelector('[data-testid="shared-schedule-board"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="shared-schedule-board"]')?.getAttribute("data-surface")).toBe("mobile");
     expect(container.textContent).toContain("其他店铺已有确认安排");
     expect(container.textContent).not.toMatch(/客户|服务|订单|金额|店铺名称/);
     expect(

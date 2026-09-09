@@ -98,6 +98,7 @@ interface EmployeeDetailCardProps {
     input: MerchantEmployeeAffiliationUpdate,
   ) => Promise<void>;
   readOnly?: boolean;
+  scheduleSurface?: "desktop" | "mobile";
 }
 
 type ProfileDraft = Required<
@@ -223,6 +224,7 @@ export function EmployeeDetailCard({
   onTimelinePageSizeChange,
   onSubmitTimelineComment,
   readOnly = false,
+  scheduleSurface = "desktop",
 }: EmployeeDetailCardProps) {
   const auth = useOptionalAuth();
   const { language } = useOptionalI18n();
@@ -811,7 +813,7 @@ export function EmployeeDetailCard({
         id={`${panelId}-panel-2`}
         role="tabpanel"
       >
-        <EmployeeSchedulePanel employee={employee} readOnly={readOnly} />
+        <EmployeeSchedulePanel employee={employee} readOnly={readOnly} scheduleSurface={scheduleSurface} />
       </div>
 
       <div

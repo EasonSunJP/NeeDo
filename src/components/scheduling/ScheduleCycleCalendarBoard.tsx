@@ -38,6 +38,7 @@ import { getScheduleOrderDetailRoute } from "../../lib/scheduleDetailTarget";
 import { cn } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
 import type { Customer, Store, Technician } from "../../types/domain";
+import { ScheduleViewPicker } from "./ScheduleViewPicker";
 
 export type ScheduleCycleCalendarBoardView = "day" | "threeDay" | "week" | "month" | "agenda";
 export type ScheduleCycleCalendarStatusFilter = "all" | DispatchScheduleCellStatus;
@@ -1002,22 +1003,14 @@ export function ScheduleCycleCalendarBoard({
         >
           ‹
         </button>
-        <label className="focus-within:ring-focus relative min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-[color:var(--client-muted)]">显示</span>
-          <select
-            aria-label="切换排班展示范围"
-            className="h-9 w-full appearance-none rounded-full bg-transparent pl-12 pr-9 text-center text-[13px] font-black text-[color:var(--client-text)] outline-none"
-            onChange={(event) => onViewChange(event.target.value as ScheduleCycleCalendarBoardView)}
-            value={view === "agenda" ? "day" : view}
-          >
-            {cycleCalendarViewOptions
-              .filter((option) => !availableViews || availableViews.includes(option.value as "day" | "week" | "month"))
-              .map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-          </select>
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-black text-[color:var(--client-muted)]">⌄</span>
-        </label>
+        <ScheduleViewPicker
+          ariaLabel="切换排班展示范围"
+          onChange={onViewChange}
+          options={cycleCalendarViewOptions.filter(
+            (option) => !availableViews || availableViews.includes(option.value as "day" | "week" | "month"),
+          )}
+          value={view === "agenda" ? "day" : view}
+        />
         <button
           className="focus-ring grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-lg font-black text-[color:var(--client-text)]"
           onClick={() => onDateChange(shiftCycleCalendarDate(view, dateKey, 1))}
