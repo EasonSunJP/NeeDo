@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { Language } from "../../i18n/translations";
 import {
   UnifiedCardDetails,
+  UnifiedDistanceMetricValue,
   UnifiedCardImage,
   UnifiedInfoCardFrame,
   type UnifiedCardMetric,
@@ -31,11 +32,6 @@ const countLabel = (value: number | null | undefined) =>
         notation: value >= 10_000 ? "compact" : "standard",
         maximumFractionDigits: 1,
       }).format(Math.max(0, value));
-
-const formatDistance = (value: number | null | undefined) =>
-  value !== null && value !== undefined && Number.isFinite(value)
-    ? `${value.toFixed(value < 10 ? 1 : 0)}km`
-    : "-";
 
 const formatDuration = (
   value: number | null | undefined,
@@ -109,7 +105,7 @@ export function UnifiedServiceInfoCard({
     {
       icon: "map",
       label: text.distanceToYou,
-      value: formatDistance(data.distanceKm),
+      value: <UnifiedDistanceMetricValue value={data.distanceKm} />,
     },
     {
       icon: "heart",
@@ -163,7 +159,7 @@ export function UnifiedServiceInfoCard({
         {formatDuration(data.durationMinutes, text.minute)}
       </span>
       <strong
-        className="absolute bottom-0 left-0 rounded-tr-[18px] bg-black/80 px-3 py-2 text-[17px] font-black text-[#b8ff4a] backdrop-blur-sm sm:rounded-tr-[28px] sm:px-6 sm:py-4 sm:text-[30px]"
+        className="absolute bottom-0 left-0 rounded-bl-[18px] rounded-tr-[18px] bg-black/80 px-3 py-2 text-[17px] font-black text-[#b8ff4a] backdrop-blur-sm sm:rounded-bl-[24px] sm:rounded-tr-[28px] sm:px-6 sm:py-4 sm:text-[30px]"
         data-testid="unified-card-price-overlay"
       >
         {formatPrice(data.priceAmount, data.currency)}
@@ -196,6 +192,7 @@ export function UnifiedServiceInfoCard({
       kind="service"
       metrics={metrics}
       onOpenDetails={onOpenDetails}
+      size="tall"
     />
   );
 }

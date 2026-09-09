@@ -7,6 +7,7 @@ import type {
 } from "../../features/entity-engagement/api";
 import {
   UnifiedCardDetails,
+  UnifiedDistanceMetricValue,
   UnifiedCardImage,
   UnifiedInfoCardFrame,
   type UnifiedCardMetric,
@@ -46,10 +47,10 @@ const metricValue = (value: number | null | undefined) =>
   value === null || value === undefined || !Number.isFinite(value)
     ? "-"
     : `${value}`;
-const distanceValue = (value: number | null | undefined) =>
+const ratingValue = (value: number | null | undefined) =>
   value === null || value === undefined || !Number.isFinite(value)
     ? "-"
-    : `${value.toFixed(value < 10 ? 1 : 0)}km`;
+    : value.toFixed(1);
 
 export function UnifiedEntityInfoCard({
   actionSlot,
@@ -151,7 +152,7 @@ export function UnifiedEntityInfoCard({
             {
               icon: "star",
               label: text.rating,
-              value: metricValue(data.rating),
+              value: ratingValue(data.rating),
             },
             {
               icon: "moments",
@@ -161,7 +162,7 @@ export function UnifiedEntityInfoCard({
             {
               icon: "map",
               label: text.distance,
-              value: distanceValue(data.distanceKm),
+              value: <UnifiedDistanceMetricValue value={data.distanceKm} />,
             },
             favoriteMetric,
             shareMetric,
@@ -170,7 +171,7 @@ export function UnifiedEntityInfoCard({
             {
               icon: "star",
               label: text.rating,
-              value: metricValue(data.rating),
+              value: ratingValue(data.rating),
             },
             {
               icon: "completed",
@@ -180,7 +181,7 @@ export function UnifiedEntityInfoCard({
             {
               icon: "map",
               label: text.distance,
-              value: distanceValue(data.distanceKm),
+              value: <UnifiedDistanceMetricValue value={data.distanceKm} />,
             },
             favoriteMetric,
             shareMetric,
@@ -195,6 +196,7 @@ export function UnifiedEntityInfoCard({
         <SpecialReviewIconRow tags={data.specialReviewTags ?? []} />
       ) : undefined}
       description={data.description}
+      density={data.kind === "user" ? "name-card" : "default"}
       language={language}
       name={data.name}
       showEmptyTags={showLanguageTags}
@@ -231,6 +233,7 @@ export function UnifiedEntityInfoCard({
       kind={data.kind}
       metrics={metrics}
       onOpenDetails={onOpenDetails}
+      size={data.kind === "shop" ? "tall" : "default"}
     />
   );
 }

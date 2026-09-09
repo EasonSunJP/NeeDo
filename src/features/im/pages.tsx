@@ -5963,6 +5963,7 @@ export function ImConversationRoomPage({
         actionSlot={renderContactCardAction(card)}
         avatarUrl={card.avatar || null}
         bio={card.headline ?? ""}
+        className="w-[min(520px,80vw)] max-w-full"
         completedOrderCount={card.completedOrderCount}
         displayName={card.displayName}
         ekycVerified={card.ekycVerified ?? false}

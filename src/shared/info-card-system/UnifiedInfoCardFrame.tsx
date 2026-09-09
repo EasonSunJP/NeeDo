@@ -12,6 +12,30 @@ export type UnifiedCardMetric = {
   action?: ReactNode;
 };
 
+export function UnifiedDistanceMetricValue({
+  value,
+}: {
+  value: number | null | undefined;
+}) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return <span>-</span>;
+  }
+
+  return (
+    <span className="inline-flex items-baseline whitespace-nowrap">
+      <span data-testid="unified-card-distance-value">
+        {value.toFixed(value < 10 ? 1 : 0)}
+      </span>
+      <span
+        className="ml-0.5 text-[8px] sm:text-[11px]"
+        data-testid="unified-card-distance-unit"
+      >
+        km
+      </span>
+    </span>
+  );
+}
+
 function UnifiedMetricIcon({ name }: { name: IconName }) {
   return (
     <AppIcon
@@ -40,7 +64,7 @@ export function UnifiedCardMetricRail({
             ) : (
               <UnifiedMetricIcon name={metric.icon} />
             )}
-            <div className="min-w-0 truncate text-[11px] font-black leading-4 text-[#f7f9f7] sm:text-[16px] sm:leading-5">
+            <div className="flex min-w-0 items-baseline whitespace-nowrap text-[11px] font-black leading-4 text-[#f7f9f7] sm:text-[16px] sm:leading-5">
               {metric.value}
             </div>
           </div>
@@ -66,6 +90,7 @@ export function UnifiedInfoCardFrame({
   kind,
   metrics,
   onOpenDetails,
+  size = "default",
 }: {
   actionSlot?: ReactNode;
   ariaLabel: string;
@@ -75,14 +100,17 @@ export function UnifiedInfoCardFrame({
   kind: "service" | "shop" | "technician" | "user";
   metrics?: UnifiedCardMetric[];
   onOpenDetails?: () => void;
+  size?: "default" | "tall";
 }) {
   return (
     <article
       className={cn(
         "relative overflow-hidden rounded-[20px] border border-[#244047] bg-[#031014] text-[#f7f9f7] shadow-[0_24px_60px_rgba(0,0,0,0.32)] sm:rounded-[30px]",
+        size === "tall" && "min-h-[320px] sm:aspect-[16/9] sm:min-h-0",
         className,
       )}
       data-card-kind={kind}
+      data-card-size={size}
       data-testid="unified-info-card"
     >
       <UnifiedCardMetricRail metrics={metrics ?? []} />
@@ -136,11 +164,14 @@ export function UnifiedCardImage({
 }) {
   const text = getUnifiedCardCopy(language);
   return (
-    <div className="relative aspect-square min-h-0 overflow-hidden rounded-[18px] bg-[#07181b] sm:rounded-[24px]">
+    <div
+      className="relative isolate aspect-square min-h-0 overflow-hidden rounded-[18px] bg-[#07181b] sm:rounded-[24px]"
+      data-testid="unified-card-image"
+    >
       {src ? (
         <img
           alt={alt}
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full scale-[1.015] transform-gpu object-cover"
           loading="lazy"
           src={src}
         />
@@ -166,6 +197,7 @@ export function UnifiedCardDetails({
   name,
   showEmptyTags = true,
   tags,
+  density = "default",
 }: {
   afterDescription?: ReactNode;
   children?: ReactNode;
@@ -174,38 +206,56 @@ export function UnifiedCardDetails({
   name: string;
   showEmptyTags?: boolean;
   tags: string[];
+  density?: "default" | "name-card";
 }) {
   const text = getUnifiedCardCopy(language);
   const visibleTags = Array.from(
     new Set(tags.map((tag) => tag.trim()).filter(Boolean)),
   ).slice(0, 8);
+  const compact = density === "name-card";
   return (
-    <div className="flex min-w-0 flex-col justify-start px-1 pb-11 pt-2 sm:px-2 sm:pb-14 sm:pt-5">
-      <h3 className="break-words text-[clamp(16px,4.5vw,36px)] font-black leading-tight tracking-[-0.025em] text-[#f7f9f7] [overflow-wrap:anywhere]">
+    <div
+      className={cn(
+        "flex min-w-0 flex-col justify-start px-1 pt-2 sm:px-2",
+        compact ? "pb-8 sm:pb-9 sm:pt-3" : "pb-10 sm:pb-11 sm:pt-4",
+      )}
+      data-card-density={density}
+    >
+      <h3 className={cn(
+        "break-words font-black leading-tight tracking-[-0.025em] text-[#f7f9f7] [overflow-wrap:anywhere]",
+        compact
+          ? "text-[clamp(16px,4vw,26px)]"
+          : "text-[clamp(16px,4.2vw,30px)]",
+      )}>
         {name}
       </h3>
       {children}
-      <p className="mt-2 line-clamp-3 text-[12px] font-bold leading-[1.55] text-[#9aacb5] sm:mt-3 sm:text-[17px] sm:leading-7">
+      <p className={cn(
+        "mt-2 text-[12px] font-bold leading-[1.55] text-[#9aacb5] sm:mt-3 sm:text-[16px] sm:leading-6",
+        compact ? "line-clamp-2" : "line-clamp-3",
+      )}>
         {description ?? text.noDescription}
       </p>
       {afterDescription}
-      <div
-        className="mt-2 flex min-h-5 flex-wrap items-center gap-1 sm:mt-4 sm:min-h-7 sm:gap-2"
-        data-testid="unified-card-tags"
-      >
-        {visibleTags.length > 0 ? (
-          visibleTags.map((tag) => (
-            <span
-              className="rounded-full border border-[#648f25] px-2.5 py-1 text-[10px] font-black text-[#b8ff4a] sm:px-4 sm:py-1.5 sm:text-[14px]"
-              key={tag}
-            >
-              {tag}
-            </span>
-          ))
-        ) : showEmptyTags ? (
-          <span className="text-[10px] font-bold text-[#9aacb5] sm:text-[13px]">{text.noTags}</span>
-        ) : null}
-      </div>
+      {visibleTags.length > 0 || showEmptyTags ? (
+        <div
+          className="mt-2 flex min-h-5 flex-wrap items-center gap-1 sm:mt-3 sm:min-h-7 sm:gap-2"
+          data-testid="unified-card-tags"
+        >
+          {visibleTags.length > 0 ? (
+            visibleTags.map((tag) => (
+              <span
+                className="rounded-full border border-[#648f25] px-2.5 py-1 text-[10px] font-black text-[#b8ff4a] sm:px-4 sm:py-1.5 sm:text-[14px]"
+                key={tag}
+              >
+                {tag}
+              </span>
+            ))
+          ) : (
+            <span className="text-[10px] font-bold text-[#9aacb5] sm:text-[13px]">{text.noTags}</span>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
