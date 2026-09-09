@@ -217,8 +217,8 @@ describe("HomePage quick action icon theme colors", () => {
   });
 });
 
-describe("HomePage quick action compact height", () => {
-  it("keeps each mobile action inside the exact 76px envelope", () => {
+describe("HomePage quick action shape", () => {
+  it("keeps each action as a rounded square with centered content", () => {
     const rendererStart = homePageSource.indexOf(
       "{quickActionItems.map((item) => {",
     );
@@ -227,14 +227,15 @@ describe("HomePage quick action compact height", () => {
 
     expect(rendererStart).toBeGreaterThan(-1);
     expect(rendererEnd).toBeGreaterThan(rendererStart);
-    expect(quickActionRenderer).toContain("h-[76px]");
+    expect(quickActionRenderer).toContain("aspect-square");
     expect(quickActionRenderer).toContain("before:hidden");
     expect(quickActionRenderer).toContain("grid-rows-[30px_28px]");
+    expect(quickActionRenderer).toContain("content-center");
     expect(quickActionRenderer).toContain("gap-1");
     expect(quickActionRenderer).toContain("py-1.5");
     expect(quickActionRenderer).toContain("h-[30px] w-[30px]");
     expect(quickActionRenderer).toContain("h-[28px]");
-    expect(quickActionRenderer).not.toContain("min-h-[76px]");
+    expect(quickActionRenderer).not.toContain("h-[76px]");
     expect(quickActionRenderer).not.toContain("min-h-[28px]");
   });
 });

@@ -148,7 +148,7 @@ export function MerchantPrimaryNavCarousel({
             {page.map((module) => (
               <Link
                 className={cn(
-                  "relative grid h-[76px] grid-rows-[30px_28px] items-start justify-items-center gap-1 rounded-[18px] border px-2 py-1.5 text-center transition before:hidden sm:h-auto sm:min-h-[82px] sm:grid-rows-[34px_1fr] sm:gap-1.5 sm:py-3",
+                  "relative grid aspect-square grid-rows-[30px_auto] content-center items-start justify-items-center gap-1 rounded-[18px] border px-2 py-1.5 text-center transition before:hidden sm:grid-rows-[34px_auto] sm:content-center sm:gap-1.5 sm:py-3",
                   activeModule === module.key
                     ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
                     : "border-line bg-white text-[color:var(--client-text)] hover:border-[color:var(--client-primary)]"
@@ -176,7 +176,7 @@ export function MerchantPrimaryNavCarousel({
               Array.from({ length: 4 - page.length }).map((_, index) => (
                 <div
                   aria-hidden="true"
-                  className="h-[76px] rounded-[18px] border border-dashed border-line bg-paper/50 sm:h-auto sm:min-h-[82px] md:hidden"
+                  className="aspect-square rounded-[18px] border border-dashed border-line bg-paper/50 md:hidden"
                   key={`merchant-primary-empty-${pageIndex}-${index}`}
                 />
               ))
