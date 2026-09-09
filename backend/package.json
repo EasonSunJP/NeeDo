@@ -49,6 +49,7 @@
     "check:booking-expiry-rollback": "tsx scripts/check-booking-expiry-rollback.ts",
     "check:order-acceptance-control-migration": "tsx scripts/check-order-acceptance-control-migration.ts",
     "check:order-fulfillment-checkout": "tsx scripts/check-order-fulfillment-checkout-flow.ts && tsx scripts/check-order-checkout-concurrency.ts",
+    "check:multishop-pricing-settlement": "tsx scripts/check-multishop-pricing-settlement-flow.ts",
     "check:agent-settlement": "tsx scripts/check-agent-settlement-flow.ts",
     "check:dashboard-overview": "tsx scripts/check-dashboard-overview-flow.ts",
     "check:shop-travel-fare-flow": "tsx scripts/check-shop-travel-fare-flow.ts",

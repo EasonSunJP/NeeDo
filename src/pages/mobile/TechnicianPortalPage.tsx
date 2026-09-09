@@ -38,6 +38,8 @@ import { loadEveryTechnicianOrder, loadManagedScheduleWindow } from "../../featu
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { cn, yen } from "../../lib/utils";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
+import { useI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import {
   mapTechnicianServiceToUnifiedData as fromTechnicianServicePayload,
   UnifiedServiceInfoCard
@@ -824,6 +826,8 @@ function TechnicianPortalContent({ initialSelfProfile, technician, walletSummary
 }) {
   const { view } = useParams();
   const navigate = useNavigate();
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selfProfile, setSelfProfile] = useState(initialSelfProfile);
   const [dataCenterRange, setDataCenterRange] = useState<TechnicianDataCenterPayload["range"] | null>(null);
@@ -873,14 +877,25 @@ function TechnicianPortalContent({ initialSelfProfile, technician, walletSummary
           />
           <div className="space-y-4 px-4 pb-32 pt-4">
             {meTab === "info" ? (
-              <TechnicianInfoCard
-                defaultCategoryId={defaultCategoryId}
-                defaultShopId={shopId}
-                onSaved={setSelfProfile}
-                profile={selfProfile}
-                technician={technician}
-                walletSummary={walletSummary}
-              />
+              <>
+                <Link className={cn(surface.panel, "mb-4 flex min-h-16 items-center justify-between rounded-[18px] border px-4 py-3")} to="/technician/shop-stays">
+                  <span>
+                    <span className="block text-sm font-black text-[color:var(--client-text)]">{t("入住店铺")}</span>
+                    <span className={cn(surface.muted, "mt-1 block text-xs font-bold")}>
+                      {selfProfile.shopAffiliations.length} {t("家有效合作店铺")}
+                    </span>
+                  </span>
+                  <AppIcon className="h-5 w-5 rotate-180 text-[color:var(--client-primary)]" name="back" />
+                </Link>
+                <TechnicianInfoCard
+                  defaultCategoryId={defaultCategoryId}
+                  defaultShopId={shopId}
+                  onSaved={setSelfProfile}
+                  profile={selfProfile}
+                  technician={technician}
+                  walletSummary={walletSummary}
+                />
+              </>
             ) : null}
              {meTab === "data" ? <DataCenter onPeriodChange={updateDataCenterPeriod} onRangeLoaded={setDataCenterRange} period={dataCenterPeriod} /> : null}
           </div>

@@ -6,7 +6,6 @@ import type {
   AffiliationMutationRepositoryResult,
   EmployeeListRepositoryInput,
   EmployeeProfileUpdateRepositoryInput,
-  EmployeeRelationshipType,
   EmployeeScheduleEvent,
   EmployeeScheduleRepositoryInput,
   EmployeeTimelineEventPayload,

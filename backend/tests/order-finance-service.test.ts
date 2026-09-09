@@ -287,7 +287,8 @@ describe("OrderFinanceService", () => {
       serviceCommissionPayJpy: 2_000,
       extensionCommissionPayJpy: 2_400,
       nominationPayJpy: 1_500,
-      technicianNetIncomeJpy: 5_900
+      technicianNetIncomeJpy: 5_900,
+      shopEstimatedGrossProfitJpy: 9_600
     });
 
     await service.reportMerchantServiceIncome(merchantActor, context, 101, {

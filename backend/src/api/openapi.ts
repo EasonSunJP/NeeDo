@@ -10533,6 +10533,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "publicId",
           "userId",
           "shopId",
+          "shopAccessStatus",
+          "shopAffiliations",
           "displayName",
           "avatarUrl",
           "bio",
@@ -10560,6 +10562,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           publicId: { type: "string" },
           userId: { type: "integer", minimum: 1 },
           shopId: { type: ["integer", "null"], minimum: 1 },
+          shopAccessStatus: {
+            type: "string",
+            enum: ["active", "requires_shop"],
+            description: "Derived from current shop affiliations. requires_shop keeps the technician identity accessible but gates normal technician work until another shop approves the partnership."
+          },
+          shopAffiliations: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["id", "shopId", "publicId", "name", "city", "address", "relationshipType", "workStatus", "startsAt"],
+              properties: {
+                id: { type: "integer", minimum: 1 },
+                shopId: { type: "integer", minimum: 1 },
+                publicId: { type: ["string", "null"] },
+                name: { type: "string" },
+                city: { type: "string" },
+                address: { type: "string" },
+                relationshipType: { type: "string", enum: ["partner"] },
+                workStatus: {
+                  type: "string",
+                  enum: ["active", "on_leave", "suspended"]
+                },
+                startsAt: { type: "string", format: "date-time" }
+              }
+            }
+          },
           displayName: { type: "string", minLength: 1, maxLength: 120 },
           avatarUrl: { type: ["string", "null"] },
           bio: { type: ["string", "null"], maxLength: 2000 },
@@ -27200,7 +27228,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       })
     },
     [`${config.API_PREFIX}/identity-applications/technician`]: {
-      post: identityWorkflowOperation("Create a technician application draft", {
+      post: identityWorkflowOperation("Create an initial technician identity or additional shop partnership application draft", {
         requestBody: identityJsonBody(
           {
             targetShopId: { type: "integer", minimum: 1 },

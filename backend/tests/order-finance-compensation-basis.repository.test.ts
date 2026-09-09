@@ -2,6 +2,56 @@ import type { PrismaClient } from "@prisma/client";
 import { OrderFinanceRepository } from "../src/repositories/order-finance.repository";
 
 describe("OrderFinanceRepository compensation basis", () => {
+  it("moves a completed paid and confirmed income report to ready_for_payroll", async () => {
+    const upsert = jest.fn(async () => ({}));
+    const transaction = {
+      bookingOrder: {
+        findFirstOrThrow: jest.fn(async () => ({
+          id: 81,
+          orderType: "BOOKING",
+          customerUserId: 1,
+          shopId: 9,
+          technicianProfileId: 3,
+          status: "COMPLETED",
+          paymentStatus: "CONFIRMED"
+        }))
+      },
+      orderFinancial: { upsert }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (tx: typeof transaction) => Promise<void>) => operation(transaction))
+    };
+    const repository = new OrderFinanceRepository(client as unknown as PrismaClient);
+    jest.spyOn(repository, "findOrderFinance").mockResolvedValue({} as never);
+
+    await repository.upsertServiceIncomeReport({
+      bookingOrderId: 81,
+      serviceAmountJpy: 10_000,
+      baseServiceAmountJpy: 10_000,
+      extensionAmountJpy: 0,
+      nominationChargeAmountJpy: 0,
+      wasTechnicianNominated: false,
+      compensationBasisVersion: "technician_override:71",
+      platformCollectedServiceAmountJpy: 10_000,
+      offlineReportedServiceAmountJpy: 0,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "platform_online",
+      serviceIncomeStatus: "confirmed",
+      reportedById: 4,
+      confirmedById: 4,
+      note: null,
+      proofUrl: null,
+      moneyTimeline: []
+    });
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ settlementStatus: "ready_for_payroll" }),
+        create: expect.objectContaining({ settlementStatus: "ready_for_payroll" })
+      })
+    );
+  });
+
   it("loads the compensation rule captured by the booking snapshot", async () => {
     const timestamp = new Date("2026-09-01T00:00:00.000Z");
     const bookingOrder = {

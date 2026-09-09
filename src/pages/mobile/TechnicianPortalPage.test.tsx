@@ -217,6 +217,8 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(meHeaderSource).toContain("footer={");
     expect(source).toContain('className="space-y-4 px-4 pb-32 pt-4"');
     expect(source).not.toContain("<FloatingHomeHeader panelClassName=\"relative overflow-hidden\" stacked>");
+    expect(source).toContain('to="/technician/shop-stays"');
+    expect(source).toContain("入住店铺");
   });
 
   it("builds the personal-center view only from formal profile, detail, and service payloads", () => {

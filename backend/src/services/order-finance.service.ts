@@ -331,7 +331,7 @@ export class OrderFinanceService {
                 nominated: financial.wasTechnicianNominated === true
               }
             : { serviceAmountJpy: estimatedServiceGmvJpy }),
-          platformFeeNdp: financial.bPlatformFeeActualNdp || financial.bPlatformFeeHoldNdp || 500,
+          platformFeeNdp: Math.max(financial.bPlatformFeeActualNdp, financial.bPlatformFeeHoldNdp),
           workedMinutes: this.durationMinutes(record.startsAt, record.endsAt)
         })
       : null;

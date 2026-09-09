@@ -384,10 +384,12 @@ export class PrismaTechnicianShopAffiliationBackfillRuntime implements Technicia
 
       const evidence = new Set<string>();
       for (const row of technicianServices) {
-        evidence.add(evidenceKey(row.technicianId, row.shopId));
+        if (row.shopId !== null) {
+          evidence.add(evidenceKey(row.technicianId, row.shopId));
+        }
       }
       for (const row of [...services, ...bookings, ...scheduleSlots, ...compensationProfiles]) {
-        if (row.technicianProfileId !== null) {
+        if (row.technicianProfileId !== null && row.shopId !== null) {
           evidence.add(evidenceKey(row.technicianProfileId, row.shopId));
         }
       }

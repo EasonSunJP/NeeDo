@@ -23,6 +23,20 @@ export type TechnicianProfileGender = "female" | "male" | "private";
 export type TechnicianEmploymentTypePayload = "independent" | "full_time" | "temporary";
 export type TechnicianServiceBase = { latitude: number; longitude: number } | null;
 
+export type TechnicianShopAccessStatus = "active" | "requires_shop";
+
+export interface TechnicianShopAffiliationPayload {
+  id: number;
+  shopId: number;
+  publicId: string | null;
+  name: string;
+  city: string;
+  address: string;
+  relationshipType: "partner";
+  workStatus: "active" | "on_leave" | "suspended";
+  startsAt: string;
+}
+
 export interface TechnicianProfileMutation {
   displayName?: string;
   gender?: TechnicianProfileGender;
@@ -45,6 +59,8 @@ export interface TechnicianProfilePayload {
   publicId: string;
   userId: number;
   shopId: number | null;
+  shopAccessStatus: TechnicianShopAccessStatus;
+  shopAffiliations: TechnicianShopAffiliationPayload[];
   displayName: string;
   avatarUrl: string | null;
   bio: string | null;
@@ -81,6 +97,31 @@ export interface TechnicianProfileRepositoryPort {
 }
 
 const profileInclude = {
+  technicianShopAffiliations: {
+    where: {
+      deletedAt: null,
+      workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
+      shop: { deletedAt: null }
+    },
+    orderBy: [{ startsAt: "asc" as const }, { id: "asc" as const }],
+    select: {
+      id: true,
+      shopId: true,
+      relationshipType: true,
+      workStatus: true,
+      startsAt: true,
+      shop: {
+        select: {
+          name: true,
+          city: true,
+          address: true,
+          publicIdentifier: {
+            select: { publicId: true, deletedAt: true }
+          }
+        }
+      }
+    }
+  },
   mediaAssets: {
     where: { usageType: "avatar", isActive: true, deletedAt: null },
     orderBy: { id: "desc" as const },
@@ -210,11 +251,39 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       });
     }
 
+    const shopAffiliations = profile.technicianShopAffiliations
+      .map((affiliation) => ({
+        id: affiliation.id,
+        shopId: affiliation.shopId,
+        publicId:
+          affiliation.shop.publicIdentifier?.deletedAt === null
+            ? affiliation.shop.publicIdentifier.publicId
+            : null,
+        name: affiliation.shop.name,
+        city: affiliation.shop.city,
+        address: affiliation.shop.address,
+        relationshipType: "partner" as const,
+        workStatus:
+          affiliation.workStatus === "ON_LEAVE"
+            ? ("on_leave" as const)
+            : affiliation.workStatus === "SUSPENDED"
+              ? ("suspended" as const)
+              : ("active" as const),
+        startsAt: affiliation.startsAt.toISOString()
+      }))
+      .sort((left, right) => {
+        if (left.shopId === profile.shopId) return -1;
+        if (right.shopId === profile.shopId) return 1;
+        return left.startsAt.localeCompare(right.startsAt) || left.id - right.id;
+      });
+
     return {
       id: profile.id,
       publicId,
       userId: profile.userId,
       shopId: profile.shopId,
+      shopAccessStatus: shopAffiliations.length > 0 ? "active" : "requires_shop",
+      shopAffiliations,
       displayName: profile.displayName,
       avatarUrl: profile.mediaAssets[0]?.url ?? profile.user.avatarBootstrapUrl ?? null,
       bio: profile.bio,
