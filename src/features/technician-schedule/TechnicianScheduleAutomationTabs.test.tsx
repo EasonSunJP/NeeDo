@@ -32,6 +32,23 @@ describe("TechnicianScheduleAutomationTabs", () => {
     expect(container.textContent).toContain("抢单设置");
     expect(container.querySelectorAll('[aria-label="Test 功能"]')).toHaveLength(2);
     expect(container.querySelectorAll('[aria-label$="说明"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[role="tab"] [aria-label="Test 功能"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-testid="automation-tab-corner-badge"]')).toHaveLength(2);
+
+    const tablist = container.querySelector<HTMLElement>('[role="tablist"]');
+    expect(tablist?.className).not.toContain("border");
+    expect(tablist?.className).not.toContain("bg-");
+    expect(tablist?.className).not.toContain("rounded-");
+    container.querySelectorAll<HTMLElement>('[role="tab"]').forEach((tab) => {
+      expect(tab.className).toContain("rounded-full");
+      expect(tab.className).toContain("text-[15px]");
+    });
+    container.querySelectorAll<HTMLElement>('[aria-label$="说明"]').forEach((trigger) => {
+      expect(trigger.className).toContain("left-[calc(50%+34px)]");
+      expect(trigger.className).toContain("top-1/2");
+      expect(trigger.className).not.toContain("right-0.5");
+      expect(trigger.className).not.toContain("border-0");
+    });
 
     await act(async () => {
       (Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("接单设置")) as HTMLButtonElement).click();

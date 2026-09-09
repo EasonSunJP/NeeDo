@@ -13,6 +13,7 @@ import {
 
 const panelClass = "rounded-[24px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-4 shadow-[var(--client-shadow)]";
 const fieldClass = "mt-2 h-11 w-full rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-3 text-sm font-bold text-[color:var(--client-text)] outline-none focus:border-[color:var(--client-primary)]";
+const applicationSelectClass = "mt-2 min-h-12 w-full rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_74%,transparent)] px-4 text-[15px] font-semibold text-[color:var(--client-text)] outline-none transition focus:border-[color:var(--client-primary)]";
 const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
 export function defaultAutomationRules(kind: TechnicianAutomationKind): TechnicianAutomationRules {
@@ -188,6 +189,10 @@ export function TechnicianAutomationSettingsPanel({
 
   const save = async () => {
     if (!setting || validation) return;
+    if (!dirty) {
+      setMessage("当前设置已是最新");
+      return;
+    }
     setState("saving");
     setMessage("");
     try {
@@ -220,13 +225,28 @@ export function TechnicianAutomationSettingsPanel({
               全部已启用规则为 AND 关系；资料缺失或平台限制时不会执行自动操作。
             </p>
           </div>
-          <input
+          <button
+            aria-checked={enabled}
             aria-label={kind === "booking" ? "启用自动接单" : "启用自动抢单"}
-            checked={enabled}
+            className={cn(
+              "relative inline-flex h-7 w-12 shrink-0 rounded-full border transition disabled:cursor-not-allowed disabled:opacity-40",
+              enabled
+                ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)]"
+                : "border-[color:var(--client-line)] bg-[color:var(--client-elevated)]"
+            )}
             disabled={!setting.entitled}
-            onChange={(event) => setEnabled(event.target.checked)}
-            type="checkbox"
-          />
+            onClick={() => setEnabled((current) => !current)}
+            role="switch"
+            type="button"
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                enabled && "translate-x-5"
+              )}
+            />
+          </button>
         </div>
         {!setting.entitled ? <p className="mt-3 text-xs font-black text-red-500">当前账号未开通此功能</p> : null}
       </section>
@@ -291,16 +311,16 @@ export function TechnicianAutomationSettingsPanel({
           <Toggle checked={rules.acceptNewCustomers} label="允许无历史评分的新客户" onChange={(acceptNewCustomers) => updateRules({ acceptNewCustomers })} />
           <Toggle checked={rules.requireEkyc} label="客户必须通过 eKYC" onChange={(requireEkyc) => updateRules({ requireEkyc })} />
           <label className="block text-xs font-black text-[color:var(--client-muted)]">最低已完成订单
-            <select className={fieldClass} onChange={(event) => updateRules({ minCompletedOrders: Number(event.target.value) as 0 | 1 | 3 | 5 | 10 })} value={rules.minCompletedOrders}>{[0, 1, 3, 5, 10].map((value) => <option key={value} value={value}>{value}</option>)}</select>
+            <select className={applicationSelectClass} onChange={(event) => updateRules({ minCompletedOrders: Number(event.target.value) as 0 | 1 | 3 | 5 | 10 })} value={rules.minCompletedOrders}>{[0, 1, 3, 5, 10].map((value) => <option key={value} value={value}>{value}</option>)}</select>
           </label>
           <label className="block text-xs font-black text-[color:var(--client-muted)]">客户来源
-            <select className={fieldClass} onChange={(event) => updateRules({ source: { mode: event.target.value as TechnicianAutomationRules["source"]["mode"], contactIdentityIds: [] } })} value={rules.source.mode}>
+            <select className={applicationSelectClass} onChange={(event) => updateRules({ source: { mode: event.target.value as TechnicianAutomationRules["source"]["mode"], contactIdentityIds: [] } })} value={rules.source.mode}>
               <option value="any">不限</option><option value="existing_contacts">已有联系人</option><option value="specific_contacts">指定联系人</option><option value="existing_contact_referrals">已有联系人推荐</option><option value="specific_contact_referrals">指定联系人推荐</option>
             </select>
           </label>
           {specificSource ? <fieldset><legend className="text-xs font-black text-[color:var(--client-muted)]">指定联系人</legend><div className="mt-2 max-h-48 space-y-2 overflow-auto">{contacts.length === 0 ? <p className="text-xs text-[color:var(--client-muted)]">暂无可选联系人</p> : contacts.map((contact) => <label className="flex items-center gap-2 rounded-xl border border-[color:var(--client-line)] p-3 text-sm font-bold" key={contact.identityId}><input checked={rules.source.contactIdentityIds.includes(contact.identityId)} onChange={(event) => updateRules({ source: { ...rules.source, contactIdentityIds: event.target.checked ? [...rules.source.contactIdentityIds, contact.identityId] : rules.source.contactIdentityIds.filter((id) => id !== contact.identityId) } })} type="checkbox" />{contact.displayName}<span className="text-xs text-[color:var(--client-muted)]">{contact.publicId}</span></label>)}</div></fieldset> : null}
           <label className="block text-xs font-black text-[color:var(--client-muted)]">客户类型
-            <select className={fieldClass} onChange={(event) => updateRules({ customerType: event.target.value as TechnicianAutomationRules["customerType"] })} value={rules.customerType}><option value="all">全部</option><option value="returning">回头客</option><option value="new">新客户</option></select>
+            <select className={applicationSelectClass} onChange={(event) => updateRules({ customerType: event.target.value as TechnicianAutomationRules["customerType"] })} value={rules.customerType}><option value="all">全部</option><option value="returning">回头客</option><option value="new">新客户</option></select>
           </label>
         </div>
       </section>
@@ -315,10 +335,8 @@ export function TechnicianAutomationSettingsPanel({
         </div>
       </section>
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-[960px] border-t border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-bg)_94%,transparent)] px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl">
-        {validation || message ? <p aria-live="polite" className={cn("mb-2 text-center text-xs font-black", validation || message.includes("失败") ? "text-red-500" : "text-[color:var(--client-primary)]")}>{validation || message}</p> : null}
-        <button className="h-12 w-full rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-needo-text)] disabled:opacity-40" data-testid="automation-save" disabled={!dirty || Boolean(validation) || state === "saving" || !setting.entitled} onClick={() => void save()} type="button">{state === "saving" ? "保存中" : "保存设置"}</button>
-      </div>
+      {validation || message ? <p aria-live="polite" className={cn("fixed bottom-[calc(72px+env(safe-area-inset-bottom))] left-1/2 z-40 w-[calc(100%-2rem)] max-w-[928px] -translate-x-1/2 text-center text-xs font-black", validation || message.includes("失败") ? "text-red-500" : "text-[color:var(--client-primary)]")}>{validation || message}</p> : null}
+      <button className="fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-1/2 z-40 h-12 w-[calc(100%-2rem)] max-w-[928px] -translate-x-1/2 rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-needo-text)] shadow-[0_16px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] disabled:opacity-40" data-testid="automation-save" disabled={Boolean(validation) || state === "saving" || !setting.entitled} onClick={() => void save()} type="button">{state === "saving" ? "保存中" : "保存设置"}</button>
     </div>
   );
 }

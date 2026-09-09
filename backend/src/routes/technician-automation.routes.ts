@@ -25,21 +25,21 @@ export const createTechnicianAutomationRoutes = (config: AppConfig, dependencies
 
   router.get(
     "/technician/automation-settings/contacts",
-    authenticate,
+    authenticate(),
     createAuthorizeMiddleware(TECHNICIAN_AUTOMATION_PERMISSIONS.read),
     validateRequest({ query: technicianAutomationContactListQuerySchema }),
     controller.listContacts
   );
   router.get(
     "/technician/automation-settings/:kind",
-    authenticate,
+    authenticate(),
     createAuthorizeMiddleware(TECHNICIAN_AUTOMATION_PERMISSIONS.read),
     validateRequest({ params: technicianAutomationKindParamSchema }),
     controller.getSetting
   );
   router.put(
     "/technician/automation-settings/:kind",
-    authenticate,
+    authenticate(),
     createAuthorizeMiddleware(TECHNICIAN_AUTOMATION_PERMISSIONS.write),
     validateRequest({ params: technicianAutomationKindParamSchema, body: technicianAutomationSettingsUpdateSchema }),
     controller.updateSetting

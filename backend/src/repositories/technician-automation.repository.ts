@@ -4,7 +4,7 @@ import {
   type PrismaClient
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
-import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
+import { toAuditLogCreateData } from "./audit-log.repository";
 import type {
   TechnicianAutomationContactPage,
   TechnicianAutomationRepositoryPort,
