@@ -6,7 +6,6 @@ import { useAuth } from "../../auth/AuthProvider";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { technicianNavItems } from "../../components/mobile/navItems";
-import { FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { SchedulePageHeader } from "../../components/scheduling/SchedulePageHeader";
 import { Button } from "../../components/ui/Button";
 import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
@@ -38,6 +37,7 @@ import {
   useFormalTechnicianOrderResource,
   useFormalTechnicianScheduleResource
 } from "./formal-resource";
+import { TechnicianScheduleAutomationTabs } from "./TechnicianScheduleAutomationTabs";
 
 const panelClass =
   "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-4 shadow-[var(--client-shadow)]";
@@ -174,11 +174,14 @@ export function TechnicianScheduleIndexRoutePage() {
   const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("calendar");
+  const [automationDirty, setAutomationDirty] = useState(false);
   const resource = useFormalTechnicianScheduleResource(session, null);
   const dataCenterPeriod = readDataCenterPeriod(searchParams.get("period"));
   const initialSelectedDate = tokyoDateKey(searchParams.get("from"));
+  const confirmDiscard = () => !automationDirty || window.confirm("当前设置尚未保存，确定离开吗？");
 
   const handleBack = () => {
+    if (!confirmDiscard()) return;
     const historyIndex = typeof window !== "undefined"
       ? (window.history.state as { idx?: number } | null)?.idx
       : undefined;
@@ -188,6 +191,12 @@ export function TechnicianScheduleIndexRoutePage() {
     }
     navigate("/technician");
   };
+  const handleWorkspaceTabChange = (nextTab: WorkspaceTab) => {
+    if (nextTab === workspaceTab) return;
+    if (!confirmDiscard()) return;
+    setAutomationDirty(false);
+    setWorkspaceTab(nextTab);
+  };
 
   return (
     <TechnicianSchedulePageShell backTo="/technician" showBottomNav={false} showHeader={false} title="排班与预约">
@@ -196,19 +205,14 @@ export function TechnicianScheduleIndexRoutePage() {
         backLabel="返回技师首页"
         closeLabel="关闭排班"
         footer={(
-          <FeatureSegmentedTabs
-            items={[
-              { label: "我的排班", value: "calendar" },
-              { label: "排班设置", value: "settings" }
-            ]}
-            onChange={setWorkspaceTab}
+          <TechnicianScheduleAutomationTabs
+            onChange={handleWorkspaceTabChange}
             value={workspaceTab}
-            variant="header"
           />
         )}
         onBack={handleBack}
         onChange={setSearchQuery}
-        onClose={() => navigate("/technician", { replace: true })}
+        onClose={() => { if (confirmDiscard()) navigate("/technician", { replace: true }); }}
         placeholder="搜索排班、预约、服务、状态"
         value={searchQuery}
       />
@@ -226,6 +230,7 @@ export function TechnicianScheduleIndexRoutePage() {
         profileAvatarUrl={resource.data.profile.avatarUrl}
         profileId={resource.data.profile.id}
         profileName={resource.data.profile.displayName}
+        onDirtyChange={setAutomationDirty}
         searchQuery={searchQuery}
         shopId={resource.data.shopId}
         shopName={resource.data.shopName}

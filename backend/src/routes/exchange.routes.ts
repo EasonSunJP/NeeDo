@@ -9,10 +9,14 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { ExchangePostRepository } from "../repositories/exchange.repository";
+import { ExchangeClaimRepository } from "../repositories/exchange-claim.repository";
+import { TechnicianAutomationRepository } from "../repositories/technician-automation.repository";
 import { ExchangeRequestFeeRepository } from "../repositories/exchange-request-fee.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
 import { ExchangeRequestFeeService } from "../services/exchange-request-fee.service";
 import { ExchangeService } from "../services/exchange.service";
+import { ExchangeClaimService } from "../services/exchange-claim.service";
+import { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import { LedgerService } from "../services/ledger.service";
 import { AppError } from "../utils/app-error";
 import {
@@ -86,9 +90,51 @@ export const createExchangeRoutes = (config: AppConfig, dependencies: AppDepende
       dependencies.ledgerService ??
         new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository()),
       dependencies.userPolicyEnforcementService,
-      dependencies.platformMembershipResolverService
-    );
-  const controller = new ExchangeController(service);
+        dependencies.platformMembershipResolverService
+      );
+  const actorRepository = new ExchangePostRepository();
+  const claimService =
+    dependencies.exchangeClaimService ??
+    new ExchangeClaimService(new ExchangeClaimRepository(), actorRepository);
+  const automationProcessor =
+    dependencies.technicianAutomationProcessor ??
+    (dependencies.exchangeService ? undefined : new TechnicianAutomationProcessor(
+      new TechnicianAutomationRepository(),
+      {
+        confirmBooking: async () => {
+          throw new Error("booking automation authority is unavailable on exchange routes");
+        }
+      },
+      {
+        applyRequest: async (input) => {
+          await claimService.createClaim(
+            {
+              userId: input.technicianUserId,
+              email: "",
+              accessTokenJti: "technician-automation",
+              accessTokenExpiresAt: 0,
+              currentIdentityId: input.technicianIdentityId,
+              currentPublicId: input.technicianPublicId,
+              currentIdentityType: "technician",
+              currentIdentityScopeType: "technician_profile",
+              currentIdentityScopeId: input.technicianProfileId,
+              roles: ["technician"],
+              permissions: [EXCHANGE_PERMISSIONS.claimCreate]
+            },
+            input.postId,
+            {
+              scheduleSlotId: input.scheduleSlotId,
+              quoteAmountJpy: input.quoteAmountJpy,
+              message: input.message
+            },
+            input.idempotencyKey,
+            { ip: "127.0.0.1", userAgent: "technician-automation" },
+            { suppressQuickMatching: true }
+          );
+        }
+      }
+    ));
+  const controller = new ExchangeController(service, automationProcessor);
 
   router.get(
     "/exchange/posts",

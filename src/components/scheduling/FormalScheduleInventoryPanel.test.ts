@@ -31,7 +31,7 @@ describe("FormalScheduleInventoryPanel", () => {
     expect(source).toContain("当前范围没有正式可预约时段");
   });
 
-  it("keeps the merchant appointment overview and technician workspace on the formal shared calendar", () => {
+  it("keeps the merchant appointment overview and technician My Schedule on the formal shared calendar", () => {
     expect(merchantSource).toContain("<UnifiedUserCalendar");
     expect(merchantSource).toContain("currentStore={store}");
     expect(merchantSource).not.toContain("<FormalScheduleInventoryPanel");
@@ -39,6 +39,7 @@ describe("FormalScheduleInventoryPanel", () => {
     expect(technicianSource).toContain('displayMode="parallel"');
     expect(technicianSource).toContain("formalOnly");
     expect(technicianSource).toContain("showSourceDrawer");
-    expect(technicianSource).toContain("<FormalTechnicianOrdersPanel />");
+    expect(technicianSource).toContain("<TechnicianAutomationSettingsPanel");
+    expect(technicianSource).toContain('tab === "bookingSettings" || tab === "requestSettings"');
   });
 });
