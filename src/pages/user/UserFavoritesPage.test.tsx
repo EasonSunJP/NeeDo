@@ -6,7 +6,10 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatLocalizedImChatRecordTitle } from "../../features/im/chat-records";
 import { entityEngagementApi } from "../../features/entity-engagement/api";
+import type { EntityFavoriteListItem } from "../../features/entity-engagement/api";
 import type { Language } from "../../i18n/translations";
+import appSource from "../../App.tsx?raw";
+import pageSource from "./UserFavoritesPage.tsx?raw";
 import { UserFavoritesPage, type UserFavoritesApi } from "./UserFavoritesPage";
 
 function favoriteAt(index: number) {
@@ -187,6 +190,146 @@ describe("UserFavoritesPage", () => {
     expect(document.body.textContent).toContain("LifeDance 港区店");
     expect(document.body.textContent).toContain("東京都港区麻布十番");
     expect(document.querySelector('[data-card-kind="shop"]')).not.toBeNull();
+  });
+
+  it("uses one canonical bottom-nav-free route with shared back, search, and close controls", () => {
+    expect(appSource).toContain(
+      '<Route path="/me/favorites" element={protect("user", <UserFavoritesRoutePage />)} />',
+    );
+    expect(appSource).toContain(
+      '<Route path="/me/favorites/chat-records" element={protect("user", <Navigate replace to="/me/favorites" />)} />',
+    );
+    expect(pageSource).toContain("<MobileFullscreenHeader");
+    expect(pageSource).toContain("showBottomNav={false}");
+  });
+
+  it("lists shop, technician, service, post, and chat-record favorites and filters them from the header search", async () => {
+    const api = makeApi();
+    const entityRows: EntityFavoriteListItem[] = [
+      {
+        targetType: "shop",
+        publicId: "shop0000000001",
+        isFavorited: true,
+        favoriteCount: 3,
+        favoritedAt: "2026-09-09T00:00:00.000Z",
+        card: {
+          kind: "shop",
+          name: "LifeDance 港区店",
+          description: "深夜疗愈",
+          address: "東京都港区",
+          imageUrl: null,
+          rating: 4.9,
+          reviewCount: 32,
+          shareCount: 8,
+        },
+      },
+      {
+        targetType: "technician",
+        publicId: "s0000000001",
+        isFavorited: true,
+        favoriteCount: 5,
+        favoritedAt: "2026-09-09T00:00:00.000Z",
+        card: {
+          kind: "technician",
+          name: "技师 Mika",
+          description: "肩颈护理",
+          imageUrl: null,
+          languages: ["日本語"],
+          rating: 4.8,
+          completedOrderCount: 50,
+          shareCount: 4,
+        },
+      },
+      {
+        targetType: "service",
+        publicId: "svc000000001",
+        isFavorited: true,
+        favoriteCount: 7,
+        favoritedAt: "2026-09-09T00:00:00.000Z",
+        card: {
+          kind: "service",
+          name: "全身调理",
+          description: "90 分钟",
+          imageUrl: null,
+          priceAmount: 12000,
+          currency: "JPY",
+          durationMinutes: 90,
+          usageCount: 12,
+          shareCount: 2,
+          isBookable: true,
+          shopPublicId: "shop0000000001",
+          shopAddress: "東京都港区",
+          tags: ["调理"],
+        },
+      },
+    ];
+    const entityApi = {
+      listFavorites: vi.fn(async () => ({
+        list: entityRows,
+        total: entityRows.length,
+        page: 1,
+        page_size: 100,
+      })),
+      setFavorite: vi.fn(async () => ({})),
+    };
+
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <UserFavoritesPage
+            api={api}
+            entityApi={entityApi}
+            language="zh"
+            socialFavorites={[
+              {
+                authorAvatar: "/avatar.webp",
+                authorName: "LifeDance",
+                mediaType: "video",
+                mediaUrl: "/media/content/season.mp4",
+                postId: "701",
+                text: "季节视频公告",
+              },
+            ]}
+          />
+        </MemoryRouter>,
+      ),
+    );
+    await flush();
+
+    expect(container.textContent).toContain("店铺");
+    expect(container.textContent).toContain("技师");
+    expect(container.textContent).toContain("服务");
+    expect(container.textContent).toContain("动态");
+    expect(container.textContent).toContain("聊天记录");
+    expect(container.querySelector('[data-card-kind="shop"]')).not.toBeNull();
+    expect(container.querySelector('[data-card-kind="technician"]')).not.toBeNull();
+    expect(container.querySelector('[data-card-kind="service"]')).not.toBeNull();
+    expect(container.querySelector("[data-social-post-compact-card]")).not.toBeNull();
+    expect(container.querySelector("[data-im-chat-record-opener]")).not.toBeNull();
+    expect(container.querySelector('button[aria-label="返回个人中心"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="关闭收藏"]')).not.toBeNull();
+
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('button[aria-label="搜索收藏"]')
+        ?.click(),
+    );
+    const search = container.querySelector<HTMLInputElement>(
+      'input[aria-label="搜索收藏内容"]',
+    );
+    expect(search).not.toBeNull();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      setter?.call(search, "季节视频");
+      search?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("季节视频公告");
+    expect(container.textContent).not.toContain("LifeDance 港区店");
+    expect(container.textContent).not.toContain("A1的聊天记录");
   });
 
   it("retains a favorite on remove failure and removes it only after API success", async () => {

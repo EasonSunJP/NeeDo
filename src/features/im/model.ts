@@ -405,6 +405,8 @@ export type MessageExt = {
     authorAvatar: string;
     text: string;
     mediaUrl?: string;
+    mediaType?: "image" | "video";
+    mediaThumbnailUrl?: string;
   };
   scheduleInvite?: {
     scheduleId: string;

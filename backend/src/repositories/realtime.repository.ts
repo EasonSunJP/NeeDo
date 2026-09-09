@@ -26,6 +26,7 @@ import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination"
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { EnsureTechnicianApplicationContactInput } from "../services/technician-application-review.service";
 import { AppError } from "../utils/app-error";
+import { buildSocialPostShareCardMetadata } from "../utils/social-post-share-card";
 import {
   ImMediaBindingError,
   imMessageInclude as messageInclude,
@@ -4596,18 +4597,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             senderIdentityId: actorIdentityId,
             type: MessageType.TEXT,
             content: "转发了一条动态",
-            metadata: {
-              needoMessageType: "social-post-card",
-              needoMessageExt: {
-                socialPostCard: {
-                  postId: String(socialPost.id),
-                  authorName: author.displayName,
-                  authorAvatar: author.avatarUrl ?? "",
-                  text: socialPost.content,
-                  ...(typeof firstMedia?.url === "string" ? { mediaUrl: firstMedia.url } : {})
-                }
-              }
-            },
+            metadata: buildSocialPostShareCardMetadata({
+              authorAvatar: author.avatarUrl ?? "",
+              authorName: author.displayName,
+              firstMedia,
+              postId: socialPost.id,
+              text: socialPost.content
+            }),
             createdAt,
             expiresAt: globalExpiresAt,
             recallDeadlineAt: new Date(

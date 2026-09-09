@@ -52,6 +52,7 @@ import {
 } from "./JudgementReactionIcon";
 import { ImChatRecordCard } from "./ImChatRecordCard";
 import { resolveImNoStoreMediaSource } from "./media-source";
+import { SocialPostCompactCard } from "./SocialPostCompactCard";
 import { ReactionCatalog } from "./ReactionCatalog";
 import {
   getRecentImReactionSnapshot,
@@ -84,15 +85,6 @@ import {
 const defaultImMessageTranslation: ImMessageTranslationOptions = {
   language: "zh",
 };
-
-const socialPostCardCopy: Record<Language, { fallback: string; open: string }> =
-  {
-    zh: { fallback: "查看这条动态", open: "打开原动态" },
-    "zh-Hant": { fallback: "查看這則動態", open: "開啟原動態" },
-    ja: { fallback: "この投稿を見る", open: "元の投稿を開く" },
-    en: { fallback: "View this post", open: "Open original post" },
-    ko: { fallback: "이 게시물 보기", open: "원본 게시물 열기" },
-  };
 
 export function ImIcon({
   name,
@@ -4115,7 +4107,6 @@ export function MessageBubble({
   translation?: ImMessageTranslationOptions;
 }) {
   const i18n = useProvidedI18n();
-  const postCardCopy = socialPostCardCopy[i18n?.language ?? "zh"];
   const rawMediaSource =
     message.type === "image" || (message.type === "video" && !readOnly)
       ? (message.ext?.thumbnailUrl ?? message.ext?.url ?? message.content)
@@ -4513,37 +4504,12 @@ export function MessageBubble({
     if (message.type === "social-post-card" && message.ext?.socialPostCard) {
       const card = message.ext.socialPostCard;
       return (
-        <button
-          className="block w-[292px] max-w-[82vw] overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-left text-[color:var(--client-text)]"
-          onClick={() => onOpenSocialPost?.(card.postId)}
-          type="button"
-        >
-          {card.mediaUrl ? (
-            <img
-              alt=""
-              className="h-36 w-full object-cover"
-              src={card.mediaUrl}
-            />
-          ) : null}
-          <div className="p-3">
-            <div className="flex items-center gap-2">
-              <AvatarImage
-                alt={card.authorName}
-                className="h-8 w-8"
-                src={card.authorAvatar}
-              />
-              <p className="min-w-0 flex-1 truncate text-[13px] font-black">
-                {card.authorName}
-              </p>
-            </div>
-            <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-[13px] leading-5 text-[color:var(--client-muted)]">
-              {card.text || postCardCopy.fallback}
-            </p>
-            <p className="mt-3 border-t border-[color:var(--client-line)] pt-2 text-[11px] font-black text-[color:var(--client-primary)]">
-              {postCardCopy.open}
-            </p>
-          </div>
-        </button>
+        <SocialPostCompactCard
+          card={card}
+          className="w-[292px] max-w-[82vw]"
+          language={i18n?.language ?? "zh"}
+          onOpen={onOpenSocialPost}
+        />
       );
     }
 

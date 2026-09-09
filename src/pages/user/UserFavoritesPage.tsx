@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { AppIcon } from "../../components/client-ui/AppScaffold";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  AppIcon,
+  floatingHeaderControlButtonClassName,
+} from "../../components/client-ui/AppScaffold";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { ImChatRecordCard } from "../../features/im/ImChatRecordCard";
+import {
+  SocialPostCompactCard,
+  type SocialPostCompactCardData,
+} from "../../features/im/SocialPostCompactCard";
 import type {
   ImChatRecordFavorite,
   ImChatRecordFavoritePage,
@@ -18,6 +26,9 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { UnifiedEntityInfoCard } from "../../shared/profile-card/UnifiedEntityInfoCard";
 import { UnifiedServiceInfoCard } from "../../shared/service-card";
+import { useSocial } from "../../features/social/context";
+import { socialPaths } from "../../features/social/paths";
+import { postAuthorKey } from "../../features/social/timeline";
 
 export type UserFavoritesApi = {
   listChatRecordFavorites(query?: {
@@ -36,6 +47,44 @@ export type UserEntityFavoritesApi = {
   }>;
   setFavorite(target: EntityTarget, isFavorited: boolean): Promise<unknown>;
 };
+
+export type UserSocialFavorite = SocialPostCompactCardData;
+
+function normalizedSearch(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+function matchesSearch(query: string, values: Array<string | null | undefined>) {
+  if (!query) return true;
+  return values.some((value) => value?.toLocaleLowerCase().includes(query));
+}
+
+function FavoritesSection({
+  children,
+  empty,
+  emptyLabel,
+  title,
+}: {
+  children: ReactNode;
+  empty: boolean;
+  emptyLabel: string;
+  title: string;
+}) {
+  return (
+    <section aria-label={title} className="mb-7" data-favorites-section={title}>
+      <h2 className="mb-3 text-sm font-black text-[color:var(--client-muted)]">
+        {title}
+      </h2>
+      {empty ? (
+        <p className="py-5 text-center text-sm font-bold text-[color:var(--client-muted)]">
+          {emptyLabel}
+        </p>
+      ) : (
+        children
+      )}
+    </section>
+  );
+}
 
 function EntityFavoriteCardView({
   favorite,
@@ -118,9 +167,11 @@ function EntityFavoriteCardView({
 function EntityFavoritesSection({
   api,
   language,
+  query,
 }: {
   api: UserEntityFavoritesApi;
   language: Language;
+  query: string;
 }) {
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState<Awaited<
@@ -164,15 +215,39 @@ function EntityFavoritesSection({
       .then(() => setRevision((value) => value + 1))
       .finally(() => setRemoving(null));
   };
+  const normalizedQuery = normalizedSearch(query);
+  const visibleFavorites = (result?.list ?? []).filter((favorite) =>
+    matchesSearch(normalizedQuery, [
+      favorite.card.name,
+      favorite.card.description,
+      favorite.card.kind === "shop" ? favorite.card.address : undefined,
+      favorite.card.kind === "technician"
+        ? favorite.card.languages.join(" ")
+        : undefined,
+      favorite.card.kind === "service"
+        ? favorite.card.tags.join(" ")
+        : undefined,
+    ]),
+  );
+  const groupCopy: Record<
+    EntityFavoriteListItem["card"]["kind"],
+    string
+  > = {
+    shop: translateText("店铺", language),
+    technician: translateText("技师", language),
+    service: translateText("服务", language),
+  };
+  const emptyGroupCopy: Record<
+    EntityFavoriteListItem["card"]["kind"],
+    string
+  > = {
+    shop: translateText("暂无收藏的店铺", language),
+    technician: translateText("暂无收藏的技师", language),
+    service: translateText("暂无收藏的服务", language),
+  };
 
   return (
-    <section
-      aria-label={translateText("服务、店铺与技师", language)}
-      className="mb-7"
-    >
-      <h2 className="mb-3 text-sm font-black text-[color:var(--client-muted)]">
-        {translateText("服务、店铺与技师", language)}
-      </h2>
+    <>
       {status === "loading" ? (
         <p className="py-5 text-center text-sm font-bold text-[color:var(--client-muted)]">
           {translateText("正在读取收藏", language)}
@@ -192,34 +267,45 @@ function EntityFavoritesSection({
           </button>
         </div>
       ) : null}
-      {status === "ready" && result?.list.length === 0 ? (
-        <p className="py-5 text-center text-sm font-bold text-[color:var(--client-muted)]">
-          {translateText("暂无收藏的服务或名片", language)}
-        </p>
-      ) : null}
-      <ul className="space-y-4">
-        {result?.list.map((favorite) => {
-          const key = `${favorite.targetType}:${favorite.publicId}`;
-          return (
-            <li key={key}>
-              <EntityFavoriteCardView favorite={favorite} />
-              <div className="mt-2 flex justify-end">
-                <button
-                  className="rounded-full px-3 py-1.5 text-xs font-black text-[color:var(--client-muted)]"
-                  disabled={removing !== null}
-                  onClick={() => remove(favorite)}
-                  type="button"
-                >
-                  {removing === key
-                    ? translateText("正在移除", language)
-                    : translateText("移除收藏", language)}
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+      {status === "ready"
+        ? (["shop", "technician", "service"] as const).map((kind) => {
+            const rows = visibleFavorites.filter(
+              (favorite) => favorite.card.kind === kind,
+            );
+            return (
+              <FavoritesSection
+                empty={rows.length === 0}
+                emptyLabel={emptyGroupCopy[kind]}
+                key={kind}
+                title={groupCopy[kind]}
+              >
+                <ul className="space-y-4">
+                  {rows.map((favorite) => {
+                    const key = `${favorite.targetType}:${favorite.publicId}`;
+                    return (
+                      <li key={key}>
+                        <EntityFavoriteCardView favorite={favorite} />
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            className="rounded-full px-3 py-1.5 text-xs font-black text-[color:var(--client-muted)]"
+                            disabled={removing !== null}
+                            onClick={() => remove(favorite)}
+                            type="button"
+                          >
+                            {removing === key
+                              ? translateText("正在移除", language)
+                              : translateText("移除收藏", language)}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </FavoritesSection>
+            );
+          })
+        : null}
+    </>
   );
 }
 
@@ -227,13 +313,18 @@ export function UserFavoritesPage({
   api,
   entityApi,
   language: requestedLanguage,
+  socialFavorites = [],
 }: {
   api: UserFavoritesApi;
   entityApi?: UserEntityFavoritesApi;
   language?: Language;
+  socialFavorites?: UserSocialFavorite[];
 }) {
   const { language: contextLanguage } = useOptionalI18n();
   const language = requestedLanguage ?? contextLanguage;
+  const navigate = useNavigate();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [loadRevision, setLoadRevision] = useState(0);
   const [result, setResult] = useState<ImChatRecordFavoritePage | null>(null);
@@ -246,6 +337,21 @@ export function UserFavoritesPage({
   const loadGeneration = useRef(0);
   const activePage = useRef(page);
   const inflightRemovals = useRef(new Set<string>());
+  const normalizedQuery = normalizedSearch(query);
+  const visibleSocialFavorites = socialFavorites.filter((favorite) =>
+    matchesSearch(normalizedQuery, [
+      favorite.authorName,
+      favorite.text,
+      favorite.postId,
+    ]),
+  );
+  const visibleChatFavorites = (result?.list ?? []).filter((favorite) =>
+    matchesSearch(normalizedQuery, [
+      favorite.title,
+      favorite.preview,
+      favorite.senderNames.join(" "),
+    ]),
+  );
 
   useEffect(() => {
     alive.current = true;
@@ -325,40 +431,72 @@ export function UserFavoritesPage({
   };
 
   return (
-    <section className="mx-auto w-full max-w-[480px] px-4 pb-28 pt-3 text-[color:var(--client-text)]">
-      <header className="mb-4 flex min-h-11 items-center gap-3">
-        <Link
-          aria-label={translateText("返回个人中心", language)}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[color:var(--client-line)] text-[color:var(--client-primary)] focus-visible:outline focus-visible:outline-2"
-          to="/me"
-        >
-          <AppIcon className="h-5 w-5" name="back" />
-        </Link>
-        <div className="min-w-0">
-          <h1 className="truncate text-[20px] font-black">
-            {translateText("我的收藏", language)}
-          </h1>
-          <p className="mt-0.5 text-xs font-bold text-[color:var(--client-muted)]">
-            {translateText(
-              entityApi ? "保存的服务与名片" : "保存的聊天记录",
-              language,
-            )}
-          </p>
-        </div>
-        <Link
-          className="ml-auto shrink-0 rounded-full border border-[color:var(--client-line)] px-3 py-2 text-xs font-black text-[color:var(--client-primary)] focus-visible:outline focus-visible:outline-2"
-          to="/me/favorites"
-        >
-          {translateText("动态收藏", language)}
-        </Link>
-      </header>
-
+    <>
+      <MobileFullscreenHeader
+        action={(
+          <button
+            aria-label={translateText("搜索收藏", language)}
+            className={floatingHeaderControlButtonClassName}
+            onClick={() => {
+              if (searchOpen) setQuery("");
+              setSearchOpen((value) => !value);
+            }}
+            type="button"
+          >
+            <AppIcon className="h-5 w-5" name="search" />
+          </button>
+        )}
+        backLabel={translateText("返回个人中心", language)}
+        closeLabel={translateText("关闭收藏", language)}
+        footer={searchOpen ? (
+          <label className="flex h-10 items-center gap-2 rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-3">
+            <AppIcon className="h-4 w-4 text-[color:var(--client-muted)]" name="search" />
+            <input
+              aria-label={translateText("搜索收藏内容", language)}
+              autoFocus
+              className="min-w-0 flex-1 bg-transparent text-sm font-bold outline-none placeholder:text-[color:var(--client-muted)]"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={translateText("搜索收藏内容", language)}
+              type="search"
+              value={query}
+            />
+          </label>
+        ) : undefined}
+        info={translateText("店铺、技师、服务、动态与聊天记录", language)}
+        onBack={() => navigate(-1)}
+        onClose={() => navigate("/me", { replace: true })}
+        title={translateText("我的收藏", language)}
+      />
+      <main className="mx-auto w-full max-w-[480px] px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-3 text-[color:var(--client-text)]">
       {entityApi ? (
-        <EntityFavoritesSection api={entityApi} language={language} />
+        <EntityFavoritesSection
+          api={entityApi}
+          language={language}
+          query={query}
+        />
       ) : null}
-      <h2 className="mb-3 text-sm font-black text-[color:var(--client-muted)]">
-        {translateText("保存的聊天记录", language)}
-      </h2>
+      <FavoritesSection
+        empty={visibleSocialFavorites.length === 0}
+        emptyLabel={translateText("暂无收藏的动态", language)}
+        title={translateText("动态", language)}
+      >
+        <ul className="space-y-3">
+          {visibleSocialFavorites.map((favorite) => (
+            <li key={favorite.postId}>
+              <SocialPostCompactCard
+                card={favorite}
+                language={language}
+                to={socialPaths.post("user", favorite.postId)}
+              />
+            </li>
+          ))}
+        </ul>
+      </FavoritesSection>
+      <FavoritesSection
+        empty={status === "ready" && visibleChatFavorites.length === 0}
+        emptyLabel={translateText("暂无收藏的聊天记录", language)}
+        title={translateText("保存的聊天记录", language)}
+      >
       {status === "loading" ? (
         <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">
           {translateText("正在读取收藏", language)}
@@ -378,14 +516,8 @@ export function UserFavoritesPage({
           </button>
         </div>
       ) : null}
-      {status === "ready" && result?.list.length === 0 ? (
-        <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">
-          {translateText("暂无收藏的聊天记录", language)}
-        </p>
-      ) : null}
-
       <ul className="space-y-3">
-        {result?.list.map((favorite) => (
+        {visibleChatFavorites.map((favorite) => (
           <li
             className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)] p-1.5"
             key={favorite.id}
@@ -445,15 +577,43 @@ export function UserFavoritesPage({
           </button>
         </nav>
       ) : null}
-    </section>
+      </FavoritesSection>
+      </main>
+    </>
   );
 }
 
 export function UserFavoritesRoutePage() {
   const api = useImStoreApi("user");
+  const { getActorForScope, profiles, state } = useSocial();
+  const actorKey = getActorForScope("user");
+  const socialFavorites = useMemo<UserSocialFavorite[]>(() => {
+    const interactions = state.interactions[actorKey] ?? {};
+    return state.posts
+      .filter((post) => interactions[post.id]?.bookmarked)
+      .map((post) => {
+        const author = profiles[postAuthorKey(post)];
+        const media = post.media[0];
+        return {
+          postId: post.id,
+          authorName: author?.displayName ?? author?.handle ?? "NeeDo",
+          authorAvatar: author?.avatar ?? "",
+          text: post.text,
+          ...(media?.url ? { mediaUrl: media.url } : {}),
+          ...(media?.type ? { mediaType: media.type } : {}),
+          ...(media?.thumbnailUrl
+            ? { mediaThumbnailUrl: media.thumbnailUrl }
+            : {}),
+        };
+      });
+  }, [actorKey, profiles, state.interactions, state.posts]);
   return (
-    <MobileShell>
-      <UserFavoritesPage api={api} entityApi={entityEngagementApi} />
+    <MobileShell showBottomNav={false} showTopEdgeMask={false}>
+      <UserFavoritesPage
+        api={api}
+        entityApi={entityEngagementApi}
+        socialFavorites={socialFavorites}
+      />
     </MobileShell>
   );
 }
