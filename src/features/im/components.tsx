@@ -4757,7 +4757,12 @@ export function MessageBubble({
       : cn("rounded-[20px] px-3 py-2", bubbleClass);
   const contentNode =
     quoteNode || reactionNode ? (
-      <div className="min-w-0 max-w-full overflow-hidden">
+      <div
+        className={cn(
+          "min-w-0 max-w-full overflow-hidden",
+          message.type === "voice" && "w-full",
+        )}
+      >
         {quoteNode}
         {bubbleContent}
         {reactionNode}

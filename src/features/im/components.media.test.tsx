@@ -89,6 +89,26 @@ describe("IM media delivery failures", () => {
     expect(textBubble.className.split(/\s+/)).not.toContain("w-full");
   });
 
+  it("keeps a reacted voice player's content wrapper at the full bubble width", async () => {
+    await act(async () => root.render(
+      <MessageBubble
+        isMine={false}
+        message={message("voice")}
+        reactions={[{
+          emoji: "Good",
+          people: [{ id: "admin-1", name: "LifeDance 管理员" }],
+        }]}
+      />,
+    ));
+
+    const voiceBubble = container.querySelector<HTMLElement>("[data-im-message-bubble='true']")!;
+    const contentWrapper = voiceBubble.firstElementChild as HTMLElement;
+
+    expect(contentWrapper.className.split(/\s+/)).toContain("w-full");
+    expect(contentWrapper.querySelector("audio")).not.toBeNull();
+    expect(contentWrapper.textContent).toContain("LifeDance 管理员");
+  });
+
   it("clears a previous failure when the message source changes", async () => {
     await act(async () => root.render(<MessageBubble isMine={false} message={message("image")} />));
     await act(async () => container.querySelector('[data-im-message-bubble] img')!.dispatchEvent(new Event("error")));
