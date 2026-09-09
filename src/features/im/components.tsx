@@ -1314,6 +1314,10 @@ export function ImChatComposer({
   textareaRef,
   voiceButtonRef,
   voiceInputAriaLabel = "录制语音",
+  embedded = false,
+  showVoice = true,
+  showMore = true,
+  showSend = true,
 }: {
   actions?: ImChatComposerAction[];
   blocked?: boolean;
@@ -1342,6 +1346,10 @@ export function ImChatComposer({
   textareaRef?: Ref<HTMLDivElement>;
   voiceButtonRef?: Ref<HTMLButtonElement>;
   voiceInputAriaLabel?: string;
+  embedded?: boolean;
+  showVoice?: boolean;
+  showMore?: boolean;
+  showSend?: boolean;
 }) {
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   const previousPanelRef = useRef<ImChatComposerPanel>(null);
@@ -1441,7 +1449,8 @@ export function ImChatComposer({
   return (
     <div
       className={cn(
-        "im-chat-composer-root safe-nav-bottom relative z-10 max-w-full px-3 pt-2 [overflow-x:clip]",
+        "im-chat-composer-root relative z-10 max-w-full [overflow-x:clip]",
+        embedded ? "" : "safe-nav-bottom px-3 pt-2",
         disabled ? "cursor-not-allowed opacity-60" : "",
       )}
       data-im-composer-disabled={disabled ? "true" : undefined}
@@ -1464,7 +1473,7 @@ export function ImChatComposer({
             >
               {leadingAccessory}
             </div>
-          ) : (
+          ) : showVoice ? (
             <button
               aria-label={voiceInputAriaLabel}
               className={cn(
@@ -1482,7 +1491,7 @@ export function ImChatComposer({
             >
               <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
             </button>
-          )}
+          ) : null}
           <div
             className={composerInputShellClass}
             data-im-composer-editor-shell="true"
@@ -1535,7 +1544,7 @@ export function ImChatComposer({
           >
             <ImIcon className="h-[18px] w-[18px]" name="emoji-chat" />
           </button>
-          {draft.trim() || pendingImage ? (
+          {showSend && (draft.trim() || pendingImage) ? (
             <Button
               className="h-9 shrink-0 rounded-full px-3 text-sm"
               disabled={disabled || blocked || sending}
@@ -1543,7 +1552,7 @@ export function ImChatComposer({
             >
               {sending ? sendingLabel : sendLabel}
             </Button>
-          ) : (
+          ) : showMore ? (
             <button
               aria-label={
                 moreAction?.ariaLabel ??
@@ -1566,7 +1575,7 @@ export function ImChatComposer({
             >
               <ImIcon name="plus" />
             </button>
-          )}
+          ) : null}
         </div>
 
         {panel === "emoji" ? (
