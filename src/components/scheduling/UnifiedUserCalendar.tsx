@@ -2741,7 +2741,8 @@ function getLayoutEvents(events: UnifiedCalendarEvent[]) {
 }
 
 function isAvailabilityMarkerEvent(event: UnifiedCalendarEvent) {
-  return Boolean(event.availabilityWindowId) || Boolean(event.scheduleSlotId && event.badge === "可预约" && !event.orderId);
+  return Boolean(event.availabilityWindowId)
+    || Boolean(event.scheduleSlotId && !event.orderId && (event.availabilitySourceType || event.badge === "可预约"));
 }
 
 function getAvailabilityStripLabel(event: UnifiedCalendarEvent) {
