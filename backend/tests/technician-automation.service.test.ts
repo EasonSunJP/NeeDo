@@ -15,7 +15,11 @@ const access = {
 } as AuthenticatedAccessContext;
 
 const repository = (): jest.Mocked<TechnicianAutomationRepositoryPort> => ({
-  findSetting: jest.fn(async (_technicianProfileId: number, _kind: "booking" | "request") => null),
+  findSetting: jest.fn(async (technicianProfileId: number, kind: "booking" | "request") => {
+    void technicianProfileId;
+    void kind;
+    return null;
+  }),
   saveSetting: jest.fn(async (input) => ({
     outcome: "ok" as const,
     setting: {
@@ -28,7 +32,10 @@ const repository = (): jest.Mocked<TechnicianAutomationRepositoryPort> => ({
       updatedAt: new Date("2026-09-09T00:00:00.000Z")
     }
   })),
-  listContacts: jest.fn(async (_input: { ownerIdentityId: number; page: number; pageSize: number; search?: string }) => ({ list: [], total: 0, page: 1, page_size: 20 }))
+  listContacts: jest.fn(async (input: { ownerIdentityId: number; page: number; pageSize: number; search?: string }) => {
+    void input;
+    return { list: [], total: 0, page: 1, page_size: 20 };
+  })
 });
 
 describe("TechnicianAutomationService", () => {

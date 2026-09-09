@@ -4,7 +4,7 @@ import {
   type PrismaClient
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
-import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
+import { toAuditLogCreateData } from "./audit-log.repository";
 import type {
   TechnicianAutomationContactPage,
   TechnicianAutomationRepositoryPort,
@@ -166,11 +166,13 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
   }
 
   public async loadBookingCandidate(orderId: number): Promise<TechnicianAutomationCandidate | null> {
+    const now = new Date();
     const order = await this.client.bookingOrder.findFirst({
       where: { id: orderId, deletedAt: null },
       select: {
         id: true,
         status: true,
+        shopId: true,
         customerUserId: true,
         technicianProfileId: true,
         serviceId: true,
@@ -193,6 +195,16 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
             automationSettings: {
               where: { kind: DatabaseTechnicianAutomationKind.BOOKING, enabled: true, deletedAt: null },
               take: 1
+            },
+            technicianShopAffiliations: {
+              where: {
+                workStatus: "ACTIVE",
+                startsAt: { lte: now },
+                endsAt: null,
+                deletedAt: null,
+                shop: { is: { deletedAt: null } }
+              },
+              select: { shopId: true }
             }
           }
         }
@@ -200,7 +212,13 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     });
     const profile = order?.technicianProfile;
     const setting = profile?.automationSettings[0];
-    if (!order || !profile || !setting || order.status !== "PENDING") return null;
+    if (
+      !order ||
+      !profile ||
+      !setting ||
+      order.status !== "PENDING" ||
+      !profile.technicianShopAffiliations.some((affiliation) => affiliation.shopId === order.shopId)
+    ) return null;
     const identity = await this.client.userIdentity.findFirst({
       where: {
         userId: profile.userId,
@@ -294,6 +312,15 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
             verifiedAt: { not: null },
             deletedAt: null,
             user: { is: { isActive: true, deletedAt: null } },
+            technicianShopAffiliations: {
+              some: {
+                workStatus: "ACTIVE",
+                startsAt: { lte: now },
+                endsAt: null,
+                deletedAt: null,
+                shop: { is: { deletedAt: null } }
+              }
+            },
             automationSettings: { some: { kind: DatabaseTechnicianAutomationKind.REQUEST, enabled: true, deletedAt: null } }
           }
         }
@@ -305,6 +332,16 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
           include: {
             user: { select: { id: true } },
             workState: true,
+            technicianShopAffiliations: {
+              where: {
+                workStatus: "ACTIVE",
+                startsAt: { lte: now },
+                endsAt: null,
+                deletedAt: null,
+                shop: { is: { deletedAt: null } }
+              },
+              select: { shopId: true }
+            },
             automationSettings: { where: { kind: DatabaseTechnicianAutomationKind.REQUEST, enabled: true, deletedAt: null }, take: 1 }
           }
         }
@@ -314,7 +351,10 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
     });
     const firstSlotByTechnician = new Map<number, (typeof slots)[number]>();
     for (const slot of slots) {
-      if (slot.technicianProfileId && !firstSlotByTechnician.has(slot.technicianProfileId)) {
+      const hasActiveShopAffiliation = slot.technicianProfile?.technicianShopAffiliations.some(
+        (affiliation) => affiliation.shopId === slot.shopId
+      );
+      if (slot.technicianProfileId && hasActiveShopAffiliation && !firstSlotByTechnician.has(slot.technicianProfileId)) {
         firstSlotByTechnician.set(slot.technicianProfileId, slot);
       }
     }
@@ -396,6 +436,11 @@ export class TechnicianAutomationRepository implements TechnicianAutomationRepos
   }
 
   public async reserveDecision(input: Parameters<TechnicianAutomationProcessorRepositoryPort["reserveDecision"]>[0]): Promise<boolean> {
+    const existing = await this.client.technicianAutomationDecisionLog.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+      select: { id: true }
+    });
+    if (existing) return false;
     try {
       await this.client.technicianAutomationDecisionLog.create({
         data: {

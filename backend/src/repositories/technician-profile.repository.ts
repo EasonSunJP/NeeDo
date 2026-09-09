@@ -251,7 +251,7 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       });
     }
 
-    const shopAffiliations = profile.technicianShopAffiliations
+    const shopAffiliations = (profile.technicianShopAffiliations ?? [])
       .map((affiliation) => ({
         id: affiliation.id,
         shopId: affiliation.shopId,

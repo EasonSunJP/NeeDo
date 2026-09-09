@@ -187,6 +187,7 @@ Commit only Task 3 files with message `test(settlement): retain multishop real-d
 - [x] **Step 3: Reuse the review workflow without recreating or replacing an existing technician identity**
 - [x] **Step 4: Create the personal-center entry, shop list, and `追加` route**
 - [x] **Step 5: Gate technician work routes and permissions when current affiliation count is zero**
+- [x] **Step 6: Verify Booking auto-accept and Request auto-apply with retained match, mismatch, idempotency, and zero-shop rounds**
 
 ---
 
