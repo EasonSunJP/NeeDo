@@ -5,7 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MerchantEmployee } from "../../features/merchant-admin/employeeApi";
 import { merchantEmployeeApi } from "../../features/merchant-admin/employeeApi";
-import { EmployeeSchedulePanel } from "./EmployeeSchedulePanel";
+import {
+  createEmployeeScheduleCalendarData,
+  EmployeeSchedulePanel,
+} from "./EmployeeSchedulePanel";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,7 +70,7 @@ const employee = {
   affiliation: {
     relationshipType: "partner",
     workStatus: "active",
-    shop: { publicId: "shop0000000016" },
+    shop: { id: 16, publicId: "shop0000000016", name: "麻布十番超级按摩" },
   },
 } as MerchantEmployee;
 
@@ -135,6 +138,56 @@ describe("EmployeeSchedulePanel", () => {
     expect(
       container.querySelector('[data-employee-schedule-visibility="busy_redacted"]'),
     ).not.toBeNull();
+  });
+
+  it("maps technician and current-shop availability into shared source-labelled strips", () => {
+    const data = createEmployeeScheduleCalendarData(
+      {
+        ...projection,
+        events: [
+          {
+            projectionId: "availability:2026-09-10T01:00:00.000Z:2026-09-10T02:00:00.000Z",
+            kind: "availability",
+            visibility: "affiliated_shops",
+            status: "available",
+            startsAt: "2026-09-10T01:00:00.000Z",
+            endsAt: "2026-09-10T02:00:00.000Z",
+            title: "合作技师可排班",
+            isClickable: false,
+            isEditable: false,
+          },
+          {
+            projectionId: "schedule:81",
+            kind: "schedule",
+            visibility: "current_shop",
+            status: "available",
+            startsAt: "2026-09-10T05:00:00.000Z",
+            endsAt: "2026-09-10T06:00:00.000Z",
+            title: "可排班",
+            detail: "本店排班",
+            isClickable: false,
+            isEditable: true,
+          },
+        ],
+      },
+      employee,
+      ["2026-09-10"],
+    );
+
+    expect(data.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: expect.stringMatching(/^availability:/),
+        availabilitySourceType: "technician",
+        calendarLabel: "自由排班",
+        badge: "可排班",
+      }),
+      expect.objectContaining({
+        id: "schedule:81",
+        availabilitySourceType: "shop",
+        calendarLabel: "麻布十番超级按摩",
+        badge: "可排班",
+      }),
+    ]));
   });
 
   it("shows a retry state and reloads the visible window", async () => {

@@ -80,6 +80,30 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
     expect(container.querySelectorAll("[data-calendar-event-card]")).toHaveLength(0);
   });
 
+  it("renders source-typed employee availability projections as strips without database ids", async () => {
+    const availability: UnifiedCalendarEvent = {
+      ...baseEvent,
+      id: "employee-availability-projection",
+      availabilitySourceType: "technician",
+      calendarId: "employee:s0000000002",
+      calendarLabel: "自由排班",
+    };
+
+    await act(async () => root.render(
+      <UnifiedCalendarDayTimeline
+        date="2026-09-09"
+        events={[availability]}
+        onOpen={vi.fn()}
+      />,
+    ));
+
+    const strip = container.querySelector<HTMLElement>("[data-calendar-availability-strip]");
+    expect(strip).not.toBeNull();
+    expect(strip?.style.width).toBe("24px");
+    expect(strip?.textContent).toBe("自由排班");
+    expect(container.querySelector("[data-calendar-event-card]")).toBeNull();
+  });
+
   it.each([3, 7])("keeps availability as a labelled strip on the left edge of each date in the %s-day view", async (dayCount) => {
     const dates = Array.from({ length: dayCount }, (_, index) => `2026-09-${String(9 + index).padStart(2, "0")}`);
     const targetDate = dates[Math.min(1, dates.length - 1)]!;
