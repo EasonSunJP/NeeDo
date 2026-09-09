@@ -178,7 +178,7 @@ describe("UserFavoritesPage", () => {
     await act(async () =>
       root.render(
         <MemoryRouter>
-          <UserFavoritesPage api={api} entityApi={entityApi} language="zh" />
+          <UserFavoritesPage api={api} entityApi={entityApi} language="ja" />
         </MemoryRouter>,
       ),
     );
@@ -193,6 +193,19 @@ describe("UserFavoritesPage", () => {
     expect(document.querySelector('[data-card-kind="shop"]')).not.toBeNull();
     expect(document.body.textContent).toContain("1.9k");
     expect(document.body.textContent).not.toContain("32");
+    expect(document.querySelector('[aria-label="完了件数"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="完单数"]')).toBeNull();
+
+    vi.mocked(entityApi.setFavorite).mockRejectedValueOnce(new Error("network"));
+    const remove = document.querySelector<HTMLButtonElement>(
+      'section[aria-label="店舗"] button',
+    );
+    await act(async () => remove?.click());
+    await flush();
+    expect(document.body.textContent).toContain(
+      "お気に入りの削除に失敗しました。もう一度お試しください",
+    );
+    expect(document.body.textContent).toContain("LifeDance 港区店");
   });
 
   it("uses one canonical bottom-nav-free route with shared back, search, and close controls", () => {
@@ -223,6 +236,7 @@ describe("UserFavoritesPage", () => {
           imageUrl: null,
           rating: 4.9,
           reviewCount: 32,
+          completedOrderCount: 126,
           shareCount: 8,
         },
       },
@@ -333,6 +347,31 @@ describe("UserFavoritesPage", () => {
     expect(container.textContent).toContain("季节视频公告");
     expect(container.textContent).not.toContain("LifeDance 港区店");
     expect(container.textContent).not.toContain("A1的聊天记录");
+  });
+
+  it("shows a retryable dynamic-favorite error instead of an empty state", async () => {
+    const onRetrySocial = vi.fn();
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <UserFavoritesPage
+            api={makeApi()}
+            language="zh"
+            onRetrySocial={onRetrySocial}
+            socialStatus="error"
+          />
+        </MemoryRouter>,
+      ),
+    );
+    await flush();
+
+    const dynamicSection = container.querySelector('section[aria-label="动态"]');
+    expect(dynamicSection?.textContent).toContain("收藏读取失败");
+    expect(dynamicSection?.textContent).not.toContain("暂无收藏的动态");
+    await act(async () =>
+      dynamicSection?.querySelector<HTMLButtonElement>("button")?.click(),
+    );
+    expect(onRetrySocial).toHaveBeenCalledTimes(1);
   });
 
   it("retains a favorite on remove failure and removes it only after API success", async () => {

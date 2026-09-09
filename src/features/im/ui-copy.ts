@@ -133,6 +133,18 @@ const imUiTranslations: Record<string, ImUiTranslation> = {
     en: "No favorite posts yet",
     ko: "즐겨찾기한 게시물이 없습니다",
   },
+  "移除收藏失败，请重试": {
+    "zh-Hant": "移除收藏失敗，請再試一次",
+    ja: "お気に入りの削除に失敗しました。もう一度お試しください",
+    en: "Could not remove this favorite. Try again",
+    ko: "즐겨찾기를 삭제하지 못했습니다. 다시 시도해 주세요",
+  },
+  当前页没有匹配的聊天记录: {
+    "zh-Hant": "目前頁面沒有相符的聊天記錄",
+    ja: "現在のページに一致するチャット履歴はありません",
+    en: "No matching chat records on this page",
+    ko: "현재 페이지에 일치하는 채팅 기록이 없습니다",
+  },
   动态收藏: {
     "zh-Hant": "動態收藏",
     ja: "お気に入りの投稿",

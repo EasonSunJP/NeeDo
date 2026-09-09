@@ -55,6 +55,7 @@ import {
 } from "./utils";
 
 type SocialContextValue = {
+  feedStatus: "loading" | "ready" | "error";
   state: SocialState;
   profiles: Record<string, SocialProfile>;
   profileList: SocialProfile[];
@@ -407,6 +408,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
   const { language } = useOptionalI18n();
   const [storedState, setState] = useState<SocialState>(emptyFormalSocialState);
   const [storedProfiles, setProfiles] = useState<Record<string, SocialProfile>>({});
+  const [feedStatus, setFeedStatus] = useState<"loading" | "ready" | "error">("loading");
   const accountProfileRequestsRef = useRef(new Map<string, Promise<SocialProfile | undefined>>());
   const activePostThreadIdsRef = useRef(new Set<string>());
   const activePostThreadProfilesRef = useRef(new Map<string, Record<string, SocialProfile>>());
@@ -646,19 +648,31 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 
   const performFormalSocialLoad = useCallback(async () => {
     if (sessionUserId === null || isRestoring) return;
-    const [timelinePage, minePage, bookmarkedPage, notificationPage] = await Promise.all([
+    const [timelinePage, minePage, firstBookmarkedPage, notificationPage] = await Promise.all([
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100 }),
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: sessionUserId }),
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100, bookmarked: true }),
       realtimeApi.listNotifications({ page: 1, pageSize: 100 })
     ]);
+    const bookmarkedPageCount = Math.ceil(firstBookmarkedPage.total / firstBookmarkedPage.page_size);
+    const remainingBookmarkedPages = bookmarkedPageCount > 1
+      ? await Promise.all(
+          Array.from({ length: bookmarkedPageCount - 1 }, (_, index) =>
+            realtimeApi.listSocialPosts({ page: index + 2, pageSize: 100, bookmarked: true })
+          )
+        )
+      : [];
+    const bookmarkedPosts = [
+      ...firstBookmarkedPage.list,
+      ...remainingBookmarkedPages.flatMap((page) => page.list)
+    ];
     if (!shouldCommitFormalSocialRequest(
       formalSessionKey,
       currentFormalSessionKeyRef.current
     )) {
       return;
     }
-    const rawPosts = [...timelinePage.list, ...minePage.list, ...bookmarkedPage.list].filter(
+    const rawPosts = [...timelinePage.list, ...minePage.list, ...bookmarkedPosts].filter(
       (post, index, posts) => posts.findIndex((candidate) => candidate.id === post.id) === index
     );
     const nextPosts = sortPostsByNewest(rawPosts.map(mapFormalSocialPost));
@@ -760,12 +774,21 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
   ]);
 
   const loadFormalSocial = useCallback(
-    () => runFormalSocialLoadSingleFlight(
-      formalSocialLoadRequestRef,
-      formalSessionKey,
-      performFormalSocialLoad,
-      handleFormalSocialLoadError
-    ),
+    () => {
+      setFeedStatus("loading");
+      return runFormalSocialLoadSingleFlight(
+        formalSocialLoadRequestRef,
+        formalSessionKey,
+        async () => {
+          await performFormalSocialLoad();
+          setFeedStatus("ready");
+        },
+        (error) => {
+          setFeedStatus("error");
+          handleFormalSocialLoadError(error);
+        }
+      );
+    },
     [formalSessionKey, performFormalSocialLoad]
   );
 
@@ -1049,6 +1072,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       };
     };
     return {
+      feedStatus,
       state,
       profiles,
       profileList,
@@ -1121,6 +1145,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     ensureAccountProfile,
     ensurePostThread,
     formalSessionKey,
+    feedStatus,
     loadFormalSocial,
     releasePostThread,
     saveDraft,

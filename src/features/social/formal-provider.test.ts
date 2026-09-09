@@ -181,6 +181,8 @@ describe("formal social provider gate", () => {
     expect(source).toContain("realtimeApi.recordSocialPostView");
     expect(source).toContain("realtimeApi.shareSocialPostToFriends");
     expect(source).toContain("bookmarked: true");
+    expect(source).toContain("remainingBookmarkedPages");
+    expect(source).toContain('setFeedStatus("error")');
     expect(source).toContain('event.type === "social.post.interaction.updated"');
     expect(source).not.toContain("toggleLike: formalSocialMutationUnavailable");
     expect(source).not.toContain("toggleBookmark: formalSocialMutationUnavailable");

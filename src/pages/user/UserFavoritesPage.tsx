@@ -49,6 +49,7 @@ export type UserEntityFavoritesApi = {
 };
 
 export type UserSocialFavorite = SocialPostCompactCardData;
+type FavoriteLoadStatus = "loading" | "ready" | "error";
 
 function normalizedSearch(value: string) {
   return value.trim().toLocaleLowerCase();
@@ -88,13 +89,11 @@ function FavoritesSection({
 
 function EntityFavoriteCardView({
   favorite,
+  language,
 }: {
   favorite: EntityFavoriteListItem;
+  language: Language;
 }) {
-  const target = {
-    targetType: favorite.targetType,
-    publicId: favorite.publicId,
-  } as EntityTarget;
   if (favorite.card.kind === "service") {
     return (
       <UnifiedServiceInfoCard
@@ -106,10 +105,6 @@ function EntityFavoriteCardView({
           currency: favorite.card.currency,
           durationMinutes: favorite.card.durationMinutes,
           completedOrderCount: favorite.card.usageCount,
-          engagementTarget: target as Extract<
-            EntityTarget,
-            { targetType: "service" | "technician_service" }
-          >,
           favoriteCount: favorite.favoriteCount,
           shareCount: favorite.card.shareCount,
           isFavorited: true,
@@ -119,6 +114,7 @@ function EntityFavoriteCardView({
           description: favorite.card.description,
           tags: favorite.card.tags,
         }}
+        language={language}
       />
     );
   }
@@ -141,7 +137,6 @@ function EntityFavoriteCardView({
               completedOrderCount: favorite.card.completedOrderCount,
               favoriteCount: favorite.favoriteCount,
               shareCount: favorite.card.shareCount,
-              engagementTarget: target,
               isFavorited: true,
             }
           : {
@@ -156,11 +151,11 @@ function EntityFavoriteCardView({
               completedOrderCount: favorite.card.completedOrderCount,
               favoriteCount: favorite.favoriteCount,
               shareCount: favorite.card.shareCount,
-              engagementTarget: target,
               isFavorited: true,
               specialReviewTags: [],
             }
       }
+      language={language}
     />
   );
 }
@@ -178,16 +173,31 @@ function EntityFavoritesSection({
   const [result, setResult] = useState<Awaited<
     ReturnType<UserEntityFavoritesApi["listFavorites"]>
   > | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = useState<FavoriteLoadStatus>("loading");
   const [removing, setRemoving] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState(false);
 
   useEffect(() => {
     let active = true;
     setStatus("loading");
-    void api
-      .listFavorites({ page: 1, pageSize: 100 })
+    void (async () => {
+      const firstPage = await api.listFavorites({ page: 1, pageSize: 100 });
+      const pageCount = Math.ceil(firstPage.total / firstPage.page_size);
+      const remainingPages = pageCount > 1
+        ? await Promise.all(
+            Array.from({ length: pageCount - 1 }, (_, index) =>
+              api.listFavorites({ page: index + 2, pageSize: 100 }),
+            ),
+          )
+        : [];
+      return {
+        ...firstPage,
+        list: [
+          ...firstPage.list,
+          ...remainingPages.flatMap((nextPage) => nextPage.list),
+        ],
+      };
+    })()
       .then((next) => {
         if (!active) return;
         setResult(next);
@@ -204,6 +214,7 @@ function EntityFavoritesSection({
   const remove = (favorite: EntityFavoriteListItem) => {
     const key = `${favorite.targetType}:${favorite.publicId}`;
     if (removing) return;
+    setRemoveError(false);
     setRemoving(key);
     void api
       .setFavorite(
@@ -214,6 +225,7 @@ function EntityFavoritesSection({
         false,
       )
       .then(() => setRevision((value) => value + 1))
+      .catch(() => setRemoveError(true))
       .finally(() => setRemoving(null));
   };
   const normalizedQuery = normalizedSearch(query);
@@ -268,6 +280,14 @@ function EntityFavoritesSection({
           </button>
         </div>
       ) : null}
+      {removeError ? (
+        <p
+          className="mb-3 text-center text-sm font-bold text-[color:var(--client-danger,#f87171)]"
+          role="alert"
+        >
+          {translateText("移除收藏失败，请重试", language)}
+        </p>
+      ) : null}
       {status === "ready"
         ? (["shop", "technician", "service"] as const).map((kind) => {
             const rows = visibleFavorites.filter(
@@ -285,7 +305,10 @@ function EntityFavoritesSection({
                     const key = `${favorite.targetType}:${favorite.publicId}`;
                     return (
                       <li key={key}>
-                        <EntityFavoriteCardView favorite={favorite} />
+                        <EntityFavoriteCardView
+                          favorite={favorite}
+                          language={language}
+                        />
                         <div className="mt-2 flex justify-end">
                           <button
                             className="rounded-full px-3 py-1.5 text-xs font-black text-[color:var(--client-muted)]"
@@ -314,12 +337,16 @@ export function UserFavoritesPage({
   api,
   entityApi,
   language: requestedLanguage,
+  onRetrySocial,
   socialFavorites = [],
+  socialStatus = "ready",
 }: {
   api: UserFavoritesApi;
   entityApi?: UserEntityFavoritesApi;
   language?: Language;
+  onRetrySocial?: () => void;
   socialFavorites?: UserSocialFavorite[];
+  socialStatus?: FavoriteLoadStatus;
 }) {
   const { language: contextLanguage } = useOptionalI18n();
   const language = requestedLanguage ?? contextLanguage;
@@ -329,9 +356,7 @@ export function UserFavoritesPage({
   const [page, setPage] = useState(1);
   const [loadRevision, setLoadRevision] = useState(0);
   const [result, setResult] = useState<ImChatRecordFavoritePage | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = useState<FavoriteLoadStatus>("loading");
   const [removingKey, setRemovingKey] = useState<string | null>(null);
   const [removeErrorKey, setRemoveErrorKey] = useState<string | null>(null);
   const alive = useRef(true);
@@ -360,6 +385,10 @@ export function UserFavoritesPage({
       alive.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (query) setPage(1);
+  }, [query]);
 
   useEffect(() => {
     const generation = loadGeneration.current + 1;
@@ -477,10 +506,29 @@ export function UserFavoritesPage({
         />
       ) : null}
       <FavoritesSection
-        empty={visibleSocialFavorites.length === 0}
+        empty={socialStatus === "ready" && visibleSocialFavorites.length === 0}
         emptyLabel={translateText("暂无收藏的动态", language)}
         title={translateText("动态", language)}
       >
+        {socialStatus === "loading" ? (
+          <p className="py-5 text-center text-sm font-bold text-[color:var(--client-muted)]">
+            {translateText("正在读取收藏", language)}
+          </p>
+        ) : null}
+        {socialStatus === "error" ? (
+          <div className="py-5 text-center">
+            <p className="text-sm font-bold text-[color:var(--client-muted)]">
+              {translateText("收藏读取失败", language)}
+            </p>
+            <button
+              className="mt-3 rounded-full border border-[color:var(--client-line)] px-4 py-2 text-xs font-black"
+              onClick={onRetrySocial}
+              type="button"
+            >
+              {translateText("重试", language)}
+            </button>
+          </div>
+        ) : null}
         <ul className="space-y-3">
           {visibleSocialFavorites.map((favorite) => (
             <li key={favorite.postId}>
@@ -495,7 +543,12 @@ export function UserFavoritesPage({
       </FavoritesSection>
       <FavoritesSection
         empty={status === "ready" && visibleChatFavorites.length === 0}
-        emptyLabel={translateText("暂无收藏的聊天记录", language)}
+        emptyLabel={translateText(
+          normalizedQuery
+            ? "当前页没有匹配的聊天记录"
+            : "暂无收藏的聊天记录",
+          language,
+        )}
         title={translateText("保存的聊天记录", language)}
       >
       {status === "loading" ? (
@@ -586,7 +639,13 @@ export function UserFavoritesPage({
 
 export function UserFavoritesRoutePage() {
   const api = useImStoreApi("user");
-  const { getActorForScope, profiles, state } = useSocial();
+  const {
+    feedStatus,
+    getActorForScope,
+    profiles,
+    refreshFeeds,
+    state,
+  } = useSocial();
   const actorKey = getActorForScope("user");
   const socialFavorites = useMemo<UserSocialFavorite[]>(() => {
     const interactions = state.interactions[actorKey] ?? {};
@@ -613,7 +672,9 @@ export function UserFavoritesRoutePage() {
       <UserFavoritesPage
         api={api}
         entityApi={entityEngagementApi}
+        onRetrySocial={refreshFeeds}
         socialFavorites={socialFavorites}
+        socialStatus={feedStatus}
       />
     </MobileShell>
   );
