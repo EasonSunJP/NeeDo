@@ -46,6 +46,8 @@ import {
 } from "../validators/booking.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 import { createUserExperienceServiceForRoutes } from "./user-experience-service.factory";
+import { TechnicianAutomationRepository } from "../repositories/technician-automation.repository";
+import { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 
 export const BOOKING_ROUTE_PERMISSIONS = {
   create: "booking:create",
@@ -122,7 +124,33 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     dependencies.workStatusService??new WorkStatusService(undefined,undefined,dependencies.realtimeEventGateway),
     dependencies.liveDashboardEventGateway
   );
-  const controller = new BookingController(bookingService);
+  const automationProcessor =
+    dependencies.technicianAutomationProcessor ??
+    (dependencies.bookingRepository ? undefined : new TechnicianAutomationProcessor(
+      new TechnicianAutomationRepository(),
+      {
+        confirmBooking: async (input) => {
+          await bookingService.transitionOrder(
+            {
+              userId: input.technicianUserId,
+              roles: ["technician"],
+              currentIdentityId: input.technicianIdentityId,
+              currentIdentityType: "technician",
+              currentIdentityScopeType: "technician_profile",
+              currentIdentityScopeId: input.technicianProfileId
+            },
+            input.orderId,
+            "confirm"
+          );
+        }
+      },
+      {
+        applyRequest: async () => {
+          throw new Error("request automation authority is unavailable on booking routes");
+        }
+      }
+    ));
+  const controller = new BookingController(bookingService, automationProcessor);
 
   router.get(
     "/schedule/availability",

@@ -137,8 +137,8 @@ vi.mock("./FormalScheduleRangeEditor", () => ({
   )
 }));
 vi.mock("./FormalTechnicianScheduleWorkspace", () => ({
-  FormalTechnicianScheduleWorkspace: ({ profileAvatarUrl, profileName, shopId, shopName, tab }: { profileAvatarUrl?: string | null; profileName: string; shopId: number | null; shopName: string; tab?: "calendar" | "settings" }) => (
-    <section data-active-tab={tab ?? ""} data-avatar={profileAvatarUrl ?? ""} data-can-create={String(shopId !== null)} data-testid="formal-technician-schedule-workspace">{profileName}:{shopName}</section>
+  FormalTechnicianScheduleWorkspace: ({ profileAvatarUrl, profileName, shopId, shopName, tab, onDirtyChange }: { profileAvatarUrl?: string | null; profileName: string; shopId: number | null; shopName: string; tab?: "calendar" | "bookingSettings" | "requestSettings"; onDirtyChange?: (dirty: boolean) => void }) => (
+    <section data-active-tab={tab ?? ""} data-avatar={profileAvatarUrl ?? ""} data-can-create={String(shopId !== null)} data-testid="formal-technician-schedule-workspace">{profileName}:{shopName}<button aria-label="标记设置未保存" onClick={() => onDirtyChange?.(true)} type="button" /></section>
   )
 }));
 
@@ -493,12 +493,18 @@ describe("formal technician schedule routes", () => {
     const header = container.querySelector(".client-floating-header-host");
     expect(header).not.toBeNull();
     expect(Array.from(header?.querySelectorAll("button") ?? []).map((button) => button.textContent?.trim()))
-      .toEqual(expect.arrayContaining(["我的排班", "排班设置"]));
-    expect(container.querySelectorAll(".client-feature-segmented-tabs")).toHaveLength(1);
+      .toEqual(expect.arrayContaining(["我的排班", "接单设置Test", "抢单设置Test"]));
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(3);
 
-    await click("排班设置");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    await act(async () => (container.querySelector('button[aria-label="标记设置未保存"]') as HTMLButtonElement).click());
+    await click("接单设置Test");
     expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.getAttribute("data-active-tab"))
-      .toBe("settings");
+      .toBe("calendar");
+    expect(confirm).toHaveBeenCalledWith("当前设置尚未保存，确定离开吗？");
+    await click("接单设置Test");
+    expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.getAttribute("data-active-tab"))
+      .toBe("bookingSettings");
   });
 
   it("renders a numeric formal schedule detail", async () => {

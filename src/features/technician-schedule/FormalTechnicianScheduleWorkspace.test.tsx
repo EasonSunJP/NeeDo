@@ -9,34 +9,14 @@ const mocks = vi.hoisted(() => ({
   timelineProps: vi.fn()
 }));
 
-vi.mock("../../components/client-ui/AppScaffold", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../components/client-ui/AppScaffold")>();
-  return {
-    ...actual,
-    FeatureSegmentedTabs: ({
-      items,
-      onChange
-    }: {
-      items: Array<{ label: string; value: "calendar" | "settings" }>;
-      onChange: (value: "calendar" | "settings") => void;
-    }) => (
-      <div>
-        {items.map((item) => (
-          <button key={item.value} onClick={() => onChange(item.value)} type="button">{item.label}</button>
-        ))}
-      </div>
-    )
-  };
-});
-
 vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
   UnifiedUserCalendar: (props: Record<string, unknown>) => {
     mocks.calendarProps(props);
     return <div data-testid="shared-unified-calendar">共享正式日程</div>;
   }
 }));
-vi.mock("../../components/technician/FormalTechnicianOrdersPanel", () => ({
-  FormalTechnicianOrdersPanel: () => <div data-testid="formal-order-panel">订单正式面板</div>
+vi.mock("./TechnicianAutomationSettingsPanel", () => ({
+  TechnicianAutomationSettingsPanel: ({ kind }: { kind: "booking" | "request" }) => <div data-kind={kind} data-testid="automation-settings-panel">自动设置</div>
 }));
 vi.mock("../../components/mobile/ContactEventTimeline", () => ({
   ContactEventTimelinePanel: (props: Record<string, unknown>) => {
@@ -109,7 +89,7 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     vi.useRealTimers();
   });
 
-  it("renders the shared formal parallel calendar and keeps order settings available", async () => {
+  it("renders the shared formal parallel calendar and keeps booking settings available", async () => {
     await waitFor(() => expect(container.querySelector('[data-testid="shared-unified-calendar"]')).not.toBeNull());
     expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({
       displayMode: "parallel",
@@ -137,11 +117,11 @@ describe("FormalTechnicianScheduleWorkspace", () => {
           profileName="正式技师"
           shopId={11}
           shopName="正式店铺"
-          tab="settings"
+          tab="bookingSettings"
         />
       </MemoryRouter>
     ));
-    expect(container.querySelector('[data-testid="formal-order-panel"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="automation-settings-panel"]')?.getAttribute("data-kind")).toBe("booking");
   });
 
   it("forwards the formal schedule search to the shared calendar", async () => {
@@ -204,11 +184,11 @@ describe("FormalTechnicianScheduleWorkspace", () => {
           profileName="独立技师"
           shopId={null}
           shopName="独立技师"
-          tab="settings"
+          tab="requestSettings"
         />
       </MemoryRouter>
     ));
-    expect(container.textContent).toContain("可查看当前技师的正式日程；创建可预约时段需要先关联店铺。");
+    expect(container.querySelector('[data-testid="automation-settings-panel"]')?.getAttribute("data-kind")).toBe("request");
     expect(container.textContent).not.toContain("新建正式排班");
   });
 });

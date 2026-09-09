@@ -6,6 +6,7 @@ import { dashboardTranslations } from "../features/dashboard/dashboardTranslatio
 import { orderPerformanceTranslations } from "../features/order-performance/i18n";
 import { operationsAnalyticsTranslations } from "../features/operations-analytics/i18n";
 import { travelFareTranslations } from "../features/travel-fare/i18n";
+import { technicianAutomationTranslations } from "../features/technician-schedule/automation-i18n";
 
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
@@ -278,6 +279,7 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  ...technicianAutomationTranslations,
   "实时数据大屏": fourLanguageTranslation("即時數據大屏", "リアルタイムデータ画面", "Live data screen", "실시간 데이터 화면"),
   "NeeDo 实时运营数据": fourLanguageTranslation("NeeDo 即時營運數據", "NeeDo リアルタイム運営データ", "NeeDo live operations", "NeeDo 실시간 운영 데이터"),
   "退出全屏": fourLanguageTranslation("退出全螢幕", "全画面を終了", "Exit fullscreen", "전체 화면 종료"),

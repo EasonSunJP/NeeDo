@@ -191,6 +191,11 @@ export const EXCHANGE_REQUEST_FEE_PERMISSIONS = {
   write: "backoffice:exchange-request-fee:write"
 } as const;
 
+export const TECHNICIAN_AUTOMATION_PERMISSIONS = {
+  read: "technician:automation-settings:read",
+  write: "technician:automation-settings:write"
+} as const;
+
 export const SYSTEM_PERMISSIONS = [
   { code: "sos:create", name: "发送求救", type: "api", module: "sos", description: "Booking SOS create", isSystem: true },
   { code: "sos:list", name: "查看求救", type: "api", module: "sos", description: "Booking SOS list", isSystem: true },
@@ -1608,6 +1613,20 @@ export const SYSTEM_PERMISSIONS = [
     "technician",
     "创建、更新和下架本人服务信息"
   ),
+  createPermission(
+    TECHNICIAN_AUTOMATION_PERMISSIONS.read,
+    "读取技师自动接单设置",
+    "api",
+    "technician",
+    "读取本人 Booking 自动接受和 Request 自动应募规则"
+  ),
+  createPermission(
+    TECHNICIAN_AUTOMATION_PERMISSIONS.write,
+    "维护技师自动接单设置",
+    "api",
+    "technician",
+    "保存本人 Booking 自动接受和 Request 自动应募规则"
+  ),
 
   createPermission("menu:dashboard", "仪表盘菜单", "menu", "menu", "显示仪表盘菜单"),
   createPermission("page:dashboard", "仪表盘页面", "page", "dashboard", "访问仪表盘页面"),
@@ -2673,6 +2692,8 @@ export const buildRolePermissionAssignments = (): Record<
     ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     "technician:services:list",
     "technician:services:write",
+    TECHNICIAN_AUTOMATION_PERMISSIONS.read,
+    TECHNICIAN_AUTOMATION_PERMISSIONS.write,
     "technician:payslip:read",
     "technician:payslip:confirm",
     "technician:payslip:dispute",

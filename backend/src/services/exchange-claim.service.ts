@@ -157,7 +157,8 @@ export class ExchangeClaimService {
     postId: number,
     input: CreateExchangeClaimBody,
     rawIdempotencyKey: string,
-    context: AuthRequestContext
+    context: AuthRequestContext,
+    options: { suppressQuickMatching?: boolean } = {}
   ): Promise<ExchangeClaimPayload> {
     const idempotencyKey = exchangeIdempotencyKeySchema.parse(rawIdempotencyKey);
     const at = this.now();
@@ -259,7 +260,7 @@ export class ExchangeClaimService {
             quoteAmountJpy: input.quoteAmountJpy
           })
         );
-        if (request!.demand.matchMode === "quick") {
+        if (request!.demand.matchMode === "quick" && !options.suppressQuickMatching) {
           const result = await this.quickMatchingService.attemptAfterClaim(repository, {
             exchangePostId: postId,
             ownerUserId: request!.authorUserId,

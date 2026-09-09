@@ -402,6 +402,32 @@ describe("ExchangeClaimService", () => {
     );
   });
 
+  it("keeps an automatically submitted Quick Request claim in the candidate pool", async () => {
+    const quickMatchingService = { attemptAfterClaim: jest.fn() };
+    const repository = createRepository({
+      lockRequest: jest.fn(async () => ({
+        ...request,
+        demand: { ...request.demand, matchMode: "quick" as const }
+      }))
+    });
+    const service = new ExchangeClaimService(
+      repository,
+      { resolveActor: jest.fn(async () => merchantActor) },
+      () => now,
+      quickMatchingService
+    );
+
+    await expect(service.createClaim(
+      merchantAccess,
+      41,
+      { scheduleSlotId: 91, quoteAmountJpy: 15_000, message: null },
+      "claim-auto-key-00001",
+      requestContext,
+      { suppressQuickMatching: true }
+    )).resolves.toEqual(claim);
+    expect(quickMatchingService.attemptAfterClaim).not.toHaveBeenCalled();
+  });
+
   it.each([
     [9_999, 40973],
     [30_001, 40974]
