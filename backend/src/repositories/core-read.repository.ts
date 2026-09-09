@@ -109,6 +109,7 @@ export interface ShopCardPayload {
   address: string;
   coverUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  completedOrderCount: number;
   favoriteCount: number;
   shareCount: number;
   distanceKm?: number;
@@ -250,6 +251,7 @@ type ShopCardRecord = Shop & {
   publicIdentifier: PublicIdentifier | null;
   reviewSummary: ReviewSummary | null;
   _count: {
+    bookingOrders: number;
     entityFavorites: number;
     entityShareEvents: number;
   };
@@ -724,6 +726,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return {
       _count: {
         select: {
+          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } },
           entityFavorites: { where: { deletedAt: null } },
           entityShareEvents: { where: { deletedAt: null } }
         }
@@ -1304,6 +1307,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       address: shop.address,
       coverUrl: this.findMediaUrl(shop.mediaAssets, "cover"),
       reviewSummary: this.mapReviewSummary(shop.reviewSummary),
+      completedOrderCount: shop._count.bookingOrders,
       favoriteCount: shop._count.entityFavorites,
       shareCount: shop._count.entityShareEvents,
       ...(distanceKm === null ? {} : { distanceKm }),

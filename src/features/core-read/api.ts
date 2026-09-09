@@ -59,6 +59,7 @@ export type CoreShopCard = {
   address: string;
   coverUrl: string | null;
   reviewSummary: CoreReviewSummary;
+  completedOrderCount: number;
   favoriteCount: number;
   shareCount: number;
   distanceKm?: number;
@@ -407,6 +408,7 @@ export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
     address: shop.address,
     rating: parseRating(shop.reviewSummary),
     reviewCount: shop.reviewSummary.reviewCount,
+    completedOrderCount: shop.completedOrderCount,
     favoriteCount: shop.favoriteCount,
     shareCount: shop.shareCount,
     distanceKm: shop.distanceKm,

@@ -10338,6 +10338,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "address",
           "coverUrl",
           "reviewSummary",
+          "completedOrderCount",
           "favoriteCount",
           "shareCount",
           "serviceCategories",
@@ -10351,6 +10352,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           address: { type: "string" },
           coverUrl: { type: ["string", "null"] },
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" },
+          completedOrderCount: { type: "integer", minimum: 0 },
           favoriteCount: { type: "integer", minimum: 0 },
           shareCount: { type: "integer", minimum: 0 },
           distanceKm: {

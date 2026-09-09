@@ -198,6 +198,7 @@ const profile = {
     address: "东京都港区",
     coverUrl: null,
     reviewSummary: { ratingAverage: "4.8", reviewCount: 10, latestReviewAt: null, highlights: [] },
+    completedOrderCount: 0,
     favoriteCount: 0,
     shareCount: 0,
     serviceCategories: [],

@@ -194,6 +194,7 @@ const service: CoreServiceDetail = {
     address: "东京都渋谷区",
     coverUrl: null,
     reviewSummary: { ratingAverage: "5.0", reviewCount: 1, latestReviewAt: null, highlights: [] },
+    completedOrderCount: 0,
     favoriteCount: 0,
     shareCount: 0,
     serviceCategories: [],

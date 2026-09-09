@@ -37,7 +37,8 @@ describe("Step 08 core read API", () => {
     city: "Tokyo",
     address: "3-1 Kita Aoyama",
     coverUrl: "https://cdn.example.test/shops/aoyama-cover.jpg",
-    reviewSummary
+    reviewSummary,
+    completedOrderCount: 1999
   };
   const technicianCard = {
     id: 1,
@@ -419,6 +420,7 @@ describe("Step 08 core read API", () => {
       id: 1,
       publicId: "shop5831047296",
       name: "Aoyama Care Studio",
+      completedOrderCount: 1999,
       services: [serviceCard],
       technicians: [technicianCard]
     });
@@ -481,7 +483,8 @@ describe("Step 08 core read API", () => {
     expect(response.body.data).toMatchObject({
       id: 1,
       publicId: shopCard.publicId,
-      name: "Aoyama Care Studio"
+      name: "Aoyama Care Studio",
+      completedOrderCount: 1999
     });
     expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(shopCard.publicId);
   });

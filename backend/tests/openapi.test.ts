@@ -3537,10 +3537,15 @@ describe("GET /api/v1/openapi.json", () => {
       expect.arrayContaining([
         "serviceCategories",
         "businessKeywords",
+        "completedOrderCount",
         "favoriteCount",
         "shareCount"
       ])
     );
+    expect(schemas.ShopCard.properties.completedOrderCount).toEqual({
+      type: "integer",
+      minimum: 0
+    });
     expect(schemas.ShopCard.properties.favoriteCount).toEqual(
       expect.objectContaining({ type: "integer", minimum: 0 })
     );
