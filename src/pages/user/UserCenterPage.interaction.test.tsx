@@ -346,6 +346,28 @@ describe("UserCenterPage inline profile editing", () => {
     expect(findButton("日本語").className).not.toContain("client-primary-soft");
   });
 
+  it("renders locale codes and localized language names as one canonical selection", async () => {
+    testState.getMine.mockResolvedValueOnce({
+      ...savedProfile,
+      languages: ["ja", "zh", "en", "日本語", "中文", "English"]
+    });
+
+    await renderUserCenter();
+
+    const languageSection = Array.from(container.querySelectorAll("section")).find((section) =>
+      section.textContent?.startsWith("语言能力")
+    );
+    const labels = Array.from(languageSection?.querySelectorAll("span") ?? []).map((element) => element.textContent);
+
+    expect(labels).toEqual(["日本語", "中文", "English"]);
+
+    await click(findIconButton("编辑资料"));
+
+    expect(findButton("日本語").className).toContain("client-primary-soft");
+    expect(findButton("中文").className).toContain("client-primary-soft");
+    expect(findButton("English").className).toContain("client-primary-soft");
+  });
+
   it("places the edit-state privacy control after the basic-information labels", async () => {
     await renderUserCenter();
     await click(findIconButton("编辑资料"));

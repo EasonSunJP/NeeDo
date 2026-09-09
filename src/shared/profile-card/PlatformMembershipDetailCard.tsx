@@ -4,6 +4,7 @@ import {
   resolveMembershipDetailGradient,
   resolveMembershipTheme
 } from "./platformMembershipTheme";
+import { normalizeProfileLanguageLabels } from "./profileLanguages";
 
 export type PlatformMembershipDetailCardProps = {
   avatarUrl: string | null;
@@ -32,6 +33,7 @@ export type PlatformMembershipDetailCardProps = {
 
 export function PlatformMembershipDetailCard(props: PlatformMembershipDetailCardProps) {
   const theme = resolveMembershipTheme(props.theme);
+  const languages = normalizeProfileLanguageLabels(props.languages);
   const showLevel = props.entityKind === "customer" && props.level !== null;
   const itemStyle = { backgroundColor: theme.detailItemSurfaceColor, borderColor: theme.detailItemBorderColor, color: theme.detailItemTextColor };
   return <article className="w-full max-w-[610px] rounded-[28px] border p-5 shadow-[0_24px_60px_rgba(0,0,0,0.2)]" data-platform-membership-detail-card="true" style={{ backgroundColor: theme.detailSurfaceColor, backgroundImage: resolveMembershipDetailGradient(theme), borderColor: theme.detailOuterBorderColor, color: theme.detailTextColor }}>
@@ -39,7 +41,7 @@ export function PlatformMembershipDetailCard(props: PlatformMembershipDetailCard
     <div className="mt-5 grid grid-cols-3 gap-3">{[[props.pointsLabel ?? "积分", props.points], ["利用次数", props.usageCount], ["信用值", props.credit]].map(([label, value], index) => <div className="rounded-[18px] border p-3" key={String(label)} style={itemStyle}><p className="text-xs opacity-60">{label}</p><p className="mt-1 text-lg font-black">{value ?? "—"}</p>{index === 0 && props.testPoints !== null && props.testPoints !== undefined ? <p className="mt-1 text-[10px] font-bold opacity-60" data-testid="platform-membership-test-ndp">Test NDP {props.testPoints}</p> : null}</div>)}</div>
     <div className="my-5 h-px" style={{ backgroundColor: theme.detailOuterBorderColor }} />
     <h3 className="text-lg font-black">基础信息</h3><div className="mt-3 grid grid-cols-3 gap-3">{[["性别", props.gender], ["年龄", props.age], ["身高（cm）", props.heightCm]].map(([label, value]) => <div className="rounded-[18px] border p-3" key={String(label)} style={itemStyle}><p className="text-xs opacity-60">{label}</p><p className="mt-1 font-bold">{value ?? "未设置"}</p></div>)}</div>
-    <section className="mt-3 rounded-[22px] border p-4" style={itemStyle}><p className="text-xs font-bold opacity-60">语言能力</p><div className="mt-2 flex min-h-6 flex-wrap gap-2">{props.languages.length ? props.languages.map((language) => <span className="rounded-full border px-2.5 py-1 text-xs font-black" key={language} style={{ borderColor: theme.detailAccentColor }}>{language}</span>) : <span className="text-sm">未设置</span>}</div></section>
+    <section className="mt-3 rounded-[22px] border p-4" style={itemStyle}><p className="text-xs font-bold opacity-60">语言能力</p><div className="mt-2 flex min-h-6 flex-wrap gap-2">{languages.length ? languages.map((language) => <span className="rounded-full border px-2.5 py-1 text-xs font-black" key={language} style={{ borderColor: theme.detailAccentColor }}>{language}</span>) : <span className="text-sm">未设置</span>}</div></section>
     <section className="mt-3 min-h-28 rounded-[22px] border p-4" style={itemStyle}><p className="text-xs font-bold opacity-60">自我介绍</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{props.bio || "未设置"}</p></section>
     {props.afterDetailsSlot ? <div className="mt-3">{props.afterDetailsSlot}</div> : null}
     {props.footerSlot ? <div className="mt-3">{props.footerSlot}</div> : null}
