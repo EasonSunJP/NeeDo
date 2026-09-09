@@ -273,6 +273,25 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(midnight[0]?.endTime).toBe("24:00");
   });
 
+  it("preserves the persisted availability source when projecting technician schedule slots", () => {
+    const event = getFormalScheduleEvents([{
+      id: 906,
+      startsAt: "2026-09-09T10:00:00+09:00",
+      endsAt: "2026-09-09T11:00:00+09:00",
+      status: "booked",
+      bookedCount: 1,
+      availabilitySourceType: "shop",
+      shopName: "正式店铺",
+      serviceName: "正式服务"
+    } as BookingScheduleSlot], "technician")[0]!;
+
+    expect(event).toMatchObject({
+      scheduleSlotId: 906,
+      availabilitySourceType: "shop",
+      title: "正式店铺店铺排班（可排班日程）"
+    });
+  });
+
   it("marks only overlapping real bookings as conflicts", () => {
     const base = { sourceId: "user", calendarId: "user:me", calendarLabel: "我的行程", date: "2026-09-09", subtitle: "", badge: "预约", readOnly: true } as const;
     const bookingA = { ...base, id: "booking-a", orderId: "A", startTime: "20:00", endTime: "21:30", title: "预约A" };
