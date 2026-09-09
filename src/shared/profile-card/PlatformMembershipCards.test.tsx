@@ -55,6 +55,21 @@ describe("shared platform membership cards", () => {
     expect(markup.indexOf("12,500")).toBeLessThan(markup.indexOf("Test NDP 800"));
   });
 
+  it("deduplicates locale codes and localized names in the language row", () => {
+    const markup = renderToStaticMarkup(
+      <PlatformMembershipDetailCard
+        {...profile}
+        languages={["ja", "日本語", "zh", "中文", "en", "English"]}
+        theme={theme}
+      />
+    );
+
+    expect(markup).not.toMatch(/>ja<|>zh<|>en</);
+    expect(markup.match(/日本語/g)).toHaveLength(1);
+    expect(markup.match(/中文/g)).toHaveLength(1);
+    expect(markup.match(/English/g)).toHaveLength(1);
+  });
+
   it("omits level for technician/shop cards and truncates the simple card", () => {
     const markup = renderToStaticMarkup(<PlatformMembershipSimpleCard {...profile} bio={"long ".repeat(80)} entityKind="technician" simpleBottomColor={theme.simpleBottomColor} simpleTopColor={theme.simpleTopColor} />);
     expect(markup.toLowerCase()).toContain(theme.simpleTopColor.toLowerCase());

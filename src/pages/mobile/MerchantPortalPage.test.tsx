@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import merchantSource from "./MerchantPortalPage.tsx?raw";
+import employeeDetailWorkspaceSource from "../../components/merchant-admin/MerchantEmployeeDetailWorkspace.tsx?raw";
 import storeDetailSource from "../user/StoreDetailPage.tsx?raw";
 
 describe("MerchantPortalPage store privacy control", () => {
@@ -38,13 +39,37 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(scheduleHeaderSource).toContain('<strong className="truncate text-sm font-black">{activeTabLabel}</strong>');
     expect(scheduleHeaderSource).toContain('<MobileFullscreenCloseButton label={`关闭${activeTabLabel}`} onClose={() => onExit?.()} />');
     expect(scheduleHeaderSource).toContain("<FeatureSegmentedTabs");
-    expect(shellSource).toContain('showBottomNav={activeView !== "me" && !isMerchantScheduleView && !merchantProfileEditing}');
+    expect(shellSource).toContain('activeView !== "staff"');
     expect(merchantSource).toContain('activeView === "schedule" && "relative z-30"');
     expect(schedulePanelSource).toContain("onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("appointmentSearchQuery={merchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("searchQuery={merchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain('onExit={() => navigate("/merchant")}');
     expect(schedulePanelSource).not.toContain("showAppointmentsToolbar");
+  });
+
+  it("uses the shared employee header with search, close, and four separated tabs", () => {
+    const staffHeaderSource = merchantSource.slice(
+      merchantSource.indexOf("function MerchantStaffHeaderTabs"),
+      merchantSource.indexOf("function buildMerchantIncomePolyline")
+    );
+    const staffPanelSource = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "staff" && ('),
+      merchantSource.indexOf('{activeView === "schedule" && (')
+    );
+
+    expect(staffHeaderSource).toContain("<MobileFullscreenHeader");
+    expect(staffHeaderSource).toContain('aria-label="搜索员工"');
+    expect(staffHeaderSource).toContain('placeholder={t("搜索员工、NeeDoID 或状态")}');
+    expect(staffHeaderSource).toContain("onBack={onExit}");
+    expect(staffHeaderSource).toContain("onClose={onExit}");
+    expect(staffHeaderSource).toContain('{ label: "全部", value: "all" }');
+    expect(staffHeaderSource).toContain('{ label: "员工", value: "fullTime" }');
+    expect(staffHeaderSource).toContain('{ label: "临时", value: "partTime" }');
+    expect(staffHeaderSource).toContain('{ label: "审核", value: "review" }');
+    expect(staffPanelSource).toContain('<TechnicianApplicationsReviewPage embedded searchQuery={staffSearchQuery} />');
+    expect(staffPanelSource).toContain('merchantStaffTab === "review"');
+    expect(staffPanelSource).toContain('merchantStaffTab !== "review"');
   });
 
   it("keeps the approved appointment calendar as the first booking surface", () => {
@@ -60,18 +85,20 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(schedulePanelSource).not.toContain('className="space-y-4"');
   });
 
-  it("keeps the merchant staff detail header as a single shared glass layer", () => {
+  it("keeps the merchant staff detail header as a single shared glass layer with close", () => {
     const staffDetailSource = merchantSource.slice(
       merchantSource.indexOf("export function MerchantStaffDetailRoutePage"),
       merchantSource.indexOf("function MerchantOrdersHeader")
     );
 
     expect(staffDetailSource).toContain("<MobileFullscreenHeader");
+    expect(staffDetailSource).toContain("onClose={closePage}");
     expect(staffDetailSource).toContain("showSpacer={false}");
     expect(staffDetailSource).not.toContain('className="fixed inset-x-0 top-0 z-[70] mx-auto w-full max-w-[480px]"');
     expect(staffDetailSource).toContain("pt-[calc(env(safe-area-inset-top)+86px)]");
-    expect(staffDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom)+124px)]");
-    expect(staffDetailSource).toContain('<div className="space-y-3">');
+    expect(staffDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom)+24px)]");
+    expect(staffDetailSource).toContain("px-2");
+    expect(staffDetailSource).toContain("<MerchantEmployeeDetailWorkspace");
   });
 
   it("hydrates a directly opened staff detail from the formal merchant API", () => {
@@ -80,9 +107,10 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf("function MerchantOrdersHeader")
     );
 
-    expect(staffDetailSource).toContain('backofficeRealDataApi.technician("merchant-admin", technicianApiId)');
-    expect(staffDetailSource).toContain('<FormalTechnicianDetailPanel detail={formalDetail} workStatusScope="merchant-admin" />');
-    expect(staffDetailSource).toContain("正在读取员工资料");
+    expect(employeeDetailWorkspaceSource).toContain("merchantEmployeeApi.detail(needoId)");
+    expect(employeeDetailWorkspaceSource).toContain("<EmployeeDetailCard");
+    expect(staffDetailSource).not.toContain('backofficeRealDataApi.technician("merchant-admin"');
+    expect(employeeDetailWorkspaceSource).toContain("正在读取员工详细信息卡");
   });
 
   it("adds the floating privacy menu to the merchant service card only", () => {
@@ -128,7 +156,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(meHeaderSource).toContain("footer={");
     expect(meHeaderSource).not.toContain("<SharedHomeHeader");
     expect(merchantSource).toContain('? "space-y-4 pt-4"');
-    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && !isMerchantScheduleView && !merchantProfileEditing}');
+    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !merchantProfileEditing}');
   });
 
   it("keeps the personal-center status panel inside the same mobile content inset", () => {

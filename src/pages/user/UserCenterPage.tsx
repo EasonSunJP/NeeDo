@@ -26,6 +26,7 @@ import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { PlatformMembershipDetailCard } from "../../shared/profile-card/PlatformMembershipDetailCard";
 import { formatCustomerCreditReviewCount, formatCustomerCreditScore, formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
+import { PROFILE_LANGUAGE_OPTIONS, normalizeProfileLanguageLabels } from "../../shared/profile-card/profileLanguages";
 import type { Customer } from "../../types/domain";
 
 const formalOrderStatuses = ["pending", "confirmed", "inService", "completed", "cancelled"] as const satisfies readonly BookingOrderStatus[];
@@ -84,7 +85,6 @@ const avatarCropPrimaryButtonClassName =
   "border-[color:color-mix(in_srgb,var(--client-primary)_72%,var(--client-line))] bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_14px_28px_color-mix(in_srgb,var(--client-primary)_18%,transparent)]";
 const avatarCropFrameClassName =
   "relative h-[240px] w-[240px] touch-none overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_58%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-bg)_82%,var(--client-primary)_18%)] shadow-[0_18px_36px_rgba(0,0,0,0.24)] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)]";
-const userProfileLanguageOptions = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
 const userProfileGenderOptions: Array<{ label: string; value: NonNullable<Customer["gender"]> }> = [
   { label: "女", value: "female" },
   { label: "男", value: "male" },
@@ -240,7 +240,7 @@ function buildUserProfile(customer: Customer) {
     age: customer.age?.trim() || "",
     height: customer.height?.trim() || "",
     gender: formatCustomerGenderLabel(customer.gender),
-    languages: customer.languages?.length ? [...customer.languages] : [],
+    languages: normalizeProfileLanguageLabels(customer.languages ?? []),
     bio: customer.bio?.trim() || ""
   };
 }
@@ -1211,7 +1211,7 @@ function CompleteUserCenterPage({
                       <div className={cn("rounded-[18px] border p-3", membershipSurface.panel)}>
                         <p className={cn("text-xs font-bold", membershipSurface.label)}>语言能力</p>
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {userProfileLanguageOptions.map((language) => (
+                        {PROFILE_LANGUAGE_OPTIONS.map((language) => (
                             <button
                               className={cn(
                                 "rounded-full border px-2.5 py-1 text-xs font-black",

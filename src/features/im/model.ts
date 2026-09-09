@@ -67,6 +67,7 @@ export type ContactRelation = {
   id: string;
   ownerUserId: string;
   targetUserId: string;
+  contactIdentityId?: string;
   relationStatus: ImRelationStatus;
   source: string;
   remarkName?: string;

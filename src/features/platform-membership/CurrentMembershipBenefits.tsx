@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { Language } from "../../i18n/translations";
 import {
   currentMembershipBenefitsApi,
@@ -18,6 +18,8 @@ const copy: Record<
     unavailable: string;
     disabled: string;
     explanation: string;
+    enabled: string;
+    collapse: string;
     close: string;
   }
 > = {
@@ -31,6 +33,8 @@ const copy: Record<
     unavailable: "能力未接通",
     disabled: "未启用",
     explanation: "该权益已包含在会员配置中，但对应服务能力尚未接通。当前不会创建客服账号、聊天、优惠券或权益履约记录。",
+    enabled: "已开启",
+    collapse: "收起",
     close: "关闭"
   },
   "zh-Hant": {
@@ -43,6 +47,8 @@ const copy: Record<
     unavailable: "能力未接通",
     disabled: "未啟用",
     explanation: "此權益已包含在會員設定中，但對應服務能力尚未接通。目前不會建立客服帳號、聊天、優惠券或權益履約紀錄。",
+    enabled: "已開啟",
+    collapse: "收起",
     close: "關閉"
   },
   ja: {
@@ -55,6 +61,8 @@ const copy: Record<
     unavailable: "機能未接続",
     disabled: "無効",
     explanation: "この特典は会員設定に含まれていますが、対応サービスはまだ接続されていません。サポート用アカウント、チャット、クーポン、付与履歴は作成されません。",
+    enabled: "件有効",
+    collapse: "折りたたむ",
     close: "閉じる"
   },
   en: {
@@ -67,6 +75,8 @@ const copy: Record<
     unavailable: "Capability unavailable",
     disabled: "Off",
     explanation: "This benefit is included in the membership configuration, but its delivery service is not connected. No support account, chat, coupon, or fulfillment record will be created.",
+    enabled: " enabled",
+    collapse: "Collapse",
     close: "Close"
   },
   ko: {
@@ -79,6 +89,8 @@ const copy: Record<
     unavailable: "기능 미연결",
     disabled: "비활성",
     explanation: "이 혜택은 회원 설정에 포함되어 있지만 해당 서비스 기능은 아직 연결되지 않았습니다. 고객 지원 계정, 채팅, 쿠폰 또는 지급 기록을 만들지 않습니다.",
+    enabled: "개 활성화",
+    collapse: "접기",
     close: "닫기"
   }
 };
@@ -102,6 +114,8 @@ export function CurrentMembershipBenefits({
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [revision, setRevision] = useState(0);
   const [explained, setExplained] = useState<CurrentMembershipBenefitItem | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const listId = useId();
 
   useEffect(() => {
     let active = true;
@@ -124,8 +138,24 @@ export function CurrentMembershipBenefits({
 
   return (
     <section className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.05)]" data-testid="current-membership-benefits">
-      <h2 className="text-base font-black text-[color:var(--client-text)]">{copy[language].title}</h2>
-      <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{copy[language].subtitle}</p>
+      <button
+        aria-controls={listId}
+        aria-expanded={expanded}
+        className="flex w-full items-center justify-between gap-4 text-left disabled:cursor-default"
+        disabled={status !== "ready" || !payload}
+        onClick={() => setExpanded(true)}
+        type="button"
+      >
+        <span className="min-w-0">
+          <span className="block text-base font-black text-[color:var(--client-text)]">{copy[language].title}</span>
+          <span className="mt-1 block text-xs font-bold text-[color:var(--client-muted)]">{copy[language].subtitle}</span>
+        </span>
+        {status === "ready" && payload ? (
+          <span className="shrink-0 text-sm font-black text-[color:var(--client-text)]">
+            {payload.list.filter((item) => item.effective).length}/{payload.list.length}{copy[language].enabled}
+          </span>
+        ) : null}
+      </button>
 
       {status === "loading" ? <p className="py-6 text-center text-sm text-[color:var(--client-muted)]">{copy[language].loading}</p> : null}
       {status === "error" ? (
@@ -134,8 +164,8 @@ export function CurrentMembershipBenefits({
           <button className="rounded-full border border-[color:var(--client-line)] px-4 py-2 font-black" onClick={() => setRevision((value) => value + 1)} type="button">{copy[language].retry}</button>
         </div>
       ) : null}
-      {status === "ready" && payload ? (
-        <div className="mt-4 grid gap-2">
+      {status === "ready" && payload && expanded ? (
+        <div className="mt-4 grid gap-2" id={listId}>
           {payload.list.map((item) => {
             const unavailable = item.configuredEnabled && item.globallyEnabled && item.deliveryCapability === "unavailable";
             return (
@@ -158,6 +188,13 @@ export function CurrentMembershipBenefits({
               </button>
             );
           })}
+          <button
+            className="mx-auto mt-1 block px-2 py-2 text-sm font-black text-[color:var(--client-muted)]"
+            onClick={() => setExpanded(false)}
+            type="button"
+          >
+            {copy[language].collapse}
+          </button>
         </div>
       ) : null}
 
