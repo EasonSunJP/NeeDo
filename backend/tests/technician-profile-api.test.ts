@@ -92,6 +92,20 @@ const makeProfile = (): TechnicianProfilePayload => ({
   publicId: "s1234567890",
   userId: 9,
   shopId: 3,
+  shopAccessStatus: "active",
+  shopAffiliations: [
+    {
+      id: 41,
+      shopId: 3,
+      publicId: "shop0000000003",
+      name: "GINZA Calm Body Lab",
+      city: "Tokyo",
+      address: "Ginza",
+      relationshipType: "partner",
+      workStatus: "active",
+      startsAt: "2026-04-01T00:00:00.000Z"
+    }
+  ],
   displayName: "田中 彩",
   avatarUrl: null,
   bio: "肩颈护理",
@@ -332,6 +346,8 @@ describe("technician profile current-identity API", () => {
         expect(body.data).toMatchObject({
           id: 31,
           displayName: "田中 彩",
+          shopAccessStatus: "active",
+          shopAffiliations: [expect.objectContaining({ shopId: 3, relationshipType: "partner" })],
           gender: "female",
           serviceBase: { latitude: 35.6762, longitude: 139.6503 }
         })

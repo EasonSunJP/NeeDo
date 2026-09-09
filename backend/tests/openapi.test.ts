@@ -5,6 +5,50 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("publishes partner as the only active employee affiliation relationship", () => {
+    type Schema = {
+      enum?: string[];
+      properties?: Record<string, Schema>;
+    };
+    type OpenApiDocument = {
+      components: { schemas: Record<string, Schema> };
+      paths: Record<
+        string,
+        Record<
+          string,
+          {
+            parameters?: Array<{ name?: string; schema?: Schema }>;
+            responses?: Record<string, unknown>;
+          }
+        >
+      >;
+    };
+    const document = createOpenApiDocument(env) as unknown as OpenApiDocument;
+    const schemas = document.components.schemas;
+
+    expect(schemas.MerchantEmployeeAffiliation?.properties?.relationshipType?.enum).toEqual([
+      "partner"
+    ]);
+    expect(schemas.ShopEmployeeDirectoryTechnician?.properties?.relationshipType?.enum).toEqual([
+      "partner"
+    ]);
+    expect(schemas.MerchantEmployeeScheduleProjection?.properties?.employee?.properties?.relationshipType?.enum).toEqual([
+      "partner"
+    ]);
+    expect(schemas.MerchantEmployeeAffiliationInput?.properties?.relationshipType?.enum).toEqual([
+      "partner"
+    ]);
+
+    const listParameters =
+      document.paths["/api/v1/merchant-admin/employees"]?.get?.parameters ?? [];
+    expect(
+      listParameters.find((parameter) => parameter.name === "relationshipType")?.schema?.enum
+    ).toEqual(["partner"]);
+    expect(
+      document.paths["/api/v1/merchant-admin/employees/{needoId}/affiliation"]?.put?.responses
+    ).not.toHaveProperty("409");
+  });
+
   it("documents shop creator, platform commission, and the protected SaaS detail endpoint", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, Record<string, Record<string, unknown>>>;
@@ -930,8 +974,20 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.components.schemas.TechnicianDetail.allOf[1].properties.reviewTagSummary
     ).toEqual({ $ref: "#/components/schemas/TechnicianReviewTagSummary" });
     expect(response.body.components.schemas.TechnicianSelfProfile.required).toEqual(
-      expect.arrayContaining(["gender", "reviewTagSummary"])
+      expect.arrayContaining(["gender", "reviewTagSummary", "shopAccessStatus", "shopAffiliations"])
     );
+    expect(response.body.components.schemas.TechnicianSelfProfile.properties).toMatchObject({
+      shopAccessStatus: { enum: ["active", "requires_shop"] },
+      shopAffiliations: {
+        type: "array",
+        items: {
+          properties: {
+            relationshipType: { enum: ["partner"] },
+            workStatus: { enum: ["active", "on_leave", "suspended"] }
+          }
+        }
+      }
+    });
     expect(response.body.components.schemas.TechnicianSelfProfileUpdate.properties.gender).toEqual({
       type: "string",
       enum: ["female", "male", "private"]

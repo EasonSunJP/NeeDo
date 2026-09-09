@@ -132,6 +132,8 @@ import {
   UnifiedSettingsVerificationPage
 } from "./features/settings/UnifiedSettingsPages";
 import { TechnicianApplicationPage } from "./features/identity-applications/TechnicianApplicationPage";
+import { TechnicianShopStayPage } from "./features/technician-shop-stays/TechnicianShopStayPage";
+import { technicianProfileApi } from "./features/core-read/technicianProfileApi";
 import { MerchantApplicationPage } from "./features/identity-applications/MerchantApplicationPage";
 import { AffiliateActivationPage } from "./features/identity-applications/AffiliateActivationPage";
 import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";
@@ -961,6 +963,45 @@ function RequirePortalAuth({
   return children;
 }
 
+function RequireTechnicianShopStay({ children }: { children: ReactElement }) {
+  const location = useLocation();
+  const { session } = useAuth();
+  const { language } = useI18n();
+  const isShopStayRoute = location.pathname.startsWith("/technician/shop-stays");
+  const [status, setStatus] = useState<"loading" | "active" | "requires_shop" | "error">(isShopStayRoute ? "active" : "loading");
+
+  useEffect(() => {
+    if (isShopStayRoute) {
+      setStatus("active");
+      return;
+    }
+    let current = true;
+    setStatus("loading");
+    void technicianProfileApi.getMine()
+      .then((profile) => {
+        if (current) setStatus(profile.shopAccessStatus);
+      })
+      .catch(() => {
+        if (current) setStatus("error");
+      });
+    return () => {
+      current = false;
+    };
+  }, [isShopStayRoute, session?.currentIdentity.id]);
+
+  if (isShopStayRoute || status === "active") return children;
+  if (status === "requires_shop") return <Navigate replace to="/technician/shop-stays" />;
+  if (status === "loading") return null;
+  return (
+    <main className="grid min-h-screen place-items-center bg-paper px-6 text-center text-ink">
+      <section className="max-w-md rounded-lg border border-line bg-white p-6 shadow-panel">
+        <h1 className="text-xl font-black">{translateText("店铺入住状态暂时无法确认", language)}</h1>
+        <p className="mt-3 text-sm font-semibold leading-6 text-ink/55">{translateText("请刷新后重试，状态确认前不会开放技师工作功能。", language)}</p>
+      </section>
+    </main>
+  );
+}
+
 function LegacyBusinessRedirect() {
   const location = useLocation();
   const targetPath = location.pathname.replace(/^\/(?:business|cps)(?=\/|$)/, "/afirieito");
@@ -1073,7 +1114,11 @@ export default function App() {
   const reducedPerformance = isReducedClientPerformanceProfile();
   const [splashPortal, setSplashPortal] = useState<SplashPortal | null>(currentPortal);
   const [lastPortal, setLastPortal] = useState<SplashPortal | null>(null);
-  const protect = (portal: PortalScope, element: ReactElement) => <RequirePortalAuth portal={portal}>{element}</RequirePortalAuth>;
+  const protect = (portal: PortalScope, element: ReactElement) => (
+    <RequirePortalAuth portal={portal}>
+      {portal === "technician" ? <RequireTechnicianShopStay>{element}</RequireTechnicianShopStay> : element}
+    </RequirePortalAuth>
+  );
   const protectPermission = (portal: PortalScope, permission: string, element: ReactElement) =>
     protect(
       portal,
@@ -1393,6 +1438,8 @@ export default function App() {
               <Route path="/merchant-admin/settings/travel-fare" element={protectPermission("merchant", "merchant-admin:travel-fare-policy:read", <ShopTravelFarePolicyPage />)} />
 
               <Route path="/technician" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
+              <Route path="/technician/shop-stays" element={protect("technician", <TechnicianShopStayPage />)} />
+              <Route path="/technician/shop-stays/apply" element={protect("technician", <TechnicianApplicationPage mode="additional-shop" />)} />
               <Route path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)} />
               <Route path="/technician/schedule/new" element={protect("technician", <TechnicianScheduleEditorRoutePage />)} />
               <Route path="/technician/schedule/events/:eventId/edit" element={protect("technician", <TechnicianScheduleEditorRoutePage />)} />

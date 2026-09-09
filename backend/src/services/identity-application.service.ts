@@ -160,6 +160,7 @@ export interface IdentityApplicationRepositoryPort {
     type: IdentityApplicationType
   ) => Promise<IdentityApplicationRecord | null>;
   hasActiveIdentity: (userId: number, type: IdentityApplicationType) => Promise<boolean>;
+  hasTechnicianShopAffiliation: (userId: number, shopId: number) => Promise<boolean>;
   isShopEligibleForTechnicianApplications: (shopId: number) => Promise<boolean>;
   assertMerchantTaxonomySelection: (input: {
     serviceCategoryIds: number[];
@@ -271,7 +272,7 @@ export class IdentityApplicationService {
   public async createTechnicianDraft(
     input: CreateTechnicianDraftInput
   ): Promise<IdentityApplicationRecord> {
-    await this.assertCanApply(input.userId, "technician");
+    await this.assertCanApply(input.userId, "technician", input.targetShopId);
     await this.assertEligibleShop(input.targetShopId);
 
     return this.repository.createTechnicianDraft({
@@ -301,6 +302,12 @@ export class IdentityApplicationService {
     this.assertType(application, "technician");
     this.assertVersion(application.version, input.expectedVersion);
     this.assertEditable(application.status);
+    if (
+      (await this.repository.hasActiveIdentity(input.userId, "technician")) &&
+      (await this.repository.hasTechnicianShopAffiliation(input.userId, input.detail.targetShopId))
+    ) {
+      throw this.conflict("error.technician_affiliation.already_exists");
+    }
     await this.assertEligibleShop(input.detail.targetShopId);
 
     return this.repository.updateTechnicianDraft({
@@ -397,11 +404,18 @@ export class IdentityApplicationService {
     });
   }
 
-  private async assertCanApply(userId: number, type: IdentityApplicationType): Promise<void> {
+  private async assertCanApply(userId: number, type: IdentityApplicationType, targetShopId?: number): Promise<void> {
     if (await this.repository.findActiveByUserAndType(userId, type)) {
       throw this.conflict("error.identity_application.conflict");
     }
-    if (await this.repository.hasActiveIdentity(userId, type)) {
+    const hasActiveIdentity = await this.repository.hasActiveIdentity(userId, type);
+    if (hasActiveIdentity && type === "technician" && targetShopId) {
+      if (await this.repository.hasTechnicianShopAffiliation(userId, targetShopId)) {
+        throw this.conflict("error.technician_affiliation.already_exists");
+      }
+      return;
+    }
+    if (hasActiveIdentity) {
       throw this.conflict("error.identity_application.identity_already_active");
     }
   }

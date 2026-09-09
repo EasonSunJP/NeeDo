@@ -183,6 +183,19 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
     return identity !== null;
   }
 
+  public async hasTechnicianShopAffiliation(userId: number, shopId: number): Promise<boolean> {
+    const affiliation = await this.client.technicianShopAffiliation.findFirst({
+      where: {
+        technicianProfile: { userId, deletedAt: null },
+        shopId,
+        workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    return affiliation !== null;
+  }
+
   public async isShopEligibleForTechnicianApplications(shopId: number): Promise<boolean> {
     const shop = await this.client.shop.findFirst({
       where: { id: shopId, status: "published", deletedAt: null },

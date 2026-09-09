@@ -2476,10 +2476,6 @@ const merchantEmployeeErrorResponses = {
     description:
       "error.technician_affiliation.not_found — employee is absent from the authenticated shop"
   },
-  "409": {
-    description:
-      "error.technician_affiliation.exclusive_conflict — exclusive and multi-shop relationships conflict"
-  }
 };
 
 const merchantPreviewShopHeaderParameter = {
@@ -10537,6 +10533,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "publicId",
           "userId",
           "shopId",
+          "shopAccessStatus",
+          "shopAffiliations",
           "displayName",
           "avatarUrl",
           "bio",
@@ -10564,6 +10562,32 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           publicId: { type: "string" },
           userId: { type: "integer", minimum: 1 },
           shopId: { type: ["integer", "null"], minimum: 1 },
+          shopAccessStatus: {
+            type: "string",
+            enum: ["active", "requires_shop"],
+            description: "Derived from current shop affiliations. requires_shop keeps the technician identity accessible but gates normal technician work until another shop approves the partnership."
+          },
+          shopAffiliations: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["id", "shopId", "publicId", "name", "city", "address", "relationshipType", "workStatus", "startsAt"],
+              properties: {
+                id: { type: "integer", minimum: 1 },
+                shopId: { type: "integer", minimum: 1 },
+                publicId: { type: ["string", "null"] },
+                name: { type: "string" },
+                city: { type: "string" },
+                address: { type: "string" },
+                relationshipType: { type: "string", enum: ["partner"] },
+                workStatus: {
+                  type: "string",
+                  enum: ["active", "on_leave", "suspended"]
+                },
+                startsAt: { type: "string", format: "date-time" }
+              }
+            }
+          },
           displayName: { type: "string", minLength: 1, maxLength: 120 },
           avatarUrl: { type: ["string", "null"] },
           bio: { type: ["string", "null"], maxLength: 2000 },
@@ -13829,7 +13853,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["id", "relationshipType", "workStatus", "startsAt", "endsAt", "shop"],
         properties: {
           id: { type: "integer", minimum: 1, readOnly: true },
-          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          relationshipType: { type: "string", enum: ["partner"] },
           workStatus: {
             type: "string",
             enum: ["active", "on_leave", "suspended", "ended"]
@@ -13929,7 +13953,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["needoId", "relationshipType", "workStatus"],
         properties: {
           needoId: { type: "string", pattern: "^s[0-9]{10}$" },
-          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          relationshipType: { type: "string", enum: ["partner"] },
           workStatus: {
             type: "string",
             enum: ["active", "on_leave", "suspended"]
@@ -14105,7 +14129,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               needoId: { type: "string", pattern: "^s[0-9]{10}$" },
               displayName: { type: "string" },
               avatarUrl: { type: ["string", "null"], format: "uri-reference" },
-              relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+              relationshipType: { type: "string", enum: ["partner"] },
               workStatus: {
                 type: "string",
                 enum: ["active", "on_leave", "suspended", "ended"]
@@ -14138,7 +14162,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         additionalProperties: false,
         required: ["relationshipType", "workStatus", "startsAt", "endsAt"],
         properties: {
-          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          relationshipType: { type: "string", enum: ["partner"] },
           workStatus: {
             type: "string",
             enum: ["active", "on_leave", "suspended", "ended"]
@@ -17589,7 +17613,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "relationshipType",
             in: "query",
-            schema: { type: "string", enum: ["exclusive", "partner"] }
+            schema: { type: "string", enum: ["partner"] }
           },
           {
             name: "workStatus",
@@ -27204,7 +27228,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       })
     },
     [`${config.API_PREFIX}/identity-applications/technician`]: {
-      post: identityWorkflowOperation("Create a technician application draft", {
+      post: identityWorkflowOperation("Create an initial technician identity or additional shop partnership application draft", {
         requestBody: identityJsonBody(
           {
             targetShopId: { type: "integer", minimum: 1 },

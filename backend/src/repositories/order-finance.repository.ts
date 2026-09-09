@@ -83,9 +83,18 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
           orderType: true,
           customerUserId: true,
           shopId: true,
-          technicianProfileId: true
+          technicianProfileId: true,
+          status: true,
+          paymentStatus: true
         }
       });
+
+      const settlementStatus =
+        input.serviceIncomeStatus === "confirmed" &&
+        order.status === "COMPLETED" &&
+        order.paymentStatus === "CONFIRMED"
+          ? "ready_for_payroll"
+          : undefined;
 
       await transaction.orderFinancial.upsert({
         where: {
@@ -109,6 +118,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
           serviceIncomeConfirmedAt: input.confirmedById ? new Date() : null,
           serviceIncomeNote: input.note,
           serviceIncomeProofUrl: input.proofUrl,
+          settlementStatus,
           moneyTimelineJson: input.moneyTimeline as unknown as Prisma.InputJsonValue
         },
         create: {
@@ -134,6 +144,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
           serviceIncomeConfirmedAt: input.confirmedById ? new Date() : null,
           serviceIncomeNote: input.note,
           serviceIncomeProofUrl: input.proofUrl,
+          settlementStatus: settlementStatus ?? "pending",
           moneyTimelineJson: input.moneyTimeline as unknown as Prisma.InputJsonValue
         }
       });

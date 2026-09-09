@@ -506,6 +506,9 @@ const createAuthFixture = async (
     needoId: "u1234567894",
     email: "multi@example.com",
     username: "Multi Portal User",
+    technicianProfile: {
+      technicianShopAffiliations: [{ id: 301 }]
+    },
     identities: [
       {
         id: 50,
@@ -560,6 +563,8 @@ const createAuthFixture = async (
             "auth:me",
             "auth:logout",
             "menu:technician-app",
+            "identity-application:own",
+            "technician-profile:read",
             "technician:services:list",
             "technician:services:write"
           ].map((code) => ({
@@ -2163,6 +2168,27 @@ describe("verified email registration and formal password authentication", () =>
           scopeType: "technician_profile",
           scopeId: 3
         });
+      });
+  });
+
+  it("keeps shop onboarding access but pauses technician work APIs with zero active shops", async () => {
+    const fixture = await createAuthFixture();
+    fixture.multiPortalUser.technicianProfile = {
+      technicianShopAffiliations: []
+    };
+    const loginResponse = await request(fixture.app).post("/api/v1/auth/login").send({ loginIdentifier: "multi@example.com", password: "Abcd@1234" }).expect(200);
+
+    const switchResponse = await request(fixture.app).post("/api/v1/auth/switch-identity").set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`).send({ refreshToken: loginResponse.body.data.refreshToken, identityId: 51 }).expect(200);
+
+    expect(switchResponse.body.data.me.permissions).toEqual(expect.arrayContaining(["auth:me", "auth:logout", "menu:technician-app", "identity-application:own", "technician-profile:read"]));
+    expect(switchResponse.body.data.me.permissions).not.toEqual(expect.arrayContaining(["technician:services:list", "technician:services:write"]));
+
+    await request(fixture.app)
+      .get("/api/v1/technicians/me/services?page=1&page_size=20")
+      .set("Authorization", `Bearer ${switchResponse.body.data.accessToken}`)
+      .expect(403)
+      .expect((response) => {
+        expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN);
       });
   });
 

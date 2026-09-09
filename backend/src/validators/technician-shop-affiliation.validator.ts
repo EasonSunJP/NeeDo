@@ -16,7 +16,7 @@ export const merchantEmployeeListQuerySchema = z
     page: z.coerce.number().int().positive().optional(),
     pageSize: z.coerce.number().int().positive().max(100).optional(),
     keyword: z.string().trim().max(100).optional(),
-    relationshipType: z.enum(["exclusive", "partner"]).optional(),
+    relationshipType: z.literal("partner").optional(),
     workStatus: z.enum(["active", "on_leave", "suspended"]).optional()
   })
   .strict();
@@ -64,7 +64,7 @@ export const merchantEmployeeScheduleQuerySchema = z
 
 export const merchantEmployeeAffiliationBodySchema = z
   .object({
-    relationshipType: z.enum(["exclusive", "partner"]),
+    relationshipType: z.literal("partner"),
     workStatus: z.enum(["active", "on_leave", "suspended", "ended"]),
     startsAt: z.coerce.date(),
     endsAt: z.coerce.date().nullable()

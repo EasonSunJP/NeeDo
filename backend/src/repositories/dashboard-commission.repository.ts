@@ -554,28 +554,28 @@ export class DashboardCommissionRepository implements DashboardCommissionReader 
       classified_orders AS (
         SELECT eligible.*,
           CASE
-            WHEN COUNT(DISTINCT affiliation.relationship_type) = 1
-              AND MAX(affiliation.relationship_type) = ${"exclusive"} THEN ${"dedicated"}
-            WHEN COUNT(DISTINCT affiliation.relationship_type) = 1
-              AND MAX(affiliation.relationship_type) = ${"partner"} THEN ${"part_time"}
-            WHEN COUNT(affiliation.id) = 0 AND profile.shop_id = eligible.shop_id
-              AND profile.employment_type = ${"FULL_TIME"} THEN ${"dedicated"}
-            WHEN COUNT(affiliation.id) = 0 AND profile.shop_id = eligible.shop_id
-              AND profile.employment_type IN (${"TEMPORARY"}, ${"INDEPENDENT"}) THEN ${"part_time"}
+            WHEN COUNT(DISTINCT current_affiliation.shop_id) = 1 THEN ${"dedicated"}
+            WHEN COUNT(DISTINCT current_affiliation.shop_id) > 1 THEN ${"part_time"}
             ELSE NULL
           END AS classification
         FROM eligible_work_orders AS eligible
         INNER JOIN technician_profiles AS profile
           ON profile.id = eligible.technician_profile_id AND profile.deleted_at IS NULL
-        LEFT JOIN technician_shop_affiliations AS affiliation
-          ON affiliation.technician_profile_id = eligible.technician_profile_id
-          AND affiliation.shop_id = eligible.shop_id
-          AND affiliation.work_status = ${"active"}
-          AND affiliation.deleted_at IS NULL
-          AND DATE(CONVERT_TZ(affiliation.starts_at, ${"+00:00"}, ${"+09:00"})) <= eligible.work_date
-          AND (affiliation.ends_at IS NULL OR DATE(CONVERT_TZ(affiliation.ends_at, ${"+00:00"}, ${"+09:00"})) >= eligible.work_date)
+        INNER JOIN technician_shop_affiliations AS current_shop_affiliation
+          ON current_shop_affiliation.technician_profile_id = eligible.technician_profile_id
+          AND current_shop_affiliation.shop_id = eligible.shop_id
+          AND current_shop_affiliation.work_status = ${"active"}
+          AND current_shop_affiliation.deleted_at IS NULL
+          AND DATE(CONVERT_TZ(current_shop_affiliation.starts_at, ${"+00:00"}, ${"+09:00"})) <= eligible.work_date
+          AND (current_shop_affiliation.ends_at IS NULL OR DATE(CONVERT_TZ(current_shop_affiliation.ends_at, ${"+00:00"}, ${"+09:00"})) >= eligible.work_date)
+        INNER JOIN technician_shop_affiliations AS current_affiliation
+          ON current_affiliation.technician_profile_id = eligible.technician_profile_id
+          AND current_affiliation.work_status = ${"active"}
+          AND current_affiliation.deleted_at IS NULL
+          AND DATE(CONVERT_TZ(current_affiliation.starts_at, ${"+00:00"}, ${"+09:00"})) <= eligible.work_date
+          AND (current_affiliation.ends_at IS NULL OR DATE(CONVERT_TZ(current_affiliation.ends_at, ${"+00:00"}, ${"+09:00"})) >= eligible.work_date)
         GROUP BY eligible.period_key, eligible.booking_order_id, eligible.shop_id,
-          eligible.technician_profile_id, eligible.work_date, profile.shop_id, profile.employment_type
+          eligible.technician_profile_id, eligible.work_date
         HAVING classification IS NOT NULL
       ),
       profile_history_anomalies AS (

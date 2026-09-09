@@ -83,6 +83,9 @@ export interface AuthUserRecord {
     displayName: string;
     deletedAt: Date | null;
   } | null;
+  technicianProfile?: {
+    technicianShopAffiliations: Array<{ id: number }>;
+  } | null;
   userRoles: AuthUserRoleRecord[];
   identityApplications?: AuthIdentityApplicationRecord[];
   loginIdentityId?: number;
@@ -287,6 +290,18 @@ const authUserInclude = {
     select: {
       displayName: true,
       deletedAt: true
+    }
+  },
+  technicianProfile: {
+    select: {
+      technicianShopAffiliations: {
+        where: {
+          workStatus: { in: ["ACTIVE" as const, "ON_LEAVE" as const, "SUSPENDED" as const] },
+          deletedAt: null,
+          shop: { deletedAt: null }
+        },
+        select: { id: true }
+      }
     }
   },
   identities: {

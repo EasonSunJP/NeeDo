@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Remove the exclusive-technician business constraint while preserving legacy storage, then retain and verify one real local MySQL fixture covering one technician in three stores, both pricing sources, TEST_NDP, cash, and merchant/operations income projections.
+**Goal:** Remove the exclusive-technician business constraint while preserving legacy storage, add technician-side multi-shop onboarding and zero-shop pause behavior, then retain and verify one real local MySQL fixture covering one technician in three stores, both pricing sources, TEST_NDP, cash, and merchant/operations income projections.
 
 **Architecture:** Keep the physical affiliation enum for backward compatibility, but expose a single `partner` contract and normalize legacy `EXCLUSIVE` rows at repository boundaries. Reuse the existing pricing, booking, checkout, compensation, and dashboard authorities; add one guarded, idempotent acceptance script that persists stable QA evidence instead of creating a second financial model.
 
@@ -172,7 +172,26 @@ Commit only Task 3 files with message `test(settlement): retain multishop real-d
 
 ---
 
-### Task 4: Full Verification And Browser Acceptance
+### Task 4: Add Technician Shop-Stay Management And Zero-Shop Pause
+
+**Files:**
+- Modify: technician self-profile, identity-application/review, authentication, OpenAPI, app routes, technician personal center, and translations.
+- Create: `src/features/technician-shop-stays/TechnicianShopStayPage.tsx` and render tests.
+
+**Interfaces:**
+- Consumes: current formal affiliations, technician self profile, existing application/review workflow, and RBAC permissions.
+- Produces: `入住店铺`, original-shop-first affiliation data, additional partnership application, and derived `active | requires_shop` access.
+
+- [x] **Step 1: Add failing profile, application, approval, route, and render tests**
+- [x] **Step 2: Return current shops and derived access status from the formal self-profile API**
+- [x] **Step 3: Reuse the review workflow without recreating or replacing an existing technician identity**
+- [x] **Step 4: Create the personal-center entry, shop list, and `追加` route**
+- [x] **Step 5: Gate technician work routes and permissions when current affiliation count is zero**
+- [x] **Step 6: Verify Booking auto-accept and Request auto-apply with retained match, mismatch, idempotency, and zero-shop rounds**
+
+---
+
+### Task 5: Full Verification And Local Acceptance
 
 **Files:**
 - Modify only if a new reproducible failure requires a TDD repair within this task's approved scope.
@@ -181,15 +200,15 @@ Commit only Task 3 files with message `test(settlement): retain multishop real-d
 - Consumes: Tasks 1-3 and the current local listeners.
 - Produces: fresh command outputs and authenticated browser evidence, reported separately from push/deployment/staging.
 
-- [ ] **Step 1: Verify listener provenance and readiness**
+- [ ] **Step 1: Respect protected runtime boundaries**
 
-Confirm PID/cwd for ports 3000, 3001, 3002, and 5180; call `/api/v1/ready` on each API and require database/Redis ready.
+Do not inspect, stop, restart, or send requests to port 5180. If a new local listener is required, first verify and use an unoccupied alternative such as 5181, 5182, 5183, 5190, or 5200.
 
 - [ ] **Step 2: Run focused and full automated verification**
 
 Run Prisma status, focused affiliation/pricing/settlement tests, backend lint/build, frontend lint/build, i18n audit, and `git diff --check`.
 
-- [ ] **Step 3: Run authenticated browser checks**
+- [ ] **Step 3: Run local browser checks only if they can be isolated from port 5180**
 
 Using the retained real test identities, verify merchant-priced store service cards, technician-priced technician/service cards, the three store employee views, merchant finance data after switching store scope, and operations finance/detail visibility. Capture console/network errors and do not claim UI acceptance if authentication or routing blocks a target.
 

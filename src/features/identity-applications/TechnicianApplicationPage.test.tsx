@@ -8,7 +8,11 @@ import { identityApplicationsApi } from "./api";
 vi.mock("../../theme/ClientThemeProvider", () => ({ useClientTheme: () => ({ isNight: true, theme: "dark" }) }));
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ refreshSession: vi.fn(), switchPortal: vi.fn() }) }));
 vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => ({ language: "zh" }) }));
-vi.mock("../../components/client-ui/SettingsDirectory", () => ({ SettingsDetailPage: ({ children, navItems }: {children: ReactNode; navItems: unknown[]}) => <main data-navigation-count={navItems.length}>{children}</main> }));
+vi.mock("../../components/client-ui/SettingsDirectory", () => ({
+  SettingsDetailPage: ({ children, navItems, title }: { children: ReactNode; navItems: unknown[]; title?: ReactNode }) => (
+    <main data-navigation-count={navItems.length}>{title}{children}</main>
+  )
+}));
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
@@ -43,4 +47,52 @@ it("uses standalone formal shop cards, same-size single selectors and a floating
   expect(container.querySelector('[role="combobox"]')?.getAttribute("aria-label")).toBe("性别");
   const uploads = container.querySelectorAll('input[type="file"]'); expect(uploads).toHaveLength(2);
   uploads.forEach(upload => { expect(upload.className).toContain("sr-only"); expect(upload.parentElement?.textContent).toContain("上传图片"); });
+});
+it("starts a fresh additional-shop application instead of reopening the approved identity application", async () => {
+  vi.mocked(identityApplicationsApi.listMine).mockResolvedValue({
+    list: [
+      {
+        id: 11,
+        userId: 3,
+        type: "technician",
+        status: "approved",
+        version: 3,
+        rejectionReason: null,
+        purgeAt: null,
+        technicianDetail: {
+          targetShopId: 71,
+          applicantName: "山本太郎",
+          phone: null,
+          city: null,
+          serviceAreas: [],
+          skills: [],
+          yearsExperience: null,
+          bio: null,
+          gender: null,
+          birthDate: null
+        },
+        merchantDetail: null
+      }
+    ],
+    total: 1,
+    page: 1,
+    page_size: 100
+  });
+
+  await act(async () =>
+    root.render(
+      <MemoryRouter>
+        <TechnicianApplicationPage mode="additional-shop" />
+      </MemoryRouter>
+    )
+  );
+
+  expect(container.textContent).toContain("追加入住店铺");
+  expect(container.textContent).toContain("选择申请入驻的店铺");
+  expect(container.textContent).not.toContain("审核通过");
+  expect(identityApplicationsApi.listMine).toHaveBeenCalledWith({
+    page: 1,
+    pageSize: 100,
+    type: "technician"
+  });
 });

@@ -1,4 +1,4 @@
-import type { WorkStatus } from '../domain/work-status';
+import type { WorkStatus } from "../domain/work-status";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
@@ -7,7 +7,7 @@ import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.serv
 import type { IdentifierAllocator, PublicIdentifierRecord } from "./public-identifier.service";
 import { requireMerchantShopId } from "./merchant-shop-scope";
 
-export type EmployeeRelationshipType = "exclusive" | "partner";
+export type EmployeeRelationshipType = "partner";
 export type EmployeeCurrentWorkStatus = "active" | "on_leave" | "suspended";
 export type EmployeeWorkStatus = EmployeeCurrentWorkStatus | "ended";
 
@@ -167,10 +167,7 @@ export interface AffiliationMutationRepositoryInput extends EmployeeAffiliationM
   actorUserId: number;
 }
 
-export type AffiliationMutationRepositoryResult =
-  | MerchantEmployeePayload
-  | "not_found"
-  | "exclusive_conflict";
+export type AffiliationMutationRepositoryResult = MerchantEmployeePayload | "not_found";
 
 export interface TechnicianShopAffiliationRepositoryPort {
   listCurrentShopEmployees(
@@ -347,7 +344,6 @@ export class TechnicianShopAffiliationService {
       actorUserId: actor.userId
     });
     if (result === "not_found") throw this.notFound();
-    if (result === "exclusive_conflict") throw this.exclusiveConflict();
 
     await this.auditLogService.record({
       actor,
@@ -434,14 +430,6 @@ export class TechnicianShopAffiliationService {
       code: ERROR_CODES.TECHNICIAN_AFFILIATION_NOT_FOUND,
       message: "error.technician_affiliation.not_found",
       statusCode: 404
-    });
-  }
-
-  private exclusiveConflict(): AppError {
-    return new AppError({
-      code: ERROR_CODES.TECHNICIAN_AFFILIATION_CONFLICT,
-      message: "error.technician_affiliation.exclusive_conflict",
-      statusCode: 409
     });
   }
 

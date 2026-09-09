@@ -18,6 +18,18 @@ export type TechnicianSelfProfile = {
   publicId: string;
   userId: number;
   shopId: number | null;
+  shopAccessStatus: "active" | "requires_shop";
+  shopAffiliations: Array<{
+    id: number;
+    shopId: number;
+    publicId: string | null;
+    name: string;
+    city: string;
+    address: string;
+    relationshipType: "partner";
+    workStatus: "active" | "on_leave" | "suspended";
+    startsAt: string;
+  }>;
   displayName: string;
   avatarUrl: string | null;
   bio: string | null;

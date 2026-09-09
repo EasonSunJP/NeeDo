@@ -50,6 +50,20 @@ const profile: TechnicianSelfProfile = {
   publicId: "s0000000081",
   userId: 181,
   shopId: 71,
+  shopAccessStatus: "active",
+  shopAffiliations: [
+    {
+      id: 701,
+      shopId: 71,
+      publicId: "shop0000000071",
+      name: "港区店",
+      city: "東京都",
+      address: "東京都港区",
+      relationshipType: "partner",
+      workStatus: "active",
+      startsAt: "2026-09-01T00:00:00.000Z"
+    }
+  ],
   displayName: "小林技师",
   avatarUrl: "/avatar.jpg",
   bio: "预约前请联系。",

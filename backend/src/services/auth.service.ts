@@ -59,6 +59,8 @@ export interface MerchantShopAuditOutboxTrigger {
   trigger: () => void;
 }
 
+const TECHNICIAN_SHOP_ONBOARDING_PERMISSIONS = new Set(["identity-application:own", "technician-profile:read"]);
+
 export interface TokenPairPayload {
   accessToken: string;
   refreshToken: string;
@@ -2313,7 +2315,8 @@ export class AuthService {
       }
     }
 
-    const permissionCodes = Array.from(permissions.keys());
+    const technicianRequiresShop = ["technician", "service", "s"].includes(currentIdentity.type) && user.technicianProfile !== undefined && (user.technicianProfile === null || user.technicianProfile.technicianShopAffiliations.length === 0);
+    const permissionCodes = Array.from(permissions.keys()).filter((code) => !technicianRequiresShop || code.startsWith("auth:") || code.startsWith("menu:") || TECHNICIAN_SHOP_ONBOARDING_PERMISSIONS.has(code));
 
     return {
       id: user.id,

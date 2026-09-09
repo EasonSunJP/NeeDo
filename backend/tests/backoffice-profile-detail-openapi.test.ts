@@ -152,8 +152,7 @@ describe("formal profile detail OpenAPI contract", () => {
         "400": expect.any(Object),
         "401": expect.any(Object),
         "403": expect.any(Object),
-        "404": expect.any(Object),
-        "409": expect.any(Object)
+        "404": expect.any(Object)
       })
     );
     expect(response.body.components.schemas.MerchantEmployee.required).toEqual(

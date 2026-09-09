@@ -73,6 +73,7 @@ const createRepository = (): jest.Mocked<IdentityApplicationRepositoryPort> => (
   searchEligibleShops: jest.fn().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 }),
   findActiveByUserAndType: jest.fn().mockResolvedValue(null),
   hasActiveIdentity: jest.fn().mockResolvedValue(false),
+  hasTechnicianShopAffiliation: jest.fn().mockResolvedValue(false),
   isShopEligibleForTechnicianApplications: jest.fn().mockResolvedValue(true),
   assertMerchantTaxonomySelection: jest.fn().mockResolvedValue(undefined),
   createTechnicianDraft: jest.fn(async (input) =>
@@ -150,7 +151,7 @@ describe("IdentityApplicationService", () => {
     );
   });
 
-  it("rejects a duplicate active application or an already active identity", async () => {
+  it("rejects a duplicate active application", async () => {
     const duplicateRepository = createRepository();
     duplicateRepository.findActiveByUserAndType.mockResolvedValue(application());
     await expect(
@@ -163,14 +164,55 @@ describe("IdentityApplicationService", () => {
       message: "error.identity_application.conflict",
       statusCode: 409
     });
+  });
 
-    const identityRepository = createRepository();
-    identityRepository.hasActiveIdentity.mockResolvedValue(true);
+  it("allows an active technician to apply to another shop but rejects an existing affiliation", async () => {
+    const additionalShopRepository = createRepository();
+    additionalShopRepository.hasActiveIdentity.mockResolvedValue(true);
+    const service = new IdentityApplicationService(additionalShopRepository, applicationEkycPolicy());
+
     await expect(
-      new IdentityApplicationService(identityRepository, applicationEkycPolicy()).createTechnicianDraft({
+      service.createTechnicianDraft({
+        userId: 3,
+        targetShopId: 8,
+        applicantName: "山本太郎"
+      })
+    ).resolves.toMatchObject({ type: "technician" });
+    expect(additionalShopRepository.hasTechnicianShopAffiliation).toHaveBeenCalledWith(3, 8);
+
+    additionalShopRepository.hasTechnicianShopAffiliation.mockResolvedValue(true);
+    await expect(
+      service.createTechnicianDraft({
         userId: 3,
         targetShopId: 7,
         applicantName: "山本太郎"
+      })
+    ).rejects.toMatchObject({
+      message: "error.technician_affiliation.already_exists",
+      statusCode: 409
+    });
+
+    additionalShopRepository.findById.mockResolvedValue(application({ userId: 3 }));
+    await expect(
+      service.updateTechnicianDraft({
+        userId: 3,
+        applicationId: 1,
+        expectedVersion: 1,
+        detail: technicianDetail({ targetShopId: 7 })
+      })
+    ).rejects.toMatchObject({
+      message: "error.technician_affiliation.already_exists",
+      statusCode: 409
+    });
+  });
+
+  it("still rejects an already active merchant identity", async () => {
+    const repository = createRepository();
+    repository.hasActiveIdentity.mockResolvedValue(true);
+    await expect(
+      new IdentityApplicationService(repository, applicationEkycPolicy()).createMerchantDraft({
+        userId: 3,
+        detail: merchantDetail()
       })
     ).rejects.toMatchObject({
       message: "error.identity_application.identity_already_active",

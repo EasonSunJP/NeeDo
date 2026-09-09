@@ -51,7 +51,7 @@ describe("merchant employee API client", () => {
     });
     await merchantEmployeeApi.updateAffiliation("NEEDO-S-47/东京", {
       endsAt: null,
-      relationshipType: "exclusive",
+      relationshipType: "partner",
       startsAt: "2026-08-28T00:00:00.000Z",
       workStatus: "on_leave",
     });
@@ -70,7 +70,7 @@ describe("merchant employee API client", () => {
       {
         body: {
           endsAt: null,
-          relationshipType: "exclusive",
+          relationshipType: "partner",
           startsAt: "2026-08-28T00:00:00.000Z",
           workStatus: "on_leave",
         },

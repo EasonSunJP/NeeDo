@@ -116,6 +116,20 @@ const selfProfile = {
   publicId: "s0000000031",
   userId: 31,
   shopId: 11,
+  shopAccessStatus: "active",
+  shopAffiliations: [
+    {
+      id: 41,
+      shopId: 11,
+      publicId: "shop0000000011",
+      name: "Formal Shop",
+      city: "東京",
+      address: "東京都",
+      relationshipType: "partner",
+      workStatus: "active",
+      startsAt: "2026-08-01T00:00:00.000Z"
+    }
+  ],
   displayName: "Formal Technician",
   avatarUrl: null,
   bio: null,

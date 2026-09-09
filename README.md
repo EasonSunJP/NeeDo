@@ -447,6 +447,28 @@ ENV_FILE=.env.dev npm --prefix backend run check:manual-payment-flow
 
 The check refuses production or remote database targets and deletes only the uniquely named records it creates.
 
+## Multi-shop Pricing and Settlement Acceptance
+
+Technician affiliations now expose one public relationship type: `partner`. A technician can hold active partnerships with three or more shops; legacy database rows that still store `EXCLUSIVE` are read as partnerships and do not block another shop affiliation. Merchant-priced shops expose only persisted shop services, while technician-priced shops first expose persisted technicians and then that technician's shop-scoped services.
+
+Run the retained real-data acceptance only against an explicitly selected local backend environment:
+
+```bash
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/backend/.env.dev npm --prefix backend run check:multishop-pricing-settlement
+```
+
+The checker refuses staging, production, remote MySQL hosts, and production-like database names. It creates or reuses the stable marker `qa-multishop-pricing-settlement-20260909`, retains one technician partnered with three shops, and retains four completed orders covering merchant/technician service ownership and both `TEST_NDP` and offline-cash settlement. It verifies immutable booking pricing snapshots, ledger or cash-receipt evidence, exact technician/shop splits, identical merchant/operations finance projections, and approved merchant/technician/operations payroll projections. Accepted rows are not rolled back or deleted; rerunning the command must reuse and revalidate the same IDs.
+
+For retained multi-round verification of the technician's real order automation, run:
+
+```bash
+FORMAL_BACKEND_ENV_FILE=/absolute/path/to/backend/.env.dev npm --prefix backend run check:technician-order-automation
+```
+
+This checker uses the same loopback and non-production guards, then persists and reuses marker `qa-technician-order-automation-20260909`. It proves Booking auto-accept and Request auto-apply for matching rules, manual fallback with recorded reasons for non-matching rules, repeated-trigger idempotency, and background blocking for a technician whose current shop count is zero. Request automation creates a formal claim only and preserves user selection; it never auto-completes matching.
+
+The technician personal center now links to `入住店铺`. The page lists all current affiliations with the original application shop first and provides `追加` for a separate shop-partnership application. Initial technician approval creates both the technician identity and its first partnership; later approvals preserve that identity and primary shop while adding another partnership. If dismissal or resignation leaves zero current affiliations, the identity remains selectable, but authentication retains only login/navigation, self-profile read, and shop-application permissions until a shop approves a new partnership.
+
 ## Formal NDP Top-up and Withdrawal Review
 
 Customer, technician, and merchant identities can submit NDP top-up or withdrawal requests through the formal wallet API. The backend derives the target user or shop wallet from the active identity; clients cannot select another wallet owner. Operations and finance review requests through protected backoffice APIs. Approval atomically changes the available NDP balance, writes one immutable ledger entry, creates finance reconciliation and audit evidence, and links the request to that transaction. Rejection does not change the wallet, duplicate approval is idempotent, and insufficient withdrawals roll back completely.

@@ -48,7 +48,7 @@ const emptyForm: TechnicianForm = {
   birthDate: ""
 };
 
-export function TechnicianApplicationPage() {
+export function TechnicianApplicationPage({ mode = "identity" }: { mode?: "identity" | "additional-shop" }) {
   const { language } = useI18n();
   const { refreshSession } = useAuth();
   const t = (source: string) => translateText(source, language);
@@ -65,9 +65,17 @@ export function TechnicianApplicationPage() {
 
   useEffect(() => {
     let active = true;
-    identityApplicationsApi.listMine({ type: "technician" }).then(({ list }) => {
+    identityApplicationsApi.listMine(
+      mode === "additional-shop"
+        ? { page: 1, pageSize: 100, type: "technician" }
+        : { type: "technician" }
+    ).then(({ list }) => {
       if (!active) return;
-      const existing = selectLatestApplication(list);
+      const existing = selectLatestApplication(
+        mode === "additional-shop"
+          ? list.filter((item) => item.status !== "approved" && item.status !== "withdrawn")
+          : list
+      );
       if (!existing) return;
       setApplication(existing);
       if (existing.technicianDetail) {
@@ -93,7 +101,7 @@ export function TechnicianApplicationPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [mode]);
 
   const updateForm = <K extends keyof TechnicianForm>(key: K, value: TechnicianForm[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -167,7 +175,15 @@ export function TechnicianApplicationPage() {
     : "—";
 
   return (
-    <ApplicationShell hideNavigation error={error} onDismissError={() => setError("")} info="申请资料仅供目标店铺审核，服务器会在申请结束 30 天后删除资料与图片。" title="申请技师身份">
+    <ApplicationShell
+      backTo={mode === "additional-shop" ? "/technician/shop-stays" : undefined}
+      closeTo={mode === "additional-shop" ? "/technician/shop-stays" : undefined}
+      hideNavigation
+      error={error}
+      onDismissError={() => setError("")}
+      info="申请资料仅供目标店铺审核，服务器会在申请结束 30 天后删除资料与图片。"
+      title={t(mode === "additional-shop" ? "追加入住店铺" : "申请技师身份")}
+    >
       <ApplicationSteps current={step} labels={["选择店铺", "本人资料", "审核"]} />
 
 

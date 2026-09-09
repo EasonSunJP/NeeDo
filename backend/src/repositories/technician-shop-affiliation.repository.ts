@@ -1,4 +1,4 @@
-import type { WorkStatus } from '../domain/work-status';
+import type { WorkStatus } from "../domain/work-status";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
@@ -6,7 +6,6 @@ import type {
   AffiliationMutationRepositoryResult,
   EmployeeListRepositoryInput,
   EmployeeProfileUpdateRepositoryInput,
-  EmployeeRelationshipType,
   EmployeeScheduleEvent,
   EmployeeScheduleRepositoryInput,
   EmployeeTimelineEventPayload,
@@ -60,7 +59,6 @@ function timelineMessage(action: string, metadata: Record<string, unknown>) {
     return fields.length > 0 ? `更新了${fields.join("、")}` : "更新了员工基本资料";
   }
   if (action === "merchant_admin.employee_affiliation.update") {
-    const relationship = metadata.relationshipType === "exclusive" ? "专属技师" : "合作技师";
     const status =
       metadata.workStatus === "active"
         ? "在职"
@@ -69,7 +67,7 @@ function timelineMessage(action: string, metadata: Record<string, unknown>) {
           : metadata.workStatus === "suspended"
             ? "停职"
             : "已离职";
-    return `更新为${relationship}，当前状态：${status}`;
+    return `更新为合作技师，当前状态：${status}`;
   }
   if (action === "merchant_admin.compensation_profile.update") {
     return "更新了员工薪酬与分成方案";
@@ -135,9 +133,13 @@ const employeeAffiliationSelect = Prisma.validator<Prisma.TechnicianShopAffiliat
   endsAt: true,
   technicianProfile: {
     select: {
-      id:true,
-      workState:{select:{status:true,deletedAt:true}},
-      bookingOrders:{where:{status:"IN_SERVICE",deletedAt:null},take:1,select:{id:true}},
+      id: true,
+      workState: { select: { status: true, deletedAt: true } },
+      bookingOrders: {
+        where: { status: "IN_SERVICE", deletedAt: null },
+        take: 1,
+        select: { id: true }
+      },
       displayName: true,
       bio: true,
       city: true,
@@ -189,9 +191,6 @@ type EmployeeAffiliationRecord = Prisma.TechnicianShopAffiliationGetPayload<{
   select: typeof employeeAffiliationSelect;
 }>;
 
-const toRelationshipType = (value: EmployeeRelationshipType): "EXCLUSIVE" | "PARTNER" =>
-  value === "exclusive" ? "EXCLUSIVE" : "PARTNER";
-
 const toWorkStatus = (value: EmployeeWorkStatus): "ACTIVE" | "ON_LEAVE" | "SUSPENDED" | "ENDED" => {
   switch (value) {
     case "active":
@@ -213,9 +212,6 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
   ): Promise<ReturnType<typeof buildPaginatedResponse<MerchantEmployeePayload>>> {
     const pagination = toPrismaPagination(input);
     const where = this.currentEmployeeWhere(input.shopId);
-    if (input.relationshipType) {
-      where.relationshipType = toRelationshipType(input.relationshipType);
-    }
     if (input.workStatus) {
       where.workStatus = toWorkStatus(input.workStatus);
     }
@@ -327,7 +323,7 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
         ...this.currentEmployeeWhere(input.shopId),
         technicianProfileId
       },
-      select: { relationshipType: true }
+      select: { id: true }
     });
     if (!affiliation) return null;
 
@@ -372,22 +368,20 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
           technicianService: { select: { name: true } }
         }
       }),
-      affiliation.relationshipType === "PARTNER"
-        ? this.client.availability.findMany({
-            where: {
-              shopId: { not: input.shopId },
-              technicianProfileId,
-              sourceType: "TECHNICIAN",
-              visibility: "AFFILIATED_SHOPS",
-              isActive: true,
-              startsAt: { lt: input.to },
-              endsAt: { gt: input.from },
-              deletedAt: null
-            },
-            orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-            select: { startsAt: true, endsAt: true }
-          })
-        : Promise.resolve([]),
+      this.client.availability.findMany({
+        where: {
+          shopId: { not: input.shopId },
+          technicianProfileId,
+          sourceType: "TECHNICIAN",
+          visibility: "AFFILIATED_SHOPS",
+          isActive: true,
+          startsAt: { lt: input.to },
+          endsAt: { gt: input.from },
+          deletedAt: null
+        },
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        select: { startsAt: true, endsAt: true }
+      }),
       this.client.bookingOrder.findMany({
         where: {
           shopId: { not: input.shopId },
@@ -683,19 +677,17 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       });
       if (!shop) return "not_found";
 
-      const currentAffiliations = await transaction.technicianShopAffiliation.findMany({
+      const currentShopAffiliation = await transaction.technicianShopAffiliation.findFirst({
         where: {
           technicianProfileId,
+          shopId: input.shopId,
           activeKey: { not: null },
           workStatus: { in: [...CURRENT_WORK_STATUSES] },
           endsAt: null,
           deletedAt: null
         },
-        select: { id: true, shopId: true, relationshipType: true }
+        select: { id: true }
       });
-      const currentShopAffiliation = currentAffiliations.find(
-        (affiliation) => affiliation.shopId === input.shopId
-      );
 
       if (input.workStatus === "ended") {
         if (!currentShopAffiliation) return "not_found";
@@ -712,19 +704,8 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
         return this.mapEmployee(record);
       }
 
-      const otherAffiliations = currentAffiliations.filter(
-        (affiliation) => affiliation.shopId !== input.shopId
-      );
-      if (
-        (input.relationshipType === "exclusive" && otherAffiliations.length > 0) ||
-        (input.relationshipType === "partner" &&
-          otherAffiliations.some((affiliation) => affiliation.relationshipType === "EXCLUSIVE"))
-      ) {
-        return "exclusive_conflict";
-      }
-
       const data = {
-        relationshipType: toRelationshipType(input.relationshipType),
+        relationshipType: "PARTNER" as const,
         workStatus: toWorkStatus(input.workStatus),
         startsAt: input.startsAt,
         endsAt: null,
@@ -799,8 +780,12 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
     }
 
     return {
-      technicianProfileId:record.technicianProfile.id,
-      workStatus:record.technicianProfile.bookingOrders?.length ? "in_service" : (!record.technicianProfile.workState?.deletedAt ? record.technicianProfile.workState?.status??"unsynced" : "unsynced") as WorkStatus,
+      technicianProfileId: record.technicianProfile.id,
+      workStatus: record.technicianProfile.bookingOrders?.length
+        ? "in_service"
+        : ((!record.technicianProfile.workState?.deletedAt
+            ? (record.technicianProfile.workState?.status ?? "unsynced")
+            : "unsynced") as WorkStatus),
       needoId: technicianIdentifier.publicId,
       displayName: record.technicianProfile.displayName,
       avatarUrl: record.technicianProfile.user.avatarUrl,
@@ -821,7 +806,7 @@ export class TechnicianShopAffiliationRepository implements TechnicianShopAffili
       },
       affiliation: {
         id: record.id,
-        relationshipType: record.relationshipType.toLowerCase() as EmployeeRelationshipType,
+        relationshipType: "partner",
         workStatus: record.workStatus.toLowerCase() as EmployeeWorkStatus,
         startsAt: record.startsAt.toISOString(),
         endsAt: record.endsAt?.toISOString() ?? null,

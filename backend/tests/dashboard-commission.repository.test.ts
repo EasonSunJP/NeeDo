@@ -468,8 +468,9 @@ describe("DashboardCommissionRepository", () => {
     expect(historyAnomalies).toContain("compensation.wage_mode NOT IN");
     expect(historyAnomalies).not.toContain("classified.work_date");
     expect(sql).toContain("salary_anomaly_count");
-    expect(sql).toContain("affiliation.relationship_type");
-    expect(sql).toContain("profile.employment_type");
+    expect(sql).toContain("COUNT(DISTINCT current_affiliation.shop_id)");
+    expect(sql).not.toContain("affiliation.relationship_type");
+    expect(sql).not.toContain("profile.employment_type");
     expect(sql).toContain("line.line_type");
     expect(sql).toContain("line.order_id = classified.booking_order_id");
     expect(sql).not.toContain("commission_rate_bps");

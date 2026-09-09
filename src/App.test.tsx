@@ -107,6 +107,15 @@ describe("portal identity switching boundaries", () => {
     );
   });
 
+  it("keeps technician shop stays accessible while zero-shop identities are paused", () => {
+    expect(appSource).toContain("function RequireTechnicianShop");
+    expect(appSource).toContain('location.pathname.startsWith("/technician/shop-stays")');
+    expect(appSource).toContain('path="/technician/shop-stays"');
+    expect(appSource).toContain('path="/technician/shop-stays/apply"');
+    expect(appSource).toContain("<TechnicianShopStayPage />");
+    expect(appSource).toContain('<TechnicianApplicationPage mode="additional-shop" />');
+  });
+
   it("routes activated affiliates to the formal profile instead of the capability gate", () => {
     expect(appSource).toContain(
       'import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";'
