@@ -189,7 +189,7 @@ export function UnifiedEntityInfoCard({
       tags={detailTags}
     >
       {data.kind === "shop" && data.address ? (
-        <p className="mt-2 flex items-start gap-2 text-[13px] font-bold leading-5 text-[#9aacb5]">
+        <p className="mt-1 flex items-start gap-1 text-[9px] font-bold leading-4 text-[#9aacb5] sm:mt-2 sm:gap-2 sm:text-[13px] sm:leading-5">
           <span className="text-[#b8ff4a]">⌖</span>
           {data.address}
         </p>
@@ -204,7 +204,7 @@ export function UnifiedEntityInfoCard({
       actionSlot={actionSlot}
       ariaLabel={`${data.kind === "shop" ? text.viewShop : data.kind === "technician" ? text.viewTechnician : text.viewUser} ${data.name}`}
       body={
-        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
           <UnifiedCardImage alt={data.name} language={language} src={data.imageUrl} />
           {details}
         </div>

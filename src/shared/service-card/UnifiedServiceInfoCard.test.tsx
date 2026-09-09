@@ -23,7 +23,10 @@ describe("UnifiedServiceInfoCard", () => {
     expect(markup).toContain('data-testid="unified-info-card"');
     expect(markup).toContain('data-card-kind="service"');
     expect(markup).toContain("#b8ff4a");
-    expect(markup).toContain("sm:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]");
+    expect(markup).toContain("relative z-20 grid grid-cols-5");
+    expect(markup).not.toContain("grid-cols-2");
+    expect(markup).toContain("grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]");
+    expect(markup).not.toContain("grid grid-cols-1");
     expect(markup).not.toContain("data-variant");
     expect(markup).not.toContain("showcase");
     ["可预约", "利用次数", "距离你", "收藏", "分享"].reduce((lastIndex, item) => {
