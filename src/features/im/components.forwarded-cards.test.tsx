@@ -81,10 +81,11 @@ describe("MessageBubble forwarded cards", () => {
     const socialColumn = socialBubble?.parentElement;
     const socialCard = socialBubble?.querySelector<HTMLButtonElement>("button");
 
-    expect(chatColumn?.className).toContain("w-[calc(100%-3.25rem)]");
-    expect(chatColumn?.className).toContain("max-w-[320px]");
-    expect(socialColumn?.className).toContain("w-[calc(100%-3.25rem)]");
-    expect(socialColumn?.className).toContain("max-w-[320px]");
+    [chatColumn, socialColumn].forEach((column) => {
+      expect(column?.className).toContain("w-full");
+      expect(column?.className).toContain("max-w-[78%]");
+      expect(column?.className).not.toContain("max-w-[320px]");
+    });
     [chatBubble, socialBubble].forEach((bubble) => {
       expect(bubble?.className).toContain("w-full");
       expect(bubble?.className).toContain("max-w-full");

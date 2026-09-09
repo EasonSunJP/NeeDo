@@ -323,15 +323,15 @@ describe("IM pages", () => {
   });
 
   it("gives every custom chat name card the same friend-card width", () => {
-    const renderStart = pagesSource.indexOf("const renderContactCard =");
+    const renderStart = pagesSource.indexOf("const renderContactCardAction =");
     const renderEnd = pagesSource.indexOf("const sendPresetMessage", renderStart);
     const renderSource = pagesSource.slice(renderStart, renderEnd);
 
     expect(renderStart).toBeGreaterThan(-1);
     expect(renderSource).toContain('className="w-[min(520px,80vw)] max-w-full"');
     expect(renderSource).toContain("<PlatformMembershipSimpleCard");
-    expect(pagesSource).toContain("text-[color:var(--client-muted)]");
-    expect(pagesSource).not.toContain("text-white/68");
+    expect(renderSource).toContain("text-[color:var(--client-muted)]");
+    expect(renderSource).not.toContain("text-white/68");
   });
 
   it("routes message and visible group-member avatars by the represented account", () => {

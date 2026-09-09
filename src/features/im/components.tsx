@@ -4783,12 +4783,14 @@ export function MessageBubble({
       {!isMine ? avatarNode : null}
       <div
         className={cn(
-          "flex flex-col",
-          message.type === "contact-card"
-            ? "max-w-[calc(100%-3.25rem)]"
-            : message.type === "voice" || isForwardedCard
-              ? "w-[calc(100%-3.25rem)] max-w-[320px]"
-              : "max-w-[78%]",
+            "flex flex-col",
+            message.type === "contact-card"
+              ? "max-w-[calc(100%-3.25rem)]"
+              : message.type === "voice"
+                ? "w-[calc(100%-3.25rem)] max-w-[320px]"
+                : isForwardedCard
+                  ? "w-full max-w-[78%]"
+                  : "max-w-[78%]",
           isMine ? "items-end" : "items-start",
         )}
       >
