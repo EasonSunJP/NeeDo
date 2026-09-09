@@ -3,6 +3,7 @@ import type { CalendarEventService } from "../services/calendar-event.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
+  calendarParticipantBusyQuerySchema,
   calendarEventCreateBodySchema,
   calendarEventDeleteQuerySchema,
   calendarEventIdParamSchema,
@@ -22,6 +23,20 @@ export class CalendarEventController {
       page: query.page,
       pageSize: query.page_size,
     })));
+  });
+
+  public listParticipantBusy = this.handle(async (request, response) => {
+    const query = calendarParticipantBusyQuerySchema.parse(request.query);
+    response.status(200).json(successResponse(await this.service.listParticipantBusy(
+      getAuthenticatedAccess(response),
+      {
+        participantIdentityIds: query.participant_identity_ids,
+        from: query.from,
+        to: query.to,
+        page: query.page,
+        pageSize: query.page_size,
+      },
+    )));
   });
 
   public create = this.handle(async (request, response) => {
