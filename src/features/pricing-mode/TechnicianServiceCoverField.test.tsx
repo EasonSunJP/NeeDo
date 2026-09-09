@@ -74,11 +74,13 @@ describe("TechnicianServiceCoverField", () => {
 
   it("previews a valid image and revokes each component-created URL on replacement and unmount", async () => {
     const readAsDataURL = vi.spyOn(FileReader.prototype, "readAsDataURL");
-    await renderCoverField();
+    const onFileChange = vi.fn();
+    await renderCoverField({ onFileChange });
 
     const first = new File([new Uint8Array([1])], "first.jpg", { type: "image/jpeg" });
     const second = new File([new Uint8Array([2])], "second.webp", { type: "image/webp" });
     await selectFile(first);
+    expect(onFileChange).toHaveBeenLastCalledWith(first);
     expect(container.querySelector<HTMLImageElement>('img[alt="服务封面"]')?.src).toContain("blob:cover-one");
 
     await selectFile(second);
