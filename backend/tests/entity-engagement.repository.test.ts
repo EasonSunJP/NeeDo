@@ -6,6 +6,55 @@ import {
 const target: EntityTarget = { targetType: "shop", publicId: "shop0000000001" };
 
 describe("EntityEngagementRepository", () => {
+  it.each([
+    ["service", "11111111-1111-4111-8111-111111111111", "serviceId", 17],
+    ["technician_service", "22222222-2222-4222-8222-222222222222", "technicianServiceId", 18]
+  ] as const)(
+    "persists a formal %s favorite target",
+    async (targetType, publicId, targetIdKey, targetId) => {
+      const serviceTarget = { targetType, publicId } as unknown as EntityTarget;
+      const tx = {
+        entityFavorite: {
+          findFirst: jest.fn(async () => null),
+          update: jest.fn(async () => undefined),
+          create: jest.fn(async () => undefined),
+          count: jest.fn(async () => 1)
+        }
+      };
+      const client = {
+        shop: { findMany: jest.fn(async () => []) },
+        technicianProfile: { findMany: jest.fn(async () => []) },
+        service: {
+          findMany: jest.fn(async () =>
+            targetType === "service" ? [{ id: targetId, publicId }] : []
+          )
+        },
+        technicianService: {
+          findMany: jest.fn(async () =>
+            targetType === "technician_service" ? [{ id: targetId, publicId }] : []
+          )
+        },
+        $transaction: jest.fn(async (operation: (transaction: typeof tx) => unknown) =>
+          operation(tx)
+        )
+      };
+      const repository = new EntityEngagementRepository(client as never);
+
+      await expect(repository.setFavorite(42, serviceTarget, true)).resolves.toEqual({
+        ...serviceTarget,
+        isFavorited: true,
+        favoriteCount: 1
+      });
+      expect(tx.entityFavorite.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 42,
+          activeKey: `42:${targetType}:${targetId}`,
+          [targetIdKey]: targetId
+        })
+      });
+    }
+  );
+
   it("restores a historical favorite and returns the fresh aggregate count", async () => {
     const tx = {
       entityFavorite: {

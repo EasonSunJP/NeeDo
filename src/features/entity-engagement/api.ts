@@ -2,7 +2,9 @@ import { httpClient } from "../../api/httpClient";
 
 export type EntityTarget =
   | { targetType: "shop"; publicId: string }
-  | { targetType: "technician"; publicId: string };
+  | { targetType: "technician"; publicId: string }
+  | { targetType: "service"; publicId: string }
+  | { targetType: "technician_service"; publicId: string };
 
 export type EntityFavoriteState = EntityTarget & {
   isFavorited: boolean;
