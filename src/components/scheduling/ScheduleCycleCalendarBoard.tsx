@@ -6,6 +6,7 @@ import {
   UnifiedCalendarAgendaView,
   UnifiedCalendarEventDetailPage,
   UnifiedCalendarDayTimeline,
+  UnifiedCalendarMultiDayTimeline,
   UnifiedCalendarMonthGrid,
   UnifiedCalendarSurface,
   type UnifiedCalendarEvent,
@@ -52,6 +53,7 @@ type ScheduleCycleCalendarBoardProps = {
   onDateChange: (dateKey: string) => void;
   onOpenCell: (cell: DispatchScheduleCell) => void;
   onViewChange: (view: ScheduleCycleCalendarBoardView) => void;
+  periodViewVariant?: "grid" | "timeline";
   searchQuery?: string;
   statusFilter?: ScheduleCycleCalendarStatusFilter;
   storeId: string;
@@ -839,6 +841,7 @@ export function ScheduleCycleCalendarBoard({
   onDateChange,
   onOpenCell,
   onViewChange,
+  periodViewVariant = "grid",
   searchQuery = "",
   statusFilter = "all",
   storeId,
@@ -1038,26 +1041,37 @@ export function ScheduleCycleCalendarBoard({
         </div>
       ) : view === "threeDay" || view === "week" ? (
         <div className="mt-3">
-          <ScheduleGrid
-            collapsedTechnicians={periodTechniciansCollapsed}
-            compactHeader
-            data={periodGridData}
-            onSelectDate={openDateInDayView}
-            onToggleCollapsed={() => setPeriodTechniciansCollapsed((current) => !current)}
-            periodCellVariant="calendarSummary"
-            renderRowHeader={(row, context) => (
-              <CyclePeriodTechnicianHeader
-                collapsedTechnicians={context.collapsedTechnicians}
-                getTechnicianDetailPath={getTechnicianDetailPath}
-                isMobileSurface={context.isMobileSurface}
-                row={row}
-              />
-            )}
-            showActualWorkStatus={false}
-            stickyHeaderLabel="技师"
-            stickyTop={scheduleStickyTop}
-            surface={surface}
-          />
+          {periodViewVariant === "timeline" ? (
+            <UnifiedCalendarMultiDayTimeline
+              dates={period.dates}
+              emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
+              events={events}
+              onOpen={openEvent}
+              onSelectDate={openDateInDayView}
+              selectedDate={dateKey}
+            />
+          ) : (
+            <ScheduleGrid
+              collapsedTechnicians={periodTechniciansCollapsed}
+              compactHeader
+              data={periodGridData}
+              onSelectDate={openDateInDayView}
+              onToggleCollapsed={() => setPeriodTechniciansCollapsed((current) => !current)}
+              periodCellVariant="calendarSummary"
+              renderRowHeader={(row, context) => (
+                <CyclePeriodTechnicianHeader
+                  collapsedTechnicians={context.collapsedTechnicians}
+                  getTechnicianDetailPath={getTechnicianDetailPath}
+                  isMobileSurface={context.isMobileSurface}
+                  row={row}
+                />
+              )}
+              showActualWorkStatus={false}
+              stickyHeaderLabel="技师"
+              stickyTop={scheduleStickyTop}
+              surface={surface}
+            />
+          )}
         </div>
       ) : view === "month" ? (
         <div className="mt-3" data-testid="schedule-cycle-month-grid">
