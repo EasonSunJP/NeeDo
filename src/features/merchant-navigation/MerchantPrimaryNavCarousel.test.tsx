@@ -123,6 +123,7 @@ describe("MerchantPrimaryNavCarousel", () => {
 
     visibleLinks.forEach((link) => {
       expect(link.classList).toContain("h-[76px]");
+      expect(link.classList).toContain("before:hidden");
       expect(link.classList).toContain("grid-rows-[30px_28px]");
       expect(link.classList).toContain("gap-1");
       expect(link.classList).toContain("py-1.5");

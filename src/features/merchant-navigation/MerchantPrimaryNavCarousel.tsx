@@ -148,7 +148,7 @@ export function MerchantPrimaryNavCarousel({
             {page.map((module) => (
               <Link
                 className={cn(
-                  "relative grid h-[76px] grid-rows-[30px_28px] items-start justify-items-center gap-1 rounded-[18px] border px-2 py-1.5 text-center transition sm:h-auto sm:min-h-[82px] sm:grid-rows-[34px_1fr] sm:gap-1.5 sm:py-3",
+                  "relative grid h-[76px] grid-rows-[30px_28px] items-start justify-items-center gap-1 rounded-[18px] border px-2 py-1.5 text-center transition before:hidden sm:h-auto sm:min-h-[82px] sm:grid-rows-[34px_1fr] sm:gap-1.5 sm:py-3",
                   activeModule === module.key
                     ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
                     : "border-line bg-white text-[color:var(--client-text)] hover:border-[color:var(--client-primary)]"
