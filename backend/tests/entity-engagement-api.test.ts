@@ -230,6 +230,7 @@ const createFixture = async () => {
             imageUrl: "/media/shop.jpg",
             rating: 4.8,
             reviewCount: 32,
+            completedOrderCount: 1999,
             shareCount: 5
           }
         }
@@ -332,6 +333,11 @@ describe("entity favorites API", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
     expect(listResponse.body.data).toMatchObject({ total: 1, page: 2, page_size: 5 });
+    expect(listResponse.body.data.list[0].card).toMatchObject({
+      kind: "shop",
+      reviewCount: 32,
+      completedOrderCount: 1999
+    });
 
     const statusResponse = await request(fixture.app)
       .post("/api/v1/me/entity-favorites/statuses")

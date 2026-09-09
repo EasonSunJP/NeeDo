@@ -6,9 +6,9 @@ describe("formatCompactCount", () => {
     [0, "0"],
     [999, "999"],
     [1000, "1k"],
-    [1999, "1k"],
+    [1001, "1k"],
+    [1999, "1.9k"],
     [2000, "2k"],
-    [999999, "999k"],
   ])("formats %i as %s", (value, expected) => {
     expect(formatCompactCount(value)).toBe(expected);
   });

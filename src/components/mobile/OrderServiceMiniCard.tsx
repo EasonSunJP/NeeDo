@@ -33,7 +33,7 @@ export function buildOrderServiceMiniCardData(order: Order): UnifiedServiceInfoC
     priceAmount: order.amount,
     currency: "JPY",
     durationMinutes,
-    usageCount: null,
+    completedOrderCount: null,
     shopPublicId: null,
     shopAddress: null,
     description: null,

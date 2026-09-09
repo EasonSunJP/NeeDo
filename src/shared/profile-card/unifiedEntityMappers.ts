@@ -14,6 +14,9 @@ export const mapStoreToUnifiedEntityData = (
   tags: store.tags,
   rating: store.rating,
   reviewCount: store.reviewCount,
+  ...(store.completedOrderCount === undefined
+    ? {}
+    : { completedOrderCount: store.completedOrderCount }),
   distanceKm: store.distanceKm ?? null,
   favoriteCount: store.favoriteCount ?? null,
   shareCount: store.shareCount ?? null,

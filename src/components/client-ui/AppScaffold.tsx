@@ -199,9 +199,20 @@ function iconPath(name: IconName) {
     case "completed":
       return (
         <>
-          <path d="M4.4 15.3A8.2 8.2 0 1 1 6.7 19" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
-          <path d="m4.4 15.3-1.2 4 4-1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
-          <path d="m8.2 11.7 2.5 2.5 5.3-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+          <path
+            d="M12 2 13.63 3.81 15.83 2.76 16.64 5.06 19.07 4.93 18.94 7.36 21.24 8.17 20.19 10.37 22 12 20.19 13.63 21.24 15.83 18.94 16.64 19.07 19.07 16.64 18.94 15.83 21.24 13.63 20.19 12 22 10.37 20.19 8.17 21.24 7.36 18.94 4.93 19.07 5.06 16.64 2.76 15.83 3.81 13.63 2 12 3.81 10.37 2.76 8.17 5.06 7.36 4.93 4.93 7.36 5.06 8.17 2.76 10.37 3.81Z"
+            data-icon-part="completed-seal"
+            fill="currentColor"
+          />
+          <path
+            d="m7.1 12.1 3.3 3.3 6.8-6.9"
+            data-icon-part="completed-check"
+            fill="none"
+            stroke="#f7f9f7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2.4"
+          />
         </>
       );
     case "info":

@@ -7,7 +7,7 @@ import { UnifiedServiceInfoCard } from "./UnifiedServiceInfoCard";
 
 const formalService: UnifiedServiceInfoCardData = {
   id: "71", coverUrl: "/service.jpg", name: "两小时家庭日常保洁", priceAmount: 1000,
-  currency: "JPY", durationMinutes: 60, usageCount: 18,
+  currency: "JPY", durationMinutes: 60, completedOrderCount: 1999,
   engagementTarget: { targetType: "service", publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
   favoriteCount: 27, shareCount: 6, isBookable: true, distanceKm: 1.24,
   shopPublicId: "shop0000000217", shopAddress: "東京都中央区銀座1-2-3",
@@ -22,8 +22,9 @@ describe("UnifiedServiceInfoCard", () => {
     const text = markup.replace(/<[^>]+>/gu, "");
     expect(markup).toContain('data-testid="unified-info-card"');
     expect(markup).toContain('data-card-kind="service"');
-    expect(markup).toContain('data-card-size="tall"');
-    expect(markup).toContain("sm:aspect-[16/9]");
+    expect(markup).toContain('data-card-size="default"');
+    expect(markup).not.toContain("min-h-[320px]");
+    expect(markup).not.toContain("aspect-[16/9]");
     expect(markup).toContain("#b8ff4a");
     expect(markup).toContain("relative z-20 flex items-center");
     expect(markup).toContain('data-testid="unified-card-metric-separator"');
@@ -37,10 +38,12 @@ describe("UnifiedServiceInfoCard", () => {
     expect(markup).toContain("aspect-square");
     expect(markup).toContain("rounded-[18px]");
     expect(markup).toContain("justify-start");
-    ["可预约", "18", "1.2km", "27", "6"].reduce((lastIndex, item) => {
+    ["可预约", "1.9k", "1.2km", "27", "6"].reduce((lastIndex, item) => {
       const nextIndex = text.indexOf(item); expect(nextIndex).toBeGreaterThan(lastIndex); return nextIndex;
     }, -1);
     expect(text).not.toMatch(/利用次数|距离你|收藏|分享/u);
+    expect(markup).toContain('data-app-icon="completed"');
+    expect(markup).not.toContain('data-app-icon="moments"');
   });
 
   it("uses the shared chevron when no contextual action replaces it", () => {
@@ -68,7 +71,7 @@ describe("UnifiedServiceInfoCard", () => {
   it("uses honest unavailable states and never invents zero distance or engagement", () => {
     const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, { data: {
       ...formalService, coverUrl: null, description: null, durationMinutes: null, distanceKm: null,
-      favoriteCount: null, shareCount: null, usageCount: null, tags: []
+      favoriteCount: null, shareCount: null, completedOrderCount: null, tags: []
     }})));
     const text = markup.replace(/<[^>]+>/gu, "");
     expect(text).toContain("暂无公开图片");

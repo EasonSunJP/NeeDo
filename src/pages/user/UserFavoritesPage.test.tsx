@@ -160,6 +160,7 @@ describe("UserFavoritesPage", () => {
               imageUrl: null,
               rating: 4.9,
               reviewCount: 32,
+              completedOrderCount: 1999,
               shareCount: 8,
             },
           },
@@ -187,6 +188,8 @@ describe("UserFavoritesPage", () => {
     expect(document.body.textContent).toContain("LifeDance 港区店");
     expect(document.body.textContent).toContain("東京都港区麻布十番");
     expect(document.querySelector('[data-card-kind="shop"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("1.9k");
+    expect(document.body.textContent).not.toContain("32");
   });
 
   it("retains a favorite on remove failure and removes it only after API success", async () => {

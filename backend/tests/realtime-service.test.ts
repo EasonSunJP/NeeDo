@@ -1497,7 +1497,7 @@ describe("NeeDo entity-share atomicity", () => {
           description: "Wellness",
           mediaAssets: [],
           reviewSummary: { ratingAverage: "4.9", reviewCount: 18 },
-          _count: { entityFavorites: 12, entityShareEvents: 3 }
+          _count: { bookingOrders: 1999, entityFavorites: 12, entityShareEvents: 3 }
         }))
       },
       message: { create: jest.fn(async () => message) },
@@ -1535,5 +1535,16 @@ describe("NeeDo entity-share atomicity", () => {
         channel: "NEEDO_MESSAGE"
       })
     });
+    expect(transaction.message.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            needoMessageExt: expect.objectContaining({
+              shopCard: expect.objectContaining({ completedOrderCount: 1999 })
+            })
+          })
+        })
+      })
+    );
   });
 });

@@ -60,7 +60,7 @@ describe("UserOrderDetailPage header", () => {
   it("uses honest snapshots when formal service metadata cannot be read", () => {
     expect(source).toContain("buildBookingOrderSnapshotServiceData(order)");
     expect(source).toContain("order.serviceDurationSnapshot ?? getPersistedBookingDurationMinutes(order)");
-    expect(source).toContain("usageCount: null");
+    expect(source).toContain("completedOrderCount: null");
     expect(source).toContain("shopPublicId: null");
     expect(source).toContain("shopAddress: null");
     expect(source).toContain("buildOrderServiceMiniCardData(order)");

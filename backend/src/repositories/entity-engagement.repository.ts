@@ -24,6 +24,7 @@ export type EntityFavoriteCard =
       imageUrl: string | null;
       rating: number;
       reviewCount: number;
+      completedOrderCount: number;
       shareCount: number;
     }
   | {
@@ -320,7 +321,10 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
                 select: { ratingAverage: true, reviewCount: true, deletedAt: true }
               },
               _count: {
-                select: { entityShareEvents: { where: { deletedAt: null } } }
+                select: {
+                  bookingOrders: { where: { status: "COMPLETED", deletedAt: null } },
+                  entityShareEvents: { where: { deletedAt: null } }
+                }
               }
             }
           },
@@ -448,6 +452,7 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
                 : 0,
             reviewCount:
               row.shop.reviewSummary?.deletedAt === null ? row.shop.reviewSummary.reviewCount : 0,
+            completedOrderCount: row.shop._count.bookingOrders,
             shareCount: row.shop._count.entityShareEvents
           }
         });

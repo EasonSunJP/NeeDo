@@ -93,6 +93,7 @@ const service: CoreServiceDetail = {
     address: "东京都中央区银座 1-2-3",
     coverUrl: null,
     reviewSummary,
+    completedOrderCount: 0,
     favoriteCount: 0,
     shareCount: 0,
     serviceCategories: [],
