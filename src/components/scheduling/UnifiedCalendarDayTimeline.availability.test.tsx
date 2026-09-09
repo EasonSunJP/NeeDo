@@ -86,10 +86,12 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
     const events: UnifiedCalendarEvent[] = [{
       ...baseEvent,
       id: `shop-availability-${dayCount}`,
-      availabilityWindowId: 80 + dayCount,
+      scheduleSlotId: 80 + dayCount,
       availabilitySourceType: "shop",
+      badge: "已预约",
       calendarLabel: "LifeDance",
       date: targetDate,
+      title: "LifeDance店铺排班（可排班日程）",
     }];
 
     await act(async () => root.render(
@@ -109,10 +111,12 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
     const availability: UnifiedCalendarEvent = {
       ...baseEvent,
       id: "month-availability",
-      availabilityWindowId: 91,
-      availabilitySourceType: "technician",
-      calendarLabel: "自由排班",
+      scheduleSlotId: 91,
+      availabilitySourceType: "shop",
+      badge: "已预约",
+      calendarLabel: "LifeDance",
       date,
+      title: "LifeDance店铺排班（可排班日程）",
     };
 
     await act(async () => root.render(
@@ -129,7 +133,7 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
     expect(strip?.textContent).toBe("");
     expect(strip?.style.left).toBe("0px");
     expect(strip?.style.width).toBe("6px");
-    expect(container.textContent).not.toContain("自由排班");
+    expect(container.textContent).not.toContain("LifeDance店铺排班");
   });
 
   it("spans one controlled draft block across all participant lanes and marks only conflicting lanes", async () => {
