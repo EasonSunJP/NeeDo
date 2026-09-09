@@ -257,7 +257,12 @@ describe("EmployeeDetailCard", () => {
     await renderCard();
 
     expect(container.querySelector('[data-formal-tabs-variant="flat"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="employee-detail-tabs-shell"]')).toBeNull();
+    expect(container.querySelectorAll('[data-formal-tabs-page]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-navigation-page-indicator]')).toHaveLength(2);
+    expect(
+      container.querySelector('[data-navigation-page-indicator][aria-current="page"]')
+        ?.getAttribute("data-navigation-page-index"),
+    ).toBe("0");
     expect(button("基础资料").getAttribute("aria-selected")).toBe("true");
     expect(
       container.querySelector<HTMLElement>('[data-testid="employee-schedule-panel"]')
