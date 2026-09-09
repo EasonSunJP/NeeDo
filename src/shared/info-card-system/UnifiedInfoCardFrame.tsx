@@ -40,7 +40,7 @@ export function UnifiedCardMetricRail({
   if (metrics.length === 0) return null;
   return (
     <div
-      className="grid grid-cols-2 border-b border-[#244047] sm:grid-cols-5"
+      className="pointer-events-none relative z-20 grid grid-cols-2 border-b border-[#244047] sm:grid-cols-5"
       data-testid="unified-card-metrics"
     >
       {metrics.map((metric) => (
@@ -48,7 +48,9 @@ export function UnifiedCardMetricRail({
           className="relative flex min-h-[70px] min-w-0 items-center gap-2 border-[#244047] px-3 py-2 text-[#b8ff4a] [&:not(:last-child)]:border-r"
           key={metric.label}
         >
-          {metric.action ?? (
+          {metric.action ? (
+            <div className="pointer-events-auto">{metric.action}</div>
+          ) : (
             <UnifiedMetricIcon name={metric.icon} />
           )}
           <div className="min-w-0">
@@ -84,7 +86,6 @@ export function UnifiedInfoCardFrame({
   metrics?: UnifiedCardMetric[];
   onOpenDetails?: () => void;
 }) {
-  const content = body;
   return (
     <article
       className={cn(
@@ -95,26 +96,21 @@ export function UnifiedInfoCardFrame({
       data-testid="unified-info-card"
     >
       <UnifiedCardMetricRail metrics={metrics ?? []} />
+      {body}
       {detailTo ? (
         <Link
           aria-label={ariaLabel}
-          className="focus-ring block text-left"
+          className="focus-ring absolute inset-0 z-10 rounded-[30px]"
           to={detailTo}
-        >
-          {content}
-        </Link>
+        />
       ) : onOpenDetails ? (
         <button
           aria-label={ariaLabel}
-          className="focus-ring block w-full text-left"
+          className="focus-ring absolute inset-0 z-10 w-full rounded-[30px] text-left"
           onClick={onOpenDetails}
           type="button"
-        >
-          {content}
-        </button>
-      ) : (
-        content
-      )}
+        />
+      ) : null}
       {actionSlot ? (
         <div
           className="absolute bottom-3 right-3 z-20 flex items-center gap-1"

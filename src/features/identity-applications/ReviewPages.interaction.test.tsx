@@ -100,6 +100,7 @@ describe("TechnicianApplicationsReviewPage", () => {
     await flush();
 
     expect(container.querySelectorAll('[aria-label="查看申请"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-testid="unified-info-card"][data-card-kind="technician"]')).toHaveLength(4);
     const approvedMark = container.querySelector<HTMLElement>('[aria-label="审核已通过"]');
     expect(approvedMark?.className).toContain("h-12");
     expect(approvedMark?.className).toContain("bg-[color:var(--client-primary)]");
@@ -110,7 +111,7 @@ describe("TechnicianApplicationsReviewPage", () => {
     expect(container.querySelector('[data-application-status="rejected"]')).not.toBeNull();
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>('[data-application-status="approved"]')?.click();
+      container.querySelector<HTMLElement>('[data-application-status="approved"] button[aria-label^="查看技师"]')?.click();
     });
     await flush();
     expect(getReview).toHaveBeenCalledWith(13);
@@ -125,7 +126,7 @@ describe("TechnicianApplicationsReviewPage", () => {
     await flush();
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>('[data-application-status="rejected"]')?.click();
+      container.querySelector<HTMLElement>('[data-application-status="rejected"] button[aria-label^="查看技师"]')?.click();
     });
     await flush();
     expect(getReview).toHaveBeenCalledWith(14);
@@ -147,7 +148,7 @@ describe("TechnicianApplicationsReviewPage", () => {
     ));
     await flush();
     await act(async () => {
-      container.querySelector<HTMLButtonElement>('[data-application-status="submitted"]')?.click();
+      container.querySelector<HTMLElement>('[data-application-status="submitted"] button[aria-label^="查看技师"]')?.click();
     });
     await flush();
 
