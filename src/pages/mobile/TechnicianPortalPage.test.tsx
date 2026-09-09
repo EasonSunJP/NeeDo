@@ -160,9 +160,16 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(servicesSource).toContain('aria-label="服务分类"');
     expect(servicesSource).toContain("当前没有已保存的正式技师服务");
     expect(servicesSource).toContain("<UnifiedServiceInfoCard");
+    expect(servicesSource).toContain('variant="showcase"');
     expect(servicesSource).toContain('label="上移"');
     expect(servicesSource).toContain('label="下移"');
     expect(servicesSource).toContain('label="编辑"');
+    expect(servicesSource).toContain('icon="up" label="上移"');
+    expect(servicesSource).toContain('icon="down" label="下移"');
+    expect(servicesSource).toContain("disabled={index === 0 || saving}");
+    expect(servicesSource).toContain("disabled={index === services.length - 1 || saving}");
+    expect(servicesSource).not.toContain('icon="back" label="上移"');
+    expect(servicesSource).not.toContain('icon="back" label="下移"');
     expect(servicesSource).not.toContain('"default"');
     expect(servicesSource).not.toContain("fake");
   });

@@ -20,6 +20,48 @@ const formalService: UnifiedServiceInfoCardData = {
 };
 
 describe("UnifiedServiceInfoCard", () => {
+  it("renders the approved technician-profile showcase composition from formal facts", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(UnifiedServiceInfoCard, {
+          actionSlot: createElement("button", { type: "button" }, "编辑服务"),
+          data: formalService,
+          detailTo: "/services/71",
+          variant: "showcase"
+        })
+      )
+    );
+
+    expect(markup).toContain('data-variant="showcase"');
+    expect(markup).toContain('data-testid="unified-service-showcase-header"');
+    expect(markup).toMatch(/<header class="[^"]*items-end[^"]*pb-3[^"]*" data-testid="unified-service-showcase-header"/u);
+    expect(markup).toContain('data-testid="unified-service-showcase-cover"');
+    expect(markup).toContain('data-testid="unified-service-showcase-body"');
+    expect(markup).toContain('data-testid="unified-service-showcase-body-grid"');
+    expect(markup).toContain('data-testid="unified-service-showcase-facts"');
+    expect(markup).toContain("两小时家庭日常保洁");
+    expect(markup).toContain("利用回数：");
+    expect(markup).toContain("18");
+    expect(markup).toContain("银座");
+    expect(markup).toContain("厨房、浴室、地面一站式整理。");
+    expect(markup).toContain("￥1,000");
+    expect(markup).toContain("60分钟");
+    expect(markup.indexOf("</a>")).toBeLessThan(markup.indexOf("编辑服务"));
+    expect(markup).toMatch(/class="[^"]*absolute right-3 top-3[^"]*" data-testid="unified-service-info-actions"/u);
+    expect(markup).toContain("grid-cols-[clamp(126px,34%,208px)_minmax(0,1fr)]");
+    expect(markup).toContain("min-h-[104px]");
+    expect(markup).not.toContain("min-h-[160px]");
+    expect(markup).toContain("-mt-10");
+    expect(markup).toContain("w-[calc(100%-1rem)]");
+    expect(markup).not.toContain("absolute -top-10");
+    expect(markup).toContain("[overflow-wrap:anywhere]");
+    expect(markup).toContain("line-clamp-2");
+    expect(markup).toContain("pt-[52px]");
+    expect(markup).not.toContain("border-t border-white/10");
+  });
+
   it("renders formal service facts in the single approved order", () => {
     const markup = renderToStaticMarkup(
       createElement(

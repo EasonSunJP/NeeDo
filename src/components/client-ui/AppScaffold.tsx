@@ -54,6 +54,10 @@ function iconPath(name: IconName) {
   switch (name) {
     case "back":
       return <path d="m14.5 6.5-5 5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
+    case "up":
+      return <path d="m6.5 14.5 5-5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
+    case "down":
+      return <path d="m6.5 9.5 5 5 5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
     case "close":
     case "x":
       return <path d="M7 7 17 17M17 7 7 17" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />;
@@ -237,6 +241,8 @@ function iconPath(name: IconName) {
 
 export type IconName =
   | "back"
+  | "up"
+  | "down"
   | "close"
   | "x"
   | "search"
@@ -281,13 +287,15 @@ export function IconButton({
   label,
   to,
   onClick,
-  className
+  className,
+  disabled = false
 }: {
   icon: IconName;
   label: string;
   to?: string;
   onClick?: () => void;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <InteractiveWrapper
@@ -296,6 +304,7 @@ export function IconButton({
         "focus-ring inline-flex h-11 w-11 items-center justify-center rounded-full border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] backdrop-blur",
         className
       )}
+      disabled={disabled}
       onClick={onClick}
       to={to}
     >

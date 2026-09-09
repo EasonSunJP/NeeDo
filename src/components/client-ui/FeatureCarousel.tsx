@@ -193,7 +193,9 @@ export function FeatureCarousel({
   return (
     <section
       className={cn(featureCarouselFrameClassName, className)}
+      data-auto-rotate={autoRotateMs ? "running" : "paused"}
       data-no-i18n={dataNoI18n || undefined}
+      data-testid="feature-carousel"
     >
       <div
         className={cn("scrollbar-none flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain", viewportClassName)}

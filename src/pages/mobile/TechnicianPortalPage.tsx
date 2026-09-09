@@ -741,9 +741,9 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
     if (!rawService) return null;
     return (
       <div className="flex gap-2">
-        <IconButton className={cn("h-9 w-9", index === 0 || saving ? "pointer-events-none opacity-40" : undefined)} icon="back" label="上移" onClick={index === 0 || saving ? undefined : () => void moveService(index, -1)} />
-        <IconButton className={cn("h-9 w-9 rotate-180", index === services.length - 1 || saving ? "pointer-events-none opacity-40" : undefined)} icon="back" label="下移" onClick={index === services.length - 1 || saving ? undefined : () => void moveService(index, 1)} />
-        <IconButton className={cn("h-9 w-9", saving ? "pointer-events-none opacity-40" : undefined)} icon="edit" label="编辑" onClick={saving ? undefined : () => openEditor(rawService)} />
+        <IconButton className={cn("h-9 w-9", index === 0 || saving ? "opacity-40" : undefined)} disabled={index === 0 || saving} icon="up" label="上移" onClick={() => void moveService(index, -1)} />
+        <IconButton className={cn("h-9 w-9", index === services.length - 1 || saving ? "opacity-40" : undefined)} disabled={index === services.length - 1 || saving} icon="down" label="下移" onClick={() => void moveService(index, 1)} />
+        <IconButton className={cn("h-9 w-9", saving ? "opacity-40" : undefined)} disabled={saving} icon="edit" label="编辑" onClick={() => openEditor(rawService)} />
       </div>
     );
   };
@@ -804,7 +804,7 @@ export function FormalTechnicianServicesPanel({ defaultShopId, defaultCategoryId
     <section className="space-y-3" data-testid="technician-profile-services">
       <h2 className="px-1 text-lg font-black">服务信息</h2>
       {services.map((service, index) => (
-        <UnifiedServiceInfoCard actionSlot={serviceAction(fromTechnicianServicePayload(service), index)} data={fromTechnicianServicePayload(service)} key={service.id} />
+        <UnifiedServiceInfoCard actionSlot={serviceAction(fromTechnicianServicePayload(service), index)} data={fromTechnicianServicePayload(service)} key={service.id} variant="showcase" />
       ))}
       {addAndState}
     </section>

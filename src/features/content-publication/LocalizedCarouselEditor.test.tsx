@@ -7,6 +7,7 @@ import type {
   BackofficeCarouselScene,
   CarouselDraftReplaceInput,
   CarouselRelease,
+  CarouselSceneSlug,
 } from "../../api/contentPublication";
 import { LocalizedCarouselEditor } from "./LocalizedCarouselEditor";
 
@@ -252,14 +253,14 @@ async function selectOptionByName(name: string, value: string) {
   await setValue(select, value);
 }
 
-async function renderEditor() {
+async function renderEditor(editorScene: CarouselSceneSlug = "user-home") {
   await act(async () => {
     root.render(
       <LocalizedCarouselEditor
         editPermission="carousel:edit"
         publishPermission="carousel:publish"
         readPermission="carousel:read"
-        scene="user-home"
+        scene={editorScene}
       />,
     );
   });
@@ -270,6 +271,10 @@ describe("LocalizedCarouselEditor", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
     vi.resetAllMocks();
     allowedPermissions.clear();
     allowedPermissions.add("carousel:read");
@@ -354,6 +359,42 @@ describe("LocalizedCarouselEditor", () => {
     expect(container.textContent).toContain(
       "来自简体中文的初始复制，尚未人工校对",
     );
+  });
+
+  it("uses the compact replacement workflow only for the user-home scene", async () => {
+    await renderEditor();
+    await waitFor(() => expect(container.textContent).toContain("护理服务"));
+
+    expect(
+      container.querySelector('[data-testid="user-home-carousel-workspace"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="feature-carousel"]'),
+    ).not.toBeNull();
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(5);
+    expect(container.textContent).toContain("当前轮播内容");
+    expect(container.textContent).toContain("新的轮播内容");
+    const history = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="carousel-history"]',
+    );
+    expect(history).not.toBeNull();
+    expect(history?.open).toBe(false);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    apiMocks.getBackofficeCarouselScene.mockResolvedValue({
+      ...scene,
+      scene: "AFFILIATE_HOME_NOTICE",
+      draft: { ...draft, scene: "AFFILIATE_HOME_NOTICE" },
+      published: scene.published
+        ? { ...scene.published, scene: "AFFILIATE_HOME_NOTICE" }
+        : null,
+    });
+    await renderEditor("affiliate-home-notice");
+    await waitFor(() => expect(container.textContent).toContain("护理服务"));
+    expect(
+      container.querySelector('[data-testid="user-home-carousel-workspace"]'),
+    ).toBeNull();
   });
 
   it("keeps locale edits independent and copies only after explicit confirmation", async () => {

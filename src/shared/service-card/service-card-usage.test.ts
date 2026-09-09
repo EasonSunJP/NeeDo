@@ -59,8 +59,10 @@ describe("unified service-information-card usage", () => {
 
   it("routes technician personal and public detail services through the shared profile view", () => {
     expect(source.technicianProfile).toMatch(/model\.services\.map\([\s\S]*<UnifiedServiceInfoCard[\s\S]*data=\{service\}/u);
+    expect(source.technicianProfile).toMatch(/<UnifiedServiceInfoCard[\s\S]*data=\{service\}[\s\S]*variant="showcase"/u);
     expect(source.technicianPortal).toContain("<TechnicianProfileInfoView");
     expect(source.technicianPortal).toMatch(/services\.map\([\s\S]*<UnifiedServiceInfoCard[\s\S]*fromTechnicianServicePayload\(service\)/u);
+    expect(source.technicianPortal).toMatch(/<UnifiedServiceInfoCard[\s\S]*fromTechnicianServicePayload\(service\)[\s\S]*variant="showcase"/u);
     expect(source.profileDetail).toContain("<TechnicianProfileInfoView model={model} />");
     expect(source.publicTechnicianCard).toContain("<TechnicianProfileInfoView model={model} />");
   });
