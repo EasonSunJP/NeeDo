@@ -9,6 +9,7 @@ import type {
   HomeRecommendationsPayload,
   ServiceCardPayload,
   ServiceDetailPayload,
+  ServiceReviewPayload,
   ServiceListInput,
   ShopDetailPayload,
   CustomerProfilePayload,
@@ -52,6 +53,19 @@ export class CoreReadService {
     }
 
     return service;
+  }
+
+  public async listServiceReviews(
+    id: number | string,
+    input: { page?: number; pageSize?: number }
+  ): Promise<PaginatedResponse<ServiceReviewPayload>> {
+    const reviews = await this.repository.listServiceReviews(id, input);
+
+    if (!reviews) {
+      throw this.notFoundError("error.service.not_found");
+    }
+
+    return reviews;
   }
 
   public getHomeRecommendations(

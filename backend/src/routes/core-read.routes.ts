@@ -16,7 +16,8 @@ import {
   coreReadTechnicianIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
-  serviceListQuerySchema
+  serviceListQuerySchema,
+  serviceReviewListQuerySchema
 } from "../validators/core-read.validator";
 
 export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
@@ -45,6 +46,11 @@ export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDepende
     "/services/:id",
     validateRequest({ params: coreReadServiceIdParamSchema }),
     controller.getServiceDetail
+  );
+  router.get(
+    "/services/:id/reviews",
+    validateRequest({ params: coreReadServiceIdParamSchema, query: serviceReviewListQuerySchema }),
+    controller.listServiceReviews
   );
   router.get(
     "/home/recommendations",

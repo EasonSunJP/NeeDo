@@ -5,6 +5,34 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents the paginated public service review contract", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    };
+    const operation = document.paths["/api/v1/services/{id}/reviews"]?.get;
+
+    expect(operation).toMatchObject({
+      tags: ["Core Read"],
+      responses: {
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "404": expect.any(Object)
+      }
+    });
+    expect(document.components.schemas.ServiceReview).toMatchObject({
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "title",
+        "comment",
+        "rating",
+        "createdAt",
+        "reviewer",
+        "mediaAssets"
+      ])
+    });
+  });
+
   it("publishes partner as the only active employee affiliation relationship", () => {
     type Schema = {
       enum?: string[];

@@ -120,6 +120,19 @@ export type CoreServiceDetail = CoreServiceCard & {
   updatedAt: string;
 };
 
+export type CoreServiceReview = {
+  id: number;
+  title: string | null;
+  comment: string | null;
+  rating: number;
+  createdAt: string;
+  reviewer: {
+    displayName: string;
+    avatarUrl: string | null;
+  };
+  mediaAssets: CoreMediaAsset[];
+};
+
 export type CoreShopDetail = CoreShopCard & {
   description: string | null;
   phone: string | null;
@@ -554,6 +567,16 @@ export const coreReadApi = {
 
   getServiceDetail(id: number | string) {
     return httpClient.request<CoreServiceDetail>(`/services/${id}`, { auth: false });
+  },
+
+  listServiceReviews(
+    id: number | string,
+    query: { page?: number; pageSize?: number } = {}
+  ) {
+    return httpClient.request<PaginatedCoreReadData<CoreServiceReview>>(
+      `/services/${id}/reviews`,
+      { auth: false, query }
+    );
   },
 
   getShopDetail(id: number | string) {

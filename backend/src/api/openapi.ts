@@ -10299,6 +10299,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           sortOrder: { type: "integer" }
         }
       },
+      ServiceReview: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "title", "comment", "rating", "createdAt", "reviewer", "mediaAssets"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          title: { type: ["string", "null"], maxLength: 40 },
+          comment: { type: ["string", "null"], maxLength: 1000 },
+          rating: { type: "integer", minimum: 1, maximum: 5 },
+          createdAt: { type: "string", format: "date-time" },
+          reviewer: {
+            type: "object",
+            additionalProperties: false,
+            required: ["displayName", "avatarUrl"],
+            properties: {
+              displayName: { type: "string" },
+              avatarUrl: { type: ["string", "null"] }
+            }
+          },
+          mediaAssets: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MediaAsset" }
+          }
+        }
+      },
       Category: {
         type: "object",
         required: [
@@ -20737,6 +20762,48 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           "400": { description: "error.validation" },
           "404": { description: "Service not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/services/{id}/reviews`]: {
+      get: {
+        tags: ["Core Read"],
+        summary: "Public reviews for a published service",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: {
+              oneOf: [
+                { type: "integer", minimum: 1 },
+                { type: "string", format: "uuid" }
+              ]
+            }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated service reviews", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/ServiceReview" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "404": jsonErrorResponse("error.service.not_found")
         }
       }
     },

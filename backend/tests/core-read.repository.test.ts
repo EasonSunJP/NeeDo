@@ -708,3 +708,146 @@ describe("CoreReadRepository multi-entity search", () => {
     );
   });
 });
+
+describe("CoreReadRepository public service reviews", () => {
+  it("lists only completed persisted reviews with effective amendments and active media", async () => {
+    const originalCreatedAt = new Date("2026-08-30T09:00:00.000Z");
+    const amendedAt = new Date("2026-09-01T10:00:00.000Z");
+    const serviceFindFirst = jest.fn(async () => ({ id: 61 }));
+    const orderReviewCount = jest.fn(async () => 1);
+    const orderReviewFindMany = jest.fn(async () => [
+      {
+        id: 901,
+        rating: 4,
+        comment: "原始正文",
+        createdAt: originalCreatedAt,
+        tags: [{ label: "原始标题" }],
+        amendments: [
+          {
+            version: 2,
+            rating: 5,
+            comment: "修订后的真实正文",
+            createdAt: amendedAt,
+            tags: [{ label: "非常专业" }]
+          }
+        ],
+        reviewer: {
+          username: "u0000000901",
+          avatarUrl: null,
+          avatarBootstrapUrl: "/media/reviewer-bootstrap.jpg",
+          customerProfile: {
+            displayName: "小林",
+            deletedAt: null
+          }
+        }
+      }
+    ]);
+    const mediaAssetFindMany = jest.fn(async () => [
+      {
+        id: 7001,
+        entityId: 901,
+        url: "/media/reviews/901-1.jpg",
+        mimeType: "image/jpeg",
+        usageType: "review",
+        width: 960,
+        height: 720,
+        altText: "服务完成后的照片",
+        sortOrder: 0
+      }
+    ]);
+    const repository = new CoreReadRepository({
+      service: { findFirst: serviceFindFirst },
+      orderReview: { count: orderReviewCount, findMany: orderReviewFindMany },
+      mediaAsset: { findMany: mediaAssetFindMany }
+    } as never);
+
+    await expect(
+      repository.listServiceReviews("83b6d591-d7ca-4ca0-b975-7a44363e1f3a", {
+        page: 2,
+        pageSize: 10
+      })
+    ).resolves.toEqual({
+      list: [
+        {
+          id: 901,
+          title: "非常专业",
+          comment: "修订后的真实正文",
+          rating: 5,
+          createdAt: originalCreatedAt,
+          reviewer: {
+            displayName: "小林",
+            avatarUrl: "/media/reviewer-bootstrap.jpg"
+          },
+          mediaAssets: [
+            {
+              id: 7001,
+              url: "/media/reviews/901-1.jpg",
+              mimeType: "image/jpeg",
+              usageType: "review",
+              width: 960,
+              height: 720,
+              altText: "服务完成后的照片",
+              sortOrder: 0
+            }
+          ]
+        }
+      ],
+      total: 1,
+      page: 2,
+      page_size: 10
+    });
+
+    expect(serviceFindFirst).toHaveBeenCalledWith({
+      where: {
+        publicId: "83b6d591-d7ca-4ca0-b975-7a44363e1f3a",
+        deletedAt: null,
+        status: "published"
+      },
+      select: { id: true }
+    });
+    expect(orderReviewFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          targetType: "TECHNICIAN",
+          deletedAt: null,
+          reviewer: { deletedAt: null },
+          bookingOrder: {
+            serviceId: 61,
+            status: "COMPLETED",
+            deletedAt: null
+          }
+        },
+        skip: 10,
+        take: 10,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      })
+    );
+    expect(orderReviewCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({ bookingOrder: expect.objectContaining({ serviceId: 61 }) })
+    });
+    expect(mediaAssetFindMany).toHaveBeenCalledWith({
+      where: {
+        entityType: "order_review",
+        entityId: { in: [901] },
+        mimeType: { startsWith: "image/" },
+        isActive: true,
+        purgedAt: null,
+        deletedAt: null
+      },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: expect.objectContaining({ entityId: true, url: true })
+    });
+  });
+
+  it("returns null without querying reviews when the public service does not exist", async () => {
+    const orderReviewFindMany = jest.fn();
+    const repository = new CoreReadRepository({
+      service: { findFirst: jest.fn(async () => null) },
+      orderReview: { count: jest.fn(), findMany: orderReviewFindMany },
+      mediaAsset: { findMany: jest.fn() }
+    } as never);
+
+    await expect(repository.listServiceReviews(999, { page: 1, pageSize: 20 })).resolves.toBeNull();
+    expect(orderReviewFindMany).not.toHaveBeenCalled();
+  });
+});

@@ -143,6 +143,23 @@ describe("core read API adapter", () => {
     );
   });
 
+  it("loads paginated public reviews for a service without auth", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        code: 0,
+        message: "success",
+        data: { list: [], page: 1, page_size: 20, total: 0 }
+      })
+    );
+
+    await expect(coreReadApi.listServiceReviews(coreService.publicId, { page: 1, pageSize: 20 }))
+      .resolves.toEqual({ list: [], page: 1, page_size: 20, total: 0 });
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/v1/services/${coreService.publicId}/reviews?page=1&pageSize=20`,
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) })
+    );
+  });
+
   it("calls typed multi-entity search endpoints with repeated OR values", async () => {
     vi.mocked(fetch).mockImplementation(async () =>
       jsonResponse({

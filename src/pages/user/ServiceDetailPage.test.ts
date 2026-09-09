@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { httpClient } from "../../api/httpClient";
 import { coreReadApi, coreReadIdFromRoute } from "../../features/core-read/api";
-import { buildServiceTagLabels } from "./ServiceDetailPage";
+import { buildServiceTagLabels, ServiceReviewCard } from "./ServiceDetailPage";
 import serviceDetailSource from "./ServiceDetailPage.tsx?raw";
+
+const clientStyles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 vi.mock("../../api/httpClient", () => ({
   httpClient: { request: vi.fn() }
@@ -72,5 +77,65 @@ describe("ServiceDetailPage formal service routes", () => {
     expect(serviceDetailSource).not.toContain('favorite: "star"');
     expect(serviceDetailSource).not.toContain('translate: "globe"');
     expect(content).not.toContain("safe-header-top");
+  });
+
+  it("renders persisted service reviews instead of presenting usage count and tags as reviews", () => {
+    expect(serviceDetailSource).toContain("coreReadApi.listServiceReviews");
+    expect(serviceDetailSource).toContain("serviceReviewsQuery.data?.total");
+    expect(serviceDetailSource).toContain("review.reviewer.displayName");
+    expect(serviceDetailSource).toContain("review.createdAt");
+    expect(serviceDetailSource).toContain("review.title || \"服务评价\"");
+    expect(serviceDetailSource).toContain("review.comment");
+    expect(serviceDetailSource).toContain("review.mediaAssets.map");
+    expect(serviceDetailSource).toContain("review.rating.toFixed(1)");
+    expect(serviceDetailSource).not.toContain("<Badge tone=\"green\">{service.sales} 条</Badge>");
+    expect(serviceDetailSource).not.toContain("service.tags.join(\" / \")");
+  });
+
+  it("keeps reviewer identity above a titled bubble with media and the score at its lower left", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ServiceReviewCard, {
+        review: {
+          id: 901,
+          title: "非常专业",
+          comment: "手法细致，沟通也很清楚。",
+          rating: 5,
+          createdAt: "2026-09-01T10:00:00.000Z",
+          reviewer: { displayName: "小林", avatarUrl: "/media/reviewer.jpg" },
+          mediaAssets: [
+            {
+              id: 801,
+              url: "/media/reviews/901.jpg",
+              mimeType: "image/jpeg",
+              usageType: "review",
+              width: 960,
+              height: 720,
+              altText: "服务完成后的照片",
+              sortOrder: 0
+            }
+          ]
+        }
+      })
+    );
+
+    expect(markup).toContain("小林");
+    expect(markup).toContain("2026年9月1日");
+    expect(markup).toContain("非常专业");
+    expect(markup).toContain("手法细致，沟通也很清楚。");
+    expect(markup).toContain('alt="服务完成后的照片"');
+    expect(markup).toContain("5.0 / 5");
+    expect(markup.indexOf("小林")).toBeLessThan(markup.indexOf("非常专业"));
+    expect(markup.indexOf("非常专业")).toBeLessThan(markup.indexOf("手法细致"));
+    expect(markup.indexOf("手法细致")).toBeLessThan(markup.indexOf("5.0 / 5"));
+  });
+
+  it("removes the service page dark top and bottom masks without changing the shared header", () => {
+    expect(serviceDetailSource).not.toContain('import { ClientEdgeMask }');
+    expect(serviceDetailSource).not.toContain('<ClientEdgeMask className="z-10" edge="bottom" mode="absolute" />');
+    expect(serviceDetailSource).toContain('className="service-detail-header"');
+    expect(serviceDetailSource).toContain("border-t border-transparent bg-transparent");
+    expect(clientStyles).toMatch(
+      /\.service-detail-header\.client-floating-header-glass-frame\s*\{[^}]*background:\s*transparent\s*!important;[^}]*box-shadow:\s*none\s*!important;/s
+    );
   });
 });

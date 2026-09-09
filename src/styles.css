@@ -2383,6 +2383,14 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   backdrop-filter: blur(18px) saturate(1.7) contrast(1.04) brightness(1.03) !important;
 }
 
+.client-shell .service-detail-header.client-floating-header-glass-frame {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 .client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header, .client-store-display-editor-glass-header).client-floating-header-glass-frame {
   background:
     linear-gradient(

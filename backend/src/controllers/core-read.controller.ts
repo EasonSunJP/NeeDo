@@ -10,7 +10,8 @@ import {
   coreReadTechnicianIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
-  serviceListQuerySchema
+  serviceListQuerySchema,
+  serviceReviewListQuerySchema
 } from "../validators/core-read.validator";
 
 export class CoreReadController {
@@ -62,6 +63,27 @@ export class CoreReadController {
         .status(200)
         .json(
           successResponse(await this.coreReadService.getServiceDetail(this.getServiceId(request)))
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listServiceReviews = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.coreReadService.listServiceReviews(
+              this.getServiceId(request),
+              serviceReviewListQuerySchema.parse(request.query)
+            )
+          )
         );
     } catch (error) {
       next(error);

@@ -170,6 +170,19 @@ export interface ServiceDetailPayload extends ServiceCardPayload {
   updatedAt: Date;
 }
 
+export interface ServiceReviewPayload {
+  id: number;
+  title: string | null;
+  comment: string | null;
+  rating: number;
+  createdAt: Date;
+  reviewer: {
+    displayName: string;
+    avatarUrl: string | null;
+  };
+  mediaAssets: MediaAssetPayload[];
+}
+
 export interface ShopDetailPayload extends ShopCardPayload {
   description: string | null;
   phone: string | null;
@@ -226,6 +239,10 @@ export interface CoreReadRepositoryPort {
   listCategories: (input: CategoryListInput) => Promise<PaginatedResponse<CategoryPayload>>;
   listServices: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
   findServiceDetail: (id: number | string) => Promise<ServiceDetailPayload | null>;
+  listServiceReviews: (
+    id: number | string,
+    input: PaginationInput
+  ) => Promise<PaginatedResponse<ServiceReviewPayload> | null>;
   getHomeRecommendations: (input: HomeRecommendationsInput) => Promise<HomeRecommendationsPayload>;
   search: (input: CoreSearchInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
   searchShops: (input: CoreSearchInput) => Promise<PaginatedResponse<ShopCardPayload>>;
@@ -396,6 +413,142 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     });
 
     return service ? this.mapServiceDetail(service) : null;
+  }
+
+  public async listServiceReviews(
+    id: number | string,
+    input: PaginationInput
+  ): Promise<PaginatedResponse<ServiceReviewPayload> | null> {
+    const service = await this.client.service.findFirst({
+      where: {
+        ...(typeof id === "number" ? { id } : { publicId: id }),
+        deletedAt: null,
+        status: PUBLISHED_STATUS
+      },
+      select: { id: true }
+    });
+    if (!service) return null;
+
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.OrderReviewWhereInput = {
+      targetType: "TECHNICIAN",
+      deletedAt: null,
+      reviewer: { deletedAt: null },
+      bookingOrder: {
+        serviceId: service.id,
+        status: "COMPLETED",
+        deletedAt: null
+      }
+    };
+    const [reviews, total] = await Promise.all([
+      this.client.orderReview.findMany({
+        where,
+        select: {
+          id: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
+          tags: {
+            where: { deletedAt: null },
+            orderBy: [{ id: "asc" }],
+            select: { label: true }
+          },
+          amendments: {
+            where: { deletedAt: null },
+            orderBy: [{ version: "desc" }, { id: "desc" }],
+            take: 1,
+            select: {
+              rating: true,
+              comment: true,
+              tags: {
+                where: { deletedAt: null },
+                orderBy: [{ id: "asc" }],
+                select: { label: true }
+              }
+            }
+          },
+          reviewer: {
+            select: {
+              username: true,
+              avatarUrl: true,
+              avatarBootstrapUrl: true,
+              customerProfile: {
+                select: { displayName: true, deletedAt: true }
+              }
+            }
+          }
+        },
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.orderReview.count({ where })
+    ]);
+    const mediaAssets = reviews.length > 0
+      ? await this.client.mediaAsset.findMany({
+          where: {
+            entityType: "order_review",
+            entityId: { in: reviews.map((review) => review.id) },
+            mimeType: { startsWith: "image/" },
+            isActive: true,
+            purgedAt: null,
+            deletedAt: null
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            entityId: true,
+            url: true,
+            mimeType: true,
+            usageType: true,
+            width: true,
+            height: true,
+            altText: true,
+            sortOrder: true
+          }
+        })
+      : [];
+    const mediaByReviewId = new Map<number, MediaAssetPayload[]>();
+    for (const asset of mediaAssets) {
+      const list = mediaByReviewId.get(asset.entityId) ?? [];
+      list.push({
+        id: asset.id,
+        url: asset.url,
+        mimeType: asset.mimeType,
+        usageType: asset.usageType,
+        width: asset.width,
+        height: asset.height,
+        altText: asset.altText,
+        sortOrder: asset.sortOrder
+      });
+      mediaByReviewId.set(asset.entityId, list);
+    }
+
+    return buildPaginatedResponse(
+      reviews.map((review) => {
+        const amendment = review.amendments[0];
+        const tags = amendment ? amendment.tags : review.tags;
+        const customerProfile = review.reviewer.customerProfile;
+
+        return {
+          id: review.id,
+          title: tags[0]?.label ?? null,
+          comment: amendment ? amendment.comment : review.comment,
+          rating: amendment?.rating ?? review.rating,
+          createdAt: review.createdAt,
+          reviewer: {
+            displayName:
+              customerProfile && !customerProfile.deletedAt
+                ? customerProfile.displayName
+                : review.reviewer.username,
+            avatarUrl: review.reviewer.avatarUrl ?? review.reviewer.avatarBootstrapUrl
+          },
+          mediaAssets: mediaByReviewId.get(review.id) ?? []
+        };
+      }),
+      total,
+      pagination
+    );
   }
 
   public async getHomeRecommendations(

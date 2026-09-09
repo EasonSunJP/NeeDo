@@ -75,4 +75,3 @@
 - [ ] Start only an unused allowed frontend port such as 5181 and perform mobile browser acceptance; stop only that process.
 - [ ] Inspect `git diff`, scan changed files for forbidden placeholders, and commit the feature.
 - [ ] Integrate into local main without touching the 5180 runtime directory, verify the merged commit in a separate worktree, then remove only the worktree/branch proven safe.
-

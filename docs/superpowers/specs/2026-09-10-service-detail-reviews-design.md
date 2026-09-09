@@ -38,4 +38,3 @@ Loading, failure, and empty states stay inside the review section. The page remo
 - API tests prove validation, UUID resolution, public projection, and 404 behavior.
 - Frontend tests prove the API call, real total usage, requested card structure, no `service.sales` review badge, and no page-local edge mask.
 - Run frontend tests, backend tests, lint/typecheck, builds, and mobile browser acceptance on an unused non-5180 port.
-

@@ -87,6 +87,10 @@ export const serviceListQuerySchema = serviceListQueryBaseSchema
     "minPrice must be less than or equal to maxPrice"
   );
 
+export const serviceReviewListQuerySchema = z.object({
+  ...paginationQuerySchema
+});
+
 export const coreSearchQuerySchema = serviceListQueryBaseSchema
   .extend({
     entityType: z.enum(["service", "shop", "technician"]).default("service"),
@@ -125,6 +129,7 @@ export type CoreReadShopIdParams = z.infer<typeof coreReadShopIdParamSchema>;
 export type CoreReadTechnicianIdParams = z.infer<typeof coreReadTechnicianIdParamSchema>;
 export type CategoryListQuery = z.infer<typeof categoryListQuerySchema>;
 export type ServiceListQuery = z.infer<typeof serviceListQuerySchema>;
+export type ServiceReviewListQuery = z.infer<typeof serviceReviewListQuerySchema>;
 export type CoreSearchQuery = z.infer<typeof coreSearchQuerySchema>;
 export type HomeRecommendationsQuery = z.infer<typeof homeRecommendationsQuerySchema>;
 export type CoreReadCoordinateQuery = z.infer<typeof coreReadCoordinateQuerySchema>;
