@@ -13,7 +13,7 @@ const render = (
 
 describe("UnifiedEntityInfoCard", () => {
   it("renders technician metrics and bare special icons with overlapping counts", () => {
-    const markup = render({ kind: "technician", id: "s0000000001", name: "玲奈", imageUrl: "/tech.jpg", description: "深层放松技师", languages: ["中文", "日本語"], tags: [], rating: 4.9, completedOrderCount: 128, distanceKm: 1.2, favoriteCount: 21, shareCount: 4, specialReviewTags: [{ code: "service_max", label: "服务max", icon: "💙", count: 46 }] });
+    const markup = render({ kind: "technician", id: "s0000000001", name: "玲奈", imageUrl: "/tech.jpg", description: "深层放松技师", languages: ["中文", "日本語"], tags: [], rating: 4.86, completedOrderCount: 128, distanceKm: 1.2, favoriteCount: 21, shareCount: 4, specialReviewTags: [{ code: "service_max", label: "服务max", icon: "💙", count: 46 }] });
     const text = markup.replace(/<[^>]+>/gu, "");
     expect(markup).toContain('data-card-kind="technician"');
     expect(markup).toContain("relative z-20 flex items-center");
@@ -27,6 +27,10 @@ describe("UnifiedEntityInfoCard", () => {
       expect(next).toBeGreaterThan(index);
       return next;
     }, -1);
+    expect(text).not.toContain("4.86");
+    expect(markup).toContain('data-testid="unified-card-distance-value"');
+    expect(markup).toContain('data-testid="unified-card-distance-unit"');
+    expect(markup).toContain("text-[8px]");
     expect(text).not.toMatch(/评分|完单次数|距离|收藏|分享/u);
     expect(markup).toContain('data-app-icon="completed"');
     expect(markup).toContain('data-testid="special-review-icon"');
@@ -55,6 +59,8 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).not.toContain("items-start gap-1.5");
     expect(markup).toContain("rotate-180");
     expect(markup).not.toContain('name="minus"');
+    expect(markup).toContain('data-card-size="tall"');
+    expect(markup).toContain("sm:aspect-[16/9]");
   });
 
   it("renders a compact user name card without metrics or language tags", () => {
@@ -64,6 +70,7 @@ describe("UnifiedEntityInfoCard", () => {
     );
     const text = markup.replace(/<[^>]+>/gu, "");
     expect(markup).toContain('data-card-kind="user"');
+    expect(markup).toContain('data-card-density="name-card"');
     expect(markup).not.toContain('data-testid="unified-card-metrics"');
     expect(markup).toContain("grid-cols-[minmax(132px,38%)_minmax(0,1fr)]");
     expect(markup).toMatch(/p-3[^"]*sm:p-6/u);
@@ -71,5 +78,8 @@ describe("UnifiedEntityInfoCard", () => {
     expect(text).toContain("喜欢旅行");
     expect(text).not.toMatch(/中文|English/u);
     expect(text).not.toMatch(/分钟|￥/u);
+    expect(markup).not.toContain('data-testid="unified-card-tags"');
+    expect(markup).toContain("line-clamp-2");
+    expect(markup).toContain("26px");
   });
 });

@@ -22,6 +22,8 @@ describe("UnifiedServiceInfoCard", () => {
     const text = markup.replace(/<[^>]+>/gu, "");
     expect(markup).toContain('data-testid="unified-info-card"');
     expect(markup).toContain('data-card-kind="service"');
+    expect(markup).toContain('data-card-size="tall"');
+    expect(markup).toContain("sm:aspect-[16/9]");
     expect(markup).toContain("#b8ff4a");
     expect(markup).toContain("relative z-20 flex items-center");
     expect(markup).toContain('data-testid="unified-card-metric-separator"');
@@ -55,6 +57,9 @@ describe("UnifiedServiceInfoCard", () => {
     })));
     expect(markup).toContain('data-testid="unified-card-duration-overlay"');
     expect(markup).toContain('data-testid="unified-card-price-overlay"');
+    expect(markup).toContain('data-testid="unified-card-image"');
+    expect(markup).toContain("scale-[1.015]");
+    expect(markup).toContain("rounded-bl-[18px]");
     expect(markup).toContain("60分钟");
     expect(markup).toContain("￥1,000");
     expect(markup.indexOf("</a>")).toBeLessThan(markup.indexOf("编辑服务"));

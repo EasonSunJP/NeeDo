@@ -315,6 +315,16 @@ describe("IM pages", () => {
     expect(componentsSource).toContain("对方不是你的好友，信息发送失败");
   });
 
+  it("gives every custom chat name card the same friend-card width", () => {
+    const renderStart = pagesSource.indexOf("const renderContactCard =");
+    const renderEnd = pagesSource.indexOf("const sendPresetMessage", renderStart);
+    const renderSource = pagesSource.slice(renderStart, renderEnd);
+
+    expect(renderStart).toBeGreaterThan(-1);
+    expect(renderSource).toContain('className="w-[min(520px,80vw)] max-w-full"');
+    expect(renderSource).toContain("<PlatformMembershipSimpleCard");
+  });
+
   it("routes message and visible group-member avatars by the represented account", () => {
     const roomStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const roomEnd = pagesSource.indexOf("function ImMessageSelectionHandles", roomStart);
