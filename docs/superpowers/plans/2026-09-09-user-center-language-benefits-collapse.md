@@ -66,7 +66,7 @@
 
 - [ ] **Step 1: Write failing collapsed-state and interaction tests**
 
-  Assert that status rows are absent initially, `1/4 已开启` is visible for the fixture, the header expands the list, and the plain-text `收起` action collapses it again without rounded or bordered classes.
+  Assert that status rows are absent initially, `1/4已开启` is visible for the fixture, the header expands the list, and the plain-text `收起` action collapses it again without rounded or bordered classes.
 
 - [ ] **Step 2: Run the component test and verify RED**
 

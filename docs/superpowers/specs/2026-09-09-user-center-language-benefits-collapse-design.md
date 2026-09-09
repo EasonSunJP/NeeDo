@@ -14,7 +14,7 @@ Correct the customer information card's language labels and make the membership-
 ## Membership-benefits interaction
 
 - The card is collapsed after every mount. Its header remains visible and is the expansion control.
-- Once the formal benefit payload is ready, the right side reads `<effective count>/<total count> 已开启` in Simplified Chinese; the label is localized for all five supported interface languages.
+- Once the formal benefit payload is ready, the right side reads `<effective count>/<total count>已开启` in Simplified Chinese; the label is localized for all five supported interface languages.
 - The enabled count is the number of entries whose server-authoritative `effective` field is `true`. The total is `payload.list.length`.
 - Clicking the collapsed card header expands the existing benefit list. Existing effective, unavailable, and disabled row semantics are unchanged.
 - The expanded list ends with a plain-text `收起` button. It has no capsule background or bordered container and collapses the list when activated.
