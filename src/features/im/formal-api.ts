@@ -1005,6 +1005,7 @@ function toContact(contact: RealtimeContact): ContactRelation {
     id: String(contact.id),
     ownerUserId: String(contact.ownerUserId),
     targetUserId: String(contact.contactUserId),
+    contactIdentityId: contact.contactIdentityId ? String(contact.contactIdentityId) : undefined,
     relationStatus: "active",
     source: contact.source,
     remarkName: contact.nickname ?? undefined,

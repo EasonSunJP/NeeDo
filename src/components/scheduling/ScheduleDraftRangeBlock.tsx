@@ -5,6 +5,7 @@ type ScheduleDraftRangeBlockProps = {
   action?: ReactNode;
   className?: string;
   compact?: boolean;
+  conflict?: boolean;
   onBlockPointerCancel?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onBlockPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onBlockPointerMove?: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -26,6 +27,7 @@ export function ScheduleDraftRangeBlock({
   action,
   className,
   compact = false,
+  conflict = false,
   onBlockPointerCancel,
   onBlockPointerDown,
   onBlockPointerMove,
@@ -41,21 +43,28 @@ export function ScheduleDraftRangeBlock({
   title
 }: ScheduleDraftRangeBlockProps) {
   const handleClassName =
-    cn("pointer-events-auto absolute left-1/2 z-30 grid h-7 -translate-x-1/2 touch-none place-items-center rounded-full text-[color:var(--client-primary)]", compact ? "w-16" : "w-28");
+    cn("pointer-events-auto absolute left-1/2 z-30 grid h-7 -translate-x-1/2 touch-none place-items-center rounded-full", conflict ? "text-red-500" : "text-[color:var(--client-primary)]", compact ? "w-16" : "w-28");
   const handleBarClassName = cn(
-    "h-1.5 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_70%,white_30%)] bg-[color:var(--client-primary)] shadow-[0_0_10px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]",
+    "h-1.5 rounded-full border",
+    conflict
+      ? "border-red-300 bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.32)]"
+      : "border-[color:color-mix(in_srgb,var(--client-primary)_70%,white_30%)] bg-[color:var(--client-primary)] shadow-[0_0_10px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]",
     compact ? "w-10" : "w-20"
   );
 
   return (
     <div
       className={cn(
-        "absolute z-20 overflow-visible border border-[color:color-mix(in_srgb,var(--client-primary)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_14%,var(--client-surface)_86%)] text-[color:var(--client-primary-strong)] shadow-[0_12px_28px_color-mix(in_srgb,var(--client-primary)_12%,transparent)]",
+        "absolute z-20 overflow-visible border",
+        conflict
+          ? "border-red-400 bg-[color:color-mix(in_srgb,#ef4444_16%,var(--client-surface)_84%)] text-red-700 shadow-[0_12px_28px_rgba(239,68,68,0.18)]"
+          : "border-[color:color-mix(in_srgb,var(--client-primary)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_14%,var(--client-surface)_86%)] text-[color:var(--client-primary-strong)] shadow-[0_12px_28px_color-mix(in_srgb,var(--client-primary)_12%,transparent)]",
         compact ? "rounded-[12px] px-1 py-1" : "rounded-[16px] px-3 py-1",
         onBlockPointerDown && "touch-none cursor-grab active:cursor-grabbing",
         className
       )}
       data-schedule-draft-range-block="true"
+      data-schedule-draft-conflict={conflict ? "true" : "false"}
       onPointerCancel={onBlockPointerCancel}
       onPointerDown={onBlockPointerDown}
       onPointerMove={onBlockPointerMove}

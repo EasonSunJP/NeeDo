@@ -45,12 +45,14 @@ describe("mobile scheduling mode actions", () => {
       '[data-schedule-wizard-bottom-actions="true"]'
     )!;
     expect(actions.className).toContain("fixed");
-    expect(actions.className).toContain("bottom-0");
+    expect(actions.className).toContain("schedule-wizard-floating-frame");
     expect(actions.style.maxWidth).toBe("var(--client-bottom-nav-max-width, 880px)");
     expect(actions.style.paddingLeft).toBe("var(--client-bottom-nav-inline-gap, 12px)");
     expect(actions.parentElement?.className).toContain(
-      "pb-[calc(env(safe-area-inset-bottom,0px)+8.5rem)]"
+      "pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]"
     );
+    expect(actions.firstElementChild?.className).toContain("schedule-wizard-floating-actions");
+    expect(actions.firstElementChild?.className).not.toContain("schedule-wizard-action-dock");
     expect([...actions.querySelectorAll("button")].map((button) => button.textContent?.trim()))
       .toEqual(["保存草稿", "下一步：规则设定"]);
 

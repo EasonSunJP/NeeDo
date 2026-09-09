@@ -13,6 +13,7 @@ import { AuditLogService } from "../services/audit-log.service";
 import { CalendarEventService } from "../services/calendar-event.service";
 import { PersonalIdentityScopeService } from "../services/personal-identity-scope.service";
 import {
+  calendarParticipantBusyQuerySchema,
   calendarEventCreateBodySchema,
   calendarEventDeleteQuerySchema,
   calendarEventIdParamSchema,
@@ -35,6 +36,8 @@ export const createCalendarEventRoutes = (config: AppConfig, dependencies: AppDe
 
   router.get("/calendar-events", authenticate(), createAuthorizeMiddleware(CALENDAR_EVENT_PERMISSIONS.read),
     validateRequest({ query: calendarEventListQuerySchema }), controller.list);
+  router.get("/calendar-events/participant-busy", authenticate(), createAuthorizeMiddleware(CALENDAR_EVENT_PERMISSIONS.read),
+    validateRequest({ query: calendarParticipantBusyQuerySchema }), controller.listParticipantBusy);
   router.post("/calendar-events", authenticate(), createAuthorizeMiddleware(CALENDAR_EVENT_PERMISSIONS.write),
     validateRequest({ body: calendarEventCreateBodySchema }), controller.create);
   router.patch("/calendar-events/:id", authenticate(), createAuthorizeMiddleware(CALENDAR_EVENT_PERMISSIONS.write),

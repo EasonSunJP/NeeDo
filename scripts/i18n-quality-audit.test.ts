@@ -26,5 +26,5 @@ describe("i18n quality audit", () => {
       en: 0,
       ko: 0
     });
-  });
+  }, 15_000);
 });

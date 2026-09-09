@@ -200,6 +200,15 @@ export type DispatchFeedbackMatrixRow = {
   unavailableHours: number;
 };
 
+export type DispatchPlanningFeedbackRow = {
+  technicianId: string;
+  hasSubmitted: boolean;
+  hasUpdated: boolean;
+  hasException: boolean;
+  note: string;
+  unavailableHours: number;
+};
+
 const storageKey = "needo.dispatch-center.formal-state.v1";
 const listeners = new Set<() => void>();
 let hydrated = false;
@@ -1512,6 +1521,7 @@ function createBaseCycle(storeId: string, seed?: DispatchCycle | null): Dispatch
   const reference = seed ?? getPlanningCycle(storeId) ?? getActiveExecutionCycle(storeId);
   const periodStart = reference ? addDays(reference.periodEnd, 1) : addDays(dispatchReferenceDateKey, 7);
   const periodEnd = addDays(periodStart, 29);
+  const feedbackDeadline = `${addDays(periodStart, -2)}T18:00:00+09:00`;
   const templateType = reference?.templateType ?? "week";
 
   return {
@@ -1526,7 +1536,7 @@ function createBaseCycle(storeId: string, seed?: DispatchCycle | null): Dispatch
     periodStart,
     periodEnd,
     targetTechnicianIds: reference?.targetTechnicianIds ?? getStoreTechnicianIdsForDispatch(storeId),
-    feedbackDeadline: null,
+    feedbackDeadline,
     templateMatrix: cloneValue(reference?.templateMatrix ?? fillMatrixHours(templateType, [{ dayIndex: 1, startHour: 10, endHour: 22 }])),
     regularHolidayWeekdays: [...(reference?.regularHolidayWeekdays ?? [3])],
     ruleSet: cloneValue(reference?.ruleSet ?? buildDefaultRuleSet()),
@@ -2180,11 +2190,11 @@ export function launchDispatchCycle(cycleId: string, operatorId: string) {
   const storeDirectAssign = cycle.mode === "STORE_ASSIGN_FINAL";
   const nextCycle: DispatchCycle = {
     ...cycle,
-    status: storeDirectAssign ? getPublishedCycleStatus(cycle) : "final_confirming",
-    currentStep: 4,
+    status: "collecting_feedback",
+    currentStep: 3,
     launchedAt: dispatchReferenceNow,
-    finalizedAt: storeDirectAssign ? dispatchReferenceNow : cycle.finalizedAt,
-    activeAt: storeDirectAssign && getPublishedCycleStatus(cycle) === "active" ? dispatchReferenceNow : cycle.activeAt,
+    finalizedAt: null,
+    activeAt: null,
     updatedAt: dispatchReferenceNow
   };
 
@@ -2199,7 +2209,7 @@ export function launchDispatchCycle(cycleId: string, operatorId: string) {
     targetId: cycleId,
     before: JSON.stringify(cycle),
     after: JSON.stringify(nextCycle),
-    reason: storeDirectAssign ? "商户直接排班保存即正式生效" : "进入系统自动确认"
+    reason: storeDirectAssign ? "商户排班完成，进入技师确认与请假调整反馈" : "技师自主排班开始，收集下一周期排班完成状态"
   });
   notify();
   return { ok: true, cycle: nextCycle };
@@ -2211,6 +2221,10 @@ export function sendDispatchFeedbackReminder(cycleId: string, operatorId: string
 
   if (!cycle) {
     return { ok: false, message: "找不到排班周期。" };
+  }
+
+  if (cycle.status !== "collecting_feedback") {
+    return { ok: false, message: "当前阶段不允许提醒反馈。" };
   }
 
   logAudit({
@@ -2232,6 +2246,10 @@ export function closeDispatchFeedback(cycleId: string, operatorId: string) {
 
   if (!cycle) {
     return { ok: false, message: "找不到排班周期。" };
+  }
+
+  if (cycle.status !== "collecting_feedback") {
+    return { ok: false, message: "当前阶段不允许结束反馈收集。" };
   }
 
   const nextCycle = {
@@ -3165,6 +3183,32 @@ export function getPlanningCycleForStore(storeId: string) {
 export function getPlanningProgressForCycle(cycleId: string) {
   hydrate();
   return getPlanningProgress(cycleId);
+}
+
+export function getPlanningFeedbackRowsForCycle(cycleId: string): DispatchPlanningFeedbackRow[] {
+  hydrate();
+  const cycle = getCycleById(cycleId);
+
+  if (!cycle) {
+    return [];
+  }
+
+  return cycle.targetTechnicianIds.map((technicianId) => {
+    const entries = state.feedbacks.filter(
+      (entry) => entry.cycleId === cycleId && entry.technicianId === technicianId
+    );
+    const note = entries.find((entry) => entry.note.trim())?.note.trim() ?? "";
+    const unavailableHours = entries.filter((entry) => entry.status === "unavailable").length;
+
+    return {
+      technicianId,
+      hasSubmitted: entries.some((entry) => Boolean(entry.submittedAt)),
+      hasUpdated: entries.some((entry) => entry.status === "updated"),
+      hasException: unavailableHours > 0 || Boolean(note),
+      note,
+      unavailableHours
+    };
+  });
 }
 
 export function getDispatchCycleList(storeId: string) {

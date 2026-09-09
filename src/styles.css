@@ -4239,19 +4239,17 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   color: var(--schedule-highlight-ink, #07100d) !important;
 }
 
-.client-shell .schedule-wizard-action-dock {
-  align-items: center;
-  border: 1px solid color-mix(in srgb, var(--client-line) 78%, transparent);
-  background: color-mix(in srgb, var(--client-bg) 94%, var(--client-surface) 6%);
-  box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 color-mix(in srgb, var(--client-text) 6%, transparent);
-  -webkit-backdrop-filter: blur(18px) saturate(1.24);
-  backdrop-filter: blur(18px) saturate(1.24);
+.client-shell .schedule-wizard-floating-frame {
+  bottom: 0 !important;
 }
 
-.client-shell .schedule-wizard-action-dock > button,
-.client-shell .schedule-wizard-action-dock > a {
+.client-shell .schedule-wizard-floating-actions {
+  align-items: center;
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
+}
+
+.client-shell .schedule-wizard-floating-actions > button,
+.client-shell .schedule-wizard-floating-actions > a {
   align-self: center;
   display: inline-flex;
   align-items: center;
@@ -4263,7 +4261,6 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   text-align: center;
 }
 
-.client-shell .schedule-wizard-action-shell,
 .client-shell .client-bottom-action-shell {
   bottom: var(--client-main-nav-action-offset) !important;
   z-index: 40 !important;

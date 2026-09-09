@@ -1,0 +1,17 @@
+export const calendarParticipantTranslations = {
+  "选择参加者": { "zh-Hant": "選擇參加者", ja: "参加者を選択", en: "Select participants", ko: "참가자 선택" },
+  "关闭参加者选择": { "zh-Hant": "關閉參加者選擇", ja: "参加者選択を閉じる", en: "Close participant selection", ko: "참가자 선택 닫기" },
+  "搜索参加者": { "zh-Hant": "搜尋參加者", ja: "参加者を検索", en: "Search participants", ko: "참가자 검색" },
+  "多人日程": { "zh-Hant": "多人日程", ja: "複数人の予定", en: "Group schedule", ko: "여러 사람 일정" },
+  "完成选择": { "zh-Hant": "完成選擇", ja: "選択を完了", en: "Finish selection", ko: "선택 완료" },
+  "请至少选择一位联系人后再进入下一步。": { "zh-Hant": "請至少選擇一位聯絡人後再進入下一步。", ja: "次へ進む前に連絡先を1人以上選択してください。", en: "Select at least one contact before continuing.", ko: "다음 단계로 이동하기 전에 연락처를 한 명 이상 선택하세요." },
+  "多人日程确认仅支持同日时间，请先返回新增日程调整结束日期。": { "zh-Hant": "多人日程確認僅支援同日時間，請先返回新增日程調整結束日期。", ja: "複数人の予定確認は同日内の時間のみ対応しています。新規予定に戻り、終了日を調整してください。", en: "Group schedule confirmation supports same-day times only. Return to the new event and adjust the end date.", ko: "여러 사람 일정 확인은 같은 날의 시간만 지원합니다. 새 일정으로 돌아가 종료일을 조정하세요." },
+  "正在确认参加者日程…": { "zh-Hant": "正在確認參加者日程…", ja: "参加者の予定を確認しています…", en: "Checking participant schedules…", ko: "참가자 일정을 확인하는 중…" },
+  "没有符合条件的联系人": { "zh-Hant": "沒有符合條件的聯絡人", ja: "条件に一致する連絡先がありません", en: "No matching contacts", ko: "조건에 맞는 연락처가 없습니다" },
+  "当前用户": { "zh-Hant": "目前使用者", ja: "現在のユーザー", en: "Current user", ko: "현재 사용자" },
+  "我": { "zh-Hant": "我", ja: "自分", en: "Me", ko: "나" },
+  "参加者占用时间读取失败：": { "zh-Hant": "參加者佔用時間讀取失敗：", ja: "参加者の予定を取得できませんでした：", en: "Could not load participant availability: ", ko: "참가자 일정 정보를 불러오지 못했습니다: " },
+  "位参加者在当前时间已有安排。仍可完成选择并继续创建。": { "zh-Hant": "位參加者在目前時間已有安排。仍可完成選擇並繼續建立。", ja: "人の参加者にはこの時間に既に予定があります。選択を完了して作成を続けることはできます。", en: "participants already have plans at this time. You can still finish selecting and continue.", ko: "명의 참가자는 이 시간에 이미 일정이 있습니다. 선택을 완료하고 계속 만들 수 있습니다." },
+  "时间冲突（仍可继续）": { "zh-Hant": "時間衝突（仍可繼續）", ja: "時間が重複しています（続行可能）", en: "Time conflict (you can continue)", ko: "시간 충돌(계속 가능)" },
+  "占用": { "zh-Hant": "佔用", ja: "予定あり", en: "Busy", ko: "일정 있음" },
+} as const;

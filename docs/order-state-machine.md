@@ -208,3 +208,28 @@ ENV_FILE=.env.dev npm run check:manual-payment-flow
 ```
 
 It verifies amount matching, cross-shop hiding, confirmation/refund idempotency, `refundPending` cancellation behavior and order-finance synchronization before exact cleanup.
+
+## Unified calendar and multi-participant scheduling
+
+The user, technician, merchant, and participant-confirmation surfaces share the existing `UnifiedUserCalendar` timeline and draft-range renderer. Technician availability is not rendered as a normal event card: adjacent or overlapping availability rows are merged per technician lane and displayed as one narrow continuous strip on the left edge of that lane. Booking and personal-event cards keep the normal content area to the right. Availability may overlap a real booking and is never itself treated as a conflict.
+
+The shared event editor opens a two-step participant flow:
+
+- The contact step searches real active contacts and filters them by common, contact-tag, or group membership.
+- The confirmation step displays the current identity and selected contacts as parallel lanes, with one controlled draft range spanning every lane.
+- Moving or resizing that single range updates the original editor draft in 15-minute increments.
+- Strict overlap is `candidateStart < existingEnd && candidateEnd > existingStart`; adjacent ranges do not conflict.
+- Conflict is a red visual warning only. It does not disable “完成选择” or the final event save action.
+
+The authenticated privacy endpoint is:
+
+```text
+GET /api/v1/calendar-events/participant-busy
+  ?from=<ISO-8601>
+  &to=<ISO-8601>
+  &participant_identity_ids=<comma-separated identity ids>
+  &page=1
+  &page_size=100
+```
+
+It requires `calendar-events:read`, validates a maximum of 20 distinct positive identities and a maximum 24-hour query window, and authorizes every requested identity as an active, unblocked, non-deleted contact of the current personal identity. Any unauthorized identity rejects the whole request with `403`; partial disclosure is not allowed. The paginated result merges formal calendar events with confirmed/in-service booking occupancy before sorting. Successful rows contain only `participantIdentityId`, `startsAt`, `endsAt`, and `status: "locked"`. Event IDs, titles, services, locations, customers, notes, prices, and source identifiers never leave the repository projection.

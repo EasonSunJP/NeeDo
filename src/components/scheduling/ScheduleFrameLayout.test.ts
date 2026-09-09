@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import scheduleCycleBoardSource from "./ScheduleCycleBoard.tsx?raw";
 import cycleBoardSource from "./ScheduleCycleCalendarBoard.tsx?raw";
 import scheduleGridSource from "../../features/dispatch-center/components/ScheduleGrid.tsx?raw";
 import stepModeSelectionSource from "../../features/scheduling/automation/StepModeSelection.tsx?raw";
+import stepCreateCycleSource from "../../features/scheduling/automation/StepCreateCycle.tsx?raw";
+import stepFinalConfirmationSource from "../../features/scheduling/automation/StepFinalConfirmation.tsx?raw";
+import floatingActionsSource from "../../features/scheduling/automation/ScheduleFloatingActions.tsx?raw";
 import scheduleSearchFieldSource from "./ScheduleSearchField.tsx?raw";
 import unifiedCalendarSource from "./UnifiedUserCalendar.tsx?raw";
 import technicianScheduleSource from "../../features/technician-schedule/FormalTechnicianScheduleWorkspace.tsx?raw";
+const stylesSource = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 describe("shared schedule frame layout", () => {
   it("does not draw an outer frame around cycle calendar boards", () => {
@@ -92,15 +97,15 @@ describe("shared schedule frame layout", () => {
     expect(stepModeSelectionSource).toContain("<InfoTooltipTrigger");
   });
 
-  it("floats mobile mode-selection actions in the same safe-area frame as the home navigation", () => {
-    expect(stepModeSelectionSource).toContain('data-schedule-wizard-bottom-actions="true"');
-    expect(stepModeSelectionSource).toContain('"pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full pt-10"');
-    expect(stepModeSelectionSource).toContain('maxWidth: "var(--client-bottom-nav-max-width, 880px)"');
-    expect(stepModeSelectionSource).toContain('paddingLeft: "var(--client-bottom-nav-inline-gap, 12px)"');
-    expect(stepModeSelectionSource).toContain('pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)]');
-    expect(stepModeSelectionSource).toContain('isMobileSurface && "pb-[calc(env(safe-area-inset-bottom,0px)+8.5rem)]"');
-    expect(stepModeSelectionSource).toContain('isMobileSurface ? "w-full min-w-0" : "min-w-[132px]"');
-    expect(stepModeSelectionSource).toContain('isMobileSurface ? "w-full min-w-0" : "min-w-[196px]"');
+  it("uses one lightweight safe-area action frame on every mobile scheduling step", () => {
+    [stepModeSelectionSource, stepCreateCycleSource, stepFinalConfirmationSource].forEach((source) => {
+      expect(source).toContain("<ScheduleFloatingActions");
+      expect(source).not.toContain("schedule-wizard-action-dock");
+    });
+    expect(floatingActionsSource).toContain('data-schedule-wizard-bottom-actions="true"');
+    expect(floatingActionsSource).toContain("schedule-wizard-floating-actions");
+    expect(floatingActionsSource).toContain('maxWidth: "var(--client-bottom-nav-max-width, 880px)"');
+    expect(stylesSource).toContain(".client-shell .schedule-wizard-floating-frame {\n  bottom: 0 !important;");
   });
 
   it("does not apply page theme background classes to the user calendar table itself", () => {

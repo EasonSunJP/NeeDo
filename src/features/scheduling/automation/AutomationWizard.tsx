@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { ScheduleCycleBoard } from "../../../components/scheduling/ScheduleCycleBoard";
@@ -7,29 +7,29 @@ import {
   isSchedulingLiveCycle,
   resolveSchedulingCycleSlots,
   resolveSchedulingCurrentCycle,
-  resolveSchedulingCycleTone,
-  SchedulingCycleTabs,
-  type SchedulingCycleSlotKey
+  resolveSchedulingCycleTone
 } from "../../../components/scheduling/SchedulingCycleTabs";
 import { cn } from "../../../lib/utils";
+import type { Technician } from "../../../types/domain";
 import {
   cancelDispatchCycle,
   createDispatchCycleDraft,
   getDispatchCycleLimitSummary,
   getDispatchCycleList,
-  saveDispatchCycleDraft,
   useDispatchCenterStore
 } from "../../dispatch-center/store";
 import { getCycleModeLabel, getCycleStatusLabel, type DispatchCycle, type DispatchStep } from "../../dispatch-center/domain";
 import { StepCreateCycle } from "./StepCreateCycle";
 import { StepFinalConfirmation } from "./StepFinalConfirmation";
 import { StepModeSelection } from "./StepModeSelection";
+import { SchedulePlanningOverview } from "./SchedulePlanningOverview";
 
-type CycleSlot = SchedulingCycleSlotKey;
+type PlanningView = "home" | "confirmation" | "builder";
 
 const stepItems: Array<{ step: DispatchStep; label: string }> = [
   { step: 1, label: "模式选择" },
   { step: 2, label: "规则设定" },
+  { step: 3, label: "技师反馈" },
   { step: 4, label: "最终确认" }
 ];
 
@@ -86,32 +86,6 @@ function CompactStepProgress({ currentStep, surface }: { currentStep: DispatchSt
   );
 }
 
-function EmptyCyclePanel({
-  canCreate,
-  isMobileSurface,
-  onCreate,
-  slotHeader,
-  title
-}: {
-  canCreate: boolean;
-  isMobileSurface: boolean;
-  onCreate: () => void;
-  slotHeader: ReactNode;
-  title: string;
-}) {
-  return (
-    <div className={cn("merchant-dispatch-cycle-cluster rounded-[28px] border p-3 sm:p-4", isMobileSurface ? "border-line bg-white/80" : "")}>
-      {slotHeader}
-      <h3 className="mt-5 text-lg font-black">{title}</h3>
-      <div className="mt-3">
-        <Button disabled={!canCreate} onClick={onCreate}>
-          新建周期
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function CycleWorkflowPanel({
   cycle,
   onDelete,
@@ -119,7 +93,6 @@ function CycleWorkflowPanel({
   hideFinalConfirmationBoard = false,
   operatorId,
   scheduleStickyTop,
-  slotHeader,
   storeId,
   surface
 }: {
@@ -129,7 +102,6 @@ function CycleWorkflowPanel({
   onMessage: (message: string) => void;
   operatorId: string;
   scheduleStickyTop?: string;
-  slotHeader?: ReactNode;
   storeId: string;
   surface: "desktop" | "mobile";
 }) {
@@ -139,8 +111,7 @@ function CycleWorkflowPanel({
   return (
     <div className="space-y-4">
       <div className={cn("merchant-dispatch-cycle-cluster rounded-[28px] border p-3 sm:p-4", isMobileSurface ? "border-line bg-white/80" : "")}>
-        {slotHeader}
-        <div className={cn(slotHeader ? "mt-5" : "")}>
+        <div>
           <CompactStepProgress currentStep={cycle.currentStep} surface={surface} />
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge tone={resolveSchedulingCycleTone(cycle)}>{getCycleStatusLabel(cycle.status)}</Badge>
@@ -179,15 +150,18 @@ export function AutomationWizard({
   operatorId,
   scheduleStickyTop,
   storeId,
-  surface
+  surface,
+  technicians = []
 }: {
   operatorId: string;
   scheduleStickyTop?: string;
   storeId: string;
   surface: "desktop" | "mobile";
+  technicians?: Technician[];
 }) {
   const [message, setMessage] = useState<string | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<CycleSlot>("next");
+  const [view, setView] = useState<PlanningView>("home");
+  const [builderCycleId, setBuilderCycleId] = useState<string | null>(null);
   const dispatchSnapshot = useDispatchCenterStore();
   const cycles = useMemo(
     () => getDispatchCycleList(storeId).filter(isSchedulingLiveCycle).sort((left, right) => left.periodStart.localeCompare(right.periodStart)),
@@ -198,73 +172,30 @@ export function AutomationWizard({
   const limitSummary = getDispatchCycleLimitSummary(storeId);
   const isMobileSurface = surface === "mobile";
   const alertClass = isMobileSurface ? "bg-lemon/25 text-[#795b00]" : "merchant-dispatch-alert";
-  const activeCycle = selectedSlot === "next" ? nextCycle : builderCycle;
-  const activeCycleUsesBoard = activeCycle ? isScheduleBoardCycle(activeCycle) : false;
-  const shouldShowNextCycleBoard = selectedSlot === "next" && Boolean(activeCycle) && !activeCycleUsesBoard;
-  const activeContactScope = selectedSlot === "next" ? "next" : "builder";
+  const overviewCycle = nextCycle ?? builderCycle ?? (currentCycle && currentCycle.status !== "active" ? currentCycle : null);
+  const builderViewCycle = cycles.find((cycle) => cycle.id === builderCycleId) ?? builderCycle;
   const contactExcludedRanges = useMemo(
     () => [currentCycle, nextCycle]
       .filter((item): item is DispatchCycle => Boolean(item))
       .map((item) => ({ start: item.periodStart, end: item.periodEnd })),
     [currentCycle, nextCycle]
   );
-  const shouldShowStandaloneContactPanel = isMobileSurface && Boolean(activeCycle) && !activeCycleUsesBoard && !shouldShowNextCycleBoard;
-  const builderLabel = builderCycle?.status === "confirmed" || builderCycle?.status === "final_confirmed" ? "待执行周期" : "新建周期";
-  const openBuilderCycleFromModeSelection = (cycle: DispatchCycle) => {
-    if (cycle.currentStep <= 1 && cycle.status === "draft") {
-      setSelectedSlot("builder");
+
+  const createCycle = () => {
+    if (builderCycle) {
+      setBuilderCycleId(builderCycle.id);
+      setView("builder");
       return;
     }
 
-    const result = saveDispatchCycleDraft({
-      ...cycle,
-      status: "draft",
-      currentStep: 1
-    });
-
-    setSelectedSlot("builder");
-    setMessage(result.ok ? "新建周期已回到模式选择。" : result.message ?? "无法回到模式选择。");
-  };
-  const slotHeader = (
-    <SchedulingCycleTabs
-      activeSlot={selectedSlot}
-      slots={[
-        {
-          key: "next",
-          cycle: nextCycle,
-          disabled: !nextCycle,
-          label: "下一周期",
-          onClick: () => setSelectedSlot("next"),
-          tone: resolveSchedulingCycleTone(nextCycle)
-        },
-        {
-          key: "builder",
-          cycle: builderCycle,
-          disabled: !builderCycle && limitSummary.limitReached,
-          label: builderLabel,
-          onClick: () => {
-            if (builderCycle) {
-              openBuilderCycleFromModeSelection(builderCycle);
-              return;
-            }
-
-            createCycle();
-          },
-          tone: resolveSchedulingCycleTone(builderCycle)
-        }
-      ]}
-      surface={surface}
-    />
-  );
-
-  const createCycle = () => {
-    if (limitSummary.limitReached || builderCycle) {
+    if (limitSummary.limitReached) {
       setMessage("当前已有执行周期和待执行周期，无法继续新建。");
       return;
     }
 
     const cycle = createDispatchCycleDraft(storeId);
-    setSelectedSlot("builder");
+    setBuilderCycleId(cycle.id);
+    setView("builder");
     setMessage(`${cycle.name} 已创建。`);
   };
 
@@ -276,81 +207,94 @@ export function AutomationWizard({
       return;
     }
 
-    setSelectedSlot("builder");
+    setBuilderCycleId(null);
+    setView("home");
     setMessage("周期已删除，可以重新新建周期。");
   };
 
   return (
-    <section className="space-y-4">
-      <div>
-        {activeCycle ? (
-          activeCycleUsesBoard || shouldShowNextCycleBoard ? (
-            <div className="space-y-4">
-              {shouldShowNextCycleBoard ? (
-                <CycleWorkflowPanel
-                  cycle={activeCycle}
-                  hideFinalConfirmationBoard
-                  onDelete={deleteCycle}
-                  onMessage={setMessage}
-                  operatorId={operatorId}
-                  scheduleStickyTop={scheduleStickyTop}
-                  slotHeader={slotHeader}
-                  storeId={storeId}
-                  surface={surface}
-                />
-              ) : null}
-              <ScheduleCycleBoard
-                cycle={activeCycle}
-                drawerTitle={selectedSlot === "next" ? "下一周期排班表" : "修改排班"}
-                editingToggle={activeCycleUsesBoard}
-                headerContent={shouldShowNextCycleBoard ? undefined : slotHeader}
-                onMessage={setMessage}
-                operatorId={operatorId}
-                scheduleStickyTop={scheduleStickyTop}
-                selectable={activeCycleUsesBoard}
-                storeId={storeId}
-                surface={surface}
-                toolbarActions={
-                  activeCycleUsesBoard && activeCycle.status !== "active" ? (
-                    <Button onClick={() => deleteCycle(activeCycle)} size="sm" variant="danger">
-                      删除周期
-                    </Button>
-                  ) : null
-                }
-              />
+    <section className="space-y-4" data-schedule-planning-view={view}>
+      {view === "home" ? (
+        <SchedulePlanningOverview
+          cycle={overviewCycle}
+          hasBuilderCycle={Boolean(builderCycle)}
+          onMessage={setMessage}
+          onOpenBuilder={createCycle}
+          onOpenConfirmation={() => setView("confirmation")}
+          operatorId={operatorId}
+          storeId={storeId}
+          surface={surface}
+          technicians={technicians}
+        />
+      ) : null}
+
+      {view === "confirmation" ? (
+        <div className="space-y-4">
+          <div className={cn("flex items-center justify-between gap-3 rounded-[24px] border p-3", isMobileSurface ? "border-line bg-white/90 shadow-panel" : "merchant-dispatch-surface")}>
+            <div>
+              <p className="text-xs font-black text-ink/45">下一周期确认</p>
+              <h2 className="mt-1 text-base font-black">下一周期排班表</h2>
             </div>
+            <Button onClick={() => setView("home")} size="sm" variant="secondary">返回排班首页</Button>
+          </div>
+          {overviewCycle ? (
+            <ScheduleCycleBoard
+              cycle={overviewCycle}
+              drawerTitle="下一周期排班表"
+              onMessage={setMessage}
+              operatorId={operatorId}
+              scheduleStickyTop={scheduleStickyTop}
+              storeId={storeId}
+              surface={surface}
+            />
           ) : (
-            <div className="space-y-4">
-              <CycleWorkflowPanel
-                cycle={activeCycle}
-                onDelete={deleteCycle}
-                onMessage={setMessage}
-                operatorId={operatorId}
-                scheduleStickyTop={scheduleStickyTop}
-                slotHeader={slotHeader}
-                storeId={storeId}
-                surface={surface}
-              />
-              {shouldShowStandaloneContactPanel ? (
-                <ScheduleContactInfoPanel
-                  cycle={activeCycle}
-                  excludedRanges={contactExcludedRanges}
-                  scope={activeContactScope}
-                  storeId={storeId}
-                />
-              ) : null}
+            <p className="rounded-[20px] border border-line bg-white/80 px-4 py-3 text-sm font-semibold text-ink/55">下一周期尚未创建。</p>
+          )}
+        </div>
+      ) : null}
+
+      {view === "builder" ? (
+        builderViewCycle ? (
+          <div className="space-y-4">
+            <div className={cn("flex items-center justify-between gap-3 rounded-[24px] border p-3", isMobileSurface ? "border-line bg-white/90 shadow-panel" : "merchant-dispatch-surface")}>
+              <div>
+                <p className="text-xs font-black text-ink/45">新建周期</p>
+                <h2 className="mt-1 text-base font-black">{builderViewCycle.name}</h2>
+              </div>
+              <Button onClick={() => setView("home")} size="sm" variant="secondary">返回排班首页</Button>
             </div>
-          )
+            <CycleWorkflowPanel
+              cycle={builderViewCycle}
+              onDelete={deleteCycle}
+              onMessage={setMessage}
+              operatorId={operatorId}
+              scheduleStickyTop={scheduleStickyTop}
+              storeId={storeId}
+              surface={surface}
+            />
+            {builderViewCycle.currentStep === 3 ? (
+              <div className={cn("rounded-[24px] border p-4", isMobileSurface ? "border-line bg-white/90 shadow-panel" : "merchant-dispatch-surface")}>
+                <h3 className="text-base font-black">已进入技师反馈</h3>
+                <p className="mt-2 text-sm leading-6 text-ink/60">返回排班首页可查看完成或确认进度，并提醒未反馈技师。</p>
+                <Button className="mt-3" onClick={() => setView("home")} size="sm">查看反馈进度</Button>
+              </div>
+            ) : null}
+            {isMobileSurface && !isScheduleBoardCycle(builderViewCycle) && builderViewCycle.currentStep !== 3 ? (
+              <ScheduleContactInfoPanel
+                cycle={builderViewCycle}
+                excludedRanges={contactExcludedRanges}
+                scope="builder"
+                storeId={storeId}
+              />
+            ) : null}
+          </div>
         ) : (
-          <EmptyCyclePanel
-            canCreate={selectedSlot === "builder" && !limitSummary.limitReached}
-            isMobileSurface={isMobileSurface}
-            onCreate={createCycle}
-            slotHeader={slotHeader}
-            title={selectedSlot === "next" ? "下一周期尚未确定" : "尚未新建周期"}
-          />
-        )}
-      </div>
+          <div className="rounded-[24px] border border-line bg-white/80 p-4">
+            <h2 className="text-lg font-black">尚未新建周期</h2>
+            <Button className="mt-3" disabled={limitSummary.limitReached} onClick={createCycle}>新建周期</Button>
+          </div>
+        )
+      ) : null}
       {message ? <p className={cn("mt-4 rounded-2xl px-4 py-3 text-sm font-semibold", alertClass)}>{message}</p> : null}
     </section>
   );
