@@ -27,6 +27,10 @@
 - Modify: `src/shared/profile-card/UnifiedEntityInfoCard.tsx`
 - Modify: `src/shared/service-card/UnifiedServiceInfoCard.tsx`
 - Modify: `src/shared/service-card/ServiceCardEngagementActions.tsx`
+- Modify: `src/features/im/pages.tsx`
+- Modify: `src/features/im/pages.test.ts`
+- Modify: `src/features/im/components.tsx`
+- Create: `src/features/im/components.forwarded-cards.test.tsx`
 - Modify: `src/shared/profile-card/SocialProfileMiniCard.test.ts`
 - Modify: `src/shared/service-card/ServiceCardEngagementActions.test.ts`
 - Modify: `src/shared/profile-card/UnifiedEntityInfoCard.test.tsx`
@@ -65,7 +69,9 @@ npm test -- --run \
   src/shared/profile-card/SocialProfileMiniCard.test.ts \
   src/shared/service-card/ServiceCardEngagementActions.test.ts \
   src/shared/profile-card/UnifiedEntityInfoCard.test.tsx \
-  src/shared/service-card/UnifiedServiceInfoCard.test.tsx
+  src/shared/service-card/UnifiedServiceInfoCard.test.tsx \
+  src/features/im/pages.test.ts \
+  src/features/im/components.forwarded-cards.test.tsx
 ```
 
 Expected: FAIL because the shared frame and card details still contain fixed dark/neon colors.
@@ -118,6 +124,24 @@ text-[color:var(--client-primary)]
 hover:bg-[color:var(--client-primary-soft)]
 ```
 
+In `src/features/im/pages.tsx`, change the custom contact/name-card action label class from fixed `text-white/68` to `text-[color:var(--client-muted)]`. In `src/features/im/pages.test.ts`, keep the existing custom-card width assertion and add:
+
+```ts
+expect(renderSource).toContain("text-[color:var(--client-muted)]");
+expect(renderSource).not.toContain("text-white/68");
+```
+
+This covers “我的名片” and “好友” labels rendered inside the shared themed name card.
+
+In `src/features/im/components.tsx`, make the `social-post-card` message use the same theme-aware outer bubble treatment and exact responsive width contract as `chat-record`:
+
+- only `contact-card` bypasses the normal message bubble surface;
+- the `chat-record` and `social-post-card` message columns both use the existing forwarded-record envelope (`w-full max-w-[78%]`), and both bubbles fill that envelope with `w-full max-w-full`; do not borrow the narrower voice-message `max-w-[320px]` cap;
+- the forwarded dynamic card uses `w-full` instead of the fixed `w-[292px] max-w-[82vw]` width;
+- the outer outgoing/incoming shell continues to use `--client-primary`, `--client-primary-contrast`, `--client-surface`, and `--client-text`; the inner post card continues to use `--client-surface`, `--client-line`, `--client-text`, `--client-muted`, and `--client-primary`.
+
+In `src/features/im/components.forwarded-cards.test.tsx`, render one outgoing `chat-record` message and one outgoing `social-post-card` message under `MemoryRouter`. Assert identical column/bubble width classes, assert the social post receives the theme-aware bubble shell, and assert the fixed `w-[292px]` class is absent.
+
 - [ ] **Step 5: Run Task 1 tests and lint**
 
 Run the Step 2 test command again, then run `npm run lint`.
@@ -127,7 +151,7 @@ Expected: four suites PASS; TypeScript lint PASS; existing height and completed-
 - [ ] **Step 6: Commit Task 1**
 
 ```bash
-git add src/shared/info-card-system/UnifiedInfoCardFrame.tsx src/shared/profile-card/UnifiedEntityInfoCard.tsx src/shared/service-card/UnifiedServiceInfoCard.tsx src/shared/service-card/ServiceCardEngagementActions.tsx src/shared/profile-card/SocialProfileMiniCard.test.ts src/shared/service-card/ServiceCardEngagementActions.test.ts src/shared/profile-card/UnifiedEntityInfoCard.test.tsx src/shared/service-card/UnifiedServiceInfoCard.test.tsx
+git add src/shared/info-card-system/UnifiedInfoCardFrame.tsx src/shared/profile-card/UnifiedEntityInfoCard.tsx src/shared/service-card/UnifiedServiceInfoCard.tsx src/shared/service-card/ServiceCardEngagementActions.tsx src/features/im/pages.tsx src/features/im/pages.test.ts src/features/im/components.tsx src/features/im/components.forwarded-cards.test.tsx src/shared/profile-card/SocialProfileMiniCard.test.ts src/shared/service-card/ServiceCardEngagementActions.test.ts src/shared/profile-card/UnifiedEntityInfoCard.test.tsx src/shared/service-card/UnifiedServiceInfoCard.test.tsx
 git commit -m "fix(cards): follow active UI theme"
 ```
 
