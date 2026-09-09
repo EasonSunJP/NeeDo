@@ -148,7 +148,7 @@ export function MerchantPrimaryNavCarousel({
             {page.map((module) => (
               <Link
                 className={cn(
-                  "relative grid min-h-[82px] grid-rows-[34px,1fr] items-start justify-items-center gap-1.5 rounded-[18px] border px-2 py-3 text-center transition",
+                  "relative grid h-[76px] grid-rows-[30px_28px] items-start justify-items-center gap-1 rounded-[18px] border px-2 py-1.5 text-center transition sm:h-auto sm:min-h-[82px] sm:grid-rows-[34px_1fr] sm:gap-1.5 sm:py-3",
                   activeModule === module.key
                     ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
                     : "border-line bg-white text-[color:var(--client-text)] hover:border-[color:var(--client-primary)]"
@@ -163,7 +163,7 @@ export function MerchantPrimaryNavCarousel({
                     className="pointer-events-none absolute -right-1 -top-1 z-30 h-4 w-4 rounded-full border-2 border-[color:var(--client-surface)] bg-red-500 shadow-[0_6px_16px_rgba(239,68,68,0.5)]"
                   />
                 ) : null}
-                <span className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-[13px] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]">
+                <span className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[13px] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)] sm:h-[34px] sm:w-[34px]">
                   <MerchantPrimaryIcon icon={module.icon} />
                 </span>
                 <span className="min-w-0">
@@ -176,7 +176,7 @@ export function MerchantPrimaryNavCarousel({
               Array.from({ length: 4 - page.length }).map((_, index) => (
                 <div
                   aria-hidden="true"
-                  className="min-h-[82px] rounded-[18px] border border-dashed border-line bg-paper/50 md:hidden"
+                  className="h-[76px] rounded-[18px] border border-dashed border-line bg-paper/50 sm:h-auto sm:min-h-[82px] md:hidden"
                   key={`merchant-primary-empty-${pageIndex}-${index}`}
                 />
               ))

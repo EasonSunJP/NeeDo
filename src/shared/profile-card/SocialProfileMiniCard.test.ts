@@ -79,7 +79,17 @@ describe("SocialProfileMiniCard unified delegation", () => {
     expect(cardSource).not.toContain("SimpleRatingBadge");
     expect(cardSource).not.toContain("SocialStatsLine");
     expect(frameSource).toContain('data-testid="unified-info-card"');
-    expect(frameSource).toContain("#b8ff4a");
+    expect(frameSource).toContain("var(--client-surface)");
+    expect(frameSource).toContain("var(--client-bg)");
+    expect(frameSource).toContain("var(--client-line)");
+    expect(frameSource).toContain("var(--client-text)");
+    expect(frameSource).toContain("var(--client-muted)");
+    expect(frameSource).toContain("var(--client-primary)");
+    expect(frameSource).toContain("var(--client-primary-soft)");
+    expect(frameSource).toContain("var(--client-primary-contrast)");
+    ["#031014", "#f7f9f7", "#9aacb5", "#b8ff4a", "#244047"].forEach((fixed) => {
+      expect(frameSource).not.toContain(fixed);
+    });
   });
 
   it("renders a shop with rating metrics and its address, without image price or duration", () => {

@@ -5950,7 +5950,7 @@ export function ImConversationRoomPage({
       currentUser?.accountId === card.needoId ||
       currentUser?.accountId === card.userId,
     );
-    const statusClassName = "whitespace-nowrap text-[11px] font-black text-white/68";
+    const statusClassName = "whitespace-nowrap text-[11px] font-black text-[color:var(--client-muted)]";
 
     if (isCurrentUser) {
       return <span className={statusClassName}>{translateText("我的名片", language)}</span>;

@@ -36,6 +36,7 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).toContain('data-testid="special-review-icon"');
     expect(markup).toContain('data-testid="theme-review-stamp-icon"');
     expect(markup).toContain("var(--client-primary)");
+    expect(markup).not.toContain("#b8ff4a");
     expect(markup).not.toContain("💙");
     expect(markup).toContain("-right-1 -top-1");
     expect(markup).not.toContain('data-testid="special-review-container"');
@@ -56,6 +57,8 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).toContain('data-testid="unified-card-detail-arrow"');
     expect(markup).toContain('data-icon="chevron-right"');
     expect(markup).toContain('data-testid="unified-card-location-icon"');
+    expect(markup).toContain("var(--client-primary)");
+    expect(markup).not.toContain("#b8ff4a");
     expect(markup).toContain("items-center");
     expect(markup).not.toContain("items-start gap-1.5");
     expect(markup).toContain("rotate-180");
@@ -97,5 +100,12 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).not.toContain('data-testid="unified-card-tags"');
     expect(markup).toContain("line-clamp-2");
     expect(markup).toContain("26px");
+    expect(markup).toContain("var(--client-surface)");
+    expect(markup).toContain("var(--client-text)");
+    expect(markup).toContain("var(--client-muted)");
+    expect(markup).toContain("var(--client-primary)");
+    ["#031014", "#f7f9f7", "#9aacb5", "#b8ff4a", "#244047"].forEach((fixed) => {
+      expect(markup).not.toContain(fixed);
+    });
   });
 });

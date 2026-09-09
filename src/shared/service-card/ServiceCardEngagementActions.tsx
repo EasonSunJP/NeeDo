@@ -21,7 +21,7 @@ export function ServiceFavoriteAction({
   return (
     <button
       aria-label={`${state.isFavorited ? "取消收藏" : "收藏"} ${targetLabel}`}
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#b8ff4a] transition hover:bg-[#b8ff4a]/10 disabled:opacity-40 sm:h-9 sm:w-9"
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[color:var(--client-primary)] transition hover:bg-[color:var(--client-primary-soft)] disabled:opacity-40 sm:h-9 sm:w-9"
       disabled={pending}
       onClick={() => {
         setPending(true);
@@ -52,7 +52,7 @@ export function ServiceShareAction({
     <>
       <button
         aria-label={`分享 ${targetLabel}`}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#b8ff4a] transition hover:bg-[#b8ff4a]/10 sm:h-9 sm:w-9"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[color:var(--client-primary)] transition hover:bg-[color:var(--client-primary-soft)] sm:h-9 sm:w-9"
         onClick={() => setOpen(true)}
         type="button"
       >

@@ -204,9 +204,9 @@ export function UnifiedEntityInfoCard({
       tags={detailTags}
     >
       {data.kind === "shop" && data.address ? (
-        <p className="mt-1 flex items-center gap-1.5 text-[10px] font-bold leading-4 text-[#9aacb5] sm:mt-2 sm:gap-2 sm:text-[14px] sm:leading-5">
+        <p className="mt-1 flex items-center gap-1.5 text-[10px] font-bold leading-4 text-[color:var(--client-muted)] sm:mt-2 sm:gap-2 sm:text-[14px] sm:leading-5">
           <span
-            className="shrink-0 text-[#b8ff4a]"
+            className="shrink-0 text-[color:var(--client-primary)]"
             data-testid="unified-card-location-icon"
           >
             <AppIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" name="map" />

@@ -1248,20 +1248,20 @@ export function HomePage() {
 
               return (
                 <Link
-                  className="grid min-h-[76px] min-w-0 grid-rows-[34px,1fr] items-start justify-items-center gap-1.5 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_100%,transparent),color-mix(in_srgb,var(--client-surface)_86%,transparent))] px-2 py-3 text-center shadow-[0_12px_26px_rgba(0,0,0,0.09)]"
+                  className="grid h-[76px] min-w-0 grid-rows-[30px_28px] items-start justify-items-center gap-1 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_100%,transparent),color-mix(in_srgb,var(--client-surface)_86%,transparent))] px-2 py-1.5 text-center shadow-[0_12px_26px_rgba(0,0,0,0.09)]"
                   key={item.id}
                   to={item.to}
                 >
                   <span
                     className={cn(
-                      "inline-flex h-[34px] w-[34px] items-center justify-center rounded-[13px]",
+                      "inline-flex h-[30px] w-[30px] items-center justify-center rounded-[13px]",
                       getQuickActionIconClassName(theme),
                     )}
                   >
                     <AppIcon className="h-[18px] w-[18px]" name={item.icon} />
                   </span>
                   <span
-                    className="flex min-h-[28px] w-full items-center justify-center overflow-hidden"
+                    className="flex h-[28px] w-full items-center justify-center overflow-hidden"
                     data-no-i18n
                   >
                     <span

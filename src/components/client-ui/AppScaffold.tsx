@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -48,6 +48,36 @@ function InteractiveWrapper({
   }
 
   return <div className={className}>{children}</div>;
+}
+
+const COMPLETED_SEAL_PATH = "M12 2 13.63 3.81 15.83 2.76 16.64 5.06 19.07 4.93 18.94 7.36 21.24 8.17 20.19 10.37 22 12 20.19 13.63 21.24 15.83 18.94 16.64 19.07 19.07 16.64 18.94 15.83 21.24 13.63 20.19 12 22 10.37 20.19 8.17 21.24 7.36 18.94 4.93 19.07 5.06 16.64 2.76 15.83 3.81 13.63 2 12 3.81 10.37 2.76 8.17 5.06 7.36 4.93 4.93 7.36 5.06 8.17 2.76 10.37 3.81Z";
+
+function CompletedSealIconPath() {
+  const maskId = `completed-seal-${useId().replaceAll(":", "")}`;
+  return (
+    <>
+      <defs>
+        <mask height="24" id={maskId} maskUnits="userSpaceOnUse" width="24" x="0" y="0">
+          <path d={COMPLETED_SEAL_PATH} fill="white" />
+          <path
+            d="m7.1 12.1 3.3 3.3 6.8-6.9"
+            data-icon-part="completed-check-cutout"
+            fill="none"
+            stroke="black"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2.4"
+          />
+        </mask>
+      </defs>
+      <path
+        d={COMPLETED_SEAL_PATH}
+        data-icon-part="completed-seal"
+        fill="currentColor"
+        mask={`url(#${maskId})`}
+      />
+    </>
+  );
 }
 
 function iconPath(name: IconName) {
@@ -197,24 +227,7 @@ function iconPath(name: IconName) {
         </>
       );
     case "completed":
-      return (
-        <>
-          <path
-            d="M12 2 13.63 3.81 15.83 2.76 16.64 5.06 19.07 4.93 18.94 7.36 21.24 8.17 20.19 10.37 22 12 20.19 13.63 21.24 15.83 18.94 16.64 19.07 19.07 16.64 18.94 15.83 21.24 13.63 20.19 12 22 10.37 20.19 8.17 21.24 7.36 18.94 4.93 19.07 5.06 16.64 2.76 15.83 3.81 13.63 2 12 3.81 10.37 2.76 8.17 5.06 7.36 4.93 4.93 7.36 5.06 8.17 2.76 10.37 3.81Z"
-            data-icon-part="completed-seal"
-            fill="currentColor"
-          />
-          <path
-            d="m7.1 12.1 3.3 3.3 6.8-6.9"
-            data-icon-part="completed-check"
-            fill="none"
-            stroke="#f7f9f7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.4"
-          />
-        </>
-      );
+      return <CompletedSealIconPath />;
     case "info":
       return (
         <>

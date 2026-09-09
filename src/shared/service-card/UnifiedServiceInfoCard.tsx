@@ -146,7 +146,7 @@ export function UnifiedServiceInfoCard({
       >
         <svg
           aria-hidden="true"
-          className="h-3.5 w-3.5 text-[#b8ff4a] sm:h-6 sm:w-6"
+          className="h-3.5 w-3.5 text-[color:var(--client-primary)] sm:h-6 sm:w-6"
           data-app-icon="clock"
           fill="none"
           viewBox="0 0 24 24"
@@ -157,7 +157,7 @@ export function UnifiedServiceInfoCard({
         {formatDuration(data.durationMinutes, text.minute)}
       </span>
       <strong
-        className="absolute bottom-0 left-0 rounded-bl-[18px] rounded-tr-[18px] bg-black/80 px-3 py-2 text-[17px] font-black text-[#b8ff4a] backdrop-blur-sm sm:rounded-bl-[24px] sm:rounded-tr-[28px] sm:px-6 sm:py-4 sm:text-[30px]"
+        className="absolute bottom-0 left-0 rounded-bl-[18px] rounded-tr-[18px] bg-black/80 px-3 py-2 text-[17px] font-black text-[color:var(--client-primary)] backdrop-blur-sm sm:rounded-bl-[24px] sm:rounded-tr-[28px] sm:px-6 sm:py-4 sm:text-[30px]"
         data-testid="unified-card-price-overlay"
       >
         {formatPrice(data.priceAmount, data.currency)}
