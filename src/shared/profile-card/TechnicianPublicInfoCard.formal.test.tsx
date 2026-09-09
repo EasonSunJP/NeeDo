@@ -114,9 +114,10 @@ describe("TechnicianPublicInfoCard formal adapter", () => {
     expect(text).toContain("完成订单数1,281");
     expect(text).toContain("魅力max×3");
     expect(text).toContain("深度放松 ×2");
-    expect(text).not.toContain("￥8,801");
-    expect(text).not.toContain("61分钟");
-    expect(text).toContain("18利用次数");
+    expect(text).toContain("￥8,801");
+    expect(text).toContain("61分钟");
+    expect(text).toContain("18");
+    expect(text).not.toContain("利用次数");
     expect(text).not.toContain("店铺 ID");
     expect(text).not.toContain("店铺地址");
     expect(text).not.toContain("旧特殊标签不得显示");

@@ -4,10 +4,8 @@ import { copyTextToClipboard } from "../../lib/share";
 import { cn } from "../../lib/utils";
 import type { WalletSummary } from "../../features/wallet/api";
 import { formatWalletAmount, hasTestNdpWallet } from "../../features/wallet/presentation";
-import {
-  getServiceReviewStampVisual,
-  splitMaxReviewStampLabel
-} from "../order-detail/serviceReviewTagCatalog";
+import { splitMaxReviewStampLabel } from "../order-detail/serviceReviewTagCatalog";
+import { ThemeReviewStampIcon } from "../profile-card/SpecialReviewIconRow";
 import { UnifiedServiceInfoCard, type UnifiedServiceInfoCardData } from "../service-card";
 import type { TechnicianProfileInfoModel } from "./model";
 
@@ -56,17 +54,16 @@ export function TechnicianReviewTagSummaryView({ model }: { model: TechnicianPro
         <div aria-label="评价特殊标签" className="social-profile-review-stamps mt-2 grid grid-cols-4 gap-1 px-0.5 pt-1.5" role="list">
           {fixedReviewStampFallbacks.map((fallback, index) => {
             const tag = fixedTags.get(fallback.code);
-            const visual = getServiceReviewStampVisual(fallback, index);
             const count = tag?.count ?? 0;
 
             return (
               <div
                 aria-label={`${fallback.label} ×${count}`}
-                className={cn("service-review-stamp min-w-0", `service-review-stamp--${visual.tone}`)}
+                className={cn("service-review-stamp min-w-0", `service-review-stamp--${fallback.tone}`)}
                 key={fallback.code}
                 role="listitem"
               >
-                <span className="service-review-stamp__icon"><img alt="" aria-hidden="true" draggable={false} src={visual.iconSrc} /></span>
+                <span className="service-review-stamp__icon"><ThemeReviewStampIcon code={fallback.code} index={index} /></span>
                 <span className="service-review-stamp__label"><ReviewStampLabel label={fallback.label} /></span>
                 <span className="service-review-stamp__count">×{count}</span>
               </div>

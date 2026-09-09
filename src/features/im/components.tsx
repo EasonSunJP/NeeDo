@@ -4412,6 +4412,7 @@ export function MessageBubble({
             }}
             language={i18n?.language}
             onOpenDetails={() => onOpenContact?.(card.userId)}
+            showLanguageTags={false}
           />
         </div>
       );
@@ -4472,6 +4473,7 @@ export function MessageBubble({
               engagementTarget: { targetType: "shop", publicId: card.publicId },
             }}
             language={i18n?.language}
+            showLanguageTags={false}
           />
         </div>
       );
@@ -4493,6 +4495,7 @@ export function MessageBubble({
               },
             }}
             language={i18n?.language}
+            showLanguageTags={false}
           />
         </div>
       );

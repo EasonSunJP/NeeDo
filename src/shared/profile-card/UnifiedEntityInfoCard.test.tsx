@@ -20,13 +20,24 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).toContain('data-testid="unified-card-metric-separator"');
     expect(markup).not.toContain("[&amp;:not(:last-child)]:border-r");
     expect(markup).not.toContain("grid-cols-2");
-    expect(markup).toContain("grid-cols-[minmax(110px,30%)_minmax(0,1fr)]");
+    expect(markup).toContain("grid-cols-[minmax(132px,38%)_minmax(0,1fr)]");
     expect(markup).not.toContain("grid grid-cols-1");
-    ["评分", "完单次数", "距离", "收藏", "分享"].reduce((index, item) => { const next = text.indexOf(item); expect(next).toBeGreaterThan(index); return next; }, -1);
+    ["4.9", "128", "1.2km", "21", "4"].reduce((index, item) => {
+      const next = text.indexOf(item, index + 1);
+      expect(next).toBeGreaterThan(index);
+      return next;
+    }, -1);
+    expect(text).not.toMatch(/评分|完单次数|距离|收藏|分享/u);
+    expect(markup).toContain('data-app-icon="completed"');
     expect(markup).toContain('data-testid="special-review-icon"');
+    expect(markup).toContain('data-testid="theme-review-stamp-icon"');
+    expect(markup).toContain("var(--client-primary)");
+    expect(markup).not.toContain("💙");
     expect(markup).toContain("-right-1 -top-1");
     expect(markup).not.toContain('data-testid="special-review-container"');
     expect(text).toContain("46");
+    expect(text.indexOf("深层放松技师")).toBeLessThan(text.indexOf("46"));
+    expect(text.indexOf("46")).toBeLessThan(text.indexOf("中文"));
     expect(markup).toContain("aspect-square");
     expect(markup).toContain("rounded-[18px]");
     expect(markup).toContain("justify-start");
@@ -40,19 +51,25 @@ describe("UnifiedEntityInfoCard", () => {
     expect(markup).toContain('data-testid="unified-card-detail-arrow"');
     expect(markup).toContain('data-icon="chevron-right"');
     expect(markup).toContain('data-testid="unified-card-location-icon"');
+    expect(markup).toContain("items-center");
+    expect(markup).not.toContain("items-start gap-1.5");
     expect(markup).toContain("rotate-180");
     expect(markup).not.toContain('name="minus"');
   });
 
-  it("renders a user name card with no metrics rail, time, or price", () => {
-    const markup = render({ kind: "user", id: "u0000000001", name: "LifeDance", imageUrl: "/user.jpg", description: "喜欢旅行", languages: ["中文", "English"], tags: [] });
+  it("renders a compact user name card without metrics or language tags", () => {
+    const markup = render(
+      { kind: "user", id: "u0000000001", name: "LifeDance", imageUrl: "/user.jpg", description: "喜欢旅行", languages: ["中文", "English"], tags: [] },
+      { showLanguageTags: false },
+    );
     const text = markup.replace(/<[^>]+>/gu, "");
     expect(markup).toContain('data-card-kind="user"');
     expect(markup).not.toContain('data-testid="unified-card-metrics"');
-    expect(markup).toContain("grid-cols-[minmax(110px,30%)_minmax(0,1fr)]");
+    expect(markup).toContain("grid-cols-[minmax(132px,38%)_minmax(0,1fr)]");
+    expect(markup).toMatch(/p-3[^"]*sm:p-6/u);
     expect(text).toContain("LifeDance");
     expect(text).toContain("喜欢旅行");
-    expect(text).toContain("中文");
+    expect(text).not.toMatch(/中文|English/u);
     expect(text).not.toMatch(/分钟|￥/u);
   });
 });

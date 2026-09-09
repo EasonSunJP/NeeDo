@@ -207,7 +207,8 @@ describe("MerchantPortal formal employment data", () => {
     );
 
     expect(staffPanelSource).not.toContain('title="职务与员工"');
-    expect(roleSectionSource).toContain("rounded-[28px]");
+    expect(roleSectionSource).toContain('<section className="space-y-3">');
+    expect(roleSectionSource).not.toContain("rounded-[28px]");
     expect(roleSectionSource).toContain("<h2");
     expect(roleSectionSource).toContain("{group.count} 人");
     expect(roleSectionSource).not.toContain("rounded-[24px]");

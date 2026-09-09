@@ -144,7 +144,8 @@ describe("TechnicianProfileInfoView", () => {
     expect(text).toContain("评价5.0/5");
     expect(text).toContain("0 次");
     expect(text).toContain("完成订单数0");
-    expect(text).toContain("未读取");
+    expect(text).toContain("-");
+    expect(text).not.toContain("未读取");
   });
 
   it("always shows four fixed counts and only shows custom multipliers above one", () => {
@@ -189,18 +190,18 @@ describe("TechnicianProfileInfoView", () => {
     const specialTag = markup.slice(markup.lastIndexOf("<section", specialAt), markup.indexOf(">", specialAt) + 1);
 
     expect(markup).toContain('class="social-profile-review-stamps mt-2 grid grid-cols-4 gap-1 px-0.5 pt-1.5"');
-    expect(markup).toContain("review-stamp-appeal.svg");
-    expect(markup).toContain("review-stamp-service.svg");
-    expect(markup).toContain("review-stamp-empathy.svg");
-    expect(markup).toContain("review-stamp-energy.svg");
+    expect(markup).toContain('data-testid="theme-review-stamp-icon"');
+    expect(markup.match(/data-testid="theme-review-stamp-icon"/gu)).toHaveLength(4);
+    expect(markup).toContain("text-[color:var(--client-primary)]");
+    expect(markup).toContain("color:var(--client-primary)");
+    expect(markup).toContain('data-review-stamp-code="appeal_max"');
+    expect(markup).toContain('data-review-stamp-code="energy_max"');
     expect(specialTag).not.toContain("border");
     expect(specialTag).not.toContain("panelClassName");
     expect(styles).toMatch(/\.social-profile-review-stamps \.service-review-stamp \{[\s\S]*?border: 0;[\s\S]*?background: none;[\s\S]*?box-shadow: none;/);
     expect(styles).toMatch(/\.social-profile-review-stamps \.service-review-stamp::before,[\s\S]*?content: none;/);
-    expect(styles).toContain("--profile-review-stamp-color:");
-    expect(styles).toContain("var(--client-primary)");
-    expect(styles).toContain("var(--client-warning)");
-    expect(styles).toContain("var(--client-accent)");
+    expect(styles).toContain("--profile-review-stamp-color: var(--client-primary)");
+    expect(styles).not.toContain("--profile-review-stamp-color: color-mix");
   });
 
   it("injects service actions without adding an outer service frame", () => {

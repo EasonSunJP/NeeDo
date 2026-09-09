@@ -80,6 +80,8 @@ describe("unified service-information-card usage", () => {
     expect(source.shopDetail).toContain(
       "mapStoreMenuConfigToUnifiedData(menuCard, store)",
     );
+    expect(source.shopDetail).toContain("const sourceCards = formalApiOnly && !isMerchantEditable");
+    expect(source.shopDetail).toContain("return sourceCards.map((menuCard) => ({");
   });
 
   it("routes technician personal and public detail services through the shared profile view", () => {

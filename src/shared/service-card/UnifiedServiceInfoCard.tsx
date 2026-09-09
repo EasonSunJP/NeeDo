@@ -24,18 +24,38 @@ type UnifiedServiceInfoCardProps = {
   onOpenDetails?: () => void;
 };
 
-const countLabel = (value: number | null | undefined, unavailable: string) =>
+const countLabel = (value: number | null | undefined) =>
   value === null || value === undefined
-    ? unavailable
+    ? "-"
     : new Intl.NumberFormat("zh-CN", {
         notation: value >= 10_000 ? "compact" : "standard",
         maximumFractionDigits: 1,
       }).format(Math.max(0, value));
 
-const formatDistance = (value: number | null | undefined, unavailable: string) =>
+const formatDistance = (value: number | null | undefined) =>
   value !== null && value !== undefined && Number.isFinite(value)
     ? `${value.toFixed(value < 10 ? 1 : 0)}km`
-    : unavailable;
+    : "-";
+
+const formatDuration = (
+  value: number | null | undefined,
+  minuteLabel: string,
+) =>
+  value !== null && value !== undefined && Number.isFinite(value)
+    ? `${Math.max(0, value)}${minuteLabel}`
+    : "-";
+
+const formatPrice = (amount: number, currency: string) => {
+  const normalizedAmount = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+  if (currency.toUpperCase() === "JPY") {
+    return `￥${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(normalizedAmount)}`;
+  }
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(normalizedAmount);
+};
 
 export function UnifiedServiceInfoCard({
   actionSlot,
@@ -49,11 +69,11 @@ export function UnifiedServiceInfoCard({
   const target = data.engagementTarget ?? null;
   const [favoriteState, setFavoriteState] =
     useState<EntityFavoriteState | null>(() =>
-      target
+      target && data.favoriteCount !== null && data.favoriteCount !== undefined
         ? {
             ...target,
             isFavorited: data.isFavorited ?? false,
-            favoriteCount: data.favoriteCount ?? 0,
+            favoriteCount: data.favoriteCount,
           }
         : null,
     );
@@ -78,26 +98,23 @@ export function UnifiedServiceInfoCard({
         data.isBookable === false
           ? text.notBookable
           : data.isBookable === null || data.isBookable === undefined
-            ? text.unavailable
+            ? "-"
             : text.bookable,
     },
     {
       icon: "moments",
       label: text.usage,
-      value: countLabel(data.usageCount, text.unavailable),
+      value: countLabel(data.usageCount),
     },
     {
       icon: "map",
       label: text.distanceToYou,
-      value: formatDistance(data.distanceKm, text.distanceUnavailable),
+      value: formatDistance(data.distanceKm),
     },
     {
       icon: "heart",
       label: text.favorite,
-      value: countLabel(
-        favoriteState?.favoriteCount ?? data.favoriteCount,
-        text.unavailable,
-      ),
+      value: countLabel(favoriteState?.favoriteCount ?? data.favoriteCount),
       ...(favoriteState
         ? {
             action: (
@@ -113,7 +130,7 @@ export function UnifiedServiceInfoCard({
     {
       icon: "share",
       label: text.share,
-      value: countLabel(shareCount, text.unavailable),
+      value: countLabel(shareCount),
       ...(target
         ? {
             action: (
@@ -128,7 +145,30 @@ export function UnifiedServiceInfoCard({
     },
   ];
   const image = (
-    <UnifiedCardImage alt={data.name} language={language} src={data.coverUrl} />
+    <UnifiedCardImage alt={data.name} language={language} src={data.coverUrl}>
+      <span
+        className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-1 text-[10px] font-black text-white backdrop-blur-sm sm:left-4 sm:top-4 sm:gap-2 sm:px-4 sm:py-2 sm:text-[16px]"
+        data-testid="unified-card-duration-overlay"
+      >
+        <svg
+          aria-hidden="true"
+          className="h-3.5 w-3.5 text-[#b8ff4a] sm:h-6 sm:w-6"
+          data-app-icon="clock"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.9" />
+          <path d="M12 8v4.3l2.8 1.7" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
+        </svg>
+        {formatDuration(data.durationMinutes, text.minute)}
+      </span>
+      <strong
+        className="absolute bottom-0 left-0 rounded-tr-[18px] bg-black/80 px-3 py-2 text-[17px] font-black text-[#b8ff4a] backdrop-blur-sm sm:rounded-tr-[28px] sm:px-6 sm:py-4 sm:text-[30px]"
+        data-testid="unified-card-price-overlay"
+      >
+        {formatPrice(data.priceAmount, data.currency)}
+      </strong>
+    </UnifiedCardImage>
   );
   const details = (
     <UnifiedCardDetails
@@ -144,7 +184,7 @@ export function UnifiedServiceInfoCard({
       ariaLabel={`${text.viewService} ${data.name}`}
       body={
         <div
-          className="grid grid-cols-[minmax(110px,30%)_minmax(0,1fr)] gap-3 p-3 pt-0 sm:gap-7 sm:p-6 sm:pt-0"
+          className="grid grid-cols-[minmax(132px,38%)_minmax(0,1fr)] gap-3 p-3 pt-0 sm:gap-7 sm:p-6 sm:pt-0"
           data-testid="unified-card-body"
         >
           {image}

@@ -196,6 +196,14 @@ function iconPath(name: IconName) {
           <circle cx="16" cy="16" r="2.6" stroke="currentColor" strokeWidth="2" />
         </>
       );
+    case "completed":
+      return (
+        <>
+          <path d="M4.4 15.3A8.2 8.2 0 1 1 6.7 19" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
+          <path d="m4.4 15.3-1.2 4 4-1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+          <path d="m8.2 11.7 2.5 2.5 5.3-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+        </>
+      );
     case "info":
       return (
         <>
@@ -267,6 +275,7 @@ export type IconName =
   | "bell"
   | "sparkles"
   | "moments"
+  | "completed"
   | "info"
   | "share"
   | "sync"
@@ -276,7 +285,7 @@ export type IconName =
 
 export function AppIcon({ name, className }: { name: IconName; className?: string }) {
   return (
-    <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className={cn("h-5 w-5", className)} data-app-icon={name} fill="none" viewBox="0 0 24 24">
       {iconPath(name)}
     </svg>
   );

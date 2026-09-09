@@ -51,6 +51,10 @@ const technician: Technician = {
   favoriteCount: 18,
   shareCount: 4,
   bio: "深层放松",
+  specialReviewTags: [
+    { code: "appeal_max", label: "魅力max", count: 3 },
+    { code: "service_max", label: "服务max", count: 4 },
+  ],
 };
 
 describe("SocialProfileMiniCard unified delegation", () => {
@@ -102,10 +106,15 @@ describe("SocialProfileMiniCard unified delegation", () => {
         createElement(SocialProfileMiniCard, { technician }),
       ),
     );
+    const text = markup.replace(/<[^>]+>/gu, "");
 
     expect(markup).toContain('data-card-kind="technician"');
-    expect(markup).toContain("完单次数");
-    expect(markup).toContain("日本語");
+    expect(text).not.toContain("完单次数");
+    expect(text).toContain("日本語");
+    expect(markup).toContain('data-testid="special-review-icon"');
+    expect(markup).toContain("魅力max");
+    expect(markup).toContain("服务max");
+    expect(markup).toContain("var(--client-primary)");
     expect(markup).not.toContain("粉丝：");
     expect(markup).not.toContain("Lv.");
   });

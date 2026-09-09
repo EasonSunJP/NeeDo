@@ -618,8 +618,8 @@ function MerchantStaffRoleSection({
   const addButtonClassName = "focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]";
 
   return (
-    <section className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-4 shadow-panel">
-      <div className="flex items-center justify-between gap-3">
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3 px-1">
         <div className="flex min-w-0 items-center gap-2">
           {editing ? (
             <div className="flex min-w-0 items-center gap-2">
@@ -677,7 +677,7 @@ function MerchantStaffRoleSection({
           </button>
         )}
       </div>
-      <div className="mt-4 space-y-3">{children}</div>
+      <div className="space-y-3">{children}</div>
     </section>
   );
 }
@@ -2553,13 +2553,15 @@ export function MerchantPortalContent({
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-line bg-white p-4 shadow-panel">
-              <SectionTitle caption="展示员工在线、可约、服务中和休息状态，并保留进入通讯录和资料卡的能力。" title="员工状态">
-                <Button size="sm" to="/merchant/staff" variant="secondary">
-                  查看全部
-                </Button>
-              </SectionTitle>
-              <div className="mt-3 space-y-3">
+            <section className="space-y-3">
+              <div className="px-1">
+                <SectionTitle caption="展示员工在线、可约、服务中和休息状态，并保留进入通讯录和资料卡的能力。" title="员工状态">
+                  <Button size="sm" to="/merchant/staff" variant="secondary">
+                    查看全部
+                  </Button>
+                </SectionTitle>
+              </div>
+              <div className="space-y-3">
                 {storeTechnicians.slice(0, 4).map((technician) => {
                   const technicianApiId = getMerchantTechnicianApiId(technician.id);
                   const staffStatus = formalMerchantWorkLabel(technicianApiId === null ? undefined : formalStaffById.get(technicianApiId)?.workStatus);

@@ -289,7 +289,8 @@ describe("CategoryPage formal category state", () => {
     expect(html).toContain("橘 ひかり");
     expect(html).toContain("收藏");
     expect(html).toContain("分享");
-    expect(html).toContain("未读取");
+    expect(html).toContain(">-<");
+    expect(html).not.toContain("未读取");
     expect(html).not.toContain("接单率");
     expect(html).not.toContain("肩颈调理");
   });

@@ -25,6 +25,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("setSelectedMenuCardId(item.sourceServiceId);");
     expect(pageSource).toContain("selectLabel={serviceSelectLabel}");
     expect(pageSource).not.toContain('cardUi?.cta ?? "预约"');
+    expect(pageSource).toContain("const sourceCards = formalApiOnly && !isMerchantEditable");
+    expect(pageSource).toContain("return sourceCards.map((menuCard) => ({");
   });
 
   it("uses one consistent edit button size and avoids duplicate menu card edit actions", () => {

@@ -493,7 +493,7 @@ describe("ExchangePostDetailPage", () => {
 
     expect(document.body.textContent).toContain("Service post details");
     expect(document.body.textContent).toContain("Service posts");
-    expect(document.body.textContent).toContain("Rating");
+    expect(document.body.textContent).not.toContain("Rating");
     expect(document.body.textContent).not.toContain("merchant_owner");
     expect(document.body.textContent).not.toContain("情报");
   });
