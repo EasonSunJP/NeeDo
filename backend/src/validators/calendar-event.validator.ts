@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-const isoDate = z.string().datetime({ offset: true }).transform((value) => new Date(value));
+const isoDate = z
+  .union([z.date(), z.string().datetime({ offset: true })])
+  .transform((value) => (value instanceof Date ? value : new Date(value)));
 const participantIds = z.array(z.number().int().positive()).max(100).refine(
   (items) => new Set(items).size === items.length,
   "Participant identities must be unique",

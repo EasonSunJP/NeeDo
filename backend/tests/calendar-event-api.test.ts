@@ -8,10 +8,23 @@ import {
   CALENDAR_EVENT_PERMISSIONS,
   buildRolePermissionAssignments,
 } from "../src/constants/permissions.constants";
+import { calendarEventListQuerySchema } from "../src/validators/calendar-event.validator";
 
 const routePath = resolve(__dirname, "../src/routes/calendar-event.routes.ts");
 
 describe("calendar event API contract", () => {
+  it("keeps the transformed list query valid when route and controller both validate it", () => {
+    const rawQuery = {
+      from: "2026-09-01T00:00:00.000Z",
+      to: "2026-10-01T00:00:00.000Z",
+      page: "1",
+      page_size: "100",
+    };
+
+    expect(() => calendarEventListQuerySchema.parse(calendarEventListQuerySchema.parse(rawQuery)))
+      .not.toThrow();
+  });
+
   it("mounts authenticated formal calendar routes", async () => {
     await request(createApp())
       .get("/api/v1/calendar-events?from=2026-09-01T00:00:00.000Z&to=2026-10-01T00:00:00.000Z&page=1&page_size=20")
