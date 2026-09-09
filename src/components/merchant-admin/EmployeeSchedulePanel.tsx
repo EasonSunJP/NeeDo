@@ -196,6 +196,11 @@ export function createEmployeeScheduleCalendarData(
     const startsAt = new Date(event.startsAt);
     const endsAt = new Date(event.endsAt);
     const cell = createCell(event, employee);
+    const availabilitySourceType = event.kind === "availability"
+      ? "technician"
+      : event.kind === "schedule" && event.status === "available"
+        ? "shop"
+        : undefined;
     cellByEventId.set(event.projectionId, cell);
     return {
       id: event.projectionId,
@@ -204,9 +209,16 @@ export function createEmployeeScheduleCalendarData(
           ? "todo"
           : event.kind === "booking"
             ? "merchant"
-            : "technician",
+            : availabilitySourceType === "shop"
+              ? "merchant"
+              : "technician",
       calendarId: `employee:${employee.needoId}`,
-      calendarLabel: employee.displayName,
+      calendarLabel: availabilitySourceType === "technician"
+        ? "自由排班"
+        : availabilitySourceType === "shop"
+          ? employee.affiliation.shop.name
+          : employee.displayName,
+      availabilitySourceType,
       date: toDateKey(startsAt),
       endDate: toDateKey(endsAt),
       startTime: toTime(startsAt),
@@ -219,7 +231,7 @@ export function createEmployeeScheduleCalendarData(
       badge:
         event.kind === "busy_redacted"
           ? "已锁定"
-          : event.kind === "availability"
+          : availabilitySourceType
             ? "可排班"
             : event.kind === "booking"
               ? "本店预约"
