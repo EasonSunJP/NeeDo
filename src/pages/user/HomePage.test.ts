@@ -217,6 +217,27 @@ describe("HomePage quick action icon theme colors", () => {
   });
 });
 
+describe("HomePage quick action compact height", () => {
+  it("keeps each mobile action inside the exact 76px envelope", () => {
+    const rendererStart = homePageSource.indexOf(
+      "{quickActionItems.map((item) => {",
+    );
+    const rendererEnd = homePageSource.indexOf("</section>", rendererStart);
+    const quickActionRenderer = homePageSource.slice(rendererStart, rendererEnd);
+
+    expect(rendererStart).toBeGreaterThan(-1);
+    expect(rendererEnd).toBeGreaterThan(rendererStart);
+    expect(quickActionRenderer).toContain("h-[76px]");
+    expect(quickActionRenderer).toContain("grid-rows-[30px_28px]");
+    expect(quickActionRenderer).toContain("gap-1");
+    expect(quickActionRenderer).toContain("py-1.5");
+    expect(quickActionRenderer).toContain("h-[30px] w-[30px]");
+    expect(quickActionRenderer).toContain("h-[28px]");
+    expect(quickActionRenderer).not.toContain("min-h-[76px]");
+    expect(quickActionRenderer).not.toContain("min-h-[28px]");
+  });
+});
+
 describe("HomePage shared theme layout", () => {
   it("uses the common floating header and recommendation cards", () => {
     expect(homePageSource).toContain("<FloatingHomeHeader");

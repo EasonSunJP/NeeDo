@@ -102,4 +102,45 @@ describe("MerchantPrimaryNavCarousel", () => {
     expect(indicators[1]?.style.backgroundColor).not.toBe("");
     expect(indicators[1]?.getAttribute("data-navigation-page-state")).toBe("inactive");
   });
+
+  it("keeps mobile actions and empty slots at exactly 76px while preserving the bilingual sm layout", async () => {
+    vi.spyOn(identityApplicationsApi, "listTechnicianReviews").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 1
+    });
+
+    await act(async () => root.render(
+      <MemoryRouter><MerchantPrimaryNavCarousel /></MemoryRouter>
+    ));
+    await flush();
+
+    const viewport = container.querySelector<HTMLElement>('[data-testid="merchant-primary-module-viewport"]');
+    const firstPage = viewport?.firstElementChild;
+    const visibleLinks = firstPage?.querySelectorAll<HTMLAnchorElement>("a") ?? [];
+    expect(visibleLinks).toHaveLength(4);
+
+    visibleLinks.forEach((link) => {
+      expect(link.classList).toContain("h-[76px]");
+      expect(link.classList).toContain("grid-rows-[30px_28px]");
+      expect(link.classList).toContain("gap-1");
+      expect(link.classList).toContain("py-1.5");
+      expect(link.classList).not.toContain("min-h-[82px]");
+      expect(link.classList).toContain("sm:min-h-[82px]");
+      expect(link.classList).toContain("sm:h-auto");
+      expect(link.classList).toContain("sm:grid-rows-[34px_1fr]");
+      expect(link.classList).toContain("sm:gap-1.5");
+      expect(link.classList).toContain("sm:py-3");
+    });
+
+    const mobileEmptySlots = viewport?.querySelectorAll<HTMLDivElement>(
+      ':scope > div:nth-child(2) > div[aria-hidden="true"]',
+    ) ?? [];
+    expect(mobileEmptySlots).toHaveLength(1);
+    mobileEmptySlots.forEach((slot) => {
+      expect(slot.classList).toContain("h-[76px]");
+      expect(slot.classList).not.toContain("min-h-[82px]");
+    });
+  });
 });
