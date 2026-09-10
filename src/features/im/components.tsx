@@ -1743,7 +1743,7 @@ export function ImTopBar({
         {centerTitle ? (
           <>
             <div className="min-h-10 flex-1" />
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center px-[72px]">
+            <div className="pointer-events-none absolute inset-x-0 inset-y-0 flex items-center justify-center px-[72px]">
               <div className="min-w-0 max-w-full flex-1 text-center">
                 {titleNode}
                 {subtitle ? (
@@ -4298,7 +4298,14 @@ export function MessageBubble({
               key={mediaLoad.key}
               onError={mediaLoad.onError}
               onLoadedMetadata={mediaLoad.onLoad}
-              preload="metadata"
+              onPlay={(event) => {
+                const audio = event.currentTarget;
+                audio.defaultMuted = false;
+                audio.muted = false;
+                audio.volume = 1;
+              }}
+              playsInline
+              preload="auto"
               src={mediaSource}
             />
           )}

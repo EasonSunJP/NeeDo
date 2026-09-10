@@ -57,6 +57,14 @@ import { translateImUiText } from "./ui-copy";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+describe("IM shared header layout", () => {
+  it("centers the conversation title across the full control row", () => {
+    expect(componentsSource).toContain(
+      'className="pointer-events-none absolute inset-x-0 inset-y-0 flex items-center justify-center px-[72px]"',
+    );
+  });
+});
+
 class RoomMediaRecorder {
   static instances: RoomMediaRecorder[] = [];
 

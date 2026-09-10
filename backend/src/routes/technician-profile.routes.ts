@@ -33,7 +33,8 @@ export const createTechnicianProfileRoutes = (
       new CustomerAvatarFileStorage(
         config.CUSTOMER_AVATAR_STORAGE_DIR,
         config.CUSTOMER_AVATAR_PUBLIC_BASE_URL
-      )
+      ),
+    dependencies.profileUpdatedNotificationPort
   );
   const controller = new TechnicianProfileController(service);
 

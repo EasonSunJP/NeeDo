@@ -34,7 +34,8 @@ export const createCustomerProfileRoutes = (
         config.CUSTOMER_AVATAR_STORAGE_DIR,
         config.CUSTOMER_AVATAR_PUBLIC_BASE_URL
       ),
-    dependencies.personalIdentityScopeService
+    dependencies.personalIdentityScopeService,
+    dependencies.profileUpdatedNotificationPort
   );
   const controller = new CustomerProfileController(customerProfileService);
 

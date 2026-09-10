@@ -59,6 +59,7 @@ export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | 
 
     let lastTouchY = 0;
     let startTouchY = 0;
+    let boundaryDragY = 0;
     let dragOffsetY = 0;
     let rubberBandActive = false;
     let resetTimer: number | null = null;
@@ -146,6 +147,7 @@ export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | 
       if (dragOffsetY) {
         setRubberBandOffset(0);
       }
+      boundaryDragY = 0;
       keepScrollInsideBounds();
     };
 
@@ -176,6 +178,13 @@ export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | 
         if (event.cancelable) {
           event.preventDefault();
         }
+        boundaryDragY += deltaY;
+        boundaryDragY = isAtTop
+          ? Math.max(0, boundaryDragY)
+          : Math.min(0, boundaryDragY);
+        setRubberBandOffset(dampenDragOffset(boundaryDragY));
+      } else if (!rubberBandActive) {
+        boundaryDragY = 0;
       }
 
       event.stopPropagation();
@@ -184,6 +193,7 @@ export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | 
     const handleTouchEnd = () => {
       lastTouchY = 0;
       startTouchY = 0;
+      boundaryDragY = 0;
       resetRubberBandOffset();
     };
 

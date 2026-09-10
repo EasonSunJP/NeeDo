@@ -61,7 +61,14 @@ describe("CustomerProfileService", () => {
     } as AuthenticatedAccessContext;
     const customerRepository = repository();
     customerRepository.updateMine.mockResolvedValue(updatedProfile);
-    const service = new CustomerProfileService(customerRepository, audit, storage());
+    const profileNotifier = { notifyProfileUpdated: jest.fn(async () => undefined) };
+    const service = new CustomerProfileService(
+      customerRepository,
+      audit,
+      storage(),
+      undefined,
+      profileNotifier
+    );
 
     await service.updateMine(actor, requestContext, {
       displayName: "松尾 雄大",
@@ -84,6 +91,10 @@ describe("CustomerProfileService", () => {
       })
     );
     expect(audit.createInput).toHaveBeenCalledWith(expect.objectContaining({ targetId: 41 }));
+    expect(profileNotifier.notifyProfileUpdated).toHaveBeenCalledWith({
+      identityId: 17,
+      userId: 11
+    });
   });
 
   it("saves an avatar before updating the current profile and excludes its data URL from audit", async () => {

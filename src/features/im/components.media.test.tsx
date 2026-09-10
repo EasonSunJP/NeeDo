@@ -54,13 +54,30 @@ describe("IM media delivery failures", () => {
   it("keeps the server voice duration and removes the failed audio player", async () => {
     await act(async () => root.render(<MessageBubble isMine={false} message={message("voice")} />));
     const audio = container.querySelector("audio")!;
-    expect(audio.preload).toBe("metadata");
+    expect(audio.preload).toBe("auto");
     await act(async () => audio.dispatchEvent(new Event("error")));
     expect(container.textContent).toContain('15"');
     expect(container.textContent).toContain("语音加载失败，点击重试");
     expect(container.querySelector("audio")).toBeNull();
     await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
     expect(container.querySelector("audio")).not.toBeNull();
+  });
+
+  it("prepares the voice element for audible playback on the first user play", async () => {
+    await act(async () => root.render(<MessageBubble isMine={false} message={message("voice")} />));
+    const audio = container.querySelector<HTMLAudioElement>("audio")!;
+
+    expect(audio.preload).toBe("auto");
+    expect(audio.hasAttribute("playsinline")).toBe(true);
+
+    audio.defaultMuted = true;
+    audio.muted = true;
+    audio.volume = 0;
+    await act(async () => audio.dispatchEvent(new Event("play", { bubbles: true })));
+
+    expect(audio.defaultMuted).toBe(false);
+    expect(audio.muted).toBe(false);
+    expect(audio.volume).toBe(1);
   });
 
   it("gives only voice messages the wider responsive player layout", async () => {

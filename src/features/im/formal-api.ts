@@ -1411,6 +1411,7 @@ export function shouldForwardFormalImEvent(event: FormalRealtimeEvent) {
       event.type.startsWith("friend_request.") ||
       event.type.startsWith("contact.") ||
       event.type.startsWith("friendship.") ||
+      event.type.startsWith("profile.") ||
       event.type.startsWith("social.follow."))
   );
 }
@@ -1443,10 +1444,9 @@ function toConversation(
     {},
     conversation.updatedAt,
   );
-  const title =
-    conversation.title?.trim() ||
-    (isDirect ? otherParticipant?.username : undefined) ||
-    `群聊（${conversation.participants.length}）`;
+  const title = isDirect
+    ? otherParticipant?.username || conversation.title?.trim() || ""
+    : conversation.title?.trim() || `群聊（${conversation.participants.length}）`;
 
   return {
     id: String(conversation.id),

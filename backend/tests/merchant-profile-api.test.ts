@@ -210,6 +210,7 @@ const createFixture = async () => {
     testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     auditLogRepository: { create: jest.fn(async () => undefined) },
+    profileUpdatedNotificationPort: { notifyProfileUpdated: jest.fn(async () => undefined) },
     customerAvatarStorage: { save: jest.fn() },
     merchantProfileRepository,
     merchantShopContextRepository: {

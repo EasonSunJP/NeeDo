@@ -788,6 +788,72 @@ describe("chat-record store facade", () => {
   });
 });
 
+describe("formal profile realtime refresh", () => {
+  it("replaces cached conversation and directory names after a profile event", async () => {
+    mocked.session = {
+      activePublicId: "u0000987654",
+      avatarUrl: null,
+      id: 987654,
+      primaryPublicId: "u0000987654",
+      username: "profile-refresh-viewer",
+    };
+    const oldUser = {
+      accountId: "partner-account",
+      avatar: "",
+      id: "201",
+      nickname: "LifeDance 管理员 2",
+      profileKind: "user" as const,
+      searchableFields: ["LifeDance 管理员 2"],
+      sortKey: "L",
+      status: "online" as const,
+      tags: [],
+      userIdLabel: "NeeDo ID: u0000000201",
+    };
+    const updatedUser = {
+      ...oldUser,
+      nickname: "CutGirl",
+      searchableFields: ["CutGirl"],
+      sortKey: "C",
+    };
+    const bootstrap = vi
+      .fn()
+      .mockResolvedValueOnce({
+        currentUserId: "987654",
+        config: {},
+        users: [oldUser],
+        contacts: [],
+        organizationContacts: [],
+        friendRequests: [],
+        conversations: [conversation({ memberIds: ["987654", "201"], title: oldUser.nickname })],
+        members: [],
+      })
+      .mockResolvedValueOnce({
+        currentUserId: "987654",
+        config: {},
+        users: [updatedUser],
+        contacts: [],
+        organizationContacts: [],
+        friendRequests: [],
+        conversations: [conversation({ memberIds: ["987654", "201"], title: updatedUser.nickname })],
+        members: [],
+      });
+    mocked.api = { bootstrap };
+
+    await renderStore();
+    expect(store?.conversations[0]?.title).toBe("LifeDance 管理员 2");
+
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "refresh" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(bootstrap).toHaveBeenCalledTimes(2);
+    expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
+    expect(store?.conversations[0]?.title).toBe("CutGirl");
+  });
+});
+
 describe("formal IM auto translation preference", () => {
   it("waits for the confirmed response and preserves the confirmed value after rejection", async () => {
     let resolvePreference: ((value: { conversation: Conversation }) => void) | undefined;

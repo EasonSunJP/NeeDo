@@ -79,7 +79,7 @@ describe("formal IM adapter", () => {
         {
           id: 91,
           type: "direct",
-          title: null,
+          title: "LifeDance 管理员 2",
           participants: [
             {
               userId: 100,
@@ -1944,6 +1944,7 @@ describe("formal IM adapter", () => {
     };
     expect(shouldForwardFormalImEvent(reactionEvent)).toBe(true);
     expect(shouldForwardFormalImEvent({ id: "3", payload: {}, type: "friendship.deleted" })).toBe(true);
+    expect(shouldForwardFormalImEvent({ id: "4", payload: { identityId: 1670 }, type: "profile.updated" })).toBe(true);
     expect(toFormalImStoreUpdate(reactionEvent)).toMatchObject({
       type: "message.updated",
       message: { id: "501" },

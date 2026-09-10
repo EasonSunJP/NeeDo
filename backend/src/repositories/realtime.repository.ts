@@ -723,6 +723,9 @@ export interface RealtimeRepositoryPort {
   listConversationRecipients?: (
     conversationId: number
   ) => Promise<Array<{ userId: number; identityId: number }>>;
+  listProfileUpdateRecipients?: (
+    identityId: number
+  ) => Promise<Array<{ userId: number; identityId: number }>>;
   listConversations: (
     userId: number,
     input: PaginationInput
@@ -1100,6 +1103,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         deletedAt: null,
         conversation: { deletedAt: null }
       },
+      select: { userId: true, identityId: true }
+    });
+  }
+
+  public listProfileUpdateRecipients(
+    identityId: number
+  ): Promise<Array<{ userId: number; identityId: number }>> {
+    return this.client.conversationParticipant.findMany({
+      where: {
+        deletedAt: null,
+        conversation: {
+          deletedAt: null,
+          participants: { some: { identityId, deletedAt: null } }
+        }
+      },
+      distinct: ["identityId"],
       select: { userId: true, identityId: true }
     });
   }

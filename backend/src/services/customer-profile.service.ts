@@ -10,6 +10,7 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
 import type { PersonalIdentityScopeService } from "./personal-identity-scope.service";
+import type { ProfileUpdatedNotificationPort } from "./realtime.service";
 
 type AuditRecorder = Pick<AuditLogService, "createInput">;
 
@@ -20,7 +21,8 @@ export class CustomerProfileService {
     private readonly repository: CustomerProfileRepositoryPort,
     private readonly auditLogService: AuditRecorder,
     private readonly avatarStorage: CustomerAvatarStoragePort,
-    private readonly personalIdentityScope?: Pick<PersonalIdentityScopeService, "resolve">
+    private readonly personalIdentityScope?: Pick<PersonalIdentityScopeService, "resolve">,
+    private readonly profileUpdateNotifier?: ProfileUpdatedNotificationPort
   ) {}
 
   public async getMine(actor: AuthenticatedAccessContext): Promise<CustomerProfilePayload> {
@@ -62,6 +64,13 @@ export class CustomerProfileService {
       mutation,
       auditLog
     );
+
+    if (
+      this.profileUpdateNotifier &&
+      (input.displayName !== undefined || input.avatarDataUrl !== undefined)
+    ) {
+      await this.profileUpdateNotifier.notifyProfileUpdated({ userId, identityId });
+    }
 
     return profile;
   }

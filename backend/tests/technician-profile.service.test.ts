@@ -90,7 +90,8 @@ describe("TechnicianProfileService", () => {
     const repo = repository();
     repo.findMine.mockResolvedValue(profile);
     repo.updateMine.mockResolvedValue({ ...profile, displayName: "彩" });
-    const service = new TechnicianProfileService(repo, audit, storage());
+    const profileNotifier = { notifyProfileUpdated: jest.fn(async () => undefined) };
+    const service = new TechnicianProfileService(repo, audit, storage(), profileNotifier);
 
     await expect(service.getMine(actor)).resolves.toBe(profile);
     await service.updateMine(
@@ -113,6 +114,10 @@ describe("TechnicianProfileService", () => {
         metadata: { changedFields: ["displayName", "gender"] }
       })
     );
+    expect(profileNotifier.notifyProfileUpdated).toHaveBeenCalledWith({
+      identityId: 19,
+      userId: 9
+    });
   });
 
   it.each(["customer", "scout", "merchant_owner"])(

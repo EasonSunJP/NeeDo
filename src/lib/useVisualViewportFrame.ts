@@ -14,6 +14,9 @@ const installedPwaRestingViewportTolerance = 96;
 const installedIosPwaMinimumRestingViewportTolerance = 120;
 const installedIosPwaMaximumRestingViewportTolerance = 240;
 const installedIosPwaRestingViewportToleranceRatio = 0.22;
+const installedPwaKeyboardReleaseExpansionRatio = 0.15;
+const installedPwaKeyboardReleaseMinimumExpansion = 120;
+const installedPwaKeyboardReleaseSettleMs = 180;
 
 const getInstalledIosPwaRestingViewportTolerance = (referenceHeight: number): number =>
   Math.min(
@@ -46,9 +49,21 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
     );
 
     let keyboardFrameActive = false;
+    let keyboardViewportMinimumHeight: number | null = null;
+    let keyboardReleaseTimer: number | null = null;
     let installedMobileRestingHeight: number | null = null;
 
-    const updateFrame = () => {
+    const clearKeyboardReleaseTimer = () => {
+      if (keyboardReleaseTimer !== null) {
+        window.clearTimeout(keyboardReleaseTimer);
+        keyboardReleaseTimer = null;
+      }
+    };
+
+    const updateFrame = (forceInstalledRestingFrame = false) => {
+      if (!forceInstalledRestingFrame) {
+        clearKeyboardReleaseTimer();
+      }
       const viewport = window.visualViewport;
       const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
       const installPlatform = detectPwaInstallPlatform(window.navigator);
@@ -80,6 +95,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         : 2;
       const keyboardOpen = Boolean(
         viewport &&
+        !forceInstalledRestingFrame &&
         ((editorFocused && keyboardViewportReduction >= keyboardOpenThreshold) ||
           (keyboardFrameActive && keyboardViewportReduction > keyboardRecoveryThreshold))
       );
@@ -89,6 +105,10 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       keyboardFrameActive = keyboardOpen;
 
       if (keyboardOpen) {
+        keyboardViewportMinimumHeight = Math.min(
+          keyboardViewportMinimumHeight ?? viewport!.height,
+          viewport!.height
+        );
         const viewportHeight = `${Math.max(1, Math.ceil(viewport!.height))}px`;
         const viewportTop = Math.max(0, Math.floor(viewport!.offsetTop));
         const viewportBottom = Math.max(
@@ -118,9 +138,39 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
           `${Math.max(0, Math.floor(viewport!.offsetLeft))}px`
         );
         element.style.setProperty("--im-visual-viewport-right", "auto");
+
+        const releaseExpansion = viewport!.height - keyboardViewportMinimumHeight;
+        const releaseExpansionThreshold = Math.max(
+          installedPwaKeyboardReleaseMinimumExpansion,
+          Math.round(keyboardReferenceHeight * installedPwaKeyboardReleaseExpansionRatio)
+        );
+        if (
+          useInstalledMobileViewport &&
+          viewport!.offsetTop <= 2 &&
+          releaseExpansion >= releaseExpansionThreshold
+        ) {
+          const candidateHeight = viewport!.height;
+          const candidateOffsetTop = viewport!.offsetTop;
+          keyboardReleaseTimer = window.setTimeout(() => {
+            keyboardReleaseTimer = null;
+            const currentViewport = window.visualViewport;
+            if (
+              !currentViewport ||
+              Math.abs(currentViewport.height - candidateHeight) > 2 ||
+              Math.abs(currentViewport.offsetTop - candidateOffsetTop) > 2
+            ) {
+              return;
+            }
+            keyboardFrameActive = false;
+            keyboardViewportMinimumHeight = null;
+            installedMobileRestingHeight = currentViewport.height;
+            updateFrame(true);
+          }, installedPwaKeyboardReleaseSettleMs);
+        }
         return;
       }
 
+      keyboardViewportMinimumHeight = null;
       if (useInstalledMobileViewport) {
         installedMobileRestingHeight = viewport!.height;
         // The home navigation is fixed to the viewport bottom. Use the same
@@ -151,28 +201,33 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
     };
 
     const refreshRestoredFrame = () => {
+      clearKeyboardReleaseTimer();
       keyboardFrameActive = false;
+      keyboardViewportMinimumHeight = null;
       installedMobileRestingHeight = null;
       updateFrame();
     };
 
+    const handleFrameChange = () => updateFrame();
+
     updateFrame();
-    window.addEventListener("resize", updateFrame);
+    window.addEventListener("resize", handleFrameChange);
     window.addEventListener("pageshow", refreshRestoredFrame);
     document.addEventListener("visibilitychange", refreshRestoredFrame);
-    document.addEventListener("focusin", updateFrame);
-    document.addEventListener("focusout", updateFrame);
-    window.visualViewport?.addEventListener("resize", updateFrame);
-    window.visualViewport?.addEventListener("scroll", updateFrame, { passive: true });
+    document.addEventListener("focusin", handleFrameChange);
+    document.addEventListener("focusout", handleFrameChange);
+    window.visualViewport?.addEventListener("resize", handleFrameChange);
+    window.visualViewport?.addEventListener("scroll", handleFrameChange, { passive: true });
 
     return () => {
-      window.removeEventListener("resize", updateFrame);
+      clearKeyboardReleaseTimer();
+      window.removeEventListener("resize", handleFrameChange);
       window.removeEventListener("pageshow", refreshRestoredFrame);
       document.removeEventListener("visibilitychange", refreshRestoredFrame);
-      document.removeEventListener("focusin", updateFrame);
-      document.removeEventListener("focusout", updateFrame);
-      window.visualViewport?.removeEventListener("resize", updateFrame);
-      window.visualViewport?.removeEventListener("scroll", updateFrame);
+      document.removeEventListener("focusin", handleFrameChange);
+      document.removeEventListener("focusout", handleFrameChange);
+      window.visualViewport?.removeEventListener("resize", handleFrameChange);
+      window.visualViewport?.removeEventListener("scroll", handleFrameChange);
 
       for (const property of properties) {
         const previousValue = previousValues.get(property);

@@ -83,7 +83,18 @@ export interface OrderStatusNotificationPort {
   notifyOrderChanged?: (input: OrderChangedRealtimeInput) => Promise<void>;
 }
 
-export class RealtimeService implements OrderStatusNotificationPort {
+export interface ProfileUpdatedNotificationInput {
+  userId: number;
+  identityId: number;
+}
+
+export interface ProfileUpdatedNotificationPort {
+  notifyProfileUpdated: (input: ProfileUpdatedNotificationInput) => Promise<void>;
+}
+
+export class RealtimeService
+  implements OrderStatusNotificationPort, ProfileUpdatedNotificationPort
+{
   public constructor(
     private readonly repository: RealtimeRepositoryPort,
     private readonly eventGateway: RealtimeEventGatewayPort,
@@ -94,6 +105,31 @@ export class RealtimeService implements OrderStatusNotificationPort {
     private readonly now: () => Date = () => new Date(),
     private readonly membershipBenefitResolver?: PlatformMembershipBenefitResolverPort
   ) {}
+
+  public async notifyProfileUpdated(input: ProfileUpdatedNotificationInput): Promise<void> {
+    if (!this.repository.listProfileUpdateRecipients) {
+      return;
+    }
+
+    try {
+      const recipients = await this.repository.listProfileUpdateRecipients(input.identityId);
+      for (const recipient of recipients) {
+        this.eventGateway.publish({
+          id: this.createEventId(),
+          type: "profile.updated",
+          recipientUserId: recipient.userId,
+          recipientIdentityId: recipient.identityId,
+          payload: input,
+          createdAt: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      logger.error(
+        { error, identityId: input.identityId, userId: input.userId },
+        "Realtime profile publication failed after profile commit"
+      );
+    }
+  }
 
   public async createConversation(
     auth: AuthenticatedAccessContext,
