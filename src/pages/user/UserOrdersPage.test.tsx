@@ -20,7 +20,9 @@ describe("UserOrdersPage", () => {
 
   it("uses only the formal order API and exposes loading, failure, retry, and empty states", () => {
     expect(source).toContain("bookingApi.listOrders");
-    expect(source).toContain('useState<"idle" | "loading" | "success" | "error">');
+    expect(source).toContain("useCoreReadQuery");
+    expect(source).toContain('key: "booking:customer-orders:page-1:size-100"');
+    expect(source).toContain("getAuthenticatedPersistentCacheScope");
     expect(source).toContain("重新加载预约");
     expect(source).toContain("预约加载失败");
     expect(source).toContain("正在加载预约");

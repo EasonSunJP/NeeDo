@@ -11,6 +11,8 @@ import {
   summarizeProfileStatus
 } from "./UnifiedSettingsPages";
 import { translateText, type Language } from "../../i18n/translations";
+import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
+import settingsDirectorySource from "../../components/client-ui/SettingsDirectory.tsx?raw";
 import backendPortalSource from "./TestOnlyBackendPortalEntries.tsx?raw";
 import source from "./UnifiedSettingsPages.tsx?raw";
 
@@ -376,6 +378,31 @@ describe("persisted public legal documents", () => {
     expect(source).toContain("当前语言尚无已发布版本");
     expect(source).not.toContain("getLegalTermsDocument(language)");
     expect(source).not.toContain("getLegalPrivacyDocument(language)");
+  });
+});
+
+describe("UnifiedSettingsPage fullscreen exit", () => {
+  const pageScaffoldSource = appScaffoldSource.slice(
+    appScaffoldSource.indexOf("export function PageScaffold"),
+    appScaffoldSource.indexOf("export function AppTopBar")
+  );
+  const settingsHomeComponentSource = settingsDirectorySource.slice(
+    settingsDirectorySource.indexOf("export function SettingsHomePage"),
+    settingsDirectorySource.indexOf("export function SettingsDetailPage")
+  );
+  const settingsHomeSource = source.slice(
+    source.indexOf("export function UnifiedSettingsPage"),
+    source.indexOf("export function UnifiedSettingsProfileCardBackgroundPage")
+  );
+
+  it("uses the shared close control to leave the current portal settings home", () => {
+    expect(settingsHomeSource).toContain("closeTo={getPortalMePath(portal)}");
+    expect(settingsHomeComponentSource).toContain("closeTo={closeTo}");
+  });
+
+  it("removes the bottom navigation and its safe-area reservation from settings home", () => {
+    expect(settingsHomeComponentSource).toContain("showBottomNav={false}");
+    expect(pageScaffoldSource).toContain("showBottomNav={showBottomNav}");
   });
 });
 

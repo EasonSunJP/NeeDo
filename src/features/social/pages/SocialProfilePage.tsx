@@ -308,7 +308,11 @@ function CoreReadTechnicianSocialProfilePage({
   onClose: () => void;
   scope: SocialPortalScope;
 }) {
-  const query = useCoreReadQuery(() => coreReadApi.getTechnicianDetail(id), [id]);
+  const query = useCoreReadQuery(
+    () => coreReadApi.getTechnicianDetail(id),
+    [id],
+    { key: `core:technician:${id}` }
+  );
   const profile = useMemo(() => (query.data ? buildCoreTechnicianSocialProfile(query.data) : null), [query.data]);
   const posts = useMemo(() => (query.data ? buildCoreTechnicianSocialPosts(query.data) : []), [query.data]);
   const relatedShopEntries = useMemo(() => (query.data ? buildCoreTechnicianRelatedShopEntries(query.data) : []), [query.data]);
