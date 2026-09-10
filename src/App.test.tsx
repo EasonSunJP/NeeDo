@@ -142,6 +142,15 @@ describe("user profile settings compatibility route", () => {
   });
 });
 
+describe("legal document catalog routes", () => {
+  it("keeps merchant and Affiliate agreement catalog links on real protected pages", () => {
+    expect(appSource).toContain('path="/me/settings/merchant-agreement"');
+    expect(appSource).toContain('path="/me/settings/affiliate-agreement"');
+    expect(appSource).toContain("<UnifiedSettingsMerchantAgreementPage");
+    expect(appSource).toContain("<UnifiedSettingsAffiliateAgreementPage");
+  });
+});
+
 describe("production route chunk boundaries", () => {
   it("protects the formal NDP exchange-rate operations route with read permission", () => {
     expect(appSource).toContain(
