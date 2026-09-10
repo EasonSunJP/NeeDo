@@ -93,6 +93,12 @@ describe("SocialTimelinePage", () => {
     expect(source).not.toContain("needo.social.timeline.filter");
   });
 
+  it("refreshes formal social names when the timeline route is entered again", () => {
+    expect(source).toMatch(
+      /useEffect\(\(\) => \{\s*refreshFeeds\(\);\s*\}, \[location\.pathname, refreshFeeds\]\);/
+    );
+  });
+
   it("filters timeline posts by typed text, hashtags, mentions, and author profile without leaving the page", () => {
     expect(filterSocialTimelinePostsByQuery(posts, profiles, "排版").map((post) => post.id)).toEqual(["post-layout"]);
     expect(filterSocialTimelinePostsByQuery(posts, profiles, "#动态排版测试").map((post) => post.id)).toEqual(["post-layout"]);

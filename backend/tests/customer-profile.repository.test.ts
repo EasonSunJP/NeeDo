@@ -98,9 +98,15 @@ describe("CustomerProfileRepository", () => {
         create: jest.fn().mockResolvedValue({ id: 82 }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      technicianProfile: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       user: {
         update: jest.fn().mockResolvedValue({ id: 11 }),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
+      userIdentity: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     };
     const client = {
@@ -167,6 +173,23 @@ describe("CustomerProfileRepository", () => {
       where: { id: 11 },
       data: { avatarUrl: "http://localhost:3000/media/customer-avatars/new.png" }
     });
+    expect(transaction.userIdentity.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 11,
+        type: { in: ["customer", "user", "u", "technician", "scout"] },
+        isActive: true,
+        deletedAt: null
+      },
+      data: { displayName: "新昵称" }
+    });
+    expect(transaction.technicianProfile.updateMany).toHaveBeenCalledWith({
+      where: { userId: 11, deletedAt: null },
+      data: { displayName: "新昵称" }
+    });
+    expect(transaction.user.update).toHaveBeenCalledWith({
+      where: { id: 11 },
+      data: { username: "新昵称" }
+    });
     expect(transaction.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ action: "customer_profile.self_update", targetId: 41 })
@@ -184,7 +207,9 @@ describe("CustomerProfileRepository", () => {
         update: jest.fn().mockResolvedValue(profile)
       },
       mediaAsset: { create: jest.fn(), updateMany: jest.fn() },
-      user: { update: jest.fn(), updateMany: jest.fn() }
+      technicianProfile: { updateMany: jest.fn() },
+      user: { update: jest.fn(), updateMany: jest.fn() },
+      userIdentity: { updateMany: jest.fn() }
     };
     const client = {
       $transaction: jest.fn(async (callback) => callback(transaction)),

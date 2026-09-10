@@ -39,8 +39,6 @@ import {
   normalizeStorePresentationConfig
 } from "../../lib/storePresentation";
 import { cn } from "../../lib/utils";
-import { CustomerMembershipBadge } from "../../shared/profile-card";
-import { formatCustomerCreditScore } from "../../shared/profile-card/customerProfileLabels";
 import { updateStoreEntity, useEntityStore } from "../../state/entityStore";
 import { selectHomeLocationManually } from "../../state/homeLocationStore";
 import { updateHomeLayoutConfig, useHomeLayoutStore, type HomeLocationOption } from "../../state/homeLayoutStore";
@@ -61,7 +59,6 @@ import { usePublicLegalDocument } from "../platform-settings/publicLegalDocument
 import { TestOnlyBackendPortalEntries } from "./TestOnlyBackendPortalEntries";
 import { buildIdentityRows, defaultIdentityAvailability, type IdentityKind } from "../identity-applications/model";
 import { AuthVerificationPanel, type AuthVerificationLabels } from "../../pages/auth/AuthVerificationPanel";
-import { customerProfileApi } from "../core-read/customerProfileApi";
 import { useCoreReadQuery } from "../core-read/hooks";
 import {
   technicianProfileApi,
@@ -72,6 +69,7 @@ import { useCustomerSelfProfile } from "../core-read/useCustomerSelfProfile";
 import { EkycProfileForm } from "./EkycProfileForm";
 import { ApplicationShell } from "../identity-applications/ApplicationUi";
 import { ImOpenedMediaCacheSettingsSection } from "./ImOpenedMediaCacheSettingsSection";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
@@ -1698,7 +1696,12 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   const { config: homeLocationConfig } = useHomeLayoutStore();
   const technicianProfileQuery = useCoreReadQuery(
     () => portal === "technician" ? technicianProfileApi.getMine() : null,
-    [portal, session?.currentIdentity.scopeId]
+    [portal, session?.currentIdentity.scopeId],
+    {
+      enabled: portal === "technician",
+      key: "technician:self",
+      scope: getAuthenticatedPersistentCacheScope()
+    }
   );
   const formalCustomerProfile = useCustomerSelfProfile(portal === "user");
   const legacyCustomer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
@@ -1760,6 +1763,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   return (
     <PortalScopedSettingsPage portal={portal}>
       <SettingsHomePage
+        closeTo={getPortalMePath(portal)}
         info={t(isBusinessPortal ? "NeeDoAfirieito 使用独立 Afirieito App 设置中心，基础设置与用户端保持同一套交互。" : "统一设置模块现在使用同一套首页、列表项和子页承载三端配置，仅通过身份决定显示哪些内容。")}
         navItems={getSettingsNavItems(portal)}
         onBack={
@@ -1808,7 +1812,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           >
             <SettingsListItem
               title={t(getProfileEntryTitle(portal))}
-              to={getSettingsPath(portal, "profile")}
+              to={portal === "user" ? getPortalMePath(portal) : getSettingsPath(portal, "profile")}
               value={t(profileStatus)}
             />
             {portal !== "merchant" && profileCardBackgroundSettings.editEntryEnabled ? (
@@ -2123,266 +2127,6 @@ function SettingsProfileResourceState({
         </SurfacePanel>
       </SettingsDetailPage>
     </PortalScopedSettingsPage>
-  );
-}
-
-function UserProfileSettingsPage({
-  portal,
-  customer,
-  technician
-}: {
-  portal: UnifiedSettingsPortal;
-  customer: Customer;
-  technician?: Technician;
-}) {
-  const navigate = useNavigate();
-  const { language } = useI18n();
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
-  const saveInFlightRef = useRef(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const t = (source: string) => translateText(source, language);
-  const initialDraft = useMemo(
-    () => ({
-      avatar: customer.avatar,
-      nickname: customer.nickname?.trim() || customer.name,
-      age: customer.age ?? technician?.age ?? "",
-      height: customer.height ?? technician?.height ?? "",
-      languages: customer.languages?.length ? [...customer.languages] : technician?.languages?.length ? [...technician.languages] : [],
-      bio: customer.bio ?? technician?.bio ?? ""
-    }),
-    [customer, technician]
-  );
-  const [draft, setDraft] = useState(initialDraft);
-
-  useEffect(() => {
-    setDraft(initialDraft);
-  }, [initialDraft]);
-
-  const toggleLanguage = (language: string) => {
-    setDraft((current) => {
-      if (current.languages.includes(language)) {
-        return { ...current, languages: current.languages.filter((item) => item !== language) };
-      }
-
-      return { ...current, languages: [...current.languages, language] };
-    });
-  };
-
-  const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        return;
-      }
-
-      setDraft((current) => ({ ...current, avatar: reader.result as string }));
-    };
-
-    reader.readAsDataURL(file);
-  };
-
-  const handleSave = async () => {
-    if (saveInFlightRef.current) {
-      return;
-    }
-
-    const nextProfile = {
-      avatar: draft.avatar.trim() || customer.avatar,
-      nickname: draft.nickname.trim() || customer.name,
-      age: draft.age.trim(),
-      height: draft.height.trim(),
-      languages: [...draft.languages],
-      bio: draft.bio.trim()
-    };
-
-    const ageText = nextProfile.age.trim();
-    const heightText = nextProfile.height.replace(/cm$/i, "").trim();
-    const age = ageText ? Number(ageText) : null;
-    const heightCm = heightText ? Number(heightText) : null;
-
-    if (
-      (ageText && !/^\d+$/.test(ageText)) ||
-      (heightText && !/^\d+(?:\.\d+)?$/.test(heightText)) ||
-      (age !== null && (!Number.isInteger(age) || age < 0 || age > 150)) ||
-      (heightCm !== null && (!Number.isFinite(heightCm) || heightCm < 30 || heightCm > 250))
-    ) {
-      setSaveError(t("资料格式不正确，请检查后重试"));
-      return;
-    }
-
-    saveInFlightRef.current = true;
-    setSaving(true);
-    setSaveError("");
-
-    try {
-      await customerProfileApi.updateMine({
-        displayName: nextProfile.nickname,
-        avatarDataUrl: nextProfile.avatar.startsWith("data:image/") ? nextProfile.avatar : undefined,
-        age,
-        heightCm,
-        languages: nextProfile.languages,
-        bio: nextProfile.bio || null
-      });
-      navigate(getPortalMePath(portal), { replace: true });
-    } catch {
-      setSaveError(t("资料保存失败，请保留当前内容后重试"));
-    } finally {
-      saveInFlightRef.current = false;
-      setSaving(false);
-    }
-  };
-
-  return (
-    <MobileShell navItems={[]}>
-      <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_32%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))] text-[color:var(--client-text)]">
-        <MobileFullscreenHeader
-          className="fixed inset-x-0 top-0 z-50"
-          onBack={() => navigate(getPortalMePath(portal), { replace: true })}
-          subtitle="头像、昵称、语言与简介会同步更新到账户资料"
-          title="编辑用户资料"
-        />
-
-        <main className="mx-auto w-full max-w-[520px] space-y-4 px-4 pb-36 pt-[calc(env(safe-area-inset-top)+6.75rem)]">
-          <SurfacePanel className="overflow-hidden p-0">
-            <div className="relative h-32 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--client-primary)_90%,white),color-mix(in_srgb,var(--client-primary)_72%,black))]">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.34),transparent_32%)]" />
-              <CustomerMembershipBadge
-                className="absolute right-4 top-4 h-11 w-11"
-                fallbackClassName="absolute right-4 top-4 rounded-full bg-white/18 px-3 py-1 text-[11px] font-black text-white backdrop-blur"
-                imageClassName="h-11 w-11"
-                level={customer.memberLevel}
-              />
-            </div>
-
-            <div className="px-4 pb-5">
-              <div className="-mt-12 flex items-end justify-between gap-3">
-                <AvatarImage
-                  alt={draft.nickname || customer.name}
-                  className="h-24 w-24 border-[4px] border-[color:var(--client-bg)] bg-[color:var(--client-surface)] shadow-[0_18px_40px_rgba(0,0,0,0.16)]"
-                  src={draft.avatar || customer.avatar}
-                />
-                <div className="flex items-center gap-2 pb-1">
-                  <input accept="image/*" className="hidden" onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
-                  <SecondaryButton className="h-10 px-4 text-sm" onClick={() => avatarInputRef.current?.click()}>
-                    更换头像
-                  </SecondaryButton>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-[color:var(--client-primary)]">账户预览</p>
-                <h1 className="mt-2 text-[28px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">{draft.nickname || customer.name}</h1>
-                <p className="mt-1 text-sm text-[color:var(--client-muted)]">ID {customer.systemId}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
-                    语言 {draft.languages.length} 项
-                  </span>
-                  <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-muted)]">
-                    信用度 {formatCustomerCreditScore(customer, { withMax: true })}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </SurfacePanel>
-
-          <SurfacePanel className="space-y-4">
-            <div>
-              <p className="text-[18px] font-black text-[color:var(--client-text)]">基础资料</p>
-              <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">这页只保留一套用户资料编辑逻辑，昵称、头像和简介都会从这里统一维护。</p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">昵称</span>
-                <input
-                  className="h-12 w-full rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 outline-none"
-                  onChange={(event) => setDraft((current) => ({ ...current, nickname: event.target.value }))}
-                  value={draft.nickname}
-                />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">年龄</span>
-                <input
-                  className="h-12 w-full rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 outline-none"
-                  onChange={(event) => setDraft((current) => ({ ...current, age: event.target.value }))}
-                  value={draft.age}
-                />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">身高</span>
-                <input
-                  className="h-12 w-full rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 outline-none"
-                  onChange={(event) => setDraft((current) => ({ ...current, height: event.target.value }))}
-                  value={draft.height}
-                />
-              </label>
-            </div>
-          </SurfacePanel>
-
-          <SurfacePanel className="space-y-4">
-            <div>
-              <p className="text-[18px] font-black text-[color:var(--client-text)]">语言能力</p>
-              <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">保持你常用的沟通语言，预约前展示也会引用这里的资料。</p>
-            </div>
-            <div className="flex flex-wrap gap-2" data-no-i18n>
-              {languages.map((item) => {
-                const label = item.label;
-                const active = draft.languages.includes(label);
-
-                return (
-                  <button
-                    className={cn(
-                      "rounded-full px-3.5 py-2 text-sm font-black transition",
-                      active
-                        ? "bg-[color:var(--client-primary)] text-[#090806] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
-                        : "bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
-                    )}
-                    key={item.code}
-                    onClick={() => toggleLanguage(label)}
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </SurfacePanel>
-
-          <SurfacePanel className="space-y-4">
-            <div>
-              <p className="text-[18px] font-black text-[color:var(--client-text)]">自我介绍</p>
-              <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">写清楚你的预约偏好、语言习惯和常用说明，门店与技师会更容易理解你的需求。</p>
-            </div>
-            <textarea
-              className="min-h-[180px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 py-4 text-sm leading-7 outline-none"
-              onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))}
-              value={draft.bio}
-            />
-            <div className="rounded-[20px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-xs font-semibold leading-6 text-[color:var(--client-muted)]">
-              信用度、积分和利用次数仍由系统自动计算，这一页只编辑用户公开资料本身。
-            </div>
-          </SurfacePanel>
-
-        </main>
-
-        <StickyBottomBar>
-          <div className="flex justify-center">
-            <PrimaryButton className="h-12 w-full max-w-[360px]" onClick={() => void handleSave()}>
-              {saving ? t("保存中") : t("保存并退出")}
-            </PrimaryButton>
-          </div>
-          {saveError ? <p className="mt-2 text-center text-xs font-bold text-[color:var(--client-danger)]">{saveError}</p> : null}
-        </StickyBottomBar>
-      </div>
-    </MobileShell>
   );
 }
 
@@ -3149,26 +2893,15 @@ function MerchantProfileSettingsPage({ portal, store }: { portal: UnifiedSetting
   );
 }
 
-function FormalUserProfileSettingsPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  const { customer, error, loading, reload } = useCustomerSelfProfile();
-
-  if (loading) {
-    return <SettingsProfileResourceState loading portal={portal} />;
-  }
-
-  if (!customer || error) {
-    return <SettingsProfileResourceState loading={false} onRetry={reload} portal={portal} />;
-  }
-
-  return (
-    <PortalScopedSettingsPage portal={portal}>
-      <UserProfileSettingsPage customer={customer} portal={portal} />
-    </PortalScopedSettingsPage>
-  );
-}
-
 function FormalTechnicianProfileSettingsPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  const profileQuery = useCoreReadQuery(() => technicianProfileApi.getMine(), []);
+  const profileQuery = useCoreReadQuery(
+    () => technicianProfileApi.getMine(),
+    [],
+    {
+      key: "technician:self",
+      scope: getAuthenticatedPersistentCacheScope()
+    }
+  );
 
   if (profileQuery.loading) {
     return <SettingsProfileResourceState loading portal={portal} />;
@@ -3191,7 +2924,7 @@ export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettings
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
 
   if (portal === "user") {
-    return <FormalUserProfileSettingsPage portal={portal} />;
+    return <Navigate replace to={getPortalMePath(portal)} />;
   }
 
   if (portal === "merchant") {
@@ -3265,7 +2998,12 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
   const { config: homeLocationConfig } = useHomeLayoutStore();
   const technicianProfileQuery = useCoreReadQuery(
     () => portal === "technician" ? technicianProfileApi.getMine() : null,
-    [portal, session?.currentIdentity.scopeId]
+    [portal, session?.currentIdentity.scopeId],
+    {
+      enabled: portal === "technician",
+      key: "technician:self",
+      scope: getAuthenticatedPersistentCacheScope()
+    }
   );
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const fallbackHomeLocation = homeLocationConfig.locations[0] ?? createManualHomeLocation("新宿");
@@ -3750,10 +3488,10 @@ export function UnifiedSettingsAboutPage({ portal }: { portal: UnifiedSettingsPo
 
 type LegalDocumentKind = "terms" | "privacy";
 
-function PersistedLegalDocumentPage({ portal, slug }: { portal: UnifiedSettingsPortal; slug: "terms-of-use" | "privacy-policy" }) {
+function PersistedLegalDocumentPage({ portal, slug, fallbackTitleSource }: { portal: UnifiedSettingsPortal; slug: string; fallbackTitleSource: string }) {
   const { language } = useI18n();
   const state = usePublicLegalDocument(slug, language);
-  const fallbackTitle = translateText(slug === "terms-of-use" ? "利用规约" : "个人信息保护方针", language);
+  const fallbackTitle = translateText(fallbackTitleSource, language);
   return (
     <PortalScopedSettingsPage portal={portal}>
       <SettingsDetailPage backTo={getSettingsBasePath(portal)} contentClassName="pb-28" info={translateText("只显示运营后台已发布的当前语言版本。", language)} navItems={getSettingsNavItems(portal)} title={state.document?.title ?? fallbackTitle}>
@@ -3769,11 +3507,19 @@ function PersistedLegalDocumentPage({ portal, slug }: { portal: UnifiedSettingsP
 }
 
 function UnifiedSettingsTermsDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  return <PersistedLegalDocumentPage portal={portal} slug="terms-of-use" />;
+  return <PersistedLegalDocumentPage fallbackTitleSource="利用规约" portal={portal} slug="terms-of-use" />;
 }
 
 function UnifiedSettingsPrivacyDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  return <PersistedLegalDocumentPage portal={portal} slug="privacy-policy" />;
+  return <PersistedLegalDocumentPage fallbackTitleSource="个人信息保护方针" portal={portal} slug="privacy-policy" />;
+}
+
+export function UnifiedSettingsMerchantAgreementPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  return <PersistedLegalDocumentPage fallbackTitleSource="店铺服务规则与合同" portal={portal} slug="merchant-agreement" />;
+}
+
+export function UnifiedSettingsAffiliateAgreementPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  return <PersistedLegalDocumentPage fallbackTitleSource="联盟营销规则与合同" portal={portal} slug="affiliate-agreement" />;
 }
 
 function UnifiedSettingsLegalDocumentPage({

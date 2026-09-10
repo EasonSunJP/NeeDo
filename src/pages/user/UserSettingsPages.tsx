@@ -9,7 +9,6 @@ import {
   UnifiedSettingsPortalPage,
   UnifiedSettingsPrivacyPage,
   UnifiedSettingsProfileCardBackgroundPage,
-  UnifiedSettingsProfilePage,
   UnifiedSettingsServiceRangePage,
   UnifiedSettingsThemePage,
   UnifiedSettingsTermsPage,
@@ -31,10 +30,6 @@ export function UserSettingsLanguagePage() {
 
 export function UserSettingsPortalPage() {
   return <UnifiedSettingsPortalPage portal="user" />;
-}
-
-export function UserSettingsProfilePage() {
-  return <UnifiedSettingsProfilePage portal="user" />;
 }
 
 export function UserSettingsProfileCardBackgroundPage() {

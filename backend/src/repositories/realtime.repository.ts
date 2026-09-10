@@ -38,6 +38,7 @@ import {
 } from "./im-contact-card-send.transaction";
 
 const PUBLISHED_STATUS = "published";
+const PERSONAL_IDENTITY_TYPES = ["customer", "user", "u", "technician", "scout"];
 
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
@@ -865,9 +866,23 @@ const socialAuthorSelect = {
   username: true,
   avatarUrl: true,
   createdAt: true,
+  customerProfile: {
+    select: { displayName: true, deletedAt: true }
+  },
+  technicianProfile: {
+    select: { displayName: true, deletedAt: true }
+  },
   identities: {
     where: { deletedAt: null, isActive: true },
-    select: { id: true, type: true, displayName: true, isDefault: true },
+    select: {
+      id: true,
+      type: true,
+      displayName: true,
+      isDefault: true,
+      merchantIdentityProfile: {
+        select: { displayName: true, deletedAt: true }
+      }
+    },
     orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
   }
 } satisfies Prisma.UserSelect;
@@ -877,7 +892,15 @@ const socialPostInclude = {
     select: socialAuthorSelect
   },
   authorIdentity: {
-    select: { id: true, type: true, displayName: true, pinnedSocialPostId: true }
+    select: {
+      id: true,
+      type: true,
+      displayName: true,
+      pinnedSocialPostId: true,
+      merchantIdentityProfile: {
+        select: { displayName: true, deletedAt: true }
+      }
+    }
   },
   _count: {
     select: {
@@ -2620,12 +2643,34 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       id: { not: userId },
       isActive: true,
       deletedAt: null,
+      identities: {
+        some: {
+          type: { in: PERSONAL_IDENTITY_TYPES },
+          isActive: true,
+          deletedAt: null
+        }
+      },
       OR: [
         { username: { contains: query } },
         { needoId: { contains: query } },
         {
           customerProfile: {
             is: { displayName: { contains: query }, deletedAt: null }
+          }
+        },
+        {
+          technicianProfile: {
+            is: { displayName: { contains: query }, deletedAt: null }
+          }
+        },
+        {
+          identities: {
+            some: {
+              displayName: { contains: query },
+              type: { in: PERSONAL_IDENTITY_TYPES },
+              isActive: true,
+              deletedAt: null
+            }
           }
         }
       ],
@@ -2641,7 +2686,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const select = {
       ...imParticipantUserSelect,
       identities: {
-        where: { isActive: true, deletedAt: null },
+        where: {
+          type: { in: PERSONAL_IDENTITY_TYPES },
+          isActive: true,
+          deletedAt: null
+        },
         select: imParticipantIdentitySelect,
         orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
       }
@@ -2659,7 +2708,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     return buildPaginatedResponse(
       list.map((user) =>
-        this.mapParticipant(user, undefined, this.findCanonicalParticipantIdentity(user.identities))
+        this.mapParticipant(
+          user,
+          undefined,
+          this.findCanonicalParticipantIdentity(user.identities)
+        )
       ),
       total,
       pagination
@@ -2669,7 +2722,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   public async addContact(input: AddContactInput): Promise<ContactPayload> {
     const ownerIdentityId =
       input.ownerIdentityId ?? (await this.findCanonicalIdentityIdForUser(input.ownerUserId));
-    const contactIdentityId = await this.findCanonicalIdentityIdForUser(input.contactUserId);
+    const contactIdentityId = await this.findCanonicalPersonalIdentityId(
+      this.client,
+      input.contactUserId
+    );
     if (!ownerIdentityId || !contactIdentityId) {
       throw new AppError({
         code: ERROR_CODES.IDENTITY_NOT_FOUND,
@@ -3152,7 +3208,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         input.requesterIdentityId ??
         (await this.findCanonicalIdentityId(tx, input.requesterUserId));
       const targetIdentityId =
-        input.targetIdentityId ?? (await this.findCanonicalIdentityId(tx, input.targetUserId));
+        input.targetIdentityId ??
+        (await this.findCanonicalPersonalIdentityId(tx, input.targetUserId));
       if (!requesterIdentityId || !targetIdentityId) {
         throw new AppError({
           code: ERROR_CODES.IDENTITY_NOT_FOUND,
@@ -3190,7 +3247,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           isActive: true,
           OR: [
             { id: requesterIdentityId, userId: input.requesterUserId },
-            { id: targetIdentityId, userId: input.targetUserId }
+            {
+              id: targetIdentityId,
+              userId: input.targetUserId,
+              type: { in: PERSONAL_IDENTITY_TYPES }
+            }
           ]
         }
       });
@@ -5094,6 +5155,35 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     return fallback?.id ?? null;
   }
 
+  private async findCanonicalPersonalIdentityId(
+    client: Pick<PrismaClient, "userIdentity"> | Pick<Prisma.TransactionClient, "userIdentity">,
+    userId: number
+  ): Promise<number | null> {
+    const customer = await client.userIdentity.findFirst({
+      where: {
+        userId,
+        type: { in: ["customer", "user", "u"] },
+        isActive: true,
+        deletedAt: null
+      },
+      orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+      select: { id: true }
+    });
+    if (customer) return customer.id;
+
+    const fallback = await client.userIdentity.findFirst({
+      where: {
+        userId,
+        type: { in: ["technician", "scout"] },
+        isActive: true,
+        deletedAt: null
+      },
+      orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+      select: { id: true }
+    });
+    return fallback?.id ?? null;
+  }
+
   private async findExistingDirectConversation(
     participantIdentityIds: number[]
   ): Promise<ConversationRecord | null> {
@@ -6048,7 +6138,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   private mapSocialAuthor(
     author: SocialAuthorRecord,
-    postIdentity?: { id: number; type: string; displayName: string | null }
+    postIdentity?: ImParticipantIdentityRecord
   ): SocialPostAuthorPayload {
     const identity =
       postIdentity ??
@@ -6071,7 +6161,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       userId: author.id,
       identityId: identity?.id ?? author.id,
       username: author.username,
-      displayName: identity?.displayName?.trim() || author.username,
+      displayName: this.resolveParticipantDisplayName(author, identity),
       avatarUrl: author.avatarUrl,
       entityType,
       joinedAt: author.createdAt

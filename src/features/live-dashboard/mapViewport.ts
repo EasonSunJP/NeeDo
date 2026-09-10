@@ -10,7 +10,7 @@ type ViewBox = readonly [number, number, number, number];
 export const IDENTITY_VIEWPORT: MapViewport = Object.freeze({ scale: 1, x: 0, y: 0 });
 
 const MIN_SCALE = 1;
-export const MAP_MAX_SCALE = 8;
+export const MAP_MAX_SCALE = 20;
 const ZOOM_STEP = 0.5;
 
 const isFiniteNumber = (value: number): boolean => Number.isFinite(value);

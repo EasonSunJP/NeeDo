@@ -55,16 +55,16 @@ describe("mapViewport", () => {
     expect(y).toBeLessThanOrEqual(height);
   });
 
-  it("zooms around the selected anchor without moving it and clamps at 1x and 8x", () => {
+  it("zooms around the selected anchor without moving it and clamps at 1x and 20x", () => {
     const zoomed = zoomMapViewport(IDENTITY_VIEWPORT, "in", [320, 180], viewBox);
 
     expect(zoomed).toEqual({ scale: 1.5, x: -160, y: -90 });
     expect(zoomed.scale * 320 + zoomed.x).toBe(320);
     expect(zoomed.scale * 180 + zoomed.y).toBe(180);
     expect(repeatZoom(IDENTITY_VIEWPORT, "out", 3)).toEqual(IDENTITY_VIEWPORT);
-    expect(repeatZoom(IDENTITY_VIEWPORT, "in", 20).scale).toBe(8);
-    expect(scaleMapViewport(IDENTITY_VIEWPORT, 8, [320, 180], viewBox)).toEqual({ scale: 8, x: -2240, y: -1260 });
-    expect(scaleMapViewport(IDENTITY_VIEWPORT, 99, [320, 180], viewBox).scale).toBe(8);
+    expect(repeatZoom(IDENTITY_VIEWPORT, "in", 50).scale).toBe(20);
+    expect(scaleMapViewport(IDENTITY_VIEWPORT, 20, [320, 180], viewBox)).toEqual({ scale: 20, x: -6080, y: -3420 });
+    expect(scaleMapViewport(IDENTITY_VIEWPORT, 99, [320, 180], viewBox).scale).toBe(20);
   });
 
   it("clamps pan in both directions and resets with the exact identity transform", () => {

@@ -11,6 +11,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
+import { syncPersonalDisplayName } from "./personal-display-name.repository";
 
 export interface CustomerProfileMutation {
   displayName?: string;
@@ -118,6 +119,14 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
           }
         }
       });
+
+      if (mutation.displayName !== undefined) {
+        await syncPersonalDisplayName(transaction, {
+          displayName: mutation.displayName,
+          source: "customer",
+          userId
+        });
+      }
 
       if (mutation.avatar) {
         await persistIdentityAvatar(transaction, {

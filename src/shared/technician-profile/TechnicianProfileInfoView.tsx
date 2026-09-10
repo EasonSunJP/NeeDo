@@ -134,10 +134,10 @@ export function TechnicianProfileInfoView({ className, model, privacySlot, servi
         <div className="my-4 h-px bg-[color:var(--client-line)]" />
         <h2 className="text-lg font-black">基础信息</h2>
         <div className="mt-3 space-y-3">
-          <section className={cn(panelClassName, "grid grid-cols-3 divide-x divide-[color:var(--client-line)] p-3")}>
-            <div className="min-w-0 pr-2"><p className={cn("text-xs font-bold", mutedClassName)}>性别</p><strong className="mt-1 block truncate text-sm">{genderLabel(model.gender)}</strong></div>
-            <div className="min-w-0 px-2"><p className={cn("text-xs font-bold", mutedClassName)}>年龄</p><strong className="mt-1 block truncate text-sm">{model.age ?? "未设置"}</strong></div>
-            <div className="min-w-0 pl-2"><p className={cn("text-xs font-bold", mutedClassName)}>身高</p><strong className="mt-1 block truncate text-sm">{model.heightCm === null ? "未设置" : `${model.heightCm}cm`}</strong></div>
+          <section className={cn(panelClassName, "grid grid-cols-3 items-stretch divide-x divide-[color:var(--client-line)] p-3")} data-testid="technician-profile-basic-grid">
+            <div className="col-start-1 min-w-0 pr-2 text-left"><p className={cn("text-xs font-bold", mutedClassName)}>性别</p><strong className="mt-1 block truncate text-sm">{genderLabel(model.gender)}</strong></div>
+            <div className="col-start-2 min-w-0 px-2 text-left"><p className={cn("text-xs font-bold", mutedClassName)}>年龄</p><strong className="mt-1 block truncate text-sm">{model.age ?? "未设置"}</strong></div>
+            <div className="col-start-3 min-w-0 pl-2 text-left"><p className={cn("text-xs font-bold", mutedClassName)}>身高</p><strong className="mt-1 block truncate text-sm">{model.heightCm === null ? "未设置" : `${model.heightCm}cm`}</strong></div>
           </section>
 
           <section className={cn(panelClassName, "p-3")}>

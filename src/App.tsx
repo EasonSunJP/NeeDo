@@ -108,18 +108,19 @@ import {
   UserSettingsPortalPage,
   UserSettingsPrivacyPage,
   UserSettingsProfileCardBackgroundPage,
-  UserSettingsProfilePage,
   UserSettingsServiceRangePage,
   UserSettingsThemePage,
   UserSettingsTermsPage,
   UserSettingsVerificationPage
 } from "./pages/user/UserSettingsPages";
 import {
+  UnifiedSettingsAffiliateAgreementPage,
   UnifiedSettingsAboutPage,
   UnifiedSettingsAccountPage,
   UnifiedSettingsDeleteAccountPage,
   UnifiedSettingsHelpPage,
   UnifiedSettingsLanguagePage,
+  UnifiedSettingsMerchantAgreementPage,
   UnifiedSettingsNotificationsPage,
   UnifiedSettingsPage,
   UnifiedSettingsPortalPage,
@@ -1311,7 +1312,7 @@ export default function App() {
               <Route path="/me/identity/merchant/apply" element={protect("user", <MerchantApplicationPage />)} />
               <Route path="/me/identity/affiliate/contract" element={protect("user", <AffiliateActivationPage />)} />
               <Route path="/me/settings/home-shortcuts" element={protect("user", <Navigate replace to="/me/settings" />)} />
-              <Route path="/me/settings/profile" element={protect("user", <UserSettingsProfilePage />)} />
+              <Route path="/me/settings/profile" element={protect("user", <Navigate replace to="/me" />)} />
               <Route path="/me/settings/profile-card-background" element={protect("user", <UserSettingsProfileCardBackgroundPage />)} />
               <Route path="/me/settings/verification" element={protect("user", <UserSettingsVerificationPage />)} />
               <Route path="/me/settings/service-range" element={protect("user", <UserSettingsServiceRangePage />)} />
@@ -1321,6 +1322,8 @@ export default function App() {
               <Route path="/me/settings/about" element={protect("user", <UserSettingsAboutPage />)} />
               <Route path="/me/settings/terms" element={protect("user", <UserSettingsTermsPage />)} />
               <Route path="/me/settings/privacy" element={protect("user", <UserSettingsPrivacyPage />)} />
+              <Route path="/me/settings/merchant-agreement" element={protect("user", <UnifiedSettingsMerchantAgreementPage portal="user" />)} />
+              <Route path="/me/settings/affiliate-agreement" element={protect("user", <UnifiedSettingsAffiliateAgreementPage portal="user" />)} />
               <Route path="/me/settings/ndp-guide" element={protect("user", <UserSettingsNdpGuidePage />)} />
               <Route path="/me/settings/delete-account" element={protect("user", <UserSettingsDeleteAccountPage />)} />
               <Route path="/support" element={protect("user", <SupportPage />)} />

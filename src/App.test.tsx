@@ -16,7 +16,7 @@ describe("portal identity switching boundaries", () => {
   const settingsPortalPageSource = sliceBetween(
     settingsSource,
     "export function UnifiedSettingsPortalPage",
-    "function UserProfileSettingsPage"
+    "function SettingsProfileResourceState"
   );
 
   it("restores remembered frontend portal authorization from protected route navigation", () => {
@@ -130,6 +130,24 @@ describe("portal identity switching boundaries", () => {
       affiliateActivationSource.match(/openPortalEntry\("business", "\/afirieito\/me"\)/g)
     ).toHaveLength(2);
     expect(affiliateActivationSource).not.toContain('window.location.assign("/afirieito');
+  });
+});
+
+describe("user profile settings compatibility route", () => {
+  it("redirects the retired duplicate profile editor to the personal center", () => {
+    expect(appSource).toContain(
+      '<Route path="/me/settings/profile" element={protect("user", <Navigate replace to="/me" />)} />'
+    );
+    expect(appSource).not.toContain("UserSettingsProfilePage");
+  });
+});
+
+describe("legal document catalog routes", () => {
+  it("keeps merchant and Affiliate agreement catalog links on real protected pages", () => {
+    expect(appSource).toContain('path="/me/settings/merchant-agreement"');
+    expect(appSource).toContain('path="/me/settings/affiliate-agreement"');
+    expect(appSource).toContain("<UnifiedSettingsMerchantAgreementPage");
+    expect(appSource).toContain("<UnifiedSettingsAffiliateAgreementPage");
   });
 });
 

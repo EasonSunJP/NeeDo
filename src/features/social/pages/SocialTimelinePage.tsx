@@ -322,6 +322,10 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   );
 
   useEffect(() => {
+    refreshFeeds();
+  }, [location.pathname, refreshFeeds]);
+
+  useEffect(() => {
     setTimelineFilter("friends");
     setPanelStates(createInitialTimelinePanels(homeNearbyPanel));
     setTimelineSearchInput("");

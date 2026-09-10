@@ -744,7 +744,6 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
     - `/me/settings/language`
     - `/me/settings/portal`
     - `/me/settings/home-shortcuts`
-    - `/me/settings/profile`
     - `/me/settings/verification`
     - `/me/settings/service-range`
     - `/me/settings/account`
@@ -779,7 +778,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 
 ### 已从全屏浮层改为真实新页面的内容
 
-- 我的页资料编辑：从页内全屏编辑浮层迁移到 `/me/settings/profile`
+- 我的页资料编辑：统一由 `/me` 个人中心内的信息卡编辑模式承载；旧 `/me/settings/profile` 仅保留兼容重定向
 - 订单详情：从订单列表覆盖式全屏层迁移到 `/orders/:orderId`
 - 订单中的关联资料查看：统一改为跳转到对应资料页 / 服务页 / 店铺页
 - 首页中的预约确认、位置选择等旧式全屏流程：收敛回真实搜索页、详情页与预约页
@@ -962,7 +961,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 把技师端 `我的` 页里的内嵌设置区替换成统一设置路由
 - 把商户端 `我的` 页里的偏好面板、经营开关和资料入口替换成统一设置路由
 - 把商户端首页营业状态改为读取统一设置状态，而不是单页本地状态
-- 把资料编辑从我的页内全屏层收口到独立设置页
+- 把用户资料编辑收口到 `/me` 个人中心的信息卡编辑模式，避免重复维护第二套用户编辑页
 - 把订单详情从列表覆盖层收口为真实详情页
 - 把首页里重复的碎片入口合并为首屏主操作区 + 常用筛选区
 - 把详情页里过多的重卡片整理为自然 section + 轻分隔结构
@@ -2233,6 +2232,8 @@ Home booking codes must resolve to the official Japanese prefecture/municipality
 
 2026-09-07 响应式补充已完成本地验收：桌面流式单屏、手机竖屏隐藏地图但保留搜索/级联选择、全国本地搜索、可读引导线标签、缩放拖动还原及独立日期轴；20 个桌面与 3 个手机样本、正式 API 请求频率和密集区域证据见上述验收记录的“响应式地图与日期轴复验”。北海道等容量超限区域采用可访问的渐进名称披露，完整区域路径和搜索选择保持可用。
 
+2026-09-10 地图交互补充将 Pointer Capture 延后到确认发生拖拽或双指缩放后，普通鼠标/触控点击继续由行政区域路径处理并下钻；缩放滑条 100% 端点统一调整为 20 倍。该补充只修改前端交互和测试，没有新增 API、数据库字段或 migration。
+
 “数据管理中心”已改为正式数据只读入口，通过后端分页和关键词过滤读取订单、客户、技师、店铺、服务、排班与结算。库存、评价及历史全屏图表在正式表结构、RBAC、审计和分页合同完成前保持禁用，不再回退到浏览器 mock 或本地资料覆盖层。
 
 独立“评价中心”同样采用能力门禁：Review 表与 migration、分页搜索 RBAC API、回复和风控审计日志完成前，只展示明确的上线条件，不展示模拟评分、评价内容、回复状态、差评预警或敏感评价数字。
@@ -2739,7 +2740,7 @@ Home booking codes must resolve to the official Japanese prefecture/municipality
 - `语言` -> `/me/settings/language`
 - `身份` -> `/me/settings/portal`
 - `常用入口` -> `/me/settings/home-shortcuts`
-- `资料编辑` -> `/me/settings/profile`
+- `资料编辑` -> `/me`（个人中心；旧 `/me/settings/profile` 自动重定向）
 - `本人验证 / 店铺资质` -> `/me/settings/verification`
 - `服务范围` -> `/me/settings/service-range`
 - `账户与安全` -> `/me/settings/account`
@@ -2753,6 +2754,13 @@ Home booking codes must resolve to the official Japanese prefecture/municipality
 - 语言切换不再使用首页大按钮，改为 `SettingsRadioListPage` 的紧凑单选列表。
 - 身份切换不再占据首页大面积空间，改为独立单选页。
 - 用户端首页分类 icon 配置不再直接显示在设置首页，而是移到“常用入口”二级页。
+
+### 2026-09-10 用户资料入口修正
+
+- 用户端设置首页的“资料编辑”直接进入 `/me` 个人中心，复用其中正式资料读取、编辑与保存流程。
+- 删除设置模块内重复的用户资料编辑页面；技师与商户资料维护页不受影响。
+- 旧 `/me/settings/profile` 作为本地历史链接兼容入口，仅重定向到 `/me`。
+- 本次无数据库、migration 或 API 变更。
 
 ### 多身份显示差异
 
@@ -2800,3 +2808,7 @@ Operations System Settings now exposes four versioned eKYC requirements, with on
 ### Technician booking and Request automation settings
 
 The technician schedule entry keeps the existing formal “我的排班” calendar and adds separate Test-labelled “接单设置” and “抢单设置” tabs. Both settings are versioned, audited, scoped to the active technician identity and disabled by default. Rules use fail-safe AND evaluation: non-matching bookings remain pending, while matching Requests create a formal claim without automatic matching. Apply migration `20260909090000_technician_order_automation` before enabling the feature. The implementation and local verification plan is documented in [technician booking and Request automation](docs/superpowers/plans/2026-09-09-technician-booking-request-automation.md).
+
+### Contact, conversation, and Social display-name consistency
+
+Customer or technician display-name edits now synchronize the account username, both personal profiles, and every active personal identity in the same audited transaction; merchant-shop and operations names remain independent. Migration `20260910130000_personal_display_name_capacity` aligns the account and identity snapshot columns with the existing 120-character profile contract. IM projections reject stale in-flight bootstrap names after a contact-profile refresh, and add-friend search requires an active personal identity, matches current customer/technician profiles plus active personal identity names, returns the canonical personal profile name, and preserves the database collation result. Social author projections resolve the current customer, technician, or merchant profile name and refresh whenever the timeline route is entered. The merchant portal also revalidates formal shop/employee data when its route changes, so employee cards receive the synchronized technician name. The local implementation boundary is documented in [Step 13 realtime development notes](docs/13_REALTIME_IM_SOCIAL_NOTIFICATION.md#633-联系人会话与动态作者名称一致性2026-09-10本地).
