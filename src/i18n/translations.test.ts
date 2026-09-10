@@ -6,6 +6,34 @@ import { translateImUiText } from "../features/im/ui-copy";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes merchant trend chart copy and count units in all supported languages", () => {
+    const expected = {
+      "订单趋势": { zh: "订单趋势", "zh-Hant": "訂單趨勢", ja: "注文トレンド", en: "Order trends", ko: "주문 추이" },
+      "同一期间 · 双独立刻度": { zh: "同一期间 · 双独立刻度", "zh-Hant": "同一期間 · 雙獨立刻度", ja: "同じ期間 · 2つの独立した目盛", en: "Same period · two independent scales", ko: "같은 기간 · 두 개의 독립 눈금" },
+      峰值: { zh: "峰值", "zh-Hant": "峰值", ja: "ピーク", en: "Peak", ko: "최고치" },
+      单: { zh: "单", "zh-Hant": "單", ja: "件", en: "orders", ko: "건" },
+      营业额: { zh: "营业额", "zh-Hant": "營業額", ja: "売上", en: "Revenue", ko: "매출" },
+      订单数: { zh: "订单数", "zh-Hant": "訂單數", ja: "注文数", en: "Orders", ko: "주문 수" },
+      "订单趋势图例": { zh: "订单趋势图例", "zh-Hant": "訂單趨勢圖例", ja: "注文トレンドの凡例", en: "Order trend legend", ko: "주문 추이 범례" },
+      "隐藏营业额趋势": { zh: "隐藏营业额趋势", "zh-Hant": "隱藏營業額趨勢", ja: "売上トレンドを非表示", en: "Hide revenue trend", ko: "매출 추세 숨기기" },
+      "显示营业额趋势": { zh: "显示营业额趋势", "zh-Hant": "顯示營業額趨勢", ja: "売上トレンドを表示", en: "Show revenue trend", ko: "매출 추세 표시" },
+      "隐藏订单数趋势": { zh: "隐藏订单数趋势", "zh-Hant": "隱藏訂單數趨勢", ja: "注文数トレンドを非表示", en: "Hide order trend", ko: "주문 추세 숨기기" },
+      "显示订单数趋势": { zh: "显示订单数趋势", "zh-Hant": "顯示訂單數趨勢", ja: "注文数トレンドを表示", en: "Show order trend", ko: "주문 추세 표시" }
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      expect(translations[source], source).toEqual({
+        "zh-Hant": localized["zh-Hant"],
+        ja: localized.ja,
+        en: localized.en,
+        ko: localized.ko
+      });
+      for (const { code } of languages) {
+        expect(translateText(source, code), `${source}:${code}`).toBe(localized[code]);
+      }
+    }
+  });
+
   it("localizes the admin operator pending summaries in all five App languages", () => {
     for (const source of [
       "运营后台成员",

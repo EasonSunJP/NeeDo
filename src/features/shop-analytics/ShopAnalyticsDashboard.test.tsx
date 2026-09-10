@@ -3,10 +3,16 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackofficeDashboardPayload } from "../../api/backofficeRealData";
+import type { Language } from "../../i18n/translations";
 import type { Store } from "../../types/domain";
 import { ShopAnalyticsDashboard } from "./ShopAnalyticsDashboard";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const testI18n = vi.hoisted(() => ({ language: "zh" as Language }));
+vi.mock("../../i18n/I18nProvider", () => ({
+  useOptionalI18n: () => ({ language: testI18n.language, setLanguage: vi.fn() })
+}));
 
 const store: Store = {
   id: "11",
@@ -127,6 +133,7 @@ describe("ShopAnalyticsDashboard formal API", () => {
   let root: Root;
 
   beforeEach(() => {
+    testI18n.language = "zh";
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -277,6 +284,33 @@ describe("ShopAnalyticsDashboard formal API", () => {
     expect(container.querySelector('[data-series="revenue"]')).not.toBeNull();
     expect(container.querySelector('[data-series="orders"]')).toBeNull();
     expect(ordersLegend?.getAttribute("aria-label")).toBe("显示订单数趋势");
+  });
+
+  it("renders translated subtitle, peaks, and both legend states in English", async () => {
+    testI18n.language = "en";
+    const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("128,000"));
+
+    expect(container.textContent).toContain("Same period · two independent scales");
+    expect(container.textContent).toContain("5 orders Peak");
+    const revenueLegend = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Hide revenue trend"]'
+    );
+    const ordersLegend = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Hide order trend"]'
+    );
+    expect(revenueLegend).not.toBeNull();
+    expect(ordersLegend).not.toBeNull();
+
+    await act(async () => revenueLegend?.click());
+    expect(revenueLegend?.getAttribute("aria-label")).toBe("Show revenue trend");
+    await act(async () => revenueLegend?.click());
+    await act(async () => ordersLegend?.click());
+    expect(ordersLegend?.getAttribute("aria-label")).toBe("Show order trend");
   });
 
   it("centers a single zero-value bucket and keeps both nodes on the baseline", async () => {

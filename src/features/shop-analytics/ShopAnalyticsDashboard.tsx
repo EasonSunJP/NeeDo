@@ -5,9 +5,11 @@ import {
   type DashboardBucketPayload,
   type DashboardPeriod
 } from "../../api/backofficeRealData";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
 import type { Customer, Order, Settlement, Store, Technician } from "../../types/domain";
 import { cn, yen } from "../../lib/utils";
 import { buildTrendCoordinates } from "../../lib/technicianWorkTrendChart";
+import { translateText } from "../../i18n/translations";
 
 type ShopDashboardLoader = typeof backofficeRealDataApi.dashboard;
 
@@ -49,6 +51,8 @@ function buildShopTrendCoordinates(values: number[]) {
 }
 
 function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) {
+  const { language } = useOptionalI18n();
+  const text = (source: string) => translateText(source, language);
   const [showRevenue, setShowRevenue] = useState(true);
   const [showOrders, setShowOrders] = useState(true);
   const revenueCoordinates = useMemo(
@@ -85,21 +89,22 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
     <div className="min-w-0 overflow-hidden" data-testid="shop-analytics-trend">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-[17px] font-black">订单趋势</h3>
-          <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
-            同一期间 · 双独立刻度
+          <h3 className="text-[17px] font-black" data-no-i18n>{text("订单趋势")}</h3>
+          <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]" data-no-i18n>
+            {text("同一期间 · 双独立刻度")}
           </p>
         </div>
-        <div className="shrink-0 text-right text-[11px] font-black text-[color:var(--client-muted)]">
-          <p>{yen(revenuePeak)} 峰值</p>
-          <p className="mt-1 text-[color:var(--client-accent)]">{formatCount(orderPeak)}单 峰值</p>
+        <div className="shrink-0 text-right text-[11px] font-black text-[color:var(--client-muted)]" data-no-i18n>
+          <p>{yen(revenuePeak)} {text("峰值")}</p>
+          <p className="mt-1 text-[color:var(--client-accent)]">{formatCount(orderPeak)}{language === "zh" ? "单" : ` ${text("单")}`} {text("峰值")}</p>
         </div>
       </div>
 
       <div className="mt-3 overflow-x-auto">
         <svg
-          aria-label="订单趋势"
+          aria-label={text("订单趋势")}
           className="h-auto w-full min-w-0 overflow-visible"
+          data-no-i18n
           role="img"
           viewBox={`0 0 ${shopTrendDimensions.width} ${shopTrendDimensions.height}`}
         >
@@ -141,24 +146,24 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
         </svg>
       </div>
 
-      <div aria-label="订单趋势图例" className="mt-2 grid grid-cols-2 gap-2">
+      <div aria-label={text("订单趋势图例")} className="mt-2 grid grid-cols-2 gap-2" data-no-i18n>
         <button
-          aria-label={`${showRevenue ? "隐藏" : "显示"}营业额趋势`}
+          aria-label={text(showRevenue ? "隐藏营业额趋势" : "显示营业额趋势")}
           aria-pressed={showRevenue}
           className={cn("focus-ring flex min-h-11 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black", showRevenue ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]" : "border-[color:var(--client-line)] text-[color:var(--client-muted)] opacity-65")}
           onClick={() => setShowRevenue((current) => !current)}
           type="button"
         >
-          <span className="h-1 w-7 rounded-full bg-[color:var(--client-primary)]" />营业额
+          <span className="h-1 w-7 rounded-full bg-[color:var(--client-primary)]" />{text("营业额")}
         </button>
         <button
-          aria-label={`${showOrders ? "隐藏" : "显示"}订单数趋势`}
+          aria-label={text(showOrders ? "隐藏订单数趋势" : "显示订单数趋势")}
           aria-pressed={showOrders}
           className={cn("focus-ring flex min-h-11 items-center justify-center gap-2 rounded-2xl border px-3 text-xs font-black", showOrders ? "border-[color:color-mix(in_srgb,var(--client-accent)_65%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-accent)_10%,transparent)] text-[color:var(--client-accent)]" : "border-[color:var(--client-line)] text-[color:var(--client-muted)] opacity-65")}
           onClick={() => setShowOrders((current) => !current)}
           type="button"
         >
-          <span className="h-1 w-7 rounded-full bg-[color:var(--client-accent)]" />订单数
+          <span className="h-1 w-7 rounded-full bg-[color:var(--client-accent)]" />{text("订单数")}
         </button>
       </div>
 
