@@ -80,6 +80,14 @@ function columnsFor(tab: SupportedDataTab, onSelect: (row: DataCenterRow) => voi
   };
 
   if (tab === "订单数据") {
+    const orderDetailColumn: Column<DataCenterRow> = {
+      key: "detail",
+      title: "详情",
+      render: (row) => {
+        const order = row as BackofficeOrderPayload;
+        return <Button size="sm" variant="secondary" to={`/admin/orders?orderId=${order.id}`}>查看统一详情</Button>;
+      }
+    };
     return [
       { key: "order", title: "订单编号", render: (row) => (row as BackofficeOrderPayload).orderNo },
       { key: "customer", title: "客户", render: (row) => (row as BackofficeOrderPayload).customerName },
@@ -88,7 +96,7 @@ function columnsFor(tab: SupportedDataTab, onSelect: (row: DataCenterRow) => voi
       { key: "created", title: "下单时间", render: (row) => formatOrderDateTime((row as BackofficeOrderPayload).createdAt) },
       { key: "appointment", title: "预约时间", render: (row) => formatOrderDateTime((row as BackofficeOrderPayload).startsAt) },
       { key: "status", title: "状态", render: (row) => statusBadge((row as BackofficeOrderPayload).status) },
-      detailColumn
+      orderDetailColumn
     ];
   }
   if (tab === "客户数据") {
@@ -124,7 +132,7 @@ function columnsFor(tab: SupportedDataTab, onSelect: (row: DataCenterRow) => voi
   if (tab === "服务数据") {
     return [
       { key: "name", title: "服务", render: (row) => (row as BackofficeServicePayload).name },
-      { key: "shop", title: "店铺", render: (row) => `#${(row as BackofficeServicePayload).shopId}` },
+      { key: "shop", title: "店铺", render: (row) => (row as BackofficeServicePayload).shopName },
       { key: "category", title: "分类", render: (row) => (row as BackofficeServicePayload).categoryName },
       { key: "price", title: "价格", render: (row) => yen((row as BackofficeServicePayload).priceAmount) },
       { key: "status", title: "状态", render: (row) => statusBadge((row as BackofficeServicePayload).status) },
@@ -151,11 +159,84 @@ function columnsFor(tab: SupportedDataTab, onSelect: (row: DataCenterRow) => voi
   ];
 }
 
-function detailValue(value: unknown) {
-  if (value === null || value === undefined || value === "") return "未设置";
-  if (Array.isArray(value)) return value.length ? value.map((item) => typeof item === "object" ? JSON.stringify(item) : String(item)).join("、") : "无";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+function readable(value: string | number | null | undefined) {
+  return value === null || value === undefined || value === "" ? "未设置" : String(value);
+}
+
+function detailItemsFor(tab: SupportedDataTab, selected: DataCenterRow) {
+  if (tab === "客户数据") {
+    const customer = selected as BackofficeCustomerPayload;
+    return [
+      { label: "客户名称", value: customer.displayName },
+      { label: "邮箱", value: customer.email },
+      { label: "城市", value: readable(customer.city) },
+      { label: "会员等级", value: customer.membershipLevel },
+      { label: "预约数量", value: customer.bookingCount },
+      { label: "资料可见性", value: customer.isPublic ? "公开" : "非公开" },
+      { label: "创建时间", value: formatOrderDateTime(customer.createdAt) }
+    ];
+  }
+  if (tab === "员工/技师数据") {
+    const technician = selected as BackofficeTechnicianPayload;
+    return [
+      { label: "NeeDoID", value: technician.needoId },
+      { label: "技师名称", value: technician.displayName },
+      { label: "邮箱", value: technician.email },
+      { label: "所属店铺", value: readable(technician.shopName) },
+      { label: "城市", value: technician.city },
+      { label: "服务区域", value: readable(technician.serviceArea) },
+      { label: "雇佣类型", value: technician.employmentType },
+      { label: "状态", value: statusBadge(technician.status) }
+    ];
+  }
+  if (tab === "门店数据") {
+    const shop = selected as BackofficeShopPayload;
+    return [
+      { label: "门店名称", value: shop.name },
+      { label: "店主账号", value: readable(shop.ownerEmail) },
+      { label: "城市", value: shop.city },
+      { label: "地址", value: shop.address },
+      { label: "联系电话", value: readable(shop.phone) },
+      { label: "状态", value: statusBadge(shop.status) },
+      { label: "门店介绍", value: readable(shop.description) }
+    ];
+  }
+  if (tab === "服务数据") {
+    const service = selected as BackofficeServicePayload;
+    return [
+      { label: "服务名称", value: service.name },
+      { label: "门店名称", value: service.shopName },
+      { label: "服务分类", value: service.categoryName },
+      { label: "服务方式", value: service.serviceMode === "store" ? "到店服务" : "上门服务" },
+      { label: "价格", value: yen(service.priceAmount) },
+      { label: "服务时长", value: `${service.durationMinutes}分钟` },
+      { label: "状态", value: statusBadge(service.status) },
+      { label: "服务介绍", value: readable(service.description) }
+    ];
+  }
+  if (tab === "排班数据") {
+    const schedule = selected as BackofficeScheduleSlotPayload;
+    return [
+      { label: "服务名称", value: schedule.serviceName },
+      { label: "门店名称", value: schedule.shopName },
+      { label: "技师", value: schedule.technicianName ?? "店铺统筹" },
+      { label: "开始时间", value: formatOrderDateTime(schedule.startsAt) },
+      { label: "结束时间", value: formatOrderDateTime(schedule.endsAt) },
+      { label: "占用 / 容量", value: `${schedule.bookedCount}/${schedule.capacity}` },
+      { label: "状态", value: statusBadge(schedule.status) }
+    ];
+  }
+  const settlement = selected as BackofficeFinanceSettlementPayload;
+  return [
+    { label: "订单编号", value: settlement.orderNo },
+    { label: "门店名称", value: settlement.shopName },
+    { label: "技师", value: settlement.technicianName ?? "未安排" },
+    { label: "服务 GMV", value: yen(settlement.estimatedServiceGmvJpy) },
+    { label: "平台 NDP 收入", value: settlement.platformNdpRevenue.toLocaleString("ja-JP") },
+    { label: "支付渠道", value: settlement.paymentChannel },
+    { label: "结算状态", value: statusBadge(settlement.status) },
+    { label: "创建时间", value: formatOrderDateTime(settlement.createdAt) }
+  ];
 }
 
 export function DataCenterPage() {
@@ -298,7 +379,9 @@ function DataCenterTablePage() {
       <Drawer open={Boolean(selected)} title={`${active}详情`} onClose={() => setSelected(null)}>
         {selected ? (
           <>
-            <DetailGrid items={Object.entries(selected).slice(0, 16).map(([label, value]) => ({ label, value: detailValue(value) }))} />
+            {isSupportedTab(active) && active !== "订单数据" ? (
+              <DetailGrid items={detailItemsFor(active, selected)} />
+            ) : null}
             {isSupportedTab(active) ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 <Button to={dataOwnerRoute(active)}>前往所属管理模块</Button>

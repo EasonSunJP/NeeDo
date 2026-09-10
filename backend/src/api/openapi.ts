@@ -9132,6 +9132,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "categoryId",
           "categoryName",
           "shopId",
+          "shopName",
           "name",
           "city",
           "serviceMode",
@@ -9149,6 +9150,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           categoryId: { type: "integer" },
           categoryName: { type: "string" },
           shopId: { type: "integer" },
+          shopName: { type: "string" },
           technicianProfileId: { type: ["integer", "null"] },
           name: { type: "string" },
           description: { type: ["string", "null"] },
@@ -11574,6 +11576,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           id: { type: "string", pattern: "^status:[1-9][0-9]*$" },
           createdAt: { type: "string", format: "date-time" },
           actorUserId: { type: ["integer", "null"] },
+          actorName: { type: "string", minLength: 1 },
+          actorAvatarUrl: { type: ["string", "null"] },
           fromStatus: {
             type: ["string", "null"],
             enum: ["pending", "confirmed", "inService", "completed", "cancelled", null]
@@ -11633,7 +11637,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         additionalProperties: false,
         description: "Authorized operations view of a performance revision.",
-        required: ["type", "id", "createdAt", "actorUserId", "publicReason", "internalNote"],
+        required: ["type", "id", "createdAt", "actorUserId", "actorName", "actorAvatarUrl", "publicReason", "internalNote"],
         properties: {
           type: {
             type: "string",
@@ -11647,6 +11651,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           id: { type: "string", pattern: "^performance:[1-9][0-9]*$" },
           createdAt: { type: "string", format: "date-time" },
           actorUserId: { type: ["integer", "null"] },
+          actorName: { type: "string", minLength: 1 },
+          actorAvatarUrl: { type: ["string", "null"] },
           publicReason: { type: ["string", "null"] },
           internalNote: {
             type: ["string", "null"],
@@ -11665,6 +11671,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "id",
           "createdAt",
           "actorUserId",
+          "actorName",
+          "actorAvatarUrl",
           "publicReason",
           "addOnId",
           "serviceId",
@@ -11681,6 +11689,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           id: { type: "string", pattern: "^service:[1-9][0-9]*$" },
           createdAt: { type: "string", format: "date-time" },
           actorUserId: { type: ["integer", "null"] },
+          actorName: { type: "string", minLength: 1 },
+          actorAvatarUrl: { type: ["string", "null"] },
           publicReason: { type: ["string", "null"], maxLength: 500 },
           addOnId: { type: "integer", minimum: 1 },
           serviceId: { type: "integer", minimum: 1 },
@@ -26370,6 +26380,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [merchantPreviewShopHeaderParameter],
         responses: {
           "200": { description: "Paginated merchant orders" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/orders/{id}`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Read one fresh order detail scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "merchant-admin:orders:list",
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          merchantPreviewShopHeaderParameter
+        ],
+        responses: {
+          "200": jsonDataResponse("Merchant order detail", {
+            $ref: "#/components/schemas/BackofficeOrderDetail"
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.forbidden"),
+          "404": jsonErrorResponse("error.order.not_found")
         }
       }
     },

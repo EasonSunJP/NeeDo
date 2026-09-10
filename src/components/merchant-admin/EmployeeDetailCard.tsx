@@ -31,10 +31,8 @@ import {
   FormalTimelinePagination,
   type FormalTimelinePageSize,
 } from "../admin/FormalTimelinePagination";
-import {
-  ContactEventTimelinePanel,
-  type ContactEventTimelineEntry,
-} from "../mobile/ContactEventTimeline";
+import { AdminEventTimeline } from "../admin/AdminEventTimeline";
+import type { ContactEventTimelineEntry } from "../mobile/ContactEventTimeline";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { PayrollSchedulePolicyEditor } from "./PayrollSchedulePolicyEditor";
@@ -805,7 +803,7 @@ export function EmployeeDetailCard({
             </Button>
           </div>
         ) : (
-          <ContactEventTimelinePanel
+          <AdminEventTimeline
             className="border-line bg-white shadow-sm"
             commentAuthorAvatarSrc={auth?.session?.avatarUrl ?? undefined}
             commentAuthorName={auth?.session?.username ?? t("当前管理员")}

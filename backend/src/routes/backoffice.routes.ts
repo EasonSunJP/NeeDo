@@ -429,6 +429,13 @@ export const createBackofficeRoutes = (
     controller.merchantOrders
   );
   router.get(
+    "/merchant-admin/orders/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantOrders),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.merchantOrder
+  );
+  router.get(
     "/merchant-admin/schedule",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantSchedule),
