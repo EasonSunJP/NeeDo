@@ -118,6 +118,7 @@ describe("DashboardOperationsFinanceRepository", () => {
     expect(sql).toContain("checkout.payment_selected_at <= ledger.created_at");
     expect(sql).toContain("booking.payment_reference = CONCAT(");
     expect(sql).toContain("checkout.receipt_confirmed_at IS NULL");
+    expect(sql).toContain("ledger.currency =");
     expect(sql).toContain("checkout.payment_selected_at <= checkout.receipt_confirmed_at");
     expect(sql).toContain("checkout.receipt_confirmed_at <= booking.payment_confirmed_at");
     expect(sql).toContain("checkout.ledger_transaction_id IS NULL");
@@ -134,6 +135,7 @@ describe("DashboardOperationsFinanceRepository", () => {
         "applied",
         "booking_complete_settlement",
         "order_checkout_payment",
+        "NDP",
         "Tokyo"
       ])
     );

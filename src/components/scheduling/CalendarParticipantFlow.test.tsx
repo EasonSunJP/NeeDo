@@ -32,13 +32,13 @@ const options = [
   { id: "22", identityId: 22, label: "田中健", description: "最近联系", avatar: "", tags: [], groupIds: [], isCommon: true },
 ];
 
-function Harness({ onClose = vi.fn(), onComplete = vi.fn() }: { onClose?: () => void; onComplete?: (draft: CalendarParticipantDraft) => void }) {
+function Harness({ initialSyncContactIds = [], onClose = vi.fn(), onComplete = vi.fn() }: { initialSyncContactIds?: string[]; onClose?: () => void; onComplete?: (draft: CalendarParticipantDraft) => void }) {
   const [draft, setDraft] = useState<CalendarParticipantDraft>({
     date: "2026-09-09",
     endDate: "2026-09-09",
     startTime: "10:00",
     endTime: "11:00",
-    syncContactIds: [],
+    syncContactIds: initialSyncContactIds,
   });
   return <CalendarParticipantFlow
     draft={draft}
@@ -46,10 +46,15 @@ function Harness({ onClose = vi.fn(), onComplete = vi.fn() }: { onClose?: () => 
     onComplete={onComplete}
     onDraftChange={setDraft}
     options={options}
-    renderTimeline={({ busyRanges, conflictIdentityIds, onTimeChange, participants }) => <section>
+    renderTimeline={({ busyRanges, conflictIdentityIds, onParticipantRemove, onTimeChange, participants }) => <section>
       <span data-testid="lane-count">{participants.length}</span>
       <span data-testid="busy-count">{busyRanges.length}</span>
       <span data-testid="conflict-count">{conflictIdentityIds.size}</span>
+      {participants.map((participant, index) => index === 0 ? (
+        <span data-testid="self-participant" key={participant.id}>{participant.label}</span>
+      ) : (
+        <button aria-label={`删除${participant.label}`} key={participant.id} onClick={() => onParticipantRemove(participant.id)} type="button">×</button>
+      ))}
       <button onClick={() => onTimeChange("10:30", "11:30")} type="button">adjust time</button>
     </section>}
   />;
@@ -127,6 +132,33 @@ describe("CalendarParticipantFlow", () => {
       syncContactIds: ["21"],
     }));
     expect(calendarEventApi.listAllParticipantBusy).toHaveBeenCalledWith(expect.objectContaining({ participantIdentityIds: [21] }));
+  });
+
+  it("removes the duplicate selected-participant strip and deletes contacts from their aligned timeline headers", async () => {
+    const onComplete = vi.fn();
+    await act(async () => root.render(<Harness initialSyncContactIds={["21", "22"]} onComplete={onComplete} />));
+    await act(async () => clickByText(container, "下一步"));
+
+    expect(container.querySelector('[data-participant-selection-summary="true"]')).toBeNull();
+    expect(container.querySelector('[aria-label="删除我"]')).toBeNull();
+    expect(container.querySelector('[aria-label="删除佐藤美咲"]')).not.toBeNull();
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="删除佐藤美咲"]')?.click());
+    await act(async () => clickByText(container, "完成选择"));
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ syncContactIds: ["22"] }));
+  });
+
+  it("allows reopening the picker and confirming that all existing contacts were removed", async () => {
+    const onComplete = vi.fn();
+    await act(async () => root.render(<Harness initialSyncContactIds={["21"]} onComplete={onComplete} />));
+    await act(async () => clickByText(container, "佐藤美咲"));
+
+    const next = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("下一步"));
+    expect(next?.getAttribute("aria-disabled")).toBe("false");
+    await act(async () => next?.click());
+
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ syncContactIds: [] }));
   });
 
   it("calculates strict per-participant conflicts without blocking completion", () => {

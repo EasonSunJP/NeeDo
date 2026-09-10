@@ -18,6 +18,7 @@ Wallet reads and finance reporting expose both currencies without adding them to
 - `GET /api/v1/wallets/me/summary` returns `activeCurrency`, `ndp`, and `testNdp` available/frozen pairs.
 - `GET /api/v1/backoffice/finance/ndp-summary` returns each metric as `{ ndp, testNdp }` and returns formal-only `settleableNdp`.
 - Formal reconciliation and settlement export repositories always add `currency = NDP`/`ndpCurrency = NDP`; a client cannot request Test NDP through those endpoints.
+- A completed Test NDP checkout persists its exact `OrderCheckout.payableNdp` evidence and reports `paymentChannel = platform_test_ndp` with confirmed service-income status. Its formal JPY platform-collected amount remains zero, and operations gross/travel revenue excludes it while the finance detail identifies the amount as Test NDP.
 
 Operations account classification is paginated and RBAC-protected. A classification change and any required wallet provisioning are transactional and audited. The current local/test backfill is guarded and rerunnable:
 

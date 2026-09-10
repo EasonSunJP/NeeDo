@@ -93,6 +93,8 @@ export const adminSystemSettingsCopy: Record<Language, Copy> = {
 };
 
 const phrases: Record<string, Partial<Record<Language, string>>> = {
+  "随时服务测试": { "zh-Hant": "隨時服務測試", ja: "いつでもサービスをテスト", en: "Anytime service testing", ko: "언제든지 서비스 테스트" },
+  "开启后可忽略预约时间开始和完成服务，仅用于测试；关闭后最多提前 30 分钟开始，并须在服务结束时间后完成。": { "zh-Hant": "開啟後可忽略預約時間開始和完成服務，僅用於測試；關閉後最多提前 30 分鐘開始，並須在服務結束時間後完成。", ja: "有効時は予約時刻に関係なくサービスを開始・完了できます（テスト専用）。無効時は開始30分前から開始でき、終了予定時刻以降にのみ完了できます。", en: "When enabled, service may start and finish regardless of the booking time for testing only. When disabled, it may start at most 30 minutes early and finish only after the service end time.", ko: "활성화하면 테스트에 한해 예약 시간과 관계없이 서비스를 시작하고 완료할 수 있습니다. 비활성화하면 최대 30분 일찍 시작할 수 있고 서비스 종료 시간 이후에만 완료할 수 있습니다." },
   "保存并发布": {"zh-Hant": "儲存並發布", "ja": "保存して公開", "en": "Save and publish", "ko": "저장 및 게시"},
   "已发布新版本": {"zh-Hant": "已發布新版本", "ja": "新しいバージョンを公開しました", "en": "New version published", "ko": "새 버전이 게시되었습니다"},
   "正在保存…": {"zh-Hant": "正在儲存…", "ja": "保存中…", "en": "Saving…", "ko": "저장 중…"},
@@ -143,6 +145,7 @@ const phrases: Record<string, Partial<Record<Language, string>>> = {
   "当前图片显示在登录页中央标识。": { "zh-Hant": "目前圖片顯示在登入頁中央標識。", ja: "現在の画像はログイン画面中央のマークに表示されます。", en: "The current image appears in the center of the login page.", ko: "현재 이미지는 로그인 화면 중앙 표시에 사용됩니다." },
   "当前图片显示在主导航中央；颜色会跟随每位用户的 UI 主题自动适配。": { "zh-Hant": "目前圖片顯示在主導覽中央；顏色會依每位使用者的 UI 主題自動調整。", ja: "現在の画像はメインナビ中央に表示され、色は各ユーザーの UI テーマに合わせて自動調整されます。", en: "The current image appears in the main navigation center; its color adapts to each user's UI theme.", ko: "현재 이미지는 기본 탐색 중앙에 표시되며 색상은 각 사용자의 UI 테마에 맞게 자동 조정됩니다." },
   "选择新图片": { "zh-Hant": "選擇新圖片", ja: "新しい画像を選択", en: "Choose new image", ko: "새 이미지 선택" },
+  "下载当前图片": { "zh-Hant": "下載目前圖片", ja: "現在の画像をダウンロード", en: "Download current image", ko: "현재 이미지 다운로드" },
   "支持 PNG、JPG、WebP；发布后生效。": { "zh-Hant": "支援 PNG、JPG、WebP；發布後生效。", ja: "PNG、JPG、WebP に対応。公開後に反映されます。", en: "PNG, JPG, or WebP. Takes effect after publishing.", ko: "PNG, JPG, WebP 지원. 게시 후 적용됩니다." },
   "新图片已上传；当前线上图片会保持到发布完成。": { "zh-Hant": "新圖片已上傳；目前線上圖片會保留至發布完成。", ja: "新しい画像をアップロードしました。公開が完了するまで現在の画像を使用します。", en: "New image uploaded; the current live image stays active until publishing finishes.", ko: "새 이미지가 업로드되었습니다. 게시가 완료될 때까지 현재 이미지가 유지됩니다." },
   "尚未设置": { "zh-Hant": "尚未設定", ja: "未設定", en: "Not set", ko: "설정되지 않음" },

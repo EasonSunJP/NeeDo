@@ -32,6 +32,11 @@ export interface SimulationShopPlan {
   phone: string;
   description: string;
   avatarUrl: string;
+  serviceLocation?: {
+    countryCode: "JP";
+    admin1Code: string;
+    admin2Code: string;
+  };
 }
 
 export interface SimulationTechnicianPlan {
@@ -483,7 +488,12 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
           phone: "050-9101-1001",
           description:
             "渋谷のボディケア、ヘッドケア、訪問リラクゼーションを提供するウェルネス店舗です。",
-          avatarUrl: SHOP_AVATAR_URLS[index]!
+          avatarUrl: SHOP_AVATAR_URLS[index]!,
+          serviceLocation: {
+            countryCode: "JP",
+            admin1Code: "13",
+            admin2Code: "13113"
+          }
         };
       }
       return {

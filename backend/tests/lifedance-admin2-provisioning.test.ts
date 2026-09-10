@@ -19,6 +19,11 @@ describe("LifeDance admin2 provisioning plan", () => {
       needoId: "needo0000000002",
       numberPart: "0000000002",
       shopName: "麻布十番超级按摩",
+      serviceLocation: {
+        countryCode: "JP",
+        admin1Code: "13",
+        admin2Code: "13103"
+      },
       bookingService: {
         categoryCode: "wellness",
         name: "麻布十番ボディケア 60分",

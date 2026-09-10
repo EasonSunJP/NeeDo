@@ -24,6 +24,7 @@ export type OperationsPlatformSettings = {
   requestButtonMediaAssetId: number | null;
   offlinePaymentEnabled: boolean;
   ndpPaymentEnabled: boolean;
+  anytimeServiceTestEnabled: boolean;
   createdByUserId: number | null;
   createdAt: string;
   updatedAt: string;
@@ -41,6 +42,7 @@ export type BasicSettingsInput = {
   passwordLoginOtpEnabled: boolean;
   passwordLoginOtpRule: LoginVerificationRule;
   passwordLoginOtpOnNewIp: boolean;
+  anytimeServiceTestEnabled: boolean;
   loginLogoMediaPublicId: string | null;
   requestButtonMediaPublicId: string | null;
 };

@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { buildLifeDanceAdminTechnicianProfileUpsertData } from "../src/simulation/lifedance-admin-ownership";
+
 const seedSource = readFileSync(
   resolve(__dirname, "../scripts/seed-three-month-simulation.ts"),
   "utf8"
@@ -40,10 +42,27 @@ describe("LifeDance administrator cross-portal seed contract", () => {
     expect(formalSocialSeedSource).toContain("account.email !== LIFEDANCE_ADMIN_EMAIL");
   });
 
-  it("creates a private, independent, non-bookable administrator technician profile", () => {
-    expect(ownershipSource).toContain("TechnicianEmploymentType.INDEPENDENT");
-    expect(ownershipSource).toContain('status: "private"');
-    expect(ownershipSource).toContain("shopId: null");
+  it("keeps technician visibility user-controlled when formal seeds are rerun", () => {
+    const upsertData = buildLifeDanceAdminTechnicianProfileUpsertData(1);
+
+    expect(upsertData.create).toMatchObject({
+      userId: 1,
+      shopId: null,
+      status: "private",
+      visibility: "public",
+      employmentType: "INDEPENDENT"
+    });
+    expect(upsertData.update).not.toHaveProperty("status");
+    expect(upsertData.update).not.toHaveProperty("visibility");
+    expect(checkerSource).toContain("visibility: true");
+    expect(checkerSource).not.toContain('admin.technicianProfile.status === "private"');
+    expect(checkerSource).not.toContain("adminAvailabilities");
+    expect(checkerSource).toContain("adminTechnicianServices === 0 && adminBookings === 0");
+    expect(ownershipCheckerSource).toContain("visibility: true");
+    expect(ownershipCheckerSource).not.toContain(
+      'admin.technicianProfile.status === "private"'
+    );
+    expect(ownershipCheckerSource).not.toContain("availabilities");
     expect(seedSource).toContain("buildSimulationIdentityGrants");
     expect(seedSource).toContain("forceNonDefault: shop.key === LIFEDANCE_SHOP_KEY");
   });

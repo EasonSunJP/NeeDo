@@ -76,6 +76,7 @@
     "check:lifedance-admin-ownership": "tsx scripts/check-lifedance-admin-ownership.ts",
     "provision:lifedance-admin2": "ENV_FILE=.env.dev tsx scripts/provision-lifedance-admin2.ts",
     "repair:lifedance-admin2-booking": "ENV_FILE=.env.dev tsx scripts/repair-lifedance-admin2-booking.ts",
+    "repair:lifedance-shop-service-locations": "node --env-file=.env.dev.example --env-file=.env.dev --import tsx scripts/repair-lifedance-shop-service-locations.ts",
     "check:lifedance-admin2": "ENV_FILE=.env.dev tsx scripts/check-lifedance-admin2.ts",
     "check:formal-social-test": "tsx scripts/check-formal-social-test.ts",
     "check:im-conversation-deletion-flow": "tsx scripts/check-im-conversation-deletion-flow.ts",

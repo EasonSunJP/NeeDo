@@ -458,6 +458,11 @@ type FinanceSettlementRecord = Prisma.OrderFinancialGetPayload<{
             name: true;
           };
         };
+        checkout: {
+          select: {
+            payableNdp: true;
+          };
+        };
       };
     };
   };
@@ -3011,6 +3016,11 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             select: {
               name: true
             }
+          },
+          checkout: {
+            select: {
+              payableNdp: true
+            }
           }
         }
       }
@@ -3346,6 +3356,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       technicianProfileId:
         settlement.technicianProfileId ?? settlement.bookingOrder.technicianProfileId,
       technicianName: settlement.bookingOrder.technicianProfile?.displayName ?? null,
+      ndpCurrency: LedgerCurrencyService.fromStored(settlement.ndpCurrency),
+      checkoutPaymentAmountNdp: settlement.bookingOrder.checkout?.payableNdp ?? null,
       estimatedServiceGmvJpy: settlement.serviceAmountJpy,
       platformCollectedServiceAmountJpy: settlement.platformCollectedServiceAmountJpy,
       offlineReportedServiceAmountJpy: settlement.offlineReportedServiceAmountJpy,

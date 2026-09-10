@@ -43,6 +43,7 @@ const settingSelect = Prisma.validator<Prisma.PlatformSettingVersionSelect>()({
   requestButtonMediaAssetId: true,
   offlinePaymentEnabled: true,
   ndpPaymentEnabled: true,
+  anytimeServiceTestEnabled: true,
   createdByUserId: true,
   createdAt: true,
   updatedAt: true,
@@ -71,6 +72,7 @@ export interface PlatformSettingsRecord {
   requestButtonMediaAssetId: number | null;
   offlinePaymentEnabled: boolean;
   ndpPaymentEnabled: boolean;
+  anytimeServiceTestEnabled: boolean;
   createdByUserId: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -85,6 +87,7 @@ export interface PlatformBasicSettingsChanges {
   passwordLoginOtpEnabled: boolean;
   passwordLoginOtpRule: PlatformLoginVerificationRule;
   passwordLoginOtpOnNewIp: boolean;
+  anytimeServiceTestEnabled: boolean;
   loginLogoMediaPublicId: string | null;
   requestButtonMediaPublicId: string | null;
 }
@@ -225,6 +228,10 @@ export class PlatformSettingsRepository implements PlatformSettingsRepositoryPor
           input.section === "basic"
             ? input.changes.passwordLoginOtpOnNewIp
             : current.passwordLoginOtpOnNewIp,
+        anytimeServiceTestEnabled:
+          input.section === "basic"
+            ? input.changes.anytimeServiceTestEnabled
+            : current.anytimeServiceTestEnabled,
         loginLogoMediaAssetId,
         requestButtonMediaAssetId,
         offlinePaymentEnabled:
@@ -289,6 +296,7 @@ export class PlatformSettingsRepository implements PlatformSettingsRepositoryPor
       requestButtonMediaAssetId: setting.requestButtonMediaAssetId,
       offlinePaymentEnabled: setting.offlinePaymentEnabled,
       ndpPaymentEnabled: setting.ndpPaymentEnabled,
+      anytimeServiceTestEnabled: setting.anytimeServiceTestEnabled,
       createdByUserId: setting.createdByUserId,
       createdAt: setting.createdAt,
       updatedAt: setting.updatedAt,

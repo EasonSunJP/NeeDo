@@ -31,6 +31,7 @@ export type CalendarParticipantTimelineRenderInput = {
   busyRanges: CalendarParticipantBusyRange[];
   conflictIdentityIds: Set<number>;
   draft: CalendarParticipantDraft;
+  onParticipantRemove: (participantId: string) => void;
   onTimeChange: (startTime: string, endTime: string) => void;
   participants: CalendarParticipantOption[];
 };
@@ -102,6 +103,7 @@ export function CalendarParticipantFlow({
   const [busyRanges, setBusyRanges] = useState<CalendarParticipantBusyRange[]>([]);
   const [busyError, setBusyError] = useState("");
   const [busyLoading, setBusyLoading] = useState(false);
+  const hadInitialParticipants = initialDraftRef.current.syncContactIds.length > 0;
 
   const selectedOptions = useMemo(() => {
     const selected = new Set(draft.syncContactIds);
@@ -174,8 +176,21 @@ export function CalendarParticipantFlow({
     setValidationMessage("");
   };
 
+  const removeParticipant = (id: string) => {
+    onDraftChange({
+      ...draft,
+      syncContactIds: draft.syncContactIds.filter((item) => item !== id),
+    });
+    setValidationMessage("");
+  };
+
   const moveNext = () => {
     if (selectedOptions.length === 0) {
+      if (hadInitialParticipants) {
+        setValidationMessage("");
+        onComplete(draft);
+        return;
+      }
       setValidationMessage("请至少选择一位联系人后再进入下一步。");
       return;
     }
@@ -292,17 +307,6 @@ export function CalendarParticipantFlow({
           </div>
         ) : (
           <div className="mx-auto max-w-[720px] space-y-3">
-            <section className="flex gap-2 overflow-x-auto rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] p-2 backdrop-blur-xl">
-              {[currentLane, ...selectedOptions].map((option) => (
-                <div className="flex min-w-[120px] items-center gap-2 rounded-[15px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-2.5 py-2" key={option.id}>
-                  <ParticipantAvatar option={option} />
-                  <span className="min-w-0">
-                    <strong className="block truncate text-xs font-black text-[color:var(--client-text)]">{option.label}</strong>
-                    <span className="block truncate text-[10px] font-bold text-[color:var(--client-muted)]">{option.description}</span>
-                  </span>
-                </div>
-              ))}
-            </section>
             {busyError ? (
               <p className="rounded-[16px] border border-red-300 bg-red-50 px-3 py-2 text-xs font-black text-red-700" role="alert">
                 <span>参加者占用时间读取失败：</span><span data-no-i18n>{busyError}</span>
@@ -322,6 +326,7 @@ export function CalendarParticipantFlow({
               busyRanges,
               conflictIdentityIds,
               draft,
+              onParticipantRemove: removeParticipant,
               onTimeChange: (startTime, endTime) => onDraftChange({ ...draft, startTime, endTime }),
               participants: [currentLane, ...selectedOptions],
             })}
@@ -340,10 +345,10 @@ export function CalendarParticipantFlow({
             取消
           </button>
           <button
-            aria-disabled={(step === "contacts" && selectedOptions.length === 0) || (step === "calendar" && (busyLoading || Boolean(busyError)))}
+            aria-disabled={(step === "contacts" && selectedOptions.length === 0 && !hadInitialParticipants) || (step === "calendar" && (busyLoading || Boolean(busyError)))}
             className={cn(
               "focus-ring h-12 rounded-full text-sm font-black shadow-[0_16px_36px_color-mix(in_srgb,var(--client-primary)_22%,transparent)] transition",
-              (step === "contacts" && selectedOptions.length === 0) || (step === "calendar" && (busyLoading || Boolean(busyError)))
+              (step === "contacts" && selectedOptions.length === 0 && !hadInitialParticipants) || (step === "calendar" && (busyLoading || Boolean(busyError)))
                 ? "bg-[color:var(--client-line)] text-[color:var(--client-muted)]"
                 : "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]",
             )}

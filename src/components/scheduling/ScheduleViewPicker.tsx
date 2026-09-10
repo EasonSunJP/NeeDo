@@ -13,6 +13,7 @@ export function ScheduleViewPicker<TValue extends string>({
   onChange,
   options,
   value,
+  variant = "toolbar",
 }: {
   ariaLabel: string;
   className?: string;
@@ -20,6 +21,7 @@ export function ScheduleViewPicker<TValue extends string>({
   onChange: (value: TValue) => void;
   options: Array<ScheduleViewPickerOption<TValue>>;
   value: TValue;
+  variant?: "toolbar" | "field";
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -55,14 +57,24 @@ export function ScheduleViewPicker<TValue extends string>({
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={ariaLabel}
-        className="focus-ring grid h-9 w-full grid-cols-[auto,1fr,auto] items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3 text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]"
+        className={cn(
+          "focus-ring relative flex w-full items-center justify-center border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3 text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]",
+          variant === "field" ? "min-h-12 rounded-[18px]" : "h-9 rounded-full",
+        )}
+        data-schedule-picker-variant={variant}
         onClick={() => setOpen((current) => !current)}
         ref={triggerRef}
         type="button"
       >
-        <span className="text-[11px] font-black text-[color:var(--client-muted)]">{label}</span>
-        <strong className="truncate text-center text-[13px] font-black">{selectedOption?.label}</strong>
-        <span aria-hidden="true" className={cn("text-[12px] font-black text-[color:var(--client-muted)] transition", open && "rotate-180")}>⌄</span>
+        {label ? <span className="absolute left-3 text-[11px] font-black text-[color:var(--client-muted)]">{label}</span> : null}
+        <strong className={cn("absolute inset-x-10 truncate text-center font-black", variant === "field" ? "text-[15px]" : "text-[13px]")}>{selectedOption?.label}</strong>
+        <span
+          aria-hidden="true"
+          className={cn("absolute right-3 text-[12px] font-black text-[color:var(--client-muted)] transition", open && "rotate-180")}
+          data-schedule-picker-chevron="true"
+        >
+          ⌄
+        </span>
       </button>
 
       {open ? (

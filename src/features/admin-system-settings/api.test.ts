@@ -17,6 +17,7 @@ const operationsSettings = {
   passwordLoginOtpEnabled: true,
   passwordLoginOtpRule: "monthly_first",
   passwordLoginOtpOnNewIp: true,
+  anytimeServiceTestEnabled: false,
   loginLogoMediaAssetId: null,
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
@@ -41,6 +42,12 @@ describe("admin system settings API", () => {
       method: "GET",
       retryOnUnauthorized: true
     });
+  });
+
+  it("fails closed when the service-testing switch is absent from the server projection", async () => {
+    const { anytimeServiceTestEnabled: _missing, ...incomplete } = operationsSettings;
+    vi.mocked(httpClient.request).mockResolvedValueOnce(incomplete);
+    await expect(adminSystemSettingsApi.getSettings()).rejects.toThrow("error.api");
   });
 
   it("writes only the two implemented payment switches", async () => {

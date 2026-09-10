@@ -56,6 +56,7 @@ import type { LiveDashboardScope } from "../domain/live-dashboard";
 
 const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
+const SERVICE_START_EARLY_ALLOWANCE_MS = 30 * 60_000;
 
 class FulfillmentTransactionAbort extends Error {}
 class CheckoutTransactionAbort extends Error {
@@ -869,6 +870,8 @@ export type FulfillmentMutationResult =
         | "verification_failed"
         | "invalid_service"
         | "unresolved_add_on"
+        | "service_start_too_early"
+        | "service_end_too_early"
         | "conflict";
     };
 
@@ -2824,6 +2827,12 @@ export class BookingRepository implements BookingRepositoryPort {
       ) {
         return { outcome: "verification_failed" };
       }
+      if (
+        !(await this.isAnytimeServiceTestEnabled(tx)) &&
+        now.getTime() < current.startsAt.getTime() - SERVICE_START_EARLY_ALLOWANCE_MS
+      ) {
+        return { outcome: "service_start_too_early" };
+      }
 
       const bookedDurationMinutes = Math.round(
         (current.endsAt.getTime() - current.startsAt.getTime()) / 60_000
@@ -3120,6 +3129,14 @@ export class BookingRepository implements BookingRepositoryPort {
       if (current.status !== DatabaseBookingOrderStatus.IN_SERVICE || !current.serviceSession) {
         return { outcome: "invalid_transition" };
       }
+      const expectedEndsAt = current.serviceSession.expectedEndsAt;
+      if (!expectedEndsAt) return { outcome: "invalid_transition" };
+      if (
+        !(await this.isAnytimeServiceTestEnabled(tx)) &&
+        now.getTime() < expectedEndsAt.getTime()
+      ) {
+        return { outcome: "service_end_too_early" };
+      }
       const proposedCount = await tx.orderAddOn.count({
         where: {
           bookingOrderId: current.id,
@@ -3252,6 +3269,17 @@ export class BookingRepository implements BookingRepositoryPort {
         applied: true
       };
     });
+  }
+
+  private async isAnytimeServiceTestEnabled(
+    transaction: Prisma.TransactionClient
+  ): Promise<boolean> {
+    const setting = await transaction.platformSettingVersion.findFirst({
+      where: { activeKey: "active", deletedAt: null },
+      orderBy: [{ version: "desc" }, { id: "desc" }],
+      select: { anytimeServiceTestEnabled: true }
+    });
+    return setting?.anytimeServiceTestEnabled === true;
   }
 
   public selectCheckoutPaymentMethod(

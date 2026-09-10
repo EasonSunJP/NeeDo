@@ -11,6 +11,13 @@ const migrationPath = join(
   "prisma/migrations/20260906100000_operations_system_settings/migration.sql"
 );
 const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
+const anytimeServiceMigrationPath = join(
+  process.cwd(),
+  "prisma/migrations/20260911100000_anytime_service_test/migration.sql"
+);
+const anytimeServiceMigration = existsSync(anytimeServiceMigrationPath)
+  ? readFileSync(anytimeServiceMigrationPath, "utf8")
+  : "";
 
 const modelBlock = (name: string): string => {
   const match = schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`));
@@ -54,8 +61,15 @@ describe("operations system settings schema", () => {
     expect(block).toContain("requestButtonMediaAssetId");
     expect(block).toContain("offlinePaymentEnabled");
     expect(block).toContain("ndpPaymentEnabled");
+    expect(block).toContain("anytimeServiceTestEnabled");
     expect(block).toContain("createdByUserId");
     expect(block).toContain('@@map("platform_setting_versions")');
+  });
+
+  it("adds the anytime service test switch with a fail-closed database default", () => {
+    expect(anytimeServiceMigration).toContain("ALTER TABLE `platform_setting_versions`");
+    expect(anytimeServiceMigration).toContain("`anytime_service_test_enabled`");
+    expect(anytimeServiceMigration).toMatch(/DEFAULT\s+false/i);
   });
 
   it("defines language-specific drafts and immutable releases", () => {

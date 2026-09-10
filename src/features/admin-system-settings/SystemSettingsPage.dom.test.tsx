@@ -49,6 +49,7 @@ const settings = {
   passwordLoginOtpEnabled: true,
   passwordLoginOtpRule: "monthly_first" as const,
   passwordLoginOtpOnNewIp: true,
+  anytimeServiceTestEnabled: false,
   loginLogoMediaAssetId: null,
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
@@ -138,5 +139,107 @@ describe("SystemSettingsPage interactions", () => {
     expect(container.textContent?.match(/系统默认 · 当前启用/g)).toHaveLength(2);
     expect(Array.from(container.querySelectorAll('input[type="file"]')).every((input) => input.classList.contains("sr-only"))).toBe(true);
     expect(Array.from(container.querySelectorAll("label")).filter((label) => label.textContent?.includes("选择新图片"))).toHaveLength(2);
+  });
+
+  it("downloads each active brand image, including the effective default", async () => {
+    mocked.getSettings.mockResolvedValue({
+      ...settings,
+      loginLogo: {
+        publicId: "media-current-login",
+        url: "/media/current-login-logo.png",
+        mimeType: "image/png",
+        width: 512,
+        height: 512,
+        altText: "Current login logo"
+      }
+    });
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=basic"] }, createElement(SystemSettingsPage)));
+    });
+
+    const downloadLinks = Array.from(container.querySelectorAll<HTMLAnchorElement>("a[download]"));
+    expect(downloadLinks).toHaveLength(2);
+    expect(downloadLinks.every((link) => link.textContent?.includes("下载当前图片"))).toBe(true);
+    expect(downloadLinks.map((link) => link.getAttribute("href"))).toEqual([
+      "/media/current-login-logo.png",
+      "/icons/needo-green-button-light.png"
+    ]);
+  });
+
+  it("keeps the download target on the active image while a replacement is pending", async () => {
+    mocked.hasPermission.mockImplementation((permission?: string) =>
+      [
+        "backoffice:system-settings:write",
+        "backoffice:system-brand-media:activate",
+        "button:backoffice-content-media-upload"
+      ].includes(permission ?? "")
+    );
+    mocked.getSettings.mockResolvedValue({
+      ...settings,
+      loginLogo: {
+        publicId: "media-current-login",
+        url: "/media/current-login-logo.png",
+        mimeType: "image/png",
+        width: 512,
+        height: 512,
+        altText: "Current login logo"
+      }
+    });
+    mocked.uploadBrandImage.mockResolvedValue({
+      publicId: "media-pending-login",
+      url: "/media/pending-login-logo.png",
+      mimeType: "image/png",
+      width: 512,
+      height: 512,
+      altText: "Pending login logo"
+    });
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=basic"] }, createElement(SystemSettingsPage)));
+    });
+
+    const picker = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(picker, "files", { configurable: true, value: [new File(["pending"], "pending.png", { type: "image/png" })] });
+    await act(async () => picker.dispatchEvent(new Event("change", { bubbles: true })));
+
+    expect(container.querySelector<HTMLImageElement>('img[alt="登录页 LOGO"]')?.getAttribute("src")).toBe("/media/pending-login-logo.png");
+    expect(container.querySelector<HTMLAnchorElement>('a[download]')?.getAttribute("href")).toBe("/media/current-login-logo.png");
+  });
+
+  it("publishes the anytime-service test switch through the protected basic settings write", async () => {
+    mocked.hasPermission.mockImplementation((permission?: string) =>
+      permission === "backoffice:system-settings:write"
+    );
+    mocked.updateBasic.mockResolvedValue({ ...settings, anytimeServiceTestEnabled: true });
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=basic"] }, createElement(SystemSettingsPage)));
+    });
+
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="随时服务测试"]');
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    await act(async () => toggle?.click());
+    const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("保存并发布"));
+    await act(async () => save?.click());
+
+    expect(mocked.updateBasic).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedVersion: 2, anytimeServiceTestEnabled: true })
+    );
+  });
+
+  it("renders the anytime-service switch as the same single-layer card as the site switches", async () => {
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=basic"] }, createElement(SystemSettingsPage)));
+    });
+
+    const cardFor = (label: string) =>
+      container
+        .querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${label}"]`)
+        ?.closest<HTMLDivElement>("div.rounded-xl");
+    const siteCard = cardFor("站点开关");
+    const registrationCard = cardFor("新用户注册入口");
+    const anytimeCard = cardFor("随时服务测试");
+
+    expect(anytimeCard?.className).toBe(siteCard?.className);
+    expect(anytimeCard?.className).toBe(registrationCard?.className);
+    expect(anytimeCard?.parentElement?.classList.contains("rounded-2xl")).toBe(false);
   });
 });

@@ -519,6 +519,18 @@ FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev npm --prefix backend run back
 FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev npm --prefix backend run backfill:booking-service-locations -- --restore-run=<run-id>
 ```
 
+LifeDance 正式本地测试店铺的服务地区修复同样默认只预览，并且只允许连接本机
+`needo_dev`。脚本以精确店名和 owner 邮箱唯一定位门店，不依赖会随数据重建变化的内部
+shop ID；应用时必须回传 preview 的 `repairCount`。每个地区关系先通过当前官方行政区层级
+解析，再与逐店审计和批次 manifest 在同一事务提交。恢复会核对 applied snapshot，发现并发
+漂移即拒绝写入：
+
+```bash
+npm --prefix backend run repair:lifedance-shop-service-locations
+npm --prefix backend run repair:lifedance-shop-service-locations -- --apply --confirm-count=<preview-repair-count>
+npm --prefix backend run repair:lifedance-shop-service-locations -- --restore-run=<run-id>
+```
+
 最终形式化 checker 只允许明确的本地/开发 MySQL 与 Redis，并强制事务回滚和 run-prefix 清理：
 
 ```bash

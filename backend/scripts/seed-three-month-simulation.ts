@@ -59,6 +59,7 @@ import { PayrollRepository } from "../src/repositories/payroll.repository";
 import { AuditLogRepository } from "../src/repositories/audit-log.repository";
 import { AuditLogService } from "../src/services/audit-log.service";
 import { PayrollService } from "../src/services/payroll.service";
+import { verifyShopServiceLocationInTransaction } from "../src/repositories/shop-service-location.repository";
 
 const BCRYPT_ROUNDS = 12;
 const LEGACY_SIMULATION_NAMESPACE = "needo_three_month_v1";
@@ -267,6 +268,17 @@ const main = async (): Promise<void> => {
               });
           shopIds.set(shop.key, record.id);
         }
+
+        const lifeDanceShopPlan = plan.shops.find((shop) => shop.key === LIFEDANCE_SHOP_KEY);
+        assert(lifeDanceShopPlan?.serviceLocation, "LifeDance service location plan is missing.");
+        await verifyShopServiceLocationInTransaction(tx, {
+          shopId: getRequiredId(shopIds, LIFEDANCE_SHOP_KEY, "LifeDance shop"),
+          verifiedById: lifeDanceOwnership.adminUserId,
+          serviceLocation: lifeDanceShopPlan.serviceLocation,
+          verifiedAt: simulationSeededAt,
+          auditAction: "simulation.shop.service_location.verify",
+          auditMetadata: { namespace: SIMULATION_NAMESPACE }
+        });
 
         const technicianProfileIds = new Map<string, number>();
         for (const technician of plan.technicians) {

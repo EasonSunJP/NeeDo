@@ -1093,8 +1093,18 @@ export class LedgerRepository implements LedgerRepositoryPort {
       shopId: input.shopId,
       technicianProfileId: input.technicianProfileId ?? null,
       serviceAmountJpy: input.serviceAmountJpy,
+      ...(input.platformCollectedServiceAmountJpy !== undefined
+        ? { platformCollectedServiceAmountJpy: input.platformCollectedServiceAmountJpy }
+        : {}),
+      ...(input.offlineReportedServiceAmountJpy !== undefined
+        ? { offlineReportedServiceAmountJpy: input.offlineReportedServiceAmountJpy }
+        : {}),
       unknownOrUnreportedServiceAmountJpy:
         input.unknownOrUnreportedServiceAmountJpy ?? input.serviceAmountJpy,
+      ...(input.paymentChannel !== undefined ? { paymentChannel: input.paymentChannel } : {}),
+      ...(input.serviceIncomeStatus !== undefined
+        ? { serviceIncomeStatus: input.serviceIncomeStatus }
+        : {}),
       ...(input.bPlatformFeeHoldNdp !== undefined
         ? { bPlatformFeeHoldNdp: input.bPlatformFeeHoldNdp }
         : {}),

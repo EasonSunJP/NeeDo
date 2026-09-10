@@ -9,6 +9,8 @@ describe("finance NDP copy", () => {
       expect(copy.todayConsumption).toBeTruthy();
       expect(copy.settleable).toBeTruthy();
       expect(copy.testExcluded).toContain("Test NDP");
+      expect(copy.testPaymentChannel).toContain("Test NDP");
+      expect(copy.testPaymentExcluded).toContain("Test NDP");
       expect(copy.loadFailed).toBeTruthy();
     }
   });

@@ -43,7 +43,7 @@ ALLOW_SIMULATION_SEED
 | 商户后台 | `/merchant.html#/login/merchant-admin` | `merchant_owner` | LifeDance Shop `16` |
 | 商户组织管理 | `/merchant.html#/login/merchant-admin` | `merchant_organization` | `lifedance-real-ops` MerchantAccount |
 | 用户端 | `/user.html#/login/user` | `customer` | 管理员自己的客户档案 |
-| 技师端 | `/technician.html#/login/technician` | `technician` | 管理员自己的私有技师档案 |
+| 技师端 | `/technician.html#/login/technician` | `technician` | 管理员自己的技师档案；公开范围由个人信息卡 `visibility` 开关决定 |
 | 店铺端 | `/merchant.html#/login/merchant` | `merchant_owner` | LifeDance Shop `16` |
 | 联盟营销端 | `/afirieito.html#/login/afirieito` | `scout` | `global` |
 | 联盟管理后台 | `/afirieito.html#/login/afirieito-admin` | `scout` | `global` |
@@ -74,6 +74,8 @@ npm run check:lifedance-operations
 ```
 
 `seed:lifedance-operations` 与 `check:lifedance-operations` 的 npm alias 已显式绑定本地环境门禁和 `.env.dev`。不得去掉门禁后另写宽泛 Seed。
+
+管理员技师档案的个人资料公开范围以 `TechnicianProfile.visibility` 为唯一权威；`status` 是审核/运营状态，不能当作个人信息卡的公开开关。幂等 Seed 只在新建管理员技师档案时给出初始值，重跑时保留已有 `status` 与 `visibility`。checker 允许本人维护 availability，因为可用性不等于可预约库存；仍要求该档案没有可预约服务和预约订单。
 
 本次数据库状态：37 个 migration，`migrate deploy` 无待应用 migration。经营数据 Seed 与 checker 连续运行两次，第二次业务计数与第一次一致。
 
@@ -179,7 +181,7 @@ BookingOrder 25502 / LD2026-000002 / CANCELLED / payment=PENDING / JP¥0
 - 运营后台退出后重新登录成功；
 - 用户端未显示后台红名、内部备注或 `backofficeTags`；
 - `/admin/merchants` 显示 `LifeDance Wellness 渋谷` 和 20 名技师；
-- `/admin/technicians` 显示 100 名公开经营技师，管理员私有技师档案单独显示且不占 LifeDance 的 20 人；
+- `/admin/technicians` 显示 100 名公开经营技师，管理员技师档案单独显示且不占 LifeDance 的 20 人；该档案公开范围与个人信息卡 `visibility` 开关一致；
 - `/admin/orders` 显示数据库订单；
 - `/admin/finance` 显示 LifeDance 6 月、7 月已付和 8 月已批准工资周期；
 - `/merchant-admin/people` 显示 LifeDance 正式员工邮箱及“正社员 / 临时工”数据库字段；

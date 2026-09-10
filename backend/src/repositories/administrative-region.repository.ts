@@ -13,7 +13,7 @@ import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
 
 type AdministrativeRegionClient = PrismaClient | Prisma.TransactionClient;
-const ADMINISTRATIVE_REGION_DATASET_VERSION = "N03-20260101" as const;
+export const ADMINISTRATIVE_REGION_DATASET_VERSION = "N03-20260101" as const;
 
 interface LockedAdministrativeRegionRow {
   id: number;
