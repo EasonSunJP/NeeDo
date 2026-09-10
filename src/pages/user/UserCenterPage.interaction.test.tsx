@@ -237,6 +237,23 @@ describe("UserCenterPage inline profile editing", () => {
     expect(container.textContent).toContain("NDP5,000Test NDP 100,000");
   });
 
+  it("keeps every account-and-service row on the same left-aligned text column", async () => {
+    await renderUserCenter();
+
+    const section = container.querySelector('[data-testid="user-center-account-settings"]');
+    const rows = Array.from(section?.querySelectorAll<HTMLAnchorElement>("a") ?? []);
+
+    expect(section).not.toBeNull();
+    expect(rows).toHaveLength(6);
+    rows.forEach((row) => {
+      expect(row.className).toContain("grid-cols-[minmax(0,1fr)_auto]");
+      expect(row.firstElementChild?.className).toContain("min-w-0");
+      expect(row.firstElementChild?.className).toContain("text-left");
+      expect(row.firstElementChild?.className).toContain("col-start-1");
+      expect(row.lastElementChild?.className).toContain("col-start-2");
+    });
+  });
+
   it("keeps the saved privacy value in view and restores it after cancelling an edited draft", async () => {
     await renderUserCenter();
 

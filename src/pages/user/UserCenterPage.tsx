@@ -2008,25 +2008,25 @@ function CompleteUserCenterPage({
               ))}
             </section>
 
-            <section className={pagePanelClassName}>
+            <section className={pagePanelClassName} data-testid="user-center-account-settings">
               <h2 className="font-black">账号与服务</h2>
               <div className="mt-3 grid gap-2">
                 {accountSettings.map((entry) => (
                   <Link
                     className={cn(
                       pageInnerCardClassName,
-                      "flex items-center justify-between px-3 py-3",
+                      "grid min-h-[76px] w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3",
                     )}
                     key={entry.label}
                     to={entry.to}
                   >
-                    <div>
-                      <strong className="text-sm">{entry.label}</strong>
-                      <p className="mt-1 text-xs text-ink/50">
+                    <div className="col-start-1 row-start-1 min-w-0 text-left">
+                      <strong className="block text-sm">{entry.label}</strong>
+                      <p className="mt-1 break-words text-xs leading-5 text-ink/50">
                         {entry.caption}
                       </p>
                     </div>
-                    <span className="text-sm font-black text-ink/35">›</span>
+                    <span className="col-start-2 row-start-1 justify-self-end text-sm font-black text-ink/35">›</span>
                   </Link>
                 ))}
               </div>

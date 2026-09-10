@@ -130,6 +130,19 @@ describe("TechnicianProfileInfoView", () => {
     expect(markup).toContain('data-testid="technician-profile-services"');
   });
 
+  it("pins every basic-information field to a stable grid column", () => {
+    const template = document.createElement("template");
+    template.innerHTML = renderView();
+    const grid = template.content.querySelector('[data-testid="technician-profile-basic-grid"]');
+
+    expect(grid).not.toBeNull();
+    expect(Array.from(grid?.children ?? []).map((element) => element.className)).toEqual([
+      expect.stringContaining("col-start-1"),
+      expect.stringContaining("col-start-2"),
+      expect.stringContaining("col-start-3")
+    ]);
+  });
+
   it("uses profile defaults without inventing unavailable service-card aggregates", () => {
     const markup = renderView({
       ...model,
