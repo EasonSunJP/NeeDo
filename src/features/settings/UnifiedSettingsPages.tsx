@@ -72,6 +72,7 @@ import { useCustomerSelfProfile } from "../core-read/useCustomerSelfProfile";
 import { EkycProfileForm } from "./EkycProfileForm";
 import { ApplicationShell } from "../identity-applications/ApplicationUi";
 import { ImOpenedMediaCacheSettingsSection } from "./ImOpenedMediaCacheSettingsSection";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
@@ -1698,7 +1699,12 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   const { config: homeLocationConfig } = useHomeLayoutStore();
   const technicianProfileQuery = useCoreReadQuery(
     () => portal === "technician" ? technicianProfileApi.getMine() : null,
-    [portal, session?.currentIdentity.scopeId]
+    [portal, session?.currentIdentity.scopeId],
+    {
+      enabled: portal === "technician",
+      key: "technician:self",
+      scope: getAuthenticatedPersistentCacheScope()
+    }
   );
   const formalCustomerProfile = useCustomerSelfProfile(portal === "user");
   const legacyCustomer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
@@ -3168,7 +3174,14 @@ function FormalUserProfileSettingsPage({ portal }: { portal: UnifiedSettingsPort
 }
 
 function FormalTechnicianProfileSettingsPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  const profileQuery = useCoreReadQuery(() => technicianProfileApi.getMine(), []);
+  const profileQuery = useCoreReadQuery(
+    () => technicianProfileApi.getMine(),
+    [],
+    {
+      key: "technician:self",
+      scope: getAuthenticatedPersistentCacheScope()
+    }
+  );
 
   if (profileQuery.loading) {
     return <SettingsProfileResourceState loading portal={portal} />;
@@ -3265,7 +3278,12 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
   const { config: homeLocationConfig } = useHomeLayoutStore();
   const technicianProfileQuery = useCoreReadQuery(
     () => portal === "technician" ? technicianProfileApi.getMine() : null,
-    [portal, session?.currentIdentity.scopeId]
+    [portal, session?.currentIdentity.scopeId],
+    {
+      enabled: portal === "technician",
+      key: "technician:self",
+      scope: getAuthenticatedPersistentCacheScope()
+    }
   );
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const fallbackHomeLocation = homeLocationConfig.locations[0] ?? createManualHomeLocation("新宿");

@@ -5,6 +5,7 @@ import { useCoreReadQuery } from "../core-read/hooks";
 import { technicianProfileApi } from "../core-read/technicianProfileApi";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 
 const workStatusLabel = {
   active: "合作中",
@@ -17,7 +18,14 @@ export function TechnicianShopStayPage() {
   const navigate = useNavigate();
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
-  const profile = useCoreReadQuery(() => technicianProfileApi.getMine(), []);
+  const profile = useCoreReadQuery(
+    () => technicianProfileApi.getMine(),
+    [],
+    {
+      key: "technician:self",
+      scope: getAuthenticatedPersistentCacheScope()
+    }
+  );
   const returnTo = (
     location.state as { technicianShopStayReturnTo?: unknown } | null
   )?.technicianShopStayReturnTo;

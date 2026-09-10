@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { UserCenterPage } from "./UserCenterPage";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -13,6 +14,7 @@ const testState = vi.hoisted(() => ({
   getMyWalletSummary: vi.fn(),
   getMyExperience: vi.fn(),
   getPlatformMembership: vi.fn(),
+  listShopMemberships: vi.fn(),
   listOrders: vi.fn(),
   updateMine: vi.fn(),
   refreshSession: vi.fn(),
@@ -58,6 +60,16 @@ vi.mock("../../features/platform-membership/api", () => ({
   }
 }));
 
+vi.mock("../../features/shop-member/api", () => ({
+  customerShopMembershipApi: {
+    list: testState.listShopMemberships
+  }
+}));
+
+vi.mock("../../lib/persistentCacheScope", () => ({
+  getAuthenticatedPersistentCacheScope: () => "account:12"
+}));
+
 vi.mock("../../state/entityStore", () => ({
   updateCustomerEntity: testState.updateCustomerEntity,
   updateTechnicianEntity: testState.updateTechnicianEntity,
@@ -95,6 +107,7 @@ const savedProfile: CustomerSelfProfile = {
   userId: 12,
   visibility: "network" as const
 };
+const formalOrderStatusCount = 5;
 
 let container: HTMLDivElement;
 let root: Root;
@@ -167,7 +180,8 @@ async function renderUserCenter(expectedName = "服务端原名") {
 }
 
 describe("UserCenterPage inline profile editing", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await persistentResourceCache.clearScope("account:12");
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -190,6 +204,7 @@ describe("UserCenterPage inline profile editing", () => {
       testNdp: { available: 0, frozen: 0 }
     });
     testState.listOrders.mockResolvedValue({ list: [], page: 1, page_size: 1, total: 0 });
+    testState.listShopMemberships.mockResolvedValue({ list: [], page: 1, page_size: 1, total: 0 });
     testState.getMyExperience.mockResolvedValue({
       level: 1,
       totalExp: "0",
@@ -222,6 +237,36 @@ describe("UserCenterPage inline profile editing", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+  });
+
+  it("restores the cached personal center immediately on route remount without repeating reads", async () => {
+    await renderUserCenter();
+
+    expect(testState.getMine).toHaveBeenCalledTimes(1);
+    expect(testState.getMyWalletSummary).toHaveBeenCalledTimes(1);
+    expect(testState.listOrders).toHaveBeenCalledTimes(formalOrderStatusCount);
+    expect(testState.listShopMemberships).toHaveBeenCalledTimes(1);
+    expect(testState.getMyExperience).toHaveBeenCalledTimes(1);
+    expect(testState.getPlatformMembership).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <UserCenterPage />
+        </MemoryRouter>
+      );
+    });
+
+    expect(container.textContent).toContain("服务端原名");
+    expect(container.textContent).not.toContain("正在加载我的正式数据");
+    expect(testState.getMine).toHaveBeenCalledTimes(1);
+    expect(testState.getMyWalletSummary).toHaveBeenCalledTimes(1);
+    expect(testState.listOrders).toHaveBeenCalledTimes(formalOrderStatusCount);
+    expect(testState.listShopMemberships).toHaveBeenCalledTimes(1);
+    expect(testState.getMyExperience).toHaveBeenCalledTimes(1);
+    expect(testState.getPlatformMembership).toHaveBeenCalledTimes(1);
   });
 
   it("keeps formal NDP primary and shows Test NDP as secondary wallet data", async () => {
