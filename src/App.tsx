@@ -108,7 +108,6 @@ import {
   UserSettingsPortalPage,
   UserSettingsPrivacyPage,
   UserSettingsProfileCardBackgroundPage,
-  UserSettingsProfilePage,
   UserSettingsServiceRangePage,
   UserSettingsThemePage,
   UserSettingsTermsPage,
@@ -1311,7 +1310,7 @@ export default function App() {
               <Route path="/me/identity/merchant/apply" element={protect("user", <MerchantApplicationPage />)} />
               <Route path="/me/identity/affiliate/contract" element={protect("user", <AffiliateActivationPage />)} />
               <Route path="/me/settings/home-shortcuts" element={protect("user", <Navigate replace to="/me/settings" />)} />
-              <Route path="/me/settings/profile" element={protect("user", <UserSettingsProfilePage />)} />
+              <Route path="/me/settings/profile" element={protect("user", <Navigate replace to="/me" />)} />
               <Route path="/me/settings/profile-card-background" element={protect("user", <UserSettingsProfileCardBackgroundPage />)} />
               <Route path="/me/settings/verification" element={protect("user", <UserSettingsVerificationPage />)} />
               <Route path="/me/settings/service-range" element={protect("user", <UserSettingsServiceRangePage />)} />

@@ -11,6 +11,16 @@ import { UnifiedPostText } from "./UnifiedSocialUi";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("UnifiedSocialUi technician store booking links", () => {
+  it("routes user self-profile editing to the personal center", () => {
+    const editPathSource = source.slice(
+      source.indexOf("function buildSelfProfileEditPath"),
+      source.indexOf("function ProfileMetaRow")
+    );
+
+    expect(editPathSource).toContain('return "/me";');
+    expect(editPathSource).not.toContain('return "/me/settings/profile";');
+  });
+
   it("routes user-side store technicians into the store booking page", () => {
     expect(source).toContain("buildStoreBookingRoute");
     expect(source).toContain('scope === "user" && mainStoreEntry');
