@@ -8762,13 +8762,7 @@ export function ImNewConversationPage() {
 
     return !activeContactUserIds.has(user.id);
   }), [activeContactUserIds, directoryCandidates, scope, store.currentUserId]);
-  const filteredFriendCandidates = useMemo(() => {
-    const keyword = deferredQuery.trim().toLowerCase();
-
-    return availableFriendCandidates.filter((user) =>
-      !keyword || [user.nickname, user.userIdLabel, ...user.searchableFields].some((field) => field.toLowerCase().includes(keyword))
-    );
-  }, [availableFriendCandidates, deferredQuery]);
+  const filteredFriendCandidates = availableFriendCandidates;
 
   useEffect(() => {
     if (!isFriendMode) {

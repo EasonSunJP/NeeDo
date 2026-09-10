@@ -1094,9 +1094,11 @@ function buildInitialAvatar(username: string, profileKind: ImProfileKind) {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-function toImUser(participant: RealtimeParticipant): ImUser {
+function toImUserWithProfileKind(
+  participant: RealtimeParticipant,
+  profileKind: ImProfileKind,
+): ImUser {
   const id = String(participant.userId);
-  const profileKind = inferProfileKind(participant.username);
 
   return {
     id,
@@ -1121,6 +1123,13 @@ function toImUser(participant: RealtimeParticipant): ImUser {
     canCall: false,
     canVideoCall: false,
   };
+}
+
+function toImUser(participant: RealtimeParticipant): ImUser {
+  return toImUserWithProfileKind(
+    participant,
+    inferProfileKind(participant.username),
+  );
 }
 
 function toTechnicianContactDetails(
@@ -1689,7 +1698,11 @@ export function createFormalImApi({
         page: 1,
         pageSize: 50,
       });
-      return { users: response.list.map(toImUser) };
+      return {
+        users: response.list.map((participant) =>
+          toImUserWithProfileKind(participant, "person"),
+        ),
+      };
     },
     async getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
       const profile = await realtimeApi.getDirectoryProfile(

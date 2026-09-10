@@ -211,17 +211,29 @@ describe("RealtimeRepository formal identity payloads", () => {
     );
   });
 
-  it("returns the name field that matched add-friend search while legacy personal rows differ", async () => {
+  it("keeps add-friend results in personal identity scope for collation-equivalent names", async () => {
     const client = {
       user: {
         findMany: jest.fn(async () => [
           {
             id: 237,
             needoId: "u0000000237",
-            username: "CutGirl",
+            username: "旧账号名",
             avatarUrl: null,
-            identities: [{ id: 2370, type: "customer", displayName: "旧身份名", isDefault: true }],
-            customerProfile: { displayName: "旧资料名", deletedAt: null },
+            identities: [
+              {
+                id: 2369,
+                type: "merchant_owner",
+                displayName: "Jose Merchant",
+                isDefault: true,
+                merchantIdentityProfile: {
+                  displayName: "Jose Merchant",
+                  deletedAt: null
+                }
+              },
+              { id: 2370, type: "customer", displayName: "旧身份名", isDefault: false }
+            ],
+            customerProfile: { displayName: "José", deletedAt: null },
             technicianProfile: { displayName: "旧技师名", deletedAt: null }
           }
         ]),
@@ -231,12 +243,12 @@ describe("RealtimeRepository formal identity payloads", () => {
 
     const result = await new RealtimeRepository(client).searchDirectory(137, {
       ownerIdentityId: 1370,
-      query: "cutgirl",
+      query: "jose",
       page: 1,
       pageSize: 20
     });
 
-    expect(result.list[0]?.username).toBe("CutGirl");
+    expect(result.list[0]?.username).toBe("José");
   });
 
   it("returns the current profile name to the IM store after opening contact information", async () => {

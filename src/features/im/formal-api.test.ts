@@ -1221,6 +1221,35 @@ describe("formal IM adapter", () => {
     expect(searchDirectory).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps add-friend search results personal when a name contains merchant words", async () => {
+    vi.spyOn(realtimeApi, "searchDirectory").mockResolvedValue({
+      list: [
+        {
+          userId: 201,
+          needoId: "u0000000167",
+          username: "Merchant CutGirl",
+          avatarUrl: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 50,
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "merchant",
+    });
+
+    await expect(api.searchDirectory("Merchant CutGirl")).resolves.toEqual({
+      users: [expect.objectContaining({ nickname: "Merchant CutGirl", profileKind: "person" })],
+    });
+  });
+
   it("loads a directory profile and sends a verified friend request", async () => {
     const target = {
         userId: 201,

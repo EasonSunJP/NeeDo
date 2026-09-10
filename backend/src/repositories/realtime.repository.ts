@@ -38,6 +38,7 @@ import {
 } from "./im-contact-card-send.transaction";
 
 const PUBLISHED_STATUS = "published";
+const PERSONAL_IDENTITY_TYPES = ["customer", "user", "u", "technician", "scout"];
 
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
@@ -2659,7 +2660,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           identities: {
             some: {
               displayName: { contains: query },
-              type: { in: ["customer", "user", "u", "technician", "scout"] },
+              type: { in: PERSONAL_IDENTITY_TYPES },
               isActive: true,
               deletedAt: null
             }
@@ -2678,7 +2679,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const select = {
       ...imParticipantUserSelect,
       identities: {
-        where: { isActive: true, deletedAt: null },
+        where: {
+          type: { in: PERSONAL_IDENTITY_TYPES },
+          isActive: true,
+          deletedAt: null
+        },
         select: imParticipantIdentitySelect,
         orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
       }
@@ -2695,7 +2700,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((user) => this.mapDirectorySearchParticipant(user, query)),
+      list.map((user) =>
+        this.mapParticipant(
+          user,
+          undefined,
+          this.findCanonicalParticipantIdentity(user.identities)
+        )
+      ),
       total,
       pagination
     );
@@ -5646,29 +5657,6 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       avatarUrl: user.avatarUrl,
       ...(role === "owner" || role === "admin" || role === "member" ? { role } : {})
     };
-  }
-
-  private mapDirectorySearchParticipant(
-    user: ImParticipantUserRecord & { identities: ImParticipantIdentityRecord[] },
-    query: string
-  ): ParticipantPayload {
-    const participant = this.mapParticipant(
-      user,
-      undefined,
-      this.findCanonicalParticipantIdentity(user.identities)
-    );
-    const normalizedQuery = query.toLocaleLowerCase();
-    const matchingDisplayName = [
-      user.customerProfile?.deletedAt === null ? user.customerProfile.displayName : null,
-      user.technicianProfile?.deletedAt === null ? user.technicianProfile.displayName : null,
-      user.username,
-      ...user.identities.map((identity) => identity.displayName)
-    ].find(
-      (displayName): displayName is string =>
-        typeof displayName === "string" && displayName.toLocaleLowerCase().includes(normalizedQuery)
-    );
-
-    return matchingDisplayName ? { ...participant, username: matchingDisplayName } : participant;
   }
 
   private resolveParticipantDisplayName(
