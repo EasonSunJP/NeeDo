@@ -32,7 +32,10 @@ const merchantEmploymentTestState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({
-  useAuth: () => ({ session: merchantEmploymentTestState.session })
+  useAuth: () => ({
+    canAccessFeature: () => true,
+    session: merchantEmploymentTestState.session
+  })
 }));
 
 vi.mock("../../state/entityStore", () => ({
@@ -160,18 +163,21 @@ function setInputValue(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-async function renderStaffPage() {
+async function renderPortalPage(initialEntry: string) {
+  const element = createElement(MerchantPortalContent, { store: testStore, technicians: testTechnicians });
+
   await act(async () => {
     root.render(
       createElement(
         MemoryRouter,
-        { initialEntries: ["/merchant/staff"] },
+        { initialEntries: [initialEntry] },
         createElement(
           Routes,
           null,
+          createElement(Route, { path: "/merchant", element }),
           createElement(
             Route,
-            { path: "/merchant/:view", element: createElement(MerchantPortalContent, { store: testStore, technicians: testTechnicians }) }
+            { path: "/merchant/:view", element }
           )
         )
       )
@@ -181,6 +187,10 @@ async function renderStaffPage() {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+async function renderStaffPage() {
+  await renderPortalPage("/merchant/staff");
 }
 
 describe("MerchantPortal formal employment data", () => {
@@ -287,6 +297,20 @@ describe("MerchantPortal formal employment data", () => {
       expect(backofficeRealDataApi.technicians).toHaveBeenCalledWith("merchant-admin", expect.objectContaining({ page: 2 }));
       expect(container.querySelector('img[src="/tech-1.jpg"]')).not.toBeNull();
       expect(container.querySelector('img[src="/tech-2.jpg"]')).not.toBeNull();
+    });
+
+    it("shows only formal current-shop employees in the dashboard employee status", async () => {
+      vi.mocked(backofficeRealDataApi.technicians).mockResolvedValue({
+        list: [formalTechnicians[0]],
+        total: 1,
+        page: 1,
+        page_size: 100
+      });
+
+      await renderPortalPage("/merchant");
+
+      expect(container.querySelector('img[src="/tech-1.jpg"]')).not.toBeNull();
+      expect(container.querySelector('img[src="/tech-2.jpg"]')).toBeNull();
     });
 
     it("keeps temporary employees in All and separates them in the Temporary tab", async () => {

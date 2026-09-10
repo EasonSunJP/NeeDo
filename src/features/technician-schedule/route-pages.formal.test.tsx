@@ -713,6 +713,9 @@ describe("formal technician schedule routes", () => {
   });
 
   it("creates a formal manual booking from the mutually exclusive editor mode without creating availability", async () => {
+    const startsAt = new Date(Date.now() + 24 * 60 * 60_000);
+    startsAt.setMilliseconds(0);
+    const endsAt = new Date(startsAt.getTime() + 60 * 60_000);
     mocks.scheduleResource.mockReturnValue({
       data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: null },
       error: null,
@@ -720,7 +723,12 @@ describe("formal technician schedule routes", () => {
       retry: mocks.retrySchedule
     });
     mocks.createTechnicianManualBooking.mockResolvedValue(makeOrder("pending"));
-    await render("/technician/schedule/new?mode=manualBooking&startsAt=2026-09-10T01%3A00%3A00.000Z&endsAt=2026-09-10T02%3A00%3A00.000Z");
+    const query = new URLSearchParams({
+      mode: "manualBooking",
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString()
+    });
+    await render(`/technician/schedule/new?${query.toString()}`);
 
     await waitFor(() => expect(container.textContent).toContain("山田花子"));
     expect(container.querySelectorAll('[role="switch"]')).toHaveLength(2);
@@ -733,8 +741,8 @@ describe("formal technician schedule routes", () => {
         customerIdentityId: 71,
         expectedPriceAmountJpy: 10_000,
         technicianServiceId: 102,
-        startsAt: "2026-09-10T01:00:00.000Z",
-        endsAt: "2026-09-10T02:00:00.000Z"
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString()
       }),
       expect.stringMatching(/^[a-f0-9]{32}$/)
     ));

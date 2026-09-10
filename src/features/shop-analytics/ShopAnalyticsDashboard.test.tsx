@@ -3,10 +3,16 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackofficeDashboardPayload } from "../../api/backofficeRealData";
+import type { Language } from "../../i18n/translations";
 import type { Store } from "../../types/domain";
 import { ShopAnalyticsDashboard } from "./ShopAnalyticsDashboard";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const testI18n = vi.hoisted(() => ({ language: "zh" as Language }));
+vi.mock("../../i18n/I18nProvider", () => ({
+  useOptionalI18n: () => ({ language: testI18n.language, setLanguage: vi.fn() })
+}));
 
 const store: Store = {
   id: "11",
@@ -127,6 +133,7 @@ describe("ShopAnalyticsDashboard formal API", () => {
   let root: Root;
 
   beforeEach(() => {
+    testI18n.language = "zh";
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -229,5 +236,135 @@ describe("ShopAnalyticsDashboard formal API", () => {
     const metricValues = Array.from(container.querySelectorAll<HTMLElement>(".shop-analytics-tile strong"))
       .map((element) => element.textContent);
     expect(metricValues).toEqual(["￥128,000", "3", "6", "—", "18", "—"]);
+  });
+
+  it("renders technician-style peak context and a visible node for every formal bucket", async () => {
+    const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("128,000"));
+
+    expect(container.textContent).toContain("同一期间 · 双独立刻度");
+    expect(container.textContent).toContain("￥70,000 峰值");
+    expect(container.textContent).toContain("5单 峰值");
+    expect(
+      container.querySelectorAll('[data-series="revenue"] [data-chart-node="true"]')
+    ).toHaveLength(dashboard.series.buckets.length);
+    expect(
+      container.querySelectorAll('[data-series="orders"] [data-chart-node="true"]')
+    ).toHaveLength(dashboard.series.buckets.length);
+  });
+
+  it("lets each bottom legend hide and restore only its own series", async () => {
+    const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("128,000"));
+
+    const revenueLegend = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="隐藏营业额趋势"]'
+    );
+    const ordersLegend = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="隐藏订单数趋势"]'
+    );
+    expect(revenueLegend?.getAttribute("aria-pressed")).toBe("true");
+    expect(ordersLegend?.getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => revenueLegend?.click());
+    expect(container.querySelector('[data-series="revenue"]')).toBeNull();
+    expect(container.querySelector('[data-series="orders"]')).not.toBeNull();
+    expect(revenueLegend?.getAttribute("aria-label")).toBe("显示营业额趋势");
+
+    await act(async () => revenueLegend?.click());
+    await act(async () => ordersLegend?.click());
+    expect(container.querySelector('[data-series="revenue"]')).not.toBeNull();
+    expect(container.querySelector('[data-series="orders"]')).toBeNull();
+    expect(ordersLegend?.getAttribute("aria-label")).toBe("显示订单数趋势");
+  });
+
+  it("renders translated subtitle, peaks, and both legend states in English", async () => {
+    testI18n.language = "en";
+    const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("128,000"));
+
+    expect(container.textContent).toContain("Same period · two independent scales");
+    expect(container.textContent).toContain("5 orders Peak");
+    const revenueLegend = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Hide revenue trend"]'
+    );
+    const ordersLegend = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Hide order trend"]'
+    );
+    expect(revenueLegend).not.toBeNull();
+    expect(ordersLegend).not.toBeNull();
+
+    await act(async () => revenueLegend?.click());
+    expect(revenueLegend?.getAttribute("aria-label")).toBe("Show revenue trend");
+    await act(async () => revenueLegend?.click());
+    await act(async () => ordersLegend?.click());
+    expect(ordersLegend?.getAttribute("aria-label")).toBe("Show order trend");
+  });
+
+  it("centers a single zero-value bucket and keeps both nodes on the baseline", async () => {
+    const zeroDashboard: BackofficeDashboardPayload = {
+      ...dashboard,
+      series: {
+        buckets: [{
+          ...dashboard.series.buckets[0]!,
+          key: "2026-09-06",
+          label: "9/6",
+          orderCount: 0,
+          serviceGmvJpy: 0
+        }]
+      }
+    };
+    const loadDashboard = vi.fn().mockResolvedValue(zeroDashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("￥0 峰值"));
+
+    const nodes = container.querySelectorAll<SVGCircleElement>('[data-chart-node="true"]');
+    expect(nodes).toHaveLength(2);
+    nodes.forEach((node) => {
+      expect(node.getAttribute("cx")).toBe("319");
+      expect(node.getAttribute("cy")).toBe("206");
+    });
+    expect(container.textContent).toContain("0单 峰值");
+  });
+
+  it("keeps every trend bucket inside a 440px mobile chart card", async () => {
+    const mobileDashboard: BackofficeDashboardPayload = {
+      ...dashboard,
+      series: {
+        buckets: Array.from({ length: 7 }, (_, index) => ({
+          ...dashboard.series.buckets[index % dashboard.series.buckets.length]!,
+          key: `2026-09-${String(index + 4).padStart(2, "0")}`,
+          label: `9/${index + 4}`,
+          orderCount: index + 1,
+          serviceGmvJpy: (index + 1) * 10_000
+        }))
+      }
+    };
+    const loadDashboard = vi.fn().mockResolvedValue(mobileDashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("70,000"));
+
+    const svg = container.querySelector<SVGSVGElement>('[data-testid="shop-analytics-trend"] svg');
+    expect(svg?.getAttribute("class")).toContain("w-full");
+    expect(svg?.getAttribute("class")).not.toContain("min-w-[520px]");
+    expect(container.querySelectorAll('[data-chart-node="true"]')).toHaveLength(14);
   });
 });
