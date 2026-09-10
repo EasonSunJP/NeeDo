@@ -78,9 +78,23 @@ describe("RealtimeRepository friend activity status", () => {
         username: true,
         avatarUrl: true,
         createdAt: true,
+        customerProfile: {
+          select: { displayName: true, deletedAt: true }
+        },
+        technicianProfile: {
+          select: { displayName: true, deletedAt: true }
+        },
         identities: {
           where: { deletedAt: null, isActive: true },
-          select: { id: true, type: true, displayName: true, isDefault: true },
+          select: {
+            id: true,
+            type: true,
+            displayName: true,
+            isDefault: true,
+            merchantIdentityProfile: {
+              select: { displayName: true, deletedAt: true }
+            }
+          },
           orderBy: [{ isDefault: "desc" }, { id: "asc" }]
         }
       }

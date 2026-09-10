@@ -438,6 +438,15 @@ function deferred<T>() {
   return { promise, reject, resolve };
 }
 
+function futureAvailabilityRange() {
+  const startsAt = new Date(Date.now() + 24 * 60 * 60_000);
+  startsAt.setUTCMinutes(0, 0, 0);
+  return {
+    startsAt,
+    endsAt: new Date(startsAt.getTime() + 6 * 60 * 60_000)
+  };
+}
+
 async function waitFor(assertion: () => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -646,6 +655,7 @@ describe("formal technician schedule routes", () => {
   });
 
   it("creates an arbitrary-length free availability window without creating a service slot", async () => {
+    const range = futureAvailabilityRange();
     mocks.scheduleResource.mockReturnValue({
       data: { profile, services: [service], shopId: 11, shopName: "正式店铺", slot: null },
       error: null,
@@ -653,14 +663,14 @@ describe("formal technician schedule routes", () => {
       retry: mocks.retrySchedule
     });
     mocks.createAvailabilityWindow.mockResolvedValue({ id: 88 });
-    await render("/technician/schedule/new?mode=availability&startsAt=2026-09-10T09%3A00%3A00.000Z&endsAt=2026-09-10T15%3A00%3A00.000Z");
+    await render(`/technician/schedule/new?mode=availability&startsAt=${encodeURIComponent(range.startsAt.toISOString())}&endsAt=${encodeURIComponent(range.endsAt.toISOString())}`);
 
     await click("保存可排班");
     await waitFor(() => expect(mocks.createAvailabilityWindow).toHaveBeenCalledWith(
       "technician",
       expect.objectContaining({
-        startsAt: new Date("2026-09-10T09:00:00.000Z"),
-        endsAt: new Date("2026-09-10T15:00:00.000Z"),
+        startsAt: range.startsAt,
+        endsAt: range.endsAt,
         capacity: 1
       })
     ));
@@ -669,6 +679,7 @@ describe("formal technician schedule routes", () => {
   });
 
   it("creates free availability even when the technician has no bookable service yet", async () => {
+    const range = futureAvailabilityRange();
     mocks.scheduleResource.mockReturnValue({
       data: { profile, services: [], shopId: 11, shopName: "正式店铺", slot: null },
       error: null,
@@ -676,14 +687,14 @@ describe("formal technician schedule routes", () => {
       retry: mocks.retrySchedule
     });
     mocks.createAvailabilityWindow.mockResolvedValue({ id: 89 });
-    await render("/technician/schedule/new?mode=availability&startsAt=2026-09-10T09%3A00%3A00.000Z&endsAt=2026-09-10T15%3A00%3A00.000Z");
+    await render(`/technician/schedule/new?mode=availability&startsAt=${encodeURIComponent(range.startsAt.toISOString())}&endsAt=${encodeURIComponent(range.endsAt.toISOString())}`);
 
     await click("保存可排班");
     await waitFor(() => expect(mocks.createAvailabilityWindow).toHaveBeenCalledWith(
       "technician",
       expect.objectContaining({
-        startsAt: new Date("2026-09-10T09:00:00.000Z"),
-        endsAt: new Date("2026-09-10T15:00:00.000Z")
+        startsAt: range.startsAt,
+        endsAt: range.endsAt
       })
     ));
     expect(mocks.createSlot).not.toHaveBeenCalled();
