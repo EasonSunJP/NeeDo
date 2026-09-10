@@ -1873,7 +1873,7 @@ describe("verified email registration and formal password authentication", () =>
     expect(response.body.data.profileDisplayName).toBeNull();
   });
 
-  it("exposes and switches to a platform account customer identity with the shared NeeDo ID", async () => {
+  it("exposes and switches to a platform account customer identity when both identities share the persisted NeeDo ID", async () => {
     const fixture = await createAuthFixture();
     (fixture.user.identities as Array<Record<string, unknown>>).push({
       id: 12,
@@ -1884,7 +1884,12 @@ describe("verified email registration and formal password authentication", () =>
       displayName: "Admin customer profile",
       isDefault: false,
       isActive: true,
-      deletedAt: null
+      deletedAt: null,
+      publicIdentifier: {
+        publicId: "needo1234567890",
+        status: "ACTIVE",
+        deletedAt: null
+      }
     });
 
     const loginResponse = await request(fixture.app)
@@ -1921,6 +1926,59 @@ describe("verified email registration and formal password authentication", () =>
           id: 12,
           type: "customer",
           publicId: "needo1234567890"
+        });
+      });
+  });
+
+  it("exposes and switches to a non-public platform identity when customer is the primary identity", async () => {
+    const fixture = await createAuthFixture();
+    fixture.user.identities[0]!.isDefault = false;
+    (fixture.user.identities as Array<Record<string, unknown>>).push({
+      id: 12,
+      userId: fixture.user.id,
+      type: "customer",
+      scopeType: "customer_profile",
+      scopeId: 1,
+      displayName: "Admin customer profile",
+      isDefault: true,
+      isActive: true,
+      deletedAt: null,
+      publicIdentifier: {
+        publicId: "needo1234567890",
+        status: "ACTIVE",
+        deletedAt: null
+      }
+    });
+
+    const loginResponse = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
+      .expect(200);
+    const { accessToken, refreshToken } = loginResponse.body.data;
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.identities).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: 10, type: "platform", publicId: null }),
+            expect.objectContaining({ id: 12, type: "customer", publicId: "needo1234567890" })
+          ])
+        );
+      });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/switch-identity")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ refreshToken, identityId: 10 })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.me.currentIdentity).toMatchObject({
+          id: 10,
+          type: "platform",
+          publicId: null
         });
       });
   });

@@ -25,6 +25,13 @@ const overdueAppointmentGateMigrationPath = join(
 const overdueAppointmentGateMigration = existsSync(overdueAppointmentGateMigrationPath)
   ? readFileSync(overdueAppointmentGateMigrationPath, "utf8")
   : "";
+const anytimeServiceDefaultOnMigrationPath = join(
+  process.cwd(),
+  "prisma/migrations/20260911153000_anytime_service_test_default_on/migration.sql"
+);
+const anytimeServiceDefaultOnMigration = existsSync(anytimeServiceDefaultOnMigrationPath)
+  ? readFileSync(anytimeServiceDefaultOnMigrationPath, "utf8")
+  : "";
 
 const modelBlock = (name: string): string => {
   const match = schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`));
@@ -84,10 +91,17 @@ describe("operations system settings schema", () => {
     expect(overdueAppointmentGateMigration).toMatch(/DEFAULT\s+false/i);
   });
 
-  it("adds the anytime service test switch with a fail-closed database default", () => {
+  it("keeps the original additive migration and promotes the test-stage default to enabled", () => {
     expect(anytimeServiceMigration).toContain("ALTER TABLE `platform_setting_versions`");
     expect(anytimeServiceMigration).toContain("`anytime_service_test_enabled`");
     expect(anytimeServiceMigration).toMatch(/DEFAULT\s+false/i);
+
+    expect(anytimeServiceDefaultOnMigration).toContain("ALTER TABLE `platform_setting_versions`");
+    expect(anytimeServiceDefaultOnMigration).toContain("`anytime_service_test_enabled`");
+    expect(anytimeServiceDefaultOnMigration).toMatch(/DEFAULT\s+true/i);
+
+    const block = modelBlock("PlatformSettingVersion");
+    expect(block).toMatch(/anytimeServiceTestEnabled\s+Boolean\s+@default\(true\)/);
   });
 
   it("defines language-specific drafts and immutable releases", () => {

@@ -35,6 +35,13 @@ describe("UnifiedUserCalendar event detail page", () => {
     expect(source).toContain('const statusOptions = ["已承诺", "辞退", "保留"] as const;');
     expect(source).not.toContain('"未操作"');
     expect(source).not.toContain("grid-cols-4 gap-1.5");
+    expect(source).toContain('data-calendar-event-detail-field="true"');
+    expect(source).toContain('className="flex w-full items-start gap-3');
+    expect(source).toContain('data-calendar-event-detail-content="true"');
+    expect(source).toContain('data-calendar-event-detail-value="true"');
+    expect(source).toContain('data-calendar-status-trigger="true"');
+    expect(source).toContain('data-calendar-status-label="true"');
+    expect(source).toContain('absolute inset-x-12 text-center');
   });
 });
 
@@ -43,6 +50,16 @@ describe("UnifiedUserCalendar privacy projection", () => {
     expect(source).toContain('event.visibility === "busy_redacted"');
     expect(source).toContain("? event.badge");
     expect(source).toContain("getEventStyle(event)");
+  });
+});
+
+describe("UnifiedUserCalendar participant timeline alignment", () => {
+  it("uses the same flex lane frame for headers and the time canvas without disabling remove controls", () => {
+    expect(source).toContain('className="flex border-b');
+    expect(source).toContain('className="flex min-w-0 flex-1" data-calendar-lane-header-track="true"');
+    expect(source).toContain('className="flex" data-calendar-timeline-body="true"');
+    expect(source).toContain('data-calendar-participant-remove="true"');
+    expect(source).not.toContain('<div aria-disabled="true" aria-label={calendar.label}');
   });
 });
 
@@ -91,6 +108,19 @@ describe("UnifiedUserCalendar event editor page", () => {
     expect(source).toContain("每年");
     expect(source).toContain('placeholder="URL"');
     expect(source).toContain('type="url"');
+  });
+
+  it("uses the shared themed picker for schedule view, reminder, and repeat menus", () => {
+    const editorStart = source.indexOf("function CalendarEventEditorPage");
+    const editorEnd = source.indexOf("function CalendarSourceDrawer", editorStart);
+    const editorSource = source.slice(editorStart, editorEnd);
+
+    expect(source).toContain('import { ScheduleViewPicker } from "./ScheduleViewPicker";');
+    expect(source.match(/<ScheduleViewPicker/g)).toHaveLength(3);
+    expect(editorSource).toContain('ariaLabel="选择提醒时间"');
+    expect(editorSource).toContain('ariaLabel="选择重复方式"');
+    expect(editorSource).not.toContain("<select");
+    expect(source).not.toContain('aria-label="切换日程展示范围"\n            className="h-9 w-full appearance-none');
   });
 
   it("labels the sync-contact picker as participants without the common-contact hint", () => {

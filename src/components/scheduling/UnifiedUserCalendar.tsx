@@ -6,6 +6,7 @@ import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "../mobile/M
 import { MobileFullscreenPage } from "../mobile/MobileFullscreenPage";
 import { HolidayCornerBadge } from "./HolidayCornerBadge";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "./ScheduleDraftRangeBlock";
+import { ScheduleViewPicker } from "./ScheduleViewPicker";
 import type {
   CalendarParticipantOption,
   CalendarParticipantTimelineRenderInput,
@@ -116,7 +117,9 @@ export type UnifiedCalendarLane = {
   caption?: string;
   accent: string;
   avatar?: string;
+  centerHeader?: boolean;
   detailPath?: string;
+  onRemove?: () => void;
 };
 
 export type UnifiedCalendarEvent = {
@@ -357,6 +360,13 @@ const repeatOptions: Array<{ value: CalendarRepeatRule; label: string }> = [
   { value: "monthly", label: "每月" },
   { value: "yearly", label: "每年" }
 ];
+
+const reminderOptions = [
+  { value: "10 分钟前", label: "10 分钟前" },
+  { value: "30 分钟前", label: "30 分钟前" },
+  { value: "1 小时前", label: "1 小时前" },
+  { value: "不提醒", label: "不提醒" },
+] as const;
 
 const merchantAppointmentStatusFilterOptions: Array<{ value: MerchantAppointmentStatusFilter; label: string }> = [
   { value: "all", label: "全预约" },
@@ -2705,14 +2715,30 @@ function CalendarLaneAvatar({ calendar, floating = false }: { calendar: UnifiedC
       ) : (
         <span
           className={cn(
-            "grid place-items-center border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[12px] font-black text-[color:var(--client-muted)]",
+            "inline-flex items-center justify-center border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[12px] font-black text-[color:var(--client-muted)]",
             floating ? "h-11 w-11 rounded-[14px]" : "h-10 w-10 avatar-shape"
           )}
         >
           {calendar.label.slice(0, 1)}
         </span>
       )}
-      <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-[color:var(--client-elevated)]" style={{ backgroundColor: calendar.accent }} />
+      {calendar.onRemove ? (
+        <button
+          aria-label={`删除${calendar.label}`}
+          className="focus-ring absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-[color:var(--client-elevated)] bg-[color:var(--client-primary)] text-[12px] font-black leading-none text-[color:var(--client-primary-contrast)] shadow-[0_5px_12px_rgba(0,0,0,0.24)]"
+          data-calendar-participant-remove="true"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            calendar.onRemove?.();
+          }}
+          type="button"
+        >
+          ×
+        </button>
+      ) : (
+        <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-[color:var(--client-elevated)]" style={{ backgroundColor: calendar.accent }} />
+      )}
     </span>
   );
 }
@@ -3306,28 +3332,24 @@ function DayTimeline({
   const parallelColumnWidth = activeCalendarLanes?.length ? 100 / activeCalendarLanes.length : 100;
   const renderFloatingLaneButton = (calendar: UnifiedCalendarLane) => {
     const buttonClassName =
-      "focus-ring pointer-events-auto grid h-[54px] w-[54px] place-items-center rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] shadow-[0_12px_26px_rgba(0,0,0,0.26)] backdrop-blur-xl transition active:scale-95";
+      "focus-ring pointer-events-auto flex h-[54px] w-[54px] items-center justify-center rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] shadow-[0_12px_26px_rgba(0,0,0,0.26)] backdrop-blur-xl transition active:scale-95";
 
-    return calendar.detailPath ? (
-      <Link
-        aria-label={`浮动查看${calendar.label}详情`}
-        className={buttonClassName}
-        data-calendar-floating-lane-button="true"
-        key={calendar.id}
-        to={calendar.detailPath}
-      >
-        <CalendarLaneAvatar calendar={calendar} floating />
-      </Link>
-    ) : (
-      <div
-        aria-disabled="true"
-        aria-label={calendar.label}
-        className={buttonClassName}
-        data-calendar-floating-lane-button="true"
-        key={calendar.id}
-        role="button"
-      >
-        <CalendarLaneAvatar calendar={calendar} floating />
+    return (
+      <div className="flex min-w-[136px] flex-1 items-center justify-center" key={calendar.id}>
+        {calendar.detailPath ? (
+          <Link
+            aria-label={`浮动查看${calendar.label}详情`}
+            className={buttonClassName}
+            data-calendar-floating-lane-button="true"
+            to={calendar.detailPath}
+          >
+            <CalendarLaneAvatar calendar={calendar} floating />
+          </Link>
+        ) : (
+          <div aria-label={calendar.label} className={buttonClassName} data-calendar-floating-lane-button="true">
+            <CalendarLaneAvatar calendar={calendar} floating />
+          </div>
+        )}
       </div>
     );
   };
@@ -3353,9 +3375,8 @@ function DayTimeline({
             }}
           >
             <div
-              className="grid h-14 items-center justify-items-center"
+              className="flex h-14 items-center"
               style={{
-                gridTemplateColumns: `repeat(${activeCalendarLanes.length}, minmax(${timelineLaneMinWidth}px, 1fr))`,
                 minWidth: parallelMinWidth,
                 transform: `translateX(${-timelineScrollLeft}px)`
               }}
@@ -3375,16 +3396,16 @@ function DayTimeline({
         <div style={timelineMinWidth ? { minWidth: timelineMinWidth } : undefined}>
           {hasParallelCalendars && activeCalendarLanes ? (
             <div
-              className="grid border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]"
+              className="flex border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]"
               data-calendar-lane-header="true"
               ref={timelineHeaderRef}
-              style={{ gridTemplateColumns: `${timelineTimeColumnWidth}px minmax(0, 1fr)` }}
             >
               <div
-                className="sticky left-0 z-[12] border-r border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-transparent"
+                className="sticky left-0 z-[12] shrink-0 border-r border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-transparent"
                 data-calendar-time-corner="true"
+                style={{ width: timelineTimeColumnWidth }}
               />
-              <div className="grid" style={{ gridTemplateColumns: `repeat(${activeCalendarLanes.length}, minmax(${timelineLaneMinWidth}px, 1fr))` }}>
+              <div className="flex min-w-0 flex-1" data-calendar-lane-header-track="true">
                 {activeCalendarLanes.map((calendar) => {
                   const content = (
                     <>
@@ -3396,7 +3417,8 @@ function DayTimeline({
                     </>
                   );
                   const laneClassName = cn(
-                    "focus-ring flex min-h-[68px] min-w-0 items-center gap-2 border-r border-[color:color-mix(in_srgb,var(--client-line)_46%,transparent)] px-2.5 py-2 text-left transition last:border-r-0",
+                    "focus-ring flex min-h-[68px] min-w-[136px] flex-1 items-center gap-2 border-r border-[color:color-mix(in_srgb,var(--client-line)_46%,transparent)] px-2.5 py-2 text-left transition last:border-r-0",
+                    calendar.centerHeader && "flex-col justify-center gap-1 text-center",
                     calendar.detailPath ? "hover:bg-[color:color-mix(in_srgb,var(--client-primary-soft)_34%,transparent)] active:brightness-95" : "cursor-default"
                   );
 
@@ -3405,7 +3427,7 @@ function DayTimeline({
                       {content}
                     </Link>
                   ) : (
-                    <div aria-disabled="true" aria-label={calendar.label} className={laneClassName} data-calendar-lane-heading="true" key={calendar.id} role="button">
+                    <div aria-label={calendar.label} className={laneClassName} data-calendar-lane-heading="true" key={calendar.id}>
                       {content}
                     </div>
                   );
@@ -3413,10 +3435,11 @@ function DayTimeline({
               </div>
             </div>
           ) : null}
-          <div className="grid" style={{ gridTemplateColumns: `${timelineTimeColumnWidth}px minmax(0, 1fr)` }}>
+          <div className="flex" data-calendar-timeline-body="true">
             <div
-              className="sticky left-0 z-[12] border-r border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-transparent shadow-none"
+              className="sticky left-0 z-[12] shrink-0 border-r border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-transparent shadow-none"
               data-calendar-time-column="true"
+              style={{ width: timelineTimeColumnWidth }}
             >
               {Array.from({ length: dayEndHour - dayStartHour }, (_, index) => {
                 const hour = dayStartHour + index;
@@ -3437,7 +3460,7 @@ function DayTimeline({
                 );
               })}
             </div>
-            <div className="relative touch-pan-y" data-calendar-time-canvas="true" onClick={handleCanvasClick} onPointerDown={handleCanvasPointerDown} ref={canvasRef} style={{ height: totalHeight }}>
+            <div className="relative min-w-0 flex-1 touch-pan-y" data-calendar-time-canvas="true" onClick={handleCanvasClick} onPointerDown={handleCanvasPointerDown} ref={canvasRef} style={{ height: totalHeight }}>
               {Array.from({ length: dayEndHour - dayStartHour }, (_, index) => (
                 <div
                   className="absolute inset-x-0 border-b border-[color:color-mix(in_srgb,var(--client-line)_46%,transparent)] transition hover:bg-[color:color-mix(in_srgb,var(--client-primary-soft)_38%,transparent)]"
@@ -4400,13 +4423,22 @@ function EventDetailField({
   }
 
   return (
-    <div className="grid grid-cols-[36px_minmax(0,1fr)] gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)] px-3 py-3">
-      <span className="grid h-9 w-9 place-items-center rounded-[14px] text-[color:var(--client-muted)]">
+    <div
+      className="flex w-full items-start gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)] px-3 py-3"
+      data-calendar-event-detail-field="true"
+    >
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[14px] text-[color:var(--client-muted)]">
         <AppIcon className="h-5 w-5" name={icon} />
       </span>
-      <span className="min-w-0">
+      <span className="min-w-0 flex-1" data-calendar-event-detail-content="true">
         <span className="block text-[11px] font-black text-[color:var(--client-muted)]">{label}</span>
-        <span className="mt-1 block text-sm font-black leading-5 text-[color:var(--client-text)]">{value}</span>
+        <span
+          className="mt-1 block min-w-0 whitespace-normal text-sm font-black leading-5 text-[color:var(--client-text)]"
+          data-calendar-event-detail-value="true"
+          style={{ overflowWrap: "anywhere" }}
+        >
+          {value}
+        </span>
       </span>
     </div>
   );
@@ -4711,23 +4743,24 @@ export function UnifiedCalendarEventDetailPage({
           <button
             aria-expanded={statusSheetOpen}
             className={cn(
-              "focus-ring relative z-[126] flex min-h-14 w-full items-center justify-between rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] px-5 text-left shadow-[0_18px_52px_rgba(0,0,0,0.24)] backdrop-blur-2xl transition active:scale-[0.99]",
+              "focus-ring relative z-[126] flex min-h-14 w-full items-center justify-center rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] px-5 shadow-[0_18px_52px_rgba(0,0,0,0.24)] backdrop-blur-2xl transition active:scale-[0.99]",
               statusSheetOpen
                 ? "bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] text-[color:var(--client-text)]"
                 : "bg-[color:color-mix(in_srgb,var(--client-primary-soft)_82%,var(--client-surface)_18%)] text-[color:var(--client-primary-strong)]"
             )}
+            data-calendar-status-trigger="true"
             onClick={statusSheetOpen ? closeStatusSheet : () => setStatusSheetOpen(true)}
             type="button"
           >
             {statusSheetOpen ? (
               <>
-                <span className="min-w-0 text-base font-black" data-no-i18n>取消</span>
-                <AppIcon className="h-5 w-5 shrink-0" name="close" />
+                <span className="absolute inset-x-12 text-center text-base font-black" data-calendar-status-label="true" data-no-i18n>取消</span>
+                <AppIcon className="absolute right-5 h-5 w-5" name="close" />
               </>
             ) : (
               <>
-                <span className="min-w-0 text-base font-black" data-no-i18n>{status}</span>
-                <AppIcon className="h-5 w-5 shrink-0" name="more" />
+                <span className="absolute inset-x-12 text-center text-base font-black" data-calendar-status-label="true" data-no-i18n>{status}</span>
+                <AppIcon className="absolute right-5 h-5 w-5" name="more" />
               </>
             )}
           </button>
@@ -4915,23 +4948,30 @@ function CalendarEventEditorPage({
           </label>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
+          <div className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             提醒
-            <select className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, reminder: event.target.value })} value={normalizeCalendarReminderLabel(draft.reminder)}>
-              <option value="10 分钟前">10 分钟前</option>
-              <option value="30 分钟前">30 分钟前</option>
-              <option value="1 小时前">1 小时前</option>
-              <option value="不提醒">不提醒</option>
-            </select>
-          </label>
-          <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
+            <ScheduleViewPicker
+              ariaLabel="选择提醒时间"
+              className="mt-1"
+              label=""
+              onChange={(reminder) => onChange({ ...draft, reminder })}
+              options={[...reminderOptions]}
+              value={normalizeCalendarReminderLabel(draft.reminder)}
+              variant="field"
+            />
+          </div>
+          <div className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             重复
-            <select className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, repeatRule: normalizeCalendarRepeatRule(event.target.value) })} value={draft.repeatRule}>
-              {repeatOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
+            <ScheduleViewPicker
+              ariaLabel="选择重复方式"
+              className="mt-1"
+              label=""
+              onChange={(repeatRule) => onChange({ ...draft, repeatRule: normalizeCalendarRepeatRule(repeatRule) })}
+              options={repeatOptions}
+              value={draft.repeatRule}
+              variant="field"
+            />
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
@@ -6001,17 +6041,20 @@ export function UnifiedUserCalendar({
     busyRanges,
     conflictIdentityIds,
     draft,
+    onParticipantRemove,
     onTimeChange,
     participants,
   }: CalendarParticipantTimelineRenderInput) => {
     const laneId = (participant: CalendarParticipantOption) => `participant:${participant.id}`;
     const participantByIdentityId = new Map(participants.map((participant) => [participant.identityId, participant]));
-    const lanes: UnifiedCalendarLane[] = participants.map((participant) => ({
+    const lanes: UnifiedCalendarLane[] = participants.map((participant, index) => ({
       id: laneId(participant),
       label: participant.label,
       caption: participant.description,
       accent: conflictIdentityIds.has(participant.identityId) ? "#ef4444" : "#36d67b",
       avatar: participant.avatar,
+      centerHeader: true,
+      onRemove: index === 0 ? undefined : () => onParticipantRemove(participant.id),
     }));
     const personalEvents = allEvents
       .filter((event) => event.date === draft.date)
@@ -6197,20 +6240,13 @@ export function UnifiedUserCalendar({
         >
           ‹
         </button>
-        <label className="focus-within:ring-focus relative min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-[color:var(--client-muted)]">显示</span>
-          <select
-            aria-label="切换日程展示范围"
-            className="h-9 w-full appearance-none rounded-full bg-transparent pl-12 pr-9 text-center text-[13px] font-black text-[color:var(--client-text)] outline-none"
-            onChange={(event) => changeView(event.target.value as UnifiedCalendarView)}
-            value={view === "agenda" ? "day" : view}
-          >
-            {viewOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-black text-[color:var(--client-muted)]">⌄</span>
-        </label>
+        <ScheduleViewPicker
+          ariaLabel="切换日程展示范围"
+          label="显示"
+          onChange={(nextView) => changeView(nextView as UnifiedCalendarView)}
+          options={viewOptions}
+          value={view === "agenda" ? "day" : view}
+        />
         <button
           className="focus-ring grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-lg font-black text-[color:var(--client-text)]"
           onClick={() => shiftPeriod(1)}

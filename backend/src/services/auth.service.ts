@@ -2277,9 +2277,24 @@ export class AuthService {
           )
           .map((identity) => ({ ...identity, publicId: sharedPrimaryPublicId }))
       : [];
+    const projectedPublicIdentities = Array.from(publicIdentityById.values());
+    const preservedAuthIdentities = allActiveIdentities.filter((identity) => {
+      const sourceIdentity = user.identities.find((source) => source.id === identity.id);
+      const mustPreserve =
+        sourceIdentity?.isDefault || ["platform", "platform_admin"].includes(identity.type);
+
+      return (
+        mustPreserve &&
+        !projectedPublicIdentities.some((projected) => projected.id === identity.id)
+      );
+    });
     const identities =
       publicIdentityById.size > 0
-        ? [...Array.from(publicIdentityById.values()), ...sharedPrimaryIdentities]
+        ? [
+            ...preservedAuthIdentities,
+            ...projectedPublicIdentities,
+            ...sharedPrimaryIdentities
+          ]
         : this.allowLegacyAuthAdaptersForTest
           ? allActiveIdentities
           : [];

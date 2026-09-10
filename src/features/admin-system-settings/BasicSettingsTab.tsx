@@ -105,24 +105,20 @@ export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMed
         <SettingToggle title={t("新用户注册入口")} description={t("只控制公开自助注册；运营后台仍可创建用户。")} checked={draft.selfRegistrationEnabled} disabled={!canWrite} onChange={(value) => update("selfRegistrationEnabled", value)} />
       </section>
 
-      <section className="rounded-2xl border border-line bg-paper p-5">
-        <SettingToggle
-          title={t("随时服务测试")}
-          description={t("开启后可忽略预约时间开始和完成服务，仅用于测试；关闭后最多提前 30 分钟开始，并须在服务结束时间后完成。")}
-          checked={draft.anytimeServiceTestEnabled}
-          disabled={!canWrite}
-          onChange={(value) => update("anytimeServiceTestEnabled", value)}
-        />
-        <div className="mt-3">
-          <SettingToggle
-            title={t("过期预约未处理门禁")}
-            description={t("开启后，用户或技师开始较晚服务前，必须先处置本人参与的更早过期未完成预约。关闭时不阻断开始服务，也不会自动结算或评分。")}
-            checked={draft.overdueAppointmentGateEnabled}
-            disabled={!canWrite}
-            onChange={(value) => update("overdueAppointmentGateEnabled", value)}
-          />
-        </div>
-      </section>
+      <SettingToggle
+        title={t("随时服务测试")}
+        description={t("开启后可忽略预约时间开始和完成服务，仅用于测试；关闭后最多提前 30 分钟开始，并须在服务结束时间后完成。")}
+        checked={draft.anytimeServiceTestEnabled}
+        disabled={!canWrite}
+        onChange={(value) => update("anytimeServiceTestEnabled", value)}
+      />
+      <SettingToggle
+        title={t("过期预约未处理门禁")}
+        description={t("开启后，用户或技师开始较晚服务前，必须先处置本人参与的更早过期未完成预约。关闭时不阻断开始服务，也不会自动结算或评分。")}
+        checked={draft.overdueAppointmentGateEnabled}
+        disabled={!canWrite}
+        onChange={(value) => update("overdueAppointmentGateEnabled", value)}
+      />
 
       <section className="rounded-2xl border border-line bg-paper p-5">
         <h2 className="text-lg font-black">{t("登录方法")}</h2>
@@ -157,7 +153,8 @@ export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMed
       <section className="grid gap-4 xl:grid-cols-2">
         {mediaRows.map((row) => {
           const pendingMedia = uploaded[row.key];
-          const previewUrl = pendingMedia?.url ?? row.current?.url ?? row.defaultUrl;
+          const currentUrl = row.current?.url ?? row.defaultUrl;
+          const previewUrl = pendingMedia?.url ?? currentUrl;
           const status = pendingMedia ? t("待发布") : row.current ? t("当前启用") : t("系统默认 · 当前启用");
           return (
             <div className="overflow-hidden rounded-xl border border-line bg-white shadow-sm" key={row.key}>
@@ -185,11 +182,17 @@ export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMed
                   )}
                 </div>
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <label aria-disabled={!canUpload} className={`focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-full border border-line bg-white px-4 text-sm font-semibold text-ink transition ${canUpload ? "cursor-pointer hover:border-moss hover:text-moss" : "cursor-not-allowed opacity-60"}`}>
-                    <span aria-hidden="true">↑</span>
-                    {t("选择新图片")}
-                    <input accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!canUpload} onChange={(event) => void upload(row.key, event)} type="file" />
-                  </label>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label aria-disabled={!canUpload} className={`focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-full border border-line bg-white px-4 text-sm font-semibold text-ink transition ${canUpload ? "cursor-pointer hover:border-moss hover:text-moss" : "cursor-not-allowed opacity-60"}`}>
+                      <span aria-hidden="true">↑</span>
+                      {t("选择新图片")}
+                      <input accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!canUpload} onChange={(event) => void upload(row.key, event)} type="file" />
+                    </label>
+                    <a className="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-full border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-moss hover:text-moss" download href={currentUrl}>
+                      <span aria-hidden="true">↓</span>
+                      {t("下载当前图片")}
+                    </a>
+                  </div>
                   <p className="text-xs font-bold text-ink/45">{t("支持 PNG、JPG、WebP；发布后生效。")}</p>
                 </div>
                 {pendingMedia ? <p className="mt-3 rounded-lg bg-lemon/20 px-3 py-2 text-xs font-bold text-ink/65">{t("新图片已上传；当前线上图片会保持到发布完成。")}</p> : null}

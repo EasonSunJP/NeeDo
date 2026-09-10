@@ -139,6 +139,16 @@ npm run check:future-operations
 
 The workflow rejects production or remote databases, does not create accounts, and refuses to overwrite non-matching schedule or booking data in the target window. Repeating an exact successful apply returns `noop` without adding rows. Passing the database checker establishes only the real-data prerequisite; the user, technician, and merchant schedule UI mock-retirement slices remain separate acceptance work.
 
+### Stale Schedule Slot Inventory Repair
+
+Future unbooked schedule slots whose shop service or technician service is no longer
+bookable can be inspected and repaired with the guarded local-only workflow documented
+in [Stale schedule slot inventory repair](docs/verification/2026-09-11-stale-schedule-slot-inventory-repair.md).
+The workflow requires an explicit local environment file, an active administrator with
+`schedule:slots:write`, and the exact SHA-256 digest returned by the read-only preview.
+It preserves past, booked, order-linked, route-linked, Exchange-linked, financial, and
+audit history; ambiguous or missing replacement mappings are reported and never guessed.
+
 ### Formal NeeDo Exchange Dataset
 
 NeeDo Exchange now uses authenticated, persisted routes under `/api/v1/exchange`: paginated demand/intelligence posts, post detail, comments, like/unlike, share recording, direct publication, and author-only withdrawal. Customer identities may publish demand; active technician and merchant identities may publish intelligence. The server resolves the current user, active identity, and public NeeDoID from the authenticated session; clients cannot submit actor IDs.

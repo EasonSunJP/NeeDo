@@ -33,6 +33,12 @@ describe("LifeDance real operations persistence contract", () => {
     expect(planSource).toContain('SIMULATION_ORDER_PREFIX = "LD2026-"');
   });
 
+  it("verifies the LifeDance shop service location from the official current hierarchy", () => {
+    expect(planSource).toContain('admin2Code: "13113"');
+    expect(seedSource).toContain("verifyShopServiceLocationInTransaction");
+    expect(seedSource).toContain('auditAction: "simulation.shop.service_location.verify"');
+  });
+
   it("cleans dependent rows in foreign-key order without broad business-table deletion", () => {
     const reviews = seedSource.indexOf("tx.orderReview.deleteMany");
     const timeline = seedSource.indexOf("tx.orderTimelineComment.deleteMany");

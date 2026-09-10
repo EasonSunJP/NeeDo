@@ -582,7 +582,7 @@ async function createConfirmedOrder(
   currency: "NDP" | "TEST_NDP",
   walletBalance = 0
 ): Promise<CheckerOrder> {
-  const startsAt = new Date(now.getTime() + sequence * 3_600_000);
+  const startsAt = new Date(now.getTime() - sequence * 3_600_000);
   const endsAt = new Date(startsAt.getTime() + 3_600_000);
   const slot = await tx.scheduleSlot.create({ data: {
     serviceId: fixture.serviceId, shopId: fixture.shopId,
@@ -622,6 +622,48 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Formal order checker assertion failed: ${message}`);
 }
 
+async function withServiceSessionReadyToEnd<TResult>(
+  tx: Prisma.TransactionClient,
+  orderId: number,
+  now: Date,
+  operation: () => Promise<TResult>
+): Promise<TResult> {
+  const session = await tx.orderServiceSession.findFirst({
+    where: { bookingOrderId: orderId, deletedAt: null },
+    select: { id: true, startedAt: true, expectedEndsAt: true, updatedAt: true }
+  });
+  assert(
+    session?.startedAt && session.expectedEndsAt,
+    "service session must have start and expected end times"
+  );
+  const originalStartedAt = session.startedAt;
+  const originalExpectedEndsAt = session.expectedEndsAt;
+  const originalUpdatedAt = session.updatedAt;
+  const durationMs = originalExpectedEndsAt.getTime() - originalStartedAt.getTime();
+  assert(durationMs > 0, "service session duration must be positive");
+  const matured = await tx.orderServiceSession.updateMany({
+    where: { id: session.id, bookingOrderId: orderId, deletedAt: null },
+    data: {
+      startedAt: new Date(now.getTime() - durationMs - 1_000),
+      expectedEndsAt: new Date(now.getTime() - 1_000)
+    }
+  });
+  assert(matured.count === 1, "service session could not be made ready to end");
+  try {
+    return await operation();
+  } finally {
+    const restored = await tx.orderServiceSession.updateMany({
+      where: { id: session.id, bookingOrderId: orderId, deletedAt: null },
+      data: {
+        startedAt: originalStartedAt,
+        expectedEndsAt: originalExpectedEndsAt,
+        updatedAt: originalUpdatedAt
+      }
+    });
+    assert(restored.count === 1, "service session end time could not be restored");
+  }
+}
+
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -639,7 +681,11 @@ async function assertRejectedWithMessage(
   try {
     await operation();
   } catch (error) {
-    assert(errorMessage(error) === expectedMessage, `expected ${expectedMessage}`);
+    const actualMessage = errorMessage(error);
+    assert(
+      actualMessage === expectedMessage,
+      `expected ${expectedMessage}, received ${actualMessage}`
+    );
     return;
   }
   throw new Error(`Formal order checker assertion failed: ${expectedMessage} was not rejected`);
@@ -781,7 +827,9 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   const endInput = {
     reason: "completed", idempotencyKey: `${fixture.marker}-ndp-end`
   };
-  await service.endService(customer, ndpOrder.id, endInput, context);
+  await withServiceSessionReadyToEnd(tx, ndpOrder.id, now, () =>
+    service.endService(customer, ndpOrder.id, endInput, context)
+  );
   await service.endService(customer, ndpOrder.id, endInput, context);
   await assertRejectedWithMessage(
     () => service.endService(customer, ndpOrder.id, {
@@ -1114,7 +1162,9 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
   const cashEndInput = {
     reason: "completed", idempotencyKey: `${fixture.marker}-cash-end`
   };
-  await service.endService(technician, cashOrder.id, cashEndInput, context);
+  await withServiceSessionReadyToEnd(tx, cashOrder.id, now, () =>
+    service.endService(technician, cashOrder.id, cashEndInput, context)
+  );
   await service.getCheckout(customer, cashOrder.id);
   const cashNoDebitBefore = await captureCashNoDebitEvidence(
     tx, cashOrder.id, fixture.customer.id, currency
@@ -1382,9 +1432,11 @@ async function runFormalFlow(tx: Prisma.TransactionClient): Promise<void> {
     serviceId: fixture.addOnServiceId, idempotencyKey: `${fixture.marker}-pending-addon`
   }, context);
   const pendingBefore = await captureOrderMutationState(tx, pendingAddOnOrder.id);
-  await assertRejectedWithMessage(() => service.endService(customer, pendingAddOnOrder.id, {
-    reason: "completed", idempotencyKey: `${fixture.marker}-pending-end`
-  }, context), "error.order.invalid_transition");
+  await withServiceSessionReadyToEnd(tx, pendingAddOnOrder.id, now, () =>
+    assertRejectedWithMessage(() => service.endService(customer, pendingAddOnOrder.id, {
+      reason: "completed", idempotencyKey: `${fixture.marker}-pending-end`
+    }, context), "error.order.invalid_transition")
+  );
   assertDeepSnapshotEqual(
     pendingBefore,
     await captureOrderMutationState(tx, pendingAddOnOrder.id),
@@ -1399,9 +1451,11 @@ async function runInsufficientBalanceRollbackFlow(tx: Prisma.TransactionClient):
   await service.startService(customer, order.id, {
     actor: "customer", idempotencyKey: `${fixture.marker}-insufficient-start`
   }, context);
-  await service.endService(customer, order.id, {
-    reason: "completed", idempotencyKey: `${fixture.marker}-insufficient-end`
-  }, context);
+  await withServiceSessionReadyToEnd(tx, order.id, now, () =>
+    service.endService(customer, order.id, {
+      reason: "completed", idempotencyKey: `${fixture.marker}-insufficient-end`
+    }, context)
+  );
   await service.getCheckout(customer, order.id);
   await service.selectCheckoutPaymentMethod(customer, order.id, {
     method: "ndp", idempotencyKey: `${fixture.marker}-insufficient-select`

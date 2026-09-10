@@ -193,12 +193,13 @@ This keeps Step 10 focused on the transaction chain without opening Request, wal
 
 ### Service-window test override
 
-Operations administrators can change the audited `anytimeServiceTestEnabled` platform setting from System Settings. The default is `false`.
+Operations administrators can change the audited `anytimeServiceTestEnabled` platform setting from System Settings. During the current test stage, the default is `true`.
 
 - When disabled, service start is rejected before `startsAt - 30 minutes`, and service completion is rejected before `expectedEndsAt`.
 - The exact start boundary (`startsAt - 30 minutes`) and exact completion boundary (`expectedEndsAt`) are allowed.
 - When enabled, those two time-window checks are bypassed for testing; authorization, order state, service code, add-on, idempotency, and audit requirements remain unchanged.
-- Fulfillment reads the active persisted setting inside the same transaction as the order mutation. A missing setting row fails closed as disabled.
+- Fulfillment reads the active persisted setting inside the same transaction as the order mutation. A missing setting row uses the current test-stage default and is treated as enabled.
+- Before production release, operations must explicitly disable the setting and verify the active persisted version is off.
 
 ## Real database acceptance
 

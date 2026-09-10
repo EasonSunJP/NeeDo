@@ -537,7 +537,47 @@ describe("BookingRepository order list scope", () => {
         entitySuspensions: {
           none: { activeKey: { not: null }, status: "active", deletedAt: null }
         }
-      }
+      },
+      AND: [
+        {
+          OR: [
+            { serviceId: null },
+            {
+              service: {
+                is: {
+                  deletedAt: null,
+                  status: "published",
+                  category: { is: { deletedAt: null, isActive: true } }
+                }
+              }
+            }
+          ]
+        },
+        {
+          OR: [
+            { technicianServiceId: null },
+            {
+              technicianService: {
+                is: {
+                  deletedAt: null,
+                  isActive: true,
+                  isBookable: true,
+                  reviewStatus: "APPROVED",
+                  category: { is: { deletedAt: null, isActive: true } },
+                  technicianProfile: {
+                    is: {
+                      deletedAt: null,
+                      status: "published",
+                      user: { is: { deletedAt: null, isActive: true } }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        { OR: [{ serviceId: { not: null } }, { technicianServiceId: { not: null } }] }
+      ]
     });
     expect(scheduleSlot.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -545,6 +585,58 @@ describe("BookingRepository order list scope", () => {
       })
     );
     expect(scheduleSlot.count).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
+  it("requires every present source relation to remain currently bookable", async () => {
+    const scheduleSlot = {
+      fields: { capacity: Symbol("capacity") },
+      findMany: jest.fn(async (args: { where: Record<string, unknown> }) => {
+        void args;
+        return [];
+      }),
+      count: jest.fn(async () => 0)
+    };
+    const repository = new BookingRepository({ scheduleSlot } as never);
+
+    await repository.listAvailableSlots({
+      serviceId: 12,
+      from: new Date("2026-09-02T15:00:00.000Z"),
+      to: new Date("2026-09-03T15:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    });
+
+    const where = scheduleSlot.findMany.mock.calls[0]?.[0]?.where;
+    expect(where.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          OR: expect.arrayContaining([
+            { serviceId: null },
+            expect.objectContaining({
+              service: expect.objectContaining({
+                is: expect.objectContaining({ deletedAt: null, status: "published" })
+              })
+            })
+          ])
+        }),
+        expect.objectContaining({
+          OR: expect.arrayContaining([
+            { technicianServiceId: null },
+            expect.objectContaining({
+              technicianService: expect.objectContaining({
+                is: expect.objectContaining({
+                  deletedAt: null,
+                  isActive: true,
+                  isBookable: true,
+                  reviewStatus: "APPROVED"
+                })
+              })
+            })
+          ])
+        })
+      ])
+    );
+    expect(scheduleSlot.count).toHaveBeenCalledWith({ where });
   });
 
   it("includes formal unavailable rows only when the public caller opts in", async () => {

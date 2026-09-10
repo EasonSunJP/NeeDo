@@ -75,4 +75,14 @@ describe("future operations dataset contract", () => {
       expect(checker).toContain(required);
     }
   });
+
+  it("reconciles the owned dataset without rejecting later coexisting operations", () => {
+    const checker = readFileSync(checkerPath, "utf8");
+    expect(checker).toContain("reconcileExpectedRows");
+    expect(checker).toContain("coexistenceManifest");
+    expect(checker).toContain("conflictEvidence");
+    expect(checker).toContain("availabilityReconciliation.matchedRows.length");
+    expect(checker).toContain("coexistingBookings");
+    expect(checker).not.toContain("bookings.length - namespacedBookings");
+  });
 });

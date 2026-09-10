@@ -26,7 +26,8 @@ describe("approved formal technician schedule UI", () => {
     expect(routeSource).toContain("showBottomNav={false}");
     expect(workspaceSource).not.toContain("ScheduleSearchField");
     expect(routeSource).not.toContain("FormalRoutePage");
-    expect(unifiedCalendarSource).toContain('aria-label="切换日程展示范围"');
+    expect(unifiedCalendarSource).toContain("<ScheduleViewPicker");
+    expect(unifiedCalendarSource).toContain('ariaLabel="切换日程展示范围"');
     expect(unifiedCalendarSource).toContain('{ value: "day", label: "1日" }');
     expect(unifiedCalendarSource).toContain('{ value: "threeDay", label: "3日" }');
     expect(unifiedCalendarSource).toContain('{ value: "week", label: "周" }');

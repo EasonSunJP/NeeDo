@@ -2956,7 +2956,7 @@ model PlatformSettingVersion {
   requestButtonMediaAssetId    Int?                          @map("request_button_media_asset_id")
   offlinePaymentEnabled        Boolean                       @default(true) @map("offline_payment_enabled")
   ndpPaymentEnabled            Boolean                       @default(true) @map("ndp_payment_enabled")
-  anytimeServiceTestEnabled    Boolean                       @default(false) @map("anytime_service_test_enabled")
+  anytimeServiceTestEnabled      Boolean                       @default(true) @map("anytime_service_test_enabled")
   overdueAppointmentGateEnabled Boolean                       @default(false) @map("overdue_appointment_gate_enabled")
   createdByUserId              Int?                          @map("created_by_user_id")
   createdAt                    DateTime                      @default(now()) @map("created_at")
