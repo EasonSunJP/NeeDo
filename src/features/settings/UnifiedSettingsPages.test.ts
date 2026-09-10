@@ -450,7 +450,7 @@ describe("UnifiedSettingsServiceRangePage", () => {
 describe("UnifiedSettingsPortalPage", () => {
   const portalPageSource = source.slice(
     source.indexOf("export function UnifiedSettingsPortalPage"),
-    source.indexOf("function UserProfileSettingsPage")
+    source.indexOf("function SettingsProfileResourceState")
   );
 
   it("uses the current settings route as the selected frontend identity", () => {
@@ -582,47 +582,33 @@ describe("UnifiedSettingsThemePage", () => {
 });
 
 describe("UnifiedSettingsProfilePage", () => {
-  const userProfileSource = source.slice(
-    source.indexOf("function UserProfileSettingsPage"),
-    source.indexOf("function TechnicianProfileSettingsPage")
-  );
   const technicianProfileSource = source.slice(
     source.indexOf("function TechnicianProfileSettingsPage"),
     source.indexOf("function MerchantProfileSettingsPage")
   );
 
-  it("keeps profile visibility controls out of user and technician profile edit pages", () => {
-    expect(userProfileSource).not.toContain("InfoCardVisibilityEditor");
-    expect(userProfileSource).not.toContain("信息卡可见范围");
+  it("keeps profile visibility controls out of the technician profile edit page", () => {
     expect(technicianProfileSource).not.toContain("InfoCardVisibilityEditor");
     expect(technicianProfileSource).not.toContain("信息卡可见范围");
     expect(technicianProfileSource).not.toContain("技师名片预览");
     expect(technicianProfileSource).not.toContain("实时预览");
   });
 
-  it("opens the technician profile edit page without the main bottom navigation", () => {
-    expect(technicianProfileSource).toContain("navItems={[]}");
-  });
-
-  it("loads and saves the user profile through the formal customer profile API", () => {
-    const profileRouteSource = source.slice(
-      source.indexOf("function FormalUserProfileSettingsPage"),
-      source.indexOf("export function UnifiedSettingsVerificationPage")
+  it("uses the personal center for user profile editing instead of keeping a duplicate editor", () => {
+    const settingsHome = source.slice(
+      source.indexOf("export function UnifiedSettingsPage"),
+      source.indexOf("export function UnifiedSettingsThemePage")
     );
 
-    expect(profileRouteSource).toContain("useCustomerSelfProfile()");
-    expect(userProfileSource).toContain("customerProfileApi.updateMine");
-    expect(userProfileSource).not.toContain("updateCustomerEntity(customer.id");
-    expect(profileRouteSource).toContain("SettingsProfileResourceState");
+    expect(settingsHome).toContain(
+      'to={portal === "user" ? getPortalMePath(portal) : getSettingsPath(portal, "profile")}'
+    );
+    expect(source).not.toContain("function UserProfileSettingsPage");
+    expect(source).not.toContain("function FormalUserProfileSettingsPage");
   });
 
-  it("keeps empty formal languages and biography empty in the user profile draft", () => {
-    expect(userProfileSource).toContain("languages: customer.languages?.length ? [...customer.languages] : technician?.languages?.length ? [...technician.languages] : []");
-    expect(userProfileSource).toContain('bio: customer.bio ?? technician?.bio ?? ""');
-    expect(userProfileSource).toContain("languages: [...draft.languages]");
-    expect(userProfileSource).not.toContain("draft.languages.length ? [...draft.languages] : [...initialDraft.languages]");
-    expect(userProfileSource).not.toContain('current.languages.length === 1 ? current');
-    expect(userProfileSource).not.toContain('"可在这里补充你的语言偏好、常用预约习惯和其他说明。"');
+  it("opens the technician profile edit page without the main bottom navigation", () => {
+    expect(technicianProfileSource).toContain("navItems={[]}");
   });
 
   it("loads and saves the technician profile through the formal technician profile API", () => {

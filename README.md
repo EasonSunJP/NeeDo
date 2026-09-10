@@ -744,7 +744,6 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
     - `/me/settings/language`
     - `/me/settings/portal`
     - `/me/settings/home-shortcuts`
-    - `/me/settings/profile`
     - `/me/settings/verification`
     - `/me/settings/service-range`
     - `/me/settings/account`
@@ -779,7 +778,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 
 ### 已从全屏浮层改为真实新页面的内容
 
-- 我的页资料编辑：从页内全屏编辑浮层迁移到 `/me/settings/profile`
+- 我的页资料编辑：统一由 `/me` 个人中心内的信息卡编辑模式承载；旧 `/me/settings/profile` 仅保留兼容重定向
 - 订单详情：从订单列表覆盖式全屏层迁移到 `/orders/:orderId`
 - 订单中的关联资料查看：统一改为跳转到对应资料页 / 服务页 / 店铺页
 - 首页中的预约确认、位置选择等旧式全屏流程：收敛回真实搜索页、详情页与预约页
@@ -962,7 +961,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 把技师端 `我的` 页里的内嵌设置区替换成统一设置路由
 - 把商户端 `我的` 页里的偏好面板、经营开关和资料入口替换成统一设置路由
 - 把商户端首页营业状态改为读取统一设置状态，而不是单页本地状态
-- 把资料编辑从我的页内全屏层收口到独立设置页
+- 把用户资料编辑收口到 `/me` 个人中心的信息卡编辑模式，避免重复维护第二套用户编辑页
 - 把订单详情从列表覆盖层收口为真实详情页
 - 把首页里重复的碎片入口合并为首屏主操作区 + 常用筛选区
 - 把详情页里过多的重卡片整理为自然 section + 轻分隔结构
@@ -2741,7 +2740,7 @@ Home booking codes must resolve to the official Japanese prefecture/municipality
 - `语言` -> `/me/settings/language`
 - `身份` -> `/me/settings/portal`
 - `常用入口` -> `/me/settings/home-shortcuts`
-- `资料编辑` -> `/me/settings/profile`
+- `资料编辑` -> `/me`（个人中心；旧 `/me/settings/profile` 自动重定向）
 - `本人验证 / 店铺资质` -> `/me/settings/verification`
 - `服务范围` -> `/me/settings/service-range`
 - `账户与安全` -> `/me/settings/account`
@@ -2755,6 +2754,13 @@ Home booking codes must resolve to the official Japanese prefecture/municipality
 - 语言切换不再使用首页大按钮，改为 `SettingsRadioListPage` 的紧凑单选列表。
 - 身份切换不再占据首页大面积空间，改为独立单选页。
 - 用户端首页分类 icon 配置不再直接显示在设置首页，而是移到“常用入口”二级页。
+
+### 2026-09-10 用户资料入口修正
+
+- 用户端设置首页的“资料编辑”直接进入 `/me` 个人中心，复用其中正式资料读取、编辑与保存流程。
+- 删除设置模块内重复的用户资料编辑页面；技师与商户资料维护页不受影响。
+- 旧 `/me/settings/profile` 作为本地历史链接兼容入口，仅重定向到 `/me`。
+- 本次无数据库、migration 或 API 变更。
 
 ### 多身份显示差异
 
