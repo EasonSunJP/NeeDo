@@ -2575,7 +2575,7 @@ export function MerchantPortalContent({
                 </SectionTitle>
               </div>
               <div className="space-y-3">
-                {storeTechnicians.slice(0, 4).map((technician) => {
+                {storeStaffEntries.slice(0, 4).map(({ technician }) => {
                   const technicianApiId = getMerchantTechnicianApiId(technician.id);
                   const staffStatus = formalMerchantWorkLabel(technicianApiId === null ? undefined : formalStaffById.get(technicianApiId)?.workStatus);
 
