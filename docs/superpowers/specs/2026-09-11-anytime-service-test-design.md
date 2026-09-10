@@ -46,6 +46,8 @@ An in-service row without a valid `expectedEndsAt` remains an invalid transition
 
 The switch appears in `/admin/settings/system?tab=basic`, uses the existing permission-gated settings save, optimistic version, conflict handling, and post-save reload. Its title and impact description are localized for simplified Chinese, traditional Chinese, Japanese, English, and Korean.
 
+The switch uses the same single-layer `SettingToggle` card as site availability and new-user registration. The two brand-media cards each expose a localized `下载当前图片` action beside the upload picker. Its target is the effective active asset (`current.url`, or the system default when no published override exists); a newly uploaded but unpublished preview never changes that download target.
+
 ## Verification
 
 Automated coverage proves the fail-closed migration default, strict API/OpenAPI contract, audited setting persistence, frontend fail-closed parsing, permission-gated UI save, translations, the exact 30-minute start boundary, end-at-`expectedEndsAt`, enabled bypass, and stable errors.
