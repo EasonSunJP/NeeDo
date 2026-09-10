@@ -55,4 +55,26 @@ describe("ScheduleViewPicker", () => {
     expect(onChange).toHaveBeenCalledWith("month");
     expect(container.querySelector('[data-schedule-view-menu="true"]')).toBeNull();
   });
+
+  it("renders the reusable field variant with a visually centered value", async () => {
+    await act(async () => {
+      root.render(
+        <ScheduleViewPicker
+          ariaLabel="选择提醒时间"
+          label=""
+          onChange={vi.fn()}
+          options={[{ label: "30 分钟前", value: "30" }]}
+          value="30"
+          variant="field"
+        />,
+      );
+    });
+
+    const trigger = container.querySelector<HTMLButtonElement>('[aria-label="选择提醒时间"]');
+    expect(trigger?.dataset.schedulePickerVariant).toBe("field");
+    expect(trigger?.className).toContain("justify-center");
+    expect(trigger?.querySelector("strong")?.className).toContain("text-center");
+    expect(trigger?.querySelector('[data-schedule-picker-chevron="true"]')?.className).toContain("absolute");
+    expect(trigger?.textContent).toContain("30 分钟前");
+  });
 });

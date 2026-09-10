@@ -154,7 +154,7 @@ describe("shared schedule frame layout", () => {
   it("keeps the shared day timeline time rail transparent", () => {
     expect(unifiedCalendarSource).toContain('data-calendar-time-corner="true"');
     expect(unifiedCalendarSource).toContain('data-calendar-time-column="true"');
-    expect(unifiedCalendarSource).toContain('"sticky left-0 z-[12] border-r border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-transparent shadow-none"');
+    expect(unifiedCalendarSource).toContain('"sticky left-0 z-[12] shrink-0 border-r border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-transparent shadow-none"');
     expect(unifiedCalendarSource).not.toContain("bg-[color:color-mix(in_srgb,var(--client-elevated)_94%,transparent)] shadow-[12px_0_18px_rgba(0,0,0,0.10)]");
   });
 
