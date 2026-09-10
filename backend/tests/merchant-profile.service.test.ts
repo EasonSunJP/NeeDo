@@ -72,7 +72,13 @@ describe("MerchantProfileService", () => {
       targetId: input.targetId,
       metadata: input.metadata
     }));
-    const service = new MerchantProfileService(repository, { createInput }, { save: jest.fn() });
+    const profileNotifier = { notifyProfileUpdated: jest.fn(async () => undefined) };
+    const service = new MerchantProfileService(
+      repository,
+      { createInput },
+      { save: jest.fn() },
+      profileNotifier
+    );
 
     await expect(
       service.updateMine(
@@ -96,6 +102,10 @@ describe("MerchantProfileService", () => {
         metadata: { changedFields: ["displayName", "languages"] }
       })
     );
+    expect(profileNotifier.notifyProfileUpdated).toHaveBeenCalledWith({
+      identityId: 109,
+      userId: 9
+    });
   });
 
   it.each(["customer", "technician", "scout"])("rejects non-merchant identity %s", async (type) => {

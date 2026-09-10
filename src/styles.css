@@ -2513,6 +2513,18 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03) !important;
 }
 
+/* WebKit can leak the backdrop layer through rounded corners in standalone
+   PWAs. The composer is a high-frequency fixed surface, so use the opaque
+   theme base there and avoid the buggy blur/shadow compositing path. */
+html[data-needo-display-mode="standalone"] .client-shell .im-composer-input-shell.im-composer-glass {
+  --client-composer-solid-bg: var(--client-bg);
+  background-color: var(--client-composer-solid-bg) !important;
+  background-image: none !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--client-line) 52%, transparent) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 .client-shell .client-liquid-glass-arrow {
   border-color: color-mix(in srgb, var(--client-line) 42%, transparent);
   background: color-mix(in srgb, var(--client-elevated) 18%, var(--client-bg) 8%);

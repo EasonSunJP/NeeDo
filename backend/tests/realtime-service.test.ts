@@ -4,6 +4,61 @@ import { RealtimeRepository } from "../src/repositories/realtime.repository";
 import { RealtimeService } from "../src/services/realtime.service";
 import type { ExchangeCommittedNotification } from "../src/types/exchange-booking-conversion.types";
 
+describe("RealtimeService profile updates", () => {
+  it("publishes a refresh event to every identity sharing a conversation with the changed profile", async () => {
+    const repository = {
+      listProfileUpdateRecipients: jest.fn(async () => [
+        { userId: 41, identityId: 410 },
+        { userId: 167, identityId: 1670 }
+      ])
+    };
+    const gateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, gateway);
+
+    await service.notifyProfileUpdated({ userId: 167, identityId: 1670 });
+
+    expect(repository.listProfileUpdateRecipients).toHaveBeenCalledWith(1670);
+    expect(gateway.publish).toHaveBeenCalledTimes(2);
+    expect(gateway.publish).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        type: "profile.updated",
+        recipientUserId: 41,
+        recipientIdentityId: 410,
+        payload: { userId: 167, identityId: 1670 }
+      })
+    );
+  });
+});
+
+describe("RealtimeRepository profile update recipients", () => {
+  it("finds active identities from every active conversation containing the changed identity", async () => {
+    const findMany = jest.fn(async () => [
+      { userId: 41, identityId: 410 },
+      { userId: 167, identityId: 1670 }
+    ]);
+    const repository = new RealtimeRepository({
+      conversationParticipant: { findMany }
+    } as never);
+
+    await expect(repository.listProfileUpdateRecipients(1670)).resolves.toEqual([
+      { userId: 41, identityId: 410 },
+      { userId: 167, identityId: 1670 }
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        conversation: {
+          deletedAt: null,
+          participants: { some: { identityId: 1670, deletedAt: null } }
+        }
+      },
+      distinct: ["identityId"],
+      select: { userId: true, identityId: true }
+    });
+  });
+});
+
 describe("RealtimeService committed Exchange notifications", () => {
   it("publishes already-committed notification rows without inserting them again", async () => {
     const repository = { createOrderStatusNotifications: jest.fn() };
@@ -718,7 +773,11 @@ describe("RealtimeService standard message recall", () => {
       | { status: "recalled" | "already_recalled"; message: typeof recalledMessage }
       | { status: "not_found" | "window_expired" },
     membershipBenefitResolver?: {
-      hasEffectiveBenefitAt: (userId: number, benefitCode: "traceless_recall", occurredAt: Date) => Promise<boolean>;
+      hasEffectiveBenefitAt: (
+        userId: number,
+        benefitCode: "traceless_recall",
+        occurredAt: Date
+      ) => Promise<boolean>;
     }
   ) => {
     const repository = {

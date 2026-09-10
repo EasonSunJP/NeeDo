@@ -327,7 +327,7 @@ import {
   SseRealtimeEventGateway,
   type RealtimeEventGatewayPort
 } from "./services/realtime-event.gateway";
-import { RealtimeService } from "./services/realtime.service";
+import { RealtimeService, type ProfileUpdatedNotificationPort } from "./services/realtime.service";
 import type { ImMediaStoragePort } from "./services/im-media.storage";
 import type { ImMediaService } from "./services/im-media.service";
 import { ImPolicyService } from "./services/im-policy.service";
@@ -576,6 +576,7 @@ export interface AppDependencies {
   sosService?: SosService;
   sosRepository?: SosRepositoryPort;
   realtimeService?: RealtimeService;
+  profileUpdatedNotificationPort?: ProfileUpdatedNotificationPort;
   personalIdentityScopeService?: Pick<PersonalIdentityScopeService, "resolve">;
   imMediaStorage?: ImMediaStoragePort;
   imMediaService?: ImMediaService;
@@ -711,6 +712,7 @@ export const createApp = (
     realtimeRepository,
     realtimeEventGateway,
     realtimeService,
+    profileUpdatedNotificationPort: dependencies.profileUpdatedNotificationPort ?? realtimeService,
     userExperienceService,
     personalIdentityScopeService,
     platformSettingsRepository,

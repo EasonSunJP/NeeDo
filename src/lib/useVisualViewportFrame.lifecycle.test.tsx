@@ -11,6 +11,7 @@ afterEach(async () => {
   root = undefined;
   document.body.replaceChildren();
   delete document.documentElement.dataset.needoDisplayMode;
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -93,6 +94,37 @@ describe("chat visual viewport lifecycle", () => {
     });
     expect(document.activeElement).toBe(editor);
     expect(heightOf(frame)).toBe("759px");
+    expect(roomHeightOf(frame)).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+  });
+
+  it("releases a stale installed iPhone keyboard frame after viewport expansion settles", async () => {
+    vi.useFakeTimers();
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(520);
+      viewport.dispatchEvent(new Event("resize"));
+      setViewport(690);
+      viewport.dispatchEvent(new Event("resize"));
+      setViewport(704);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+
+    expect(document.activeElement).toBe(editor);
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("252px");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(220);
+    });
+
+    expect(heightOf(frame)).toBe("704px");
     expect(roomHeightOf(frame)).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });

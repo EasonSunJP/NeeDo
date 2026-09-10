@@ -291,6 +291,7 @@ const createFixture = async () => {
   };
   const workUnit={assertScope:jest.fn(async()=>undefined),snapshot:jest.fn(async()=>({technicianProfileId:31,status:'unsynced',version:0,syncedAt:null,month:{lateCount:0,earlyLeaveCount:0,from:now.toISOString(),to:new Date(now.getTime()+86400000).toISOString()}}))};
   const workRepository={transaction:async(fn:(unit:unknown)=>unknown)=>fn(workUnit)} as unknown as WorkStatusRepository;
+  const profileUpdatedNotificationPort = { notifyProfileUpdated: jest.fn(async () => undefined) };
   const app = createApp(env, {
     workStatusService:new WorkStatusService(workRepository),
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 0 }),
@@ -298,6 +299,7 @@ const createFixture = async () => {
     testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     auditLogRepository: { create: jest.fn(async () => undefined) },
+    profileUpdatedNotificationPort,
     technicianProfileRepository,
     technicianDataCenterRepository
   });
@@ -308,7 +310,13 @@ const createFixture = async () => {
       .expect(200);
     return response.body.data.accessToken as string;
   };
-  return { app, login, technicianProfileRepository, technicianDataCenterRepository };
+  return {
+    app,
+    login,
+    profileUpdatedNotificationPort,
+    technicianProfileRepository,
+    technicianDataCenterRepository
+  };
 };
 
 describe("technician profile current-identity API", () => {
@@ -400,6 +408,10 @@ describe("technician profile current-identity API", () => {
         }
       })
     );
+    expect(fixture.profileUpdatedNotificationPort.notifyProfileUpdated).toHaveBeenCalledWith({
+      identityId: 109,
+      userId: 9
+    });
   });
 
   it("persists intentionally cleared optional list fields", async () => {

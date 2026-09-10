@@ -9,6 +9,7 @@ import type { TechnicianProfileUpdateBody } from "../validators/technician-profi
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
+import type { ProfileUpdatedNotificationPort } from "./realtime.service";
 
 type AuditRecorder = Pick<AuditLogService, "createInput">;
 
@@ -16,7 +17,8 @@ export class TechnicianProfileService {
   public constructor(
     private readonly repository: TechnicianProfileRepositoryPort,
     private readonly auditLogService: AuditRecorder,
-    private readonly avatarStorage: CustomerAvatarStoragePort
+    private readonly avatarStorage: CustomerAvatarStoragePort,
+    private readonly profileUpdateNotifier?: ProfileUpdatedNotificationPort
   ) {}
 
   public async getMine(actor: AuthenticatedAccessContext): Promise<TechnicianProfilePayload> {
@@ -49,7 +51,20 @@ export class TechnicianProfileService {
           .sort()
       }
     });
-    return this.repository.updateMine(userId, profileId, identityId, mutation, auditLog);
+    const profile = await this.repository.updateMine(
+      userId,
+      profileId,
+      identityId,
+      mutation,
+      auditLog
+    );
+    if (
+      this.profileUpdateNotifier &&
+      (input.displayName !== undefined || input.avatarDataUrl !== undefined)
+    ) {
+      await this.profileUpdateNotifier.notifyProfileUpdated({ userId, identityId });
+    }
+    return profile;
   }
 
   private scope(actor: AuthenticatedAccessContext): {
