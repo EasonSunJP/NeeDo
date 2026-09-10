@@ -161,6 +161,7 @@ export class DashboardOperationsFinanceRepository implements DashboardOperations
         AND checkout.payment_method = booking.payment_method
         AND checkout.payment_selected_at IS NOT NULL
         AND checkout.payment_selected_at <= booking.payment_confirmed_at
+        AND (checkout.payment_method <> ${"ndp"} OR ledger.currency = ${"NDP"})
         AND (
           (checkout.payment_method = ${"ndp"}
             AND checkout.ledger_transaction_id IS NOT NULL
@@ -292,6 +293,7 @@ export class DashboardOperationsFinanceRepository implements DashboardOperations
           ON ledger.id = checkout.ledger_transaction_id
         WHERE ${scope}
           AND ${formalConfirmedPaymentEvidence()}
+          AND (checkout.payment_method <> ${"ndp"} OR ledger.currency = ${"NDP"})
       )
       SELECT
         period.period_key AS periodKey,

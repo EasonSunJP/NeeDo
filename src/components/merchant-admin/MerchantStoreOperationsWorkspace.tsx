@@ -279,7 +279,10 @@ export function MerchantStoreOperationsWorkspace() {
               serviceAmountJpy: detail.estimatedServiceGmvJpy,
               platformCollectedServiceAmountJpy: detail.platformCollectedServiceAmountJpy,
               offlineReportedServiceAmountJpy: detail.offlineReportedServiceAmountJpy || detail.estimatedServiceGmvJpy,
-              paymentChannel: detail.paymentChannel === "unknown" ? "offline_cash" : detail.paymentChannel,
+              paymentChannel:
+                detail.paymentChannel === "unknown" || detail.paymentChannel === "platform_test_ndp"
+                  ? "offline_cash"
+                  : detail.paymentChannel,
               confirmNow: detail.serviceIncomeStatus !== "confirmed",
               note: detail.serviceIncomeNote ?? "店铺收款确认",
               proofUrl: detail.serviceIncomeProofUrl
@@ -929,7 +932,11 @@ export function MerchantStoreOperationsWorkspace() {
               </div>
               <button
                 className="rounded-full bg-moss px-4 py-2 text-xs font-black text-white transition hover:bg-moss/90 disabled:opacity-50"
-                disabled={isSavingIncomeReport || !currentSettlement}
+                disabled={
+                  isSavingIncomeReport ||
+                  !currentSettlement ||
+                  orderFinanceDetail?.paymentChannel === "platform_test_ndp"
+                }
                 onClick={() => void saveServiceIncomeReport()}
                 type="button"
               >

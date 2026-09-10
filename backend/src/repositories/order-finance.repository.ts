@@ -19,6 +19,7 @@ import {
   readCompensationBasisVersion,
   type CompensationBasisVersion
 } from "../services/compensation-basis";
+import { LedgerCurrencyService } from "../services/ledger-currency.service";
 
 type DecimalLike = {
   toString: () => string;
@@ -37,6 +38,11 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
       };
     };
     financial: true;
+    checkout: {
+      select: {
+        payableNdp: true;
+      };
+    };
   };
 }>;
 
@@ -225,7 +231,12 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
           displayName: true
         }
       },
-      financial: true
+      financial: true,
+      checkout: {
+        select: {
+          payableNdp: true
+        }
+      }
     } satisfies Prisma.BookingOrderInclude;
   }
 
@@ -245,6 +256,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
       technicianName: order.technicianProfile?.displayName ?? null,
       serviceName: order.serviceNameSnapshot ?? "Unknown service",
       priceAmountJpy: Math.round(this.toNumber(order.priceAmount)),
+      checkoutPaymentAmountNdp: order.checkout?.payableNdp ?? null,
       startsAt: order.startsAt.toISOString(),
       endsAt: order.endsAt.toISOString(),
       financial: order.financial ? this.mapFinancial(order.financial) : null,
@@ -259,6 +271,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
   ): OrderFinancialRecordPayload {
     return {
       id: record.id,
+      ndpCurrency: LedgerCurrencyService.fromStored(record.ndpCurrency),
       serviceAmountJpy: record.serviceAmountJpy,
       baseServiceAmountJpy: record.baseServiceAmountJpy,
       extensionAmountJpy: record.extensionAmountJpy,
@@ -367,6 +380,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
     if (
       value === "unknown" ||
       value === "platform_online" ||
+      value === "platform_test_ndp" ||
       value === "offline_cash" ||
       value === "offline_card" ||
       value === "bank_transfer" ||

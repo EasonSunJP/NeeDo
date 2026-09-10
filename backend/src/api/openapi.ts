@@ -12967,6 +12967,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "orderNo",
           "shopId",
           "estimatedServiceGmvJpy",
+          "ndpCurrency",
+          "checkoutPaymentAmountNdp",
           "serviceIncomeStatus",
           "paymentChannel",
           "moneyTimeline",
@@ -12983,10 +12985,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           technicianName: { type: ["string", "null"] },
           serviceName: { type: "string" },
           estimatedServiceGmvJpy: { type: "integer" },
+          ndpCurrency: { type: ["string", "null"], enum: ["NDP", "TEST_NDP", null] },
+          checkoutPaymentAmountNdp: { type: ["integer", "null"], minimum: 0 },
           platformCollectedServiceAmountJpy: { type: "integer" },
           offlineReportedServiceAmountJpy: { type: "integer" },
           unknownOrUnreportedServiceAmountJpy: { type: "integer" },
-          paymentChannel: { type: "string" },
+          paymentChannel: {
+            type: "string",
+            enum: [
+              "unknown",
+              "platform_online",
+              "platform_test_ndp",
+              "offline_cash",
+              "offline_card",
+              "bank_transfer",
+              "other"
+            ]
+          },
           serviceIncomeStatus: { type: "string", enum: ["unreported", "reported", "confirmed"] },
           platformNdpRevenue: { type: "integer" },
           cRequestFeeHoldNdp: { type: "integer" },

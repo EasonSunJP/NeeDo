@@ -432,6 +432,8 @@ export interface BackofficeFinanceSettlementPayload {
   shopName: string;
   technicianProfileId: number | null;
   technicianName: string | null;
+  ndpCurrency: LedgerCurrency;
+  checkoutPaymentAmountNdp: number | null;
   estimatedServiceGmvJpy: number;
   platformCollectedServiceAmountJpy: number;
   offlineReportedServiceAmountJpy: number;

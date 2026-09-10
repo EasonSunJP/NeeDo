@@ -125,6 +125,37 @@ describe("LedgerRepository wallet creation", () => {
     });
   });
 
+  it("persists Test NDP checkout income evidence without manufacturing JPY revenue", async () => {
+    const create = jest.fn().mockResolvedValue({ id: 1 });
+    const repository = new LedgerRepository({
+      orderFinancial: { findUnique: jest.fn().mockResolvedValue(null), create }
+    } as never);
+
+    await repository.upsertOrderFinancial({
+      bookingOrderId: 72,
+      orderType: "booking",
+      ndpCurrency: "TEST_NDP",
+      customerUserId: 3,
+      shopId: 10,
+      serviceAmountJpy: 8_800,
+      platformCollectedServiceAmountJpy: 0,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "platform_test_ndp",
+      serviceIncomeStatus: "confirmed"
+    } as never);
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bookingOrderId: 72,
+        ndpCurrency: "TEST_NDP",
+        platformCollectedServiceAmountJpy: 0,
+        unknownOrUnreportedServiceAmountJpy: 0,
+        paymentChannel: "platform_test_ndp",
+        serviceIncomeStatus: "confirmed"
+      })
+    });
+  });
+
   it("looks up an overdraft confirmation key without exposing the financial row", async () => {
     const findFirst = jest.fn().mockResolvedValue({
       bookingOrderId: 71,

@@ -24,6 +24,10 @@ describe("FinancePage Step 12A fields", () => {
     expect(ndpCopySource).toContain("今日 NDP 消费额");
     expect(ndpCopySource).toContain("正式可结算");
     expect(ndpCopySource).toContain("Test NDP 不参与结算");
+    expect(source).toContain("checkoutPaymentAmountNdp");
+    expect(source).toContain("platform_test_ndp");
+    expect(source).toContain("testPaymentChannel");
+    expect(source).toContain("testPaymentExcluded");
     expect(source).toContain('timeZone: "Asia/Tokyo"');
     expect(source).not.toContain("settlementRows.reduce((sum, row) => sum + row.platformNdpRevenue");
     expect(source).not.toContain("FinanceReconciliation.actualAmount");
