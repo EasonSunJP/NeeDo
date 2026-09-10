@@ -43,17 +43,18 @@ describe("JapanRegionMap", () => {
     window.localStorage.clear();
   });
 
-  const renderMap = async (asset = country, admin1?: string) => {
+  const renderMap = async (asset = country, admin1?: string, onSelectRegion = vi.fn()) => {
     await act(async () => root.render(
       <JapanRegionMap
         breadcrumbs={[]}
         children={childrenFor(asset)}
         evaluatedAt="2026-09-08T03:00:00.000Z"
-        onSelectRegion={vi.fn()}
+        onSelectRegion={onSelectRegion}
         scope={{ country: "JP", admin1, period: "today" }}
       />
     ));
     await act(async () => Promise.resolve());
+    return onSelectRegion;
   };
 
   it("uses local map assets and exposes every region for selection", async () => {
@@ -85,7 +86,7 @@ describe("JapanRegionMap", () => {
     expect(container.querySelector(".live-dashboard-map-heat-legend")?.textContent).toContain("46");
   });
 
-  it("replaces zoom buttons with a slider whose 100 percent endpoint is 8x", async () => {
+  it("replaces zoom buttons with a slider whose 100 percent endpoint is 20x", async () => {
     vi.useFakeTimers();
     await renderMap();
     expect(container.querySelector('button[aria-label="放大地图"], button[aria-label="缩小地图"]')).toBeNull();
@@ -95,10 +96,31 @@ describe("JapanRegionMap", () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(slider, "100");
       slider.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    expect(container.querySelector("[data-map-geometry]")?.getAttribute("transform")).toContain("scale(8)");
+    expect(container.querySelector("[data-map-geometry]")?.getAttribute("transform")).toContain("scale(20)");
     expect(container.querySelector(".live-dashboard-map-labels")?.getAttribute("data-hidden")).toBe("true");
     await act(async () => vi.advanceTimersByTime(250));
     expect(container.querySelector(".live-dashboard-map-labels")?.getAttribute("data-hidden")).toBe("false");
+  });
+
+  it("does not capture a simple press before selecting the clicked region", async () => {
+    const onSelectRegion = await renderMap();
+    const svg = container.querySelector<SVGSVGElement>(".live-dashboard-map-svg")!;
+    const tokyoPath = container.querySelector<SVGPathElement>('[data-region-code="13"]')!;
+    const setPointerCapture = vi.fn();
+    Object.assign(svg, { setPointerCapture, releasePointerCapture: vi.fn(), hasPointerCapture: () => false });
+    const pointer = async (target: Element, type: string) => act(async () => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: 400, clientY: 300 });
+      Object.defineProperties(event, { pointerId: { value: 1 }, pointerType: { value: "mouse" }, button: { value: 0 } });
+      target.dispatchEvent(event);
+    });
+
+    await pointer(tokyoPath, "pointerdown");
+    expect(setPointerCapture).not.toHaveBeenCalled();
+    await pointer(tokyoPath, "pointerup");
+    await act(async () => tokyoPath.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    expect(onSelectRegion).toHaveBeenCalledOnce();
+    expect(onSelectRegion).toHaveBeenCalledWith({ country: "JP", admin1: "13", period: "today" });
   });
 
   it("shows a region name on hover with current and previous day counts", async () => {
