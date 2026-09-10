@@ -227,6 +227,8 @@ describe("formal order fulfillment service", () => {
     ["forbidden", ERROR_CODES.NOT_FOUND, 404],
     ["invalid_transition", ERROR_CODES.ORDER_INVALID_TRANSITION, 409],
     ["unresolved_add_on", ERROR_CODES.ORDER_INVALID_TRANSITION, 409],
+    ["service_start_too_early", ERROR_CODES.ORDER_SERVICE_START_TOO_EARLY, 409],
+    ["service_end_too_early", ERROR_CODES.ORDER_SERVICE_END_TOO_EARLY, 409],
     ["conflict", ERROR_CODES.IDEMPOTENCY_KEY_REUSED, 409]
   ] as const)(
     "maps repository outcome %s without participant leakage",
@@ -402,6 +404,9 @@ type RepositoryHarnessOptions = {
   status?: "CONFIRMED" | "IN_SERVICE";
   session?: boolean;
   guardedOrderUpdateCount?: number;
+  startsAt?: Date;
+  sessionExpectedEndsAt?: Date;
+  anytimeServiceTestEnabled?: boolean;
   service?: {
     id?: number;
     shopId?: number;
@@ -475,6 +480,7 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     statusHistory: [] as Array<Record<string, unknown>>,
     deletedAt: null
   };
+  dbOrder.startsAt = options.startsAt ?? dbOrder.startsAt;
   let session: HarnessSession | null = options.session
     ? {
         id: 81,
@@ -482,7 +488,8 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
         verificationHash: "stored-hash",
         startedByUserId: customer.userId,
         startedAt: now,
-        expectedEndsAt: new Date("2026-09-01T11:00:00.000Z"),
+        expectedEndsAt:
+          options.sessionExpectedEndsAt ?? new Date("2026-09-01T11:00:00.000Z"),
         endedByUserId: null,
         endedAt: null,
         createdAt: now,
@@ -517,6 +524,11 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
   const workState={technicianProfileId:702,status:'on_duty',version:0,syncedAt:null as Date|null};
   const workEvents:Record<string,unknown>[]=[];
   const tx = {
+    platformSettingVersion: {
+      findFirst: jest.fn(async () => ({
+        anytimeServiceTestEnabled: options.anytimeServiceTestEnabled ?? false
+      }))
+    },
     technicianWorkState:{upsert:jest.fn(async()=>workState),update:jest.fn(async()=>workState),findFirst:jest.fn(async()=>({...workState})),updateMany:jest.fn(async({where,data}:{where:{version:number};data:{status:string;version:{increment:number};syncedAt:Date}})=>{if(where.version!==workState.version)return {count:0};workState.status=data.status;workState.version+=data.version.increment;workState.syncedAt=data.syncedAt;return {count:1}})},
     technicianWorkEvent:{create:jest.fn(async({data}:{data:Record<string,unknown>})=>{workEvents.push(data);return data})},
     auditLog:{create:jest.fn(async()=>({}))},
@@ -671,6 +683,105 @@ const illegalGenericTransition: OrderTransitionRepositoryInput = {
 void illegalGenericTransition;
 
 describe("formal order fulfillment repository transactions", () => {
+  it("enforces the 30-minute start boundary unless anytime service testing is enabled", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    try {
+      const tooEarly = createRepositoryHarness({
+        startsAt: new Date(now.getTime() + 30 * 60_000 + 1)
+      });
+      await expect(
+        tooEarly.repository.startService({
+          ...repositoryActor,
+          orderId: 41,
+          verificationCode: null,
+          idempotencyKey: "repository-start-too-early"
+        })
+      ).resolves.toEqual({ outcome: "service_start_too_early" });
+      expect(tooEarly.events).toHaveLength(0);
+
+      const boundary = createRepositoryHarness({
+        startsAt: new Date(now.getTime() + 30 * 60_000)
+      });
+      await expect(
+        boundary.repository.startService({
+          ...repositoryActor,
+          orderId: 41,
+          verificationCode: null,
+          idempotencyKey: "repository-start-boundary"
+        })
+      ).resolves.toMatchObject({ outcome: "ok", applied: true });
+
+      const enabled = createRepositoryHarness({
+        startsAt: new Date(now.getTime() + 24 * 60 * 60_000),
+        anytimeServiceTestEnabled: true
+      });
+      await expect(
+        enabled.repository.startService({
+          ...repositoryActor,
+          orderId: 41,
+          verificationCode: null,
+          idempotencyKey: "repository-start-anytime"
+        })
+      ).resolves.toMatchObject({ outcome: "ok", applied: true });
+      expect(enabled.tx.platformSettingVersion.findFirst).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("requires expected service end time unless anytime service testing is enabled", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    try {
+      const beforeEnd = createRepositoryHarness({
+        status: "IN_SERVICE",
+        session: true,
+        sessionExpectedEndsAt: new Date(now.getTime() + 1)
+      });
+      await expect(
+        beforeEnd.repository.endService({
+          ...repositoryActor,
+          orderId: 41,
+          reason: "customer_completed",
+          idempotencyKey: "repository-end-too-early"
+        })
+      ).resolves.toEqual({ outcome: "service_end_too_early" });
+      expect(beforeEnd.events).toHaveLength(0);
+
+      const boundary = createRepositoryHarness({
+        status: "IN_SERVICE",
+        session: true,
+        sessionExpectedEndsAt: now
+      });
+      await expect(
+        boundary.repository.endService({
+          ...repositoryActor,
+          orderId: 41,
+          reason: "customer_completed",
+          idempotencyKey: "repository-end-boundary"
+        })
+      ).resolves.toMatchObject({ outcome: "ok", applied: true });
+
+      const enabled = createRepositoryHarness({
+        status: "IN_SERVICE",
+        session: true,
+        sessionExpectedEndsAt: new Date(now.getTime() + 24 * 60 * 60_000),
+        anytimeServiceTestEnabled: true
+      });
+      await expect(
+        enabled.repository.endService({
+          ...repositoryActor,
+          orderId: 41,
+          reason: "test_completed",
+          idempotencyKey: "repository-end-anytime"
+        })
+      ).resolves.toMatchObject({ outcome: "ok", applied: true });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("uses the existing three-attempt bound and maps exhausted write conflicts", async () => {
     const transaction = jest.fn().mockRejectedValue({ code: "P2034" });
     const repository = new BookingRepository({ $transaction: transaction } as never);

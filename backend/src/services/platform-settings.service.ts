@@ -112,6 +112,7 @@ export class PlatformSettingsService {
         passwordLoginOtpEnabled: input.passwordLoginOtpEnabled,
         passwordLoginOtpRule: input.passwordLoginOtpRule,
         passwordLoginOtpOnNewIp: input.passwordLoginOtpOnNewIp,
+        anytimeServiceTestEnabled: input.anytimeServiceTestEnabled,
         loginLogoMediaPublicId: input.loginLogoMediaPublicId,
         requestButtonMediaPublicId: input.requestButtonMediaPublicId
       },
@@ -187,6 +188,11 @@ export class PlatformSettingsService {
       ["passwordLoginOtpEnabled", current.passwordLoginOtpEnabled, input.passwordLoginOtpEnabled],
       ["passwordLoginOtpRule", current.passwordLoginOtpRule, input.passwordLoginOtpRule],
       ["passwordLoginOtpOnNewIp", current.passwordLoginOtpOnNewIp, input.passwordLoginOtpOnNewIp],
+      [
+        "anytimeServiceTestEnabled",
+        current.anytimeServiceTestEnabled,
+        input.anytimeServiceTestEnabled
+      ],
       ["loginLogoMediaPublicId", current.loginLogo?.publicId ?? null, input.loginLogoMediaPublicId],
       [
         "requestButtonMediaPublicId",

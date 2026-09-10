@@ -36,6 +36,7 @@ function draftFrom(settings: OperationsPlatformSettings): Draft {
     passwordLoginOtpEnabled: settings.passwordLoginOtpEnabled,
     passwordLoginOtpRule: settings.passwordLoginOtpRule,
     passwordLoginOtpOnNewIp: settings.passwordLoginOtpOnNewIp,
+    anytimeServiceTestEnabled: settings.anytimeServiceTestEnabled,
     loginLogoMediaPublicId: settings.loginLogo?.publicId ?? null,
     requestButtonMediaPublicId: settings.requestButton?.publicId ?? null
   };
@@ -101,6 +102,16 @@ export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMed
       <section className="grid gap-3 xl:grid-cols-2">
         <SettingToggle title={t("站点开关")} description={t("关闭后客户端显示维护页，运营后台登录与设置仍可访问。")} checked={draft.siteEnabled} disabled={!canWrite} onChange={(value) => update("siteEnabled", value)} />
         <SettingToggle title={t("新用户注册入口")} description={t("只控制公开自助注册；运营后台仍可创建用户。")} checked={draft.selfRegistrationEnabled} disabled={!canWrite} onChange={(value) => update("selfRegistrationEnabled", value)} />
+      </section>
+
+      <section className="rounded-2xl border border-line bg-paper p-5">
+        <SettingToggle
+          title={t("随时服务测试")}
+          description={t("开启后可忽略预约时间开始和完成服务，仅用于测试；关闭后最多提前 30 分钟开始，并须在服务结束时间后完成。")}
+          checked={draft.anytimeServiceTestEnabled}
+          disabled={!canWrite}
+          onChange={(value) => update("anytimeServiceTestEnabled", value)}
+        />
       </section>
 
       <section className="rounded-2xl border border-line bg-paper p-5">

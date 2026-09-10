@@ -124,6 +124,11 @@ const platformSettingsVersionOpenApiProperties = {
   requestButtonMediaAssetId: { type: ["integer", "null"], minimum: 1 },
   offlinePaymentEnabled: { type: "boolean" },
   ndpPaymentEnabled: { type: "boolean" },
+  anytimeServiceTestEnabled: {
+    type: "boolean",
+    description:
+      "Operations-only test switch. False enforces start no earlier than 30 minutes before startsAt and end no earlier than expectedEndsAt."
+  },
   createdByUserId: { type: ["integer", "null"], minimum: 1 },
   createdAt: { type: "string", format: "date-time" },
   updatedAt: { type: "string", format: "date-time" },
@@ -1130,7 +1135,7 @@ const fulfillmentForbiddenResponse = jsonErrorResponse(
   "40301 error.forbidden — missing permission; 40301 error.auth.identity_forbidden — requested actor does not match the authenticated identity"
 );
 const fulfillmentConflictResponse = jsonErrorResponse(
-  "40906 error.order.invalid_transition — state transition is invalid, including unresolved add-ons; 40961 error.idempotency.key_reused — the key's stored command is not equivalent"
+  "40906 error.order.invalid_transition — state transition is invalid, including unresolved add-ons; 41041 error.order.service_start_too_early — start is earlier than 30 minutes before startsAt while anytime testing is disabled; 41042 error.order.service_end_too_early — end is earlier than expectedEndsAt while anytime testing is disabled; 40961 error.idempotency.key_reused — the key's stored command is not equivalent"
 );
 const checkoutConflictResponse = jsonErrorResponse(
   "41024 error.payment.method_disabled — platform settings disable this payment method; 40961 error.idempotency.key_reused — the key's stored command is not equivalent; 40964 error.order.checkout.invalid_state — checkout state rejects the command; 40965 error.order.checkout.invalid_snapshot — stored checkout evidence is inconsistent"
@@ -3566,6 +3571,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "passwordLoginOtpEnabled",
           "passwordLoginOtpRule",
           "passwordLoginOtpOnNewIp",
+          "anytimeServiceTestEnabled",
           "loginLogoMediaPublicId",
           "requestButtonMediaPublicId"
         ],
@@ -3583,6 +3589,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "boolean",
             description: "May be true only when passwordLoginOtpEnabled is true."
           },
+          anytimeServiceTestEnabled: { type: "boolean" },
           loginLogoMediaPublicId: { type: ["string", "null"], pattern: "^[a-f0-9]{64}$" },
           requestButtonMediaPublicId: {
             type: ["string", "null"],
@@ -22534,7 +22541,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking Fulfillment"],
         summary: "Start service as the owning customer or assigned technician",
         description:
-          "The service derives actor identity from authentication. A technician supplies the six-digit customer-visible verification code; the code and its hash are never returned here.",
+          "The service derives actor identity from authentication. A technician supplies the six-digit customer-visible verification code; the code and its hash are never returned here. Unless Operations explicitly enables anytime service testing, start is allowed only from 30 minutes before startsAt.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:service:start",
         parameters: [idPathParameter()],
@@ -22698,7 +22705,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking Fulfillment"],
         summary: "End service and enter awaiting checkout",
         description:
-          "Pending add-ons block service end. The authenticated participant is derived server-side.",
+          "Pending add-ons block service end. The authenticated participant is derived server-side. Unless Operations explicitly enables anytime service testing, end is allowed only at or after the persisted expectedEndsAt.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:service:end",
         parameters: [idPathParameter()],

@@ -41,6 +41,7 @@ const setting = (overrides: Partial<PlatformSettingsRecord> = {}): PlatformSetti
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
   ndpPaymentEnabled: true,
+  anytimeServiceTestEnabled: false,
   createdByUserId: null,
   createdAt: new Date("2026-09-01T00:00:00.000Z"),
   updatedAt: new Date("2026-09-01T00:00:00.000Z"),
@@ -57,6 +58,7 @@ const basicInput = {
   passwordLoginOtpEnabled: true,
   passwordLoginOtpRule: "monthly_first" as const,
   passwordLoginOtpOnNewIp: true,
+  anytimeServiceTestEnabled: true,
   loginLogoMediaPublicId: null,
   requestButtonMediaPublicId: null
 };
@@ -96,6 +98,7 @@ describe("PlatformSettingsService", () => {
       siteEnabled: false,
       passwordLoginOtpRule: "monthly_first",
       passwordLoginOtpOnNewIp: true,
+      anytimeServiceTestEnabled: true,
       offlinePaymentEnabled: true,
       ndpPaymentEnabled: true
     });
@@ -246,7 +249,8 @@ describe("PlatformSettingsService", () => {
             "siteEnabled",
             "passwordLoginOtpEnabled",
             "passwordLoginOtpRule",
-            "passwordLoginOtpOnNewIp"
+            "passwordLoginOtpOnNewIp",
+            "anytimeServiceTestEnabled"
           ])
         }
       })

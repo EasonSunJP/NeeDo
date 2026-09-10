@@ -17,6 +17,7 @@ const settings = (overrides: Partial<PlatformSettingsRecord> = {}): PlatformSett
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
   ndpPaymentEnabled: true,
+  anytimeServiceTestEnabled: false,
   createdByUserId: null,
   createdAt: new Date("2026-09-01T00:00:00.000Z"),
   updatedAt: new Date("2026-09-01T00:00:00.000Z"),

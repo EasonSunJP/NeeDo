@@ -91,3 +91,11 @@ Codex 完成本步后，必须输出：
 6. 未完成项与原因。
 
 若某项没有完成，必须明确说明，不得假装完成。
+
+---
+
+## 2026-09-11 服务时间门禁与运营测试开关
+
+正式履约时间门禁使用服务器时间与订单持久化快照。`随时服务测试` 关闭时，已确认订单只能从 `startsAt - 30 分钟` 起开始服务；服务中订单只能在服务会话 `expectedEndsAt` 到达后结束。开始与结束分别以 `error.order.service_start_too_early` 和 `error.order.service_end_too_early` 拒绝，且不产生部分状态、会话或事件写入。
+
+运营后台显式开启开关后，仅跳过上述两个时间比较；身份归属、技师服务码、订单状态、未处理追加项目、幂等、付款与结算规则保持不变。订单事务直接读取当前激活的 `PlatformSettingVersion`，缺失设置或默认值均按关闭处理。设计与验证边界见 [Operations Anytime Service Test Design](superpowers/specs/2026-09-11-anytime-service-test-design.md)。

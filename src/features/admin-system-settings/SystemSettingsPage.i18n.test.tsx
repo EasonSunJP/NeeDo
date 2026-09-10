@@ -15,5 +15,12 @@ describe("system settings localization", () => {
     expect(adminSystemSettingsText("线下支付", "en")).toBe("Offline payment");
     expect(adminSystemSettingsText("新 IP 地址登录时也发送验证码（可与上方时间规则组合）", "ja")).toContain("IP");
     expect(adminSystemSettingsText("此规则只清理服务器保存的数据，并仅对保存后的新规则生效；不会删除用户设备本地的聊天记录或媒体缓存。", "ko")).not.toContain("不会删除");
+    expect(adminSystemSettingsText("随时服务测试", "ja")).toBe("いつでもサービスをテスト");
+    expect(
+      adminSystemSettingsText(
+        "开启后可忽略预约时间开始和完成服务，仅用于测试；关闭后最多提前 30 分钟开始，并须在服务结束时间后完成。",
+        "en"
+      )
+    ).toContain("30 minutes");
   });
 });

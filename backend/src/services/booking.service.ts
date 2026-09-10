@@ -1451,6 +1451,20 @@ export class BookingService {
         statusCode: 400
       });
     }
+    if (result.outcome === "service_start_too_early") {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_SERVICE_START_TOO_EARLY,
+        message: "error.order.service_start_too_early",
+        statusCode: 409
+      });
+    }
+    if (result.outcome === "service_end_too_early") {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_SERVICE_END_TOO_EARLY,
+        message: "error.order.service_end_too_early",
+        statusCode: 409
+      });
+    }
     if (result.outcome === "conflict") {
       throw new AppError({
         code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,

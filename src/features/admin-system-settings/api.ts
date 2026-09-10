@@ -33,6 +33,7 @@ function parseOperationsSettings(value: unknown): OperationsPlatformSettings {
     typeof settings.passwordLoginOtpOnNewIp !== "boolean" ||
     typeof settings.offlinePaymentEnabled !== "boolean" ||
     typeof settings.ndpPaymentEnabled !== "boolean" ||
+    typeof settings.anytimeServiceTestEnabled !== "boolean" ||
     !Array.isArray(settings.loginProviderProjects) ||
     !Array.isArray(settings.paymentProviderProjects)
   ) throw new Error("error.api");

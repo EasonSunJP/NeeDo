@@ -93,6 +93,8 @@ export const adminSystemSettingsCopy: Record<Language, Copy> = {
 };
 
 const phrases: Record<string, Partial<Record<Language, string>>> = {
+  "随时服务测试": { "zh-Hant": "隨時服務測試", ja: "いつでもサービスをテスト", en: "Anytime service testing", ko: "언제든지 서비스 테스트" },
+  "开启后可忽略预约时间开始和完成服务，仅用于测试；关闭后最多提前 30 分钟开始，并须在服务结束时间后完成。": { "zh-Hant": "開啟後可忽略預約時間開始和完成服務，僅用於測試；關閉後最多提前 30 分鐘開始，並須在服務結束時間後完成。", ja: "有効時は予約時刻に関係なくサービスを開始・完了できます（テスト専用）。無効時は開始30分前から開始でき、終了予定時刻以降にのみ完了できます。", en: "When enabled, service may start and finish regardless of the booking time for testing only. When disabled, it may start at most 30 minutes early and finish only after the service end time.", ko: "활성화하면 테스트에 한해 예약 시간과 관계없이 서비스를 시작하고 완료할 수 있습니다. 비활성화하면 최대 30분 일찍 시작할 수 있고 서비스 종료 시간 이후에만 완료할 수 있습니다." },
   "保存并发布": {"zh-Hant": "儲存並發布", "ja": "保存して公開", "en": "Save and publish", "ko": "저장 및 게시"},
   "已发布新版本": {"zh-Hant": "已發布新版本", "ja": "新しいバージョンを公開しました", "en": "New version published", "ko": "새 버전이 게시되었습니다"},
   "正在保存…": {"zh-Hant": "正在儲存…", "ja": "保存中…", "en": "Saving…", "ko": "저장 중…"},

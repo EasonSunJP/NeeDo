@@ -323,6 +323,12 @@ Migration 为 `20260901040000_shop_membership_card_topup`。本地 `needo_dev` �
 
 卡片悬停和键盘焦点使用 `--admin-accent` 与 `--admin-surface` 混合，并增加同色细边框；按下状态进一步加深。经典蓝黑主题下实测高亮为深蓝色（RGB 约 39/48/82），替代旧 `hover:bg-paper/70` 的浅灰背景，其他主题跟随自身强调色。
 
+## 2026-09-11 随时服务测试
+
+运营系统设置基础页增加 `随时服务测试`。它复用 `GET /api/v1/backoffice/system-settings` 与 `PUT /api/v1/backoffice/system-settings/basic`、现有平台身份/RBAC、乐观版本和审计事务。字段随不可变设置版本持久化，migration `20260911100000_anytime_service_test` 对新旧记录都默认 `FALSE`，不进入公开设置投影。
+
+开启后订单可忽略预约时间开始或完成服务，便于 QA 走正式全链路；关闭后执行最多提前 30 分钟开始、到 `expectedEndsAt` 后结束的正式门禁。五种现有 UI 语言均提供明确影响说明。完整边界见 [Operations Anytime Service Test Design](superpowers/specs/2026-09-11-anytime-service-test-design.md)。
+
 正式浏览器验收：在 `http://127.0.0.1:5180/pf-admin.html#/admin` 通过真实测试账号正常登录并使用已有运营身份，点击服务 753、技师 LifeDance 管理员 2、用户 LifeDance 管理员，均加载现有正式详情。每次打开和关闭后 URL 始终为 `#/admin`，榜单仍挂载且可见；最后关闭后没有残留抽屉。未进行服务保存、用户调整或删除操作。
 
 验收中发现本地旧前端模块缓存和旧后端版本混用：按原代理配置重启 5180 前端，重新生成 Prisma 客户端并按原环境文件、端口 3108 和 token audience 重启 main 后端。5180 来源恢复正常登录，用户详情从 500 恢复到 200；没有执行 migration 或 seed。远程推送和部署不在本次操作内。
