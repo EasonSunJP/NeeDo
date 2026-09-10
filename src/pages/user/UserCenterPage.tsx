@@ -779,7 +779,7 @@ function FormalUserCenterDataGate({
         void persistentResourceCache.write(cacheScope, cacheKey, {
           ...formalData,
           profile,
-        });
+        }).catch(() => undefined);
       }}
     />
   );

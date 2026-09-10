@@ -566,6 +566,22 @@ describe("UserCenterPage inline profile editing", () => {
     await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));
   });
 
+  it("handles cancellation from optional cache persistence after a successful profile save", async () => {
+    const handleCacheCancellation = vi.fn(() => Promise.resolve());
+    const writeSpy = vi.spyOn(persistentResourceCache, "write").mockReturnValueOnce({
+      catch: handleCacheCancellation,
+    } as unknown as ReturnType<typeof persistentResourceCache.write>);
+    await renderUserCenter();
+
+    await click(findIconButton("编辑资料"));
+    await click(findButton("保存并退出编辑模式"));
+
+    await waitFor(() => expect(container.textContent).toContain("资料已保存，已退出编辑模式"));
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    expect(handleCacheCancellation).toHaveBeenCalledTimes(1);
+    writeSpy.mockRestore();
+  });
+
   it("keeps the formal draft and fixed save action when the API rejects", async () => {
     testState.updateMine.mockRejectedValue(new Error("network"));
     await renderUserCenter();
