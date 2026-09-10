@@ -12,7 +12,7 @@ import {
   type LegalDocumentLocale
 } from "../src/domain/legal-document";
 
-type BackfillStatus = "created" | "verified" | "conflict";
+type BackfillStatus = "created" | "verified" | "retired" | "conflict";
 
 export interface SystemSettingsDatabaseTarget {
   envFile: string;
@@ -266,8 +266,93 @@ export const SYSTEM_LEGAL_DOCUMENT_SOURCES: readonly SystemLegalDocumentSource[]
   ...reviewRequiredSources
 ];
 
+export const LEGACY_EMPTY_LEGAL_DOCUMENTS = [
+  {
+    slug: "other-rules-and-guides",
+    name: "Other rules and guides",
+    internalPath: "/me/settings/guides",
+    displayLocations: []
+  },
+  {
+    slug: "cancellation-policy",
+    name: "Cancellation policy",
+    internalPath: "/me/settings/cancellation-policy",
+    displayLocations: []
+  },
+  {
+    slug: "service-provider-guide",
+    name: "Service provider guide",
+    internalPath: "/me/settings/service-provider-guide",
+    displayLocations: []
+  }
+] as const;
+
 const sameStrings = (left: unknown, right: readonly string[]): boolean =>
   Array.isArray(left) && JSON.stringify(left) === JSON.stringify(right);
+
+const retireLegacyEmptyLegalDocuments = async (
+  client: PrismaClient
+): Promise<Array<{ slug: string; locale: null; status: BackfillStatus }>> =>
+  client.$transaction(async (transaction) => {
+    const candidates = await transaction.legalDocument.findMany({
+      where: {
+        slug: { in: LEGACY_EMPTY_LEGAL_DOCUMENTS.map((document) => document.slug) },
+        deletedAt: null
+      },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        internalPath: true,
+        displayLocations: true,
+        isEnabled: true,
+        _count: {
+          select: {
+            drafts: { where: { deletedAt: null } },
+            releases: { where: { deletedAt: null } }
+          }
+        }
+      }
+    });
+    const bySlug = new Map(candidates.map((document) => [document.slug, document]));
+    const results: Array<{ slug: string; locale: null; status: BackfillStatus }> = [];
+
+    for (const legacy of LEGACY_EMPTY_LEGAL_DOCUMENTS) {
+      const document = bySlug.get(legacy.slug);
+      if (!document) continue;
+      const isExactEmptyPlaceholder =
+        document.name === legacy.name &&
+        document.internalPath === legacy.internalPath &&
+        sameStrings(document.displayLocations, legacy.displayLocations) &&
+        !document.isEnabled &&
+        document._count.drafts === 0 &&
+        document._count.releases === 0;
+      if (!isExactEmptyPlaceholder) {
+        results.push({ slug: legacy.slug, locale: null, status: "conflict" });
+        continue;
+      }
+
+      const retiredAt = new Date();
+      await transaction.legalDocument.update({
+        where: { id: document.id },
+        data: { deletedAt: retiredAt, lockVersion: { increment: 1 } }
+      });
+      await transaction.auditLog.create({
+        data: {
+          actorId: null,
+          action: "system.legal_document.legacy_placeholder_retired",
+          targetType: "LegalDocument",
+          targetId: document.id,
+          ip: null,
+          userAgent: null,
+          metadata: { slug: legacy.slug, retiredAt: retiredAt.toISOString() }
+        }
+      });
+      results.push({ slug: legacy.slug, locale: null, status: "retired" });
+    }
+
+    return results;
+  });
 
 const backfillDocument = async (
   client: PrismaClient,
@@ -412,7 +497,11 @@ export const runSystemSettingsBackfill = async (client: PrismaClient) => {
     select: { id: true }
   });
   assert(activeSettings, "active platform settings are missing; apply the migration first");
-  const report = [];
+  const report: Array<{
+    slug: string;
+    locale: LegalDocumentLocale | null;
+    status: BackfillStatus;
+  }> = await retireLegacyEmptyLegalDocuments(client);
   for (const source of SYSTEM_LEGAL_DOCUMENT_SOURCES) {
     report.push(...(await backfillDocument(client, source)));
   }
