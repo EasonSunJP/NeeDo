@@ -307,4 +307,30 @@ describe("ShopAnalyticsDashboard formal API", () => {
     });
     expect(container.textContent).toContain("0单 峰值");
   });
+
+  it("keeps every trend bucket inside a 440px mobile chart card", async () => {
+    const mobileDashboard: BackofficeDashboardPayload = {
+      ...dashboard,
+      series: {
+        buckets: Array.from({ length: 7 }, (_, index) => ({
+          ...dashboard.series.buckets[index % dashboard.series.buckets.length]!,
+          key: `2026-09-${String(index + 4).padStart(2, "0")}`,
+          label: `9/${index + 4}`,
+          orderCount: index + 1,
+          serviceGmvJpy: (index + 1) * 10_000
+        }))
+      }
+    };
+    const loadDashboard = vi.fn().mockResolvedValue(mobileDashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(container.textContent).toContain("70,000"));
+
+    const svg = container.querySelector<SVGSVGElement>('[data-testid="shop-analytics-trend"] svg');
+    expect(svg?.getAttribute("class")).toContain("w-full");
+    expect(svg?.getAttribute("class")).not.toContain("min-w-[520px]");
+    expect(container.querySelectorAll('[data-chart-node="true"]')).toHaveLength(14);
+  });
 });

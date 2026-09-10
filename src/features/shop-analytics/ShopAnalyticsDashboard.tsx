@@ -99,7 +99,7 @@ function ShopAnalyticsTrend({ buckets }: { buckets: DashboardBucketPayload[] }) 
       <div className="mt-3 overflow-x-auto">
         <svg
           aria-label="订单趋势"
-          className="h-auto min-w-[520px] overflow-visible"
+          className="h-auto w-full min-w-0 overflow-visible"
           role="img"
           viewBox={`0 0 ${shopTrendDimensions.width} ${shopTrendDimensions.height}`}
         >
