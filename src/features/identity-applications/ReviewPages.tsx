@@ -18,6 +18,7 @@ import { mergePendingMerchantReviews } from "../../components/admin/adminOperato
 import { UnifiedEntityInfoCard } from "../../shared/profile-card/UnifiedEntityInfoCard";
 
 const reviewableStatus = (status: string) => status === "submitted" || status === "under_review";
+const visibleReviewStatus = (status: string) => status !== "draft" && status !== "withdrawn";
 
 function ReviewShell({ title, info, backTo, children, embedded }: { title: string; info: string; backTo: string; children: React.ReactNode; embedded?: boolean }) {
   const { language } = useI18n();
@@ -65,13 +66,13 @@ export function TechnicianApplicationsReviewPage({ embedded = false, searchQuery
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
-  const visibleItems = items.filter((item) => !normalizedSearchQuery || [
+  const visibleItems = items.filter((item) => visibleReviewStatus(item.status) && (!normalizedSearchQuery || [
     item.applicantName,
     item.phone,
     item.city,
     item.status,
     String(item.applicationId)
-  ].some((value) => (value ?? "").toLowerCase().includes(normalizedSearchQuery)));
+  ].some((value) => (value ?? "").toLowerCase().includes(normalizedSearchQuery))));
 
   const load = async () => {
     setError("");
