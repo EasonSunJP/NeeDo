@@ -93,6 +93,8 @@ export const adminSystemSettingsCopy: Record<Language, Copy> = {
 };
 
 const phrases: Record<string, Partial<Record<Language, string>>> = {
+  "过期预约未处理门禁": { "zh-Hant": "逾期預約未處理門禁", ja: "未処理の期限超過予約ゲート", en: "Unresolved overdue booking gate", ko: "미처리 기한 초과 예약 게이트" },
+  "开启后，用户或技师开始较晚服务前，必须先处置本人参与的更早过期未完成预约。关闭时不阻断开始服务，也不会自动结算或评分。": { "zh-Hant": "開啟後，使用者或技師開始較晚服務前，必須先處置本人參與的更早逾期未完成預約。關閉時不阻斷開始服務，也不會自動結算或評分。", ja: "有効時、利用者または施術者は後のサービスを開始する前に、自身が参加した未処理の期限超過予約を解決する必要があります。無効時は開始を妨げず、自動精算や評価も行いません。", en: "When enabled, a customer or technician must resolve an earlier overdue unfinished booking they participated in before starting a later service. When off, starts are not blocked and no automatic settlement or rating occurs.", ko: "활성화하면 사용자 또는 테라피스트는 이후 서비스를 시작하기 전에 본인이 참여한 이전의 미처리 기한 초과 예약을 처리해야 합니다. 비활성화하면 서비스 시작을 차단하지 않으며 자동 정산이나 평점도 수행하지 않습니다." },
   "随时服务测试": { "zh-Hant": "隨時服務測試", ja: "いつでもサービスをテスト", en: "Anytime service testing", ko: "언제든지 서비스 테스트" },
   "开启后可忽略预约时间开始和完成服务，仅用于测试；关闭后最多提前 30 分钟开始，并须在服务结束时间后完成。": { "zh-Hant": "開啟後可忽略預約時間開始和完成服務，僅用於測試；關閉後最多提前 30 分鐘開始，並須在服務結束時間後完成。", ja: "有効時は予約時刻に関係なくサービスを開始・完了できます（テスト専用）。無効時は開始30分前から開始でき、終了予定時刻以降にのみ完了できます。", en: "When enabled, service may start and finish regardless of the booking time for testing only. When disabled, it may start at most 30 minutes early and finish only after the service end time.", ko: "활성화하면 테스트에 한해 예약 시간과 관계없이 서비스를 시작하고 완료할 수 있습니다. 비활성화하면 최대 30분 일찍 시작할 수 있고 서비스 종료 시간 이후에만 완료할 수 있습니다." },
   "保存并发布": {"zh-Hant": "儲存並發布", "ja": "保存して公開", "en": "Save and publish", "ko": "저장 및 게시"},

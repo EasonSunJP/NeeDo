@@ -100,6 +100,25 @@ export type StartServiceInput = BookingIdempotencyInput & (
   | { actor: "customer"; verificationCode?: never }
   | { actor: "technician"; verificationCode: string }
 );
+export type OverdueAppointmentResolutionKind =
+  | "actually_completed"
+  | "customer_no_show"
+  | "technician_no_show";
+export type OverdueAppointmentBlock = {
+  orderId: number;
+  orderNo: string;
+  serviceName: string;
+  startsAt: string;
+  endsAt: string;
+};
+export type OverdueAppointmentResolution = {
+  orderId: number;
+  orderNo: string;
+  resolution: OverdueAppointmentResolutionKind;
+  resolvedAt: string;
+  systemReviewId: number | null;
+  order: BookingOrder;
+};
 export type CreateAddOnInput = BookingIdempotencyInput & { serviceId: number };
 export type EndServiceInput = BookingIdempotencyInput & { reason: string };
 export type SelectCheckoutPaymentMethodInput = BookingIdempotencyInput & (
@@ -500,6 +519,15 @@ export const bookingApi = {
   },
   startService(id: number, input: StartServiceInput) {
     return httpClient.request<BookingOrder>(`/orders/${id}/service/start`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  resolveOverdueAppointment(
+    id: number,
+    input: BookingIdempotencyInput & { resolution: OverdueAppointmentResolutionKind }
+  ) {
+    return httpClient.request<OverdueAppointmentResolution>(`/orders/${id}/overdue-resolution`, {
       body: input,
       method: "POST"
     });

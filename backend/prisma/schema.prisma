@@ -88,6 +88,21 @@ enum OrderReviewTargetType {
   @@map("order_review_target_type")
 }
 
+enum OrderReviewAuthorType {
+  USER   @map("user")
+  SYSTEM @map("system")
+
+  @@map("order_review_author_type")
+}
+
+enum OverdueAppointmentResolutionType {
+  ACTUALLY_COMPLETED @map("actually_completed")
+  CUSTOMER_NO_SHOW   @map("customer_no_show")
+  TECHNICIAN_NO_SHOW @map("technician_no_show")
+
+  @@map("overdue_appointment_resolution_type")
+}
+
 enum OrderPerformanceOutcome {
   TECHNICIAN_CANCELLED   @map("technician_cancelled")
   TECHNICIAN_UNCOMPLETED @map("technician_uncompleted")
@@ -1269,6 +1284,7 @@ model User {
   orderRefundDisputeRevisions           OrderRefundDisputeRevision[]        @relation("OrderRefundDisputeRevisionResolver")
   orderHistories                        OrderStatusHistory[]                @relation("OrderStatusHistoryActor")
   orderReviewsGiven                     OrderReview[]                       @relation("OrderReviewReviewer")
+  overdueAppointmentsResolved             OrderOverdueResolution[]            @relation("OrderOverdueResolutionUser")
   revisedOrderReviewAmendments          OrderReviewAmendment[]              @relation("OrderReviewAmendmentReviser")
   revisedOrderRefundAmendments          OrderRefundAmendment[]              @relation("OrderRefundAmendmentReviser")
   assignedBackofficeTags                BackofficeProfileTag[]              @relation("BackofficeProfileTagAssigner")
@@ -2941,6 +2957,7 @@ model PlatformSettingVersion {
   offlinePaymentEnabled        Boolean                       @default(true) @map("offline_payment_enabled")
   ndpPaymentEnabled            Boolean                       @default(true) @map("ndp_payment_enabled")
   anytimeServiceTestEnabled    Boolean                       @default(false) @map("anytime_service_test_enabled")
+  overdueAppointmentGateEnabled Boolean                       @default(false) @map("overdue_appointment_gate_enabled")
   createdByUserId              Int?                          @map("created_by_user_id")
   createdAt                    DateTime                      @default(now()) @map("created_at")
   updatedAt                    DateTime                      @updatedAt @map("updated_at")
@@ -4225,6 +4242,7 @@ model BookingOrder {
   scheduleSlot          ScheduleSlot           @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
   statusHistory         OrderStatusHistory[]
   reviews               OrderReview[]
+  overdueResolution      OrderOverdueResolution?
   timelineComments      OrderTimelineComment[]
   feeCalculationLogs    FeeCalculationLog[]
   walletHolds           WalletHold[]
@@ -4884,7 +4902,9 @@ model TechnicianPerformanceSummary {
 model OrderReview {
   id                  Int                   @id @default(autoincrement())
   bookingOrderId      Int                   @map("booking_order_id")
-  reviewerUserId      Int                   @map("reviewer_user_id")
+  reviewerUserId      Int?                  @map("reviewer_user_id")
+  authorType          OrderReviewAuthorType @default(USER) @map("author_type")
+  systemSourceKey     String?               @map("system_source_key") @db.VarChar(80)
   targetType          OrderReviewTargetType @map("target_type")
   customerProfileId   Int?                  @map("customer_profile_id")
   technicianProfileId Int?                  @map("technician_profile_id")
@@ -4897,13 +4917,15 @@ model OrderReview {
   deletedAt           DateTime?             @map("deleted_at")
 
   bookingOrder      BookingOrder       @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
-  reviewer          User               @relation("OrderReviewReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  reviewer          User?              @relation("OrderReviewReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
   customerProfile   CustomerProfile?   @relation("OrderReviewCustomer", fields: [customerProfileId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation("OrderReviewTechnician", fields: [technicianProfileId], references: [id], onDelete: Restrict)
   tags              OrderReviewTag[]
   amendments        OrderReviewAmendment[]
+  overdueResolution OrderOverdueResolution? @relation("OverdueResolutionSystemReview")
 
   @@unique([bookingOrderId, reviewerUserId, targetType])
+  @@unique([bookingOrderId, targetType, systemSourceKey], map: "order_reviews_order_target_system_source_key")
   @@index([bookingOrderId])
   @@index([reviewerUserId])
   @@index([targetType])
@@ -4912,6 +4934,37 @@ model OrderReview {
   @@index([createdAt])
   @@index([deletedAt])
   @@map("order_reviews")
+}
+
+model OrderOverdueResolution {
+  id                   Int                              @id @default(autoincrement())
+  publicId             String                           @unique @default(uuid()) @map("public_id") @db.Char(36)
+  bookingOrderId       Int                              @unique(map: "order_overdue_resolutions_booking_order_key") @map("booking_order_id")
+  resolution           OverdueAppointmentResolutionType
+  resolvedByUserId     Int                              @map("resolved_by_user_id")
+  resolvedByIdentityId Int                              @map("resolved_by_identity_id")
+  idempotencyKey       String                           @unique(map: "order_overdue_resolutions_idempotency_key_key") @map("idempotency_key") @db.VarChar(160)
+  requestFingerprint   String                           @map("request_fingerprint") @db.Char(64)
+  version              Int                              @default(1)
+  serviceNameSnapshot  String                           @map("service_name_snapshot") @db.VarChar(160)
+  startsAtSnapshot     DateTime                         @map("starts_at_snapshot")
+  endsAtSnapshot       DateTime                         @map("ends_at_snapshot")
+  systemReviewId       Int?                             @unique(map: "order_overdue_resolutions_system_review_key") @map("system_review_id")
+  resolvedAt           DateTime                         @map("resolved_at")
+  createdAt            DateTime                         @default(now()) @map("created_at")
+  updatedAt            DateTime                         @updatedAt @map("updated_at")
+  deletedAt            DateTime?                        @map("deleted_at")
+
+  bookingOrder       BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  resolvedByUser     User         @relation("OrderOverdueResolutionUser", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+  resolvedByIdentity UserIdentity @relation("OrderOverdueResolutionIdentity", fields: [resolvedByIdentityId], references: [id], onDelete: Restrict)
+  systemReview       OrderReview? @relation("OverdueResolutionSystemReview", fields: [systemReviewId], references: [id], onDelete: Restrict)
+
+  @@index([resolvedByUserId])
+  @@index([resolvedByIdentityId])
+  @@index([resolution, resolvedAt])
+  @@index([deletedAt])
+  @@map("order_overdue_resolutions")
 }
 
 model OrderReviewTag {
@@ -5785,6 +5838,7 @@ model UserIdentity {
   followers                  Follow[]                      @relation("FollowFollowingIdentity")
   receivedNotifications      Notification[]                @relation("NotificationRecipientIdentity")
   actedNotifications         Notification[]                @relation("NotificationActorIdentity")
+  overdueAppointmentsResolved OrderOverdueResolution[]        @relation("OrderOverdueResolutionIdentity")
   officialNoticeAudiences    NoticeAudience[]              @relation("NoticeAudienceRecipientIdentity")
   officialNoticeDeliveries   NoticeDelivery[]              @relation("NoticeDeliveryRecipientIdentity")
   createdOfficialNotices     OfficialNotice[]              @relation("OfficialNoticeCreatedByIdentity")

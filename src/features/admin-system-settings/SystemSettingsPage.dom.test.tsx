@@ -50,6 +50,7 @@ const settings = {
   passwordLoginOtpRule: "monthly_first" as const,
   passwordLoginOtpOnNewIp: true,
   anytimeServiceTestEnabled: false,
+  overdueAppointmentGateEnabled: false,
   loginLogoMediaAssetId: null,
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
@@ -158,6 +159,26 @@ describe("SystemSettingsPage interactions", () => {
 
     expect(mocked.updateBasic).toHaveBeenCalledWith(
       expect.objectContaining({ expectedVersion: 2, anytimeServiceTestEnabled: true })
+    );
+  });
+
+  it("publishes the overdue appointment gate with the exact operations label", async () => {
+    mocked.hasPermission.mockImplementation((permission?: string) =>
+      permission === "backoffice:system-settings:write"
+    );
+    mocked.updateBasic.mockResolvedValue({ ...settings, overdueAppointmentGateEnabled: true });
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=basic"] }, createElement(SystemSettingsPage)));
+    });
+
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="过期预约未处理门禁"]');
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    await act(async () => toggle?.click());
+    const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("保存并发布"));
+    await act(async () => save?.click());
+
+    expect(mocked.updateBasic).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedVersion: 2, overdueAppointmentGateEnabled: true })
     );
   });
 });

@@ -18,6 +18,13 @@ const anytimeServiceMigrationPath = join(
 const anytimeServiceMigration = existsSync(anytimeServiceMigrationPath)
   ? readFileSync(anytimeServiceMigrationPath, "utf8")
   : "";
+const overdueAppointmentGateMigrationPath = join(
+  process.cwd(),
+  "prisma/migrations/20260911160000_overdue_appointment_gate/migration.sql"
+);
+const overdueAppointmentGateMigration = existsSync(overdueAppointmentGateMigrationPath)
+  ? readFileSync(overdueAppointmentGateMigrationPath, "utf8")
+  : "";
 
 const modelBlock = (name: string): string => {
   const match = schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`));
@@ -62,8 +69,19 @@ describe("operations system settings schema", () => {
     expect(block).toContain("offlinePaymentEnabled");
     expect(block).toContain("ndpPaymentEnabled");
     expect(block).toContain("anytimeServiceTestEnabled");
+    expect(block).toContain("overdueAppointmentGateEnabled");
     expect(block).toContain("createdByUserId");
     expect(block).toContain('@@map("platform_setting_versions")');
+  });
+
+  it("adds the overdue appointment gate with a fail-closed database default", () => {
+    expect(overdueAppointmentGateMigration).toContain(
+      "ALTER TABLE `platform_setting_versions`"
+    );
+    expect(overdueAppointmentGateMigration).toContain(
+      "`overdue_appointment_gate_enabled`"
+    );
+    expect(overdueAppointmentGateMigration).toMatch(/DEFAULT\s+false/i);
   });
 
   it("adds the anytime service test switch with a fail-closed database default", () => {

@@ -216,13 +216,24 @@ export class PayrollRepository implements PayrollRepositoryPort {
       this.client.orderFinancial.findMany({
         where: {
           shopId: input.shopId,
-          orderType: "booking",
+          orderType: { in: ["booking", "request"] },
           technicianProfileId: { not: null },
           serviceIncomeStatus: { in: ["reported", "confirmed"] },
           settlementStatus: "ready_for_payroll",
           deletedAt: null,
           bookingOrder: {
-            status: "COMPLETED",
+            OR: [
+              { status: "COMPLETED" },
+              {
+                status: "CANCELLED",
+                overdueResolution: {
+                  is: {
+                    resolution: { in: ["CUSTOMER_NO_SHOW", "TECHNICIAN_NO_SHOW"] },
+                    deletedAt: null
+                  }
+                }
+              }
+            ],
             deletedAt: null,
             endsAt: { gte: periodStart, lte: periodEnd }
           }

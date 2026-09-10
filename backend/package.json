@@ -116,7 +116,8 @@
     "prisma:seed": "prisma db seed",
     "seed": "prisma db seed",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "check:work-status-flow": "tsx scripts/check-work-status-flow.ts"
+    "check:work-status-flow": "tsx scripts/check-work-status-flow.ts",
+    "check:overdue-appointment-gate": "node scripts/check-overdue-appointment-gate.mjs"
   },
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.10.0",

@@ -562,4 +562,26 @@ describe("bookingApi", () => {
     expect(requestBodyAt(7)).toEqual({ idempotencyKey: "idem-ndp-pay-00001" });
     expect(requestBodyAt(8)).toEqual({ reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
   });
+
+  it("submits an idempotent overdue appointment resolution command", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 0,
+      message: "success",
+      data: { orderId: 17, resolution: "technician_no_show" }
+    }));
+
+    await bookingApi.resolveOverdueAppointment(17, {
+      resolution: "technician_no_show",
+      idempotencyKey: "overdue-technician-no-show-01"
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/orders/17/overdue-resolution",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(lastRequestBody()).toEqual({
+      resolution: "technician_no_show",
+      idempotencyKey: "overdue-technician-no-show-01"
+    });
+  });
 });

@@ -267,6 +267,13 @@ export const startServiceBodySchema = z.discriminatedUnion("actor", [
     .strict()
 ]);
 
+export const overdueAppointmentResolutionBodySchema = z
+  .object({
+    resolution: z.enum(["actually_completed", "customer_no_show", "technician_no_show"]),
+    idempotencyKey: idempotencyKeySchema
+  })
+  .strict();
+
 export const createOrderAddOnBodySchema = z
   .object({
     serviceId: serviceCatalogIdSchema,
@@ -528,6 +535,9 @@ export type OrderIdParams = z.infer<typeof orderIdParamSchema>;
 export type OrderAddOnIdParams = z.infer<typeof orderAddOnIdParamsSchema>;
 export type OrderConfirmBody = z.infer<typeof orderConfirmBodySchema>;
 export type StartServiceInput = z.infer<typeof startServiceBodySchema>;
+export type OverdueAppointmentResolutionInput = z.infer<
+  typeof overdueAppointmentResolutionBodySchema
+>;
 export type CreateOrderAddOnInput = z.infer<typeof createOrderAddOnBodySchema>;
 export type OrderAddOnDecisionInput = z.infer<typeof orderAddOnDecisionBodySchema>;
 export type EndServiceInput = z.infer<typeof endServiceBodySchema>;

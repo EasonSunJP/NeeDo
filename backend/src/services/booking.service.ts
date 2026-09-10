@@ -27,6 +27,8 @@ import type {
   OrderListInput,
   OrderReviewMutationResult,
   OrderReviewPayload,
+  OverdueAppointmentResolutionMutationResult,
+  OverdueAppointmentResolutionPayload,
   ScheduleListInput,
   ScheduleMutationResult,
   ScheduleScope,
@@ -42,7 +44,8 @@ import type {
   OrderReviewCreateInput,
   PayWithNdpInput,
   SelectPaymentMethodInput,
-  StartServiceInput
+  StartServiceInput,
+  OverdueAppointmentResolutionInput
 } from "../validators/booking.validator";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { AuditLogService } from "./audit-log.service";
@@ -705,6 +708,70 @@ export class BookingService {
       await this.publishLiveDashboardChangesBestEffort([mutation.order.id]);
     }
     return mutation.order;
+  }
+
+  public async resolveOverdueAppointment(
+    actor: AuthenticatedBookingActor,
+    orderId: number,
+    input: OverdueAppointmentResolutionInput,
+    context: AuthRequestContext
+  ): Promise<OverdueAppointmentResolutionPayload> {
+    if (!actor.currentIdentityId) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.auth.identity_forbidden",
+        statusCode: 403
+      });
+    }
+    const fulfillmentActor = this.getFulfillmentActor(actor);
+    await this.assertFulfillmentOrderAccess(actor, orderId, fulfillmentActor.actor);
+    const requestFingerprint = createHash("sha256")
+      .update(`${orderId}:${fulfillmentActor.actor}:${input.resolution}`)
+      .digest("hex");
+    const result = await this.repository.resolveOverdueAppointment(
+      {
+        ...fulfillmentActor,
+        orderId,
+        resolvedByIdentityId: actor.currentIdentityId,
+        resolution: input.resolution,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint,
+        requestContext: this.fulfillmentRequestContext(context)
+      },
+      {
+        settle: this.ledgerService
+          ? async ({ transactionClient, order, checkoutPayment }) => {
+              const confirmed = order.statusHistory.find(
+                (history) => history.toStatus === "confirmed"
+              );
+              await this.ledgerService!.settleBookingCompletion(
+                {
+                  bookingOrderId: order.id,
+                  orderType: order.orderType,
+                  shopId: order.shopId,
+                  technicianProfileId: order.technicianProfileId,
+                  serviceId: order.serviceId,
+                  serviceAmountJpy: order.paymentAmountJpy,
+                  scheduledStartAt: order.startsAt,
+                  acceptedAt: confirmed?.createdAt,
+                  completedAt: this.now(),
+                  customerUserId: order.customerUserId,
+                  actorUserId: actor.userId,
+                  suppressCustomerReward: input.resolution !== "actually_completed",
+                  ...(checkoutPayment ? { checkoutPayment } : {})
+                },
+                { transactionClient }
+              );
+            }
+          : undefined
+      }
+    );
+    const mutation = this.requireOverdueResolution(result);
+    if (mutation.applied) {
+      await this.notifyOrderChangedBestEffort(actor, mutation.resolution.order, "status");
+      await this.publishLiveDashboardChangesBestEffort([mutation.resolution.order.id]);
+    }
+    return mutation.resolution;
   }
 
   public async createOrderAddOn(
@@ -1466,6 +1533,14 @@ export class BookingService {
         statusCode: 409
       });
     }
+    if (result.outcome === "overdue_appointment_blocked") {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_OVERDUE_APPOINTMENT_BLOCKED,
+        message: "error.order.overdue_appointment_blocked",
+        statusCode: 409,
+        data: { overdueAppointment: result.overdueAppointment }
+      });
+    }
     if (result.outcome === "service_end_too_early") {
       throw new AppError({
         code: ERROR_CODES.ORDER_SERVICE_END_TOO_EARLY,
@@ -1481,6 +1556,28 @@ export class BookingService {
       });
     }
     throw this.invalidTransitionError();
+  }
+
+  private requireOverdueResolution(
+    result: OverdueAppointmentResolutionMutationResult
+  ): Extract<OverdueAppointmentResolutionMutationResult, { outcome: "ok" }> {
+    if (result.outcome === "ok") return result;
+    if (result.outcome === "not_found") throw this.notFoundError();
+    if (result.outcome === "conflict") {
+      throw new AppError({
+        code: ERROR_CODES.IDEMPOTENCY_KEY_REUSED,
+        message: "error.idempotency.key_reused",
+        statusCode: 409
+      });
+    }
+    throw new AppError({
+      code: ERROR_CODES.ORDER_INVALID_TRANSITION,
+      message:
+        result.outcome === "already_resolved"
+          ? "error.order.overdue_appointment_already_resolved"
+          : "error.order.overdue_appointment_invalid_state",
+      statusCode: 409
+    });
   }
 
   private requireOrderReviewMutation(result: OrderReviewMutationResult): {

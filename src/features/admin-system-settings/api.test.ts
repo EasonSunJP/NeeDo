@@ -18,6 +18,7 @@ const operationsSettings = {
   passwordLoginOtpRule: "monthly_first",
   passwordLoginOtpOnNewIp: true,
   anytimeServiceTestEnabled: false,
+  overdueAppointmentGateEnabled: false,
   loginLogoMediaAssetId: null,
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
@@ -46,6 +47,12 @@ describe("admin system settings API", () => {
 
   it("fails closed when the service-testing switch is absent from the server projection", async () => {
     const { anytimeServiceTestEnabled: _missing, ...incomplete } = operationsSettings;
+    vi.mocked(httpClient.request).mockResolvedValueOnce(incomplete);
+    await expect(adminSystemSettingsApi.getSettings()).rejects.toThrow("error.api");
+  });
+
+  it("fails closed when the overdue appointment gate is absent from the server projection", async () => {
+    const { overdueAppointmentGateEnabled: _missing, ...incomplete } = operationsSettings;
     vi.mocked(httpClient.request).mockResolvedValueOnce(incomplete);
     await expect(adminSystemSettingsApi.getSettings()).rejects.toThrow("error.api");
   });

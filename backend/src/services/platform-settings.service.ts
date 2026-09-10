@@ -113,6 +113,7 @@ export class PlatformSettingsService {
         passwordLoginOtpRule: input.passwordLoginOtpRule,
         passwordLoginOtpOnNewIp: input.passwordLoginOtpOnNewIp,
         anytimeServiceTestEnabled: input.anytimeServiceTestEnabled,
+        overdueAppointmentGateEnabled: input.overdueAppointmentGateEnabled,
         loginLogoMediaPublicId: input.loginLogoMediaPublicId,
         requestButtonMediaPublicId: input.requestButtonMediaPublicId
       },
@@ -192,6 +193,11 @@ export class PlatformSettingsService {
         "anytimeServiceTestEnabled",
         current.anytimeServiceTestEnabled,
         input.anytimeServiceTestEnabled
+      ],
+      [
+        "overdueAppointmentGateEnabled",
+        current.overdueAppointmentGateEnabled,
+        input.overdueAppointmentGateEnabled
       ],
       ["loginLogoMediaPublicId", current.loginLogo?.publicId ?? null, input.loginLogoMediaPublicId],
       [

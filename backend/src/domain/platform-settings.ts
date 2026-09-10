@@ -26,6 +26,7 @@ export interface PlatformSettingsSnapshot {
   offlinePaymentEnabled: boolean;
   ndpPaymentEnabled: boolean;
   anytimeServiceTestEnabled: boolean;
+  overdueAppointmentGateEnabled: boolean;
   createdByUserId: number | null;
   createdAt: Date;
 }

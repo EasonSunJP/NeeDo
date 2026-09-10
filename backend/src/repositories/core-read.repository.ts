@@ -533,7 +533,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       reviews.map((review) => {
         const amendment = review.amendments[0];
         const tags = amendment ? amendment.tags : review.tags;
-        const customerProfile = review.reviewer.customerProfile;
+        const customerProfile = review.reviewer?.customerProfile;
 
         return {
           id: review.id,
@@ -545,8 +545,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
             displayName:
               customerProfile && !customerProfile.deletedAt
                 ? customerProfile.displayName
-                : review.reviewer.username,
-            avatarUrl: review.reviewer.avatarUrl ?? review.reviewer.avatarBootstrapUrl
+                : review.reviewer?.username ?? "NeeDo System",
+            avatarUrl: review.reviewer
+              ? review.reviewer.avatarUrl ?? review.reviewer.avatarBootstrapUrl
+              : null
           },
           mediaAssets: mediaByReviewId.get(review.id) ?? []
         };

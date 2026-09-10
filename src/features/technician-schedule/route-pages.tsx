@@ -20,8 +20,11 @@ import {
   type BookingOrderStatus,
   type BookingScheduleSlot,
   type OrderCheckout,
-  type OrderReview
+  type OrderReview,
+  type OverdueAppointmentBlock,
+  type OverdueAppointmentResolutionKind
 } from "../booking/api";
+import { OverdueAppointmentResolutionDialog } from "../booking/OverdueAppointmentResolutionDialog";
 import { useOrderRealtimeRefresh } from "../booking/useOrderRealtimeRefresh";
 import { schedulingApi } from "../scheduling/api";
 import { availabilityWindowApi } from "../scheduling/availability-window-api";
@@ -870,6 +873,27 @@ function isAmbiguousOrderMutationError(error: unknown) {
   return !(error instanceof ApiClientError) || error.status === 408 || error.status === 429 || error.status >= 500;
 }
 
+function readOverdueAppointment(error: unknown): OverdueAppointmentBlock | null {
+  if (
+    !(error instanceof ApiClientError) ||
+    error.code !== 41043 ||
+    !error.data ||
+    typeof error.data !== "object"
+  ) {
+    return null;
+  }
+  const value = (error.data as { overdueAppointment?: unknown }).overdueAppointment;
+  if (!value || typeof value !== "object") return null;
+  const appointment = value as OverdueAppointmentBlock;
+  return Number.isInteger(appointment.orderId) &&
+    typeof appointment.orderNo === "string" &&
+    typeof appointment.serviceName === "string" &&
+    typeof appointment.startsAt === "string" &&
+    typeof appointment.endsAt === "string"
+    ? appointment
+    : null;
+}
+
 type PlatformFeeInsufficientBalanceWarning = {
   availableBalanceNdp: number;
   feeAmountNdp: number;
@@ -935,6 +959,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const [reviewRevision, setReviewRevision] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [exchangeOrderLinked, setExchangeOrderLinked] = useState<boolean | null>(null);
+  const [overdueAppointment, setOverdueAppointment] = useState<OverdueAppointmentBlock | null>(null);
   const mutationKeys = useRef(new Map<string, { idempotencyKey: string; semantics: string }>());
 
   useEffect(() => {
@@ -1049,10 +1074,24 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
       setEndArmed(false);
     } catch (error) {
       if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete(slot);
+      const blocked = readOverdueAppointment(error);
+      if (blocked) setOverdueAppointment(blocked);
       setActionError(orderMutationError(error));
     } finally {
       setPending(false);
     }
+  };
+
+  const resolveOverdueAppointment = (resolution: OverdueAppointmentResolutionKind) => {
+    if (!overdueAppointment) return;
+    void runFormalMutation(
+      `overdue-resolution:${overdueAppointment.orderId}:${resolution}`,
+      (idempotencyKey) => bookingApi.resolveOverdueAppointment(
+        overdueAppointment.orderId,
+        { resolution, idempotencyKey }
+      ).then((value) => value.order),
+      JSON.stringify([overdueAppointment.orderId, resolution])
+    ).then(() => setOverdueAppointment(null));
   };
 
   const confirmReceipt = async () => {
@@ -1170,6 +1209,13 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
       subtitle={`${order.orderNo} · ${timeRangeLabel(order.startsAt, order.endsAt)}`}
       title="正式预约订单"
     >
+      {overdueAppointment ? (
+        <OverdueAppointmentResolutionDialog
+          appointment={overdueAppointment}
+          onResolve={resolveOverdueAppointment}
+          pending={pending}
+        />
+      ) : null}
       <div className="space-y-4">
         <section className={panelClass}>
           <div className="flex flex-wrap items-center justify-between gap-3">

@@ -14,8 +14,11 @@ import {
   type BookingOrder,
   type BookingOrderAddOn,
   type OrderCheckout,
-  type OrderReview
+  type OrderReview,
+  type OverdueAppointmentBlock,
+  type OverdueAppointmentResolutionKind
 } from "../../features/booking/api";
+import { OverdueAppointmentResolutionDialog } from "../../features/booking/OverdueAppointmentResolutionDialog";
 import {
   coreReadApi,
   mapCoreShopToStore,
@@ -56,6 +59,27 @@ function describeFormalOrderError(error: unknown) {
 
 function isAmbiguousMutationError(error: unknown) {
   return !(error instanceof ApiClientError) || error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+function readOverdueAppointment(error: unknown): OverdueAppointmentBlock | null {
+  if (
+    !(error instanceof ApiClientError) ||
+    error.code !== 41043 ||
+    !error.data ||
+    typeof error.data !== "object"
+  ) {
+    return null;
+  }
+  const value = (error.data as { overdueAppointment?: unknown }).overdueAppointment;
+  if (!value || typeof value !== "object") return null;
+  const appointment = value as OverdueAppointmentBlock;
+  return Number.isInteger(appointment.orderId) &&
+    typeof appointment.orderNo === "string" &&
+    typeof appointment.serviceName === "string" &&
+    typeof appointment.startsAt === "string" &&
+    typeof appointment.endsAt === "string"
+    ? appointment
+    : null;
 }
 
 function formalStatusLabel(status: BookingOrder["status"]) {
@@ -208,6 +232,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const [reviewRevision, setReviewRevision] = useState(0);
   const [startConfirmOpen, setStartConfirmOpen] = useState(false);
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
+  const [overdueAppointment, setOverdueAppointment] = useState<OverdueAppointmentBlock | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [queryRevision, setQueryRevision] = useState(0);
   const [exchangeOrderLinked, setExchangeOrderLinked] = useState<boolean | null>(null);
@@ -365,6 +390,8 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       await apply(value);
     } catch (error) {
       if (!isAmbiguousMutationError(error)) mutationKeys.current.delete(slot);
+      const blocked = readOverdueAppointment(error);
+      if (blocked) setOverdueAppointment(blocked);
       setActionError(describeFormalOrderError(error));
     } finally {
       setPendingAction(null);
@@ -381,6 +408,17 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const finishService = () => {
     setEndConfirmOpen(false);
     void runOrderMutation("customer-end", (idempotencyKey) => bookingApi.endService(orderId, { reason: "客户确认提前结束服务", idempotencyKey }));
+  };
+  const resolveOverdueAppointment = (resolution: OverdueAppointmentResolutionKind) => {
+    if (!overdueAppointment) return;
+    void runMutation(
+      `overdue-resolution:${overdueAppointment.orderId}:${resolution}`,
+      (idempotencyKey) => bookingApi.resolveOverdueAppointment(overdueAppointment.orderId, { resolution, idempotencyKey }),
+      async () => {
+        setOverdueAppointment(null);
+        await loadOrder();
+      }
+    );
   };
   const applyCheckoutMutation = async (value: OrderCheckout) => {
     setCheckout(value);
@@ -484,6 +522,13 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
 
   return (
     <PageScaffold contentClassName="space-y-4 pb-36" navItems={[]}>
+      {overdueAppointment ? (
+        <OverdueAppointmentResolutionDialog
+          appointment={overdueAppointment}
+          onResolve={resolveOverdueAppointment}
+          pending={Boolean(pendingAction)}
+        />
+      ) : null}
       <AppTopBar actions={order ? <BookingSosButton orderId={order.id} revision={`${order.status}:${order.serviceSession?.endedAt ?? ""}`} /> : null} closeLabel="关闭预约详情" onBack={handleBack} onClose={closeDetail} title="预约详情" />
       {routeState?.notice ? <section className="rounded-[20px] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black">{routeState.notice}</section> : null}
       {queryStatus === "loading" ? <section className="rounded-[24px] bg-[color:var(--client-surface)] p-6 text-center font-black">正在加载预约详情</section> : null}

@@ -110,6 +110,7 @@ const createRepository = (
     refundManualPayment: jest.fn(),
     getServiceVerificationCode: jest.fn().mockResolvedValue("829104"),
     startService: jest.fn().mockResolvedValue(result),
+    resolveOverdueAppointment: jest.fn(),
     createOrderAddOn: jest.fn().mockResolvedValue(result),
     decideOrderAddOn: jest.fn().mockResolvedValue(result),
     endService: jest.fn().mockResolvedValue(result)
@@ -168,6 +169,102 @@ describe("formal order fulfillment service", () => {
       message: "error.order.verification_code_invalid",
       statusCode: 400
     });
+  });
+
+  it("returns the narrow overdue appointment projection when start is blocked", async () => {
+    const overdueAppointment = {
+      orderId: 17,
+      orderNo: "ND202608310017",
+      serviceName: "此前的到店护理",
+      startsAt: new Date("2026-08-31T08:00:00.000Z"),
+      endsAt: new Date("2026-08-31T09:00:00.000Z")
+    };
+    const repository = createRepository(makeOrder("confirmed"), {
+      outcome: "overdue_appointment_blocked",
+      overdueAppointment
+    });
+    const service = new BookingService(repository);
+
+    await expect(
+      service.startService(
+        customer,
+        41,
+        { actor: "customer", idempotencyKey: "customer-overdue-blocked-01" },
+        context
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.ORDER_OVERDUE_APPOINTMENT_BLOCKED,
+      message: "error.order.overdue_appointment_blocked",
+      statusCode: 409,
+      data: { overdueAppointment }
+    });
+  });
+
+  it("resolves a participant no-show through the repository and wires prepaid settlement", async () => {
+    const cancelled = makeOrder("cancelled", {
+      paymentStatus: "confirmed",
+      paymentAmountJpy: 8_800,
+      cancelReason: "overdue_customer_no_show"
+    });
+    const repository = createRepository(makeOrder("confirmed"));
+    repository.resolveOverdueAppointment.mockImplementation(async (_input, options) => {
+      await options?.settle?.({ transactionClient: {} as never, order: cancelled });
+      return {
+        outcome: "ok",
+        applied: true,
+        resolution: {
+          orderId: 41,
+          orderNo: cancelled.orderNo,
+          resolution: "customer_no_show",
+          resolvedAt: now,
+          systemReviewId: 901,
+          order: cancelled
+        }
+      };
+    });
+    const ledger = { settleBookingCompletion: jest.fn() };
+    const service = new BookingService(repository, ledger as never);
+
+    await expect(
+      service.resolveOverdueAppointment(
+        customer,
+        41,
+        { resolution: "customer_no_show", idempotencyKey: "overdue-customer-no-show-01" },
+        context
+      )
+    ).resolves.toMatchObject({ resolution: "customer_no_show", systemReviewId: 901 });
+    expect(repository.resolveOverdueAppointment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: "customer",
+        actorUserId: 101,
+        resolvedByIdentityId: 1501,
+        resolution: "customer_no_show"
+      }),
+      expect.objectContaining({ settle: expect.any(Function) })
+    );
+    expect(ledger.settleBookingCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingOrderId: 41,
+        customerUserId: 101,
+        serviceAmountJpy: 8_800
+      }),
+      expect.objectContaining({ transactionClient: expect.anything() })
+    );
+  });
+
+  it("rejects overdue resolution without an active identity before repository mutation", async () => {
+    const repository = createRepository(makeOrder("confirmed"));
+    const service = new BookingService(repository);
+
+    await expect(
+      service.resolveOverdueAppointment(
+        { ...customer, currentIdentityId: undefined },
+        41,
+        { resolution: "customer_no_show", idempotencyKey: "overdue-missing-identity-01" },
+        context
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.IDENTITY_FORBIDDEN, statusCode: 403 });
+    expect(repository.resolveOverdueAppointment).not.toHaveBeenCalled();
   });
 
   it("rejects client actor mismatch before calling the repository", async () => {
@@ -405,8 +502,20 @@ type RepositoryHarnessOptions = {
   session?: boolean;
   guardedOrderUpdateCount?: number;
   startsAt?: Date;
+  endsAt?: Date;
   sessionExpectedEndsAt?: Date;
   anytimeServiceTestEnabled?: boolean;
+  overdueAppointmentGateEnabled?: boolean;
+  overdueAppointment?: {
+    orderId: number;
+    orderNo: string;
+    serviceName: string;
+    startsAt: Date;
+    endsAt: Date;
+  };
+  prepaid?: boolean;
+  platformFeeAmountNdpSnapshot?: number;
+  orderType?: "BOOKING" | "REQUEST";
   service?: {
     id?: number;
     shopId?: number;
@@ -481,6 +590,12 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     deletedAt: null
   };
   dbOrder.startsAt = options.startsAt ?? dbOrder.startsAt;
+  dbOrder.endsAt = options.endsAt ?? dbOrder.endsAt;
+  if (options.prepaid) {
+    dbOrder.paymentStatus = "CONFIRMED";
+    dbOrder.paymentAmountJpy = 8_800;
+  }
+  dbOrder.orderType = options.orderType ?? dbOrder.orderType;
   let session: HarnessSession | null = options.session
     ? {
         id: 81,
@@ -499,6 +614,9 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     : null;
   const events: HarnessEvent[] = [];
   const addOns: HarnessAddOn[] = [];
+  const overdueResolutions: Array<Record<string, unknown>> = [];
+  const systemReviews: Array<Record<string, unknown>> = [];
+  const notifications: Array<Record<string, unknown>> = [];
   const serviceOption = options.service === undefined ? {} : options.service;
   const catalogService =
     serviceOption === null
@@ -523,16 +641,72 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
   });
   const workState={technicianProfileId:702,status:'on_duty',version:0,syncedAt:null as Date|null};
   const workEvents:Record<string,unknown>[]=[];
+  let rawQueryCount = 0;
   const tx = {
     platformSettingVersion: {
       findFirst: jest.fn(async () => ({
-        anytimeServiceTestEnabled: options.anytimeServiceTestEnabled ?? false
+        anytimeServiceTestEnabled: options.anytimeServiceTestEnabled ?? false,
+        overdueAppointmentGateEnabled: options.overdueAppointmentGateEnabled ?? false
       }))
     },
     technicianWorkState:{upsert:jest.fn(async()=>workState),update:jest.fn(async()=>workState),findFirst:jest.fn(async()=>({...workState})),updateMany:jest.fn(async({where,data}:{where:{version:number};data:{status:string;version:{increment:number};syncedAt:Date}})=>{if(where.version!==workState.version)return {count:0};workState.status=data.status;workState.version+=data.version.increment;workState.syncedAt=data.syncedAt;return {count:1}})},
     technicianWorkEvent:{create:jest.fn(async({data}:{data:Record<string,unknown>})=>{workEvents.push(data);return data})},
     auditLog:{create:jest.fn(async()=>({}))},
-    $queryRaw: jest.fn(async () => [{ id: dbOrder.id }]),
+    orderFinancial: {
+      findUnique: jest.fn(async () => options.prepaid ? ({
+        platformFeeEnabledSnapshot: true,
+        platformFeeAmountNdpSnapshot: options.platformFeeAmountNdpSnapshot ?? 500,
+        platformFeePayerType: "shop",
+        platformFeePayerId: 12,
+        platformFeeWalletOwnerType: "SHOP",
+        platformFeeWalletOwnerId: 12,
+        cRequestFeeHoldNdp: 500,
+        compensationBasisVersion: "compensation:v1",
+        deletedAt: null
+      }) : null),
+      updateMany: jest.fn(async () => ({ count: options.prepaid ? 1 : 0 }))
+    },
+    orderOverdueResolution: {
+      findUnique: jest.fn(async ({ where }: { where: { idempotencyKey?: string; bookingOrderId?: number } }) =>
+        overdueResolutions.find((item) =>
+          where.idempotencyKey ? item.idempotencyKey === where.idempotencyKey : item.bookingOrderId === where.bookingOrderId
+        ) ?? null
+      ),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        const row = { id: overdueResolutions.length + 1, publicId: "00000000-0000-4000-8000-000000000099", systemReviewId: null, ...data };
+        overdueResolutions.push(row);
+        return row;
+      }),
+      update: jest.fn(async ({ where, data }: { where: { id: number }; data: Record<string, unknown> }) => {
+        const row = overdueResolutions.find((item) => item.id === where.id)!;
+        Object.assign(row, data);
+        return row;
+      })
+    },
+    orderReview: {
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        const row = { id: systemReviews.length + 901, tags: [], ...data };
+        systemReviews.push(row);
+        return row;
+      }),
+      findMany: jest.fn(async () => systemReviews)
+    },
+    customerProfile: { findFirst: jest.fn(async () => ({ id: 501, userId: 101 })) },
+    technicianProfile: { findFirst: jest.fn(async () => ({ id: 702, userId: 202 })) },
+    reviewSummary: { upsert: jest.fn(async () => ({})) },
+    userIdentity: { findFirst: jest.fn(async () => ({ id: 1702 })) },
+    notification: { create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => { notifications.push(data); return data; }) },
+    $queryRaw: jest.fn(async () => {
+      rawQueryCount += 1;
+      if (rawQueryCount === 1 || !options.overdueAppointment) return [{ id: dbOrder.id }];
+      return [{
+        order_id: options.overdueAppointment.orderId,
+        order_no: options.overdueAppointment.orderNo,
+        service_name: options.overdueAppointment.serviceName,
+        starts_at: options.overdueAppointment.startsAt,
+        effective_ends_at: options.overdueAppointment.endsAt
+      }];
+    }),
     bookingOrder: {
       findFirst: jest.fn(async (input?:{where?:{status?:string}}) => input?.where?.status&&input.where.status!==dbOrder.status?null:projectedOrder()),
       updateMany: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -656,6 +830,9 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
     dbOrder,
     events,
     addOns,
+    overdueResolutions,
+    systemReviews,
+    notifications,
     tx,
     getSession: () => session
   };
@@ -683,6 +860,272 @@ const illegalGenericTransition: OrderTransitionRepositoryInput = {
 void illegalGenericTransition;
 
 describe("formal order fulfillment repository transactions", () => {
+  it("persists exactly one system zero rating and first-valid no-show resolution", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    try {
+      const harness = createRepositoryHarness({
+        endsAt: new Date(now.getTime() - 60_000),
+        overdueAppointmentGateEnabled: true
+      });
+      const input = {
+        ...repositoryActor,
+        orderId: 41,
+        resolvedByIdentityId: 1501,
+        resolution: "technician_no_show" as const,
+        idempotencyKey: "repository-overdue-tech-no-show",
+        requestFingerprint: "a".repeat(64)
+      };
+
+      await expect(harness.repository.resolveOverdueAppointment(input)).resolves.toMatchObject({
+        outcome: "ok",
+        applied: true,
+        resolution: { resolution: "technician_no_show", systemReviewId: 901 }
+      });
+      expect(harness.dbOrder.status).toBe("CANCELLED");
+      expect(harness.systemReviews).toEqual([
+        expect.objectContaining({ authorType: "SYSTEM", rating: 0, reviewerUserId: null, targetType: "TECHNICIAN" })
+      ]);
+      expect(harness.notifications).toHaveLength(1);
+
+      await expect(harness.repository.resolveOverdueAppointment(input)).resolves.toMatchObject({
+        outcome: "ok",
+        applied: false
+      });
+      expect(harness.systemReviews).toHaveLength(1);
+      expect(harness.notifications).toHaveLength(1);
+
+      await expect(harness.repository.resolveOverdueAppointment({
+        ...input,
+        resolution: "actually_completed",
+        idempotencyKey: "repository-overdue-second-choice",
+        requestFingerprint: "b".repeat(64)
+      })).resolves.toEqual({ outcome: "already_resolved" });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("targets the customer, never the technician actor, for a customer no-show rating", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    try {
+      const harness = createRepositoryHarness({
+        endsAt: new Date(now.getTime() - 60_000),
+        overdueAppointmentGateEnabled: true
+      });
+      await expect(harness.repository.resolveOverdueAppointment({
+        actorUserId: assignedTechnician.userId,
+        actor: "technician",
+        technicianProfileId: assignedTechnician.currentIdentityScopeId,
+        requestContext: context,
+        orderId: 41,
+        resolvedByIdentityId: assignedTechnician.currentIdentityId,
+        resolution: "customer_no_show",
+        idempotencyKey: "repository-overdue-customer-no-show",
+        requestFingerprint: "c".repeat(64)
+      })).resolves.toMatchObject({ outcome: "ok", applied: true });
+      expect(harness.systemReviews).toEqual([
+        expect.objectContaining({
+          authorType: "SYSTEM",
+          customerProfileId: 501,
+          rating: 0,
+          reviewerUserId: null,
+          targetType: "CUSTOMER"
+        })
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("replays normal service history for an actually-completed unpaid appointment without settlement", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    try {
+      const harness = createRepositoryHarness({ endsAt: new Date(now.getTime() - 60_000) });
+      await expect(harness.repository.resolveOverdueAppointment({
+        ...repositoryActor,
+        orderId: 41,
+        resolvedByIdentityId: 1501,
+        resolution: "actually_completed",
+        idempotencyKey: "repository-overdue-actually-completed",
+        requestFingerprint: "d".repeat(64)
+      })).resolves.toMatchObject({
+        outcome: "ok",
+        applied: true,
+        resolution: { order: { status: "awaitingCheckout" }, systemReviewId: null }
+      });
+      expect(harness.dbOrder.statusHistory.map((item) => item.toStatus)).toEqual([
+        "IN_SERVICE",
+        "AWAITING_CHECKOUT"
+      ]);
+      expect(harness.events.map((item) => item.eventType)).toEqual([
+        "SERVICE_STARTED",
+        "SERVICE_ENDED"
+      ]);
+      expect(harness.systemReviews).toHaveLength(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("settles prepaid no-show only from an exact 500 NDP frozen fee snapshot and marks payroll ready", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    try {
+      const valid = createRepositoryHarness({
+        endsAt: new Date(now.getTime() - 60_000),
+        prepaid: true,
+        overdueAppointmentGateEnabled: true
+      });
+      const settle = jest.fn();
+      const input = {
+        ...repositoryActor,
+        orderId: 41,
+        resolvedByIdentityId: 1501,
+        resolution: "technician_no_show" as const,
+        idempotencyKey: "repository-overdue-prepaid-no-show",
+        requestFingerprint: "e".repeat(64)
+      };
+      await expect(valid.repository.resolveOverdueAppointment(input, { settle })).resolves.toMatchObject({
+        outcome: "ok",
+        applied: true
+      });
+      expect(settle).toHaveBeenCalledTimes(1);
+      expect(valid.tx.orderFinancial.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { settlementStatus: "ready_for_payroll", updatedAt: now } })
+      );
+
+      const invalid = createRepositoryHarness({
+        endsAt: new Date(now.getTime() - 60_000),
+        prepaid: true,
+        overdueAppointmentGateEnabled: true,
+        platformFeeAmountNdpSnapshot: 499
+      });
+      await expect(invalid.repository.resolveOverdueAppointment({
+        ...input,
+        idempotencyKey: "repository-overdue-invalid-fee",
+        requestFingerprint: "f".repeat(64)
+      }, { settle })).resolves.toEqual({ outcome: "invalid_state" });
+      expect(invalid.overdueResolutions).toHaveLength(0);
+
+      const requestOrder = createRepositoryHarness({
+        endsAt: new Date(now.getTime() - 60_000),
+        orderType: "REQUEST",
+        prepaid: true,
+        overdueAppointmentGateEnabled: true
+      });
+      await expect(requestOrder.repository.resolveOverdueAppointment({
+        ...input,
+        idempotencyKey: "repository-overdue-request-prepaid",
+        requestFingerprint: "1".repeat(64)
+      }, { settle: jest.fn() })).resolves.toMatchObject({ outcome: "ok", applied: true });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("keeps resolution available while the gate is off without automatic rating or settlement", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    try {
+      const harness = createRepositoryHarness({
+        endsAt: new Date(now.getTime() - 60_000),
+        prepaid: true,
+        overdueAppointmentGateEnabled: false
+      });
+      const settle = jest.fn();
+
+      await expect(harness.repository.resolveOverdueAppointment({
+        ...repositoryActor,
+        orderId: 41,
+        resolvedByIdentityId: 1501,
+        resolution: "technician_no_show",
+        idempotencyKey: "repository-overdue-disabled-resolution",
+        requestFingerprint: "2".repeat(64)
+      }, { settle })).resolves.toMatchObject({
+        outcome: "ok",
+        applied: true,
+        resolution: { systemReviewId: null }
+      });
+
+      expect(harness.dbOrder.status).toBe("CANCELLED");
+      expect(harness.systemReviews).toHaveLength(0);
+      expect(settle).not.toHaveBeenCalled();
+      expect(harness.tx.orderFinancial.updateMany).not.toHaveBeenCalled();
+      expect(harness.notifications).toHaveLength(1);
+
+      const completed = createRepositoryHarness({
+        endsAt: new Date(now.getTime() - 60_000),
+        prepaid: true,
+        overdueAppointmentGateEnabled: false
+      });
+      const completedSettle = jest.fn();
+      await expect(completed.repository.resolveOverdueAppointment({
+        ...repositoryActor,
+        orderId: 41,
+        resolvedByIdentityId: 1501,
+        resolution: "actually_completed",
+        idempotencyKey: "repository-overdue-disabled-completed",
+        requestFingerprint: "3".repeat(64)
+      }, { settle: completedSettle })).resolves.toMatchObject({
+        outcome: "ok",
+        applied: true,
+        resolution: { order: { status: "awaitingCheckout" }, systemReviewId: null }
+      });
+      expect(completedSettle).not.toHaveBeenCalled();
+      expect(completed.dbOrder.statusHistory.map((item) => item.toStatus)).toEqual([
+        "IN_SERVICE",
+        "AWAITING_CHECKOUT"
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("checks and locks an earlier unresolved appointment only when the gate is enabled", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+    const overdueAppointment = {
+      orderId: 17,
+      orderNo: "ND202608310017",
+      serviceName: "此前的到店护理",
+      startsAt: new Date("2026-08-31T08:00:00.000Z"),
+      endsAt: new Date("2026-08-31T09:00:00.000Z")
+    };
+    try {
+      const enabled = createRepositoryHarness({
+        overdueAppointmentGateEnabled: true,
+        overdueAppointment
+      });
+      await expect(
+        enabled.repository.startService({
+          ...repositoryActor,
+          orderId: 41,
+          verificationCode: null,
+          idempotencyKey: "repository-overdue-blocked"
+        })
+      ).resolves.toEqual({ outcome: "overdue_appointment_blocked", overdueAppointment });
+      expect(enabled.events).toHaveLength(0);
+
+      const disabled = createRepositoryHarness({
+        overdueAppointmentGateEnabled: false,
+        overdueAppointment
+      });
+      await expect(
+        disabled.repository.startService({
+          ...repositoryActor,
+          orderId: 41,
+          verificationCode: null,
+          idempotencyKey: "repository-overdue-disabled"
+        })
+      ).resolves.toMatchObject({ outcome: "ok", applied: true });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("enforces the 30-minute start boundary unless anytime service testing is enabled", async () => {
     jest.useFakeTimers();
     jest.setSystemTime(now);

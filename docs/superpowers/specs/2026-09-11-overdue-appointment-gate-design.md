@@ -29,7 +29,7 @@ The operations basic tab renders the exact label and a five-language explanation
 
 ## Start-service transaction
 
-After exact idempotency replay, participant/verification/state checks, and before any service-session or status write, `BookingRepository.startService` locks the active platform-setting row, evaluates the switch, and if enabled locks the earliest matching overdue order in deterministic order. The repository returns `overdue_appointment_blocked` with a narrow projection. `BookingService` maps it to a stable `409` envelope whose data is the projection.
+After exact idempotency replay, participant/verification/state checks, and before any service-session or status write, `BookingRepository.startService` reads the immutable active platform-setting version inside the transaction and, if enabled, locks the earliest matching overdue order in deterministic order. The repository returns `overdue_appointment_blocked` with a narrow projection. `BookingService` maps it to a stable `409` envelope whose data is the projection.
 
 Rejection creates no service session, status history, service event, work-status event, notification, ledger entry, or audit row. An exact replay of a previously successful start remains successful.
 
@@ -37,22 +37,22 @@ Rejection creates no service session, status history, service event, work-status
 
 `POST /api/v1/orders/:id/overdue-resolution` accepts a strict body with `resolution`, a 32–160 character idempotency key, and no client actor/shop/customer identifiers. Valid resolutions are `actually_completed`, `customer_no_show`, and `technician_no_show`. The route requires the new `order:overdue-resolution:create` permission. The service additionally requires the active customer participant or assigned technician participant.
 
-`OrderOverdueResolution` is one immutable row per order with the resolution, resolving user and identity, request fingerprint, idempotency key, service/date snapshots, and timestamps. The transaction locks the order and any existing resolution. Exact replay returns the immutable result; reused keys with different semantics return the standard idempotency conflict; a competing first valid resolution returns the already-persisted result with `applied: false`.
+`OrderOverdueResolution` is one immutable row per order with the resolution, resolving user and identity, request fingerprint, idempotency key, version, service/date snapshots, and timestamps. The transaction locks the order and checks any existing resolution. Exact replay returns the immutable result; reused keys with different semantics return the standard idempotency conflict; a competing semantic choice returns an already-resolved conflict and cannot replace the first valid row.
 
 - `actually_completed` reuses shared fulfillment transition helpers and required status history instead of directly assigning `COMPLETED`. A confirmed order records the normal start/end progression using the persisted appointment window, then enters normal checkout. If confirmed prepaid evidence already exists, the normal completion/settlement authority finalizes it.
 - `customer_no_show` and `technician_no_show` transition the unresolved order to `CANCELLED` with a stable public reason and status-history row.
-- The no-show transaction creates exactly one system-authored rating `0`: customer credit (`CUSTOMER`) for customer no-show, technician review (`TECHNICIAN`) for technician no-show. `OrderReview.reviewerUserId` is nullable only for `SYSTEM` authorship; a dedicated system source key and database uniqueness prevent duplicates. System reviews cannot be amended or deleted through ordinary/backoffice review paths. The audit record retains the resolving actor and links the system rating.
+- While the gate is enabled, the no-show transaction creates exactly one system-authored rating `0`: customer credit (`CUSTOMER`) for customer no-show, technician review (`TECHNICIAN`) for technician no-show. `OrderReview.reviewerUserId` is nullable only for `SYSTEM` authorship; a dedicated system source key and database uniqueness prevent duplicates. System reviews cannot be amended or deleted through ordinary/backoffice review paths. The audit record retains the resolving actor and links the system rating. While the gate is disabled, the resolution remains available but does not create this automatic rating.
 - The counterparty receives one transactional `SYSTEM` notification. Title/body identify the appointment date and snapshotted service and state that it was automatically cancelled because the customer or technician did not perform. The actor is the resolver; the review author remains the system.
 
 ## Prepaid finance and payroll
 
 Prepaid means the booking has formal `paymentStatus = CONFIRMED`, a positive persisted `paymentAmountJpy`, and non-refunded payment evidence. No client claim can make a booking prepaid.
 
-For prepaid no-show or prepaid actual completion, the transaction calls the existing ledger completion settlement with the persisted order type, holder/bearer snapshot and transaction client. The existing acceptance snapshot captures the configured booking platform fee (the current formal default is exactly `500 NDP`) once and preserves NDP/TEST_NDP currency separation. The resolution path does not award a new no-show customer reward.
+While the gate is enabled, prepaid no-show or prepaid actual completion calls the existing ledger completion settlement with the persisted order type, holder/bearer snapshot and transaction client. The existing acceptance snapshot captures the configured booking platform fee (the current formal default is exactly `500 NDP`) once and preserves NDP/TEST_NDP currency separation. The resolution path does not award a new no-show customer reward. While the gate is disabled, resolution does not invoke settlement or mark the order payroll-ready; an actually-completed prepaid order remains in normal checkout until the ordinary settlement authority completes it.
 
 The same transaction upserts order finance using the persisted service amount and `compensationBasisVersion` embedded at booking creation. Platform-collected payment is recorded only for a formal platform NDP payment; confirmed cash/bank/other remains offline-reported. The result becomes `ready_for_payroll`; payroll accepts a cancelled order only when it has an immutable prepaid no-show resolution. Historical technician/shop compensation rules are resolved by the saved basis version.
 
-If there is no confirmed prepaid evidence, resolution creates no service-revenue amount, ledger settlement, or payroll source. Ratings, notification, history, resolution and audit still commit atomically.
+If there is no confirmed prepaid evidence, resolution creates no service-revenue amount, ledger settlement, or payroll source. Notification, history, resolution and audit still commit atomically; rating is included in that transaction only while the gate is enabled.
 
 ## UI behavior
 

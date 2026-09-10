@@ -278,4 +278,39 @@ describe("BackofficeUserReviewRepository", () => {
       })
     });
   });
+
+  it("does not expose a system-authored zero rating to the amendment path", async () => {
+    const findFirst = jest.fn(async () => null);
+    const amendmentCreate = jest.fn();
+    const auditCreate = jest.fn();
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 77 }]),
+      orderReview: { findFirst },
+      orderReviewAmendment: { create: amendmentCreate },
+      auditLog: { create: auditCreate }
+    };
+    const repository = new BackofficeUserReviewRepository({
+      $transaction: jest.fn(async (callback: (tx: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
+    } as never);
+
+    await expect(
+      repository.createAmendmentWithAudit({
+        actorId: 9,
+        reviewId: 77,
+        rating: 1,
+        reason: "Attempted system-rating amendment",
+        expectedVersion: 0,
+        audit: { actorId: 9, action: "review.amend", targetType: "OrderReview" }
+      })
+    ).resolves.toEqual({ kind: "not_found" });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ authorType: "USER" })
+      })
+    );
+    expect(amendmentCreate).not.toHaveBeenCalled();
+    expect(auditCreate).not.toHaveBeenCalled();
+  });
 });

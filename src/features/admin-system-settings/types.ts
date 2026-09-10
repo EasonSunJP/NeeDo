@@ -25,6 +25,7 @@ export type OperationsPlatformSettings = {
   offlinePaymentEnabled: boolean;
   ndpPaymentEnabled: boolean;
   anytimeServiceTestEnabled: boolean;
+  overdueAppointmentGateEnabled: boolean;
   createdByUserId: number | null;
   createdAt: string;
   updatedAt: string;
@@ -43,6 +44,7 @@ export type BasicSettingsInput = {
   passwordLoginOtpRule: LoginVerificationRule;
   passwordLoginOtpOnNewIp: boolean;
   anytimeServiceTestEnabled: boolean;
+  overdueAppointmentGateEnabled: boolean;
   loginLogoMediaPublicId: string | null;
   requestButtonMediaPublicId: string | null;
 };

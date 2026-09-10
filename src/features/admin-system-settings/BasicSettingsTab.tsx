@@ -37,6 +37,7 @@ function draftFrom(settings: OperationsPlatformSettings): Draft {
     passwordLoginOtpRule: settings.passwordLoginOtpRule,
     passwordLoginOtpOnNewIp: settings.passwordLoginOtpOnNewIp,
     anytimeServiceTestEnabled: settings.anytimeServiceTestEnabled,
+    overdueAppointmentGateEnabled: settings.overdueAppointmentGateEnabled,
     loginLogoMediaPublicId: settings.loginLogo?.publicId ?? null,
     requestButtonMediaPublicId: settings.requestButton?.publicId ?? null
   };
@@ -112,6 +113,15 @@ export function BasicSettingsTab({ settings, canWrite, canUpload, canActivateMed
           disabled={!canWrite}
           onChange={(value) => update("anytimeServiceTestEnabled", value)}
         />
+        <div className="mt-3">
+          <SettingToggle
+            title={t("过期预约未处理门禁")}
+            description={t("开启后，用户或技师开始较晚服务前，必须先处置本人参与的更早过期未完成预约。关闭时不阻断开始服务，也不会自动结算或评分。")}
+            checked={draft.overdueAppointmentGateEnabled}
+            disabled={!canWrite}
+            onChange={(value) => update("overdueAppointmentGateEnabled", value)}
+          />
+        </div>
       </section>
 
       <section className="rounded-2xl border border-line bg-paper p-5">

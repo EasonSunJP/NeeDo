@@ -20,6 +20,7 @@ const createHarness = () => {
       offlinePaymentEnabled: true,
       ndpPaymentEnabled: true,
       anytimeServiceTestEnabled: false,
+      overdueAppointmentGateEnabled: false,
       createdByUserId: null,
       createdAt: now,
       updatedAt: now,
@@ -121,6 +122,7 @@ describe("PlatformSettingsRepository", () => {
         passwordLoginOtpRule: "every_login",
         passwordLoginOtpOnNewIp: true,
         anytimeServiceTestEnabled: true,
+        overdueAppointmentGateEnabled: true,
         loginLogoMediaPublicId: "a".repeat(64),
         requestButtonMediaPublicId: null
       },
@@ -136,6 +138,7 @@ describe("PlatformSettingsRepository", () => {
         offlinePaymentEnabled: true,
         ndpPaymentEnabled: true,
         anytimeServiceTestEnabled: true,
+        overdueAppointmentGateEnabled: true,
         loginLogo: { publicId: "a".repeat(64), url: "/media/content/logo.webp" }
       }
     });
@@ -190,6 +193,7 @@ describe("PlatformSettingsRepository", () => {
           passwordLoginOtpRule: "first_login",
           passwordLoginOtpOnNewIp: false,
           anytimeServiceTestEnabled: false,
+          overdueAppointmentGateEnabled: false,
           loginLogoMediaPublicId: "f".repeat(64),
           requestButtonMediaPublicId: null
         },

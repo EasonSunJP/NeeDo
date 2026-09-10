@@ -8,7 +8,7 @@ const attachIdentityMappers = (repository: PayrollRepository): void => {
 };
 
 describe("PayrollRepository order settlement transitions", () => {
-  it("selects only ready-for-payroll completed source orders", async () => {
+  it("selects only ready completed orders or immutable prepaid no-show resolutions", async () => {
     const orderFinancial = { findMany: jest.fn(async () => []) };
     const technicianCompensationProfile = { findMany: jest.fn(async () => []) };
     const shopFinanceRuleSet = { findFirst: jest.fn(async () => null) };
@@ -30,8 +30,22 @@ describe("PayrollRepository order settlement transitions", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           shopId: 16,
+          orderType: { in: ["booking", "request"] },
           settlementStatus: "ready_for_payroll",
-          bookingOrder: expect.objectContaining({ status: "COMPLETED" })
+          bookingOrder: expect.objectContaining({
+            OR: [
+              { status: "COMPLETED" },
+              {
+                status: "CANCELLED",
+                overdueResolution: {
+                  is: {
+                    resolution: { in: ["CUSTOMER_NO_SHOW", "TECHNICIAN_NO_SHOW"] },
+                    deletedAt: null
+                  }
+                }
+              }
+            ]
+          })
         })
       })
     );

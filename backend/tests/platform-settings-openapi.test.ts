@@ -38,6 +38,7 @@ describe("platform settings OpenAPI contract", () => {
         "passwordLoginOtpRule",
         "passwordLoginOtpOnNewIp",
         "anytimeServiceTestEnabled",
+        "overdueAppointmentGateEnabled",
         "loginLogoMediaPublicId",
         "requestButtonMediaPublicId"
       ])
@@ -48,9 +49,13 @@ describe("platform settings OpenAPI contract", () => {
       "every_login"
     ]);
     expect(basic.properties.anytimeServiceTestEnabled).toEqual({ type: "boolean" });
+    expect(basic.properties.overdueAppointmentGateEnabled).toEqual({ type: "boolean" });
 
     expect(schemas.PlatformOperationsSettings.required).toContain(
       "anytimeServiceTestEnabled"
+    );
+    expect(schemas.PlatformOperationsSettings.required).toContain(
+      "overdueAppointmentGateEnabled"
     );
 
     expect(payment).toMatchObject({

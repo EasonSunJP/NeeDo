@@ -1,5 +1,6 @@
 import { recordBookingWorkTransition } from '../domain/work-status-booking';
 import { WorkStatusSession } from './work-status.repository';
+import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
 import {
   BookingOrderStatus as DatabaseBookingOrderStatus,
   OrderPerformanceOutcome,
@@ -459,6 +460,7 @@ export type OrderTransitionRepositoryInput =
 export interface OrderTransitionSettlementContext {
   transactionClient: LedgerTransactionClient;
   order: BookingOrderPayload;
+  checkoutPayment?: { method: "ndp"; payableNdp: number };
 }
 
 export interface OrderTransitionRepositoryOptions {
@@ -835,6 +837,36 @@ export interface StartServiceRepositoryInput extends FulfillmentActorInput {
   idempotencyKey: string;
 }
 
+export type OverdueAppointmentResolutionKind =
+  | "actually_completed"
+  | "customer_no_show"
+  | "technician_no_show";
+
+export interface ResolveOverdueAppointmentRepositoryInput extends FulfillmentActorInput {
+  orderId: number;
+  resolvedByIdentityId: number;
+  resolution: OverdueAppointmentResolutionKind;
+  idempotencyKey: string;
+  requestFingerprint: string;
+}
+
+export interface OverdueAppointmentResolutionPayload {
+  orderId: number;
+  orderNo: string;
+  resolution: OverdueAppointmentResolutionKind;
+  resolvedAt: Date;
+  systemReviewId: number | null;
+  order: BookingOrderPayload;
+}
+
+export type OverdueAppointmentResolutionMutationResult =
+  | { outcome: "ok"; resolution: OverdueAppointmentResolutionPayload; applied: boolean }
+  | { outcome: "not_found" | "invalid_state" | "already_resolved" | "conflict" };
+
+export interface OverdueAppointmentResolutionOptions {
+  settle?: (context: OrderTransitionSettlementContext) => Promise<void>;
+}
+
 export interface CreateOrderAddOnRepositoryInput extends FulfillmentActorInput {
   orderId: number;
   serviceId: number;
@@ -862,6 +894,16 @@ type FulfillmentReplayExpectation =
 
 export type FulfillmentMutationResult =
   | { outcome: "ok"; order: BookingOrderPayload; applied: boolean }
+  | {
+      outcome: "overdue_appointment_blocked";
+      overdueAppointment: {
+        orderId: number;
+        orderNo: string;
+        serviceName: string;
+        startsAt: Date;
+        endsAt: Date;
+      };
+    }
   | {
       outcome:
         | "not_found"
@@ -929,6 +971,10 @@ export interface BookingRepositoryPort {
   findLiveDashboardOrderEvents?: (ids: number[]) => Promise<LiveDashboardOrderEventProjection[]>;
   getServiceVerificationCode: (orderId: number) => Promise<string>;
   startService: (input: StartServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
+  resolveOverdueAppointment: (
+    input: ResolveOverdueAppointmentRepositoryInput,
+    options?: OverdueAppointmentResolutionOptions
+  ) => Promise<OverdueAppointmentResolutionMutationResult>;
   createOrderAddOn: (input: CreateOrderAddOnRepositoryInput) => Promise<FulfillmentMutationResult>;
   decideOrderAddOn: (input: DecideOrderAddOnRepositoryInput) => Promise<FulfillmentMutationResult>;
   endService: (input: EndServiceRepositoryInput) => Promise<FulfillmentMutationResult>;
@@ -2827,6 +2873,10 @@ export class BookingRepository implements BookingRepositoryPort {
       ) {
         return { outcome: "verification_failed" };
       }
+      const overdueAppointment = await this.findBlockingOverdueAppointment(tx, current, now);
+      if (overdueAppointment) {
+        return { outcome: "overdue_appointment_blocked", overdueAppointment };
+      }
       if (
         !(await this.isAnytimeServiceTestEnabled(tx)) &&
         now.getTime() < current.startsAt.getTime() - SERVICE_START_EARLY_ALLOWANCE_MS
@@ -2918,6 +2968,269 @@ export class BookingRepository implements BookingRepositoryPort {
       });
       return this.fulfillmentSuccess(tx, current.id, true);
     });
+  }
+
+  public async resolveOverdueAppointment(
+    input: ResolveOverdueAppointmentRepositoryInput,
+    options: OverdueAppointmentResolutionOptions = {}
+  ): Promise<OverdueAppointmentResolutionMutationResult> {
+    const operation = () =>
+      this.client.$transaction(async (tx) => {
+        await this.lockFulfillmentOrder(tx, input.orderId);
+        const current = await this.findFulfillmentOrder(tx, input.orderId);
+        if (!current || !this.fulfillmentActorMatches(current, input)) {
+          return { outcome: "not_found" } as const;
+        }
+        const automaticConsequencesEnabled = await this.isOverdueAppointmentGateEnabled(tx);
+
+        const keyReplay = await tx.orderOverdueResolution.findUnique({
+          where: { idempotencyKey: input.idempotencyKey }
+        });
+        const existing = await tx.orderOverdueResolution.findUnique({
+          where: { bookingOrderId: current.id }
+        });
+        if (keyReplay && keyReplay.bookingOrderId !== current.id) {
+          return { outcome: "conflict" } as const;
+        }
+        if (existing) {
+          if (
+            existing.idempotencyKey !== input.idempotencyKey ||
+            existing.requestFingerprint !== input.requestFingerprint ||
+            existing.resolvedByUserId !== input.actorUserId
+          ) {
+            return { outcome: "already_resolved" } as const;
+          }
+          const replayOrder = await this.findFulfillmentOrder(tx, current.id);
+          if (!replayOrder) return { outcome: "not_found" } as const;
+          return {
+            outcome: "ok",
+            applied: false,
+            resolution: {
+              orderId: current.id,
+              orderNo: current.orderNo,
+              resolution: this.overdueResolutionFromDb(existing.resolution),
+              resolvedAt: existing.resolvedAt,
+              systemReviewId: existing.systemReviewId,
+              order: this.mapOrder(replayOrder)
+            }
+          } as const;
+        }
+
+        const now = new Date();
+        const effectiveEndsAt = current.serviceSession?.expectedEndsAt ?? current.endsAt;
+        if (
+          effectiveEndsAt.getTime() >= now.getTime() ||
+          ![
+            DatabaseBookingOrderStatus.CONFIRMED,
+            DatabaseBookingOrderStatus.IN_SERVICE,
+            DatabaseBookingOrderStatus.AWAITING_CHECKOUT,
+            DatabaseBookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION
+          ].includes(
+            current.status as
+              | "CONFIRMED"
+              | "IN_SERVICE"
+              | "AWAITING_CHECKOUT"
+              | "AWAITING_PAYMENT_CONFIRMATION"
+          )
+        ) {
+          return { outcome: "invalid_state" } as const;
+        }
+        if (
+          automaticConsequencesEnabled &&
+          current.paymentStatus === "CONFIRMED" &&
+          current.paymentAmountJpy > 0 &&
+          !options.settle
+        ) {
+          return { outcome: "invalid_state" } as const;
+        }
+        let checkoutPayment: { method: "ndp"; payableNdp: number } | undefined;
+        if (
+          automaticConsequencesEnabled &&
+          current.paymentStatus === "CONFIRMED" &&
+          current.paymentAmountJpy > 0
+        ) {
+          const financial = await tx.orderFinancial.findUnique({
+            where: { bookingOrderId: current.id },
+            select: {
+              platformFeeEnabledSnapshot: true,
+              platformFeeAmountNdpSnapshot: true,
+              platformFeePayerType: true,
+              platformFeePayerId: true,
+              platformFeeWalletOwnerType: true,
+              platformFeeWalletOwnerId: true,
+              cRequestFeeHoldNdp: true,
+              compensationBasisVersion: true,
+              deletedAt: true
+            }
+          });
+          if (
+            !financial ||
+            financial.deletedAt ||
+            !financial.platformFeePayerType ||
+            !financial.platformFeePayerId ||
+            !financial.compensationBasisVersion ||
+            (current.orderType === "BOOKING" &&
+              (financial.platformFeeEnabledSnapshot !== true ||
+                financial.platformFeeAmountNdpSnapshot !== 500 ||
+                !financial.platformFeeWalletOwnerType ||
+                !financial.platformFeeWalletOwnerId)) ||
+            (current.orderType === "REQUEST" && financial.cRequestFeeHoldNdp !== 500)
+          ) {
+            return { outcome: "invalid_state" } as const;
+          }
+          if (current.paymentMethod === DatabaseServicePaymentMethod.NDP) {
+            const checkout = await tx.orderCheckout.findUnique({
+              where: { bookingOrderId: current.id },
+              select: { paymentMethod: true, payableNdp: true, ledgerTransactionId: true, deletedAt: true }
+            });
+            if (
+              !checkout ||
+              checkout.deletedAt ||
+              checkout.paymentMethod !== DatabaseServicePaymentMethod.NDP ||
+              checkout.payableNdp <= 0 ||
+              !checkout.ledgerTransactionId
+            ) {
+              return { outcome: "invalid_state" } as const;
+            }
+            checkoutPayment = { method: "ndp", payableNdp: checkout.payableNdp };
+          }
+        }
+
+        const created = await tx.orderOverdueResolution.create({
+          data: {
+            bookingOrderId: current.id,
+            resolution: this.overdueResolutionToDb(input.resolution),
+            resolvedByUserId: input.actorUserId,
+            resolvedByIdentityId: input.resolvedByIdentityId,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: input.requestFingerprint,
+            version: 1,
+            serviceNameSnapshot:
+              current.serviceNameSnapshot ??
+              current.service?.name ??
+              current.technicianService?.name ??
+              "Service",
+            startsAtSnapshot: current.startsAt,
+            endsAtSnapshot: effectiveEndsAt,
+            resolvedAt: now,
+            createdAt: now,
+            updatedAt: now
+          }
+        });
+
+        let systemReviewId: number | null = null;
+        if (automaticConsequencesEnabled && input.resolution !== "actually_completed") {
+          const targetType =
+            input.resolution === "customer_no_show" ? ("customer" as const) : ("technician" as const);
+          const target = await this.resolveAndLockSystemReviewTarget(tx, current, targetType);
+          if (!target) return { outcome: "invalid_state" } as const;
+          const review = await tx.orderReview.create({
+            data: {
+              bookingOrderId: current.id,
+              reviewerUserId: null,
+              authorType: "SYSTEM",
+              systemSourceKey: `overdue_${input.resolution}`,
+              targetType: this.reviewTargetTypeToDb(targetType),
+              customerProfileId: targetType === "customer" ? target.id : null,
+              technicianProfileId: targetType === "technician" ? target.id : null,
+              rating: 0,
+              comment: null,
+              idempotencyKey: `system:${created.publicId}:rating-zero`,
+              requestFingerprint: input.requestFingerprint,
+              createdAt: now,
+              updatedAt: now
+            }
+          });
+          systemReviewId = review.id;
+          await tx.orderOverdueResolution.update({
+            where: { id: created.id },
+            data: { systemReviewId: review.id, updatedAt: now }
+          });
+          await this.recomputeReviewSummary(tx, targetType, target.id, now);
+        }
+
+        if (
+          automaticConsequencesEnabled &&
+          current.paymentStatus === "CONFIRMED" &&
+          current.paymentAmountJpy > 0 &&
+          options.settle
+        ) {
+          await options.settle({
+            transactionClient: tx,
+            order: this.mapOrder(current),
+            checkoutPayment
+          });
+          const payrollReady = await tx.orderFinancial.updateMany({
+            where: {
+              bookingOrderId: current.id,
+              deletedAt: null,
+              compensationBasisVersion: { not: null },
+              serviceIncomeStatus: { in: ["reported", "confirmed"] }
+            },
+            data: { settlementStatus: "ready_for_payroll", updatedAt: now }
+          });
+          if (payrollReady.count !== 1) throw new FulfillmentTransactionAbort();
+        }
+
+        await this.applyOverdueResolutionStatus(
+          tx,
+          current,
+          input,
+          now,
+          created.publicId,
+          automaticConsequencesEnabled
+        );
+
+        await this.createOverdueResolutionNotification(tx, current, input, now);
+        await tx.auditLog.create({
+          data: {
+            actorId: input.actorUserId,
+            action: "order.overdue_appointment.resolved",
+            targetType: "BookingOrder",
+            targetId: current.id,
+            ip: input.requestContext.ip,
+            userAgent: input.requestContext.userAgent,
+            metadata: {
+              resolutionId: created.publicId,
+              resolution: input.resolution,
+              systemReviewId,
+              paymentSettled:
+                automaticConsequencesEnabled &&
+                current.paymentStatus === "CONFIRMED" &&
+                current.paymentAmountJpy > 0,
+              idempotencyKey: input.idempotencyKey
+            },
+            createdAt: now,
+            updatedAt: now
+          }
+        });
+        const updatedOrder = await this.findFulfillmentOrder(tx, current.id);
+        if (!updatedOrder) return { outcome: "not_found" } as const;
+        return {
+          outcome: "ok",
+          applied: true,
+          resolution: {
+            orderId: current.id,
+            orderNo: current.orderNo,
+            resolution: input.resolution,
+            resolvedAt: now,
+            systemReviewId,
+            order: this.mapOrder(updatedOrder)
+          }
+        } as const;
+      });
+
+    try {
+      return await runWithTransactionConflictRetry(operation);
+    } catch (error) {
+      if (error instanceof FulfillmentTransactionAbort) {
+        return { outcome: "invalid_state" };
+      }
+      if (isRetryableTransactionConflict(error) || this.isPrismaUniqueConflict(error)) {
+        return { outcome: "conflict" };
+      }
+      throw error;
+    }
   }
 
   public createOrderAddOn(
@@ -3280,6 +3593,80 @@ export class BookingRepository implements BookingRepositoryPort {
       select: { anytimeServiceTestEnabled: true }
     });
     return setting?.anytimeServiceTestEnabled === true;
+  }
+
+  private async findBlockingOverdueAppointment(
+    transaction: Prisma.TransactionClient,
+    current: OrderRecord,
+    now: Date
+  ): Promise<
+    | {
+        orderId: number;
+        orderNo: string;
+        serviceName: string;
+        startsAt: Date;
+        endsAt: Date;
+      }
+    | null
+  > {
+    if (!(await this.isOverdueAppointmentGateEnabled(transaction))) return null;
+
+    const rows = await transaction.$queryRaw<
+      Array<{
+        order_id: number;
+        order_no: string;
+        service_name: string;
+        starts_at: Date;
+        effective_ends_at: Date;
+      }>
+    >(Prisma.sql`
+      SELECT
+        bo.id AS order_id,
+        bo.order_no,
+        COALESCE(bo.service_name_snapshot, s.name, ts.name) AS service_name,
+        bo.starts_at,
+        COALESCE(oss.expected_ends_at, bo.ends_at) AS effective_ends_at
+      FROM booking_orders bo
+      LEFT JOIN services s ON s.id = bo.service_id
+      LEFT JOIN technician_services ts ON ts.id = bo.technician_service_id
+      LEFT JOIN order_service_sessions oss
+        ON oss.booking_order_id = bo.id AND oss.deleted_at IS NULL
+      LEFT JOIN order_overdue_resolutions oor
+        ON oor.booking_order_id = bo.id AND oor.deleted_at IS NULL
+      WHERE bo.id <> ${current.id}
+        AND bo.deleted_at IS NULL
+        AND oor.id IS NULL
+        AND bo.status IN ('confirmed', 'in_service', 'awaiting_checkout', 'awaiting_payment_confirmation')
+        AND bo.starts_at < ${current.startsAt}
+        AND COALESCE(oss.expected_ends_at, bo.ends_at) < ${now}
+        AND (
+          bo.customer_user_id = ${current.customerUserId}
+          OR (${current.technicianProfileId} IS NOT NULL AND bo.technician_profile_id = ${current.technicianProfileId})
+        )
+      ORDER BY COALESCE(oss.expected_ends_at, bo.ends_at) ASC, bo.starts_at ASC, bo.id ASC
+      LIMIT 1
+      FOR UPDATE
+    `);
+    const blocked = rows[0];
+    if (!blocked) return null;
+    return {
+      orderId: blocked.order_id,
+      orderNo: blocked.order_no,
+      serviceName: blocked.service_name,
+      startsAt: blocked.starts_at,
+      endsAt: blocked.effective_ends_at
+    };
+  }
+
+  private async isOverdueAppointmentGateEnabled(
+    transaction: Prisma.TransactionClient
+  ): Promise<boolean> {
+    const setting = await transaction.platformSettingVersion.findFirst({
+      where: { activeKey: "active", deletedAt: null },
+      orderBy: [{ version: "desc" }, { id: "desc" }],
+      select: { overdueAppointmentGateEnabled: true }
+    });
+    return setting?.overdueAppointmentGateEnabled === true;
   }
 
   public selectCheckoutPaymentMethod(
@@ -5164,6 +5551,268 @@ export class BookingRepository implements BookingRepositoryPort {
         : {}),
       ...extra
     };
+  }
+
+  private overdueResolutionToDb(resolution: OverdueAppointmentResolutionKind) {
+    if (resolution === "actually_completed") return "ACTUALLY_COMPLETED" as const;
+    if (resolution === "customer_no_show") return "CUSTOMER_NO_SHOW" as const;
+    return "TECHNICIAN_NO_SHOW" as const;
+  }
+
+  private overdueResolutionFromDb(resolution: string): OverdueAppointmentResolutionKind {
+    if (resolution === "ACTUALLY_COMPLETED") return "actually_completed";
+    if (resolution === "CUSTOMER_NO_SHOW") return "customer_no_show";
+    return "technician_no_show";
+  }
+
+  private async resolveAndLockSystemReviewTarget(
+    transaction: Prisma.TransactionClient,
+    order: OrderRecord,
+    targetType: "customer" | "technician"
+  ): Promise<{ id: number; userId: number } | null> {
+    if (targetType === "technician") {
+      if (!order.technicianProfileId || !order.technicianProfile) return null;
+      await transaction.$queryRaw(
+        Prisma.sql`SELECT id FROM technician_profiles WHERE id = ${order.technicianProfileId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      return transaction.technicianProfile.findFirst({
+        where: { id: order.technicianProfileId, deletedAt: null },
+        select: { id: true, userId: true }
+      });
+    }
+    const target = await transaction.customerProfile.findFirst({
+      where: { userId: order.customerUserId, deletedAt: null },
+      select: { id: true, userId: true }
+    });
+    if (!target) return null;
+    await transaction.$queryRaw(
+      Prisma.sql`SELECT id FROM customer_profiles WHERE id = ${target.id} AND deleted_at IS NULL FOR UPDATE`
+    );
+    return target;
+  }
+
+  private async createOverdueResolutionNotification(
+    transaction: Prisma.TransactionClient,
+    order: OrderRecord,
+    input: ResolveOverdueAppointmentRepositoryInput,
+    now: Date
+  ): Promise<void> {
+    const recipientUserId =
+      input.actor === "customer" ? order.technicianProfile!.userId : order.customerUserId;
+    const recipientIdentityId =
+      input.actor === "customer"
+        ? (
+            await transaction.userIdentity.findFirst({
+              where: {
+                userId: recipientUserId,
+                type: "technician",
+                scopeType: "technician_profile",
+                scopeId: order.technicianProfileId,
+                isActive: true,
+                deletedAt: null
+              },
+              orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+              select: { id: true }
+            })
+          )?.id
+        : await resolveCanonicalPersonalIdentityId(transaction, recipientUserId);
+    if (!recipientIdentityId) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_NOT_FOUND,
+        message: "error.auth.identity_not_found",
+        statusCode: 409
+      });
+    }
+    const serviceName =
+      order.serviceNameSnapshot ?? order.service?.name ?? order.technicianService?.name ?? "Service";
+    await transaction.notification.create({
+      data: {
+        recipientUserId,
+        recipientIdentityId,
+        actorUserId: input.actorUserId,
+        actorIdentityId: input.resolvedByIdentityId,
+        type: "SYSTEM",
+        title: "预约逾期处置通知",
+        body: `${order.startsAt.toISOString()} 的「${serviceName}」已按${input.resolution}处置。`,
+        payload: {
+          orderId: order.id,
+          orderNo: order.orderNo,
+          serviceName,
+          startsAt: order.startsAt.toISOString(),
+          resolution: input.resolution
+        },
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+  }
+
+  private async applyOverdueResolutionStatus(
+    transaction: Prisma.TransactionClient,
+    order: OrderRecord,
+    input: ResolveOverdueAppointmentRepositoryInput,
+    now: Date,
+    resolutionPublicId: string,
+    automaticConsequencesEnabled: boolean
+  ): Promise<void> {
+    if (input.resolution !== "actually_completed") {
+      const updated = await transaction.bookingOrder.updateMany({
+        where: { id: order.id, status: order.status, deletedAt: null },
+        data: {
+          status: DatabaseBookingOrderStatus.CANCELLED,
+          cancelReason: `overdue_${input.resolution}`,
+          updatedAt: now
+        }
+      });
+      if (updated.count !== 1) throw new FulfillmentTransactionAbort();
+      await transaction.orderStatusHistory.create({
+        data: {
+          bookingOrderId: order.id,
+          fromStatus: order.status,
+          toStatus: DatabaseBookingOrderStatus.CANCELLED,
+          actorUserId: input.actorUserId,
+          reason: `overdue_resolution:${input.resolution}`,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      return;
+    }
+
+    let status = order.status;
+    let sessionId = order.serviceSession?.id ?? null;
+    let sessionEndedAt = order.serviceSession?.endedAt ?? null;
+    if (status === DatabaseBookingOrderStatus.CONFIRMED) {
+      const session = order.serviceSession
+        ? await transaction.orderServiceSession.update({
+            where: { id: order.serviceSession.id },
+            data: {
+              startedByUserId: input.actorUserId,
+              startedAt: order.startsAt,
+              expectedEndsAt: order.endsAt,
+              endedByUserId: input.actorUserId,
+              endedAt: order.endsAt,
+              updatedAt: now
+            }
+          })
+        : await transaction.orderServiceSession.create({
+            data: {
+              bookingOrderId: order.id,
+              verificationHash: hashOrderServiceVerificationCode(
+                order.id,
+                deriveOrderServiceVerificationCode(order.id)
+              ),
+              startedByUserId: input.actorUserId,
+              startedAt: order.startsAt,
+              expectedEndsAt: order.endsAt,
+              endedByUserId: input.actorUserId,
+              endedAt: order.endsAt,
+              createdAt: now,
+              updatedAt: now
+            }
+          });
+      sessionId = session.id;
+      sessionEndedAt = session.endedAt;
+      await this.persistOverdueStatusStep(
+        transaction,
+        order.id,
+        status,
+        DatabaseBookingOrderStatus.IN_SERVICE,
+        input.actorUserId,
+        "overdue_resolution:service_started",
+        now
+      );
+      await transaction.orderServiceEvent.create({
+        data: {
+          bookingOrderId: order.id,
+          serviceSessionId: sessionId,
+          eventType: DatabaseOrderServiceEventType.SERVICE_STARTED,
+          actorUserId: input.actorUserId,
+          idempotencyKey: `overdue:${resolutionPublicId}:service-started`,
+          metadata: this.fulfillmentEventMetadata(input),
+          occurredAt: order.startsAt,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      status = DatabaseBookingOrderStatus.IN_SERVICE;
+    }
+    if (status === DatabaseBookingOrderStatus.IN_SERVICE) {
+      if (!sessionId) throw new FulfillmentTransactionAbort();
+      if (!sessionEndedAt) {
+        await transaction.orderServiceSession.update({
+          where: { id: sessionId },
+          data: { endedByUserId: input.actorUserId, endedAt: order.endsAt, updatedAt: now }
+        });
+      }
+      await this.persistOverdueStatusStep(
+        transaction,
+        order.id,
+        status,
+        DatabaseBookingOrderStatus.AWAITING_CHECKOUT,
+        input.actorUserId,
+        "overdue_resolution:service_ended",
+        now
+      );
+      await transaction.orderServiceEvent.create({
+        data: {
+          bookingOrderId: order.id,
+          serviceSessionId: sessionId,
+          eventType: DatabaseOrderServiceEventType.SERVICE_ENDED,
+          actorUserId: input.actorUserId,
+          idempotencyKey: `overdue:${resolutionPublicId}:service-ended`,
+          reason: "overdue_resolution:actually_completed",
+          metadata: this.fulfillmentEventMetadata(input),
+          occurredAt: order.endsAt,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      status = DatabaseBookingOrderStatus.AWAITING_CHECKOUT;
+    }
+    if (
+      automaticConsequencesEnabled &&
+      order.paymentStatus === "CONFIRMED" &&
+      order.paymentAmountJpy > 0
+    ) {
+      await this.persistOverdueStatusStep(
+        transaction,
+        order.id,
+        status,
+        DatabaseBookingOrderStatus.COMPLETED,
+        input.actorUserId,
+        "overdue_resolution:prepaid_completed",
+        now
+      );
+    }
+  }
+
+  private async persistOverdueStatusStep(
+    transaction: Prisma.TransactionClient,
+    orderId: number,
+    fromStatus: DatabaseBookingOrderStatus,
+    toStatus: DatabaseBookingOrderStatus,
+    actorUserId: number,
+    reason: string,
+    now: Date
+  ): Promise<void> {
+    if (fromStatus === toStatus) return;
+    const updated = await transaction.bookingOrder.updateMany({
+      where: { id: orderId, status: fromStatus, deletedAt: null },
+      data: { status: toStatus, updatedAt: now }
+    });
+    if (updated.count !== 1) throw new FulfillmentTransactionAbort();
+    await transaction.orderStatusHistory.create({
+      data: {
+        bookingOrderId: orderId,
+        fromStatus,
+        toStatus,
+        actorUserId,
+        reason,
+        createdAt: now,
+        updatedAt: now
+      }
+    });
   }
 
   private reviewActorMatches(order: OrderRecord, input: OrderReviewActorInput): boolean {

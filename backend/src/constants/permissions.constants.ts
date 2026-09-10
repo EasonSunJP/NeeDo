@@ -496,6 +496,13 @@ export const SYSTEM_PERMISSIONS = [
     "订单顾客或指派技师按正式验证码流程开始服务"
   ),
   createPermission(
+    "order:overdue-resolution:create",
+    "处置过期预约",
+    "api",
+    "order",
+    "订单顾客或指派技师处置本人参与的过期未完成预约"
+  ),
+  createPermission(
     "order:add-on:write",
     "维护追加服务",
     "api",
@@ -2269,6 +2276,7 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   "order:read",
   "order:cancel",
   "order:service:start",
+  "order:overdue-resolution:create",
   "order:add-on:write",
   "order:service:end",
   "order:review:create",
@@ -2687,6 +2695,7 @@ export const buildRolePermissionAssignments = (): Record<
     "technician-profile:read",
     "technician-profile:write",
     "order:service:start",
+    "order:overdue-resolution:create",
     "order:add-on:write",
     "order:service:end",
     "order:review:create",

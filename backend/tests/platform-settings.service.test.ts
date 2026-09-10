@@ -42,6 +42,7 @@ const setting = (overrides: Partial<PlatformSettingsRecord> = {}): PlatformSetti
   offlinePaymentEnabled: true,
   ndpPaymentEnabled: true,
   anytimeServiceTestEnabled: false,
+  overdueAppointmentGateEnabled: false,
   createdByUserId: null,
   createdAt: new Date("2026-09-01T00:00:00.000Z"),
   updatedAt: new Date("2026-09-01T00:00:00.000Z"),
@@ -59,6 +60,7 @@ const basicInput = {
   passwordLoginOtpRule: "monthly_first" as const,
   passwordLoginOtpOnNewIp: true,
   anytimeServiceTestEnabled: true,
+  overdueAppointmentGateEnabled: true,
   loginLogoMediaPublicId: null,
   requestButtonMediaPublicId: null
 };
@@ -99,6 +101,7 @@ describe("PlatformSettingsService", () => {
       passwordLoginOtpRule: "monthly_first",
       passwordLoginOtpOnNewIp: true,
       anytimeServiceTestEnabled: true,
+      overdueAppointmentGateEnabled: true,
       offlinePaymentEnabled: true,
       ndpPaymentEnabled: true
     });
@@ -250,7 +253,8 @@ describe("PlatformSettingsService", () => {
             "passwordLoginOtpEnabled",
             "passwordLoginOtpRule",
             "passwordLoginOtpOnNewIp",
-            "anytimeServiceTestEnabled"
+            "anytimeServiceTestEnabled",
+            "overdueAppointmentGateEnabled"
           ])
         }
       })

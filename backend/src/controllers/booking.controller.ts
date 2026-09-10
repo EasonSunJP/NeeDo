@@ -24,6 +24,7 @@ import {
   payWithNdpBodySchema,
   selectPaymentMethodBodySchema,
   startServiceBodySchema,
+  overdueAppointmentResolutionBodySchema,
   scheduleSlotCreateBodySchema,
   scheduleSlotDeleteQuerySchema,
   scheduleSlotListQuerySchema,
@@ -248,6 +249,27 @@ export class BookingController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public resolveOverdueAppointment = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.resolveOverdueAppointment(
+            this.getActor(response),
+            this.getOrderId(request),
+            overdueAppointmentResolutionBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }

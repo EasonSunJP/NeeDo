@@ -16,6 +16,7 @@ export const platformBasicSettingsBodySchema = z
     passwordLoginOtpRule: z.enum(PLATFORM_LOGIN_VERIFICATION_RULES),
     passwordLoginOtpOnNewIp: z.boolean(),
     anytimeServiceTestEnabled: z.boolean(),
+    overdueAppointmentGateEnabled: z.boolean(),
     loginLogoMediaPublicId: mediaPublicIdSchema,
     requestButtonMediaPublicId: mediaPublicIdSchema
   })

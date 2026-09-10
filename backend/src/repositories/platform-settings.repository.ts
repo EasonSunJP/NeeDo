@@ -44,6 +44,7 @@ const settingSelect = Prisma.validator<Prisma.PlatformSettingVersionSelect>()({
   offlinePaymentEnabled: true,
   ndpPaymentEnabled: true,
   anytimeServiceTestEnabled: true,
+  overdueAppointmentGateEnabled: true,
   createdByUserId: true,
   createdAt: true,
   updatedAt: true,
@@ -73,6 +74,7 @@ export interface PlatformSettingsRecord {
   offlinePaymentEnabled: boolean;
   ndpPaymentEnabled: boolean;
   anytimeServiceTestEnabled: boolean;
+  overdueAppointmentGateEnabled: boolean;
   createdByUserId: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -88,6 +90,7 @@ export interface PlatformBasicSettingsChanges {
   passwordLoginOtpRule: PlatformLoginVerificationRule;
   passwordLoginOtpOnNewIp: boolean;
   anytimeServiceTestEnabled: boolean;
+  overdueAppointmentGateEnabled: boolean;
   loginLogoMediaPublicId: string | null;
   requestButtonMediaPublicId: string | null;
 }
@@ -232,6 +235,10 @@ export class PlatformSettingsRepository implements PlatformSettingsRepositoryPor
           input.section === "basic"
             ? input.changes.anytimeServiceTestEnabled
             : current.anytimeServiceTestEnabled,
+        overdueAppointmentGateEnabled:
+          input.section === "basic"
+            ? input.changes.overdueAppointmentGateEnabled
+            : current.overdueAppointmentGateEnabled,
         loginLogoMediaAssetId,
         requestButtonMediaAssetId,
         offlinePaymentEnabled:
@@ -297,6 +304,7 @@ export class PlatformSettingsRepository implements PlatformSettingsRepositoryPor
       offlinePaymentEnabled: setting.offlinePaymentEnabled,
       ndpPaymentEnabled: setting.ndpPaymentEnabled,
       anytimeServiceTestEnabled: setting.anytimeServiceTestEnabled,
+      overdueAppointmentGateEnabled: setting.overdueAppointmentGateEnabled,
       createdByUserId: setting.createdByUserId,
       createdAt: setting.createdAt,
       updatedAt: setting.updatedAt,

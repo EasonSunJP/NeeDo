@@ -43,6 +43,7 @@ import {
   payWithNdpBodySchema,
   selectPaymentMethodBodySchema,
   startServiceBodySchema,
+  overdueAppointmentResolutionBodySchema,
   scheduleSlotCreateBodySchema,
   scheduleSlotDeleteQuerySchema,
   scheduleSlotListQuerySchema,
@@ -61,6 +62,7 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   confirm: "order:confirm",
   cancel: "order:cancel",
   serviceStart: "order:service:start",
+  overdueResolution: "order:overdue-resolution:create",
   addOnWrite: "order:add-on:write",
   serviceEnd: "order:service:end",
   reviewCreate: "order:review:create",
@@ -211,6 +213,13 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.serviceStart),
     validateRequest({ params: orderIdParamSchema, body: startServiceBodySchema }),
     controller.startService
+  );
+  router.post(
+    "/orders/:id/overdue-resolution",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.overdueResolution),
+    validateRequest({ params: orderIdParamSchema, body: overdueAppointmentResolutionBodySchema }),
+    controller.resolveOverdueAppointment
   );
   router.post(
     "/orders/:id/add-ons",

@@ -213,6 +213,7 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
         const review = await transaction.orderReview.findFirst({
           where: {
             id: input.reviewId,
+            authorType: "USER",
             targetType: OrderReviewTargetType.CUSTOMER,
             deletedAt: null,
             bookingOrder: { status: BookingOrderStatus.COMPLETED, deletedAt: null }
@@ -330,14 +331,16 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
         addOnCount: order.addOns.length,
         addOnMinutes: order.addOns.reduce((sum, item) => sum + item.durationMinutes, 0)
       },
-      reviewer: {
-        needoId: row.reviewer.needoId,
-        displayName:
-          row.reviewer.technicianProfile?.displayName ??
-          row.reviewer.customerProfile?.displayName ??
-          row.reviewer.username,
-        avatarUrl: row.reviewer.avatarUrl ?? row.reviewer.avatarBootstrapUrl
-      }
+      reviewer: row.reviewer
+        ? {
+            needoId: row.reviewer.needoId,
+            displayName:
+              row.reviewer.technicianProfile?.displayName ??
+              row.reviewer.customerProfile?.displayName ??
+              row.reviewer.username,
+            avatarUrl: row.reviewer.avatarUrl ?? row.reviewer.avatarBootstrapUrl
+          }
+        : { needoId: "system", displayName: "NeeDo System", avatarUrl: null }
     };
   }
 

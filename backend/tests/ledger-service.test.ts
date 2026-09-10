@@ -670,6 +670,44 @@ describe("LedgerService wallet mutations", () => {
     });
   });
 
+  it("settles a no-show from the frozen 500 NDP fee without issuing a customer reward", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1_000 });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = bookingInput({
+      bookingOrderId: 305,
+      shopId: 10,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+
+    await service.freezeBookingAcceptance(input);
+    await service.settleBookingCompletion({
+      ...input,
+      customerUserId: 3,
+      suppressCustomerReward: true
+    });
+
+    expect(repository.wallets.get("shop:10:NDP")).toMatchObject({
+      availableBalance: 500,
+      frozenBalance: 0
+    });
+    expect(repository.wallets.has("user:3:NDP")).toBe(false);
+    expect(repository.financials.get(305)).toMatchObject({
+      bPlatformFeeActualNdp: 500,
+      userRewardNdp: 0,
+      userRewardStatus: "disabled",
+      userRewardEligibleNdp: 0,
+      userRewardGrantedAt: null
+    });
+  });
+
   it("pays merchant-cancel compensation only in the booking's Test NDP currency", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.accountClassifications.set(3, true);

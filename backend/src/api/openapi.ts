@@ -129,6 +129,11 @@ const platformSettingsVersionOpenApiProperties = {
     description:
       "Operations-only test switch. False enforces start no earlier than 30 minutes before startsAt and end no earlier than expectedEndsAt."
   },
+  overdueAppointmentGateEnabled: {
+    type: "boolean",
+    description:
+      "Operations-only switch. When true, a later service start is blocked by an earlier expired unresolved appointment for the same customer or technician."
+  },
   createdByUserId: { type: ["integer", "null"], minimum: 1 },
   createdAt: { type: "string", format: "date-time" },
   updatedAt: { type: "string", format: "date-time" },
@@ -3572,6 +3577,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "passwordLoginOtpRule",
           "passwordLoginOtpOnNewIp",
           "anytimeServiceTestEnabled",
+          "overdueAppointmentGateEnabled",
           "loginLogoMediaPublicId",
           "requestButtonMediaPublicId"
         ],
@@ -3590,6 +3596,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             description: "May be true only when passwordLoginOtpEnabled is true."
           },
           anytimeServiceTestEnabled: { type: "boolean" },
+          overdueAppointmentGateEnabled: { type: "boolean" },
           loginLogoMediaPublicId: { type: ["string", "null"], pattern: "^[a-f0-9]{64}$" },
           requestButtonMediaPublicId: {
             type: ["string", "null"],
@@ -22556,7 +22563,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking Fulfillment"],
         summary: "Start service as the owning customer or assigned technician",
         description:
-          "The service derives actor identity from authentication. A technician supplies the six-digit customer-visible verification code; the code and its hash are never returned here. Unless Operations explicitly enables anytime service testing, start is allowed only from 30 minutes before startsAt.",
+          "The service derives actor identity from authentication. A technician supplies the six-digit customer-visible verification code; the code and its hash are never returned here. Unless Operations explicitly enables anytime service testing, start is allowed only from 30 minutes before startsAt. When overdue appointment gating is enabled, the same transaction locks and rejects the earliest unresolved overdue appointment for the customer or assigned technician.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:service:start",
         parameters: [idPathParameter()],
@@ -22603,6 +22610,34 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "400": jsonErrorResponse(
             "40001 error.validation — strict request validation failed; 40108 error.order.verification_code_invalid — the assigned technician supplied an invalid service verification code"
           ),
+          "403": fulfillmentForbiddenResponse,
+          "409": fulfillmentConflictResponse
+        }
+      }
+    },
+    [`${config.API_PREFIX}/orders/{id}/overdue-resolution`]: {
+      post: {
+        operationId: "resolveOverdueAppointment",
+        tags: ["Booking Fulfillment"],
+        summary: "Resolve an overdue appointment as an authenticated participant",
+        description:
+          "First valid resolution wins under an order lock. Resolution remains available while the gate is off, without automatic settlement or rating. While the gate is on, no-show outcomes cancel the order, notify the counterparty, and create exactly one immutable system-authored zero rating for the absent participant; confirmed prepaid orders reuse the frozen formal settlement snapshot, while unpaid orders do not create settlement transfers.",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "order:overdue-resolution:create",
+        parameters: [idPathParameter()],
+        requestBody: authJsonBody(
+          {
+            resolution: {
+              type: "string",
+              enum: ["actually_completed", "customer_no_show", "technician_no_show"]
+            },
+            idempotencyKey: { $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey" }
+          },
+          ["resolution", "idempotencyKey"]
+        ),
+        responses: {
+          "200": { description: "Persisted overdue appointment resolution and safe order projection" },
+          ...formalOrderCommonErrorResponses,
           "403": fulfillmentForbiddenResponse,
           "409": fulfillmentConflictResponse
         }

@@ -586,6 +586,7 @@ export interface BookingLedgerSettlementInput {
     method: "ndp";
     payableNdp: number;
   };
+  suppressCustomerReward?: boolean;
   insufficientBalanceConfirmation?: {
     confirmed: true;
     idempotencyKey: string;
@@ -2385,7 +2386,7 @@ export class LedgerService
       const holdRemaining = this.remainingHoldAmount(hold);
       const captureAmount = Math.min(fee.finalFeeNdp, holdRemaining);
       const releaseAmount = Math.max(0, holdRemaining - captureAmount);
-      const rewardAmount = reward.finalFeeNdp;
+      const rewardAmount = input.suppressCustomerReward ? 0 : reward.finalFeeNdp;
       const merchantFrozenDelta = -(captureAmount + releaseAmount);
       const merchantAvailableDelta = releaseAmount;
       const transactionAmount = captureAmount + releaseAmount + rewardAmount;
@@ -2455,6 +2456,14 @@ export class LedgerService
           releasedNdp: releaseAmount,
           completedOrderOrdinalInPeriod: fee.completedOrderOrdinalInPeriod,
           appliedFeeRuleIds: [...fee.appliedRuleIds, ...reward.appliedRuleIds],
+          ...(input.suppressCustomerReward
+            ? {
+                userRewardEligibleNdp: 0,
+                userRewardStatus: "disabled" as const,
+                userRewardDeadlineAt: null,
+                userRewardGrantedAt: null
+              }
+            : {}),
           settlementStatus: "settled",
           timelineEvent: {
             action: "booking_complete_settlement",
@@ -2589,8 +2598,9 @@ export class LedgerService
     const captureAmount = Math.min(snapshot.platformFeeAmountNdpSnapshot, holdRemaining);
     const releaseAmount = Math.max(0, holdRemaining - captureAmount);
     const reward = await this.calculateFee("user_reward", "capture", input, context);
-    const eligibleRewardNdp = reward.finalFeeNdp;
-    const rewardPending = snapshot.platformFeeOutstandingNdp > 0;
+    const rewardDisabled = input.suppressCustomerReward === true;
+    const eligibleRewardNdp = rewardDisabled ? 0 : reward.finalFeeNdp;
+    const rewardPending = !rewardDisabled && snapshot.platformFeeOutstandingNdp > 0;
     const rewardAmount = rewardPending ? 0 : eligibleRewardNdp;
     const rewardDeadlineAt = rewardPending
       ? new Date(completedAt.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -2663,9 +2673,9 @@ export class LedgerService
         platformFeeOutstandingNdp: snapshot.platformFeeOutstandingNdp,
         platformFeeDebtStatus: snapshot.platformFeeDebtStatus,
         userRewardEligibleNdp: eligibleRewardNdp,
-        userRewardStatus: rewardPending ? "pending" : "immediate",
+        userRewardStatus: rewardDisabled ? "disabled" : rewardPending ? "pending" : "immediate",
         userRewardDeadlineAt: rewardDeadlineAt,
-        userRewardGrantedAt: rewardPending ? null : completedAt,
+        userRewardGrantedAt: rewardDisabled || rewardPending ? null : completedAt,
         appliedFeeRuleIds: reward.appliedRuleIds,
         settlementStatus: "settled",
         timelineEvent: {
@@ -2674,7 +2684,7 @@ export class LedgerService
           releasedNdp: releaseAmount,
           userRewardNdp: rewardAmount,
           userRewardEligibleNdp: eligibleRewardNdp,
-          rewardStatus: rewardPending ? "pending" : "immediate",
+          rewardStatus: rewardDisabled ? "disabled" : rewardPending ? "pending" : "immediate",
           rewardDeadlineAt: rewardDeadlineAt?.toISOString() ?? null
         }
       },
@@ -2700,7 +2710,7 @@ export class LedgerService
         platformFeeAmount: captureAmount,
         platformFeeReleaseAmount: releaseAmount,
         customerRewardAmount: rewardAmount,
-        rewardStatus: rewardPending ? "pending" : "immediate"
+        rewardStatus: rewardDisabled ? "disabled" : rewardPending ? "pending" : "immediate"
       }
     });
     if (captureAmount > 0) {
