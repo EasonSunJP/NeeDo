@@ -3,15 +3,21 @@ ALTER TABLE `platform_setting_versions`
 
 ALTER TABLE `order_reviews`
   DROP CHECK `order_reviews_rating_check`,
+  DROP FOREIGN KEY `order_reviews_reviewer_user_id_fkey`,
   MODIFY COLUMN `reviewer_user_id` INTEGER NULL,
   ADD COLUMN `author_type` ENUM('user', 'system') NOT NULL DEFAULT 'user' AFTER `reviewer_user_id`,
   ADD COLUMN `system_source_key` VARCHAR(80) NULL AFTER `author_type`,
   ADD CONSTRAINT `order_reviews_rating_check` CHECK (`rating` BETWEEN 0 AND 5),
+  ADD UNIQUE INDEX `order_reviews_order_target_system_source_key` (`booking_order_id`, `target_type`, `system_source_key`);
+
+ALTER TABLE `order_reviews`
+  ADD CONSTRAINT `order_reviews_reviewer_user_id_fkey` FOREIGN KEY (`reviewer_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+ALTER TABLE `order_reviews`
   ADD CONSTRAINT `order_reviews_author_check` CHECK (
     (`author_type` = 'user' AND `reviewer_user_id` IS NOT NULL AND `system_source_key` IS NULL)
     OR (`author_type` = 'system' AND `reviewer_user_id` IS NULL AND `system_source_key` IS NOT NULL)
-  ),
-  ADD UNIQUE INDEX `order_reviews_order_target_system_source_key` (`booking_order_id`, `target_type`, `system_source_key`);
+  );
 
 CREATE TABLE `order_overdue_resolutions` (
   `id` INTEGER NOT NULL AUTO_INCREMENT,

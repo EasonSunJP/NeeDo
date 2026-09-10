@@ -42,6 +42,26 @@ describe("overdue appointment persistence", () => {
     expect(review).toContain("@@unique([bookingOrderId, targetType, systemSourceKey]");
   });
 
+  it("uses a restrictive reviewer foreign key before checking nullable system authors", () => {
+    const review = modelBlock("OrderReview");
+    const dropForeignKeyAt = migration.indexOf(
+      "DROP FOREIGN KEY `order_reviews_reviewer_user_id_fkey`"
+    );
+    const addRestrictiveForeignKeyAt = migration.indexOf(
+      "CONSTRAINT `order_reviews_reviewer_user_id_fkey` FOREIGN KEY (`reviewer_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT"
+    );
+    const addAuthorCheckAt = migration.indexOf(
+      "ADD CONSTRAINT `order_reviews_author_check` CHECK"
+    );
+
+    expect(review).toContain(
+      '@relation("OrderReviewReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)'
+    );
+    expect(dropForeignKeyAt).toBeGreaterThanOrEqual(0);
+    expect(addRestrictiveForeignKeyAt).toBeGreaterThan(dropForeignKeyAt);
+    expect(addAuthorCheckAt).toBeGreaterThan(addRestrictiveForeignKeyAt);
+  });
+
   it("ships additive constraints and participant indexes", () => {
     expect(migration).toContain("CREATE TABLE `order_overdue_resolutions`");
     expect(migration).toContain("`version` INTEGER NOT NULL DEFAULT 1");

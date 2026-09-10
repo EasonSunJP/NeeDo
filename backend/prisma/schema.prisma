@@ -4917,7 +4917,7 @@ model OrderReview {
   deletedAt           DateTime?             @map("deleted_at")
 
   bookingOrder      BookingOrder       @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
-  reviewer          User?              @relation("OrderReviewReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  reviewer          User?              @relation("OrderReviewReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   customerProfile   CustomerProfile?   @relation("OrderReviewCustomer", fields: [customerProfileId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation("OrderReviewTechnician", fields: [technicianProfileId], references: [id], onDelete: Restrict)
   tags              OrderReviewTag[]
