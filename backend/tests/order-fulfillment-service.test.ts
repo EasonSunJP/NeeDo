@@ -407,6 +407,7 @@ type RepositoryHarnessOptions = {
   startsAt?: Date;
   sessionExpectedEndsAt?: Date;
   anytimeServiceTestEnabled?: boolean;
+  activePlatformSettingMissing?: boolean;
   service?: {
     id?: number;
     shopId?: number;
@@ -525,9 +526,13 @@ const createRepositoryHarness = (options: RepositoryHarnessOptions = {}) => {
   const workEvents:Record<string,unknown>[]=[];
   const tx = {
     platformSettingVersion: {
-      findFirst: jest.fn(async () => ({
-        anytimeServiceTestEnabled: options.anytimeServiceTestEnabled ?? false
-      }))
+      findFirst: jest.fn(async () =>
+        options.activePlatformSettingMissing
+          ? null
+          : {
+              anytimeServiceTestEnabled: options.anytimeServiceTestEnabled ?? false
+            }
+      )
     },
     technicianWorkState:{upsert:jest.fn(async()=>workState),update:jest.fn(async()=>workState),findFirst:jest.fn(async()=>({...workState})),updateMany:jest.fn(async({where,data}:{where:{version:number};data:{status:string;version:{increment:number};syncedAt:Date}})=>{if(where.version!==workState.version)return {count:0};workState.status=data.status;workState.version+=data.version.increment;workState.syncedAt=data.syncedAt;return {count:1}})},
     technicianWorkEvent:{create:jest.fn(async({data}:{data:Record<string,unknown>})=>{workEvents.push(data);return data})},
@@ -725,6 +730,19 @@ describe("formal order fulfillment repository transactions", () => {
         })
       ).resolves.toMatchObject({ outcome: "ok", applied: true });
       expect(enabled.tx.platformSettingVersion.findFirst).toHaveBeenCalled();
+
+      const missingSettingUsesTestStageDefault = createRepositoryHarness({
+        startsAt: new Date(now.getTime() + 24 * 60 * 60_000),
+        activePlatformSettingMissing: true
+      });
+      await expect(
+        missingSettingUsesTestStageDefault.repository.startService({
+          ...repositoryActor,
+          orderId: 41,
+          verificationCode: null,
+          idempotencyKey: "repository-start-default-on"
+        })
+      ).resolves.toMatchObject({ outcome: "ok", applied: true });
     } finally {
       jest.useRealTimers();
     }

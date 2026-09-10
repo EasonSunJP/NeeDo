@@ -3325,7 +3325,7 @@ export class BookingRepository implements BookingRepositoryPort {
       orderBy: [{ version: "desc" }, { id: "desc" }],
       select: { anytimeServiceTestEnabled: true }
     });
-    return setting?.anytimeServiceTestEnabled === true;
+    return setting?.anytimeServiceTestEnabled ?? true;
   }
 
   public selectCheckoutPaymentMethod(

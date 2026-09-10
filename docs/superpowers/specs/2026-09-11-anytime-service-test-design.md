@@ -6,7 +6,7 @@
 
 ## Goal and boundary
 
-Add one operations-admin switch labelled `随时服务测试`. The active backend-persisted platform-settings version is authoritative. The switch is off by default and exists only to let QA complete an otherwise formal booking flow without waiting for scheduled time.
+Add one operations-admin switch labelled `随时服务测试`. The active backend-persisted platform-settings version is authoritative. The switch is on by default during the current test stage so QA can complete an otherwise formal booking flow without waiting for scheduled time.
 
 The switch changes only two time gates. It does not bypass order state, participant scope, technician verification code, unresolved add-ons, idempotency, payment, settlement, RBAC, or audit requirements.
 
@@ -14,13 +14,13 @@ The switch changes only two time gates. It does not bypass order state, particip
 
 - When disabled, a confirmed order may start at or after `startsAt - 30 minutes`.
 - When disabled, an in-service order may end at or after its persisted service-session `expectedEndsAt`.
-- A missing active setting is treated as disabled.
+- A missing active setting uses the current test-stage default and is treated as enabled.
 - When enabled, those two time comparisons are skipped. All other fulfillment checks remain active.
 - Exact idempotent replays are resolved before the current time gate, so a successful prior command remains replayable.
 
 ## Persistence, API, and audit
 
-`PlatformSettingVersion.anytimeServiceTestEnabled` is an immutable-version field mapped to `anytime_service_test_enabled`. Migration `20260911100000_anytime_service_test` adds it with database default `FALSE`, including for existing rows.
+`PlatformSettingVersion.anytimeServiceTestEnabled` is an immutable-version field mapped to `anytime_service_test_enabled`. Migration `20260911100000_anytime_service_test` originally added the field with database default `FALSE`; additive migration `20260911153000_anytime_service_test_default_on` promotes the default to `TRUE` for the current test stage without rewriting migration history. Existing active settings are changed through the protected settings API, preserving immutable versions and audit evidence.
 
 The existing protected operations contracts are extended rather than adding a parallel settings system:
 
@@ -50,4 +50,4 @@ The switch uses the same single-layer `SettingToggle` card as site availability 
 
 ## Verification
 
-Automated coverage proves the fail-closed migration default, strict API/OpenAPI contract, audited setting persistence, frontend fail-closed parsing, permission-gated UI save, translations, the exact 30-minute start boundary, end-at-`expectedEndsAt`, enabled bypass, and stable errors.
+Automated coverage proves the test-stage enabled database and missing-setting defaults, strict API/OpenAPI contract, audited setting persistence, permission-gated UI save, translations, the exact 30-minute start boundary, end-at-`expectedEndsAt`, enabled bypass, and stable errors. Before production release, operations must explicitly disable the switch and verify the persisted active version is off.
