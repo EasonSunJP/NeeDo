@@ -98,6 +98,8 @@ const detailOrder: BackofficeOrderDetailPayload = {
       type: "ADD_ON_PROPOSED",
       createdAt: "2026-05-25T02:15:00.000Z",
       actorUserId: 101,
+      actorName: "Aya Customer",
+      actorAvatarUrl: "/avatars/aya.png",
       publicReason: null,
       addOnId: 44,
       serviceId: 7,
@@ -111,6 +113,8 @@ const detailOrder: BackofficeOrderDetailPayload = {
       type: "ADD_ON_ACCEPTED",
       createdAt: "2026-05-25T02:20:00.000Z",
       actorUserId: 301,
+      actorName: "Mika Tanaka",
+      actorAvatarUrl: "/avatars/mika.png",
       publicReason: null,
       addOnId: 44,
       serviceId: 7,
@@ -124,6 +128,8 @@ const detailOrder: BackofficeOrderDetailPayload = {
       type: "TECHNICIAN_CANCEL_CLASSIFIED",
       createdAt: "2026-05-25T02:00:00.000Z",
       actorUserId: 301,
+      actorName: "Mika Tanaka",
+      actorAvatarUrl: "/avatars/mika.png",
       publicReason: "技师临时无法到达",
       internalNote: null
     },
@@ -132,6 +138,8 @@ const detailOrder: BackofficeOrderDetailPayload = {
       type: "SPECIAL_CANCELLATION_APPLIED",
       createdAt: "2026-05-25T03:00:00.000Z",
       actorUserId: 1,
+      actorName: "运营管理员",
+      actorAvatarUrl: "/avatars/admin.png",
       publicReason: "已核实不可抗力",
       internalNote: "后台核验材料 A"
     },
@@ -140,6 +148,8 @@ const detailOrder: BackofficeOrderDetailPayload = {
       type: "SPECIAL_CANCELLATION_REVOKED",
       createdAt: "2026-05-25T04:00:00.000Z",
       actorUserId: 1,
+      actorName: "运营管理员",
+      actorAvatarUrl: "/avatars/admin.png",
       publicReason: "用户投诉后复核恢复计入",
       internalNote: "投诉工单 C-123"
     }
@@ -210,14 +220,17 @@ describe("OrdersAdminPage order performance controls", () => {
   it("loads fresh detail and shows assessment plus all operations-only revisions before controls", async () => {
     await openDetail();
 
-    expect(backofficeRealDataApi.orderDetail).toHaveBeenCalledWith(31);
+    expect(backofficeRealDataApi.orderDetail).toHaveBeenCalledWith("backoffice", 31);
     expect(container.textContent).toContain("技师原因取消");
     expect(container.textContent).toContain("正常计入");
     expect(container.textContent).toContain("后台核验材料 A");
     expect(container.textContent).toContain("投诉工单 C-123");
-    expect(container.textContent?.indexOf("订单时间线与判定修订")).toBeLessThan(
+    expect(container.textContent?.indexOf("订单时间线与绩效判定")).toBeLessThan(
       container.textContent?.indexOf("设为特殊取消并排除计算") ?? 0
     );
+    expect(container.textContent?.match(/订单时间线与绩效判定/gu)).toHaveLength(1);
+    expect(container.textContent).toContain("运营管理员");
+    expect(container.textContent).not.toContain("#1（");
     expect(document.querySelector('input[aria-label*="百分比"]')).toBeNull();
   });
 
@@ -231,7 +244,7 @@ describe("OrdersAdminPage order performance controls", () => {
     await flush();
 
     expect(backofficeRealDataApi.orders).toHaveBeenCalledWith("backoffice", expect.objectContaining({ status: "pending" }));
-    expect(backofficeRealDataApi.orderDetail).toHaveBeenCalledWith(31);
+    expect(backofficeRealDataApi.orderDetail).toHaveBeenCalledWith("backoffice", 31);
     expect(container.textContent).toContain("全平台正式订单详情");
 
     await act(async () => button("关闭抽屉")?.click());

@@ -3,22 +3,23 @@ import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
   type BackofficeOrderDetailPayload,
-  type BackofficeOrderPayload,
-  type BackofficeOrderTimelineEvent
+  type BackofficeOrderPayload
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import { AdminLayout } from "../../components/admin/AdminLayout";
+import { AdminEventTimeline } from "../../components/admin/AdminEventTimeline";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import {
-  ContactEventTimelinePanel,
-  type ContactEventTimelineEntry
-} from "../../components/mobile/ContactEventTimeline";
+  OrderRelatedEntityDrawer,
+  type OrderRelatedEntity
+} from "../../components/admin/OrderRelatedEntityDrawer";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { bookingApi, type ManualPaymentMethod } from "../../features/booking/api";
+import { mapBackofficeOrderTimeline } from "../../features/booking/backofficeOrderTimeline";
 import { statusLabel, yen } from "../../lib/utils";
 
 type StatusFilter = "all" | "pending" | "confirmed" | "inService" | "completed" | "cancelled";
@@ -99,70 +100,6 @@ function performanceActionLabel(action: PerformanceAction) {
   return "设为特殊取消并排除计算";
 }
 
-function performanceEventCopy(
-  type: Exclude<
-    BackofficeOrderTimelineEvent["type"],
-    "ADD_ON_PROPOSED" | "ADD_ON_ACCEPTED" | "ADD_ON_REJECTED"
-  >
-) {
-  if (type === "ORDER_STATUS_CHANGED") return "订单状态";
-  if (type === "TECHNICIAN_CANCEL_CLASSIFIED") return "技师原因取消";
-  if (type === "TECHNICIAN_UNCOMPLETED_CLASSIFIED") return "技师未完单";
-  if (type === "SPECIAL_CANCELLATION_APPLIED") return "特殊取消已生效";
-  return "特殊取消已撤销";
-}
-
-function mapOperationsTimeline(
-  events: BackofficeOrderTimelineEvent[]
-): ContactEventTimelineEntry[] {
-  return events.map((event) => {
-    const actorName = event.actorUserId ? `#${event.actorUserId}` : "系统";
-    if ("addOnId" in event) {
-      const copy = event.type === "ADD_ON_PROPOSED"
-        ? { label: "提出加钟", tone: "accent" as const }
-        : event.type === "ADD_ON_ACCEPTED"
-          ? { label: "加钟已确认", tone: "green" as const }
-          : { label: "加钟已拒绝", tone: "red" as const };
-      const addOnSummary = `${event.serviceName} · +${event.durationMinutes}分钟 · ${yen(event.priceAmountJpy)}`;
-      return {
-        actorName,
-        actorRole: copy.label,
-        atLabel: formatOrderDateTime(event.createdAt),
-        id: event.id,
-        message: event.publicReason
-          ? `${addOnSummary} · ${event.publicReason}`
-          : addOnSummary,
-        title: copy.label,
-        tone: copy.tone
-      };
-    }
-
-    if (event.type === "ORDER_STATUS_CHANGED") {
-      return {
-        actorName,
-        actorRole: performanceEventCopy(event.type),
-        atLabel: formatOrderDateTime(event.createdAt),
-        id: event.id,
-        message: event.publicReason ?? `${event.fromStatus ?? "created"} → ${event.toStatus}`,
-        title: performanceEventCopy(event.type),
-        tone: event.toStatus === "cancelled" ? "red" as const : "green" as const
-      };
-    }
-
-    return {
-      actorName,
-      actorRole: performanceEventCopy(event.type),
-      atLabel: formatOrderDateTime(event.createdAt),
-      id: event.id,
-      message: event.publicReason ?? "无公开原因",
-      reason: event.internalNote ?? undefined,
-      reasonLabel: "内部备注（仅运营可见）",
-      title: performanceEventCopy(event.type),
-      tone: event.type === "SPECIAL_CANCELLATION_APPLIED" ? "green" as const : "red" as const
-    };
-  });
-}
-
 function createPerformanceIdempotencyKey() {
   return globalThis.crypto.randomUUID();
 }
@@ -172,6 +109,7 @@ export function OrdersAdminPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => readStatusFilter(searchParams));
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(() => readOrderId(searchParams));
   const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderDetailPayload | null>(null);
+  const [relatedEntity, setRelatedEntity] = useState<OrderRelatedEntity>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [detailRevision, setDetailRevision] = useState(0);
   const [orderRows, setOrderRows] = useState<BackofficeOrderPayload[]>([]);
@@ -229,7 +167,7 @@ export function OrdersAdminPage() {
     let current = true;
     setDetailStatus("loading");
     backofficeRealDataApi
-      .orderDetail(selectedOrderId)
+      .orderDetail("backoffice", selectedOrderId)
       .then((detail) => {
         if (!current) return;
         setSelectedOrder(detail);
@@ -250,6 +188,7 @@ export function OrdersAdminPage() {
   const openOrder = (order: BackofficeOrderPayload) => {
     setSelectedOrderId(order.id);
     setSelectedOrder(null);
+    setRelatedEntity(null);
     setDetailStatus("loading");
     setMutationError("");
     setConfirmIntent(null);
@@ -264,6 +203,7 @@ export function OrdersAdminPage() {
     if (mutationStatus === "saving") return;
     setSelectedOrderId(null);
     setSelectedOrder(null);
+    setRelatedEntity(null);
     setDetailStatus("idle");
     setMutationError("");
     setConfirmIntent(null);
@@ -272,6 +212,7 @@ export function OrdersAdminPage() {
   const finishMutation = () => {
     setSelectedOrderId(null);
     setSelectedOrder(null);
+    setRelatedEntity(null);
     setConfirmIntent(null);
     setMutationError("");
     setRevision((value) => value + 1);
@@ -510,9 +451,42 @@ export function OrdersAdminPage() {
           <div className="space-y-5">
             <DetailGrid items={[
               { label: "订单编号", value: selectedOrder.orderNo },
-              { label: "用户", value: `${selectedOrder.customerName} / #${selectedOrder.customerUserId}` },
-              { label: "服务", value: selectedOrder.serviceName },
-              { label: "门店 / 技师", value: `${selectedOrder.shopName} / ${selectedOrder.technicianName ?? "待安排"}` },
+              {
+                label: "用户",
+                value: (
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{selectedOrder.customerName}</span>
+                    <Button aria-label="查看用户资料" disabled={!selectedOrder.customerProfileId} onClick={() => setRelatedEntity("customer")} size="sm" variant="secondary">查看</Button>
+                  </span>
+                )
+              },
+              {
+                label: "服务",
+                value: (
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{selectedOrder.serviceName}</span>
+                    <Button aria-label="查看服务资料" disabled={!selectedOrder.serviceId} onClick={() => setRelatedEntity("service")} size="sm" variant="secondary">查看</Button>
+                  </span>
+                )
+              },
+              {
+                label: "门店",
+                value: (
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{selectedOrder.shopName}</span>
+                    <Button aria-label="查看门店资料" onClick={() => setRelatedEntity("shop")} size="sm" variant="secondary">查看</Button>
+                  </span>
+                )
+              },
+              {
+                label: "技师",
+                value: (
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{selectedOrder.technicianName ?? "待安排"}</span>
+                    <Button aria-label="查看技师资料" disabled={!selectedOrder.technicianProfileId} onClick={() => setRelatedEntity("technician")} size="sm" variant="secondary">查看</Button>
+                  </span>
+                )
+              },
               { label: "金额", value: yen(selectedOrder.priceAmount) },
               { label: "支付状态", value: <Badge tone={paymentTone(selectedOrder.paymentStatus)}>{paymentLabel(selectedOrder.paymentStatus)}</Badge> },
               { label: "预约时间", value: new Date(selectedOrder.startsAt).toLocaleString("ja-JP") },
@@ -521,8 +495,15 @@ export function OrdersAdminPage() {
 
             {mutationError ? <p className="rounded-lg border border-coral/30 bg-coral/5 px-4 py-3 text-sm font-black text-coral" role="alert">{mutationError}</p> : null}
 
+            <AdminEventTimeline
+              emptyLabel="该订单还没有时间线记录。"
+              events={mapBackofficeOrderTimeline(selectedOrder.timelineEvents)}
+              showCommentComposer={false}
+              title="订单时间线与绩效判定"
+            />
+
             <section className="rounded-lg border border-line bg-white p-4">
-              <h3 className="font-black text-ink">订单绩效判定</h3>
+              <p className="text-sm font-black text-ink">当前绩效判定</p>
               {selectedOrder.performanceAssessment ? (
                 <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-lg bg-paper p-3">
@@ -551,15 +532,6 @@ export function OrdersAdminPage() {
               ) : (
                 <p className="mt-3 text-sm font-bold text-ink/55">当前订单尚无技师绩效判定。</p>
               )}
-
-              <ContactEventTimelinePanel
-                className="mt-4"
-                events={mapOperationsTimeline(selectedOrder.timelineEvents)}
-                headerVariant="plain"
-                layout="three-column"
-                showCommentComposer={false}
-                title="订单时间线与判定修订"
-              />
 
               {performanceActionForOrder(selectedOrder) ? (
                 <div className="mt-4 space-y-3 border-t border-line pt-4">
@@ -657,6 +629,12 @@ export function OrdersAdminPage() {
           </div>
         ) : null}
       </Drawer>
+      <OrderRelatedEntityDrawer
+        entity={relatedEntity}
+        onClose={() => setRelatedEntity(null)}
+        order={selectedOrder}
+        scope="backoffice"
+      />
     </AdminLayout>
   );
 }

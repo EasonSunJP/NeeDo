@@ -294,6 +294,8 @@ export type BackofficeOrderTimelineEvent =
       id: string;
       createdAt: string;
       actorUserId: number | null;
+      actorName: string;
+      actorAvatarUrl: string | null;
       fromStatus: string | null;
       toStatus: string;
       publicReason: string | null;
@@ -307,6 +309,8 @@ export type BackofficeOrderTimelineEvent =
       id: string;
       createdAt: string;
       actorUserId: number | null;
+      actorName: string;
+      actorAvatarUrl: string | null;
       publicReason: string | null;
       internalNote: string | null;
     }
@@ -315,6 +319,8 @@ export type BackofficeOrderTimelineEvent =
       id: string;
       createdAt: string;
       actorUserId: number | null;
+      actorName: string;
+      actorAvatarUrl: string | null;
       publicReason: string | null;
       addOnId: number;
       serviceId: number;
@@ -641,6 +647,7 @@ export interface BackofficeServicePayload {
   categoryId: number;
   categoryName: string;
   shopId: number;
+  shopName: string;
   technicianProfileId: number | null;
   name: string;
   description: string | null;
@@ -1749,8 +1756,8 @@ export const backofficeRealDataApi = {
       }
     );
   },
-  orderDetail(id: number) {
-    return httpClient.request<BackofficeOrderDetailPayload>(`/backoffice/orders/${id}`);
+  orderDetail(scope: BackofficeScope, id: number) {
+    return httpClient.request<BackofficeOrderDetailPayload>(`${scopePrefix(scope)}/orders/${id}`);
   },
   classifyTechnicianUncompleted(id: number, input: OrderPerformanceCommandInput) {
     return httpClient.request<OrderPerformanceCommandResult>(

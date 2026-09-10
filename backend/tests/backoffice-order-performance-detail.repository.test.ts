@@ -31,6 +31,7 @@ const makeOrderRecord = () => ({
   technicianProfile: {
     displayName: "Mika Tanaka",
     user: {
+      id: 301,
       identities: [{ publicIdentifier: { publicId: "s0000000301" } }]
     }
   },
@@ -41,6 +42,7 @@ const makeOrderRecord = () => ({
       fromStatus: "PENDING",
       toStatus: "CANCELLED",
       actorUserId: 301,
+      actor: { username: "Mika Tanaka", avatarUrl: "/avatars/mika.png", avatarBootstrapUrl: null },
       reason: "技师临时无法到达",
       createdAt: new Date("2026-05-25T02:00:00.000Z")
     }
@@ -61,6 +63,7 @@ const makeOrderRecord = () => ({
       id: 91,
       action: "CLASSIFY_TECHNICIAN_CANCELLED",
       actorUserId: 301,
+      actor: { username: "Mika Tanaka", avatarUrl: "/avatars/mika.png", avatarBootstrapUrl: null },
       publicReason: "技师临时无法到达",
       internalNote: null,
       createdAt: new Date("2026-05-25T02:00:00.000Z")
@@ -69,6 +72,7 @@ const makeOrderRecord = () => ({
       id: 92,
       action: "APPLY_SPECIAL_EXCLUSION",
       actorUserId: 1,
+      actor: { username: "Operations Admin", avatarUrl: null, avatarBootstrapUrl: "/avatars/admin.png" },
       publicReason: "不可抗力",
       internalNote: "后台核验材料 A",
       createdAt: new Date("2026-05-25T03:00:00.000Z")
@@ -77,6 +81,7 @@ const makeOrderRecord = () => ({
       id: 93,
       action: "REVOKE_SPECIAL_EXCLUSION",
       actorUserId: 1,
+      actor: { username: "Operations Admin", avatarUrl: null, avatarBootstrapUrl: "/avatars/admin.png" },
       publicReason: "用户投诉后复核",
       internalNote: "投诉工单 C-123",
       createdAt: new Date("2026-05-25T04:00:00.000Z")
@@ -87,6 +92,7 @@ const makeOrderRecord = () => ({
       id: 501,
       eventType: "ADD_ON_PROPOSED",
       actorUserId: 101,
+      actor: { username: "Aya Customer", avatarUrl: "/avatars/aya.png", avatarBootstrapUrl: null },
       reason: null,
       occurredAt: new Date("2026-05-25T02:15:00.000Z"),
       orderAddOn: {
@@ -103,6 +109,7 @@ const makeOrderRecord = () => ({
       id: 502,
       eventType: "ADD_ON_ACCEPTED",
       actorUserId: 301,
+      actor: { username: "Mika Tanaka", avatarUrl: "/avatars/mika.png", avatarBootstrapUrl: null },
       reason: null,
       occurredAt: new Date("2026-05-25T02:20:00.000Z"),
       orderAddOn: {
@@ -131,8 +138,8 @@ describe("BackofficeRepository order performance detail", () => {
       version: 3
     });
     expect(result?.timelineEvents).toEqual([
-      expect.objectContaining({ id: "performance:91", internalNote: null }),
-      expect.objectContaining({ id: "status:11", type: "ORDER_STATUS_CHANGED" }),
+      expect.objectContaining({ id: "performance:91", internalNote: null, actorName: "Mika Tanaka", actorAvatarUrl: "/avatars/mika.png" }),
+      expect.objectContaining({ id: "status:11", type: "ORDER_STATUS_CHANGED", actorName: "Mika Tanaka" }),
       expect.objectContaining({
         id: "service:501",
         type: "ADD_ON_PROPOSED",
@@ -174,5 +181,20 @@ describe("BackofficeRepository order performance detail", () => {
         })
       })
     );
+  });
+
+  it("keeps merchant order detail shop-scoped and removes operations-only internal notes", async () => {
+    const findFirst = jest.fn().mockResolvedValue(makeOrderRecord());
+    const repository = new BackofficeRepository({ bookingOrder: { findFirst } } as never);
+
+    const result = await repository.findOrderById({ scope: "merchant", shopId: 11, id: 31 });
+
+    expect(result?.timelineEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "performance:92", internalNote: null, actorName: "Operations Admin" }),
+      expect.objectContaining({ id: "service:501", actorName: "Aya Customer" })
+    ]));
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 31, deletedAt: null, shopId: 11 }
+    }));
   });
 });

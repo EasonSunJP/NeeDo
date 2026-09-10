@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
-import { backofficeRealDataApi, type BackofficeOrderPayload } from "../../api/backofficeRealData";
+import {
+  backofficeRealDataApi,
+  type BackofficeOrderDetailPayload,
+  type BackofficeOrderPayload
+} from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { DetailGrid } from "../../components/admin/DetailGrid";
-import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
+import { AdminEventTimeline } from "../../components/admin/AdminEventTimeline";
 import {
-  MerchantOrderParticipantDetailDrawer,
-  type MerchantOrderParticipant,
-} from "../../components/merchant-admin/MerchantOrderParticipantDetailDrawer";
+  OrderRelatedEntityDrawer,
+  type OrderRelatedEntity
+} from "../../components/admin/OrderRelatedEntityDrawer";
+import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
@@ -17,6 +22,7 @@ import {
   createBookingIdempotencyKey,
   type ManualPaymentMethod,
 } from "../../features/booking/api";
+import { mapBackofficeOrderTimeline } from "../../features/booking/backofficeOrderTimeline";
 import { statusLabel, yen } from "../../lib/utils";
 
 type StatusFilter = "all" | "pending" | "confirmed" | "inService" | "completed" | "cancelled";
@@ -90,8 +96,11 @@ function paymentTone(status: BackofficeOrderPayload["paymentStatus"]) {
 
 export function MerchantAdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderPayload | null>(null);
-  const [participant, setParticipant] = useState<MerchantOrderParticipant>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderDetailPayload | null>(null);
+  const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [detailRevision, setDetailRevision] = useState(0);
+  const [participant, setParticipant] = useState<OrderRelatedEntity>(null);
   const [orderRows, setOrderRows] = useState<BackofficeOrderPayload[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -132,9 +141,31 @@ export function MerchantAdminOrdersPage() {
     };
   }, [page, revision, statusFilter]);
 
+  useEffect(() => {
+    if (selectedOrderId === null) return;
+    let current = true;
+    setDetailStatus("loading");
+    setMutationError("");
+    void backofficeRealDataApi.orderDetail("merchant-admin", selectedOrderId)
+      .then((detail) => {
+        if (!current) return;
+        setSelectedOrder(detail);
+        setDetailStatus("success");
+      })
+      .catch((error: unknown) => {
+        if (!current) return;
+        setSelectedOrder(null);
+        setMutationError(describeOrderError(error));
+        setDetailStatus("error");
+      });
+    return () => { current = false; };
+  }, [detailRevision, selectedOrderId]);
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const openOrder = (order: BackofficeOrderPayload) => {
-    setSelectedOrder(order);
+    setSelectedOrderId(order.id);
+    setSelectedOrder(null);
+    setDetailStatus("loading");
     setParticipant(null);
     setMutationError("");
     setAcceptanceWarning(null);
@@ -144,14 +175,18 @@ export function MerchantAdminOrdersPage() {
   const closeOrder = () => {
     if (mutationStatus === "saving") return;
     setParticipant(null);
+    setSelectedOrderId(null);
     setSelectedOrder(null);
+    setDetailStatus("idle");
     setMutationError("");
     setAcceptanceWarning(null);
     setConfirmIntent(null);
   };
   const finishMutation = () => {
     setParticipant(null);
+    setSelectedOrderId(null);
     setSelectedOrder(null);
+    setDetailStatus("idle");
     setConfirmIntent(null);
     setMutationError("");
     setAcceptanceWarning(null);
@@ -314,7 +349,18 @@ export function MerchantAdminOrdersPage() {
         ) : null}
       </ModuleShell>
 
-      <Drawer onClose={closeOrder} open={Boolean(selectedOrder)} title="本店正式订单详情">
+      <Drawer onClose={closeOrder} open={selectedOrderId !== null} title="本店正式订单详情">
+        {detailStatus === "loading" ? (
+          <p className="rounded-lg border border-line bg-white px-4 py-6 text-center text-sm font-black text-ink/55">
+            正在加载最新订单详情
+          </p>
+        ) : null}
+        {detailStatus === "error" ? (
+          <div className="rounded-lg border border-coral/30 bg-coral/5 px-4 py-5 text-sm font-black text-coral" role="alert">
+            <p>{mutationError}</p>
+            <Button className="mt-3" onClick={() => setDetailRevision((value) => value + 1)}>重新加载订单详情</Button>
+          </div>
+        ) : null}
         {selectedOrder ? (
           <div className="space-y-5">
             <section className="rounded-lg bg-paper p-4">
@@ -346,8 +392,25 @@ export function MerchantAdminOrdersPage() {
                   </span>
                 )
               },
+              {
+                label: "服务",
+                value: (
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{selectedOrder.serviceName}</span>
+                    <Button aria-label="查看服务资料" disabled={!selectedOrder.serviceId} onClick={() => setParticipant("service")} size="sm" variant="secondary">查看</Button>
+                  </span>
+                )
+              },
               { label: "预约方式", value: selectedOrder.fulfillmentMode === "store" ? "到店服务" : "技师上门" },
-              { label: "门店", value: selectedOrder.shopName },
+              {
+                label: "门店",
+                value: (
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{selectedOrder.shopName}</span>
+                    <Button aria-label="查看门店资料" onClick={() => setParticipant("shop")} size="sm" variant="secondary">查看</Button>
+                  </span>
+                )
+              },
               {
                 label: "技师",
                 value: (
@@ -355,7 +418,7 @@ export function MerchantAdminOrdersPage() {
                     <span className="min-w-0 truncate">{selectedOrder.technicianName ?? "待安排"}</span>
                     <Button
                       aria-label="查看员工资料"
-                      disabled={!selectedOrder.technicianNeedoId}
+                      disabled={!selectedOrder.technicianProfileId}
                       onClick={() => setParticipant("technician")}
                       size="sm"
                       variant="secondary"
@@ -380,6 +443,13 @@ export function MerchantAdminOrdersPage() {
               </section>
             ) : null}
             {mutationError ? <p className="rounded-lg border border-coral/30 bg-coral/5 px-4 py-3 text-sm font-black text-coral" role="alert">{mutationError}</p> : null}
+
+            <AdminEventTimeline
+              emptyLabel="该订单还没有时间线记录。"
+              events={mapBackofficeOrderTimeline(selectedOrder.timelineEvents)}
+              showCommentComposer={false}
+              title="订单时间线"
+            />
 
             <section className="rounded-lg border border-line bg-white p-4">
               <h3 className="font-black text-ink">订单状态</h3>
@@ -426,10 +496,11 @@ export function MerchantAdminOrdersPage() {
           </div>
         ) : null}
       </Drawer>
-      <MerchantOrderParticipantDetailDrawer
+      <OrderRelatedEntityDrawer
+        entity={participant}
         onClose={() => setParticipant(null)}
         order={selectedOrder}
-        participant={participant}
+        scope="merchant-admin"
       />
     </MerchantAdminLayout>
   );

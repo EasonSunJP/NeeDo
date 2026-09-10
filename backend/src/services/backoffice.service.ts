@@ -354,6 +354,8 @@ export type BackofficeOrderTimelineEventPayload =
       id: string;
       createdAt: string;
       actorUserId: number | null;
+      actorName: string;
+      actorAvatarUrl: string | null;
       fromStatus: string | null;
       toStatus: string;
       publicReason: string | null;
@@ -367,6 +369,8 @@ export type BackofficeOrderTimelineEventPayload =
       id: string;
       createdAt: string;
       actorUserId: number | null;
+      actorName: string;
+      actorAvatarUrl: string | null;
       publicReason: string | null;
       internalNote: string | null;
     }
@@ -375,6 +379,8 @@ export type BackofficeOrderTimelineEventPayload =
       id: string;
       createdAt: string;
       actorUserId: number | null;
+      actorName: string;
+      actorAvatarUrl: string | null;
       publicReason: string | null;
       addOnId: number;
       serviceId: number;
@@ -789,6 +795,7 @@ export interface BackofficeServicePayload {
   categoryId: number;
   categoryName: string;
   shopId: number;
+  shopName: string;
   technicianProfileId: number | null;
   name: string;
   description: string | null;
@@ -1581,6 +1588,32 @@ export class BackofficeService {
     });
 
     return this.repository.listOrders({ ...input, ...scope });
+  }
+
+  public async getMerchantOrder(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeOrderDetailPayload> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(
+      actor,
+      context,
+      "merchant_admin.order.read",
+      "booking_order",
+      { bookingOrderId: id, shopId: scope.shopId },
+      id
+    );
+    const detail = this.requireResult(
+      await this.repository.findOrderById({ ...scope, id }),
+      "error.order.not_found"
+    );
+    return {
+      ...detail,
+      timelineEvents: detail.timelineEvents.map((event) =>
+        "internalNote" in event ? { ...event, internalNote: null } : event
+      )
+    };
   }
 
   public async listPlatformSchedule(

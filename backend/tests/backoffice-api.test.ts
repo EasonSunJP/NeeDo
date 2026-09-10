@@ -500,6 +500,8 @@ const createFixture = async (
                 type: "ADD_ON_ACCEPTED" as const,
                 createdAt: "2026-05-25T02:20:00.000Z",
                 actorUserId: 301,
+                actorName: "Mika Tanaka",
+                actorAvatarUrl: "/avatars/mika.png",
                 publicReason: null,
                 addOnId: 44,
                 serviceId: 7,
@@ -513,6 +515,8 @@ const createFixture = async (
                 type: "SPECIAL_CANCELLATION_APPLIED" as const,
                 createdAt: "2026-05-25T03:00:00.000Z",
                 actorUserId: 1,
+                actorName: "Operations Admin",
+                actorAvatarUrl: "/avatars/admin.png",
                 publicReason: "不可抗力",
                 internalNote: "后台核验材料 A"
               },
@@ -521,6 +525,8 @@ const createFixture = async (
                 type: "SPECIAL_CANCELLATION_REVOKED" as const,
                 createdAt: "2026-05-25T04:00:00.000Z",
                 actorUserId: 1,
+                actorName: "Operations Admin",
+                actorAvatarUrl: "/avatars/admin.png",
                 publicReason: "用户投诉后复核",
                 internalNote: "投诉工单 C-123"
               }
@@ -1648,6 +1654,7 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       expect.objectContaining({
         id: "service:501",
         type: "ADD_ON_ACCEPTED",
+        actorName: "Mika Tanaka",
         serviceName: "Extended care 60 minutes",
         priceAmountJpy: 8800,
         durationMinutes: 60
@@ -1676,6 +1683,35 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         })
       ])
     );
+  });
+
+  it("returns merchant order detail only inside the authenticated shop and omits internal notes", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("merchant@example.com");
+
+    const response = await request(fixture.app)
+      .get("/api/v1/merchant-admin/orders/31")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data.orderNo).toBe("ND202605250001");
+    expect(response.body.data.timelineEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "service:501", actorName: "Mika Tanaka" }),
+      expect.objectContaining({ id: "performance:92", internalNote: null })
+    ]));
+    expect(fixture.backofficeRepository.findOrderById).toHaveBeenCalledWith({
+      id: 31,
+      scope: "merchant",
+      shopId: 11
+    });
+    expect(fixture.auditLogs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "merchant_admin.order.read",
+        targetType: "booking_order",
+        targetId: 31,
+        metadata: { bookingOrderId: 31, shopId: 11 }
+      })
+    ]));
   });
 
   it("blocks users without the matching backoffice permission", async () => {

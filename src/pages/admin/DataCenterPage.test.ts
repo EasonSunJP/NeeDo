@@ -44,4 +44,20 @@ describe("DataCenterPage production data boundary", () => {
     expect(source).toContain("createdAt");
     expect(source).toContain("startsAt");
   });
+
+  it("uses the canonical order-center drawer instead of exposing raw transport fields", () => {
+    expect(source).toContain('to={`/admin/orders?orderId=${order.id}`}');
+    expect(source).not.toContain("Object.entries(selected)");
+    expect(source).not.toContain("detailValue(value)");
+    expect(source).not.toContain("JSON.stringify(value)");
+  });
+
+  it("labels every remaining dataset detail with human-facing business fields", () => {
+    expect(source).toContain("detailItemsFor(active, selected)");
+    expect(source).toContain('label: "NeeDoID"');
+    expect(source).toContain('label: "服务名称"');
+    expect(source).toContain('label: "门店名称"');
+    expect(source).not.toContain("customerUserId");
+    expect(source).not.toContain("technicianProfileId");
+  });
 });
