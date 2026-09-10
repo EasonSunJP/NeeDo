@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import merchantSource from "./MerchantPortalPage.tsx?raw";
+import employeeDetailWorkspaceSource from "../../components/merchant-admin/MerchantEmployeeDetailWorkspace.tsx?raw";
 import storeDetailSource from "../user/StoreDetailPage.tsx?raw";
 
 describe("MerchantPortalPage store privacy control", () => {
@@ -12,7 +13,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).not.toContain("stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0]");
   });
 
-  it("places appointment list navigation controls above the schedule tabs and hides the shared bottom nav", () => {
+  it("uses one fullscreen toolbar and hides the shared bottom nav across all merchant schedule tabs", () => {
     const scheduleHeaderSource = merchantSource.slice(
       merchantSource.indexOf("function MerchantScheduleHeaderTabs"),
       merchantSource.indexOf("function MerchantStaffHeaderTabs")
@@ -26,32 +27,78 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf("{activeView === \"contacts\" && (")
     );
 
-    expect(merchantSource).toContain('const isMerchantAppointmentsView = activeView === "schedule" && merchantSchedulePrimaryTab === "appointments";');
-    expect(scheduleHeaderSource).toContain("showAppointmentsToolbar");
+    expect(merchantSource).toContain('const isMerchantScheduleView = activeView === "schedule";');
+    expect(merchantSource).toContain('import { MobileFullscreenCloseButton, MobileFullscreenHeader }');
     expect(scheduleHeaderSource).toContain('className="relative z-10"');
     expect(scheduleHeaderSource).toContain('className="flex items-center gap-2"');
     expect(scheduleHeaderSource).toContain('aria-label="返回商户首页"');
+    expect(scheduleHeaderSource).toContain('const activeTabLabel = tabs.find((tab) => tab.value === value)?.label ?? "现状确认";');
     expect(scheduleHeaderSource).toContain('placeholder="搜索预约、客户、员工、状态"');
     expect(scheduleHeaderSource).toContain('name="search"');
+    expect(scheduleHeaderSource).toContain('{value === "appointments" ? (');
+    expect(scheduleHeaderSource).toContain('<strong className="truncate text-sm font-black">{activeTabLabel}</strong>');
+    expect(scheduleHeaderSource).toContain('<MobileFullscreenCloseButton label={`关闭${activeTabLabel}`} onClose={() => onExit?.()} />');
     expect(scheduleHeaderSource).toContain("<FeatureSegmentedTabs");
-    expect(shellSource).toContain("showBottomNav={!isMerchantAppointmentsView}");
+    expect(shellSource).toContain('activeView !== "staff"');
+    expect(merchantSource).toContain('activeView === "schedule" && "relative z-30"');
     expect(schedulePanelSource).toContain("onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("appointmentSearchQuery={merchantAppointmentSearchQuery}");
     expect(schedulePanelSource).toContain("searchQuery={merchantAppointmentSearchQuery}");
+    expect(schedulePanelSource).toContain('onExit={() => navigate("/merchant")}');
+    expect(schedulePanelSource).not.toContain("showAppointmentsToolbar");
   });
 
-  it("keeps the merchant staff detail header as a single shared glass layer", () => {
+  it("uses the shared employee header with search, close, and four separated tabs", () => {
+    const staffHeaderSource = merchantSource.slice(
+      merchantSource.indexOf("function MerchantStaffHeaderTabs"),
+      merchantSource.indexOf("function buildMerchantIncomePolyline")
+    );
+    const staffPanelSource = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "staff" && ('),
+      merchantSource.indexOf('{activeView === "schedule" && (')
+    );
+
+    expect(staffHeaderSource).toContain("<MobileFullscreenHeader");
+    expect(staffHeaderSource).toContain('aria-label="搜索员工"');
+    expect(staffHeaderSource).toContain('placeholder={t("搜索员工、NeeDoID 或状态")}');
+    expect(staffHeaderSource).toContain("onBack={onExit}");
+    expect(staffHeaderSource).toContain("onClose={onExit}");
+    expect(staffHeaderSource).toContain('{ label: "全部", value: "all" }');
+    expect(staffHeaderSource).toContain('{ label: "员工", value: "fullTime" }');
+    expect(staffHeaderSource).toContain('{ label: "临时", value: "partTime" }');
+    expect(staffHeaderSource).toContain('{ label: "审核", value: "review" }');
+    expect(staffPanelSource).toContain('<TechnicianApplicationsReviewPage embedded searchQuery={staffSearchQuery} />');
+    expect(staffPanelSource).toContain('merchantStaffTab === "review"');
+    expect(staffPanelSource).toContain('merchantStaffTab !== "review"');
+  });
+
+  it("keeps the approved appointment calendar as the first booking surface", () => {
+    const schedulePanelSource = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "schedule" && ('),
+      merchantSource.indexOf('{activeView === "contacts" && (')
+    );
+
+    expect(schedulePanelSource).toContain("<UnifiedUserCalendar");
+    expect(schedulePanelSource).toContain("currentStore={store}");
+    expect(schedulePanelSource).toContain("technicians={storeTechnicians}");
+    expect(schedulePanelSource).not.toContain("<FormalScheduleInventoryPanel");
+    expect(schedulePanelSource).not.toContain('className="space-y-4"');
+  });
+
+  it("keeps the merchant staff detail header as a single shared glass layer with close", () => {
     const staffDetailSource = merchantSource.slice(
       merchantSource.indexOf("export function MerchantStaffDetailRoutePage"),
       merchantSource.indexOf("function MerchantOrdersHeader")
     );
 
     expect(staffDetailSource).toContain("<MobileFullscreenHeader");
+    expect(staffDetailSource).toContain("onClose={closePage}");
     expect(staffDetailSource).toContain("showSpacer={false}");
     expect(staffDetailSource).not.toContain('className="fixed inset-x-0 top-0 z-[70] mx-auto w-full max-w-[480px]"');
     expect(staffDetailSource).toContain("pt-[calc(env(safe-area-inset-top)+86px)]");
-    expect(staffDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom)+124px)]");
-    expect(staffDetailSource).toContain('<div className="space-y-3">');
+    expect(staffDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom)+24px)]");
+    expect(staffDetailSource).toContain("px-2");
+    expect(staffDetailSource).toContain("<MerchantEmployeeDetailWorkspace");
   });
 
   it("hydrates a directly opened staff detail from the formal merchant API", () => {
@@ -60,13 +107,26 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf("function MerchantOrdersHeader")
     );
 
-    expect(staffDetailSource).toContain('backofficeRealDataApi.technician("merchant-admin", technicianApiId)');
-    expect(staffDetailSource).toContain("<FormalTechnicianDetailPanel detail={formalDetail} />");
-    expect(staffDetailSource).toContain("正在读取员工资料");
+    expect(employeeDetailWorkspaceSource).toContain("merchantEmployeeApi.detail(needoId)");
+    expect(employeeDetailWorkspaceSource).toContain("<EmployeeDetailCard");
+    expect(employeeDetailWorkspaceSource).toContain('scheduleSurface="mobile"');
+    expect(staffDetailSource).not.toContain('backofficeRealDataApi.technician("merchant-admin"');
+    expect(employeeDetailWorkspaceSource).toContain("正在读取员工详细信息卡");
+  });
+
+  it("keeps termination off technician summary cards and in the formal detail workspace", () => {
+    const staffCardSource = merchantSource.slice(
+      merchantSource.indexOf("group.technicianEntries.map"),
+      merchantSource.indexOf("group.employees.map"),
+    );
+    expect(staffCardSource).toContain("getMerchantStaffDetailPath");
+    expect(staffCardSource).not.toContain("MerchantRemoveStaffIconButton");
+    expect(employeeDetailWorkspaceSource).toContain("<EmployeeDetailCard");
   });
 
   it("adds the floating privacy menu to the merchant service card only", () => {
-    expect(merchantSource).toContain('{ label: "服务展示", value: "service" }');
+    expect(merchantSource).toContain('{ label: "信息卡", value: "info" }');
+    expect(merchantSource).toContain('{ label: "店铺展示", value: "service" }');
     expect(merchantSource).toContain('{ label: "数据中心", value: "data" }');
     expect(merchantSource).toContain("function MerchantStorePrivacyControl");
     expect(merchantSource).toContain('data-testid="merchant-store-privacy-control"');
@@ -92,6 +152,33 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(storeDetailSource).toContain('<div className="relative z-0">{content}</div>');
   });
 
+  it("uses the shared personal-center header and keeps merchant identity data independent", () => {
+    const meHeaderSource = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "me" ? ('),
+      merchantSource.indexOf('<div\n        className={cn(', merchantSource.indexOf('{activeView === "me" ? ('))
+    );
+    expect(merchantSource).toContain('type MerchantMeTab = "info" | "service" | "data"');
+    expect(merchantSource).toContain('import { MerchantIdentityInfoCard } from "../../components/merchant/MerchantIdentityInfoCard"');
+    expect(merchantSource).toContain('<MerchantIdentityInfoCard onEditingChange={setMerchantProfileEditing} />');
+    expect(meHeaderSource).toContain("<MobileFullscreenHeader");
+    expect(meHeaderSource).toContain('title="个人中心"');
+    expect(meHeaderSource).toContain('onClose={() => navigate("/merchant")}');
+    expect(meHeaderSource).not.toContain('label="打开设置中心"');
+    expect(meHeaderSource).toContain("footer={");
+    expect(meHeaderSource).not.toContain("<SharedHomeHeader");
+    expect(merchantSource).toContain('? "space-y-4 pt-4"');
+    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !merchantProfileEditing}');
+  });
+
+  it("keeps the personal-center status panel inside the same mobile content inset", () => {
+    const statusPanelSource = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "dashboard" ? (', merchantSource.indexOf("{selectedContact && (")),
+      merchantSource.indexOf("</MobileShell>")
+    );
+
+    expect(statusPanelSource).toContain('className={activeView === "me" ? "mx-4 !w-auto" : undefined}');
+  });
+
   it("adds the merchant pricing mode switch beside the privacy switch", () => {
     const pricingControlSource = merchantSource.slice(
       merchantSource.indexOf("function MerchantStorePricingModeControl"),
@@ -115,10 +202,13 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("technicianPricingRatioPercent");
     expect(merchantSource).toContain("storeTechnicianPricingRatePercent");
     expect(merchantSource).toContain('ratePercent={storeTechnicianPricingRatePercent}');
-    expect(merchantSource).toContain('technicianPricingRatePercent={storeTechnicianPricingRatePercent}');
+    expect(merchantSource).not.toContain('technicianPricingRatePercent={storeTechnicianPricingRatePercent}');
     expect(merchantSource).toContain('data-testid="merchant-pricing-ratio-menu"');
-    expect(merchantSource).toContain("店铺报价与技师定价的比例");
-    expect(merchantSource).toContain("默认 100%，每次调整 10%。");
+    expect(merchantSource).toContain("店铺与技师结算比例");
+    expect(merchantSource).toContain("每次调整 10%，店铺与技师合计不超过 100%。");
+    expect(pricingControlSource).toContain("店铺 {settlementSplit.shopSharePercent}%：{settlementSplit.technicianSharePercent}% 技师");
+    expect(pricingControlSource).toContain("MAX_TECHNICIAN_SETTLEMENT_SHARE_PERCENT");
+    expect(pricingControlSource).toContain("MIN_TECHNICIAN_SETTLEMENT_SHARE_PERCENT");
     expect(merchantSource).toContain("updateTechnicianPricingRatio(10)");
     expect(merchantSource).toContain("updateTechnicianPricingRatio(-10)");
     expect(merchantSource).toContain('document.addEventListener("pointerdown", closeOnOutsidePointerDown)');
@@ -132,11 +222,12 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("confirmTechnicianPricingMode");
     expect(pricingControlSource).toContain("onTechnicianPricingConfirmRequest();");
     expect(pricingControlSource).toContain('onModeChange("technician", technicianPricingRatioPercent);');
-    expect(pricingControlSource).toContain('onRatePercentChange(technicianPricingRatioPercent);');
-    expect(pricingControlSource).toContain('技师定价（{ratePercent}%）');
+    expect(pricingControlSource).not.toContain('onRatePercentChange(technicianPricingRatioPercent);');
+    expect(pricingControlSource).toContain('onModeChange("technician", technicianPricingRatioPercent);');
+    expect(pricingControlSource).toContain('技师定价（店铺 {100 - ratePercent}%：{ratePercent}% 技师）');
     expect(pricingControlSource).not.toContain("onMenuOpenChange(true);");
     expect(pricingConfirmSource).toContain("setStorePricingRatioMenuOpen(true);");
-    expect(pricingUpdateSource).toContain("setStoreTechnicianPricingRatePercent(result.technicianPricingRatePercent);");
+    expect(pricingUpdateSource).toContain("setStoreTechnicianPricingRatePercent(normalizeTechnicianSettlementShare(result.technicianPricingRatePercent));");
     expect(pricingUpdateSource).toContain("const pricingModeChanged = nextMode !== storePricingMode;");
     expect(pricingUpdateSource).toContain("const pricingRateChanged = nextRatePercent !== storeTechnicianPricingRatePercent;");
     expect(pricingUpdateSource).toContain("(!pricingModeChanged && !pricingRateChanged) || storePricingModeSaving");
@@ -153,5 +244,52 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(storeDetailSource).toContain('className="mt-3 grid grid-cols-2 gap-2"');
     expect(storeDetailSource).toContain("{pricingControl ? <div>{pricingControl}</div> : <div />}");
     expect(storeDetailSource).toContain("{privacyControl ? <div>{privacyControl}</div> : <div />}");
+  });
+
+  it("uses the active UI theme colors instead of an image for the dashboard background", () => {
+    const dashboardHeroSource = merchantSource.slice(
+      merchantSource.indexOf('<section className="client-feature-panel overflow-hidden rounded-[28px] border text-white">'),
+      merchantSource.indexOf("<MerchantPrimaryNavCarousel />")
+    );
+
+    expect(dashboardHeroSource).toContain('className="client-feature-panel overflow-hidden rounded-[28px] border text-white"');
+    expect(dashboardHeroSource).toContain('className="client-feature-aura absolute inset-0"');
+    expect(dashboardHeroSource).not.toContain("<img");
+    expect(dashboardHeroSource).not.toContain("imageBank.salon");
+  });
+
+  it("renders merchant appointment services through the same direct user-side card", () => {
+    const dashboardAppointments = merchantSource.slice(
+      merchantSource.indexOf("{pendingOrders.slice(0, 4).map"),
+      merchantSource.indexOf('title="员工状态"')
+    );
+    const orderList = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "orders" && ('),
+      merchantSource.indexOf('{activeView === "staff" && (')
+    );
+
+    expect(merchantSource).toContain('import { UnifiedServiceInfoCard } from "../../shared/service-card"');
+    expect(dashboardAppointments).toContain("<UnifiedServiceInfoCard");
+    expect(dashboardAppointments).toContain("data={buildOrderServiceMiniCardData(order)}");
+    expect(dashboardAppointments).not.toContain("<OrderServiceMiniCard");
+    expect(dashboardAppointments).not.toContain("预约详情");
+    expect(dashboardAppointments).not.toContain("merchant-dashboard-appointment-service");
+    expect(orderList).toContain("<UnifiedServiceInfoCard");
+    expect(orderList).not.toContain("<OrderServiceMiniCard");
+  });
+
+  it("removes the extra employee-list containers so shared cards use the available width", () => {
+    const roleSection = merchantSource.slice(
+      merchantSource.indexOf("function MerchantStaffRoleSection"),
+      merchantSource.indexOf("function getMerchantOrderProvider"),
+    );
+    const employeeStatus = merchantSource.slice(
+      merchantSource.indexOf('title="员工状态"'),
+      merchantSource.indexOf('activeView === "staff"'),
+    );
+
+    expect(roleSection).toContain('<section className="space-y-3">');
+    expect(roleSection).not.toContain("rounded-[28px]");
+    expect(employeeStatus).not.toContain("rounded-[28px] border border-line bg-white p-4 shadow-panel");
   });
 });

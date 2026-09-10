@@ -35,10 +35,7 @@ import {
   isRetryableTransactionConflict,
   runWithTransactionConflictRetry
 } from "../utils/transaction-conflict-retry";
-import {
-  toAuditLogCreateData,
-  type AuditLogCreateInput
-} from "./audit-log.repository";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 
 type AlliancePrismaClient = PrismaClient | Prisma.TransactionClient;
 
@@ -287,10 +284,7 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
         ? {
             user: {
               is: {
-                OR: [
-                  { needoId: { contains: input.q } },
-                  { username: { contains: input.q } }
-                ],
+                OR: [{ needoId: { contains: input.q } }, { username: { contains: input.q } }],
                 deletedAt: null
               }
             }
@@ -307,7 +301,11 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
         select: allianceMemberListSelect
       })
     ]);
-    return buildPaginatedResponse(records.map((record) => this.mapMember(record)), total, input);
+    return buildPaginatedResponse(
+      records.map((record) => this.mapMember(record)),
+      total,
+      input
+    );
   }
 
   public async listEligibleContacts(
@@ -341,10 +339,7 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
       },
       ...(input.q
         ? {
-            OR: [
-              { needoId: { contains: input.q } },
-              { username: { contains: input.q } }
-            ]
+            OR: [{ needoId: { contains: input.q } }, { username: { contains: input.q } }]
           }
         : {})
     };
@@ -358,7 +353,11 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
         select: publicPersonSelect
       })
     ]);
-    return buildPaginatedResponse(records.map((record) => this.mapPerson(record)), total, input);
+    return buildPaginatedResponse(
+      records.map((record) => this.mapPerson(record)),
+      total,
+      input
+    );
   }
 
   public async listSentInvitations(
@@ -396,10 +395,7 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
         });
         if (!owner) return { kind: "owner_required" } as const;
 
-        const invitee = await this.findEligibleAffiliateUser(
-          transaction,
-          input.inviteeNeedoId
-        );
+        const invitee = await this.findEligibleAffiliateUser(transaction, input.inviteeNeedoId);
         if (!invitee) return { kind: "invitee_not_eligible" } as const;
         if (!(await this.hasMutualContact(transaction, input.inviterUserId, invitee.id))) {
           return { kind: "mutual_contact_required" } as const;
@@ -465,126 +461,126 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
     try {
       return await runWithTransactionConflictRetry(() =>
         this.client.$transaction(async (transaction) => {
-        const invitation = await this.findScopedInvitation(
-          transaction,
-          input.invitationId,
-          input.inviteeUserId
-        );
-        if (!invitation) return { kind: "not_found" } as const;
-        if (invitation.status !== PrismaAffiliateAllianceInvitationStatus.PENDING) {
-          return { kind: "state_conflict" } as const;
-        }
-        if (invitation.expiresAt.getTime() <= input.now.getTime()) {
-          const expired = await this.expirePendingInvitationWithClient(
+          const invitation = await this.findScopedInvitation(
             transaction,
-            invitation,
-            input.now,
-            input.expiryAuditLog
-          );
-          return { kind: expired ? "expired" : "state_conflict" } as const;
-        }
-        if (
-          invitation.alliance.status !== PrismaAffiliateAllianceStatus.ACTIVE ||
-          invitation.alliance.deletedAt !== null ||
-          invitation.inviterMember.role !== PrismaAffiliateAllianceMemberRole.OWNER ||
-          invitation.inviterMember.leftAt !== null ||
-          invitation.inviterMember.deletedAt !== null
-        ) {
-          return { kind: "owner_required" } as const;
-        }
-        const invitee = await this.findEligibleAffiliateUserById(
-          transaction,
-          input.inviteeUserId
-        );
-        if (!invitee) return { kind: "invitee_not_eligible" } as const;
-        if (
-          !(await this.hasMutualContact(
-            transaction,
-            invitation.inviterMember.userId,
+            input.invitationId,
             input.inviteeUserId
-          ))
-        ) {
-          return { kind: "mutual_contact_required" } as const;
-        }
-        if (await this.hasActiveMembership(transaction, input.inviteeUserId)) {
-          return { kind: "already_joined" } as const;
-        }
-        const role = invitation.role.toLowerCase() as "partner" | "subordinate";
-        if (
-          !(await this.isValidInvitationParent(
+          );
+          if (!invitation) return { kind: "not_found" } as const;
+          if (invitation.status !== PrismaAffiliateAllianceInvitationStatus.PENDING) {
+            return { kind: "state_conflict" } as const;
+          }
+          if (invitation.expiresAt.getTime() <= input.now.getTime()) {
+            const expired = await this.expirePendingInvitationWithClient(
+              transaction,
+              invitation,
+              input.now,
+              input.expiryAuditLog
+            );
+            return { kind: expired ? "expired" : "state_conflict" } as const;
+          }
+          if (
+            invitation.alliance.status !== PrismaAffiliateAllianceStatus.ACTIVE ||
+            invitation.alliance.deletedAt !== null ||
+            invitation.inviterMember.role !== PrismaAffiliateAllianceMemberRole.OWNER ||
+            invitation.inviterMember.leftAt !== null ||
+            invitation.inviterMember.deletedAt !== null
+          ) {
+            return { kind: "owner_required" } as const;
+          }
+          const invitee = await this.findEligibleAffiliateUserById(
             transaction,
-            invitation.allianceId,
-            role,
-            invitation.proposedParentMemberId
-          ))
-        ) {
-          return { kind: "parent_invalid" } as const;
-        }
+            input.inviteeUserId
+          );
+          if (!invitee) return { kind: "invitee_not_eligible" } as const;
+          if (
+            !(await this.hasMutualContact(
+              transaction,
+              invitation.inviterMember.userId,
+              input.inviteeUserId
+            ))
+          ) {
+            return { kind: "mutual_contact_required" } as const;
+          }
+          if (await this.hasActiveMembership(transaction, input.inviteeUserId)) {
+            return { kind: "already_joined" } as const;
+          }
+          const role = invitation.role.toLowerCase() as "partner" | "subordinate";
+          if (
+            !(await this.isValidInvitationParent(
+              transaction,
+              invitation.allianceId,
+              role,
+              invitation.proposedParentMemberId
+            ))
+          ) {
+            return { kind: "parent_invalid" } as const;
+          }
 
-        const member = await transaction.affiliateAllianceMember.create({
-          data: {
-            allianceId: invitation.allianceId,
-            userId: input.inviteeUserId,
-            role:
-              role === "partner"
-                ? PrismaAffiliateAllianceMemberRole.PARTNER
-                : PrismaAffiliateAllianceMemberRole.SUBORDINATE,
-            parentMemberId: invitation.proposedParentMemberId,
-            promoterShareBpsOverride: null,
-            activeKey: this.activeMembershipKey(input.inviteeUserId)
-          },
-          select: { id: true, joinedAt: true }
-        });
-        const permissions = {
-          canClaimTasks: false,
-          canViewAllianceOverview: false,
-          canViewMemberDetails: false,
-          canManageOwnSubordinates: false,
-          canViewAllianceWallet: false
-        };
-        await transaction.affiliateAlliancePermission.create({
-          data: { memberId: member.id, ...permissions }
-        });
-        const updated = await transaction.affiliateAllianceInvitation.updateMany({
-          where: {
-            id: invitation.id,
-            status: PrismaAffiliateAllianceInvitationStatus.PENDING,
-            version: invitation.version,
-            deletedAt: null
-          },
-          data: {
+          const member = await transaction.affiliateAllianceMember.create({
+            data: {
+              allianceId: invitation.allianceId,
+              userId: input.inviteeUserId,
+              role:
+                role === "partner"
+                  ? PrismaAffiliateAllianceMemberRole.PARTNER
+                  : PrismaAffiliateAllianceMemberRole.SUBORDINATE,
+              parentMemberId: invitation.proposedParentMemberId,
+              promoterShareBpsOverride: null,
+              activeKey: this.activeMembershipKey(input.inviteeUserId)
+            },
+            select: { id: true, joinedAt: true }
+          });
+          const permissions = {
+            canClaimTasks: false,
+            canViewAllianceOverview: false,
+            canViewMemberDetails: false,
+            canManageOwnSubordinates: false,
+            canViewAllianceWallet: false
+          };
+          await transaction.affiliateAlliancePermission.create({
+            data: { memberId: member.id, ...permissions }
+          });
+          const updated = await transaction.affiliateAllianceInvitation.updateMany({
+            where: {
+              id: invitation.id,
+              status: PrismaAffiliateAllianceInvitationStatus.PENDING,
+              version: invitation.version,
+              deletedAt: null
+            },
+            data: {
+              status: PrismaAffiliateAllianceInvitationStatus.ACCEPTED,
+              pendingKey: null,
+              respondedAt: input.now,
+              version: { increment: 1 }
+            }
+          });
+          if (updated.count !== 1) throw new AffiliateAllianceInvitationStateRaceError();
+          await transaction.auditLog.create({
+            data: toAuditLogCreateData({ ...input.auditLog, targetId: invitation.id })
+          });
+
+          const acceptedInvitation = this.mapInvitation({
+            ...invitation,
             status: PrismaAffiliateAllianceInvitationStatus.ACCEPTED,
             pendingKey: null,
             respondedAt: input.now,
-            version: { increment: 1 }
-          }
-        });
-        if (updated.count !== 1) throw new AffiliateAllianceInvitationStateRaceError();
-        await transaction.auditLog.create({
-          data: toAuditLogCreateData({ ...input.auditLog, targetId: invitation.id })
-        });
-
-        const acceptedInvitation = this.mapInvitation({
-          ...invitation,
-          status: PrismaAffiliateAllianceInvitationStatus.ACCEPTED,
-          pendingKey: null,
-          respondedAt: input.now,
-          version: invitation.version + 1
-        });
-        const memberPayload: AffiliateAllianceMemberPayload = {
-          memberId: member.id,
-          person: this.mapPerson(invitee),
-          role,
-          parent: invitation.proposedParentMember
-            ? {
-                memberId: invitation.proposedParentMember.id,
-                person: this.mapPerson(invitation.proposedParentMember.user)
-              }
-            : null,
-          promoterShareBpsOverride: null,
-          permissions,
-          joinedAt: member.joinedAt.toISOString()
-        };
+            version: invitation.version + 1
+          });
+          const memberPayload: AffiliateAllianceMemberPayload = {
+            memberId: member.id,
+            person: this.mapPerson(invitee),
+            role,
+            parent: invitation.proposedParentMember
+              ? {
+                  memberId: invitation.proposedParentMember.id,
+                  person: this.mapPerson(invitation.proposedParentMember.user)
+                }
+              : null,
+            promoterShareBpsOverride: null,
+            permissions,
+            joinedAt: member.joinedAt.toISOString()
+          };
           return {
             kind: "accepted",
             invitation: acceptedInvitation,
@@ -856,7 +852,9 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
       where: {
         id: proposedParentMemberId,
         allianceId,
-        role: { in: [PrismaAffiliateAllianceMemberRole.OWNER, PrismaAffiliateAllianceMemberRole.PARTNER] },
+        role: {
+          in: [PrismaAffiliateAllianceMemberRole.OWNER, PrismaAffiliateAllianceMemberRole.PARTNER]
+        },
         activeKey: { not: null },
         leftAt: null,
         deletedAt: null
@@ -1053,7 +1051,9 @@ export class AffiliateAllianceRepository implements AffiliateAllianceRepositoryP
       return false;
     }
     const meta = "meta" in error ? error.meta : undefined;
-    return JSON.stringify(meta ?? "").toLowerCase().includes(field.toLowerCase());
+    return JSON.stringify(meta ?? "")
+      .toLowerCase()
+      .includes(field.toLowerCase());
   }
 
   private profileInactive(): AppError {

@@ -3,87 +3,110 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as AuthApiModule from "../../api/auth";
+import type * as AuthProviderModule from "../../auth/AuthProvider";
+import type * as BrowserPasswordSaveModule from "../../auth/browserPasswordSave";
+import type * as GoogleIdentityModule from "../../auth/googleIdentity";
+import type * as I18nProviderModule from "../../i18n/I18nProvider";
+import type * as ClientThemeProviderModule from "../../theme/ClientThemeProvider";
+import type * as ReactRouterDomModule from "react-router-dom";
 import type { AuthSession } from "../../auth/rbac";
 import {
   authTrustGatewayTranslations,
   translations,
   translateText,
-  type Language,
+  type Language
 } from "../../i18n/translations";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocked = vi.hoisted(() => ({
   auth: {
+    authenticateWithGoogleCredential: vi.fn(),
     canAccess: vi.fn(() => false),
     hasRememberedPortalAuthorization: vi.fn(() => false),
     isAuthenticated: false,
     login: vi.fn(),
-    loginWithGoogle: vi.fn(),
     logout: vi.fn(),
     session: null as AuthSession | null,
     startRegistration: vi.fn(),
     switchPortal: vi.fn(),
     verifyGoogleRegistrationOrLink: vi.fn(),
-    verifyRegistration: vi.fn(),
+    verifyPasswordLogin: vi.fn(),
+    verifyRegistration: vi.fn()
   },
   authApi: {
     initializeGoogleLogin: vi.fn(),
-    submitGoogleCredential: vi.fn(),
+    submitGoogleCredential: vi.fn()
   },
+  portal: "user",
+  redirect: "",
+  openPortalEntry: vi.fn(),
   navigateToPortal: vi.fn(),
   requestBrowserPasswordSave: vi.fn(async () => undefined),
   requestGoogleCredential: vi.fn(),
+  platformSettings: {
+    loginLogo: null,
+    loginMethods: { google: true, password: true },
+    paymentMethods: ["cash", "ndp"],
+    requestButton: null,
+    selfRegistrationEnabled: true,
+    siteEnabled: true,
+    version: 1
+  }
 }));
 
+vi.mock("../../auth/portalEntry", () => ({ openPortalEntry: mocked.openPortalEntry }));
+
 vi.mock("../../auth/AuthProvider", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../auth/AuthProvider")>();
+  const actual = await importOriginal<typeof AuthProviderModule>();
   return { ...actual, useAuth: () => mocked.auth };
 });
 
 vi.mock("../../api/auth", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../api/auth")>();
+  const actual = await importOriginal<typeof AuthApiModule>();
   return { ...actual, authApi: { ...actual.authApi, ...mocked.authApi } };
 });
 
 vi.mock("../../auth/googleIdentity", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../auth/googleIdentity")>();
+  const actual = await importOriginal<typeof GoogleIdentityModule>();
   return { ...actual, requestGoogleCredential: mocked.requestGoogleCredential };
 });
 
 vi.mock("../../auth/browserPasswordSave", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../auth/browserPasswordSave")>();
+  const actual = await importOriginal<typeof BrowserPasswordSaveModule>();
   return {
     ...actual,
-    requestBrowserPasswordSave: mocked.requestBrowserPasswordSave,
+    requestBrowserPasswordSave: mocked.requestBrowserPasswordSave
   };
 });
 
 vi.mock("../../i18n/I18nProvider", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../i18n/I18nProvider")>();
+  const actual = await importOriginal<typeof I18nProviderModule>();
   return {
     ...actual,
-    useI18n: () => ({ language: "zh" as const, setLanguage: vi.fn() }),
+    useI18n: () => ({ language: "zh" as const, setLanguage: vi.fn() })
   };
 });
 
 vi.mock("../../theme/ClientThemeProvider", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../theme/ClientThemeProvider")>();
+  const actual = await importOriginal<typeof ClientThemeProviderModule>();
   return {
     ...actual,
-    useClientTheme: () => ({ isNight: false, theme: "light-green" as const }),
+    useClientTheme: () => ({ isNight: false, theme: "light-green" as const })
   };
 });
 
+vi.mock("../../features/platform-settings/PlatformSettingsProvider", () => ({
+  usePlatformSettings: () => ({ settings: mocked.platformSettings, status: "ready" })
+}));
+
 vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+  const actual = await importOriginal<typeof ReactRouterDomModule>();
   return {
     ...actual,
-    useParams: () => ({ portal: "user" }),
-    useSearchParams: () => [new URLSearchParams(), vi.fn()],
+    useParams: () => ({ portal: mocked.portal }),
+    useSearchParams: () => [new URLSearchParams(mocked.redirect), vi.fn()]
   };
 });
 
@@ -91,7 +114,7 @@ import {
   getPostLoginRoute,
   LoginPage,
   requiresFormalFrontendLogin,
-  resolveLoginErrorMessage,
+  resolveLoginErrorMessage
 } from "./LoginPage";
 import loginPageSource from "./LoginPage.tsx?raw";
 import i18nAuditSource from "../../../scripts/i18n-audit.mjs?raw";
@@ -100,28 +123,22 @@ const challenge = {
   challengeId: "challenge-login-11",
   cooldownSeconds: 60,
   expiresIn: 600,
-  maskedEmail: "n***@example.com",
+  maskedEmail: "n***@example.com"
 };
 
 const session = {
   email: "new@example.com",
-  portal: "user",
+  portal: "user"
 } as AuthSession;
 
 function setInput(input: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    "value",
-  )?.set;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   setter?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function setBrowserAutofilledValue(input: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    "value",
-  )?.set;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   setter?.call(input, value);
 }
 
@@ -149,6 +166,9 @@ describe("LoginPage verified identity behavior", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mocked.portal = "user";
+    mocked.redirect = "";
+    window.history.replaceState(null, "", "/user.html#/login/user");
     localStorage.clear();
     sessionStorage.clear();
     mocked.auth.isAuthenticated = false;
@@ -157,55 +177,48 @@ describe("LoginPage verified identity behavior", () => {
     mocked.auth.hasRememberedPortalAuthorization.mockReturnValue(false);
     mocked.auth.login.mockResolvedValue({
       message: "error.auth.invalid_credentials",
-      ok: false,
+      ok: false
     });
     mocked.auth.startRegistration.mockResolvedValue({
       challenge,
       ok: true,
-      status: "verification_required",
+      status: "verification_required"
     });
     mocked.auth.verifyRegistration.mockResolvedValue({
       needoId: "NDO-2026-000011",
       ok: true,
       session,
-      status: "authenticated",
+      status: "authenticated"
     });
     mocked.auth.verifyGoogleRegistrationOrLink.mockResolvedValue({
       needoId: "NDO-2026-000012",
       ok: true,
       session,
-      status: "authenticated",
+      status: "authenticated"
     });
+    mocked.auth.verifyPasswordLogin.mockResolvedValue({ ok: true, session });
     mocked.authApi.initializeGoogleLogin.mockResolvedValue({
       clientId: "google-client-id.apps.googleusercontent.com",
       expiresIn: 300,
       nonce: "nonce-from-backend",
-      nonceChallengeId: "nonce-challenge-11",
+      nonceChallengeId: "nonce-challenge-11"
     });
-    mocked.requestGoogleCredential.mockImplementation(
-      () => new Promise<string>(() => undefined),
-    );
-    mocked.authApi.submitGoogleCredential.mockResolvedValue({
-      status: "verification_required",
-      ...challenge,
-    });
-    mocked.auth.loginWithGoogle.mockResolvedValue({
+    mocked.requestGoogleCredential.mockImplementation(() => new Promise<string>(() => undefined));
+    mocked.auth.authenticateWithGoogleCredential.mockResolvedValue({
       challenge,
       ok: true,
-      status: "verification_required",
+      status: "verification_required"
     });
     Object.defineProperty(globalThis.navigator, "clipboard", {
       configurable: true,
-      value: { writeText: vi.fn(async () => undefined) },
+      value: { writeText: vi.fn(async () => undefined) }
     });
 
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
     await act(async () =>
-      root.render(
-        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
-      ),
+      root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }))
     );
   });
 
@@ -214,18 +227,90 @@ describe("LoginPage verified identity behavior", () => {
     container.remove();
   });
 
+  it.each(["user", "merchant", "technician", "business"])(
+    "logs in through the user identity even from the legacy %s route",
+    async (portal) => {
+      mocked.portal = portal;
+      mocked.redirect = `redirect=${encodeURIComponent(`/${portal}/orders`)}`;
+      await act(async () => root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal })));
+      expect(container.querySelector("header")?.textContent).not.toMatch(/用户|店铺|员工|推广/);
+      await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click());
+      await act(async () => {
+        setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, "member@example.com");
+        setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password1");
+      });
+      mocked.auth.login.mockResolvedValueOnce({ ok: true, session });
+      await act(async () => container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit());
+      expect(mocked.auth.login).toHaveBeenCalledWith("user", "member@example.com", "Strong.Password1");
+      expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", portal === "user" ? "/user/orders" : "/");
+    }
+  );
+
+  it.each(["merchant", "technician", "afirieito"])(
+    "moves the %s HTML login entry to the user entry before accepting credentials",
+    async (entry) => {
+      window.history.replaceState(null, "", `/${entry}.html#/login/${entry}`);
+      await act(async () => root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal })));
+      expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", "/login/user");
+      expect(container.querySelector('[data-testid="show-password-login"]')).toBeNull();
+      expect(mocked.auth.login).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ["u1234567890", "user", "/"],
+    ["1234567890", "user", "/"],
+    ["0123456789", "user", "/"],
+    ["s1234567890", "technician", "/technician"],
+    [" B1234567890 ", "merchant", "/merchant"],
+    ["s1234567890@example.com", "user", "/"],
+    ["b1234567890@example.com", "user", "/"],
+    ["shop1234567890", "user", "/"],
+  ] as const)("routes ID or email %s to %s after formal login", async (identifier, portal, route) => {
+    mocked.auth.login.mockResolvedValueOnce({ ok: true, session: { ...session, portal } });
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click());
+    await act(async () => {
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, identifier);
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password1");
+    });
+    await act(async () => container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit());
+    expect(mocked.auth.login).toHaveBeenCalledWith(portal, identifier.trim(), "Strong.Password1");
+    expect(mocked.navigateToPortal).toHaveBeenCalledWith(portal, route);
+  });
+
+  it("keeps a technician ID login in the unified HTML session scope", async () => {
+    await act(async () => root.render(createElement(LoginPage)));
+    mocked.auth.login.mockResolvedValueOnce({ ok: true, session: { ...session, portal: "technician" } });
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click());
+    await act(async () => {
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, "s1234567890");
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password1");
+    });
+    await act(async () => container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit());
+    expect(mocked.openPortalEntry).toHaveBeenCalledWith("user", "/technician");
+  });
+
+  it("does not enter a portal when formal ID authentication is rejected", async () => {
+    mocked.auth.login.mockResolvedValueOnce({ ok: false, message: "error.auth.portal_forbidden" });
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click());
+    await act(async () => {
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, "s1234567890");
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password1");
+    });
+    await act(async () => container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit());
+    expect(mocked.auth.login).toHaveBeenCalledWith("technician", "s1234567890", "Strong.Password1");
+    expect(mocked.navigateToPortal).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+  });
+
   it("labels password login as Email or NeeDo ID and preserves password bytes", async () => {
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click()
     );
     const identifier = container.querySelector<HTMLInputElement>(
-      '[data-testid="login-identifier"]',
+      '[data-testid="login-identifier"]'
     )!;
-    const password = container.querySelector<HTMLInputElement>(
-      '[data-testid="login-password"]',
-    )!;
+    const password = container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!;
     await act(async () => {
       setInput(identifier, "  NDO-2026-11  ");
       setInput(password, "  Strong.Password  ");
@@ -233,15 +318,11 @@ describe("LoginPage verified identity behavior", () => {
     await act(async () =>
       container
         .querySelector<HTMLFormElement>('[data-testid="password-login-form"]')
-        ?.requestSubmit(),
+        ?.requestSubmit()
     );
 
     expect(container.textContent).toContain("邮箱或 NeeDo ID");
-    expect(mocked.auth.login).toHaveBeenCalledWith(
-      "user",
-      "NDO-2026-11",
-      "  Strong.Password  ",
-    );
+    expect(mocked.auth.login).toHaveBeenCalledWith("user", "NDO-2026-11", "  Strong.Password  ");
   });
 
   it("keeps the desktop identity gateway constrained to 440px", () => {
@@ -250,54 +331,36 @@ describe("LoginPage verified identity behavior", () => {
 
   it("defaults browser password saving on and keeps native autofill metadata after opt-out", async () => {
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click()
     );
 
     const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]');
     expect(toggle?.getAttribute("aria-checked")).toBe("true");
     expect(
-      container.querySelector<HTMLInputElement>(
-        '[data-testid="login-identifier"]',
-      )?.autocomplete,
+      container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')?.autocomplete
     ).toBe("username");
     expect(
-      container.querySelector<HTMLInputElement>(
-        '[data-testid="login-password"]',
-      )?.autocomplete,
+      container.querySelector<HTMLInputElement>('[data-testid="login-password"]')?.autocomplete
     ).toBe("current-password");
 
     await act(async () => toggle?.click());
 
     expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    expect(localStorage.getItem("needo.auth.browser-password-save.frontend:user")).toBe("false");
     expect(
-      localStorage.getItem(
-        "needo.auth.browser-password-save.frontend:user",
-      ),
-    ).toBe("false");
-    expect(
-      container.querySelector<HTMLInputElement>(
-        '[data-testid="login-identifier"]',
-      )?.autocomplete,
+      container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')?.autocomplete
     ).toBe("username");
     expect(
-      container.querySelector<HTMLInputElement>(
-        '[data-testid="login-password"]',
-      )?.autocomplete,
+      container.querySelector<HTMLInputElement>('[data-testid="login-password"]')?.autocomplete
     ).toBe("current-password");
   });
 
   it("uses a native password-manager form without reading protected credentials in script", async () => {
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click()
     );
 
-    const form = container.querySelector<HTMLFormElement>(
-      '[data-testid="password-login-form"]',
-    );
+    const form = container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]');
     expect(form?.method).toBe("post");
     expect(form?.getAttribute("action")).toBe("/api/v1/auth/login");
     expect(loginPageSource).not.toContain("readBrowserSavedPassword");
@@ -305,67 +368,53 @@ describe("LoginPage verified identity behavior", () => {
 
   it("exposes standard credential field names to the browser password manager", async () => {
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click()
     );
 
     expect(
-      container.querySelector<HTMLInputElement>(
-        '[data-testid="login-identifier"]',
-      )?.name,
+      container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')?.name
     ).toBe("username");
-    expect(
-      container.querySelector<HTMLInputElement>(
-        '[data-testid="login-password"]',
-      )?.name,
-    ).toBe("password");
+    expect(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')?.name).toBe(
+      "password"
+    );
   });
 
   it("submits credentials filled by the browser without React input events", async () => {
     mocked.auth.login.mockResolvedValueOnce({ ok: true, session });
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click()
     );
 
     const identifier = container.querySelector<HTMLInputElement>(
-      '[data-testid="login-identifier"]',
+      '[data-testid="login-identifier"]'
     )!;
-    const password = container.querySelector<HTMLInputElement>(
-      '[data-testid="login-password"]',
-    )!;
+    const password = container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!;
     setBrowserAutofilledValue(identifier, "autofill@example.com");
     setBrowserAutofilledValue(password, "Autofill.Password.2026");
 
     await act(async () =>
       container
         .querySelector<HTMLFormElement>('[data-testid="password-login-form"]')
-        ?.requestSubmit(),
+        ?.requestSubmit()
     );
 
     expect(mocked.auth.login).toHaveBeenCalledWith(
       "user",
       "autofill@example.com",
-      "Autofill.Password.2026",
+      "Autofill.Password.2026"
     );
   });
 
   it("requests browser-managed password storage only after successful login", async () => {
     mocked.auth.login.mockResolvedValueOnce({ ok: true, session });
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click()
     );
 
     const identifier = container.querySelector<HTMLInputElement>(
-      '[data-testid="login-identifier"]',
+      '[data-testid="login-identifier"]'
     )!;
-    const password = container.querySelector<HTMLInputElement>(
-      '[data-testid="login-password"]',
-    )!;
+    const password = container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!;
     await act(async () => {
       setInput(identifier, "user@example.com");
       setInput(password, "Strong.Password.2026");
@@ -373,15 +422,69 @@ describe("LoginPage verified identity behavior", () => {
     await act(async () =>
       container
         .querySelector<HTMLFormElement>('[data-testid="password-login-form"]')
-        ?.requestSubmit(),
+        ?.requestSubmit()
     );
 
     expect(mocked.requestBrowserPasswordSave).toHaveBeenCalledWith({
       id: "user@example.com",
       name: "NeeDo",
-      password: "Strong.Password.2026",
+      password: "Strong.Password.2026"
     });
     expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", "/");
+  });
+
+  it.each([
+    ["user@example.com", "user", "/"],
+    ["1234567890", "user", "/"],
+    ["s1234567890", "technician", "/technician"],
+    ["b1234567890", "merchant", "/merchant"],
+  ] as const)("keeps %s in %s through password OTP verification", async (identifier, portal, route) => {
+    mocked.auth.verifyPasswordLogin.mockResolvedValueOnce({ ok: true, session: { ...session, portal } });
+    mocked.auth.login.mockResolvedValue({
+      challenge: { ...challenge, cooldownSeconds: 0 },
+      ok: true,
+      status: "verification_required"
+    });
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')?.click()
+    );
+    await act(async () => {
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-identifier"]')!, identifier);
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="login-password"]')!, "Strong.Password.2026");
+    });
+    await act(async () =>
+      container.querySelector<HTMLFormElement>('[data-testid="password-login-form"]')?.requestSubmit()
+    );
+    await flushUi();
+
+    expect(container.textContent).toContain("n***@example.com");
+    expect(mocked.requestBrowserPasswordSave).not.toHaveBeenCalled();
+    expect(mocked.navigateToPortal).not.toHaveBeenCalled();
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="auth-verification-resend"]')?.click()
+    );
+    expect(mocked.auth.login).toHaveBeenCalledTimes(2);
+    expect(mocked.auth.login).toHaveBeenLastCalledWith(portal, identifier, "Strong.Password.2026");
+
+
+    await act(async () =>
+      setInput(container.querySelector<HTMLInputElement>('[data-testid="auth-verification-code"]')!, "123456")
+    );
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="auth-verification-submit"]')?.click()
+    );
+    await flushUi();
+
+    expect(mocked.auth.verifyPasswordLogin).toHaveBeenCalledWith(
+      { challengeId: challenge.challengeId, otp: "123456" },
+      portal
+    );
+    expect(mocked.requestBrowserPasswordSave).toHaveBeenCalledWith({
+      id: identifier,
+      name: "NeeDo",
+      password: "Strong.Password.2026"
+    });
+    expect(mocked.navigateToPortal).toHaveBeenCalledWith(portal, route);
   });
 
   it("ignores a stale Google initialization failure after switching to registration", async () => {
@@ -393,21 +496,15 @@ describe("LoginPage verified identity behavior", () => {
       nonce: string;
       nonceChallengeId: string;
     }>();
-    mocked.authApi.initializeGoogleLogin.mockReturnValueOnce(
-      initialization.promise,
-    );
+    mocked.authApi.initializeGoogleLogin.mockReturnValueOnce(initialization.promise);
 
     await act(async () => {
       root = createRoot(container);
-      root.render(
-        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
-      );
+      root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }));
     });
     await flushUi();
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-registration"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-registration"]')?.click()
     );
 
     await act(async () => {
@@ -416,83 +513,59 @@ describe("LoginPage verified identity behavior", () => {
     });
     await flushUi();
 
-    expect(
-      container.querySelector('[data-testid="registration-form"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[data-testid="registration-form"]')).not.toBeNull();
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.textContent).not.toContain("登录服务暂时不可用");
   });
 
   it("keeps registration active when a stale Google provider completion updates auth context", async () => {
     await act(async () => root.unmount());
-    mocked.requestGoogleCredential.mockResolvedValueOnce(
-      "stale-google-credential",
-    );
-    mocked.authApi.submitGoogleCredential.mockResolvedValueOnce({
-      accessToken: "stale-access-token",
-      expiresIn: 900,
-      refreshToken: "stale-refresh-token",
-      status: "authenticated",
-    });
+    mocked.requestGoogleCredential.mockResolvedValueOnce("stale-google-credential");
     const providerCompletion = createDeferred<{
       ok: true;
       session: AuthSession;
       status: "authenticated";
     }>();
-    mocked.auth.loginWithGoogle.mockReturnValueOnce(providerCompletion.promise);
+    mocked.auth.authenticateWithGoogleCredential.mockReturnValueOnce(providerCompletion.promise);
     mocked.auth.switchPortal.mockResolvedValue({ ok: true, session });
 
     await act(async () => {
       root = createRoot(container);
-      root.render(
-        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
-      );
+      root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }));
     });
     await flushUi();
-    expect(mocked.auth.loginWithGoogle).toHaveBeenCalledTimes(1);
+    expect(mocked.auth.authenticateWithGoogleCredential).toHaveBeenCalledTimes(1);
 
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-registration"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-registration"]')?.click()
     );
     mocked.auth.isAuthenticated = true;
     mocked.auth.session = session;
     mocked.auth.canAccess.mockReturnValue(true);
     await act(async () => {
-      root.render(
-        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
-      );
+      root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }));
       await Promise.resolve();
     });
     await act(async () => {
       providerCompletion.resolve({
         ok: true,
         session,
-        status: "authenticated",
+        status: "authenticated"
       });
       await providerCompletion.promise;
     });
     await flushUi();
 
-    expect(
-      container.querySelector('[data-testid="registration-form"]'),
-    ).not.toBeNull();
-    expect(
-      container.querySelector('[data-testid="auth-verification-panel"]'),
-    ).toBeNull();
-    expect(
-      container.querySelector('[data-testid="generated-needo-id"]'),
-    ).toBeNull();
+    expect(container.querySelector('[data-testid="registration-form"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="auth-verification-panel"]')).toBeNull();
+    expect(container.querySelector('[data-testid="generated-needo-id"]')).toBeNull();
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(mocked.navigateToPortal).not.toHaveBeenCalled();
   });
 
   it("registers only email and password, then shows the shared masked-email challenge", async () => {
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-registration"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-registration"]')?.click()
     );
 
     expect(container.querySelector('[name="nickname"]')).toBeNull();
@@ -501,195 +574,144 @@ describe("LoginPage verified identity behavior", () => {
 
     await act(async () => {
       setInput(
-        container.querySelector<HTMLInputElement>(
-          '[data-testid="registration-email"]',
-        )!,
-        " new@example.com ",
+        container.querySelector<HTMLInputElement>('[data-testid="registration-email"]')!,
+        " new@example.com "
       );
       setInput(
-        container.querySelector<HTMLInputElement>(
-          '[data-testid="registration-password"]',
-        )!,
-        "Strong.Password.11!",
+        container.querySelector<HTMLInputElement>('[data-testid="registration-password"]')!,
+        "Strong.Password.11!"
       );
     });
     await act(async () =>
-      container
-        .querySelector<HTMLFormElement>('[data-testid="registration-form"]')
-        ?.requestSubmit(),
+      container.querySelector<HTMLFormElement>('[data-testid="registration-form"]')?.requestSubmit()
     );
     await flushUi();
 
     expect(mocked.auth.startRegistration).toHaveBeenCalledWith({
       email: "new@example.com",
-      password: "Strong.Password.11!",
+      password: "Strong.Password.11!"
     });
-    expect(
-      container.querySelector('[data-testid="auth-verification-panel"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[data-testid="auth-verification-panel"]')).not.toBeNull();
     expect(container.textContent).toContain("n***@example.com");
   });
 
   it("shows and copies the generated NeeDo ID before explicit continuation", async () => {
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="show-registration"]')
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="show-registration"]')?.click()
     );
     await act(async () => {
       setInput(
-        container.querySelector<HTMLInputElement>(
-          '[data-testid="registration-email"]',
-        )!,
-        "new@example.com",
+        container.querySelector<HTMLInputElement>('[data-testid="registration-email"]')!,
+        "new@example.com"
       );
       setInput(
-        container.querySelector<HTMLInputElement>(
-          '[data-testid="registration-password"]',
-        )!,
-        "Strong.Password.11!",
+        container.querySelector<HTMLInputElement>('[data-testid="registration-password"]')!,
+        "Strong.Password.11!"
       );
     });
     await act(async () =>
-      container
-        .querySelector<HTMLFormElement>('[data-testid="registration-form"]')
-        ?.requestSubmit(),
+      container.querySelector<HTMLFormElement>('[data-testid="registration-form"]')?.requestSubmit()
     );
     await flushUi();
     await act(async () =>
       setInput(
-        container.querySelector<HTMLInputElement>(
-          '[data-testid="auth-verification-code"]',
-        )!,
-        "123456",
-      ),
+        container.querySelector<HTMLInputElement>('[data-testid="auth-verification-code"]')!,
+        "123456"
+      )
     );
     await act(async () =>
       container
-        .querySelector<HTMLButtonElement>(
-          '[data-testid="auth-verification-submit"]',
-        )
-        ?.click(),
+        .querySelector<HTMLButtonElement>('[data-testid="auth-verification-submit"]')
+        ?.click()
     );
     await flushUi();
 
     expect(mocked.auth.verifyRegistration).toHaveBeenCalledWith({
       challengeId: challenge.challengeId,
-      otp: "123456",
+      otp: "123456"
     });
-    expect(
-      container.querySelector('[data-testid="generated-needo-id"]')
-        ?.textContent,
-    ).toContain("NDO-2026-000011");
-    expect(
-      container.querySelector('[data-testid="generated-needo-id-continue"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[data-testid="generated-needo-id"]')?.textContent).toContain(
+      "NDO-2026-000011"
+    );
+    expect(container.querySelector('[data-testid="generated-needo-id-continue"]')).not.toBeNull();
     expect(mocked.navigateToPortal).not.toHaveBeenCalled();
 
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>(
-          '[data-testid="generated-needo-id-copy"]',
-        )
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="generated-needo-id-copy"]')?.click()
     );
-    expect(globalThis.navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "NDO-2026-000011",
-    );
+    expect(globalThis.navigator.clipboard.writeText).toHaveBeenCalledWith("NDO-2026-000011");
 
     await act(async () =>
       container
-        .querySelector<HTMLButtonElement>(
-          '[data-testid="generated-needo-id-continue"]',
-        )
-        ?.click(),
+        .querySelector<HTMLButtonElement>('[data-testid="generated-needo-id-continue"]')
+        ?.click()
     );
     expect(mocked.navigateToPortal).toHaveBeenCalledTimes(1);
     expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", "/");
   });
 
   it("forwards the exact backend Google client ID and nonce and completes linked login", async () => {
-    mocked.requestGoogleCredential.mockResolvedValueOnce(
-      "opaque-google-credential",
-    );
-    mocked.authApi.submitGoogleCredential.mockResolvedValueOnce({
-      accessToken: "access-token",
-      expiresIn: 900,
-      refreshToken: "refresh-token",
-      status: "authenticated",
-    });
-    mocked.auth.loginWithGoogle.mockResolvedValueOnce({
+    mocked.requestGoogleCredential.mockResolvedValueOnce("opaque-google-credential");
+    mocked.auth.authenticateWithGoogleCredential.mockResolvedValueOnce({
       ok: true,
       session,
-      status: "authenticated",
+      status: "authenticated"
     });
 
     await act(async () => {
       await root.unmount();
       root = createRoot(container);
-      root.render(
-        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
-      );
+      root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }));
     });
     await flushUi();
 
     expect(mocked.requestGoogleCredential).toHaveBeenCalledWith(
       expect.objectContaining({
         clientId: "google-client-id.apps.googleusercontent.com",
-        nonce: "nonce-from-backend",
-      }),
+        nonce: "nonce-from-backend"
+      })
     );
-    expect(mocked.authApi.submitGoogleCredential).toHaveBeenCalledWith({
-      credential: "opaque-google-credential",
-      nonceChallengeId: "nonce-challenge-11",
-    });
-    expect(mocked.auth.loginWithGoogle).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "authenticated" }),
-      "user",
+    expect(mocked.auth.authenticateWithGoogleCredential).toHaveBeenCalledWith(
+      {
+        credential: "opaque-google-credential",
+        nonceChallengeId: "nonce-challenge-11"
+      },
+      "user"
     );
     expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", "/");
   });
 
   it("uses the shared verification panel for first-use Google and shows a new NeeDo ID after verification", async () => {
-    mocked.requestGoogleCredential.mockResolvedValueOnce(
-      "first-use-google-credential",
-    );
+    mocked.requestGoogleCredential.mockResolvedValueOnce("first-use-google-credential");
 
     await act(async () => {
       await root.unmount();
       root = createRoot(container);
-      root.render(
-        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
-      );
+      root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }));
     });
     await flushUi();
 
     expect(container.textContent).toContain("n***@example.com");
     await act(async () =>
       setInput(
-        container.querySelector<HTMLInputElement>(
-          '[data-testid="auth-verification-code"]',
-        )!,
-        "654321",
-      ),
+        container.querySelector<HTMLInputElement>('[data-testid="auth-verification-code"]')!,
+        "654321"
+      )
     );
     await act(async () =>
       container
-        .querySelector<HTMLButtonElement>(
-          '[data-testid="auth-verification-submit"]',
-        )
-        ?.click(),
+        .querySelector<HTMLButtonElement>('[data-testid="auth-verification-submit"]')
+        ?.click()
     );
     await flushUi();
 
     expect(mocked.auth.verifyGoogleRegistrationOrLink).toHaveBeenCalledWith(
       { challengeId: challenge.challengeId, otp: "654321" },
-      "user",
+      "user"
     );
-    expect(
-      container.querySelector('[data-testid="generated-needo-id"]')
-        ?.textContent,
-    ).toContain("NDO-2026-000012");
+    expect(container.querySelector('[data-testid="generated-needo-id"]')?.textContent).toContain(
+      "NDO-2026-000012"
+    );
   });
 
   it("starts a fresh Google nonce and credential request after leaving first-use verification", async () => {
@@ -702,51 +724,42 @@ describe("LoginPage verified identity behavior", () => {
 
     await act(async () => {
       root = createRoot(container);
-      root.render(
-        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
-      );
+      root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }));
     });
     await flushUi();
 
-    expect(
-      container.querySelector('[data-testid="auth-verification-panel"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[data-testid="auth-verification-panel"]')).not.toBeNull();
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>(
-          '[data-testid="auth-verification-back"]',
-        )
-        ?.click(),
+      container.querySelector<HTMLButtonElement>('[data-testid="auth-verification-back"]')?.click()
     );
     await flushUi();
 
     expect(mocked.authApi.initializeGoogleLogin).toHaveBeenCalledTimes(2);
     expect(mocked.requestGoogleCredential).toHaveBeenCalledTimes(2);
-    expect(
-      container.querySelector('[data-testid="google-identity-button"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[data-testid="google-identity-button"]')).not.toBeNull();
   });
 
   it("localizes Google conflict and provider failures", async () => {
-    mocked.requestGoogleCredential.mockRejectedValueOnce(
-      new Error("error.auth.google_conflict"),
-    );
+    mocked.requestGoogleCredential.mockRejectedValueOnce(new Error("error.auth.google_conflict"));
     await act(async () => {
       await root.unmount();
       root = createRoot(container);
-      root.render(
-        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
-      );
+      root.render(createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }));
     });
     await flushUi();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-      "Google 账号已绑定到其他 NeeDo 账号",
+      "Google 账号已绑定到其他 NeeDo 账号"
     );
-
   });
 });
 
 describe("LoginPage formal flow guardrails", () => {
+  it("uses the published settings for login branding and public entry availability", () => {
+    expect(loginPageSource).toContain("platformSettings.loginLogo?.url ?? DEFAULT_LOGIN_LOGO_URL");
+    expect(loginPageSource).toContain('activePortal === "user" && platformSettings.selfRegistrationEnabled');
+    expect(loginPageSource).toContain("platformSettings.loginMethods.google");
+  });
+
   it("contains no fake Google, callback-query, generic OTP, captcha, or public technician flow", () => {
     [
       "googleAccountIconSrc",
@@ -764,58 +777,38 @@ describe("LoginPage formal flow guardrails", () => {
       "clearRememberedCredentials",
       "rememberCredentials",
       "registrationCity",
-      'accountType: "technician"',
-    ].forEach((removedSource) =>
-      expect(loginPageSource).not.toContain(removedSource),
-    );
+      'accountType: "technician"'
+    ].forEach((removedSource) => expect(loginPageSource).not.toContain(removedSource));
   });
 
   it("maps stable auth failures to helpful localized copy", () => {
-    expect(
-      resolveLoginErrorMessage("error.auth.invalid_credentials", "zh"),
-    ).toContain("邮箱、NeeDo ID 或密码");
-    expect(
-      resolveLoginErrorMessage("error.auth.portal_forbidden", "zh"),
-    ).toBe("当前账号没有此入口所需的身份，请切换账号后重试。");
-    expect(
-      resolveLoginErrorMessage("error.auth.portal_forbidden", "ja"),
-    ).toContain("アカウントを切り替えて");
-    expect(
-      resolveLoginErrorMessage(
-        "error.auth.verification_challenge_expired",
-        "ja",
-      ),
-    ).toContain("有効期限");
-    expect(
-      resolveLoginErrorMessage(
-        "error.auth.verification_attempts_exhausted",
-        "en",
-      ),
-    ).toContain("Too many");
-    expect(resolveLoginErrorMessage("error.auth.otp_cooldown", "ko")).toContain(
-      "잠시",
+    expect(resolveLoginErrorMessage("error.auth.invalid_credentials", "zh")).toContain(
+      "邮箱、NeeDo ID 或密码"
+    );
+    expect(resolveLoginErrorMessage("error.auth.portal_forbidden", "zh")).toBe(
+      "当前账号没有此入口所需的身份，请切换账号后重试。"
+    );
+    expect(resolveLoginErrorMessage("error.auth.portal_forbidden", "ja")).toContain(
+      "アカウントを切り替えて"
+    );
+    expect(resolveLoginErrorMessage("error.auth.verification_challenge_expired", "ja")).toContain(
+      "有効期限"
+    );
+    expect(resolveLoginErrorMessage("error.auth.verification_attempts_exhausted", "en")).toContain(
+      "Too many"
+    );
+    expect(resolveLoginErrorMessage("error.auth.otp_cooldown", "ko")).toContain("잠시");
+    expect(resolveLoginErrorMessage("error.dependency.google_auth_unavailable", "en")).toBe(
+      "Google sign-in is temporarily unavailable. Try again later."
+    );
+    expect(resolveLoginErrorMessage("error.auth.otp_delivery_failed", "ja")).toBe(
+      "確認コードを送信できませんでした。しばらくしてからお試しください。"
+    );
+    expect(resolveLoginErrorMessage("error.dependency.redis_unavailable", "ko")).toBe(
+      "인증 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요."
     );
     expect(
-      resolveLoginErrorMessage(
-        "error.dependency.google_auth_unavailable",
-        "en",
-      ),
-    ).toBe("Google sign-in is temporarily unavailable. Try again later.");
-    expect(
-      resolveLoginErrorMessage("error.auth.otp_delivery_failed", "ja"),
-    ).toBe(
-      "確認コードを送信できませんでした。しばらくしてからお試しください。",
-    );
-    expect(
-      resolveLoginErrorMessage("error.dependency.redis_unavailable", "ko"),
-    ).toBe(
-      "인증 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요.",
-    );
-    expect(
-      resolveLoginErrorMessage(
-        "error.dependency.auth_generation_unavailable",
-        "zh-Hant",
-      ),
+      resolveLoginErrorMessage("error.dependency.auth_generation_unavailable", "zh-Hant")
     ).toBe("身分服務暫時無法使用，請稍後再試。");
   });
 
@@ -854,7 +847,7 @@ describe("LoginPage formal flow guardrails", () => {
       "账号登录",
       "使用已验证的邮箱或 NeeDo ID 登录。",
       "欢迎使用 NeeDo",
-      "先确认你的 NeeDo 身份，再进入预约、消息或工作空间。",
+      "登录后即可预约服务、查看消息，并切换其他身份。",
       "请输入邮箱或 NeeDo ID 和密码。",
       "请输入邮箱和密码。",
       "后台",
@@ -908,27 +901,16 @@ describe("LoginPage formal flow guardrails", () => {
       "先设置密码后才能解除 Google 绑定。",
       "解除后会退出所有设备，需要使用邮箱或 NeeDo ID 加密码重新登录。",
       "设置登录密码",
-      "密码设置成功",
+      "密码设置成功"
     ];
-    const targetLanguages: Exclude<Language, "zh">[] = [
-      "zh-Hant",
-      "ja",
-      "en",
-      "ko",
-    ];
+    const targetLanguages: Exclude<Language, "zh">[] = ["zh-Hant", "ja", "en", "ko"];
 
     sources.forEach((source) => {
       const dedicatedEntry = authTrustGatewayTranslations[source];
-      expect(
-        dedicatedEntry,
-        `missing dedicated auth copy: ${source}`,
-      ).toBeDefined();
+      expect(dedicatedEntry, `missing dedicated auth copy: ${source}`).toBeDefined();
       targetLanguages.forEach((language) => {
         const expected = dedicatedEntry?.[language];
-        expect(
-          expected,
-          `missing ${language} auth copy: ${source}`,
-        ).toBeTruthy();
+        expect(expected, `missing ${language} auth copy: ${source}`).toBeTruthy();
         expect(translations[source]?.[language]).toBe(expected);
         expect(translateText(source, language)).toBe(expected);
       });
@@ -936,9 +918,7 @@ describe("LoginPage formal flow guardrails", () => {
   });
 
   it("keeps portal redirects scoped and formal login as the default", () => {
-    expect(getPostLoginRoute("merchant", "/merchant/orders")).toBe(
-      "/merchant/orders",
-    );
+    expect(getPostLoginRoute("merchant", "/merchant/orders")).toBe("/merchant/orders");
     expect(getPostLoginRoute("user", "/admin")).toBe("/");
     expect(requiresFormalFrontendLogin("technician", "/technician")).toBe(true);
   });
@@ -946,8 +926,12 @@ describe("LoginPage formal flow guardrails", () => {
   it("audits the current checkout instead of a hard-coded sibling workspace", () => {
     expect(i18nAuditSource).toContain("fileURLToPath(import.meta.url)");
     expect(i18nAuditSource).toContain("affiliateMarketplaceTranslations");
+    expect(i18nAuditSource).toContain("orderPerformanceTranslationsPath");
+    expect(i18nAuditSource).toContain(
+      "const orderPerformanceTranslations = ${JSON.stringify(orderPerformanceTranslations)};"
+    );
     expect(i18nAuditSource).not.toContain(
-      'const workspaceRoot = "/Users/eason/Documents/New project"',
+      'const workspaceRoot = "/Users/eason/Documents/New project"'
     );
   });
 });

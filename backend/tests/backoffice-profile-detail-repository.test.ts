@@ -71,6 +71,7 @@ function createClient(withTechnicianReview = true, options: FixtureOptions = {})
         }
       : null,
     user: {
+      needoId: "u0000000061",
       username: "Technician account",
       email: "technician@example.com",
       phone: null,
@@ -90,12 +91,19 @@ function createClient(withTechnicianReview = true, options: FixtureOptions = {})
         }
       ],
       identities: [
-        { type: "technician", scopeType: "shop", scopeId: 11, displayName: "Technician" },
+        {
+          type: "customer",
+          scopeType: "global",
+          scopeId: null,
+          displayName: "User account",
+          publicIdentifier: { publicId: "u0000000061", kind: "U" }
+        },
         {
           type: "technician",
           scopeType: "technician_profile",
           scopeId: 31,
-          displayName: "Technician profile"
+          displayName: "Technician profile",
+          publicIdentifier: { publicId: "s0000000061", kind: "S" }
         },
         {
           type: "technician",
@@ -166,15 +174,24 @@ function createClient(withTechnicianReview = true, options: FixtureOptions = {})
         { status: "CANCELLED", _count: { _all: 1 } }
       ]),
       aggregate: jest.fn(async () => ({ _sum: { priceAmount: money(18000) } })),
-      findMany: jest.fn(async (input: { where?: { startsAt?: { gte?: Date }; status?: { in?: string[] } } }) => {
-        if (input.where?.startsAt?.gte) {
-          return input.where.status?.in
-            ? [booking(4, "CONFIRMED")]
-            : [booking(3, "COMPLETED"), booking(4, "CONFIRMED")];
+      findMany: jest.fn(
+        async (input: {
+          where?: {
+            startsAt?: { gte?: Date };
+            status?: string | { in?: string[] };
+          };
+        }) => {
+          if (input.where?.status === "IN_SERVICE") return [];
+          if (input.where?.startsAt?.gte) {
+            return typeof input.where.status === "object" && input.where.status?.in
+              ? [booking(4, "CONFIRMED")]
+              : [booking(3, "COMPLETED"), booking(4, "CONFIRMED")];
+          }
+          return [booking(1, "COMPLETED"), booking(2, "CONFIRMED")];
         }
-        return [booking(1, "COMPLETED"), booking(2, "CONFIRMED")];
-      })
+      )
     },
+    technicianWorkState: { findMany: jest.fn(async () => []) },
     scheduleSlot: {
       findMany: jest.fn(async (input: { select?: unknown }) =>
         input.select ? (options.scheduleSlots ?? []) : []
@@ -197,11 +214,33 @@ describe("BackofficeRepository profile details", () => {
     const detail = await repository.getTechnicianDetail({ scope: "merchant", shopId: 11, id: 31 });
 
     expect(client.technicianProfile.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 31, shopId: 11, deletedAt: null } })
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 31,
+          shopId: 11,
+          deletedAt: null,
+          user: expect.objectContaining({
+            deletedAt: null,
+            identities: {
+              some: expect.objectContaining({
+                type: "technician",
+                publicIdentifier: {
+                  is: { kind: "S", status: "ACTIVE", deletedAt: null }
+                }
+              })
+            }
+          })
+        })
+      })
     );
     expect(detail).toMatchObject({
       id: 31,
-      account: { email: "technician@example.com", isActive: true },
+      needoId: "s0000000061",
+      account: {
+        needoId: "s0000000061",
+        email: "technician@example.com",
+        isActive: true
+      },
       statistics: { bookingCount: 3, completedCount: 2, completedRevenueJpy: 18000 },
       reviewSummary: { ratingAverage: 4.8, reviewCount: 12 },
       unavailableMetrics: ["acceptanceRate", "lateness", "shiftPreferences"]
@@ -215,41 +254,57 @@ describe("BackofficeRepository profile details", () => {
     const detail = await repository.getCustomerDetail({ scope: "merchant", shopId: 11, id: 41 });
 
     expect(client.bookingOrder.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ customerUserId: 51, shopId: 11 }) })
+      expect.objectContaining({
+        where: expect.objectContaining({ customerUserId: 51, shopId: 11 })
+      })
     );
-    expect(client.customerProfile.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        id: 41,
-        user: expect.objectContaining({
-          bookingOrders: { some: { shopId: 11, deletedAt: null } }
+    expect(client.customerProfile.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 41,
+          user: expect.objectContaining({
+            bookingOrders: { some: { shopId: 11, deletedAt: null } }
+          })
         })
       })
-    }));
+    );
     expect(detail?.recentBookings).toHaveLength(2);
-    expect(detail?.account.roles).toEqual(expect.arrayContaining([
-      expect.objectContaining({ scopeType: "shop", scopeId: 11 })
-    ]));
+    expect(detail?.account.roles).toEqual(
+      expect.arrayContaining([expect.objectContaining({ scopeType: "shop", scopeId: 11 })])
+    );
   });
 
   it("keeps only merchant-safe shop and formal profile identities for seed-compatible accounts", async () => {
     const { client } = createClient();
     const repository = new BackofficeRepository(client as PrismaClient);
 
-    const technician = await repository.getTechnicianDetail({ scope: "merchant", shopId: 11, id: 31 });
+    const technician = await repository.getTechnicianDetail({
+      scope: "merchant",
+      shopId: 11,
+      id: 31
+    });
     const customer = await repository.getCustomerDetail({ scope: "merchant", shopId: 11, id: 41 });
 
-    expect(technician?.account.identities).toEqual(expect.arrayContaining([
-      expect.objectContaining({ scopeType: "technician_profile", scopeId: 31 })
-    ]));
-    expect(technician?.account.identities).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ scopeType: "technician_profile", scopeId: 32 })
-    ]));
-    expect(customer?.account.identities).toEqual(expect.arrayContaining([
-      expect.objectContaining({ scopeType: "customer_profile", scopeId: 41 })
-    ]));
-    expect(customer?.account.identities).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ scopeType: "customer_profile", scopeId: 42 })
-    ]));
+    expect(technician?.account.identities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ scopeType: "technician_profile", scopeId: 31 })
+      ])
+    );
+    expect(technician?.account.identities).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ scopeType: "technician_profile", scopeId: 32 })
+      ])
+    );
+    expect(customer?.account.identities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ scopeType: "customer_profile", scopeId: 41 })
+      ])
+    );
+    expect(customer?.account.identities).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ scopeType: "customer_profile", scopeId: 42 })
+      ])
+    );
   });
 
   it("maps established technician audit metadata while enforcing merchant shop scope", async () => {
@@ -265,27 +320,29 @@ describe("BackofficeRepository profile details", () => {
 
     const detail = await repository.getTechnicianDetail({ scope: "merchant", shopId: 11, id: 31 });
 
-    expect(detail?.timeline).toEqual(expect.arrayContaining([
+    expect(detail?.timeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "91",
+          action: "merchant_admin.technician.update",
+          actorName: "Aoyama Owner",
+          metadata: auditRow.metadata
+        })
+      ])
+    );
+    expect(client.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "91",
-        action: "merchant_admin.technician.update",
-        actorName: "Aoyama Owner",
-        metadata: auditRow.metadata
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({ metadata: { path: "$.shopId", equals: 11 } }),
+            expect.objectContaining({
+              OR: expect.arrayContaining([{ metadata: { path: "$.technicianId", equals: 31 } }])
+            })
+          ])
+        }),
+        take: 30
       })
-    ]));
-    expect(client.auditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        AND: expect.arrayContaining([
-          expect.objectContaining({ metadata: { path: "$.shopId", equals: 11 } }),
-          expect.objectContaining({
-            OR: expect.arrayContaining([
-              { metadata: { path: "$.technicianId", equals: 31 } }
-            ])
-          })
-        ])
-      }),
-      take: 30
-    }));
+    );
   });
 
   it("includes compensation-profile audit rows for both formal technician target type spellings", async () => {
@@ -303,25 +360,29 @@ describe("BackofficeRepository profile details", () => {
 
     const detail = await repository.getTechnicianDetail({ scope: "merchant", shopId: 11, id: 31 });
 
-    expect(detail?.timeline).toEqual(expect.arrayContaining([
+    expect(detail?.timeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "merchant_admin.compensation_profile.update",
+          metadata: compensationAuditRow.metadata
+        })
+      ])
+    );
+    expect(client.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: "merchant_admin.compensation_profile.update",
-        metadata: compensationAuditRow.metadata
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                { targetType: "TechnicianProfile", targetId: 31 },
+                { targetType: "technician_profile", targetId: 31 }
+              ])
+            }),
+            { metadata: { path: "$.shopId", equals: 11 } }
+          ])
+        })
       })
-    ]));
-    expect(client.auditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        AND: expect.arrayContaining([
-          expect.objectContaining({
-            OR: expect.arrayContaining([
-              { targetType: "TechnicianProfile", targetId: 31 },
-              { targetType: "technician_profile", targetId: 31 }
-            ])
-          }),
-          { metadata: { path: "$.shopId", equals: 11 } }
-        ])
-      })
-    }));
+    );
   });
 
   it("uses the union of the current UTC week and month for schedule intersections", async () => {
@@ -334,16 +395,22 @@ describe("BackofficeRepository profile details", () => {
       const { client } = createClient(true, { scheduleSlots: [crossingWeekSlot] });
       const repository = new BackofficeRepository(client as PrismaClient);
 
-      const detail = await repository.getTechnicianDetail({ scope: "merchant", shopId: 11, id: 31 });
+      const detail = await repository.getTechnicianDetail({
+        scope: "merchant",
+        shopId: 11,
+        id: 31
+      });
 
       expect(detail?.statistics).toMatchObject({
         todayScheduleMinutes: 0,
         weekScheduleMinutes: 60,
         monthScheduleMinutes: 0
       });
-      expect(client.scheduleSlot.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: expect.objectContaining({ endsAt: { gt: date("2026-08-31T00:00:00.000Z") } })
-      }));
+      expect(client.scheduleSlot.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ endsAt: { gt: date("2026-08-31T00:00:00.000Z") } })
+        })
+      );
     } finally {
       jest.useRealTimers();
     }
@@ -356,10 +423,12 @@ describe("BackofficeRepository profile details", () => {
     const detail = await repository.getCustomerDetail({ scope: "merchant", shopId: 11, id: 41 });
 
     expect(detail?.nextBooking).toMatchObject({ id: 4, status: "confirmed" });
-    expect(client.bookingOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ status: { in: ["PENDING", "CONFIRMED", "IN_SERVICE"] } }),
-      take: 1
-    }));
+    expect(client.bookingOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: { in: ["PENDING", "CONFIRMED", "IN_SERVICE"] } }),
+        take: 1
+      })
+    );
   });
 
   it("uses explicit safe account selects and returns bounded, deduplicated formal detail sections", async () => {
@@ -391,21 +460,28 @@ describe("BackofficeRepository profile details", () => {
     const repository = new BackofficeRepository(client as PrismaClient);
 
     const detail = await repository.getTechnicianDetail({ scope: "merchant", shopId: 11, id: 31 });
-    const profileQuery = (client.technicianProfile.findFirst as unknown as jest.Mock).mock.calls[0]?.[0];
+    const profileQuery = (client.technicianProfile.findFirst as unknown as jest.Mock).mock
+      .calls[0]?.[0];
 
-    expect(profileQuery.include.user.select).toEqual(expect.objectContaining({
-      username: true,
-      email: true,
-      phone: true,
-      avatarUrl: true
-    }));
+    expect(profileQuery.include.user.select).toEqual(
+      expect.objectContaining({
+        username: true,
+        email: true,
+        phone: true,
+        avatarUrl: true
+      })
+    );
     expect(profileQuery.include.user.select).not.toHaveProperty("passwordHash");
     expect(detail?.services).toHaveLength(1);
     expect(detail).toMatchObject({ servicesLimit: 50, servicesTruncated: false });
     expect(detail?.upcomingSchedule).toHaveLength(0);
-    expect(client.technicianService.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51 }));
+    expect(client.technicianService.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 51 })
+    );
     expect(client.service.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51 }));
-    expect(client.scheduleSlot.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 12 }));
+    expect(client.scheduleSlot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 12 })
+    );
     expect(client.auditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 30 }));
   });
 
@@ -436,7 +512,9 @@ describe("BackofficeRepository profile details", () => {
 
     const detail = await repository.getTechnicianDetail({ scope: "platform", id: 31 });
 
-    expect(client.technicianService.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51 }));
+    expect(client.technicianService.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 51 })
+    );
     expect(client.service.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51 }));
     expect(detail?.services).toHaveLength(50);
     expect(detail).toMatchObject({ servicesLimit: 50, servicesTruncated: true });

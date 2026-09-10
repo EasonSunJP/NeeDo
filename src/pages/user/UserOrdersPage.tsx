@@ -10,8 +10,12 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { bookingApi, mapBookingOrderToDomainOrder } from "../../features/booking/api";
+import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import type { Order } from "../../types/domain";
+import { getRebookPath } from "./rebookRoute";
 
 const fullscreenHeaderClassName = "";
 const surfaceCardClassName =
@@ -62,18 +66,6 @@ function getProviderDetailPath(order: Order) {
   if (order.mode === "store" && order.shopId) return `/stores/${order.shopId}`;
   if (order.technicianProfileId) return `/profiles/technician/${order.technicianProfileId}`;
   return null;
-}
-
-function getRebookPath(order: Order) {
-  if (!order.serviceId) return null;
-  const params = new URLSearchParams();
-
-  if (order.shopId) params.set("store", order.shopId);
-  if (order.mode === "home") params.set("mode", "home");
-  if (order.technicianProfileId) params.set("technician", order.technicianProfileId);
-  const query = params.toString();
-
-  return `/checkout/${order.serviceId}${query ? `?${query}` : ""}`;
 }
 
 function describeOrderLoadError(error: unknown) {
@@ -145,13 +137,33 @@ function OrderActionButton({
 export function UserOrdersPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [queryStatus, setQueryStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [queryError, setQueryError] = useState("");
   const [queryRevision, setQueryRevision] = useState(0);
   const [renderedOrderLimit, setRenderedOrderLimit] = useState(initialOrderRenderCount);
   const scrollRootRef = useRef<HTMLElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const cacheScope = getAuthenticatedPersistentCacheScope();
+  const ordersQuery = useCoreReadQuery(
+    async () => {
+      const data = await bookingApi.listOrders({ page: 1, pageSize: 100 });
+      return data.list.map(mapBookingOrderToDomainOrder);
+    },
+    [isAuthenticated, queryRevision],
+    {
+      enabled: isAuthenticated,
+      force: queryRevision > 0,
+      key: "booking:customer-orders:page-1:size-100",
+      scope: cacheScope
+    }
+  );
+  const orders = ordersQuery.data ?? [];
+  const queryStatus = !isAuthenticated
+    ? "idle"
+    : ordersQuery.loading
+      ? "loading"
+      : ordersQuery.error
+        ? "error"
+        : "success";
+  const queryError = ordersQuery.error ? describeOrderLoadError(ordersQuery.error) : "";
   const visibleOrders = useMemo(() => sortOrdersNewestFirst(orders), [orders]);
   const renderedOrders = useMemo(
     () => visibleOrders.slice(0, Math.min(renderedOrderLimit, visibleOrders.length)),
@@ -161,34 +173,14 @@ export function UserOrdersPage() {
     setRenderedOrderLimit((current) => Math.min(current + orderRenderBatchSize, visibleOrders.length));
   }, [visibleOrders.length]);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setOrders([]);
-      setQueryStatus("idle");
-      return;
-    }
+  const refreshOrders = useCallback(() => {
+    if (isAuthenticated) setQueryRevision((current) => current + 1);
+  }, [isAuthenticated]);
 
-    let active = true;
-    setQueryStatus("loading");
-    setQueryError("");
-
-    bookingApi.listOrders({ page: 1, pageSize: 100 })
-      .then((data) => {
-        if (!active) return;
-        setOrders(data.list.map(mapBookingOrderToDomainOrder));
-        setQueryStatus("success");
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setOrders([]);
-        setQueryError(describeOrderLoadError(error));
-        setQueryStatus("error");
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [isAuthenticated, queryRevision]);
+  useOrderRealtimeRefresh({
+    enabled: isAuthenticated,
+    onRefresh: refreshOrders
+  });
 
   useEffect(() => {
     setRenderedOrderLimit((current) =>

@@ -1,58 +1,19 @@
-import express, { Router, type ErrorRequestHandler } from "express";
+import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
-import { ERROR_CODES } from "../constants/error-codes";
 import { SocialMediaController } from "../controllers/social-media.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
+import {
+  createContentImageBodyErrorHandler,
+  createContentImageBodyParser
+} from "../middlewares/content-image-upload.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { SocialMediaRepository } from "../repositories/social-media.repository";
 import { ContentMediaFileStorage } from "../services/content-media.storage";
 import { SocialMediaService } from "../services/social-media.service";
-import { AppError } from "../utils/app-error";
 import { socialMediaUploadQuerySchema } from "../validators/social-media.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
-
-const mapSocialMediaRawBodyError: ErrorRequestHandler = (
-  error,
-  _request,
-  _response,
-  next
-): void => {
-  const status =
-    typeof error === "object" && error !== null
-      ? Number("statusCode" in error ? error.statusCode : "status" in error ? error.status : NaN)
-      : NaN;
-  if (
-    status === 413 ||
-    (typeof error === "object" &&
-      error !== null &&
-      "type" in error &&
-      error.type === "entity.too.large")
-  ) {
-    next(
-      new AppError({
-        code: ERROR_CODES.VALIDATION,
-        message: "error.social.media_too_large",
-        statusCode: 413,
-        cause: error
-      })
-    );
-    return;
-  }
-  if (!(error instanceof AppError) && status >= 400 && status < 500) {
-    next(
-      new AppError({
-        code: ERROR_CODES.VALIDATION,
-        message: "error.social.media_invalid",
-        statusCode: status,
-        cause: error
-      })
-    );
-    return;
-  }
-  next(error);
-};
 
 export const createSocialMediaRoutes = (
   config: AppConfig,
@@ -84,8 +45,11 @@ export const createSocialMediaRoutes = (
       query: socialMediaUploadQuerySchema,
       validationErrorMessage: () => "error.social.media_invalid"
     }),
-    express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "8mb" }),
-    mapSocialMediaRawBodyError,
+    createContentImageBodyParser(),
+    createContentImageBodyErrorHandler({
+      invalid: "error.social.media_invalid",
+      tooLarge: "error.social.media_too_large"
+    }),
     controller.upload
   );
 

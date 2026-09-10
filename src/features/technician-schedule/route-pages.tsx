@@ -1,56 +1,112 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { BookingSosButton } from "../sos/BookingSosButton";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { technicianNavItems } from "../../components/mobile/navItems";
+import { SchedulePageHeader } from "../../components/scheduling/SchedulePageHeader";
 import { Button } from "../../components/ui/Button";
+import { ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
+import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
+import { SocialProfileMiniCard, type SocialProfileMiniData } from "../../shared/profile-card";
+import { getScopedProfileDetailPath } from "../../shared/profile-detail/paths";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import {
   bookingApi,
+  createBookingIdempotencyKey,
   type BookingOrder,
   type BookingOrderStatus,
-  type BookingScheduleSlot
+  type BookingScheduleSlot,
+  type OrderCheckout,
+  type OrderReview
 } from "../booking/api";
+import { useOrderRealtimeRefresh } from "../booking/useOrderRealtimeRefresh";
 import { schedulingApi } from "../scheduling/api";
+import { availabilityWindowApi } from "../scheduling/availability-window-api";
+import { automationApi, type TechnicianAutomationContactPage } from "./automation-api";
+import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
+import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
+import type { ExchangeCancellation } from "../exchange/types";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
-import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
+import {
+  FormalTechnicianScheduleWorkspace,
+  type WorkspaceTab
+} from "./FormalTechnicianScheduleWorkspace";
 import {
   parsePositiveRouteId,
   useFormalTechnicianOrderResource,
   useFormalTechnicianScheduleResource
 } from "./formal-resource";
+import { TechnicianScheduleAutomationTabs } from "./TechnicianScheduleAutomationTabs";
 
 const panelClass =
   "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-4 shadow-[var(--client-shadow)]";
 const fieldClass =
   "mt-2 h-11 w-full rounded-[16px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 text-sm font-bold text-[color:var(--client-text)] outline-none";
 
+function bookingCustomerMiniCardData(order: BookingOrder): SocialProfileMiniData | null {
+  if (!order.customer) return null;
+  const rating = Number(order.customer.ratingAverage);
+
+  return {
+    id: String(order.customer.profileId ?? order.customer.userId),
+    entityType: "user",
+    displayName: order.customer.displayName,
+    avatar: order.customer.avatarUrl ?? "",
+    coverImage: order.customer.avatarUrl ?? "",
+    regionLabel: `ID ${order.customer.publicId}`,
+    addressLabel: "ID",
+    addressValue: order.customer.publicId,
+    primaryLabel: order.customer.membershipLevel,
+    kycVerified: true,
+    levelLabel: "",
+    scoreLabel: "信用度",
+    scoreValue: `${Number.isFinite(rating) ? rating.toFixed(1) : "0.0"}/5`,
+    followerCount: 0,
+    followingCount: 0
+  };
+}
+
 function TechnicianSchedulePageShell({
   title,
   subtitle,
   backTo = "/technician/schedule",
+  showHeader = true,
+  showBottomNav = true,
+  action,
   children
 }: {
   title: string;
   subtitle?: string;
   backTo?: string;
+  showHeader?: boolean;
+  showBottomNav?: boolean;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
   const { isNight } = useClientTheme();
   return (
-    <MobileShell navItems={technicianNavItems}>
+    <MobileShell navItems={technicianNavItems} showBottomNav={showBottomNav}>
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
-        <MobileFullscreenHeader
-          className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
-          dark={isNight}
-          onBack={() => navigate(backTo)}
-          subtitle={subtitle}
-          title={title}
-        />
-        <main className="min-h-0 flex-1 px-4 py-3 pb-24">{children}</main>
+        {showHeader ? (
+          <MobileFullscreenHeader
+            action={action}
+            className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
+            dark={isNight}
+            onBack={() => navigate(backTo)}
+            subtitle={subtitle}
+            title={title}
+          />
+        ) : null}
+        <main className={showHeader
+          ? "min-h-0 flex-1 px-4 py-3 pb-24"
+          : showBottomNav
+            ? "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden px-4 pb-[calc(220px+env(safe-area-inset-bottom))] pt-0 [overflow-x:clip]"
+            : "min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-hidden px-4 pb-[calc(96px+env(safe-area-inset-bottom))] pt-0 [overflow-x:clip]"
+        }>{children}</main>
       </div>
     </MobileShell>
   );
@@ -115,37 +171,93 @@ function ScheduleResourceErrorPanel({
 }
 
 export function TechnicianScheduleIndexRoutePage() {
+  const navigate = useNavigate();
   const { session } = useAuth();
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("calendar");
+  const [automationDirty, setAutomationDirty] = useState(false);
   const resource = useFormalTechnicianScheduleResource(session, null);
+  const dataCenterPeriod = readDataCenterPeriod(searchParams.get("period"));
+  const initialSelectedDate = tokyoDateKey(searchParams.get("from"));
+  const confirmDiscard = () => !automationDirty || window.confirm("当前设置尚未保存，确定离开吗？");
 
-  if (resource.loading) {
-    return <TechnicianSchedulePageShell backTo="/technician" title="排班与预约"><LoadingPanel label="正在读取正式排班与预约" /></TechnicianSchedulePageShell>;
-  }
-  if (resource.error || !resource.data) {
-    return (
-      <TechnicianSchedulePageShell backTo="/technician" title="排班与预约">
+  const handleBack = () => {
+    if (!confirmDiscard()) return;
+    const historyIndex = typeof window !== "undefined"
+      ? (window.history.state as { idx?: number } | null)?.idx
+      : undefined;
+    if (typeof historyIndex === "number" && historyIndex > 0) {
+      navigate(-1);
+      return;
+    }
+    navigate("/technician");
+  };
+  const handleWorkspaceTabChange = (nextTab: WorkspaceTab) => {
+    if (nextTab === workspaceTab) return;
+    if (!confirmDiscard()) return;
+    setAutomationDirty(false);
+    setWorkspaceTab(nextTab);
+  };
+
+  return (
+    <TechnicianSchedulePageShell backTo="/technician" showBottomNav={false} showHeader={false} title="排班与预约">
+      <SchedulePageHeader
+        ariaLabel="搜索排班"
+        backLabel="返回技师首页"
+        closeLabel="关闭排班"
+        footer={(
+          <TechnicianScheduleAutomationTabs
+            onChange={handleWorkspaceTabChange}
+            value={workspaceTab}
+          />
+        )}
+        onBack={handleBack}
+        onChange={setSearchQuery}
+        onClose={() => { if (confirmDiscard()) navigate("/technician", { replace: true }); }}
+        placeholder="搜索排班、预约、服务、状态"
+        value={searchQuery}
+      />
+      {resource.loading ? <LoadingPanel label="正在读取正式排班与预约" /> : null}
+      {resource.error || (!resource.loading && !resource.data) ? (
         <ScheduleResourceErrorPanel
           error={resource.error ?? "error.schedule.profile_not_found"}
           onRetry={resource.retry}
           title="正式排班资源加载失败"
         />
-      </TechnicianSchedulePageShell>
-    );
-  }
-
-  return (
-    <TechnicianSchedulePageShell
-      backTo="/technician"
-      subtitle={`${resource.data.profile.displayName} · ${resource.data.profile.shop?.name ?? "--"}`}
-      title="排班与预约"
-    >
-      <FormalTechnicianScheduleWorkspace
+      ) : null}
+      {resource.data ? <FormalTechnicianScheduleWorkspace
+        dataCenterPeriod={dataCenterPeriod}
+        initialSelectedDate={initialSelectedDate}
         profileAvatarUrl={resource.data.profile.avatarUrl}
+        profileId={resource.data.profile.id}
         profileName={resource.data.profile.displayName}
-        shopName={resource.data.profile.shop?.name ?? "--"}
-      />
+        onDirtyChange={setAutomationDirty}
+        searchQuery={searchQuery}
+        shopId={resource.data.shopId}
+        shopName={resource.data.shopName}
+        tab={workspaceTab}
+      /> : null}
     </TechnicianSchedulePageShell>
   );
+}
+
+function readDataCenterPeriod(value: string | null) {
+  return value === "last7days" || value === "last30days" || value === "week" || value === "month" || value === "year" ? value : undefined;
+}
+
+function tokyoDateKey(value: string | null) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return undefined;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Tokyo",
+    year: "numeric"
+  }).formatToParts(date);
+  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return `${read("year")}-${read("month")}-${read("day")}`;
 }
 
 function localDateLabel(value: string | Date): string {
@@ -176,6 +288,12 @@ function slotStatusLabel(status: BookingScheduleSlot["status"]): string {
 
 function scheduleMutationError(error: unknown): string {
   if (error instanceof ApiClientError) {
+    if (error.message === "error.availability.shop_control_conflict") {
+      return "当前时段已有店铺排班，可排班开关已自动关闭，请选择店铺排班以外的时间";
+    }
+    if (error.message === "error.availability.conflict") {
+      return "当前时段已有可排班日程，请先修改已有日程或选择其他时间";
+    }
     if (error.code === 40911 || error.message === "error.schedule.conflict") {
       return "时间与已有排班冲突，请调整后重试";
     }
@@ -206,6 +324,7 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const [impactAction, setImpactAction] = useState<"edit" | "delete" | null>(null);
 
   useEffect(() => {
     setSlot(resource.data?.slot ?? null);
@@ -244,15 +363,25 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
   };
 
   const deleteSlot = async () => {
-    if (pending || slot.status === "booked") return;
-    if (!deleteArmed) {
+    if (pending) return;
+    const requiresImpactConfirmation = slot.bookedCount > 0 || slot.availabilitySourceType === "shop";
+    if (requiresImpactConfirmation && impactAction !== "delete") {
+      setImpactAction("delete");
+      setDeleteArmed(false);
+      return;
+    }
+    if (!requiresImpactConfirmation && !deleteArmed) {
       setDeleteArmed(true);
       return;
     }
     setPending(true);
     setActionError("");
     try {
-      await schedulingApi.deleteSlot("technician", slot.id);
+      if (requiresImpactConfirmation) {
+        await schedulingApi.deleteSlot("technician", slot.id, { impactConfirmed: true });
+      } else {
+        await schedulingApi.deleteSlot("technician", slot.id);
+      }
       navigate("/technician/schedule");
     } catch (error) {
       setActionError(scheduleMutationError(error));
@@ -260,6 +389,17 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
     } finally {
       setPending(false);
     }
+  };
+
+  const editSlot = () => {
+    if (pending) return;
+    const requiresImpactConfirmation = slot.bookedCount > 0 || slot.availabilitySourceType === "shop";
+    if (requiresImpactConfirmation && impactAction !== "edit") {
+      setImpactAction("edit");
+      setDeleteArmed(false);
+      return;
+    }
+    navigate(`/technician/schedule/events/${slot.id}/edit${requiresImpactConfirmation ? "?impactConfirmed=true" : ""}`);
   };
 
   return (
@@ -291,21 +431,34 @@ function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
 
         {actionError ? <section className={panelClass} role="alert"><p className="text-sm font-black text-red-500">{actionError}</p></section> : null}
 
-        {slot.status === "booked" ? (
-          <section className={panelClass}>
-            <p className="text-sm font-bold text-[color:var(--client-muted)]">该时段已有预约，时间、状态和删除操作均由服务端锁定。</p>
+        <section className="grid gap-2 sm:grid-cols-3">
+          <Button disabled={pending} onClick={editSlot} variant="secondary">编辑时段</Button>
+          <Button disabled={pending || slot.status === "booked"} onClick={() => void updateStatus()} variant="secondary">
+            {slot.status === "blocked" ? "恢复可预约" : "锁定时段"}
+          </Button>
+          <Button disabled={pending} onClick={() => void deleteSlot()} variant="danger">
+            {deleteArmed ? "再次点击确认删除" : slot.bookedCount > 0 || slot.availabilitySourceType === "shop" ? "取消排班" : "删除时段"}
+          </Button>
+        </section>
+
+        {impactAction ? (
+          <section className="rounded-[24px] border-2 border-red-500 bg-red-500/10 p-4" role="alert">
+            <p className="text-sm font-black leading-6 text-red-500">
+              {slot.bookedCount > 0
+                ? `该时段已有 ${slot.bookedCount} 个确定预约，本次改动会取消已确定预约并影响您的评价，是否真的执行？`
+                : "这是店铺安排的可排班日程，本次改动可能影响店铺安排，是否真的执行？"}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button onClick={() => setImpactAction(null)} variant="secondary">返回</Button>
+              <Button
+                onClick={() => impactAction === "edit" ? editSlot() : void deleteSlot()}
+                variant="danger"
+              >
+                {impactAction === "edit" ? "确认修改排班" : "确认取消排班"}
+              </Button>
+            </div>
           </section>
-        ) : (
-          <section className="grid gap-2 sm:grid-cols-3">
-            <Button disabled={pending} to={`/technician/schedule/events/${slot.id}/edit`} variant="secondary">编辑时段</Button>
-            <Button disabled={pending} onClick={() => void updateStatus()} variant="secondary">
-              {slot.status === "blocked" ? "恢复可预约" : "锁定时段"}
-            </Button>
-            <Button disabled={pending} onClick={() => void deleteSlot()} variant="danger">
-              {deleteArmed ? "再次点击确认删除" : "删除时段"}
-            </Button>
-          </section>
-        )}
+        ) : null}
       </div>
     </TechnicianSchedulePageShell>
   );
@@ -326,12 +479,39 @@ function createDefaultScheduleRange() {
   return { startsAt, endsAt };
 }
 
+type TechnicianScheduleCreationMode = "availability" | "manualBooking" | null;
+
+function readScheduleCreationMode(value: string | null): TechnicianScheduleCreationMode {
+  return value === "manualBooking" ? "manualBooking" : "availability";
+}
+
+function readScheduleQueryDate(value: string | null, fallback: Date): Date {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : fallback;
+}
+
 function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   const { session } = useAuth();
   const resource = useFormalTechnicianScheduleResource(session, slotId);
   const navigate = useNavigate();
-  const defaultRange = useMemo(createDefaultScheduleRange, []);
+  const [searchParams] = useSearchParams();
+  const availabilityWindowId = parsePositiveRouteId(searchParams.get("availabilityWindowId") ?? undefined);
+  const isAvailabilityEdit = slotId === null && availabilityWindowId !== null;
+  const impactConfirmed = slotId !== null && searchParams.get("impactConfirmed") === "true";
+  const defaultRange = useMemo(() => {
+    const fallback = createDefaultScheduleRange();
+    const startsAt = readScheduleQueryDate(searchParams.get("startsAt"), fallback.startsAt);
+    const endsAt = readScheduleQueryDate(searchParams.get("endsAt"), new Date(startsAt.getTime() + 60 * 60_000));
+    return endsAt > startsAt ? { startsAt, endsAt } : fallback;
+  }, [searchParams]);
+  const [creationMode, setCreationMode] = useState<TechnicianScheduleCreationMode>(() => isAvailabilityEdit ? "availability" : readScheduleCreationMode(searchParams.get("mode")));
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [contacts, setContacts] = useState<TechnicianAutomationContactPage["list"]>([]);
+  const [selectedCustomerIdentityId, setSelectedCustomerIdentityId] = useState<number | null>(null);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"onsite" | "bank_transfer">("onsite");
+  const [note, setNote] = useState("");
   const [startsAt, setStartsAt] = useState(defaultRange.startsAt);
   const [endsAt, setEndsAt] = useState(defaultRange.endsAt);
   const [capacity, setCapacity] = useState(1);
@@ -350,9 +530,27 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
     const firstService = resource.data.services[0];
     if (firstService && selectedServiceId === null) {
       setSelectedServiceId(firstService.id);
-      setEndsAt(new Date(startsAt.getTime() + firstService.durationMinutes * 60_000));
+      if (creationMode === "manualBooking") {
+        setEndsAt(new Date(defaultRange.startsAt.getTime() + firstService.durationMinutes * 60_000));
+      }
     }
-  }, [resource.data, slotId]);
+  }, [creationMode, defaultRange.startsAt, resource.data, selectedServiceId, slotId]);
+
+  useEffect(() => {
+    if (slotId || creationMode !== "manualBooking" || resource.data?.shopId === null) return;
+    let active = true;
+    setContactsLoading(true);
+    void automationApi.listContacts().then((page) => {
+      if (!active) return;
+      setContacts(page.list);
+      setSelectedCustomerIdentityId((current) => current ?? page.list[0]?.identityId ?? null);
+    }).catch(() => {
+      if (active) setActionError("联系人读取失败，请稍后重试");
+    }).finally(() => {
+      if (active) setContactsLoading(false);
+    });
+    return () => { active = false; };
+  }, [creationMode, resource.data?.shopId, slotId]);
 
   if (resource.loading) {
     return <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}><LoadingPanel label="正在读取技师服务与排班" /></TechnicianSchedulePageShell>;
@@ -361,6 +559,17 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
     return (
       <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}>
         <ScheduleResourceErrorPanel error={resource.error ?? "error.api"} onRetry={resource.retry} title="正式排班资源加载失败" />
+      </TechnicianSchedulePageShell>
+    );
+  }
+  if (resource.data.shopId === null) {
+    return (
+      <TechnicianSchedulePageShell title={slotId ? "编辑正式排班" : "新建正式排班"}>
+        <ScheduleResourceErrorPanel
+          error="error.technician.shop_required"
+          onRetry={resource.retry}
+          title="正式排班资源加载失败"
+        />
       </TechnicianSchedulePageShell>
     );
   }
@@ -376,24 +585,59 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   const requiredDuration = resource.data.slot?.durationMinutes ?? selectedService?.durationMinutes ?? 0;
   const actualDuration = Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000);
   const validCapacity = Number.isInteger(capacity) && capacity >= 1 && capacity <= 100;
-  const validFuture = Boolean(slotId) || startsAt.getTime() > Date.now();
-  const canSave = Boolean(selectedServiceId) && requiredDuration > 0 && actualDuration === requiredDuration && validCapacity && validFuture && !pending;
+  const validFuture = Boolean(slotId) || isAvailabilityEdit || startsAt.getTime() > Date.now();
+  const validDuration = creationMode === "availability"
+    ? actualDuration >= 15 && actualDuration <= 24 * 60
+    : requiredDuration > 0 && actualDuration === requiredDuration;
+  const canSave = Boolean(creationMode)
+    && (creationMode === "availability" || Boolean(selectedServiceId))
+    && validDuration
+    && validCapacity
+    && validFuture
+    && (slotId !== null || creationMode === "availability" || Boolean(selectedCustomerIdentityId))
+    && !contactsLoading
+    && !pending;
 
   const save = async () => {
-    if (!canSave || !selectedServiceId) return;
+    if (!canSave || !creationMode || (creationMode !== "availability" && !selectedServiceId)) return;
     setPending(true);
     setActionError("");
     try {
-      const saved = slotId
-        ? await schedulingApi.updateSlot("technician", slotId, { startsAt, endsAt, capacity })
-        : await schedulingApi.createSlot("technician", {
-            technicianServiceId: selectedServiceId,
-            startsAt,
-            endsAt,
-            capacity
-          });
+      if (!slotId && creationMode === "manualBooking") {
+        if (!selectedCustomerIdentityId || !selectedService) return;
+        const order = await bookingApi.createTechnicianManualBooking({
+          customerIdentityId: selectedCustomerIdentityId,
+          expectedPriceAmountJpy: selectedService.priceAmount,
+          technicianServiceId: selectedService.id,
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+          paymentMethod,
+          ...(note.trim() ? { note: note.trim() } : {})
+        }, createBookingIdempotencyKey());
+        navigate(`/technician/orders/${order.id}`);
+        return;
+      }
+      if (!slotId && creationMode === "availability") {
+        if (availabilityWindowId) {
+          await availabilityWindowApi.update("technician", availabilityWindowId, { startsAt, endsAt, capacity });
+        } else {
+          await availabilityWindowApi.create("technician", { startsAt, endsAt, capacity });
+        }
+        navigate("/technician/schedule");
+        return;
+      }
+      if (!slotId) return;
+      const saved = await schedulingApi.updateSlot("technician", slotId, {
+        startsAt,
+        endsAt,
+        capacity,
+        ...(impactConfirmed ? { impactConfirmed: true } : {})
+      });
       navigate(`/technician/schedule/events/${saved.id}`);
     } catch (error) {
+      if (error instanceof ApiClientError && error.message === "error.availability.shop_control_conflict") {
+        setCreationMode(null);
+      }
       setActionError(scheduleMutationError(error));
     } finally {
       setPending(false);
@@ -403,10 +647,37 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
   return (
     <TechnicianSchedulePageShell
       subtitle={resource.data.profile.displayName}
-      title={slotId ? "编辑正式排班" : "新建正式排班"}
+      title={slotId || isAvailabilityEdit ? "编辑正式排班" : "新建正式排班"}
     >
       <div className="space-y-4">
-        <section className={panelClass}>
+        {!slotId && !isAvailabilityEdit ? (
+          <section aria-label="日程类型" className="grid grid-cols-2 gap-3">
+            {(["availability", "manualBooking"] as const).map((mode) => {
+              const checked = creationMode === mode;
+              const label = mode === "availability" ? "可排班" : "手动预约";
+              return (
+                <button
+                  aria-checked={checked}
+                  aria-label={label}
+                  className={`min-h-14 rounded-full border px-4 text-base font-black transition ${checked
+                    ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[var(--client-glow)]"
+                    : "border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-[color:var(--client-muted)]"
+                  }`}
+                  onClick={() => {
+                    setCreationMode(checked ? null : mode);
+                    setActionError("");
+                  }}
+                  role="switch"
+                  type="button"
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </section>
+        ) : null}
+
+        {slotId || creationMode === "manualBooking" ? <section className={panelClass}>
           <label className="block text-sm font-black">
             服务
             {slotId ? (
@@ -445,31 +716,94 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
               value={capacity}
             />
           </label>
-        </section>
+          {!slotId && creationMode === "manualBooking" ? (
+            <>
+              <label className="mt-4 block text-sm font-black">
+                预约客户
+                <select
+                  aria-label="预约客户"
+                  className={fieldClass}
+                  disabled={contactsLoading}
+                  onChange={(event) => setSelectedCustomerIdentityId(Number(event.target.value) || null)}
+                  value={selectedCustomerIdentityId ?? ""}
+                >
+                  <option value="">{contactsLoading ? "正在读取联系人" : "请选择联系人"}</option>
+                  {contacts.map((contact) => (
+                    <option key={contact.identityId} value={contact.identityId}>
+                      {contact.displayName} · {contact.publicId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="mt-4 block text-sm font-black">
+                支付方式
+                <select
+                  aria-label="支付方式"
+                  className={fieldClass}
+                  onChange={(event) => setPaymentMethod(event.target.value as "onsite" | "bank_transfer")}
+                  value={paymentMethod}
+                >
+                  <option value="onsite">现场支付</option>
+                  <option value="bank_transfer">银行转账</option>
+                </select>
+              </label>
+              <label className="mt-4 block text-sm font-black">
+                备注
+                <textarea
+                  aria-label="备注"
+                  className={`${fieldClass} min-h-24 py-3`}
+                  maxLength={500}
+                  onChange={(event) => setNote(event.target.value)}
+                  value={note}
+                />
+              </label>
+            </>
+          ) : null}
+        </section> : (
+          <section className={panelClass}>
+            <h2 className="text-base font-black">自由排班</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-[color:var(--client-muted)]">
+              该时间范围表示您愿意接受预约；已有预约只占用其中一段时间，不会缩短或关闭此范围。
+            </p>
+            <label className="mt-4 block text-sm font-black">
+              同时可接数量
+              <input
+                className={fieldClass}
+                max={100}
+                min={1}
+                name="capacity"
+                onChange={(event) => setCapacity(Number(event.target.value))}
+                type="number"
+                value={capacity}
+              />
+            </label>
+          </section>
+        )}
 
         <section className={panelClass}>
           <h2 className="mb-3 text-sm font-black">选择日期内的时间范围</h2>
           <FormalScheduleRangeEditor
             disabled={pending}
-            durationMinutes={requiredDuration || 60}
+            durationMinutes={creationMode === "availability" ? Math.max(15, actualDuration) : requiredDuration || 60}
             endsAt={endsAt}
             onChange={(nextStart, nextEnd) => {
               setStartsAt(nextStart);
               setEndsAt(nextEnd);
             }}
             startsAt={startsAt}
+            mode={creationMode === "availability" ? "availability" : "service"}
           />
         </section>
 
         {!validFuture ? <p className="text-sm font-black text-red-500">新排班的开始时间必须在未来</p> : null}
         {!validCapacity ? <p className="text-sm font-black text-red-500">容量必须为 1 到 100 的整数</p> : null}
-        {requiredDuration > 0 && actualDuration !== requiredDuration ? (
+        {creationMode !== "availability" && requiredDuration > 0 && actualDuration !== requiredDuration ? (
           <p className="text-sm font-black text-red-500">时间范围必须与服务时长 {requiredDuration} 分钟一致</p>
         ) : null}
         {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
 
         <Button className="w-full" disabled={!canSave} onClick={() => void save()}>
-          {pending ? "保存中" : "保存正式排班"}
+          {pending ? "保存中" : creationMode === "manualBooking" && !slotId ? "创建手动预约" : creationMode === "availability" && !slotId ? isAvailabilityEdit ? "保存可排班修改" : "保存可排班" : "保存正式排班"}
         </Button>
       </div>
     </TechnicianSchedulePageShell>
@@ -503,12 +837,14 @@ function orderStatusLabel(status: BookingOrderStatus): string {
   if (status === "pending") return "待确认";
   if (status === "confirmed") return "已确认";
   if (status === "inService") return "服务中";
+  if (status === "awaitingCheckout") return "等待客户结账";
+  if (status === "awaitingPaymentConfirmation") return "等待确认收款";
   if (status === "completed") return "已完成";
   return "已取消";
 }
 
 function orderPaymentLabel(order: BookingOrder): string {
-  const method = order.paymentMethod === "onsite" ? "现场支付" : "银行转账";
+  const method = order.paymentMethod === "onsite" ? "现场支付" : order.paymentMethod === "bank_transfer" ? "银行转账" : order.paymentMethod === "cash" ? "现金" : order.paymentMethod === "ndp" ? "NDP" : "其他方式";
   const status = order.paymentStatus === "confirmed"
     ? "已确认收款"
     : order.paymentStatus === "refundPending"
@@ -529,11 +865,53 @@ function orderMutationError(error: unknown): string {
   return "正式订单操作失败，请检查网络后重试";
 }
 
-function primaryOrderAction(status: BookingOrderStatus): { label: string; run: (id: number) => Promise<BookingOrder> } | null {
-  if (status === "pending") return { label: "确认接单", run: bookingApi.confirmOrder };
-  if (status === "confirmed") return { label: "开始服务", run: bookingApi.startOrder };
-  if (status === "inService") return { label: "完成服务", run: bookingApi.completeOrder };
-  return null;
+function isAmbiguousOrderMutationError(error: unknown) {
+  return !(error instanceof ApiClientError) || error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+type PlatformFeeInsufficientBalanceWarning = {
+  availableBalanceNdp: number;
+  feeAmountNdp: number;
+  idempotencyKey: string;
+  previewVersion: string;
+  shortfallNdp: number;
+};
+
+function readPlatformFeeInsufficientBalanceWarning(
+  error: unknown
+): Omit<PlatformFeeInsufficientBalanceWarning, "idempotencyKey"> | null {
+  if (!(error instanceof ApiClientError) || error.code !== 40936 || !error.data || typeof error.data !== "object") {
+    return null;
+  }
+  const data = error.data as Record<string, unknown>;
+  if (
+    typeof data.availableBalanceNdp !== "number" ||
+    typeof data.feeAmountNdp !== "number" ||
+    typeof data.shortfallNdp !== "number" ||
+    typeof data.previewVersion !== "string" ||
+    !/^sha256:[a-f0-9]{64}$/.test(data.previewVersion)
+  ) {
+    return null;
+  }
+  return {
+    availableBalanceNdp: data.availableBalanceNdp,
+    feeAmountNdp: data.feeAmountNdp,
+    previewVersion: data.previewVersion,
+    shortfallNdp: data.shortfallNdp
+  };
+}
+
+function serviceRemainingSeconds(expectedEndsAt: string | null | undefined, now: number) {
+  if (!expectedEndsAt) return 0;
+  const target = new Date(expectedEndsAt).getTime();
+  return Number.isFinite(target) ? Math.max(0, Math.ceil((target - now) / 1000)) : 0;
+}
+
+function checkoutEvidenceLabel(checkout: OrderCheckout | null) {
+  if (checkout?.paymentEvidence === "ndp_ledger") return "NDP 账本已结算";
+  if (checkout?.paymentEvidence === "technician_receipt_confirmation") return "技师已确认收款";
+  if (checkout?.paymentEvidence === "operations_receipt_override") return "运营已确认收款";
+  return "尚无收款凭证";
 }
 
 function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
@@ -542,11 +920,95 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [acceptanceWarning, setAcceptanceWarning] = useState<PlatformFeeInsufficientBalanceWarning | null>(null);
   const [cancelArmed, setCancelArmed] = useState(false);
+  const [endArmed, setEndArmed] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [receiptReason, setReceiptReason] = useState("");
+  const [checkout, setCheckout] = useState<OrderCheckout | null>(null);
+  const [ownReview, setOwnReview] = useState<OrderReview | null>(null);
+  const [reviewStatus, setReviewStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [reviewError, setReviewError] = useState("");
+  const [reviewPending, setReviewPending] = useState(false);
+  const [reviewSkipped, setReviewSkipped] = useState(false);
+  const [reviewRevision, setReviewRevision] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const [exchangeOrderLinked, setExchangeOrderLinked] = useState<boolean | null>(null);
+  const mutationKeys = useRef(new Map<string, { idempotencyKey: string; semantics: string }>());
+
+  useEffect(() => {
+    setReviewSkipped(false);
+    setOwnReview(null);
+    setReviewStatus("idle");
+    setReviewError("");
+    setReviewPending(false);
+    setReviewRevision(0);
+    mutationKeys.current.delete("submit-review");
+  }, [orderId]);
 
   useEffect(() => {
     setOrder(resource.data);
   }, [resource.data]);
+
+  const refreshOrder = useCallback(async () => {
+    const latestOrder = await bookingApi.getOrder(orderId);
+    setOrder(latestOrder);
+  }, [orderId]);
+  const handleExchangeCancellationChange = useCallback((payload: ExchangeCancellation) => {
+    if (payload.orderStatus !== "cancelled") return;
+    setOrder((current) => current?.id === payload.orderId
+      ? { ...current, status: "cancelled" }
+      : current);
+  }, []);
+
+  useOrderRealtimeRefresh({ onRefresh: refreshOrder, orderId });
+
+  useEffect(() => {
+    if (!order || !["awaitingCheckout", "awaitingPaymentConfirmation", "completed"].includes(order.status)) {
+      setCheckout(null);
+      return;
+    }
+    let active = true;
+    bookingApi.getCheckout(order.id)
+      .then((data) => { if (active) setCheckout(data); })
+      .catch((error: unknown) => { if (active) setActionError(orderMutationError(error)); });
+    return () => { active = false; };
+  }, [order]);
+
+  const reviewEligible =
+    order?.status === "completed" &&
+    checkout?.status === "completed" &&
+    checkout.paymentEvidence !== null;
+
+  useEffect(() => {
+    if (!reviewEligible || !order) {
+      setOwnReview(null);
+      setReviewStatus("idle");
+      setReviewError("");
+      return;
+    }
+    let active = true;
+    setReviewStatus("loading");
+    setReviewError("");
+    bookingApi.getOwnReview(order.id)
+      .then(({ review }) => {
+        if (!active) return;
+        setOwnReview(review);
+        setReviewStatus("success");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setReviewError(orderMutationError(error));
+        setReviewStatus("error");
+      });
+    return () => { active = false; };
+  }, [order?.id, reviewEligible, reviewRevision]);
+
+  useEffect(() => {
+    if (order?.status !== "inService") return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [order?.status]);
 
   if (resource.loading) {
     return <TechnicianSchedulePageShell title="正式预约订单"><LoadingPanel label="正在读取正式订单" /></TechnicianSchedulePageShell>;
@@ -559,20 +1021,126 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
     );
   }
 
-  const primary = primaryOrderAction(order.status);
   const canCancel = order.status === "pending" || order.status === "confirmed";
+  const customerCard = bookingCustomerMiniCardData(order);
 
-  const runPrimary = async () => {
-    if (!primary || pending) return;
+  const retainedMutationKey = (slot: string, semantics: string) => {
+    const retained = mutationKeys.current.get(slot);
+    if (retained?.semantics === semantics) return retained.idempotencyKey;
+    const idempotencyKey = createBookingIdempotencyKey();
+    mutationKeys.current.set(slot, { idempotencyKey, semantics });
+    return idempotencyKey;
+  };
+
+  const runFormalMutation = async (
+    slot: string,
+    operation: (idempotencyKey: string) => Promise<BookingOrder>,
+    semantics = slot,
+  ) => {
+    if (pending) return;
+    const key = retainedMutationKey(slot, semantics);
     setPending(true);
     setActionError("");
     try {
-      setOrder(await primary.run(order.id));
+      setOrder(await operation(key));
+      mutationKeys.current.delete(slot);
       setCancelArmed(false);
+      setEndArmed(false);
     } catch (error) {
+      if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete(slot);
       setActionError(orderMutationError(error));
     } finally {
       setPending(false);
+    }
+  };
+
+  const confirmReceipt = async () => {
+    const slot = "confirm-receipt";
+    const reason = receiptReason.trim();
+    if (pending || reason.length === 0) return;
+    const key = retainedMutationKey(slot, JSON.stringify([order.id, "technician_receipt_confirmation", reason]));
+    setPending(true);
+    setActionError("");
+    try {
+      const updatedCheckout = await bookingApi.confirmReceipt(order.id, { reason, idempotencyKey: key });
+      const updatedOrder = await bookingApi.getOrder(order.id);
+      mutationKeys.current.delete(slot);
+      setCheckout(updatedCheckout);
+      setOrder(updatedOrder);
+    } catch (error) {
+      if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete(slot);
+      setActionError(orderMutationError(error));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const confirmOrder = async () => {
+    if (pending || order.status !== "pending") return;
+    setPending(true);
+    setActionError("");
+    try {
+      const confirmed = acceptanceWarning
+        ? await bookingApi.confirmOrder(order.id, {
+            insufficientBalanceConfirmation: {
+              confirmed: true,
+              idempotencyKey: acceptanceWarning.idempotencyKey,
+              previewVersion: acceptanceWarning.previewVersion
+            }
+          })
+        : await bookingApi.confirmOrder(order.id);
+      setOrder(confirmed);
+      setAcceptanceWarning(null);
+    } catch (error) {
+      const warning = readPlatformFeeInsufficientBalanceWarning(error);
+      if (warning) {
+        setAcceptanceWarning((current) => ({
+          ...warning,
+          idempotencyKey:
+            current?.previewVersion === warning.previewVersion
+              ? current.idempotencyKey
+              : createBookingIdempotencyKey()
+        }));
+      } else {
+        setActionError(orderMutationError(error));
+      }
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const submitReview = async (submission: ServiceReviewSubmission) => {
+    if (reviewPending) return;
+    const tags = [...submission.tags].sort((left, right) => {
+      const leftBytes = new TextEncoder().encode(left);
+      const rightBytes = new TextEncoder().encode(right);
+      const limit = Math.min(leftBytes.length, rightBytes.length);
+      for (let index = 0; index < limit; index += 1) {
+        if (leftBytes[index] !== rightBytes[index]) return leftBytes[index]! - rightBytes[index]!;
+      }
+      return leftBytes.length - rightBytes.length;
+    });
+    const comment = submission.comment?.normalize("NFKC").trim() || null;
+    const semantics = JSON.stringify([order.id, "customer", submission.rating, tags, comment]);
+    const key = retainedMutationKey("submit-review", semantics);
+    setReviewPending(true);
+    setReviewError("");
+    try {
+      const result = await bookingApi.createReview(order.id, {
+        targetType: "customer",
+        rating: submission.rating,
+        tags,
+        comment,
+        idempotencyKey: key
+      });
+      mutationKeys.current.delete("submit-review");
+      setOwnReview(result.review);
+      setReviewStatus("success");
+    } catch (error) {
+      if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete("submit-review");
+      setReviewError(`评价提交失败：${orderMutationError(error)}`);
+    } finally {
+      setReviewPending(false);
     }
   };
 
@@ -597,6 +1165,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   return (
     <TechnicianSchedulePageShell
       backTo="/technician/schedule"
+      action={<BookingSosButton orderId={order.id} revision={`${order.status}:${order.serviceSession?.endedAt ?? ""}`} />}
       subtitle={`${order.orderNo} · ${timeRangeLabel(order.startsAt, order.endsAt)}`}
       title="正式预约订单"
     >
@@ -616,8 +1185,26 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
             <DetailRow label="店铺" value={order.shopName} />
             <DetailRow label="预约时间" value={`${localDateLabel(order.startsAt)} · ${timeRangeLabel(order.startsAt, order.endsAt)}`} />
             <DetailRow label="支付" value={orderPaymentLabel(order)} />
-            <DetailRow label="客户账号" value={`#${order.customerUserId}`} />
           </dl>
+          <div className="mt-4">
+            <h3 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">用户</h3>
+            {customerCard ? (
+              <SocialProfileMiniCard
+                data={customerCard}
+                detailTo={order.customer?.profileId
+                  ? getScopedProfileDetailPath("technician", "user", String(order.customer.profileId))
+                  : undefined}
+                showAction={false}
+                showLevel={false}
+                showSocialStats={false}
+                topTags={[{ label: "预约者", tone: "purple" }]}
+              />
+            ) : (
+              <div className="rounded-[18px] bg-[color:var(--client-elevated)] px-3 py-4 text-sm font-bold text-[color:var(--client-muted)]">
+                用户资料暂不可用
+              </div>
+            )}
+          </div>
           {order.note ? (
             <div className="mt-3 rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3 text-sm">
               <strong>备注：</strong>{order.note}
@@ -625,35 +1212,115 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
           ) : null}
         </section>
 
-        <section className={panelClass}>
-          <h2 className="text-base font-black">状态记录</h2>
-          <ol className="mt-3 space-y-2">
-            {order.statusHistory.map((history) => (
-              <li className="rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3" key={history.id}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong className="text-sm">{orderStatusLabel(history.toStatus)}</strong>
-                  <span className="text-xs font-bold text-[color:var(--client-muted)]">
-                    {localDateLabel(history.createdAt)} {localTimeLabel(history.createdAt)}
-                  </span>
-                </div>
-                {history.reason ? <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{history.reason}</p> : null}
-              </li>
-            ))}
-          </ol>
-        </section>
+        <ContactEventTimelinePanel
+          title="订单追踪信息"
+          events={buildFormalOrderTimelineEvents(order)}
+          onCommentSubmit={(body) => {
+            void runFormalMutation("timeline-comment", () =>
+              bookingApi.createTimelineComment(order.id, { body })
+            );
+          }}
+        />
 
+        {canCancel || order.status === "cancelled" ? (
+          <ExchangeOrderCancellationPanel
+            onCancellationChange={handleExchangeCancellationChange}
+            onLinkedChange={setExchangeOrderLinked}
+            orderId={order.id}
+          />
+        ) : null}
+
+        {order.status === "confirmed" ? (
+          <section className={panelClass}>
+            <h2 className="text-base font-black">服务验证码</h2>
+            <p className="mt-2 text-xs font-bold text-[color:var(--client-muted)]">请向客户索取六位验证码。技师端不会显示客户验证码。</p>
+            <input
+              aria-label="六位服务验证码"
+              className={fieldClass}
+              inputMode="numeric"
+              maxLength={6}
+              onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="输入 6 位验证码"
+              value={verificationCode}
+            />
+            <Button className="mt-3 w-full" disabled={pending || !/^\d{6}$/.test(verificationCode)} onClick={() => void runFormalMutation("technician-start", (idempotencyKey) => bookingApi.startService(order.id, { actor: "technician", verificationCode, idempotencyKey }), JSON.stringify([order.id, "technician", verificationCode]))}>
+              验证并开始服务
+            </Button>
+          </section>
+        ) : null}
+
+        {order.status === "inService" && order.serviceSession ? (
+          <section className={panelClass}>
+            <div className="text-center"><ServiceCountdownPill seconds={serviceRemainingSeconds(order.serviceSession.expectedEndsAt, now)} /></div>
+            <div className="mt-4 space-y-2">
+              {order.serviceSession.addOns.length === 0 ? <p className="text-center text-xs font-bold text-[color:var(--client-muted)]">暂无追加服务</p> : order.serviceSession.addOns.map((addOn) => (
+                <article className="rounded-[16px] bg-[color:var(--client-elevated)] p-3" key={addOn.id}>
+                  <div className="flex items-start justify-between gap-3"><div><strong className="text-sm">{addOn.serviceNameSnapshot}</strong><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">+{addOn.durationMinutes} 分钟 · ¥{addOn.priceAmountJpy.toLocaleString("ja-JP")}</p></div><span className="text-[10px] font-black text-[color:var(--client-muted)]">{addOn.status === "proposed" ? addOn.proposedBy === "customer" ? "客户申请" : "等待客户" : addOn.status === "accepted" ? "已接受" : "已拒绝"}</span></div>
+                  {addOn.status === "proposed" && addOn.proposedBy === "customer" ? <div className="mt-3 grid grid-cols-2 gap-2"><Button disabled={pending} onClick={() => void runFormalMutation(`reject-${addOn.id}`, (idempotencyKey) => bookingApi.rejectAddOn(order.id, addOn.id, { idempotencyKey }))} variant="danger">拒绝</Button><Button disabled={pending} onClick={() => void runFormalMutation(`accept-${addOn.id}`, (idempotencyKey) => bookingApi.acceptAddOn(order.id, addOn.id, { idempotencyKey }))}>接受追加</Button></div> : null}
+                </article>
+              ))}
+            </div>
+            <div className="mt-4">
+              {endArmed ? <p className="mb-2 text-xs font-bold text-red-500">确认提前结束服务？理由“技师确认提前结束服务”将写入正式记录。</p> : null}
+              <Button className="w-full" disabled={pending} onClick={() => endArmed ? void runFormalMutation("technician-end", (idempotencyKey) => bookingApi.endService(order.id, { reason: "技师确认提前结束服务", idempotencyKey })) : setEndArmed(true)} variant="danger">
+                {endArmed ? "再次点击确认结束" : "提前结束服务"}
+              </Button>
+            </div>
+          </section>
+        ) : null}
+
+        {order.status === "awaitingCheckout" ? <section className={panelClass}><h2 className="text-base font-black">等待客户结账</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">客户需要选择现金、NDP 或其他支付方式。</p></section> : null}
+
+        {checkout ? <section className={panelClass}><h2 className="text-base font-black">正式结算</h2><dl className="mt-3 grid gap-2 sm:grid-cols-2"><DetailRow label="应付金额" value={`¥${checkout.checkoutAmountJpy.toLocaleString("ja-JP")}`} /><DetailRow label="应付 NDP" value={`${checkout.payableNdp.toLocaleString("ja-JP")} NDP`} /><DetailRow label="支付方式" value={checkout.paymentMethod === "cash" ? "现金" : checkout.paymentMethod === "other" ? checkout.otherMethod?.label ?? "其他方式" : checkout.paymentMethod === "ndp" ? "NDP" : "未选择"} /><DetailRow label="支付凭证" value={checkoutEvidenceLabel(checkout)} /></dl></section> : null}
+
+        {order.status === "awaitingPaymentConfirmation" && checkout && (checkout.paymentMethod === "cash" || checkout.paymentMethod === "other") ? (
+          <section className={panelClass}>
+            <h2 className="text-base font-black">确认已经收款</h2>
+            <p className="mt-2 text-xs font-bold text-[color:var(--client-muted)]">只有实际收到现金或确认其他方式到账后才能完成订单。</p>
+            <textarea aria-label="收款确认理由" className={`${fieldClass} min-h-24 py-3`} onChange={(event) => setReceiptReason(event.target.value)} placeholder="填写可审计的收款确认理由" value={receiptReason} />
+            <Button className="mt-3 w-full" disabled={pending || receiptReason.trim().length === 0} onClick={() => void confirmReceipt()}>确认收款并完成订单</Button>
+          </section>
+        ) : null}
+
+        {order.status === "completed" ? <section className={panelClass}><h2 className="text-base font-black">订单已完成</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{checkoutEvidenceLabel(checkout)}</p></section> : null}
+
+        {acceptanceWarning ? (
+          <section className="rounded-2xl border border-amber-400/45 bg-amber-400/10 p-4" role="alert">
+            <h2 className="text-sm font-black text-amber-500">店铺平台费余额不足</h2>
+            <p className="mt-2 text-xs font-bold leading-5 text-[color:var(--client-muted)]">
+              本次接单需冻结 {acceptanceWarning.feeAmountNdp.toLocaleString("ja-JP")} NDP，店铺可用余额 {acceptanceWarning.availableBalanceNdp.toLocaleString("ja-JP")} NDP，还差 {acceptanceWarning.shortfallNdp.toLocaleString("ja-JP")} NDP。确认后将记录欠费并继续接单。
+            </p>
+          </section>
+        ) : null}
         {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
-        {primary || canCancel ? (
+        {reviewEligible && reviewStatus === "loading" ? <p className="text-center text-sm font-black">正在读取评价状态</p> : null}
+        {reviewEligible && reviewStatus === "error" ? <section className="space-y-3 rounded-2xl border border-red-400/35 bg-red-500/10 p-4" role="alert"><p className="text-sm font-black text-red-500">{reviewError}</p><Button className="w-full" onClick={() => setReviewRevision((value) => value + 1)} variant="secondary">重新读取评价状态</Button></section> : null}
+        {order.status === "pending" || canCancel ? (
           <section className="grid gap-2 sm:grid-cols-2">
-            {canCancel ? (
+            {exchangeOrderLinked === false && canCancel ? (
               <Button disabled={pending} onClick={() => void cancel()} variant="danger">
                 {cancelArmed ? "再次点击确认取消" : "取消预约"}
               </Button>
             ) : null}
-            {primary ? <Button disabled={pending} onClick={() => void runPrimary()}>{primary.label}</Button> : null}
+            {order.status === "pending" ? <Button disabled={pending} onClick={() => void confirmOrder()}>{acceptanceWarning ? "余额不足，仍确认接单" : "确认接单"}</Button> : null}
           </section>
         ) : null}
       </div>
+      {reviewEligible && reviewStatus === "success" && ownReview === null && !reviewSkipped ? (
+        <ServiceReviewPrompt
+          commentEnabled
+          error={reviewError || undefined}
+          helperMessage="本次订单评价提交后不可修改"
+          integerRating
+          message="请根据本次已完成服务评价客户"
+          onSkip={() => setReviewSkipped(true)}
+          onSubmit={(submission) => void submitReview(submission)}
+          pending={reviewPending}
+          showTagCounts={false}
+          tagOptions={["礼貌友好", "准时到达", "沟通顺畅", "支付顺利"]}
+          title="评价客户"
+        />
+      ) : null}
     </TechnicianSchedulePageShell>
   );
 }
@@ -662,5 +1329,5 @@ export function TechnicianOrderDetailRoutePage() {
   const { orderId } = useParams<{ orderId: string }>();
   const orderIdValue = parsePositiveRouteId(orderId);
   if (!orderIdValue) return <RouteUnavailable kind="order" />;
-  return <TechnicianOrderDetailBody orderId={orderIdValue} />;
+  return <TechnicianOrderDetailBody key={orderIdValue} orderId={orderIdValue} />;
 }

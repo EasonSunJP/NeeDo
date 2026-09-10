@@ -26,8 +26,32 @@ describe("Booking single pending replacement transaction contract", () => {
     );
   });
 
+  it("keeps a fresh server-time guard on the final atomic slot-capacity mutation", () => {
+    expect(repositorySource).toMatch(
+      /const slotUpdate[\s\S]*?where:\s*\{[\s\S]*?startsAt:\s*\{\s*gt:\s*new Date\(\)\s*\}/
+    );
+  });
+
   it("keeps black members on the multiple-pending path", () => {
     expect(repositorySource).toContain("isBlackMember");
     expect(repositorySource).toMatch(/!isBlackMember\s*\?/);
+  });
+
+  it("protects Exchange-linked pending orders in both the selection and conditional replacement", () => {
+    const replacementBlock = repositorySource.match(
+      /const supersededPendingOrders[\s\S]*?const conflict = await tx\.bookingOrder\.findFirst/
+    )?.[0];
+
+    expect(replacementBlock).toBeDefined();
+    expect(replacementBlock).toMatch(/exchangeMatchParticipant:\s*\{\s*is:\s*null\s*\}/);
+    expect(replacementBlock).toMatch(
+      /updateMany\([\s\S]*?exchangeMatchParticipant:\s*\{\s*is:\s*null\s*\}/
+    );
+  });
+
+  it("counts only unconverted Exchange participant reservations as booking conflicts", () => {
+    expect(repositorySource).toMatch(
+      /exchangeMatchParticipant\.findFirst\([\s\S]*?activeReservationKey:\s*\{\s*not:\s*null\s*\}/
+    );
   });
 });

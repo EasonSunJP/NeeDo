@@ -1,4 +1,5 @@
 import request from "supertest";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { ERROR_CODES } from "../src/constants/error-codes";
@@ -165,7 +166,8 @@ const createFixture = (
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     technicianShopAffiliationRepository: repository,
     publicIdentifierRepository,
-    auditLogRepository
+    auditLogRepository,
+    merchantShopContextRepository: createDirectShopContextRepository()
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,
@@ -381,7 +383,7 @@ describe("merchant employee affiliation HTTP API", () => {
       })
       .expect(400);
 
-    fixture.repository.upsertCurrentAffiliation.mockResolvedValue("exclusive_conflict");
+    const callsBeforeLegacyValue = fixture.repository.upsertCurrentAffiliation.mock.calls.length;
     await request(fixture.app)
       .put(endpoint)
       .set("Authorization", authorization)
@@ -391,13 +393,13 @@ describe("merchant employee affiliation HTTP API", () => {
         startsAt: "2026-08-01T00:00:00.000Z",
         endsAt: null
       })
-      .expect(409)
+      .expect(400)
       .expect((response) => {
-        expect(response.body).toMatchObject({
-          code: ERROR_CODES.TECHNICIAN_AFFILIATION_CONFLICT,
-          message: "error.technician_affiliation.exclusive_conflict"
-        });
+        expect(response.body).toMatchObject({ code: ERROR_CODES.VALIDATION });
       });
+    expect(fixture.repository.upsertCurrentAffiliation).toHaveBeenCalledTimes(
+      callsBeforeLegacyValue
+    );
   });
 
   it("requires the dedicated write permission and passes parsed dates only after validation", async () => {
@@ -526,11 +528,11 @@ describe("merchant employee affiliation HTTP API", () => {
         {
           ...employee,
           needoId: "s0000000087",
-          displayName: "B 店专属员工",
+          displayName: "B 店合作员工",
           affiliation: {
             ...employee.affiliation,
             id: 93,
-            relationshipType: "exclusive",
+            relationshipType: "partner",
             shop: { id: shopB, publicId: "shop0000000020", name: "Partner Shop" }
           }
         }
@@ -551,14 +553,6 @@ describe("merchant employee affiliation HTTP API", () => {
         const key = `${input.shopId}:${input.technicianIdentityId}`;
         const current = affiliations.get(key);
         if (!current) return "not_found" as const;
-        if (
-          input.relationshipType === "exclusive" &&
-          [...affiliations.keys()].some(
-            (candidate) => candidate.endsWith(`:${input.technicianIdentityId}`) && candidate !== key
-          )
-        ) {
-          return "exclusive_conflict" as const;
-        }
         if (input.workStatus === "ended") {
           affiliations.delete(key);
           return {
@@ -616,7 +610,7 @@ describe("merchant employee affiliation HTTP API", () => {
         startsAt: "2026-08-01T00:00:00.000Z",
         endsAt: null
       })
-      .expect(409);
+      .expect(400);
     await request(fixtureB.app)
       .put("/api/v1/merchant-admin/employees/s0000000086/affiliation")
       .set("Authorization", authB)

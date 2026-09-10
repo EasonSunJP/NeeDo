@@ -50,6 +50,9 @@ const main = async (): Promise<void> => {
         shopName: provisioning.LIFEDANCE_ADMIN2_PLAN.shopName,
         userId: result.userId,
         shopId: result.shopId,
+        compensationProfileId: result.compensationProfileId,
+        bookingServiceId: result.bookingServiceId,
+        availableBookingSlotCount: result.availableBookingSlotCount,
         merchantAccountId: result.merchantAccountId,
         friendCount: result.friendUserIds.length
       })

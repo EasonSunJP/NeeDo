@@ -6,6 +6,7 @@ import { merchantPreviewShopHeaderSchema } from "../validators/merchant-preview.
 
 export interface AuthenticateOptions {
   requiredPermission?: string;
+  allowDuringCompliance?: boolean;
 }
 
 export const createAuthenticateMiddleware =
@@ -14,10 +15,9 @@ export const createAuthenticateMiddleware =
   async (request: Request, response: Response, next: NextFunction): Promise<void> => {
     try {
       const token = getBearerToken(request);
-      const auth = await authService.authenticateAccessToken(
-        token,
-        options.requiredPermission
-      );
+      const auth = await authService.authenticateAccessToken(token, options.requiredPermission, {
+        allowDuringCompliance: options.allowDuringCompliance
+      });
       response.locals.auth = applyReadOnlyMerchantPreview(request, auth);
       next();
     } catch (error) {
@@ -28,11 +28,16 @@ export const createAuthenticateMiddleware =
 const merchantPreviewHeader = "x-needo-merchant-preview-shop-id";
 const safePreviewMethods = new Set(["GET", "HEAD", "OPTIONS"]);
 
-const applyReadOnlyMerchantPreview = <TAuth extends {
-  permissions: string[];
-  currentIdentityScopeType?: string | null;
-  currentIdentityScopeId?: number | null;
-}>(request: Request, auth: TAuth): TAuth => {
+const applyReadOnlyMerchantPreview = <
+  TAuth extends {
+    permissions: string[];
+    currentIdentityScopeType?: string | null;
+    currentIdentityScopeId?: number | null;
+  }
+>(
+  request: Request,
+  auth: TAuth
+): TAuth => {
   const headerValue = request.get(merchantPreviewHeader);
   if (!headerValue) return auth;
 

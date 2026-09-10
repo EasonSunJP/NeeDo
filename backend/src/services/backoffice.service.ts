@@ -1,10 +1,15 @@
+import type { RealtimeRepositoryPort } from "../repositories/realtime.repository";
+import type { WorkStatus } from '../domain/work-status';
 import { hash } from "bcryptjs";
 import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   BackofficeCustomerMembershipGrantBody,
   BackofficeCustomerUpdateBody,
+  BackofficeDashboardQuery,
   BackofficeListQuery,
+  BackofficeManagedUserListQuery,
+  BackofficeManagedUserDetailQuery,
   BackofficeNdpSummaryQuery,
   BackofficeTimelineQuery,
   BackofficeServiceCreateBody,
@@ -12,53 +17,230 @@ import type {
   BackofficeShopCreateBody,
   BackofficeShopUpdateBody,
   MerchantShopUpdateBody,
+  MerchantDashboardQuery,
+  ManageableMerchantShopsQuery,
   BackofficeTechnicianApproveBody,
   BackofficeTechnicianUpdateBody,
   BackofficeTechnicianRankingQuery,
   TechnicianRankingPeriod as RankingPeriod
 } from "../validators/backoffice.validator";
+import { DASHBOARD_METRIC_KEYS, type DashboardMetricKey } from "../validators/backoffice.validator";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
+import type { AuditLogCreateInput } from "../repositories/audit-log.repository";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { LedgerCurrency } from "./ledger-currency.service";
+import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
+import type { PlatformMembershipService } from "./platform-membership.service";
+import {
+  parseCalendarDate,
+  resolveDashboardWindow,
+  shiftCalendarDate,
+  startOfTokyoCalendarDate,
+  toTokyoCalendarDate
+} from "../domain/dashboard-period";
+import type {
+  BackofficeDashboardPayload,
+  DashboardAggregateFacts,
+  DashboardAggregateInput,
+  DashboardHeadlineSeriesPoint,
+  DashboardMetricComparison,
+  DashboardNdpPair,
+  DashboardPlatformGlobalNdpPair
+} from "../domain/dashboard";
+import {
+  compareAnalyticsMetric,
+  type AnalyticsDataStatus,
+  type AnalyticsMetricPayload,
+  type AnalyticsMetricSeries
+} from "../domain/analytics-metric";
+import type {
+  OperationsFinanceFacts,
+  TravelFareDetailRow
+} from "../repositories/dashboard-operations-finance.repository";
+import type { CommissionFacts } from "../repositories/dashboard-commission.repository";
+import type { GrowthFacts } from "../repositories/dashboard-growth.repository";
+import { DashboardMerchantSnapshotService } from "./dashboard-merchant-snapshot.service";
+import {
+  merchantShopIdentityForbidden,
+  requireMerchantShopId,
+  resolveFormalMerchantIdentityKind
+} from "./merchant-shop-scope";
+import type {
+  MerchantShopContextPage,
+  MerchantShopContextRepositoryPort
+} from "../repositories/merchant-shop-context.repository";
 
-const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
+export type { BackofficeDashboardPayload } from "../domain/dashboard";
+export { DASHBOARD_METRIC_KEYS } from "../validators/backoffice.validator";
 
-export const resolveCustomerMembershipGrant = (
-  input: Pick<BackofficeCustomerMembershipGrantBody, "durationUnit" | "durationValue" | "startsAt">
-): { durationValue: number | null; startsAt: Date; expiresAt: Date | null } => {
-  const startsAt = new Date(input.startsAt);
-  if (input.durationUnit === "forever") {
-    return { durationValue: null, startsAt, expiresAt: null };
-  }
+export interface BackofficeAnalyticsReader {
+  getOperationsFinance(input: DashboardAggregateInput): Promise<OperationsFinanceFacts>;
+  getTravelFareDetails?(input: DashboardAggregateInput): Promise<TravelFareDetailRow[]>;
+  getCommissionFacts(input: DashboardAggregateInput): Promise<CommissionFacts>;
+  getGrowthFacts(input: DashboardAggregateInput): Promise<GrowthFacts>;
+}
 
-  const durationValue = input.durationValue as number;
-  if (input.durationUnit === "day") {
-    return {
-      durationValue,
-      startsAt,
-      expiresAt: new Date(startsAt.getTime() + durationValue * DAY_MS)
-    };
-  }
+interface DashboardAnalyticsFact {
+  current: number | null;
+  previous: number | null;
+  dataStatus: AnalyticsDataStatus;
+}
 
-  const targetMonthFirst = new Date(Date.UTC(
-    startsAt.getUTCFullYear(),
-    startsAt.getUTCMonth() + durationValue,
-    1,
-    startsAt.getUTCHours(),
-    startsAt.getUTCMinutes(),
-    startsAt.getUTCSeconds(),
-    startsAt.getUTCMilliseconds()
-  ));
-  const lastTargetDay = new Date(Date.UTC(
-    targetMonthFirst.getUTCFullYear(),
-    targetMonthFirst.getUTCMonth() + 1,
-    0
-  )).getUTCDate();
-  targetMonthFirst.setUTCDate(Math.min(startsAt.getUTCDate(), lastTargetDay));
-  return { durationValue, startsAt, expiresAt: targetMonthFirst };
+interface DashboardOverviewFilter {
+  period: BackofficeDashboardQuery["period"];
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  timeZone: "Asia/Tokyo";
+  granularity: ReturnType<typeof resolveDashboardWindow>["granularity"];
+  city: string | null;
+}
+
+export interface DashboardOverviewPayload {
+  filter: DashboardOverviewFilter;
+  operationsFinance: AnalyticsMetricPayload[];
+  commissionMetrics: AnalyticsMetricPayload[];
+  growthMetrics: AnalyticsMetricPayload[];
+}
+
+export interface DashboardMetricDetailPayload {
+  filter: DashboardOverviewFilter;
+  metric: AnalyticsMetricPayload;
+  series: AnalyticsMetricSeries[];
+  details: TravelFareDetailRow[];
+}
+
+interface DashboardMetricMetadata {
+  description: string;
+  formula: string;
+  unit: AnalyticsMetricPayload["unit"];
+  detailRoute: string | null;
+}
+
+const metricMetadata = (
+  description: string,
+  formula: string,
+  unit: AnalyticsMetricPayload["unit"],
+  metricKey: DashboardMetricKey,
+  detailEnabled = true
+): DashboardMetricMetadata => ({
+  description,
+  formula,
+  unit,
+  detailRoute: detailEnabled ? `/admin/analytics/metrics/${metricKey}` : null
+});
+
+const DASHBOARD_METRIC_METADATA: Record<DashboardMetricKey, DashboardMetricMetadata> = {
+  gross_revenue: metricMetadata(
+    "Completed checkout amount sum",
+    "SUM(completed checkoutAmountJpy)",
+    "jpy",
+    "gross_revenue"
+  ),
+  travel_fare: metricMetadata(
+    "Completed payment-evidenced travel fare excluding refunded or reversed orders",
+    "SUM(completed non-refunded checkout travelFareAmountJpy)",
+    "jpy",
+    "travel_fare"
+  ),
+  discount_amount: metricMetadata(
+    "Immutable base and add-on amount minus checkout amount",
+    "SUM(discountAmountJpy)",
+    "jpy",
+    "discount_amount"
+  ),
+  consumables_sales: metricMetadata(
+    "Formal Store consumables sales excluding invalid orders",
+    "SUM(consumables sales excluding invalid orders)",
+    "jpy",
+    "consumables_sales"
+  ),
+  dedicated_technician_commission: metricMetadata(
+    "Natural-month daily base allocation plus settled share for technicians affiliated with one shop",
+    "SUM(single-shop natural-month daily base allocation + settled share)",
+    "jpy",
+    "dedicated_technician_commission"
+  ),
+  part_time_technician_commission: metricMetadata(
+    "Natural-month daily base allocation plus settled share for technicians affiliated with multiple shops",
+    "SUM(multi-shop natural-month daily base allocation + settled share per shop)",
+    "jpy",
+    "part_time_technician_commission"
+  ),
+  marketing_commission: metricMetadata(
+    "Settled affiliate claimant reward",
+    "SUM(settled affiliate claimant reward)",
+    "ndp",
+    "marketing_commission"
+  ),
+  agent_commission: metricMetadata(
+    "Settled agent success reward plus profit share",
+    "SUM(settled success reward + settled profit share)",
+    "jpy",
+    "agent_commission"
+  ),
+  ndp_income: metricMetadata(
+    "Settled production platform NDP income",
+    "SUM(settled production platform NDP income)",
+    "ndp",
+    "ndp_income"
+  ),
+  affiliate_platform_income: metricMetadata(
+    "Settled affiliate platform fee",
+    "SUM(settled affiliate platform fee)",
+    "ndp",
+    "affiliate_platform_income"
+  ),
+  consumables_profit: metricMetadata(
+    "Tax-exclusive consumables base times the effective platform share",
+    "SUM(tax-exclusive base * effective platform share)",
+    "jpy",
+    "consumables_profit"
+  ),
+  new_users: metricMetadata(
+    "Distinct first formal user registrations",
+    "COUNT(DISTINCT first formal registration)",
+    "people",
+    "new_users"
+  ),
+  new_paid_members: {
+    ...metricMetadata(
+      "Distinct first offline-paid active cards excluding grant, trial, replacement and renewal",
+      "COUNT(DISTINCT first offline-paid active membership card)",
+      "people",
+      "new_paid_members"
+    ),
+    detailRoute: "/admin/analytics/members"
+  },
+  technician_onboarding: metricMetadata(
+    "Distinct first technician identity activations",
+    "COUNT(DISTINCT first technician identity activation)",
+    "people",
+    "technician_onboarding"
+  ),
+  agent_onboarding: metricMetadata(
+    "Distinct first formal agent markings",
+    "COUNT(DISTINCT first formal agent marking)",
+    "people",
+    "agent_onboarding"
+  ),
+  franchisee_onboarding: metricMetadata(
+    "Distinct first formal franchisee markings",
+    "COUNT(DISTINCT first formal franchisee marking)",
+    "people",
+    "franchisee_onboarding",
+    false
+  ),
+  supplier_onboarding: metricMetadata(
+    "Distinct first formal supplier markings",
+    "COUNT(DISTINCT first formal supplier marking)",
+    "people",
+    "supplier_onboarding",
+    false
+  )
 };
 
 export type {
@@ -76,54 +258,6 @@ export interface TechnicianRankingWindow {
   fromInclusive: Date | null;
   toExclusive: Date | null;
 }
-
-const formatCalendarDate = (year: number, month: number, day: number): string =>
-  `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day
-    .toString()
-    .padStart(2, "0")}`;
-
-const parseCalendarDate = (value: string): { year: number; month: number; day: number } => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) {
-    throw new Error("Invalid calendar date");
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const candidate = new Date(Date.UTC(year, month - 1, day));
-  if (
-    candidate.getUTCFullYear() !== year ||
-    candidate.getUTCMonth() !== month - 1 ||
-    candidate.getUTCDate() !== day
-  ) {
-    throw new Error("Invalid calendar date");
-  }
-  return { year, month, day };
-};
-
-const shiftCalendarDate = (value: string, days: number): string => {
-  const { year, month, day } = parseCalendarDate(value);
-  const shifted = new Date(Date.UTC(year, month - 1, day) + days * DAY_MS);
-  return formatCalendarDate(
-    shifted.getUTCFullYear(),
-    shifted.getUTCMonth() + 1,
-    shifted.getUTCDate()
-  );
-};
-
-const toTokyoCalendarDate = (value: Date): string => {
-  const tokyo = new Date(value.getTime() + TOKYO_OFFSET_MS);
-  return formatCalendarDate(
-    tokyo.getUTCFullYear(),
-    tokyo.getUTCMonth() + 1,
-    tokyo.getUTCDate()
-  );
-};
-
-const startOfTokyoCalendarDate = (value: string): Date => {
-  const { year, month, day } = parseCalendarDate(value);
-  return new Date(Date.UTC(year, month - 1, day) - TOKYO_OFFSET_MS);
-};
 
 export const resolveTechnicianRankingWindow = (
   input: { period?: RankingPeriod; from?: string; to?: string },
@@ -159,10 +293,7 @@ export const resolveTechnicianRankingWindow = (
     toDate = input.to;
   } else if (period === "month") {
     fromDate = `${today.slice(0, 7)}-01`;
-    toDate = shiftCalendarDate(
-      `${shiftCalendarDate(fromDate, 32).slice(0, 7)}-01`,
-      -1
-    );
+    toDate = shiftCalendarDate(`${shiftCalendarDate(fromDate, 32).slice(0, 7)}-01`, -1);
   } else {
     const trailingDays = period === "today" ? 1 : period === "last7days" ? 7 : 30;
     fromDate = shiftCalendarDate(today, -(trailingDays - 1));
@@ -191,15 +322,6 @@ export type BackofficeScope =
       shopId: number;
     };
 
-export type BackofficeMetricTone = "good" | "warn" | "neutral";
-
-export interface BackofficeMetricPayload {
-  label: string;
-  value: string;
-  change: string;
-  tone: BackofficeMetricTone;
-}
-
 export interface BackofficeOrderPayload {
   id: number;
   orderNo: string;
@@ -224,6 +346,57 @@ export interface BackofficeOrderPayload {
   cancelReason: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type BackofficeOrderTimelineEventPayload =
+  | {
+      type: "ORDER_STATUS_CHANGED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      fromStatus: string | null;
+      toStatus: string;
+      publicReason: string | null;
+    }
+  | {
+      type:
+        | "TECHNICIAN_CANCEL_CLASSIFIED"
+        | "TECHNICIAN_UNCOMPLETED_CLASSIFIED"
+        | "SPECIAL_CANCELLATION_APPLIED"
+        | "SPECIAL_CANCELLATION_REVOKED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      publicReason: string | null;
+      internalNote: string | null;
+    }
+  | {
+      type: "ADD_ON_PROPOSED" | "ADD_ON_ACCEPTED" | "ADD_ON_REJECTED";
+      id: string;
+      createdAt: string;
+      actorUserId: number | null;
+      publicReason: string | null;
+      addOnId: number;
+      serviceId: number;
+      serviceName: string;
+      priceAmountJpy: number;
+      currency: "JPY";
+      durationMinutes: number;
+    };
+
+export interface BackofficeOrderDetailPayload extends BackofficeOrderPayload {
+  performanceAssessment: {
+    id: number;
+    bookingOrderId: number;
+    technicianProfileId: number;
+    outcome: "technician_cancelled" | "technician_uncompleted";
+    treatment: "counted" | "special_excluded";
+    version: number;
+    currentRevisionId: number | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  timelineEvents: BackofficeOrderTimelineEventPayload[];
 }
 
 export interface BackofficeScheduleSlotPayload {
@@ -277,7 +450,118 @@ export interface BackofficeFinanceSettlementPayload {
   createdAt: string;
 }
 
+export interface BackofficeManagedUserIdentityPayload {
+  type: string;
+  displayName: string | null;
+  scopeType: string | null;
+  scopeId: number | null;
+}
+
+export interface BackofficeManagedUserMembershipPayload {
+  tierCode: "free" | "silver" | "gold" | "black_diamond";
+  tierVersionPublicId: string | null;
+  entitlementPublicId: string | null;
+  expiresAt: string | null;
+  experienceMultiplier: number;
+  lockVersion: number | null;
+}
+
+export interface BackofficeManagedUserExperiencePayload {
+  currentLevel: number;
+  totalExp: string;
+  totalExpUnits: string;
+}
+
+export interface BackofficeManagedUserPayload {
+  id: number;
+  needoId: string;
+  username: string;
+  displayName: string;
+  email: string;
+  phone: string | null;
+  emailBound: boolean;
+  phoneBound: boolean;
+  avatarUrl: string | null;
+  isActive: boolean;
+  isTestAccount: boolean;
+  source: string[];
+  identities: BackofficeManagedUserIdentityPayload[];
+  identityProfiles?: Array<{
+    type: "technician" | "merchant";
+    status: "active" | "not_enabled" | "under_review" | "rejected";
+    displayName: string | null;
+  }>;
+  roles: Array<{ code: string; name: string }>;
+  groups: string[];
+  ekycVerified: boolean;
+  membership: BackofficeManagedUserMembershipPayload;
+  experience: BackofficeManagedUserExperiencePayload | null;
+  ndpBalance: { available: number; frozen: number };
+  testNdpBalance?: { available: number; frozen: number } | null;
+  bookingCount: number;
+  city: string | null;
+  privacyMode: boolean;
+  privacyScope: "public" | "privateAll" | "limited" | "network" | null;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BackofficeManagedUserDetailPayload extends BackofficeManagedUserPayload {
+  profile: {
+    displayName: string;
+    bio: string | null;
+    city: string | null;
+    gender: string | null;
+    age: number | null;
+    heightCm: string | null;
+    languages: unknown[];
+  } | null;
+  account: {
+    roles: Array<{
+      code: string;
+      name: string;
+      scopeType: string | null;
+      scopeId: number | null;
+      permissions: string[];
+    }>;
+  };
+  bookingSpend: {
+    totalBookings: number;
+    completedBookings: number;
+    completedSpendJpy: number;
+  };
+  metrics: {
+    ndpAvailable: number;
+    usageCount: number;
+    credit: {
+      ratingAverage: number;
+      reviewCount: number;
+      latestReviewAt: string | null;
+    };
+  };
+  capabilities: {
+    membershipWrite: boolean;
+    reviewAmend: boolean;
+    refundAmend: boolean;
+    partnerWrite: boolean;
+    timelineCommentWrite: boolean;
+  };
+  audit: {
+    page?: number;
+    page_size?: number;
+    total: number;
+    list: BackofficeAuditEventPayload[];
+  };
+}
+
+export type BackofficeManagedUserDetailRecord = Omit<
+  BackofficeManagedUserDetailPayload,
+  "capabilities"
+>;
+
 export interface BackofficeTechnicianPayload {
+  workStatus?: WorkStatus;
   id: number;
   userId: number;
   needoId: string;
@@ -320,13 +604,11 @@ export interface BackofficeTechnicianRankingSummaryPayload {
   workingDayCount: number;
 }
 
-export interface BackofficeTechnicianRankingPayload
-  extends PaginatedResponse<BackofficeTechnicianRankingRowPayload> {
+export interface BackofficeTechnicianRankingPayload extends PaginatedResponse<BackofficeTechnicianRankingRowPayload> {
   summary: BackofficeTechnicianRankingSummaryPayload;
 }
 
-export interface BackofficeTechnicianRankingResponsePayload
-  extends BackofficeTechnicianRankingPayload {
+export interface BackofficeTechnicianRankingResponsePayload extends BackofficeTechnicianRankingPayload {
   period: {
     key: RankingPeriod;
     timeZone: "Asia/Tokyo";
@@ -342,8 +624,10 @@ export type TechnicianRankingRepositoryInput = BackofficeScope &
 
 export interface BackofficeShopPayload {
   id: number;
+  shopNo: string | null;
   ownerUserId: number | null;
   ownerEmail: string | null;
+  avatarUrl: string | null;
   name: string;
   description: string | null;
   city: string;
@@ -495,14 +779,9 @@ export interface BackofficeCustomerMembershipGrantPayload {
   membershipGrantedBy: { needoId: string; username: string };
 }
 
-export interface BackofficeCustomerMembershipGrantData {
-  customerProfileId: number;
-  membershipLevel: string;
-  durationUnit: "forever" | "day" | "month";
-  durationValue: number | null;
-  startsAt: Date;
-  expiresAt: Date | null;
-  grantedById: number;
+export interface BackofficeCustomerMembershipGrantContext {
+  customerUserId: number;
+  membershipGrantedBy: { needoId: string; username: string };
 }
 
 export interface BackofficeServicePayload {
@@ -527,6 +806,14 @@ export interface BackofficeServicePayload {
 
 export interface BackofficeShopCreateData extends Omit<BackofficeShopCreateBody, "ownerPassword"> {
   ownerPasswordHash: string;
+  createdById: number;
+  verifiedById: number;
+  serviceLocationAudit?: AuditLogCreateInput;
+}
+
+export interface BackofficeShopMutationContext {
+  verifiedById: number;
+  serviceLocationAudit?: AuditLogCreateInput;
 }
 
 export type ScopedTechnicianUpdateInput = BackofficeScope &
@@ -534,30 +821,10 @@ export type ScopedTechnicianUpdateInput = BackofficeScope &
 export type ScopedTechnicianApprovalInput = BackofficeScope &
   BackofficeTechnicianApproveBody & { technicianId: number; approvedAt: Date };
 export type ScopedEntityInput = BackofficeScope & { id: number };
-export type ScopedServiceCreateInput = BackofficeScope & BackofficeServiceCreateBody & { shopId: number };
+export type ScopedServiceCreateInput = BackofficeScope &
+  BackofficeServiceCreateBody & { shopId: number };
 export type ScopedServiceUpdateInput = BackofficeScope &
   BackofficeServiceUpdateBody & { serviceId: number };
-
-export interface BackofficeDashboardPayload {
-  metrics: BackofficeMetricPayload[];
-  orders: BackofficeOrderPayload[];
-  schedule: {
-    total: number;
-    available: number;
-    booked: number;
-  };
-  finance: {
-    estimatedServiceGmvJpy: number;
-    platformNdpRevenue: number;
-    requestFeeNdpRevenue: number;
-    userRewardNdpCost: number;
-    pendingHoldNdp: number;
-    campaignDiscountNdp: number;
-    unknownOrUnreportedServiceAmountJpy: number;
-  };
-  technicians: BackofficeTechnicianPayload[];
-  shops: BackofficeShopPayload[];
-}
 
 export interface BackofficeCsvExportPayload {
   filename: string;
@@ -578,10 +845,7 @@ export interface BackofficeNdpAggregate {
   campaignDiscountNdp: number;
 }
 
-export interface NdpAmountPair {
-  ndp: number;
-  testNdp: number;
-}
+export type NdpAmountPair = DashboardNdpPair;
 
 export interface BackofficeNdpSummaryPayload {
   period: {
@@ -597,11 +861,28 @@ export interface BackofficeNdpSummaryPayload {
   settleableNdp: number;
 }
 
+export type BackofficeActivityAccount = Pick<BackofficeManagedUserDetailRecord, "id" | "displayName" | "avatarUrl" | "createdAt">;
 export interface BackofficeRepositoryPort {
-  getDashboard: (scope: BackofficeScope) => Promise<BackofficeDashboardPayload>;
+  findActivityAccount: (input: BackofficeScope & { subject: "users" | "technicians"; id: number }) => Promise<BackofficeActivityAccount | null>;
+  getAccountAudit: (input: BackofficeScope & { account: BackofficeActivityAccount } & BackofficeManagedUserDetailQuery) => Promise<BackofficeManagedUserDetailRecord["audit"]>;
+  getDashboard: (input: DashboardAggregateInput) => Promise<DashboardAggregateFacts>;
+  getHeadlineSeries3d: (
+    input: DashboardAggregateInput
+  ) => Promise<DashboardHeadlineSeriesPoint[]>;
+  listManagedUsers: (
+    input: BackofficeScope & BackofficeManagedUserListQuery,
+    occurredAt: Date
+  ) => Promise<PaginatedResponse<BackofficeManagedUserPayload>>;
+  getManagedUser: (
+    input: BackofficeScope & { userId: number } & Partial<BackofficeManagedUserDetailQuery>,
+    occurredAt: Date
+  ) => Promise<BackofficeManagedUserDetailRecord | null>;
   listOrders: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeOrderPayload>>;
+  findOrderById: (
+    input: BackofficeScope & { id: number }
+  ) => Promise<BackofficeOrderDetailPayload | null>;
   listSchedule: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeScheduleSlotPayload>>;
@@ -626,25 +907,46 @@ export interface BackofficeRepositoryPort {
   ) => Promise<PaginatedResponse<BackofficeShopPayload>>;
   findUserByEmail: (email: string) => Promise<{ id: number } | null>;
   createShop: (input: BackofficeShopCreateData) => Promise<BackofficeShopPayload>;
-  updateShop: (id: number, input: BackofficeShopUpdateBody) => Promise<BackofficeShopPayload | null>;
+  updateShop: (
+    id: number,
+    input: BackofficeShopUpdateBody,
+    mutation?: BackofficeShopMutationContext
+  ) => Promise<BackofficeShopPayload | null>;
+  updateMerchantShopProfile?: (input: {
+    avatar?: { mimeType: string; url: string };
+    fields: BackofficeShopUpdateBody;
+    identityId: number;
+    shopId: number;
+    userId: number;
+  }) => Promise<BackofficeShopPayload | null>;
   approveShop: (id: number, approvedAt: Date) => Promise<BackofficeShopPayload | null>;
   softDeleteShop: (id: number) => Promise<BackofficeShopPayload | null>;
-  updateTechnician: (input: ScopedTechnicianUpdateInput) => Promise<BackofficeTechnicianPayload | null>;
-  approveTechnician: (input: ScopedTechnicianApprovalInput) => Promise<BackofficeTechnicianPayload | null>;
+  updateTechnician: (
+    input: ScopedTechnicianUpdateInput
+  ) => Promise<BackofficeTechnicianPayload | null>;
+  approveTechnician: (
+    input: ScopedTechnicianApprovalInput
+  ) => Promise<BackofficeTechnicianPayload | null>;
   softDeleteTechnician: (input: ScopedEntityInput) => Promise<BackofficeTechnicianPayload | null>;
   listCustomers: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeCustomerPayload>>;
   getCustomer: (input: ScopedEntityInput) => Promise<BackofficeCustomerPayload | null>;
-  getTechnicianDetail: (input: ScopedEntityInput) => Promise<BackofficeTechnicianDetailPayload | null>;
+  getTechnicianDetail: (
+    input: ScopedEntityInput
+  ) => Promise<BackofficeTechnicianDetailPayload | null>;
   getCustomerDetail: (input: ScopedEntityInput) => Promise<BackofficeCustomerDetailPayload | null>;
   listCustomerTimeline: (
     input: ScopedEntityInput & BackofficeTimelineQuery
   ) => Promise<PaginatedResponse<BackofficeAuditEventPayload> | null>;
-  updateCustomer: (id: number, input: BackofficeCustomerUpdateBody) => Promise<BackofficeCustomerPayload | null>;
-  assignCustomerMembership: (
-    input: BackofficeCustomerMembershipGrantData
-  ) => Promise<BackofficeCustomerMembershipGrantPayload | null>;
+  updateCustomer: (
+    id: number,
+    input: BackofficeCustomerUpdateBody
+  ) => Promise<BackofficeCustomerPayload | null>;
+  findCustomerMembershipGrantContext: (
+    customerProfileId: number,
+    grantedById: number
+  ) => Promise<BackofficeCustomerMembershipGrantContext | null>;
   softDeleteCustomer: (id: number) => Promise<BackofficeCustomerPayload | null>;
   listServices: (
     input: BackofficeScope & BackofficeListQuery
@@ -660,28 +962,583 @@ export class BackofficeService {
   public constructor(
     private readonly repository: BackofficeRepositoryPort,
     private readonly auditLogService: AuditLogService,
-    private readonly now: () => Date = () => new Date()
-  ) {}
+    private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort,
+    private readonly now: () => Date = () => new Date(),
+    private readonly avatarStorage?: CustomerAvatarStoragePort,
+    analyticsOrMembership?:
+      | BackofficeAnalyticsReader
+      | Pick<PlatformMembershipService, "changeEntitlement">,
+    platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">,
+    private readonly accountPostsRepository?: Pick<RealtimeRepositoryPort, "listSocialPosts">
+  ) {
+    if (analyticsOrMembership && "getOperationsFinance" in analyticsOrMembership) {
+      this.analyticsReader = analyticsOrMembership;
+      this.platformMembershipService = platformMembershipService;
+    } else {
+      this.platformMembershipService = analyticsOrMembership ?? platformMembershipService;
+    }
+  }
+
+  private readonly analyticsReader?: BackofficeAnalyticsReader;
+  private readonly platformMembershipService?: Pick<PlatformMembershipService, "changeEntitlement">;
+
+  public async getDashboardOverview(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    query: BackofficeDashboardQuery
+  ): Promise<DashboardOverviewPayload> {
+    const reader = this.requireAnalyticsReader();
+    const window = resolveDashboardWindow(query, this.now());
+    const city = query.city ?? null;
+    const input: DashboardAggregateInput = { scope: { kind: "platform" }, city, window };
+    await this.record(
+      actor,
+      context,
+      "backoffice.dashboard.overview.read",
+      "backoffice_dashboard_overview",
+      { period: window.period, from: window.fromDate, to: window.toDate, city }
+    );
+    const [operations, commission, growth] = await Promise.all([
+      reader.getOperationsFinance(input),
+      reader.getCommissionFacts(input),
+      reader.getGrowthFacts(input)
+    ]);
+
+    return {
+      filter: this.analyticsFilter(window, city),
+      operationsFinance: DASHBOARD_METRIC_KEYS.slice(0, 4).map((metricKey) =>
+        this.composeAnalyticsMetric(metricKey, this.operationsFact(operations, metricKey))
+      ),
+      commissionMetrics: DASHBOARD_METRIC_KEYS.slice(4, 11).map((metricKey) =>
+        this.composeAnalyticsMetric(metricKey, this.commissionFact(commission, metricKey))
+      ),
+      growthMetrics: DASHBOARD_METRIC_KEYS.slice(11).map((metricKey) =>
+        this.composeAnalyticsMetric(metricKey, this.growthFact(growth, metricKey))
+      )
+    };
+  }
+
+  public async getDashboardMetricDetail(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    metricKey: DashboardMetricKey,
+    query: BackofficeDashboardQuery
+  ): Promise<DashboardMetricDetailPayload> {
+    const reader = this.requireAnalyticsReader();
+    const window = resolveDashboardWindow(query, this.now());
+    const city = query.city ?? null;
+    const input: DashboardAggregateInput = { scope: { kind: "platform" }, city, window };
+    await this.record(
+      actor,
+      context,
+      "backoffice.dashboard.metric.read",
+      "backoffice_dashboard_metric",
+      { metricKey, period: window.period, from: window.fromDate, to: window.toDate, city }
+    );
+
+    let fact: DashboardAnalyticsFact;
+    const metricIndex = DASHBOARD_METRIC_KEYS.indexOf(metricKey);
+    if (metricIndex < 4) {
+      fact = this.operationsFact(await reader.getOperationsFinance(input), metricKey);
+    } else if (metricIndex < 11) {
+      fact = this.commissionFact(await reader.getCommissionFacts(input), metricKey);
+    } else {
+      fact = this.growthFact(await reader.getGrowthFacts(input), metricKey);
+    }
+    const metric = this.composeAnalyticsMetric(metricKey, fact);
+    const details =
+      metricKey === "travel_fare" && reader.getTravelFareDetails
+        ? await reader.getTravelFareDetails(input)
+        : [];
+
+    return {
+      filter: this.analyticsFilter(window, city),
+      metric,
+      details,
+      series: [
+        {
+          seriesKey: metricKey,
+          label: metric.description,
+          unit: metric.unit,
+          points: [
+            {
+              key: "previous",
+              label: `${window.previousFromDate} - ${window.previousToDate}`,
+              value: metric.previousValue
+            },
+            {
+              key: "current",
+              label: `${window.fromDate} - ${window.toDate}`,
+              value: metric.currentValue
+            }
+          ]
+        }
+      ]
+    };
+  }
 
   public async getPlatformDashboard(
     actor: AuthenticatedAccessContext,
-    context: AuthRequestContext
+    context: AuthRequestContext,
+    query: BackofficeDashboardQuery
   ): Promise<BackofficeDashboardPayload> {
-    await this.record(actor, context, "backoffice.dashboard.read", "backoffice_dashboard");
+    const evaluatedAt = this.now();
+    const window = resolveDashboardWindow(query, evaluatedAt);
+    const headlineWindow = resolveDashboardWindow(
+      {
+        period: "custom",
+        from: shiftCalendarDate(window.toDate, -2),
+        to: window.toDate
+      },
+      evaluatedAt
+    );
+    const city = query.city ?? null;
+    await this.record(actor, context, "backoffice.dashboard.read", "backoffice_dashboard", {
+      period: window.period,
+      from: window.fromDate,
+      to: window.toDate,
+      city,
+      shopId: null
+    });
+    const scope = { kind: "platform" } as const;
+    const [aggregate, headlineBuckets] = await Promise.all([
+      this.repository.getDashboard({ scope, city, window, evaluatedAt }),
+      this.repository.getHeadlineSeries3d({
+        scope,
+        city,
+        window: headlineWindow,
+        evaluatedAt
+      })
+    ]);
+    return this.composeDashboard(
+      aggregate,
+      window,
+      headlineWindow,
+      headlineBuckets,
+      city,
+      null,
+      evaluatedAt
+    );
+  }
 
-    return this.repository.getDashboard({ scope: "platform" });
+  public async listManagedUsers(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeManagedUserListQuery
+  ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
+    await this.record(actor, context, "backoffice.users.list", "User", {
+      filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
+    });
+    return this.repository.listManagedUsers({ ...input, scope: "platform" }, this.now());
+  }
+
+  public async listMerchantManagedUsers(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeManagedUserListQuery
+  ): Promise<PaginatedResponse<BackofficeManagedUserPayload>> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.users.list", "User", {
+      shopId: scope.shopId,
+      filters: Object.keys(input).filter((key) => !["page", "pageSize"].includes(key))
+    });
+    return this.repository.listManagedUsers({ ...input, ...scope }, this.now());
+  }
+
+  public async getTechnicianUserLog(id: number, merchant: boolean, actor: AuthenticatedAccessContext, context: AuthRequestContext, query: BackofficeManagedUserDetailQuery) {
+    const scope: BackofficeScope = merchant ? this.getMerchantScope(actor) : { scope: "platform" };
+    const account = this.requireResult(await this.repository.findActivityAccount({ ...scope, subject: "technicians", id }), "error.technician.not_found");
+    await this.record(actor, context, "backoffice.technician.user_log.read", "TechnicianProfile", { technicianProfileId: id, ...scope });
+    return { ...account, audit: await this.repository.getAccountAudit({ ...scope, account, ...query }) };
+  }
+
+  public async listAccountPosts(id: number, subject: "users" | "technicians", merchant: boolean, actor: AuthenticatedAccessContext, context: AuthRequestContext, query: { page?: number; pageSize?: number }) {
+    const scope: BackofficeScope = merchant ? this.getMerchantScope(actor) : { scope: "platform" };
+    const account = this.requireResult(await this.repository.findActivityAccount({ ...scope, subject, id }), "error.user.not_found");
+    await this.record(actor, context, "backoffice.account.posts.read", "User", { userId: account.id, ...scope });
+    if (!this.accountPostsRepository) throw new AppError({ code: ERROR_CODES.INTERNAL, message: "error.service.unavailable", statusCode: 503 });
+    if (!actor.currentIdentityId) throw new AppError({ code: ERROR_CODES.FORBIDDEN, message: "error.auth.forbidden", statusCode: 403 });
+    return this.accountPostsRepository.listSocialPosts(actor.currentIdentityId, { ...query, authorUserId: account.id }, actor.userId);
+  }
+
+  public async getManagedUser(
+    userId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    query: BackofficeManagedUserDetailQuery = { audit_page: 1, audit_page_size: 10 }
+  ): Promise<BackofficeManagedUserDetailPayload> {
+    await this.record(actor, context, "backoffice.user.read", "User", { userId });
+    const detail = this.requireResult(
+      await this.repository.getManagedUser({ scope: "platform", userId, ...query }, this.now()),
+      "error.user.not_found"
+    );
+    return this.withManagedUserCapabilities(detail, actor, "platform");
+  }
+
+  public async getMerchantManagedUser(
+    userId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    query: BackofficeManagedUserDetailQuery = { audit_page: 1, audit_page_size: 10 }
+  ): Promise<BackofficeManagedUserDetailPayload> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.user.read", "User", {
+      userId,
+      shopId: scope.shopId
+    });
+    const detail = this.requireResult(
+      await this.repository.getManagedUser({ ...scope, userId, ...query }, this.now()),
+      "error.user.not_found"
+    );
+    return this.withManagedUserCapabilities(detail, actor, "merchant");
+  }
+
+  private withManagedUserCapabilities(
+    detail: BackofficeManagedUserDetailRecord,
+    actor: AuthenticatedAccessContext,
+    scope: "platform" | "merchant"
+  ): BackofficeManagedUserDetailPayload {
+    const permits = (permission: string) =>
+      scope === "platform" && actor.permissions.includes(permission);
+    return {
+      ...detail,
+      capabilities: {
+        membershipWrite: permits("backoffice:user-membership:write"),
+        reviewAmend: permits("backoffice:customers:write"),
+        refundAmend: permits("backoffice:user-refund:amend"),
+        partnerWrite: permits("backoffice:partner-profile:write"),
+        timelineCommentWrite: permits("backoffice:user-usage:comment")
+      }
+    };
   }
 
   public async getMerchantDashboard(
     actor: AuthenticatedAccessContext,
-    context: AuthRequestContext
+    context: AuthRequestContext,
+    query: MerchantDashboardQuery
   ): Promise<BackofficeDashboardPayload> {
     const scope = this.getMerchantScope(actor);
+    const evaluatedAt = this.now();
+    const window = resolveDashboardWindow(query, evaluatedAt);
+    const headlineWindow = resolveDashboardWindow(
+      {
+        period: "custom",
+        from: shiftCalendarDate(window.toDate, -2),
+        to: window.toDate
+      },
+      evaluatedAt
+    );
     await this.record(actor, context, "merchant_admin.dashboard.read", "merchant_admin_dashboard", {
+      period: window.period,
+      from: window.fromDate,
+      to: window.toDate,
+      city: null,
       shopId: scope.shopId
     });
+    const dashboardScope = { kind: "shop", shopId: scope.shopId } as const;
+    const [aggregate, headlineBuckets] = await Promise.all([
+      this.repository.getDashboard({
+        scope: dashboardScope,
+        city: null,
+        window,
+        evaluatedAt
+      }),
+      this.repository.getHeadlineSeries3d({
+        scope: dashboardScope,
+        city: null,
+        window: headlineWindow,
+        evaluatedAt
+      })
+    ]);
+    return this.composeDashboard(
+      aggregate,
+      window,
+      headlineWindow,
+      headlineBuckets,
+      null,
+      scope.shopId,
+      evaluatedAt
+    );
+  }
 
-    return this.repository.getDashboard(scope);
+  public async listManageableMerchantShops(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    query: ManageableMerchantShopsQuery
+  ): Promise<MerchantShopContextPage> {
+    let identityScopeType: "shop" | "merchant_account";
+    let identityScopeId: number;
+    let selectedShopPublicId: string | null = null;
+
+    const identityKind =
+      actor.isReadOnlyMerchantPreview === true
+        ? "shop"
+        : resolveFormalMerchantIdentityKind({
+            type: actor.currentIdentityType ?? "",
+            scopeType: actor.currentIdentityScopeType ?? null,
+            scopeId: actor.currentIdentityScopeId ?? null
+          });
+    if (identityKind === "shop") {
+      identityScopeType = "shop";
+      identityScopeId = requireMerchantShopId(actor);
+    } else {
+      if (identityKind !== "merchant_account" || !actor.currentIdentityScopeId) {
+        throw merchantShopIdentityForbidden();
+      }
+      requireMerchantShopId(actor);
+      if (!actor.selectedMerchantShopPublicId) throw merchantShopIdentityForbidden();
+      identityScopeType = "merchant_account";
+      identityScopeId = actor.currentIdentityScopeId;
+      selectedShopPublicId = actor.selectedMerchantShopPublicId;
+    }
+
+    const page = await this.merchantShopContextRepository.listManageableShops({
+      identityScopeType,
+      identityScopeId,
+      selectedShopPublicId,
+      now: this.now(),
+      page: query.page,
+      pageSize: query.page_size
+    });
+    await this.record(
+      actor,
+      context,
+      "merchant_admin.manageable_shops.read",
+      "merchant_shop_context",
+      { page: query.page, pageSize: query.page_size, total: page.total }
+    );
+    return page;
+  }
+
+  private requireAnalyticsReader(): BackofficeAnalyticsReader {
+    if (!this.analyticsReader) throw new Error("Backoffice analytics reader is unavailable");
+    return this.analyticsReader;
+  }
+
+  private analyticsFilter(
+    window: ReturnType<typeof resolveDashboardWindow>,
+    city: string | null
+  ): DashboardOverviewFilter {
+    return {
+      period: window.period,
+      from: window.fromDate,
+      to: window.toDate,
+      previousFrom: window.previousFromDate,
+      previousTo: window.previousToDate,
+      timeZone: window.timeZone,
+      granularity: window.granularity,
+      city
+    };
+  }
+
+  private composeAnalyticsMetric(
+    metricKey: DashboardMetricKey,
+    fact: DashboardAnalyticsFact
+  ): AnalyticsMetricPayload {
+    const ready = fact.dataStatus === "ready";
+    const coherentReadyValues =
+      ready && Number.isSafeInteger(fact.current) && Number.isSafeInteger(fact.previous);
+    const coherentUnavailableValues = !ready && fact.current === null && fact.previous === null;
+    if (!coherentReadyValues && !coherentUnavailableValues) {
+      throw new RangeError("Dashboard analytics fact is incoherent");
+    }
+    const metadata = DASHBOARD_METRIC_METADATA[metricKey];
+    return {
+      metricKey,
+      currentValue: fact.current,
+      previousValue: fact.previous,
+      ...compareAnalyticsMetric(fact.current, fact.previous),
+      unit: metadata.unit,
+      dataStatus: fact.dataStatus,
+      description: metadata.description,
+      formula: metadata.formula,
+      detailRoute: metadata.detailRoute
+    };
+  }
+
+  private operationsFact(
+    facts: OperationsFinanceFacts,
+    metricKey: DashboardMetricKey
+  ): DashboardAnalyticsFact {
+    switch (metricKey) {
+      case "gross_revenue":
+        return facts.grossRevenue;
+      case "travel_fare":
+        return facts.travelFare;
+      case "discount_amount":
+        return facts.discountAmount;
+      case "consumables_sales":
+        return facts.consumablesSales;
+      default:
+        throw new RangeError("Dashboard analytics metric group is invalid");
+    }
+  }
+
+  private commissionFact(
+    facts: CommissionFacts,
+    metricKey: DashboardMetricKey
+  ): DashboardAnalyticsFact {
+    switch (metricKey) {
+      case "dedicated_technician_commission":
+        return facts.dedicatedTechnicianCommission;
+      case "part_time_technician_commission":
+        return facts.partTimeTechnicianCommission;
+      case "marketing_commission":
+        return facts.marketingCommission;
+      case "agent_commission":
+        return facts.agentCommission;
+      case "ndp_income":
+        return facts.ndpIncome;
+      case "affiliate_platform_income":
+        return facts.affiliatePlatformIncome;
+      case "consumables_profit":
+        return facts.consumablesProfit;
+      default:
+        throw new RangeError("Dashboard analytics metric group is invalid");
+    }
+  }
+
+  private growthFact(facts: GrowthFacts, metricKey: DashboardMetricKey): DashboardAnalyticsFact {
+    switch (metricKey) {
+      case "new_users":
+        return facts.newUsers;
+      case "new_paid_members":
+        return facts.newPaidMembers;
+      case "technician_onboarding":
+        return facts.technicianOnboarding;
+      case "agent_onboarding":
+        return facts.agentOnboarding;
+      case "franchisee_onboarding":
+        return facts.franchiseeOnboarding;
+      case "supplier_onboarding":
+        return facts.supplierOnboarding;
+      default:
+        throw new RangeError("Dashboard analytics metric group is invalid");
+    }
+  }
+
+  private composeDashboard(
+    aggregate: DashboardAggregateFacts,
+    window: ReturnType<typeof resolveDashboardWindow>,
+    headlineWindow: ReturnType<typeof resolveDashboardWindow>,
+    headlineBuckets: DashboardHeadlineSeriesPoint[],
+    city: string | null,
+    shopId: number | null,
+    evaluatedAt: Date
+  ): BackofficeDashboardPayload {
+    const isPlatform = shopId === null;
+    const merchantFacts = isPlatform
+      ? null
+      : this.requireResult(aggregate.merchant, "error.shop.not_found");
+    const shop = merchantFacts
+      ? new DashboardMerchantSnapshotService(undefined, () => evaluatedAt).compose(merchantFacts)
+      : null;
+    const globalPair = (pair: DashboardNdpPair | null): DashboardPlatformGlobalNdpPair => ({
+      ...(pair ?? { ndp: 0, testNdp: 0 }),
+      cityFilterApplied: false,
+      scopeLabel: "platform_global"
+    });
+    const shopNdpCost = isPlatform
+      ? null
+      : (aggregate.finance.shopNdpCost ?? {
+          totalNdp: 0,
+          platformNdp: 0,
+          userRewardNdp: 0
+        });
+    const membershipFacts = aggregate.membership;
+    if (!isPlatform && !membershipFacts) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency_unavailable",
+        statusCode: 503
+      });
+    }
+
+    return {
+      filter: {
+        period: window.period,
+        from: window.fromDate,
+        to: window.toDate,
+        previousFrom: window.previousFromDate,
+        previousTo: window.previousToDate,
+        timeZone: window.timeZone,
+        granularity: window.granularity,
+        city: isPlatform ? city : null,
+        availableCities: isPlatform ? aggregate.availableCities : []
+      },
+      summary: {
+        availableScheduleSlots: this.dashboardComparison(
+          aggregate.current.availableScheduleSlots,
+          aggregate.previous.availableScheduleSlots
+        ),
+        activeTechnicians: this.dashboardComparison(
+          aggregate.current.activeTechnicians,
+          aggregate.previous.activeTechnicians
+        ),
+        registeredTechnicians: this.dashboardComparison(
+          aggregate.current.registeredTechnicians,
+          aggregate.previous.registeredTechnicians
+        ),
+        shopCount: isPlatform
+          ? this.dashboardComparison(
+              aggregate.current.shopCount ?? 0,
+              aggregate.previous.shopCount ?? 0
+            )
+          : null,
+        newCustomers: isPlatform
+          ? this.dashboardComparison(
+              aggregate.current.newCustomers ?? 0,
+              aggregate.previous.newCustomers ?? 0
+            )
+          : null,
+        pendingOrders: aggregate.current.pendingOrders,
+        serviceGmvJpy: aggregate.current.serviceGmvJpy
+      },
+      series: {
+        buckets: aggregate.buckets.map((bucket) => ({
+          ...bucket,
+          platformNetRevenueNdp: aggregate.finance.bucketPlatformNetRevenueNdp.get(bucket.key) ?? 0,
+          frozenNdp: aggregate.finance.bucketFrozenNdp.get(bucket.key) ?? 0,
+          shopEstimatedGrossProfitJpy:
+            aggregate.finance.bucketShopEstimatedGrossProfitJpy.get(bucket.key) ?? 0
+        }))
+      },
+      headlineSeries3d: {
+        from: headlineWindow.fromDate,
+        to: headlineWindow.toDate,
+        timeZone: "Asia/Tokyo",
+        buckets: headlineBuckets
+      },
+      finance: {
+        platformNetRevenue: aggregate.finance.platformNetRevenue,
+        frozen: aggregate.finance.frozen,
+        userReward: aggregate.finance.userReward,
+        walletStock: isPlatform ? globalPair(aggregate.finance.walletStock) : null,
+        withdrawn: isPlatform ? globalPair(aggregate.finance.withdrawn) : null,
+        shopNdpCost
+      },
+      shop,
+      membership:
+        isPlatform || !membershipFacts
+          ? null
+          : {
+              memberCount: membershipFacts.memberCount,
+              memberDataStatus: "ready",
+              completedCustomerCount: membershipFacts.completedCustomerCount
+            },
+      scope: merchantFacts
+        ? { kind: "shop", shopPublicId: merchantFacts.publicId }
+        : { kind: "platform", shopPublicId: null }
+    };
+  }
+
+  private dashboardComparison(current: number, previous: number): DashboardMetricComparison {
+    return {
+      current,
+      previous,
+      changeRatePercent:
+        previous === 0 ? null : Number((((current - previous) / previous) * 100).toFixed(2))
+    };
   }
 
   public async listPlatformOrders(
@@ -691,7 +1548,26 @@ export class BackofficeService {
   ): Promise<PaginatedResponse<BackofficeOrderPayload>> {
     await this.record(actor, context, "backoffice.orders.list", "booking_order");
 
-    return this.repository.listOrders({ scope: "platform", ...input });
+    return this.repository.listOrders({ ...input, scope: "platform" });
+  }
+
+  public async getPlatformOrder(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeOrderDetailPayload> {
+    await this.record(
+      actor,
+      context,
+      "backoffice.order.read",
+      "booking_order",
+      { bookingOrderId: id },
+      id
+    );
+    return this.requireResult(
+      await this.repository.findOrderById({ scope: "platform", id }),
+      "error.order.not_found"
+    );
   }
 
   public async listMerchantOrders(
@@ -704,7 +1580,7 @@ export class BackofficeService {
       shopId: scope.shopId
     });
 
-    return this.repository.listOrders({ ...scope, ...input });
+    return this.repository.listOrders({ ...input, ...scope });
   }
 
   public async listPlatformSchedule(
@@ -714,7 +1590,7 @@ export class BackofficeService {
   ): Promise<PaginatedResponse<BackofficeScheduleSlotPayload>> {
     await this.record(actor, context, "backoffice.schedule.list", "schedule_slot");
 
-    return this.repository.listSchedule({ scope: "platform", ...input });
+    return this.repository.listSchedule({ ...input, scope: "platform" });
   }
 
   public async listMerchantSchedule(
@@ -727,7 +1603,7 @@ export class BackofficeService {
       shopId: scope.shopId
     });
 
-    return this.repository.listSchedule({ ...scope, ...input });
+    return this.repository.listSchedule({ ...input, ...scope });
   }
 
   public async listPlatformFinance(
@@ -737,7 +1613,7 @@ export class BackofficeService {
   ): Promise<PaginatedResponse<BackofficeFinanceSettlementPayload>> {
     await this.record(actor, context, "backoffice.finance.list", "finance_reconciliation");
 
-    return this.repository.listFinanceSettlements({ scope: "platform", ...input });
+    return this.repository.listFinanceSettlements({ ...input, scope: "platform" });
   }
 
   public async getPlatformNdpSummary(
@@ -748,10 +1624,16 @@ export class BackofficeService {
     const date = input.date ?? toTokyoCalendarDate(this.now());
     const fromInclusive = startOfTokyoCalendarDate(date);
     const toExclusive = startOfTokyoCalendarDate(shiftCalendarDate(date, 1));
-    await this.record(actor, context, "backoffice.finance.ndp_summary.read", "finance_ndp_summary", {
-      date,
-      timeZone: "Asia/Tokyo"
-    });
+    await this.record(
+      actor,
+      context,
+      "backoffice.finance.ndp_summary.read",
+      "finance_ndp_summary",
+      {
+        date,
+        timeZone: "Asia/Tokyo"
+      }
+    );
 
     const aggregates = await this.repository.summarizeNdpByCurrency({
       fromInclusive,
@@ -777,9 +1659,7 @@ export class BackofficeService {
       testNdp: selector(test)
     });
     const consumption = (aggregate: BackofficeNdpAggregate): number =>
-      aggregate.bPlatformFeeActualNdp +
-      aggregate.cRequestFeeActualNdp +
-      aggregate.penaltyNdp;
+      aggregate.bPlatformFeeActualNdp + aggregate.cRequestFeeActualNdp + aggregate.penaltyNdp;
     const netRevenue = (aggregate: BackofficeNdpAggregate): number =>
       consumption(aggregate) - aggregate.userRewardNdp - aggregate.compensationToUserNdp;
     const pendingHold = (aggregate: BackofficeNdpAggregate): number =>
@@ -815,7 +1695,7 @@ export class BackofficeService {
       shopId: scope.shopId
     });
 
-    return this.repository.listFinanceSettlements({ ...scope, ...input });
+    return this.repository.listFinanceSettlements({ ...input, ...scope });
   }
 
   public async exportPlatformFinance(
@@ -825,7 +1705,7 @@ export class BackofficeService {
   ): Promise<BackofficeCsvExportPayload> {
     await this.record(actor, context, "backoffice.finance.export", "finance_settlement_export");
 
-    return this.repository.exportFinanceSettlements({ scope: "platform", ...input });
+    return this.repository.exportFinanceSettlements({ ...input, scope: "platform" });
   }
 
   public async exportMerchantFinance(
@@ -842,7 +1722,7 @@ export class BackofficeService {
       { shopId: scope.shopId }
     );
 
-    return this.repository.exportFinanceSettlements({ ...scope, ...input });
+    return this.repository.exportFinanceSettlements({ ...input, ...scope });
   }
 
   public async listPlatformTechnicians(
@@ -852,7 +1732,7 @@ export class BackofficeService {
   ): Promise<PaginatedResponse<BackofficeTechnicianPayload>> {
     await this.record(actor, context, "backoffice.technicians.list", "technician_profile");
 
-    return this.repository.listTechnicians({ scope: "platform", ...input });
+    return this.repository.listTechnicians({ ...input, scope: "platform" });
   }
 
   public async listPlatformTechnicianRankings(
@@ -937,19 +1817,21 @@ export class BackofficeService {
         "workingDayCount",
         "averageOrderValueJpy"
       ],
-      ...rows.slice(0, exportLimit).map((row) => [
-        row.rank,
-        row.technicianProfileId,
-        row.displayName,
-        row.shopName ?? "",
-        row.city,
-        row.completedServiceAmountJpy,
-        row.completedOrderCount,
-        row.workingDayCount,
-        row.completedOrderCount === 0
-          ? 0
-          : Math.round(row.completedServiceAmountJpy / row.completedOrderCount)
-      ])
+      ...rows
+        .slice(0, exportLimit)
+        .map((row) => [
+          row.rank,
+          row.technicianProfileId,
+          row.displayName,
+          row.shopName ?? "",
+          row.city,
+          row.completedServiceAmountJpy,
+          row.completedOrderCount,
+          row.workingDayCount,
+          row.completedOrderCount === 0
+            ? 0
+            : Math.round(row.completedServiceAmountJpy / row.completedOrderCount)
+        ])
     ];
     const content = `\uFEFF${csvRows
       .map((row) => row.map((value) => this.escapeCsvCell(value)).join(","))
@@ -973,7 +1855,7 @@ export class BackofficeService {
       shopId: scope.shopId
     });
 
-    return this.repository.listTechnicians({ ...scope, ...input });
+    return this.repository.listTechnicians({ ...input, ...scope });
   }
 
   public async getPlatformTechnician(
@@ -1013,7 +1895,7 @@ export class BackofficeService {
   ): Promise<PaginatedResponse<BackofficeShopPayload>> {
     await this.record(actor, context, "backoffice.shops.list", "shop");
 
-    return this.repository.listShops({ scope: "platform", ...input });
+    return this.repository.listShops({ ...input, scope: "platform" });
   }
 
   public async getMerchantShop(
@@ -1041,7 +1923,10 @@ export class BackofficeService {
     try {
       shop = await this.repository.createShop({
         ...input,
-        ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS)
+        ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS),
+        createdById: actor.userId,
+        verifiedById: actor.userId,
+        serviceLocationAudit: this.createVerifiedServiceLocationAudit(input, actor, context)
       });
     } catch (error) {
       if (error instanceof UserBootstrapKeyAllocationExhaustedError) {
@@ -1066,7 +1951,13 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeShopPayload> {
-    const shop = this.requireResult(await this.repository.updateShop(id, input), "error.shop.not_found");
+    const shop = this.requireResult(
+      await this.repository.updateShop(id, input, {
+        verifiedById: actor.userId,
+        serviceLocationAudit: this.createVerifiedServiceLocationAudit(input, actor, context)
+      }),
+      "error.shop.not_found"
+    );
     await this.record(actor, context, "backoffice.shop.update", "Shop", {
       shopId: id,
       changedFields: Object.keys(input)
@@ -1080,13 +1971,43 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeShopPayload> {
     const scope = this.getMerchantScope(actor);
+    if (!actor.currentIdentityId) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
+    }
+    const { avatarDataUrl, ...fields } = input;
+    let avatar: { mimeType: string; url: string } | undefined;
+    if (avatarDataUrl) {
+      if (!this.avatarStorage || !this.repository.updateMerchantShopProfile) {
+        throw new AppError({
+          code: ERROR_CODES.INTERNAL,
+          message: "error.shop.avatar_unavailable",
+          statusCode: 500
+        });
+      }
+      const saved = await this.avatarStorage.save(avatarDataUrl);
+      avatar = { mimeType: saved.mimeType, url: saved.url };
+    }
     const shop = this.requireResult(
-      await this.repository.updateShop(scope.shopId, input),
+      this.repository.updateMerchantShopProfile
+        ? await this.repository.updateMerchantShopProfile({
+            avatar,
+            fields,
+            identityId: actor.currentIdentityId,
+            shopId: scope.shopId,
+            userId: actor.userId
+          })
+        : await this.repository.updateShop(scope.shopId, fields),
       "error.shop.not_found"
     );
     await this.record(actor, context, "merchant_admin.shop.update", "Shop", {
       shopId: scope.shopId,
-      changedFields: Object.keys(input)
+      changedFields: Object.keys(input).map((field) =>
+        field === "avatarDataUrl" ? "avatar" : field
+      )
     });
     return shop;
   }
@@ -1096,7 +2017,10 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeShopPayload> {
-    const shop = this.requireResult(await this.repository.approveShop(id, new Date()), "error.shop.not_found");
+    const shop = this.requireResult(
+      await this.repository.approveShop(id, new Date()),
+      "error.shop.not_found"
+    );
     await this.record(actor, context, "backoffice.shop.approve", "Shop", { shopId: id });
     return shop;
   }
@@ -1106,7 +2030,10 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeShopPayload> {
-    const shop = this.requireResult(await this.repository.softDeleteShop(id), "error.shop.not_found");
+    const shop = this.requireResult(
+      await this.repository.softDeleteShop(id),
+      "error.shop.not_found"
+    );
     await this.record(actor, context, "backoffice.shop.delete", "Shop", { shopId: id });
     return shop;
   }
@@ -1118,7 +2045,7 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeTechnicianPayload> {
     const technician = this.requireResult(
-      await this.repository.updateTechnician({ scope: "platform", technicianId, ...input }),
+      await this.repository.updateTechnician({ ...input, scope: "platform", technicianId }),
       "error.technician.not_found"
     );
     await this.record(actor, context, "backoffice.technician.update", "TechnicianProfile", {
@@ -1201,7 +2128,13 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeTechnicianPayload> {
-    return this.deleteTechnician({ scope: "platform" }, technicianId, actor, context, "backoffice.technician.delete");
+    return this.deleteTechnician(
+      { scope: "platform" },
+      technicianId,
+      actor,
+      context,
+      "backoffice.technician.delete"
+    );
   }
 
   public async deleteMerchantTechnician(
@@ -1209,7 +2142,13 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeTechnicianPayload> {
-    return this.deleteTechnician(this.getMerchantScope(actor), technicianId, actor, context, "merchant_admin.technician.delete");
+    return this.deleteTechnician(
+      this.getMerchantScope(actor),
+      technicianId,
+      actor,
+      context,
+      "merchant_admin.technician.delete"
+    );
   }
 
   public async listPlatformCustomers(
@@ -1218,7 +2157,7 @@ export class BackofficeService {
     input: BackofficeListQuery
   ): Promise<PaginatedResponse<BackofficeCustomerPayload>> {
     await this.record(actor, context, "backoffice.customers.list", "CustomerProfile");
-    return this.repository.listCustomers({ scope: "platform", ...input });
+    return this.repository.listCustomers({ ...input, scope: "platform" });
   }
 
   public async listMerchantCustomers(
@@ -1227,8 +2166,10 @@ export class BackofficeService {
     input: BackofficeListQuery
   ): Promise<PaginatedResponse<BackofficeCustomerPayload>> {
     const scope = this.getMerchantScope(actor);
-    await this.record(actor, context, "merchant_admin.customers.list", "CustomerProfile", { shopId: scope.shopId });
-    return this.repository.listCustomers({ ...scope, ...input });
+    await this.record(actor, context, "merchant_admin.customers.list", "CustomerProfile", {
+      shopId: scope.shopId
+    });
+    return this.repository.listCustomers({ ...input, ...scope });
   }
 
   public async getPlatformCustomer(
@@ -1236,8 +2177,13 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeCustomerDetailPayload> {
-    await this.record(actor, context, "backoffice.customer.read", "CustomerProfile", { customerProfileId: id });
-    return this.requireResult(await this.repository.getCustomerDetail({ scope: "platform", id }), "error.customer.not_found");
+    await this.record(actor, context, "backoffice.customer.read", "CustomerProfile", {
+      customerProfileId: id
+    });
+    return this.requireResult(
+      await this.repository.getCustomerDetail({ scope: "platform", id }),
+      "error.customer.not_found"
+    );
   }
 
   public async getMerchantCustomer(
@@ -1246,8 +2192,14 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeCustomerDetailPayload> {
     const scope = this.getMerchantScope(actor);
-    await this.record(actor, context, "merchant_admin.customer.read", "CustomerProfile", { customerProfileId: id, shopId: scope.shopId });
-    return this.requireResult(await this.repository.getCustomerDetail({ ...scope, id }), "error.customer.not_found");
+    await this.record(actor, context, "merchant_admin.customer.read", "CustomerProfile", {
+      customerProfileId: id,
+      shopId: scope.shopId
+    });
+    return this.requireResult(
+      await this.repository.getCustomerDetail({ ...scope, id }),
+      "error.customer.not_found"
+    );
   }
 
   public async getPlatformCustomerTimeline(
@@ -1257,7 +2209,7 @@ export class BackofficeService {
     input: BackofficeTimelineQuery
   ): Promise<PaginatedResponse<BackofficeAuditEventPayload>> {
     return this.requireResult(
-      await this.repository.listCustomerTimeline({ scope: "platform", id, ...input }),
+      await this.repository.listCustomerTimeline({ ...input, scope: "platform", id }),
       "error.customer.not_found"
     );
   }
@@ -1270,7 +2222,7 @@ export class BackofficeService {
   ): Promise<PaginatedResponse<BackofficeAuditEventPayload>> {
     const scope = this.getMerchantScope(actor);
     return this.requireResult(
-      await this.repository.listCustomerTimeline({ ...scope, id, ...input }),
+      await this.repository.listCustomerTimeline({ ...input, ...scope, id }),
       "error.customer.not_found"
     );
   }
@@ -1281,8 +2233,14 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeCustomerPayload> {
-    const customer = this.requireResult(await this.repository.updateCustomer(id, input), "error.customer.not_found");
-    await this.record(actor, context, "backoffice.customer.update", "CustomerProfile", { customerProfileId: id, changedFields: Object.keys(input) });
+    const customer = this.requireResult(
+      await this.repository.updateCustomer(id, input),
+      "error.customer.not_found"
+    );
+    await this.record(actor, context, "backoffice.customer.update", "CustomerProfile", {
+      customerProfileId: id,
+      changedFields: Object.keys(input)
+    });
     return customer;
   }
 
@@ -1292,35 +2250,32 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeCustomerMembershipGrantPayload> {
-    const period = resolveCustomerMembershipGrant(input);
-    const membership = this.requireResult(
-      await this.repository.assignCustomerMembership({
-        customerProfileId: id,
-        membershipLevel: input.membershipLevel,
-        durationUnit: input.durationUnit,
-        durationValue: period.durationValue,
-        startsAt: period.startsAt,
-        expiresAt: period.expiresAt,
-        grantedById: actor.userId
-      }),
+    const grantContext = this.requireResult(
+      await this.repository.findCustomerMembershipGrantContext(id, actor.userId),
       "error.customer.not_found"
     );
-    await this.record(
+    const membership = await this.requirePlatformMembershipService().changeEntitlement(
       actor,
       context,
-      "backoffice.customer.membership.assign",
-      "CustomerProfile",
+      grantContext.customerUserId,
       {
-        customerProfileId: id,
-        membershipLevel: input.membershipLevel,
-        grantMode: input.grantMode,
-        durationUnit: input.durationUnit,
-        durationValue: period.durationValue,
-        startsAt: period.startsAt.toISOString(),
-        expiresAt: period.expiresAt?.toISOString() ?? null
+        kind: "grant",
+        targetTierCode: input.membershipLevel,
+        billingCycle: input.durationValue === 12 ? "annual" : "monthly",
+        source: "operations",
+        sourceReference: `backoffice:customer:${id}:membership:${input.membershipLevel}:${input.startsAt}`,
+        expectedCurrentLockVersion: null
       }
     );
-    return membership;
+    return {
+      membershipLevel: membership.tierCode,
+      membershipGrantMode: "operator_complimentary",
+      membershipDurationUnit: "month",
+      membershipDurationValue: input.durationValue,
+      membershipStartsAt: membership.startsAt.toISOString(),
+      membershipExpiresAt: membership.expiresAt?.toISOString() ?? null,
+      membershipGrantedBy: grantContext.membershipGrantedBy
+    };
   }
 
   public async deletePlatformCustomer(
@@ -1328,8 +2283,13 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeCustomerPayload> {
-    const customer = this.requireResult(await this.repository.softDeleteCustomer(id), "error.customer.not_found");
-    await this.record(actor, context, "backoffice.customer.delete", "CustomerProfile", { customerProfileId: id });
+    const customer = this.requireResult(
+      await this.repository.softDeleteCustomer(id),
+      "error.customer.not_found"
+    );
+    await this.record(actor, context, "backoffice.customer.delete", "CustomerProfile", {
+      customerProfileId: id
+    });
     return customer;
   }
 
@@ -1339,7 +2299,7 @@ export class BackofficeService {
     input: BackofficeListQuery
   ): Promise<PaginatedResponse<BackofficeServicePayload>> {
     await this.record(actor, context, "backoffice.services.list", "Service");
-    return this.repository.listServices({ scope: "platform", ...input });
+    return this.repository.listServices({ ...input, scope: "platform" });
   }
 
   public async listMerchantServices(
@@ -1348,8 +2308,10 @@ export class BackofficeService {
     input: BackofficeListQuery
   ): Promise<PaginatedResponse<BackofficeServicePayload>> {
     const scope = this.getMerchantScope(actor);
-    await this.record(actor, context, "merchant_admin.services.list", "Service", { shopId: scope.shopId });
-    return this.repository.listServices({ ...scope, ...input });
+    await this.record(actor, context, "merchant_admin.services.list", "Service", {
+      shopId: scope.shopId
+    });
+    return this.repository.listServices({ ...input, ...scope });
   }
 
   public async createPlatformService(
@@ -1358,7 +2320,12 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeServicePayload> {
-    return this.createService({ scope: "platform", shopId, ...input }, actor, context, "backoffice.service.create");
+    return this.createService(
+      { ...input, scope: "platform", shopId },
+      actor,
+      context,
+      "backoffice.service.create"
+    );
   }
 
   public async createMerchantService(
@@ -1367,7 +2334,12 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeServicePayload> {
     const scope = this.getMerchantScope(actor);
-    return this.createService({ ...scope, ...input }, actor, context, "merchant_admin.service.create");
+    return this.createService(
+      { ...input, ...scope },
+      actor,
+      context,
+      "merchant_admin.service.create"
+    );
   }
 
   public async updatePlatformService(
@@ -1376,7 +2348,12 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeServicePayload> {
-    return this.updateService({ scope: "platform", serviceId, ...input }, actor, context, "backoffice.service.update");
+    return this.updateService(
+      { ...input, scope: "platform", serviceId },
+      actor,
+      context,
+      "backoffice.service.update"
+    );
   }
 
   public async updateMerchantService(
@@ -1386,7 +2363,12 @@ export class BackofficeService {
     context: AuthRequestContext
   ): Promise<BackofficeServicePayload> {
     const scope = this.getMerchantScope(actor);
-    return this.updateService({ ...scope, serviceId, ...input }, actor, context, "merchant_admin.service.update");
+    return this.updateService(
+      { ...input, ...scope, serviceId },
+      actor,
+      context,
+      "merchant_admin.service.update"
+    );
   }
 
   public async deletePlatformService(
@@ -1394,7 +2376,13 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeServicePayload> {
-    return this.deleteService({ scope: "platform" }, serviceId, actor, context, "backoffice.service.delete");
+    return this.deleteService(
+      { scope: "platform" },
+      serviceId,
+      actor,
+      context,
+      "backoffice.service.delete"
+    );
   }
 
   public async deleteMerchantService(
@@ -1402,7 +2390,13 @@ export class BackofficeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<BackofficeServicePayload> {
-    return this.deleteService(this.getMerchantScope(actor), serviceId, actor, context, "merchant_admin.service.delete");
+    return this.deleteService(
+      this.getMerchantScope(actor),
+      serviceId,
+      actor,
+      context,
+      "merchant_admin.service.delete"
+    );
   }
 
   private async deleteTechnician(
@@ -1412,8 +2406,14 @@ export class BackofficeService {
     context: AuthRequestContext,
     action: string
   ): Promise<BackofficeTechnicianPayload> {
-    const technician = this.requireResult(await this.repository.softDeleteTechnician({ ...scope, id: technicianId }), "error.technician.not_found");
-    await this.record(actor, context, action, "TechnicianProfile", { technicianId, ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}) });
+    const technician = this.requireResult(
+      await this.repository.softDeleteTechnician({ ...scope, id: technicianId }),
+      "error.technician.not_found"
+    );
+    await this.record(actor, context, action, "TechnicianProfile", {
+      technicianId,
+      ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {})
+    });
     return technician;
   }
 
@@ -1424,7 +2424,10 @@ export class BackofficeService {
     action: string
   ): Promise<BackofficeServicePayload> {
     const service = await this.repository.createService(input);
-    await this.record(actor, context, action, "Service", { serviceId: service.id, shopId: service.shopId });
+    await this.record(actor, context, action, "Service", {
+      serviceId: service.id,
+      shopId: service.shopId
+    });
     return service;
   }
 
@@ -1434,8 +2437,17 @@ export class BackofficeService {
     context: AuthRequestContext,
     action: string
   ): Promise<BackofficeServicePayload> {
-    const service = this.requireResult(await this.repository.updateService(input), "error.service.not_found");
-    await this.record(actor, context, action, "Service", { serviceId: input.serviceId, shopId: service.shopId, changedFields: Object.keys(input).filter((key) => !["scope", "shopId", "serviceId"].includes(key)) });
+    const service = this.requireResult(
+      await this.repository.updateService(input),
+      "error.service.not_found"
+    );
+    await this.record(actor, context, action, "Service", {
+      serviceId: input.serviceId,
+      shopId: service.shopId,
+      changedFields: Object.keys(input).filter(
+        (key) => !["scope", "shopId", "serviceId"].includes(key)
+      )
+    });
     return service;
   }
 
@@ -1446,9 +2458,38 @@ export class BackofficeService {
     context: AuthRequestContext,
     action: string
   ): Promise<BackofficeServicePayload> {
-    const service = this.requireResult(await this.repository.softDeleteService({ ...scope, id: serviceId }), "error.service.not_found");
+    const service = this.requireResult(
+      await this.repository.softDeleteService({ ...scope, id: serviceId }),
+      "error.service.not_found"
+    );
     await this.record(actor, context, action, "Service", { serviceId, shopId: service.shopId });
     return service;
+  }
+
+  private createVerifiedServiceLocationAudit(
+    input: {
+      serviceCountryCode?: "JP";
+      serviceAdmin1Code?: string;
+      serviceAdmin2Code?: string;
+    },
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): AuditLogCreateInput | undefined {
+    if (!input.serviceCountryCode || !input.serviceAdmin1Code || !input.serviceAdmin2Code) {
+      return undefined;
+    }
+    return this.auditLogService.createInput({
+      actor,
+      action: "backoffice.shop.service_location.verify",
+      targetType: "shop",
+      targetId: null,
+      context,
+      metadata: {
+        countryCode: input.serviceCountryCode,
+        admin1Code: input.serviceAdmin1Code,
+        admin2Code: input.serviceAdmin2Code
+      }
+    });
   }
 
   private requireResult<T>(value: T | null, message: string): T {
@@ -1458,8 +2499,21 @@ export class BackofficeService {
     return value;
   }
 
+  private requirePlatformMembershipService(): Pick<PlatformMembershipService, "changeEntitlement"> {
+    if (this.platformMembershipService) return this.platformMembershipService;
+    throw new AppError({
+      code: ERROR_CODES.INTERNAL,
+      message: "error.platform_membership.service_unavailable",
+      statusCode: 500
+    });
+  }
+
   private emailExistsError(): AppError {
-    return new AppError({ code: ERROR_CODES.EMAIL_ALREADY_EXISTS, message: "error.user.email_exists", statusCode: 409 });
+    return new AppError({
+      code: ERROR_CODES.EMAIL_ALREADY_EXISTS,
+      message: "error.user.email_exists",
+      statusCode: 409
+    });
   }
 
   private needoIdAllocationUnavailableError(): AppError {
@@ -1477,18 +2531,7 @@ export class BackofficeService {
   private getMerchantScope(
     actor: AuthenticatedAccessContext
   ): BackofficeScope & { scope: "merchant" } {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
-      return {
-        scope: "merchant",
-        shopId: actor.currentIdentityScopeId
-      };
-    }
-
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    return { scope: "merchant", shopId: requireMerchantShopId(actor) };
   }
 
   private record(
@@ -1496,12 +2539,14 @@ export class BackofficeService {
     context: AuthRequestContext,
     action: string,
     targetType: string,
-    metadata?: unknown
+    metadata?: unknown,
+    targetId?: number
   ): Promise<void> {
     return this.auditLogService.record({
       actor,
       action,
       targetType,
+      targetId,
       context,
       metadata
     });

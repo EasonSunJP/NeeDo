@@ -1,12 +1,16 @@
-import type { CustomerProfile, MediaAsset, Prisma, PrismaClient } from "@prisma/client";
+import type {
+  CustomerProfile,
+  MediaAsset,
+  Prisma,
+  PrismaClient,
+  UserExperienceAccount
+} from "@prisma/client";
 import { prisma } from "../prisma/client";
-import {
-  toAuditLogCreateData,
-  type AuditLogCreateInput
-} from "./audit-log.repository";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
+import { persistIdentityAvatar } from "./identity-avatar.repository";
 
 export interface CustomerProfileMutation {
   displayName?: string;
@@ -27,6 +31,7 @@ export interface CustomerProfilePayload {
   displayName: string;
   city: string | null;
   membershipLevel: string;
+  level: number;
   avatarUrl: string | null;
   gender: "female" | "male" | "private";
   age: number | null;
@@ -44,6 +49,7 @@ export interface CustomerProfileRepositoryPort {
   updateMine: (
     userId: number,
     profileId: number,
+    ownerIdentityId: number,
     mutation: CustomerProfileMutation,
     auditLog: AuditLogCreateInput
   ) => Promise<CustomerProfilePayload>;
@@ -51,7 +57,12 @@ export interface CustomerProfileRepositoryPort {
 
 type CustomerProfileRecord = CustomerProfile & {
   mediaAssets: MediaAsset[];
-  user: { avatarUrl: string | null; needoId: string };
+  user: {
+    avatarBootstrapUrl: string | null;
+    avatarUrl: string | null;
+    experienceAccount: Pick<UserExperienceAccount, "currentLevel" | "deletedAt"> | null;
+    needoId: string;
+  };
 };
 
 export class CustomerProfileRepository implements CustomerProfileRepositoryPort {
@@ -62,7 +73,14 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       where: { id: profileId, userId, deletedAt: null },
       include: {
         mediaAssets: this.avatarMediaInclude(),
-        user: { select: { avatarUrl: true, needoId: true } }
+        user: {
+          select: {
+            avatarBootstrapUrl: true,
+            avatarUrl: true,
+            experienceAccount: { select: { currentLevel: true, deletedAt: true } },
+            needoId: true
+          }
+        }
       }
     });
 
@@ -72,6 +90,7 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
   public async updateMine(
     userId: number,
     profileId: number,
+    ownerIdentityId: number,
     mutation: CustomerProfileMutation,
     auditLog: AuditLogCreateInput
   ): Promise<CustomerProfilePayload> {
@@ -89,33 +108,24 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
         data: this.profileData(mutation),
         include: {
           mediaAssets: this.avatarMediaInclude(),
-          user: { select: { avatarUrl: true, needoId: true } }
+          user: {
+            select: {
+              avatarBootstrapUrl: true,
+              avatarUrl: true,
+              experienceAccount: { select: { currentLevel: true, deletedAt: true } },
+              needoId: true
+            }
+          }
         }
       });
 
       if (mutation.avatar) {
-        await transaction.mediaAsset.updateMany({
-          where: {
-            customerProfileId: profileId,
-            usageType: "avatar",
-            isActive: true,
-            deletedAt: null
-          },
-          data: { isActive: false }
-        });
-        await transaction.mediaAsset.create({
-          data: {
-            entityType: "customer_profile",
-            entityId: profileId,
-            customerProfileId: profileId,
-            url: mutation.avatar.url,
-            mimeType: mutation.avatar.mimeType,
-            usageType: "avatar"
-          }
-        });
-        await transaction.user.update({
-          where: { id: userId },
-          data: { avatarUrl: mutation.avatar.url }
+        await persistIdentityAvatar(transaction, {
+          avatar: mutation.avatar,
+          capturedAt: new Date(),
+          identityId: ownerIdentityId,
+          source: { kind: "customer", profileId },
+          userId
         });
       }
 
@@ -125,7 +135,14 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
         where: { id: updated.id },
         include: {
           mediaAssets: this.avatarMediaInclude(),
-          user: { select: { avatarUrl: true, needoId: true } }
+          user: {
+            select: {
+              avatarBootstrapUrl: true,
+              avatarUrl: true,
+              experienceAccount: { select: { currentLevel: true, deletedAt: true } },
+              needoId: true
+            }
+          }
         }
       });
     });
@@ -164,7 +181,15 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       displayName: profile.displayName,
       city: profile.city,
       membershipLevel: resolveEffectiveCustomerMembershipLevel(profile),
-      avatarUrl: profile.user.avatarUrl ?? profile.mediaAssets[0]?.url ?? null,
+      level:
+        profile.user.experienceAccount?.deletedAt === null
+          ? profile.user.experienceAccount.currentLevel
+          : 1,
+      avatarUrl:
+        profile.user.avatarUrl ??
+        profile.mediaAssets[0]?.url ??
+        profile.user.avatarBootstrapUrl ??
+        null,
       gender: this.toGender(profile.gender),
       age: profile.age,
       heightCm: profile.heightCm === null ? null : Number(profile.heightCm),

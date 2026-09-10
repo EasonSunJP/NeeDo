@@ -8,11 +8,17 @@ import { UserManagementWorkspace } from "./UserManagementWorkspace";
 
 const testState = vi.hoisted(() => ({
   allowTestAccountUpdate: true,
+  assignRolePermissions: vi.fn(),
   assignUserRoles: vi.fn(),
+  createPermission: vi.fn(),
+  createRole: vi.fn(),
   createUser: vi.fn(),
+  deletePermission: vi.fn(),
+  deleteRole: vi.fn(),
   deleteUser: vi.fn(),
   disableUser: vi.fn(),
   enableUser: vi.fn(),
+  getPermissionTree: vi.fn(),
   listPermissions: vi.fn(),
   listRoles: vi.fn(),
   listUsers: vi.fn(),
@@ -47,11 +53,17 @@ vi.mock("../../i18n/I18nProvider", () => ({
 
 vi.mock("../../api/userManagement", () => ({
   userManagementApi: {
+    assignRolePermissions: testState.assignRolePermissions,
     assignUserRoles: testState.assignUserRoles,
+    createPermission: testState.createPermission,
+    createRole: testState.createRole,
     createUser: testState.createUser,
+    deletePermission: testState.deletePermission,
+    deleteRole: testState.deleteRole,
     deleteUser: testState.deleteUser,
     disableUser: testState.disableUser,
     enableUser: testState.enableUser,
+    getPermissionTree: testState.getPermissionTree,
     listPermissions: testState.listPermissions,
     listRoles: testState.listRoles,
     listUsers: testState.listUsers,
@@ -79,6 +91,21 @@ const testUser = {
   roles: []
 };
 
+function makePermission(id: number) {
+  return {
+    id,
+    name: `权限 ${id}`,
+    code: `module:item:${id}`,
+    type: id % 2 === 0 ? "button" : "api",
+    module: "module",
+    description: `权限说明 ${id}`,
+    isSystem: true,
+    createdAt: "2026-09-06T00:00:00.000Z",
+    updatedAt: "2026-09-06T00:00:00.000Z",
+    deletedAt: null
+  };
+}
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -100,11 +127,11 @@ async function waitFor(assertion: () => void) {
   throw lastError;
 }
 
-async function renderWorkspace() {
+async function renderWorkspace(mode: "permissions" | "roles" | "users" = "users") {
   await act(async () => {
-    root.render(<UserManagementWorkspace mode="users" />);
+    root.render(<UserManagementWorkspace mode={mode} />);
   });
-  await waitFor(() => expect(container.textContent).toContain("测试用户"));
+  await waitFor(() => expect(container.textContent).not.toContain("加载中"));
 }
 
 describe("UserManagementWorkspace Test NDP account controls", () => {
@@ -117,6 +144,7 @@ describe("UserManagementWorkspace Test NDP account controls", () => {
     testState.listUsers.mockResolvedValue({ list: [testUser], total: 1, page: 1, page_size: 20 });
     testState.listRoles.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
     testState.listPermissions.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
+    testState.getPermissionTree.mockResolvedValue({ modules: [] });
     testState.updateTestAccount.mockResolvedValue({ ...testUser, isTestAccount: false });
   });
 
@@ -189,5 +217,114 @@ describe("UserManagementWorkspace Test NDP account controls", () => {
       )
     );
     expect(container.textContent).toContain("第 2 / 3 页");
+  });
+
+  it("adds an on-demand personnel list to every role card", async () => {
+    testState.listRoles.mockResolvedValue({
+      list: [
+        {
+          id: 7,
+          name: "运营人员",
+          code: "operator",
+          description: "运营角色",
+          isSystem: true,
+          createdAt: "2026-09-06T00:00:00.000Z",
+          updatedAt: "2026-09-06T00:00:00.000Z",
+          deletedAt: null,
+          permissions: []
+        },
+        {
+          id: 8,
+          name: "财务人员",
+          code: "finance",
+          description: "财务角色",
+          isSystem: true,
+          createdAt: "2026-09-06T00:00:00.000Z",
+          updatedAt: "2026-09-06T00:00:00.000Z",
+          deletedAt: null,
+          permissions: []
+        }
+      ],
+      total: 2,
+      page: 1,
+      page_size: 100
+    });
+
+    await renderWorkspace("roles");
+
+    expect(container.textContent).toContain("运营人员");
+    expect(container.textContent).toContain("财务人员");
+    expect(Array.from(container.querySelectorAll("summary")).filter((node) => node.textContent?.includes("人员列表"))).toHaveLength(2);
+  });
+
+  it("uses the complete permission tree for role assignment instead of a capped list", async () => {
+    const allPermissions = Array.from({ length: 121 }, (_, index) => makePermission(index + 1));
+    testState.listRoles.mockResolvedValue({
+      list: [
+        {
+          id: 7,
+          name: "运营人员",
+          code: "operator",
+          description: null,
+          isSystem: true,
+          createdAt: "2026-09-06T00:00:00.000Z",
+          updatedAt: "2026-09-06T00:00:00.000Z",
+          deletedAt: null,
+          permissions: []
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+    testState.listPermissions.mockResolvedValue({
+      list: allPermissions.slice(0, 100),
+      total: 121,
+      page: 1,
+      page_size: 100
+    });
+    testState.getPermissionTree.mockResolvedValue({
+      modules: [{ module: "module", children: [{ type: "api", permissions: allPermissions }] }]
+    });
+
+    await renderWorkspace("roles");
+
+    expect(testState.getPermissionTree).toHaveBeenCalledTimes(1);
+    const assignmentDetails = Array.from(container.querySelectorAll("details")).find((node) =>
+      node.querySelector("summary")?.textContent?.includes("分配 权限")
+    );
+    await act(async () => {
+      if (assignmentDetails) assignmentDetails.open = true;
+      assignmentDetails?.dispatchEvent(new Event("toggle", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("module:item:121");
+  });
+
+  it("renders actual permission-tree nodes and paginates the permission table", async () => {
+    testState.listPermissions.mockImplementation(async (query: { page: number }) => ({
+      list: [makePermission(query.page)],
+      total: 41,
+      page: query.page,
+      page_size: 20
+    }));
+    testState.getPermissionTree.mockResolvedValue({
+      modules: [
+        { module: "module", children: [{ type: "api", permissions: [makePermission(121)] }] }
+      ]
+    });
+
+    await renderWorkspace("permissions");
+
+    expect(container.textContent).toContain("module:item:121");
+    const next = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "下一页"
+    );
+    expect(next).toBeDefined();
+    await act(async () => next?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await waitFor(() =>
+      expect(testState.listPermissions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2, pageSize: 20 })
+      )
+    );
   });
 });

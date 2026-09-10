@@ -29,8 +29,15 @@ export interface MoneyTimelineEvent {
 
 export interface CompensationPreviewPayload {
   serviceAmountJpy: number;
+  baseServiceAmountJpy: number;
+  extensionAmountJpy: number;
+  nominationChargeAmountJpy: number;
+  nominated: boolean;
   platformFeeNdp: number;
   basePayJpy: number;
+  serviceCommissionPayJpy: number;
+  extensionCommissionPayJpy: number;
+  nominationPayJpy: number;
   commissionPayJpy: number;
   minimumGuaranteeAdjustmentJpy: number;
   bonusPayJpy: number;
@@ -59,6 +66,8 @@ export interface TechnicianCompensationProfilePayload {
   dailyRateJpy: number;
   fixedOrderPayJpy: number;
   commissionRatePercent: number;
+  extensionCommissionRatePercent: number;
+  nominationFeeJpy: number;
   guaranteedMinimumJpy: number;
   ndpFeeBearer: ShopFinanceNdpBearer;
   technicianNdpSharePercent: number;
@@ -80,6 +89,8 @@ export interface TechnicianCompensationProfileInput {
   dailyRateJpy?: number;
   fixedOrderPayJpy?: number;
   commissionRatePercent?: number;
+  extensionCommissionRatePercent?: number;
+  nominationFeeJpy?: number;
   guaranteedMinimumJpy?: number;
   ndpFeeBearer?: ShopFinanceNdpBearer;
   technicianNdpSharePercent?: number;
@@ -90,7 +101,11 @@ export interface TechnicianCompensationProfileInput {
 }
 
 export interface CompensationProfilePreviewInput {
-  serviceAmountJpy: number;
+  serviceAmountJpy?: number;
+  baseServiceAmountJpy?: number;
+  extensionAmountJpy?: number;
+  nominationChargeAmountJpy?: number;
+  nominated?: boolean;
   platformFeeNdp?: number;
   workedMinutes?: number;
   monthlyCompletedOrders?: number;
@@ -108,6 +123,10 @@ export interface CompensationProfilePreviewResult {
 
 export interface ServiceIncomeReportInput {
   serviceAmountJpy: number;
+  baseServiceAmountJpy?: number;
+  extensionAmountJpy?: number;
+  nominationChargeAmountJpy?: number;
+  wasTechnicianNominated?: boolean;
   platformCollectedServiceAmountJpy?: number;
   offlineReportedServiceAmountJpy?: number;
   paymentChannel?: ServicePaymentChannel;

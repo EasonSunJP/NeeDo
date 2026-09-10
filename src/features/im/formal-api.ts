@@ -16,9 +16,10 @@ import {
   type RealtimeFriendRequest,
   type RealtimeMessage,
   type RealtimeParticipant,
+  type RealtimeTechnicianContactDetails,
 } from "../realtime/api";
 import type { ImApi } from "./contract";
-import { buildMessagePreview } from "./model";
+import { buildConversationLastMessageSummary } from "./model";
 import type {
   ContactRelation,
   Conversation,
@@ -28,12 +29,14 @@ import type {
   DirectoryProfile,
   FriendRequest,
   ImBootstrapPayload,
+  ImContactCardCandidate,
   ImMessageType,
   ImProfileKind,
   ImStoreUpdate,
   ImRoleType,
   ImUser,
   MessageExt,
+  TechnicianContactDetails,
 } from "./model";
 
 type FormalCurrentUser = {
@@ -55,6 +58,7 @@ const formalRuntimeConfig = {
   recallWindowMs: 180_000,
   separatorThresholdMs: 300_000,
 } as const;
+const prismaIntMax = 2_147_483_647;
 
 const richMessageTypes = new Set<ImMessageType>([
   "text",
@@ -66,7 +70,11 @@ const richMessageTypes = new Set<ImMessageType>([
   "location",
   "contact-card",
   "service-card",
+  "shop-card",
+  "technician-card",
+  "social-post-card",
   "schedule-invite",
+  "chat-record",
   "system",
   "recalled",
 ]);
@@ -76,19 +84,939 @@ function featureUnavailable(): never {
 }
 
 function toNumericId(id: string) {
+  if (!/^[1-9]\d*$/.test(id)) throw new Error("error.validation.invalid_id");
   const value = Number(id);
 
-  if (!Number.isInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > prismaIntMax) {
     throw new Error("error.validation.invalid_id");
   }
 
   return value;
 }
 
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const checksumPattern = /^[0-9a-f]{64}$/;
+function assertUuid(value: string) {
+  if (!uuidPattern.test(value))
+    throw new Error("error.validation.invalid_uuid");
+  return value;
+}
+function assertChecksum(value: string) {
+  if (!checksumPattern.test(value))
+    throw new Error("error.validation.invalid_checksum");
+  return value;
+}
+function toStringId(value: number) {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > prismaIntMax)
+    throw new Error("error.response.invalid_id");
+  return String(value);
+}
+function positive(value: number, max?: number) {
+  if (
+    !Number.isSafeInteger(value) ||
+    value <= 0 ||
+    (max !== undefined && value > max)
+  )
+    throw new Error("error.validation.invalid_id");
+  return value;
+}
+
+const invalidChatRecord = (): never => {
+  throw new Error("error.response.invalid_chat_record");
+};
+function exactRecord(value: unknown, keys: string[]): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    invalidChatRecord();
+  const record = value as Record<string, unknown>;
+  const actual = Object.keys(record).sort();
+  const expected = [...keys].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index])
+  )
+    invalidChatRecord();
+  return record;
+}
+function boundedString(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): string {
+  if (
+    typeof value !== "string" ||
+    value.length < minimum ||
+    value.length > maximum
+  )
+    invalidChatRecord();
+  return value as string;
+}
+function responseInteger(
+  value: unknown,
+  minimum: number,
+  maximum = prismaIntMax,
+): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < minimum ||
+    value > maximum
+  )
+    invalidChatRecord();
+  return value as number;
+}
+function isoDate(value: unknown): string {
+  const text = boundedString(value, 1, 64);
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/u.exec(
+      text,
+    );
+  if (!match) return invalidChatRecord();
+  const [
+    ,
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+    offsetHourText,
+    offsetMinuteText,
+  ] = match;
+  const [year, month, day, hour, minute, second] = [
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+  ].map(Number);
+  if (
+    year === 0 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    (offsetHourText !== undefined &&
+      (Number(offsetHourText) > 23 || Number(offsetMinuteText) > 59))
+  )
+    invalidChatRecord();
+  const calendar = new Date(0);
+  calendar.setUTCHours(hour, minute, second, 0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  if (
+    calendar.getUTCFullYear() !== year ||
+    calendar.getUTCMonth() !== month - 1 ||
+    calendar.getUTCDate() !== day ||
+    calendar.getUTCHours() !== hour ||
+    calendar.getUTCMinutes() !== minute ||
+    calendar.getUTCSeconds() !== second
+  )
+    invalidChatRecord();
+  const timestamp = Date.parse(text);
+  if (
+    !Number.isFinite(timestamp) ||
+    new Date(timestamp).toISOString().length === 0
+  )
+    invalidChatRecord();
+  return text;
+}
+
 function readMetadata(metadata: unknown) {
   return metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>)
     : {};
+}
+
+const invalidContactCard = (): never => {
+  throw new Error("error.response.invalid_contact_card");
+};
+
+function contactCardRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return invalidContactCard();
+  }
+  return value as Record<string, unknown>;
+}
+
+function exactContactCardRecord(value: unknown, keys: readonly string[]) {
+  const record = contactCardRecord(value);
+  const actual = Object.keys(record).sort();
+  const expected = [...keys].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index])
+  ) {
+    return invalidContactCard();
+  }
+  return record;
+}
+
+function contactCardString(value: unknown, maximum: number) {
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value.length > maximum
+  ) {
+    return invalidContactCard();
+  }
+  return value;
+}
+
+function isSafeContactCardUrl(value: string) {
+  return /^(?:https?:\/\/[^\s]+|\/(?!\/)[^\s]*)$/iu.test(value);
+}
+
+function optionalLegacyContactCardString(value: unknown, maximum: number) {
+  return typeof value === "string" && value.length <= maximum
+    ? value
+    : undefined;
+}
+
+function parseLegacyContactCardMetadata(
+  metadata: Record<string, unknown>,
+): MessageExt {
+  if (metadata.needoMessageType !== "contact-card") return invalidContactCard();
+  const extension = contactCardRecord(metadata.needoMessageExt);
+  const card = contactCardRecord(extension.contactCard);
+  const userId = contactCardString(card.userId, 191);
+  const displayName = contactCardString(card.displayName, 160);
+  const profileKind = card.profileKind;
+  if (
+    profileKind !== "person" &&
+    profileKind !== "technician" &&
+    profileKind !== "store" &&
+    profileKind !== "service"
+  ) {
+    return invalidContactCard();
+  }
+  const rawAvatar = optionalLegacyContactCardString(card.avatar, 2_048);
+  const avatar = rawAvatar && isSafeContactCardUrl(rawAvatar) ? rawAvatar : "";
+  const entityType = card.entityType;
+  const safeEntityType =
+    entityType === "user" ||
+    entityType === "technician" ||
+    entityType === "shop"
+      ? entityType
+      : undefined;
+
+  return {
+    contactCard: {
+      userId,
+      displayName,
+      avatar,
+      profileKind,
+      ...(safeEntityType ? { entityType: safeEntityType } : {}),
+      ...(optionalLegacyContactCardString(card.entityId, 191) !== undefined
+        ? { entityId: optionalLegacyContactCardString(card.entityId, 191) }
+        : {}),
+      ...(optionalLegacyContactCardString(card.userIdLabel, 160) !== undefined
+        ? {
+            userIdLabel: optionalLegacyContactCardString(card.userIdLabel, 160),
+          }
+        : {}),
+      ...(optionalLegacyContactCardString(card.headline, 500) !== undefined
+        ? { headline: optionalLegacyContactCardString(card.headline, 500) }
+        : {}),
+    },
+  };
+}
+
+function parseV2ContactCardMetadata(
+  metadata: Record<string, unknown>,
+): MessageExt {
+  const snapshot = exactContactCardRecord(metadata, [
+    "snapshotVersion",
+    "type",
+    "contactCard",
+  ]);
+  if (snapshot.snapshotVersion !== 2 || snapshot.type !== "contact-card") {
+    return invalidContactCard();
+  }
+  const card = contactCardRecord(snapshot.contactCard);
+  const allowedCardKeys = [
+    "targetUserPublicId",
+    "needoId",
+    "nickname",
+    "avatarUrl",
+    "entityKind",
+    "entityPublicId",
+    "ekycVerified",
+    "level",
+    "bio",
+    "tierCode",
+    "themeVersionPublicId",
+    "simpleTopColor",
+    "simpleBottomColor",
+    "languages",
+    "rating",
+    "completedOrderCount",
+    "favoriteCount",
+    "shareCount",
+    "specialReviewTags",
+  ];
+  if (Object.keys(card).some((key) => !allowedCardKeys.includes(key)))
+    return invalidContactCard();
+  const targetUserPublicId = contactCardString(card.targetUserPublicId, 191);
+  const needoId = contactCardString(card.needoId, 160);
+  const nickname = contactCardString(card.nickname, 160);
+  const avatarUrl = card.avatarUrl;
+  if (
+    avatarUrl !== null &&
+    (typeof avatarUrl !== "string" ||
+      avatarUrl.length > 2_048 ||
+      !isSafeContactCardUrl(avatarUrl))
+  ) {
+    return invalidContactCard();
+  }
+  const entityKind = card.entityKind;
+  if (
+    entityKind !== "customer" &&
+    entityKind !== "technician" &&
+    entityKind !== "shop" &&
+    entityKind !== "service"
+  ) {
+    return invalidContactCard();
+  }
+  if (
+    card.entityPublicId !== undefined &&
+    card.entityPublicId !== null &&
+    (typeof card.entityPublicId !== "string" ||
+      card.entityPublicId.length > 191)
+  ) {
+    return invalidContactCard();
+  }
+  if (typeof card.ekycVerified !== "boolean") return invalidContactCard();
+  if (
+    card.level !== null &&
+    (typeof card.level !== "number" ||
+      !Number.isInteger(card.level) ||
+      card.level < 1 ||
+      card.level > 100)
+  ) {
+    return invalidContactCard();
+  }
+  if (
+    card.bio !== null &&
+    (typeof card.bio !== "string" || card.bio.length > 500)
+  ) {
+    return invalidContactCard();
+  }
+  const tierCode = card.tierCode;
+  if (
+    tierCode !== null &&
+    tierCode !== "free" &&
+    tierCode !== "silver" &&
+    tierCode !== "gold" &&
+    tierCode !== "black_diamond"
+  ) {
+    return invalidContactCard();
+  }
+  if (
+    card.themeVersionPublicId !== null &&
+    (typeof card.themeVersionPublicId !== "string" ||
+      card.themeVersionPublicId.trim().length === 0 ||
+      card.themeVersionPublicId.length > 191)
+  ) {
+    return invalidContactCard();
+  }
+  for (const color of [card.simpleTopColor, card.simpleBottomColor]) {
+    if (
+      color !== null &&
+      (typeof color !== "string" || !/^#[0-9a-f]{6}$/iu.test(color))
+    ) {
+      return invalidContactCard();
+    }
+  }
+  const languages = card.languages === undefined ? [] : card.languages;
+  if (
+    !Array.isArray(languages) ||
+    languages.some(
+      (value) =>
+        typeof value !== "string" ||
+        value.trim().length === 0 ||
+        value.length > 80,
+    ) ||
+    languages.length > 12
+  )
+    return invalidContactCard();
+  const nullableMetric = (value: unknown, max = Number.MAX_SAFE_INTEGER) =>
+    value === null ||
+    (typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= 0 &&
+      value <= max);
+  if (card.rating !== undefined && !nullableMetric(card.rating, 5))
+    return invalidContactCard();
+  for (const value of [
+    card.completedOrderCount,
+    card.favoriteCount,
+    card.shareCount,
+  ]) {
+    if (
+      value !== undefined &&
+      (!nullableMetric(value) || (value !== null && !Number.isInteger(value)))
+    )
+      return invalidContactCard();
+  }
+  const specialReviewTags =
+    card.specialReviewTags === undefined ? [] : card.specialReviewTags;
+  if (!Array.isArray(specialReviewTags) || specialReviewTags.length > 8)
+    return invalidContactCard();
+  const parsedSpecialTags = specialReviewTags.map((value) => {
+    const tag = contactCardRecord(value);
+    if (Object.keys(tag).sort().join(",") !== "code,count,icon,label")
+      return invalidContactCard();
+    if (
+      typeof tag.code !== "string" ||
+      typeof tag.label !== "string" ||
+      typeof tag.icon !== "string" ||
+      typeof tag.count !== "number" ||
+      !Number.isInteger(tag.count) ||
+      tag.count < 0
+    )
+      return invalidContactCard();
+    return {
+      code: tag.code,
+      label: tag.label,
+      icon: tag.icon,
+      count: tag.count,
+    };
+  });
+  const profileKind =
+    entityKind === "customer"
+      ? "person"
+      : entityKind === "shop"
+        ? "store"
+        : entityKind;
+  const entityType =
+    entityKind === "customer"
+      ? "user"
+      : entityKind === "technician" || entityKind === "shop"
+        ? entityKind
+        : undefined;
+
+  return {
+    contactCard: {
+      snapshotVersion: 2,
+      userId: targetUserPublicId,
+      needoId,
+      displayName: nickname,
+      avatar: avatarUrl ?? "",
+      profileKind,
+      ...(entityType ? { entityType } : {}),
+      userIdLabel: needoId,
+      ...(card.bio === null ? {} : { headline: card.bio }),
+      entityKind,
+      entityPublicId: card.entityPublicId as string | null | undefined,
+      ekycVerified: card.ekycVerified,
+      level: card.level as number | null,
+      tierCode,
+      themeVersionPublicId: card.themeVersionPublicId as string | null,
+      simpleTopColor: card.simpleTopColor as string | null,
+      simpleBottomColor: card.simpleBottomColor as string | null,
+      bio: card.bio as string | null,
+      languages: languages as string[],
+      rating: card.rating as number | null | undefined,
+      completedOrderCount: card.completedOrderCount as
+        | number
+        | null
+        | undefined,
+      favoriteCount: card.favoriteCount as number | null | undefined,
+      shareCount: card.shareCount as number | null | undefined,
+      specialReviewTags: parsedSpecialTags,
+    },
+  };
+}
+
+function toContactCardMessageExt(
+  metadata: Record<string, unknown>,
+): MessageExt {
+  return metadata.snapshotVersion === 2 || metadata.type === "contact-card"
+    ? parseV2ContactCardMetadata(metadata)
+    : parseLegacyContactCardMetadata(metadata);
+}
+
+function toContactCardCandidate(value: unknown): ImContactCardCandidate {
+  const candidate = exactContactCardRecord(value, [
+    "targetUserId",
+    "needoId",
+    "nickname",
+    "avatarUrl",
+    "relationship",
+  ]);
+  const targetUserId = contactCardString(candidate.targetUserId, 160);
+  const needoId = contactCardString(candidate.needoId, 160);
+  if (
+    !/^(?:u|needo)[0-9]{10}$/u.test(targetUserId) ||
+    !/^(?:u|needo)[0-9]{10}$/u.test(needoId)
+  ) {
+    return invalidContactCard();
+  }
+  const nickname = contactCardString(candidate.nickname, 160);
+  if (
+    candidate.avatarUrl !== null &&
+    (typeof candidate.avatarUrl !== "string" ||
+      candidate.avatarUrl.length > 2_048 ||
+      !isSafeContactCardUrl(candidate.avatarUrl))
+  ) {
+    return invalidContactCard();
+  }
+  if (
+    candidate.relationship !== "self" &&
+    candidate.relationship !== "friend"
+  ) {
+    return invalidContactCard();
+  }
+
+  return {
+    targetUserId,
+    needoId,
+    nickname,
+    avatarUrl: candidate.avatarUrl as string | null,
+    relationship: candidate.relationship,
+  };
+}
+
+function toContactCardCandidatePage(
+  value: unknown,
+  requestedPage: number,
+  requestedPageSize: number,
+) {
+  const page = exactContactCardRecord(value, [
+    "list",
+    "total",
+    "page",
+    "page_size",
+  ]);
+  if (!Array.isArray(page.list)) return invalidContactCard();
+  const total = responseInteger(page.total, 0);
+  const pageNumber = responseInteger(page.page, 1);
+  const pageSize = responseInteger(page.page_size, 1, 100);
+  if (
+    pageNumber !== requestedPage ||
+    pageSize !== requestedPageSize ||
+    page.list.length > pageSize ||
+    page.list.length > total
+  ) {
+    return invalidContactCard();
+  }
+  return {
+    list: page.list.map(toContactCardCandidate),
+    total,
+    page: pageNumber,
+    page_size: pageSize,
+  };
+}
+
+function toChatRecordSummary(
+  value: import("../realtime/api").RealtimeChatRecordSummary,
+): import("./chat-records").ImChatRecordSummary {
+  const summary = exactRecord(value, [
+    "publicId",
+    "title",
+    "preview",
+    "senderNames",
+    "senderCount",
+    "itemCount",
+    "createdAt",
+  ]);
+  if (
+    typeof summary.publicId !== "string" ||
+    !uuidPattern.test(summary.publicId)
+  )
+    invalidChatRecord();
+  if (
+    !Array.isArray(summary.senderNames) ||
+    summary.senderNames.length < 1 ||
+    summary.senderNames.length > 100
+  )
+    invalidChatRecord();
+  const senderNames = (summary.senderNames as unknown[]).map((name) =>
+    boundedString(name, 1, 120),
+  );
+  const senderCount = responseInteger(summary.senderCount, 1, 100);
+  if (senderCount !== senderNames.length) invalidChatRecord();
+  return {
+    publicId: summary.publicId as string,
+    title: boundedString(summary.title, 1, 255),
+    preview: boundedString(summary.preview, 0, 500),
+    senderNames,
+    senderCount,
+    itemCount: responseInteger(summary.itemCount, 1, 100),
+    createdAt: isoDate(summary.createdAt),
+  };
+}
+
+function toChatRecordFavorite(
+  favorite: import("../realtime/api").RealtimeChatRecordFavorite,
+): import("./chat-records").ImChatRecordFavorite {
+  const exact = exactRecord(favorite, [
+    "id",
+    "bundlePublicId",
+    "title",
+    "preview",
+    "senderNames",
+    "senderCount",
+    "itemCount",
+    "createdAt",
+  ]);
+  const summary = toChatRecordSummary({
+    publicId: exact.bundlePublicId,
+    title: exact.title,
+    preview: exact.preview,
+    senderNames: exact.senderNames,
+    senderCount: exact.senderCount,
+    itemCount: exact.itemCount,
+    createdAt: exact.createdAt,
+  } as never);
+  return {
+    id: String(responseInteger(exact.id, 1)),
+    bundlePublicId: summary.publicId,
+    title: summary.title,
+    preview: summary.preview,
+    senderNames: summary.senderNames,
+    senderCount: summary.senderCount,
+    itemCount: summary.itemCount,
+    createdAt: summary.createdAt,
+  };
+}
+
+function toChatRecordItem(
+  value: import("../realtime/api").RealtimeChatRecordItem,
+): import("./chat-records").ImChatRecordItem {
+  const item = exactRecord(value, [
+    "id",
+    "position",
+    "senderDisplayName",
+    "senderAvatarUrl",
+    "messageType",
+    "content",
+    "metadata",
+    "sentAt",
+  ]);
+  if (
+    item.senderAvatarUrl !== null &&
+    (typeof item.senderAvatarUrl !== "string" ||
+      item.senderAvatarUrl.length > 2048)
+  )
+    invalidChatRecord();
+  if (
+    item.content !== null &&
+    (typeof item.content !== "string" || item.content.length > 4000)
+  )
+    invalidChatRecord();
+  if (
+    item.metadata !== null &&
+    (typeof item.metadata !== "object" || Array.isArray(item.metadata))
+  )
+    invalidChatRecord();
+  return {
+    id: String(responseInteger(item.id, 1)),
+    position: responseInteger(item.position, 1, 100),
+    senderDisplayName: boundedString(item.senderDisplayName, 1, 120),
+    senderAvatarUrl: item.senderAvatarUrl as string | null,
+    messageType: boundedString(item.messageType, 1, 64),
+    content: item.content as string | null,
+    metadata: item.metadata,
+    sentAt: isoDate(item.sentAt),
+  };
+}
+
+function rawChatRecordPage(value: unknown, withCursor: boolean) {
+  const keys = [
+    "list",
+    "total",
+    "page",
+    "page_size",
+    ...(withCursor ? ["nextCursor"] : []),
+  ];
+  const page = exactRecord(value, keys);
+  if (!Array.isArray(page.list)) invalidChatRecord();
+  const list = page.list as unknown[];
+  const pageSize = responseInteger(page.page_size, 1, 100);
+  const total = responseInteger(page.total, 0);
+  const pageNumber = responseInteger(page.page, 1);
+  const nextCursor = withCursor ? page.nextCursor : undefined;
+  return {
+    list,
+    total,
+    page: pageNumber,
+    page_size: pageSize,
+    ...(withCursor ? { nextCursor: nextCursor as number | null } : {}),
+  };
+}
+
+function chatRecordFavoritePage(
+  value: unknown,
+  requestedPage: number,
+  requestedPageSize: number,
+) {
+  const page = rawChatRecordPage(value, false);
+  const offset = (requestedPage - 1) * requestedPageSize;
+  const expectedLength = Math.min(
+    requestedPageSize,
+    Math.max(page.total - offset, 0),
+  );
+  if (
+    page.page !== requestedPage ||
+    page.page_size !== requestedPageSize ||
+    page.list.length !== expectedLength
+  )
+    invalidChatRecord();
+  return page;
+}
+
+function chatRecordItemPage(
+  value: unknown,
+  beforePosition: number | undefined,
+  requestedPageSize: number,
+) {
+  const rawPage = rawChatRecordPage(value, true);
+  const list = rawPage.list.map((item) =>
+    toChatRecordItem(item as import("../realtime/api").RealtimeChatRecordItem),
+  );
+  const page = { ...rawPage, list };
+  if (
+    page.page_size !== requestedPageSize ||
+    (beforePosition === undefined && page.page !== 1) ||
+    list.length > requestedPageSize ||
+    list.length > page.total
+  )
+    invalidChatRecord();
+  const positions = list.map((item) => item.position);
+  if (
+    positions.some(
+      (position, index) =>
+        (index > 0 && position <= positions[index - 1]) ||
+        (beforePosition !== undefined && position >= beforePosition),
+    )
+  )
+    invalidChatRecord();
+  const minimumPosition = positions[0];
+  if (beforePosition === undefined) {
+    const expectedLength = Math.min(requestedPageSize, page.total);
+    if (list.length !== expectedLength) invalidChatRecord();
+    if (page.total > list.length) {
+      if (
+        minimumPosition === undefined ||
+        responseInteger(page.nextCursor, 1) !== minimumPosition
+      )
+        invalidChatRecord();
+    } else if (page.nextCursor !== null) {
+      invalidChatRecord();
+    }
+  } else if (list.length < requestedPageSize) {
+    if (page.nextCursor !== null) invalidChatRecord();
+  } else if (
+    page.nextCursor !== null &&
+    (minimumPosition === undefined ||
+      responseInteger(page.nextCursor, 1) !== minimumPosition)
+  ) {
+    invalidChatRecord();
+  }
+  return page;
+}
+
+function toRealtimeChatRecordCommand(
+  command: import("./chat-records").ImChatRecordCommand,
+) {
+  assertUuid(command.idempotencyKey);
+  const messageIds = command.messageIds.map(toNumericId);
+  if (
+    messageIds.length < 1 ||
+    messageIds.length > 100 ||
+    new Set(messageIds).size !== messageIds.length
+  )
+    throw new Error("error.validation.invalid_message_ids");
+  return {
+    idempotencyKey: command.idempotencyKey,
+    messageIds,
+    sourceConversationId: toNumericId(command.sourceConversationId),
+  };
+}
+
+function parseChatRecordMessageMetadata(value: unknown) {
+  const metadata = exactRecord(value, ["needoMessageType", "needoMessageExt"]);
+  if (metadata.needoMessageType !== "chat-record") invalidChatRecord();
+  const ext = exactRecord(metadata.needoMessageExt, [
+    "bundlePublicId",
+    "itemCount",
+    "preview",
+    "senderNames",
+    "senderCount",
+    "title",
+    "titleKind",
+  ]);
+  if (
+    typeof ext.bundlePublicId !== "string" ||
+    !uuidPattern.test(ext.bundlePublicId)
+  )
+    invalidChatRecord();
+  if (
+    !Array.isArray(ext.senderNames) ||
+    ext.senderNames.length < 1 ||
+    ext.senderNames.length > 100
+  )
+    invalidChatRecord();
+  const senderNames = (ext.senderNames as unknown[]).map((name) =>
+    boundedString(name, 1, 120),
+  );
+  const senderCount = responseInteger(ext.senderCount, 1, 100);
+  if (senderCount !== senderNames.length) invalidChatRecord();
+  const titleKind = ext.titleKind as "single" | "pair" | "group";
+  if (titleKind !== "single" && titleKind !== "pair" && titleKind !== "group")
+    invalidChatRecord();
+  return {
+    chatRecord: {
+      publicId: ext.bundlePublicId as string,
+      itemCount: responseInteger(ext.itemCount, 1, 100),
+      preview: boundedString(ext.preview, 0, 500),
+      senderNames,
+      titleKind,
+    },
+    senderCount,
+    title: boundedString(ext.title, 1, 255),
+  };
+}
+
+function toChatRecordMessageExt(value: unknown): MessageExt {
+  return { chatRecord: parseChatRecordMessageMetadata(value).chatRecord };
+}
+
+function assertChatRecordDeliveryConsistency(
+  bundle: import("./chat-records").ImChatRecordSummary,
+  message: import("../realtime/api").RealtimeMessage,
+) {
+  const metadata = parseChatRecordMessageMetadata(message.metadata);
+  const expectedTitleKind =
+    bundle.senderCount === 1
+      ? "single"
+      : bundle.senderCount === 2
+        ? "pair"
+        : "group";
+  if (
+    metadata.chatRecord.publicId !== bundle.publicId ||
+    metadata.chatRecord.itemCount !== bundle.itemCount ||
+    metadata.chatRecord.preview !== bundle.preview ||
+    metadata.senderCount !== bundle.senderCount ||
+    metadata.title !== bundle.title ||
+    metadata.chatRecord.titleKind !== expectedTitleKind ||
+    metadata.chatRecord.senderNames.length !== bundle.senderNames.length ||
+    metadata.chatRecord.senderNames.some(
+      (name: string, index: number) => name !== bundle.senderNames[index],
+    ) ||
+    message.content !== bundle.title
+  )
+    invalidChatRecord();
+}
+
+function parseChatRecordDeliveryMessage(
+  value: unknown,
+  targetConversationId: number,
+): import("../realtime/api").RealtimeMessage {
+  const message = exactRecord(value, [
+    "availableRecallModes",
+    "content",
+    "contentPurgedAt",
+    "conversationId",
+    "createdAt",
+    "expiresAt",
+    "id",
+    "lifecycleVersion",
+    "metadata",
+    "privacyPolicyVersionAtSend",
+    "reactionVersion",
+    "reactions",
+    "recallDeadlineAt",
+    "recalledAt",
+    "recallMode",
+    "senderUserId",
+    "type",
+  ]);
+  responseInteger(message.id, 1);
+  if (responseInteger(message.conversationId, 1) !== targetConversationId)
+    invalidChatRecord();
+  responseInteger(message.senderUserId, 1);
+  if (message.type !== "text" || typeof message.content !== "string")
+    invalidChatRecord();
+  boundedString(message.content, 1, 255);
+  isoDate(message.createdAt);
+  isoDate(message.recallDeadlineAt);
+  for (const field of ["contentPurgedAt", "expiresAt", "recalledAt"] as const) {
+    const fieldValue = message[field];
+    if (fieldValue !== null) isoDate(fieldValue);
+  }
+  if (
+    message.recallMode !== null &&
+    message.recallMode !== "standard" &&
+    message.recallMode !== "traceless"
+  )
+    invalidChatRecord();
+  if (message.privacyPolicyVersionAtSend !== null)
+    responseInteger(message.privacyPolicyVersionAtSend, 0);
+  responseInteger(message.lifecycleVersion, 0);
+  responseInteger(message.reactionVersion, 0);
+  if (
+    !Array.isArray(message.availableRecallModes) ||
+    message.availableRecallModes.some((mode) => mode !== "standard")
+  )
+    invalidChatRecord();
+  const reactions = message.reactions;
+  if (!Array.isArray(reactions)) return invalidChatRecord();
+  for (const reactionValue of reactions) {
+    const reaction = exactRecord(reactionValue, [
+      "emoji",
+      "people",
+      "reactedByMe",
+    ]);
+    boundedString(reaction.emoji, 1, 32);
+    const people = reaction.people;
+    if (!Array.isArray(people) || typeof reaction.reactedByMe !== "boolean")
+      return invalidChatRecord();
+    for (const personValue of people) {
+      if (
+        !personValue ||
+        typeof personValue !== "object" ||
+        Array.isArray(personValue)
+      )
+        invalidChatRecord();
+      const person = personValue as Record<string, unknown>;
+      const keys = Object.keys(person);
+      if (
+        !keys.includes("userId") ||
+        !keys.includes("needoId") ||
+        !keys.includes("username") ||
+        !keys.includes("avatarUrl") ||
+        keys.some(
+          (key) =>
+            !["userId", "needoId", "username", "avatarUrl", "role"].includes(
+              key,
+            ),
+        )
+      )
+        invalidChatRecord();
+      responseInteger(person.userId, 1);
+      if (
+        typeof person.needoId !== "string" ||
+        !/^(?:u|s|b|o|needo)[0-9]{10}$/u.test(person.needoId) ||
+        typeof person.username !== "string" ||
+        (person.avatarUrl !== null && typeof person.avatarUrl !== "string")
+      )
+        invalidChatRecord();
+      if (
+        person.role !== undefined &&
+        person.role !== "owner" &&
+        person.role !== "admin" &&
+        person.role !== "member"
+      )
+        invalidChatRecord();
+    }
+  }
+  parseChatRecordMessageMetadata(message.metadata);
+  return message as unknown as import("../realtime/api").RealtimeMessage;
 }
 
 const secondsPerMinute = 60;
@@ -120,9 +1048,7 @@ function secondsToCountdown(totalSeconds?: number | null) {
   const hours = Math.floor(remaining / secondsPerHour);
   remaining -= hours * secondsPerHour;
   const minutes = Math.floor(remaining / secondsPerMinute);
-  return totalSeconds
-    ? { months, days, hours, minutes }
-    : undefined;
+  return totalSeconds ? { months, days, hours, minutes } : undefined;
 }
 
 function inferProfileKind(username: string): ImProfileKind {
@@ -197,6 +1123,30 @@ function toImUser(participant: RealtimeParticipant): ImUser {
   };
 }
 
+function toTechnicianContactDetails(
+  details: RealtimeTechnicianContactDetails,
+): TechnicianContactDetails {
+  return {
+    bidBudgetMinJpy: details.bidBudgetMinJpy,
+    bidBudgetMaxJpy: details.bidBudgetMaxJpy,
+    paymentMethods: [...details.paymentMethods],
+    specialTags: [...details.specialTags],
+    profileTags: [...details.profileTags],
+    services: details.services.map((service) => ({
+      id: service.id,
+      shopId: service.shopId,
+      name: service.name,
+      priceAmount: service.priceAmount,
+      currency: service.currency,
+      durationMinutes: service.durationMinutes,
+      taxIncluded: service.taxIncluded,
+      sortOrder: service.sortOrder,
+    })),
+    completedOrderCount: details.completedOrderCount,
+    acceptanceRateBps: details.acceptanceRateBps,
+  };
+}
+
 function getOrganizationTechnicianTags(
   technician: BackofficeTechnicianPayload,
 ) {
@@ -208,11 +1158,7 @@ function getOrganizationTechnicianTags(
     throw new Error("error.validation.invalid_employment_type");
   }
 
-  return [
-    "员工",
-    getMerchantStaffEmploymentLabel(employmentType),
-    "技师",
-  ];
+  return ["员工", getMerchantStaffEmploymentLabel(employmentType), "技师"];
 }
 
 function toOrganizationUser(technician: BackofficeTechnicianPayload): ImUser {
@@ -272,24 +1218,40 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
   );
   const metadata = isRecalled ? {} : readMetadata(message.metadata);
   const storedType = metadata.needoMessageType;
+  const hasV2ContactCardMarker =
+    metadata.snapshotVersion === 2 || metadata.type === "contact-card";
   const type: ImMessageType = isRecalled
     ? "recalled"
-    : typeof storedType === "string" &&
-        richMessageTypes.has(storedType as ImMessageType)
-      ? (storedType as ImMessageType)
-      : message.type === "text"
-        ? "text"
-        : "system";
+    : hasV2ContactCardMarker
+      ? "contact-card"
+      : typeof storedType === "string" &&
+          richMessageTypes.has(storedType as ImMessageType)
+        ? (storedType as ImMessageType)
+        : message.type === "text"
+          ? "text"
+          : "system";
   const ext = metadata.needoMessageExt;
   const quotedMessageId = metadata.needoQuotedMessageId;
   const rawExt =
     ext && typeof ext === "object" && !Array.isArray(ext)
       ? (ext as MessageExt)
       : undefined;
-  const { disappearing: _untrustedDisappearing, ...safeExt } = rawExt ?? {};
+  const {
+    disappearing: _untrustedDisappearing,
+    mediaState: _untrustedMediaState,
+    ...safeRawExt
+  } = rawExt ?? {};
+  const safeExt =
+    type === "chat-record"
+      ? toChatRecordMessageExt(metadata)
+      : type === "contact-card"
+        ? toContactCardMessageExt(metadata)
+        : safeRawExt;
   const privacyPolicyVersionAtSend = message.privacyPolicyVersionAtSend;
   const createdAtMs = Date.parse(message.createdAt);
-  const expiresAtMs = message.expiresAt ? Date.parse(message.expiresAt) : Number.NaN;
+  const expiresAtMs = message.expiresAt
+    ? Date.parse(message.expiresAt)
+    : Number.NaN;
   const hasPrivacyCountdown =
     Number.isInteger(privacyPolicyVersionAtSend) &&
     (privacyPolicyVersionAtSend ?? -1) >= 0 &&
@@ -352,7 +1314,9 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
   };
 }
 
-function isRealtimeMessagePayload(payload: unknown): payload is RealtimeMessage {
+function isRealtimeMessagePayload(
+  payload: unknown,
+): payload is RealtimeMessage {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return false;
   }
@@ -365,7 +1329,37 @@ function isRealtimeMessagePayload(payload: unknown): payload is RealtimeMessage 
   );
 }
 
-export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate {
+export function toFormalImStoreUpdate(
+  event: FormalRealtimeEvent,
+): ImStoreUpdate {
+  if (
+    event.type === "message.deleted" &&
+    event.payload &&
+    typeof event.payload === "object"
+  ) {
+    const payload = event.payload as Partial<{
+      action: unknown;
+      conversationId: unknown;
+      messageId: unknown;
+    }>;
+    if (
+      payload.action === "privacy_expired" &&
+      typeof payload.conversationId === "number" &&
+      Number.isSafeInteger(payload.conversationId) &&
+      payload.conversationId > 0 &&
+      typeof payload.messageId === "number" &&
+      Number.isSafeInteger(payload.messageId) &&
+      payload.messageId > 0
+    ) {
+      return {
+        type: "message.deleted",
+        conversationId: String(payload.conversationId),
+        messageId: String(payload.messageId),
+        reason: "privacy_expired",
+      };
+    }
+  }
+
   if (
     ![
       "message.created",
@@ -380,6 +1374,14 @@ export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate
 
   const message = toConversationMessage(event.payload);
   if (event.type === "message.recalled") {
+    if (message.recallMode === "traceless") {
+      return {
+        type: "message.deleted",
+        conversationId: message.conversationId,
+        messageId: message.id,
+        reason: "traceless_recall",
+      };
+    }
     return message.serverState === "recalled"
       ? { type: "message.recalled", message }
       : { type: "refresh" };
@@ -393,13 +1395,14 @@ export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate
 }
 
 export function shouldForwardFormalImEvent(event: FormalRealtimeEvent) {
-  return event.type !== "connected" && (
-    event.type.startsWith("message.") ||
-    event.type.startsWith("conversation.") ||
-    event.type.startsWith("friend_request.") ||
-    event.type.startsWith("contact.") ||
-    event.type.startsWith("friendship.") ||
-    event.type.startsWith("social.follow.")
+  return (
+    event.type !== "connected" &&
+    (event.type.startsWith("message.") ||
+      event.type.startsWith("conversation.") ||
+      event.type.startsWith("friend_request.") ||
+      event.type.startsWith("contact.") ||
+      event.type.startsWith("friendship.") ||
+      event.type.startsWith("social.follow."))
   );
 }
 
@@ -410,7 +1413,9 @@ function getOtherParticipant(
   return (
     conversation.participants.find(
       (participant) => participant.userId !== currentUserId,
-    ) ?? conversation.directPeer ?? undefined
+    ) ??
+    conversation.directPeer ??
+    undefined
   );
 }
 
@@ -423,6 +1428,12 @@ function toConversation(
   const lastMessage = conversation.lastMessage
     ? toConversationMessage(conversation.lastMessage)
     : null;
+  const lastMessageSummary = buildConversationLastMessageSummary(
+    lastMessage ?? undefined,
+    String(currentUserId),
+    {},
+    conversation.updatedAt,
+  );
   const title =
     conversation.title?.trim() ||
     (isDirect ? otherParticipant?.username : undefined) ||
@@ -435,26 +1446,29 @@ function toConversation(
     avatar: isDirect ? (otherParticipant?.avatarUrl ?? "") : "",
     memberIds: Array.from(
       new Set([
-        ...conversation.participants.map((participant) => String(participant.userId)),
-        ...(isDirect && otherParticipant ? [String(otherParticipant.userId)] : []),
+        ...conversation.participants.map((participant) =>
+          String(participant.userId),
+        ),
+        ...(isDirect && otherParticipant
+          ? [String(otherParticipant.userId)]
+          : []),
       ]),
     ),
     contactUserId:
       isDirect && otherParticipant
         ? String(otherParticipant.userId)
         : undefined,
-    lastMessageId: lastMessage?.id,
-    lastMessagePreview: lastMessage
-      ? buildMessagePreview(lastMessage, String(currentUserId), {})
-      : "",
-    lastMessageTime: lastMessage?.sentAt ?? conversation.updatedAt,
+    ...lastMessageSummary,
     unreadCount: conversation.unreadCount,
     isPinned: conversation.isPinned ?? false,
     isMuted: conversation.isMuted ?? false,
+    autoTranslateMessages: conversation.autoTranslateMessages ?? false,
     isDeleted: conversation.isHidden || undefined,
     privacyModeEnabled: conversation.privacyModeEnabled || undefined,
     hideMemberProfiles: conversation.hideMemberProfiles || undefined,
-    disappearingCountdown: secondsToCountdown(conversation.disappearingTtlSeconds),
+    disappearingCountdown: secondsToCountdown(
+      conversation.disappearingTtlSeconds,
+    ),
     disappearingStartMode: conversation.privacyModeEnabled
       ? (conversation.disappearingStartMode ?? "sent")
       : undefined,
@@ -479,6 +1493,7 @@ function toContact(contact: RealtimeContact): ContactRelation {
     id: String(contact.id),
     ownerUserId: String(contact.ownerUserId),
     targetUserId: String(contact.contactUserId),
+    contactIdentityId: contact.contactIdentityId ? String(contact.contactIdentityId) : undefined,
     relationStatus: "active",
     source: contact.source,
     remarkName: contact.nickname ?? undefined,
@@ -611,19 +1626,15 @@ export function createFormalImApi({
     );
 
   const bootstrap = async () => {
-    const [
-      conversations,
-      contacts,
-      friendRequests,
-      organizationTechnicians,
-    ] = await Promise.all([
-      loadConversations(),
-      loadContacts(),
-      loadFriendRequests(),
-      scope === "merchant"
-        ? loadOrganizationTechnicians()
-        : Promise.resolve(undefined),
-    ]);
+    const [conversations, contacts, friendRequests, organizationTechnicians] =
+      await Promise.all([
+        loadConversations(),
+        loadContacts(),
+        loadFriendRequests(),
+        scope === "merchant"
+          ? loadOrganizationTechnicians()
+          : Promise.resolve(undefined),
+      ]);
 
     return buildBootstrap(
       currentUser,
@@ -681,37 +1692,68 @@ export function createFormalImApi({
       return { users: response.list.map(toImUser) };
     },
     async getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
-      const profile = await realtimeApi.getDirectoryProfile(toNumericId(userId));
-      return {
-        user: toImUser(profile.user),
-        identityCard: {
-          entityType: profile.identityCard.entityType,
-          profileId: profile.identityCard.profileId === null
+      const profile = await realtimeApi.getDirectoryProfile(
+        toNumericId(userId),
+      );
+      const identityCard = {
+        entityType: profile.identityCard.entityType,
+        profileId:
+          profile.identityCard.profileId === null
             ? undefined
             : String(profile.identityCard.profileId),
-          displayName: profile.identityCard.displayName,
-          identityLabel: profile.identityCard.identityLabel ?? undefined,
-          verified: profile.identityCard.verified,
-          creditValue: profile.identityCard.creditValue === null
+        displayName: profile.identityCard.displayName,
+        identityLabel: profile.identityCard.identityLabel ?? undefined,
+        verified: profile.identityCard.verified,
+        creditValue:
+          profile.identityCard.creditValue === null
             ? undefined
             : Number(profile.identityCard.creditValue),
-          creditReviewCount: profile.identityCard.creditReviewCount,
-          gender: profile.identityCard.gender ?? undefined,
-          age: profile.identityCard.age ?? undefined,
-          heightCm: profile.identityCard.heightCm === null
+        creditReviewCount: profile.identityCard.creditReviewCount,
+        gender: profile.identityCard.gender ?? undefined,
+        age: profile.identityCard.age ?? undefined,
+        heightCm:
+          profile.identityCard.heightCm === null
             ? undefined
             : Number(profile.identityCard.heightCm),
-          languages: profile.identityCard.languages,
-          city: profile.identityCard.city ?? undefined,
-          serviceArea: profile.identityCard.serviceArea ?? undefined,
-          yearsExperience: profile.identityCard.yearsExperience ?? undefined,
-          bio: profile.identityCard.bio ?? undefined,
-        },
+        languages: profile.identityCard.languages,
+        city: profile.identityCard.city ?? undefined,
+        serviceArea: profile.identityCard.serviceArea ?? undefined,
+        yearsExperience: profile.identityCard.yearsExperience ?? undefined,
+        bio: profile.identityCard.bio ?? undefined,
+      };
+      const baseProfile = {
+        user: toImUser(profile.user),
         relationship: profile.relationship,
-        contactId: profile.contactId === null ? undefined : String(profile.contactId),
+        contactId:
+          profile.contactId === null ? undefined : String(profile.contactId),
         friendRequest: profile.friendRequest
           ? toFriendRequest(profile.friendRequest)
           : undefined,
+      };
+
+      if (profile.identityCard.entityType === "technician") {
+        return {
+          ...baseProfile,
+          identityCard: {
+            ...identityCard,
+            entityType: "technician",
+          },
+          ...(profile.technicianContactDetails
+            ? {
+                technicianContactDetails: toTechnicianContactDetails(
+                  profile.technicianContactDetails,
+                ),
+              }
+            : {}),
+        };
+      }
+
+      return {
+        ...baseProfile,
+        identityCard: {
+          ...identityCard,
+          entityType: profile.identityCard.entityType,
+        },
       };
     },
     async sendFriendRequest(targetUserId: string, message?: string) {
@@ -830,6 +1872,60 @@ export function createFormalImApi({
         hasMore: response.nextCursor !== null,
       };
     },
+    async listContactCardCandidates(
+      conversationId: string,
+      query: { page?: number; pageSize?: number; query?: string } = {},
+    ) {
+      const page = query.page === undefined ? 1 : positive(query.page);
+      const pageSize =
+        query.pageSize === undefined ? 20 : positive(query.pageSize, 100);
+      const normalizedQuery = query.query?.trim();
+      if (normalizedQuery && normalizedQuery.length > 100) {
+        throw new Error("error.validation");
+      }
+      const response = await realtimeApi.listContactCardCandidates(
+        toNumericId(conversationId),
+        {
+          page,
+          pageSize,
+          ...(normalizedQuery ? { query: normalizedQuery } : {}),
+        },
+      );
+      return toContactCardCandidatePage(response, page, pageSize);
+    },
+    async sendContactCard(
+      conversationId: string,
+      targetUserId: string,
+      idempotencyKey: string,
+    ) {
+      const normalizedTargetUserId = targetUserId.trim();
+      const normalizedIdempotencyKey = idempotencyKey.trim();
+      if (
+        !/^(?:u|needo)[0-9]{10}$/u.test(normalizedTargetUserId) ||
+        normalizedIdempotencyKey.length < 8 ||
+        normalizedIdempotencyKey.length > 191
+      ) {
+        throw new Error("error.validation");
+      }
+      const rawResult = await realtimeApi.sendContactCard(
+        toNumericId(conversationId),
+        normalizedTargetUserId,
+        normalizedIdempotencyKey,
+      );
+      const result = exactContactCardRecord(rawResult, ["message", "replayed"]);
+      if (typeof result.replayed !== "boolean") return invalidContactCard();
+      const mappedMessage = toConversationMessage(
+        result.message as RealtimeMessage,
+      );
+      if (
+        mappedMessage.type !== "contact-card" ||
+        mappedMessage.conversationId !== conversationId ||
+        mappedMessage.ext?.contactCard?.userId !== normalizedTargetUserId
+      ) {
+        return invalidContactCard();
+      }
+      return { message: mappedMessage, replayed: result.replayed };
+    },
     async createConversation(
       memberIds: string[],
       title?: string,
@@ -864,8 +1960,7 @@ export function createFormalImApi({
           disappearingTtlSeconds: privacyOptions.privacyModeEnabled
             ? countdownToSeconds(privacyOptions.disappearingCountdown)
             : null,
-          disappearingStartMode:
-            privacyOptions.disappearingStartMode ?? "sent",
+          disappearingStartMode: privacyOptions.disappearingStartMode ?? "sent",
         },
       );
       return { conversation: toConversation(conversation, currentUser.id) };
@@ -873,7 +1968,11 @@ export function createFormalImApi({
     updateConversationGroupInfo: featureUnavailable,
     updateConversationTags: featureUnavailable,
     addConversationMembers: featureUnavailable,
-    async removeConversationMember(conversationId, userId, transferOwnerUserId) {
+    async removeConversationMember(
+      conversationId,
+      userId,
+      transferOwnerUserId,
+    ) {
       if (toNumericId(userId) !== currentUser.id) {
         throw new Error("error.feature_unavailable");
       }
@@ -888,7 +1987,9 @@ export function createFormalImApi({
       };
     },
     async dissolveConversation(conversationId) {
-      const result = await realtimeApi.dissolveConversation(toNumericId(conversationId));
+      const result = await realtimeApi.dissolveConversation(
+        toNumericId(conversationId),
+      );
       return {
         conversationId: String(result.conversationId),
         dissolved: true as const,
@@ -908,6 +2009,16 @@ export function createFormalImApi({
       );
       return { conversation: toConversation(conversation, currentUser.id) };
     },
+    async setConversationAutoTranslateMessages(
+      conversationId: string,
+      enabled: boolean,
+    ) {
+      const conversation = await realtimeApi.updateConversationPreferences(
+        toNumericId(conversationId),
+        { autoTranslateMessages: enabled },
+      );
+      return { conversation: toConversation(conversation, currentUser.id) };
+    },
     async markConversationRead(conversationId: string, markUnread = false) {
       if (markUnread) {
         const conversation = await realtimeApi.markConversationUnread(
@@ -920,7 +2031,9 @@ export function createFormalImApi({
       return { conversation: { ...response.conversation, unreadCount: 0 } };
     },
     async deleteConversation(conversationId: string) {
-      const conversation = await realtimeApi.deleteConversation(toNumericId(conversationId));
+      const conversation = await realtimeApi.deleteConversation(
+        toNumericId(conversationId),
+      );
       return { conversation: toConversation(conversation, currentUser.id) };
     },
     async clearConversation(conversationId: string) {
@@ -940,6 +2053,138 @@ export function createFormalImApi({
         deleted: response.deleted,
       };
     },
+    async batchDeleteMessages(conversationId, input) {
+      assertUuid(input.idempotencyKey);
+      const messageIds = input.messageIds.map(toNumericId);
+      if (
+        messageIds.length < 1 ||
+        messageIds.length > 100 ||
+        new Set(messageIds).size !== messageIds.length
+      )
+        throw new Error("error.validation.invalid_message_ids");
+      const result = await realtimeApi.batchDeleteMessagesForMe(
+        toNumericId(conversationId),
+        { idempotencyKey: input.idempotencyKey, messageIds },
+      );
+      return {
+        ...result,
+        conversationId: toStringId(result.conversationId),
+        messageIds: result.messageIds.map(toStringId),
+      };
+    },
+    async translateMessages(conversationId, input) {
+      if (
+        input.messageIds.length < 1 ||
+        input.messageIds.length > 50 ||
+        new Set(input.messageIds).size !== input.messageIds.length
+      )
+        throw new Error("error.validation.invalid_message_ids");
+      const results = await realtimeApi.translateMessages(
+        toNumericId(conversationId),
+        {
+          messageIds: input.messageIds.map(toNumericId),
+          targetLanguage: input.targetLanguage,
+        },
+      );
+      return results.map((result) => ({
+        messageId: toStringId(result.messageId),
+        status: result.status,
+        ...(result.status === "translated" &&
+        typeof result.translatedContent === "string"
+          ? { translatedContent: result.translatedContent }
+          : {}),
+      }));
+    },
+    async createChatRecordDelivery(targetConversationId, command) {
+      const rawResult = await realtimeApi.createChatRecordDelivery(
+        toNumericId(targetConversationId),
+        toRealtimeChatRecordCommand(command),
+      );
+      const result = exactRecord(rawResult, ["replayed", "bundle", "message"]);
+      if (typeof result.replayed !== "boolean") invalidChatRecord();
+      const bundle = toChatRecordSummary(
+        result.bundle as import("../realtime/api").RealtimeChatRecordSummary,
+      );
+      const rawMessage = parseChatRecordDeliveryMessage(
+        result.message,
+        toNumericId(targetConversationId),
+      );
+      assertChatRecordDeliveryConsistency(bundle, rawMessage);
+      return {
+        replayed: result.replayed as boolean,
+        bundle,
+        message: toConversationMessage(rawMessage),
+      };
+    },
+    async getChatRecord(publicId) {
+      return toChatRecordSummary(
+        await realtimeApi.getChatRecord(assertUuid(publicId)),
+      );
+    },
+    async listChatRecordItems(publicId, query = {}) {
+      const safeQuery = {
+        ...(query.beforePosition === undefined
+          ? {}
+          : { beforePosition: positive(query.beforePosition) }),
+        ...(query.pageSize === undefined
+          ? {}
+          : { pageSize: positive(query.pageSize, 50) }),
+      };
+      const result = await realtimeApi.listChatRecordItems(
+        assertUuid(publicId),
+        safeQuery,
+      );
+      const page = chatRecordItemPage(
+        result,
+        safeQuery.beforePosition,
+        safeQuery.pageSize ?? 20,
+      );
+      return { ...page, nextCursor: page.nextCursor! };
+    },
+    getChatRecordMedia(publicId, checksumSha256) {
+      return realtimeApi.getChatRecordMedia(
+        assertUuid(publicId),
+        assertChecksum(checksumSha256),
+      );
+    },
+    async createChatRecordFavorite(command) {
+      const rawResult = await realtimeApi.createChatRecordFavorite(
+        toRealtimeChatRecordCommand(command),
+      );
+      const result = exactRecord(rawResult, ["replayed", "favorite"]);
+      if (typeof result.replayed !== "boolean") invalidChatRecord();
+      return {
+        replayed: result.replayed as boolean,
+        favorite: toChatRecordFavorite(
+          result.favorite as import("../realtime/api").RealtimeChatRecordFavorite,
+        ),
+      };
+    },
+    async listChatRecordFavorites(query = {}) {
+      const safeQuery = {
+        ...(query.page === undefined ? {} : { page: positive(query.page) }),
+        ...(query.pageSize === undefined
+          ? {}
+          : { pageSize: positive(query.pageSize, 100) }),
+      };
+      const result = await realtimeApi.listChatRecordFavorites(safeQuery);
+      const page = chatRecordFavoritePage(
+        result,
+        safeQuery.page ?? 1,
+        safeQuery.pageSize ?? 20,
+      );
+      return {
+        ...page,
+        list: page.list.map((item) =>
+          toChatRecordFavorite(
+            item as import("../realtime/api").RealtimeChatRecordFavorite,
+          ),
+        ),
+      };
+    },
+    removeChatRecordFavorite(favoriteId) {
+      return realtimeApi.removeChatRecordFavorite(toNumericId(favoriteId));
+    },
     async sendMessage(
       type: ImMessageType,
       payload: {
@@ -949,6 +2194,12 @@ export function createFormalImApi({
         ext?: MessageExt;
       },
     ) {
+      if (type === "chat-record") {
+        throw new Error("error.im.chat_record_requires_server_snapshot");
+      }
+      if (type === "contact-card") {
+        throw new Error("error.im.contact_card_requires_server_snapshot");
+      }
       const storedType = type === "system" ? "system" : "text";
       const metadata = {
         needoMessageType: type,
@@ -968,6 +2219,14 @@ export function createFormalImApi({
       return {
         message: toConversationMessage(message),
       };
+    },
+    async sendVoiceMessage(conversationId, voice, metadata) {
+      const message = await realtimeApi.createVoiceMessage(
+        toNumericId(conversationId),
+        voice,
+        metadata,
+      );
+      return { message: toConversationMessage(message) };
     },
     async setMessageReaction(
       conversationId: string,
@@ -1002,28 +2261,37 @@ export function createFormalImApi({
       );
       const message = toConversationMessage(response.message);
 
+      const authoritativeMode =
+        response.action === "standard_recall" ? "standard" : "traceless";
       if (
-        response.action !== "standard_recall" ||
+        (response.action !== "standard_recall" &&
+          response.action !== "traceless_recall") ||
         String(response.conversationId) !== conversationId ||
         String(response.messageId) !== messageId ||
-        message.serverState !== "recalled"
+        message.serverState !== "recalled" ||
+        response.message.recallMode !== authoritativeMode
       ) {
         throw new Error("error.response.invalid_recall_result");
       }
 
-      return { conversationId, messageId, message, mode };
+      return { conversationId, messageId, message, mode: authoritativeMode };
     },
     resendMessage: featureUnavailable,
     forwardMessage: featureUnavailable,
     async uploadImage(conversationId: string, file: File) {
-      return realtimeApi.uploadConversationImage(toNumericId(conversationId), file);
+      return realtimeApi.uploadConversationImage(
+        toNumericId(conversationId),
+        file,
+      );
     },
   } satisfies ImApi;
 
   return api;
 }
 
-export function subscribeFormalImUpdates(onUpdate: (update: ImStoreUpdate) => void) {
+export function subscribeFormalImUpdates(
+  onUpdate: (update: ImStoreUpdate) => void,
+) {
   return subscribeRealtimeEvents({
     onEvent(event) {
       if (shouldForwardFormalImEvent(event)) {

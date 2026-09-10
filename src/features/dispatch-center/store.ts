@@ -20,7 +20,6 @@ import {
   getCycleStatusLabel,
   getFeedbackStatusLabel,
   getFinalShiftStatusLabel,
-  getModeNeedsFeedback,
   getServiceModeLabel,
   getStepLabel,
   getTemplateDayLabel,
@@ -35,6 +34,7 @@ import {
   type DispatchCandidate,
   type DispatchContactGroup,
   type DispatchCycle,
+  type DispatchCycleMode,
   type DispatchFeedbackEntry,
   type DispatchFinalShift,
   type DispatchFloatingTask,
@@ -200,6 +200,15 @@ export type DispatchFeedbackMatrixRow = {
   unavailableHours: number;
 };
 
+export type DispatchPlanningFeedbackRow = {
+  technicianId: string;
+  hasSubmitted: boolean;
+  hasUpdated: boolean;
+  hasException: boolean;
+  note: string;
+  unavailableHours: number;
+};
+
 const storageKey = "needo.dispatch-center.formal-state.v1";
 const listeners = new Set<() => void>();
 let hydrated = false;
@@ -357,14 +366,14 @@ function buildDefaultCycles(storeId: string): DispatchCycle[] {
     storeId,
     name: "下个周期征集",
     creationMethod: "new",
-    mode: "STORE_COLLECT_CONFIRM",
-    status: "collecting_feedback",
-    currentStep: 3,
+    mode: "TECH_SELF_FINAL",
+    status: "final_confirming",
+    currentStep: 4,
     templateType: "week",
     periodStart: "2026-04-28",
     periodEnd: "2026-05-27",
     targetTechnicianIds,
-    feedbackDeadline: "2026-04-24T18:00:00+09:00",
+    feedbackDeadline: null,
     templateMatrix: fillMatrixHours("week", [
       { dayIndex: 1, startHour: 10, endHour: 14 },
       { dayIndex: 1, startHour: 16, endHour: 22 },
@@ -1512,6 +1521,7 @@ function createBaseCycle(storeId: string, seed?: DispatchCycle | null): Dispatch
   const reference = seed ?? getPlanningCycle(storeId) ?? getActiveExecutionCycle(storeId);
   const periodStart = reference ? addDays(reference.periodEnd, 1) : addDays(dispatchReferenceDateKey, 7);
   const periodEnd = addDays(periodStart, 29);
+  const feedbackDeadline = `${addDays(periodStart, -2)}T18:00:00+09:00`;
   const templateType = reference?.templateType ?? "week";
 
   return {
@@ -1519,14 +1529,14 @@ function createBaseCycle(storeId: string, seed?: DispatchCycle | null): Dispatch
     storeId,
     name: "新的待执行周期",
     creationMethod: "new",
-    mode: "STORE_COLLECT_CONFIRM",
+    mode: "TECH_SELF_FINAL",
     status: "draft",
     currentStep: 1,
     templateType,
     periodStart,
     periodEnd,
     targetTechnicianIds: reference?.targetTechnicianIds ?? getStoreTechnicianIdsForDispatch(storeId),
-    feedbackDeadline: `${addDays(periodStart, -2)}T18:00:00+09:00`,
+    feedbackDeadline,
     templateMatrix: cloneValue(reference?.templateMatrix ?? fillMatrixHours(templateType, [{ dayIndex: 1, startHour: 10, endHour: 22 }])),
     regularHolidayWeekdays: [...(reference?.regularHolidayWeekdays ?? [3])],
     ruleSet: cloneValue(reference?.ruleSet ?? buildDefaultRuleSet()),
@@ -1566,25 +1576,43 @@ function materializeStoreDirectAssignments(cycle: DispatchCycle, operatorId: str
 
 function normalizeCycleRuleSet(cycle: DispatchCycle): DispatchCycle {
   const defaultRuleSet = buildDefaultRuleSet();
+  const normalizedModeCycle = normalizeUnsupportedCycleMode(cycle);
 
   return {
-    ...cycle,
+    ...normalizedModeCycle,
     ruleSet: {
       ...defaultRuleSet,
-      ...cycle.ruleSet,
-      overtimeBlockedWeekdays: Array.isArray(cycle.ruleSet?.overtimeBlockedWeekdays) ? cycle.ruleSet.overtimeBlockedWeekdays : [],
+      ...normalizedModeCycle.ruleSet,
+      overtimeBlockedWeekdays: Array.isArray(normalizedModeCycle.ruleSet?.overtimeBlockedWeekdays) ? normalizedModeCycle.ruleSet.overtimeBlockedWeekdays : [],
       priorityRules: {
         ...defaultRuleSet.priorityRules,
-        ...cycle.ruleSet?.priorityRules
+        ...normalizedModeCycle.ruleSet?.priorityRules
       },
       notificationRules: {
         ...defaultRuleSet.notificationRules,
-        ...cycle.ruleSet?.notificationRules,
-        templates: Array.isArray(cycle.ruleSet?.notificationRules?.templates)
-          ? cycle.ruleSet.notificationRules.templates
+        ...normalizedModeCycle.ruleSet?.notificationRules,
+        templates: Array.isArray(normalizedModeCycle.ruleSet?.notificationRules?.templates)
+          ? normalizedModeCycle.ruleSet.notificationRules.templates
           : defaultRuleSet.notificationRules.templates
       }
     }
+  };
+}
+
+const supportedDispatchCycleModes: DispatchCycleMode[] = ["TECH_SELF_FINAL", "STORE_ASSIGN_FINAL", "INDIVIDUAL_SELF_FINAL"];
+
+function normalizeUnsupportedCycleMode(cycle: DispatchCycle): DispatchCycle {
+  if (supportedDispatchCycleModes.includes(String(cycle.mode) as DispatchCycleMode)) {
+    return cycle;
+  }
+
+  const wasFeedbackState = cycle.status === "collecting_feedback" || cycle.status === "feedback_closed" || cycle.status === "ready_to_confirm";
+  return {
+    ...cycle,
+    mode: "TECH_SELF_FINAL",
+    status: wasFeedbackState ? "final_confirming" : cycle.status,
+    currentStep: wasFeedbackState || cycle.currentStep === 3 ? 4 : cycle.currentStep,
+    feedbackDeadline: null
   };
 }
 
@@ -1638,16 +1666,6 @@ function validateDispatchCycleDraft(cycle: DispatchCycle) {
 
   if (dayCount > 365) {
     return "排班周期最长 1 年，请缩短周期后再保存。";
-  }
-
-  if (getModeNeedsFeedback(cycle.mode)) {
-    if (!cycle.feedbackDeadline) {
-      return "商户确认模式必须设置技师反馈截止时间。";
-    }
-
-    if (cycle.feedbackDeadline.slice(0, 10) >= cycle.periodStart) {
-      return "技师反馈截止时间必须早于周期开始日。";
-    }
   }
 
   if (cycle.targetTechnicianIds.length === 0) {
@@ -2169,15 +2187,14 @@ export function launchDispatchCycle(cycleId: string, operatorId: string) {
     return { ok: false, message: "待执行周期已达上限，无法继续发起。" };
   }
 
-  const needsFeedback = getModeNeedsFeedback(cycle.mode);
   const storeDirectAssign = cycle.mode === "STORE_ASSIGN_FINAL";
   const nextCycle: DispatchCycle = {
     ...cycle,
-    status: needsFeedback ? "collecting_feedback" : storeDirectAssign ? getPublishedCycleStatus(cycle) : "final_confirming",
-    currentStep: needsFeedback ? 3 : 4,
+    status: "collecting_feedback",
+    currentStep: 3,
     launchedAt: dispatchReferenceNow,
-    finalizedAt: storeDirectAssign ? dispatchReferenceNow : cycle.finalizedAt,
-    activeAt: storeDirectAssign && getPublishedCycleStatus(cycle) === "active" ? dispatchReferenceNow : cycle.activeAt,
+    finalizedAt: null,
+    activeAt: null,
     updatedAt: dispatchReferenceNow
   };
 
@@ -2192,7 +2209,7 @@ export function launchDispatchCycle(cycleId: string, operatorId: string) {
     targetId: cycleId,
     before: JSON.stringify(cycle),
     after: JSON.stringify(nextCycle),
-    reason: needsFeedback ? "发起技师反馈收集" : storeDirectAssign ? "商户直接排班保存即正式生效" : "进入系统自动确认"
+    reason: storeDirectAssign ? "商户排班完成，进入技师确认与请假调整反馈" : "技师自主排班开始，收集下一周期排班完成状态"
   });
   notify();
   return { ok: true, cycle: nextCycle };
@@ -2204,6 +2221,10 @@ export function sendDispatchFeedbackReminder(cycleId: string, operatorId: string
 
   if (!cycle) {
     return { ok: false, message: "找不到排班周期。" };
+  }
+
+  if (cycle.status !== "collecting_feedback") {
+    return { ok: false, message: "当前阶段不允许提醒反馈。" };
   }
 
   logAudit({
@@ -2225,6 +2246,10 @@ export function closeDispatchFeedback(cycleId: string, operatorId: string) {
 
   if (!cycle) {
     return { ok: false, message: "找不到排班周期。" };
+  }
+
+  if (cycle.status !== "collecting_feedback") {
+    return { ok: false, message: "当前阶段不允许结束反馈收集。" };
   }
 
   const nextCycle = {
@@ -2293,15 +2318,7 @@ export function runDispatchAutoConfirm(cycleId: string, operatorId: string) {
               : technician.languages.some((language) => cycle.ruleSet.priorityRules.selectedLanguages.includes(language)),
           supportsForeigners: Boolean(technician.canServeForeigners),
           isPreferredTechnician: cycle.ruleSet.priorityRules.selectedTechnicianIds.includes(technician.id)
-        }))
-        .filter((candidate) => {
-          if (cycle.mode === "STORE_COLLECT_CONFIRM") {
-            const feedbackStatus = findFeedbackStatus(cycleId, candidate.technician.id, dateKey, hour);
-            return feedbackStatus === "available" || feedbackStatus === "updated";
-          }
-
-          return true;
-        });
+        }));
 
       const ranked = rankDispatchCandidates(cycle, candidates).slice(0, capacity.maxCount + 2);
 
@@ -3168,6 +3185,32 @@ export function getPlanningProgressForCycle(cycleId: string) {
   return getPlanningProgress(cycleId);
 }
 
+export function getPlanningFeedbackRowsForCycle(cycleId: string): DispatchPlanningFeedbackRow[] {
+  hydrate();
+  const cycle = getCycleById(cycleId);
+
+  if (!cycle) {
+    return [];
+  }
+
+  return cycle.targetTechnicianIds.map((technicianId) => {
+    const entries = state.feedbacks.filter(
+      (entry) => entry.cycleId === cycleId && entry.technicianId === technicianId
+    );
+    const note = entries.find((entry) => entry.note.trim())?.note.trim() ?? "";
+    const unavailableHours = entries.filter((entry) => entry.status === "unavailable").length;
+
+    return {
+      technicianId,
+      hasSubmitted: entries.some((entry) => Boolean(entry.submittedAt)),
+      hasUpdated: entries.some((entry) => entry.status === "updated"),
+      hasException: unavailableHours > 0 || Boolean(note),
+      note,
+      unavailableHours
+    };
+  });
+}
+
 export function getDispatchCycleList(storeId: string) {
   hydrate();
   return getStoreCycles(storeId);
@@ -3178,7 +3221,7 @@ export function getDispatchCycleStepCopy(cycle: DispatchCycle) {
     stepLabel: getStepLabel(cycle.currentStep),
     statusLabel: getCycleStatusLabel(cycle.status),
     modeLabel: getCycleModeLabel(cycle.mode),
-    needsFeedback: getModeNeedsFeedback(cycle.mode),
+    needsFeedback: false,
     serviceLabel: getServiceModeLabel("store"),
     summary: getArrangementStatusLabel("confirmed"),
     feedbackLabel: getFeedbackStatusLabel("updated"),

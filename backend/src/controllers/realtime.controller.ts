@@ -4,6 +4,9 @@ import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   contactIdParamSchema,
+  contactCardCandidateListQuerySchema,
+  contactCardIdempotencyKeySchema,
+  contactCardSendBodySchema,
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
@@ -18,6 +21,7 @@ import {
   friendRequestCreateBodySchema,
   friendRequestIdParamSchema,
   friendRequestListQuerySchema,
+  messageBatchDeleteBodySchema,
   messageCreateBodySchema,
   messageDeleteParamSchema,
   messageListQuerySchema,
@@ -28,8 +32,10 @@ import {
   notificationIdParamSchema,
   notificationListQuerySchema,
   socialPostCreateBodySchema,
+  socialPostIdempotencyKeySchema,
   socialPostIdParamSchema,
   socialPostListQuerySchema,
+  socialPostShareBodySchema,
   socialPostUpdateBodySchema,
   socialUserIdParamSchema
 } from "../validators/realtime.validator";
@@ -77,6 +83,27 @@ export class RealtimeController {
     });
   }, 201);
 
+  public listContactCardCandidates = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    return this.service.listContactCardCandidates(
+      getAuthenticatedAccess(response),
+      params.conversationId,
+      contactCardCandidateListQuerySchema.parse(request.query)
+    );
+  });
+
+  public sendContactCard = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    const body = contactCardSendBodySchema.parse(request.body);
+    const idempotencyKey = contactCardIdempotencyKeySchema.parse(request.get("Idempotency-Key"));
+    return this.service.sendContactCard(
+      getAuthenticatedAccess(response),
+      params.conversationId,
+      body.targetUserId,
+      idempotencyKey
+    );
+  }, 201);
+
   public setMessageReaction = this.createHandler((request, response) => {
     const params = messageReactionParamSchema.parse(request.params);
     const body = messageReactionBodySchema.parse(request.body);
@@ -114,6 +141,15 @@ export class RealtimeController {
     const params = messageDeleteParamSchema.parse(request.params);
 
     return this.service.deleteMessageForUser(getAuthenticatedAccess(response), params);
+  });
+
+  public deleteMessagesForUser = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    const body = messageBatchDeleteBodySchema.parse(request.body);
+    return this.service.deleteMessagesForUser(getAuthenticatedAccess(response), {
+      conversationId: params.conversationId,
+      ...body
+    });
   });
 
   public markConversationRead = this.createHandler((request, response) => {
@@ -171,10 +207,7 @@ export class RealtimeController {
 
   public hideConversation = this.createHandler((request, response) => {
     const params = conversationIdParamSchema.parse(request.params);
-    return this.service.hideConversation(
-      getAuthenticatedAccess(response),
-      params.conversationId
-    );
+    return this.service.hideConversation(getAuthenticatedAccess(response), params.conversationId);
   });
 
   public clearConversationMessages = this.createHandler((request, response) => {
@@ -206,11 +239,7 @@ export class RealtimeController {
 
   public blockContact = this.createHandler((request, response) => {
     const params = contactIdParamSchema.parse(request.params);
-    return this.service.setContactBlocked(
-      getAuthenticatedAccess(response),
-      params.contactId,
-      true
-    );
+    return this.service.setContactBlocked(getAuthenticatedAccess(response), params.contactId, true);
   });
 
   public unblockContact = this.createHandler((request, response) => {
@@ -289,19 +318,99 @@ export class RealtimeController {
     );
   });
 
+  public pinSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    return this.service.setSocialPostPin(
+      getAuthenticatedAccess(response),
+      params.id,
+      true,
+      getRequestContext(request)
+    );
+  });
+
+  public unpinSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    return this.service.setSocialPostPin(
+      getAuthenticatedAccess(response),
+      params.id,
+      false,
+      getRequestContext(request)
+    );
+  });
+
   public getSocialPost = this.createHandler((request, response) => {
     const params = socialPostIdParamSchema.parse(request.params);
 
     return this.service.getSocialPost(getAuthenticatedAccess(response), params.id);
   });
 
+  public likeSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    return this.service.setSocialPostLike(
+      getAuthenticatedAccess(response),
+      params.id,
+      true,
+      getRequestContext(request)
+    );
+  });
+
+  public unlikeSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    return this.service.setSocialPostLike(
+      getAuthenticatedAccess(response),
+      params.id,
+      false,
+      getRequestContext(request)
+    );
+  });
+
+  public bookmarkSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    return this.service.setSocialPostBookmark(
+      getAuthenticatedAccess(response),
+      params.id,
+      true,
+      getRequestContext(request)
+    );
+  });
+
+  public unbookmarkSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    return this.service.setSocialPostBookmark(
+      getAuthenticatedAccess(response),
+      params.id,
+      false,
+      getRequestContext(request)
+    );
+  });
+
+  public recordSocialPostView = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    return this.service.recordSocialPostView(
+      getAuthenticatedAccess(response),
+      params.id,
+      getRequestContext(request)
+    );
+  });
+
+  public shareSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+    const body = socialPostShareBodySchema.parse(request.body);
+    return this.service.shareSocialPost(
+      getAuthenticatedAccess(response),
+      params.id,
+      {
+        ...body,
+        idempotencyKey: socialPostIdempotencyKeySchema.parse(request.get("Idempotency-Key"))
+      },
+      getRequestContext(request)
+    );
+  });
+
   public getSocialActivityStatus = this.createHandler((request, response) => {
     const params = socialUserIdParamSchema.parse(request.params);
 
-    return this.service.getSocialActivityStatus(
-      getAuthenticatedAccess(response),
-      params.userId
-    );
+    return this.service.getSocialActivityStatus(getAuthenticatedAccess(response), params.userId);
   });
 
   public createFollow = this.createHandler(

@@ -46,6 +46,21 @@ describe("ContactEventTimeline comment composer visibility", () => {
     expect(markup).not.toContain('aria-label="评论"');
   });
 
+  it("keeps the approved inset dashed frame for an empty status record panel", () => {
+    const markup = renderToStaticMarkup(
+      <ContactEventTimelinePanel
+        emptyLabel="暂无执行 / 异常记录"
+        events={[]}
+        showCommentComposer={false}
+        title="状态记录"
+      />
+    );
+
+    expect(markup).toContain("border-dashed");
+    expect(markup).toContain("min-h-[72px]");
+    expect(markup).toContain("暂无执行 / 异常记录");
+  });
+
   it("keeps the previous primary visual when tone is omitted", () => {
     const markup = renderToStaticMarkup(
       <ContactEventTimeline
@@ -129,5 +144,32 @@ describe("ContactEventTimeline comment composer visibility", () => {
 
     expect(markup.split(responsiveGrid)).toHaveLength(3);
     expect(markup).toContain('class="hidden sm:block"');
+  });
+
+  it("can preserve the deployed three-column mobile geometry for technician status records", () => {
+    const markup = renderToStaticMarkup(
+      <ContactEventTimeline events={events} layout="three-column" />
+    );
+
+    expect(markup).toContain("grid-cols-[96px,22px,minmax(0,1fr)]");
+    expect(markup).not.toContain("grid-cols-[18px,minmax(0,1fr)]");
+    expect(markup).toContain("text-right");
+    expect(markup).not.toContain("col-span-2");
+    expect(markup).toContain("grid-cols-[40px,minmax(0,1fr)]");
+    expect(markup).toContain('class="block"');
+  });
+
+  it("keeps the deployed comment row while allowing a formal navigation action", () => {
+    const markup = renderToStaticMarkup(
+      <ContactEventTimeline
+        events={events}
+        layout="three-column"
+        onCommentButtonClick={() => undefined}
+      />
+    );
+
+    expect(markup).toContain('aria-label="评论"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain("grid-cols-[96px,22px,minmax(0,1fr)]");
   });
 });

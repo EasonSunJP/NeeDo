@@ -47,6 +47,15 @@ export class MerchantSaasBillingController {
     );
   });
 
+  public getShopAccount = this.handle(async (request, response) => {
+    const { id } = shopBillingParamSchema.parse(request.params);
+    return this.service.getShopAccount(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      id
+    );
+  });
+
   public createMerchantAccount = this.handle(
     async (request, response) =>
       this.service.createMerchantAccount(

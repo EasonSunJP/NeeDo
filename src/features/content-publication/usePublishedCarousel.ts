@@ -4,6 +4,7 @@ import {
   type ContentLocaleCode,
   type PublishedCarouselPayload
 } from "../../api/contentPublication";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 
 export type PublishedCarouselUiScene = "user-home" | "affiliate-home-notice";
 
@@ -21,16 +22,36 @@ const initialState: PublishedCarouselState = {
 
 export function usePublishedCarousel(scene: PublishedCarouselUiScene, locale: ContentLocaleCode) {
   const [revision, setRevision] = useState(0);
-  const [state, setState] = useState<PublishedCarouselState>(initialState);
+  const cacheKey = `carousel:${scene}:${locale}`;
+  const [state, setState] = useState<PublishedCarouselState>(() => {
+    const cached = persistentResourceCache.peek<PublishedCarouselPayload>("public", cacheKey);
+    return cached ? { data: cached, error: null, loading: false } : initialState;
+  });
 
   useEffect(() => {
     let active = true;
-    setState(initialState);
+    const cached = persistentResourceCache.peek<PublishedCarouselPayload>("public", cacheKey);
+    setState(cached ? { data: cached, error: null, loading: false } : initialState);
+    const unsubscribe = persistentResourceCache.subscribe<PublishedCarouselPayload>(
+      "public",
+      cacheKey,
+      (data) => {
+        if (active) setState({ data, error: null, loading: false });
+      }
+    );
 
-    const request =
-      scene === "user-home"
-        ? contentPublicationApi.getUserHomeCarousel(locale)
-        : contentPublicationApi.getAffiliateCarousel(locale);
+    const request = persistentResourceCache.load({
+      force: revision > 0,
+      key: cacheKey,
+      scope: "public",
+      load: async () => {
+        const data = scene === "user-home"
+          ? await contentPublicationApi.getUserHomeCarousel(locale)
+          : await contentPublicationApi.getAffiliateCarousel(locale);
+        const current = persistentResourceCache.peek<PublishedCarouselPayload>("public", cacheKey);
+        return current?.releaseVersion === data.releaseVersion ? current : data;
+      }
+    });
 
     void request.then(
       (data) => {
@@ -40,15 +61,17 @@ export function usePublishedCarousel(scene: PublishedCarouselUiScene, locale: Co
       },
       (error: unknown) => {
         if (active) {
-          setState({ data: null, error, loading: false });
+          const fallback = persistentResourceCache.peek<PublishedCarouselPayload>("public", cacheKey);
+          setState({ data: fallback ?? null, error: fallback ? null : error, loading: false });
         }
       }
     );
 
     return () => {
       active = false;
+      unsubscribe();
     };
-  }, [locale, revision, scene]);
+  }, [cacheKey, locale, revision, scene]);
 
   const retry = useCallback(() => setRevision((current) => current + 1), []);
 

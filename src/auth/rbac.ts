@@ -1,9 +1,13 @@
 import type { PortalScope } from "./portal";
-import type { IdentityAvailability, IdentityKind } from "../features/identity-applications/model";
+import type { IdentityAvailability } from "../features/identity-applications/model";
 
 export const authSessionVersion = 7;
 
 export type LoginMethod = "google" | "password";
+export type UserPolicyComplianceRequirement =
+  | "phone_binding_required"
+  | "email_binding_required"
+  | "ekyc_required";
 
 const loginMethods = new Set<LoginMethod>(["google", "password"]);
 
@@ -13,30 +17,37 @@ export function isLoginMethod(value: unknown): value is LoginMethod {
 
 export type AuthIdentityPayload = {
   id: number;
-  publicId?: string | null;
+  publicId: string | null;
   scopeId: number | null;
   scopeType: string | null;
   type: string;
+  displayName: string | null;
 };
 
 export type AuthMePayload = {
   id: number;
   needoId: string;
-  primaryPublicId?: string;
-  activeIdentityId?: number;
-  activePublicId?: string | null;
+  primaryPublicId: string;
+  activeIdentityId: number;
+  activePublicId: string | null;
   email: string;
   emailVerifiedAt: string | null;
   hasPassword: boolean;
   username: string;
   avatarUrl: string | null;
+  profileDisplayName: string | null;
   isActive: boolean;
+  isTestAccount: boolean;
   currentIdentity: AuthIdentityPayload;
   identities: AuthIdentityPayload[];
   roles: string[];
   permissions: string[];
   menus: string[];
-  identityAvailability?: IdentityAvailability[];
+  identityAvailability: IdentityAvailability[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
+  compliancePolicyVersionPublicId?: string;
+  complianceEffectiveAt?: string;
+  compliancePermittedNextRoutes?: string[];
 };
 
 export type AuthSession = {
@@ -46,11 +57,13 @@ export type AuthSession = {
   primaryPublicId: string;
   activeIdentityId: number;
   activePublicId: string | null;
+  merchantShopPublicId?: string;
   username: string;
   email: string;
   emailVerifiedAt: string | null;
   hasPassword: boolean;
   avatarUrl: string | null;
+  profileDisplayName: string | null;
   portal: PortalScope;
   allowedPortals: PortalScope[];
   loginMethod: LoginMethod;
@@ -64,6 +77,10 @@ export type AuthSession = {
   currentIdentity: AuthIdentityPayload;
   identities: AuthIdentityPayload[];
   identityAvailability: IdentityAvailability[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
+  compliancePolicyVersionPublicId?: string;
+  complianceEffectiveAt?: string;
+  compliancePermittedNextRoutes?: string[];
 };
 
 const adminRoles = new Set(["admin", "operator", "finance", "support", "viewer"]);
@@ -162,27 +179,6 @@ export function resolveAllowedPortals(me: AuthMePayload): PortalScope[] {
   return uniquePortals([...identityPortals, ...rolePortals]);
 }
 
-const identityTypesByKind: Record<IdentityKind, string[]> = {
-  customer: ["customer", "user"],
-  technician: ["technician"],
-  merchant: ["merchant", "merchant_organization", "merchant_owner", "merchant_staff", "o", "owner"],
-  affiliate: ["affiliate", "broker", "scout", "business"]
-};
-
-function deriveIdentityAvailability(me: AuthMePayload): IdentityAvailability[] {
-  return (Object.keys(identityTypesByKind) as IdentityKind[]).map((kind) => {
-    const identity = me.identities.find((item) => identityTypesByKind[kind].includes(item.type));
-
-    return {
-      kind,
-      state: identity ? "active" : "available_to_apply",
-      identityId: identity?.id ?? null,
-      applicationId: null,
-      rejectionReason: null
-    };
-  });
-}
-
 function getScopedIdentityId(me: AuthMePayload, type: string | string[]) {
   const types = Array.isArray(type) ? type : [type];
   const identity = me.identities.find((item) => types.includes(item.type));
@@ -214,14 +210,15 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     authVersion: authSessionVersion,
     id: me.id,
     needoId: me.needoId,
-    primaryPublicId: me.primaryPublicId ?? me.needoId,
+    primaryPublicId: me.primaryPublicId,
     activeIdentityId: me.currentIdentity.id,
-    activePublicId: me.currentIdentity.publicId ?? null,
+    activePublicId: me.currentIdentity.publicId,
     username: me.username,
     email: me.email,
     emailVerifiedAt: me.emailVerifiedAt,
     hasPassword: me.hasPassword,
     avatarUrl: me.avatarUrl,
+    profileDisplayName: me.profileDisplayName,
     portal,
     allowedPortals,
     loginMethod,
@@ -234,8 +231,20 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     menus: me.menus,
     currentIdentity: me.currentIdentity,
     identities: me.identities,
-    identityAvailability: me.identityAvailability ?? deriveIdentityAvailability(me)
+    identityAvailability: me.identityAvailability,
+    ...(me.complianceRequirements
+      ? {
+          complianceRequirements: me.complianceRequirements,
+          compliancePolicyVersionPublicId: me.compliancePolicyVersionPublicId,
+          complianceEffectiveAt: me.complianceEffectiveAt,
+          compliancePermittedNextRoutes: me.compliancePermittedNextRoutes
+        }
+      : {})
   });
+}
+
+export function hasAccountComplianceRequirements(session: AuthSession | null): boolean {
+  return Boolean(session?.complianceRequirements?.length);
 }
 
 export function hasPermissionInSession(session: AuthSession | null, permission: string) {

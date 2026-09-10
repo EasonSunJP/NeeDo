@@ -4,12 +4,14 @@ import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
   bookingNavigationQuerySchema,
+  myTechnicianServiceIdParamSchema,
   pricingModeBodySchema,
   publicTechnicianServicesParamSchema,
   shopIdParamSchema,
   technicianServiceBodySchema,
   technicianServiceIdParamSchema,
-  technicianServiceListQuerySchema
+  technicianServiceListQuerySchema,
+  technicianServiceOrderBodySchema
 } from "../validators/pricing-mode.validator";
 
 export class PricingModeController {
@@ -106,6 +108,101 @@ export class PricingModeController {
               getRequestContext(request),
               shopId,
               technicianServiceBodySchema.parse(request.body)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listMyTechnicianServices = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listMyTechnicianServices(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              technicianServiceListQuerySchema.parse(request.query)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createMyTechnicianService = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(201).json(successResponse(await this.service.createMyTechnicianService(
+        getAuthenticatedAccess(response),
+        getRequestContext(request),
+        technicianServiceBodySchema.parse(request.body)
+      )));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public updateMyTechnicianService = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { serviceId } = myTechnicianServiceIdParamSchema.parse(request.params);
+      response.status(200).json(successResponse(await this.service.updateMyTechnicianService(
+        getAuthenticatedAccess(response),
+        getRequestContext(request),
+        serviceId,
+        technicianServiceBodySchema.partial().parse(request.body)
+      )));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public deleteMyTechnicianService = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { serviceId } = myTechnicianServiceIdParamSchema.parse(request.params);
+      response.status(200).json(successResponse(await this.service.deleteMyTechnicianService(
+        getAuthenticatedAccess(response),
+        getRequestContext(request),
+        serviceId
+      )));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public reorderMyTechnicianServices = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.reorderMyTechnicianServices(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              technicianServiceOrderBodySchema.parse(request.body)
             )
           )
         );

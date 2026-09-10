@@ -8,6 +8,7 @@ import type {
 } from "./compensation-engine.service";
 import { CompensationEngine } from "./compensation-engine.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { assertMerchantShopId } from "./merchant-shop-scope";
 
 export type ServiceIncomeStatus = "unreported" | "reported" | "confirmed";
 export type OrderFinanceType = "booking" | "request";
@@ -33,6 +34,11 @@ export interface MoneyTimelineEvent {
 export interface OrderFinancialRecordPayload {
   id: number;
   serviceAmountJpy: number;
+  baseServiceAmountJpy: number | null;
+  extensionAmountJpy: number | null;
+  nominationChargeAmountJpy: number | null;
+  wasTechnicianNominated: boolean | null;
+  compensationBasisVersion: string | null;
   platformCollectedServiceAmountJpy: number;
   offlineReportedServiceAmountJpy: number;
   unknownOrUnreportedServiceAmountJpy: number;
@@ -83,6 +89,11 @@ export interface OrderFinanceRecord {
 export interface ServiceIncomeReportInput {
   bookingOrderId: number;
   serviceAmountJpy: number;
+  baseServiceAmountJpy: number | null;
+  extensionAmountJpy: number | null;
+  nominationChargeAmountJpy: number | null;
+  wasTechnicianNominated: boolean | null;
+  compensationBasisVersion: string;
   platformCollectedServiceAmountJpy: number;
   offlineReportedServiceAmountJpy: number;
   unknownOrUnreportedServiceAmountJpy: number;
@@ -192,6 +203,17 @@ export class OrderFinanceService {
       serviceAmountJpy - platformCollectedServiceAmountJpy - offlineReportedServiceAmountJpy
     );
     const serviceIncomeStatus: ServiceIncomeStatus = input.confirmNow ? "confirmed" : "reported";
+    const hasComponentBreakdown = input.baseServiceAmountJpy !== undefined;
+    const baseServiceAmountJpy = hasComponentBreakdown ? input.baseServiceAmountJpy! : null;
+    const extensionAmountJpy = hasComponentBreakdown ? input.extensionAmountJpy! : null;
+    const nominationChargeAmountJpy = hasComponentBreakdown
+      ? input.nominationChargeAmountJpy!
+      : null;
+    const wasTechnicianNominated = hasComponentBreakdown ? input.wasTechnicianNominated! : null;
+    const compensationBasisVersion =
+      hasComponentBreakdown && record.activeCompensationRule
+        ? `${record.activeCompensationRule.sourceType}:${record.activeCompensationRule.id}`
+        : "legacy_aggregate";
     const occurredAt = new Date().toISOString();
     const baseTimeline = this.sanitizeTimeline(record.financial?.moneyTimeline ?? []);
     const reportEvent: MoneyTimelineEvent = {
@@ -204,7 +226,8 @@ export class OrderFinanceService {
       metadata: {
         paymentChannel: input.paymentChannel,
         platformCollectedServiceAmountJpy,
-        offlineReportedServiceAmountJpy
+        offlineReportedServiceAmountJpy,
+        compensationBasisVersion
       }
     };
     const moneyTimeline = [
@@ -229,6 +252,11 @@ export class OrderFinanceService {
     const updated = await this.repository.upsertServiceIncomeReport({
       bookingOrderId,
       serviceAmountJpy,
+      baseServiceAmountJpy,
+      extensionAmountJpy,
+      nominationChargeAmountJpy,
+      wasTechnicianNominated,
+      compensationBasisVersion,
       platformCollectedServiceAmountJpy,
       offlineReportedServiceAmountJpy,
       unknownOrUnreportedServiceAmountJpy,
@@ -248,6 +276,11 @@ export class OrderFinanceService {
       {
         shopId: record.shopId,
         serviceAmountJpy,
+        baseServiceAmountJpy,
+        extensionAmountJpy,
+        nominationChargeAmountJpy,
+        wasTechnicianNominated,
+        compensationBasisVersion,
         platformCollectedServiceAmountJpy,
         offlineReportedServiceAmountJpy,
         paymentChannel: input.paymentChannel,
@@ -288,8 +321,17 @@ export class OrderFinanceService {
     );
     const technicianIncomePreview = record.activeCompensationRule
       ? this.compensationEngine.calculate(record.activeCompensationRule, {
-          serviceAmountJpy: estimatedServiceGmvJpy,
-          platformFeeNdp: financial.bPlatformFeeActualNdp || financial.bPlatformFeeHoldNdp || 500,
+          ...(financial.baseServiceAmountJpy !== null &&
+          financial.extensionAmountJpy !== null &&
+          financial.nominationChargeAmountJpy !== null
+            ? {
+                baseServiceAmountJpy: financial.baseServiceAmountJpy,
+                extensionAmountJpy: financial.extensionAmountJpy,
+                nominationChargeAmountJpy: financial.nominationChargeAmountJpy,
+                nominated: financial.wasTechnicianNominated === true
+              }
+            : { serviceAmountJpy: estimatedServiceGmvJpy }),
+          platformFeeNdp: Math.max(financial.bPlatformFeeActualNdp, financial.bPlatformFeeHoldNdp),
           workedMinutes: this.durationMinutes(record.startsAt, record.endsAt)
         })
       : null;
@@ -443,6 +485,11 @@ export class OrderFinanceService {
     return {
       id: 0,
       serviceAmountJpy: record.priceAmountJpy,
+      baseServiceAmountJpy: null,
+      extensionAmountJpy: null,
+      nominationChargeAmountJpy: null,
+      wasTechnicianNominated: null,
+      compensationBasisVersion: null,
       platformCollectedServiceAmountJpy: 0,
       offlineReportedServiceAmountJpy: 0,
       unknownOrUnreportedServiceAmountJpy: record.priceAmountJpy,
@@ -515,15 +562,7 @@ export class OrderFinanceService {
   }
 
   private assertMerchantShopScope(actor: AuthenticatedAccessContext, shopId: number): void {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId === shopId) {
-      return;
-    }
-
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    assertMerchantShopId(actor, shopId);
   }
 
   private async record(

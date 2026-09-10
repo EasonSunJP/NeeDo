@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
 import { loadEnv, type ProxyOptions } from "vite";
@@ -19,6 +20,8 @@ const portalRouteHtmlEntries = [
 type EnvMap = Record<string, string | undefined>;
 
 export const defaultNeedoApiProxyTarget = "http://127.0.0.1:3000";
+export const defaultNeedoOpsApiProxyTarget = "http://127.0.0.1:3001";
+export const defaultNeedoMerchantApiProxyTarget = "http://127.0.0.1:3002";
 export const defaultLegacyAuthProxyPrefix = "/legacy-auth";
 export const productionBuildTarget = "production";
 
@@ -95,6 +98,38 @@ export function createNeedoApiProxyConfig(target: string): Record<string, ProxyO
       secure: false,
       target
     }
+  };
+}
+
+export function resolvePortalApiProxyTargets(env: EnvMap) {
+  return {
+    merchant: stripApiPrefix(
+      env.NEEDO_MERCHANT_API_PROXY_TARGET?.trim() ||
+        env.VITE_MERCHANT_API_PROXY_TARGET?.trim() ||
+        defaultNeedoMerchantApiProxyTarget
+    ),
+    operations: stripApiPrefix(
+      env.NEEDO_OPS_API_PROXY_TARGET?.trim() ||
+        env.VITE_OPS_API_PROXY_TARGET?.trim() ||
+        defaultNeedoOpsApiProxyTarget
+    )
+  };
+}
+
+export function createPortalApiProxyConfig(
+  operationsTarget: string,
+  merchantTarget: string
+): Record<string, ProxyOptions> {
+  const createEntry = (prefix: string, target: string): ProxyOptions => ({
+    changeOrigin: true,
+    rewrite: (path) => path.replace(new RegExp(`^${escapeRegExp(prefix)}`), "/api/v1"),
+    secure: false,
+    target
+  });
+
+  return {
+    "/ops-api/v1": createEntry("/ops-api/v1", operationsTarget),
+    "/merchant-api/v1": createEntry("/merchant-api/v1", merchantTarget)
   };
 }
 
@@ -192,6 +227,65 @@ function needoPortalEntryFallbackPlugin(): Plugin {
   };
 }
 
+export function resolveNeedoManualChunk(id: string): string | undefined {
+  const normalizedId = id.split("\\").join("/");
+
+  if (normalizedId.includes("node_modules/react")) {
+    return "vendor-react";
+  }
+
+  if (normalizedId.includes("node_modules/react-router")) {
+    return "vendor-router";
+  }
+
+  if (normalizedId.includes("node_modules")) {
+    return "vendor";
+  }
+
+  if (normalizedId.endsWith("/src/components/scheduling/UnifiedUserCalendar.tsx")) {
+    return "unified-calendar";
+  }
+
+  if (normalizedId.endsWith("/src/features/identity-applications/i18n.ts")) {
+    return "identity-applications-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/settings/ekycI18n.ts")) {
+    return "ekyc-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/dashboard/dashboardTranslations.ts")) {
+    return "dashboard-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/travel-fare/i18n.ts")) {
+    return "travel-fare-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/operations-analytics/i18n.ts")) {
+    return "operations-analytics-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/order-performance/i18n.ts")) {
+    return "order-performance-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/technician-schedule/automation-i18n.ts")) {
+    return "technician-automation-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/affiliate-profile/i18n.ts") ||
+      normalizedId.endsWith("/src/features/affiliate-marketplace/i18n.ts")) {
+    return "affiliate-i18n";
+  }
+
+  if (normalizedId.includes("/src/i18n/")) {
+    return "i18n";
+  }
+
+  return undefined;
+}
+
 export default defineConfig(({ command, mode }) => {
   const loadedEnv = loadEnv(mode, ".", "");
   const buildTarget = resolveBuildTarget(loadedEnv, command);
@@ -201,7 +295,9 @@ export default defineConfig(({ command, mode }) => {
     VITE_NEEDO_BUILD_TARGET: loadedEnv.VITE_NEEDO_BUILD_TARGET?.trim() || buildTarget
   };
   assertSafeFrontendBuild(env, command);
+  const portalApiTargets = resolvePortalApiProxyTargets(env);
   const apiProxy = {
+    ...createPortalApiProxyConfig(portalApiTargets.operations, portalApiTargets.merchant),
     ...createNeedoApiProxyConfig(resolveNeedoApiProxyTarget(env)),
     ...createLegacyAuthProxyConfig(resolveLegacyAuthProxyTarget(env), resolveLegacyAuthProxyPrefix(env))
   };
@@ -223,25 +319,7 @@ export default defineConfig(({ command, mode }) => {
           storeAdmin: "store-admin.html"
         },
         output: {
-          manualChunks(id) {
-            const normalizedId = id.split("\\").join("/");
-
-            if (normalizedId.includes("node_modules/react")) {
-              return "vendor-react";
-            }
-
-            if (normalizedId.includes("node_modules/react-router")) {
-              return "vendor-router";
-            }
-
-            if (normalizedId.includes("node_modules")) {
-              return "vendor";
-            }
-
-            if (normalizedId.includes("/src/i18n/")) {
-              return "i18n";
-            }
-          }
+          manualChunks: resolveNeedoManualChunk
         }
       }
     },
@@ -249,7 +327,7 @@ export default defineConfig(({ command, mode }) => {
       port: 5180,
       proxy: apiProxy,
       watch: {
-        ignored: ["**/.worktrees/**", "**/worktrees/**"]
+        ignored: [resolve(process.cwd(), ".worktrees", "**"), resolve(process.cwd(), "worktrees", "**")]
       }
     },
     preview: {
@@ -259,9 +337,13 @@ export default defineConfig(({ command, mode }) => {
     test: {
       exclude: [
         "backend/**",
+        "deploy/staging/runtime-contract.test.mjs",
+        "deploy/staging/release-publication-contract.test.mjs",
         "dist/**",
         "node_modules/**",
         "**/node_modules/**",
+        "scripts/aws-staging-application-lib.test.mjs",
+        "scripts/release-notes.test.mjs",
         ".codex-*/**",
         ".worktrees/**",
         "worktrees/**"

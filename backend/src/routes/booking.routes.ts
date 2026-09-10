@@ -1,3 +1,4 @@
+import { WorkStatusService } from "../services/work-status.service";
 import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
@@ -10,28 +11,48 @@ import { AffiliateCheckoutRepository } from "../repositories/affiliate-checkout.
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { FeeRuleRepository } from "../repositories/fee-rule.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { NdpExchangeRateRepository } from "../repositories/ndp-exchange-rate.repository";
 import { PlatformFeePolicyRepository } from "../repositories/platform-fee-policy.repository";
 import { BookingService } from "../services/booking.service";
 import { AuditLogService } from "../services/audit-log.service";
 import { FeeCalculationService } from "../services/fee-calculation.service";
 import { LedgerService } from "../services/ledger.service";
+import { NdpExchangeRateService } from "../services/ndp-exchange-rate.service";
 import { PlatformFeePolicyService } from "../services/platform-fee-policy.service";
 import { AffiliateCheckoutService } from "../services/affiliate-checkout.service";
 import { AffiliateLinkTokenService } from "../services/affiliate-link-token.service";
 import {
+  availabilityWindowCreateBodySchema,
+  availabilityWindowListQuerySchema,
+  availabilityWindowUpdateBodySchema,
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  createOrderAddOnBodySchema,
+  confirmReceiptBodySchema,
+  endServiceBodySchema,
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
   orderCancelBodySchema,
   orderConfirmBodySchema,
+  orderAddOnDecisionBodySchema,
+  orderAddOnIdParamsSchema,
   orderIdParamSchema,
   orderListQuerySchema,
+  orderReviewCreateBodySchema,
+  orderTimelineCommentBodySchema,
+  payWithNdpBodySchema,
+  selectPaymentMethodBodySchema,
+  startServiceBodySchema,
   scheduleSlotCreateBodySchema,
+  scheduleSlotDeleteQuerySchema,
   scheduleSlotListQuerySchema,
-  scheduleSlotUpdateBodySchema
+  scheduleSlotUpdateBodySchema,
+  technicianManualBookingBodySchema
 } from "../validators/booking.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
+import { createUserExperienceServiceForRoutes } from "./user-experience-service.factory";
+import { TechnicianAutomationRepository } from "../repositories/technician-automation.repository";
+import { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 
 export const BOOKING_ROUTE_PERMISSIONS = {
   create: "booking:create",
@@ -39,12 +60,20 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   getOrder: "order:read",
   confirm: "order:confirm",
   cancel: "order:cancel",
-  start: "order:start",
-  complete: "order:complete",
+  serviceStart: "order:service:start",
+  addOnWrite: "order:add-on:write",
+  serviceEnd: "order:service:end",
+  reviewCreate: "order:review:create",
+  checkoutRead: "order:checkout:read",
+  checkoutPaymentMethodWrite: "order:checkout:payment-method:write",
+  checkoutNdpPay: "order:checkout:ndp:pay",
+  checkoutReceiptConfirm: "order:checkout:receipt:confirm",
+  checkoutReceiptOverride: "backoffice:order:checkout:receipt-override",
   merchantPaymentWrite: "merchant-admin:order-payment:write",
   backofficePaymentWrite: "backoffice:order-payment:write",
   scheduleList: "schedule:slots:list",
-  scheduleWrite: "schedule:slots:write"
+  scheduleWrite: "schedule:slots:write",
+  manualCreate: "technician:booking:manual-create"
 } as const;
 
 export const createBookingRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
@@ -72,8 +101,15 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
           platformFeePolicyService
         )
       : undefined;
+  const ndpExchangeRateService =
+    dependencies.ndpExchangeRateService ??
+    new NdpExchangeRateService(
+      dependencies.ndpExchangeRateRepository ?? new NdpExchangeRateRepository(),
+      auditLogService
+    );
   const bookingService = new BookingService(
-    dependencies.bookingRepository ?? new BookingRepository(),
+    dependencies.bookingRepository ??
+      new BookingRepository(undefined, dependencies.administrativeRegionRepository),
     ledgerService,
     dependencies.realtimeService,
     auditLogService,
@@ -85,9 +121,42 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
           publicBaseUrl: config.AFFILIATE_PUBLIC_BASE_URL
         }),
         { rewardLedger: ledgerService }
-      )
+      ),
+    ndpExchangeRateService,
+    createUserExperienceServiceForRoutes(dependencies),
+    undefined,
+    dependencies.userPolicyEnforcementService,
+    dependencies.platformAccessPolicyService,
+    dependencies.workStatusService??new WorkStatusService(undefined,undefined,dependencies.realtimeEventGateway),
+    dependencies.liveDashboardEventGateway
   );
-  const controller = new BookingController(bookingService);
+  const automationProcessor =
+    dependencies.technicianAutomationProcessor ??
+    (dependencies.bookingRepository ? undefined : new TechnicianAutomationProcessor(
+      new TechnicianAutomationRepository(),
+      {
+        confirmBooking: async (input) => {
+          await bookingService.transitionOrder(
+            {
+              userId: input.technicianUserId,
+              roles: ["technician"],
+              currentIdentityId: input.technicianIdentityId,
+              currentIdentityType: "technician",
+              currentIdentityScopeType: "technician_profile",
+              currentIdentityScopeId: input.technicianProfileId
+            },
+            input.orderId,
+            "confirm"
+          );
+        }
+      },
+      {
+        applyRequest: async () => {
+          throw new Error("request automation authority is unavailable on booking routes");
+        }
+      }
+    ));
+  const controller = new BookingController(bookingService, automationProcessor);
 
   router.get(
     "/schedule/availability",
@@ -100,6 +169,13 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.create),
     validateRequest({ body: bookingCreateBodySchema }),
     controller.createBooking
+  );
+  router.post(
+    "/technician/manual-bookings",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.manualCreate),
+    validateRequest({ body: technicianManualBookingBodySchema }),
+    controller.createTechnicianManualBooking
   );
   router.get(
     "/orders",
@@ -130,18 +206,95 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     controller.cancelOrder
   );
   router.post(
-    "/orders/:id/start",
+    "/orders/:id/service/start",
     authenticate(),
-    authorize(BOOKING_ROUTE_PERMISSIONS.start),
-    validateRequest({ params: orderIdParamSchema }),
-    controller.startOrder
+    authorize(BOOKING_ROUTE_PERMISSIONS.serviceStart),
+    validateRequest({ params: orderIdParamSchema, body: startServiceBodySchema }),
+    controller.startService
   );
   router.post(
-    "/orders/:id/complete",
+    "/orders/:id/add-ons",
     authenticate(),
-    authorize(BOOKING_ROUTE_PERMISSIONS.complete),
+    authorize(BOOKING_ROUTE_PERMISSIONS.addOnWrite),
+    validateRequest({ params: orderIdParamSchema, body: createOrderAddOnBodySchema }),
+    controller.createOrderAddOn
+  );
+  router.post(
+    "/orders/:id/add-ons/:addOnId/accept",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.addOnWrite),
+    validateRequest({ params: orderAddOnIdParamsSchema, body: orderAddOnDecisionBodySchema }),
+    controller.acceptOrderAddOn
+  );
+  router.post(
+    "/orders/:id/add-ons/:addOnId/reject",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.addOnWrite),
+    validateRequest({ params: orderAddOnIdParamsSchema, body: orderAddOnDecisionBodySchema }),
+    controller.rejectOrderAddOn
+  );
+  router.post(
+    "/orders/:id/service/end",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.serviceEnd),
+    validateRequest({ params: orderIdParamSchema, body: endServiceBodySchema }),
+    controller.endService
+  );
+  router.post(
+    "/orders/:id/reviews",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.reviewCreate),
+    validateRequest({ params: orderIdParamSchema, body: orderReviewCreateBodySchema }),
+    controller.createOrderReview
+  );
+  router.get(
+    "/orders/:id/reviews/mine",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.reviewCreate),
     validateRequest({ params: orderIdParamSchema }),
-    controller.completeOrder
+    controller.getOwnOrderReview
+  );
+  router.post(
+    "/orders/:id/timeline/comments",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.getOrder),
+    validateRequest({ params: orderIdParamSchema, body: orderTimelineCommentBodySchema }),
+    controller.createOrderTimelineComment
+  );
+  router.get(
+    "/orders/:id/checkout",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutRead),
+    validateRequest({ params: orderIdParamSchema }),
+    controller.getCheckout
+  );
+  router.post(
+    "/orders/:id/checkout/payment-method",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutPaymentMethodWrite),
+    validateRequest({ params: orderIdParamSchema, body: selectPaymentMethodBodySchema }),
+    controller.selectCheckoutPaymentMethod
+  );
+  router.post(
+    "/orders/:id/checkout/pay/ndp",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutNdpPay),
+    validateRequest({ params: orderIdParamSchema, body: payWithNdpBodySchema }),
+    controller.payCheckoutWithNdp
+  );
+  router.post(
+    "/orders/:id/checkout/confirm-receipt",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutReceiptConfirm),
+    validateRequest({ params: orderIdParamSchema, body: confirmReceiptBodySchema }),
+    controller.confirmCheckoutReceipt
+  );
+  router.post(
+    "/backoffice/orders/:id/checkout/confirm-receipt",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.checkoutReceiptOverride),
+    validateRequest({ params: orderIdParamSchema, body: confirmReceiptBodySchema }),
+    controller.overrideCheckoutReceipt
   );
   router.post(
     "/merchant-admin/orders/:id/payment/confirm",
@@ -179,10 +332,40 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     controller.getScheduleSlot
   );
   ["/merchant-admin/schedule/slots", "/technician/schedule/slots"].forEach((path) => {
-    router.get(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList), validateRequest({ query: scheduleSlotListQuerySchema }), controller.listScheduleSlots);
-    router.post(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ body: scheduleSlotCreateBodySchema }), controller.createScheduleSlot);
-    router.patch(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema, body: scheduleSlotUpdateBodySchema }), controller.updateScheduleSlot);
-    router.delete(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema }), controller.deleteScheduleSlot);
+    router.get(
+      path,
+      authenticate(),
+      authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList),
+      validateRequest({ query: scheduleSlotListQuerySchema }),
+      controller.listScheduleSlots
+    );
+    router.post(
+      path,
+      authenticate(),
+      authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite),
+      validateRequest({ body: scheduleSlotCreateBodySchema }),
+      controller.createScheduleSlot
+    );
+    router.patch(
+      `${path}/:id`,
+      authenticate(),
+      authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite),
+      validateRequest({ params: orderIdParamSchema, body: scheduleSlotUpdateBodySchema }),
+      controller.updateScheduleSlot
+    );
+    router.delete(
+      `${path}/:id`,
+      authenticate(),
+      authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite),
+      validateRequest({ params: orderIdParamSchema, query: scheduleSlotDeleteQuerySchema }),
+      controller.deleteScheduleSlot
+    );
+  });
+  ["/merchant-admin/availability-windows", "/technician/availability-windows"].forEach((path) => {
+    router.get(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList), validateRequest({ query: availabilityWindowListQuerySchema }), controller.listAvailabilityWindows);
+    router.post(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ body: availabilityWindowCreateBodySchema }), controller.createAvailabilityWindow);
+    router.patch(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema, body: availabilityWindowUpdateBodySchema }), controller.updateAvailabilityWindow);
+    router.delete(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema }), controller.deleteAvailabilityWindow);
   });
 
   return router;

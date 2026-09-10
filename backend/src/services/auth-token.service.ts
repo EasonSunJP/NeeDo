@@ -11,9 +11,11 @@ export interface AuthTokenSubject {
   email: string;
   currentIdentityId?: number;
   sessionGeneration?: number;
+  merchantShopPublicId?: string;
 }
 
 export interface AuthTokenPayload {
+  aud: string;
   sub: string;
   email: string;
   type: AuthTokenType;
@@ -22,6 +24,7 @@ export interface AuthTokenPayload {
   exp: number;
   currentIdentityId?: number;
   sessionGeneration: number;
+  merchantShopPublicId?: string;
 }
 
 export interface IssuedAuthToken {
@@ -42,6 +45,7 @@ const jwtHeaderSchema = z.object({
 });
 
 const jwtPayloadSchema = z.object({
+  aud: z.string().min(3).optional(),
   sub: z.string().regex(/^\d+$/),
   email: z.string().email(),
   type: z.enum(["access", "refresh"]),
@@ -49,7 +53,11 @@ const jwtPayloadSchema = z.object({
   iat: z.number().int().positive(),
   exp: z.number().int().positive(),
   currentIdentityId: z.number().int().positive().optional(),
-  sessionGeneration: z.number().int().nonnegative().optional()
+  sessionGeneration: z.number().int().nonnegative().optional(),
+  merchantShopPublicId: z
+    .string()
+    .regex(/^shop\d{10}$/)
+    .optional()
 });
 
 const toBase64Url = (input: string | Buffer): string => Buffer.from(input).toString("base64url");
@@ -103,6 +111,7 @@ export class AuthTokenService {
     const issuedAt = Math.floor(Date.now() / 1000);
     const expiresAt = issuedAt + ttlSeconds;
     const payload: AuthTokenPayload = {
+      aud: this.config.AUTH_TOKEN_AUDIENCE,
       sub: String(subject.id),
       email: subject.email,
       type,
@@ -110,7 +119,10 @@ export class AuthTokenService {
       iat: issuedAt,
       exp: expiresAt,
       ...(subject.currentIdentityId ? { currentIdentityId: subject.currentIdentityId } : {}),
-      sessionGeneration: subject.sessionGeneration ?? 0
+      sessionGeneration: subject.sessionGeneration ?? 0,
+      ...(subject.merchantShopPublicId
+        ? { merchantShopPublicId: subject.merchantShopPublicId }
+        : {})
     };
     const token = this.sign(payload, type);
 
@@ -149,6 +161,16 @@ export class AuthTokenService {
       const expectedSignature = createSignature(signingInput, this.getSecret(expectedType));
       assertSignature(expectedSignature, signature);
 
+      const isCompatibilityToken =
+        payload.aud === undefined && this.config.AUTH_TOKEN_AUDIENCE === "needo-backend";
+      if (!isCompatibilityToken && payload.aud !== this.config.AUTH_TOKEN_AUDIENCE) {
+        throw new AppError({
+          code: ERROR_CODES.TOKEN_INVALID,
+          message: "error.auth.token_invalid",
+          statusCode: 401
+        });
+      }
+
       if (payload.type !== expectedType) {
         throw new AppError({
           code: ERROR_CODES.TOKEN_INVALID,
@@ -165,7 +187,11 @@ export class AuthTokenService {
         });
       }
 
-      return { ...payload, sessionGeneration: payload.sessionGeneration ?? 0 };
+      return {
+        ...payload,
+        aud: payload.aud ?? this.config.AUTH_TOKEN_AUDIENCE,
+        sessionGeneration: payload.sessionGeneration ?? 0
+      };
     } catch (error) {
       if (error instanceof AppError) {
         throw error;

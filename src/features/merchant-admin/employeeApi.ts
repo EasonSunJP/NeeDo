@@ -1,10 +1,13 @@
+import type { WorkStatus } from "../technician-work-status/api";
 import { httpClient } from "../../api/httpClient";
 
-export type EmployeeRelationshipType = "exclusive" | "partner";
+export type EmployeeRelationshipType = "partner";
 export type EmployeeCurrentWorkStatus = "active" | "on_leave" | "suspended";
 export type EmployeeWorkStatus = EmployeeCurrentWorkStatus | "ended";
 
 export interface MerchantEmployee {
+  technicianProfileId?: number;
+  workStatus?: WorkStatus;
   needoId: string;
   displayName: string;
   avatarUrl: string | null;

@@ -1,5 +1,3 @@
-import { ERROR_CODES } from "../constants/error-codes";
-import { AppError } from "../utils/app-error";
 import type {
   ParsedShopFinanceRuleSetBody,
   ShopFinanceRulePreviewBody,
@@ -7,6 +5,7 @@ import type {
 } from "../validators/merchant-finance-rules.validator";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { assertMerchantShopId } from "./merchant-shop-scope";
 
 export type ShopFinanceRuleStatus = "active" | "archived";
 export type ShopFinanceWageMode =
@@ -50,6 +49,8 @@ export interface ShopFinanceRuleSetPayload {
   dailyRateJpy: number;
   fixedOrderPayJpy: number;
   commissionRatePercent: number;
+  extensionCommissionRatePercent: number;
+  nominationFeeJpy: number;
   guaranteedMinimumJpy: number;
   ndpFeeBearer: ShopFinanceNdpBearer;
   technicianNdpSharePercent: number;
@@ -118,6 +119,8 @@ const defaultRuleSetForShop = (shopId: number): ShopFinanceRuleSetPayload => {
     dailyRateJpy: 0,
     fixedOrderPayJpy: 0,
     commissionRatePercent: 60,
+    extensionCommissionRatePercent: 60,
+    nominationFeeJpy: 0,
     guaranteedMinimumJpy: 0,
     ndpFeeBearer: "shop",
     technicianNdpSharePercent: 0,
@@ -170,6 +173,8 @@ export class MerchantFinanceRulesService {
       nextRuleSetId: next.id,
       previousWageMode: previous.wageMode,
       nextWageMode: next.wageMode,
+      previousCommissionRatePercent: previous.commissionRatePercent,
+      nextCommissionRatePercent: next.commissionRatePercent,
       previousNdpFeeBearer: previous.ndpFeeBearer,
       nextNdpFeeBearer: next.ndpFeeBearer
     });
@@ -209,6 +214,8 @@ export class MerchantFinanceRulesService {
       dailyRateJpy: input.dailyRateJpy ?? 0,
       fixedOrderPayJpy: input.fixedOrderPayJpy ?? 0,
       commissionRatePercent: input.commissionRatePercent ?? 60,
+      extensionCommissionRatePercent: input.extensionCommissionRatePercent ?? 60,
+      nominationFeeJpy: input.nominationFeeJpy ?? 0,
       guaranteedMinimumJpy: input.guaranteedMinimumJpy ?? 0,
       ndpFeeBearer: input.ndpFeeBearer ?? "shop",
       technicianNdpSharePercent:
@@ -366,15 +373,7 @@ export class MerchantFinanceRulesService {
   }
 
   private assertMerchantShopScope(actor: AuthenticatedAccessContext, shopId: number): void {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId === shopId) {
-      return;
-    }
-
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    assertMerchantShopId(actor, shopId);
   }
 
   private async record(

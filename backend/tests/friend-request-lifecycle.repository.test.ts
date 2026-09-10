@@ -156,6 +156,85 @@ describe("RealtimeRepository friend request lifecycle", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it("allows a friend request when reciprocal contacts come from a non-friend source", async () => {
+    const created = requestRecord();
+    const countContacts = jest.fn(async (args: { where?: { source?: string } }) =>
+      args.where?.source === "friend_request" ? 0 : 2
+    );
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ dbNow }])
+        .mockResolvedValueOnce([{ id: requester.id }, { id: target.id }]),
+      contact: { count: countContacts },
+      userIdentity: { count: jest.fn().mockResolvedValue(2) },
+      friendRequest: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(created)
+      },
+      notification: { create: jest.fn().mockResolvedValue({ id: 1 }) },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 2 }), createMany: jest.fn() }
+    };
+
+    await expect(
+      new RealtimeRepository(transactionClient(tx)).createFriendRequest({
+        requesterUserId: requester.id,
+        requesterIdentityId,
+        targetUserId: target.id,
+        targetIdentityId
+      })
+    ).resolves.toMatchObject({
+      status: "ready",
+      result: { created: true, friendRequest: { id: created.id } }
+    });
+    expect(countContacts).toHaveBeenCalledWith({
+      where: {
+        source: "friend_request",
+        deletedAt: null,
+        OR: [
+          { ownerIdentityId: requesterIdentityId, contactIdentityId: targetIdentityId },
+          { ownerIdentityId: targetIdentityId, contactIdentityId: requesterIdentityId }
+        ]
+      }
+    });
+  });
+
+  it("still blocks a duplicate request for reciprocal friend-request contacts", async () => {
+    const countContacts = jest.fn().mockResolvedValue(2);
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ dbNow }])
+        .mockResolvedValueOnce([{ id: requester.id }, { id: target.id }]),
+      contact: { count: countContacts },
+      userIdentity: { count: jest.fn().mockResolvedValue(2) },
+      friendRequest: { findFirst: jest.fn(), create: jest.fn() },
+      notification: { create: jest.fn() },
+      auditLog: { create: jest.fn(), createMany: jest.fn() }
+    };
+
+    await expect(
+      new RealtimeRepository(transactionClient(tx)).createFriendRequest({
+        requesterUserId: requester.id,
+        requesterIdentityId,
+        targetUserId: target.id,
+        targetIdentityId
+      })
+    ).resolves.toEqual({ status: "already_friends" });
+    expect(countContacts).toHaveBeenCalledWith({
+      where: {
+        source: "friend_request",
+        deletedAt: null,
+        OR: [
+          { ownerIdentityId: requesterIdentityId, contactIdentityId: targetIdentityId },
+          { ownerIdentityId: targetIdentityId, contactIdentityId: requesterIdentityId }
+        ]
+      }
+    });
+    expect(tx.friendRequest.create).not.toHaveBeenCalled();
+  });
+
   it("rejects an inactive target before creating a request", async () => {
     const tx = {
       $queryRaw: jest
@@ -328,6 +407,9 @@ describe("RealtimeRepository friend request lifecycle", () => {
           isDefault: true
         }
       ],
+      platformMembershipEntitlements: [
+        { tierVersion: { tier: { code: "GOLD" } } }
+      ],
       customerProfile: {
         id: 73,
         displayName: "Mia",
@@ -347,7 +429,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
           deletedAt: null
         }
       },
-      technicianProfile: null
+      technicianProfile: null,
+      membershipAdjustments: []
     };
     const client = {
       $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
@@ -372,7 +455,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
         entityType: "user",
         profileId: 73,
         displayName: "Mia",
-        identityLabel: "premium",
+        identityLabel: "gold",
         verified: false,
         creditValue: "5.00",
         creditReviewCount: 28,
@@ -388,6 +471,72 @@ describe("RealtimeRepository friend request lifecycle", () => {
     });
   });
 
+  it("returns a self profile for the active identity without reading relationship rows", async () => {
+    const selfUser = {
+      ...requester,
+      identities: [
+        {
+          id: 411,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 141,
+          displayName: "Requester Customer",
+          isDefault: true
+        },
+        {
+          id: requesterIdentityId,
+          type: "technician",
+          scopeType: "technician_profile",
+          scopeId: 741,
+          displayName: "Requester Technician",
+          isDefault: false
+        }
+      ],
+      customerProfile: null,
+      technicianProfile: {
+        id: 741,
+        displayName: "Requester Technician",
+        bio: "本人技师资料",
+        city: "东京",
+        serviceArea: "新宿区",
+        yearsExperience: 4,
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: dbNow,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const contactFindFirst = jest.fn();
+    const friendRequestFindFirst = jest.fn();
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(selfUser) },
+      contact: { findFirst: contactFindFirst },
+      friendRequest: { findFirst: friendRequestFindFirst }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        requester.id,
+        requesterIdentityId
+      )
+    ).resolves.toMatchObject({
+      relationship: "self",
+      contactId: null,
+      friendRequest: null,
+      identityCard: {
+        entityType: "technician",
+        profileId: 741,
+        displayName: "Requester Technician"
+      }
+    });
+    expect(contactFindFirst).not.toHaveBeenCalled();
+    expect(friendRequestFindFirst).not.toHaveBeenCalled();
+  });
+
   it("keeps an incoming pending request actionable when only the viewer has a one-way contact", async () => {
     const pending = requestRecord({
       requesterUserId: target.id,
@@ -401,10 +550,7 @@ describe("RealtimeRepository friend request lifecycle", () => {
       customerProfile: null,
       technicianProfile: null
     };
-    const findContact = jest
-      .fn()
-      .mockResolvedValueOnce({ id: 91 })
-      .mockResolvedValueOnce(null);
+    const findContact = jest.fn().mockResolvedValueOnce({ id: 91 }).mockResolvedValueOnce(null);
     const client = {
       $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
       user: { findFirst: jest.fn().mockResolvedValue(publicTarget) },
@@ -428,10 +574,133 @@ describe("RealtimeRepository friend request lifecycle", () => {
       where: {
         ownerIdentityId: targetIdentityId,
         contactIdentityId: requesterIdentityId,
-        deletedAt: null
+        source: "friend_request",
+        deletedAt: null,
+        blockedAt: null
       },
       select: { id: true }
     });
+  });
+
+  it.each([
+    "lifedance_admin2_seed",
+    "lifedance_customer_service_seed",
+    "manual",
+    "technician_application"
+  ])(
+    "keeps an incoming request actionable across reciprocal %s contacts",
+    async (contactSource) => {
+      const pending = requestRecord({
+        requesterUserId: target.id,
+        requesterIdentityId: targetIdentityId,
+        targetUserId: requester.id,
+        targetIdentityId: requesterIdentityId
+      });
+      const businessContact = (id: number) => ({ id, source: contactSource });
+      const findContact = jest.fn(
+        async (args: { where?: { source?: string; ownerIdentityId?: number } }) => {
+          if (args.where?.source === "friend_request") {
+            return null;
+          }
+          return businessContact(args.where?.ownerIdentityId === requesterIdentityId ? 91 : 92);
+        }
+      );
+      const client = {
+        $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+        user: {
+          findFirst: jest.fn().mockResolvedValue({
+            ...target,
+            identities: [],
+            customerProfile: null,
+            technicianProfile: null
+          })
+        },
+        contact: { findFirst: findContact },
+        friendRequest: { findFirst: jest.fn().mockResolvedValue(pending) }
+      } as unknown as PrismaClient;
+
+      await expect(
+        new RealtimeRepository(client).getDirectoryProfile(
+          requester.id,
+          requesterIdentityId,
+          target.id,
+          targetIdentityId
+        )
+      ).resolves.toMatchObject({
+        relationship: "incoming_pending",
+        contactId: null,
+        friendRequest: { id: pending.id, status: "pending" }
+      });
+      expect(findContact).toHaveBeenNthCalledWith(1, {
+        where: {
+          ownerIdentityId: requesterIdentityId,
+          contactIdentityId: targetIdentityId,
+          deletedAt: null,
+          blockedAt: null
+        },
+        select: { id: true }
+      });
+      expect(findContact).toHaveBeenNthCalledWith(2, {
+        where: {
+          ownerIdentityId: targetIdentityId,
+          contactIdentityId: requesterIdentityId,
+          source: "friend_request",
+          deletedAt: null,
+          blockedAt: null
+        },
+        select: { id: true }
+      });
+    }
+  );
+
+  it("recognizes reciprocal friend-request contacts as a friendship", async () => {
+    const findContact = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 91 })
+      .mockResolvedValueOnce({ id: 92 });
+    const friendRequestFindFirst = jest.fn();
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...target,
+          identities: [],
+          customerProfile: null,
+          technicianProfile: null
+        })
+      },
+      contact: { findFirst: findContact },
+      friendRequest: { findFirst: friendRequestFindFirst }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        target.id,
+        targetIdentityId
+      )
+    ).resolves.toMatchObject({ relationship: "friend", contactId: 91 });
+    expect(findContact).toHaveBeenNthCalledWith(1, {
+      where: {
+        ownerIdentityId: requesterIdentityId,
+        contactIdentityId: targetIdentityId,
+        deletedAt: null,
+        blockedAt: null
+      },
+      select: { id: true }
+    });
+    expect(findContact).toHaveBeenNthCalledWith(2, {
+      where: {
+        ownerIdentityId: targetIdentityId,
+        contactIdentityId: requesterIdentityId,
+        source: "friend_request",
+        deletedAt: null,
+        blockedAt: null
+      },
+      select: { id: true }
+    });
+    expect(friendRequestFindFirst).not.toHaveBeenCalled();
   });
 
   it("does not expose private customer profile fields in a directory identity card", async () => {
@@ -515,6 +784,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
         city: "东京",
         serviceArea: "涩谷区、港区",
         yearsExperience: 7,
+        languages: ["日本語"],
+        visibility: "public",
         employmentType: "INDEPENDENT",
         status: "published",
         verifiedAt: dbNow,
@@ -530,7 +801,8 @@ describe("RealtimeRepository friend request lifecycle", () => {
       $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
       user: { findFirst: jest.fn().mockResolvedValue(technicianTarget) },
       contact: { findFirst: jest.fn().mockResolvedValue({ id: 92 }) },
-      friendRequest: { findFirst: jest.fn() }
+      friendRequest: { findFirst: jest.fn() },
+      technicianProfile: { findFirst: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaClient;
 
     await expect(
@@ -548,13 +820,396 @@ describe("RealtimeRepository friend request lifecycle", () => {
         verified: true,
         creditValue: "4.90",
         creditReviewCount: 42,
+        languages: ["日本語"],
         city: "东京",
         serviceArea: "涩谷区、港区",
         yearsExperience: 7,
         bio: "擅长整体护理。"
       }
     });
+    expect(client.user.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          technicianProfile: {
+            select: expect.objectContaining({ languages: true, visibility: true })
+          }
+        })
+      })
+    );
   });
+
+  it("does not expose languages from a private technician identity card", async () => {
+    const privateTechnicianTarget = {
+      ...target,
+      identities: [
+        {
+          id: targetIdentityId,
+          type: "technician",
+          scopeType: "technician_profile",
+          scopeId: 88,
+          displayName: "Mia 技师",
+          isDefault: true
+        }
+      ],
+      customerProfile: null,
+      technicianProfile: {
+        id: 88,
+        displayName: "Mia 技师",
+        bio: "private technician bio",
+        city: "东京",
+        serviceArea: "涩谷区、港区",
+        yearsExperience: 7,
+        languages: ["日本語"],
+        visibility: "private",
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: dbNow,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(privateTechnicianTarget) },
+      contact: { findFirst: jest.fn().mockResolvedValue(null) },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+    } as unknown as PrismaClient;
+
+    const profile = await new RealtimeRepository(client).getDirectoryProfile(
+      requester.id,
+      requesterIdentityId,
+      target.id,
+      targetIdentityId
+    );
+
+    expect(profile?.identityCard).toMatchObject({
+      entityType: "technician",
+      profileId: 88,
+      languages: []
+    });
+  });
+
+  it("uses an eligible technician language list when a public customer list is empty", async () => {
+    const publicCustomerWithTechnicianLanguages = {
+      ...target,
+      identities: [
+        {
+          id: targetIdentityId,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "Mia",
+          isDefault: true
+        }
+      ],
+      customerProfile: {
+        id: 73,
+        displayName: "Mia",
+        bio: "公开资料",
+        city: "东京",
+        membershipLevel: "premium",
+        isPublic: true,
+        gender: "private",
+        age: null,
+        heightCm: null,
+        languages: null,
+        visibility: "public",
+        deletedAt: null,
+        reviewSummary: null
+      },
+      technicianProfile: {
+        id: 88,
+        displayName: "Mia 技师",
+        bio: null,
+        city: "东京",
+        serviceArea: null,
+        baseLatitude: { toString: () => "35.6762000" },
+        baseLongitude: { toString: () => "139.6503000" },
+        yearsExperience: 7,
+        languages: ["日本語"],
+        visibility: "public",
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: null,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(publicCustomerWithTechnicianLanguages) },
+      contact: { findFirst: jest.fn().mockResolvedValue(null) },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        target.id,
+        targetIdentityId
+      )
+    ).resolves.toMatchObject({
+      identityCard: { entityType: "user", languages: ["日本語"] }
+    });
+  });
+
+  it("keeps public customer languages ahead of eligible technician languages", async () => {
+    const publicCustomerWithOwnLanguages = {
+      ...target,
+      identities: [
+        {
+          id: targetIdentityId,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "Mia",
+          isDefault: true
+        }
+      ],
+      customerProfile: {
+        id: 73,
+        displayName: "Mia",
+        bio: "公开资料",
+        city: "东京",
+        membershipLevel: "premium",
+        isPublic: true,
+        gender: "private",
+        age: null,
+        heightCm: null,
+        languages: ["中文"],
+        visibility: "public",
+        deletedAt: null,
+        reviewSummary: null
+      },
+      technicianProfile: {
+        id: 88,
+        displayName: "Mia 技师",
+        bio: null,
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: 7,
+        languages: ["日本語"],
+        visibility: "public",
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: null,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(publicCustomerWithOwnLanguages) },
+      contact: { findFirst: jest.fn().mockResolvedValue(null) },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+    } as unknown as PrismaClient;
+
+    const profile = await new RealtimeRepository(client).getDirectoryProfile(
+      requester.id,
+      requesterIdentityId,
+      target.id,
+      targetIdentityId
+    );
+
+    expect(profile?.identityCard.languages).toEqual(["中文"]);
+    expect(profile?.identityCard).not.toHaveProperty("baseLatitude");
+    expect(profile?.identityCard).not.toHaveProperty("baseLongitude");
+    expect(profile?.identityCard).not.toHaveProperty("serviceBase");
+  });
+
+  it("does not fall back to private technician languages for a public customer", async () => {
+    const publicCustomerWithPrivateTechnician = {
+      ...target,
+      identities: [
+        {
+          id: targetIdentityId,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "Mia",
+          isDefault: true
+        }
+      ],
+      customerProfile: {
+        id: 73,
+        displayName: "Mia",
+        bio: "公开资料",
+        city: "东京",
+        membershipLevel: "premium",
+        isPublic: true,
+        gender: "private",
+        age: null,
+        heightCm: null,
+        languages: null,
+        visibility: "public",
+        deletedAt: null,
+        reviewSummary: null
+      },
+      technicianProfile: {
+        id: 88,
+        displayName: "Mia 技师",
+        bio: null,
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: 7,
+        languages: ["日本語"],
+        visibility: "private",
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: null,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(publicCustomerWithPrivateTechnician) },
+      contact: { findFirst: jest.fn().mockResolvedValue(null) },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+    } as unknown as PrismaClient;
+
+    const profile = await new RealtimeRepository(client).getDirectoryProfile(
+      requester.id,
+      requesterIdentityId,
+      target.id,
+      targetIdentityId
+    );
+
+    expect(profile?.identityCard).toMatchObject({ entityType: "user", languages: [] });
+  });
+
+  it("does not expose technician languages through a private customer card", async () => {
+    const privateCustomer = {
+      ...target,
+      identities: [
+        {
+          id: targetIdentityId,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 73,
+          displayName: "Mia",
+          isDefault: true
+        }
+      ],
+      customerProfile: {
+        id: 73,
+        displayName: "Mia",
+        bio: "private bio",
+        city: "东京",
+        membershipLevel: "premium",
+        isPublic: false,
+        gender: "private",
+        age: null,
+        heightCm: null,
+        languages: null,
+        visibility: "private",
+        deletedAt: null,
+        reviewSummary: null
+      },
+      technicianProfile: {
+        id: 88,
+        displayName: "Mia 技师",
+        bio: null,
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: 7,
+        languages: ["日本語"],
+        visibility: "public",
+        employmentType: "INDEPENDENT",
+        status: "published",
+        verifiedAt: null,
+        deletedAt: null,
+        reviewSummary: null
+      }
+    };
+    const client = {
+      $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+      user: { findFirst: jest.fn().mockResolvedValue(privateCustomer) },
+      contact: { findFirst: jest.fn().mockResolvedValue(null) },
+      friendRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+    } as unknown as PrismaClient;
+
+    await expect(
+      new RealtimeRepository(client).getDirectoryProfile(
+        requester.id,
+        requesterIdentityId,
+        target.id,
+        targetIdentityId
+      )
+    ).resolves.toMatchObject({
+      identityCard: { entityType: "account", languages: [] }
+    });
+  });
+
+  it.each([
+    { status: "draft", deletedAt: null },
+    { status: "published", deletedAt: dbNow }
+  ])(
+    "does not expose languages from an ineligible technician profile (%o)",
+    async ({ status, deletedAt }) => {
+      const publicCustomer = {
+        ...target,
+        identities: [
+          {
+            id: targetIdentityId,
+            type: "customer",
+            scopeType: "customer_profile",
+            scopeId: 73,
+            displayName: "Mia",
+            isDefault: true
+          }
+        ],
+        customerProfile: {
+          id: 73,
+          displayName: "Mia",
+          bio: "公开资料",
+          city: "东京",
+          membershipLevel: "premium",
+          isPublic: true,
+          gender: "private",
+          age: null,
+          heightCm: null,
+          languages: null,
+          visibility: "public",
+          deletedAt: null,
+          reviewSummary: null
+        },
+        technicianProfile: {
+          id: 88,
+          displayName: "Mia 技师",
+          bio: null,
+          city: "东京",
+          serviceArea: null,
+          yearsExperience: 7,
+          languages: ["日本語"],
+          visibility: "public",
+          employmentType: "INDEPENDENT",
+          status,
+          verifiedAt: null,
+          deletedAt,
+          reviewSummary: null
+        }
+      };
+      const client = {
+        $queryRaw: jest.fn().mockResolvedValue([{ dbNow }]),
+        user: { findFirst: jest.fn().mockResolvedValue(publicCustomer) },
+        contact: { findFirst: jest.fn().mockResolvedValue(null) },
+        friendRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+      } as unknown as PrismaClient;
+
+      await expect(
+        new RealtimeRepository(client).getDirectoryProfile(
+          requester.id,
+          requesterIdentityId,
+          target.id,
+          targetIdentityId
+        )
+      ).resolves.toMatchObject({
+        identityCard: { entityType: "user", languages: [] }
+      });
+    }
+  );
 
   it("maps a merchant shop identity without exposing account-only metrics", async () => {
     const merchantTarget = {
@@ -611,9 +1266,11 @@ describe("RealtimeRepository friend request lifecycle", () => {
         bio: "预约制护理门店。"
       }
     });
-    expect(client.shop.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 55, status: "published", deletedAt: null }
-    }));
+    expect(client.shop.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 55, status: "published", deletedAt: null }
+      })
+    );
   });
 
   it("counts only incoming requests that remain unexpired by database time", async () => {

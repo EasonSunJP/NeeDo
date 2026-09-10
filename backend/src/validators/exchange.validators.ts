@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CONTENT_LOCALES } from "../constants/content-locales";
+import type { ExchangeIntelligenceServiceRef } from "../types/exchange-intelligence-booking.types";
 
 const MAX_MONEY_JPY = 1_000_000_000;
 
@@ -13,7 +14,6 @@ const commonPostShape = {
   title: authoredText(120),
   detail: authoredText(10_000),
   contentLocale: z.enum(CONTENT_LOCALES),
-  areaLabel: authoredText(120),
   serviceStartAt: explicitOffsetDate,
   serviceEndAt: explicitOffsetDate,
   expiresAt: explicitOffsetDate
@@ -23,8 +23,18 @@ const demandPostSchema = z
   .object({
     type: z.literal("demand"),
     ...commonPostShape,
-    budgetMinJpy: moneyJpy,
-    budgetMaxJpy: moneyJpy
+    serviceMode: z.enum(["home", "store"]),
+    targetProviderCount: z.coerce.number().int().min(1).max(20),
+    matchMode: z.enum(["quick", "selective"]),
+    budgetMode: z.enum(["total", "per_provider"]),
+    budgetMinJpy: moneyJpy.nullable().optional().default(null),
+    budgetMaxJpy: moneyJpy,
+    addressLine1: authoredText(255),
+    addressLine2: authoredText(255).nullable().optional().default(null),
+    addressLine3: authoredText(255).nullable().optional().default(null),
+    addressLine2Public: z.boolean().default(false),
+    addressLine3Public: z.boolean().default(false),
+    publisherIdentityPublic: z.boolean().default(false)
   })
   .strict();
 
@@ -45,10 +55,15 @@ const intelligencePostSchema = z
   .object({
     type: z.literal("intelligence"),
     ...commonPostShape,
-    serviceMode: z.enum(["store", "onsite", "flexible"]),
-    addressLabel: authoredText(255).nullable().optional().default(null),
-    serviceAreas: serviceAreasSchema,
-    originalPriceJpy: moneyJpy.nullable().optional().default(null),
+    serviceRef: z
+      .string()
+      .regex(/^(?:shop|technician):[1-9]\d*$/u)
+      .transform((value) => value as ExchangeIntelligenceServiceRef),
+    areaLabel: authoredText(120).optional(),
+    serviceMode: z.enum(["store", "onsite", "flexible"]).optional(),
+    addressLabel: authoredText(255).nullable().optional(),
+    serviceAreas: serviceAreasSchema.optional(),
+    originalPriceJpy: moneyJpy.nullable().optional(),
     campaignPriceJpy: moneyJpy
   })
   .strict();
@@ -91,22 +106,29 @@ export const publishExchangePostSchema = z
         path: ["expiresAt"]
       });
     }
-    if (value.type === "demand" && value.budgetMinJpy > value.budgetMaxJpy) {
+    if (
+      value.type === "demand" &&
+      value.budgetMinJpy !== null &&
+      value.budgetMinJpy > value.budgetMaxJpy
+    ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "budgetMinJpy must not exceed budgetMaxJpy",
         path: ["budgetMaxJpy"]
       });
     }
-    if (
-      value.type === "intelligence" &&
-      value.originalPriceJpy !== null &&
-      value.campaignPriceJpy > value.originalPriceJpy
-    ) {
+    if (value.type === "demand" && value.addressLine2 === null && value.addressLine2Public) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "campaignPriceJpy must not exceed originalPriceJpy",
-        path: ["campaignPriceJpy"]
+        message: "addressLine2Public requires addressLine2",
+        path: ["addressLine2Public"]
+      });
+    }
+    if (value.type === "demand" && value.addressLine3 === null && value.addressLine3Public) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "addressLine3Public requires addressLine3",
+        path: ["addressLine3Public"]
       });
     }
   });

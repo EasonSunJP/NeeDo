@@ -1,0 +1,152 @@
+# Official notice delivery — backend recovery
+
+This Step 13 slice restores the existing platform notice API and adds a formally
+scoped merchant publication API. Migration
+`20260905120000_merchant_official_notice_scope` adds immutable platform/shop
+issuer scope, merchant audiences and dedicated merchant notice permissions. It
+also restores the operations management/composer/inbox pages and the equivalent
+merchant management/composer/inbox surfaces. Both portal headers use the shared
+official-notice bell, whose badge is derived from the recipient inbox rather than
+the generic realtime notification count.
+
+## Ownership and API
+
+The operations route manifest owns the following `/api/v1` management routes;
+the merchant API rejects this namespace with 404. The compatibility backend
+retains its existing combined manifest.
+
+- `GET /backoffice/official-notices`: paginated, server-searched and filtered list, read permission.
+- `POST /backoffice/official-notices`: immediate or scheduled publication,
+  both create and send permissions.
+- `POST /backoffice/official-notices/drafts`: persist incomplete five-locale
+  editing state without creating audience or delivery rows, create permission.
+- `POST /backoffice/official-notices/media`: upload a signature-verified image,
+  MP4/WebM video, PDF or UTF-8 text attachment under the notice create permission.
+- `GET /backoffice/official-notices/{publicId}` and
+  `PUT /backoffice/official-notices/{publicId}/draft`: reload and update a
+  scope-owned draft with optimistic locking.
+- `POST /backoffice/official-notices/{publicId}/plan`: validate all five
+  locales, freeze the current audience and plan delivery, create and send permissions.
+- `POST /backoffice/official-notices/{publicId}/cancel`: pre-dispatch cancellation,
+  review permission, expected version and idempotency key.
+- `POST /backoffice/official-notices/{publicId}/archive`: terminal archival,
+  review permission, expected version and idempotency key.
+- `POST /backoffice/official-notices/{publicId}/retry-failures`: retry failed
+  recipients only, send permission, expected version and idempotency key.
+
+The merchant route manifest owns the equivalent paginated create/list,
+draft create/read/update/plan and cancel/archive/retry operations under
+`/merchant-admin/official-notices`.
+The merchant namespace has its own `POST /merchant-admin/official-notices/media`
+endpoint and permission check; it does not call the operations route.
+Both management list endpoints accept the same bounded `search` query and match
+persisted notice public IDs, audience summaries, and locale titles/summaries on
+the server; the browser never filters only the currently loaded page.
+Operations exact-account delivery searches the formal global account directory
+under `backoffice:users:read` by email, phone or NeeDoID. The create request sends
+only public `needoIds`; the notice repository resolves them again and rejects any
+account without an active, non-deleted identity. Internal `userIds` and friend
+lists are not accepted as targeting inputs.
+Every merchant operation derives its shop and acting identity from the verified
+session. The request cannot supply a shop, issuer, recipient user or platform
+audience. Dedicated `merchant-admin:notice:*` permissions are granted to the
+formal `merchant_owner` and `merchant_staff` roles. Operations users with formal
+merchant-account read access may list one shop through the existing read-only
+preview header; preview publication and lifecycle writes remain forbidden.
+
+Authenticated shared routes `GET /official-notices` and
+`POST /official-notices/{publicId}/read` resolve the current identity from the
+verified session, never from caller-supplied recipient IDs. They require no
+platform publishing permission. All route contracts are registered in OpenAPI.
+
+## Persistence and delivery
+
+Draft save requires five explicit locale slots but permits incomplete titles,
+summaries and content blocks. It creates only the notice, translations and audit
+record. It does not freeze recipients or enqueue delivery. Planning a draft
+revalidates complete strict content, locks the current version, freezes recipients,
+creates delivery rows and records the plan audit in one transaction. The editor
+initially keeps the other four locales synchronized with the selected source
+language; editing a locale independently clears its initial-copy flag so later
+source edits do not overwrite it. All five locale records are sent as one notice.
+Text content blocks may persist one of four validated font-size values, rendered
+consistently in management preview, inbox and homepage notice presentation.
+Uploaded notice media is content-addressed on the server and recorded as an
+audited `MediaAsset`. Platform drafts may reference only active assets uploaded
+by their authenticated platform account. Merchant drafts may reuse only active
+assets belonging to the same server-derived shop. The stored URL, declared MIME
+type and block family (image/video/file) are rechecked on draft create/update and
+again before delivery planning; browser `blob:` and `data:` URLs remain invalid.
+Merchant publication supports only server-derived current-shop audiences:
+active issued membership-card holders, current shop employees, and current shop
+technicians linked through their active affiliation, employee record and role.
+The publisher must itself remain a current active employee of that shop. This
+eligibility is rechecked inside each create and lifecycle transaction before an
+idempotency replay or mutation is accepted.
+Audience reads/inserts use 500-row chunks; each delivery pass handles at most
+250 recipients. No browser business state is a source of truth.
+
+Delivery locks the notice before the receipt and before any consistent read,
+then inserts Notification and updates NoticeDelivery atomically. Finalization
+uses the same notice lock as manual retries. Duplicate workers cannot create
+duplicate notifications, and committed receipts remain visible during retries.
+Recoverable failures wait 60 seconds, up to the configured attempt limit.
+The worker revisits both due deliveries and interrupted finalization; future
+retries do not occupy the due batch. Logged delivery/failure totals summarize
+the selected notices, not exclusively new deliveries in that pass.
+
+Read commands through either the dedicated notice inbox or the existing
+notification center synchronize both tables transactionally. A bulk inbox read
+has an aggregate audit entry; single reads have a per-notice entry. Ordinary
+login/session rules are unchanged by this slice.
+
+Client, ops and merchant runtimes use the existing Redis realtime bus; events
+are emitted only after delivery commits. Pub/Sub is a best-effort refresh hint,
+not a durable event replay system: REST inbox reload/reconnection remains the
+recovery mechanism. Deployments must use the same realtime channel and Redis
+server; different logical Redis DBs do not isolate Pub/Sub channels.
+
+## Local acceptance
+
+From `backend/`, supply a complete local non-production environment:
+
+```bash
+AUTH_TOKEN_AUDIENCE=needo-backend ENV_FILE=/absolute/path/to/backend/.env.dev npm run check:official-notice-flow
+```
+
+The checker rejects remote/production-looking databases. Its main fixture adds
+502 temporary identities to an existing test user inside one rollback transaction,
+exercises real snapshot/delivery/read/cancel operations and independently verifies
+cleanup. A second fixture schedules one uniquely marked notice to an existing
+test account, uses two independent MySQL transactions synchronized at their first
+lock to exercise concurrent dispatch, then deletes only that notice's captured
+records and verifies zero residue. It does not send external messages or publish
+events to the running realtime bus. SQL auto-increment gaps are normal after tests.
+
+This proves repository/database behavior, not logged-in browser acceptance,
+cross-process SSE reception, real-user publication or online deployment.
+
+Merchant issuer migration and audience acceptance use a separate checker:
+
+```bash
+AUTH_TOKEN_AUDIENCE=needo-backend ENV_FILE=/absolute/path/to/backend/.env.dev npm run check:merchant-notice-flow
+```
+
+It verifies the deployed columns, constraints, indexes and merchant role grants,
+then creates two isolated shops and formal recipient relationships inside one
+rollback transaction. It proves the three merchant audience predicates and their
+negative cases (missing/expired/foreign cards, ended employment, missing/expired
+technician roles and mismatched affiliation), frozen snapshots, inactive-publisher
+denial, cross-shop management denial, platform-list isolation, scope-bound
+idempotency and zero persistent fixtures.
+
+## Still pending in the overall task
+
+- Real browser multi-portal login/logout acceptance beyond the local portal checks.
+- Staging operations-to-user/technician/merchant delivery and read reception acceptance.
+- Staging same-shop database/API/page parity and update propagation acceptance.
+- Complete five-locale coverage for the remaining legacy editor labels.
+
+A separate approval workflow is not enabled by this slice; schema review statuses
+alone must not be presented as completed product capabilities. GitHub upload and
+deployment are outside this run.

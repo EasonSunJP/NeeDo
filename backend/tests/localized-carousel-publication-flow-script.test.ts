@@ -1,9 +1,117 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  assertBackofficePublicCarouselParity,
   assertSafeLocalizedCarouselPublicationEnvironment,
   composeLocalizedPublicationCheckerError
 } from "../scripts/check-localized-carousel-publication-flow";
+
+describe("backoffice and public published carousel parity", () => {
+  const checkedAt = new Date("2026-09-01T00:00:00.000Z");
+
+  const backofficeScene = () => ({
+    scene: "USER_HOME" as const,
+    published: {
+      version: 12,
+      slides: [
+        {
+          sortOrder: 1,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "service" as const, publicId: "s0000000028" },
+          translations: {
+            ja: {
+              title: "サービス",
+              caption: "説明",
+              imageAltText: "サービス画像",
+              imageUrl: "/media/service-ja.webp"
+            }
+          }
+        },
+        {
+          sortOrder: 0,
+          isEnabled: true,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "shop" as const, publicId: "shop0000000014" },
+          translations: {
+            ja: {
+              title: "店舗",
+              caption: "店舗説明",
+              imageAltText: "店舗画像",
+              imageUrl: "/media/shop-ja.webp"
+            }
+          }
+        },
+        {
+          sortOrder: 2,
+          isEnabled: false,
+          visibleFrom: null,
+          visibleUntil: null,
+          target: { type: "technician" as const, publicId: "t0000000009" },
+          translations: {
+            ja: {
+              title: "無効な技師",
+              caption: null,
+              imageAltText: "無効な画像",
+              imageUrl: "/media/disabled-ja.webp"
+            }
+          }
+        }
+      ]
+    }
+  });
+
+  const publicProjection = () => ({
+    scene: "USER_HOME" as const,
+    locale: "ja" as const,
+    releaseVersion: 12,
+    generatedAt: checkedAt.toISOString(),
+    slides: [
+      {
+        id: "shop-slide",
+        target: { type: "shop" as const, publicId: "shop0000000014" },
+        title: "店舗",
+        caption: "店舗説明",
+        imageAltText: "店舗画像",
+        imageUrl: "/media/shop-ja.webp"
+      },
+      {
+        id: "service-slide",
+        target: { type: "service" as const, publicId: "s0000000028" },
+        title: "サービス",
+        caption: "説明",
+        imageAltText: "サービス画像",
+        imageUrl: "/media/service-ja.webp"
+      }
+    ]
+  });
+
+  it("accepts the published version and visible localized slide projection in order", () => {
+    expect(() =>
+      assertBackofficePublicCarouselParity(backofficeScene(), publicProjection(), checkedAt)
+    ).not.toThrow();
+  });
+
+  it("identifies the locale and localized field when a public slide differs", () => {
+    const projection = publicProjection();
+    projection.slides[1]!.title = "別のサービス";
+
+    expect(() =>
+      assertBackofficePublicCarouselParity(backofficeScene(), projection, checkedAt)
+    ).toThrow("ja slide 1 title");
+  });
+
+  it("identifies a same-type public target redirect by canonical target identity", () => {
+    const projection = publicProjection();
+    projection.slides[0]!.target.publicId = "shop0000000099";
+
+    expect(() =>
+      assertBackofficePublicCarouselParity(backofficeScene(), projection, checkedAt)
+    ).toThrow("ja slide 0 target identity");
+  });
+});
 
 describe("localized publication checker final error composition", () => {
   it("returns the original operation failure when cleanup succeeds", () => {
@@ -18,9 +126,7 @@ describe("localized publication checker final error composition", () => {
     const result = composeLocalizedPublicationCheckerError(undefined, [cleanupError]);
 
     expect(result).toBeInstanceOf(AggregateError);
-    expect((result as AggregateError).message).toBe(
-      "localized publication checker cleanup failed"
-    );
+    expect((result as AggregateError).message).toBe("localized publication checker cleanup failed");
     expect((result as AggregateError).errors).toEqual([cleanupError]);
   });
 
@@ -40,10 +146,7 @@ describe("localized publication checker final error composition", () => {
 
 describe("localized carousel publication real-database checker", () => {
   const backendRoot = join(__dirname, "..");
-  const scriptPath = join(
-    backendRoot,
-    "scripts/check-localized-carousel-publication-flow.ts"
-  );
+  const scriptPath = join(backendRoot, "scripts/check-localized-carousel-publication-flow.ts");
 
   const safeEnvironment = {
     envFile: "/tmp/needo-local.env",
@@ -136,9 +239,9 @@ describe("localized carousel publication real-database checker", () => {
   });
 
   it("registers one guarded local-only checker command", () => {
-    const packageJson = JSON.parse(
-      readFileSync(join(backendRoot, "package.json"), "utf8")
-    ) as { scripts: Record<string, string> };
+    const packageJson = JSON.parse(readFileSync(join(backendRoot, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
 
     expect(existsSync(scriptPath)).toBe(true);
     expect(packageJson.scripts["check:localized-carousel-publication-flow"]).toBe(
@@ -184,10 +287,12 @@ describe("localized carousel publication real-database checker", () => {
     expect(source).toContain("new CarouselPublicationService(");
     expect(source).toContain("new ContentPublicationSchedulerService(");
     expect(source).toContain('badge: "TEST"');
-    expect(source).not.toContain('badge: `${marker} TEST`');
+    expect(source).not.toContain("badge: `${marker} TEST`");
     expect(source).toContain("try {");
     expect(source).toContain("finally {");
-    expect(source).toContain("cleanup residue verification across all captured rows and media files");
+    expect(source).toContain(
+      "cleanup residue verification across all captured rows and media files"
+    );
     expect(source).toContain("created.carouselReleaseIds");
     expect(source).toContain("created.announcementReleaseIds");
     expect(source).toContain("created.mediaAssetIds");

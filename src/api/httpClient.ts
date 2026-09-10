@@ -1,10 +1,21 @@
-import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
 import {
-  clearMerchantAdminPreview,
   getMerchantAdminPreview,
   merchantAdminPreviewShopHeader
 } from "../auth/merchantAdminPreview";
+import {
+  commitAutoRefreshedAccessToken,
+  getAuthCredentialSnapshot as getCoordinatorSnapshot,
+  installServerAuthCredentials,
+  setCoordinatorAccessToken,
+  setCoordinatorExpectedUserId,
+  setCoordinatorRefreshToken,
+  terminateAuthImmediately,
+  type AuthCredentialSnapshot
+} from "../auth/authCredentialCoordinator";
+import { formalAccessTokenTtlSeconds } from "../auth/authContract";
+import { resolveAuthPersistenceScope } from "../auth/authPersistenceScope";
+import { resolvePortalApiBaseUrl } from "./portalApiBaseUrl";
 
 export type ApiSuccessResponse<TData> = {
   code: 0;
@@ -15,12 +26,15 @@ export type ApiSuccessResponse<TData> = {
 export type ApiErrorResponse = {
   code: number;
   message: string;
-  data: null;
+  data: unknown;
 };
 
 type ApiEnvelope<TData> = ApiSuccessResponse<TData> | ApiErrorResponse;
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+
+export type ApiQueryScalar = boolean | number | string;
+export type ApiQueryValue = ApiQueryScalar | readonly ApiQueryScalar[] | null | undefined;
 
 export type HttpClientRequestOptions = {
   auth?: boolean;
@@ -28,9 +42,10 @@ export type HttpClientRequestOptions = {
   body?: unknown;
   headers?: Record<string, string>;
   method?: HttpMethod;
-  query?: Record<string, boolean | number | string | null | undefined>;
+  query?: Record<string, ApiQueryValue>;
   retryOnUnauthorized?: boolean;
   signal?: AbortSignal;
+  unauthorizedPolicy?: "caller" | "global";
 };
 
 export type HttpClientCsvExportPayload = {
@@ -38,35 +53,59 @@ export type HttpClientCsvExportPayload = {
   contentType: "text/csv; charset=utf-8";
   csv: string;
 };
+export type HttpClientBinaryPayload = { blob: Blob; cacheControl: string | null; contentLength: number | null; contentType: string; etag: string | null };
 
 export class ApiClientError extends Error {
   public readonly code: number;
   public readonly status: number;
+  public readonly data: unknown;
 
-  public constructor(message: string, code: number, status: number) {
+  public constructor(message: string, code: number, status: number, data: unknown = null) {
     super(message);
     this.name = "ApiClientError";
     this.code = code;
     this.status = status;
+    this.data = data;
   }
 }
 
-const defaultApiPrefix = "/api/v1";
 const fallbackApiRequestTimeoutMs = 10_000;
-const configuredApiRequestTimeoutMs = Number.parseInt(import.meta.env.VITE_API_REQUEST_TIMEOUT_MS ?? "", 10);
-export const apiRequestTimeoutMs = Number.isFinite(configuredApiRequestTimeoutMs) && configuredApiRequestTimeoutMs > 0
-  ? configuredApiRequestTimeoutMs
-  : fallbackApiRequestTimeoutMs;
-const refreshTokenStorageKey = "needo.auth.refresh-token";
-const legacyAccessTokenStorageKey = "needo.auth.access-token";
-let accessToken: string | null = null;
-let expectedAuthUserId: number | null = null;
+const configuredApiRequestTimeoutMs = Number.parseInt(
+  import.meta.env.VITE_API_REQUEST_TIMEOUT_MS ?? "",
+  10
+);
+export const apiRequestTimeoutMs =
+  Number.isFinite(configuredApiRequestTimeoutMs) && configuredApiRequestTimeoutMs > 0
+    ? configuredApiRequestTimeoutMs
+    : fallbackApiRequestTimeoutMs;
 type RefreshedAccessToken = {
   accessToken: string;
   expiresIn: number;
 };
-let refreshRequest: Promise<RefreshedAccessToken> | null = null;
-let authExpiredHandler: (() => void) | null = null;
+let refreshRequest: {
+  credentialVersion: number;
+  generation: number;
+  promise: Promise<RefreshedAccessToken>;
+} | null = null;
+
+function throwIfCredentialTransitionIsActive(snapshot: AuthCredentialSnapshot) {
+  if (snapshot.phase !== "client_committed") {
+    throw new ApiClientError("error.auth.operation_superseded", 409, 409);
+  }
+}
+
+function isSameCredentialState(left: AuthCredentialSnapshot, right: AuthCredentialSnapshot) {
+  return left.credentialVersion === right.credentialVersion && left.generation === right.generation;
+}
+let authExpiredHandler: (() => void | Promise<void>) | null = null;
+
+async function awaitAuthExpired() {
+  try {
+    await authExpiredHandler?.();
+  } catch {
+    // Expiration is terminal even when its durable-cleanup follow-up fails.
+  }
+}
 
 function readAccessTokenSubject(token: string | null) {
   if (!token) {
@@ -82,9 +121,10 @@ function readAccessTokenSubject(token: string | null) {
     const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
     const payload = JSON.parse(globalThis.atob(padded)) as { sub?: unknown };
-    const subject = typeof payload.sub === "number" || typeof payload.sub === "string"
-      ? Number(payload.sub)
-      : Number.NaN;
+    const subject =
+      typeof payload.sub === "number" || typeof payload.sub === "string"
+        ? Number(payload.sub)
+        : Number.NaN;
 
     return Number.isInteger(subject) && subject > 0 ? subject : null;
   } catch {
@@ -101,9 +141,7 @@ function normalizePath(path: string) {
 }
 
 function getApiBaseUrl() {
-  const configured = import.meta.env.VITE_API_BASE_URL?.trim();
-
-  return configured ? trimTrailingSlash(configured) : defaultApiPrefix;
+  return resolvePortalApiBaseUrl(resolveAuthPersistenceScope(), import.meta.env);
 }
 
 function getRequestBaseUrl(baseUrl?: string) {
@@ -119,18 +157,26 @@ function appendQuery(url: string, query?: HttpClientRequestOptions["query"]) {
 
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === "") {
-      return;
-    }
+    const values = Array.isArray(value) ? value : [value];
 
-    params.set(key, String(value));
+    values.forEach((item) => {
+      if (item === undefined || item === null || item === "") {
+        return;
+      }
+
+      params.append(key, String(item));
+    });
   });
   const queryString = params.toString();
 
   return queryString ? `${url}?${queryString}` : url;
 }
 
-export function buildApiUrl(path: string, query?: HttpClientRequestOptions["query"], baseUrl?: string) {
+export function buildApiUrl(
+  path: string,
+  query?: HttpClientRequestOptions["query"],
+  baseUrl?: string
+) {
   return appendQuery(`${getRequestBaseUrl(baseUrl)}${normalizePath(path)}`, query);
 }
 
@@ -143,8 +189,16 @@ async function parseEnvelope<TData>(response: Response): Promise<ApiEnvelope<TDa
 
   if (!text) {
     return response.ok
-      ? ({ code: 0, message: "success", data: undefined as TData } satisfies ApiSuccessResponse<TData>)
-      : ({ code: response.status, message: response.statusText || "error.network", data: null } satisfies ApiErrorResponse);
+      ? ({
+          code: 0,
+          message: "success",
+          data: undefined as TData
+        } satisfies ApiSuccessResponse<TData>)
+      : ({
+          code: response.status,
+          message: response.statusText || "error.network",
+          data: null
+        } satisfies ApiErrorResponse);
   }
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -156,19 +210,24 @@ async function parseEnvelope<TData>(response: Response): Promise<ApiEnvelope<TDa
   try {
     return JSON.parse(text) as ApiEnvelope<TData>;
   } catch {
-    throw new ApiClientError("error.response.invalid_json", response.status || 502, response.status || 502);
+    throw new ApiClientError(
+      "error.response.invalid_json",
+      response.status || 502,
+      response.status || 502
+    );
   }
 }
 
 function assertSuccess<TData>(envelope: ApiEnvelope<TData>, status: number): TData {
   if (envelope.code !== 0 || envelope.data === null) {
     const upstreamMessage = (envelope as { msg?: unknown }).msg;
-    const message = envelope.message || (typeof upstreamMessage === "string" ? upstreamMessage : "error.api");
+    const message =
+      envelope.message || (typeof upstreamMessage === "string" ? upstreamMessage : "error.api");
 
-    throw new ApiClientError(message, envelope.code, status);
+    throw new ApiClientError(message, envelope.code, status, envelope.data);
   }
 
-  return envelope.data;
+  return (envelope as ApiSuccessResponse<TData>).data;
 }
 
 function createRequestBody(body: unknown) {
@@ -176,14 +235,23 @@ function createRequestBody(body: unknown) {
     return undefined;
   }
 
-  if (body instanceof FormData || body instanceof URLSearchParams || body instanceof Blob || body instanceof ArrayBuffer) {
+  if (
+    body instanceof FormData ||
+    body instanceof URLSearchParams ||
+    body instanceof Blob ||
+    body instanceof ArrayBuffer
+  ) {
     return body;
   }
 
   return JSON.stringify(body);
 }
 
-async function createRequestHeaders(options: HttpClientRequestOptions, previewShopId?: number | null) {
+async function createRequestHeaders(
+  options: HttpClientRequestOptions,
+  previewShopId?: number | null,
+  requestAccessToken = getCoordinatorSnapshot().accessToken
+) {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(options.headers ?? {})
@@ -199,8 +267,8 @@ async function createRequestHeaders(options: HttpClientRequestOptions, previewSh
     headers["Content-Type"] = "application/json";
   }
 
-  if (options.auth !== false && accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
+  if (options.auth !== false && requestAccessToken && !headers.Authorization) {
+    headers.Authorization = `Bearer ${requestAccessToken}`;
   }
 
   if (options.auth !== false && previewShopId) {
@@ -215,7 +283,10 @@ async function createRequestHeaders(options: HttpClientRequestOptions, previewSh
     }
   }
 
-  if (import.meta.env.VITE_ENABLE_DEVICE_FINGERPRINT_HEADER === "true" && !headers["X-Needo-Device-Fingerprint"]) {
+  if (
+    import.meta.env.VITE_ENABLE_DEVICE_FINGERPRINT_HEADER === "true" &&
+    !headers["X-Needo-Device-Fingerprint"]
+  ) {
     const deviceFingerprint = await getDeviceFingerprint();
 
     if (deviceFingerprint) {
@@ -230,8 +301,10 @@ function resolveRequestMethod(options: HttpClientRequestOptions): HttpMethod {
   return options.method ?? (options.body === undefined ? "GET" : "POST");
 }
 
-function getPreviewShopId(options: HttpClientRequestOptions) {
-  return options.auth === false ? null : getMerchantAdminPreview()?.selectedShopId ?? null;
+function getPreviewShopId(path: string, options: HttpClientRequestOptions) {
+  return options.auth === false || !path.startsWith("/merchant-admin/")
+    ? null
+    : (getMerchantAdminPreview()?.selectedShopId ?? null);
 }
 
 function assertMerchantPreviewAllows(method: HttpMethod, previewShopId: number | null) {
@@ -242,18 +315,6 @@ function assertMerchantPreviewAllows(method: HttpMethod, previewShopId: number |
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
-}
-
-function expireAuthenticationOnUnauthorized(
-  response: Response,
-  options: HttpClientRequestOptions
-) {
-  if (response.status !== 401 || options.auth === false) {
-    return;
-  }
-
-  clearAuthTokens();
-  authExpiredHandler?.();
 }
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
@@ -290,16 +351,20 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Pr
 }
 
 export async function refreshStoredAccessToken(): Promise<RefreshedAccessToken> {
-  if (refreshRequest) {
-    return refreshRequest;
+  const captured = getCoordinatorSnapshot();
+  throwIfCredentialTransitionIsActive(captured);
+  if (
+    refreshRequest?.credentialVersion === captured.credentialVersion &&
+    refreshRequest.generation === captured.generation
+  ) {
+    return refreshRequest.promise;
   }
-
-  const refreshToken = getStoredRefreshToken();
+  const refreshToken = captured.refreshToken;
   if (!refreshToken) {
     throw new ApiClientError("error.auth.refresh_missing", 401, 401);
   }
 
-  refreshRequest = (async () => {
+  const request = (async () => {
     const body = { refreshToken };
     const response = await fetchWithTimeout(buildApiUrl("/auth/refresh"), {
       body: JSON.stringify(body),
@@ -308,38 +373,73 @@ export async function refreshStoredAccessToken(): Promise<RefreshedAccessToken> 
     });
     const envelope = await parseEnvelope<RefreshedAccessToken>(response);
     const data = assertSuccess(envelope, response.status);
+    if (
+      typeof data.accessToken !== "string" ||
+      data.accessToken.length === 0 ||
+      !Number.isInteger(data.expiresIn) ||
+      data.expiresIn !== formalAccessTokenTtlSeconds
+    ) {
+      throw new ApiClientError("error.api", 502, 502);
+    }
 
-    accessToken = data.accessToken;
+    if (
+      !commitAutoRefreshedAccessToken(
+        captured.credentialVersion,
+        captured.generation,
+        data.accessToken
+      )
+    ) {
+      throw new ApiClientError("error.auth.operation_superseded", 409, 409);
+    }
     return data;
   })();
+  const requestState = {
+    credentialVersion: captured.credentialVersion,
+    generation: captured.generation,
+    promise: request
+  };
+  refreshRequest = requestState;
 
   try {
-    return await refreshRequest;
+    return await request;
   } finally {
-    refreshRequest = null;
+    if (refreshRequest === requestState) refreshRequest = null;
   }
 }
 
 async function alignAccessTokenWithExpectedUser(options: HttpClientRequestOptions) {
-  if (options.auth === false || !accessToken || expectedAuthUserId === null) {
+  const snapshot = getCoordinatorSnapshot();
+  if (options.auth !== false && options.unauthorizedPolicy !== "caller") {
+    throwIfCredentialTransitionIsActive(snapshot);
+  }
+  if (
+    options.auth === false ||
+    options.unauthorizedPolicy === "caller" ||
+    !snapshot.accessToken ||
+    snapshot.expectedAuthUserId === null
+  ) {
     return;
   }
 
-  const accessTokenSubject = readAccessTokenSubject(accessToken);
-  if (accessTokenSubject === null || accessTokenSubject === expectedAuthUserId) {
+  const accessTokenSubject = readAccessTokenSubject(snapshot.accessToken);
+  if (accessTokenSubject === null || accessTokenSubject === snapshot.expectedAuthUserId) {
     return;
   }
 
-  accessToken = null;
+  setAccessToken(null);
+  let alignmentSnapshot = getCoordinatorSnapshot();
 
   try {
     const refreshed = await refreshStoredAccessToken();
-    if (readAccessTokenSubject(refreshed.accessToken) !== expectedAuthUserId) {
+    alignmentSnapshot = getCoordinatorSnapshot();
+    if (readAccessTokenSubject(refreshed.accessToken) !== snapshot.expectedAuthUserId) {
       throw new ApiClientError("error.auth.session_mismatch", 401, 401);
     }
   } catch (error) {
-    clearAuthTokens();
-    authExpiredHandler?.();
+    if (isSameCredentialState(getCoordinatorSnapshot(), alignmentSnapshot)) {
+      terminateAuthImmediately();
+      await awaitAuthExpired();
+    }
     throw error;
   }
 }
@@ -350,38 +450,119 @@ async function sendRequest<TData>(
   canRetry: boolean
 ): Promise<TData> {
   await alignAccessTokenWithExpectedUser(options);
+  const captured = getCoordinatorSnapshot();
   const method = resolveRequestMethod(options);
-  const previewShopId = getPreviewShopId(options);
+  const previewShopId = getPreviewShopId(path, options);
   assertMerchantPreviewAllows(method, previewShopId);
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
-    headers: await createRequestHeaders(options, previewShopId),
+    headers: await createRequestHeaders(options, previewShopId, captured.accessToken),
     method,
     signal: options.signal
   });
-  const envelope = await parseEnvelope<TData>(response);
+
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller"
+  ) {
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current)) {
+      if (canRetry && current.accessToken) {
+        return sendRequest(path, options, false);
+      }
+    }
+  }
 
   if (
     response.status === 401 &&
     canRetry &&
     options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
     options.retryOnUnauthorized !== false &&
-    getStoredRefreshToken()
+    captured.refreshToken
   ) {
     try {
       await refreshStoredAccessToken();
       return sendRequest(path, options, false);
     } catch (error) {
-      clearAuthTokens();
-      authExpiredHandler?.();
+      if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
+        terminateAuthImmediately();
+        await awaitAuthExpired();
+      }
       throw error;
     }
   }
 
-  expireAuthenticationOnUnauthorized(response, options);
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    isSameCredentialState(getCoordinatorSnapshot(), captured)
+  ) {
+    terminateAuthImmediately();
+    await awaitAuthExpired();
+  }
 
+  const envelope = await parseEnvelope<TData>(response);
   return assertSuccess(envelope, response.status);
+}
+
+async function sendStreamRequest(
+  path: string,
+  options: HttpClientRequestOptions,
+  canRetry: boolean
+): Promise<Response> {
+  await alignAccessTokenWithExpectedUser(options);
+  const captured = getCoordinatorSnapshot();
+  const method = resolveRequestMethod(options);
+  const previewShopId = getPreviewShopId(path, options);
+  assertMerchantPreviewAllows(method, previewShopId);
+  const response = await fetch(buildApiUrl(path, options.query, options.baseUrl), {
+    body: createRequestBody(options.body),
+    headers: await createRequestHeaders(options, previewShopId, captured.accessToken),
+    method,
+    signal: options.signal
+  });
+
+  if (response.status === 401 && options.auth !== false && options.unauthorizedPolicy !== "caller") {
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current) && canRetry && current.accessToken) {
+      return sendStreamRequest(path, options, false);
+    }
+  }
+  if (
+    response.status === 401 &&
+    canRetry &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    options.retryOnUnauthorized !== false &&
+    captured.refreshToken
+  ) {
+    try {
+      await refreshStoredAccessToken();
+      return sendStreamRequest(path, options, false);
+    } catch (error) {
+      if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
+        terminateAuthImmediately();
+        await awaitAuthExpired();
+      }
+      throw error;
+    }
+  }
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    isSameCredentialState(getCoordinatorSnapshot(), captured)
+  ) {
+    terminateAuthImmediately();
+    await awaitAuthExpired();
+  }
+  return response;
 }
 
 function parseCsvFilename(contentDisposition: string | null) {
@@ -413,16 +594,21 @@ async function sendCsvExportRequest(
   canRetry: boolean
 ): Promise<HttpClientCsvExportPayload> {
   await alignAccessTokenWithExpectedUser(options);
+  const captured = getCoordinatorSnapshot();
   const method = resolveRequestMethod(options);
-  const previewShopId = getPreviewShopId(options);
+  const previewShopId = getPreviewShopId(path, options);
   assertMerchantPreviewAllows(method, previewShopId);
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
-    headers: await createRequestHeaders({
-      ...options,
-      headers: { ...(options.headers ?? {}), Accept: "text/csv" }
-    }, previewShopId),
+    headers: await createRequestHeaders(
+      {
+        ...options,
+        headers: { ...(options.headers ?? {}), Accept: "text/csv" }
+      },
+      previewShopId,
+      captured.accessToken
+    ),
     method,
     signal: options.signal
   });
@@ -430,22 +616,51 @@ async function sendCsvExportRequest(
 
   if (
     response.status === 401 &&
-    canRetry &&
     options.auth !== false &&
-    options.retryOnUnauthorized !== false &&
-    getStoredRefreshToken()
+    options.unauthorizedPolicy !== "caller"
   ) {
-    try {
-      await refreshStoredAccessToken();
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current) && canRetry && current.accessToken) {
       return sendCsvExportRequest(path, options, false);
-    } catch (error) {
-      clearAuthTokens();
-      authExpiredHandler?.();
-      throw error;
     }
   }
 
-  expireAuthenticationOnUnauthorized(response, options);
+  if (
+    response.status === 401 &&
+    canRetry &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    options.retryOnUnauthorized !== false &&
+    captured.refreshToken
+  ) {
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current)) {
+      if (current.accessToken) return sendCsvExportRequest(path, options, false);
+    } else {
+      try {
+        await refreshStoredAccessToken();
+        return sendCsvExportRequest(path, options, false);
+      } catch (error) {
+        if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
+          terminateAuthImmediately();
+          await awaitAuthExpired();
+        }
+        throw error;
+      }
+    }
+  }
+
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    isSameCredentialState(getCoordinatorSnapshot(), captured)
+  ) {
+    terminateAuthImmediately();
+    await awaitAuthExpired();
+  }
 
   if (!response.ok || isJsonContentType(contentType)) {
     const envelope = await parseEnvelope<unknown>(response);
@@ -453,7 +668,11 @@ async function sendCsvExportRequest(
   }
 
   if (!contentType.includes("text/csv")) {
-    throw new ApiClientError("error.response.invalid_csv", response.status || 502, response.status || 502);
+    throw new ApiClientError(
+      "error.response.invalid_csv",
+      response.status || 502,
+      response.status || 502
+    );
   }
 
   return {
@@ -481,13 +700,14 @@ async function sendDataUrlRequest(
   canRetry: boolean
 ): Promise<string> {
   await alignAccessTokenWithExpectedUser(options);
+  const captured = getCoordinatorSnapshot();
   const method = resolveRequestMethod(options);
-  const previewShopId = getPreviewShopId(options);
+  const previewShopId = getPreviewShopId(path, options);
   assertMerchantPreviewAllows(method, previewShopId);
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
-    headers: await createRequestHeaders(options, previewShopId),
+    headers: await createRequestHeaders(options, previewShopId, captured.accessToken),
     method,
     signal: options.signal
   });
@@ -495,22 +715,51 @@ async function sendDataUrlRequest(
 
   if (
     response.status === 401 &&
-    canRetry &&
     options.auth !== false &&
-    options.retryOnUnauthorized !== false &&
-    getStoredRefreshToken()
+    options.unauthorizedPolicy !== "caller"
   ) {
-    try {
-      await refreshStoredAccessToken();
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current) && canRetry && current.accessToken) {
       return sendDataUrlRequest(path, options, false);
-    } catch (error) {
-      clearAuthTokens();
-      authExpiredHandler?.();
-      throw error;
     }
   }
 
-  expireAuthenticationOnUnauthorized(response, options);
+  if (
+    response.status === 401 &&
+    canRetry &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    options.retryOnUnauthorized !== false &&
+    captured.refreshToken
+  ) {
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current)) {
+      if (current.accessToken) return sendDataUrlRequest(path, options, false);
+    } else {
+      try {
+        await refreshStoredAccessToken();
+        return sendDataUrlRequest(path, options, false);
+      } catch (error) {
+        if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
+          terminateAuthImmediately();
+          await awaitAuthExpired();
+        }
+        throw error;
+      }
+    }
+  }
+
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    isSameCredentialState(getCoordinatorSnapshot(), captured)
+  ) {
+    terminateAuthImmediately();
+    await awaitAuthExpired();
+  }
 
   if (!response.ok || isJsonContentType(contentType)) {
     const envelope = await parseEnvelope<string>(response);
@@ -526,66 +775,145 @@ async function sendDataUrlRequest(
   return `data:${contentType || "application/octet-stream"};base64,${arrayBufferToBase64(buffer)}`;
 }
 
+async function sendBinaryRequest(
+  path: string,
+  options: HttpClientRequestOptions,
+  canRetry: boolean
+): Promise<HttpClientBinaryPayload> {
+  await alignAccessTokenWithExpectedUser(options);
+  const captured = getCoordinatorSnapshot();
+  const method = resolveRequestMethod(options);
+  const previewShopId = getPreviewShopId(path, options);
+  assertMerchantPreviewAllows(method, previewShopId);
+  const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
+    body: createRequestBody(options.body),
+    headers: await createRequestHeaders(options, previewShopId, captured.accessToken),
+    method,
+    signal: options.signal
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller"
+  ) {
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current) && canRetry && current.accessToken) {
+      return sendBinaryRequest(path, options, false);
+    }
+  }
+
+  if (
+    response.status === 401 &&
+    canRetry &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    options.retryOnUnauthorized !== false &&
+    captured.refreshToken
+  ) {
+    const current = getCoordinatorSnapshot();
+    throwIfCredentialTransitionIsActive(current);
+    if (!isSameCredentialState(captured, current)) {
+      if (current.accessToken) return sendBinaryRequest(path, options, false);
+    } else {
+      try {
+        await refreshStoredAccessToken();
+        return sendBinaryRequest(path, options, false);
+      } catch (error) {
+        if (isSameCredentialState(getCoordinatorSnapshot(), captured)) {
+          terminateAuthImmediately();
+          await awaitAuthExpired();
+        }
+        throw error;
+      }
+    }
+  }
+
+  if (
+    response.status === 401 &&
+    options.auth !== false &&
+    options.unauthorizedPolicy !== "caller" &&
+    isSameCredentialState(getCoordinatorSnapshot(), captured)
+  ) {
+    terminateAuthImmediately();
+    await awaitAuthExpired();
+  }
+
+  if (!response.ok || isJsonContentType(contentType) || contentType.includes("text/html")) {
+    const envelope = await parseEnvelope<unknown>(response);
+    assertSuccess(envelope, response.status);
+  }
+  const header = response.headers.get("content-length");
+  const length = header !== null && /^\d+$/.test(header) ? Number(header) : Number.NaN;
+  return {
+    blob: await response.blob(),
+    cacheControl: response.headers.get("cache-control"),
+    contentLength: Number.isSafeInteger(length) && length >= 0 ? length : null,
+    contentType: contentType || "application/octet-stream",
+    etag: response.headers.get("etag")
+  };
+}
+
 export function getAccessToken() {
-  return accessToken;
+  return getCoordinatorSnapshot().accessToken;
 }
 
 export function getStoredRefreshToken() {
-  const refreshToken = readBrowserStorage(refreshTokenStorageKey, {
-    kind: "session",
-    silent: true
-  });
-  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
-  return refreshToken;
+  return getCoordinatorSnapshot().refreshToken;
 }
 
 export function setStoredRefreshToken(nextRefreshToken: string | null) {
-  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
-
-  if (nextRefreshToken) {
-    writeBrowserStorage(refreshTokenStorageKey, nextRefreshToken, {
-      kind: "session",
-      silent: true
-    });
-    return;
-  }
-
-  removeBrowserStorage(refreshTokenStorageKey, {
-    kind: "session",
-    silent: true
-  });
+  return setCoordinatorRefreshToken(nextRefreshToken);
 }
 
 export function setAccessToken(nextAccessToken: string | null) {
-  accessToken = nextAccessToken;
-  removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
+  return setCoordinatorAccessToken(nextAccessToken);
 }
 
 export function setExpectedAuthUserId(userId: number | null) {
-  expectedAuthUserId = Number.isInteger(userId) && (userId ?? 0) > 0 ? userId : null;
+  setCoordinatorExpectedUserId(userId);
 }
 
 export function setAuthTokens(tokens: { accessToken: string; refreshToken?: string | null }) {
-  setAccessToken(tokens.accessToken);
-
-  if (tokens.refreshToken) {
-    setStoredRefreshToken(tokens.refreshToken);
+  if (!tokens.refreshToken) {
+    return setAccessToken(tokens.accessToken);
   }
+  return installServerAuthCredentials({
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken
+  });
 }
 
 export function clearAuthTokens() {
-  accessToken = null;
-  expectedAuthUserId = null;
-  clearMerchantAdminPreview();
-  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
-  removeBrowserStorage(refreshTokenStorageKey, {
-    kind: "session",
-    silent: true
-  });
-  removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
+  terminateAuthImmediately();
+  return getCoordinatorSnapshot().accessToken === null;
 }
 
-export function setAuthExpiredHandler(handler: (() => void) | null) {
+export function getAuthCredentialEpoch() {
+  return getCoordinatorSnapshot().credentialVersion;
+}
+
+export function getAuthCredentialSnapshot(): AuthCredentialSnapshot {
+  return getCoordinatorSnapshot();
+}
+
+export function restoreAuthCredentialSnapshot(snapshot: AuthCredentialSnapshot) {
+  if (!snapshot.refreshToken) {
+    terminateAuthImmediately();
+    return true;
+  }
+  return installServerAuthCredentials(
+    {
+      accessToken: snapshot.accessToken,
+      refreshToken: snapshot.refreshToken
+    },
+    snapshot.expectedAuthUserId
+  );
+}
+
+export function setAuthExpiredHandler(handler: (() => void | Promise<void>) | null) {
   authExpiredHandler = handler;
 }
 
@@ -596,7 +924,11 @@ export const httpClient = {
   requestCsvExport(path: string, options: HttpClientRequestOptions = {}) {
     return sendCsvExportRequest(path, options, true);
   },
+  requestBinary(path: string, options: HttpClientRequestOptions = {}) { return sendBinaryRequest(path, options, true); },
   requestDataUrl(path: string, options: HttpClientRequestOptions = {}) {
     return sendDataUrlRequest(path, options, true);
+  },
+  openStream(path: string, options: HttpClientRequestOptions = {}) {
+    return sendStreamRequest(path, options, true);
   }
 };

@@ -25,6 +25,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("setSelectedMenuCardId(item.sourceServiceId);");
     expect(pageSource).toContain("selectLabel={serviceSelectLabel}");
     expect(pageSource).not.toContain('cardUi?.cta ?? "预约"');
+    expect(pageSource).toContain("const sourceCards = formalApiOnly && !isMerchantEditable");
+    expect(pageSource).toContain("return sourceCards.map((menuCard) => ({");
   });
 
   it("uses one consistent edit button size and avoids duplicate menu card edit actions", () => {
@@ -44,6 +46,19 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(compactMenuSource).toContain("{showSelectAction ? (");
     expect(menuPackageSource).toContain("showSelectAction={!isMerchantEditable}");
     expect(menuPackageSource).not.toContain("merchantServiceEditLabel");
+  });
+
+  it("keeps the active inline editor open while localized drafts change", () => {
+    const resetEffectSource = pageSource.slice(
+      pageSource.indexOf('setActiveTab("home");'),
+      pageSource.indexOf('setActiveImageIndex((current) =>')
+    );
+
+    expect(resetEffectSource).toContain(
+      "[routeTechnicianId, routeTime, routeVisitDate, sourceStore.id]"
+    );
+    expect(resetEffectSource).not.toContain("store.nextSlot]");
+    expect(resetEffectSource).not.toContain("primaryCheckoutTarget, routeTechnicianId");
   });
 
   it("shows a merchant-only add service action between menu and technicians", () => {
@@ -89,16 +104,15 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("技师列表");
     expect(pageSource).toContain("const shouldRenderTechnicianShowcase = technicianBlock.visible;");
     expect(pageSource).toContain("function StoreTechnicianServiceListRow");
-    expect(pageSource).toContain("technicianPricingRatePercent?: number");
-    expect(pageSource).toContain("const effectiveTechnicianPricingRatePercent = isTechnicianPricingActive");
-    expect(pageSource).toContain("bookingNavigation?.technicianPricingRatePercent");
-    expect(pageSource).toContain("quoteRatePercent={effectiveTechnicianPricingRatePercent}");
+    expect(pageSource).toContain("mapBookingNavigationServiceToMenuCard");
+    expect(pageSource).toContain('bookingNavigation?.entry === "service_menu"');
+    expect(pageSource).not.toContain("quoteRatePercent");
     expect(pageSource).toContain('<SectionTitle showInfo={false} title="技师列表" />');
     expect(pageSource).toContain("<SectionTitle showInfo={false} title={technicianBlock.name}>");
     expect(pageSource).toContain("{serviceMenuHomePackageSection}");
     expect(pageSource).toContain("{serviceMenuTabOrderedSections}");
     expect(pageSource).toContain("<StoreTechnicianServiceListRow");
-    expect(pageSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(pageSource).toContain("profileTo={getScopedTechnicianDynamicPath(scope, technician)}");
     expect(pageSource).toContain("getScopedTechnicianServiceListPath");
     expect(pageSource).toContain("const getTechnicianServiceListTo = (technicianId: string)");
     expect(pageSource).toContain("serviceListTo={getTechnicianServiceListTo(technician.id)}");
@@ -120,7 +134,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(homeTechnicianSource).toContain("storeHomeTechnicianServiceListRows");
     expect(homeTechnicianSource).toContain(") : storeTechnicians.length > 0 ? (");
     expect(homeTechnicianSource).toContain("<StoreTechnicianSelectableCard");
-    expect(homeTechnicianSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(homeTechnicianSource).toContain("profileTo={getScopedTechnicianDynamicPath(scope, technician)}");
     expect(homeTechnicianSource).toContain("setSelectedTechnicianId(active ? \"\" : technician.id);");
     expect(homeTechnicianSource).not.toContain("onServiceSelect");
   });
@@ -189,9 +203,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).toContain("serviceListTo");
     expect(technicianRowSource).toContain("to={serviceListTo}");
     expect(technicianRowSource).toContain("查看技师服务列表");
-    expect(technicianRowSource).toContain("quoteRatePercent = 100");
-    expect(technicianRowSource).toContain("const displayedPrice = Number.isFinite(price) && price > 0 ? Math.round((price * quoteRatePercent) / 100) : price;");
-    expect(technicianRowSource).toContain("yen(displayedPrice)");
+    expect(technicianRowSource).not.toContain("quoteRatePercent");
+    expect(technicianRowSource).toContain("yen(price)");
     expect(technicianRowSource).toContain('className="flex min-w-0 flex-col justify-between rounded-[14px] py-1 pl-1.5 pr-1.5 text-left active:scale-[0.99]"');
     expect(technicianRowSource).toContain('className={cn("min-w-0", (isMerchantEditable || showSelectionAction) && "pr-12")}');
     expect(technicianRowSource).toContain("py-2 pl-3 pr-11");
@@ -200,17 +213,14 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).not.toContain("查看店铺服务项目");
   });
 
-  it("opens the technician public info card from technician-list row avatars", () => {
+  it("opens technician-list row avatars on the scoped full detail page", () => {
     const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+    const retiredModalName = ["TechnicianPublicInfoCard", "Modal"].join("");
 
-    expect(pageSource).toContain('import { TechnicianPublicInfoCardModal } from "../../shared/profile-card/TechnicianPublicInfoCard";');
-    expect(technicianRowSource).toContain("const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);");
+    expect(technicianRowSource).toContain("<Link");
     expect(technicianRowSource).toContain('aria-label={`查看${displayName}信息卡`}');
-    expect(technicianRowSource).toContain("onClick={() => setTechnicianInfoCardOpen(true)}");
-    expect(technicianRowSource).toContain("<TechnicianPublicInfoCardModal");
-    expect(technicianRowSource).toContain("open={technicianInfoCardOpen}");
-    expect(technicianRowSource).toContain("technician={technician}");
-    expect(technicianRowSource).toContain("themeScope={isMerchantEditable ? \"merchant\" : \"user\"}");
+    expect(technicianRowSource).toContain("to={profileTo}");
+    expect(pageSource).not.toContain(retiredModalName);
   });
 
   it("keeps merchant technician visibility as an outer top-right eye action", () => {
@@ -264,12 +274,25 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(bookingSectionSource).not.toContain("bookingModeCopy(store.openStatus)");
   });
 
-  it("opens merchant-owned service display edits in a fullscreen editor", () => {
-    expect(pageSource).toContain("StoreDisplayFullscreenEditor");
-    expect(pageSource).toContain("activeEditor ? (");
-    expect(pageSource).toContain('mode={activeEditor.mode}');
-    expect(pageSource).toContain('target={activeEditor.target}');
-    expect(pageSource).toContain('onClose={() => setActiveEditor(null)}');
+  it("keeps merchant-owned display edits on the current page with a five-language rail", () => {
+    expect(pageSource).toContain("activeEditor && !isMerchantEditable ? (");
+    expect(pageSource).toContain('data-testid="shop-presentation-locale-rail"');
+    expect(pageSource).toContain('{ code: "ja", label: "日本語"');
+    expect(pageSource).toContain('{ code: "en", label: "English"');
+    expect(pageSource).toContain('{ code: "ko", label: "한국어"');
+    expect(pageSource).toContain('{ code: "zh-CN", label: "简体中文"');
+    expect(pageSource).toContain('{ code: "zh-TW", label: "繁體中文"');
+    expect(pageSource).toContain("renderActiveInlineEditor");
+  });
+
+  it("requires the shared red confirmation before synchronizing the current draft to every locale", () => {
+    expect(pageSource).toContain('import { DangerConfirmDialog }');
+    expect(pageSource).toContain("synchronizeMerchantShopPresentationLocales");
+    expect(pageSource).toContain("expectedLockVersions");
+    expect(pageSource).toContain("将会用当前语言版本的图片和文字覆盖其他语言版本，真的要执行同步吗？");
+    expect(pageSource).toContain('confirmLabel="确认同步"');
+    expect(pageSource).toContain('title="同步所有语言版本"');
+    expect(pageSource).toContain("setPresentationDrafts(drafts)");
   });
 
   it("uses the working basic-card editor in the embedded merchant header without duplicating the info-card edit button", () => {
@@ -282,6 +305,14 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(embeddedHeaderSource).not.toContain('"header-basic"');
     expect(basicInfoCardSource).not.toContain('editor={renderMerchantEditor("basic", "编辑资料", undefined, "default", "basic-card")}');
     expect(pageSource).not.toContain('renderActiveInlineEditor("header-basic")');
+  });
+
+  it("uses the formal shop taxonomy editor and keeps browse chips keyword-only", () => {
+    expect(pageSource).toContain("ShopServiceTaxonomyEditor");
+    expect(pageSource).toContain("isMerchantEditable && basicCardEditing");
+    expect(pageSource).toContain("onSavedKeywords={(labels) => {");
+    expect(pageSource).toContain("tags={displayedTaxonomyLabels}");
+    expect(pageSource).not.toContain('<EditableTagChips editing={basicCardEditing}');
   });
 
   it("uses edit affordances instead of user selection plus buttons for merchant-owned services and technicians", () => {
@@ -300,14 +331,14 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).not.toContain('handleMerchantEditFocus("technician", technicianEditorTarget);');
   });
 
-  it("opens the shared image adjustment editor before merchant image replacements are saved", () => {
-    expect(pageSource).toContain("ImageAdjustmentEditor");
-    expect(pageSource).toContain("pendingStoreImageEdit");
-    expect(pageSource).toContain("openStoreImageEditor");
-    expect(pageSource).toContain("setPendingFullscreenImageEdit");
-    expect(pageSource).toContain("replaceFullscreenMenuImage");
-    expect(pageSource).toContain("const fileInput = event.currentTarget;");
-    expect(pageSource).toContain("void replaceFullscreenMenuImage(fileInput.files).finally(() => {");
+  it("uploads carousel and service-package images through the formal merchant API", () => {
+    const merchantUploadSource = pageSource.slice(pageSource.indexOf("const uploadPresentationImage"), pageSource.indexOf("const addMerchantMenuCard"));
+    expect(merchantUploadSource).toContain("uploadMerchantShopPresentationMedia");
+    expect(merchantUploadSource).toContain("const addGalleryImage");
+    expect(pageSource).toContain("新增<br />轮播图");
+    expect(merchantUploadSource).toContain("const replaceGalleryImage");
+    expect(merchantUploadSource).toContain("const replaceMenuCardImage");
+    expect(merchantUploadSource).not.toContain("readImageFilesAsDataUrls(files, 1);");
   });
 
   it("keeps the fullscreen merchant editor header compact with bottom actions", () => {
@@ -396,9 +427,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(inlineEditorSource).toContain("editorFrameClassName={storeHeroGalleryRadiusClassName}");
     expect(inlineEditorSource).toContain("editorFrameWidth={storeHeroGalleryEditorFrameWidth}");
     expect(inlineEditorSource).toContain("previewAspectRatio={storeHeroGalleryAspectRatio}");
-    expect(pageSource).toContain("aspectRatio: storeHeroGalleryAspectRatio");
-    expect(pageSource).toContain("frameClassName: storeHeroGalleryRadiusClassName");
-    expect(pageSource).toContain("frameWidth: storeHeroGalleryEditorFrameWidth");
+    expect(pageSource).toContain("uploadPresentationImage(files");
     expect(pageSource).not.toContain("aspectRatio: 16 / 10");
     expect(pageSource).not.toContain("editorAspectRatio={16 / 10}");
   });
@@ -421,6 +450,9 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(homeCarouselSource).not.toContain("slide.badge");
     expect(pageSource).not.toContain("查看大图");
     expect(embeddedHeaderSource).not.toContain(">服务展示<");
+    expect(embeddedHeaderSource).toContain("店铺 ID");
+    expect(embeddedHeaderSource).toContain("{store.systemId}");
+    expect(embeddedHeaderSource.indexOf("店铺 ID")).toBeLessThan(embeddedHeaderSource.indexOf("{store.name}"));
     expect(embeddedHeaderSource).toContain("{store.address}</p>");
     expect(embeddedHeaderSource).not.toContain("{config.subtitle}</p>");
     expect(fixedHeaderSource).not.toContain("{config.subtitle}</p>");
@@ -538,6 +570,14 @@ describe("StoreDetailPage formal route isolation", () => {
   it("localizes the formal invalid-link state", () => {
     expect(pageSource).toContain("const formalStoreLinkCopy: Record<Language");
     expect(pageSource).toContain("formalStoreLinkCopy[language]");
+  });
+
+  it("never sends a formal shop without persisted services through the legacy fallback checkout", () => {
+    expect(pageSource).toContain("formalApiOnly");
+    expect(pageSource).toContain("hasBookableCheckoutTarget");
+    expect(pageSource).toContain("暂无可预约服务");
+    expect(pageSource).toContain("formalApiOnly={true}");
+    expect(pageSource).not.toContain('const primaryCheckoutTarget = menuCards[0]?.sourceServiceId ?? services[0]?.id ?? "svc-fallback";');
   });
 });
 

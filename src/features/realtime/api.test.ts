@@ -298,6 +298,41 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("accepts the server-authoritative traceless recall result while retaining the standard request", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        action: "traceless_recall",
+        conversationId: 91,
+        messageId: 700,
+        message: {
+          id: 700,
+          conversationId: 91,
+          senderUserId: 100,
+          type: "text",
+          content: null,
+          metadata: null,
+          reactions: [],
+          recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+          recalledAt: "2026-08-25T10:01:00.000Z",
+          recallMode: "traceless",
+          contentPurgedAt: "2026-08-25T10:01:00.000Z",
+          lifecycleVersion: 2,
+          availableRecallModes: [],
+          createdAt: "2026-08-25T10:00:00.000Z",
+        },
+      }),
+    );
+
+    await expect(realtimeApi.recallMessage(91, 700, "standard")).resolves.toMatchObject({
+      action: "traceless_recall",
+      message: { recallMode: "traceless" },
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/im/conversations/91/messages/700/recall",
+      expect.objectContaining({ body: JSON.stringify({ mode: "standard" }) }),
+    );
+  });
+
   it("deletes one message only from the authenticated user's history", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({ conversationId: 91, messageId: 700, deleted: true })
@@ -309,6 +344,60 @@ describe("formal realtime API", () => {
       "/api/v1/im/conversations/91/messages/700",
       expect.objectContaining({ method: "DELETE" })
     );
+  });
+
+  it("uses exact chat-record mutations and maps protected binary media", async () => {
+    const key = "11111111-1111-4111-8111-111111111111";
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const command = { idempotencyKey: key, messageIds: [501, 502], sourceConversationId: 41 };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ replayed: false, bundle: { publicId, title: "A、B", preview: "A: one", senderNames: ["A", "B"], senderCount: 2, itemCount: 2, createdAt: "2026-08-31T08:00:00.000Z" }, message: { id: 900, conversationId: 91, senderUserId: 100, type: "text", content: "A、B", metadata: null, createdAt: "2026-08-31T08:00:00.000Z" } }, 201))
+      .mockResolvedValueOnce(jsonResponse({ replayed: false, favorite: { id: 71 } }, 201))
+      .mockResolvedValueOnce(jsonResponse({ conversationId: 41, messageIds: [501, 502], count: 2, deleted: true, replayed: false }))
+      .mockResolvedValueOnce(jsonResponse([{ messageId: 501, status: "translated", translatedContent: "翻译" }]))
+      .mockResolvedValueOnce(jsonResponse({ publicId, title: "A", preview: "one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: "2026-08-31T08:00:00.000Z" }))
+      .mockResolvedValueOnce(jsonResponse({ list: [], total: 0, page: 1, page_size: 20, nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse({ list: [], total: 0, page: 2, page_size: 20 }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: true }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "cache-control": "private, max-age=31536000, immutable", "content-length": "4", "content-type": "image/png", etag: `"${"a".repeat(64)}"` } }));
+    await realtimeApi.createChatRecordDelivery(91, command);
+    await realtimeApi.createChatRecordFavorite(command);
+    await realtimeApi.batchDeleteMessagesForMe(41, { idempotencyKey: key, messageIds: [501, 502] });
+    await realtimeApi.translateMessages(41, { messageIds: [501], targetLanguage: "zh" });
+    await realtimeApi.getChatRecord(publicId);
+    await realtimeApi.listChatRecordItems(publicId, { beforePosition: 21, pageSize: 20 });
+    await realtimeApi.listChatRecordFavorites({ page: 2, pageSize: 20 });
+    await realtimeApi.removeChatRecordFavorite(71);
+    const media = await realtimeApi.getChatRecordMedia(publicId, "a".repeat(64));
+    expect(fetch).toHaveBeenNthCalledWith(1, "/api/v1/im/conversations/91/chat-records", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenNthCalledWith(2, "/api/v1/im/chat-record-favorites", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenNthCalledWith(3, "/api/v1/im/conversations/41/messages/delete-for-me", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenNthCalledWith(4, "/api/v1/im/conversations/41/messages/translations", expect.objectContaining({ method: "POST" }));
+    expect(fetch).toHaveBeenNthCalledWith(8, "/api/v1/im/chat-record-favorites/71", expect.objectContaining({ method: "DELETE" }));
+    expect(media).toMatchObject({ blob: expect.any(Blob), contentLength: 4, contentType: "image/png", etag: `"${"a".repeat(64)}"` });
+    expect(JSON.stringify(media)).not.toContain("runtime/");
+  });
+
+  it("preserves chat-record JSON and binary errors", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 40401, message: "error.im.chat_record_not_found", data: null }), { headers: { "content-type": "application/json" }, status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 40301, message: "error.permission.denied", data: null }), { headers: { "content-type": "application/json" }, status: 403 }));
+    await expect(realtimeApi.getChatRecord(publicId)).rejects.toMatchObject({ code: 40401, status: 404 });
+    await expect(realtimeApi.getChatRecordMedia(publicId, "a".repeat(64))).rejects.toMatchObject({ code: 40301, status: 403 });
+  });
+
+  it.each([
+    ["unsupported MIME", { "cache-control": "private, max-age=31536000, immutable", "content-length": "4", "content-type": "application/pdf", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["missing length", { "cache-control": "private, max-age=31536000, immutable", "content-type": "image/png", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["non-digit length", { "cache-control": "private, max-age=31536000, immutable", "content-length": "4x", "content-type": "image/png", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["length mismatch", { "cache-control": "private, max-age=31536000, immutable", "content-length": "3", "content-type": "image/png", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["weak ETag", { "cache-control": "private, max-age=31536000, immutable", "content-length": "4", "content-type": "image/png", etag: `W/"${"a".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["wrong ETag", { "cache-control": "private, max-age=31536000, immutable", "content-length": "4", "content-type": "image/png", etag: `"${"b".repeat(64)}"` }, [1, 2, 3, 4]],
+    ["wrong cache", { "cache-control": "public", "content-length": "4", "content-type": "image/png", etag: `"${"a".repeat(64)}"` }, [1, 2, 3, 4]]
+  ])("rejects a 200 chat-record media response with %s", async (_case, headers, bytes) => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(new Uint8Array(bytes), { headers }));
+    await expect(realtimeApi.getChatRecordMedia("22222222-2222-4222-8222-222222222222", "a".repeat(64))).rejects.toMatchObject({ name: "ApiClientError", message: "error.response.invalid_chat_record_media" });
   });
 
   it("parses authenticated SSE events and sends the last event id on reconnect", async () => {

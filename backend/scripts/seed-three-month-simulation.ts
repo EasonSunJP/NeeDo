@@ -41,6 +41,7 @@ import {
   orderFormalTestAccountExports
 } from "../src/simulation/formal-test-account-export";
 import { syncFormalSocialAccountProfile } from "../src/simulation/formal-social-account-profile";
+import { resolveSimulationMessageExpiresAt } from "../src/simulation/simulation-message-retention";
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
 import { migrateLifeDanceAdminOwnership } from "../src/simulation/lifedance-admin-ownership";
 import {
@@ -109,6 +110,7 @@ const main = async (): Promise<void> => {
   assert(existsSync(envFile), `environment file was not found: ${envFile}`);
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
+  const simulationSeededAt = new Date();
 
   const seedConfig = getSimulationSeedConfig(process.env);
   const [
@@ -774,6 +776,45 @@ const main = async (): Promise<void> => {
           );
         }
 
+        const experienceEligibleUsers = await tx.user.findMany({
+          where: {
+            isTestAccount: true,
+            isActive: true,
+            deletedAt: null,
+            customerProfile: { is: { deletedAt: null } }
+          },
+          select: { id: true }
+        });
+        for (const user of experienceEligibleUsers) {
+          await tx.userExperienceAccount.upsert({
+            where: { userId: user.id },
+            create: { userId: user.id, currentLevel: 1, totalExpUnits: 0n },
+            update: { deletedAt: null }
+          });
+        }
+
+        const fixedRealtimeUsers = await tx.user.findMany({
+          where: {
+            email: { in: ["technician@example.com", "merchant@example.com"] },
+            isActive: true,
+            deletedAt: null
+          },
+          select: { id: true, email: true }
+        });
+        const fixedRealtimeUserByEmail = new Map(
+          fixedRealtimeUsers.map((user) => [user.email, user.id])
+        );
+        const fixedTechnicianKey = "fixed-technician-account";
+        const fixedMerchantKey = "fixed-merchant-account";
+        technicianUserIds.set(
+          fixedTechnicianKey,
+          getRequiredId(fixedRealtimeUserByEmail, "technician@example.com", "fixed technician user")
+        );
+        ownerUserIds.set(
+          fixedMerchantKey,
+          getRequiredId(fixedRealtimeUserByEmail, "merchant@example.com", "fixed merchant user")
+        );
+
         const formalSocialUsers = await tx.user.findMany({
           where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
           select: { id: true, email: true }
@@ -819,6 +860,55 @@ const main = async (): Promise<void> => {
             }
           ];
         });
+        const fixedPreviewSpecifications = hasPreviewCustomer
+          ? [
+              {
+                counterpartKey: fixedTechnicianKey,
+                counterpartType: "technician" as const,
+                source: previewSourceConversations.find(
+                  (conversation) => conversation.secondType === "technician"
+                )
+              },
+              {
+                counterpartKey: fixedMerchantKey,
+                counterpartType: "shop_owner" as const,
+                source: previewSourceConversations.find(
+                  (conversation) => conversation.secondType === "shop_owner"
+                )
+              }
+            ]
+          : [];
+        fixedPreviewSpecifications.forEach((specification) => {
+          assert(
+            specification.source,
+            `Fixed ${specification.counterpartType} preview source conversation is missing.`
+          );
+        });
+        const fixedPreviewConversations = fixedPreviewSpecifications.map((specification) => ({
+          ...specification.source!,
+          key: `conversation-${previewCustomerKey}-${specification.counterpartKey}`,
+          firstKey: previewCustomerKey,
+          secondKey: specification.counterpartKey,
+          secondType: specification.counterpartType
+        }));
+        const fixedPreviewConversationBySource = new Map(
+          fixedPreviewSpecifications.map((specification, index) => [
+            specification.source!.key,
+            fixedPreviewConversations[index]!
+          ])
+        );
+        const fixedPreviewMessages = plan.messages.flatMap((message) => {
+          const conversation = fixedPreviewConversationBySource.get(message.conversationKey);
+          if (!conversation) return [];
+          return [{
+            ...message,
+            key: `${conversation.key}-${message.key}`,
+            conversationKey: conversation.key,
+            senderKey: message.senderType === "customer"
+              ? previewCustomerKey
+              : conversation.secondKey
+          }];
+        });
         const previewContacts = previewConversations.flatMap((conversation) => [
           {
             key: `${conversation.key}-contact-customer`,
@@ -835,9 +925,29 @@ const main = async (): Promise<void> => {
             contactKey: previewCustomerKey
           }
         ]);
-        const conversationsToSeed = [...plan.conversations, ...previewConversations];
-        const contactsToSeed = [...plan.contacts, ...previewContacts];
-        const messagesToSeed = [...plan.messages, ...previewMessages];
+        const fixedPreviewContacts = fixedPreviewConversations.flatMap((conversation) => [
+          {
+            key: `${conversation.key}-contact-customer`,
+            ownerType: "customer" as const,
+            ownerKey: previewCustomerKey,
+            contactType: conversation.secondType,
+            contactKey: conversation.secondKey
+          },
+          {
+            key: `${conversation.key}-contact-counterpart`,
+            ownerType: conversation.secondType,
+            ownerKey: conversation.secondKey,
+            contactType: "customer" as const,
+            contactKey: previewCustomerKey
+          }
+        ]);
+        const conversationsToSeed = [
+          ...plan.conversations,
+          ...previewConversations,
+          ...fixedPreviewConversations
+        ];
+        const contactsToSeed = [...plan.contacts, ...previewContacts, ...fixedPreviewContacts];
+        const messagesToSeed = [...plan.messages, ...previewMessages, ...fixedPreviewMessages];
         const getParticipantUserId = (
           type: "admin" | "customer" | "technician" | "shop_owner",
           key: string
@@ -898,6 +1008,43 @@ const main = async (): Promise<void> => {
             ...customerUserIds.values()
           ])
         ];
+        const participantIdentities = await tx.userIdentity.findMany({
+          where: {
+            userId: { in: simulationParticipantUserIds },
+            type: { in: ["platform", "customer", "technician", "merchant", "merchant_owner"] },
+            isActive: true,
+            deletedAt: null
+          },
+          select: { id: true, userId: true, type: true }
+        });
+        const participantIdentityIds = new Map<string, number>();
+        for (const identity of participantIdentities) {
+          const key = `${identity.userId}:${identity.type}`;
+          assert(
+            !participantIdentityIds.has(key),
+            `Multiple active ${identity.type} identities found for simulation user ${identity.userId}.`
+          );
+          participantIdentityIds.set(key, identity.id);
+        }
+        const getParticipantIdentityId = (
+          type: "admin" | "customer" | "technician" | "shop_owner",
+          key: string
+        ): number => {
+          const userId = getParticipantUserId(type, key);
+          const identityType =
+            type === "admin"
+              ? "platform"
+              : type === "shop_owner"
+                ? key === fixedMerchantKey
+                  ? "merchant"
+                  : "merchant_owner"
+                : type;
+          return getRequiredId(
+            participantIdentityIds,
+            `${userId}:${identityType}`,
+            `IM ${identityType} identity`
+          );
+        };
         await tx.contact.deleteMany({
           where: {
             source: {
@@ -912,7 +1059,12 @@ const main = async (): Promise<void> => {
         const contactRows = contactsToSeed.map(
           (contact): Prisma.ContactCreateManyInput => ({
             ownerUserId: getParticipantUserId(contact.ownerType, contact.ownerKey),
+            ownerIdentityId: getParticipantIdentityId(contact.ownerType, contact.ownerKey),
             contactUserId: getParticipantUserId(contact.contactType, contact.contactKey),
+            contactIdentityId: getParticipantIdentityId(
+              contact.contactType,
+              contact.contactKey
+            ),
             source: contact.key.startsWith("lifedance-staff-")
               ? "lifedance_staff_seed"
               : "lifedance_customer_service_seed",
@@ -922,14 +1074,16 @@ const main = async (): Promise<void> => {
         const existingContacts = await tx.contact.findMany({
           where: {
             OR: contactRows.map((contact) => ({
-              ownerUserId: contact.ownerUserId,
-              contactUserId: contact.contactUserId
+              ownerIdentityId: contact.ownerIdentityId,
+              contactIdentityId: contact.contactIdentityId
             }))
           },
-          select: { id: true, ownerUserId: true, contactUserId: true, deletedAt: true }
+          select: { id: true, ownerIdentityId: true, contactIdentityId: true, deletedAt: true }
         });
         const existingContactKeys = new Set(
-          existingContacts.map((contact) => `${contact.ownerUserId}:${contact.contactUserId}`)
+          existingContacts.map(
+            (contact) => `${contact.ownerIdentityId}:${contact.contactIdentityId}`
+          )
         );
         const deletedExistingContactIds = existingContacts
           .filter((contact) => contact.deletedAt)
@@ -941,7 +1095,8 @@ const main = async (): Promise<void> => {
           });
         }
         const missingContactRows = contactRows.filter(
-          (contact) => !existingContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
+          (contact) =>
+            !existingContactKeys.has(`${contact.ownerIdentityId}:${contact.contactIdentityId}`)
         );
         if (missingContactRows.length > 0) {
           await tx.contact.createMany({ data: missingContactRows, skipDuplicates: true });
@@ -965,7 +1120,15 @@ const main = async (): Promise<void> => {
         }
         for (const [conversationIndex, conversation] of conversationsToSeed.entries()) {
           const firstUserId = getParticipantUserId(conversation.firstType, conversation.firstKey);
+          const firstIdentityId = getParticipantIdentityId(
+            conversation.firstType,
+            conversation.firstKey
+          );
           const secondUserId = getParticipantUserId(
+            conversation.secondType,
+            conversation.secondKey
+          );
+          const secondIdentityId = getParticipantIdentityId(
             conversation.secondType,
             conversation.secondKey
           );
@@ -981,13 +1144,16 @@ const main = async (): Promise<void> => {
           await tx.conversation.create({
             data: {
               type: ConversationType.DIRECT,
+              accessPolicy: "BUSINESS_CONTEXT",
               createdByUserId: firstUserId,
+              createdByIdentityId: firstIdentityId,
               createdAt: new Date(conversation.createdAt),
               updatedAt,
               participants: {
                 create: [
                   {
                     userId: firstUserId,
+                    identityId: firstIdentityId,
                     role: "member",
                     unreadCount: isStaffConversation ? conversationIndex % 3 : 1,
                     isPinned: isStaffConversation && conversationIndex % 4 === 0,
@@ -999,6 +1165,7 @@ const main = async (): Promise<void> => {
                   },
                   {
                     userId: secondUserId,
+                    identityId: secondIdentityId,
                     role: "member",
                     unreadCount: isStaffConversation ? conversationIndex % 2 : 0,
                     isPinned: isStaffConversation && conversationIndex % 5 === 0,
@@ -1015,6 +1182,10 @@ const main = async (): Promise<void> => {
                   const createdAt = new Date(message.createdAt);
                   return {
                     senderUserId: getParticipantUserId(message.senderType, message.senderKey),
+                    senderIdentityId: getParticipantIdentityId(
+                      message.senderType,
+                      message.senderKey
+                    ),
                     type: MessageType.TEXT,
                     content: message.content,
                     metadata: {
@@ -1030,10 +1201,11 @@ const main = async (): Promise<void> => {
                         conversation.firstKey === previewCustomerKey
                     },
                     createdAt,
-                    expiresAt:
-                      imPolicy.textRetentionSeconds === null
-                        ? null
-                        : new Date(createdAt.getTime() + imPolicy.textRetentionSeconds * 1_000),
+                    expiresAt: resolveSimulationMessageExpiresAt({
+                      createdAt,
+                      seededAt: simulationSeededAt,
+                      retentionSeconds: imPolicy.textRetentionSeconds
+                    }),
                     recallDeadlineAt: new Date(
                       createdAt.getTime() + imPolicy.recallWindowSeconds * 1_000
                     ),
@@ -1048,7 +1220,14 @@ const main = async (): Promise<void> => {
 
         const socialUsers = await tx.user.findMany({
           where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
-          select: { id: true, email: true }
+          select: {
+            id: true,
+            email: true,
+            identities: {
+              where: { isActive: true, deletedAt: null },
+              select: { id: true, type: true }
+            }
+          }
         });
         const socialUserIdByEmail = new Map(socialUsers.map((user) => [user.email, user.id]));
         const socialUserIdByKey = new Map(
@@ -1056,6 +1235,23 @@ const main = async (): Promise<void> => {
             account.key,
             getRequiredId(socialUserIdByEmail, account.email, "formal social test user")
           ])
+        );
+        const socialUserByEmail = new Map(socialUsers.map((user) => [user.email, user]));
+        const socialIdentityIdByKey = new Map(
+          socialPlan.accounts.map((account) => {
+            const user = getRequiredId(socialUserByEmail, account.email, "formal social user");
+            const identityType =
+              account.socialType === "shop"
+                ? account.email === "merchant@example.com"
+                  ? "merchant"
+                  : "merchant_owner"
+                : account.socialType === "technician"
+                  ? "technician"
+                  : "customer";
+            const identity = user.identities.find((candidate) => candidate.type === identityType);
+            assert(identity, `missing ${identityType} identity for social account ${account.key}`);
+            return [account.key, identity.id] as const;
+          })
         );
         const socialUserIds = [...socialUserIdByKey.values()];
 
@@ -1087,6 +1283,11 @@ const main = async (): Promise<void> => {
                   socialUserIdByKey,
                   post.authorKey,
                   "social post author"
+                ),
+                authorIdentityId: getRequiredId(
+                  socialIdentityIdByKey,
+                  post.authorKey,
+                  "social post author identity"
                 ),
                 content: post.content,
                 media: post.media as unknown as Prisma.InputJsonValue,
@@ -1131,6 +1332,11 @@ const main = async (): Promise<void> => {
                   post.authorKey,
                   "social quote author"
                 ),
+                authorIdentityId: getRequiredId(
+                  socialIdentityIdByKey,
+                  post.authorKey,
+                  "social quote author identity"
+                ),
                 content: post.content,
                 media: {
                   ...post.media,
@@ -1149,15 +1355,37 @@ const main = async (): Promise<void> => {
         const directedFriendPairs = socialPlan.friendships.flatMap((friendship) => [
           {
             followerUserId: getRequiredId(socialUserIdByKey, friendship.leftKey, "friend"),
-            followingUserId: getRequiredId(socialUserIdByKey, friendship.rightKey, "friend")
+            followerIdentityId: getRequiredId(
+              socialIdentityIdByKey,
+              friendship.leftKey,
+              "friend identity"
+            ),
+            followingUserId: getRequiredId(socialUserIdByKey, friendship.rightKey, "friend"),
+            followingIdentityId: getRequiredId(
+              socialIdentityIdByKey,
+              friendship.rightKey,
+              "friend identity"
+            )
           },
           {
             followerUserId: getRequiredId(socialUserIdByKey, friendship.rightKey, "friend"),
-            followingUserId: getRequiredId(socialUserIdByKey, friendship.leftKey, "friend")
+            followerIdentityId: getRequiredId(
+              socialIdentityIdByKey,
+              friendship.rightKey,
+              "friend identity"
+            ),
+            followingUserId: getRequiredId(socialUserIdByKey, friendship.leftKey, "friend"),
+            followingIdentityId: getRequiredId(
+              socialIdentityIdByKey,
+              friendship.leftKey,
+              "friend identity"
+            )
           }
         ]);
         const plannedFollowKeys = new Set(
-          directedFriendPairs.map((pair) => `${pair.followerUserId}:${pair.followingUserId}`)
+          directedFriendPairs.map(
+            (pair) => `${pair.followerIdentityId}:${pair.followingIdentityId}`
+          )
         );
         const existingFollows = await tx.follow.findMany({
           where: {
@@ -1169,20 +1397,24 @@ const main = async (): Promise<void> => {
           select: {
             id: true,
             followerUserId: true,
+            followerIdentityId: true,
             followingUserId: true,
+            followingIdentityId: true,
             deletedAt: true
           }
         });
         const existingFollowIdByKey = new Map(
           existingFollows.map((follow) => [
-            `${follow.followerUserId}:${follow.followingUserId}`,
+            `${follow.followerIdentityId}:${follow.followingIdentityId}`,
             follow.id
           ])
         );
         const obsoleteFollowIds = existingFollows
           .filter(
             (follow) =>
-              !plannedFollowKeys.has(`${follow.followerUserId}:${follow.followingUserId}`) &&
+              !plannedFollowKeys.has(
+                `${follow.followerIdentityId}:${follow.followingIdentityId}`
+              ) &&
               !follow.deletedAt
           )
           .map((follow) => follow.id);
@@ -1193,7 +1425,9 @@ const main = async (): Promise<void> => {
           });
         }
         const plannedExistingFollowIds = directedFriendPairs.flatMap((pair) => {
-          const id = existingFollowIdByKey.get(`${pair.followerUserId}:${pair.followingUserId}`);
+          const id = existingFollowIdByKey.get(
+            `${pair.followerIdentityId}:${pair.followingIdentityId}`
+          );
           return id ? [id] : [];
         });
         if (plannedExistingFollowIds.length > 0) {
@@ -1203,7 +1437,10 @@ const main = async (): Promise<void> => {
           });
         }
         const missingFollowRows = directedFriendPairs.filter(
-          (pair) => !existingFollowIdByKey.has(`${pair.followerUserId}:${pair.followingUserId}`)
+          (pair) =>
+            !existingFollowIdByKey.has(
+              `${pair.followerIdentityId}:${pair.followingIdentityId}`
+            )
         );
         for (const rows of chunkRows(missingFollowRows)) {
           await tx.follow.createMany({
@@ -1542,7 +1779,9 @@ const main = async (): Promise<void> => {
           data: plan.bookings.map(
             (booking): Prisma.NotificationCreateManyInput => ({
               recipientUserId: getRequiredId(customerUserIds, booking.customerKey, "customer user"),
+              recipientIdentityId: getParticipantIdentityId("customer", booking.customerKey),
               actorUserId: getRequiredId(ownerUserIds, booking.shopKey, "shop owner"),
+              actorIdentityId: getParticipantIdentityId("shop_owner", booking.shopKey),
               type: NotificationType.ORDER_STATUS,
               title: "ご予約状況のお知らせ",
               body: `${booking.orderNo} の予約状況が更新されました。`,

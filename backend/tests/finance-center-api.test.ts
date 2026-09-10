@@ -6,6 +6,7 @@ import type {
   OrderFinanceRecord,
   OrderFinanceRepositoryPort
 } from "../src/services/order-finance.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 interface StoredValue {
   value: string;
@@ -140,6 +141,11 @@ const orderRecord: OrderFinanceRecord = {
   financial: {
     id: 301,
     serviceAmountJpy: 8800,
+    baseServiceAmountJpy: null,
+    extensionAmountJpy: null,
+    nominationChargeAmountJpy: null,
+    wasTechnicianNominated: null,
+    compensationBasisVersion: null,
     platformCollectedServiceAmountJpy: 0,
     offlineReportedServiceAmountJpy: 0,
     unknownOrUnreportedServiceAmountJpy: 8800,
@@ -178,6 +184,8 @@ const orderRecord: OrderFinanceRecord = {
     dailyRateJpy: 0,
     fixedOrderPayJpy: 1000,
     commissionRatePercent: 50,
+    extensionCommissionRatePercent: 50,
+    nominationFeeJpy: 0,
     guaranteedMinimumJpy: 0,
     ndpFeeBearer: "split",
     technicianNdpSharePercent: 30,
@@ -285,6 +293,11 @@ const createFixture = async () => {
       financial: {
         ...orderRecord.financial!,
         serviceAmountJpy: input.serviceAmountJpy,
+        baseServiceAmountJpy: input.baseServiceAmountJpy,
+        extensionAmountJpy: input.extensionAmountJpy,
+        nominationChargeAmountJpy: input.nominationChargeAmountJpy,
+        wasTechnicianNominated: input.wasTechnicianNominated,
+        compensationBasisVersion: input.compensationBasisVersion,
         platformCollectedServiceAmountJpy: input.platformCollectedServiceAmountJpy,
         offlineReportedServiceAmountJpy: input.offlineReportedServiceAmountJpy,
         unknownOrUnreportedServiceAmountJpy: input.unknownOrUnreportedServiceAmountJpy,
@@ -324,6 +337,7 @@ const createFixture = async () => {
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
+    merchantShopContextRepository: createDirectShopContextRepository({ shopId: 11 }),
     orderFinanceRepository,
     compensationProfileRepository
   } as never);

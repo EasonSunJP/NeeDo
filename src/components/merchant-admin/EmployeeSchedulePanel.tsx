@@ -35,6 +35,7 @@ import { Button } from "../ui/Button";
 type EmployeeSchedulePanelProps = {
   employee: MerchantEmployee;
   readOnly?: boolean;
+  scheduleSurface?: "desktop" | "mobile";
 };
 
 const statusPriority: Record<DispatchScheduleCellStatus, number> = {
@@ -175,10 +176,7 @@ function createDayGrid(
       {
         technicianId: employee.needoId,
         technicianName: employee.displayName,
-        technicianSubtitle:
-          employee.affiliation.relationshipType === "exclusive"
-            ? "专属技师"
-            : "合作技师",
+        technicianSubtitle: "合作技师",
         technicianAvatar: employee.avatarUrl ?? "",
         scheduledHours: cells.filter((cell) => cell.status !== "idle").length,
         cells,
@@ -198,6 +196,11 @@ export function createEmployeeScheduleCalendarData(
     const startsAt = new Date(event.startsAt);
     const endsAt = new Date(event.endsAt);
     const cell = createCell(event, employee);
+    const availabilitySourceType = event.kind === "availability"
+      ? "technician"
+      : event.kind === "schedule" && event.status === "available"
+        ? "shop"
+        : undefined;
     cellByEventId.set(event.projectionId, cell);
     return {
       id: event.projectionId,
@@ -206,9 +209,16 @@ export function createEmployeeScheduleCalendarData(
           ? "todo"
           : event.kind === "booking"
             ? "merchant"
-            : "technician",
+            : availabilitySourceType === "shop"
+              ? "merchant"
+              : "technician",
       calendarId: `employee:${employee.needoId}`,
-      calendarLabel: employee.displayName,
+      calendarLabel: availabilitySourceType === "technician"
+        ? "自由排班"
+        : availabilitySourceType === "shop"
+          ? employee.affiliation.shop.name
+          : employee.displayName,
+      availabilitySourceType,
       date: toDateKey(startsAt),
       endDate: toDateKey(endsAt),
       startTime: toTime(startsAt),
@@ -221,7 +231,7 @@ export function createEmployeeScheduleCalendarData(
       badge:
         event.kind === "busy_redacted"
           ? "已锁定"
-          : event.kind === "availability"
+          : availabilitySourceType
             ? "可排班"
             : event.kind === "booking"
               ? "本店预约"
@@ -255,10 +265,7 @@ export function createEmployeeScheduleCalendarData(
     {
       id: `employee:${employee.needoId}`,
       label: employee.displayName,
-      caption:
-        employee.affiliation.relationshipType === "exclusive"
-          ? "专属技师"
-          : "合作技师",
+      caption: "合作技师",
       accent: "var(--admin-accent, var(--client-primary))",
       avatar: employee.avatarUrl ?? undefined,
     },
@@ -271,7 +278,7 @@ export function createEmployeeScheduleCalendarData(
   };
 }
 
-export function EmployeeSchedulePanel({ employee, readOnly = false }: EmployeeSchedulePanelProps) {
+export function EmployeeSchedulePanel({ employee, readOnly = false, scheduleSurface = "desktop" }: EmployeeSchedulePanelProps) {
   const { language } = useOptionalI18n();
   const t = (source: string) => translateText(source, language);
   const [dateKey, setDateKey] = useState(getTodayDateKey());
@@ -379,9 +386,10 @@ export function EmployeeSchedulePanel({ employee, readOnly = false }: EmployeeSc
             onDateChange={setDateKey}
             onOpenCell={() => undefined}
             onViewChange={changeView}
+            periodViewVariant="timeline"
             storeId={employee.affiliation.shop.publicId}
             subtitle={`${employee.displayName} · ${t("正式日程")}`}
-            surface="desktop"
+            surface={scheduleSurface}
             view={view}
           />
         </div>

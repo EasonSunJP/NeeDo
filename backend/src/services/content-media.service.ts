@@ -6,18 +6,22 @@ export interface ContentMediaProjection {
   publicId: string;
   mediaAssetId: number;
   url: string;
-  mimeType: ContentMediaMimeType;
+  mimeType: string;
   width: number | null;
   height: number | null;
   checksumSha256: string;
 }
 
 export interface CreateContentMediaRepositoryInput {
-  entityType: "content_publication_upload";
+  entityType: "content_publication_upload" | "official_notice_upload" | "shop_presentation_upload";
   entityId: number;
   ownerUserId: number;
+  ownerIdentityId?: number | null;
+  shopId?: number | null;
   url: string;
-  mimeType: ContentMediaMimeType;
+  mimeType: string;
+  usageType?: "content_publication_public" | "official_notice_attachment" | "shop_presentation_draft";
+  fileName?: string;
   altText: string | null;
   checksumSha256: string;
   createdAt: Date;
@@ -42,6 +46,14 @@ export interface UploadContentMediaInput {
   now: Date;
 }
 
+export interface UploadContentMediaScope {
+  entityType: "shop_presentation_upload";
+  entityId: number;
+  shopId: number;
+  ownerIdentityId: number;
+  usageType: "shop_presentation_draft";
+}
+
 export class ContentMediaService {
   public constructor(
     private readonly repository: ContentMediaRepositoryPort,
@@ -51,18 +63,22 @@ export class ContentMediaService {
   public async upload(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
-    input: UploadContentMediaInput
+    input: UploadContentMediaInput,
+    scope?: UploadContentMediaScope
   ): Promise<ContentMediaProjection> {
-    const prepared = this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
+    const prepared = await this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
     return this.repository.withChecksumLock(prepared.checksumSha256, async (locked) => {
       const stored = await this.storage.save({ bytes: input.bytes, mimeType: input.mimeType });
       try {
         return await locked.create({
-          entityType: "content_publication_upload",
-          entityId: actor.userId,
+          entityType: scope?.entityType ?? "content_publication_upload",
+          entityId: scope?.entityId ?? actor.userId,
           ownerUserId: actor.userId,
+          ownerIdentityId: scope?.ownerIdentityId ?? null,
+          shopId: scope?.shopId ?? null,
           url: `/media/content/${stored.fileKey}`,
           mimeType: stored.mimeType,
+          usageType: scope?.usageType,
           altText: input.altText,
           checksumSha256: stored.checksumSha256,
           createdAt: input.now,

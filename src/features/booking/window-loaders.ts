@@ -1,5 +1,6 @@
 import {
   bookingApi,
+  type AvailabilityQuery,
   type BookingOrder,
   type BookingScheduleSlot,
   type PaginatedBookingData
@@ -13,6 +14,16 @@ function assertWindow(from: Date, to: Date): void {
   if (!Number.isFinite(duration) || duration <= 0 || duration > MAX_WINDOW_MS) {
     throw new Error("Formal schedule window must be between 1 ms and 93 days.");
   }
+}
+
+export async function loadAvailabilityWindow(
+  query: Omit<AvailabilityQuery, "page" | "pageSize">
+): Promise<BookingScheduleSlot[]> {
+  return loadEveryPage((page) => bookingApi.listAvailability({
+    ...query,
+    page,
+    pageSize: PAGE_SIZE
+  }));
 }
 
 async function loadEveryPage<TItem>(
@@ -46,11 +57,9 @@ export async function loadTechnicianAvailabilityWindow(
   assertWindow(from, to);
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
-  return loadEveryPage((page) => bookingApi.listAvailability({
+  return loadAvailabilityWindow({
     technicianId,
     from: fromIso,
-    to: toIso,
-    page,
-    pageSize: PAGE_SIZE
-  }));
+    to: toIso
+  });
 }

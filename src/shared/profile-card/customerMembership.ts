@@ -8,6 +8,8 @@ export type CustomerMembershipIconDefinition = {
   src: string;
 };
 
+export type FormalPlatformMembershipTierCode = "free" | "silver" | "gold" | "black_diamond";
+
 export const customerMembershipIcons: Record<SocialProfileMiniMembershipKind, CustomerMembershipIconDefinition> = {
   gold: {
     alt: "Gold membership",
@@ -27,27 +29,48 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function resolveCustomerMembership(memberLevel?: string): ResolvedCustomerMembership {
+export function resolveFormalPlatformMembershipTierCode(
+  memberLevel?: string,
+): FormalPlatformMembershipTierCode {
   const normalized = (memberLevel ?? "").toLowerCase();
 
   if (normalized.includes("black") || normalized.includes("黑卡") || normalized.includes("黑钻") || normalized.includes("黑鑽")) {
-    return { label: "黑卡会员", kind: "black" };
+    return "black_diamond";
   }
+  if (
+    normalized.includes("silver") ||
+    normalized.includes("白银") ||
+    normalized.includes("白銀") ||
+    normalized.includes("银卡") ||
+    normalized.includes("銀卡")
+  ) {
+    return "silver";
+  }
+
+  if (
+    normalized.includes("gold") ||
+    normalized.includes("黄金") ||
+    normalized.includes("黃金") ||
+    normalized.includes("金卡")
+  ) {
+    return "gold";
+  }
+
+  return "free";
+}
+
+export function resolveCustomerMembership(memberLevel?: string): ResolvedCustomerMembership {
+  const normalized = (memberLevel ?? "").toLowerCase();
+  const tierCode = resolveFormalPlatformMembershipTierCode(memberLevel);
+
+  if (tierCode === "black_diamond") return { label: "黑钻会员", kind: "black" };
 
   if (normalized.includes("platinum") || normalized.includes("diamond") || normalized.includes("钻石") || normalized.includes("鑽石") || normalized.includes("白金")) {
     return { label: "钻石会员", kind: "diamond" };
   }
 
-  if (
-    normalized.includes("gold") ||
-    normalized.includes("silver") ||
-    normalized.includes("黄金") ||
-    normalized.includes("金卡") ||
-    normalized.includes("银卡") ||
-    normalized.includes("銀卡")
-  ) {
-    return { label: "黄金会员", kind: "gold" };
-  }
+  if (tierCode === "silver") return { label: "白银会员", kind: "gold" };
+  if (tierCode === "gold") return { label: "黄金会员", kind: "gold" };
 
   return { label: "免费会员" };
 }

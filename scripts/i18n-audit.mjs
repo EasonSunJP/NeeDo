@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const workspaceRoot = path.resolve(
@@ -9,6 +9,10 @@ const workspaceRoot = path.resolve(
   "..",
 );
 const translationsPath = path.join(workspaceRoot, "src/i18n/translations.ts");
+const ekycTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/settings/ekycI18n.ts",
+);
 const identityTranslationsPath = path.join(
   workspaceRoot,
   "src/features/identity-applications/i18n.ts",
@@ -21,13 +25,53 @@ const affiliateMarketplaceTranslationsPath = path.join(
   workspaceRoot,
   "src/features/affiliate-marketplace/i18n.ts",
 );
+const dashboardTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/dashboard/dashboardTranslations.ts",
+);
+const operationsAnalyticsTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/operations-analytics/i18n.ts",
+);
+const orderPerformanceTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/order-performance/i18n.ts",
+);
+const platformUserManagementTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/platform-user-management/i18n.ts",
+);
+const platformMembershipTierTextPath = path.join(
+  workspaceRoot,
+  "src/shared/profile-card/platformMembershipTierText.ts",
+);
+const travelFareTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/travel-fare/i18n.ts",
+);
+const technicianAutomationTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/technician-schedule/automation-i18n.ts",
+);
+const calendarParticipantTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/scheduling/calendar-participant-i18n.ts",
+);
 const sourceDirectories = [
   path.join(workspaceRoot, "src"),
   path.join(workspaceRoot, "scripts"),
 ];
 
 const codeFileExtensions = new Set([".ts", ".tsx", ".mjs"]);
-const excludedFilePatterns = [/src\/i18n\/translations\.ts$/u];
+const excludedFilePatterns = [
+  /src\/i18n\/translations\.ts$/u,
+  /src\/features\/dashboard\/dashboardTranslations\.ts$/u,
+  /src\/features\/operations-analytics\/i18n\.ts$/u,
+  /src\/features\/platform-user-management\/i18n\.ts$/u,
+  /src\/features\/travel-fare\/i18n\.ts$/u,
+  /src\/features\/technician-schedule\/automation-i18n\.ts$/u,
+  /src\/features\/scheduling\/calendar-participant-i18n\.ts$/u,
+];
 
 function normalizeText(value) {
   return value.replace(/\s+/gu, " ").trim();
@@ -116,8 +160,36 @@ async function readCodeFiles(directory) {
 }
 
 let identityTranslationsPromise;
+let ekycTranslationsPromise;
 let affiliateProfileTranslationsPromise;
 let affiliateMarketplaceTranslationsPromise;
+let dashboardTranslationsPromise;
+let operationsAnalyticsTranslationsPromise;
+let orderPerformanceTranslationsPromise;
+let platformUserManagementTranslationsPromise;
+let travelFareTranslationsPromise;
+let technicianAutomationTranslationsPromise;
+let calendarParticipantTranslationsPromise;
+
+async function loadEkycTranslations() {
+  ekycTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(ekycTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return {
+      translations: loaded.ekycTranslations ?? {},
+      chineseErrors: loaded.ekycChineseErrors ?? {},
+    };
+  })();
+
+  return ekycTranslationsPromise;
+}
 
 async function loadIdentityTranslations() {
   identityTranslationsPromise ??= (async () => {
@@ -173,12 +245,167 @@ async function loadAffiliateMarketplaceTranslations() {
   return affiliateMarketplaceTranslationsPromise;
 }
 
+async function loadDashboardTranslations() {
+  dashboardTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(dashboardTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.dashboardTranslations ?? {};
+  })();
+
+  return dashboardTranslationsPromise;
+}
+
+async function loadOperationsAnalyticsTranslations() {
+  operationsAnalyticsTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(operationsAnalyticsTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.operationsAnalyticsTranslations ?? {};
+  })();
+
+  return operationsAnalyticsTranslationsPromise;
+}
+async function loadOrderPerformanceTranslations() {
+  orderPerformanceTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(orderPerformanceTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.orderPerformanceTranslations ?? {};
+  })();
+
+  return orderPerformanceTranslationsPromise;
+}
+
+async function loadPlatformUserManagementTranslations() {
+  platformUserManagementTranslationsPromise ??= (async () => {
+    const [source, membershipTierSource] = await Promise.all([
+      fs.readFile(platformUserManagementTranslationsPath, "utf8"),
+      fs.readFile(platformMembershipTierTextPath, "utf8"),
+    ]);
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const outputDirectory = path.join(workspaceRoot, "exports", "i18n");
+    const membershipTierFileName = `platform-membership-tier-text-audit-${token}.mjs`;
+    const membershipTierFile = path.join(outputDirectory, membershipTierFileName);
+    const translationsFile = path.join(
+      outputDirectory,
+      `platform-user-management-audit-${token}.mjs`,
+    );
+    const membershipTierTranspiled = ts.transpileModule(membershipTierSource, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText.replace(
+      "../../shared/profile-card/platformMembershipTierText",
+      `./${membershipTierFileName}`,
+    );
+
+    await fs.mkdir(outputDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(membershipTierFile, membershipTierTranspiled, "utf8"),
+      fs.writeFile(translationsFile, transpiled, "utf8"),
+    ]);
+
+    try {
+      const loaded = await import(pathToFileURL(translationsFile).href);
+      return loaded.platformUserManagementTranslations ?? {};
+    } finally {
+      await Promise.all([
+        fs.unlink(membershipTierFile).catch(() => {}),
+        fs.unlink(translationsFile).catch(() => {}),
+      ]);
+    }
+  })();
+
+  return platformUserManagementTranslationsPromise;
+}
+
+async function loadTravelFareTranslations() {
+  travelFareTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(travelFareTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.travelFareTranslations ?? {};
+  })();
+
+  return travelFareTranslationsPromise;
+}
+
+async function loadTechnicianAutomationTranslations() {
+  technicianAutomationTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(technicianAutomationTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.technicianAutomationTranslations ?? {};
+  })();
+  return technicianAutomationTranslationsPromise;
+}
+
+async function loadCalendarParticipantTranslations() {
+  calendarParticipantTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(calendarParticipantTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.calendarParticipantTranslations ?? {};
+  })();
+  return calendarParticipantTranslationsPromise;
+}
+
 async function loadTranslationsFromSource(sourceCode) {
+  const { translations: ekycTranslations, chineseErrors: ekycChineseErrors } =
+    await loadEkycTranslations();
   const identityTranslations = await loadIdentityTranslations();
   const affiliateProfileTranslations = await loadAffiliateProfileTranslations();
   const affiliateMarketplaceTranslations =
     await loadAffiliateMarketplaceTranslations();
+  const dashboardTranslations = await loadDashboardTranslations();
+  const operationsAnalyticsTranslations = await loadOperationsAnalyticsTranslations();
+  const orderPerformanceTranslations = await loadOrderPerformanceTranslations();
+  const platformUserManagementTranslations = await loadPlatformUserManagementTranslations();
+  const travelFareTranslations = await loadTravelFareTranslations();
+  const technicianAutomationTranslations = await loadTechnicianAutomationTranslations();
+  const calendarParticipantTranslations = await loadCalendarParticipantTranslations();
   const standaloneSource = sourceCode.replace(
+    /import\s+\{\s*ekycTranslations\s*,\s*ekycChineseErrors\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const ekycTranslations = ${JSON.stringify(ekycTranslations)};\nconst ekycChineseErrors = ${JSON.stringify(ekycChineseErrors)};`,
+  ).replace(
     /import\s+\{\s*identityApplicationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const identityApplicationTranslations = ${JSON.stringify(identityTranslations)};`,
   ).replace(
@@ -187,6 +414,24 @@ async function loadTranslationsFromSource(sourceCode) {
   ).replace(
     /import\s+\{\s*affiliateMarketplaceTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
     `const affiliateMarketplaceTranslations = ${JSON.stringify(affiliateMarketplaceTranslations)};`,
+  ).replace(
+    /import\s+\{\s*dashboardTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const dashboardTranslations = ${JSON.stringify(dashboardTranslations)};`,
+  ).replace(
+    /import\s+\{\s*operationsAnalyticsTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const operationsAnalyticsTranslations = ${JSON.stringify(operationsAnalyticsTranslations)};`,
+  ).replace(
+    /import\s+\{\s*orderPerformanceTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const orderPerformanceTranslations = ${JSON.stringify(orderPerformanceTranslations)};`,
+  ).replace(
+    /import\s+\{\s*platformUserManagementTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const platformUserManagementTranslations = ${JSON.stringify(platformUserManagementTranslations)};`,
+  ).replace(
+    /import\s+\{\s*travelFareTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const travelFareTranslations = ${JSON.stringify(travelFareTranslations)};`,
+  ).replace(
+    /import\s+\{\s*technicianAutomationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const technicianAutomationTranslations = ${JSON.stringify(technicianAutomationTranslations)};`,
   );
   const tempFile = path.join(
     workspaceRoot,
@@ -205,8 +450,14 @@ async function loadTranslationsFromSource(sourceCode) {
   await fs.writeFile(tempFile, transpiled, "utf8");
 
   try {
-    const loaded = await import(`file://${tempFile}`);
-    return loaded.translations ?? {};
+    const loaded = await import(pathToFileURL(tempFile).href);
+    return {
+      ...operationsAnalyticsTranslations,
+      ...platformUserManagementTranslations,
+      ...travelFareTranslations,
+      ...calendarParticipantTranslations,
+      ...(loaded.translations ?? {}),
+    };
   } finally {
     await fs.unlink(tempFile).catch(() => {});
   }

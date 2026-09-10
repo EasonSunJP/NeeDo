@@ -1,184 +1,169 @@
-import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
-import homePageSource from "../../pages/user/HomePage.tsx?raw";
-import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import { describe, expect, it } from "vitest";
 import type { Store, Technician } from "../../types/domain";
+import frameSource from "../info-card-system/UnifiedInfoCardFrame.tsx?raw";
+import entityCardSource from "./UnifiedEntityInfoCard.tsx?raw";
 import cardSource from "./SocialProfileMiniCard.tsx?raw";
-import simpleRatingBadgeSource from "./SimpleRatingBadge.tsx?raw";
 import { SocialProfileMiniCard } from "./SocialProfileMiniCard";
-import { TechnicianPublicInfoCard } from "./TechnicianPublicInfoCard";
-import technicianPublicInfoCardSource from "./TechnicianPublicInfoCard.tsx?raw";
-import technicianShowcaseCardSource from "./TechnicianShowcaseCard.tsx?raw";
 
-describe("SocialProfileMiniCard cover readability", () => {
-  it("changes cover text colors without adding a title capsule container", () => {
-    expect(cardSource).toContain("coverDark ? \"text-white");
-    expect(cardSource).toContain("text-[#25282d]");
-    expect(cardSource).toContain("bg-[#f3cf78]/22 text-[#7b560f]");
-    expect(cardSource).toContain("bg-[#7662e8]/16 text-[#4b3ca5]");
-    expect(cardSource).not.toContain("rounded-[14px] bg-black/48 px-2 py-1");
-  });
+const store: Store = {
+  id: "store-1",
+  systemId: "shop0000000001",
+  merchantId: "merchant-1",
+  name: "Roppongi Recovery",
+  area: "Roppongi",
+  address: "Tokyo 6-8 Roppongi, Minato-ku",
+  rating: 4.9,
+  reviewCount: 970,
+  priceLabel: "¥12,000",
+  tags: ["recovery", "private"],
+  openStatus: "open",
+  nextSlot: "18:00",
+  cover: "",
+  gallery: [],
+  description: "Private recovery salon",
+  rankLabel: "店铺",
+  businessHours: "10:00-24:00",
+  mode: "store",
+  favoriteCount: 120,
+  shareCount: 8,
+};
 
-  it("does not append the generic service type chip in service card titles", () => {
-    expect(cardSource).toContain('if (data.entityType === "service")');
-    expect(cardSource).toContain("return null;");
-    expect(cardSource).toContain('data.entityType === "service" ? "max-w-full"');
-  });
+const technician: Technician = {
+  id: "tech-1",
+  systemId: "s0000000001",
+  name: "Misaki",
+  storeId: "store-1",
+  role: "therapist",
+  status: "available",
+  rating: 4.8,
+  orderCount: 120,
+  income: 0,
+  skills: ["肩颈调理"],
+  serviceAreas: ["银座"],
+  acceptRate: 96,
+  cancelRate: 1,
+  reviewCount: 32,
+  languages: ["日本語"],
+  avatar: "/images/misaki.jpg",
+  favoriteCount: 18,
+  shareCount: 4,
+  bio: "深层放松",
+  specialReviewTags: [
+    { code: "appeal_max", label: "魅力max", count: 3 },
+    { code: "service_max", label: "服务max", count: 4 },
+  ],
+};
 
-  it("shows service-rating scores as a simple top-left number pill without a star icon", () => {
-    expect(cardSource).toContain('import { SimpleRatingBadge } from "./SimpleRatingBadge"');
-    expect(cardSource).toContain('const usesSimpleScorePill = data.scoreLabel === "服务评价"');
-    expect(cardSource).toContain("!usesSimpleScorePill");
-    expect(cardSource).toContain('<SimpleRatingBadge className="absolute left-3.5 top-2 z-20" value={scoreParts.score} />');
-    expect(cardSource).toContain("isService || shouldOverlayScoreOnAvatar || usesSimpleScorePill ? null");
-    expect(simpleRatingBadgeSource).toContain("h-[29px] min-w-12");
-  });
-
-  it("uses the shared circle heart metric action for follow controls", () => {
-    expect(cardSource).toContain("<IconMetricAction");
-    expect(cardSource).toContain('icon="heart"');
-    expect(cardSource).toContain('icon="share"');
-    expect(cardSource).toContain("count={count}");
-    expect(cardSource).toContain("count={resolvedShareCount}");
-    expect(cardSource).toContain('size="compactLg"');
-    expect(cardSource).toContain("showShareAction");
-    expect(cardSource).toContain("absolute right-[1.5px] top-2 z-20 flex items-start -space-x-[5.5px]");
-    expect(cardSource).toContain('hasShareAction && hasPrimaryAction ? "right-[102px]"');
-    expect(cardSource).not.toContain("scale-[1.3]");
-    expect(appScaffoldSource).toContain('compactLg: {\n    count: "top-[32px] w-10 text-[10px]"');
-    expect(homePageSource).toContain("<SocialProfileMiniCard detailTo={data.to} showShareAction store={data.store} />");
-    expect(homePageSource).toContain("<SocialProfileMiniCard detailTo={data.to} showShareAction technician={data.technician} />");
-    expect(cardSource).not.toContain('label === "关注"');
-  });
-
-  it("does not render follower/following stats inside shop info cards", () => {
-    const store: Store = {
-      id: "store-social-stats-hidden",
-      systemId: "S-900",
-      merchantId: "merchant-1",
-      name: "Roppongi Recovery",
-      area: "Roppongi",
-      address: "Tokyo 6-8 Roppongi, Minato-ku",
-      rating: 4.9,
-      reviewCount: 970,
-      priceLabel: "¥12,000",
-      tags: ["recovery", "private", "night"],
-      openStatus: "open",
-      nextSlot: "18:00",
-      cover: "/images/generated/store/store-01.jpg",
-      gallery: ["/images/generated/store/store-01.jpg"],
-      description: "Private recovery salon",
-      rankLabel: "店铺",
-      businessHours: "10:00-24:00",
-      mode: "store"
-    };
-
-    const markup = renderToStaticMarkup(
-      createElement(
-        ClientThemeProvider,
-        null,
-        createElement(
-          MemoryRouter,
-          null,
-          createElement(SocialProfileMiniCard, {
-            detailTo: "/stores/store-social-stats-hidden",
-            showShareAction: true,
-            store
-          })
-        )
-      )
-    );
-
-    expect(cardSource).toContain("function SocialStatsLine");
-    expect(markup).toContain("Roppongi Recovery");
-    expect(markup).not.toContain("粉丝：");
-    expect(markup).not.toContain("关注：");
-  });
-
-  it("opens the public technician info card from the technician avatar while keeping a dynamic-page action", () => {
-    expect(cardSource).toContain('import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard"');
-    expect(cardSource).toContain('const sourceTechnician = "technician" in props ? props.technician : null;');
-    expect(cardSource).toContain("shouldOpenTechnicianInfoCard");
-    expect(cardSource).toContain("avatarOnOpenDetails");
-    expect(cardSource).toContain("<TechnicianPublicInfoCardModal");
-    expect(cardSource).toContain('dynamicTo={technicianDynamicPath}');
-    expect(cardSource).toContain("themeScope={currentScope}");
-  });
-
-  it("keeps the public technician info card budget-free with special tags above normal tags", () => {
-    expect(appScaffoldSource).toContain('case "moments"');
-    expect(technicianPublicInfoCardSource).toContain('name="moments"');
-    expect(technicianPublicInfoCardSource).toContain("onClose");
-    expect(technicianPublicInfoCardSource).toContain("TechnicianPublicInfoCardThemeScope");
-    expect(technicianPublicInfoCardSource).toContain('import { createPortal } from "react-dom";');
-    expect(technicianPublicInfoCardSource).toContain("getTechnicianPublicInfoCardThemeStyle");
-    expect(technicianPublicInfoCardSource).toContain("--profile-card-primary");
-    expect(technicianPublicInfoCardSource).toContain("--profile-card-primary-soft");
-    expect(technicianPublicInfoCardSource).toContain("--profile-card-soft-muted");
-    expect(technicianPublicInfoCardSource).toContain("radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--profile-card-primary)_22%,transparent),transparent_34%)");
-    expect(technicianPublicInfoCardSource).toContain("--profile-card-backdrop");
-    expect(technicianPublicInfoCardSource).toContain("bg-[color:var(--profile-card-backdrop)]");
-    expect(technicianPublicInfoCardSource).toContain("z-[180]");
-    expect(technicianPublicInfoCardSource).toContain('document.querySelector<HTMLElement>(".client-shell") ?? document.body');
-    expect(technicianPublicInfoCardSource).toContain("return createPortal(modal, portalTarget);");
-    expect(technicianPublicInfoCardSource).toContain("data-theme-scope={themeScope}");
-    expect(technicianPublicInfoCardSource).toContain('data-testid="technician-info-special-tags"');
-    expect(technicianPublicInfoCardSource).toContain('data-testid="technician-info-tags"');
-    expect(technicianPublicInfoCardSource.indexOf('data-testid="technician-info-special-tags"')).toBeLessThan(
-      technicianPublicInfoCardSource.indexOf('data-testid="technician-info-tags"')
-    );
-    expect(technicianPublicInfoCardSource).toContain("TechnicianReviewStampList");
-    expect(technicianPublicInfoCardSource).not.toContain('name="sparkles"');
-    expect(technicianPublicInfoCardSource).not.toContain("接单预算");
-    expect(technicianPublicInfoCardSource).not.toContain("bg-black/62");
-    expect(technicianPublicInfoCardSource).not.toContain("#061018");
-    expect(technicianPublicInfoCardSource).not.toContain("--technician-status-duty");
-  });
-
-  it("keeps the self-introduction section visible even when a technician has not filled bio", () => {
-    const technician: Technician = {
-      id: "tech-public-no-bio",
-      systemId: "B-900",
-      name: "No Bio Technician",
-      storeId: "store-1",
-      role: "therapist",
-      status: "available",
-      rating: 4.8,
-      orderCount: 120,
-      income: 880000,
-      skills: ["肩颈调理", "睡眠放松"],
-      serviceAreas: ["银座"],
-      acceptRate: 96,
-      cancelRate: 1,
-      reviewCount: 32,
-      languages: ["日本語"],
-      avatar: "/images/generated/profiles/profile-01.jpg"
-    };
-
+describe("SocialProfileMiniCard unified delegation", () => {
+  it("renders the shared neutral image state without an empty src", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MemoryRouter,
         null,
-        createElement(TechnicianPublicInfoCard, {
-          dynamicTo: "/profiles/technician/tech-public-no-bio",
-          technician
-        })
-      )
+        createElement(SocialProfileMiniCard, { store }),
+      ),
     );
 
-    expect(markup).toContain("自我介绍");
-    expect(markup).toContain("这个技师暂时还没有补充介绍。");
-    expect(markup).not.toContain("接单预算");
-    expect(markup).not.toContain("收入");
+    expect(markup).toContain('data-testid="unified-info-card"');
+    expect(markup).toContain('aria-label="Roppongi Recovery 暂无公开图片"');
+    expect(markup).not.toContain('src=""');
   });
 
-  it("opens the same public info card from technician showcase photos", () => {
-    expect(technicianShowcaseCardSource).toContain("photoTrigger");
-    expect(technicianShowcaseCardSource).toContain("setTechnicianInfoCardOpen(true)");
-    expect(technicianShowcaseCardSource).toContain("<TechnicianPublicInfoCardModal");
-    expect(technicianShowcaseCardSource).toContain("themeScope={currentScope}");
+  it("keeps exactly one visual skeleton and removes legacy visual branches", () => {
+    expect(cardSource).toContain("UnifiedEntityInfoCard");
+    expect(cardSource).toContain("UnifiedServiceInfoCard");
+    expect(cardSource).not.toContain("coverDark");
+    expect(cardSource).not.toContain("SimpleRatingBadge");
+    expect(cardSource).not.toContain("SocialStatsLine");
+    expect(frameSource).toContain('data-testid="unified-info-card"');
+    expect(frameSource).toContain("var(--client-surface)");
+    expect(frameSource).toContain("var(--client-bg)");
+    expect(frameSource).toContain("var(--client-line)");
+    expect(frameSource).toContain("var(--client-text)");
+    expect(frameSource).toContain("var(--client-muted)");
+    expect(frameSource).toContain("var(--client-primary)");
+    expect(frameSource).toContain("var(--client-primary-soft)");
+    expect(frameSource).toContain("var(--client-primary-contrast)");
+    ["#031014", "#f7f9f7", "#9aacb5", "#b8ff4a", "#244047"].forEach((fixed) => {
+      expect(frameSource).not.toContain(fixed);
+    });
+  });
+
+  it("renders a shop with rating metrics and its address, without image price or duration", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(SocialProfileMiniCard, { store }),
+      ),
+    );
+
+    expect(markup).toContain('data-card-kind="shop"');
+    expect(markup).toContain("评分");
+    expect(markup).toContain("Tokyo 6-8 Roppongi, Minato-ku");
+    expect(markup).not.toContain("¥12,000");
+    expect(markup).not.toContain("18:00");
+  });
+
+  it("renders technician metrics and language without legacy social counts or level", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(SocialProfileMiniCard, { technician }),
+      ),
+    );
+    const text = markup.replace(/<[^>]+>/gu, "");
+
+    expect(markup).toContain('data-card-kind="technician"');
+    expect(text).not.toContain("完单次数");
+    expect(text).toContain("日本語");
+    expect(markup).toContain('data-testid="special-review-icon"');
+    expect(markup).toContain("魅力max");
+    expect(markup).toContain("服务max");
+    expect(markup).toContain("var(--client-primary)");
+    expect(markup).not.toContain("粉丝：");
+    expect(markup).not.toContain("Lv.");
+  });
+
+  it("renders user cards without the top metric rail", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(SocialProfileMiniCard, {
+          data: {
+            id: "u0000000001",
+            entityType: "user",
+            displayName: "Aoi",
+            avatar: "/images/aoi.jpg",
+            coverImage: "/images/aoi.jpg",
+            headline: "旅と音楽",
+            regionLabel: "Tokyo",
+            primaryLabel: "用户",
+            levelLabel: "Lv.5",
+            scoreLabel: "信用度",
+            scoreValue: "4.8/5",
+            followerCount: 20,
+            followingCount: 10,
+            languages: ["日本語", "English"],
+          },
+        }),
+      ),
+    );
+
+    expect(markup).toContain('data-card-kind="user"');
+    expect(markup).toContain("旅と音楽");
+    expect(markup).toContain("English");
+    expect(markup).not.toContain('data-testid="unified-card-metrics"');
+    expect(markup).not.toContain("Lv.5");
+  });
+
+  it("uses the shared special-review icon row instead of a second card design", () => {
+    expect(entityCardSource).toContain("SpecialReviewIconRow");
+    expect(entityCardSource).toContain("specialReviewTags");
   });
 });

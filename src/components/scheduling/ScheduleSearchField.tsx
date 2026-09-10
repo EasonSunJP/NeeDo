@@ -15,6 +15,7 @@ type ScheduleSearchFieldProps = {
   onChange: (value: string) => void;
   onSearch?: (value: string) => void;
   placeholder?: string;
+  showSubmitAction?: boolean;
   submitLabel?: string;
   value: string;
 };
@@ -25,6 +26,7 @@ export function ScheduleSearchField({
   onChange,
   onSearch,
   placeholder = "行程搜索",
+  showSubmitAction = true,
   submitLabel = "搜索",
   value
 }: ScheduleSearchFieldProps) {
@@ -73,14 +75,16 @@ export function ScheduleSearchField({
           </button>
         ) : null}
       </div>
-      <button
-        aria-label={submitLabel}
-        className={floatingHeaderSearchActionClassName}
-        data-schedule-search-submit="true"
-        type="submit"
-      >
-        {submitLabel}
-      </button>
+      {showSubmitAction ? (
+        <button
+          aria-label={submitLabel}
+          className={floatingHeaderSearchActionClassName}
+          data-schedule-search-submit="true"
+          type="submit"
+        >
+          {submitLabel}
+        </button>
+      ) : null}
     </form>
   );
 }

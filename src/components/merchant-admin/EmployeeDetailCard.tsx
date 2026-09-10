@@ -1,3 +1,5 @@
+import { WorkStatusMetrics } from "../../features/technician-work-status/WorkStatusMetrics";
+import { WorkTimeline } from "../../features/technician-work-status/WorkTimeline";
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import type {
   EmployeePayrollSchedulePolicyInput,
@@ -96,6 +98,7 @@ interface EmployeeDetailCardProps {
     input: MerchantEmployeeAffiliationUpdate,
   ) => Promise<void>;
   readOnly?: boolean;
+  scheduleSurface?: "desktop" | "mobile";
 }
 
 type ProfileDraft = Required<
@@ -134,12 +137,8 @@ function createAffiliationDraft(employee: MerchantEmployee): AffiliationDraft {
   };
 }
 
-function relationshipLabel(value: EmployeeRelationshipType) {
-  return value === "exclusive" ? "专属技师" : "合作技师";
-}
-
-function employmentFormLabel(value: EmployeeRelationshipType) {
-  return value === "exclusive" ? "正式员工" : "临时工";
+function relationshipLabel(_value: EmployeeRelationshipType) {
+  return "合作技师";
 }
 
 function workStatusLabel(value: EmployeeWorkStatus) {
@@ -225,6 +224,7 @@ export function EmployeeDetailCard({
   onTimelinePageSizeChange,
   onSubmitTimelineComment,
   readOnly = false,
+  scheduleSurface = "desktop",
 }: EmployeeDetailCardProps) {
   const auth = useOptionalAuth();
   const { language } = useOptionalI18n();
@@ -240,6 +240,7 @@ export function EmployeeDetailCard({
     createAffiliationDraft(employee),
   );
   const [copied, setCopied] = useState(false);
+  const [terminationConfirmOpen, setTerminationConfirmOpen] = useState(false);
   const locale = useMemo(
     () =>
       ({
@@ -263,6 +264,7 @@ export function EmployeeDetailCard({
   useEffect(() => {
     setProfileDraft(createProfileDraft(employee));
     setAffiliationDraft(createAffiliationDraft(employee));
+    setTerminationConfirmOpen(false);
   }, [employee]);
 
   useEffect(() => {
@@ -323,6 +325,20 @@ export function EmployeeDetailCard({
     }
   };
 
+  const terminateAffiliation = async () => {
+    try {
+      await onSaveAffiliation({
+        endsAt: new Date().toISOString(),
+        relationshipType: employee.affiliation.relationshipType,
+        startsAt: employee.affiliation.startsAt,
+        workStatus: "ended",
+      });
+      setTerminationConfirmOpen(false);
+    } catch {
+      // Keep confirmation visible so the server error can be reviewed and retried.
+    }
+  };
+
   const profileSaving = saving === "profile";
   const affiliationSaving = saving === "affiliation";
   const blocked = saving !== null || payrollPolicySaving || compensationSaving;
@@ -372,16 +388,28 @@ export function EmployeeDetailCard({
                   {employee.displayName}
                 </h3>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge
-                  className="border border-white/10"
-                  tone={workStatusTone(employee.affiliation.workStatus)}
-                >
-                  {t(workStatusLabel(employee.affiliation.workStatus))}
-                </Badge>
-                <Badge className="border border-white/10" tone="blue">
-                  {t(relationshipLabel(employee.affiliation.relationshipType))}
-                </Badge>
+              <div className="flex flex-col items-end gap-2">
+                {!readOnly && employee.affiliation.workStatus !== "ended" ? (
+                  <button
+                    className="focus-ring rounded-full border border-coral/70 px-4 py-2 text-xs font-black text-coral transition hover:bg-coral/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={blocked}
+                    onClick={() => setTerminationConfirmOpen(true)}
+                    type="button"
+                  >
+                    {t("解约")}
+                  </button>
+                ) : null}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Badge
+                    className="border border-white/10"
+                    tone={workStatusTone(employee.affiliation.workStatus)}
+                  >
+                    {t(workStatusLabel(employee.affiliation.workStatus))}
+                  </Badge>
+                  <Badge className="border border-white/10" tone="blue">
+                    {t(relationshipLabel(employee.affiliation.relationshipType))}
+                  </Badge>
+                </div>
               </div>
             </div>
             <div className="mt-5 flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2.5">
@@ -404,7 +432,6 @@ export function EmployeeDetailCard({
         <dl className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] border-t border-white/10 bg-white/[0.035]">
           {[
             ["所属店铺", employee.affiliation.shop.name],
-            ["雇佣形式", t(employmentFormLabel(employee.affiliation.relationshipType))],
             ["邮箱", employee.email],
             ["手机号码", employee.phone || t("未填写")],
             ["账号状态", t(employee.account.isActive ? "启用" : "停用")],
@@ -427,15 +454,15 @@ export function EmployeeDetailCard({
         </dl>
       </section>
 
-      <section className="overflow-hidden rounded-[24px] border border-line bg-paper shadow-sm">
-        <FormalTabs
-          active={activeTab}
-          idPrefix={panelId}
-          items={employeeDetailTabs}
-          localization={tabLocalization}
-          onChange={setActiveTab}
-        />
-      </section>
+      <FormalTabs
+        active={activeTab}
+        idPrefix={panelId}
+        items={employeeDetailTabs}
+        localization={tabLocalization}
+        onChange={setActiveTab}
+        pageSize={4}
+        variant="flat"
+      />
 
       {error ? (
         <div
@@ -663,7 +690,6 @@ export function EmployeeDetailCard({
                   }
                   value={affiliationDraft.relationshipType}
                 >
-                  <option value="exclusive">{t("专属技师")}</option>
                   <option value="partner">{t("合作技师")}</option>
                 </select>
               </label>
@@ -766,6 +792,7 @@ export function EmployeeDetailCard({
         id={`${panelId}-panel-5`}
         role="tabpanel"
       >
+        {employee.technicianProfileId ? <div className="mb-4 space-y-4"><WorkStatusMetrics target={{scope:"merchant-admin",technicianProfileId:employee.technicianProfileId}}/><WorkTimeline target={{scope:"merchant-admin",technicianProfileId:employee.technicianProfileId}} comments={!readOnly}/></div> : null}
         {timelineLoading ? (
           <div className="rounded-[24px] border border-line bg-white px-5 py-6 text-sm font-bold text-ink/50 shadow-sm">
             {t("正在读取员工动态...")}
@@ -814,7 +841,7 @@ export function EmployeeDetailCard({
         id={`${panelId}-panel-2`}
         role="tabpanel"
       >
-        <EmployeeSchedulePanel employee={employee} readOnly={readOnly} />
+        <EmployeeSchedulePanel employee={employee} readOnly={readOnly} scheduleSurface={scheduleSurface} />
       </div>
 
       <div
@@ -864,6 +891,42 @@ export function EmployeeDetailCard({
           title="工资结算周期"
         />
       </div>
+
+      {terminationConfirmOpen ? (
+        <div
+          aria-labelledby={`${panelId}-termination-title`}
+          aria-modal="true"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm"
+          role="dialog"
+        >
+          <div className="w-full max-w-sm rounded-[24px] border border-coral/35 bg-white p-5 text-ink shadow-2xl">
+            <h2 className="text-xl font-black" id={`${panelId}-termination-title`}>
+              {t("确认解约")}
+            </h2>
+            <p className="mt-3 text-sm font-bold leading-6 text-ink/65">
+              {t("解约后，该员工将从当前店铺离职，并停止继续排班。")}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                disabled={affiliationSaving}
+                onClick={() => setTerminationConfirmOpen(false)}
+                size="sm"
+                variant="secondary"
+              >
+                {t("取消")}
+              </Button>
+              <Button
+                disabled={affiliationSaving}
+                onClick={() => void terminateAffiliation()}
+                size="sm"
+                variant="danger"
+              >
+                {t("确认解约")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }

@@ -1,4 +1,5 @@
 import request from "supertest";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { ERROR_CODES } from "../src/constants/error-codes";
@@ -113,7 +114,8 @@ function createFixture(
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
-    payrollSchedulePolicyRepository: repository
+    payrollSchedulePolicyRepository: repository,
+    merchantShopContextRepository: createDirectShopContextRepository()
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,

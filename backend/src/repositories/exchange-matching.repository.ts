@@ -1,0 +1,680 @@
+import {
+  BookingOrderStatus,
+  ExchangeClaimStatus as DatabaseExchangeClaimStatus,
+  ExchangeMatchEventType,
+  ExchangeMatchingStatus as DatabaseExchangeMatchingStatus,
+  ExchangePostStatus as DatabaseExchangePostStatus,
+  NotificationType,
+  Prisma,
+  type PrismaClient
+} from "@prisma/client";
+import { prisma } from "../prisma/client";
+import type {
+  ExchangeMatchingBookingStatus,
+  ExchangeMatchParticipantPayload,
+  ExchangeMatchingPayload
+} from "../types/exchange-matching.types";
+import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
+
+type ExchangeMatchingPrismaClient = PrismaClient | Prisma.TransactionClient;
+
+const matchingInclude = {
+  exchangePost: {
+    select: {
+      id: true,
+      authorUserId: true,
+      ownerIdentityId: true,
+      type: true,
+      status: true,
+      expiresAt: true,
+      demand: { select: { matchMode: true } },
+      claims: {
+        where: { status: DatabaseExchangeClaimStatus.ACTIVE, deletedAt: null },
+        select: { id: true, quoteAmountJpy: true },
+        orderBy: { id: "asc" as const }
+      }
+    }
+  },
+  participants: {
+    where: { deletedAt: null },
+    orderBy: { id: "asc" as const },
+    include: {
+      exchangeClaim: {
+        select: {
+          claimantIdentity: {
+            select: {
+              displayName: true,
+              publicIdentifier: { select: { publicId: true } },
+              user: { select: { username: true, avatarUrl: true } }
+            }
+          }
+        }
+      },
+      shop: { select: { id: true, name: true } },
+      technicianProfile: {
+        select: {
+          id: true,
+          displayName: true,
+          user: {
+            select: {
+              identities: {
+                where: { type: "technician", isActive: true, deletedAt: null },
+                select: {
+                  displayName: true,
+                  publicIdentifier: { select: { publicId: true } }
+                },
+                take: 1
+              }
+            }
+          }
+        }
+      },
+      bookingOrder: { select: { id: true, orderNo: true, status: true } }
+    }
+  }
+} satisfies Prisma.ExchangeRequestMatchingInclude;
+
+type MatchingRow = Prisma.ExchangeRequestMatchingGetPayload<{ include: typeof matchingInclude }>;
+
+export interface ExchangeMatchingRecord {
+  id: number;
+  exchangePostId: number;
+  ownerUserId: number;
+  ownerIdentityId: number;
+  postType: "demand" | "intelligence";
+  postStatus: "published" | "withdrawn" | "expired" | "matched" | "closed";
+  matchMode: "quick" | "selective" | null;
+  expiresAt: Date;
+  status: "open" | "matched" | "closed";
+  effectiveTargetProviderCount: number;
+  effectiveBudgetMaxJpy: number;
+  selectedQuoteTotalJpy: number;
+  version: number;
+  matchedAt: Date | null;
+  payload: ExchangeMatchingPayload;
+}
+
+export interface ExchangeMatchingSelectionClaim {
+  id: number;
+  exchangePostId: number;
+  claimantUserId: number;
+  claimantIdentityId: number;
+  shopId: number;
+  technicianProfileId: number;
+  serviceId: number | null;
+  technicianServiceId: number | null;
+  scheduleSlotId: number;
+  quoteAmountJpy: number;
+  serviceNameSnapshot: string;
+  serviceDurationSnapshot: number;
+  currency: "JPY";
+  status: "active";
+  estimatedStartsAt: Date;
+  estimatedEndsAt: Date;
+}
+
+export interface CompleteExchangeMatchInput {
+  matchingId: number;
+  exchangePostId: number;
+  selectedClaims: ExchangeMatchingSelectionClaim[];
+  selectedClaimIds: number[];
+  unselectedClaims: ExchangeMatchingSelectionClaim[];
+  unselectedClaimIds: number[];
+  selectedQuoteTotalJpy: number;
+  effectiveTargetProviderCountAfter: number;
+  effectiveBudgetMaxJpyAfter: number;
+  adjustments: Array<
+    | { type: "budget_increased"; before: number; after: number }
+    | { type: "target_reduced"; before: number; after: number }
+  >;
+  versionBefore: number;
+  versionAfter: number;
+  actorUserId: number | null;
+  actorIdentityId: number | null;
+  viewerIdentityId: number;
+  matchEventType: "selective_matched" | "quick_matched";
+  idempotencyKey: string;
+  payloadFingerprint: string;
+  at: Date;
+  audit: AuditLogCreateInput;
+}
+
+export interface NotifyQuickBudgetDecisionRequiredInput {
+  matchingId: number;
+  exchangePostId: number;
+  ownerUserId: number;
+  ownerIdentityId: number;
+  activeClaimCount: number;
+  effectiveBudgetMaxJpy: number;
+  requiredBudgetMaxJpy: number;
+  requiredBudgetIncreaseJpy: number;
+  at: Date;
+}
+
+export class ExchangeMatchingRepository {
+  public constructor(private readonly client: ExchangeMatchingPrismaClient = prisma) {}
+
+  public runInTransaction<T>(
+    handler: (repository: ExchangeMatchingRepository) => Promise<T>,
+    transactionClient?: ExchangeMatchingPrismaClient
+  ): Promise<T> {
+    if (transactionClient) return handler(new ExchangeMatchingRepository(transactionClient));
+    if (!("$transaction" in this.client)) return handler(this);
+    return runWithTransactionConflictRetry(() =>
+      this.client.$transaction(
+        (transaction) => handler(new ExchangeMatchingRepository(transaction)),
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+      )
+    );
+  }
+
+  public async findForViewer(
+    exchangePostId: number,
+    viewerIdentityId: number
+  ): Promise<ExchangeMatchingRecord | null> {
+    const row = await this.client.exchangeRequestMatching.findFirst({
+      where: {
+        exchangePostId,
+        deletedAt: null,
+        OR: [
+          { exchangePost: { ownerIdentityId: viewerIdentityId, deletedAt: null } },
+          {
+            participants: {
+              some: { participantIdentityId: viewerIdentityId, deletedAt: null }
+            }
+          }
+        ]
+      },
+      include: matchingInclude
+    });
+    if (!row) return null;
+    return this.mapMatching(row, viewerIdentityId);
+  }
+
+  public async lockMatching(exchangePostId: number): Promise<ExchangeMatchingRecord | null> {
+    const postLocks = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      SELECT id FROM \`exchange_posts\`
+      WHERE id = ${exchangePostId} AND deleted_at IS NULL
+      FOR UPDATE
+    `);
+    if (!postLocks[0]) return null;
+    const matchingLocks = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      SELECT id FROM \`exchange_request_matchings\`
+      WHERE exchange_post_id = ${exchangePostId} AND deleted_at IS NULL
+      FOR UPDATE
+    `);
+    if (!matchingLocks[0]) return null;
+    const row = await this.client.exchangeRequestMatching.findUnique({
+      where: { exchangePostId },
+      include: matchingInclude
+    });
+    return row ? this.mapMatching(row, row.exchangePost.ownerIdentityId) : null;
+  }
+
+  public async findIdempotentSelection(idempotencyKey: string): Promise<{
+    payload: ExchangeMatchingPayload;
+    payloadFingerprint: string;
+  } | null> {
+    const event = await this.client.exchangeMatchEvent.findFirst({
+      where: {
+        idempotencyKey,
+        type: ExchangeMatchEventType.SELECTIVE_MATCHED,
+        deletedAt: null
+      },
+      select: {
+        payloadFingerprint: true,
+        actorIdentityId: true,
+        matching: { select: { exchangePostId: true } }
+      }
+    });
+    if (!event?.payloadFingerprint || !event.actorIdentityId) return null;
+    const record = await this.findForViewer(event.matching.exchangePostId, event.actorIdentityId);
+    if (!record) return null;
+    return { payload: record.payload, payloadFingerprint: event.payloadFingerprint };
+  }
+
+  public async findIdempotentQuickConfirmation(idempotencyKey: string): Promise<{
+    payload: ExchangeMatchingPayload;
+    payloadFingerprint: string;
+  } | null> {
+    const event = await this.client.exchangeMatchEvent.findFirst({
+      where: {
+        idempotencyKey,
+        type: ExchangeMatchEventType.QUICK_MATCHED,
+        actorIdentityId: { not: null },
+        deletedAt: null
+      },
+      select: {
+        payloadFingerprint: true,
+        actorIdentityId: true,
+        matching: { select: { exchangePostId: true } }
+      }
+    });
+    if (!event?.payloadFingerprint || !event.actorIdentityId) return null;
+    const record = await this.findForViewer(event.matching.exchangePostId, event.actorIdentityId);
+    if (!record) return null;
+    return { payload: record.payload, payloadFingerprint: event.payloadFingerprint };
+  }
+
+  public async lockActiveClaims(exchangePostId: number): Promise<ExchangeMatchingSelectionClaim[]> {
+    const locked = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      SELECT id FROM \`exchange_claims\`
+      WHERE exchange_post_id = ${exchangePostId}
+        AND status = 'active'
+        AND deleted_at IS NULL
+      ORDER BY id ASC
+      FOR UPDATE
+    `);
+    const ids = locked.map((row) => Number(row.id));
+    if (ids.length === 0) return [];
+    const rows = await this.client.exchangeClaim.findMany({
+      where: {
+        id: { in: ids },
+        exchangePostId,
+        status: DatabaseExchangeClaimStatus.ACTIVE,
+        deletedAt: null
+      },
+      include: {
+        scheduleSlot: { select: { startsAt: true, endsAt: true } },
+        service: { select: { name: true, durationMinutes: true } },
+        technicianService: { select: { name: true, durationMinutes: true } }
+      },
+      orderBy: { id: "asc" }
+    });
+    return rows.map((row) => {
+      const service = row.service ?? row.technicianService;
+      if (!service) throw new Error("Exchange claim is missing its service relation");
+      return {
+        id: row.id,
+        exchangePostId: row.exchangePostId,
+        claimantUserId: row.claimantUserId,
+        claimantIdentityId: row.claimantIdentityId,
+        shopId: row.shopId,
+        technicianProfileId: row.technicianProfileId,
+        serviceId: row.serviceId,
+        technicianServiceId: row.technicianServiceId,
+        scheduleSlotId: row.scheduleSlotId,
+        quoteAmountJpy: row.quoteAmountJpy,
+        serviceNameSnapshot: service.name,
+        serviceDurationSnapshot: service.durationMinutes,
+        currency: "JPY",
+        status: "active",
+        estimatedStartsAt: row.scheduleSlot.startsAt,
+        estimatedEndsAt: row.scheduleSlot.endsAt
+      };
+    });
+  }
+
+  public async lockTechnicians(technicianProfileIds: number[]): Promise<boolean> {
+    if (technicianProfileIds.length === 0) return false;
+    const rows = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      SELECT id FROM \`technician_profiles\`
+      WHERE id IN (${Prisma.join(technicianProfileIds)})
+        AND deleted_at IS NULL
+      ORDER BY id ASC
+      FOR UPDATE
+    `);
+    return rows.length === technicianProfileIds.length;
+  }
+
+  public async hasParticipantConflict(
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date
+  ): Promise<boolean> {
+    const row = await this.client.exchangeMatchParticipant.findFirst({
+      where: {
+        technicianProfileId,
+        estimatedStartsAt: { lt: endsAt },
+        estimatedEndsAt: { gt: startsAt },
+        activeReservationKey: { not: null },
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    return row !== null;
+  }
+
+  public async hasBookingConflict(
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date
+  ): Promise<boolean> {
+    const row = await this.client.bookingOrder.findFirst({
+      where: {
+        technicianProfileId,
+        status: { in: [BookingOrderStatus.CONFIRMED, BookingOrderStatus.IN_SERVICE] },
+        startsAt: { lt: endsAt },
+        endsAt: { gt: startsAt },
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    return row !== null;
+  }
+
+  public async completeMatch(
+    input: CompleteExchangeMatchInput
+  ): Promise<ExchangeMatchingPayload | null> {
+    await this.client.exchangeMatchParticipant.createMany({
+      data: input.selectedClaims.map((claim) => ({
+        matchingId: input.matchingId,
+        exchangePostId: input.exchangePostId,
+        exchangeClaimId: claim.id,
+        participantUserId: claim.claimantUserId,
+        participantIdentityId: claim.claimantIdentityId,
+        shopId: claim.shopId,
+        technicianProfileId: claim.technicianProfileId,
+        serviceId: claim.serviceId,
+        technicianServiceId: claim.technicianServiceId,
+        scheduleSlotId: claim.scheduleSlotId,
+        quoteAmountJpy: claim.quoteAmountJpy,
+        serviceNameSnapshot: claim.serviceNameSnapshot,
+        serviceDurationSnapshot: claim.serviceDurationSnapshot,
+        currency: "JPY",
+        estimatedStartsAt: claim.estimatedStartsAt,
+        estimatedEndsAt: claim.estimatedEndsAt,
+        activeReservationKey: `${claim.technicianProfileId}:${claim.estimatedStartsAt.toISOString()}:${claim.estimatedEndsAt.toISOString()}`,
+        matchedAt: input.at
+      }))
+    });
+    await this.client.exchangeClaim.updateMany({
+      where: {
+        id: { in: input.selectedClaimIds },
+        status: DatabaseExchangeClaimStatus.ACTIVE,
+        deletedAt: null
+      },
+      data: { status: DatabaseExchangeClaimStatus.MATCHED, activeKey: null, terminalAt: input.at }
+    });
+    if (input.unselectedClaimIds.length > 0) {
+      await this.client.exchangeClaim.updateMany({
+        where: {
+          id: { in: input.unselectedClaimIds },
+          status: DatabaseExchangeClaimStatus.ACTIVE,
+          deletedAt: null
+        },
+        data: {
+          status: DatabaseExchangeClaimStatus.NOT_SELECTED,
+          activeKey: null,
+          terminalAt: input.at
+        }
+      });
+    }
+    const updated = await this.client.exchangeRequestMatching.updateMany({
+      where: {
+        id: input.matchingId,
+        exchangePostId: input.exchangePostId,
+        status: DatabaseExchangeMatchingStatus.OPEN,
+        version: input.versionBefore,
+        deletedAt: null
+      },
+      data: {
+        status: DatabaseExchangeMatchingStatus.MATCHED,
+        effectiveTargetProviderCount: input.effectiveTargetProviderCountAfter,
+        effectiveBudgetMaxJpy: input.effectiveBudgetMaxJpyAfter,
+        selectedQuoteTotalJpy: input.selectedQuoteTotalJpy,
+        version: input.versionAfter,
+        matchedAt: input.at
+      }
+    });
+    if (updated.count !== 1) return null;
+    await this.client.exchangePost.update({
+      where: { id: input.exchangePostId },
+      data: { status: DatabaseExchangePostStatus.MATCHED }
+    });
+    let eventVersion = input.versionBefore;
+    for (const adjustment of input.adjustments) {
+      const versionAfter = eventVersion + 1;
+      await this.client.exchangeMatchEvent.create({
+        data: {
+          matchingId: input.matchingId,
+          sequence: versionAfter,
+          type:
+            adjustment.type === "budget_increased"
+              ? ExchangeMatchEventType.BUDGET_INCREASED
+              : ExchangeMatchEventType.TARGET_REDUCED,
+          actorUserId: input.actorUserId,
+          actorIdentityId: input.actorIdentityId,
+          versionBefore: eventVersion,
+          versionAfter,
+          idempotencyKey: null,
+          payloadFingerprint: null,
+          payload: {
+            exchangePostId: input.exchangePostId,
+            before: adjustment.before,
+            after: adjustment.after,
+            status: "open"
+          }
+        }
+      });
+      eventVersion = versionAfter;
+    }
+    await this.client.exchangeMatchEvent.create({
+      data: {
+        matchingId: input.matchingId,
+        sequence: input.versionAfter,
+        type:
+          input.matchEventType === "quick_matched"
+            ? ExchangeMatchEventType.QUICK_MATCHED
+            : ExchangeMatchEventType.SELECTIVE_MATCHED,
+        actorUserId: input.actorUserId,
+        actorIdentityId: input.actorIdentityId,
+        versionBefore: eventVersion,
+        versionAfter: input.versionAfter,
+        idempotencyKey: input.idempotencyKey,
+        payloadFingerprint: input.payloadFingerprint,
+        payload: {
+          exchangePostId: input.exchangePostId,
+          selectedClaimIds: input.selectedClaimIds,
+          selectedCount: input.selectedClaimIds.length,
+          selectedQuoteTotalJpy: input.selectedQuoteTotalJpy,
+          status: "matched"
+        }
+      }
+    });
+    await this.client.notification.createMany({
+      data: [
+        ...input.selectedClaims.map((claim) => ({
+          recipientUserId: claim.claimantUserId,
+          recipientIdentityId: claim.claimantIdentityId,
+          actorUserId: input.actorUserId,
+          actorIdentityId: input.actorIdentityId,
+          type: NotificationType.SYSTEM,
+          title: "exchange.matching.selected.title",
+          body: "exchange.matching.selected.body",
+          payload: {
+            exchangePostId: input.exchangePostId,
+            exchangeClaimId: claim.id,
+            status: "matched"
+          },
+          createdAt: input.at
+        })),
+        ...input.unselectedClaims.map((claim) => ({
+          recipientUserId: claim.claimantUserId,
+          recipientIdentityId: claim.claimantIdentityId,
+          actorUserId: input.actorUserId,
+          actorIdentityId: input.actorIdentityId,
+          type: NotificationType.SYSTEM,
+          title: "exchange.matching.not_selected.title",
+          body: "exchange.matching.not_selected.body",
+          payload: {
+            exchangePostId: input.exchangePostId,
+            exchangeClaimId: claim.id,
+            status: "not_selected"
+          },
+          createdAt: input.at
+        }))
+      ]
+    });
+    await this.client.auditLog.create({ data: toAuditLogCreateData(input.audit) });
+    const result = await this.findForViewer(input.exchangePostId, input.viewerIdentityId);
+    return result?.payload ?? null;
+  }
+
+  public async notifyQuickBudgetDecisionRequired(
+    input: NotifyQuickBudgetDecisionRequiredInput
+  ): Promise<void> {
+    await this.client.notification.create({
+      data: {
+        recipientUserId: input.ownerUserId,
+        recipientIdentityId: input.ownerIdentityId,
+        actorUserId: null,
+        actorIdentityId: null,
+        type: NotificationType.SYSTEM,
+        title: "exchange.matching.quick_budget_decision_required.title",
+        body: "exchange.matching.quick_budget_decision_required.body",
+        payload: {
+          exchangePostId: input.exchangePostId,
+          activeClaimCount: input.activeClaimCount,
+          effectiveBudgetMaxJpy: input.effectiveBudgetMaxJpy,
+          requiredBudgetMaxJpy: input.requiredBudgetMaxJpy,
+          requiredBudgetIncreaseJpy: input.requiredBudgetIncreaseJpy
+        },
+        createdAt: input.at
+      }
+    });
+    await this.client.auditLog.create({
+      data: toAuditLogCreateData({
+        actorId: null,
+        action: "exchange.matching.quick.budget_decision_required",
+        targetType: "exchange_request_matching",
+        targetId: input.matchingId,
+        metadata: {
+          exchangePostId: input.exchangePostId,
+          activeClaimCount: input.activeClaimCount,
+          effectiveBudgetMaxJpy: input.effectiveBudgetMaxJpy,
+          requiredBudgetMaxJpy: input.requiredBudgetMaxJpy,
+          requiredBudgetIncreaseJpy: input.requiredBudgetIncreaseJpy
+        }
+      })
+    });
+  }
+
+  private mapMatching(row: MatchingRow, viewerIdentityId: number): ExchangeMatchingRecord | null {
+    const isOwner = row.exchangePost.ownerIdentityId === viewerIdentityId;
+    const visibleParticipants = isOwner
+      ? row.participants
+      : row.participants.filter(
+          (participant) => participant.participantIdentityId === viewerIdentityId
+        );
+    if (!isOwner && visibleParticipants.length === 0) return null;
+    const participants = visibleParticipants.map((participant) => this.mapParticipant(participant));
+    const status = row.status.toLowerCase() as ExchangeMatchingRecord["status"];
+    const matchMode =
+      (row.exchangePost.demand?.matchMode.toLowerCase() as ExchangeMatchingRecord["matchMode"]) ??
+      null;
+    const activeClaims = row.exchangePost.claims ?? [];
+    const activeClaimCount = activeClaims.length;
+    const activeQuoteTotalJpy = activeClaims.reduce(
+      (total, claim) => total + claim.quoteAmountJpy,
+      0
+    );
+    const quickBudgetDecision =
+      isOwner &&
+      status === "open" &&
+      matchMode === "quick" &&
+      activeClaimCount === row.effectiveTargetProviderCount &&
+      activeQuoteTotalJpy > row.effectiveBudgetMaxJpy
+        ? {
+            action: "increase_to_selected_total" as const,
+            activeClaimCount,
+            selectedQuoteTotalJpy: activeQuoteTotalJpy,
+            effectiveBudgetMaxJpy: row.effectiveBudgetMaxJpy,
+            requiredBudgetMaxJpy: activeQuoteTotalJpy,
+            requiredBudgetIncreaseJpy: activeQuoteTotalJpy - row.effectiveBudgetMaxJpy
+          }
+        : null;
+    const payload: ExchangeMatchingPayload = {
+      exchangePostId: row.exchangePostId,
+      status,
+      version: row.version,
+      effectiveTargetProviderCount: row.effectiveTargetProviderCount,
+      effectiveBudgetMaxJpy: row.effectiveBudgetMaxJpy,
+      selectedQuoteTotalJpy: row.selectedQuoteTotalJpy,
+      matchedAt: row.matchedAt?.toISOString() ?? null,
+      participants,
+      quickBudgetDecision,
+      viewer: {
+        canSelect: isOwner && status === "open" && matchMode === "selective",
+        canConfirmQuickBudget: quickBudgetDecision !== null,
+        canCreateBookings:
+          isOwner &&
+          status === "matched" &&
+          visibleParticipants.length > 0 &&
+          visibleParticipants.every((participant) => participant.bookingOrderId === null)
+      }
+    };
+    return {
+      id: row.id,
+      exchangePostId: row.exchangePostId,
+      ownerUserId: row.exchangePost.authorUserId,
+      ownerIdentityId: row.exchangePost.ownerIdentityId,
+      postType: row.exchangePost.type.toLowerCase() as ExchangeMatchingRecord["postType"],
+      postStatus: row.exchangePost.status.toLowerCase() as ExchangeMatchingRecord["postStatus"],
+      matchMode,
+      expiresAt: row.exchangePost.expiresAt,
+      status,
+      effectiveTargetProviderCount: row.effectiveTargetProviderCount,
+      effectiveBudgetMaxJpy: row.effectiveBudgetMaxJpy,
+      selectedQuoteTotalJpy: row.selectedQuoteTotalJpy,
+      version: row.version,
+      matchedAt: row.matchedAt,
+      payload
+    };
+  }
+
+  private mapParticipant(
+    participant: MatchingRow["participants"][number]
+  ): ExchangeMatchParticipantPayload {
+    const claimant = participant.exchangeClaim.claimantIdentity;
+    const technicianIdentity = participant.technicianProfile.user.identities[0];
+    return {
+      exchangeClaimId: participant.exchangeClaimId,
+      provider: {
+        publicId: claimant.publicIdentifier?.publicId ?? "",
+        displayName: claimant.displayName ?? claimant.user.username,
+        avatarUrl: claimant.user.avatarUrl
+      },
+      shop: participant.shop,
+      technician: {
+        profileId: participant.technicianProfile.id,
+        publicId: technicianIdentity?.publicIdentifier?.publicId ?? "",
+        displayName:
+          participant.technicianProfile.displayName ?? technicianIdentity?.displayName ?? ""
+      },
+      service: {
+        ref: participant.serviceId
+          ? `shop:${participant.serviceId}`
+          : `technician:${participant.technicianServiceId!}`,
+        name: participant.serviceNameSnapshot,
+        durationMinutes: participant.serviceDurationSnapshot
+      },
+      scheduleSlotId: participant.scheduleSlotId,
+      quoteAmountJpy: participant.quoteAmountJpy,
+      currency: "JPY",
+      estimatedStartsAt: participant.estimatedStartsAt.toISOString(),
+      estimatedEndsAt: participant.estimatedEndsAt.toISOString(),
+      matchedAt: participant.matchedAt.toISOString(),
+      booking: participant.bookingOrder
+        ? {
+            orderId: participant.bookingOrder.id,
+            orderNo: participant.bookingOrder.orderNo,
+            status: this.bookingStatus(participant.bookingOrder.status)
+          }
+        : null
+    };
+  }
+
+  private bookingStatus(value: BookingOrderStatus): ExchangeMatchingBookingStatus {
+    if (value === BookingOrderStatus.CONFIRMED) return "confirmed";
+    if (value === BookingOrderStatus.IN_SERVICE) return "inService";
+    if (value === BookingOrderStatus.AWAITING_CHECKOUT) return "awaitingCheckout";
+    if (value === BookingOrderStatus.AWAITING_PAYMENT_CONFIRMATION) {
+      return "awaitingPaymentConfirmation";
+    }
+    if (value === BookingOrderStatus.COMPLETED) return "completed";
+    if (value === BookingOrderStatus.CANCELLED) return "cancelled";
+    return "pending";
+  }
+}

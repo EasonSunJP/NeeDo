@@ -50,6 +50,13 @@ export interface ActiveSuspension {
   startsAt: string;
 }
 
+export interface ShopCreator {
+  userId: number;
+  needoId: string;
+  displayName: string;
+  email: string;
+}
+
 export interface ShopCard {
   id: number;
   type: "single_shop" | "shop";
@@ -59,6 +66,8 @@ export interface ShopCard {
   phone: string | null;
   status: string;
   ownerEmail: string | null;
+  createdBy: ShopCreator | null;
+  platformCommissionRatePercent: number;
   coverUrl: string | null;
   ratingAverage: number;
   reviewCount: number;

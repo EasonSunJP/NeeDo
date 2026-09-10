@@ -70,6 +70,7 @@ export const legacyLoginBodySchema = z
   }));
 
 export const registerVerifyBodySchema = challengeVerificationBodySchema;
+export const passwordLoginVerifyBodySchema = challengeVerificationBodySchema;
 
 export const emptyAuthActionBodySchema = z.object({}).strict();
 
@@ -86,6 +87,15 @@ export const passwordSetupBodySchema = z
   })
   .strict();
 
+export const compliancePhoneBindingBodySchema = z
+  .object({
+    phone: z
+      .string()
+      .trim()
+      .regex(/^\+[1-9]\d{7,14}$/)
+  })
+  .strict();
+
 export const refreshBodySchema = z
   .object({
     refreshToken: z.string().min(1).max(8192)
@@ -99,6 +109,13 @@ export const switchIdentityBodySchema = z
   })
   .strict();
 
+export const switchMerchantShopBodySchema = z
+  .object({
+    refreshToken: z.string().min(1).max(8192),
+    shopPublicId: z.string().regex(/^shop\d{10}$/)
+  })
+  .strict();
+
 export const logoutBodySchema = z
   .object({
     refreshToken: z.string().min(1).max(8192)
@@ -109,9 +126,12 @@ export type LoginBody = z.infer<typeof loginBodySchema>;
 export type LegacyLoginBody = z.infer<typeof legacyLoginBodySchema>;
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type RegisterVerifyBody = z.infer<typeof registerVerifyBodySchema>;
+export type PasswordLoginVerifyBody = z.infer<typeof passwordLoginVerifyBodySchema>;
 export type ChallengeVerificationBody = z.infer<typeof challengeVerificationBodySchema>;
 export type GoogleCredentialBody = z.infer<typeof googleCredentialBodySchema>;
 export type PasswordSetupBody = z.infer<typeof passwordSetupBodySchema>;
+export type CompliancePhoneBindingBody = z.infer<typeof compliancePhoneBindingBodySchema>;
 export type RefreshBody = z.infer<typeof refreshBodySchema>;
 export type SwitchIdentityBody = z.infer<typeof switchIdentityBodySchema>;
+export type SwitchMerchantShopBody = z.infer<typeof switchMerchantShopBodySchema>;
 export type LogoutBody = z.infer<typeof logoutBodySchema>;

@@ -59,7 +59,7 @@ function ScheduleModeTabs({ mode, onChange }: { mode: ScheduleMode; onChange: (m
 
 function ScheduleAutomationCapabilityGate({ mode }: { mode: "auto" | "smart" }) {
   const requirements = mode === "auto"
-    ? ["ScheduleRule、ScheduleCycle、StaffFeedback 与审批版本表", "生成、冲突检测、员工反馈、商户确认与发布状态机", "幂等任务、并发锁、失败恢复、通知和完整审计"]
+    ? ["ScheduleRule、ScheduleCycle、StaffFeedback 与审批版本表", "生成、冲突检测、技师自主发布与商户直接排班状态机", "幂等任务、并发锁、失败恢复、通知和完整审计"]
     : ["可版本化的优化目标、约束、特征与模型回执", "ExternalSignalAdapter、超时、降级和 provider_unavailable 合同", "离线评估、人工确认、可解释结果和回滚"];
 
   return (

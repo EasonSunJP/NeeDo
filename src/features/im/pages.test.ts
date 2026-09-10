@@ -5,7 +5,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
-import { ImChatComposer } from "./components";
+import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
+import { ImChatComposer, ImEntryCell } from "./components";
 import {
   ImContactActivityEntry,
   ImConversationUnavailableState,
@@ -19,6 +20,111 @@ import componentsSource from "./components.tsx?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
+  it("renders the add-tag editor as one glass sheet without a nested outer card", () => {
+    const pageStart = pagesSource.indexOf("export function ImContactTagsPage");
+    const pageEnd = pagesSource.indexOf("export function ImServiceAccountsPage", pageStart);
+    const pageSource = pagesSource.slice(pageStart, pageEnd);
+    const sheetStart = pageSource.indexOf("<ImBottomSheet");
+    const sheetEnd = pageSource.indexOf("</ImBottomSheet>", sheetStart);
+    const sheetSource = pageSource.slice(sheetStart, sheetEnd);
+
+    expect(pageStart).toBeGreaterThan(-1);
+    expect(sheetStart).toBeGreaterThan(-1);
+    expect(sheetSource).toContain('presentation="composer"');
+    expect(sheetSource).toContain('panelClassName="im-tag-composer-sheet"');
+    expect(sheetSource).not.toContain('data-im-tag-composer-card="true"');
+    expect(sheetSource).not.toContain('className="client-liquid-glass-surface im-composer-glass');
+    expect(sheetSource.indexOf("<ImChatComposer")).toBeLessThan(sheetSource.indexOf(">取消</Button>"));
+    expect(sheetSource.indexOf(">取消</Button>")).toBeLessThan(sheetSource.indexOf(">添加</Button>"));
+    expect(stylesSource).toMatch(/\.im-tag-composer-sheet \{[^}]*height: auto;[^}]*max-height:/s);
+  });
+
+  it("renders the header quick menu outside the glass header clipping context", () => {
+    const componentStart = pagesSource.indexOf("function ImHeaderQuickMenu");
+    const componentEnd = pagesSource.indexOf("export function ImMessagesEntryPage", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+
+    expect(componentStart).toBeGreaterThan(-1);
+    expect(componentSource).toContain("createPortal(");
+    expect(componentSource).toContain('anchorRef.current?.closest(".client-shell")');
+    expect(componentSource).toContain('data-im-header-quick-menu="true"');
+    expect(componentSource).toContain('className="fixed z-[120]');
+  });
+
+  it("binds the chat-list delete swipe action to full conversation deletion", () => {
+    const pageStart = pagesSource.indexOf("export function ImConversationListPage");
+    const pageEnd = pagesSource.indexOf("export function ImContactsListPage", pageStart);
+    const pageSource = pagesSource.slice(pageStart, pageEnd);
+
+    expect(pageSource).toContain('key: "delete"');
+    expect(pageSource).toContain('label: "删除"');
+    expect(pageSource).toContain("store.deleteConversation(conversation.id)");
+  });
+
+  it("renders the shared Test badge after the service-account title", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(ImEntryCell, {
+          icon: createElement("span", null, "icon"),
+          title: "服务号",
+          to: "/contacts/service-accounts",
+          trailing: createElement(TestFeatureBadge, {
+            className: "min-h-4 px-1.5 py-0 text-[8px]",
+          }),
+        }),
+      ),
+    );
+
+    expect(markup).toContain('href="/contacts/service-accounts"');
+    expect(markup).toContain("服务号");
+    expect(markup).toContain('aria-label="Test 功能"');
+    expect(markup.indexOf("服务号")).toBeLessThan(markup.indexOf("Test"));
+  });
+
+  it("keeps numeric badges, title trailing content, and captions compatible in one entry cell", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(ImEntryCell, {
+          badge: 2,
+          caption: "13 人",
+          icon: createElement("span", { "data-im-entry-icon": "service" }, "icon"),
+          title: "服务号",
+          to: "/contacts/service-accounts",
+          trailing: createElement(TestFeatureBadge, {
+            className: "min-h-4 px-1.5 py-0 text-[8px]",
+          }),
+        }),
+      ),
+    );
+
+    expect(markup).toContain('href="/contacts/service-accounts"');
+    expect(markup).toContain('data-im-entry-icon="service"');
+    expect(markup).toMatch(/>2<\/span>/);
+    expect(markup).toContain("服务号");
+    expect(markup).toContain('aria-label="Test 功能"');
+    expect(markup).toContain("13 人");
+    expect(markup.indexOf("服务号")).toBeLessThan(markup.indexOf("Test"));
+    expect(markup.indexOf("Test")).toBeLessThan(markup.indexOf("13 人"));
+  });
+
+  it("always exposes the Test service-account entry in every scoped contact directory", () => {
+    const contactsStart = pagesSource.indexOf("export function ImContactsListPage");
+    const contactsEnd = pagesSource.indexOf("export function ImFriendRequestsPage", contactsStart);
+    const contactsSource = pagesSource.slice(contactsStart, contactsEnd);
+
+    expect(contactsSource).not.toContain("serviceContacts.length > 0");
+    expect(contactsSource).toContain('title="服务号"');
+    expect(contactsSource).toContain("to={config.routes.serviceAccounts}");
+    expect(contactsSource).toContain("trailing={<TestFeatureBadge");
+    expect(getImRoleConfig("user").routes.serviceAccounts).toBe("/contacts/service-accounts");
+    expect(getImRoleConfig("merchant").routes.serviceAccounts).toBe("/merchant/contacts/service-accounts");
+    expect(getImRoleConfig("technician").routes.serviceAccounts).toBe("/technician/contacts/service-accounts");
+  });
+
   it("keeps the unavailable chat composer visible while natively disabling every control", () => {
     const markup = renderToStaticMarkup(
       createElement(ImChatComposer, {
@@ -28,7 +134,8 @@ describe("IM pages", () => {
         onDraftChange: () => undefined,
         onPanelChange: () => undefined,
         onSend: () => undefined,
-        panel: null
+        panel: null,
+        voiceInputAriaLabel: "录制语音"
       })
     );
 
@@ -215,6 +322,40 @@ describe("IM pages", () => {
     expect(componentsSource).toContain("对方不是你的好友，信息发送失败");
   });
 
+  it("gives every custom chat name card the same friend-card width", () => {
+    const renderStart = pagesSource.indexOf("const renderContactCardAction =");
+    const renderEnd = pagesSource.indexOf("const sendPresetMessage", renderStart);
+    const renderSource = pagesSource.slice(renderStart, renderEnd);
+
+    expect(renderStart).toBeGreaterThan(-1);
+    expect(renderSource).toContain('className="w-[min(520px,80vw)] max-w-full"');
+    expect(renderSource).toContain("<PlatformMembershipSimpleCard");
+    expect(renderSource).toContain("text-[color:var(--client-muted)]");
+    expect(renderSource).not.toContain("text-white/68");
+  });
+
+  it("routes message and visible group-member avatars by the represented account", () => {
+    const roomStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const roomEnd = pagesSource.indexOf("function ImMessageSelectionHandles", roomStart);
+    const roomSource = pagesSource.slice(roomStart, roomEnd);
+    const infoStart = pagesSource.indexOf("export function ImConversationInfoPage");
+    const infoEnd = pagesSource.indexOf("export function ImConversationSearchPage", infoStart);
+    const infoSource = pagesSource.slice(infoStart, infoEnd);
+
+    expect(roomSource).toContain(
+      "resolveImContactInformationPath(scope, user, hiddenMemberProfilesActive)",
+    );
+    expect(infoSource).toContain(
+      "resolveImContactInformationPath(scope, groupOwner?.user, hiddenMemberProfilesActive)",
+    );
+    expect(infoSource).toContain(
+      "resolveImContactInformationPath(scope, user, hiddenMemberProfilesActive)",
+    );
+    expect(infoSource).not.toContain(
+      "const profilePath = hiddenMemberProfilesActive ? undefined : resolveImProfilePath(scope, user)",
+    );
+  });
+
   it("lets conversation wallpaper sit behind the fixed glass top bar", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
@@ -255,7 +396,7 @@ describe("IM pages", () => {
     expect(componentSource).not.toContain("条新消息");
   });
 
-  it("uses confirmed standard recall and restores text only after success", () => {
+  it("uses confirmed standard recall and restores rich composer content only after success", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
     const componentSource = pagesSource.slice(componentStart, componentEnd);
@@ -274,7 +415,10 @@ describe("IM pages", () => {
       'store.recallMessage(message.conversationId, message.id, "standard")',
     );
     expect(recallSource).toContain(".then(() => {");
-    expect(recallSource).toContain("message.type === \"text\" ? message.content : \"\"");
+    expect(recallSource).toContain(
+      "restoreImComposerDraft(message.content, message.ext?.richText)",
+    );
+    expect(recallSource).not.toContain('store.recallMessage(message.conversationId, message.id, "traceless")');
     expect(recallSource).toContain("if (mediaPreview?.id === message.id)");
     expect(recallSource).toContain("setMediaPreview(null)");
     expect(recallSource.indexOf("setDraft(originalContent)")).toBeGreaterThan(
@@ -329,8 +473,14 @@ describe("IM pages", () => {
     expect(componentSource).toContain("Math.max(1");
     expect(componentSource).toContain("download={mediaPreview.ext?.fileName");
     expect(componentSource).toContain('mode: "forward"');
-    expect(componentSource).toContain("messageId: mediaPreview.id");
-    expect(componentSource).toContain("<video");
+    expect(componentSource).toContain("messageIds: [mediaPreview.id]");
+    expect(componentSource).toContain("sourceConversationId: conversationId");
+    expect(componentSource).not.toContain("messageId: mediaPreview.id");
+    expect(pagesSource).toContain('import { OpenedImMediaViewer } from "./OpenedImMediaViewer";');
+    expect(componentSource).toContain("<OpenedImMediaViewer");
+    expect(componentSource).toContain("cache={store}");
+    expect(componentSource).toContain("onResolvedSourceChange={setMediaPreviewResolvedSource}");
+    expect(componentSource).toContain("href={mediaPreviewResolvedSource ?? undefined}");
   });
 
   it("anchors the long-press action menu to the selected message instead of the composer edge", () => {
@@ -453,8 +603,9 @@ describe("IM pages", () => {
   });
 
   it("uses one shared recent-first reaction catalog in the composer and message actions", () => {
-    expect(componentsSource).toContain("useSyncExternalStore(");
-    expect(componentsSource).toContain("subscribeRecentImReactions");
+    expect(componentsSource).toContain("setVisibleRecentReactions(getRecentImReactionSnapshot())");
+    expect(componentsSource).toContain("setRecentReactions(getRecentImReactionSnapshot())");
+    expect(componentsSource).not.toContain("subscribeRecentImReactions");
     expect(componentsSource).toContain("getRecentImReactionSnapshot");
     expect(componentsSource).toContain("recordRecentImReaction(value)");
     expect(componentsSource.match(/<ReactionCatalog/g)).toHaveLength(2);
@@ -481,7 +632,7 @@ describe("IM pages", () => {
     expect(noticeSource).not.toContain("recordingHintClass");
   });
 
-  it("keeps the composer mounted while message actions are open and hides it only for fullscreen media", () => {
+  it("keeps the composer mounted while message actions are open and hides it for fullscreen media or multiselect", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles", componentStart);
     const componentSource = pagesSource.slice(componentStart, componentEnd);
@@ -489,7 +640,7 @@ describe("IM pages", () => {
     const openMenuEnd = componentSource.indexOf("const toggleMessageReaction", openMenuStart);
     const openMenuSource = componentSource.slice(openMenuStart, openMenuEnd);
     const menuStart = componentSource.indexOf("{menuState ? (");
-    const composerGateStart = componentSource.indexOf("{!mediaPreview ? (", menuStart);
+    const composerGateStart = componentSource.indexOf("{!mediaPreview && !multiSelect.active ? (", menuStart);
     const mediaViewerStart = componentSource.indexOf("{mediaPreview && typeof document", composerGateStart);
     const composerSource = componentSource.slice(composerGateStart, mediaViewerStart);
 
@@ -511,7 +662,9 @@ describe("IM pages", () => {
     const composerStart = componentSource.indexOf("<ImChatComposer", quotedBarStart);
     const quotedBarSource = componentSource.slice(quotedBarStart, composerStart);
 
-    expect(quotedBarSource).toContain("<ImQuotedMessagePreview message={quotedMessage} />");
+    expect(quotedBarSource).toContain(
+      "<ImQuotedMessagePreview message={quotedMessage} />",
+    );
     expect(quotedBarSource).not.toContain('quotedMessage.content || "媒体消息"');
   });
 
@@ -528,6 +681,49 @@ describe("IM pages", () => {
     expect(componentSource).toContain("const upload = await api.uploadImage(conversationId, pendingImage.file)");
     expect(componentSource).toContain("caption: messageText || undefined");
     expect(componentSource).toContain("void prepareSelectedImage(file)");
+  });
+
+  it("integrates click-to-record voice preview with formal confirmed sending", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const sendStart = componentSource.indexOf("const sendVoiceRecording = async () =>");
+    const sendEnd = componentSource.indexOf("const resolveContactCardUser", sendStart);
+    const sendSource = componentSource.slice(sendStart, sendEnd);
+
+    expect(componentSource).toContain("useImVoiceRecording()");
+    expect(componentSource).toContain("<ImVoiceRecordingOverlay");
+    expect(componentSource).toContain("MAX_VOICE_RECORDING_SECONDS");
+    expect(componentSource).toContain("onOpenVoiceRecording");
+    expect(componentSource).toContain("voiceButtonRef={voiceButtonRef}");
+    expect(componentSource).toContain('data-im-conversation-voice-underlay="true"');
+    expect(componentSource).toContain("inert={voiceRecording.phase !== \"idle\" || undefined}");
+    expect(componentSource).toContain('aria-hidden={voiceRecording.phase !== "idle" ? "true" : undefined}');
+    expect(componentSource).toContain("previousVoicePhaseRef");
+    expect(componentSource).toContain("voiceButtonRef.current?.focus()");
+    expect(componentSource).toContain("playbackSeconds={voiceRecording.playbackSeconds}");
+    expect(componentSource).toContain("voiceRecording.handlePlaybackEnded");
+    expect(componentSource).toContain("voiceRecording.updatePlaybackSeconds(event.currentTarget.currentTime)");
+    expect(pagesSource).toContain('errorKey === "error.im.voice_input_muted"');
+    expect(pagesSource).toContain('return "没有检测到麦克风声音，请检查输入设备后重试"');
+    expect(componentSource).not.toContain("handleHookOwnedVoiceAudioEvent");
+
+    expect(sendStart).toBeGreaterThan(-1);
+    expect(sendSource).toContain("voiceRecording.beginSending()");
+    expect(sendSource).toContain("store.sendVoiceMessage(");
+    expect(sendSource).toContain("voiceRecording.finishSending()");
+    expect(sendSource).toContain("voiceRecording.failSending(");
+    expect(sendSource).not.toContain("setDraft(");
+    expect(sendSource).not.toContain("setQuotedMessageId(");
+
+    expect(componentSource).not.toContain("readBlobAsDataUrl");
+    expect(componentSource).not.toContain("recordingGestureStartYRef");
+    expect(componentSource).not.toContain("setVoiceMode");
+    expect(componentSource).not.toContain('store.sendMessage(conversationId, "voice"');
+    expect(componentSource).not.toContain("已自动发送");
+    expect(componentSource).not.toContain("onStartRecording");
+    expect(componentSource).not.toContain("onMoveRecording");
+    expect(componentSource).not.toContain("onEndRecording");
   });
 
   it("keeps the hide member profiles switch independent from privacy mode in group creation", () => {

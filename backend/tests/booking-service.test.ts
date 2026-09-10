@@ -1,12 +1,24 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
 import type {
+  BookingCreateRepositoryInput,
   BookingOrderPayload,
   BookingRepositoryPort,
-  ScheduleSlotPayload
+  ConfirmManualPaymentRepositoryInput,
+  LegacyServicePaymentMethodPayload,
+  ScheduleSlotCreateInput,
+  ScheduleSlotReadInput,
+  ScheduleSlotPayload,
+  ScheduleSlotUpdateInput
+} from "../src/repositories/booking.repository";
+import {
+  bookingOrderStatusFromDb,
+  bookingOrderStatusToDb,
+  servicePaymentMethodFromDb,
+  servicePaymentMethodToDb
 } from "../src/repositories/booking.repository";
 import type { BookingLedgerSettlementPort } from "../src/services/ledger.service";
 import type { OrderStatusNotificationPort } from "../src/services/realtime.service";
-import { BookingService } from "../src/services/booking.service";
+import { BookingService, type BookingCreateInput } from "../src/services/booking.service";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 import type {
   AffiliateCheckoutPrepared,
@@ -23,8 +35,30 @@ const technicianActor: AuthenticatedAccessContext = {
   roles: ["technician"],
   permissions: ["schedule:slots:list"],
   currentIdentityScopeType: "technician_profile",
-  currentIdentityScopeId: 31
+  currentIdentityScopeId: 31,
+  currentIdentityId: 301,
+  currentIdentityType: "technician"
 };
+
+type Assert<T extends true> = T;
+type IsEqual<TLeft, TRight> =
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2 ? true : false;
+type BookingCreationPaymentBoundary = Assert<
+  IsEqual<
+    NonNullable<BookingCreateRepositoryInput["paymentMethod"]>,
+    LegacyServicePaymentMethodPayload
+  >
+>;
+type ManualConfirmationPaymentBoundary = Assert<
+  IsEqual<ConfirmManualPaymentRepositoryInput["method"], LegacyServicePaymentMethodPayload>
+>;
+type BookingServicePaymentBoundary = Assert<
+  IsEqual<NonNullable<BookingCreateInput["paymentMethod"]>, LegacyServicePaymentMethodPayload>
+>;
+
+const bookingCreationPaymentBoundary: BookingCreationPaymentBoundary = true;
+const manualConfirmationPaymentBoundary: ManualConfirmationPaymentBoundary = true;
+const bookingServicePaymentBoundary: BookingServicePaymentBoundary = true;
 
 const scheduleSlot: ScheduleSlotPayload = {
   id: 10,
@@ -79,6 +113,7 @@ const makeOrder = (
   servicePriceSnapshot: "8800.00",
   serviceDurationSnapshot: 60,
   serviceSnapshot: null,
+  fulfillmentAddressSnapshot: null,
   shopName: "Aoyama Care Studio",
   technicianName: "Mika Tanaka",
   priceAmount: "8800.00",
@@ -100,15 +135,45 @@ const makeOrder = (
       reason: null,
       createdAt: now
     }
+  ],
+  performanceAssessment: null,
+  timelineEvents: [
+    {
+      type: "ORDER_STATUS_CHANGED",
+      id: "status:1",
+      createdAt: now,
+      actorUserId: 1,
+      fromStatus: null,
+      toStatus: status,
+      publicReason: null
+    }
   ]
 });
 
 const createRepository = (order: BookingOrderPayload | null): jest.Mocked<BookingRepositoryPort> =>
   ({
     listAvailableSlots: jest.fn(),
+    findActiveCustomerUserIdByIdentityId: jest.fn(async () => 44),
     createBooking: jest.fn(async () => order),
     listOrders: jest.fn(),
     findOrderById: jest.fn(async () => order),
+    getServiceVerificationCode: jest.fn(async () => "829104"),
+    startService: jest.fn(async () =>
+      order
+        ? { outcome: "ok", order: { ...order, status: "inService" }, applied: true }
+        : { outcome: "not_found" }
+    ),
+    createOrderAddOn: jest.fn(async () =>
+      order ? { outcome: "ok", order, applied: true } : { outcome: "not_found" }
+    ),
+    decideOrderAddOn: jest.fn(async () =>
+      order ? { outcome: "ok", order, applied: true } : { outcome: "not_found" }
+    ),
+    endService: jest.fn(async () =>
+      order
+        ? { outcome: "ok", order: { ...order, status: "awaitingCheckout" }, applied: true }
+        : { outcome: "not_found" }
+    ),
     findScheduleSlotById: jest.fn(async () => scheduleSlot),
     transitionOrder: jest.fn(async (input, options) => {
       if (!order) {
@@ -129,6 +194,18 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
             reason: input.reason ?? null,
             createdAt: now
           }
+        ],
+        timelineEvents: [
+          ...order.timelineEvents,
+          {
+            type: "ORDER_STATUS_CHANGED" as const,
+            id: "status:2",
+            createdAt: now,
+            actorUserId: input.actorUserId,
+            fromStatus: input.fromStatus,
+            toStatus: input.toStatus,
+            publicReason: input.reason ?? null
+          }
         ]
       };
 
@@ -139,6 +216,481 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("cancels affected confirmed bookings through the formal transition before an impact-confirmed schedule edit", async () => {
+    const confirmed = { ...makeOrder("confirmed"), technicianProfileId: 31, scheduleSlotId: scheduleSlot.id };
+    const repository = createRepository(confirmed);
+    repository.findScheduleSlotById = jest.fn(async (input: ScheduleSlotReadInput) => {
+      void input;
+      return scheduleSlot;
+    });
+    repository.listCancellableOrdersForScheduleSlot = jest.fn(async (scheduleSlotId: number) => {
+      void scheduleSlotId;
+      return [confirmed];
+    });
+    repository.updateScheduleSlot = jest.fn(async (input: ScheduleSlotUpdateInput) => {
+      void input;
+      return { outcome: "ok" as const, slot: scheduleSlot };
+    });
+    const auditLogService = { record: jest.fn(async () => undefined) };
+    const service = new BookingService(repository, undefined, undefined, auditLogService);
+
+    await expect(service.updateScheduleSlot(
+      technicianActor,
+      scheduleSlot.id,
+      { startsAt: new Date(scheduleSlot.startsAt.getTime() + 60_000), impactConfirmed: true },
+      { ip: "127.0.0.1", userAgent: "jest" }
+    )).resolves.toBe(scheduleSlot);
+
+    expect(repository.transitionOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: confirmed.id,
+        fromStatus: "confirmed",
+        toStatus: "cancelled",
+        reason: "技师确认修改排班，系统取消受影响预约"
+      }),
+      expect.any(Object)
+    );
+    expect(repository.updateScheduleSlot).toHaveBeenCalledWith(expect.objectContaining({
+      id: scheduleSlot.id,
+      scope: "technician",
+      startsAt: expect.any(Date)
+    }));
+  });
+
+  it("creates a technician manual booking for the selected formal customer and preserves the technician actor", async () => {
+    const order = makeOrder("pending");
+    const repository = createRepository(order);
+    repository.createScheduleSlot = jest.fn(async (input: ScheduleSlotCreateInput) => {
+      void input;
+      return { outcome: "ok" as const, slot: scheduleSlot };
+    });
+    repository.deleteScheduleSlot = jest.fn();
+    const auditLogService = { record: jest.fn(async () => undefined) };
+    const service = new BookingService(repository, undefined, undefined, auditLogService);
+
+    await expect(service.createTechnicianManualBooking(
+      technicianActor,
+      {
+        customerIdentityId: 404,
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        startsAt: scheduleSlot.startsAt,
+        endsAt: scheduleSlot.endsAt,
+        paymentMethod: "onsite",
+        note: "现场手动预约"
+      },
+      "manual-booking-key-1",
+      { ip: "127.0.0.1", userAgent: "jest" }
+    )).resolves.toBe(order);
+
+    expect(repository.findActiveCustomerUserIdByIdentityId).toHaveBeenCalledWith(404);
+    expect(auditLogService.record).toHaveBeenCalledWith(expect.objectContaining({
+      action: "technician.schedule_slot.create",
+      targetId: scheduleSlot.id
+    }));
+    expect(repository.createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      customerUserId: 44,
+      createdByUserId: 3,
+      idempotencyKey: "manual-booking-key-1"
+    }));
+    expect(repository.createScheduleSlot).toHaveBeenCalledWith(expect.objectContaining({
+      createAvailability: false,
+      manualBookingIdempotencyKey: "manual-booking-key-1",
+      scope: "technician",
+      technicianProfileId: 31
+    }));
+  });
+  it("publishes compact regional order and invalidation events only after booking commit", async () => {
+    const order = makeOrder("pending");
+    const repository = createRepository(order);
+    repository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: order.id,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: order.orderNo,
+        status: order.status,
+        serviceName: order.serviceName,
+        amountJpy: 8800
+      }
+    ]);
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await expect(
+      service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toBe(order);
+
+    expect(repository.createBooking).toHaveBeenCalledTimes(1);
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([order.id]);
+    expect(publisher.publish).toHaveBeenNthCalledWith(1, {
+      type: "order.changed",
+      scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+      payload: {
+        orderNo: order.orderNo,
+        status: "pending",
+        serviceName: order.serviceName,
+        amountJpy: 8800
+      }
+    });
+    expect(publisher.publish).toHaveBeenNthCalledWith(2, {
+      type: "metrics.invalidate",
+      scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+      payload: { sections: ["headline", "orders", "trend", "rankings"] }
+    });
+    expect(JSON.stringify(publisher.publish.mock.calls)).not.toMatch(
+      /customer|address|phone|email|note|actorId|shopId|technicianId/i
+    );
+  });
+
+  it("keeps a committed booking successful when event projection or publishing fails", async () => {
+    const order = makeOrder("pending");
+    const projectionFailureRepository = createRepository(order);
+    projectionFailureRepository.findLiveDashboardOrderEvents = jest.fn(async () => {
+      throw new Error("projection unavailable");
+    });
+    const publisher = { publish: jest.fn(async () => null) };
+    const projectionFailureService = new BookingService(
+      projectionFailureRepository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+    await expect(
+      projectionFailureService.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toBe(order);
+    expect(publisher.publish).not.toHaveBeenCalled();
+
+    const publishFailureRepository = createRepository(order);
+    publishFailureRepository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: order.id,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: order.orderNo,
+        status: order.status,
+        serviceName: order.serviceName,
+        amountJpy: 8800
+      }
+    ]);
+    const failingPublisher = {
+      publish: jest.fn(async () => {
+        throw new Error("redis unavailable");
+      })
+    };
+    const publishFailureService = new BookingService(
+      publishFailureRepository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      failingPublisher
+    );
+    await expect(
+      publishFailureService.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).resolves.toBe(order);
+    expect(failingPublisher.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("publishes only after an applied add-on mutation changes the compact order projection", async () => {
+    const order = makeOrder("inService");
+    const repository = createRepository(order);
+    repository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: order.id,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: order.orderNo,
+        status: order.status,
+        serviceName: order.serviceName,
+        amountJpy: 9800
+      }
+    ]);
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await service.createOrderAddOn(
+      actor,
+      order.id,
+      { serviceId: 2, idempotencyKey: "add-on-live-event-0001" },
+      { ip: "127.0.0.1", userAgent: "jest" }
+    );
+
+    expect(repository.createOrderAddOn).toHaveBeenCalledTimes(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("batch-projects every superseded cancellation and the new booking in one query", async () => {
+    const created = makeOrder("pending");
+    const superseded = [
+      { ...makeOrder("cancelled"), id: 11, orderNo: "ND11" },
+      { ...makeOrder("cancelled"), id: 12, orderNo: "ND12" }
+    ];
+    const repository = createRepository(created);
+    repository.createBooking.mockResolvedValue({
+      order: created,
+      recipientUserIds: [created.customerUserId],
+      supersededOrders: superseded.map((order) => ({
+        order,
+        recipientUserIds: [order.customerUserId]
+      }))
+    });
+    repository.findLiveDashboardOrderEvents = jest.fn(async (ids) =>
+      ids.map((id) => {
+        const order = id === created.id ? created : superseded.find((item) => item.id === id)!;
+        return {
+          orderId: id,
+          scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+          orderNo: order.orderNo,
+          status: order.status,
+          serviceName: order.serviceName,
+          amountJpy: 8800
+        };
+      })
+    );
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+
+    await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
+      serviceId: 1,
+      scheduleSlotId: 11,
+      fulfillmentMode: "store"
+    });
+
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(1);
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([11, 12, 1]);
+    expect(publisher.publish).toHaveBeenCalledTimes(6);
+  });
+
+  it("publishes fulfillment mutations only when applied, including both add-on decisions", async () => {
+    const order = makeOrder("confirmed");
+    const repository = createRepository(order);
+    repository.findLiveDashboardOrderEvents = jest.fn(async () => [
+      {
+        orderId: order.id,
+        scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+        orderNo: order.orderNo,
+        status: order.status,
+        serviceName: order.serviceName,
+        amountJpy: 8800
+      }
+    ]);
+    const publisher = { publish: jest.fn(async () => null) };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      publisher
+    );
+    const context = { ip: "127.0.0.1", userAgent: "jest" };
+
+    await service.startService(
+      actor,
+      1,
+      { actor: "customer", idempotencyKey: "start-live-001" },
+      context
+    );
+    await service.createOrderAddOn(
+      actor,
+      1,
+      { serviceId: 2, idempotencyKey: "addon-live-001" },
+      context
+    );
+    await service.acceptOrderAddOn(actor, 1, 21, { idempotencyKey: "accept-live-001" }, context);
+    await service.rejectOrderAddOn(actor, 1, 22, { idempotencyKey: "reject-live-001" }, context);
+    await service.endService(
+      actor,
+      1,
+      { reason: "done", idempotencyKey: "end-live-0001" },
+      context
+    );
+
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(5);
+    expect(publisher.publish).toHaveBeenCalledTimes(10);
+
+    repository.startService.mockResolvedValue({ outcome: "ok", order, applied: false });
+    repository.createOrderAddOn.mockResolvedValue({ outcome: "ok", order, applied: false });
+    repository.decideOrderAddOn.mockResolvedValue({ outcome: "ok", order, applied: false });
+    repository.endService.mockResolvedValue({ outcome: "ok", order, applied: false });
+    await service.startService(
+      actor,
+      1,
+      { actor: "customer", idempotencyKey: "start-live-001" },
+      context
+    );
+    await service.createOrderAddOn(
+      actor,
+      1,
+      { serviceId: 2, idempotencyKey: "addon-live-001" },
+      context
+    );
+    await service.acceptOrderAddOn(actor, 1, 21, { idempotencyKey: "accept-live-001" }, context);
+    await service.rejectOrderAddOn(actor, 1, 22, { idempotencyKey: "reject-live-001" }, context);
+    await service.endService(
+      actor,
+      1,
+      { reason: "done", idempotencyKey: "end-live-0001" },
+      context
+    );
+
+    expect(repository.findLiveDashboardOrderEvents).toHaveBeenCalledTimes(5);
+    expect(publisher.publish).toHaveBeenCalledTimes(10);
+  });
+
+  it("publishes normal confirmation and cancellation transitions", async () => {
+    const publisher = { publish: jest.fn(async () => null) };
+    const makeService = (status: "pending" | "confirmed") => {
+      const repository = createRepository(makeOrder(status));
+      repository.findLiveDashboardOrderEvents = jest.fn(async () => [
+        {
+          orderId: 1,
+          scope: { countryCode: "JP" as const, admin1Code: "13", admin2Code: "13104" },
+          orderNo: "ND202605260001",
+          status,
+          serviceName: "Shiatsu Recovery",
+          amountJpy: 8800
+        }
+      ]);
+      return {
+        repository,
+        service: new BookingService(
+          repository,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          publisher
+        )
+      };
+    };
+    const confirmation = makeService("pending");
+    const cancellation = makeService("confirmed");
+
+    await confirmation.service.transitionOrder(actor, 1, "confirm");
+    await cancellation.service.transitionOrder(actor, 1, "cancel", "cancelled");
+
+    expect(confirmation.repository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([1]);
+    expect(cancellation.repository.findLiveDashboardOrderEvents).toHaveBeenCalledWith([1]);
+    expect(publisher.publish).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps legacy creation/manual payment inputs narrower than order projections", () => {
+    expect(bookingCreationPaymentBoundary).toBe(true);
+    expect(manualConfirmationPaymentBoundary).toBe(true);
+    expect(bookingServicePaymentBoundary).toBe(true);
+  });
+
+  it.each([
+    ["PENDING", "pending"],
+    ["CONFIRMED", "confirmed"],
+    ["IN_SERVICE", "inService"],
+    ["AWAITING_CHECKOUT", "awaitingCheckout"],
+    ["AWAITING_PAYMENT_CONFIRMATION", "awaitingPaymentConfirmation"],
+    ["COMPLETED", "completed"],
+    ["CANCELLED", "cancelled"]
+  ] as const)("roundtrips booking status %s", (databaseValue, payloadValue) => {
+    expect(bookingOrderStatusFromDb(databaseValue)).toBe(payloadValue);
+    expect(bookingOrderStatusToDb(payloadValue)).toBe(databaseValue);
+  });
+
+  it.each([
+    ["ONSITE", "onsite"],
+    ["BANK_TRANSFER", "bank_transfer"],
+    ["CASH", "cash"],
+    ["NDP", "ndp"],
+    ["OTHER", "other"]
+  ] as const)("roundtrips service payment method %s", (databaseValue, payloadValue) => {
+    expect(servicePaymentMethodFromDb(databaseValue)).toBe(payloadValue);
+    expect(servicePaymentMethodToDb(payloadValue)).toBe(databaseValue);
+  });
+
+  it("rejects unknown runtime status and payment enum values", () => {
+    expect(() => bookingOrderStatusFromDb("UNKNOWN_STATUS" as never)).toThrow();
+    expect(() => bookingOrderStatusToDb("unknownStatus" as never)).toThrow();
+    expect(() => servicePaymentMethodFromDb("UNKNOWN_METHOD" as never)).toThrow();
+    expect(() => servicePaymentMethodToDb("unknown_method" as never)).toThrow();
+  });
+
   it("maps an atomic cross-shop confirmation collision to a non-leaking schedule conflict", async () => {
     const repository = createRepository(makeOrder("pending"));
     repository.transitionOrderWithScheduleGuard = jest
@@ -152,6 +704,30 @@ describe("BookingService state machine", () => {
       statusCode: 409
     });
     expect(repository.transitionOrder).not.toHaveBeenCalled();
+  });
+
+  it("requires the Exchange cancellation protocol before any fallback transition or settlement", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.transitionOrderWithScheduleGuard = jest
+      .fn()
+      .mockResolvedValue({ outcome: "exchange_cancellation_required" });
+    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+      freezeBookingAcceptance: jest.fn(),
+      releaseBookingHold: jest.fn(),
+      settleBookingCompletion: jest.fn(),
+      compensateCustomerForMerchantCancellation: jest.fn()
+    };
+    const service = new BookingService(repository, ledgerService);
+
+    await expect(service.transitionOrder(actor, 1, "cancel", "changed mind")).rejects.toMatchObject(
+      {
+        code: ERROR_CODES.EXCHANGE_MATCH_CANCELLATION_REQUIRED,
+        message: "error.exchange.match_cancellation_required",
+        statusCode: 409
+      }
+    );
+    expect(repository.transitionOrder).not.toHaveBeenCalled();
+    expect(ledgerService.releaseBookingHold).not.toHaveBeenCalled();
   });
 
   it("derives technician scope for a single schedule slot", async () => {
@@ -184,6 +760,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"
@@ -191,6 +768,29 @@ describe("BookingService state machine", () => {
     ).rejects.toMatchObject({
       code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
       message: "error.booking.slot_unavailable"
+    });
+  });
+
+  it("rejects a stale displayed price and returns the current authoritative amount", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.createBooking.mockResolvedValue({
+      outcome: "price_changed",
+      currentPriceAmountJpy: 9_800
+    });
+    const service = new BookingService(repository);
+
+    await expect(
+      service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.BOOKING_PRICE_CHANGED,
+      message: "error.booking.price_changed",
+      statusCode: 409,
+      data: { currentPriceAmountJpy: 9_800 }
     });
   });
 
@@ -241,6 +841,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"
@@ -251,7 +852,14 @@ describe("BookingService state machine", () => {
     });
     expect(repository.createBooking).not.toHaveBeenCalled();
 
-    await expect(service.transitionOrder(actor, 1, "start")).resolves.toMatchObject({
+    await expect(
+      service.startService(
+        actor,
+        1,
+        { actor: "customer", idempotencyKey: "suspended-start-001" },
+        { ip: "127.0.0.1" }
+      )
+    ).resolves.toMatchObject({
       status: "inService"
     });
   });
@@ -261,6 +869,7 @@ describe("BookingService state machine", () => {
     const service = new BookingService(repository);
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 12_000,
       technicianServiceId: 21,
       scheduleSlotId: 11,
       fulfillmentMode: "store"
@@ -283,6 +892,7 @@ describe("BookingService state machine", () => {
     const service = new BookingService(repository);
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       orderType: "request",
       serviceId: 1,
       scheduleSlotId: 11,
@@ -340,6 +950,7 @@ describe("BookingService state machine", () => {
     );
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 11,
       fulfillmentMode: "store",
@@ -405,6 +1016,7 @@ describe("BookingService state machine", () => {
     );
 
     await service.createBooking(actor, {
+      expectedPriceAmountJpy: 8_800,
       serviceId: 1,
       scheduleSlotId: 11,
       fulfillmentMode: "store"
@@ -474,6 +1086,7 @@ describe("BookingService state machine", () => {
       {
         userId: 2,
         roles: ["merchant_owner"],
+        currentIdentityType: "merchant_owner",
         currentIdentityScopeType: "shop",
         currentIdentityScopeId: 11
       },
@@ -514,6 +1127,7 @@ describe("BookingService state machine", () => {
         {
           userId: 2,
           roles: ["merchant_owner"],
+          currentIdentityType: "merchant_owner",
           currentIdentityScopeType: "shop",
           currentIdentityScopeId: 11
         },
@@ -522,17 +1136,53 @@ describe("BookingService state machine", () => {
     ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
 
     await expect(
-      technicianService.transitionOrder(
+      technicianService.startService(
         {
           userId: 3,
           roles: ["technician"],
+          currentIdentityType: "technician",
           currentIdentityScopeType: "technician_profile",
           currentIdentityScopeId: 17
         },
         1,
-        "start"
+        {
+          actor: "technician",
+          verificationCode: "829104",
+          idempotencyKey: "hidden-technician-01"
+        },
+        { ip: "127.0.0.1" }
       )
     ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
+  });
+
+  it("returns the sanitized home address only to authorized owner and provider actors", async () => {
+    const order = {
+      ...makeOrder("pending"),
+      fulfillmentMode: "home" as const,
+      fulfillmentAddressSnapshot: {
+        line1: "東京都渋谷区",
+        line2: "神南1-2-3",
+        line3: null
+      }
+    };
+    const service = new BookingService(createRepository(order));
+    const providerActor = {
+      userId: 2,
+      roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop" as const,
+      currentIdentityScopeId: 1
+    };
+
+    await expect(service.getOrder(actor, 1)).resolves.toMatchObject({
+      fulfillmentAddressSnapshot: order.fulfillmentAddressSnapshot
+    });
+    await expect(service.getOrder(providerActor, 1)).resolves.toMatchObject({
+      fulfillmentAddressSnapshot: order.fulfillmentAddressSnapshot
+    });
+    await expect(service.getOrder({ userId: 99, roles: ["customer"] }, 1)).rejects.toMatchObject({
+      statusCode: 404
+    });
   });
 
   it("hides other customers' orders from customer actors", async () => {
@@ -555,16 +1205,15 @@ describe("BookingService state machine", () => {
     const repository = createRepository(makeOrder("confirmed"));
     const service = new BookingService(repository);
 
-    const started = await service.transitionOrder(actor, 1, "start");
+    const started = await service.startService(
+      actor,
+      1,
+      { actor: "customer", idempotencyKey: "formal-customer-start" },
+      { ip: "127.0.0.1" }
+    );
 
     expect(started.status).toBe("inService");
-    expect(repository.transitionOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        fromStatus: "confirmed",
-        toStatus: "inService"
-      }),
-      {}
-    );
+    expect(repository.startService).toHaveBeenCalled();
 
     const completedService = new BookingService(createRepository(makeOrder("completed")));
     await expect(
@@ -573,6 +1222,33 @@ describe("BookingService state machine", () => {
       code: ERROR_CODES.ORDER_INVALID_TRANSITION,
       message: "error.order.invalid_transition"
     });
+  });
+
+  it("passes authenticated identity metadata into the atomic order transition", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const service = new BookingService(repository);
+    const scopedTechnician = {
+      userId: 3,
+      roles: ["technician"],
+      currentIdentityId: 303,
+      currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 1
+    };
+
+    await service.transitionOrder(scopedTechnician, 1, "cancel", "临时无法到达");
+
+    expect(repository.transitionOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 3,
+        actor: {
+          userId: 3,
+          identityId: 303,
+          identityType: "technician"
+        }
+      }),
+      expect.any(Object)
+    );
   });
 
   it("runs affiliate cancellation inside the transition transaction without a ledger service", async () => {
@@ -639,60 +1315,7 @@ describe("BookingService state machine", () => {
     expect(affiliateCheckout.invalidateCancelledBooking).toHaveBeenCalledTimes(1);
   });
 
-  it("composes booking finance and affiliate reward settlement in the completion transaction", async () => {
-    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
-      freezeBookingAcceptance: jest.fn(),
-      releaseBookingHold: jest.fn(),
-      settleBookingCompletion: jest.fn().mockResolvedValue(undefined),
-      compensateCustomerForMerchantCancellation: jest.fn()
-    };
-    const settleCompletedBooking = jest.fn().mockResolvedValue({
-      status: "no_op",
-      reason: "no_attribution"
-    });
-    const affiliateCheckout = {
-      prepareCheckout: jest.fn(),
-      persistAttribution: jest.fn(),
-      invalidateCancelledBooking: jest.fn(),
-      settleCompletedBooking
-    } as unknown as Pick<
-      AffiliateCheckoutService,
-      | "prepareCheckout"
-      | "persistAttribution"
-      | "invalidateCancelledBooking"
-      | "settleCompletedBooking"
-    >;
-    const providerActor = {
-      userId: 2,
-      roles: ["merchant_owner"],
-      currentIdentityScopeType: "shop",
-      currentIdentityScopeId: 1
-    };
-    const repository = createRepository(makeOrder("inService"));
-
-    await new BookingService(
-      repository,
-      ledgerService,
-      undefined,
-      undefined,
-      affiliateCheckout
-    ).transitionOrder(providerActor, 1, "complete");
-
-    expect(ledgerService.settleBookingCompletion).toHaveBeenCalledTimes(1);
-    expect(settleCompletedBooking).toHaveBeenCalledWith({
-      bookingOrderId: 1,
-      customerUserId: 1,
-      shopId: 1,
-      serviceId: 1,
-      actorUserId: 2,
-      transactionClient: expect.anything()
-    });
-    const ledgerContext = ledgerService.settleBookingCompletion.mock.calls[0][1];
-    const affiliateContext = settleCompletedBooking.mock.calls[0][0].transactionClient;
-    expect(affiliateContext).toBe(ledgerContext?.transactionClient);
-  });
-
-  it("settles ledger side effects when confirming, cancelling, and completing booking orders", async () => {
+  it("settles ledger side effects when confirming and cancelling booking orders", async () => {
     const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
       freezeBookingAcceptance: jest.fn(async (input, context) => {
         void input;
@@ -718,6 +1341,7 @@ describe("BookingService state machine", () => {
     const providerActor = {
       userId: 2,
       roles: ["merchant_owner"],
+      currentIdentityType: "merchant_owner",
       currentIdentityScopeType: "shop",
       currentIdentityScopeId: 1
     };
@@ -755,20 +1379,6 @@ describe("BookingService state machine", () => {
         customerUserId: 1,
         actorUserId: 2,
         insufficientBalanceConfirmation: undefined
-      }),
-      expect.anything()
-    );
-
-    await new BookingService(
-      createRepository(makeOrder("inService")),
-      ledgerService
-    ).transitionOrder(providerActor, 1, "complete");
-    expect(ledgerService.settleBookingCompletion).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingOrderId: 1,
-        shopId: 1,
-        customerUserId: 1,
-        actorUserId: 2
       }),
       expect.anything()
     );
@@ -831,6 +1441,7 @@ describe("BookingService state machine", () => {
       {
         userId: 2,
         roles: ["merchant_owner"],
+        currentIdentityType: "merchant_owner",
         currentIdentityScopeType: "shop",
         currentIdentityScopeId: 1
       },
@@ -870,6 +1481,7 @@ describe("BookingService state machine", () => {
 
     await expect(
       service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
         serviceId: 1,
         scheduleSlotId: 11,
         fulfillmentMode: "store"

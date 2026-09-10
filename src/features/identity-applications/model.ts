@@ -1,3 +1,4 @@
+import type { IdentityApplication } from "./api";
 import type { PortalScope } from "../../auth/AuthProvider";
 
 export type IdentityKind = "customer" | "technician" | "merchant" | "affiliate";
@@ -61,3 +62,9 @@ export const defaultIdentityAvailability = (): IdentityAvailability[] => [
   { kind: "merchant", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null },
   { kind: "affiliate", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null }
 ];
+
+export function selectLatestApplication(list: IdentityApplication[]): IdentityApplication | null {
+  const candidates = list.filter(item => item.status !== "withdrawn");
+  const active = candidates.filter(item => ["draft", "submitted", "under_review"].includes(item.status));
+  return (active.length ? active : candidates).sort((a, b) => (Date.parse(b.createdAt ?? "") || b.id) - (Date.parse(a.createdAt ?? "") || a.id))[0] ?? null;
+}

@@ -7,6 +7,8 @@ describe("production safety", () => {
     process.env = {
       ...originalEnv,
       NODE_ENV: "production",
+      IM_MEDIA_STORAGE_DIR: "/var/lib/needo/im-media",
+      CONTENT_MEDIA_STORAGE_DIR: "/var/lib/needo/content-media",
       DEPLOY_ENV: "prod",
       ALLOW_TEST_LOGIN: "false",
       ALLOW_FORMAL_TEST_SEED: "false",
@@ -94,6 +96,15 @@ describe("production safety", () => {
     await expect(importEnv()).resolves.toBeUndefined();
   });
 
+  it.each(["IM_MEDIA_STORAGE_DIR", "CONTENT_MEDIA_STORAGE_DIR"])(
+    "rejects relative %s in production",
+    async (field) => {
+      setValidProductionEnv();
+      process.env[field] = "runtime/media";
+      await expect(importEnv()).rejects.toThrow(`${field} must be an absolute path`);
+    }
+  );
+
   it("accepts a production Google Web OAuth client ID without a hyphen", async () => {
     setValidProductionEnv();
     process.env.GOOGLE_AUTH_CLIENT_ID = "424911365001.apps.googleusercontent.com";
@@ -103,6 +114,22 @@ describe("production safety", () => {
 
   it("rejects a missing Google Web OAuth client ID in production", async () => {
     setValidProductionEnv();
+    delete process.env.GOOGLE_AUTH_CLIENT_ID;
+
+    await expect(importEnv()).rejects.toThrow("GOOGLE_AUTH_CLIENT_ID");
+  });
+
+  it("allows an absent Google client ID only when Google auth is explicitly disabled", async () => {
+    setValidProductionEnv();
+    process.env.AUTH_GOOGLE_ENABLED = "false";
+    delete process.env.GOOGLE_AUTH_CLIENT_ID;
+
+    await expect(importEnv()).resolves.toBeUndefined();
+  });
+
+  it("still rejects an absent Google client ID when Google auth is explicitly enabled", async () => {
+    setValidProductionEnv();
+    process.env.AUTH_GOOGLE_ENABLED = "true";
     delete process.env.GOOGLE_AUTH_CLIENT_ID;
 
     await expect(importEnv()).rejects.toThrow("GOOGLE_AUTH_CLIENT_ID");

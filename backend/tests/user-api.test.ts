@@ -207,6 +207,34 @@ describe("Step 06 User API", () => {
     );
   });
 
+  it("filters the paginated user list by active role assignment", async () => {
+    const fixture = await createStep06Fixture();
+    const accessToken = await fixture.loginAsAdmin();
+
+    const response = await request(fixture.app)
+      .get("/api/v1/users?roleId=1&page=1&pageSize=20")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.data).toEqual({
+      list: [
+        expect.objectContaining({ id: 1, roles: ["admin"] }),
+        expect.objectContaining({ id: 3, roles: ["admin"] })
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20
+    });
+    expect(fixture.userRepository.list).toHaveBeenCalledWith(
+      expect.objectContaining({ roleId: 1 })
+    );
+
+    await request(fixture.app)
+      .get("/api/v1/users?roleId=0")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(400);
+  });
+
   it("enables, disables, and soft deletes users with self and admin protections", async () => {
     const fixture = await createStep06Fixture();
     const accessToken = await fixture.loginAsAdmin();
@@ -249,7 +277,9 @@ describe("Step 06 User API", () => {
   it("maps exhausted NeeDo ID allocation to a stable protected-create error", async () => {
     const fixture = await createStep06Fixture();
     const accessToken = await fixture.loginAsAdmin();
-    fixture.userRepository.create.mockRejectedValueOnce(new UserBootstrapKeyAllocationExhaustedError());
+    fixture.userRepository.create.mockRejectedValueOnce(
+      new UserBootstrapKeyAllocationExhaustedError()
+    );
 
     await request(fixture.app)
       .post("/api/v1/users")

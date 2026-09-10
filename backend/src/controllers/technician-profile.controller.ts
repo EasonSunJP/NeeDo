@@ -13,9 +13,9 @@ export class TechnicianProfileController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(
-        await this.service.getMine(getAuthenticatedAccess(response))
-      ));
+      response
+        .status(200)
+        .json(successResponse(await this.service.getMine(getAuthenticatedAccess(response))));
     } catch (error) {
       next(error);
     }
@@ -27,13 +27,17 @@ export class TechnicianProfileController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(
-        await this.service.updateMine(
-          getAuthenticatedAccess(response),
-          getRequestContext(request),
-          technicianProfileUpdateBodySchema.parse(request.body)
-        )
-      ));
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.updateMine(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              technicianProfileUpdateBodySchema.parse(request.body)
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }

@@ -3,12 +3,14 @@ import type {
   RealtimeSocialPost,
   RealtimeSocialProfileSummary
 } from "../realtime/api";
+import { normalizeImMessageRichText, type ImMessageRichText } from "../im/reaction-policy";
 import type {
   SocialEntityType,
   SocialMediaItem,
   SocialPost,
   SocialPostType,
   SocialProfile,
+  SocialRichText,
   SocialVisibility
 } from "./types";
 
@@ -28,6 +30,7 @@ export type FormalSocialMediaEnvelope = {
   repostPostId?: number | string;
   postType?: SocialPostType;
   locationLabel?: string;
+  richText?: unknown;
   counters?: FormalSocialCounters;
   namespace?: string;
   dataset?: string;
@@ -100,6 +103,7 @@ function readMediaEnvelope(value: unknown): FormalSocialMediaEnvelope {
     postType:
       typeof value.postType === "string" ? (value.postType as SocialPostType) : undefined,
     locationLabel: typeof value.locationLabel === "string" ? value.locationLabel : undefined,
+    richText: value.richText,
     counters: counters
       ? {
           likes: typeof counters.likes === "number" ? counters.likes : undefined,
@@ -129,7 +133,7 @@ function toEntityType(value: string | undefined): SocialEntityType {
 export function mapFormalSocialPost(post: RealtimeSocialPost): SocialPost {
   const envelope = readMediaEnvelope(post.media);
   const entityType = toEntityType(post.author?.entityType);
-  const counters = envelope.counters;
+  const counters = post.counters ?? envelope.counters;
 
   return {
     id: String(post.id),
@@ -141,16 +145,17 @@ export function mapFormalSocialPost(post: RealtimeSocialPost): SocialPost {
     mentions: [],
     mentionUserIds: envelope.mentionUserIds ?? [],
     quotePostId: envelope.quotePostId === undefined ? undefined : String(envelope.quotePostId),
-    replyToPostId: envelope.replyToPostId === undefined ? undefined : String(envelope.replyToPostId),
+    replyToPostId: post.replyToPostId === null ? undefined : String(post.replyToPostId),
+    richText: normalizeImMessageRichText(post.content, envelope.richText),
     repostPostId: envelope.repostPostId === undefined ? undefined : String(envelope.repostPostId),
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
     likeCount: counters?.likes ?? 0,
-    replyCount: counters?.replies ?? 0,
+    replyCount: post.replyCount,
     repostCount: counters?.reposts ?? 0,
     viewCount: counters?.views ?? 1,
     bookmarkCount: counters?.bookmarks ?? 0,
-    isPinned: false,
+    isPinned: Boolean(post.isPinned),
     visibility: toSocialVisibility(post.visibility),
     locationLabel: envelope.locationLabel,
     status: "published",
@@ -193,13 +198,22 @@ export function mapFormalSocialProfiles(posts: RealtimeSocialPost[]) {
     return [{
       ...profile,
       coverImage: profile.coverImage || envelope.items[0]?.thumbnailUrl || envelope.items[0]?.url || "",
-      location: envelope.locationLabel
+      location: envelope.locationLabel,
+      ...(post.isPinned ? { pinnedPostId: String(post.id) } : {})
     }];
   });
 
-  return Object.fromEntries(
-    profiles.map((profile) => [`${profile.entityType}:${profile.id}`, profile])
-  );
+  return profiles.reduce<Record<string, SocialProfile>>((result, profile) => {
+    const key = `${profile.entityType}:${profile.id}`;
+    const previous = result[key];
+    result[key] = {
+      ...profile,
+      ...(profile.pinnedPostId ?? previous?.pinnedPostId
+        ? { pinnedPostId: profile.pinnedPostId ?? previous?.pinnedPostId }
+        : {})
+    };
+    return result;
+  }, {});
 }
 
 export function buildFormalSocialMediaEnvelope(input: {
@@ -208,6 +222,7 @@ export function buildFormalSocialMediaEnvelope(input: {
   replyToPostId?: string;
   postType?: SocialPostType;
   locationLabel?: string;
+  richText?: SocialRichText;
 }): FormalSocialMediaEnvelope {
   const items = input.media.filter((item) => !item.url.startsWith("blob:"));
   if (items.length !== input.media.length) {
@@ -220,6 +235,7 @@ export function buildFormalSocialMediaEnvelope(input: {
     replyToPostId: input.replyToPostId,
     postType: input.postType,
     locationLabel: input.locationLabel,
+    richText: input.richText,
     counters: { likes: 0, replies: 0, reposts: 0, views: 1, bookmarks: 0 }
   };
 }
@@ -231,6 +247,7 @@ export function buildFormalSocialCreateMediaEnvelope(input: {
   repostPostId?: string;
   postType?: SocialPostType;
   locationLabel?: string;
+  richText?: ImMessageRichText;
 }): FormalSocialCreateMediaEnvelope {
   const items = input.media.map((item) => {
     if (
@@ -254,6 +271,7 @@ export function buildFormalSocialCreateMediaEnvelope(input: {
     ...(input.replyToPostId !== undefined ? { replyToPostId: Number(input.replyToPostId) } : {}),
     ...(input.repostPostId !== undefined ? { repostPostId: Number(input.repostPostId) } : {}),
     ...(input.postType !== undefined ? { postType: input.postType } : {}),
-    ...(input.locationLabel !== undefined ? { locationLabel: input.locationLabel } : {})
+    ...(input.locationLabel !== undefined ? { locationLabel: input.locationLabel } : {}),
+    ...(input.richText !== undefined ? { richText: input.richText } : {})
   };
 }

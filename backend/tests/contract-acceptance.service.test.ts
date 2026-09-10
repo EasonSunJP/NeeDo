@@ -61,11 +61,15 @@ describe("ContractAcceptanceService", () => {
       acceptedAt: new Date("2026-08-26T05:00:00.000Z")
     };
 
-    await expect(service.accept({ ...base, hasRead: false, hasAgreed: true })).rejects.toMatchObject({
+    await expect(
+      service.accept({ ...base, hasRead: false, hasAgreed: true })
+    ).rejects.toMatchObject({
       message: "error.contract.acknowledgements_required",
       statusCode: 400
     });
-    await expect(service.accept({ ...base, hasRead: true, hasAgreed: false })).rejects.toMatchObject({
+    await expect(
+      service.accept({ ...base, hasRead: true, hasAgreed: false })
+    ).rejects.toMatchObject({
       message: "error.contract.acknowledgements_required",
       statusCode: 400
     });

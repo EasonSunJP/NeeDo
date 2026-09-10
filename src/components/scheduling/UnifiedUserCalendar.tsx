@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type UIEvent as ReactUIEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type UIEvent as ReactUIEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName, type IconName } from "../client-ui/AppScaffold";
 import { FloatingActionButton } from "../mobile/FloatingActionButton";
@@ -6,22 +6,32 @@ import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "../mobile/M
 import { MobileFullscreenPage } from "../mobile/MobileFullscreenPage";
 import { HolidayCornerBadge } from "./HolidayCornerBadge";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "./ScheduleDraftRangeBlock";
+import type {
+  CalendarParticipantOption,
+  CalendarParticipantTimelineRenderInput,
+} from "./CalendarParticipantFlow";
 import { AvatarImage } from "../ui/AvatarImage";
 import { ConversationListItem } from "../ui/ConversationListItem";
-import { bookingApi, mapBookingOrderToDomainOrder, type BookingScheduleSlot } from "../../features/booking/api";
+import { bookingApi, mapBookingOrderToDomainOrder, type BookingOrder, type BookingScheduleSlot } from "../../features/booking/api";
 import { loadCustomerOrderWindow } from "../../features/booking/window-loaders";
-import { mapScheduleSlotToCalendarItem, schedulingApi } from "../../features/scheduling/api";
+import { mapScheduleSlotToCalendarItem } from "../../features/scheduling/api";
+import { loadEveryScopedOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
+import { calendarEventApi, type FormalCalendarEvent, type FormalCalendarEventInput } from "../../features/scheduling/calendar-event-api";
+import { availabilityWindowApi, type AvailabilityWindow } from "../../features/scheduling/availability-window-api";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
 import type { DispatchArrangement } from "../../features/dispatch-center/domain";
 import { getDisplayName, type ContactRelation, type Conversation, type ImRoleType, type ImUser } from "../../features/im/model";
 import { getImRoleConfig, isContactVisibleForRole } from "../../features/im/role-config";
 import { useImStore } from "../../features/im/store";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
-import { cn } from "../../lib/utils";
+import { cn, statusLabel } from "../../lib/utils";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getJapaneseHoliday } from "../../lib/japaneseHolidays";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getScheduleOrderDetailRoute, type ScheduleDetailTargetType } from "../../lib/scheduleDetailTarget";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
+import { getScopedTechnicianDynamicPath } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -55,12 +65,19 @@ import {
   timeToMinutes
 } from "../../features/technician-schedule/model";
 
+const CalendarParticipantFlow = lazy(() => import("./CalendarParticipantFlow").then((module) => ({
+  default: module.CalendarParticipantFlow,
+})));
+
 export type UnifiedCalendarView = "day" | "threeDay" | "week" | "month" | "agenda";
 type UnifiedCalendarScope = "user" | "technician" | "merchant";
 type UnifiedCalendarDisplayMode = "personal" | "parallel";
 type MerchantCalendarLaneMode = "technician" | "appointmentStatus";
 export type UnifiedCalendarSourceId = "user" | "technician" | "merchant" | "todo" | "birthday" | "holiday";
+export type UnifiedCalendarTechnician = Pick<Technician, "id" | "name" | "storeId" | "avatar"> &
+  Partial<Omit<Technician, "id" | "name" | "storeId" | "avatar">>;
 type CalendarRepeatRule = "none" | "daily" | "weekly" | "monthly" | "yearly";
+type TechnicianCreationMode = "private" | "availability" | "manualBooking";
 
 type CalendarAttachment = {
   id: string;
@@ -104,6 +121,9 @@ export type UnifiedCalendarLane = {
 
 export type UnifiedCalendarEvent = {
   id: string;
+  scheduleSlotId?: number;
+  availabilityWindowId?: number;
+  availabilitySourceType?: AvailabilityWindow["sourceType"];
   sourceId: UnifiedCalendarSourceId;
   calendarId?: string;
   calendarLabel?: string;
@@ -135,6 +155,14 @@ export type UnifiedCalendarEvent = {
   creatorEntityType?: ImUser["entityType"];
   creatorEntityId?: string;
   participants?: UnifiedCalendarParticipant[];
+  bookingConflict?: boolean;
+};
+
+type FormalCalendarCacheValue = {
+  orders: Order[];
+  merchantOrders: BookingOrder[];
+  scheduleSlots: BookingScheduleSlot[];
+  availabilityWindows: AvailabilityWindow[];
 };
 
 type LocalCalendarEvent = {
@@ -180,13 +208,16 @@ type BirthdaySourceFilters = {
 
 export type UnifiedUserCalendarProps = {
   currentCustomer?: Customer;
-  currentTechnician?: Technician;
+  currentTechnician?: UnifiedCalendarTechnician;
   currentStore?: Store;
   displayMode?: UnifiedCalendarDisplayMode;
   formalOnly?: boolean;
+  initialSelectedDate?: string;
   merchantLaneMode?: MerchantCalendarLaneMode;
   searchQuery?: string;
+  showSourceDrawer?: boolean;
   scope?: UnifiedCalendarScope;
+  technicians?: Technician[];
 };
 
 type UnifiedCalendarPeriod = {
@@ -226,6 +257,9 @@ const hourRowHeight = 58;
 const timelineTimeColumnWidth = 58;
 const timelineLaneMinWidth = 136;
 const timelineOverflowLaneWidth = 148;
+const availabilityStripInset = 4;
+const availabilityStripWidth = 24;
+const availabilityContentOffset = availabilityStripInset + availabilityStripWidth + 4;
 const scheduleDraftMinDurationMinutes = 30;
 const scheduleDraftSnapMinutes = 15;
 const agendaInitialPastDays = 90;
@@ -534,6 +568,72 @@ function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOp
   }));
 }
 
+function getFormalPersonalCalendarEvents(events: FormalCalendarEvent[], creator?: CalendarEventCreator): UnifiedCalendarEvent[] {
+  return events.flatMap((event) => getFormalCalendarSegments(event.startsAt, event.endsAt).map((segment) => ({
+    ...segment,
+    id: `calendar-event-${event.id}-${segment.date}`,
+    sourceId: "user" as const,
+    calendarId: "formal:personal",
+    calendarLabel: "我的行程",
+    endDate: segment.date,
+    title: event.title,
+    subtitle: event.location || "个人行程",
+    badge: "个人行程",
+    readOnly: false,
+    location: event.location,
+    note: event.note,
+    url: event.url,
+    images: event.imageUrls.map((dataUrl, index) => ({ id: `formal-image-${event.id}-${index}`, name: `图片 ${index + 1}`, dataUrl })),
+    reminder: event.reminderMinutes === null ? "不提醒" : event.reminderMinutes === 60 ? "1 小时前" : `${event.reminderMinutes} 分钟前`,
+    allDay: event.allDay,
+    repeatRule: event.repeatRule,
+    syncContactLabels: [],
+    visibility: event.visibility === "participants" ? "参加者" : "仅自己",
+    participants: [],
+    ...getCalendarCreatorFields(creator)
+  })));
+}
+
+function formalCalendarEventId(eventId: string): number | null {
+  const match = /^calendar-event-(\d+)-/.exec(eventId);
+  return match ? Number(match[1]) : null;
+}
+
+function reminderMinutes(label: string): number | null {
+  if (label === "10 分钟前") return 10;
+  if (label === "30 分钟前") return 30;
+  if (label === "1 小时前") return 60;
+  return null;
+}
+
+function toFormalCalendarEventInput(draft: CalendarEditorDraft): FormalCalendarEventInput {
+  const date = draft.date || getTodayDateKey();
+  const startTime = draft.allDay ? "00:00" : draft.startTime || "10:00";
+  let endDate = draft.allDay ? date : draft.endDate || date;
+  let endTime = draft.allDay ? "23:59" : draft.endTime || "";
+  if (`${endDate}T${endTime}` <= `${date}T${startTime}`) {
+    endDate = date;
+    endTime = addMinutesToTime(startTime, 60);
+  }
+  const participantIdentityIds = draft.syncContactIds
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  return {
+    title: draft.title.trim() || "（无标题）",
+    startsAt: new Date(`${date}T${startTime}:00`).toISOString(),
+    endsAt: new Date(`${endDate}T${endTime}:00`).toISOString(),
+    allDay: draft.allDay,
+    reminderMinutes: reminderMinutes(draft.reminder),
+    repeatRule: normalizeCalendarRepeatRule(draft.repeatRule),
+    location: draft.location.trim(),
+    url: draft.url.trim(),
+    note: draft.note.trim(),
+    visibility: participantIdentityIds.length ? "participants" : "private",
+    participantIdentityIds,
+    imageUrls: draft.images.map((image) => image.dataUrl),
+  };
+}
+
 function getOrderEvents(
   currentCustomer: Customer,
   orderRows: Order[],
@@ -572,24 +672,90 @@ function getOrderEvents(
     .filter((event): event is UnifiedCalendarEvent => Boolean(event));
 }
 
-function getFormalScheduleEvents(slots: BookingScheduleSlot[], scope: "merchant" | "technician"): UnifiedCalendarEvent[] {
-  return slots.map((slot) => {
+function getFormalCalendarSegments(startsAt: string, endsAt: string) {
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+  if (!(end.getTime() > start.getTime())) return [];
+  const segments: Array<{ date: string; startTime: string; endTime: string }> = [];
+  const day = new Date(start);
+  day.setHours(0, 0, 0, 0);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  while (day < end) {
+    const nextDay = new Date(day);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const segmentStart = new Date(Math.max(start.getTime(), day.getTime()));
+    const segmentEnd = new Date(Math.min(end.getTime(), nextDay.getTime()));
+    segments.push({
+      date: `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`,
+      startTime: `${pad(segmentStart.getHours())}:${pad(segmentStart.getMinutes())}`,
+      endTime: segmentEnd.getTime() === nextDay.getTime() ? "24:00" : `${pad(segmentEnd.getHours())}:${pad(segmentEnd.getMinutes())}`
+    });
+    day.setTime(nextDay.getTime());
+  }
+  return segments;
+}
+
+export function getFormalScheduleEvents(slots: BookingScheduleSlot[], scope: "merchant" | "technician"): UnifiedCalendarEvent[] {
+  return slots.flatMap((slot) => {
     const item = mapScheduleSlotToCalendarItem(slot);
-    return {
-      id: item.id,
+    return getFormalCalendarSegments(slot.startsAt, slot.endsAt).map((segment) => ({
+      ...segment,
+      id: `${item.id}-${segment.date}`,
+      scheduleSlotId: slot.id,
+      availabilitySourceType: slot.availabilitySourceType ?? undefined,
       sourceId: scope,
       calendarId: slot.technicianProfileId ? getTechnicianCalendarLaneId(String(slot.technicianProfileId)) : "merchant:unassigned",
       calendarLabel: slot.technicianName ?? "未指定技师",
-      date: item.date,
-      startTime: item.startTime,
-      endTime: item.endTime,
-      title: item.title,
+      title: scope === "technician"
+        ? slot.availabilitySourceType === "shop"
+          ? `${slot.shopName}店铺排班（可排班日程）`
+          : "自由排班"
+        : item.title,
       subtitle: item.subtitle,
       badge: item.badge,
       readOnly: true,
-      detailTargetType: "none"
-    };
+      detailTargetType: "none" as const
+    }));
   });
+}
+
+export function getFormalAvailabilityWindowEvents(
+  windows: AvailabilityWindow[],
+  scope: "merchant" | "technician"
+): UnifiedCalendarEvent[] {
+  return windows.flatMap((window) => getFormalCalendarSegments(window.startsAt, window.endsAt).map((segment) => ({
+    ...segment,
+    id: `availability-window-${window.id}-${segment.date}`,
+    availabilityWindowId: window.id,
+    availabilitySourceType: window.sourceType,
+    sourceId: scope,
+    calendarId: getTechnicianCalendarLaneId(String(window.technicianProfileId)),
+    calendarLabel: window.sourceType === "shop" ? window.shopName : "自由排班",
+    title: window.sourceType === "shop" ? `${window.shopName}店铺排班（可排班日程）` : "自由排班",
+    subtitle: "可排班 ≠ 当前空闲",
+    badge: "可排班",
+    readOnly: scope !== "technician",
+    detailTargetType: "none" as const
+  })));
+}
+
+export function getFormalMerchantOrderEvents(orders: BookingOrder[], sourceId: "merchant" | "technician" = "merchant"): UnifiedCalendarEvent[] {
+  return orders.filter((order) => order.status !== "cancelled").flatMap((order) =>
+    getFormalCalendarSegments(order.startsAt, order.endsAt).map((segment) => ({
+      ...segment,
+      id: `formal-order-${order.id}-${segment.date}`,
+      orderId: String(order.id),
+      sourceId,
+      calendarId: order.technicianProfileId ? getTechnicianCalendarLaneId(String(order.technicianProfileId)) : "merchant:unassigned",
+      calendarLabel: order.technicianName ?? "未指定技师",
+      title: getCalendarBookingTitle(String(order.id), order.serviceName),
+      subtitle: [order.orderNo, order.technicianName, order.shopName].filter(Boolean).join(" · "),
+      badge: statusLabel(order.status),
+      readOnly: true,
+      detailTargetType: "order_detail" as const,
+      detailTargetId: String(order.id)
+    }))
+  );
 }
 
 function getRelevantTechnicianIds(arrangements: DispatchArrangement[], currentCustomer: Customer, technicians: Technician[], orderRows: Order[]) {
@@ -624,7 +790,7 @@ function getCustomerDisplayName(customer: Customer) {
   return customer.nickname?.trim() || customer.name;
 }
 
-function getTechnicianDisplayName(technician: Technician) {
+function getTechnicianDisplayName(technician: UnifiedCalendarTechnician) {
   return technician.nickname?.trim() || technician.name;
 }
 
@@ -647,7 +813,7 @@ function getStoreCreator(stores: ReturnType<typeof useEntityStore>["stores"], st
 function getCurrentScopeCreator(
   scope: UnifiedCalendarScope,
   currentCustomer: Customer | undefined,
-  currentTechnician: Technician | undefined,
+  currentTechnician: UnifiedCalendarTechnician | undefined,
   currentStore: Store | undefined
 ): CalendarEventCreator | undefined {
   if (scope === "merchant" && currentStore) {
@@ -707,7 +873,7 @@ function getTechnicianParticipant(technician: Technician | undefined, scope: Uni
     avatar: technician.avatar,
     meta: [technician.identityLabel, technician.status === "busy" ? "服务中" : technician.status === "off" ? "休息" : "可排班"].filter(Boolean).join(" · "),
     role,
-    to: getScopedProfileDetailPath(scope, "technician", technician.id)
+    to: getScopedTechnicianDynamicPath(scope, technician)
   };
 }
 
@@ -1127,12 +1293,14 @@ function getMerchantAppointmentStatusLaneLabel(technicianId?: string | null) {
 }
 
 function matchesMerchantAppointmentStatusFilter(event: UnifiedCalendarEvent, filter: MerchantAppointmentStatusFilter) {
+  const assigned = event.calendarId?.startsWith("technician:") ?? false;
+
   if (filter === "assigned") {
-    return event.calendarId === merchantAssignedAppointmentLaneId;
+    return assigned || event.calendarId === merchantAssignedAppointmentLaneId;
   }
 
   if (filter === "unassigned") {
-    return event.calendarId === merchantUnassignedAppointmentLaneId;
+    return !assigned && (event.calendarId === "merchant:unassigned" || event.calendarId === merchantUnassignedAppointmentLaneId);
   }
 
   return true;
@@ -1257,7 +1425,7 @@ function getMerchantEventsForStore(
 
 function getParallelCalendarLanes(
   currentStore: Store | undefined,
-  currentTechnician: Technician | undefined,
+  currentTechnician: UnifiedCalendarTechnician | undefined,
   technicians: Technician[],
   merchantLaneMode: MerchantCalendarLaneMode = "technician"
 ): UnifiedCalendarLane[] {
@@ -1301,7 +1469,7 @@ function getParallelCalendarLanes(
         caption: "我的排班",
         accent: "var(--client-primary)",
         avatar: currentTechnician.avatar,
-        detailPath: getScopedProfileDetailPath("technician", "technician", currentTechnician.id)
+        detailPath: getScopedTechnicianDynamicPath("technician", currentTechnician)
       }
     ];
   }
@@ -1341,6 +1509,37 @@ function getVisibleCalendarContacts(
 
 function getCalendarContactTags(contact: ContactRelation, user?: ImUser) {
   return Array.from(new Set([...contact.tags, ...(user?.tags ?? [])].map((tag) => tag.trim()).filter(Boolean)));
+}
+
+function getCalendarParticipantOptions(
+  contacts: ContactRelation[],
+  usersById: Record<string, ImUser>,
+  conversations: Conversation[]
+): CalendarParticipantOption[] {
+  return contacts.flatMap((contact) => {
+    const identityId = Number(contact.contactIdentityId);
+    const user = usersById[contact.targetUserId];
+
+    if (!user || !Number.isInteger(identityId) || identityId <= 0) {
+      return [];
+    }
+
+    const tags = getCalendarContactTags(contact, user);
+    const groupIds = conversations
+      .filter((conversation) => conversation.type === "group" && !conversation.isDeleted && conversation.memberIds.includes(contact.targetUserId))
+      .map((conversation) => conversation.id);
+
+    return [{
+      id: String(identityId),
+      identityId,
+      label: getDisplayName(user, contact),
+      description: [contact.isStarred ? "常用" : "联系人", tags.slice(0, 2).join(" / ")].filter(Boolean).join(" · "),
+      avatar: user.avatar,
+      tags,
+      groupIds,
+      isCommon: true,
+    }];
+  });
 }
 
 function buildCalendarContactTagOptions(
@@ -1447,19 +1646,6 @@ function getCompleteSyncContactOptions(baseOptions: SyncContactOption[], commonO
   return dedupeSyncContactOptions([...commonOptions, ...baseOptions.map((option) => ({ ...option, kind: option.kind ?? "common" as const })), ...tagOptions, ...groupOptions]);
 }
 
-function getSyncContactOptionKind(option: SyncContactOption): SyncContactFilterMode {
-  if (option.kind) {
-    return option.kind;
-  }
-  if (option.id.startsWith("tag:")) {
-    return "tags";
-  }
-  if (option.id.startsWith("group:")) {
-    return "groups";
-  }
-  return "common";
-}
-
 function getRuntimeDateField(value: unknown) {
   if (typeof value !== "object" || !value) {
     return undefined;
@@ -1546,7 +1732,7 @@ function getUserSyncContactOptions(
 }
 
 function getTechnicianSyncContactOptions(
-  currentTechnician: Technician | undefined,
+  currentTechnician: UnifiedCalendarTechnician | undefined,
   stores: ReturnType<typeof useEntityStore>["stores"],
   technicians: Technician[]
 ) {
@@ -1596,7 +1782,7 @@ function buildBirthdayEventDate(anchorYear: number, birthday: string) {
 function getBirthdayCalendarEvents(
   period: UnifiedCalendarPeriod,
   currentCustomer: Customer | undefined,
-  currentTechnician: Technician | undefined,
+  currentTechnician: UnifiedCalendarTechnician | undefined,
   currentStore: Store | undefined,
   birthdayContacts: BirthdayContactOption[]
 ): UnifiedCalendarEvent[] {
@@ -1806,6 +1992,28 @@ function groupEventsByDate(events: UnifiedCalendarEvent[]) {
     grouped[event.date] = [...(grouped[event.date] ?? []), event];
     return grouped;
   }, {});
+}
+
+export function getBookingConflictEventIds(events: UnifiedCalendarEvent[]): Set<string> {
+  const conflicts = new Set<string>();
+  const bookings = events.filter((event) => Boolean(event.orderId));
+  for (let leftIndex = 0; leftIndex < bookings.length; leftIndex += 1) {
+    const left = bookings[leftIndex]!;
+    for (let rightIndex = leftIndex + 1; rightIndex < bookings.length; rightIndex += 1) {
+      const right = bookings[rightIndex]!;
+      if (left.date !== right.date || left.orderId === right.orderId) continue;
+      if (timeToMinutes(left.startTime) < timeToMinutes(right.endTime) && timeToMinutes(right.startTime) < timeToMinutes(left.endTime)) {
+        conflicts.add(left.id);
+        conflicts.add(right.id);
+      }
+    }
+  }
+  return conflicts;
+}
+
+function markBookingConflicts(events: UnifiedCalendarEvent[]): UnifiedCalendarEvent[] {
+  const conflicts = getBookingConflictEventIds(events);
+  return events.map((event) => conflicts.has(event.id) ? { ...event, bookingConflict: true } : event);
 }
 
 type TimelineAutoScrollAnchor = {
@@ -2191,6 +2399,7 @@ function CalendarSourceDrawer({
   birthdayTagOptions,
   googleConnectionStatus,
   googleSyncEventCount,
+  formalOnly,
   open,
   sourceCounts,
   sourceVisibility,
@@ -2213,6 +2422,7 @@ function CalendarSourceDrawer({
   birthdayTagOptions: CalendarContactTagOption[];
   googleConnectionStatus: GoogleCalendarConnectionStatus | null;
   googleSyncEventCount: number;
+  formalOnly: boolean;
   open: boolean;
   sourceCounts: Record<UnifiedCalendarSourceId, number>;
   sourceVisibility: Record<UnifiedCalendarSourceId, boolean>;
@@ -2301,7 +2511,13 @@ function CalendarSourceDrawer({
               aria-expanded={googleSyncExpanded}
               aria-label="同步 Google 日历"
               className={cn(floatingHeaderControlButtonClassName, "h-11 w-11 p-2")}
-              onClick={() => setGoogleSyncExpanded((current) => !current)}
+              onClick={() => {
+                if (formalOnly) {
+                  void runGoogleAction("connect", onGoogleConnect);
+                  return;
+                }
+                setGoogleSyncExpanded((current) => !current);
+              }}
               type="button"
             >
               <img alt="" className="h-6 w-6 object-contain" src={googleCalendarIconSrc} />
@@ -2425,7 +2641,7 @@ function CalendarEventCard({
 }) {
   const source = sourceConfigs[event.sourceId];
   const badgeLabel =
-    event.visibility === "busy_redacted"
+    event.visibility === "busy_redacted" || event.scheduleSlotId != null || event.orderId != null
       ? event.badge
       : compact
         ? source.shortLabel
@@ -2434,8 +2650,11 @@ function CalendarEventCard({
     <button
       className={cn(
         "focus-ring h-full w-full overflow-hidden rounded-[16px] border px-3 py-2.5 text-left shadow-[0_12px_24px_color-mix(in_srgb,var(--calendar-accent)_12%,transparent)] transition active:scale-[0.99]",
-        "border-[color:color-mix(in_srgb,var(--calendar-accent)_38%,transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--calendar-soft)_88%,var(--client-elevated)),color-mix(in_srgb,var(--client-elevated)_88%,transparent))]"
+        event.bookingConflict
+          ? "border-2 border-red-500 bg-[color:color-mix(in_srgb,#ef4444_12%,var(--client-elevated))] shadow-[0_12px_26px_rgba(239,68,68,0.28)]"
+          : "border-[color:color-mix(in_srgb,var(--calendar-accent)_38%,transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--calendar-soft)_88%,var(--client-elevated)),color-mix(in_srgb,var(--client-elevated)_88%,transparent))]"
       )}
+      data-booking-conflict={event.bookingConflict ? "true" : undefined}
       data-calendar-event-card="true"
       onClick={() => onOpen(event)}
       style={getEventStyle(event)}
@@ -2443,7 +2662,7 @@ function CalendarEventCard({
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[color:var(--calendar-accent)]" />
-        <span className="truncate text-[11px] font-black text-[color:var(--calendar-text)]">{badgeLabel}</span>
+        <span className={cn("truncate text-[11px] font-black", event.bookingConflict ? "text-red-500" : "text-[color:var(--calendar-text)]")}>{event.bookingConflict ? "预约冲突" : badgeLabel}</span>
         {!compact ? <span className="truncate text-[10px] font-black text-[color:var(--client-muted)]">{source.shortLabel}</span> : null}
       </div>
       <strong className={cn("mt-1 block truncate font-black text-[color:var(--client-text)]", compact ? "text-[12px]" : "text-sm")}>{event.title}</strong>
@@ -2522,10 +2741,90 @@ function getLayoutEvents(events: UnifiedCalendarEvent[]) {
   };
 }
 
-type DraftRange = {
+function isAvailabilityMarkerEvent(event: UnifiedCalendarEvent) {
+  return Boolean(event.availabilityWindowId)
+    || Boolean(event.availabilitySourceType && !event.orderId)
+    || Boolean(event.scheduleSlotId && !event.orderId && (event.availabilitySourceType || event.badge === "可预约"));
+}
+
+function getAvailabilityStripLabel(event: UnifiedCalendarEvent) {
+  if (event.availabilitySourceType !== "shop") {
+    return "自由排班";
+  }
+
+  const shopNameFromTitle = event.title.match(/^(.*?)店铺排班/)?.[1]?.trim();
+  const shopName = shopNameFromTitle || event.calendarLabel?.trim() || "店铺";
+  return `${shopName}排班`;
+}
+
+function mergeAvailabilityStripEvents(events: UnifiedCalendarEvent[]) {
+  const merged: UnifiedCalendarEvent[] = [];
+  const sorted = [...events].sort((left, right) => {
+    const laneComparison = (left.calendarId ?? "user:me").localeCompare(right.calendarId ?? "user:me");
+    return laneComparison || timeToMinutes(left.startTime) - timeToMinutes(right.startTime);
+  });
+
+  sorted.forEach((event) => {
+    const previous = merged.at(-1);
+    const sameLane = previous && (previous.calendarId ?? "user:me") === (event.calendarId ?? "user:me");
+    const sameSource = previous && getAvailabilityStripLabel(previous) === getAvailabilityStripLabel(event);
+    const touchesPrevious = previous && timeToMinutes(event.startTime) <= timeToMinutes(previous.endTime);
+
+    if (previous && sameLane && sameSource && touchesPrevious) {
+      if (timeToMinutes(event.endTime) > timeToMinutes(previous.endTime)) {
+        previous.endTime = event.endTime;
+      }
+      return;
+    }
+
+    merged.push({ ...event });
+  });
+
+  return merged;
+}
+
+function CalendarAvailabilityStrip({
+  event,
+  onOpen,
+  style
+}: {
+  event: UnifiedCalendarEvent;
+  onOpen: (event: UnifiedCalendarEvent) => void;
+  style: CSSProperties;
+}) {
+  const label = getAvailabilityStripLabel(event);
+
+  return (
+    <button
+      aria-label={`${event.startTime}-${event.endTime} ${label}`}
+      className="focus-ring absolute z-[12] overflow-hidden rounded-[9px] border border-emerald-200/80 bg-emerald-400/90 text-emerald-950 shadow-[0_0_16px_rgba(52,211,153,0.42)]"
+      data-calendar-availability-strip="true"
+      data-calendar-availability-source={event.availabilitySourceType ?? "technician"}
+      onClick={(clickEvent) => {
+        clickEvent.stopPropagation();
+        onOpen(event);
+      }}
+      style={{ ...style, width: `${availabilityStripWidth}px` }}
+      title={`${event.startTime} - ${event.endTime} ${label}`}
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        className="flex h-full w-full items-center overflow-hidden px-1 py-1.5 text-[9px] font-black leading-none"
+        style={{ letterSpacing: 0, textOrientation: "upright", writingMode: "vertical-rl" }}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
+export type UnifiedCalendarDraftRange = {
   start: number;
   end: number;
 };
+
+type DraftRange = UnifiedCalendarDraftRange;
 
 type DraftDragMode = "move" | "resize-start" | "resize-end";
 
@@ -2553,19 +2852,27 @@ function getDraftPointerMinute(event: { clientY: number }, canvas: HTMLElement) 
 type DayTimelineProps = {
   calendarLanes?: UnifiedCalendarLane[];
   date: string;
+  draftConflictCalendarIds?: Set<string>;
+  draftRangeValue?: UnifiedCalendarDraftRange | null;
   emptySearchQuery?: string;
   events: UnifiedCalendarEvent[];
+  onDraftRangeChange?: (range: UnifiedCalendarDraftRange) => void;
   onCreate?: (date: string, startTime: string, endTime: string, calendarId?: string, calendarLabel?: string) => void;
   onOpen: (event: UnifiedCalendarEvent) => void;
+  spanDraftAcrossLanes?: boolean;
 };
 
 function DayTimeline({
   calendarLanes,
   date,
+  draftConflictCalendarIds,
+  draftRangeValue,
   emptySearchQuery,
   events,
+  onDraftRangeChange,
   onCreate,
-  onOpen
+  onOpen,
+  spanDraftAcrossLanes = false
 }: DayTimelineProps) {
   const now = new Date();
   const today = getTodayDateKey();
@@ -2574,7 +2881,16 @@ function DayTimeline({
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const timelineHeaderRef = useRef<HTMLDivElement | null>(null);
-  const [draftRange, setDraftRange] = useState<DraftRange | null>(null);
+  const [internalDraftRange, setInternalDraftRange] = useState<DraftRange | null>(null);
+  const draftRange = draftRangeValue === undefined ? internalDraftRange : draftRangeValue;
+  const setDraftRange = (range: DraftRange | null) => {
+    if (draftRangeValue === undefined) {
+      setInternalDraftRange(range);
+    }
+    if (range) {
+      onDraftRangeChange?.(range);
+    }
+  };
   const [draftCalendarId, setDraftCalendarId] = useState(activeCalendarLanes?.[0]?.id ?? "user:me");
   const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
   const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
@@ -2588,14 +2904,16 @@ function DayTimeline({
   const suppressNextOutsideClickRef = useRef(false);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const showNow = date === today && nowMinutes >= dayStartHour * 60 && nowMinutes <= dayEndHour * 60;
-  const layout = getLayoutEvents(events);
+  const availabilityEvents = mergeAvailabilityStripEvents(events.filter(isAvailabilityMarkerEvent));
+  const contentEvents = events.filter((event) => !isAvailabilityMarkerEvent(event));
+  const layout = getLayoutEvents(contentEvents);
   const handleTimelineScrollLeftChange = useCallback((scrollLeft: number) => {
     setTimelineScrollLeft((current) => (Math.abs(current - scrollLeft) < 0.5 ? current : scrollLeft));
   }, []);
   const { scrollRef, dragScrollProps } = useHorizontalDragScroll({ onScrollLeftChange: handleTimelineScrollLeftChange });
   const parallelLayouts = activeCalendarLanes
     ? activeCalendarLanes.flatMap((calendar, calendarIndex) => {
-        const calendarLayout = getLayoutEvents(events.filter((event) => (event.calendarId ?? "user:me") === calendar.id));
+        const calendarLayout = getLayoutEvents(contentEvents.filter((event) => (event.calendarId ?? "user:me") === calendar.id));
         return calendarLayout.events.map((item) => ({
           ...item,
           calendar,
@@ -2656,7 +2974,7 @@ function DayTimeline({
     };
 
     const handleOutsidePointerDown = (event: PointerEvent) => {
-      if (!draftRangeRef.current || isDraftInteractionTarget(event.target)) {
+      if (draftRangeValue !== undefined || !draftRangeRef.current || isDraftInteractionTarget(event.target)) {
         return;
       }
 
@@ -2690,7 +3008,7 @@ function DayTimeline({
       document.removeEventListener("pointerdown", handleOutsidePointerDown, true);
       document.removeEventListener("click", handleOutsideClick, true);
     };
-  }, []);
+  }, [draftRangeValue]);
 
   useEffect(() => {
     if (!hasOverflowLayout) {
@@ -3154,16 +3472,56 @@ function DayTimeline({
                 </div>
               ) : null}
 
+              {draftRange && hasParallelCalendars && activeCalendarLanes
+                ? activeCalendarLanes.map((calendar, index) => draftConflictCalendarIds?.has(calendar.id) ? (
+                    <div
+                      aria-label={`${calendar.label}时间冲突`}
+                      className="pointer-events-none absolute z-[8] border-y border-red-400 bg-red-500/12"
+                      data-calendar-conflict-lane="true"
+                      key={`draft-conflict-${calendar.id}`}
+                      style={{
+                        left: `${index * parallelColumnWidth}%`,
+                        width: `${parallelColumnWidth}%`,
+                        top: ((draftRange.start - dayStartHour * 60) / 60) * hourRowHeight,
+                        height: Math.max(((draftRange.end - draftRange.start) / 60) * hourRowHeight, scheduleDraftRangeVisualMinHeight),
+                      }}
+                    />
+                  ) : null)
+                : null}
+
+              {availabilityEvents.map((event) => {
+                const start = Math.max(timeToMinutes(event.startTime), dayStartHour * 60);
+                const end = Math.min(timeToMinutes(event.endTime), dayEndHour * 60);
+                if (end <= start) return null;
+                const calendarIndex = activeCalendarLanes?.findIndex((calendar) => calendar.id === (event.calendarId ?? "user:me")) ?? -1;
+                if (hasParallelCalendars && calendarIndex < 0) return null;
+                return (
+                  <CalendarAvailabilityStrip
+                    event={event}
+                    key={`availability-strip-${event.id}`}
+                    onOpen={onOpen}
+                    style={{
+                      left: hasParallelCalendars ? `calc(${calendarIndex * parallelColumnWidth}% + ${availabilityStripInset}px)` : `${availabilityStripInset}px`,
+                      top: ((start - dayStartHour * 60) / 60) * hourRowHeight + 4,
+                      height: Math.max(((end - start) / 60) * hourRowHeight - 8, 18),
+                    }}
+                  />
+                );
+              })}
+
               {hasParallelCalendars
                 ? parallelLayouts.map(({ event, start, end, lane, calendarIndex, calendarLaneCount }) => {
+                    const calendarHasAvailability = availabilityEvents.some((availability) => availability.calendarId === event.calendarId);
+                    const contentStart = calendarHasAvailability ? availabilityContentOffset : 8;
+                    const contentGutters = calendarHasAvailability ? availabilityContentOffset + 8 : 16;
                     const width =
                       calendarLaneCount > 1
-                        ? `calc((${parallelColumnWidth}% - 16px) / ${calendarLaneCount})`
-                        : `calc(${parallelColumnWidth}% - 16px)`;
+                        ? `calc((${parallelColumnWidth}% - ${contentGutters}px) / ${calendarLaneCount})`
+                        : `calc(${parallelColumnWidth}% - ${contentGutters}px)`;
                     const left =
                       calendarLaneCount > 1
-                        ? `calc(${calendarIndex * parallelColumnWidth}% + 8px + ${Math.min(lane, calendarLaneCount - 1)} * ((${parallelColumnWidth}% - 16px) / ${calendarLaneCount}))`
-                        : `calc(${calendarIndex * parallelColumnWidth}% + 8px)`;
+                        ? `calc(${calendarIndex * parallelColumnWidth}% + ${contentStart}px + ${Math.min(lane, calendarLaneCount - 1)} * ((${parallelColumnWidth}% - ${contentGutters}px) / ${calendarLaneCount}))`
+                        : `calc(${calendarIndex * parallelColumnWidth}% + ${contentStart}px)`;
                     const clampedStart = Math.max(start, dayStartHour * 60);
                     const clampedEnd = Math.min(end, dayEndHour * 60);
                     return (
@@ -3184,12 +3542,13 @@ function DayTimeline({
                 : layout.events.map(({ event, start, end, lane }) => {
                     const laneCount = hasOverflowLayout ? layout.laneCount : layout.cappedLaneCount;
                     const displayLane = hasOverflowLayout ? lane : Math.min(lane, laneCount - 1);
+                    const availabilityOffset = availabilityEvents.length > 0 ? availabilityContentOffset - 8 : 0;
                     const width = hasOverflowLayout
                       ? timelineOverflowLaneWidth - 12
-                      : laneCount > 1 ? `calc((100% - 18px) / ${laneCount})` : "calc(100% - 16px)";
+                      : laneCount > 1 ? `calc((100% - ${18 + availabilityOffset}px) / ${laneCount})` : `calc(100% - ${16 + availabilityOffset}px)`;
                     const left = hasOverflowLayout
-                      ? 8 + displayLane * timelineOverflowLaneWidth
-                      : laneCount > 1 ? `calc(8px + ${displayLane} * ((100% - 18px) / ${laneCount}))` : "8px";
+                      ? 8 + availabilityOffset + displayLane * timelineOverflowLaneWidth
+                      : laneCount > 1 ? `calc(${8 + availabilityOffset}px + ${displayLane} * ((100% - ${18 + availabilityOffset}px) / ${laneCount}))` : `${8 + availabilityOffset}px`;
                     const clampedStart = Math.max(start, dayStartHour * 60);
                     const clampedEnd = Math.min(end, dayEndHour * 60);
                     return (
@@ -3208,9 +3567,9 @@ function DayTimeline({
                     );
                   })}
 
-              {onCreate && draftRange ? (
+              {(onCreate || onDraftRangeChange) && draftRange ? (
                 <ScheduleDraftRangeBlock
-                  action={(
+                  action={onCreate && !spanDraftAcrossLanes ? (
                     <button
                       className="rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]"
                       data-schedule-create-action="true"
@@ -3223,8 +3582,9 @@ function DayTimeline({
                     >
                       下一步
                     </button>
-                  )}
+                  ) : undefined}
                   className={hasParallelCalendars || hasOverflowLayout ? "" : "left-2 right-2"}
+                  conflict={Boolean(draftConflictCalendarIds?.size)}
                   onBlockPointerCancel={handleDraftPointerCancel}
                   onBlockPointerDown={handleDraftBlockPointerDown}
                   onBlockPointerMove={handleDraftPointerMove}
@@ -3237,7 +3597,12 @@ function DayTimeline({
                   style={{
                     top: ((draftRange.start - dayStartHour * 60) / 60) * hourRowHeight + 6,
                     height: Math.max(((draftRange.end - draftRange.start) / 60) * hourRowHeight - 12, scheduleDraftRangeVisualMinHeight),
-                    ...(hasParallelCalendars
+                    ...(spanDraftAcrossLanes
+                      ? {
+                          left: "8px",
+                          width: "calc(100% - 16px)"
+                        }
+                      : hasParallelCalendars
                       ? {
                           left: `calc(${draftCalendarIndex * parallelColumnWidth}% + 8px)`,
                           width: `calc(${parallelColumnWidth}% - 16px)`
@@ -3251,7 +3616,7 @@ function DayTimeline({
                   }}
                   subtitle="拖动整块调整开始时间，拖动上下手柄调整时长"
                   timeRange={`${minutesToTime(draftRange.start)} - ${minutesToTime(draftRange.end)}`}
-                  title="新建行程"
+                  title={draftConflictCalendarIds?.size ? "时间冲突（仍可继续）" : "新建行程"}
                 />
               ) : null}
             </div>
@@ -3646,16 +4011,39 @@ export function UnifiedCalendarMultiDayTimeline({
               ) : null}
 
               {dates.map((date, dateIndex) => {
-                const dateLayout = getLayoutEvents((groupedEvents[date] ?? []).sort(sortEvents));
+                const dateEvents = groupedEvents[date] ?? [];
+                const dateAvailabilityEvents = mergeAvailabilityStripEvents(dateEvents.filter(isAvailabilityMarkerEvent));
+                const dateLayout = getLayoutEvents(dateEvents.filter((event) => !isAvailabilityMarkerEvent(event)).sort(sortEvents));
                 const inset = hasThreeDayLayout ? 4 : 2;
+                const contentStartInset = dateAvailabilityEvents.length > 0 ? availabilityContentOffset : inset;
+                const totalContentInset = contentStartInset + inset;
                 const dense = true;
 
                 return (
                   <div
                     className="absolute bottom-0 top-0 border-l border-[color:color-mix(in_srgb,var(--client-line)_38%,transparent)] last:border-r"
+                    data-calendar-date-column={date}
                     key={date}
                     style={{ left: `${dateIndex * dayWidth}%`, width: `${dayWidth}%` }}
                   >
+                    {dateAvailabilityEvents.map((event) => {
+                      const start = Math.max(timeToMinutes(event.startTime), dayStartHour * 60);
+                      const end = Math.min(timeToMinutes(event.endTime), dayEndHour * 60);
+                      if (end <= start) return null;
+
+                      return (
+                        <CalendarAvailabilityStrip
+                          event={event}
+                          key={`availability-strip-${event.id}`}
+                          onOpen={onOpen}
+                          style={{
+                            left: `${availabilityStripInset}px`,
+                            top: ((start - dayStartHour * 60) / 60) * hourRowHeight + 4,
+                            height: Math.max(((end - start) / 60) * hourRowHeight - 8, 18),
+                          }}
+                        />
+                      );
+                    })}
                     {dateLayout.events.map(({ event, start, end, lane }) => {
                       const laneCount = Math.max(1, dateLayout.cappedLaneCount);
                       const displayLane = Math.min(lane, laneCount - 1);
@@ -3667,8 +4055,8 @@ export function UnifiedCalendarMultiDayTimeline({
                           className="absolute z-[2]"
                           key={event.id}
                           style={{
-                            left: laneCount > 1 ? `calc(${inset}px + ${displayLane} * ((100% - ${inset * 2}px) / ${laneCount}))` : inset,
-                            width: laneCount > 1 ? `calc((100% - ${inset * 2}px) / ${laneCount})` : `calc(100% - ${inset * 2}px)`,
+                            left: laneCount > 1 ? `calc(${contentStartInset}px + ${displayLane} * ((100% - ${totalContentInset}px) / ${laneCount}))` : contentStartInset,
+                            width: laneCount > 1 ? `calc((100% - ${totalContentInset}px) / ${laneCount})` : `calc(100% - ${totalContentInset}px)`,
                             top: ((clampedStart - dayStartHour * 60) / 60) * hourRowHeight + 4,
                             height: Math.max(((clampedEnd - clampedStart) / 60) * hourRowHeight - 8, dense ? 34 : 42)
                           }}
@@ -3760,10 +4148,13 @@ export function UnifiedCalendarMonthGrid({
       <div className="grid grid-cols-7">
         {dates.map((date, index) => {
           const dateEvents = eventsByDate[date] ?? [];
+          const availabilityEvents = mergeAvailabilityStripEvents(dateEvents.filter(isAvailabilityMarkerEvent));
+          const contentEvents = dateEvents.filter((event) => !isAvailabilityMarkerEvent(event));
+          const availabilityEvent = availabilityEvents[0];
           const inMonth = date.slice(0, 7) === monthKey;
           const selected = selectedDate === date;
           const isToday = today === date;
-          const overflowCount = Math.max(0, dateEvents.length - 3);
+          const overflowCount = Math.max(0, contentEvents.length - 3);
           const selectDate = () => onSelectDate?.(date);
 
           return (
@@ -3789,6 +4180,25 @@ export function UnifiedCalendarMonthGrid({
               role="button"
               tabIndex={0}
             >
+              {availabilityEvent ? (
+                <button
+                  aria-label={`${formatLongDate(date)} ${getAvailabilityStripLabel(availabilityEvent)}`}
+                  className="focus-ring absolute bottom-1 top-9 z-[2] rounded-r-full border border-l-0 border-emerald-200/80 bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.36)]"
+                  data-calendar-availability-strip="true"
+                  data-calendar-month-availability-strip="true"
+                  onClick={(clickEvent) => {
+                    clickEvent.stopPropagation();
+                    if (onSelectDate) {
+                      onSelectDate(date);
+                      return;
+                    }
+                    onOpen(availabilityEvent);
+                  }}
+                  style={{ left: 0, width: "6px" }}
+                  title={getAvailabilityStripLabel(availabilityEvent)}
+                  type="button"
+                />
+              ) : null}
               <HolidayCornerBadge date={date} />
               <strong
                 className={cn(
@@ -3801,7 +4211,7 @@ export function UnifiedCalendarMonthGrid({
                 {Number(date.slice(-2))}
               </strong>
               <div className="relative z-[2] mt-1 space-y-1">
-                {dateEvents.slice(0, 3).map((event) => (
+                {contentEvents.slice(0, 3).map((event) => (
                   <button
                     className="focus-ring block h-[14px] w-full truncate rounded-[4px] bg-[color:color-mix(in_srgb,var(--calendar-accent)_78%,var(--client-elevated)_22%)] px-0.5 text-left text-[8px] font-black leading-[14px] text-[color:var(--calendar-contrast)]"
                     key={event.id}
@@ -3855,35 +4265,6 @@ function EmptyCalendarState({ date, onCreate, searchQuery }: { date: string; onC
         <p className="mt-2 text-[11px] font-bold text-[color:var(--client-muted)]">当前日期没有预约。</p>
       )}
     </div>
-  );
-}
-
-function SyncContactOptionAvatar({ option, active }: { option: SyncContactOption; active: boolean }) {
-  if (option.avatar) {
-    return (
-      <AvatarImage
-        alt={option.label}
-        className={cn(
-          "h-10 w-10 shrink-0 border",
-          active ? "border-[color:color-mix(in_srgb,var(--client-primary)_54%,white_46%)]" : "border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)]"
-        )}
-        src={option.avatar}
-      />
-    );
-  }
-
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border text-[13px] font-black",
-        active
-          ? "border-[color:color-mix(in_srgb,var(--client-primary)_54%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_20%,transparent)] text-[color:var(--client-primary-strong)]"
-          : "border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] text-[color:var(--client-muted)]"
-      )}
-    >
-      {option.label.trim().slice(0, 1) || "同"}
-    </span>
   );
 }
 
@@ -4057,7 +4438,9 @@ export function UnifiedCalendarEventDetailPage({
   const [detailMode, setDetailMode] = useState<"detail" | "participants">("detail");
   const [status, setStatus] = useState<"已承诺" | "辞退" | "保留">("已承诺");
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
+  const [scheduleImpactAction, setScheduleImpactAction] = useState<"edit" | "delete" | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const actionMenuOverlayRef = useRef<HTMLDivElement | null>(null);
   const source = sourceConfigs[event.sourceId];
   const creatorLabel = event.creatorLabel?.trim() || source.label;
   const participants = getEventParticipantFallback(event, creatorLabel, source.label);
@@ -4082,7 +4465,19 @@ export function UnifiedCalendarEventDetailPage({
       return;
     }
     closeActionSheet();
+    if (event.availabilityWindowId && scheduleImpactAction !== "delete") {
+      setScheduleImpactAction("delete");
+      return;
+    }
     onDelete?.(event);
+  };
+  const handleEdit = () => {
+    if (!canEdit) return;
+    if (event.availabilityWindowId && scheduleImpactAction !== "edit") {
+      setScheduleImpactAction("edit");
+      return;
+    }
+    onEdit?.(event);
   };
 
   useEffect(() => {
@@ -4093,7 +4488,7 @@ export function UnifiedCalendarEventDetailPage({
     const handlePointerDown = (pointerEvent: PointerEvent) => {
       const target = pointerEvent.target;
 
-      if (target instanceof Node && actionMenuRef.current?.contains(target)) {
+      if (target instanceof Node && (actionMenuRef.current?.contains(target) || actionMenuOverlayRef.current?.contains(target))) {
         return;
       }
 
@@ -4198,6 +4593,25 @@ export function UnifiedCalendarEventDetailPage({
         </button>
         <EventDetailField icon="bell" label="提醒时间" value={event.reminder ?? "5 分前"} />
         <EventDetailField icon="clock" label="重复" value={repeatLabel && repeatLabel !== "不重复" ? repeatLabel : undefined} />
+        {scheduleImpactAction ? (
+          <section className="rounded-[18px] border-2 border-red-500 bg-red-500/10 px-4 py-4" role="alert">
+            <p className="text-sm font-black leading-6 text-red-500">
+              {event.availabilitySourceType === "shop"
+                ? "这是店铺安排的可排班日程。修改或取消可能影响店铺安排；该时段若已有确定预约，预约记录仍会保留。是否真的执行？"
+                : "修改或取消可排班时间不会删除已有预约，但会影响之后的自动接单与自动抢单。是否真的执行？"}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button className="focus-ring min-h-11 rounded-full border border-[color:var(--client-line)] font-black" onClick={() => setScheduleImpactAction(null)} type="button">返回</button>
+              <button
+                className="focus-ring min-h-11 rounded-full bg-red-500 font-black text-white"
+                onClick={() => scheduleImpactAction === "edit" ? onEdit?.(event) : onDelete?.(event)}
+                type="button"
+              >
+                {scheduleImpactAction === "edit" ? "确认修改排班" : "确认取消排班"}
+              </button>
+            </div>
+          </section>
+        ) : null}
         {canOpenAppointmentDetail ? (
           <button
             className="focus-ring flex w-full items-center justify-between gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_36%,transparent)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-left text-[color:var(--client-primary-strong)] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_12%,transparent)] transition active:scale-[0.99]"
@@ -4226,19 +4640,23 @@ export function UnifiedCalendarEventDetailPage({
   const headerActions = detailMode === "detail" ? (
     <>
       <EventDetailIconButton disabled={!onSync} icon="share" label="同步行程" onClick={onSync ? () => onSync(event) : undefined} />
-      <EventDetailIconButton disabled={!canEdit} icon="edit" label="编辑行程" onClick={canEdit ? () => onEdit?.(event) : undefined} />
+      <EventDetailIconButton disabled={!canEdit} icon="edit" label="编辑行程" onClick={canEdit ? handleEdit : undefined} />
       <div className="relative" ref={actionMenuRef}>
         <EventDetailIconButton icon="more" label="更多行程操作" onClick={() => setActionSheetOpen((current) => !current)} tone="primary" />
-        {actionSheetOpen ? (
-          <div className="absolute right-0 top-[calc(100%+10px)] z-[90] w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl">
-            <EventDetailMoreMenuItem icon="plus" label="制作一个复制" onClick={closeActionSheet} />
-            <EventDetailMoreMenuItem icon="share" label="日程转让" onClick={closeActionSheet} />
-            <EventDetailMoreMenuItem danger disabled={!canDelete} icon="trash" label="日程删除" onClick={handleDelete} />
-            <EventDetailMoreMenuItem icon="close" label="取消" onClick={closeActionSheet} />
-          </div>
-        ) : null}
       </div>
     </>
+  ) : null;
+  const headerOverlay = detailMode === "detail" && actionSheetOpen ? (
+    <div
+      className="absolute right-3 top-2 z-[90] w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl"
+      data-calendar-event-more-menu="true"
+      ref={actionMenuOverlayRef}
+    >
+      <EventDetailMoreMenuItem icon="plus" label="制作一个复制" onClick={closeActionSheet} />
+      <EventDetailMoreMenuItem icon="share" label="日程转让" onClick={closeActionSheet} />
+      <EventDetailMoreMenuItem danger disabled={!canDelete} icon="trash" label="日程删除" onClick={handleDelete} />
+      <EventDetailMoreMenuItem icon="close" label="取消" onClick={closeActionSheet} />
+    </div>
   ) : null;
   const statusOptions = ["已承诺", "辞退", "保留"] as const;
 
@@ -4250,6 +4668,7 @@ export function UnifiedCalendarEventDetailPage({
         className="client-mobile-schedule-detail__floating-header"
         info={detailMode === "participants" ? "和通讯录列表一致，只显示当前行程参加者。" : "统一行程详情页，适用于预约、排班和可排班行程。"}
         onBack={detailMode === "participants" ? () => setDetailMode("detail") : onBack}
+        overlay={headerOverlay}
         showSpacer={false}
         title={headerTitle}
       />
@@ -4319,34 +4738,28 @@ export function UnifiedCalendarEventDetailPage({
 }
 
 function CalendarEventEditorPage({
+  availabilityCapacity,
   draft,
   onChange,
   onClose,
+  onAvailabilityCapacityChange,
+  onOpenParticipantFlow,
   onSave,
-  syncContactOptions
+  saveDisabled = false,
+  technicianCreationMode,
+  onTechnicianCreationModeChange
 }: {
+  availabilityCapacity?: number;
   draft: CalendarEditorDraft;
   onChange: (draft: CalendarEditorDraft) => void;
   onClose: () => void;
-  onSave: () => void;
-  syncContactOptions: SyncContactOption[];
+  onAvailabilityCapacityChange?: (capacity: number) => void;
+  onOpenParticipantFlow: () => void;
+  onSave: () => void | Promise<void>;
+  saveDisabled?: boolean;
+  technicianCreationMode?: TechnicianCreationMode;
+  onTechnicianCreationModeChange?: (mode: TechnicianCreationMode) => void;
 }) {
-  const [syncContactFilterMode, setSyncContactFilterMode] = useState<SyncContactFilterMode>("common");
-  const syncFilterOptions: Array<{ value: SyncContactFilterMode; label: string; detail: string; emptyCaption: string }> = [
-    { value: "common", label: "常用", detail: "", emptyCaption: "当前没有常用联系人，保存后仅自己可见。" },
-    { value: "tags", label: "标签", detail: "调用通讯录标签，把当前行程同步给某类标签的人", emptyCaption: "当前通讯录没有可同步标签。" },
-    { value: "groups", label: "群组", detail: "从群组列表中选择同步群组", emptyCaption: "当前没有可同步群组。" }
-  ];
-  const visibleSyncContactOptions = syncContactOptions.filter((option) => getSyncContactOptionKind(option) === syncContactFilterMode);
-  const activeSyncFilter = syncFilterOptions.find((option) => option.value === syncContactFilterMode) ?? syncFilterOptions[0];
-
-  const toggleSyncContact = (contactId: string) => {
-    const nextContactIds = draft.syncContactIds.includes(contactId)
-      ? draft.syncContactIds.filter((item) => item !== contactId)
-      : [...draft.syncContactIds, contactId];
-    onChange({ ...draft, syncContactIds: nextContactIds });
-  };
-
   const handleImageUpload = (event: ReactChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []).slice(0, 6 - draft.images.length);
     if (files.length === 0) {
@@ -4400,6 +4813,61 @@ function CalendarEventEditorPage({
         data-scroll-drag-ignore="true"
       >
         <div className="space-y-3">
+        {technicianCreationMode && onTechnicianCreationModeChange ? (
+          <section className="grid grid-cols-2 gap-3" aria-label="日程业务类型">
+            {([
+              ["availability", "可排班"],
+              ["manualBooking", "手动预约"]
+            ] as const).map(([mode, label]) => {
+              const active = technicianCreationMode === mode;
+              return (
+                <button
+                  aria-checked={active}
+                  aria-label={label}
+                  className={cn(
+                    "focus-ring flex min-h-12 items-center justify-between rounded-full border px-4 text-sm font-black transition",
+                    active
+                      ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
+                      : "border-[color:var(--client-line)] bg-[color:var(--client-elevated)] text-[color:var(--client-muted)]"
+                  )}
+                  onClick={() => onTechnicianCreationModeChange(active ? "private" : mode)}
+                  role="switch"
+                  type="button"
+                >
+                  <span>{label}</span>
+                  <span aria-hidden="true" className={cn("relative h-6 w-11 rounded-full transition", active ? "bg-[color:var(--client-primary)]" : "bg-[color:var(--client-line)]") }>
+                    <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition", active ? "left-[22px]" : "left-0.5")} />
+                  </span>
+                </button>
+              );
+            })}
+          </section>
+        ) : null}
+        {technicianCreationMode === "availability" && availabilityCapacity !== undefined && onAvailabilityCapacityChange ? (
+          <section className={cn(scheduleInsetClass, "space-y-3 px-4 py-4")}>
+            <div>
+              <h2 className="text-base font-black text-[color:var(--client-text)]">自由排班</h2>
+              <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">
+                直接保存到当前日程表；已有预约只占用其中一段时间，不会缩短或关闭此范围。
+              </p>
+            </div>
+            <label className="block text-[11px] font-black text-[color:var(--client-muted)]">
+              同时可接数量
+              <input
+                className={cn(inputClass, "mt-1")}
+                max={100}
+                min={1}
+                name="availabilityCapacity"
+                onChange={(event) => onAvailabilityCapacityChange(Number(event.target.value))}
+                type="number"
+                value={availabilityCapacity}
+              />
+            </label>
+            {!Number.isInteger(availabilityCapacity) || availabilityCapacity < 1 || availabilityCapacity > 100 ? (
+              <p className="text-xs font-black text-red-500" role="alert">容量必须为 1 到 100 的整数</p>
+            ) : null}
+          </section>
+        ) : null}
         <input
           className={cn(inputClass, "h-12 text-base")}
           onChange={(event) => onChange({ ...draft, title: event.target.value })}
@@ -4535,67 +5003,18 @@ function CalendarEventEditorPage({
             <span className="text-[12px] font-black text-[color:var(--client-text)]">参加者</span>
             <span className="text-[10px] font-black text-[color:var(--client-muted)]">{draft.syncContactIds.length} 个</span>
           </div>
-          <div className="grid grid-cols-3 gap-1 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_40%,transparent)] p-1">
-            {syncFilterOptions.map((option) => {
-              const active = syncContactFilterMode === option.value;
-              return (
-                <button
-                  aria-pressed={active}
-                  className={cn(
-                    "focus-ring min-h-9 rounded-full px-2 text-[12px] font-black transition",
-                    active
-                      ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
-                      : "text-[color:var(--client-muted)]"
-                  )}
-                  key={option.value}
-                  onClick={() => setSyncContactFilterMode(option.value)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-          {activeSyncFilter.detail ? (
-            <p className="text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">{activeSyncFilter.detail}</p>
-          ) : null}
-          {visibleSyncContactOptions.length > 0 ? (
-            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {visibleSyncContactOptions.map((option) => {
-                const active = draft.syncContactIds.includes(option.id);
-                return (
-                  <button
-                    aria-pressed={active}
-                    className={cn(
-                      "focus-ring flex min-h-[58px] items-center gap-3 rounded-[15px] border px-3 py-2 text-left transition",
-                      active
-                        ? "border-[color:color-mix(in_srgb,var(--client-primary)_48%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
-                        : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] text-[color:var(--client-text)]"
-                    )}
-                    key={option.id}
-                    onClick={() => toggleSyncContact(option.id)}
-                    type="button"
-                  >
-                    <span
-                      className={cn(
-                        "grid h-5 w-5 shrink-0 place-items-center rounded-[6px] border text-[11px] font-black",
-                        active ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)]"
-                      )}
-                    >
-                      {active ? "✓" : ""}
-                    </span>
-                    <SyncContactOptionAvatar active={active} option={option} />
-                    <span className="min-w-0 flex-1">
-                      <strong className="block truncate text-[12px] font-black">{option.label}</strong>
-                      <span className="block truncate text-[10px] font-black opacity-65">{option.description}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-[11px] font-bold leading-5 text-[color:var(--client-muted)]">{activeSyncFilter.emptyCaption}</p>
-          )}
+          <button
+            className="focus-ring flex min-h-12 w-full items-center justify-between rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] px-4 text-left transition active:scale-[0.99]"
+            onClick={onOpenParticipantFlow}
+            type="button"
+          >
+            <span className="text-[12px] font-black text-[color:var(--client-text)]">
+              {draft.syncContactIds.length > 0 ? (
+                <><span>已选择</span> <span data-no-i18n>{draft.syncContactIds.length}</span> <span>位</span></>
+              ) : "选择参加者"}
+            </span>
+            <AppIcon className="h-4 w-4 -rotate-90 text-[color:var(--client-muted)]" name="down" />
+          </button>
         </section>
       </div>
       </main>
@@ -4612,7 +5031,8 @@ function CalendarEventEditorPage({
           </button>
           <button
             aria-label={`完成${title}`}
-            className="focus-ring flex h-12 min-w-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_16px_36px_color-mix(in_srgb,var(--client-primary)_22%,transparent)]"
+            className="focus-ring flex h-12 min-w-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_16px_36px_color-mix(in_srgb,var(--client-primary)_22%,transparent)] disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={saveDisabled}
             onClick={onSave}
             type="button"
           >
@@ -4838,12 +5258,16 @@ export function UnifiedUserCalendar({
   currentStore,
   displayMode,
   formalOnly = false,
+  initialSelectedDate,
   merchantLaneMode = "technician",
   searchQuery = "",
-  scope = "user"
+  showSourceDrawer = !formalOnly,
+  scope = "user",
+  technicians: providedTechnicians
 }: UnifiedUserCalendarProps) {
   const navigate = useNavigate();
-  const { customers, stores, technicians } = useEntityStore();
+  const { customers, stores, technicians: entityTechnicians } = useEntityStore();
+  const technicians = providedTechnicians ?? entityTechnicians;
   const scheduleSnapshot = useScheduleStore();
   const technicianSnapshot = useTechnicianScheduleStore();
   const dispatchSnapshot = useDispatchCenterStore();
@@ -4854,9 +5278,24 @@ export function UnifiedUserCalendar({
   const effectiveMerchantLaneMode: MerchantCalendarLaneMode = activeScope === "merchant" ? merchantLaneMode : "technician";
   const isMerchantAppointmentStatusMode = activeScope === "merchant" && effectiveMerchantLaneMode === "appointmentStatus";
   const [view, setView] = useState<UnifiedCalendarView>("day");
-  const [anchorDate, setAnchorDate] = useState(getTodayDateKey());
-  const [selectedDate, setSelectedDate] = useState(getTodayDateKey());
-  const [agendaDateWindow, setAgendaDateWindow] = useState<AgendaDateWindow>(() => createAgendaDateWindow(getTodayDateKey()));
+  const initialDate = /^\d{4}-\d{2}-\d{2}$/.test(initialSelectedDate ?? "") ? initialSelectedDate! : getTodayDateKey();
+  const [anchorDate, setAnchorDate] = useState(initialDate);
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [agendaDateWindow, setAgendaDateWindow] = useState<AgendaDateWindow>(() => createAgendaDateWindow(initialDate));
+  const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
+  const formalCacheScope = getAuthenticatedPersistentCacheScope();
+  const formalCacheKey = [
+    "calendar",
+    activeScope,
+    currentStore?.id ?? currentTechnician?.id ?? currentCustomer?.id ?? "self",
+    formalOnly ? "formal" : "combined",
+    isMerchantAppointmentStatusMode ? "appointments" : "schedule",
+    period.startDate,
+    period.endDate
+  ].join(":");
+  const cachedFormalData = formalCacheScope
+    ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
+    : undefined;
   const [agendaScrollRequestId, setAgendaScrollRequestId] = useState(0);
   const [sourceVisibility, setSourceVisibility] = useState(defaultSourceVisibility);
   const [sourceDrawerOpen, setSourceDrawerOpen] = useState(false);
@@ -4865,16 +5304,22 @@ export function UnifiedUserCalendar({
   const [birthdayContactQuery, setBirthdayContactQuery] = useState("");
   const [localEvents, setLocalEvents] = useState<LocalCalendarEvent[]>(() => formalOnly ? [] : loadLocalCalendarEvents());
   const [editorDraft, setEditorDraft] = useState<CalendarEditorDraft | null>(null);
+  const [participantFlowOpen, setParticipantFlowOpen] = useState(false);
+  const [technicianCreationMode, setTechnicianCreationMode] = useState<TechnicianCreationMode>("private");
+  const [availabilityCapacity, setAvailabilityCapacity] = useState(1);
+  const [editingAvailabilityWindowId, setEditingAvailabilityWindowId] = useState<number | null>(null);
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
   const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<MerchantAppointmentStatusFilter>("all");
-  const [formalOrders, setFormalOrders] = useState<Order[]>([]);
-  const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>([]);
-  const [formalDataLoading, setFormalDataLoading] = useState(false);
+  const [formalOrders, setFormalOrders] = useState<Order[]>(() => cachedFormalData?.orders ?? []);
+  const [formalMerchantOrders, setFormalMerchantOrders] = useState<BookingOrder[]>(() => cachedFormalData?.merchantOrders ?? []);
+  const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>(() => cachedFormalData?.scheduleSlots ?? []);
+  const [formalAvailabilityWindows, setFormalAvailabilityWindows] = useState<AvailabilityWindow[]>(() => cachedFormalData?.availabilityWindows ?? []);
+  const [formalCalendarEvents, setFormalCalendarEvents] = useState<FormalCalendarEvent[]>([]);
+  const [formalDataLoading, setFormalDataLoading] = useState(() => cachedFormalData === undefined);
   const [formalDataError, setFormalDataError] = useState("");
   const [formalDataReloadKey, setFormalDataReloadKey] = useState(0);
   const formalDataRequestId = useRef(0);
-  const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
   const googleCalendarActorId = getGoogleCalendarActorId(activeScope, currentCustomer, currentTechnician, currentStore);
   const appointmentStatusFilterLabel =
     merchantAppointmentStatusFilterOptions.find((option) => option.value === appointmentStatusFilter)?.label ?? "全预约";
@@ -4882,6 +5327,16 @@ export function UnifiedUserCalendar({
     () => getCurrentScopeCreator(activeScope, currentCustomer, currentTechnician, currentStore),
     [activeScope, currentCustomer, currentStore, currentTechnician]
   );
+  const currentCalendarParticipant = useMemo<CalendarParticipantOption>(() => ({
+    id: "self",
+    identityId: 0,
+    label: currentScopeCreator?.label ?? "我",
+    description: "当前用户",
+    avatar: activeScope === "technician" ? currentTechnician?.avatar : activeScope === "user" ? currentCustomer?.avatar : undefined,
+    tags: [],
+    groupIds: [],
+    isCommon: true,
+  }), [activeScope, currentCustomer?.avatar, currentScopeCreator?.label, currentTechnician?.avatar]);
   const imConfig = getImRoleConfig(imScope);
 
   useEffect(() => {
@@ -4889,47 +5344,101 @@ export function UnifiedUserCalendar({
     formalDataRequestId.current = requestId;
     let alive = true;
     const isCurrentRequest = () => alive && formalDataRequestId.current === requestId;
+    const loadFormalDataFromServer = async (): Promise<FormalCalendarCacheValue> => {
+      if (activeScope === "user") {
+        if (formalOnly) {
+          const from = parseDateKey(period.startDate);
+          const to = parseDateKey(addDays(period.endDate, 1));
+          const orders = await loadFormalCustomerOrderPeriod(from, to);
+          return { orders: orders.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [], availabilityWindows: [] };
+        }
+        const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
+        return { orders: response.list.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [], availabilityWindows: [] };
+      }
+      const from = parseDateKey(period.startDate);
+      const to = parseDateKey(period.endDate);
+      to.setDate(to.getDate() + 1);
+      if (isMerchantAppointmentStatusMode) {
+        const orders = await loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" });
+        return { orders: [], merchantOrders: orders, scheduleSlots: [], availabilityWindows: [] };
+      }
+      const scope = activeScope === "merchant" ? "merchant-admin" : "technician";
+      const [slots, orders, availabilityWindows] = await Promise.all([
+        loadManagedScheduleWindow(scope, { from, to }),
+        activeScope === "technician"
+          ? loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" })
+          : Promise.resolve([]),
+        availabilityWindowApi.listAll(scope, { from, to })
+      ]);
+      return { orders: [], merchantOrders: orders, scheduleSlots: slots, availabilityWindows };
+    };
+    const applyFormalData = (data: FormalCalendarCacheValue) => {
+      if (!isCurrentRequest()) return;
+      setFormalOrders(data.orders);
+      setFormalMerchantOrders(data.merchantOrders);
+      setFormalScheduleSlots(data.scheduleSlots);
+      setFormalAvailabilityWindows(data.availabilityWindows ?? []);
+      setFormalDataError("");
+      setFormalDataLoading(false);
+    };
+    const unsubscribe = formalCacheScope
+      ? persistentResourceCache.subscribe<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey, applyFormalData)
+      : () => undefined;
     const loadFormalData = async () => {
-      setFormalDataLoading(true);
+      const cached = formalCacheScope
+        ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
+        : undefined;
+      if (cached) applyFormalData(cached);
+      else setFormalDataLoading(true);
       setFormalDataError("");
       try {
-        if (activeScope === "user") {
-          if (formalOnly) {
-            const from = parseDateKey(period.startDate);
-            const to = parseDateKey(addDays(period.endDate, 1));
-            const orders = await loadFormalCustomerOrderPeriod(from, to);
-            if (isCurrentRequest()) {
-              setFormalOrders(orders.map(mapBookingOrderToDomainOrder));
-              setFormalScheduleSlots([]);
-            }
-            return;
-          }
-          const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
-          if (isCurrentRequest()) {
-            setFormalOrders(response.list.map(mapBookingOrderToDomainOrder));
-            setFormalScheduleSlots([]);
-          }
-          return;
-        }
-        const from = parseDateKey(period.startDate);
-        const to = parseDateKey(period.endDate);
-        to.setDate(to.getDate() + 1);
-        const response = await schedulingApi.listSlots(activeScope === "merchant" ? "merchant-admin" : "technician", { from, to, page: 1, pageSize: 100 });
-        if (isCurrentRequest()) {
-          setFormalScheduleSlots(response.list);
-          setFormalOrders([]);
-        }
+        const data = formalCacheScope
+          ? await persistentResourceCache.load({
+              force: formalDataReloadKey > 0,
+              key: formalCacheKey,
+              load: loadFormalDataFromServer,
+              scope: formalCacheScope
+            })
+          : await loadFormalDataFromServer();
+        applyFormalData(data);
       } catch (error) {
         if (isCurrentRequest()) {
-          setFormalDataError(error instanceof Error ? error.message : String(error));
-          setFormalOrders([]);
-          setFormalScheduleSlots([]);
+          const fallback = formalCacheScope
+            ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
+            : undefined;
+          if (fallback) applyFormalData(fallback);
+          else {
+            setFormalDataError(error instanceof Error ? error.message : String(error));
+            setFormalOrders([]);
+            setFormalMerchantOrders([]);
+            setFormalScheduleSlots([]);
+            setFormalAvailabilityWindows([]);
+          }
         }
       } finally {
         if (isCurrentRequest()) setFormalDataLoading(false);
       }
     };
     void loadFormalData();
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, [activeScope, formalCacheKey, formalCacheScope, formalDataReloadKey, formalOnly, isMerchantAppointmentStatusMode, period.endDate, period.startDate]);
+
+  useEffect(() => {
+    if (!formalOnly || activeScope === "merchant") {
+      setFormalCalendarEvents([]);
+      return;
+    }
+    let alive = true;
+    const from = parseDateKey(period.startDate);
+    const to = parseDateKey(addDays(period.endDate, 1));
+    void calendarEventApi.list({ from, to }).then((response) => {
+      if (alive) setFormalCalendarEvents(response.list);
+    }).catch((error) => {
+      if (alive) setFormalDataError((current) => current || (error instanceof Error ? error.message : String(error)));
+    });
     return () => { alive = false; };
   }, [activeScope, formalDataReloadKey, formalOnly, period.endDate, period.startDate]);
 
@@ -4942,6 +5451,10 @@ export function UnifiedUserCalendar({
   const visibleImContacts = useMemo(
     () => getVisibleCalendarContacts(imStore.contacts, imStore.usersById, imScope),
     [imScope, imStore.contacts, imStore.usersById]
+  );
+  const calendarParticipantOptions = useMemo(
+    () => getCalendarParticipantOptions(visibleImContacts, imStore.usersById, imStore.conversations),
+    [imStore.conversations, imStore.usersById, visibleImContacts]
   );
   const calendarContactTagOptions = useMemo(
     () => buildCalendarContactTagOptions(visibleImContacts, imStore.usersById, imStore.conversations, imScope),
@@ -5001,32 +5514,48 @@ export function UnifiedUserCalendar({
     technicians
   ]);
 
-  const parallelCalendarLanes = useMemo(
-    () => (resolvedDisplayMode === "parallel" && !isMerchantAppointmentStatusMode ? getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, effectiveMerchantLaneMode) : undefined),
-    [activeScope, currentStore, currentTechnician, effectiveMerchantLaneMode, isMerchantAppointmentStatusMode, resolvedDisplayMode, technicians]
-  );
+  const parallelCalendarLanes = useMemo(() => {
+    if (resolvedDisplayMode !== "parallel") return undefined;
+    const lanes = getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, "technician");
+    const laneIds = new Set(lanes.map((lane) => lane.id));
+    for (const slot of [...formalScheduleSlots, ...formalMerchantOrders]) {
+      const id = slot.technicianProfileId ? getTechnicianCalendarLaneId(String(slot.technicianProfileId)) : "merchant:unassigned";
+      if (laneIds.has(id)) continue;
+      laneIds.add(id);
+      lanes.push({ id, label: slot.technicianName ?? "未指定技师", accent: "var(--client-muted)" });
+    }
+    return lanes;
+  }, [activeScope, currentStore, currentTechnician, formalMerchantOrders, formalScheduleSlots, resolvedDisplayMode, technicians]);
 
   const allEvents = useMemo(() => {
     const birthdayEvents = formalOnly ? [] : getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
-    const localCalendarEvents = formalOnly ? [] : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
+    const localCalendarEvents = formalOnly
+      ? getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator)
+      : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
     const neeDoEvents = activeScope === "user" && currentCustomer
       ? getOrderEvents(currentCustomer, formalOrders, formalOnly)
+      : isMerchantAppointmentStatusMode
+        ? getFormalMerchantOrderEvents(formalMerchantOrders)
       : activeScope === "merchant" || activeScope === "technician"
-        ? getFormalScheduleEvents(formalScheduleSlots, activeScope)
+        ? [
+            ...getFormalAvailabilityWindowEvents(formalAvailabilityWindows, activeScope),
+            ...getFormalScheduleEvents(formalScheduleSlots, activeScope),
+            ...(activeScope === "technician" ? getFormalMerchantOrderEvents(formalMerchantOrders, "technician") : []),
+          ]
         : [];
 
     if (isMerchantAppointmentStatusMode) {
-      return [
+      return markBookingConflicts([
         ...localCalendarEvents,
         ...neeDoEvents
-      ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
+      ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents));
     }
 
-    return [
+    return markBookingConflicts([
       ...localCalendarEvents,
       ...neeDoEvents,
       ...birthdayEvents
-    ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
+    ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents));
   }, [
     activeScope,
     birthdayContactOptions,
@@ -5038,7 +5567,10 @@ export function UnifiedUserCalendar({
     dispatchSnapshot.arrangements,
     effectiveMerchantLaneMode,
     formalOrders,
+    formalAvailabilityWindows,
     formalScheduleSlots,
+    formalMerchantOrders,
+    formalCalendarEvents,
     formalOnly,
     imStore.users,
     isMerchantAppointmentStatusMode,
@@ -5109,13 +5641,13 @@ export function UnifiedUserCalendar({
   }, [currentImUserId, ensureCreatorConversation, imConfig.routes, navigate]);
 
   useEffect(() => {
-    if (!normalizedSearchQuery || view === "agenda") {
+    if (formalOnly || !normalizedSearchQuery || view === "agenda") {
       return;
     }
 
     setView("agenda");
     setAgendaDateWindow(createAgendaDateWindow(anchorDate));
-  }, [anchorDate, normalizedSearchQuery, view]);
+  }, [anchorDate, formalOnly, normalizedSearchQuery, view]);
 
   const extendAgendaDateWindow = (direction: -1 | 1) => {
     setAgendaDateWindow((current) => (
@@ -5207,6 +5739,10 @@ export function UnifiedUserCalendar({
   };
 
   const openCreate = (date = selectedDate, startTime?: string, endTime?: string, calendarId?: string, calendarLabel?: string) => {
+    setParticipantFlowOpen(false);
+    setTechnicianCreationMode("private");
+    setAvailabilityCapacity(1);
+    setEditingAvailabilityWindowId(null);
     const defaultCalendarTarget = getDefaultLocalCalendarTarget(activeScope);
     const resolvedCalendarId = calendarId ?? defaultCalendarTarget.calendarId;
     const resolvedCalendarLabel = calendarLabel ?? defaultCalendarTarget.calendarLabel;
@@ -5236,8 +5772,64 @@ export function UnifiedUserCalendar({
     });
   };
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
     if (!editorDraft) {
+      return;
+    }
+
+    if (formalOnly) {
+      try {
+        const input = toFormalCalendarEventInput(editorDraft);
+        if (activeScope === "technician" && technicianCreationMode === "availability") {
+          if (!Number.isInteger(availabilityCapacity) || availabilityCapacity < 1 || availabilityCapacity > 100) return;
+          const availabilityInput = {
+            startsAt: new Date(input.startsAt),
+            endsAt: new Date(input.endsAt),
+            capacity: availabilityCapacity
+          };
+          const saved = editingAvailabilityWindowId === null
+            ? await availabilityWindowApi.create("technician", availabilityInput)
+            : await availabilityWindowApi.update("technician", editingAvailabilityWindowId, availabilityInput);
+          setFormalAvailabilityWindows((windows) => editingAvailabilityWindowId === null
+            ? [...windows, saved]
+            : windows.map((window) => window.id === saved.id ? saved : window));
+          setSelectedDate(editorDraft.date);
+          setAnchorDate(editorDraft.date);
+          setView("day");
+          setTechnicianCreationMode("private");
+          setEditingAvailabilityWindowId(null);
+          setEditorDraft(null);
+          return;
+        }
+        if (activeScope === "technician" && technicianCreationMode === "manualBooking") {
+          const query = new URLSearchParams({
+            mode: technicianCreationMode,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt
+          });
+          navigate(`/technician/schedule/new?${query.toString()}`);
+          setEditorDraft(null);
+          return;
+        }
+        const id = formalCalendarEventId(editorDraft.id);
+        const current = id === null ? null : formalCalendarEvents.find((event) => event.id === id) ?? null;
+        const saved = current
+          ? await calendarEventApi.update(current.id, { ...input, expectedVersion: current.version })
+          : await calendarEventApi.create(input, globalThis.crypto?.randomUUID?.() ?? `calendar-${Date.now()}`);
+        setFormalCalendarEvents((events) => current
+          ? events.map((event) => event.id === saved.id ? saved : event)
+          : [...events, saved]);
+        const start = new Date(saved.startsAt);
+        const pad = (value: number) => String(value).padStart(2, "0");
+        const savedDate = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+        setSelectedDate(savedDate);
+        setAnchorDate(savedDate);
+        setView("day");
+        setFormalDataError("");
+        setEditorDraft(null);
+      } catch (error) {
+        setFormalDataError(error instanceof Error ? error.message : String(error));
+      }
       return;
     }
 
@@ -5285,6 +5877,73 @@ export function UnifiedUserCalendar({
   };
 
   const openEdit = (event: UnifiedCalendarEvent) => {
+    setParticipantFlowOpen(false);
+    if (formalOnly) {
+      if (event.availabilityWindowId) {
+        const window = formalAvailabilityWindows.find((item) => item.id === event.availabilityWindowId);
+        if (!window) return;
+        const start = new Date(window.startsAt);
+        const end = new Date(window.endsAt);
+        const pad = (value: number) => String(value).padStart(2, "0");
+        const dateValue = (value: Date) => `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+        const timeValue = (value: Date) => `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+        setActiveEvent(null);
+        setParticipantFlowOpen(false);
+        setTechnicianCreationMode("availability");
+        setAvailabilityCapacity(window.capacity);
+        setEditingAvailabilityWindowId(window.id);
+        setEditorDraft({
+          id: event.id,
+          calendarId: event.calendarId ?? "formal:personal",
+          calendarLabel: event.calendarLabel ?? "我的行程",
+          date: dateValue(start),
+          endDate: dateValue(end),
+          startTime: timeValue(start),
+          endTime: timeValue(end),
+          title: event.title,
+          location: "",
+          note: "",
+          url: "",
+          images: [],
+          reminder: "不提醒",
+          allDay: false,
+          repeatRule: "none",
+          syncContactIds: [],
+          visibility: "未同步"
+        });
+        return;
+      }
+      setEditingAvailabilityWindowId(null);
+      const id = formalCalendarEventId(event.id);
+      const formalEvent = id === null ? null : formalCalendarEvents.find((item) => item.id === id);
+      if (!formalEvent) return;
+      const start = new Date(formalEvent.startsAt);
+      const end = new Date(formalEvent.endsAt);
+      const pad = (value: number) => String(value).padStart(2, "0");
+      const dateValue = (value: Date) => `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+      const timeValue = (value: Date) => `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+      setActiveEvent(null);
+      setEditorDraft({
+        id: event.id,
+        calendarId: "formal:personal",
+        calendarLabel: "我的行程",
+        date: dateValue(start),
+        endDate: dateValue(end),
+        startTime: timeValue(start),
+        endTime: timeValue(end),
+        title: formalEvent.title,
+        location: formalEvent.location,
+        note: formalEvent.note,
+        url: formalEvent.url,
+        images: formalEvent.imageUrls.map((dataUrl, index) => ({ id: `formal-image-${index}`, name: `图片 ${index + 1}`, dataUrl })),
+        reminder: formalEvent.reminderMinutes === null ? "不提醒" : formalEvent.reminderMinutes === 60 ? "1 小时前" : `${formalEvent.reminderMinutes} 分钟前`,
+        allDay: formalEvent.allDay,
+        repeatRule: formalEvent.repeatRule,
+        syncContactIds: formalEvent.participantIdentityIds.map(String),
+        visibility: formalEvent.visibility === "participants" ? "参加者" : "仅自己"
+      });
+      return;
+    }
     const localEvent = localEvents.find((item) => item.id === event.id);
     if (!localEvent) {
       return;
@@ -5313,12 +5972,92 @@ export function UnifiedUserCalendar({
   };
 
   const deleteEvent = (event: UnifiedCalendarEvent) => {
+    if (formalOnly) {
+      if (event.availabilityWindowId) {
+        void availabilityWindowApi.delete("technician", event.availabilityWindowId).then(() => {
+          setFormalAvailabilityWindows((windows) => windows.filter((window) => window.id !== event.availabilityWindowId));
+          setActiveEvent(null);
+        }).catch((error) => setFormalDataError(error instanceof Error ? error.message : String(error)));
+        return;
+      }
+      const id = formalCalendarEventId(event.id);
+      const current = id === null ? null : formalCalendarEvents.find((item) => item.id === id);
+      if (!current) return;
+      void calendarEventApi.remove(current.id, current.version).then(() => {
+        setFormalCalendarEvents((events) => events.filter((item) => item.id !== current.id));
+        setActiveEvent(null);
+      }).catch((error) => setFormalDataError(error instanceof Error ? error.message : String(error)));
+      return;
+    }
     setLocalEvents((current) => current.filter((item) => item.id !== event.id));
     setActiveEvent(null);
   };
 
   const openCalendarEvent = (event: UnifiedCalendarEvent) => {
     setActiveEvent(event);
+  };
+
+  const renderParticipantTimeline = ({
+    busyRanges,
+    conflictIdentityIds,
+    draft,
+    onTimeChange,
+    participants,
+  }: CalendarParticipantTimelineRenderInput) => {
+    const laneId = (participant: CalendarParticipantOption) => `participant:${participant.id}`;
+    const participantByIdentityId = new Map(participants.map((participant) => [participant.identityId, participant]));
+    const lanes: UnifiedCalendarLane[] = participants.map((participant) => ({
+      id: laneId(participant),
+      label: participant.label,
+      caption: participant.description,
+      accent: conflictIdentityIds.has(participant.identityId) ? "#ef4444" : "#36d67b",
+      avatar: participant.avatar,
+    }));
+    const personalEvents = allEvents
+      .filter((event) => event.date === draft.date)
+      .map((event) => ({
+        ...event,
+        calendarId: laneId(currentCalendarParticipant),
+        calendarLabel: currentCalendarParticipant.label,
+      }));
+    const privateBusyEvents: UnifiedCalendarEvent[] = busyRanges.flatMap((busy, busyIndex) => {
+      const participant = participantByIdentityId.get(busy.participantIdentityId);
+      if (!participant) return [];
+      return getFormalCalendarSegments(busy.startsAt, busy.endsAt)
+        .filter((segment) => segment.date === draft.date)
+        .map((segment) => ({
+          id: `participant-busy-${busy.participantIdentityId}-${busyIndex}-${segment.date}`,
+          sourceId: "user" as const,
+          calendarId: laneId(participant),
+          calendarLabel: participant.label,
+          date: segment.date,
+          startTime: segment.startTime,
+          endTime: segment.endTime,
+          title: "已锁定",
+          subtitle: "占用",
+          badge: "已锁定",
+          readOnly: true,
+          visibility: "已锁定",
+        }));
+    });
+    const conflictLaneIds = new Set(
+      participants
+        .filter((participant) => conflictIdentityIds.has(participant.identityId))
+        .map(laneId)
+    );
+
+    return (
+      <UnifiedCalendarDayTimeline
+        calendarLanes={lanes}
+        date={draft.date}
+        draftConflictCalendarIds={conflictLaneIds}
+        draftRangeValue={{ start: timeToMinutes(draft.startTime), end: timeToMinutes(draft.endTime) }}
+        events={[...personalEvents, ...privateBusyEvents]}
+        onDraftRangeChange={(range) => onTimeChange(minutesToTime(range.start), minutesToTime(range.end))}
+        onOpen={() => undefined}
+        spanDraftAcrossLanes
+      />
+    );
   };
 
   const refreshGoogleCalendarStatus = async () => {
@@ -5422,7 +6161,7 @@ export function UnifiedUserCalendar({
     <UnifiedCalendarSurface data-unified-user-calendar="true">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          {!formalOnly ? <button
+          {showSourceDrawer ? <button
             aria-label="打开日历来源"
             className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-text)]"
             onClick={() => setSourceDrawerOpen((current) => !current)}
@@ -5528,7 +6267,7 @@ export function UnifiedUserCalendar({
             date={selectedDate}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={selectedDateEvents}
-            onCreate={formalOnly ? undefined : openCreate}
+            onCreate={formalOnly && activeScope === "merchant" ? undefined : openCreate}
             onOpen={openCalendarEvent}
           />
         </div>
@@ -5538,7 +6277,7 @@ export function UnifiedUserCalendar({
             dates={view === "threeDay" ? getThreeDayDates(anchorDate) : getWeekDates(anchorDate)}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={searchedVisiblePeriodEvents}
-            onCreate={formalOnly ? undefined : openCreate}
+            onCreate={formalOnly && activeScope === "merchant" ? undefined : openCreate}
             onOpen={openCalendarEvent}
             onSelectDate={openDateInDayView}
             selectedDate={selectedDate}
@@ -5559,7 +6298,7 @@ export function UnifiedUserCalendar({
         <UnifiedCalendarAgendaView
           dates={period.dates}
           events={searchedVisiblePeriodEvents}
-          onCreate={formalOnly ? undefined : (date) => openCreate(date)}
+          onCreate={formalOnly && activeScope === "merchant" ? undefined : (date) => openCreate(date)}
           onExtendFuture={() => extendAgendaDateWindow(1)}
           onExtendPast={() => extendAgendaDateWindow(-1)}
           onOpen={openCalendarEvent}
@@ -5569,16 +6308,49 @@ export function UnifiedUserCalendar({
         />
       )}
 
-      {!formalOnly && editorDraft ? (
-        <CalendarEventEditorPage draft={editorDraft} onChange={setEditorDraft} onClose={() => setEditorDraft(null)} onSave={saveDraft} syncContactOptions={syncContactOptions} />
+      {editorDraft && (!formalOnly || activeScope !== "merchant") ? (
+        <CalendarEventEditorPage
+          availabilityCapacity={activeScope === "technician" ? availabilityCapacity : undefined}
+          draft={editorDraft}
+          onChange={setEditorDraft}
+          onClose={() => {
+            setParticipantFlowOpen(false);
+            setEditingAvailabilityWindowId(null);
+            setEditorDraft(null);
+          }}
+          onOpenParticipantFlow={() => setParticipantFlowOpen(true)}
+          onAvailabilityCapacityChange={activeScope === "technician" ? setAvailabilityCapacity : undefined}
+          onSave={saveDraft}
+          saveDisabled={activeScope === "technician" && technicianCreationMode === "availability"
+            ? !Number.isInteger(availabilityCapacity) || availabilityCapacity < 1 || availabilityCapacity > 100
+            : false}
+          technicianCreationMode={activeScope === "technician" ? technicianCreationMode : undefined}
+          onTechnicianCreationModeChange={activeScope === "technician" ? setTechnicianCreationMode : undefined}
+        />
+      ) : null}
+      {editorDraft && participantFlowOpen && (!formalOnly || activeScope !== "merchant") ? (
+        <Suspense fallback={null}>
+          <CalendarParticipantFlow
+            currentParticipant={currentCalendarParticipant}
+            draft={editorDraft}
+            onClose={() => setParticipantFlowOpen(false)}
+            onComplete={(draft) => {
+              setEditorDraft((current) => current ? { ...current, ...draft } : current);
+              setParticipantFlowOpen(false);
+            }}
+            onDraftChange={(draft) => setEditorDraft((current) => current ? { ...current, ...draft } : current)}
+            options={calendarParticipantOptions}
+            renderTimeline={renderParticipantTimeline}
+          />
+        </Suspense>
       ) : null}
       {displayActiveEvent ? (
         <UnifiedCalendarEventDetailPage
           event={displayActiveEvent}
           onBack={() => setActiveEvent(null)}
           onContactCreator={displayActiveEvent.creatorUserId && displayActiveEvent.creatorUserId !== imStore.currentUserId ? openCreatorChat : undefined}
-          onDelete={formalOnly || displayActiveEvent.readOnly ? undefined : deleteEvent}
-          onEdit={formalOnly || displayActiveEvent.readOnly ? undefined : openEdit}
+          onDelete={displayActiveEvent.readOnly ? undefined : deleteEvent}
+          onEdit={displayActiveEvent.readOnly ? undefined : openEdit}
           onOpenAppointmentDetail={(event) => {
             const appointmentDetailId = getCalendarAppointmentDetailId(event);
 
@@ -5596,7 +6368,7 @@ export function UnifiedUserCalendar({
           }}
         />
       ) : null}
-      {!formalOnly ? <CalendarSourceDrawer
+      {showSourceDrawer ? <CalendarSourceDrawer
         birthdayContactOptions={birthdayContactOptions}
         birthdayContactQuery={birthdayContactQuery}
         birthdayExpanded={birthdayExpanded}
@@ -5604,6 +6376,7 @@ export function UnifiedUserCalendar({
         birthdayTagOptions={calendarContactTagOptions}
         googleConnectionStatus={googleConnectionStatus}
         googleSyncEventCount={searchedVisiblePeriodEvents.length}
+        formalOnly={formalOnly}
         onGoogleConnect={connectGoogleCalendar}
         onGoogleExport={exportGoogleCalendarEvents}
         onGoogleImport={importGoogleCalendarEvents}
@@ -5619,7 +6392,7 @@ export function UnifiedUserCalendar({
         sourceCounts={sourceCounts}
         sourceVisibility={sourceVisibility}
       /> : null}
-      {!formalOnly ? <FloatingActionButton
+      {(!formalOnly || activeScope !== "merchant") ? <FloatingActionButton
         ariaLabel="新增行程"
         onClick={() => openCreate(selectedDate)}
         storageKey={`needo.fab.schedule-create.${activeScope}`}

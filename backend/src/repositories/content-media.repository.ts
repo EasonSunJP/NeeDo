@@ -44,6 +44,7 @@ export const createContentMediaAdvisoryLockConnectionFactory = (
     database: runtimeConfig.database,
     charset: runtimeConfig.charset,
     collation: runtimeConfig.collation,
+    timezone: runtimeConfig.timezone,
     allowPublicKeyRetrieval: runtimeConfig.allowPublicKeyRetrieval,
     connectTimeout: runtimeConfig.connectTimeout
   };
@@ -145,9 +146,11 @@ export class ContentMediaRepository implements ContentMediaRepositoryPort {
         entityType: input.entityType,
         entityId: input.entityId,
         ownerUserId: input.ownerUserId,
+        ownerIdentityId: input.ownerIdentityId ?? null,
+        shopId: input.shopId ?? null,
         url: input.url,
         mimeType: input.mimeType,
-        usageType: "content_publication_public",
+        usageType: input.usageType ?? "content_publication_public",
         width: null,
         height: null,
         altText: input.altText,
@@ -159,7 +162,12 @@ export class ContentMediaRepository implements ContentMediaRepositoryPort {
     await transaction.auditLog.create({
       data: {
         actorId: input.ownerUserId,
-        action: "content.media.uploaded",
+        action:
+          input.entityType === "official_notice_upload"
+            ? "official_notice.media_uploaded"
+            : input.entityType === "shop_presentation_upload"
+              ? "merchant_admin.shop_presentation.media_uploaded"
+              : "content.media.uploaded",
         targetType: "MediaAsset",
         targetId: mediaAsset.id,
         ip: input.context.ip,
@@ -169,7 +177,10 @@ export class ContentMediaRepository implements ContentMediaRepositoryPort {
           mediaAssetId: mediaAsset.id,
           url: input.url,
           mimeType: input.mimeType,
-          altText: input.altText
+          altText: input.altText,
+          fileName: input.fileName ?? null,
+          shopId: input.shopId ?? null,
+          ownerIdentityId: input.ownerIdentityId ?? null
         } satisfies Prisma.InputJsonValue,
         createdAt: input.createdAt
       }

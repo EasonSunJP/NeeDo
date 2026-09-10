@@ -3,6 +3,7 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { AuthTokenService } from "../src/services/auth-token.service";
+import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
 const now = new Date("2026-08-26T00:00:00.000Z");
 const task = {
@@ -263,6 +264,7 @@ const createFixture = () => {
       isAccessTokenBlacklisted: jest.fn(async () => false)
     },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
+    merchantShopContextRepository: createDirectShopContextRepository({ shopId: 11 }),
     affiliateTaskService,
     merchantAffiliateTaskContextService
   } as never);

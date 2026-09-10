@@ -3,8 +3,9 @@ import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { InfoTooltipTrigger } from "../../../components/ui/TitleWithInfo";
 import { cn } from "../../../lib/utils";
-import { addDays, getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
+import { getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
 import { saveDispatchCycleDraft } from "../../dispatch-center/store";
+import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
 
 const modeOptions: Array<{
   mode: DispatchCycleMode;
@@ -16,29 +17,21 @@ const modeOptions: Array<{
   recommended?: boolean;
 }> = [
   {
-    mode: "STORE_COLLECT_CONFIRM",
-    title: "商户确认模式",
-    scenario: "多数机构店铺",
-    merchantRole: "设定可排班时段，处理冲突并最终确认",
-    technicianRole: "提交可上班 / 不可上班反馈，可发起申请",
-    confirmation: "商户必须最终确认",
-    recommended: true
-  },
-  {
     mode: "TECH_SELF_FINAL",
     title: "技师自主排班",
     scenario: "自由技师、轻管理店铺",
-    merchantRole: "设定基本边界规则，查看结果与冲突",
-    technicianRole: "自行设定并保存上班时间",
-    confirmation: "系统自动确认"
+    merchantRole: "跟踪技师是否完成或更新下一周期排班",
+    technicianRole: "直接完成自己的下一周期排班",
+    confirmation: "完成状态汇总",
+    recommended: true
   },
   {
     mode: "STORE_ASSIGN_FINAL",
     title: "商户直接排班",
     scenario: "传统强管理门店",
     merchantRole: "直接安排每个技师的班次",
-    technicianRole: "查看结果，可提交请假 / 加班 / 退职申请",
-    confirmation: "商户保存即正式排班"
+    technicianRole: "确认店铺排班，可提交请假 / 调整申请",
+    confirmation: "确认与调整反馈"
   }
 ];
 
@@ -73,11 +66,7 @@ export function StepModeSelection({
   const updateMode = (mode: DispatchCycleMode) => {
     const nextDraft = {
       ...draft,
-      mode,
-      feedbackDeadline:
-        mode === "STORE_COLLECT_CONFIRM"
-          ? draft.feedbackDeadline ?? `${addDays(draft.periodStart, -2)}T18:00`
-          : null
+      mode
     };
 
     setDraft(nextDraft);
@@ -85,7 +74,12 @@ export function StepModeSelection({
   };
 
   return (
-    <div className="space-y-5">
+    <div
+      className={cn(
+        "space-y-5",
+        isMobileSurface && "pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]"
+      )}
+    >
       <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
@@ -150,8 +144,8 @@ export function StepModeSelection({
           <p className={cn("text-xs font-black uppercase tracking-[0.16em]", labelTextClass)}>权限和同步边界</p>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             {[
-              ["正式排班来源", draft.mode === "TECH_SELF_FINAL" ? "技师发布后投影" : draft.mode === "STORE_ASSIGN_FINAL" ? "商户直接生成" : "反馈经商户确认"],
-              ["技师端编辑", draft.mode === "STORE_ASSIGN_FINAL" ? "只读 + 申请入口" : "可提交 / 修改"],
+              ["正式排班来源", draft.mode === "TECH_SELF_FINAL" ? "技师发布后投影" : "商户直接生成"],
+              ["技师端反馈", draft.mode === "STORE_ASSIGN_FINAL" ? "确认 + 请假 / 调整申请" : "完成 / 更新自己的排班"],
               ["用户端可约", "只读取最终 confirmed slots"]
             ].map(([label, value]) => (
               <article className={cn("rounded-[20px] border px-4 py-3", isMobileSurface ? "border-line bg-white/80" : "merchant-dispatch-card")} key={label}>
@@ -163,9 +157,15 @@ export function StepModeSelection({
         </div>
       </section>
 
-      <div className={cn("flex flex-wrap items-center justify-center gap-3", isMobileSurface && "schedule-wizard-action-dock rounded-[28px] p-2")}>
+      <ScheduleFloatingActions
+        mobileColumnsClassName="grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
+        surface={surface}
+      >
         <Button
-          className={cn(secondaryButtonClass, "min-w-[132px]")}
+          className={cn(
+            secondaryButtonClass,
+            isMobileSurface ? "w-full min-w-0" : "min-w-[132px]"
+          )}
           variant="secondary"
           onClick={() => {
             const result = saveDispatchCycleDraft(draft);
@@ -175,7 +175,10 @@ export function StepModeSelection({
           保存草稿
         </Button>
         <Button
-          className={cn(primaryButtonClass, "min-w-[196px]")}
+          className={cn(
+            primaryButtonClass,
+            isMobileSurface ? "w-full min-w-0" : "min-w-[196px]"
+          )}
           onClick={() => {
             const nextDraft = { ...draft, currentStep: 2 as const };
             const result = saveDispatchCycleDraft(nextDraft);
@@ -191,7 +194,7 @@ export function StepModeSelection({
         >
           下一步：规则设定
         </Button>
-      </div>
+      </ScheduleFloatingActions>
     </div>
   );
 }

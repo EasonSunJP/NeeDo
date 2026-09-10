@@ -1,3 +1,4 @@
+import type { ApplicationEkycPolicyPort } from "../domain/user-policy-enforcement";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import {
@@ -30,6 +31,8 @@ export interface MerchantApplicationDetailRecord {
   contactPhone: string;
   responsiblePersonName: string;
   showcaseDraft: Record<string, unknown> | null;
+  serviceCategoryIds: number[];
+  businessKeywordIds: number[];
   bankAccountId: number | null;
   contractAcceptanceId: number | null;
   mediaPurposes: string[];
@@ -37,7 +40,19 @@ export interface MerchantApplicationDetailRecord {
   eKycVerified: boolean;
 }
 
+export interface ApplicationReviewEvidence {
+  serviceCategories?: string[];
+  businessKeywords?: string[];
+  targetShopName: string | null;
+  targetShopPublicId: string | null;
+  media: Array<{ id: number; purpose: string }>;
+  bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string | null; accountHolderMasked: string | null; verificationStatus: string } | null;
+  contractAcceptance: { contractVersion: string; acceptedTextSnapshot: string; acceptedAt: Date; receiptId: string } | null;
+}
+
 export interface IdentityApplicationRecord {
+  reviewEvidence?: ApplicationReviewEvidence;
+  purgedAt?: Date | null;
   id: number;
   userId: number;
   type: IdentityApplicationType;
@@ -69,6 +84,10 @@ export interface EligibleShopSearchQuery {
 }
 
 export interface EligibleShopSearchResult {
+  coverUrl?: string | null;
+  rating?: number | null;
+  reviewCount?: number;
+  keywords?: string[];
   id: number;
   merchantId: string;
   name: string;
@@ -105,6 +124,7 @@ export interface UpdateTechnicianDraftRepositoryInput {
 
 export interface UpdateMerchantDraftRepositoryInput {
   applicationId: number;
+  selectedByUserId: number;
   expectedVersion: number;
   nextStatus: "draft";
   activeKey: string;
@@ -140,7 +160,12 @@ export interface IdentityApplicationRepositoryPort {
     type: IdentityApplicationType
   ) => Promise<IdentityApplicationRecord | null>;
   hasActiveIdentity: (userId: number, type: IdentityApplicationType) => Promise<boolean>;
+  hasTechnicianShopAffiliation: (userId: number, shopId: number) => Promise<boolean>;
   isShopEligibleForTechnicianApplications: (shopId: number) => Promise<boolean>;
+  assertMerchantTaxonomySelection: (input: {
+    serviceCategoryIds: number[];
+    businessKeywordIds: number[];
+  }) => Promise<void>;
   createTechnicianDraft: (
     input: CreateTechnicianDraftRepositoryInput
   ) => Promise<IdentityApplicationRecord>;
@@ -154,9 +179,7 @@ export interface IdentityApplicationRepositoryPort {
   updateMerchantDraft: (
     input: UpdateMerchantDraftRepositoryInput
   ) => Promise<IdentityApplicationRecord>;
-  submit: (
-    input: SubmitIdentityApplicationRepositoryInput
-  ) => Promise<IdentityApplicationRecord>;
+  submit: (input: SubmitIdentityApplicationRepositoryInput) => Promise<IdentityApplicationRecord>;
   close: (input: CloseIdentityApplicationRepositoryInput) => Promise<IdentityApplicationRecord>;
 }
 
@@ -229,6 +252,7 @@ const emptyTechnicianDetail = (
 export class IdentityApplicationService {
   public constructor(
     private readonly repository: IdentityApplicationRepositoryPort,
+    private readonly ekycPolicy: ApplicationEkycPolicyPort,
     private readonly policy = new IdentityApplicationPolicyService()
   ) {}
 
@@ -248,7 +272,7 @@ export class IdentityApplicationService {
   public async createTechnicianDraft(
     input: CreateTechnicianDraftInput
   ): Promise<IdentityApplicationRecord> {
-    await this.assertCanApply(input.userId, "technician");
+    await this.assertCanApply(input.userId, "technician", input.targetShopId);
     await this.assertEligibleShop(input.targetShopId);
 
     return this.repository.createTechnicianDraft({
@@ -262,6 +286,7 @@ export class IdentityApplicationService {
     input: CreateMerchantDraftInput
   ): Promise<IdentityApplicationRecord> {
     await this.assertCanApply(input.userId, "merchant");
+    await this.assertMerchantTaxonomySelection(input.detail);
 
     return this.repository.createMerchantDraft({
       userId: input.userId,
@@ -277,6 +302,12 @@ export class IdentityApplicationService {
     this.assertType(application, "technician");
     this.assertVersion(application.version, input.expectedVersion);
     this.assertEditable(application.status);
+    if (
+      (await this.repository.hasActiveIdentity(input.userId, "technician")) &&
+      (await this.repository.hasTechnicianShopAffiliation(input.userId, input.detail.targetShopId))
+    ) {
+      throw this.conflict("error.technician_affiliation.already_exists");
+    }
     await this.assertEligibleShop(input.detail.targetShopId);
 
     return this.repository.updateTechnicianDraft({
@@ -298,9 +329,11 @@ export class IdentityApplicationService {
     this.assertType(application, "merchant");
     this.assertVersion(application.version, input.expectedVersion);
     this.assertEditable(application.status);
+    await this.assertMerchantTaxonomySelection(input.detail);
 
     return this.repository.updateMerchantDraft({
       applicationId: application.id,
+      selectedByUserId: input.userId,
       expectedVersion: input.expectedVersion,
       nextStatus: "draft",
       activeKey: this.policy.buildActiveKey(input.userId, "merchant", "draft")!,
@@ -322,9 +355,11 @@ export class IdentityApplicationService {
         statusCode: 404
       });
     }
+    await this.assertMerchantTaxonomySelection(input.detail);
 
     return this.repository.updateMerchantDraft({
       applicationId: application.id,
+      selectedByUserId: input.userId,
       expectedVersion: input.expectedVersion,
       nextStatus: "draft",
       activeKey: this.policy.buildActiveKey(input.userId, "merchant", "draft")!,
@@ -341,7 +376,9 @@ export class IdentityApplicationService {
     this.assertEditable(application.status);
     this.assertTransition(application.status, "submitted");
 
-    const submittedSnapshot = this.buildSubmittedSnapshot(application);
+    const ekyc = await this.ekycPolicy.evaluateApplicationEkyc(input.userId, application.type, input.now);
+    if (ekyc.required && !ekyc.verified) throw this.conflict("error.identity_application.ekyc_required");
+    const submittedSnapshot = { ...this.buildSubmittedSnapshot(application), ekycPolicy: ekyc };
     return this.repository.submit({
       applicationId: application.id,
       expectedVersion: input.expectedVersion,
@@ -367,11 +404,18 @@ export class IdentityApplicationService {
     });
   }
 
-  private async assertCanApply(userId: number, type: IdentityApplicationType): Promise<void> {
+  private async assertCanApply(userId: number, type: IdentityApplicationType, targetShopId?: number): Promise<void> {
     if (await this.repository.findActiveByUserAndType(userId, type)) {
       throw this.conflict("error.identity_application.conflict");
     }
-    if (await this.repository.hasActiveIdentity(userId, type)) {
+    const hasActiveIdentity = await this.repository.hasActiveIdentity(userId, type);
+    if (hasActiveIdentity && type === "technician" && targetShopId) {
+      if (await this.repository.hasTechnicianShopAffiliation(userId, targetShopId)) {
+        throw this.conflict("error.technician_affiliation.already_exists");
+      }
+      return;
+    }
+    if (hasActiveIdentity) {
       throw this.conflict("error.identity_application.identity_already_active");
     }
   }
@@ -386,7 +430,10 @@ export class IdentityApplicationService {
     }
   }
 
-  private async loadOwned(userId: number, applicationId: number): Promise<IdentityApplicationRecord> {
+  private async loadOwned(
+    userId: number,
+    applicationId: number
+  ): Promise<IdentityApplicationRecord> {
     const application = await this.repository.findById(applicationId);
     if (!application || application.userId !== userId) {
       throw new AppError({
@@ -466,8 +513,8 @@ export class IdentityApplicationService {
     if (requiredValues.some((value) => !value.trim()) || !detail.showcaseDraft) {
       throw this.validation("error.identity_application.merchant_required_fields");
     }
-    if (!detail.mediaPurposes.includes("representative_identity")) {
-      throw this.validation("error.identity_application.representative_identity_required");
+    if (detail.serviceCategoryIds.length === 0) {
+      throw this.validation("error.identity_application.service_category_required");
     }
     if (detail.applicantKind === "corporate") {
       if (!detail.corporateLegalName?.trim() || !detail.corporateLegalNameKana?.trim()) {
@@ -476,10 +523,11 @@ export class IdentityApplicationService {
       if (!detail.mediaPurposes.includes("corporate_registration")) {
         throw this.validation("error.identity_application.corporate_registration_required");
       }
-    } else if (!detail.eKycVerified) {
-      throw this.conflict("error.identity_application.ekyc_required");
     }
-    if (!detail.bankAccountId || detail.bankVerificationStatus !== "verified") {
+    if (
+      !detail.bankAccountId ||
+      !["verified", "declared"].includes(detail.bankVerificationStatus ?? "")
+    ) {
       throw this.conflict("error.identity_application.bank_verification_required");
     }
     if (!detail.contractAcceptanceId) {
@@ -501,6 +549,29 @@ export class IdentityApplicationService {
       contactPhone: detail.contactPhone.trim(),
       responsiblePersonName: detail.responsiblePersonName.trim()
     };
+  }
+
+  private async assertMerchantTaxonomySelection(
+    detail: Pick<MerchantApplicationDetailRecord, "serviceCategoryIds" | "businessKeywordIds">
+  ): Promise<void> {
+    const serviceCategoryIds = [...new Set(detail.serviceCategoryIds)];
+    const businessKeywordIds = [...new Set(detail.businessKeywordIds)];
+    if (
+      serviceCategoryIds.length !== detail.serviceCategoryIds.length ||
+      businessKeywordIds.length !== detail.businessKeywordIds.length
+    ) {
+      throw this.validation("error.identity_application.taxonomy_duplicate_selection");
+    }
+    if (serviceCategoryIds.length < 1 || serviceCategoryIds.length > 5) {
+      throw this.validation("error.identity_application.service_category_limit");
+    }
+    if (businessKeywordIds.length > 5) {
+      throw this.validation("error.identity_application.business_keyword_limit");
+    }
+    await this.repository.assertMerchantTaxonomySelection({
+      serviceCategoryIds,
+      businessKeywordIds
+    });
   }
 
   private conflict(message: string): AppError {

@@ -2,17 +2,75 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
 import { httpClient } from "../../api/httpClient";
 import { realtimeApi } from "../realtime/api";
+import realtimeApiSource from "../realtime/api.ts?raw";
 import {
   createFormalImApi,
   shouldForwardFormalImEvent,
   toFormalImStoreUpdate,
 } from "./formal-api";
+import imModelSource from "./model.ts?raw";
 
 const now = "2026-08-25T10:00:00.000Z";
 
+function chatRecordDeliveryMessage(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 801,
+    conversationId: 91,
+    senderUserId: 100,
+    type: "text" as const,
+    content: "A",
+    metadata: null,
+    reactions: [],
+    expiresAt: null,
+    recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+    recalledAt: null,
+    recallMode: null,
+    contentPurgedAt: null,
+    privacyPolicyVersionAtSend: null,
+    lifecycleVersion: 1,
+    reactionVersion: 0,
+    availableRecallModes: ["standard" as const],
+    createdAt: now,
+    ...overrides,
+  };
+}
+
+function chatRecordItem(position: number, overrides: Record<string, unknown> = {}) {
+  return {
+    id: 900 + position,
+    position,
+    senderDisplayName: "A",
+    senderAvatarUrl: null,
+    messageType: "text",
+    content: `item-${position}`,
+    metadata: null,
+    sentAt: now,
+    ...overrides,
+  };
+}
+
 describe("formal IM adapter", () => {
+  it("does not accept a sender-supplied media expiry flag as server state", () => {
+    const result = toFormalImStoreUpdate({
+      id: "media-state-untrusted", type: "message.created",
+      payload: {
+        id: 700, conversationId: 91, senderUserId: 100, type: "text", content: "/media/im/a.jpg", createdAt: now,
+        metadata: { needoMessageType: "image", needoMessageExt: { mediaState: "expired", caption: "keep caption" } }
+      }
+    });
+    expect(result).toMatchObject({ type: "message.created", message: { type: "image", ext: { caption: "keep caption" } } });
+    if (result?.type === "message.created") expect(result.message.ext?.mediaState).toBeUndefined();
+  });
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("declares self in both formal directory profile contracts", () => {
+    const relationshipContract =
+      /relationship:\s*(?:\|\s*)?"none"\s*\|\s*"friend"\s*\|\s*"incoming_pending"\s*\|\s*"outgoing_pending"\s*\|\s*"self";/u;
+
+    expect(realtimeApiSource).toMatch(relationshipContract);
+    expect(imModelSource).toMatch(relationshipContract);
   });
 
   it("maps real conversations and reciprocal contacts into the original IM model", async () => {
@@ -59,7 +117,9 @@ describe("formal IM adapter", () => {
         {
           id: 31,
           ownerUserId: 100,
+          ownerIdentityId: 1100,
           contactUserId: 201,
+          contactIdentityId: 1201,
           contactUser: {
             userId: 201,
             needoId: "u0000000201",
@@ -101,12 +161,16 @@ describe("formal IM adapter", () => {
       contactUserId: "201",
       title: "sim-technician-001",
       lastMessagePreview: "明天下午三点可以为您服务。",
+      lastMessageType: "text",
+      lastMessageStatus: "sent",
       unreadCount: 2,
+      autoTranslateMessages: false,
     });
     expect(bootstrap.contacts[0]).toMatchObject({
       id: "31",
       ownerUserId: "100",
       targetUserId: "201",
+      contactIdentityId: "1201",
       remarkName: "小林技师",
       relationStatus: "active",
     });
@@ -288,6 +352,22 @@ describe("formal IM adapter", () => {
       "92": "音频",
       "93": "视频",
       "94": "报价单.pdf",
+    });
+    expect(
+      Object.fromEntries(
+        bootstrap.conversations.map((conversation) => [
+          conversation.id,
+          [
+            conversation.lastMessageType,
+            conversation.lastMessageStatus,
+          ],
+        ]),
+      ),
+    ).toEqual({
+      "91": ["image", "sent"],
+      "92": ["voice", "sent"],
+      "93": ["video", "sent"],
+      "94": ["file", "sent"],
     });
     expect(Object.values(previews).join(" ")).not.toContain("/media/im/");
   });
@@ -591,6 +671,102 @@ describe("formal IM adapter", () => {
     expect(listConversations).not.toHaveBeenCalled();
   });
 
+  it("sends voice bytes through the formal endpoint instead of message content", async () => {
+    const blob = new Blob(
+      [new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])],
+      { type: "audio/webm" },
+    );
+    const send = vi.spyOn(realtimeApi, "createVoiceMessage").mockResolvedValue({
+      id: 702,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "语音",
+      metadata: { needoMessageType: "voice" },
+      createdAt: now,
+    });
+    const createMessage = vi.spyOn(realtimeApi, "createMessage");
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(
+      api.sendVoiceMessage("91", blob, {
+        durationSeconds: 6,
+        fileName: "voice.webm",
+      }),
+    ).resolves.toEqual({
+      message: expect.objectContaining({ type: "voice", content: "语音" }),
+    });
+    expect(send).toHaveBeenCalledWith(91, blob, {
+      durationSeconds: 6,
+      fileName: "voice.webm",
+    });
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps the voice Blob, MIME type, and metadata query intact for the realtime endpoint", async () => {
+    const blob = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])], {
+      type: "audio/webm;codecs=opus",
+    });
+    const request = vi.spyOn(httpClient, "request").mockResolvedValue({
+      id: 703,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "语音",
+      metadata: { needoMessageType: "voice" },
+      createdAt: now,
+    });
+    const createMessage = vi.spyOn(realtimeApi, "createMessage");
+
+    await realtimeApi.createVoiceMessage(91, blob, {
+      durationSeconds: 6,
+      fileName: "voice.webm",
+    });
+
+    expect(request).toHaveBeenCalledWith("/im/conversations/91/voice", {
+      body: blob,
+      headers: { "Content-Type": "audio/webm;codecs=opus" },
+      method: "POST",
+      query: { durationSeconds: 6, fileName: "voice.webm" },
+    });
+    expect(createMessage).not.toHaveBeenCalled();
+  });
+
+  it("falls back to audio/webm when the voice Blob has no MIME type", async () => {
+    const blob = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])]);
+    const request = vi.spyOn(httpClient, "request").mockResolvedValue({
+      id: 704,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "语音",
+      metadata: { needoMessageType: "voice" },
+      createdAt: now,
+    });
+
+    await realtimeApi.createVoiceMessage(91, blob, {
+      durationSeconds: 6,
+      fileName: "voice.webm",
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      "/im/conversations/91/voice",
+      expect.objectContaining({
+        body: blob,
+        headers: { "Content-Type": "audio/webm" },
+        query: { durationSeconds: 6, fileName: "voice.webm" },
+      }),
+    );
+  });
+
   it("persists message reactions through the formal API and maps the saved people", async () => {
     const setMessageReaction = vi
       .spyOn(realtimeApi, "setMessageReaction")
@@ -692,6 +868,41 @@ describe("formal IM adapter", () => {
     expect(recallMessage).toHaveBeenCalledWith(91, 700, "standard");
   });
 
+  it("maps a confirmed traceless recall to the authoritative deletion mode", async () => {
+    vi.spyOn(realtimeApi, "recallMessage").mockResolvedValue({
+      action: "traceless_recall",
+      conversationId: 91,
+      messageId: 700,
+      message: {
+        id: 700,
+        conversationId: 91,
+        senderUserId: 100,
+        type: "text",
+        content: null,
+        metadata: null,
+        reactions: [],
+        recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+        recalledAt: "2026-08-25T10:01:00.000Z",
+        recallMode: "traceless",
+        contentPurgedAt: "2026-08-25T10:01:00.000Z",
+        lifecycleVersion: 2,
+        availableRecallModes: [],
+        createdAt: now,
+      },
+    });
+    const api = createFormalImApi({
+      currentUser: { id: 100, needoId: "n0000000100", username: "sim-customer-100", avatarUrl: null },
+      scope: "user",
+    });
+
+    await expect(api.recallMessage("91", "700", "standard")).resolves.toMatchObject({
+      conversationId: "91",
+      messageId: "700",
+      mode: "traceless",
+      message: { id: "700", recallMode: "traceless" },
+    });
+  });
+
   it("rejects a recall response that does not contain a terminal tombstone", async () => {
     vi.spyOn(realtimeApi, "recallMessage").mockResolvedValue({
       action: "standard_recall",
@@ -762,6 +973,34 @@ describe("formal IM adapter", () => {
     });
   });
 
+  it("maps traceless message.recalled SSE payloads to a terminal deletion", () => {
+    expect(toFormalImStoreUpdate({
+      id: "evt-traceless-1",
+      type: "message.recalled",
+      payload: {
+        id: 700,
+        conversationId: 91,
+        senderUserId: 100,
+        type: "text",
+        content: null,
+        metadata: null,
+        reactions: [],
+        recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+        recalledAt: "2026-08-25T10:01:00.000Z",
+        recallMode: "traceless",
+        contentPurgedAt: "2026-08-25T10:01:00.000Z",
+        lifecycleVersion: 2,
+        availableRecallModes: [],
+        createdAt: now,
+      },
+    })).toEqual({
+      type: "message.deleted",
+      conversationId: "91",
+      messageId: "700",
+      reason: "traceless_recall",
+    });
+  });
+
   it("maps message.created SSE payloads directly so an open chat updates without refresh", () => {
     expect(
       toFormalImStoreUpdate({
@@ -785,6 +1024,27 @@ describe("formal IM adapter", () => {
         conversationId: "91",
         content: "即时到达的信息",
       },
+    });
+  });
+
+  it("preserves content-free privacy deletion identity for local cache eviction", () => {
+    expect(
+      toFormalImStoreUpdate({
+        id: "evt-deleted-44",
+        type: "message.deleted",
+        payload: {
+          action: "privacy_expired",
+          conversationId: 91,
+          id: 44,
+          messageId: 702,
+          occurredAt: "2026-09-05T00:00:00.000Z",
+        },
+      }),
+    ).toEqual({
+      type: "message.deleted",
+      conversationId: "91",
+      messageId: "702",
+      reason: "privacy_expired",
     });
   });
 
@@ -859,12 +1119,20 @@ describe("formal IM adapter", () => {
       unreadCount: 0,
       isPinned: false,
       isMuted: false,
+      autoTranslateMessages: false,
       isHidden: false,
       createdAt: now,
       updatedAt: now,
     };
     const updateConversationPreferences = vi.fn(
-      async (_conversationId: number, preferences: { isMuted?: boolean; isPinned?: boolean }) => ({
+      async (
+        _conversationId: number,
+        preferences: {
+          autoTranslateMessages?: boolean;
+          isMuted?: boolean;
+          isPinned?: boolean;
+        },
+      ) => ({
         ...conversation,
         ...preferences,
       }),
@@ -899,6 +1167,11 @@ describe("formal IM adapter", () => {
     await expect(api.muteConversation("91", true)).resolves.toMatchObject({
       conversation: { id: "91", isMuted: true },
     });
+    await expect(
+      api.setConversationAutoTranslateMessages("91", true),
+    ).resolves.toMatchObject({
+      conversation: { id: "91", autoTranslateMessages: true },
+    });
     await expect(api.markConversationRead("91", true)).resolves.toMatchObject({
       conversation: { id: "91", unreadCount: 1 },
     });
@@ -908,6 +1181,9 @@ describe("formal IM adapter", () => {
 
     expect(updateConversationPreferences).toHaveBeenNthCalledWith(1, 91, { isPinned: true });
     expect(updateConversationPreferences).toHaveBeenNthCalledWith(2, 91, { isMuted: true });
+    expect(updateConversationPreferences).toHaveBeenNthCalledWith(3, 91, {
+      autoTranslateMessages: true,
+    });
     expect(markConversationUnread).toHaveBeenCalledWith(91);
     expect(deleteConversation).toHaveBeenCalledWith(91);
   });
@@ -1029,6 +1305,201 @@ describe("formal IM adapter", () => {
     });
     expect(getDirectoryProfile).toHaveBeenCalledWith(201);
     expect(createFriendRequest).toHaveBeenCalledWith({ targetUserId: 201 });
+  });
+
+  it("maps formal technician contact details without changing integer money, duration, or basis points", async () => {
+    vi.spyOn(realtimeApi, "getDirectoryProfile").mockResolvedValue({
+      user: {
+        userId: 201,
+        needoId: "u0000000201",
+        username: "小林技师",
+        avatarUrl: null,
+      },
+      relationship: "friend",
+      contactId: 31,
+      friendRequest: null,
+      identityCard: {
+        entityType: "technician",
+        profileId: 81,
+        displayName: "小林技师",
+        identityLabel: "个人技师",
+        verified: true,
+        creditValue: "4.80",
+        creditReviewCount: 132,
+        gender: "male",
+        age: 29,
+        heightCm: "178.00",
+        languages: ["日本語", "中文"],
+        city: "东京",
+        serviceArea: "新宿区",
+        yearsExperience: 6,
+        bio: "预约前请先联系。",
+      },
+      technicianContactDetails: {
+        bidBudgetMinJpy: 12_001,
+        bidBudgetMaxJpy: 28_009,
+        paymentMethods: ["platform", "offline"],
+        specialTags: ["准时"],
+        profileTags: ["深度放松"],
+        services: [
+          {
+            id: 901,
+            shopId: 71,
+            name: "肩颈调理",
+            priceAmount: 8_801,
+            currency: "JPY",
+            durationMinutes: 61,
+            taxIncluded: true,
+            sortOrder: 0,
+          },
+        ],
+        completedOrderCount: 1_281,
+        acceptanceRateBps: 9_876,
+      },
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    const profile = await api.getDirectoryProfile("201");
+
+    expect(profile.identityCard.entityType).toBe("technician");
+    expect(profile.technicianContactDetails).toEqual({
+      bidBudgetMinJpy: 12_001,
+      bidBudgetMaxJpy: 28_009,
+      paymentMethods: ["platform", "offline"],
+      specialTags: ["准时"],
+      profileTags: ["深度放松"],
+      services: [
+        {
+          id: 901,
+          shopId: 71,
+          name: "肩颈调理",
+          priceAmount: 8_801,
+          currency: "JPY",
+          durationMinutes: 61,
+          taxIncluded: true,
+          sortOrder: 0,
+        },
+      ],
+      completedOrderCount: 1_281,
+      acceptanceRateBps: 9_876,
+    });
+  });
+
+  it("keeps technician details absent and drops them from non-technician responses", async () => {
+    const base = {
+      user: {
+        userId: 201,
+        needoId: "u0000000201",
+        username: "普通用户",
+        avatarUrl: null,
+      },
+      relationship: "friend" as const,
+      contactId: 31,
+      friendRequest: null,
+      identityCard: {
+        entityType: "user" as const,
+        profileId: 81,
+        displayName: "普通用户",
+        identityLabel: "free",
+        verified: true,
+        creditValue: "4.80",
+        creditReviewCount: 12,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: "东京",
+        serviceArea: null,
+        yearsExperience: null,
+        bio: null,
+      },
+    };
+    const getProfile = vi.spyOn(realtimeApi, "getDirectoryProfile");
+    getProfile.mockResolvedValueOnce(base);
+    getProfile.mockResolvedValueOnce({
+      ...base,
+      technicianContactDetails: {
+        bidBudgetMinJpy: 1,
+        bidBudgetMaxJpy: 2,
+        paymentMethods: [],
+        specialTags: [],
+        profileTags: [],
+        services: [],
+        completedOrderCount: 0,
+        acceptanceRateBps: 10_000,
+      },
+    } as never);
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.getDirectoryProfile("201")).resolves.not.toHaveProperty(
+      "technicianContactDetails",
+    );
+    await expect(api.getDirectoryProfile("201")).resolves.not.toHaveProperty(
+      "technicianContactDetails",
+    );
+  });
+
+  it("maps the authenticated account directory profile as self", async () => {
+    vi.spyOn(realtimeApi, "getDirectoryProfile").mockResolvedValue({
+      user: {
+        userId: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      relationship: "self",
+      contactId: null,
+      friendRequest: null,
+      identityCard: {
+        entityType: "user",
+        profileId: 70,
+        displayName: "测试用户",
+        identityLabel: "free",
+        verified: false,
+        creditValue: null,
+        creditReviewCount: 0,
+        gender: null,
+        age: null,
+        heightCm: null,
+        languages: [],
+        city: null,
+        serviceArea: null,
+        yearsExperience: null,
+        bio: null,
+      },
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "测试用户",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.getDirectoryProfile("100")).resolves.toMatchObject({
+      user: { id: "100" },
+      relationship: "self",
+      contactId: undefined,
+      friendRequest: undefined,
+    });
   });
 
   it("uploads a selected image instead of invoking the unavailable placeholder", async () => {
@@ -1170,6 +1641,261 @@ describe("formal IM adapter", () => {
       deleted: true,
     });
     expect(deleteMessageForMe).toHaveBeenCalledWith(91, 501);
+  });
+
+  it("maps formal chat-record snapshots without accepting raw source content", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const summary = { publicId, title: "A、B", preview: "A: one\nB: two", senderNames: ["A", "B"], senderCount: 2, itemCount: 2, createdAt: now };
+    const create = vi.spyOn(realtimeApi, "createChatRecordDelivery").mockResolvedValue({ replayed: false, bundle: summary, message: chatRecordDeliveryMessage({ content: summary.title, metadata: { needoMessageType: "chat-record", needoMessageExt: { bundlePublicId: publicId, itemCount: 2, preview: summary.preview, senderNames: summary.senderNames, senderCount: 2, title: summary.title, titleKind: "pair" } }, reactions: [{ emoji: "👍", people: [{ userId: 101, needoId: "u0000000101", username: "A", avatarUrl: null }], reactedByMe: true }] }) });
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    const command = { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501", "502"], sourceConversationId: "41" };
+    const result = await api.createChatRecordDelivery("91", command);
+    expect(result).toMatchObject({ bundle: summary, message: { type: "chat-record", reactions: [{ emoji: "👍", reactedByMe: true }], ext: { chatRecord: { publicId, itemCount: 2, preview: summary.preview, senderNames: ["A", "B"], titleKind: "pair" } } } });
+    expect(JSON.stringify(result.message.ext)).not.toContain("sourceContent");
+    expect(create).toHaveBeenCalledWith(91, { idempotencyKey: command.idempotencyKey, messageIds: [501, 502], sourceConversationId: 41 });
+  });
+
+  it("maps chat-record reads, favorites, pages, media, deletion, batch deletion, and translations", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const summary = { publicId, title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: now };
+    const favorite = { id: 71, bundlePublicId: publicId, title: summary.title, preview: summary.preview, senderNames: summary.senderNames, senderCount: 1, itemCount: 1, createdAt: now };
+    vi.spyOn(realtimeApi, "getChatRecord").mockResolvedValue(summary);
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValue({
+      list: [{ id: 901, position: 1, senderDisplayName: "A", senderAvatarUrl: null, messageType: "text", content: "one", metadata: null, sentAt: now }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      nextCursor: null,
+    });
+    const binary = { blob: new Blob(["x"]), cacheControl: "private", contentLength: 1, contentType: "image/png", etag: '"etag"' };
+    vi.spyOn(realtimeApi, "getChatRecordMedia").mockResolvedValue(binary);
+    vi.spyOn(realtimeApi, "createChatRecordFavorite").mockResolvedValue({ replayed: false, favorite });
+    vi.spyOn(realtimeApi, "listChatRecordFavorites").mockResolvedValue({ list: [favorite], total: 1, page: 1, page_size: 20 });
+    const remove = vi.spyOn(realtimeApi, "removeChatRecordFavorite").mockResolvedValue({ deleted: true });
+    const batch = vi.spyOn(realtimeApi, "batchDeleteMessagesForMe").mockResolvedValue({ conversationId: 41, messageIds: [501], count: 1, deleted: true, replayed: false });
+    const translate = vi.spyOn(realtimeApi, "translateMessages").mockResolvedValue([{ messageId: 501, status: "translated", translatedContent: "翻译" }]);
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    const command = { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" };
+
+    await expect(api.getChatRecord(publicId)).resolves.toEqual(summary);
+    await expect(api.listChatRecordItems(publicId, { pageSize: 20 })).resolves.toMatchObject({ list: [{ id: "901", senderDisplayName: "A" }], nextCursor: null });
+    await expect(api.getChatRecordMedia(publicId, "a".repeat(64))).resolves.toBe(binary);
+    await expect(api.createChatRecordFavorite(command)).resolves.toMatchObject({ favorite: { id: "71", bundlePublicId: publicId, senderNames: ["A"] } });
+    await expect(api.listChatRecordFavorites({ page: 1, pageSize: 20 })).resolves.toMatchObject({ list: [{ id: "71", bundlePublicId: publicId }] });
+    await expect(api.removeChatRecordFavorite("71")).resolves.toEqual({ deleted: true });
+    await expect(api.batchDeleteMessages("41", { idempotencyKey: command.idempotencyKey, messageIds: ["501"] })).resolves.toMatchObject({ conversationId: "41", messageIds: ["501"] });
+    await expect(api.translateMessages("41", { messageIds: ["501"], targetLanguage: "zh" })).resolves.toEqual([{ messageId: "501", status: "translated", translatedContent: "翻译" }]);
+    expect(remove).toHaveBeenCalledWith(71);
+    expect(batch).toHaveBeenCalledWith(41, { idempotencyKey: command.idempotencyKey, messageIds: [501] });
+    expect(translate).toHaveBeenCalledWith(41, { messageIds: [501], targetLanguage: "zh" });
+  });
+
+  it("rejects chat-record item page sizes above the formal 50-item contract before transport", async () => {
+    const listItems = vi.spyOn(realtimeApi, "listChatRecordItems");
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+
+    await expect(
+      api.listChatRecordItems("22222222-2222-4222-8222-222222222222", { pageSize: 51 }),
+    ).rejects.toThrow();
+    expect(listItems).not.toHaveBeenCalled();
+  });
+
+  it("rejects a lossy chat-record summary without sender snapshot names", async () => {
+    vi.spyOn(realtimeApi, "getChatRecord").mockResolvedValue({
+      publicId: "22222222-2222-4222-8222-222222222222",
+      title: "A",
+      preview: "A: one",
+      senderNames: [],
+      senderCount: 1,
+      itemCount: 1,
+      createdAt: now,
+    });
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    await expect(api.getChatRecord("22222222-2222-4222-8222-222222222222")).rejects.toThrow("error.response.invalid_chat_record");
+  });
+
+  it("rejects malformed, oversized, unsafe, and inconsistent summary or favorite fields", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const valid = { publicId, title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: now };
+    const malformed = [
+      { ...valid, title: "x".repeat(256) }, { ...valid, preview: "x".repeat(501) },
+      { ...valid, senderNames: ["A", "B"], senderCount: 1 }, { ...valid, senderNames: ["x".repeat(121)] },
+      { ...valid, itemCount: Number.MAX_SAFE_INTEGER + 1 }, { ...valid, createdAt: "not-a-date" }, { ...valid, extra: "unexpected" }
+    ];
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    for (const value of malformed) {
+      vi.spyOn(realtimeApi, "getChatRecord").mockResolvedValueOnce(value as never);
+      await expect(api.getChatRecord(publicId)).rejects.toThrow("error.response.invalid_chat_record");
+    }
+    vi.spyOn(realtimeApi, "listChatRecordFavorites").mockResolvedValueOnce({ list: [{ id: Number.MAX_SAFE_INTEGER + 1, bundlePublicId: publicId, ...valid } as never], total: 1, page: 1, page_size: 20 });
+    await expect(api.listChatRecordFavorites()).rejects.toThrow("error.response.invalid_chat_record");
+  });
+
+  it("rejects malformed item pages and chat-record message metadata instead of returning a partial ext", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const summary = { publicId, title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: now };
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [{ id: 901, position: Number.MAX_SAFE_INTEGER + 1, senderDisplayName: "A", senderAvatarUrl: null, messageType: "text", content: "one", metadata: null, sentAt: now }], total: 1, page: 1, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId)).rejects.toThrow("error.response.invalid_chat_record");
+    for (const needoMessageExt of [
+      { bundlePublicId: publicId, itemCount: 1, preview: "A: one", senderNames: ["A"], senderCount: 2, title: "A", titleKind: "single" },
+      { bundlePublicId: publicId, itemCount: 1, preview: "different", senderNames: ["A"], senderCount: 1, title: "A", titleKind: "single" }
+    ]) {
+      vi.spyOn(realtimeApi, "createChatRecordDelivery").mockResolvedValueOnce({ replayed: false, bundle: summary, message: chatRecordDeliveryMessage({ metadata: { needoMessageType: "chat-record", needoMessageExt } }) });
+      await expect(api.createChatRecordDelivery("91", { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.response.invalid_chat_record");
+    }
+  });
+
+  it("rejects malformed raw delivery messages before mapping the chat-record snapshot", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const summary = { publicId, title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: now };
+    const metadata = { needoMessageType: "chat-record", needoMessageExt: { bundlePublicId: publicId, itemCount: 1, preview: summary.preview, senderNames: summary.senderNames, senderCount: 1, title: summary.title, titleKind: "single" } };
+    const validMessage = chatRecordDeliveryMessage({ content: summary.title, metadata });
+    const malformed = [
+      { ...validMessage, id: 2_147_483_648 },
+      { ...validMessage, conversationId: 92 },
+      { ...validMessage, senderUserId: Number.MAX_SAFE_INTEGER + 1 },
+      { ...validMessage, senderUserId: null },
+      { ...validMessage, type: "system" },
+      { ...validMessage, reactions: "not-an-array" },
+      { ...validMessage, reactions: [{ emoji: "ok", people: [], reactedByMe: "yes" }] },
+      { ...validMessage, reactions: [{ emoji: "ok", people: [{ userId: 101, needoId: "bad", username: "A", avatarUrl: null }], reactedByMe: false }] },
+      { ...validMessage, recallDeadlineAt: null },
+      { ...validMessage, lifecycleVersion: -1 },
+      { ...validMessage, reactionVersion: 1.5 },
+      { ...validMessage, availableRecallModes: ["traceless"] },
+      { ...validMessage, createdAt: "not-a-date" },
+      { ...validMessage, content: "different" },
+      { ...validMessage, unexpected: true },
+    ];
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    for (const message of malformed) {
+      vi.spyOn(realtimeApi, "createChatRecordDelivery").mockResolvedValueOnce({ replayed: false, bundle: summary, message } as never);
+      await expect(api.createChatRecordDelivery("91", { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.response.invalid_chat_record");
+    }
+    for (const required of ["reactions", "expiresAt", "recallDeadlineAt", "recalledAt", "recallMode", "contentPurgedAt", "privacyPolicyVersionAtSend", "lifecycleVersion", "reactionVersion", "availableRecallModes"] as const) {
+      const message: Record<string, unknown> = { ...validMessage };
+      delete message[required];
+      vi.spyOn(realtimeApi, "createChatRecordDelivery").mockResolvedValueOnce({ replayed: false, bundle: summary, message } as never);
+      await expect(api.createChatRecordDelivery("91", { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.response.invalid_chat_record");
+    }
+  });
+
+  it.each(["0", "2026-08-25", "2026-08-25T10:00:00", "2026-02-30T10:00:00Z"])(
+    "rejects non-RFC3339 or calendar-invalid date-time %s",
+    async (createdAt) => {
+      const publicId = "22222222-2222-4222-8222-222222222222";
+      vi.spyOn(realtimeApi, "getChatRecord").mockResolvedValueOnce({ publicId, title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt });
+      const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+      await expect(api.getChatRecord(publicId)).rejects.toThrow("error.response.invalid_chat_record");
+    },
+  );
+
+  it("accepts an empty chat-record page beyond the current total", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [], total: 43, page: 3, page_size: 20, nextCursor: null });
+    vi.spyOn(realtimeApi, "listChatRecordFavorites").mockResolvedValueOnce({ list: [], total: 0, page: 3, page_size: 20 });
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    await expect(api.listChatRecordItems(publicId, { beforePosition: 1 })).resolves.toMatchObject({ list: [], total: 43, page: 3, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordFavorites({ page: 3 })).resolves.toMatchObject({ list: [], total: 0, page: 3, page_size: 20 });
+  });
+
+  it("rejects favorite page query mismatches and incomplete offset pages", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    const favorite = { id: 71, bundlePublicId: publicId, title: "A", preview: "A: one", senderNames: ["A"], senderCount: 1, itemCount: 1, createdAt: now };
+    for (const page of [
+      { list: [], total: 0, page: 2, page_size: 20 },
+      { list: [], total: 0, page: 3, page_size: 10 },
+    ]) {
+      vi.spyOn(realtimeApi, "listChatRecordFavorites").mockResolvedValueOnce(page);
+      await expect(api.listChatRecordFavorites({ page: 3, pageSize: 20 })).rejects.toThrow("error.response.invalid_chat_record");
+    }
+    vi.spyOn(realtimeApi, "listChatRecordFavorites").mockResolvedValueOnce({ list: [favorite], total: 2, page: 1, page_size: 2 });
+    await expect(api.listChatRecordFavorites({ page: 1, pageSize: 2 })).rejects.toThrow("error.response.invalid_chat_record");
+  });
+
+  it("accepts first-page full and exact-terminal item pages with repository position cursors", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: Array.from({ length: 20 }, (_, index) => chatRecordItem(24 + index)), total: 43, page: 1, page_size: 20, nextCursor: 24 });
+    await expect(api.listChatRecordItems(publicId, { pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: 24, page: 1 });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: Array.from({ length: 20 }, (_, index) => chatRecordItem(1 + index)), total: 20, page: 1, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId, { pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: null, page: 1 });
+  });
+
+  it("accepts unaligned cursors, soft-delete position gaps, and a full nonterminal cursor page", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: Array.from({ length: 19 }, (_, index) => chatRecordItem(1 + index)), total: 43, page: 2, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId, { beforePosition: 20, pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: null, page: 2 });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [chatRecordItem(1), chatRecordItem(4), chatRecordItem(9)], total: 5, page: 1, page_size: 20, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId, { beforePosition: 20, pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: null, page: 1 });
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: Array.from({ length: 20 }, (_, index) => chatRecordItem(4 + index)), total: 43, page: 2, page_size: 20, nextCursor: 4 });
+    await expect(api.listChatRecordItems(publicId, { beforePosition: 24, pageSize: 20 })).resolves.toMatchObject({ list: expect.any(Array), nextCursor: 4, page: 2 });
+  });
+
+  it("rejects cursor pages with wrong cursors, order, duplicates, or positions outside the boundary", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    const validFull = Array.from({ length: 20 }, (_, index) => chatRecordItem(4 + index));
+    const malformed = [
+      { list: validFull, total: 43, page: 2, page_size: 20, nextCursor: 7 },
+      { list: [chatRecordItem(2), chatRecordItem(1)], total: 2, page: 1, page_size: 20, nextCursor: null },
+      { list: [chatRecordItem(1), chatRecordItem(1, { id: 999 })], total: 2, page: 1, page_size: 20, nextCursor: null },
+      { list: [chatRecordItem(1), chatRecordItem(20)], total: 5, page: 1, page_size: 20, nextCursor: null },
+    ];
+    for (const page of malformed) {
+      vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce(page as never);
+      await expect(api.listChatRecordItems(publicId, { beforePosition: 20, pageSize: 20 })).rejects.toThrow("error.response.invalid_chat_record");
+    }
+  });
+
+  it("retains strict item-page envelope and first-page query validation", async () => {
+    const publicId = "22222222-2222-4222-8222-222222222222";
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    const malformed = [
+      { list: [], total: 0, page: 1, page_size: Number.MAX_SAFE_INTEGER + 1, nextCursor: null },
+      { list: [], total: 0, page: 1, page_size: 3, nextCursor: null },
+      { list: [], total: 0, page: 1, page_size: 2, nextCursor: null, extra: true },
+      { list: [chatRecordItem(1)], total: 1, page: 2, page_size: 2, nextCursor: null },
+      { list: [chatRecordItem(1)], total: 2, page: 1, page_size: 2, nextCursor: 1 },
+    ];
+    for (const page of malformed) {
+      vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce(page as never);
+      await expect(api.listChatRecordItems(publicId, { pageSize: 2 })).rejects.toThrow("error.response.invalid_chat_record");
+    }
+    vi.spyOn(realtimeApi, "listChatRecordItems").mockResolvedValueOnce({ list: [], total: 0, page: 1, page_size: 2, nextCursor: null });
+    await expect(api.listChatRecordItems(publicId, { pageSize: 2 })).resolves.toMatchObject({ list: [], total: 0, nextCursor: null });
+  });
+
+  it("rejects unsafe chat-record IDs and malformed UUIDs before requests", async () => {
+    const create = vi.spyOn(realtimeApi, "createChatRecordDelivery");
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+    await expect(api.createChatRecordDelivery("2147483648", { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.validation.invalid_id");
+    await expect(api.createChatRecordDelivery("9007199254740992", { idempotencyKey: "11111111-1111-4111-8111-111111111111", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.validation.invalid_id");
+    await expect(api.createChatRecordDelivery("91", { idempotencyKey: "not-a-uuid", messageIds: ["501"], sourceConversationId: "41" })).rejects.toThrow("error.validation.invalid_uuid");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects client-authored chat-record content outside the server snapshot endpoint", async () => {
+    const send = vi.spyOn(realtimeApi, "createMessage");
+    const api = createFormalImApi({ currentUser: { id: 100, needoId: "u0000000100", username: "当前用户", avatarUrl: null }, scope: "user" });
+
+    await expect(api.sendMessage("chat-record", {
+      conversationId: "91",
+      content: "/media/private/raw-source.png",
+      ext: {
+        chatRecord: {
+          publicId: "22222222-2222-4222-8222-222222222222",
+          itemCount: 1,
+          preview: "伪造预览",
+          senderNames: ["伪造发送者"],
+          titleKind: "single",
+        },
+      },
+    })).rejects.toThrow("error.im.chat_record_requires_server_snapshot");
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("does not turn a harmless SSE connected event into a three-request bootstrap refresh", () => {

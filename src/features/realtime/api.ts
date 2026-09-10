@@ -1,4 +1,5 @@
-import { buildApiUrl, getAccessToken, httpClient } from "../../api/httpClient";
+import { ApiClientError, buildApiUrl, getAccessToken, httpClient } from "../../api/httpClient";
+import type { ImMessageRichText } from "../im/reaction-policy";
 
 export type PaginatedRealtimeData<TItem> = {
   list: TItem[];
@@ -36,7 +37,7 @@ export type RealtimeMessage = {
 };
 
 export type RealtimeRecallResult = {
-  action: "standard_recall";
+  action: "standard_recall" | "traceless_recall";
   conversationId: number;
   message: RealtimeMessage;
   messageId: number;
@@ -46,6 +47,26 @@ export type RealtimeMessageDeletionResult = {
   conversationId: number;
   messageId: number;
   deleted: true;
+};
+export type RealtimeChatRecordCommand = { idempotencyKey: string; messageIds: number[]; sourceConversationId: number };
+export type RealtimeChatRecordSummary = { publicId: string; title: string; preview: string; senderNames: string[]; senderCount: number; itemCount: number; createdAt: string };
+export type RealtimeChatRecordItem = { id: number; position: number; senderDisplayName: string; senderAvatarUrl: string | null; messageType: string; content: string | null; metadata: unknown; sentAt: string };
+export type RealtimeChatRecordItemPage = PaginatedRealtimeData<RealtimeChatRecordItem> & { nextCursor: number | null };
+export type RealtimeChatRecordFavorite = { id: number; bundlePublicId: string; title: string; preview: string; senderNames: string[]; senderCount: number; itemCount: number; createdAt: string };
+export type RealtimeChatRecordDelivery = { replayed: boolean; bundle: RealtimeChatRecordSummary; message: RealtimeMessage };
+export type RealtimeChatRecordFavoriteMutation = { replayed: boolean; favorite: RealtimeChatRecordFavorite };
+export type RealtimeBatchDeleteResult = { conversationId: number; messageIds: number[]; count: number; deleted: true; replayed: boolean };
+export type RealtimeMessageTranslationResult = { messageId: number; status: "translated" | "same_language" | "ineligible"; translatedContent?: string };
+export type RealtimeContactCardCandidate = {
+  targetUserId: string;
+  needoId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  relationship: "self" | "friend";
+};
+export type RealtimeContactCardSendResult = {
+  message: RealtimeMessage;
+  replayed: boolean;
 };
 
 export type RealtimeMessageReaction = {
@@ -67,6 +88,7 @@ export type RealtimeConversation = {
   title: string | null;
   type: "direct" | "group";
   unreadCount: number;
+  autoTranslateMessages?: boolean;
   isPinned?: boolean;
   isMuted?: boolean;
   isHidden?: boolean;
@@ -99,10 +121,12 @@ export type RealtimeMessageHistory = PaginatedRealtimeData<RealtimeMessage> & {
 export type RealtimeContact = {
   contactUser: RealtimeParticipant;
   contactUserId: number;
+  contactIdentityId?: number;
   createdAt: string;
   id: number;
   nickname: string | null;
   ownerUserId: number;
+  ownerIdentityId?: number;
   source: string;
   isBlocked: boolean;
 };
@@ -132,13 +156,46 @@ export type RealtimeFriendRequest = {
   expiredAt: string | null;
 };
 
-export type RealtimeDirectoryProfile = {
+type RealtimeDirectoryProfileBase = {
   user: RealtimeParticipant;
-  identityCard: RealtimeDirectoryIdentityCard;
-  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending" | "self";
   contactId: number | null;
   friendRequest: RealtimeFriendRequest | null;
 };
+
+export type RealtimeTechnicianContactService = {
+  id: number;
+  shopId: number | null;
+  name: string;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  taxIncluded: true;
+  sortOrder: number;
+};
+
+export type RealtimeTechnicianContactDetails = {
+  bidBudgetMinJpy: number | null;
+  bidBudgetMaxJpy: number | null;
+  paymentMethods: string[];
+  specialTags: string[];
+  profileTags: string[];
+  services: RealtimeTechnicianContactService[];
+  completedOrderCount: number;
+  acceptanceRateBps: number;
+};
+
+export type RealtimeDirectoryProfile =
+  | RealtimeDirectoryProfileBase & {
+      identityCard: RealtimeDirectoryIdentityCard & { entityType: "technician" };
+      technicianContactDetails?: RealtimeTechnicianContactDetails;
+    }
+  | RealtimeDirectoryProfileBase & {
+      identityCard: RealtimeDirectoryIdentityCard & {
+        entityType: "user" | "shop" | "account";
+      };
+      technicianContactDetails?: never;
+    };
 
 export type RealtimeDirectoryIdentityCard = {
   entityType: "user" | "technician" | "shop" | "account";
@@ -177,11 +234,30 @@ export type RealtimeSocialPost = {
   content: string;
   createdAt: string;
   id: number;
+  isPinned?: boolean;
   media: unknown;
+  replyCount: number;
+  replyToPostId: number | null;
   updatedAt?: string;
   viewerFollowsAuthor?: boolean;
   viewerIsFriend?: boolean;
   visibility: "public" | "followers";
+  counters?: {
+    likes: number;
+    reposts: number;
+    views: number;
+    bookmarks: number;
+  };
+  viewerInteraction?: {
+    liked: boolean;
+    bookmarked: boolean;
+    shared: boolean;
+  };
+};
+
+export type RealtimeSocialShareResult = {
+  post: RealtimeSocialPost;
+  deliveredUserIds: number[];
 };
 
 export type RealtimeSocialProfileSummary = NonNullable<RealtimeSocialPost["author"]>;
@@ -239,6 +315,7 @@ export type RealtimeSocialCreateMediaEnvelope = {
   repostPostId?: number;
   postType?: "post" | "reply" | "quote" | "repost" | "announcement" | "technician-daily";
   locationLabel?: string;
+  richText?: ImMessageRichText;
 };
 
 export type RealtimeSocialCreatePostInput = {
@@ -268,8 +345,46 @@ export const realtimeApi = {
   listMessages(conversationId: number, query: { beforeId?: number; pageSize?: number } = {}) {
     return httpClient.request<RealtimeMessageHistory>(`/im/conversations/${conversationId}/messages`, { query });
   },
+  listContactCardCandidates(
+    conversationId: number,
+    query: PageQuery & { query?: string } = {},
+  ) {
+    return httpClient.request<PaginatedRealtimeData<RealtimeContactCardCandidate>>(
+      `/im/conversations/${conversationId}/contact-card-candidates`,
+      { query },
+    );
+  },
+  sendContactCard(
+    conversationId: number,
+    targetUserId: string,
+    idempotencyKey: string,
+  ) {
+    return httpClient.request<RealtimeContactCardSendResult>(
+      `/im/conversations/${conversationId}/contact-cards`,
+      {
+        body: { targetUserId },
+        headers: { "Idempotency-Key": idempotencyKey },
+        method: "POST",
+      },
+    );
+  },
   createMessage(conversationId: number, input: { content: string; metadata?: Record<string, unknown>; type?: RealtimeMessage["type"] }) {
     return httpClient.request<RealtimeMessage>(`/im/conversations/${conversationId}/messages`, { body: input, method: "POST" });
+  },
+  createVoiceMessage(
+    conversationId: number,
+    voice: Blob,
+    metadata: { durationSeconds: number; fileName: string },
+  ) {
+    return httpClient.request<RealtimeMessage>(
+      `/im/conversations/${conversationId}/voice`,
+      {
+        body: voice,
+        headers: { "Content-Type": voice.type || "audio/webm" },
+        method: "POST",
+        query: metadata,
+      },
+    );
   },
   recallMessage(conversationId: number, messageId: number, mode: "standard") {
     return httpClient.request<RealtimeRecallResult>(
@@ -297,7 +412,11 @@ export const realtimeApi = {
   },
   updateConversationPreferences(
     conversationId: number,
-    preferences: { isMuted?: boolean; isPinned?: boolean }
+    preferences: {
+      autoTranslateMessages?: boolean;
+      isMuted?: boolean;
+      isPinned?: boolean;
+    }
   ) {
     return httpClient.request<RealtimeConversation>(`/im/conversations/${conversationId}/preferences`, {
       body: preferences,
@@ -343,6 +462,36 @@ export const realtimeApi = {
       { method: "DELETE" }
     );
   },
+  batchDeleteMessagesForMe(conversationId: number, input: { idempotencyKey: string; messageIds: number[] }) {
+    return httpClient.request<RealtimeBatchDeleteResult>(`/im/conversations/${conversationId}/messages/delete-for-me`, { body: input, method: "POST" });
+  },
+  translateMessages(conversationId: number, input: { messageIds: number[]; targetLanguage: "zh" | "zh-Hant" | "ja" | "en" | "ko" }) {
+    return httpClient.request<RealtimeMessageTranslationResult[]>(`/im/conversations/${conversationId}/messages/translations`, { body: input, method: "POST" });
+  },
+  createChatRecordDelivery(targetConversationId: number, input: RealtimeChatRecordCommand) {
+    return httpClient.request<RealtimeChatRecordDelivery>(`/im/conversations/${targetConversationId}/chat-records`, { body: input, method: "POST" });
+  },
+  getChatRecord(publicId: string) { return httpClient.request<RealtimeChatRecordSummary>(`/im/chat-records/${publicId}`); },
+  listChatRecordItems(publicId: string, query: { beforePosition?: number; pageSize?: number } = {}) {
+    return httpClient.request<RealtimeChatRecordItemPage>(`/im/chat-records/${publicId}/items`, { query });
+  },
+  async getChatRecordMedia(publicId: string, checksumSha256: string) {
+    const media = await httpClient.requestBinary(`/im/chat-records/${publicId}/media/${checksumSha256}`);
+    const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "audio/webm", "audio/mp4", "audio/ogg"]);
+    if (
+      !allowedMimeTypes.has(media.contentType) ||
+      media.contentLength === null ||
+      media.contentLength !== media.blob.size ||
+      media.etag !== `"${checksumSha256}"` ||
+      media.cacheControl !== "private, max-age=31536000, immutable"
+    ) {
+      throw new ApiClientError("error.response.invalid_chat_record_media", 502, 502);
+    }
+    return media;
+  },
+  createChatRecordFavorite(input: RealtimeChatRecordCommand) { return httpClient.request<RealtimeChatRecordFavoriteMutation>("/im/chat-record-favorites", { body: input, method: "POST" }); },
+  listChatRecordFavorites(query: PageQuery = {}) { return httpClient.request<PaginatedRealtimeData<RealtimeChatRecordFavorite>>("/im/chat-record-favorites", { query }); },
+  removeChatRecordFavorite(favoriteId: number) { return httpClient.request<{ deleted: true }>(`/im/chat-record-favorites/${favoriteId}`, { method: "DELETE" }); },
   listContacts(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeContact>>("/im/contacts", { query });
   },
@@ -389,20 +538,54 @@ export const realtimeApi = {
   rejectFriendRequest(id: number) {
     return httpClient.request<RealtimeFriendRequest>(`/im/friend-requests/${id}/reject`, { method: "POST" });
   },
-  listSocialPosts(query: PageQuery & { authorUserId?: number } = {}) {
-    return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", { query });
+  listSocialPosts(
+    query: PageQuery & { authorUserId?: number; replyToPostId?: number; bookmarked?: boolean } = {},
+    options: { signal?: AbortSignal } = {}
+  ) {
+    return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", {
+      query,
+      signal: options.signal
+    });
   },
   getSocialActivityStatus(userId: number) {
     return httpClient.request<RealtimeSocialActivityStatus>(`/social/users/${userId}/activity-status`);
   },
-  getSocialPost(id: number) {
-    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`);
+  getSocialPost(id: number, options: { signal?: AbortSignal } = {}) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { signal: options.signal });
   },
   createSocialPost(input: RealtimeSocialCreatePostInput) {
     return httpClient.request<RealtimeSocialPost>("/social/posts", { body: input, method: "POST" });
   },
   updateSocialPost(id: number, input: RealtimeSocialUpdatePostInput) {
     return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`, { body: input, method: "PATCH" });
+  },
+  pinSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/pin`, { method: "PUT" });
+  },
+  unpinSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/pin`, { method: "DELETE" });
+  },
+  likeSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/like`, { method: "PUT" });
+  },
+  unlikeSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/like`, { method: "DELETE" });
+  },
+  bookmarkSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/bookmark`, { method: "PUT" });
+  },
+  unbookmarkSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/bookmark`, { method: "DELETE" });
+  },
+  recordSocialPostView(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}/view`, { method: "POST" });
+  },
+  shareSocialPostToFriends(id: number, targetUserIds: number[], idempotencyKey: string) {
+    return httpClient.request<RealtimeSocialShareResult>(`/social/posts/${id}/shares`, {
+      body: { targetUserIds },
+      headers: { "Idempotency-Key": idempotencyKey },
+      method: "POST"
+    });
   },
   follow(targetUserId: number) {
     return httpClient.request<{ id: number }>("/social/follows", { body: { targetUserId }, method: "POST" });

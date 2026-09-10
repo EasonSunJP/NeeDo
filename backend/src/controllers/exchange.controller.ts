@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { ExchangeService } from "../services/exchange.service";
+import type { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess } from "../utils/request-context";
 import {
@@ -11,7 +12,20 @@ import {
 } from "../validators/exchange.validators";
 
 export class ExchangeController {
-  public constructor(private readonly service: ExchangeService) {}
+  public constructor(
+    private readonly service: ExchangeService,
+    private readonly automationProcessor?: Pick<TechnicianAutomationProcessor, "processRequest">
+  ) {}
+
+  public getRequestPublicationContext = this.handle(async (_request, response) => {
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.getRequestPublicationContext(getAuthenticatedAccess(response))
+        )
+      );
+  });
 
   public listPosts = this.handle(async (request, response) => {
     const query = exchangeListQuerySchema.parse(request.query);
@@ -34,17 +48,16 @@ export class ExchangeController {
   });
 
   public publish = this.handle(async (request, response) => {
-    response
-      .status(201)
-      .json(
-        successResponse(
-          await this.service.publish(
-            getAuthenticatedAccess(response),
-            publishExchangePostSchema.parse(request.body),
-            this.idempotencyKey(response)
-          )
-        )
-      );
+    const input = publishExchangePostSchema.parse(request.body);
+    const created = await this.service.publish(
+      getAuthenticatedAccess(response),
+      input,
+      this.idempotencyKey(response)
+    );
+    if (input.type === "demand") {
+      await this.automationProcessor?.processRequest(created.id).catch(() => undefined);
+    }
+    response.status(201).json(successResponse(created));
   });
 
   public withdraw = this.handle(async (request, response) => {

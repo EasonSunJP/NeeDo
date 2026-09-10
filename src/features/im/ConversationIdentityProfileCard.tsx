@@ -3,13 +3,15 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
-import { resolveCustomerMembership } from "../../shared/profile-card/customerMembership";
+import { resolveFormalPlatformMembershipTierCode } from "../../shared/profile-card/customerMembership";
+import { platformMembershipTierText } from "../../shared/profile-card/platformMembershipTierText";
+import { normalizeImLanguageLabels } from "./language-display";
 import type { DirectoryIdentityCard, ImRoleType, ImUser } from "./model";
 
-function identityLabel(card: DirectoryIdentityCard) {
+function identityLabel(card: DirectoryIdentityCard, language: Parameters<typeof platformMembershipTierText>[1]) {
   if (card.entityType === "user") {
     return card.identityLabel
-      ? resolveCustomerMembership(card.identityLabel).label
+      ? platformMembershipTierText(resolveFormalPlatformMembershipTierCode(card.identityLabel), language)
       : "用户";
   }
 
@@ -81,6 +83,7 @@ export function ConversationIdentityProfileCard({
     (field): field is { label: string; value: string } =>
       typeof field.value === "string" && field.value.trim().length > 0,
   );
+  const languageLabels = normalizeImLanguageLabels(identityCard.languages);
   const creditValue = identityCard.creditValue;
   const creditText = creditValue === undefined
     ? "—"
@@ -111,7 +114,7 @@ export function ConversationIdentityProfileCard({
           ) : null}
         </div>
         <span className="mt-2 inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-primary)]">
-          {t(identityLabel(identityCard))}
+          {t(identityLabel(identityCard, language))}
         </span>
         <p className="mt-2 truncate text-[13px] font-black text-[color:var(--client-muted)]">
           ID {user.userIdLabel}
@@ -183,30 +186,39 @@ export function ConversationIdentityProfileCard({
           </p>
         )}
 
-        {identityCard.languages.length > 0 ? (
-          <div className="mt-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_54%,var(--client-surface))] p-3">
-            <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("语言能力")}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {identityCard.languages.map((item) => (
+        <div
+          className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_54%,var(--client-surface))] px-4 py-4"
+          data-im-language-card="true"
+          data-im-language-section="true"
+        >
+          <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("语言能力")}</p>
+          {languageLabels.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-2" data-im-language-pills="true" data-no-i18n="true">
+              {languageLabels.map((item) => (
                 <span
-                  className="rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_44%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1 text-xs font-black text-[color:var(--client-primary)]"
+                  className="inline-flex w-fit max-w-full break-words rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_44%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1 text-xs font-black text-[color:var(--client-primary)]"
                   key={item}
                 >
                   {item}
                 </span>
               ))}
             </div>
-          </div>
-        ) : null}
-
-        {identityCard.bio ? (
-          <div className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_54%,var(--client-surface))] px-4 py-4">
-            <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("自我介绍")}</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
-              {identityCard.bio}
+          ) : (
+            <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]" data-im-language-empty="true">
+              {t("未设置")}
             </p>
-          </div>
-        ) : null}
+          )}
+        </div>
+
+        <div
+          className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_54%,var(--client-surface))] px-4 py-4"
+          data-im-bio-section="true"
+        >
+          <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("自我介绍")}</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
+            {identityCard.bio?.trim() || t("未设置")}
+          </p>
+        </div>
       </div>
     </section>
   );

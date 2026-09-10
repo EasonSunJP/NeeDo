@@ -27,6 +27,7 @@ type ClientThemeState = {
 };
 
 type ClientPwaThemeColors = {
+  colorScheme: "dark" | "light";
   themeColor: string;
   statusBackground: string;
 };
@@ -40,26 +41,32 @@ const defaultNightClientTheme: ClientTheme = "dark-green";
 const defaultClientTheme: ClientTheme = defaultDayClientTheme;
 const clientPwaThemeColors: Record<ClientTheme, ClientPwaThemeColors> = {
   "light-green": {
+    colorScheme: "light",
     themeColor: "#f6fbf8",
     statusBackground: "#f6fbf8"
   },
   "dark-green": {
+    colorScheme: "dark",
     themeColor: "#02070c",
     statusBackground: "#02070c"
   },
   "black-gold": {
+    colorScheme: "dark",
     themeColor: "#000000",
     statusBackground: "#000000"
   },
   "vital-mono": {
+    colorScheme: "light",
     themeColor: "#f7f7f8",
     statusBackground: "#f7f7f8"
   },
   "cool-black-gray": {
+    colorScheme: "dark",
     themeColor: "#0a0d10",
     statusBackground: "#0a0d10"
   },
   "neon-pink": {
+    colorScheme: "dark",
     themeColor: "#080a1a",
     statusBackground: "#080a1a"
   }
@@ -182,6 +189,7 @@ function syncClientPwaTheme(theme: ClientTheme) {
   root.style.setProperty("--needo-pwa-theme-color", colors.themeColor);
   root.style.setProperty("--needo-pwa-status-bg", colors.statusBackground);
   root.style.setProperty("--client-top-chrome-bg", colors.statusBackground);
+  root.style.colorScheme = colors.colorScheme;
   root.dataset.needoClientTheme = theme;
 
   if (body) {

@@ -5,67 +5,110 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type CSSProperties,
   type ClipboardEvent as ReactClipboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type Ref,
-  type ReactNode
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
-import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
+import {
+  FloatingHomeHeader,
+  floatingHeaderGlassPanelClassName,
+  floatingHeaderInnerClassName,
+} from "../../components/mobile/FloatingHomeHeader";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../components/ui/AvatarImage";
+import {
+  MediaLoadFeedback,
+  useMediaLoadState,
+} from "../../components/ui/MediaLoadFeedback";
 import { Button } from "../../components/ui/Button";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { PinBadgeIcon } from "../../components/ui/PinBadgeIcon";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
+import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
+import { useVisualViewportFrame } from "../../lib/useVisualViewportFrame";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
-import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
-import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
-import { getJudgementReactionIconUrl, ImReactionValue } from "./JudgementReactionIcon";
+import { UnifiedEntityInfoCard } from "../../shared/profile-card/UnifiedEntityInfoCard";
+import { UnifiedServiceInfoCard } from "../../shared/service-card/UnifiedServiceInfoCard";
+import {
+  getClientThemeClassName,
+  useClientTheme,
+} from "../../theme/ClientThemeProvider";
+import {
+  IdentityBadge,
+  VerificationBadge,
+} from "../social/components/SocialUi";
+import {
+  getJudgementReactionIconUrl,
+  ImReactionValue,
+} from "./JudgementReactionIcon";
+import { ImChatRecordCard } from "./ImChatRecordCard";
+import { resolveImNoStoreMediaSource } from "./media-source";
+import { SocialPostCompactCard } from "./SocialPostCompactCard";
 import { ReactionCatalog } from "./ReactionCatalog";
 import {
   getRecentImReactionSnapshot,
   recordRecentImReaction,
-  subscribeRecentImReactions
 } from "./reaction-catalog";
 import {
   encodeImComposerJudgement,
   getImReactionCategory,
+  materializeImComposerDraft,
   parseImComposerDraft,
-  type ImReactionCategory
+  type ImReactionCategory,
 } from "./reaction-policy";
-import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
+import {
+  getImMessageDisplayParts,
+  getImMessageTranslationSource,
+  type ImMessageTranslationOptions,
+} from "./message-translation";
+import {
+  getDisplayName,
+  getImContactSignatureCaption,
+  getRecallResidueLabel,
+  type ContactRelation,
+  type Conversation,
+  type ConversationMessage,
+  type ImMessageType,
+  type ImUser,
+  type MessageExt,
+} from "./model";
+
+const defaultImMessageTranslation: ImMessageTranslationOptions = {
+  language: "zh",
+};
 
 export function ImIcon({
   name,
-  className
+  className,
 }: {
-	  name:
-	    | "back"
-	    | "chevron-down"
-	    | "search"
-	    | "add"
+  name:
+    | "back"
+    | "chevron-down"
+    | "search"
+    | "add"
     | "close"
-	    | "edit"
-	    | "more"
+    | "edit"
+    | "more"
     | "mute"
     | "pin"
     | "organization"
     | "group"
     | "video"
     | "call"
-	    | "emoji"
-	    | "emoji-chat"
-	    | "plus"
-	    | "mic"
-	    | "voice-input"
+    | "emoji"
+    | "emoji-chat"
+    | "plus"
+    | "mic"
+    | "voice-input"
     | "message"
     | "photo"
     | "camera"
@@ -93,57 +136,129 @@ export function ImIcon({
 }) {
   if (name === "back") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="m14.5 6.5-5 5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="m14.5 6.5-5 5 5 5"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2.2"
+        />
       </svg>
     );
   }
 
   if (name === "chevron-down") {
     return (
-      <svg aria-hidden="true" className={cn("h-4 w-4", className)} fill="none" viewBox="0 0 24 24">
-        <path d="m6.5 9.5 5.5 5 5.5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-4 w-4", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="m6.5 9.5 5.5 5 5.5-5"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2.2"
+        />
       </svg>
     );
   }
 
   if (name === "search") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
         <circle cx="11" cy="11" r="5.5" stroke="currentColor" strokeWidth="2" />
-        <path d="m16 16 4 4" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+        <path
+          d="m16 16 4 4"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "add" || name === "plus") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M12 5v14M5 12h14"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2.2"
+        />
       </svg>
     );
   }
 
   if (name === "close") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="m7 7 10 10M17 7 7 17" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="m7 7 10 10M17 7 7 17"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2.2"
+        />
       </svg>
     );
   }
 
   if (name === "edit") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="m5 16.8-.8 3 3-.8L18.1 8.1a2 2 0 0 0 0-2.8l-.4-.4a2 2 0 0 0-2.8 0L5 14.8v2Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-        <path d="m13.6 6.2 4.2 4.2" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="m5 16.8-.8 3 3-.8L18.1 8.1a2 2 0 0 0 0-2.8l-.4-.4a2 2 0 0 0-2.8 0L5 14.8v2Z"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="m13.6 6.2 4.2 4.2"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "more") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
         <circle cx="5" cy="12" fill="currentColor" r="1.6" />
         <circle cx="12" cy="12" fill="currentColor" r="1.6" />
         <circle cx="19" cy="12" fill="currentColor" r="1.6" />
@@ -153,9 +268,24 @@ export function ImIcon({
 
   if (name === "mute") {
     return (
-      <svg aria-hidden="true" className={cn("h-4 w-4", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M5 10.5h3l4-3v9l-4-3H5v-3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-        <path d="m16 9 4 6M20 9l-4 6" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-4 w-4", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M5 10.5h3l4-3v9l-4-3H5v-3Z"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="m16 9 4 6M20 9l-4 6"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
@@ -166,123 +296,329 @@ export function ImIcon({
 
   if (name === "organization") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <rect height="5" rx="1.5" stroke="currentColor" strokeWidth="2" width="7" x="8.5" y="4" />
-        <rect height="5" rx="1.5" stroke="currentColor" strokeWidth="2" width="6" x="4" y="15" />
-        <rect height="5" rx="1.5" stroke="currentColor" strokeWidth="2" width="6" x="14" y="15" />
-        <path d="M12 9v3M7 12h10M7 12v3M17 12v3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <rect
+          height="5"
+          rx="1.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          width="7"
+          x="8.5"
+          y="4"
+        />
+        <rect
+          height="5"
+          rx="1.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          width="6"
+          x="4"
+          y="15"
+        />
+        <rect
+          height="5"
+          rx="1.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          width="6"
+          x="14"
+          y="15"
+        />
+        <path
+          d="M12 9v3M7 12h10M7 12v3M17 12v3"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "group") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
         <circle cx="8" cy="9" r="3" stroke="currentColor" strokeWidth="2" />
         <circle cx="16" cy="10" r="2.6" stroke="currentColor" strokeWidth="2" />
-        <path d="M4.5 18a4.5 4.5 0 0 1 7-3.7M13 17.5a4 4 0 0 1 7 0" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+        <path
+          d="M4.5 18a4.5 4.5 0 0 1 7-3.7M13 17.5a4 4 0 0 1 7 0"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "video") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <rect height="10" rx="2" stroke="currentColor" strokeWidth="2" width="11" x="4" y="7" />
-        <path d="m15 10 4-2v8l-4-2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <rect
+          height="10"
+          rx="2"
+          stroke="currentColor"
+          strokeWidth="2"
+          width="11"
+          x="4"
+          y="7"
+        />
+        <path
+          d="m15 10 4-2v8l-4-2"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "call") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M7.2 4.8 9.3 4c.7-.3 1.5 0 1.8.7l1 2.4c.2.6.1 1.2-.4 1.6l-1.1 1c.8 1.7 2 3 3.7 3.8l1.1-1c.5-.4 1.1-.5 1.7-.2l2.3 1.1c.7.3 1 1.1.7 1.8l-.9 2.1c-.3.7-1 1.1-1.7 1-7-.9-12.4-6.3-13.3-13.2-.1-.8.3-1.5 1-1.8Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M7.2 4.8 9.3 4c.7-.3 1.5 0 1.8.7l1 2.4c.2.6.1 1.2-.4 1.6l-1.1 1c.8 1.7 2 3 3.7 3.8l1.1-1c.5-.4 1.1-.5 1.7-.2l2.3 1.1c.7.3 1 1.1.7 1.8l-.9 2.1c-.3.7-1 1.1-1.7 1-7-.9-12.4-6.3-13.3-13.2-.1-.8.3-1.5 1-1.8Z"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "emoji") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
         <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
         <circle cx="9" cy="10" fill="currentColor" r="1" />
         <circle cx="15" cy="10" fill="currentColor" r="1" />
-        <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+        <path
+          d="M8.5 14.5a4.5 4.5 0 0 0 7 0"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "emoji-chat") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M20.4 11.1a8.4 8.4 0 0 1-9 8.4 8.8 8.8 0 0 1-2.9-.7L4 20l1.5-4.1A8.1 8.1 0 0 1 3.6 11a8.4 8.4 0 0 1 16.8.1Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M20.4 11.1a8.4 8.4 0 0 1-9 8.4 8.8 8.8 0 0 1-2.9-.7L4 20l1.5-4.1A8.1 8.1 0 0 1 3.6 11a8.4 8.4 0 0 1 16.8.1Z"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.8"
+        />
         <circle cx="9" cy="10" fill="currentColor" r="1" />
         <circle cx="15" cy="10" fill="currentColor" r="1" />
-        <path d="M8.7 13.3c.9 1.2 2 1.8 3.3 1.8s2.4-.6 3.3-1.8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+        <path
+          d="M8.7 13.3c.9 1.2 2 1.8 3.3 1.8s2.4-.6 3.3-1.8"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.8"
+        />
       </svg>
     );
   }
 
   if (name === "mic") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M12 5.5a3 3 0 0 1 3 3v3a3 3 0 1 1-6 0v-3a3 3 0 0 1 3-3ZM7.5 11.5a4.5 4.5 0 0 0 9 0M12 16v2.5M9 19.5h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M12 5.5a3 3 0 0 1 3 3v3a3 3 0 1 1-6 0v-3a3 3 0 0 1 3-3ZM7.5 11.5a4.5 4.5 0 0 0 9 0M12 16v2.5M9 19.5h6"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "voice-input") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <rect height="14" rx="5" stroke="currentColor" strokeWidth="1.8" width="8" x="8" y="2.5" />
-        <path d="M8.3 8h3M8.3 11h3M12.7 8h3M12.7 11h3M5 11.5v.8a7 7 0 0 0 14 0v-.8M12 19.3v2.2M9.5 21.5h5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <rect
+          height="14"
+          rx="5"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          width="8"
+          x="8"
+          y="2.5"
+        />
+        <path
+          d="M8.3 8h3M8.3 11h3M12.7 8h3M12.7 11h3M5 11.5v.8a7 7 0 0 0 14 0v-.8M12 19.3v2.2M9.5 21.5h5"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.8"
+        />
       </svg>
     );
   }
 
   if (name === "message") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M5 6.5A3.5 3.5 0 0 1 8.5 3h7A3.5 3.5 0 0 1 19 6.5v5A3.5 3.5 0 0 1 15.5 15H11l-4.5 4v-4A3.5 3.5 0 0 1 3 11.5v-5Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-        <path d="M8 8h8M8 11h5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M5 6.5A3.5 3.5 0 0 1 8.5 3h7A3.5 3.5 0 0 1 19 6.5v5A3.5 3.5 0 0 1 15.5 15H11l-4.5 4v-4A3.5 3.5 0 0 1 3 11.5v-5Z"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M8 8h8M8 11h5"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "photo") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <rect height="14" rx="3" stroke="currentColor" strokeWidth="2" width="18" x="3" y="5" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <rect
+          height="14"
+          rx="3"
+          stroke="currentColor"
+          strokeWidth="2"
+          width="18"
+          x="3"
+          y="5"
+        />
         <circle cx="9" cy="10" fill="currentColor" r="1.6" />
-        <path d="m7 17 4-4 2.5 2.5 2.5-3 2 2.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+        <path
+          d="m7 17 4-4 2.5 2.5 2.5-3 2 2.5"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "camera") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M8.2 6.5 9.6 4.8h4.8l1.4 1.7H18a3 3 0 0 1 3 3V17a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V9.5a3 3 0 0 1 3-3h2.2Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M8.2 6.5 9.6 4.8h4.8l1.4 1.7H18a3 3 0 0 1 3 3V17a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V9.5a3 3 0 0 1 3-3h2.2Z"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
         <circle cx="12" cy="13" r="3.4" stroke="currentColor" strokeWidth="2" />
-        <path d="M17.5 9h.1" stroke="currentColor" strokeLinecap="round" strokeWidth="2.6" />
+        <path
+          d="M17.5 9h.1"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2.6"
+        />
       </svg>
     );
   }
 
   if (name === "file") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M8 3.5h6l4 4V20a1 1 0 0 1-1 1H8a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-        <path d="M14 3.5V8h4" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M8 3.5h6l4 4V20a1 1 0 0 1-1 1H8a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M14 3.5V8h4"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "location") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M12 20s6-4.6 6-10a6 6 0 1 0-12 0c0 5.4 6 10 6 10Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M12 20s6-4.6 6-10a6 6 0 1 0-12 0c0 5.4 6 10 6 10Z"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
         <circle cx="12" cy="10" r="2.2" stroke="currentColor" strokeWidth="2" />
       </svg>
     );
@@ -290,55 +626,155 @@ export function ImIcon({
 
   if (name === "card") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <rect height="14" rx="2.5" stroke="currentColor" strokeWidth="2" width="18" x="3" y="5" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <rect
+          height="14"
+          rx="2.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          width="18"
+          x="3"
+          y="5"
+        />
         <circle cx="9" cy="11" r="2" stroke="currentColor" strokeWidth="2" />
-        <path d="M14 10h4M14 14h3" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+        <path
+          d="M14 10h4M14 14h3"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "calendar") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <rect height="15" rx="3" stroke="currentColor" strokeWidth="2" width="16" x="4" y="5" />
-        <path d="M8 3.5v4M16 3.5v4M4 9.5h16" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-        <path d="M8 13h3M8 16h5.5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <rect
+          height="15"
+          rx="3"
+          stroke="currentColor"
+          strokeWidth="2"
+          width="16"
+          x="4"
+          y="5"
+        />
+        <path
+          d="M8 3.5v4M16 3.5v4M4 9.5h16"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M8 13h3M8 16h5.5"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "friend") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 19.5a7 7 0 0 1 14 0" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-        <path d="M18.5 5.5v4M16.5 7.5h4" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 19.5a7 7 0 0 1 14 0"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M18.5 5.5v4M16.5 7.5h4"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "scan") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M7 5H5v4M17 5h2v4M7 19H5v-4M19 15v4h-2" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-        <path d="M8 12h8M9.5 9.5h5M9.5 14.5h5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M7 5H5v4M17 5h2v4M7 19H5v-4M19 15v4h-2"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M8 12h8M9.5 9.5h5M9.5 14.5h5"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "payment") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <rect height="12" rx="2.5" stroke="currentColor" strokeWidth="2" width="16" x="4" y="6" />
-        <path d="M4 10h16M8 14h3.5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <rect
+          height="12"
+          rx="2.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          width="16"
+          x="4"
+          y="6"
+        />
+        <path
+          d="M4 10h16M8 14h3.5"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "tag") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M10 4h7a2 2 0 0 1 2 2v7l-8 8-6-6 8-8Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M10 4h7a2 2 0 0 1 2 2v7l-8 8-6-6 8-8Z"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
         <circle cx="15.5" cy="8.5" fill="currentColor" r="1.4" />
       </svg>
     );
@@ -346,52 +782,130 @@ export function ImIcon({
 
   if (name === "filter") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M5 5.5h14l-5.3 6.1v5.8L10.3 19v-7.4L5 5.5Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-        <path d="M15.5 14h3.5M15.5 17.5h2.2" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M5 5.5h14l-5.3 6.1v5.8L10.3 19v-7.4L5 5.5Z"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M15.5 14h3.5M15.5 17.5h2.2"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "service") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M7 7h10a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-5l-4 3v-3H7a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-        <path d="M9 11h6M9 14h4" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M7 7h10a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-5l-4 3v-3H7a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3Z"
+          stroke="currentColor"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M9 11h6M9 14h4"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "blacklist") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
         <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
-        <path d="m8.5 8.5 7 7M15.5 8.5l-7 7" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+        <path
+          d="m8.5 8.5 7 7M15.5 8.5l-7 7"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "check") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="m6 12 4 4 8-8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="m6 12 4 4 8-8"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2.2"
+        />
       </svg>
     );
   }
 
   if (name === "delete") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M6 7h12M9 7V5h6v2m-7 3v7m4-7v7m4-7v7M7 7l1 12a1 1 0 0 0 1 .9h6a1 1 0 0 0 1-.9L17 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M6 7h12M9 7V5h6v2m-7 3v7m4-7v7m4-7v7M7 7l1 12a1 1 0 0 0 1 .9h6a1 1 0 0 0 1-.9L17 7"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "reply") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="m9 8-4 4 4 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-        <path d="M20 12H5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="m9 8-4 4 4 4"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        <path
+          d="M20 12H5"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
@@ -402,48 +916,121 @@ export function ImIcon({
 
   if (name === "copy") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <rect height="12" rx="2" stroke="currentColor" strokeWidth="2" width="10" x="8" y="6" />
-        <path d="M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <rect
+          height="12"
+          rx="2"
+          stroke="currentColor"
+          strokeWidth="2"
+          width="10"
+          x="8"
+          y="6"
+        />
+        <path
+          d="M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "link") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M10 14 8.5 15.5a3 3 0 1 1-4.2-4.2L7 8.6M14 10l1.5-1.5a3 3 0 1 1 4.2 4.2L17 15.4M9 15l6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M10 14 8.5 15.5a3 3 0 1 1-4.2-4.2L7 8.6M14 10l1.5-1.5a3 3 0 1 1 4.2 4.2L17 15.4M9 15l6-6"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "select") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="m5 7 1.7 1.7L10 5.5M5 13l1.7 1.7L10 11.5M5 19l1.7 1.7L10 17.5M13 8h6M13 14h6M13 20h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="m5 7 1.7 1.7L10 5.5M5 13l1.7 1.7L10 11.5M5 19l1.7 1.7L10 17.5M13 8h6M13 14h6M13 20h6"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "translate") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M4 5h9M8.5 3v2M11 5c-.8 3.6-2.8 6.3-6 8M6.5 8c1.1 2 2.8 3.5 5.5 4.7M13 20l4-9 4 9M14.4 17h5.2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M4 5h9M8.5 3v2M11 5c-.8 3.6-2.8 6.3-6 8M6.5 8c1.1 2 2.8 3.5 5.5 4.7M13 20l4-9 4 9M14.4 17h5.2"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   if (name === "top") {
     return (
-      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-        <path d="M6 5h12M12 19V8M8 12l4-4 4 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg
+        aria-hidden="true"
+        className={cn("h-5 w-5", className)}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M6 5h12M12 19V8M8 12l4-4 4 4"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
       </svg>
     );
   }
 
   return (
-    <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
-      <path d="M6 8h12M6 12h8M6 16h6" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+    <svg
+      aria-hidden="true"
+      className={cn("h-5 w-5", className)}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M6 8h12M6 12h8M6 16h6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="2"
+      />
     </svg>
   );
 }
@@ -454,11 +1041,6 @@ export type ImChatComposerAction = {
   key: string;
   label: string;
   run: () => void;
-};
-export type ImChatComposerRecordingState = {
-  active: boolean;
-  cancel: boolean;
-  durationSeconds: number;
 };
 export type ImChatComposerPendingImage = {
   fileName: string;
@@ -493,7 +1075,9 @@ function readImComposerNode(node: Node): string {
 
   const isBlock = node.tagName === "DIV" || node.tagName === "P";
   const content = [...node.childNodes].map(readImComposerNode).join("");
-  return isBlock && node.nextSibling && !content.endsWith("\n") ? `${content}\n` : content;
+  return isBlock && node.nextSibling && !content.endsWith("\n")
+    ? `${content}\n`
+    : content;
 }
 
 function readImComposerValue(element: HTMLElement): string {
@@ -508,7 +1092,8 @@ function renderImComposerValue(element: HTMLElement, value: string) {
 
     const image = document.createElement("img");
     image.alt = part.value;
-    image.className = "mx-0.5 inline-block h-[22px] w-auto max-w-[54px] align-[-0.28em]";
+    image.className =
+      "mx-0.5 inline-block h-[22px] w-auto max-w-[54px] align-[-0.28em]";
     image.contentEditable = "false";
     image.dataset.imComposerJudgement = part.value;
     image.draggable = false;
@@ -554,26 +1139,37 @@ function ImComposerRichInput({
   disabled,
   draft,
   inputRef,
+  nativeDisabled,
   onDraftChange,
-  placeholder
+  onEnterSubmit,
+  placeholder,
 }: {
   disabled: boolean;
   draft: string;
   inputRef?: Ref<HTMLDivElement>;
+  nativeDisabled: boolean;
   onDraftChange: (value: string) => void;
+  onEnterSubmit?: () => void;
   placeholder: string;
 }) {
+  const i18n = useProvidedI18n();
+  const localizedPlaceholder = i18n
+    ? translateText(placeholder, i18n.language)
+    : placeholder;
   const editorRef = useRef<HTMLDivElement | null>(null);
-  const setEditorRef = useCallback((element: HTMLDivElement | null) => {
-    editorRef.current = element;
-    assignImComposerRef(inputRef, element);
-  }, [inputRef]);
+  const setEditorRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      editorRef.current = element;
+      assignImComposerRef(inputRef, element);
+    },
+    [inputRef],
+  );
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
     if (!editor || readImComposerValue(editor) === draft) return;
     renderImComposerValue(editor, draft);
-  }, [draft]);
+  }, [disabled, draft]);
 
   const handlePaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
     const text = event.clipboardData.getData("text/plain");
@@ -583,21 +1179,56 @@ function ImComposerRichInput({
     onDraftChange(readImComposerValue(event.currentTarget));
   };
 
+  if (disabled && nativeDisabled) {
+    return (
+      <div className="relative min-h-[24px]">
+        <textarea
+          aria-placeholder={placeholder}
+          className="block max-h-[132px] min-h-[24px] w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[16px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+          data-im-composer-native-input="true"
+          disabled
+          placeholder={placeholder}
+          rows={1}
+          value={materializeImComposerDraft(draft)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-[24px]">
       {!draft ? (
-        <span className="pointer-events-none absolute inset-0 text-[15px] leading-6 text-[color:var(--client-muted)]">
-          {placeholder}
+        <span
+          className="pointer-events-none absolute inset-0 text-[16px] leading-6 text-[color:var(--client-muted)]"
+          data-no-i18n="true"
+        >
+          {localizedPlaceholder}
         </span>
       ) : null}
       <div
         aria-disabled={disabled}
         aria-multiline="true"
-        aria-placeholder={placeholder}
-        className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
+        aria-placeholder={localizedPlaceholder}
+        className="block max-h-[132px] min-h-[24px] w-full overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent p-0 text-[16px] leading-6 text-[color:var(--client-text)] outline-none [overflow-wrap:anywhere]"
         contentEditable={!disabled}
         data-im-composer-rich-input="true"
-        onInput={(event) => onDraftChange(readImComposerValue(event.currentTarget))}
+        data-no-i18n="true"
+        onInput={(event) =>
+          onDraftChange(readImComposerValue(event.currentTarget))
+        }
+        onKeyDown={(event) => {
+          if (
+            event.key !== "Enter" ||
+            event.shiftKey ||
+            event.nativeEvent.isComposing ||
+            !onEnterSubmit
+          ) {
+            return;
+          }
+
+          event.preventDefault();
+          onEnterSubmit();
+        }}
         onPaste={handlePaste}
         ref={setEditorRef}
         role="textbox"
@@ -609,7 +1240,7 @@ function ImComposerRichInput({
 
 export function ImReturnToLatestButton({
   onActivate,
-  visible
+  visible,
 }: {
   onActivate: () => void;
   visible: boolean;
@@ -627,9 +1258,17 @@ export function ImReturnToLatestButton({
       onClick={onActivate}
       type="button"
     >
-      <span aria-hidden="true" className="client-floating-action-button__shine" />
+      <span
+        aria-hidden="true"
+        className="client-floating-action-button__shine"
+      />
       <span className="client-floating-action-button__icon">
-        <svg aria-hidden="true" data-im-return-arrow="true" fill="none" viewBox="0 0 24 24">
+        <svg
+          aria-hidden="true"
+          data-im-return-arrow="true"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
           <path
             d="M12 5v11m-4-4 4 4 4-4M7 20h10"
             stroke="currentColor"
@@ -649,57 +1288,82 @@ export function ImChatComposer({
   disabled = false,
   draft,
   isNight,
-  maxVoiceRecordingSeconds = 60,
-  onCancelRecording,
   onDraftChange,
-  onEndRecording,
-  onMoveRecording,
+  onOpenVoiceRecording,
   onPanelChange,
   onRemovePendingImage,
   onSend,
-  onStartRecording,
-  onToggleVoice,
   panel,
   pendingImage,
   placeholder = "发送消息",
-  recording = { active: false, cancel: false, durationSeconds: 0 },
+  leadingAccessory,
+  moreAction,
+  nativeDisabledInput = false,
+  sendLabel = "发送",
+  sendingLabel = "发送中",
   sending = false,
+  submitOnEnter = false,
   textareaRef,
-  voiceMode = false
+  voiceButtonRef,
+  voiceInputAriaLabel = "录制语音",
+  embedded = false,
+  showVoice = true,
+  showMore = true,
+  showSend = true,
 }: {
   actions?: ImChatComposerAction[];
   blocked?: boolean;
   disabled?: boolean;
   draft: string;
   isNight: boolean;
-  maxVoiceRecordingSeconds?: number;
-  onCancelRecording?: () => void;
   onDraftChange: (value: string) => void;
-  onEndRecording?: () => void;
-  onMoveRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onPanelChange: (panel: ImChatComposerPanel | ((value: ImChatComposerPanel) => ImChatComposerPanel)) => void;
+  onOpenVoiceRecording?: () => void;
+  onPanelChange: (
+    panel:
+      | ImChatComposerPanel
+      | ((value: ImChatComposerPanel) => ImChatComposerPanel),
+  ) => void;
   onRemovePendingImage?: () => void;
   onSend: () => void;
-  onStartRecording?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onToggleVoice?: () => void;
   panel: ImChatComposerPanel;
   pendingImage?: ImChatComposerPendingImage;
   placeholder?: string;
-  recording?: ImChatComposerRecordingState;
+  leadingAccessory?: ReactNode;
+  moreAction?: { ariaLabel: string; run: () => void };
+  nativeDisabledInput?: boolean;
+  sendLabel?: string;
+  sendingLabel?: string;
   sending?: boolean;
+  submitOnEnter?: boolean;
   textareaRef?: Ref<HTMLDivElement>;
-  voiceMode?: boolean;
+  voiceButtonRef?: Ref<HTMLButtonElement>;
+  voiceInputAriaLabel?: string;
+  embedded?: boolean;
+  showVoice?: boolean;
+  showMore?: boolean;
+  showSend?: boolean;
 }) {
   const composerRootRef = useRef<HTMLDivElement | null>(null);
-  const recentReactions = useSyncExternalStore(
-    subscribeRecentImReactions,
-    getRecentImReactionSnapshot,
-    getRecentImReactionSnapshot
-  );
+  const previousPanelRef = useRef<ImChatComposerPanel>(null);
+  const [visibleRecentReactions, setVisibleRecentReactions] = useState<
+    readonly string[]
+  >(() => getRecentImReactionSnapshot());
+
+  useLayoutEffect(() => {
+    const openingEmojiPanel =
+      panel === "emoji" && previousPanelRef.current !== "emoji";
+    previousPanelRef.current = panel;
+
+    if (openingEmojiPanel) {
+      setVisibleRecentReactions(getRecentImReactionSnapshot());
+    }
+  }, [panel]);
 
   useLayoutEffect(() => {
     const root = composerRootRef.current;
-    const conversationLayout = root?.closest<HTMLElement>("[data-im-conversation-layout='true']");
+    const conversationLayout = root?.closest<HTMLElement>(
+      "[data-im-conversation-layout='true']",
+    );
 
     if (!root || !conversationLayout) {
       return undefined;
@@ -707,14 +1371,19 @@ export function ImChatComposer({
 
     let frame: number | undefined;
     const updateComposerInset = () => {
-      const messageScroller = conversationLayout.querySelector<HTMLElement>(".im-conversation-scroll");
+      const messageScroller = conversationLayout.querySelector<HTMLElement>(
+        ".im-conversation-scroll",
+      );
       const shouldKeepLatestMessageVisible = messageScroller
-        ? messageScroller.scrollHeight - messageScroller.scrollTop - messageScroller.clientHeight < 120
+        ? messageScroller.scrollHeight -
+            messageScroller.scrollTop -
+            messageScroller.clientHeight <
+          120
         : false;
 
       conversationLayout.style.setProperty(
         "--im-composer-overlay-height",
-        `${Math.ceil(root.getBoundingClientRect().height)}px`
+        `${Math.ceil(root.getBoundingClientRect().height)}px`,
       );
 
       if (messageScroller && shouldKeepLatestMessageVisible) {
@@ -729,7 +1398,9 @@ export function ImChatComposer({
     updateComposerInset();
 
     const resizeObserver =
-      typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(updateComposerInset);
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(updateComposerInset);
     resizeObserver?.observe(root);
 
     return () => {
@@ -739,23 +1410,29 @@ export function ImChatComposer({
       }
       conversationLayout.style.removeProperty("--im-composer-overlay-height");
     };
-  }, [draft, panel, pendingImage, voiceMode]);
+  }, [draft, panel, pendingImage]);
 
   const selectReactionValue = (value: string) => {
-    const nextValue = getImReactionCategory(value) === "judgement"
-      ? encodeImComposerJudgement(value)
-      : value;
+    const nextValue =
+      getImReactionCategory(value) === "judgement"
+        ? encodeImComposerJudgement(value)
+        : value;
     onDraftChange(`${draft}${nextValue}`);
     recordRecentImReaction(value);
     window.requestAnimationFrame(() => {
-      const editor = composerRootRef.current?.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]') ?? null;
+      const editor =
+        composerRootRef.current?.querySelector<HTMLElement>(
+          '[data-im-composer-rich-input="true"]',
+        ) ?? null;
       focusImComposerAtEnd(editor);
     });
   };
   const composerInputShellClass =
-    "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
-  const composerIconButtonClass = "im-composer-icon-button shrink-0 text-[color:var(--client-muted)]";
-  const composerPanelClass = "client-liquid-glass-surface im-composer-glass im-composer-panel p-4";
+    "im-composer-editor-shell min-h-[40px] min-w-0 max-h-full flex-1 overflow-y-auto overscroll-contain rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--client-elevated)_18%,transparent)]";
+  const composerIconButtonClass =
+    "im-composer-icon-button shrink-0 text-[color:var(--client-muted)]";
+  const composerPanelClass =
+    "client-liquid-glass-surface im-composer-glass im-composer-panel";
   const composerActionButtonClass =
     "min-w-0 rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-1.5 py-3 text-center text-[color:var(--client-text)] transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface)_90%)] sm:px-3 sm:py-4";
   const composerActionIconClass =
@@ -764,37 +1441,64 @@ export function ImChatComposer({
   return (
     <div
       className={cn(
-        "im-chat-composer-root relative z-10 max-w-full px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 [overflow-x:clip]",
-        disabled ? "cursor-not-allowed opacity-60" : ""
+        "im-chat-composer-root relative z-10 max-w-full [overflow-x:clip]",
+        embedded ? "" : "safe-nav-bottom px-3 pt-2",
+        disabled ? "cursor-not-allowed opacity-60" : "",
       )}
       data-im-composer-disabled={disabled ? "true" : undefined}
       data-im-composer-root="true"
       ref={composerRootRef}
     >
-      <div className="im-chat-composer-stack mx-auto flex min-w-0 max-w-full flex-col" data-im-composer-stack="true">
+      <div
+        className="im-chat-composer-stack mx-auto flex min-w-0 max-w-full flex-col"
+        data-im-composer-stack="true"
+      >
         <div
           className="client-liquid-glass-surface im-composer-glass im-composer-input-shell flex min-w-0 max-w-full items-end gap-1 px-1.5 py-2"
           data-im-composer-input-shell="true"
           data-im-composer-tone={isNight ? "night" : "day"}
         >
-          <button
-            aria-label={voiceMode ? "切换文字输入" : "切换语音输入"}
-            className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
-            data-im-composer-control="voice-input"
-            disabled={disabled}
-            onClick={() => {
-              onToggleVoice?.();
-              onPanelChange(null);
-            }}
-            type="button"
+          {leadingAccessory ? (
+            <div
+              className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full"
+              data-im-composer-leading-accessory="true"
+            >
+              {leadingAccessory}
+            </div>
+          ) : showVoice ? (
+            <button
+              aria-label={voiceInputAriaLabel}
+              className={cn(
+                "focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full",
+                composerIconButtonClass,
+              )}
+              data-im-composer-control="voice-input"
+              disabled={disabled || blocked}
+              onClick={() => {
+                onPanelChange(null);
+                onOpenVoiceRecording?.();
+              }}
+              ref={voiceButtonRef}
+              type="button"
+            >
+              <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
+            </button>
+          ) : null}
+          <div
+            className={composerInputShellClass}
+            data-im-composer-editor-shell="true"
           >
-            <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
-          </button>
-          <div className={composerInputShellClass}>
-            {pendingImage && !voiceMode ? (
-              <div className="mb-2 w-fit max-w-full pr-1 pt-1" data-im-composer-pending-image="true">
+            {pendingImage ? (
+              <div
+                className="mb-2 w-fit max-w-full pr-1 pt-1"
+                data-im-composer-pending-image="true"
+              >
                 <div className="relative w-fit max-w-full">
-                  <img alt={pendingImage.fileName} className="h-16 w-16 rounded-[14px] object-cover" src={pendingImage.previewUrl} />
+                  <img
+                    alt={pendingImage.fileName}
+                    className="h-16 w-16 rounded-[14px] object-cover"
+                    src={pendingImage.previewUrl}
+                  />
                   <button
                     aria-label={`移除待发送图片 ${pendingImage.fileName}`}
                     className="focus-ring absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border border-white/20 bg-black/72 text-sm font-black leading-none text-white shadow-lg"
@@ -807,82 +1511,98 @@ export function ImChatComposer({
                 </div>
               </div>
             ) : null}
-            {voiceMode ? (
-              <button
-                className={cn(
-                  "w-full rounded-[18px] px-4 py-3 text-sm font-medium transition",
-                  recording.active ? (recording.cancel ? "bg-[#fff2ef] text-[#ef4f3f]" : "bg-[#edf7ee] text-[#1f6f4d]") : "bg-[#f5f5f5] text-ink/55"
-                )}
-                disabled={disabled || blocked}
-                onPointerCancel={onCancelRecording}
-                onPointerDown={onStartRecording}
-                onPointerMove={onMoveRecording}
-                onPointerUp={onEndRecording}
-                type="button"
-              >
-                {recording.active
-                  ? recording.cancel
-                    ? `松开取消发送 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                    : `松开发送，上滑取消 · ${recording.durationSeconds}/${maxVoiceRecordingSeconds}s`
-                  : `按住说话（最长 ${maxVoiceRecordingSeconds} 秒）`}
-              </button>
-            ) : (
-              <ImComposerRichInput
-                disabled={disabled}
-                draft={draft}
-                inputRef={textareaRef}
-                onDraftChange={onDraftChange}
-                placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
-              />
-            )}
+            <ImComposerRichInput
+              disabled={disabled}
+              draft={draft}
+              inputRef={textareaRef}
+              nativeDisabled={nativeDisabledInput}
+              onDraftChange={onDraftChange}
+              onEnterSubmit={submitOnEnter ? onSend : undefined}
+              placeholder={blocked ? "你已将对方加入黑名单" : placeholder}
+            />
           </div>
           <button
             aria-label={panel === "emoji" ? "关闭表情面板" : "打开表情面板"}
-            className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
+            className={cn(
+              "focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full",
+              composerIconButtonClass,
+            )}
             data-im-composer-control="emoji-chat"
             disabled={disabled}
-            onClick={() => onPanelChange((value) => (value === "emoji" ? null : "emoji"))}
+            onClick={() =>
+              onPanelChange((value) => (value === "emoji" ? null : "emoji"))
+            }
             type="button"
           >
             <ImIcon className="h-[18px] w-[18px]" name="emoji-chat" />
           </button>
-          {(draft.trim() || pendingImage) && !voiceMode ? (
-            <Button className="h-9 shrink-0 rounded-full px-3 text-sm" disabled={disabled || blocked || sending} onClick={onSend}>
-              {sending ? "发送中" : "发送"}
+          {showSend && (draft.trim() || pendingImage) ? (
+            <Button
+              className="h-9 shrink-0 rounded-full px-3 text-sm"
+              disabled={disabled || blocked || sending}
+              onClick={onSend}
+            >
+              {sending ? sendingLabel : sendLabel}
             </Button>
-          ) : (
+          ) : showMore ? (
             <button
-              aria-label={panel === "more" ? "关闭更多功能" : "打开更多功能"}
-              className={cn("focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full", composerIconButtonClass)}
+              aria-label={
+                moreAction?.ariaLabel ??
+                (panel === "more" ? "关闭更多功能" : "打开更多功能")
+              }
+              className={cn(
+                "focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full",
+                composerIconButtonClass,
+              )}
               disabled={disabled}
-              onClick={() => onPanelChange((value) => (value === "more" ? null : "more"))}
+              onClick={() => {
+                if (moreAction) {
+                  moreAction.run();
+                  onPanelChange(null);
+                  return;
+                }
+                onPanelChange((value) => (value === "more" ? null : "more"));
+              }}
               type="button"
             >
               <ImIcon name="plus" />
             </button>
-          )}
+          ) : null}
         </div>
 
         {panel === "emoji" ? (
-          <div className={cn(composerPanelClass, "overscroll-contain")} data-im-composer-panel="emoji">
-            <ReactionCatalog
-              disabled={disabled}
-              expanded
-              onSelect={selectReactionValue}
-              recentValues={recentReactions}
-            />
+          <div
+            className={cn(composerPanelClass, "overscroll-contain")}
+            data-im-composer-panel="emoji"
+          >
+            <div className="im-composer-panel-content p-4">
+              <ReactionCatalog
+                disabled={disabled}
+                expanded
+                onSelect={selectReactionValue}
+                recentValues={visibleRecentReactions}
+              />
+            </div>
           </div>
         ) : null}
 
         {panel === "more" && actions.length > 0 ? (
           <div className={composerPanelClass} data-im-composer-panel="more">
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+            <div className="im-composer-panel-content grid grid-cols-4 gap-2 p-4 sm:gap-3">
               {actions.map((action) => (
-                <button className={composerActionButtonClass} disabled={disabled} key={action.key} onClick={action.run} type="button">
+                <button
+                  className={composerActionButtonClass}
+                  disabled={disabled}
+                  key={action.key}
+                  onClick={action.run}
+                  type="button"
+                >
                   <span className={composerActionIconClass}>
                     <ImIcon name={action.icon} />
                   </span>
-                  <span className="mt-2 block truncate text-[11px] font-medium text-[color:var(--client-muted)] sm:text-xs">{action.label}</span>
+                  <span className="mt-2 block truncate text-[11px] font-medium text-[color:var(--client-muted)] sm:text-xs">
+                    {action.label}
+                  </span>
                 </button>
               ))}
             </div>
@@ -895,19 +1615,23 @@ export function ImChatComposer({
 
 export function ImStandaloneShell({
   children,
-  className
+  className,
 }: {
   children: ReactNode;
   className?: string;
 }) {
   const { theme, isNight } = useClientTheme();
   const location = useLocation();
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  useVisualViewportFrame(shellRef);
 
   useEffect(() => {
     let frame = 0;
 
     const resetHorizontalScroll = () => {
-      const scrollingElement = document.scrollingElement ?? document.documentElement;
+      const scrollingElement =
+        document.scrollingElement ?? document.documentElement;
       const hasHorizontalOffset =
         window.scrollX !== 0 ||
         scrollingElement.scrollLeft !== 0 ||
@@ -938,7 +1662,9 @@ export function ImStandaloneShell({
     resetHorizontalScroll();
     window.addEventListener("scroll", scheduleReset, { passive: true });
     window.addEventListener("resize", scheduleReset);
-    window.visualViewport?.addEventListener("scroll", scheduleReset, { passive: true });
+    window.visualViewport?.addEventListener("scroll", scheduleReset, {
+      passive: true,
+    });
     window.visualViewport?.addEventListener("resize", scheduleReset);
 
     return () => {
@@ -959,12 +1685,16 @@ export function ImStandaloneShell({
         "safe-screen-shell client-shell min-h-[100dvh] w-full max-w-full min-w-0 overflow-x-hidden [overflow-x:clip]",
         isNight ? "client-theme-night" : "client-theme-day",
         getClientThemeClassName(theme),
-        className
+        className,
       )}
       data-page-drag-ignore="true"
       data-scroll-drag-ignore="true"
+      ref={shellRef}
     >
-      <div className="mx-auto min-h-[100dvh] w-full min-w-0 overflow-x-hidden [overflow-x:clip] bg-transparent" style={{ maxWidth: "min(880px, 100%)" }}>
+      <div
+        className="mx-auto min-h-[100dvh] w-full min-w-0 overflow-x-hidden [overflow-x:clip] bg-transparent"
+        style={{ maxWidth: "min(880px, 100%)" }}
+      >
         {children}
       </div>
     </div>
@@ -980,7 +1710,7 @@ export function ImTopBar({
   footer,
   footerClassName,
   fixed = false,
-  className
+  className,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -992,11 +1722,23 @@ export function ImTopBar({
   fixed?: boolean;
   className?: string;
 }) {
-  const titleNode = typeof title === "string" ? <h1 className="truncate text-[18px] font-black tracking-[-0.02em] text-[color:var(--client-text)]">{title}</h1> : title;
+  const titleNode =
+    typeof title === "string" ? (
+      <h1 className="truncate text-[18px] font-black tracking-[-0.02em] text-[color:var(--client-text)]">
+        {title}
+      </h1>
+    ) : (
+      title
+    );
 
   const content = (
     <div className={floatingHeaderInnerClassName}>
-      <div className={cn("relative flex items-center justify-between gap-3", centerTitle || onBack ? "min-h-11" : "")}>
+      <div
+        className={cn(
+          "relative flex items-center justify-between gap-3",
+          centerTitle || onBack ? "min-h-11" : "",
+        )}
+      >
         {onBack ? <ImTopBarBackButton onClick={onBack} /> : null}
         {centerTitle ? (
           <>
@@ -1004,24 +1746,47 @@ export function ImTopBar({
             <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center px-[72px]">
               <div className="min-w-0 max-w-full flex-1 text-center">
                 {titleNode}
-                {subtitle ? <p className="truncate text-[11px] font-semibold text-[color:var(--client-muted)]">{subtitle}</p> : null}
+                {subtitle ? (
+                  <p className="truncate text-[11px] font-semibold text-[color:var(--client-muted)]">
+                    {subtitle}
+                  </p>
+                ) : null}
               </div>
             </div>
-            {actions ? <div className="ml-auto flex shrink-0 items-center gap-1">{actions}</div> : <div className="h-10 w-10 shrink-0" />}
+            {actions ? (
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                {actions}
+              </div>
+            ) : (
+              <div className="h-10 w-10 shrink-0" />
+            )}
           </>
         ) : (
           <>
             <div className="flex min-w-0 flex-1 items-center">
-              <div className={cn("min-w-0 flex-1", onBack ? "pl-[56px] sm:pl-[60px]" : "")}>
+              <div
+                className={cn(
+                  "min-w-0 flex-1",
+                  onBack ? "pl-[56px] sm:pl-[60px]" : "",
+                )}
+              >
                 {titleNode}
-                {subtitle ? <p className="truncate text-[11px] font-semibold text-[color:var(--client-muted)]">{subtitle}</p> : null}
+                {subtitle ? (
+                  <p className="truncate text-[11px] font-semibold text-[color:var(--client-muted)]">
+                    {subtitle}
+                  </p>
+                ) : null}
               </div>
             </div>
-            {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
+            {actions ? (
+              <div className="flex shrink-0 items-center gap-1">{actions}</div>
+            ) : null}
           </>
         )}
       </div>
-      {footer ? <div className={cn("mt-3", footerClassName)}>{footer}</div> : null}
+      {footer ? (
+        <div className={cn("mt-3", footerClassName)}>{footer}</div>
+      ) : null}
     </div>
   );
 
@@ -1030,7 +1795,11 @@ export function ImTopBar({
       className="gap-0"
       frameClassName="z-40"
       maxWidth="880px"
-      panelClassName={cn(floatingHeaderGlassPanelClassName, "text-[color:var(--client-text)]", className)}
+      panelClassName={cn(
+        floatingHeaderGlassPanelClassName,
+        "text-[color:var(--client-text)]",
+        className,
+      )}
       showSpacer={!fixed}
       spacerGapPx={0}
       stacked={Boolean(footer)}
@@ -1044,7 +1813,10 @@ function ImTopBarBackButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       aria-label="返回"
-      className={cn(floatingHeaderControlButtonClassName, "absolute left-0 top-0 z-10")}
+      className={cn(
+        floatingHeaderControlButtonClassName,
+        "absolute left-0 top-0 z-10",
+      )}
       onClick={onClick}
       type="button"
     >
@@ -1058,7 +1830,7 @@ export function PrivateConversationTitle({
   privateMode,
   className,
   iconClassName,
-  textClassName
+  textClassName,
 }: {
   title: string;
   privateMode?: boolean;
@@ -1067,7 +1839,12 @@ export function PrivateConversationTitle({
   textClassName?: string;
 }) {
   return (
-    <span className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5", className)}>
+    <span
+      className={cn(
+        "inline-flex min-w-0 max-w-full items-center gap-1.5",
+        className,
+      )}
+    >
       {privateMode ? <PrivateModeIcon className={iconClassName} /> : null}
       <span className={cn("min-w-0 truncate", textClassName)}>{title}</span>
     </span>
@@ -1122,7 +1899,7 @@ export function ImActorHeaderSummary({
   subtitle,
   to,
   entityType,
-  verifiedStatus
+  verifiedStatus,
 }: {
   avatar?: string;
   levelLabel?: string;
@@ -1143,8 +1920,12 @@ export function ImActorHeaderSummary({
       />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
-          <h1 className="min-w-0 truncate text-[22px] font-black tracking-[-0.04em] text-[color:var(--client-text)] sm:text-[24px]">{name}</h1>
-          {entityType === "shop" ? null : <VerificationBadge status={verifiedStatus} />}
+          <h1 className="min-w-0 truncate text-[22px] font-black tracking-[-0.04em] text-[color:var(--client-text)] sm:text-[24px]">
+            {name}
+          </h1>
+          {entityType === "shop" ? null : (
+            <VerificationBadge status={verifiedStatus} />
+          )}
           {membershipLevel ? (
             <span className="inline-flex shrink-0 items-center gap-1">
               <CustomerMembershipBadge
@@ -1153,12 +1934,18 @@ export function ImActorHeaderSummary({
                 imageClassName="h-5 w-5"
                 level={membershipLevel}
               />
-              {levelLabel ? <span className="text-[11px] font-black leading-none text-[color:var(--client-muted)]">{levelLabel}</span> : null}
+              {levelLabel ? (
+                <span className="text-[11px] font-black leading-none text-[color:var(--client-muted)]">
+                  {levelLabel}
+                </span>
+              ) : null}
             </span>
           ) : null}
           <IdentityBadge entityType={entityType} />
         </div>
-        <p className="mt-1 truncate text-[12px] font-semibold leading-none text-[color:var(--client-muted)]">{subtitle}</p>
+        <p className="mt-1 truncate text-[12px] font-semibold leading-none text-[color:var(--client-muted)]">
+          {subtitle}
+        </p>
       </div>
     </div>
   );
@@ -1167,14 +1954,19 @@ export function ImActorHeaderSummary({
 export function ImHeaderAction({
   label,
   onClick,
-  children
+  children,
 }: {
   label: string;
   onClick?: () => void;
   children: ReactNode;
 }) {
   return (
-    <button aria-label={label} className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,var(--client-bg)_28%)] text-[color:var(--client-text)]" onClick={onClick} type="button">
+    <button
+      aria-label={label}
+      className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,var(--client-bg)_28%)] text-[color:var(--client-text)]"
+      onClick={onClick}
+      type="button"
+    >
       {children}
     </button>
   );
@@ -1183,7 +1975,7 @@ export function ImHeaderAction({
 export function ImSearchTrigger({
   to,
   placeholder,
-  onClick
+  onClick,
 }: {
   to?: string;
   placeholder: string;
@@ -1213,14 +2005,16 @@ export function ImEntryCell({
   caption,
   badge,
   badgeDot = false,
+  trailing,
   to,
-  onClick
+  onClick,
 }: {
   icon: ReactNode;
   title: string;
   caption?: string;
   badge?: string | number;
   badgeDot?: boolean;
+  trailing?: ReactNode;
   to?: string;
   onClick?: () => void;
 }) {
@@ -1228,7 +2022,12 @@ export function ImEntryCell({
     <div className="flex items-center gap-3 px-4 py-3.5">
       <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)] shadow-[0_10px_24px_rgba(15,143,92,0.12)]">
         {typeof badge === "number" && badge > 0 ? (
-          <NotificationBadge className="absolute -right-1 -top-1" count={badge} dot={badgeDot} size="sm" />
+          <NotificationBadge
+            className="absolute -right-1 -top-1"
+            count={badge}
+            dot={badgeDot}
+            size="sm"
+          />
         ) : badge ? (
           <span className="absolute -right-1 -top-1 rounded-full bg-[#f54a46] px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
             {badge}
@@ -1238,8 +2037,17 @@ export function ImEntryCell({
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <strong className="truncate text-[15px] font-black text-[color:var(--client-text)]">{title}</strong>
-          {caption ? <span className="shrink-0 text-xs font-bold text-[color:var(--client-muted)]">{caption}</span> : null}
+          <div className="flex min-w-0 items-center gap-2">
+            <strong className="truncate text-[15px] font-black text-[color:var(--client-text)]">
+              {title}
+            </strong>
+            {trailing ? <span className="shrink-0">{trailing}</span> : null}
+          </div>
+          {caption ? (
+            <span className="shrink-0 text-xs font-bold text-[color:var(--client-muted)]">
+              {caption}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1262,7 +2070,9 @@ const swipeRowActiveEventName = "needo.im.swipe-row.active";
 let swipeRowIdSeed = 0;
 
 function getSwipeActionWidth(action: { width?: number }, isFlatList: boolean) {
-  return action.width ?? (isFlatList ? flatListSwipeActionWidth : swipeActionWidth);
+  return (
+    action.width ?? (isFlatList ? flatListSwipeActionWidth : swipeActionWidth)
+  );
 }
 
 function getSwipeRowId() {
@@ -1275,31 +2085,49 @@ function emitActiveSwipeRow(id: string) {
     return;
   }
 
-  window.dispatchEvent(new CustomEvent(swipeRowActiveEventName, { detail: { id } }));
+  window.dispatchEvent(
+    new CustomEvent(swipeRowActiveEventName, { detail: { id } }),
+  );
 }
 
 export function SwipeActionRow({
   actions,
   children,
-  variant = "card"
+  variant = "card",
 }: {
-  actions: Array<{ key: string; label: string; tone: "neutral" | "warning" | "danger"; width?: number; onClick: () => void }>;
+  actions: Array<{
+    key: string;
+    label: string;
+    tone: "neutral" | "warning" | "danger";
+    width?: number;
+    onClick: () => void;
+  }>;
   children: ReactNode;
   variant?: "card" | "flat-list";
 }) {
   const isFlatList = variant === "flat-list";
   const actionLayouts = actions.map((action) => ({
     ...action,
-    width: getSwipeActionWidth(action, isFlatList)
+    width: getSwipeActionWidth(action, isFlatList),
   }));
-  const totalWidth = actions.reduce((sum, action) => sum + getSwipeActionWidth(action, isFlatList), 0);
+  const totalWidth = actions.reduce(
+    (sum, action) => sum + getSwipeActionWidth(action, isFlatList),
+    0,
+  );
   const [revealed, setRevealed] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [offset, setOffset] = useState(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const rowIdRef = useRef<string | null>(null);
   const suppressClickRef = useRef(false);
-  const session = useRef<{ pointerId: number; startX: number; startY: number; startOffset: number; moved: boolean; captured: boolean } | null>(null);
+  const session = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startOffset: number;
+    moved: boolean;
+    captured: boolean;
+  } | null>(null);
   const settledOffset = dragging ? offset : revealed ? -totalWidth : 0;
   const revealedWidth = Math.max(0, Math.min(totalWidth, -settledOffset));
   const actionTrailingOffsets = new Array(actionLayouts.length).fill(0);
@@ -1338,7 +2166,8 @@ export function SwipeActionRow({
     };
 
     window.addEventListener(swipeRowActiveEventName, handleActiveSwipe);
-    return () => window.removeEventListener(swipeRowActiveEventName, handleActiveSwipe);
+    return () =>
+      window.removeEventListener(swipeRowActiveEventName, handleActiveSwipe);
   }, []);
 
   useEffect(() => {
@@ -1359,7 +2188,8 @@ export function SwipeActionRow({
     };
 
     document.addEventListener("click", handleDocumentClick, true);
-    return () => document.removeEventListener("click", handleDocumentClick, true);
+    return () =>
+      document.removeEventListener("click", handleDocumentClick, true);
   }, [revealed]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1367,7 +2197,10 @@ export function SwipeActionRow({
       return;
     }
 
-    if (event.target instanceof Element && event.target.closest("[data-swipe-action-button='true']")) {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("[data-swipe-action-button='true']")
+    ) {
       return;
     }
 
@@ -1378,7 +2211,7 @@ export function SwipeActionRow({
       startY: event.clientY,
       startOffset: revealed ? -totalWidth : 0,
       moved: false,
-      captured: false
+      captured: false,
     };
     setOffset(revealed ? -totalWidth : 0);
   };
@@ -1417,7 +2250,9 @@ export function SwipeActionRow({
       event.currentTarget.setPointerCapture?.(event.pointerId);
     }
 
-    setOffset(Math.max(-totalWidth, Math.min(0, session.current.startOffset + deltaX)));
+    setOffset(
+      Math.max(-totalWidth, Math.min(0, session.current.startOffset + deltaX)),
+    );
   };
 
   const handlePointerEnd = (pointerId: number) => {
@@ -1425,7 +2260,10 @@ export function SwipeActionRow({
       return;
     }
 
-    if (session.current.captured && rootRef.current?.hasPointerCapture?.(pointerId)) {
+    if (
+      session.current.captured &&
+      rootRef.current?.hasPointerCapture?.(pointerId)
+    ) {
       rootRef.current.releasePointerCapture(pointerId);
     }
 
@@ -1444,7 +2282,9 @@ export function SwipeActionRow({
     session.current = null;
   };
 
-  const handleContentClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+  const handleContentClickCapture = (
+    event: ReactMouseEvent<HTMLDivElement>,
+  ) => {
     if (revealed) {
       closeRow();
       event.preventDefault();
@@ -1465,7 +2305,7 @@ export function SwipeActionRow({
         "relative isolate w-full overflow-hidden",
         isFlatList
           ? "rounded-none border-none bg-transparent shadow-none"
-          : "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,var(--client-bg)_22%)] bg-[color:var(--client-surface)] shadow-[0_14px_30px_rgba(10,14,12,0.08)]"
+          : "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,var(--client-bg)_22%)] bg-[color:var(--client-surface)] shadow-[0_14px_30px_rgba(10,14,12,0.08)]",
       )}
       ref={rootRef}
       onPointerCancel={(event) => handlePointerEnd(event.pointerId)}
@@ -1473,50 +2313,58 @@ export function SwipeActionRow({
       onPointerMove={handlePointerMove}
       onPointerUp={(event) => handlePointerEnd(event.pointerId)}
       style={{
-        touchAction: "pan-y"
+        touchAction: "pan-y",
       }}
     >
       <div
         className={cn(
           "absolute z-0 flex items-stretch",
           isFlatList ? "inset-y-0 right-0 gap-0" : "inset-y-0 right-0",
-          dragging || revealed ? "pointer-events-auto" : "pointer-events-none"
+          dragging || revealed ? "pointer-events-auto" : "pointer-events-none",
         )}
         style={{ width: totalWidth }}
       >
         {actionLayouts.map((action, index) => {
-          const revealProgress = Math.max(0, Math.min(1, (revealedWidth - actionTrailingOffsets[index]) / action.width));
+          const revealProgress = Math.max(
+            0,
+            Math.min(
+              1,
+              (revealedWidth - actionTrailingOffsets[index]) / action.width,
+            ),
+          );
 
           return (
-          <button
-            className={cn(
-              "flex items-center justify-center text-white",
-              isFlatList
-                ? "h-full px-2 text-[11px] font-semibold tracking-[-0.01em]"
-                : "text-xs font-black",
-              action.tone === "neutral"
-                ? "bg-[color:color-mix(in_srgb,var(--client-muted)_82%,#444_18%)]"
-                : action.tone === "warning"
-                  ? "bg-[color:color-mix(in_srgb,var(--client-warm)_82%,#7a571f_18%)]"
-                  : "bg-[color:color-mix(in_srgb,var(--client-accent)_82%,#6b231b_18%)]"
-            )}
-            data-swipe-action-button="true"
-            key={action.key}
-            onClick={() => {
-              action.onClick();
-              closeRow();
-            }}
-            style={{
-              opacity: revealProgress,
-              transform: `translateX(${(1 - revealProgress) * 16}px) scale(${0.94 + revealProgress * 0.06})`,
-              transformOrigin: "right center",
-              transition: dragging ? "none" : "opacity 180ms ease, transform 180ms ease",
-              width: action.width
-            }}
-            type="button"
-          >
-            {action.label}
-          </button>
+            <button
+              className={cn(
+                "flex items-center justify-center text-white",
+                isFlatList
+                  ? "h-full px-2 text-[11px] font-semibold tracking-[-0.01em]"
+                  : "text-xs font-black",
+                action.tone === "neutral"
+                  ? "bg-[color:color-mix(in_srgb,var(--client-muted)_82%,#444_18%)]"
+                  : action.tone === "warning"
+                    ? "bg-[color:color-mix(in_srgb,var(--client-warm)_82%,#7a571f_18%)]"
+                    : "bg-[color:color-mix(in_srgb,var(--client-accent)_82%,#6b231b_18%)]",
+              )}
+              data-swipe-action-button="true"
+              key={action.key}
+              onClick={() => {
+                action.onClick();
+                closeRow();
+              }}
+              style={{
+                opacity: revealProgress,
+                transform: `translateX(${(1 - revealProgress) * 16}px) scale(${0.94 + revealProgress * 0.06})`,
+                transformOrigin: "right center",
+                transition: dragging
+                  ? "none"
+                  : "opacity 180ms ease, transform 180ms ease",
+                width: action.width,
+              }}
+              type="button"
+            >
+              {action.label}
+            </button>
           );
         })}
       </div>
@@ -1525,14 +2373,19 @@ export function SwipeActionRow({
           "relative z-10 w-full overflow-hidden transition",
           isFlatList
             ? "rounded-none bg-transparent"
-            : "rounded-[24px] bg-[color:var(--client-surface)]"
+            : "rounded-[24px] bg-[color:var(--client-surface)]",
         )}
         style={{
           transform: `translateX(${settledOffset}px)`,
-          transition: dragging ? "none" : "transform 180ms ease"
+          transition: dragging ? "none" : "transform 180ms ease",
         }}
       >
-        <div className="min-h-full w-full bg-inherit" onClickCapture={handleContentClickCapture}>{children}</div>
+        <div
+          className="min-h-full w-full bg-inherit"
+          onClickCapture={handleContentClickCapture}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -1552,7 +2405,7 @@ export function ConversationRow({
   to,
   onClick,
   avatarTo,
-  onAvatarClick
+  onAvatarClick,
 }: {
   avatar: string;
   title: string;
@@ -1594,18 +2447,47 @@ export function ConversationRow({
           <strong className="flex min-w-0 flex-1 items-center text-[16px] font-black text-[color:var(--client-text)]">
             <PrivateConversationTitle privateMode={privacyMode} title={title} />
           </strong>
-          {muted ? <ImIcon className="h-3.5 w-3.5 shrink-0 text-[color:var(--client-muted)]" name="mute" /> : null}
-          {pinned ? <ImIcon className="h-3.5 w-3.5 shrink-0 text-[color:var(--client-warm)]" name="pin" /> : null}
+          {muted ? (
+            <ImIcon
+              className="h-3.5 w-3.5 shrink-0 text-[color:var(--client-muted)]"
+              name="mute"
+            />
+          ) : null}
+          {pinned ? (
+            <ImIcon
+              className="h-3.5 w-3.5 shrink-0 text-[color:var(--client-warm)]"
+              name="pin"
+            />
+          ) : null}
         </div>
         <div className="mt-1 flex min-w-0 items-center gap-1.5 text-sm">
-          {preview.isDraft ? <span className="shrink-0 text-[#ef4f3f]">[草稿]</span> : null}
-          {mention ? <span className="shrink-0 rounded-full bg-[color:color-mix(in_srgb,var(--client-accent)_16%,transparent)] px-1.5 py-0.5 text-[11px] font-medium text-[color:var(--client-accent)]">{mention}</span> : null}
-          <p className={cn("truncate", preview.isDraft ? "text-[#ef4f3f]" : "text-[color:var(--client-muted)]")}>{preview.text || "暂无消息"}</p>
+          {preview.isDraft ? (
+            <span className="shrink-0 text-[#ef4f3f]">[草稿]</span>
+          ) : null}
+          {mention ? (
+            <span className="shrink-0 rounded-full bg-[color:color-mix(in_srgb,var(--client-accent)_16%,transparent)] px-1.5 py-0.5 text-[11px] font-medium text-[color:var(--client-accent)]">
+              {mention}
+            </span>
+          ) : null}
+          <p
+            className={cn(
+              "truncate",
+              preview.isDraft
+                ? "text-[#ef4f3f]"
+                : "text-[color:var(--client-muted)]",
+            )}
+          >
+            {preview.text || "暂无消息"}
+          </p>
         </div>
       </div>
       <div className="flex min-w-[56px] flex-col items-end gap-2 pt-0.5 text-right">
-        <div className="text-[11px] font-bold text-[color:var(--client-muted)]">{time}</div>
-        {unreadCount > 0 ? <NotificationBadge count={unreadCount} size="sm" /> : null}
+        <div className="text-[11px] font-bold text-[color:var(--client-muted)]">
+          {time}
+        </div>
+        {unreadCount > 0 ? (
+          <NotificationBadge count={unreadCount} size="sm" />
+        ) : null}
       </div>
     </div>
   );
@@ -1615,7 +2497,11 @@ export function ConversationRow({
       {summary}
     </Link>
   ) : (
-    <button className="min-w-0 flex-1 text-left" onClick={onClick} type="button">
+    <button
+      className="min-w-0 flex-1 text-left"
+      onClick={onClick}
+      type="button"
+    >
       {summary}
     </button>
   );
@@ -1626,13 +2512,11 @@ export function ConversationRow({
         "w-full rounded-[24px] px-4 py-3",
         pinned
           ? "bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-primary)_18%)]"
-          : "bg-[color:var(--client-surface)]"
+          : "bg-[color:var(--client-surface)]",
       )}
     >
       <div className="flex items-start gap-3">
-        <div className="relative shrink-0">
-          {avatarNode}
-        </div>
+        <div className="relative shrink-0">{avatarNode}</div>
         {body}
       </div>
     </div>
@@ -1647,7 +2531,7 @@ export function ContactRow({
   onClick,
   avatarTo,
   onAvatarClick,
-  avatarBadge
+  avatarBadge,
 }: {
   user: ImUser;
   contact?: ContactRelation;
@@ -1661,8 +2545,14 @@ export function ContactRow({
   const summary = (
     <div className="relative min-w-0 flex-1">
       <div className="min-w-0">
-          <strong className="truncate text-[16px] font-black text-[color:var(--client-text)]">{getDisplayName(user, contact)}</strong>
-          {caption ? <p className="mt-1 truncate text-xs text-[color:var(--client-muted)]">{caption}</p> : null}
+        <strong className="truncate text-[16px] font-black text-[color:var(--client-text)]">
+          {getDisplayName(user, contact)}
+        </strong>
+        {caption ? (
+          <p className="mt-1 truncate text-xs text-[color:var(--client-muted)]">
+            {caption}
+          </p>
+        ) : null}
       </div>
       {user.serviceAccount ? (
         <span className="pointer-events-none absolute right-0 top-1/2 z-10 -translate-y-1/2 whitespace-nowrap rounded-full bg-[color:var(--client-primary-soft)] px-2 py-1 text-[10px] font-black text-[color:var(--client-primary)]">
@@ -1677,7 +2567,11 @@ export function ContactRow({
       {summary}
     </Link>
   ) : onClick ? (
-    <button className="min-w-0 flex-1 text-left" onClick={onClick} type="button">
+    <button
+      className="min-w-0 flex-1 text-left"
+      onClick={onClick}
+      type="button"
+    >
       {summary}
     </button>
   ) : (
@@ -1687,8 +2581,22 @@ export function ContactRow({
   return (
     <div className="flex min-h-[74px] items-center gap-3 border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3">
       <div className="relative shrink-0">
-        <InteractiveAvatar alt={user.nickname} className="h-10 w-10" onClick={onAvatarClick} src={user.avatar} stopPropagation to={avatarTo} />
-        {avatarBadge ? <span aria-hidden="true" className="pointer-events-none absolute -bottom-1 -right-1">{avatarBadge}</span> : null}
+        <InteractiveAvatar
+          alt={user.nickname}
+          className="h-10 w-10"
+          onClick={onAvatarClick}
+          src={user.avatar}
+          stopPropagation
+          to={avatarTo}
+        />
+        {avatarBadge ? (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-1 -right-1"
+          >
+            {avatarBadge}
+          </span>
+        ) : null}
       </div>
       {body}
     </div>
@@ -1696,7 +2604,11 @@ export function ContactRow({
 }
 
 export function SectionTag({ children }: { children: ReactNode }) {
-  return <span className="px-4 py-2 text-xs font-black tracking-[0.08em] text-[color:var(--client-muted)]">{children}</span>;
+  return (
+    <span className="px-4 py-2 text-xs font-black tracking-[0.08em] text-[color:var(--client-muted)]">
+      {children}
+    </span>
+  );
 }
 
 export function ImBottomSheet({
@@ -1706,13 +2618,15 @@ export function ImBottomSheet({
   children,
   panelClassName,
   bodyClassName,
+  presentation = "sheet",
   showCloseButton = false,
-  closeLabel = "关闭"
+  closeLabel = "关闭",
 }: {
   open: boolean;
   title?: string;
   onClose: () => void;
   children: ReactNode;
+  presentation?: "sheet" | "composer";
   panelClassName?: string;
   bodyClassName?: string;
   showCloseButton?: boolean;
@@ -1723,11 +2637,16 @@ export function ImBottomSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-[color:var(--client-overlay)]" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 bg-[color:var(--client-overlay)]"
+      onClick={onClose}
+    >
       <div
         className={cn(
-          "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
-          panelClassName
+          presentation === "composer"
+            ? "absolute inset-x-0 mx-auto client-liquid-glass-surface im-composer-glass im-composer-panel im-contact-card-panel p-4"
+            : "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
+          panelClassName,
         )}
         onClick={(event) => event.stopPropagation()}
       >
@@ -1742,8 +2661,16 @@ export function ImBottomSheet({
           </button>
         ) : null}
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]" />
-        {title ? <h3 className="mb-3 text-center text-sm font-black text-[color:var(--client-muted)]">{title}</h3> : null}
-        {bodyClassName ? <div className={bodyClassName}>{children}</div> : children}
+        {title ? (
+          <h3 className="mb-3 text-center text-sm font-black text-[color:var(--client-muted)]">
+            {title}
+          </h3>
+        ) : null}
+        {bodyClassName ? (
+          <div className={bodyClassName}>{children}</div>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );
@@ -1768,18 +2695,27 @@ export type ImMessageReactionSummary = {
   reactedByMe?: boolean;
 };
 
-export function hasActiveImMessageTextSelection(root: HTMLElement | null | undefined) {
+export function hasActiveImMessageTextSelection(
+  root: HTMLElement | null | undefined,
+) {
   if (typeof window === "undefined" || !root) {
     return false;
   }
 
   const selection = window.getSelection();
 
-  if (!selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) {
+  if (
+    !selection ||
+    selection.isCollapsed ||
+    !selection.anchorNode ||
+    !selection.focusNode
+  ) {
     return false;
   }
 
-  return root.contains(selection.anchorNode) || root.contains(selection.focusNode);
+  return (
+    root.contains(selection.anchorNode) || root.contains(selection.focusNode)
+  );
 }
 
 type ImSelectionOffsets = {
@@ -1805,7 +2741,11 @@ type ImSelectionHandleDrag = {
 };
 
 function getImSelectableTextRoot(messageRoot: HTMLElement | null | undefined) {
-  return messageRoot?.querySelector<HTMLElement>("[data-im-message-selectable-text='true']") ?? null;
+  return (
+    messageRoot?.querySelector<HTMLElement>(
+      "[data-im-message-selectable-text='true']",
+    ) ?? null
+  );
 }
 
 function getTextLength(root: HTMLElement) {
@@ -1846,14 +2786,20 @@ function resolveTextOffset(root: HTMLElement, offset: number) {
     remaining -= textNode.length;
   }
 
-  return lastTextNode ? { node: lastTextNode, offset: lastTextNode.length } : null;
+  return lastTextNode
+    ? { node: lastTextNode, offset: lastTextNode.length }
+    : null;
 }
 
 function getVisibleRangeRects(range: Range) {
-  return Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+  return Array.from(range.getClientRects()).filter(
+    (rect) => rect.width > 0 && rect.height > 0,
+  );
 }
 
-function getCurrentTextSelectionOffsets(root: HTMLElement): ImSelectionOffsets | null {
+function getCurrentTextSelectionOffsets(
+  root: HTMLElement,
+): ImSelectionOffsets | null {
   if (typeof window === "undefined") {
     return null;
   }
@@ -1861,12 +2807,21 @@ function getCurrentTextSelectionOffsets(root: HTMLElement): ImSelectionOffsets |
   const selection = window.getSelection();
   const length = getTextLength(root);
 
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed || length === 0) {
+  if (
+    !selection ||
+    selection.rangeCount === 0 ||
+    selection.isCollapsed ||
+    length === 0
+  ) {
     return null;
   }
 
   const range = selection.getRangeAt(0);
-  const start = getSelectionOffset(root, range.startContainer, range.startOffset);
+  const start = getSelectionOffset(
+    root,
+    range.startContainer,
+    range.startOffset,
+  );
   const end = getSelectionOffset(root, range.endContainer, range.endOffset);
 
   if (start === null || end === null) {
@@ -1876,7 +2831,7 @@ function getCurrentTextSelectionOffsets(root: HTMLElement): ImSelectionOffsets |
   return {
     end: Math.max(0, Math.min(end, length)),
     length,
-    start: Math.max(0, Math.min(start, length))
+    start: Math.max(0, Math.min(start, length)),
   };
 }
 
@@ -1886,10 +2841,16 @@ function hasNonCollapsedDocumentSelection() {
   }
 
   const selection = window.getSelection();
-  return Boolean(selection && selection.rangeCount > 0 && !selection.isCollapsed);
+  return Boolean(
+    selection && selection.rangeCount > 0 && !selection.isCollapsed,
+  );
 }
 
-function setTextSelectionOffsets(root: HTMLElement, start: number, end: number) {
+function setTextSelectionOffsets(
+  root: HTMLElement,
+  start: number,
+  end: number,
+) {
   const length = getTextLength(root);
   const nextStart = Math.max(0, Math.min(start, Math.max(0, length - 1)));
   const nextEnd = Math.max(nextStart + 1, Math.min(end, length));
@@ -1909,7 +2870,11 @@ function setTextSelectionOffsets(root: HTMLElement, start: number, end: number) 
   selection?.addRange(range);
 }
 
-function getTextOffsetFromCharacterRects(root: HTMLElement, clientX: number, clientY: number) {
+function getTextOffsetFromCharacterRects(
+  root: HTMLElement,
+  clientX: number,
+  clientY: number,
+) {
   const length = getTextLength(root);
 
   if (length === 0) {
@@ -1929,7 +2894,9 @@ function getTextOffsetFromCharacterRects(root: HTMLElement, clientX: number, cli
     const range = document.createRange();
     range.setStart(startPoint.node, startPoint.offset);
     range.setEnd(endPoint.node, endPoint.offset);
-    characters.push(...getVisibleRangeRects(range).map((rect) => ({ offset: index, rect })));
+    characters.push(
+      ...getVisibleRangeRects(range).map((rect) => ({ offset: index, rect })),
+    );
   }
 
   if (characters.length === 0) {
@@ -1947,10 +2914,17 @@ function getTextOffsetFromCharacterRects(root: HTMLElement, clientX: number, cli
 
     return 0;
   };
-  const closestDistance = Math.min(...characters.map((item) => verticalDistance(item.rect)));
+  const closestDistance = Math.min(
+    ...characters.map((item) => verticalDistance(item.rect)),
+  );
   const lineCharacters = characters
-    .filter((item) => Math.abs(verticalDistance(item.rect) - closestDistance) <= 0.5)
-    .sort((left, right) => left.rect.left - right.rect.left || left.offset - right.offset);
+    .filter(
+      (item) => Math.abs(verticalDistance(item.rect) - closestDistance) <= 0.5,
+    )
+    .sort(
+      (left, right) =>
+        left.rect.left - right.rect.left || left.offset - right.offset,
+    );
   const firstCharacter = lineCharacters[0];
   const lastCharacter = lineCharacters[lineCharacters.length - 1];
 
@@ -1973,24 +2947,45 @@ function getTextOffsetFromCharacterRects(root: HTMLElement, clientX: number, cli
   return Math.min(length, lastCharacter.offset + 1);
 }
 
-function getCaretOffsetFromPoint(root: HTMLElement, clientX: number, clientY: number) {
-  const characterOffset = getTextOffsetFromCharacterRects(root, clientX, clientY);
+function getCaretOffsetFromPoint(
+  root: HTMLElement,
+  clientX: number,
+  clientY: number,
+) {
+  const characterOffset = getTextOffsetFromCharacterRects(
+    root,
+    clientX,
+    clientY,
+  );
 
   if (characterOffset !== null) {
     return characterOffset;
   }
 
   const rect = root.getBoundingClientRect();
-  const safeClientX = Math.max(rect.left + 1, Math.min(clientX, rect.right - 1));
-  const safeClientY = Math.max(rect.top + 1, Math.min(clientY, rect.bottom - 1));
+  const safeClientX = Math.max(
+    rect.left + 1,
+    Math.min(clientX, rect.right - 1),
+  );
+  const safeClientY = Math.max(
+    rect.top + 1,
+    Math.min(clientY, rect.bottom - 1),
+  );
   const doc = document as Document & {
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offsetNode: Node; offset: number } | null;
     caretRangeFromPoint?: (x: number, y: number) => Range | null;
   };
   const caretPosition = doc.caretPositionFromPoint?.(safeClientX, safeClientY);
 
   if (caretPosition) {
-    const offset = getSelectionOffset(root, caretPosition.offsetNode, caretPosition.offset);
+    const offset = getSelectionOffset(
+      root,
+      caretPosition.offsetNode,
+      caretPosition.offset,
+    );
     if (offset !== null) {
       return offset;
     }
@@ -1999,7 +2994,11 @@ function getCaretOffsetFromPoint(root: HTMLElement, clientX: number, clientY: nu
   const caretRange = doc.caretRangeFromPoint?.(safeClientX, safeClientY);
 
   if (caretRange) {
-    const offset = getSelectionOffset(root, caretRange.startContainer, caretRange.startOffset);
+    const offset = getSelectionOffset(
+      root,
+      caretRange.startContainer,
+      caretRange.startOffset,
+    );
     if (offset !== null) {
       return offset;
     }
@@ -2008,7 +3007,11 @@ function getCaretOffsetFromPoint(root: HTMLElement, clientX: number, clientY: nu
   return null;
 }
 
-function getCaretPosition(root: HTMLElement, offset: number, edge: "start" | "end"): ImSelectionHandlePosition | null {
+function getCaretPosition(
+  root: HTMLElement,
+  offset: number,
+  edge: "start" | "end",
+): ImSelectionHandlePosition | null {
   const point = resolveTextOffset(root, offset);
 
   if (!point) {
@@ -2023,7 +3026,7 @@ function getCaretPosition(root: HTMLElement, offset: number, edge: "start" | "en
   if (rect.width > 0 || rect.height > 0) {
     return {
       x: edge === "start" ? rect.left : rect.right,
-      y: edge === "start" ? rect.top : rect.bottom
+      y: edge === "start" ? rect.top : rect.bottom,
     };
   }
 
@@ -2039,15 +3042,18 @@ function getCaretPosition(root: HTMLElement, offset: number, edge: "start" | "en
   const fallbackRange = document.createRange();
   fallbackRange.setStart(fallbackStartPoint.node, fallbackStartPoint.offset);
   fallbackRange.setEnd(fallbackEndPoint.node, fallbackEndPoint.offset);
-  const fallbackRect = fallbackRange.getClientRects()[0] ?? fallbackRange.getBoundingClientRect();
+  const fallbackRect =
+    fallbackRange.getClientRects()[0] ?? fallbackRange.getBoundingClientRect();
 
   return {
     x: edge === "start" ? fallbackRect.left : fallbackRect.right,
-    y: edge === "start" ? fallbackRect.top : fallbackRect.bottom
+    y: edge === "start" ? fallbackRect.top : fallbackRect.bottom,
   };
 }
 
-function getSelectionHandlePositions(root: HTMLElement): ImSelectionHandlePositions {
+function getSelectionHandlePositions(
+  root: HTMLElement,
+): ImSelectionHandlePositions {
   const selection = window.getSelection();
 
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
@@ -2056,7 +3062,10 @@ function getSelectionHandlePositions(root: HTMLElement): ImSelectionHandlePositi
 
   const range = selection.getRangeAt(0);
 
-  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
+  if (
+    !root.contains(range.startContainer) ||
+    !root.contains(range.endContainer)
+  ) {
     return { end: null, start: null };
   }
 
@@ -2068,7 +3077,7 @@ function getSelectionHandlePositions(root: HTMLElement): ImSelectionHandlePositi
 
     return {
       end: { x: endRect.right, y: endRect.bottom },
-      start: { x: startRect.left, y: startRect.top }
+      start: { x: startRect.left, y: startRect.top },
     };
   }
 
@@ -2080,18 +3089,23 @@ function getSelectionHandlePositions(root: HTMLElement): ImSelectionHandlePositi
 
   return {
     end: getCaretPosition(root, offsets.end, "end"),
-    start: getCaretPosition(root, offsets.start, "start")
+    start: getCaretPosition(root, offsets.start, "start"),
   };
 }
 
 export function ImMessageSelectionHandles({
   active,
-  messageRoot
+  messageRoot,
+  onDragStart,
 }: {
   active: boolean;
   messageRoot: HTMLElement | null | undefined;
+  onDragStart?: () => void;
 }) {
-  const [positions, setPositions] = useState<ImSelectionHandlePositions>({ end: null, start: null });
+  const [positions, setPositions] = useState<ImSelectionHandlePositions>({
+    end: null,
+    start: null,
+  });
   const dragRef = useRef<ImSelectionHandleDrag | null>(null);
   const lastOffsetsRef = useRef<ImSelectionOffsets | null>(null);
 
@@ -2108,8 +3122,15 @@ export function ImMessageSelectionHandles({
       const offsets = getCurrentTextSelectionOffsets(textRoot);
 
       if (!offsets) {
-        if ((dragRef.current || hasNonCollapsedDocumentSelection()) && lastOffsetsRef.current) {
-          setTextSelectionOffsets(textRoot, lastOffsetsRef.current.start, lastOffsetsRef.current.end);
+        if (
+          (dragRef.current || hasNonCollapsedDocumentSelection()) &&
+          lastOffsetsRef.current
+        ) {
+          setTextSelectionOffsets(
+            textRoot,
+            lastOffsetsRef.current.start,
+            lastOffsetsRef.current.end,
+          );
           setPositions(getSelectionHandlePositions(textRoot));
           return;
         }
@@ -2149,7 +3170,10 @@ export function ImMessageSelectionHandles({
     setPositions(getSelectionHandlePositions(textRoot));
   };
 
-  const startHandleDrag = (handle: "start" | "end", event: ReactPointerEvent<HTMLButtonElement>) => {
+  const startHandleDrag = (
+    handle: "start" | "end",
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
     const textRoot = getImSelectableTextRoot(messageRoot);
     const handlePosition = handle === "start" ? positions.start : positions.end;
 
@@ -2160,11 +3184,11 @@ export function ImMessageSelectionHandles({
     dragRef.current = {
       handle,
       pointerOffsetX: event.clientX - handlePosition.x,
-      pointerOffsetY: event.clientY - handlePosition.y
+      pointerOffsetY: event.clientY - handlePosition.y,
     };
     event.preventDefault();
     event.stopPropagation();
-
+    onDragStart?.();
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -2182,7 +3206,7 @@ export function ImMessageSelectionHandles({
       const nextOffset = getCaretOffsetFromPoint(
         textRoot,
         nativeEvent.clientX - drag.pointerOffsetX,
-        nativeEvent.clientY - drag.pointerOffsetY
+        nativeEvent.clientY - drag.pointerOffsetY,
       );
 
       if (!offsets || nextOffset === null) {
@@ -2196,12 +3220,21 @@ export function ImMessageSelectionHandles({
       nativeEvent.stopPropagation();
 
       if (handle === "start") {
-        setTextSelectionOffsets(textRoot, Math.min(nextOffset, offsets.end - 1), offsets.end);
+        setTextSelectionOffsets(
+          textRoot,
+          Math.min(nextOffset, offsets.end - 1),
+          offsets.end,
+        );
       } else {
-        setTextSelectionOffsets(textRoot, offsets.start, Math.max(nextOffset, offsets.start + 1));
+        setTextSelectionOffsets(
+          textRoot,
+          offsets.start,
+          Math.max(nextOffset, offsets.start + 1),
+        );
       }
 
-      lastOffsetsRef.current = getCurrentTextSelectionOffsets(textRoot) ?? lastOffsetsRef.current;
+      lastOffsetsRef.current =
+        getCurrentTextSelectionOffsets(textRoot) ?? lastOffsetsRef.current;
       setPositions(getSelectionHandlePositions(textRoot));
     };
 
@@ -2212,25 +3245,44 @@ export function ImMessageSelectionHandles({
 
       nativeEvent?.stopPropagation();
       dragRef.current = null;
-      window.removeEventListener("pointermove", moveSelectionHandle, { capture: true });
-      window.removeEventListener("pointerup", endSelectionHandleDrag, { capture: true });
-      window.removeEventListener("pointercancel", endSelectionHandleDrag, { capture: true });
+      window.removeEventListener("pointermove", moveSelectionHandle, {
+        capture: true,
+      });
+      window.removeEventListener("pointerup", endSelectionHandleDrag, {
+        capture: true,
+      });
+      window.removeEventListener("pointercancel", endSelectionHandleDrag, {
+        capture: true,
+      });
       window.requestAnimationFrame(() => restoreLastSelection(textRoot));
     };
 
-    window.addEventListener("pointermove", moveSelectionHandle, { capture: true, passive: false });
-    window.addEventListener("pointerup", endSelectionHandleDrag, { capture: true });
-    window.addEventListener("pointercancel", endSelectionHandleDrag, { capture: true });
+    window.addEventListener("pointermove", moveSelectionHandle, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("pointerup", endSelectionHandleDrag, {
+      capture: true,
+    });
+    window.addEventListener("pointercancel", endSelectionHandleDrag, {
+      capture: true,
+    });
   };
 
   if (!active || !positions.start || !positions.end) {
     return null;
   }
 
-  const keepSelectionOnHandleEvent = (event: ReactPointerEvent<HTMLButtonElement> | ReactMouseEvent<HTMLButtonElement>) => {
+  const keepSelectionOnHandleEvent = (
+    event:
+      | ReactPointerEvent<HTMLButtonElement>
+      | ReactMouseEvent<HTMLButtonElement>,
+  ) => {
     event.preventDefault();
     event.stopPropagation();
-    window.requestAnimationFrame(() => restoreLastSelection(getImSelectableTextRoot(messageRoot)));
+    window.requestAnimationFrame(() =>
+      restoreLastSelection(getImSelectableTextRoot(messageRoot)),
+    );
   };
 
   return (
@@ -2265,7 +3317,7 @@ const imMessageActionBackdropOpeningGraceMs = 320;
 
 function ImMessageActionButton({
   item,
-  isNight
+  isNight,
 }: {
   item: ImMessageActionSheetItem;
   isNight: boolean;
@@ -2275,20 +3327,30 @@ function ImMessageActionButton({
   return (
     <button
       className={cn(
-        "focus-ring min-h-11 min-w-0 rounded-[14px] px-1 py-2 text-center transition",
+        "focus-ring min-h-11 min-w-0 rounded-[14px] px-0.5 py-1 text-center transition",
         "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg)_22%)] text-[color:var(--client-text)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_13%,var(--client-surface)_87%)]",
         danger && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
-        item.disabled && "cursor-not-allowed bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)] text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)]"
+        item.disabled &&
+          "cursor-not-allowed bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)] text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--client-line)_24%,transparent)]",
       )}
       data-im-message-action-item="true"
+      data-im-multiselect-control="true"
       disabled={item.disabled}
       onClick={item.onClick}
       type="button"
     >
-      <span className={cn("mx-auto grid h-8 w-8 place-items-center rounded-xl bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]", item.disabled && "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
+      <span
+        className={cn(
+          "mx-auto grid h-7 w-7 place-items-center rounded-[10px] bg-[color:color-mix(in_srgb,var(--client-line)_30%,transparent)]",
+          item.disabled &&
+            "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]",
+        )}
+      >
         <ImIcon name={item.icon === "pin" ? "top" : item.icon} />
       </span>
-      <span className="mt-1 block truncate text-[11px] font-black leading-4">{item.label}</span>
+      <span className="mt-1 block truncate text-[11px] font-black leading-4">
+        {item.label}
+      </span>
     </button>
   );
 }
@@ -2304,7 +3366,7 @@ export function ImMessageActionSheet({
   onReact,
   pendingCategory,
   selectedEmoji,
-  selectedJudgement
+  selectedJudgement,
 }: {
   actions: ImMessageActionSheetItem[];
   anchorElement: HTMLElement | null;
@@ -2319,13 +3381,13 @@ export function ImMessageActionSheet({
   selectedJudgement?: string;
 }) {
   const backdropPointerStartedRef = useRef(false);
-  const backdropInteractiveAtRef = useRef(Date.now() + imMessageActionBackdropOpeningGraceMs);
+  const backdropInteractiveAtRef = useRef(
+    Date.now() + imMessageActionBackdropOpeningGraceMs,
+  );
   const menuRef = useRef<HTMLElement | null>(null);
   const menuContentRef = useRef<HTMLDivElement | null>(null);
-  const recentReactions = useSyncExternalStore(
-    subscribeRecentImReactions,
-    getRecentImReactionSnapshot,
-    getRecentImReactionSnapshot
+  const [recentReactions, setRecentReactions] = useState<readonly string[]>(
+    () => getRecentImReactionSnapshot(),
   );
   const [menuPosition, setMenuPosition] = useState({
     arrowLeft: 28,
@@ -2334,8 +3396,12 @@ export function ImMessageActionSheet({
     maxHeight: 360,
     placement: "above" as "above" | "below",
     ready: false,
-    top: 12
+    top: 12,
   });
+
+  useLayoutEffect(() => {
+    setRecentReactions(getRecentImReactionSnapshot());
+  }, [anchorElement]);
 
   useLayoutEffect(() => {
     if (!anchorElement || typeof window === "undefined") {
@@ -2360,34 +3426,52 @@ export function ImMessageActionSheet({
       const viewportMargin = 12;
       const anchorGap = 10;
       const menuRect = menu.getBoundingClientRect();
-      const contentWidth = menuContentRef.current?.getBoundingClientRect().width
-        ?? Math.max(0, menuRect.width - 16);
-      const roomAbove = Math.max(0, anchorRect.top - viewportTop - viewportMargin - anchorGap);
-      const roomBelow = Math.max(0, viewportBottom - anchorRect.bottom - viewportMargin - anchorGap);
-      const wantedHeight = Math.min(menu.scrollHeight, viewportHeight - viewportMargin * 2);
-      const placement: "above" | "below" = roomAbove >= Math.min(wantedHeight, 180) || roomAbove >= roomBelow
-        ? "above"
-        : "below";
-      const maxHeight = Math.max(140, placement === "above" ? roomAbove : roomBelow);
+      const contentWidth =
+        menuContentRef.current?.getBoundingClientRect().width ??
+        Math.max(0, menuRect.width - 16);
+      const roomAbove = Math.max(
+        0,
+        anchorRect.top - viewportTop - viewportMargin - anchorGap,
+      );
+      const roomBelow = Math.max(
+        0,
+        viewportBottom - anchorRect.bottom - viewportMargin - anchorGap,
+      );
+      const wantedHeight = Math.min(
+        menu.scrollHeight,
+        viewportHeight - viewportMargin * 2,
+      );
+      const placement: "above" | "below" =
+        roomAbove >= Math.min(wantedHeight, 180) || roomAbove >= roomBelow
+          ? "above"
+          : "below";
+      const maxHeight = Math.max(
+        140,
+        placement === "above" ? roomAbove : roomBelow,
+      );
       const renderedHeight = Math.min(menuRect.height, maxHeight);
-      const unclampedTop = placement === "above"
-        ? anchorRect.top - anchorGap - renderedHeight
-        : anchorRect.bottom + anchorGap;
+      const unclampedTop =
+        placement === "above"
+          ? anchorRect.top - anchorGap - renderedHeight
+          : anchorRect.bottom + anchorGap;
       const top = Math.min(
         Math.max(unclampedTop, viewportTop + viewportMargin),
-        viewportBottom - viewportMargin - renderedHeight
+        viewportBottom - viewportMargin - renderedHeight,
       );
       const messageSide = anchorElement.dataset.imMessageSide;
-      const alignedLeft = messageSide === "left"
-        ? anchorRect.left + 12
-        : messageSide === "right"
-          ? anchorRect.right - 12 - menuRect.width
-          : anchorRect.left + anchorRect.width / 2 - menuRect.width / 2;
+      const alignedLeft =
+        messageSide === "left"
+          ? anchorRect.left + 12
+          : messageSide === "right"
+            ? anchorRect.right - 12 - menuRect.width
+            : anchorRect.left + anchorRect.width / 2 - menuRect.width / 2;
       const left = Math.min(
         Math.max(alignedLeft, viewportLeft + viewportMargin),
-        viewportRight - viewportMargin - menuRect.width
+        viewportRight - viewportMargin - menuRect.width,
       );
-      const bubbleRect = anchorElement.querySelector<HTMLElement>("[data-im-message-bubble='true']")?.getBoundingClientRect();
+      const bubbleRect = anchorElement
+        .querySelector<HTMLElement>("[data-im-message-bubble='true']")
+        ?.getBoundingClientRect();
       const anchorCenter = bubbleRect
         ? bubbleRect.left + bubbleRect.width / 2
         : messageSide === "left"
@@ -2395,22 +3479,33 @@ export function ImMessageActionSheet({
           : messageSide === "right"
             ? anchorRect.right - 52
             : anchorRect.left + anchorRect.width / 2;
-      const arrowLeft = Math.min(Math.max(anchorCenter - left, 24), menuRect.width - 24);
+      const arrowLeft = Math.min(
+        Math.max(anchorCenter - left, 24),
+        menuRect.width - 24,
+      );
 
       setMenuPosition((current) => {
         if (
-          current.arrowLeft === arrowLeft
-          && current.contentWidth === contentWidth
-          && current.left === left
-          && current.maxHeight === maxHeight
-          && current.placement === placement
-          && current.ready
-          && current.top === top
+          current.arrowLeft === arrowLeft &&
+          current.contentWidth === contentWidth &&
+          current.left === left &&
+          current.maxHeight === maxHeight &&
+          current.placement === placement &&
+          current.ready &&
+          current.top === top
         ) {
           return current;
         }
 
-        return { arrowLeft, contentWidth, left, maxHeight, placement, ready: true, top };
+        return {
+          arrowLeft,
+          contentWidth,
+          left,
+          maxHeight,
+          placement,
+          ready: true,
+          top,
+        };
       });
     };
 
@@ -2430,17 +3525,18 @@ export function ImMessageActionSheet({
     };
   }, [actions.length, anchorElement, expanded, listActions.length]);
 
-  const sheetClass = "client-liquid-glass-surface text-[color:var(--client-text)]";
-  const listShellClass = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,var(--client-bg)_24%)]";
+  const sheetClass =
+    "client-liquid-glass-surface text-[color:var(--client-text)]";
+  const listShellClass =
+    "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,var(--client-bg)_24%)]";
   const menuStyle: CSSProperties = {
     left: menuPosition.left,
     maxHeight: menuPosition.maxHeight,
     opacity: menuPosition.ready ? 1 : 0,
     position: "fixed",
     top: menuPosition.top,
-    width: "min(520px, calc(100vw - 32px))"
+    width: "min(520px, calc(100vw - 32px))",
   };
-  const actionsFitOneRow = menuPosition.contentWidth >= 304;
   const reactionsFitFullRow = menuPosition.contentWidth >= 336;
   const reactionSection = (
     <section
@@ -2461,40 +3557,47 @@ export function ImMessageActionSheet({
     </section>
   );
 
-  const actionSection = actions.length > 0 ? (
-    <div
-      className={cn("grid gap-1", actionsFitOneRow ? "grid-cols-6" : "grid-cols-3")}
-      data-im-message-action-layout={actionsFitOneRow ? "single-row" : "two-row"}
-      data-im-message-action-section="actions"
-      key="actions"
-    >
-      {actions.map((item) => (
-        <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
-      ))}
-    </div>
-  ) : null;
+  const actionSection =
+    actions.length > 0 ? (
+      <div
+        className="grid grid-cols-4 gap-1"
+        data-im-message-action-layout="two-row"
+        data-im-message-action-section="actions"
+        key="actions"
+      >
+        {actions.map((item) => (
+          <ImMessageActionButton isNight={isNight} item={item} key={item.key} />
+        ))}
+      </div>
+    ) : null;
 
-  const listActionSection = listActions.length > 0 ? (
-    <div className={cn("mt-2 overflow-hidden rounded-[16px]", listShellClass)} key="list-actions">
-      {listActions.map((item) => (
-        <button
-          className={cn(
-            "focus-ring flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-black transition",
-            "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
-            item.tone === "danger" && (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
-            item.disabled && "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent"
-          )}
-          disabled={item.disabled}
-          key={item.key}
-          onClick={item.onClick}
-          type="button"
-        >
-          <ImIcon className="h-[18px] w-[18px] shrink-0" name={item.icon} />
-          <span className="min-w-0 flex-1 truncate">{item.label}</span>
-        </button>
-      ))}
-    </div>
-  ) : null;
+  const listActionSection =
+    listActions.length > 0 ? (
+      <div
+        className={cn("mt-2 overflow-hidden rounded-[16px]", listShellClass)}
+        key="list-actions"
+      >
+        {listActions.map((item) => (
+          <button
+            className={cn(
+              "focus-ring flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-black transition",
+              "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+              item.tone === "danger" &&
+                (isNight ? "text-[#ff8e80]" : "text-[#ef4f3f]"),
+              item.disabled &&
+                "cursor-not-allowed text-[color:color-mix(in_srgb,var(--client-muted)_55%,transparent)] hover:bg-transparent",
+            )}
+            disabled={item.disabled}
+            key={item.key}
+            onClick={item.onClick}
+            type="button"
+          >
+            <ImIcon className="h-[18px] w-[18px] shrink-0" name={item.icon} />
+            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+          </button>
+        ))}
+      </div>
+    ) : null;
 
   const actionMenu = (
     <div
@@ -2504,14 +3607,16 @@ export function ImMessageActionSheet({
     >
       <button
         aria-label="关闭消息操作菜单"
-        className="absolute inset-0 bg-black/20 backdrop-blur-[1px]"
+        className="im-message-action-backdrop absolute inset-0 bg-black/20"
         onClick={(event) => {
           const pointerStartedOnBackdrop = backdropPointerStartedRef.current;
           backdropPointerStartedRef.current = false;
 
           const keyboardActivatedFocusedBackdrop =
-            event.detail === 0 && document.activeElement === event.currentTarget;
-          const releaseFromOpeningLongPress = Date.now() < backdropInteractiveAtRef.current;
+            event.detail === 0 &&
+            document.activeElement === event.currentTarget;
+          const releaseFromOpeningLongPress =
+            Date.now() < backdropInteractiveAtRef.current;
 
           if (
             releaseFromOpeningLongPress ||
@@ -2537,14 +3642,20 @@ export function ImMessageActionSheet({
           aria-hidden="true"
           className={cn(
             "client-liquid-glass-arrow pointer-events-none absolute z-0 h-3.5 w-3.5 -translate-x-1/2 rotate-45",
-            menuPosition.placement === "above" ? "-bottom-2 border-b border-r" : "-top-2 border-l border-t"
+            menuPosition.placement === "above"
+              ? "-bottom-2 border-b border-r"
+              : "-top-2 border-l border-t",
           )}
           style={{ left: menuPosition.arrowLeft }}
         />
 
         <section
-          className={cn("scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[20px] border backdrop-blur-xl", sheetClass)}
+          className={cn(
+            "scrollbar-none relative z-10 overflow-y-auto overscroll-contain rounded-[20px] border backdrop-blur-xl",
+            sheetClass,
+          )}
           data-im-message-action-sheet="true"
+          data-im-multiselect-control="true"
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => {
             event.preventDefault();
@@ -2574,14 +3685,15 @@ export function ImMessageActionSheet({
     return actionMenu;
   }
 
-  const portalTarget = document.querySelector<HTMLElement>(".client-shell") ?? document.body;
+  const portalTarget =
+    document.querySelector<HTMLElement>(".client-shell") ?? document.body;
   return createPortal(actionMenu, portalTarget);
 }
 
 export function ImEmptyState({
   title,
   caption,
-  action
+  action,
 }: {
   title: string;
   caption: string;
@@ -2592,8 +3704,12 @@ export function ImEmptyState({
       <div className="grid h-16 w-16 place-items-center rounded-[22px] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]">
         <ImIcon name="service" />
       </div>
-      <h3 className="mt-4 text-base font-black text-[color:var(--client-text)]">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-[color:var(--client-muted)]">{caption}</p>
+      <h3 className="mt-4 text-base font-black text-[color:var(--client-text)]">
+        {title}
+      </h3>
+      <p className="mt-2 text-sm leading-6 text-[color:var(--client-muted)]">
+        {caption}
+      </p>
       {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
@@ -2603,20 +3719,34 @@ export function ToggleRow({
   title,
   caption,
   checked,
-  onChange
+  disabled = false,
+  onChange,
 }: {
   title: string;
   caption?: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-2xl bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 py-3">
       <div className="min-w-0">
-        <div className="text-[15px] font-black text-[color:var(--client-text)]">{title}</div>
-        {caption ? <p className="mt-1 text-xs text-[color:var(--client-muted)]">{caption}</p> : null}
+        <div className="text-[15px] font-black text-[color:var(--client-text)]">
+          {title}
+        </div>
+        {caption ? (
+          <p className="mt-1 text-xs text-[color:var(--client-muted)]">
+            {caption}
+          </p>
+        ) : null}
       </div>
-      <ToggleSwitch ariaLabel={title} checked={checked} onChange={onChange} size="md" />
+      <ToggleSwitch
+        ariaLabel={title}
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        size="md"
+      />
     </div>
   );
 }
@@ -2644,9 +3774,13 @@ function previewLabel(type: ImMessageType) {
     location: "位置",
     "contact-card": "名片",
     "service-card": "服务",
+    "shop-card": "店铺",
+    "technician-card": "技师",
+    "social-post-card": "动态",
     "schedule-invite": "日程邀请",
+    "chat-record": "聊天记录",
     system: "系统消息",
-    recalled: "撤回消息"
+    recalled: "撤回消息",
   };
 
   return map[type];
@@ -2673,7 +3807,7 @@ function formatDisappearingRemaining(ms: number) {
 
 function DisappearingCountdownStatus({
   disappearing,
-  now: externalNow
+  now: externalNow,
 }: {
   disappearing: NonNullable<MessageExt["disappearing"]>;
   now?: number;
@@ -2689,10 +3823,13 @@ function DisappearingCountdownStatus({
     const updateRemainingText = () => {
       const nextNow = Date.now();
       const expiresAtMs = new Date(disappearing.expiresAt ?? "").getTime();
-      const remainingMs = Number.isFinite(expiresAtMs) ? Math.max(0, expiresAtMs - nextNow) : 0;
+      const remainingMs = Number.isFinite(expiresAtMs)
+        ? Math.max(0, expiresAtMs - nextNow)
+        : 0;
 
       if (remainingTextRef.current) {
-        remainingTextRef.current.textContent = formatDisappearingRemaining(remainingMs);
+        remainingTextRef.current.textContent =
+          formatDisappearingRemaining(remainingMs);
       }
 
       setInternalNow(nextNow);
@@ -2709,7 +3846,9 @@ function DisappearingCountdownStatus({
     return (
       <div className="mt-1 w-full max-w-[220px] px-1">
         <p className="text-[11px] font-black text-[color:var(--client-primary)]">
-          {disappearing.mode === "read_by_all" ? "等待全员已读后开始倒计时" : "消失倒计时准备中"}
+          {disappearing.mode === "read_by_all"
+            ? "等待全员已读后开始倒计时"
+            : "消失倒计时准备中"}
         </p>
       </div>
     );
@@ -2719,16 +3858,24 @@ function DisappearingCountdownStatus({
   const remainingMs = Math.max(0, expiresAtMs - now);
   return (
     <div className="mt-1 w-full max-w-[220px] px-1">
-      <div aria-live="polite" className="text-[11px] font-black text-[color:var(--client-primary)]">
+      <div
+        aria-live="polite"
+        className="text-[11px] font-black text-[color:var(--client-primary)]"
+      >
         <span className="tabular-nums">
-          剩余 <span ref={remainingTextRef}>{formatDisappearingRemaining(remainingMs)}</span>
+          剩余{" "}
+          <span ref={remainingTextRef}>
+            {formatDisappearingRemaining(remainingMs)}
+          </span>
         </span>
       </div>
     </div>
   );
 }
 
-function contactCardKindLabel(profileKind: NonNullable<MessageExt["contactCard"]>["profileKind"]) {
+function contactCardKindLabel(
+  profileKind: NonNullable<MessageExt["contactCard"]>["profileKind"],
+) {
   if (profileKind === "store") {
     return "店铺名片";
   }
@@ -2744,29 +3891,104 @@ function contactCardKindLabel(profileKind: NonNullable<MessageExt["contactCard"]
   return "服务号名片";
 }
 
+function ImRichMessageText({
+  className,
+  content,
+  richText,
+  translation = defaultImMessageTranslation,
+  selectable = false,
+}: {
+  className?: string;
+  content: string;
+  richText?: MessageExt["richText"];
+  translation?: ImMessageTranslationOptions;
+  selectable?: boolean;
+}) {
+  const parts = getImMessageDisplayParts(content, richText, translation);
+  const hasJudgement = parts.some((part) => part.type === "judgement");
+
+  return (
+    <p
+      className={className}
+      data-im-message-rich-text={hasJudgement ? "true" : undefined}
+      data-im-message-selectable-text={selectable ? "true" : undefined}
+      data-no-i18n="true"
+    >
+      {parts.map((part, index) =>
+        part.type === "judgement" ? (
+          <span
+            className="mx-0.5 inline-flex select-none align-[-0.3em] [-webkit-touch-callout:none]"
+            data-im-message-judgement={part.value}
+            key={`judgement-${part.value}-${index}`}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <ImReactionValue judgementDisplay="summary" value={part.value} />
+          </span>
+        ) : (
+          <span key={`text-${index}`}>{part.value}</span>
+        ),
+      )}
+    </p>
+  );
+}
+
 export function ImQuotedMessagePreview({
   message,
-  className
+  className,
 }: {
   message: ConversationMessage;
   className?: string;
 }) {
   const caption = message.ext?.caption?.trim() ?? "";
+  const fileName = message.ext?.fileName ?? "";
+  const hasFileName = Boolean(fileName.trim());
 
-  if (message.type === "image" || message.type === "video") {
-    const thumbnailUrl = message.ext?.thumbnailUrl ?? (message.type === "image" ? message.ext?.url ?? message.content : undefined);
+  if (
+    message.type === "system" ||
+    message.type === "recalled" ||
+    message.status === "recalled"
+  ) {
+    const label =
+      message.type === "system" ? message.content : previewLabel("recalled");
 
     return (
-      <div className={cn("mt-1 flex min-w-0 items-center gap-2", className)} data-im-quoted-media={message.type}>
+      <p
+        className={cn(
+          "mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]",
+          className,
+        )}
+      >
+        {label}
+      </p>
+    );
+  }
+
+  if (message.type === "image" || message.type === "video") {
+    const thumbnailUrl =
+      message.ext?.thumbnailUrl ??
+      (message.type === "image"
+        ? (message.ext?.url ?? message.content)
+        : undefined);
+
+    return (
+      <div
+        className={cn("mt-1 flex min-w-0 items-center gap-2", className)}
+        data-im-quoted-media={message.type}
+      >
         <span className="relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-black/10">
           {thumbnailUrl ? (
             <img
-              alt={message.ext?.fileName || caption || previewLabel(message.type)}
+              alt={
+                message.ext?.fileName || caption || previewLabel(message.type)
+              }
               className="h-full w-full object-cover"
               src={thumbnailUrl}
             />
           ) : (
-            <ImIcon className="h-5 w-5 opacity-80" name={message.type === "video" ? "video" : "photo"} />
+            <ImIcon
+              className="h-5 w-5 opacity-80"
+              name={message.type === "video" ? "video" : "photo"}
+            />
           )}
           {message.type === "video" ? (
             <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
@@ -2775,35 +3997,63 @@ export function ImQuotedMessagePreview({
           ) : null}
         </span>
         {caption ? (
-          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
-            {caption}
-          </p>
+          <div className="min-w-0" data-im-quoted-media-caption="true">
+            <ImRichMessageText
+              className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+              content={caption}
+              richText={message.ext?.captionRichText}
+            />
+          </div>
         ) : null}
       </div>
     );
   }
 
   if (message.type === "voice" || message.type === "file") {
-    const label = caption || (message.type === "file" ? message.ext?.fileName?.trim() ?? "" : "");
+    const hasLabel = Boolean(caption) || message.type === "file";
 
     return (
-      <div className={cn("mt-1 flex min-w-0 items-center gap-2", className)} data-im-quoted-media={message.type}>
+      <div
+        className={cn("mt-1 flex min-w-0 items-center gap-2", className)}
+        data-im-quoted-media={message.type}
+      >
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-black/10">
-          <ImIcon className="h-5 w-5 opacity-80" name={message.type === "voice" ? "mic" : "file"} />
+          <ImIcon
+            className="h-5 w-5 opacity-80"
+            name={message.type === "voice" ? "mic" : "file"}
+          />
         </span>
-        {label ? (
-          <p className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]" data-im-quoted-media-caption="true">
-            {label}
-          </p>
+        {hasLabel ? (
+          <div data-im-quoted-media-caption="true">
+            {caption ? (
+              <ImRichMessageText
+                className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+                content={caption}
+                richText={message.ext?.captionRichText}
+              />
+            ) : (
+              <p
+                className="line-clamp-2 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]"
+                data-no-i18n={hasFileName ? "true" : undefined}
+              >
+                {hasFileName ? fileName : previewLabel("file")}
+              </p>
+            )}
+          </div>
         ) : null}
       </div>
     );
   }
 
   return (
-    <p className={cn("mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]", className)}>
-      {message.content || previewLabel(message.type)}
-    </p>
+    <ImRichMessageText
+      className={cn(
+        "mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-[13px] leading-5 opacity-80 [overflow-wrap:anywhere]",
+        className,
+      )}
+      content={message.content || previewLabel(message.type)}
+      richText={message.ext?.richText}
+    />
   );
 }
 
@@ -2822,8 +4072,12 @@ export function MessageBubble({
   disappearingNow,
   onPreviewMedia,
   onOpenContact,
+  onOpenSocialPost,
   renderContactCard,
-  renderContactCardAction
+  renderContactCardAction,
+  readOnly = false,
+  protectAuthoredContent = false,
+  translation = defaultImMessageTranslation,
 }: {
   message: ConversationMessage;
   isMine: boolean;
@@ -2839,38 +4093,180 @@ export function MessageBubble({
   disappearingNow?: number;
   onPreviewMedia?: (message: ConversationMessage) => void;
   onOpenContact?: (userId: string) => void;
-  renderContactCard?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
-  renderContactCardAction?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
+  onOpenSocialPost?: (postId: string) => void;
+  renderContactCard?: (
+    contactCard: NonNullable<MessageExt["contactCard"]>,
+    message: ConversationMessage,
+  ) => ReactNode;
+  renderContactCardAction?: (
+    contactCard: NonNullable<MessageExt["contactCard"]>,
+    message: ConversationMessage,
+  ) => ReactNode;
+  readOnly?: boolean;
+  protectAuthoredContent?: boolean;
+  translation?: ImMessageTranslationOptions;
 }) {
-  const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
+  const i18n = useProvidedI18n();
+  const rawMediaSource =
+    message.type === "image" || (message.type === "video" && !readOnly)
+      ? (message.ext?.thumbnailUrl ?? message.ext?.url ?? message.content)
+      : (message.ext?.url ?? message.content);
+  const mediaSource = resolveImNoStoreMediaSource(rawMediaSource);
+  const mediaLoad = useMediaLoadState(`${message.id}:${mediaSource}`);
+  const bubbleClass = isMine
+    ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
+    : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
+  const isForwardedCard =
+    message.type === "chat-record" || message.type === "social-post-card";
+  const visibleTranslation =
+    translation.visible &&
+    typeof translation.content === "string" &&
+    translation.content.trim() &&
+    getImMessageTranslationSource(message) !== null
+      ? translation.content
+      : undefined;
   const disappearing = message.ext?.disappearing;
-  const quotedAuthor = quotedSenderName ?? (quotedMessage?.senderId === message.senderId ? (isMine ? "我" : senderName ?? "对方") : "前文消息");
+  const quotedAuthor =
+    quotedSenderName ??
+    (quotedMessage?.senderId === message.senderId
+      ? isMine
+        ? "我"
+        : (senderName ?? "对方")
+      : "前文消息");
 
   if (message.type === "system" || message.type === "recalled") {
-    const label = message.type === "recalled" ? getRecallResidueLabel(isMine) : message.content;
-    return <div className="px-8 py-2 text-center text-xs font-bold text-[color:var(--client-muted)]">{label}</div>;
+    const label =
+      message.type === "recalled"
+        ? getRecallResidueLabel(isMine)
+        : message.content;
+    return (
+      <div className="px-8 py-2 text-center text-xs font-bold text-[color:var(--client-muted)]">
+        {label}
+      </div>
+    );
   }
 
   const bubbleContent = (() => {
+    if (message.type === "chat-record" && message.ext?.chatRecord) {
+      const record = message.ext.chatRecord;
+      return (
+        <ImChatRecordCard
+          language={translation.language}
+          openerId={`im-chat-record-message-${message.id}`}
+          record={{
+            publicId: record.publicId,
+            title: message.content,
+            titleKind: record.titleKind,
+            preview: record.preview,
+            senderNames: record.senderNames,
+            senderCount: record.senderNames.length,
+            itemCount: record.itemCount,
+            createdAt: message.sentAt,
+          }}
+        />
+      );
+    }
+
     if (message.type === "text" || message.type === "emoji") {
-      return <p className={cn("min-w-0 max-w-full whitespace-pre-wrap break-words text-[15px] leading-6 [overflow-wrap:anywhere]", message.type === "emoji" && "text-[28px]")} data-im-message-selectable-text="true">{message.content}</p>;
+      return (
+        <ImRichMessageText
+          className={cn(
+            "min-w-0 max-w-full whitespace-pre-wrap break-words text-[15px] leading-6 [overflow-wrap:anywhere]",
+            message.type === "emoji" && "text-[28px]",
+          )}
+          content={message.content}
+          richText={message.ext?.richText}
+          selectable
+        />
+      );
     }
 
     if (message.type === "image" || message.type === "video") {
+      const expired = message.ext?.mediaState === "expired";
+      const image =
+        message.type === "video" && readOnly ? (
+          <video
+            aria-label={previewLabel(message.type)}
+            className="max-h-[220px] w-[180px] object-cover"
+            controls
+            key={mediaLoad.key}
+            onError={mediaLoad.onError}
+            onLoadedMetadata={mediaLoad.onLoad}
+            preload="metadata"
+            src={mediaSource}
+          />
+        ) : (
+          <img
+            alt={previewLabel(message.type)}
+            className="max-h-[220px] w-[180px] object-cover"
+            key={mediaLoad.key}
+            onError={mediaLoad.onError}
+            onLoad={mediaLoad.onLoad}
+            src={mediaSource}
+          />
+        );
+      const openLocalCopy =
+        !readOnly && onPreviewMedia ? (
+          <button
+            aria-label={translateText("查看本地副本", i18n?.language ?? "zh")}
+            className="w-[180px] rounded-full bg-black/10 px-3 py-2 text-xs font-bold"
+            onClick={(event) => {
+              event.stopPropagation();
+              onPreviewMedia(message);
+            }}
+            type="button"
+          >
+            {translateText("查看本地副本", i18n?.language ?? "zh")}
+          </button>
+        ) : null;
       return (
         <div className="space-y-2">
-          <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
-            <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" src={message.ext?.thumbnailUrl ?? message.content} />
-            {message.type === "video" ? (
-              <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
-                <ImIcon className="h-9 w-9" name="video" />
-              </span>
-            ) : null}
-          </button>
+          {expired ? (
+            <>
+              <MediaLoadFeedback
+                className="w-[180px]"
+                expired
+                kind={message.type}
+              />
+              {openLocalCopy}
+            </>
+          ) : mediaLoad.failed ? (
+            <>
+              <button
+                className="w-[180px] rounded-2xl bg-black/10"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  mediaLoad.retry();
+                }}
+                type="button"
+              >
+                <MediaLoadFeedback kind={message.type} />
+              </button>
+              {openLocalCopy}
+            </>
+          ) : readOnly ? (
+            <div className="relative overflow-hidden rounded-2xl">{image}</div>
+          ) : (
+            <button
+              className="relative overflow-hidden rounded-2xl"
+              onClick={() => onPreviewMedia?.(message)}
+              type="button"
+            >
+              {image}
+              {message.type === "video" ? (
+                <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
+                  <ImIcon className="h-9 w-9" name="video" />
+                </span>
+              ) : null}
+            </button>
+          )}
           {message.ext?.caption ? (
-            <p className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]" data-im-message-selectable-text="true">
-              {message.ext.caption}
-            </p>
+            <ImRichMessageText
+              className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]"
+              content={message.ext.caption}
+              richText={message.ext.captionRichText}
+              selectable
+            />
           ) : null}
         </div>
       );
@@ -2878,31 +4274,64 @@ export function MessageBubble({
 
     if (message.type === "voice") {
       return (
-        <div className="min-w-[200px] space-y-2">
+        <div className="w-full space-y-2">
           <div className="flex items-center gap-2">
             <ImIcon className="h-4 w-4" name="mic" />
             <div className="h-0.5 flex-1 rounded-full bg-black/20" />
             <span className="text-sm">{message.ext?.duration ?? 0}"</span>
           </div>
-          <audio
-            className="block h-10 w-full max-w-[220px]"
-            controls
-            preload="none"
-            src={message.ext?.url ?? message.content}
-          />
+          {mediaLoad.failed ? (
+            <button
+              className="block w-full rounded-2xl bg-black/10"
+              onClick={(event) => {
+                event.stopPropagation();
+                mediaLoad.retry();
+              }}
+              type="button"
+            >
+              <MediaLoadFeedback kind="voice" />
+            </button>
+          ) : (
+            <audio
+              className="block h-10 w-full"
+              controls
+              key={mediaLoad.key}
+              onError={mediaLoad.onError}
+              onLoadedMetadata={mediaLoad.onLoad}
+              preload="metadata"
+              src={mediaSource}
+            />
+          )}
         </div>
       );
     }
 
     if (message.type === "file") {
+      const fileName = message.ext?.fileName ?? "";
+      const hasFileName = Boolean(fileName.trim());
+
       return (
         <div className="flex min-w-[220px] items-center gap-3">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-black/6">
-              <ImIcon name="file" />
-            </span>
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-black/6">
+            <ImIcon name="file" />
+          </span>
           <div className="min-w-0">
-            <p className="truncate text-[14px] font-medium">{message.ext?.fileName ?? "未命名文件"}</p>
-            <p className={cn("mt-1 text-xs", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/45")}>{formatSize(message.ext?.fileSize)}</p>
+            <p
+              className="truncate text-[14px] font-medium"
+              data-no-i18n={hasFileName ? "true" : undefined}
+            >
+              {hasFileName ? fileName : previewLabel("file")}
+            </p>
+            <p
+              className={cn(
+                "mt-1 text-xs",
+                isMine
+                  ? "text-[color:var(--client-primary-contrast-muted)]"
+                  : "text-ink/45",
+              )}
+            >
+              {formatSize(message.ext?.fileSize)}
+            </p>
           </div>
         </div>
       );
@@ -2910,11 +4339,33 @@ export function MessageBubble({
 
     if (message.type === "location") {
       return (
-        <div className={cn("w-[220px] overflow-hidden rounded-2xl", isMine ? "bg-[color:color-mix(in_srgb,var(--client-primary-contrast)_12%,transparent)]" : "bg-black/[0.04]")}>
+        <div
+          className={cn(
+            "w-[220px] overflow-hidden rounded-2xl",
+            isMine
+              ? "bg-[color:color-mix(in_srgb,var(--client-primary-contrast)_12%,transparent)]"
+              : "bg-black/[0.04]",
+          )}
+        >
           <div className="h-24 bg-[linear-gradient(135deg,#b6e3cf_0%,#dff2ea_55%,#f9fbf7_100%)]" />
           <div className="px-3 py-3">
-            <p className="text-[14px] font-medium">{message.ext?.location?.title ?? "位置"}</p>
-            <p className={cn("mt-1 text-xs leading-5", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/45")}>{message.ext?.location?.address}</p>
+            <p
+              className="text-[14px] font-medium"
+              data-no-i18n={protectAuthoredContent ? "true" : undefined}
+            >
+              {message.ext?.location?.title ?? "位置"}
+            </p>
+            <p
+              className={cn(
+                "mt-1 text-xs leading-5",
+                isMine
+                  ? "text-[color:var(--client-primary-contrast-muted)]"
+                  : "text-ink/45",
+              )}
+              data-no-i18n={protectAuthoredContent ? "true" : undefined}
+            >
+              {message.ext?.location?.address}
+            </p>
           </div>
         </div>
       );
@@ -2923,7 +4374,8 @@ export function MessageBubble({
     if (message.type === "contact-card" && message.ext?.contactCard) {
       const card = message.ext.contactCard;
       const customCard = renderContactCard?.(card, message);
-      const caption = card.headline ?? card.userIdLabel ?? contactCardKindLabel(card.profileKind);
+      const authoredCaption = card.headline ?? card.userIdLabel;
+      const caption = authoredCaption ?? contactCardKindLabel(card.profileKind);
       const action = renderContactCardAction?.(card, message);
 
       if (customCard) {
@@ -2931,54 +4383,137 @@ export function MessageBubble({
       }
 
       return (
-        <div className="w-[248px] overflow-hidden rounded-2xl bg-white/72 text-[color:var(--client-text)] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
-          <button className="block w-full p-3 text-left" onClick={() => onOpenContact?.(card.userId)} type="button">
-            <div className="flex items-center gap-3">
-              <AvatarImage alt={card.displayName} className="h-12 w-12" src={card.avatar} />
-              <div className="min-w-0">
-                <p className="truncate text-[14px] font-black">{card.displayName}</p>
-                <p className={cn("mt-1 line-clamp-1 text-xs", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/52")}>{caption}</p>
-              </div>
-            </div>
-          </button>
-          <div className="flex items-center justify-between gap-3 border-t border-black/5 px-3 py-2">
-            <span className={cn("text-[11px] font-black", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/42")}>{contactCardKindLabel(card.profileKind)}</span>
-            {action}
-          </div>
+        <div
+          className="w-[min(560px,84vw)]"
+          data-no-i18n={protectAuthoredContent ? "true" : undefined}
+        >
+          <UnifiedEntityInfoCard
+            actionSlot={action}
+            data={{
+              kind:
+                card.entityKind === "technician"
+                  ? "technician"
+                  : card.entityKind === "shop"
+                    ? "shop"
+                    : "user",
+              id: card.needoId ?? card.userId,
+              name: card.displayName,
+              imageUrl: card.avatar || null,
+              description: card.bio ?? card.headline ?? caption ?? null,
+              languages: card.languages ?? [],
+              tags: [],
+              rating: card.rating ?? null,
+              completedOrderCount: card.completedOrderCount ?? null,
+              favoriteCount: card.favoriteCount ?? null,
+              shareCount: card.shareCount ?? null,
+              engagementTarget:
+                card.entityKind === "technician" && card.entityPublicId
+                  ? { targetType: "technician", publicId: card.entityPublicId }
+                  : null,
+              specialReviewTags: card.specialReviewTags ?? [],
+            }}
+            language={i18n?.language}
+            onOpenDetails={() => onOpenContact?.(card.userId)}
+            showLanguageTags={false}
+          />
         </div>
       );
     }
 
     if (message.type === "service-card" && message.ext?.serviceCard) {
       const card = message.ext.serviceCard;
-      const tags = (card.tags ?? []).slice(0, 3);
+      const numericPrice =
+        card.priceAmount ??
+        (Number.parseFloat(card.priceLabel.replace(/[^\d.]/gu, "")) || 0);
+      const numericDuration =
+        card.durationMinutes ??
+        (Number.parseInt(card.durationLabel ?? "", 10) || null);
       const cardBody = (
-        <div className="w-[292px] max-w-[82vw] overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]">
-          <div className="flex gap-3 p-3">
-            <img alt={card.name} className="h-20 w-20 shrink-0 rounded-[18px] object-cover" src={card.cover} />
-            <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-[14px] font-black leading-5">{card.name}</p>
-              <p className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">{card.summary}</p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {tags.map((tag) => (
-                  <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface)_88%)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]" key={tag}>
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="truncate text-[11px] font-black text-[color:var(--client-muted)]">{card.providerName ?? "店铺服务"}</p>
-              <p className="mt-0.5 text-[13px] font-black text-[color:var(--client-text)]">{card.priceLabel}{card.durationLabel ? ` · ${card.durationLabel}` : ""}</p>
-            </div>
-            <span className="shrink-0 rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)]">服务</span>
-          </div>
+        <div
+          className="w-[min(620px,84vw)]"
+          data-no-i18n={protectAuthoredContent ? "true" : undefined}
+        >
+          <UnifiedServiceInfoCard
+            data={{
+              id: card.serviceId,
+              coverUrl: card.cover || null,
+              name: card.name,
+              priceAmount: numericPrice,
+              currency: card.currency ?? "JPY",
+              durationMinutes: numericDuration,
+              completedOrderCount: card.usageCount ?? null,
+              engagementTarget: card.targetType
+                ? { targetType: card.targetType, publicId: card.serviceId }
+                : null,
+              favoriteCount: card.favoriteCount ?? null,
+              shareCount: card.shareCount ?? null,
+              isBookable: card.isBookable ?? null,
+              shopPublicId: card.providerId ?? null,
+              shopAddress: card.shopAddress ?? null,
+              description: card.summary || null,
+              tags: card.tags ?? [],
+            }}
+            language={i18n?.language}
+          />
         </div>
       );
 
       return card.href ? <Link to={card.href}>{cardBody}</Link> : cardBody;
+    }
+
+    if (message.type === "shop-card" && message.ext?.shopCard) {
+      const card = message.ext.shopCard;
+      return (
+        <div className="w-[min(620px,84vw)]">
+          <UnifiedEntityInfoCard
+            data={{
+              ...card,
+              kind: "shop",
+              id: card.publicId,
+              imageUrl: card.imageUrl,
+              completedOrderCount: card.completedOrderCount,
+              languages: [],
+              engagementTarget: { targetType: "shop", publicId: card.publicId },
+            }}
+            language={i18n?.language}
+            showLanguageTags={false}
+          />
+        </div>
+      );
+    }
+
+    if (message.type === "technician-card" && message.ext?.technicianCard) {
+      const card = message.ext.technicianCard;
+      return (
+        <div className="w-[min(620px,84vw)]">
+          <UnifiedEntityInfoCard
+            data={{
+              ...card,
+              kind: "technician",
+              id: card.publicId,
+              imageUrl: card.imageUrl,
+              engagementTarget: {
+                targetType: "technician",
+                publicId: card.publicId,
+              },
+            }}
+            language={i18n?.language}
+            showLanguageTags={false}
+          />
+        </div>
+      );
+    }
+
+    if (message.type === "social-post-card" && message.ext?.socialPostCard) {
+      const card = message.ext.socialPostCard;
+      return (
+        <SocialPostCompactCard
+          card={card}
+          className="w-full !max-w-full"
+          language={i18n?.language ?? "zh"}
+          onOpen={onOpenSocialPost}
+        />
+      );
     }
 
     if (message.type === "schedule-invite" && message.ext?.scheduleInvite) {
@@ -2991,56 +4526,144 @@ export function MessageBubble({
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface)_88%)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]">
+                <span
+                  className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface)_88%)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]"
+                  data-no-i18n={
+                    protectAuthoredContent && invite.statusLabel
+                      ? "true"
+                      : undefined
+                  }
+                >
                   {invite.statusLabel ?? "待确认"}
                 </span>
-                {invite.hostName ? <span className="min-w-0 truncate text-[10px] font-black text-[color:var(--client-muted)]">{invite.hostName}</span> : null}
+                {invite.hostName ? (
+                  <span
+                    className="min-w-0 truncate text-[10px] font-black text-[color:var(--client-muted)]"
+                    data-no-i18n={protectAuthoredContent ? "true" : undefined}
+                  >
+                    {invite.hostName}
+                  </span>
+                ) : null}
               </div>
-              <p className="mt-2 line-clamp-2 text-[14px] font-black leading-5">{invite.title}</p>
-              <p className="mt-1 text-[12px] font-bold text-[color:var(--client-muted)]">{invite.date} · {invite.timeRange}</p>
-              {invite.attendeeLabel ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">邀请对象：{invite.attendeeLabel}</p> : null}
-              {invite.location ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">{invite.location}</p> : null}
-              {invite.reminderLabel ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">提醒：{invite.reminderLabel}</p> : null}
+              <p
+                className="mt-2 line-clamp-2 text-[14px] font-black leading-5"
+                data-no-i18n={protectAuthoredContent ? "true" : undefined}
+              >
+                {invite.title}
+              </p>
+              <p
+                className="mt-1 text-[12px] font-bold text-[color:var(--client-muted)]"
+                data-no-i18n={protectAuthoredContent ? "true" : undefined}
+              >
+                {invite.date} · {invite.timeRange}
+              </p>
+              {invite.attendeeLabel ? (
+                <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">
+                  邀请对象：
+                  <span
+                    data-no-i18n={protectAuthoredContent ? "true" : undefined}
+                  >
+                    {invite.attendeeLabel}
+                  </span>
+                </p>
+              ) : null}
+              {invite.location ? (
+                <p
+                  className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]"
+                  data-no-i18n={protectAuthoredContent ? "true" : undefined}
+                >
+                  {invite.location}
+                </p>
+              ) : null}
+              {invite.reminderLabel ? (
+                <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">
+                  提醒：
+                  <span
+                    data-no-i18n={protectAuthoredContent ? "true" : undefined}
+                  >
+                    {invite.reminderLabel}
+                  </span>
+                </p>
+              ) : null}
             </div>
           </div>
-          {invite.note ? <p className="border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-3 py-2 text-[11px] font-bold leading-5 text-[color:var(--client-muted)]">{invite.note}</p> : null}
+          {invite.note ? (
+            <p
+              className="border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-3 py-2 text-[11px] font-bold leading-5 text-[color:var(--client-muted)]"
+              data-no-i18n={protectAuthoredContent ? "true" : undefined}
+            >
+              {invite.note}
+            </p>
+          ) : null}
         </div>
       );
 
       return invite.href ? <Link to={invite.href}>{cardBody}</Link> : cardBody;
     }
 
-    return <p className="min-w-0 max-w-full break-words text-[15px] [overflow-wrap:anywhere]" data-im-message-selectable-text="true">{message.content}</p>;
+    return (
+      <p
+        className="min-w-0 max-w-full break-words text-[15px] [overflow-wrap:anywhere]"
+        data-im-message-selectable-text="true"
+      >
+        {message.content}
+      </p>
+    );
   })();
 
   const status = isMine
     ? message.status === "sending"
       ? "发送中"
       : message.status === "failed"
-      ? message.failureReason === "recipient_blocked"
+        ? message.failureReason === "recipient_blocked"
           ? "对方将你拉黑，信息发送失败"
           : message.failureReason === "not_friends"
             ? "对方不是你的好友，信息发送失败"
-          : "发送失败"
+            : "发送失败"
         : undefined
     : undefined;
 
-  const avatarNode = (
+  const avatarElement = (
     <InteractiveAvatar
-      alt={isMine ? "我的头像" : senderName ?? "联系人"}
+      alt={isMine ? "我的头像" : (senderName ?? "联系人")}
       className="h-9 w-9"
       src={avatar}
       stopPropagation
       to={avatarTo}
     />
   );
+  const avatarNode = protectAuthoredContent ? (
+    <span className="contents" data-no-i18n="true">
+      {avatarElement}
+    </span>
+  ) : (
+    avatarElement
+  );
   const quoteNode = quotedMessage ? (
-    <div className={cn("mb-2 w-full border-b pb-2", isMine ? "border-[color:color-mix(in_srgb,var(--client-primary-contrast)_18%,transparent)] text-[color:var(--client-primary-contrast-muted)]" : "border-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)] text-[color:var(--client-muted)]")}>
+    <div
+      className={cn(
+        "mb-2 w-full border-b pb-2",
+        isMine
+          ? "border-[color:color-mix(in_srgb,var(--client-primary-contrast)_18%,transparent)] text-[color:var(--client-primary-contrast-muted)]"
+          : "border-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)] text-[color:var(--client-muted)]",
+      )}
+    >
       <div className="flex min-w-0 items-center gap-2">
         {quotedSenderAvatar ? (
-          <AvatarImage alt={quotedAuthor} className="h-7 w-7 shrink-0" src={quotedSenderAvatar} />
+          <AvatarImage
+            alt={quotedAuthor}
+            className="h-7 w-7 shrink-0"
+            src={quotedSenderAvatar}
+          />
         ) : (
-          <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-[8px] text-[11px] font-black", isMine ? "bg-black/[0.06]" : "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]")}>
+          <span
+            className={cn(
+              "grid h-7 w-7 shrink-0 place-items-center rounded-[8px] text-[11px] font-black",
+              isMine
+                ? "bg-black/[0.06]"
+                : "bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)]",
+            )}
+          >
             {quotedAuthor.slice(0, 1)}
           </span>
         )}
@@ -3051,59 +4674,137 @@ export function MessageBubble({
       </div>
     </div>
   ) : null;
-  const reactionNode = reactions.length > 0 ? (
-    <div className="mt-2 flex max-w-full flex-wrap gap-1.5">
-      {reactions.map((reaction) => {
-        const names = reaction.people.map((person) => person.name).filter(Boolean);
-        const nameLabel = names.join("、");
+  const reactionNode =
+    reactions.length > 0 ? (
+      <div className="mt-2 flex max-w-full flex-wrap gap-1.5">
+        {reactions.map((reaction) => {
+          const names = reaction.people
+            .map((person) => person.name)
+            .filter(Boolean);
+          const nameLabel = names.join("、");
 
-        return (
-          <span className="relative inline-flex min-w-0 items-center overflow-visible rounded-full bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)] px-1.5 py-1" key={`${message.id}-${reaction.emoji}`}>
-            <button
-              aria-pressed={reaction.reactedByMe}
-              className={cn(
-                "grid h-7 min-w-7 shrink-0 place-items-center rounded-[10px] px-1 text-[18px] transition",
-                reaction.reactedByMe
-                  ? "bg-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_50%,transparent)]"
-                  : "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
-              )}
-              key={`${message.id}-${reaction.emoji}-emoji`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleReaction?.(reaction.emoji);
-              }}
-              type="button"
-            >
-              <ImReactionValue judgementDisplay="summary" value={reaction.emoji} />
-            </button>
+          return (
             <span
-              className="min-w-0 max-w-[12rem] truncate px-2 text-left text-[12px] font-black opacity-78"
-              key={`${message.id}-${reaction.emoji}-names`}
+              className="relative inline-flex min-w-0 items-center overflow-visible rounded-full bg-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)] px-1.5 py-1"
+              key={`${message.id}-${reaction.emoji}`}
             >
-              {nameLabel || `${reaction.people.length}人`}
+              <button
+                aria-pressed={reaction.reactedByMe}
+                className={cn(
+                  "grid h-7 min-w-7 shrink-0 place-items-center rounded-[10px] px-1 text-[18px] transition",
+                  reaction.reactedByMe
+                    ? "bg-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_50%,transparent)]"
+                    : "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+                )}
+                key={`${message.id}-${reaction.emoji}-emoji`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleReaction?.(reaction.emoji);
+                }}
+                type="button"
+              >
+                <ImReactionValue
+                  judgementDisplay="summary"
+                  value={reaction.emoji}
+                />
+              </button>
+              <span
+                className="min-w-0 max-w-[12rem] truncate px-2 text-left text-[12px] font-black opacity-78"
+                key={`${message.id}-${reaction.emoji}-names`}
+              >
+                {nameLabel || `${reaction.people.length}人`}
+              </span>
             </span>
-          </span>
-        );
-      })}
-    </div>
-  ) : null;
-  const bubbleShellClass = message.type === "contact-card" && !quotedMessage ? "rounded-[24px]" : cn("rounded-[20px] px-3 py-2", bubbleClass);
-  const contentNode = quoteNode || reactionNode ? (
-    <div className="min-w-0 max-w-full overflow-hidden">
-      {quoteNode}
-      {bubbleContent}
-      {reactionNode}
-    </div>
-  ) : bubbleContent;
+          );
+        })}
+      </div>
+    ) : null;
+  const bubbleShellClass =
+    message.type === "contact-card" && !quotedMessage
+      ? "rounded-[24px]"
+      : cn("rounded-[20px] px-3 py-2", bubbleClass);
+  const contentNode =
+    quoteNode || reactionNode ? (
+      <div
+        className={cn(
+          "min-w-0 max-w-full overflow-hidden",
+          message.type === "voice" && "w-full",
+        )}
+      >
+        {quoteNode}
+        {bubbleContent}
+        {reactionNode}
+      </div>
+    ) : (
+      bubbleContent
+    );
 
   return (
-    <div className={cn("flex items-end gap-2 px-3 py-1", isMine ? "justify-end" : "justify-start")}>
+    <div
+      className={cn(
+        "flex items-end gap-2 px-3 py-1",
+        isMine ? "justify-end" : "justify-start",
+      )}
+    >
       {!isMine ? avatarNode : null}
-      <div className={cn("flex flex-col", message.type === "contact-card" ? "max-w-[calc(100%-3.25rem)]" : "max-w-[78%]", isMine ? "items-end" : "items-start")}>
-        {showSender && !isMine ? <p className="mb-1 px-1 text-[11px] font-bold text-[color:var(--client-muted)]">{senderName}</p> : null}
-        <div className={cn("inline-flex min-w-0 max-w-full overflow-hidden", bubbleShellClass)} data-im-message-bubble="true">{contentNode}</div>
-        {disappearing ? <DisappearingCountdownStatus disappearing={disappearing} now={disappearingNow} /> : null}
-        {status ? <p className={cn("mt-1 px-1 text-[11px] font-bold", message.status === "failed" ? "text-[#ef4f3f]" : "text-[color:var(--client-muted)]")}>{status}</p> : null}
+      <div
+        className={cn(
+            "flex flex-col",
+            message.type === "contact-card"
+              ? "max-w-[calc(100%-3.25rem)]"
+              : message.type === "voice"
+                ? "w-[calc(100%-3.25rem)] max-w-[320px]"
+                : isForwardedCard
+                  ? "w-full max-w-[78%]"
+                  : "max-w-[78%]",
+          isMine ? "items-end" : "items-start",
+        )}
+      >
+        {showSender && !isMine ? (
+          <p
+            className="mb-1 px-1 text-[11px] font-bold text-[color:var(--client-muted)]"
+            data-no-i18n={protectAuthoredContent ? "true" : undefined}
+          >
+            {senderName}
+          </p>
+        ) : null}
+        <div
+          className={cn(
+            "inline-flex min-w-0 max-w-full overflow-hidden",
+            (message.type === "voice" || isForwardedCard) && "w-full",
+            bubbleShellClass,
+          )}
+          data-im-message-bubble="true"
+        >
+          {contentNode}
+        </div>
+        {visibleTranslation ? (
+          <p
+            className="mt-1 max-w-full whitespace-pre-wrap break-words px-1 text-[13px] font-semibold leading-5 text-[color:var(--client-muted)] [overflow-wrap:anywhere]"
+            data-im-message-translation="true"
+            data-no-i18n="true"
+          >
+            {visibleTranslation}
+          </p>
+        ) : null}
+        {disappearing ? (
+          <DisappearingCountdownStatus
+            disappearing={disappearing}
+            now={disappearingNow}
+          />
+        ) : null}
+        {status ? (
+          <p
+            className={cn(
+              "mt-1 px-1 text-[11px] font-bold",
+              message.status === "failed"
+                ? "text-[#ef4f3f]"
+                : "text-[color:var(--client-muted)]",
+            )}
+          >
+            {status}
+          </p>
+        ) : null}
       </div>
       {isMine ? avatarNode : null}
     </div>
@@ -3112,15 +4813,19 @@ export function MessageBubble({
 
 export function DetailRow({
   label,
-  value
+  value,
 }: {
   label: string;
   value: ReactNode;
 }) {
   return (
     <div className="flex items-start gap-4 border-b border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] py-3 last:border-b-0">
-      <span className="w-20 shrink-0 text-sm font-bold text-[color:var(--client-muted)]">{label}</span>
-      <div className="min-w-0 flex-1 text-sm text-[color:var(--client-text)]">{value}</div>
+      <span className="w-20 shrink-0 text-sm font-bold text-[color:var(--client-muted)]">
+        {label}
+      </span>
+      <div className="min-w-0 flex-1 text-sm text-[color:var(--client-text)]">
+        {value}
+      </div>
     </div>
   );
 }
@@ -3131,7 +4836,7 @@ export function ContactSummaryCard({
   detailTo,
   hiddenTags = [],
   onOpenDetails,
-  showTags = true
+  showTags = true,
 }: {
   user: ImUser;
   contact?: ContactRelation;
@@ -3142,16 +4847,30 @@ export function ContactSummaryCard({
 }) {
   const chips = useMemo(() => {
     const hiddenTagSet = new Set(hiddenTags);
-    return Array.from(new Set([...(contact?.tags ?? []), ...user.tags])).filter((tag) => !hiddenTagSet.has(tag)).slice(0, 4);
+    return Array.from(new Set([...(contact?.tags ?? []), ...user.tags]))
+      .filter((tag) => !hiddenTagSet.has(tag))
+      .slice(0, 4);
   }, [contact?.tags, hiddenTags, user.tags]);
   const signatureCaption = getImContactSignatureCaption(user);
   const summary = (
     <div className="flex items-center gap-4">
-      <AvatarImage alt={user.nickname} className="h-16 w-16" src={user.avatar} />
+      <AvatarImage
+        alt={user.nickname}
+        className="h-16 w-16"
+        src={user.avatar}
+      />
       <div className="min-w-0 flex-1">
-        <h2 className="truncate text-[22px] font-black text-[color:var(--client-text)]">{getDisplayName(user, contact)}</h2>
-        {signatureCaption ? <p className="mt-1 text-sm text-[color:var(--client-muted)]">{signatureCaption}</p> : null}
-        <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">ID {user.userIdLabel}</p>
+        <h2 className="truncate text-[22px] font-black text-[color:var(--client-text)]">
+          {getDisplayName(user, contact)}
+        </h2>
+        {signatureCaption ? (
+          <p className="mt-1 text-sm text-[color:var(--client-muted)]">
+            {signatureCaption}
+          </p>
+        ) : null}
+        <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
+          ID {user.userIdLabel}
+        </p>
       </div>
     </div>
   );
@@ -3161,7 +4880,11 @@ export function ContactSummaryCard({
       {summary}
     </Link>
   ) : onOpenDetails ? (
-    <button className="block w-full text-left" onClick={onOpenDetails} type="button">
+    <button
+      className="block w-full text-left"
+      onClick={onOpenDetails}
+      type="button"
+    >
       {summary}
     </button>
   ) : (
@@ -3174,7 +4897,10 @@ export function ContactSummaryCard({
       {showTags && chips.length > 0 ? (
         <div className="mt-4 flex flex-wrap gap-2">
           {chips.map((chip) => (
-            <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-xs font-black text-[color:var(--client-primary)]" key={chip}>
+            <span
+              className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-xs font-black text-[color:var(--client-primary)]"
+              key={chip}
+            >
               {chip}
             </span>
           ))}

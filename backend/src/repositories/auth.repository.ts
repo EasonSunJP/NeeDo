@@ -79,6 +79,13 @@ export interface AuthUserRecord {
   lastLoginAt: Date | null;
   deletedAt: Date | null;
   identities: AuthIdentityRecord[];
+  customerProfile?: {
+    displayName: string;
+    deletedAt: Date | null;
+  } | null;
+  technicianProfile?: {
+    technicianShopAffiliations: Array<{ id: number }>;
+  } | null;
   userRoles: AuthUserRoleRecord[];
   identityApplications?: AuthIdentityApplicationRecord[];
   loginIdentityId?: number;
@@ -93,6 +100,19 @@ export interface CreateLoginLogInput {
   failReason?: string | null;
 }
 
+export interface SuccessfulLoginEvidenceInput {
+  userId: number;
+  ip: string;
+  periodStart: Date;
+  periodEnd: Date;
+}
+
+export interface SuccessfulLoginEvidence {
+  hasAnySuccessfulLogin: boolean;
+  hasSuccessfulLoginInPeriod: boolean;
+  hasSuccessfulLoginFromIp: boolean;
+}
+
 export interface CreateAuditLogInput {
   actorId?: number | null;
   action: string;
@@ -101,6 +121,10 @@ export interface CreateAuditLogInput {
   ip?: string | null;
   userAgent?: string | null;
   metadata?: Prisma.InputJsonValue;
+}
+
+export interface AuditLogReceipt {
+  id: number;
 }
 
 export interface CreateVerifiedBaselineCustomerInput {
@@ -196,6 +220,19 @@ export class ExternalAuthAccountConflictError extends Error {
   }
 }
 
+export class PhoneBindingConflictError extends Error {
+  public constructor() {
+    super("Phone is already bound to another NeeDo account");
+    this.name = "PhoneBindingConflictError";
+  }
+}
+
+export interface CompletePhoneBindingInput {
+  userId: number;
+  phone: string;
+  context: { ip: string; userAgent?: string | null };
+}
+
 export interface AuthRepositoryPort {
   findUserByEmail: (email: string) => Promise<AuthUserRecord | null>;
   findUserByLoginIdentifier: (identifier: string) => Promise<AuthUserRecord | null>;
@@ -209,7 +246,15 @@ export interface AuthRepositoryPort {
   ) => Promise<AuthUserRecord | null>;
   updateLastLoginAt: (id: number, loggedInAt: Date) => Promise<void>;
   createLoginLog: (input: CreateLoginLogInput) => Promise<void>;
-  createAuditLog: (input: CreateAuditLogInput) => Promise<void>;
+  getSuccessfulLoginEvidence: (
+    input: SuccessfulLoginEvidenceInput
+  ) => Promise<SuccessfulLoginEvidence>;
+  createAuditLog: (input: CreateAuditLogInput) => Promise<void | AuditLogReceipt>;
+  completePhoneBinding?: (input: CompletePhoneBindingInput) => Promise<AuthUserRecord>;
+  completeMerchantShopSwitchAudit?: (input: {
+    auditId: number;
+    operationId: string;
+  }) => Promise<boolean>;
 }
 
 export interface GoogleAuthRepositoryPort {
@@ -241,6 +286,24 @@ export interface GoogleAuthRepositoryPort {
 }
 
 const authUserInclude = {
+  customerProfile: {
+    select: {
+      displayName: true,
+      deletedAt: true
+    }
+  },
+  technicianProfile: {
+    select: {
+      technicianShopAffiliations: {
+        where: {
+          workStatus: { in: ["ACTIVE" as const, "ON_LEAVE" as const, "SUSPENDED" as const] },
+          deletedAt: null,
+          shop: { deletedAt: null }
+        },
+        select: { id: true }
+      }
+    }
+  },
   identities: {
     where: {
       deletedAt: null
@@ -314,10 +377,7 @@ const resolveLoginIdentityId = (
   return matchedIdentifierIdentity?.id ?? customerIdentity?.id;
 };
 
-const toAuthUserRecord = (
-  user: AuthUserPrismaRecord,
-  loginIdentifier?: string
-): AuthUserRecord => {
+const toAuthUserRecord = (user: AuthUserPrismaRecord, loginIdentifier?: string): AuthUserRecord => {
   const primaryIdentifier = activeAuthIdentities(user).find(
     (identity) => identity.publicIdentifier?.kind === user.primaryIdentityType
   )?.publicIdentifier;
@@ -329,9 +389,7 @@ const toAuthUserRecord = (
       disabled: !user.isActive,
       restricted: activeAuthIdentities(user).length === 0
     },
-    ...(loginIdentifier
-      ? { loginIdentityId: resolveLoginIdentityId(user, loginIdentifier) }
-      : {})
+    ...(loginIdentifier ? { loginIdentityId: resolveLoginIdentityId(user, loginIdentifier) } : {})
   };
 };
 
@@ -356,7 +414,10 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
 
   public async findUserByLoginIdentifier(identifier: string): Promise<AuthUserRecord | null> {
     const findUser = (where: Prisma.UserWhereInput) =>
-      this.client.user.findFirst({ where: { ...where, deletedAt: null }, include: authUserInclude });
+      this.client.user.findFirst({
+        where: { ...where, deletedAt: null },
+        include: authUserInclude
+      });
     let user: AuthUserPrismaRecord | null;
 
     if (identifier.includes("@")) {
@@ -397,6 +458,51 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       include: authUserInclude
     });
     return user ? toAuthUserRecord(user) : null;
+  }
+
+  public async completePhoneBinding(input: CompletePhoneBindingInput): Promise<AuthUserRecord> {
+    try {
+      return await this.client.$transaction(async (transaction) => {
+        const conflicting = await transaction.user.findFirst({
+          where: {
+            phone: input.phone,
+            deletedAt: null,
+            NOT: { id: input.userId }
+          },
+          select: { id: true }
+        });
+        if (conflicting) throw new PhoneBindingConflictError();
+
+        const updated = await transaction.user.updateMany({
+          where: { id: input.userId, deletedAt: null, isActive: true },
+          data: { phone: input.phone }
+        });
+        if (updated.count !== 1) throw new GoogleLoginStateError("missing");
+
+        await transaction.auditLog.create({
+          data: {
+            actorId: input.userId,
+            action: "auth.phone.bind",
+            targetType: "User",
+            targetId: input.userId,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: { verificationMethod: "stored_normalized_number" }
+          }
+        });
+
+        const user = await transaction.user.findUniqueOrThrow({
+          where: { id: input.userId },
+          include: authUserInclude
+        });
+        return toAuthUserRecord(user);
+      });
+    } catch (error) {
+      if (error instanceof PhoneBindingConflictError || this.isPhoneCollision(error)) {
+        throw new PhoneBindingConflictError();
+      }
+      throw error;
+    }
   }
 
   public async findGoogleBindingBySubject(
@@ -442,6 +548,9 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
           });
           const customerProfile = await transaction.customerProfile.create({
             data: { userId: user.id, displayName: bootstrapKey }
+          });
+          await transaction.userExperienceAccount.create({
+            data: { userId: user.id, currentLevel: 1, totalExpUnits: 0n }
           });
           const customerIdentity = await transaction.userIdentity.create({
             data: {
@@ -891,8 +1000,37 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
     });
   }
 
-  public async createAuditLog(input: CreateAuditLogInput): Promise<void> {
-    await this.client.auditLog.create({
+  public async getSuccessfulLoginEvidence(
+    input: SuccessfulLoginEvidenceInput
+  ): Promise<SuccessfulLoginEvidence> {
+    const commonWhere = {
+      userId: input.userId,
+      status: "success",
+      deletedAt: null
+    } as const;
+    const [anyLogin, periodLogin, ipLogin] = await Promise.all([
+      this.client.loginLog.findFirst({ where: commonWhere, select: { id: true } }),
+      this.client.loginLog.findFirst({
+        where: {
+          ...commonWhere,
+          createdAt: { gte: input.periodStart, lt: input.periodEnd }
+        },
+        select: { id: true }
+      }),
+      this.client.loginLog.findFirst({
+        where: { ...commonWhere, ip: input.ip },
+        select: { id: true }
+      })
+    ]);
+    return {
+      hasAnySuccessfulLogin: anyLogin !== null,
+      hasSuccessfulLoginInPeriod: periodLogin !== null,
+      hasSuccessfulLoginFromIp: ipLogin !== null
+    };
+  }
+
+  public async createAuditLog(input: CreateAuditLogInput): Promise<AuditLogReceipt> {
+    const created = await this.client.auditLog.create({
       data: {
         actorId: input.actorId ?? null,
         action: input.action,
@@ -901,8 +1039,64 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         ip: input.ip ?? null,
         userAgent: input.userAgent ?? null,
         metadata: input.metadata
+      },
+      select: { id: true }
+    });
+    return created;
+  }
+
+  public async completeMerchantShopSwitchAudit(input: {
+    auditId: number;
+    operationId: string;
+  }): Promise<boolean> {
+    const audit = await this.client.auditLog.findFirst({
+      where: {
+        id: input.auditId,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null
+      },
+      select: { id: true, updatedAt: true, metadata: true }
+    });
+    if (!audit || !this.isJsonObject(audit.metadata)) return false;
+    if (audit.metadata.operationId !== input.operationId) return false;
+    if (audit.metadata.phase === "completed") return true;
+    if (audit.metadata.phase !== "authorized_attempt") return false;
+
+    const completed = await this.client.auditLog.updateMany({
+      where: {
+        id: audit.id,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null,
+        updatedAt: audit.updatedAt,
+        metadata: { path: "$.operationId", equals: input.operationId }
+      },
+      data: {
+        metadata: {
+          ...audit.metadata,
+          phase: "completed"
+        }
       }
     });
+    if (completed.count === 1) return true;
+
+    const current = await this.client.auditLog.findFirst({
+      where: {
+        id: input.auditId,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null
+      },
+      select: { id: true, updatedAt: true, metadata: true }
+    });
+    return Boolean(
+      current &&
+      this.isJsonObject(current.metadata) &&
+      current.metadata.operationId === input.operationId &&
+      current.metadata.phase === "completed"
+    );
+  }
+
+  private isJsonObject(value: Prisma.JsonValue | null): value is Prisma.JsonObject {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   private async createOrRestoreGoogleBindingInTransaction(
@@ -1099,5 +1293,28 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
           target.includes("active_user_provider_key")
         );
       });
+  }
+
+  private isPhoneCollision(error: unknown): boolean {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "P2002") {
+      return false;
+    }
+    const record = error as {
+      meta?: {
+        target?: unknown;
+        driverAdapterError?: { cause?: { constraint?: { index?: unknown; fields?: unknown } } };
+      };
+    };
+    return [
+      record.meta?.target,
+      record.meta?.driverAdapterError?.cause?.constraint?.index,
+      record.meta?.driverAdapterError?.cause?.constraint?.fields
+    ]
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .some((value) =>
+        String(value ?? "")
+          .toLowerCase()
+          .includes("phone")
+      );
   }
 }

@@ -49,8 +49,49 @@ Step 05 Auth runtime variables:
 - `AUTH_OTP_EMAIL_WEBHOOK_URL`: HTTPS/HTTP endpoint that receives `{ email, otp }`.
 - `AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS`: OTP delivery request timeout.
 
+### IM translation provider
+
+IM translation is server-side only. The browser calls NeeDo's authenticated
+`POST /api/v1/im/conversations/:conversationId/messages/translations` route;
+it never receives the provider key and never calls DeepL directly.
+
+- `IM_TRANSLATION_PROVIDER`: `disabled` (default) or `deepl`.
+- `IM_TRANSLATION_API_BASE_URL`: the DeepL API base URL. When `deepl` is
+  selected this is required; production requires HTTPS and rejects local hosts.
+- `IM_TRANSLATION_API_KEY`: server-only DeepL key. When `deepl` is selected it
+  is required and placeholder values are rejected.
+- `IM_TRANSLATION_TIMEOUT_MS`: per-request timeout, `500`–`30000` ms; examples
+  use `5000`.
+- `IM_TRANSLATION_MAX_RETRIES`: bounded retry count, `0`–`3`; examples use `2`.
+- `IM_TRANSLATION_MONTHLY_CHARACTER_LIMIT`: positive informational metadata
+  value; examples use `500000`. The current service does not enforce this as
+  an operator-side request threshold. DeepL and the configured DeepL account
+  remain authoritative for quota enforcement.
+
+With `IM_TRANSLATION_PROVIDER=disabled`, the backend can start without a key
+and eligible external-translation requests return the normal sanitized
+provider-unavailable error. Selecting `deepl` without both base URL and key is
+a startup configuration error; there is no silent browser fallback and no mock
+translation success. Keep the key in the backend environment/secret manager,
+never in `VITE_*`, frontend source, logs, or API responses.
+
+DeepL currently documents a 128 KiB total request limit and 500,000 translated
+characters per month for API Free. The provider partitions batches below the
+request limit. It handles HTTP 429 with bounded delayed exponential backoff and
+maps HTTP 456 to quota exhausted; a failed provider call is never cached as a
+translation. Official references: [usage and limits](https://developers.deepl.com/docs/resources/usage-limits)
+and [error handling](https://developers.deepl.com/docs/best-practices/error-handling).
+
 ### Verified registration and account-security variables
 
+- `AUTH_REGISTRATION_ENABLED`: environment-level registration boundary. When
+  `false`, both registration start and verification fail closed before request
+  validation or side effects. The database policy remains an additional runtime
+  control.
+- `AUTH_GOOGLE_ENABLED`: environment-level Google authentication boundary. When
+  `false`, every Google sign-in/link/unlink entry point fails closed and
+  `GOOGLE_AUTH_CLIENT_ID` may be omitted. When `true`, the client ID remains
+  mandatory and production validation requires a real Google Web OAuth client ID.
 - `AUTH_VERIFICATION_SECRET`: dedicated secret, at least 32 characters and
   different from both JWT secrets. It HMACs OTP digests/cooldown identities and
   derives the AES-GCM key for Google nonce encryption. It does not encrypt the

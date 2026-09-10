@@ -6,9 +6,14 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { ShopMembershipCardRedemptionRepository } from "../repositories/shop-membership-card-redemption.repository";
 import { AffiliateWithdrawalEligibilityRepository } from "../repositories/affiliate-withdrawal-eligibility.repository";
 import { AffiliateWithdrawalEligibilityService } from "../services/affiliate-withdrawal-eligibility.service";
 import { LedgerService } from "../services/ledger.service";
+import {
+  ShopMembershipRewardDebtAllocator,
+  type ShopMembershipRewardDebtRepositoryPort
+} from "../services/shop-membership-reward-debt-allocator.service";
 import {
   createWalletAdjustmentRequestBodySchema,
   financeReconciliationListQuerySchema,
@@ -45,11 +50,32 @@ export const createLedgerRoutes = (config: AppConfig, dependencies: AppDependenc
       dependencies.affiliateWithdrawalEligibilityRepository ??
         new AffiliateWithdrawalEligibilityRepository()
     );
-  const ledgerService = new LedgerService(
-    dependencies.ledgerRepository ?? new LedgerRepository(),
-    undefined,
-    affiliateWithdrawalEligibility
-  );
+  const ledgerRepository = dependencies.ledgerRepository ?? new LedgerRepository();
+  const redemptionRepository =
+    dependencies.shopMembershipCardRedemptionRepository ??
+    new ShopMembershipCardRedemptionRepository();
+  const rewardSettlementService = dependencies.ledgerService ?? new LedgerService(ledgerRepository);
+  const rewardDebtRepository =
+    redemptionRepository as Partial<ShopMembershipRewardDebtRepositoryPort>;
+  const rewardDebtAllocator =
+    rewardDebtRepository.listPendingRewardIds &&
+    rewardDebtRepository.lockPendingReward &&
+    rewardDebtRepository.markPendingRewardPaid
+      ? new ShopMembershipRewardDebtAllocator(
+          rewardDebtRepository as ShopMembershipRewardDebtRepositoryPort,
+          rewardSettlementService
+        )
+      : undefined;
+  const ledgerService =
+    dependencies.ledgerService ??
+    new LedgerService(
+      ledgerRepository,
+      undefined,
+      affiliateWithdrawalEligibility,
+      undefined,
+      undefined,
+      rewardDebtAllocator
+    );
   const controller = new LedgerController(ledgerService);
 
   router.get(

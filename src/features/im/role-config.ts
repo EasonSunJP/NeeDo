@@ -7,6 +7,7 @@ type ImScopeRoutes = {
   prefix: string;
   messages: string;
   newConversation: string;
+  chatRecord: (publicId: string) => string;
   conversation: (conversationId: string) => string;
   conversationInfo: (conversationId: string) => string;
   conversationMedia: (conversationId: string) => string;
@@ -61,6 +62,7 @@ function buildRoutes(scope: ImRoleType): ImScopeRoutes {
     prefix,
     messages: `${prefix}/messages`,
     newConversation: `${prefix}/messages/new`,
+    chatRecord: (publicId) => `${prefix}/messages/chat-records/${encodeURIComponent(publicId)}`,
     conversation: (conversationId) => `${prefix}/messages/${conversationId}`,
     conversationInfo: (conversationId) => `${prefix}/messages/${conversationId}/info`,
     conversationMedia: (conversationId) => `${prefix}/messages/${conversationId}/media`,
@@ -193,6 +195,18 @@ export function isProfileSearchableForRole(scope: ImRoleType, user?: ImUser) {
 
 export function canShareUserCard(scope: ImRoleType, user?: ImUser) {
   return Boolean(user && getImRoleConfig(scope).chatCapabilityConfig.shareableProfileKinds.includes(user.profileKind));
+}
+
+export function resolveImContactInformationPath(
+  scope: ImRoleType,
+  user?: ImUser,
+  profilesHidden = false,
+) {
+  if (!user || profilesHidden) {
+    return undefined;
+  }
+
+  return getImRoleConfig(scope).routes.directoryProfile(user.id);
 }
 
 export function resolveImProfilePath(scope: ImRoleType, user?: ImUser) {

@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -17,19 +17,23 @@ function shouldRenderTitleEyebrow(eyebrow?: ReactNode) {
 }
 
 function InteractiveWrapper({
+  ariaLabel,
   children,
   to,
   onClick,
-  className
+  className,
+  disabled = false
 }: {
+  ariaLabel?: string;
   children: ReactNode;
   to?: string;
   onClick?: () => void;
   className?: string;
+  disabled?: boolean;
 }) {
   if (to) {
     return (
-      <Link className={className} to={to}>
+      <Link aria-label={ariaLabel} className={className} to={to}>
         {children}
       </Link>
     );
@@ -37,7 +41,7 @@ function InteractiveWrapper({
 
   if (onClick) {
     return (
-      <button className={className} onClick={onClick} type="button">
+      <button aria-label={ariaLabel} className={className} disabled={disabled} onClick={onClick} type="button">
         {children}
       </button>
     );
@@ -46,10 +50,44 @@ function InteractiveWrapper({
   return <div className={className}>{children}</div>;
 }
 
+const COMPLETED_SEAL_PATH = "M12 2 13.63 3.81 15.83 2.76 16.64 5.06 19.07 4.93 18.94 7.36 21.24 8.17 20.19 10.37 22 12 20.19 13.63 21.24 15.83 18.94 16.64 19.07 19.07 16.64 18.94 15.83 21.24 13.63 20.19 12 22 10.37 20.19 8.17 21.24 7.36 18.94 4.93 19.07 5.06 16.64 2.76 15.83 3.81 13.63 2 12 3.81 10.37 2.76 8.17 5.06 7.36 4.93 4.93 7.36 5.06 8.17 2.76 10.37 3.81Z";
+
+function CompletedSealIconPath() {
+  const maskId = `completed-seal-${useId().replaceAll(":", "")}`;
+  return (
+    <>
+      <defs>
+        <mask height="24" id={maskId} maskUnits="userSpaceOnUse" width="24" x="0" y="0">
+          <path d={COMPLETED_SEAL_PATH} fill="white" />
+          <path
+            d="m7.1 12.1 3.3 3.3 6.8-6.9"
+            data-icon-part="completed-check-cutout"
+            fill="none"
+            stroke="black"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2.4"
+          />
+        </mask>
+      </defs>
+      <path
+        d={COMPLETED_SEAL_PATH}
+        data-icon-part="completed-seal"
+        fill="currentColor"
+        mask={`url(#${maskId})`}
+      />
+    </>
+  );
+}
+
 function iconPath(name: IconName) {
   switch (name) {
     case "back":
       return <path d="m14.5 6.5-5 5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
+    case "up":
+      return <path d="m6.5 14.5 5-5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
+    case "down":
+      return <path d="m6.5 9.5 5 5 5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
     case "close":
     case "x":
       return <path d="M7 7 17 17M17 7 7 17" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />;
@@ -188,6 +226,8 @@ function iconPath(name: IconName) {
           <circle cx="16" cy="16" r="2.6" stroke="currentColor" strokeWidth="2" />
         </>
       );
+    case "completed":
+      return <CompletedSealIconPath />;
     case "info":
       return (
         <>
@@ -233,6 +273,8 @@ function iconPath(name: IconName) {
 
 export type IconName =
   | "back"
+  | "up"
+  | "down"
   | "close"
   | "x"
   | "search"
@@ -257,6 +299,7 @@ export type IconName =
   | "bell"
   | "sparkles"
   | "moments"
+  | "completed"
   | "info"
   | "share"
   | "sync"
@@ -266,7 +309,7 @@ export type IconName =
 
 export function AppIcon({ name, className }: { name: IconName; className?: string }) {
   return (
-    <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+    <svg aria-hidden="true" className={cn("h-5 w-5", className)} data-app-icon={name} fill="none" viewBox="0 0 24 24">
       {iconPath(name)}
     </svg>
   );
@@ -277,20 +320,24 @@ export function IconButton({
   label,
   to,
   onClick,
-  className
+  className,
+  disabled = false
 }: {
   icon: IconName;
   label: string;
   to?: string;
   onClick?: () => void;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <InteractiveWrapper
+      ariaLabel={label}
       className={cn(
         "focus-ring inline-flex h-11 w-11 items-center justify-center rounded-full border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] backdrop-blur",
         className
       )}
+      disabled={disabled}
       onClick={onClick}
       to={to}
     >
@@ -353,6 +400,7 @@ export function IconMetricAction({
   count,
   countClassName,
   countStyle,
+  disabled = false,
   icon,
   iconClassName,
   label,
@@ -366,6 +414,7 @@ export function IconMetricAction({
   count: number | string;
   countClassName?: string;
   countStyle?: CSSProperties;
+  disabled?: boolean;
   icon: IconName;
   iconClassName?: string;
   label: string;
@@ -384,12 +433,15 @@ export function IconMetricAction({
 
   return (
     <InteractiveWrapper
+      ariaLabel={label}
       className={cn(
         "focus-ring relative flex items-start justify-center text-center",
         sizeClassName.root,
         interactive ? "" : "pointer-events-none",
+        disabled ? "cursor-not-allowed opacity-60" : "",
         className
       )}
+      disabled={disabled}
       onClick={onClick}
       to={to}
     >
@@ -526,16 +578,18 @@ export function PageScaffold({
   navItems,
   className,
   contentClassName,
-  showTopEdgeMask
+  showTopEdgeMask,
+  showBottomNav = true
 }: {
   children: ReactNode;
   navItems?: MobileNavItem[];
   className?: string;
   contentClassName?: string;
   showTopEdgeMask?: boolean;
+  showBottomNav?: boolean;
 }) {
   return (
-    <MobileShell className={className} navItems={navItems} showTopEdgeMask={showTopEdgeMask}>
+    <MobileShell className={className} navItems={navItems} showBottomNav={showBottomNav} showTopEdgeMask={showTopEdgeMask}>
       <div className={cn("mx-auto w-full max-w-[1480px] px-4 pb-28 pt-4 sm:px-6 lg:px-8", contentClassName)}>{children}</div>
     </MobileShell>
   );
@@ -551,6 +605,7 @@ export function AppTopBar({
   closeTo,
   actions,
   footer,
+  overlay,
   footerClassName,
   containerClassName,
   hideBackButton = false,
@@ -558,6 +613,7 @@ export function AppTopBar({
   closeLabel = "关闭",
   controlButtonClassName,
   className,
+  frameClassName,
   fixed = false
 }: {
   title: ReactNode;
@@ -569,6 +625,7 @@ export function AppTopBar({
   closeTo?: string;
   actions?: ReactNode;
   footer?: ReactNode;
+  overlay?: ReactNode;
   footerClassName?: string;
   containerClassName?: string;
   hideBackButton?: boolean;
@@ -576,6 +633,7 @@ export function AppTopBar({
   closeLabel?: string;
   controlButtonClassName?: string;
   className?: string;
+  frameClassName?: string;
   fixed?: boolean;
 }) {
   const navigate = useNavigate();
@@ -645,8 +703,9 @@ export function AppTopBar({
   return (
     <FloatingHomeHeader
       className="gap-0"
-      frameClassName="z-40"
+      frameClassName={cn("z-40", frameClassName)}
       maxWidth="1600px"
+      overlay={overlay}
       panelClassName={cn(appTopBarPanelClassName, className)}
       showSpacer={!fixed}
       spacerGapPx={0}

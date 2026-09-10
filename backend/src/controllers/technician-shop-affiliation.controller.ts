@@ -63,16 +63,18 @@ export class TechnicianShopAffiliationController {
   ): Promise<void> => {
     try {
       const { needoId } = merchantEmployeeParamSchema.parse(request.params);
-      response.status(200).json(
-        successResponse(
-          await this.service.getCurrentShopEmployeeSchedule(
-            getAuthenticatedAccess(response),
-            getRequestContext(request),
-            needoId,
-            merchantEmployeeScheduleQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getCurrentShopEmployeeSchedule(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              needoId,
+              merchantEmployeeScheduleQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -85,15 +87,17 @@ export class TechnicianShopAffiliationController {
   ): Promise<void> => {
     try {
       const { needoId } = merchantEmployeeParamSchema.parse(request.params);
-      response.status(200).json(
-        successResponse(
-          await this.service.getCurrentShopEmployeeTimeline(
-            getAuthenticatedAccess(response),
-            needoId,
-            merchantEmployeeTimelineQuerySchema.parse(request.query)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.getCurrentShopEmployeeTimeline(
+              getAuthenticatedAccess(response),
+              needoId,
+              merchantEmployeeTimelineQuerySchema.parse(request.query)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -107,16 +111,18 @@ export class TechnicianShopAffiliationController {
     try {
       const { needoId } = merchantEmployeeParamSchema.parse(request.params);
       const { message } = merchantEmployeeTimelineCommentBodySchema.parse(request.body);
-      response.status(201).json(
-        successResponse(
-          await this.service.addCurrentShopEmployeeTimelineComment(
-            getAuthenticatedAccess(response),
-            getRequestContext(request),
-            needoId,
-            message
+      response
+        .status(201)
+        .json(
+          successResponse(
+            await this.service.addCurrentShopEmployeeTimelineComment(
+              getAuthenticatedAccess(response),
+              getRequestContext(request),
+              needoId,
+              message
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }

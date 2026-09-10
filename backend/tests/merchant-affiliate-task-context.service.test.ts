@@ -305,7 +305,7 @@ describe("MerchantAffiliateTaskContextService", () => {
     repository.taskDisplayResources.shops[0] = { id: 11, publicId: null };
 
     await expect(service.presentTask(shopTask)).rejects.toMatchObject({
-      code: 40954,
+      code: 41040,
       statusCode: 409,
       message: "error.affiliate.shop_public_id_unavailable"
     });

@@ -10,6 +10,10 @@ const repositorySource = readFileSync(
   resolve(__dirname, "../src/repositories/realtime.repository.ts"),
   "utf8"
 );
+const messageSendTransactionSource = readFileSync(
+  resolve(__dirname, "../src/repositories/im-message-send.transaction.ts"),
+  "utf8"
+);
 
 describe("formal IM lifecycle compatibility", () => {
   it("tracks the already-applied lifecycle migrations and Prisma contract", () => {
@@ -39,8 +43,12 @@ describe("formal IM lifecycle compatibility", () => {
   });
 
   it("always supplies message lifecycle facts in formal sends and persisted seed chats", () => {
-    expect(repositorySource).toContain("recallWindowSeconds");
-    expect(repositorySource).toContain("recallDeadlineAt");
+    expect(repositorySource).toContain('from "./im-message-send.transaction"');
+    expect(repositorySource).toContain("persistImMessageInTransaction(tx,");
+    expect(messageSendTransactionSource).toContain("recallWindowSeconds");
+    expect(messageSendTransactionSource).toContain("recallDeadlineAt");
+    expect(messageSendTransactionSource).toContain("privacyPolicyVersionAtSend");
+    expect(messageSendTransactionSource).toContain("lifecycleVersion");
     expect(seedSource).toContain("recallDeadlineAt");
     expect(seedSource).toContain("privacyPolicyVersionAtSend");
   });

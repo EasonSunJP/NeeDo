@@ -124,6 +124,22 @@ ENV_FILE=.env.dev ADMIN_DEFAULT_PASSWORD=replace-with-a-local-secret npm run pri
 Do not edit an applied migration. If schema changes are required in a future
 step, create a new migration.
 
+## Technician income components and merchant identity profiles
+
+Migration `20260901120000_technician_income_and_merchant_profile` keeps the
+existing compensation records compatible while adding independently persisted
+service commission, extension commission, and nomination-fee settings. Existing
+extension commission values are backfilled from the previous aggregate
+commission rate; existing order financial rows keep nullable component columns
+and are treated as legacy aggregate records rather than receiving an inferred
+split.
+
+`merchant_identity_profiles` stores the merchant operator's personal information
+card by `user_id + identity_id`. It is separate from both `shops` and the same
+account's customer or technician profiles, so editing one identity cannot mutate
+another identity's card. Avatar media remains identity-owned through
+`owner_identity_id` and the generic `merchant_identity_profile` entity type.
+
 ## Seeded User Management Data
 
 `backend/prisma/seed.ts` initializes:

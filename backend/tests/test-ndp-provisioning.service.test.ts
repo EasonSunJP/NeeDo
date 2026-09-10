@@ -21,7 +21,9 @@ const makeWallet = (availableBalance: number) => ({
 const createFixture = () => {
   const transaction: jest.Mocked<TestNdpProvisioningTransactionPort> = {
     findCalibration: jest.fn(
-      async (idempotencyKey: string): ReturnType<TestNdpProvisioningTransactionPort["findCalibration"]> => {
+      async (
+        idempotencyKey: string
+      ): ReturnType<TestNdpProvisioningTransactionPort["findCalibration"]> => {
         void idempotencyKey;
         return null;
       }
@@ -32,28 +34,39 @@ const createFixture = () => {
         return { id: 41, isTestAccount: true };
       }
     ),
-    getOrCreateAndLockTestWallet: jest.fn(
-      async (userId: number) => {
-        void userId;
-        return makeWallet(TEST_NDP_TARGET_AVAILABLE);
-      }
+    getOrCreateAndLockTestWallet: jest.fn(async (userId: number) => {
+      void userId;
+      return makeWallet(TEST_NDP_TARGET_AVAILABLE);
+    }),
+    createCalibration: jest.fn(
+      async (input: Parameters<TestNdpProvisioningTransactionPort["createCalibration"]>[0]) => ({
+        status: "applied" as const,
+        userId: input.userId,
+        adjustmentAmount: input.amount,
+        availableBalance: TEST_NDP_TARGET_AVAILABLE
+      })
     ),
-    createCalibration: jest.fn(async (
-      input: Parameters<TestNdpProvisioningTransactionPort["createCalibration"]>[0]
-    ) => ({
-      status: "applied" as const,
-      userId: input.userId,
-      adjustmentAmount: input.amount,
-      availableBalance: TEST_NDP_TARGET_AVAILABLE
-    })),
-    recordZeroCalibration: jest.fn(async (
-      input: Parameters<TestNdpProvisioningTransactionPort["recordZeroCalibration"]>[0]
-    ) => ({
-      status: "applied" as const,
-      userId: input.userId,
-      adjustmentAmount: 0,
-      availableBalance: input.availableBalance
-    }))
+    recordZeroCalibration: jest.fn(
+      async (
+        input: Parameters<TestNdpProvisioningTransactionPort["recordZeroCalibration"]>[0]
+      ) => ({
+        status: "applied" as const,
+        userId: input.userId,
+        adjustmentAmount: 0,
+        availableBalance: input.availableBalance
+      })
+    ),
+    findTestShopAuthorityForUpdate: jest.fn().mockResolvedValue({
+      isTestAccount: true,
+      activeShopScope: true
+    }),
+    getOrCreateAndLockTestShopWallet: jest.fn().mockResolvedValue({
+      ...makeWallet(TEST_NDP_TARGET_AVAILABLE),
+      ownerType: "shop",
+      ownerId: 9
+    }),
+    createShopCalibration: jest.fn(),
+    recordZeroShopCalibration: jest.fn()
   };
   const repository = {
     runInTransaction: async <T>(
@@ -69,6 +82,58 @@ const createFixture = () => {
 };
 
 describe("TestNdpProvisioningService", () => {
+  it("calibrates an authorized test shop to 100000 TEST_NDP", async () => {
+    const { transaction, service } = createFixture();
+    transaction.findTestShopAuthorityForUpdate = jest.fn().mockResolvedValue({
+      isTestAccount: true,
+      activeShopScope: true
+    });
+    transaction.getOrCreateAndLockTestShopWallet = jest
+      .fn()
+      .mockResolvedValue({ ...makeWallet(20_000), ownerType: "shop", ownerId: 9 });
+    transaction.createShopCalibration = jest.fn().mockResolvedValue({
+      status: "applied",
+      userId: 41,
+      shopId: 9,
+      adjustmentAmount: 80_000,
+      availableBalance: 100_000
+    });
+    transaction.recordZeroShopCalibration = jest.fn();
+
+    await expect(service.calibrateShop({ shopId: 9, actorUserId: 41 })).resolves.toMatchObject({
+      status: "applied",
+      shopId: 9,
+      availableBalance: 100_000
+    });
+    expect(transaction.createShopCalibration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: "exchange-request-shop-test-ndp-v1:shop:9:calibrate",
+        actorUserId: 41,
+        shopId: 9,
+        walletId: 91,
+        currency: "TEST_NDP",
+        availableDelta: 80_000,
+        targetAvailableBalance: 100_000
+      })
+    );
+  });
+
+  it.each([
+    [{ isTestAccount: false, activeShopScope: true }],
+    [{ isTestAccount: true, activeShopScope: false }],
+    [null]
+  ])("refuses a formal actor or a foreign shop", async (authority) => {
+    const { transaction, service } = createFixture();
+    transaction.findTestShopAuthorityForUpdate.mockResolvedValue(authority);
+
+    await expect(service.calibrateShop({ shopId: 9, actorUserId: 41 })).rejects.toMatchObject({
+      statusCode: 403,
+      message: "error.forbidden"
+    });
+    expect(transaction.getOrCreateAndLockTestShopWallet).not.toHaveBeenCalled();
+    expect(transaction.createShopCalibration).not.toHaveBeenCalled();
+  });
+
   it.each([
     [0, 100_000, "available_credit", 100_000],
     [40_000, 60_000, "available_credit", 60_000],

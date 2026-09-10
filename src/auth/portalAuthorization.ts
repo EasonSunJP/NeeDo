@@ -1,95 +1,90 @@
-import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
+import {
+  createAuthInstanceId,
+  createCommittedAuthEnvelope,
+  readPersistedAuthEnvelope,
+  readPersistedAuthEnvelopeSnapshot,
+  writePersistedAuthEnvelope,
+  type RememberedByPortalV8
+} from "./authEnvelope";
 import type { PortalScope } from "./portal";
-import { authSessionVersion, isLoginMethod, normalizeAuthSessionEntityIds, type AuthSession } from "./rbac";
+import type { AuthSession } from "./rbac";
 
-const rememberedPortalSessionStoragePrefix = "needo.auth.portal-session";
-const rememberedPortalRefreshTokenStoragePrefix = "needo.auth.portal-refresh-token";
-const rememberedPortalStorageVersion = "v1";
-const frontendPortals: PortalScope[] = ["user", "merchant", "technician", "business"];
-
-function getRememberedPortalSessionStorageKey(portal: PortalScope) {
-  return `${rememberedPortalSessionStoragePrefix}.${portal}.${rememberedPortalStorageVersion}`;
-}
-
-function getRememberedPortalRefreshTokenStorageKey(portal: PortalScope) {
-  return `${rememberedPortalRefreshTokenStoragePrefix}.${portal}.${rememberedPortalStorageVersion}`;
-}
-
-function isStoredPortalSession(value: unknown, portal: PortalScope): value is AuthSession {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const session = value as Partial<AuthSession>;
-
-  return (
-    session.authVersion === authSessionVersion &&
-    session.portal === portal &&
-    typeof session.id === "number" &&
-    typeof session.needoId === "string" &&
-    typeof session.username === "string" &&
-    typeof session.email === "string" &&
-    (session.emailVerifiedAt === null || typeof session.emailVerifiedAt === "string") &&
-    typeof session.hasPassword === "boolean" &&
-    isLoginMethod(session.loginMethod) &&
-    Array.isArray(session.allowedPortals) &&
-    Array.isArray(session.roles) &&
-    Array.isArray(session.permissions) &&
-    Array.isArray(session.menus) &&
-    Array.isArray(session.identityAvailability)
-  );
+export function buildRememberedByPortal(
+  previous: RememberedByPortalV8,
+  session: AuthSession,
+  refreshToken: string
+): RememberedByPortalV8 {
+  return {
+    ...previous,
+    [session.portal]: { refreshToken, session }
+  };
 }
 
 export function readRememberedPortalSession(portal: PortalScope) {
-  const rawSession = readBrowserStorage(getRememberedPortalSessionStorageKey(portal), { silent: true });
-
-  if (!rawSession) {
-    return null;
-  }
-
-  try {
-    const parsedSession: unknown = JSON.parse(rawSession);
-
-    return isStoredPortalSession(parsedSession, portal) ? normalizeAuthSessionEntityIds(parsedSession) : null;
-  } catch {
-    return null;
-  }
+  return readRememberedPortalAuthorization(portal)?.session ?? null;
 }
 
 export function readRememberedPortalRefreshToken(portal: PortalScope) {
-  return readBrowserStorage(getRememberedPortalRefreshTokenStorageKey(portal), {
-    silent: true
-  });
+  return readRememberedPortalAuthorization(portal)?.refreshToken ?? null;
+}
+
+export function readRememberedPortalAuthorization(portal: PortalScope) {
+  const envelope = readPersistedAuthEnvelope();
+  return envelope?.state === "committed" ? (envelope.rememberedByPortal[portal] ?? null) : null;
 }
 
 export function hasRememberedPortalAuthorization(portal: PortalScope) {
-  return Boolean(readRememberedPortalSession(portal) && readRememberedPortalRefreshToken(portal));
+  const envelope = readPersistedAuthEnvelope();
+  return Boolean(envelope?.state === "committed" && envelope.rememberedByPortal[portal]);
 }
 
-export function rememberPortalAuthorization(session: AuthSession, refreshToken: string | null | undefined) {
-  if (!frontendPortals.includes(session.portal)) {
-    return;
-  }
-
-  writeBrowserStorage(getRememberedPortalSessionStorageKey(session.portal), JSON.stringify(session), { silent: true });
-
-  if (refreshToken) {
-    writeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(session.portal), refreshToken, { silent: true });
-    return;
-  }
-
-  removeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(session.portal), { silent: true });
+export async function rememberPortalAuthorization(
+  session: AuthSession,
+  refreshToken: string | null | undefined
+) {
+  if (!refreshToken) return false;
+  const snapshot = readPersistedAuthEnvelopeSnapshot();
+  const existing = snapshot?.envelope ?? null;
+  const sameUser = existing?.state === "committed" && existing.session.id === session.id;
+  const previous = sameUser ? existing.rememberedByPortal : {};
+  return await writePersistedAuthEnvelope(
+    createCommittedAuthEnvelope({
+      authInstanceId: sameUser ? existing.authInstanceId : createAuthInstanceId(),
+      credentialVersion: (existing?.credentialVersion ?? 0) + 1,
+      refreshToken,
+      session,
+      rememberedByPortal: buildRememberedByPortal(previous, session, refreshToken)
+    }),
+    { expectedRaw: snapshot?.raw ?? null }
+  );
 }
 
-export function forgetRememberedPortalAuthorization(portal: PortalScope) {
-  removeBrowserStorage(getRememberedPortalSessionStorageKey(portal), {
-    silent: true
-  });
-  removeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(portal), {
-    silent: true
-  });
+export async function forgetRememberedPortalAuthorization(portal: PortalScope) {
+  const snapshot = readPersistedAuthEnvelopeSnapshot();
+  const existing = snapshot?.envelope ?? null;
+  if (!existing || existing.state !== "committed") return true;
+  const rememberedByPortal = { ...existing.rememberedByPortal };
+  delete rememberedByPortal[portal];
+  return await writePersistedAuthEnvelope(
+    {
+      ...existing,
+      credentialVersion: existing.credentialVersion + 1,
+      rememberedByPortal
+    },
+    { expectedRaw: snapshot?.raw ?? null }
+  );
 }
 
-export function forgetAllRememberedPortalAuthorizations() {
-  frontendPortals.forEach((portal) => forgetRememberedPortalAuthorization(portal));
+export async function forgetAllRememberedPortalAuthorizations() {
+  const snapshot = readPersistedAuthEnvelopeSnapshot();
+  const existing = snapshot?.envelope ?? null;
+  if (!existing || existing.state !== "committed") return true;
+  return await writePersistedAuthEnvelope(
+    {
+      ...existing,
+      credentialVersion: existing.credentialVersion + 1,
+      rememberedByPortal: {}
+    },
+    { expectedRaw: snapshot?.raw ?? null }
+  );
 }

@@ -16,8 +16,58 @@ describe("UserOrderDetailPage header", () => {
     expect(source).toContain("function FormalUserOrderDetailPage");
     expect(source).toContain("bookingApi.getOrder(orderId)");
     expect(source).toContain("bookingApi.cancelOrder(orderId");
-    expect(source).toContain("order.statusHistory.map");
+    expect(source).toContain("buildFormalOrderTimelineEvents(order)");
     expect(source).toContain("重新加载预约详情");
     expect(source).toContain("isBookingApiId(orderId) ? <FormalUserOrderDetailPage");
+  });
+
+  it("uses only formal server projections for fulfillment and checkout", () => {
+    expect(source).toContain("coreReadApi.listServices");
+    expect(source).toContain("bookingApi.startService");
+    expect(source).toContain("bookingApi.createAddOn");
+    expect(source).toContain("bookingApi.acceptAddOn");
+    expect(source).toContain("bookingApi.rejectAddOn");
+    expect(source).toContain("bookingApi.endService");
+    expect(source).toContain("bookingApi.getCheckout");
+    expect(source).toContain("bookingApi.selectPaymentMethod");
+    expect(source).toContain("bookingApi.payWithNdp");
+    expect(source).not.toContain("orderServiceSessionStore");
+    expect(source).not.toContain("emptyServices");
+    expect(source).not.toContain("getServiceStartCode");
+    expect(source).not.toContain("submitOrderServiceUserReview");
+    expect(source).not.toContain("localStorage");
+    expect(source).not.toContain("sessionStorage");
+    expect(source).toContain("bookingApi.createTimelineComment");
+    expect(source).toContain("useOrderRealtimeRefresh");
+  });
+
+  it("keeps the production order-detail information hierarchy", () => {
+    expect(source).toContain("SocialProfileMiniCard");
+    expect(source).toContain("UnifiedServiceInfoCard");
+    expect(source).toContain("mapCoreServiceCardToUnifiedData");
+    for (const title of ["服务", "店铺 / 服务方", "技师 / 担当", "预约情报", "订单追踪信息"]) {
+      expect(source).toContain(`title=\"${title}\"`);
+    }
+    expect(source).toContain('getScopedTechnicianDynamicPath("user", displayTechnician)');
+    expect(source).not.toContain('detailTo={`/technicians/${displayTechnician.id}`}');
+    expect(source).toContain("bookingPaymentMethodLabel(order.paymentMethod, order.fulfillmentMode)");
+    expect(source).toContain("tags: [...live.tags.filter");
+    expect(source).not.toContain("function SummaryStat");
+    expect(source).not.toContain('label="来源"');
+    expect(source).toContain("服务验证码");
+  });
+
+  it("uses honest snapshots when formal service metadata cannot be read", () => {
+    expect(source).toContain("buildBookingOrderSnapshotServiceData(order)");
+    expect(source).toContain("order.serviceDurationSnapshot ?? getPersistedBookingDurationMinutes(order)");
+    expect(source).toContain("completedOrderCount: null");
+    expect(source).toContain("shopPublicId: null");
+    expect(source).toContain("shopAddress: null");
+    expect(source).toContain("buildOrderServiceMiniCardData(order)");
+  });
+
+  it("routes the order technician card to the formal user-scoped information page", () => {
+    expect(source).toContain('getScopedTechnicianDynamicPath("user", displayTechnician)');
+    expect(source).not.toContain("detailTo={`/technicians/${displayTechnician.id}`}");
   });
 });

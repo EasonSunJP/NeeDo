@@ -1,7 +1,46 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import storeDetailSource from "../../pages/user/StoreDetailPage.tsx?raw";
 import appScaffoldSource from "./AppScaffold.tsx?raw";
-import { getAdaptiveTabLabelClass } from "./AppScaffold";
+import { AppIcon, getAdaptiveTabLabelClass, IconButton } from "./AppScaffold";
+
+describe("completed icon", () => {
+  it("renders the completed check as a transparent mask cutout", () => {
+    const markup = renderToStaticMarkup(createElement(AppIcon, { name: "completed" }));
+
+    expect(markup).toContain("<mask");
+    expect(markup).toContain('maskUnits="userSpaceOnUse"');
+    expect(markup).toContain('data-icon-part="completed-seal"');
+    expect(markup).toContain('fill="currentColor"');
+    expect(markup).toContain('data-icon-part="completed-check-cutout"');
+    expect(markup).toContain('stroke="black"');
+    expect(markup).not.toContain('stroke="#f7f9f7"');
+    expect(markup).not.toContain("M4.4 15.3A8.2 8.2");
+  });
+
+  it("uses an isolated mask for every completed icon instance", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        "div",
+        null,
+        createElement(AppIcon, { name: "completed" }),
+        createElement(AppIcon, { name: "completed" })
+      )
+    );
+    const maskIds = [...markup.matchAll(/<mask[^>]* id="([^"]+)"/gu)].map((match) => match[1]);
+    const maskReferences = [...markup.matchAll(/mask="url\(#([^)]+)\)"/gu)].map((match) => match[1]);
+
+    expect(maskIds).toHaveLength(2);
+    expect(new Set(maskIds).size).toBe(2);
+    expect(maskReferences).toHaveLength(2);
+    expect(new Set(maskReferences).size).toBe(2);
+    expect([...new Set(maskReferences)].sort()).toEqual([...new Set(maskIds)].sort());
+    maskReferences.forEach((maskId) => {
+      expect(maskIds.filter((candidate) => candidate === maskId)).toHaveLength(1);
+    });
+  });
+});
 
 describe("FeatureSegmentedTabs adaptive labels", () => {
   it("lightly compresses dense four-character labels without touching short labels", () => {
@@ -80,5 +119,20 @@ describe("IconMetricAction shared shell", () => {
     expect(appScaffoldSource).toContain("text-[color:var(--client-primary)]");
     expect(appScaffoldSource).not.toContain("white_92%");
     expect(appScaffoldSource).not.toContain("white_82%");
+  });
+});
+
+describe("IconButton disabled semantics", () => {
+  it("keeps an unavailable action as a native disabled button", () => {
+    const markup = renderToStaticMarkup(createElement(IconButton, {
+      disabled: true,
+      icon: "up",
+      label: "上移",
+      onClick: () => undefined
+    }));
+
+    expect(markup).toMatch(/^<button /u);
+    expect(markup).toContain('aria-label="上移"');
+    expect(markup).toContain("disabled");
   });
 });

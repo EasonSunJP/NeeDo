@@ -4,6 +4,7 @@ import { createApp } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { buildRolePermissionAssignments } from "../src/constants/permissions.constants";
 import type { PlatformFeePolicyRepositoryPort } from "../src/services/platform-fee-policy.service";
+import { createMerchantAccountShopContextRepository } from "./helpers/merchant-shop-context";
 
 const now = new Date("2026-08-29T00:00:00.000Z");
 
@@ -119,8 +120,8 @@ const createFixture = async () => {
       username: "Merchant",
       role: merchantOwnerRole,
       identities: [
-        identity(4, 4, "merchant", "merchant_account", 4, true),
-        identity(5, 4, "merchant", "merchant_account", 5, false),
+        identity(4, 4, "merchant_organization", "merchant_account", 4, true),
+        identity(5, 4, "merchant_organization", "merchant_account", 5, false),
         identity(6, 4, "customer", "customer_profile", 7, false),
         identity(7, 4, "technician", "technician_profile", 8, false)
       ]
@@ -205,6 +206,12 @@ const createFixture = async () => {
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository: { create: jest.fn(async () => undefined) },
+    merchantShopContextRepository: createMerchantAccountShopContextRepository({
+      merchantAccountId: 4,
+      shopId: 11,
+      shopPublicId: "shop0000000011",
+      additionalMemberships: [{ merchantAccountId: 5, shopId: 12, shopPublicId: "shop0000000012" }]
+    }),
     platformFeePolicyRepository
   } as never);
   const loginPair = async (email: string) => {

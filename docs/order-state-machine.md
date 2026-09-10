@@ -13,10 +13,13 @@ Implemented:
 - Booking order state transitions: pending, confirmed, inService, completed, cancelled.
 - Slot capacity and active-order conflict checks to prevent oversell.
 - Order status history records for every creation and transition.
+- Operations order detail projects persisted add-on proposal, acceptance, and rejection events into the auditable order timeline with immutable service name, price, and duration snapshots.
 - Order list/detail/transition access is scoped from the active authenticated identity: customers by `customer_user_id`, merchants by `shop_id`, technicians by `technician_profile_id`, and platform identities by their global operations role. Client-supplied filters cannot widen this scope. Out-of-scope detail or transition attempts return `error.order.not_found`.
 - Frontend checkout/orders API lane for numeric backend ids, with legacy local demo ids left intact.
 - Merchant and technician schedule portals create, block, restore, and soft-delete formal slots; the shared calendar reads the same backend records.
 - Booking orders persist `onsite` or `bank_transfer` payment selection and the formal manual-payment lifecycle.
+- Home-service Booking creation requires a short-lived, unconsumed route estimate bound to the authenticated customer, shop, service, selected schedule slot, normalized destination hash, active fare-policy version, and selected distance band. Changing the slot requires a new estimate. Store bookings reject travel-estimate injection.
+- Estimate consumption, the Booking row, normalized fulfillment-address snapshot, and immutable `booking_travel_fare_snapshots` row share the same transaction. Concurrent reuse has exactly one winner; expired, consumed, or mismatched estimates leave no partial Booking.
 
 Reserved only:
 
@@ -73,6 +76,11 @@ Public:
 Authenticated:
 
 - `POST /api/v1/bookings`
+- `POST /api/v1/bookings/travel-estimates`
+- `GET /api/v1/merchant-admin/travel-fare-policy`
+- `GET|POST /api/v1/merchant-admin/travel-fare-policy/versions`
+- `GET /api/v1/backoffice/travel/providers/status`
+- `GET /api/v1/backoffice/travel/fare-policies`
 - `GET /api/v1/orders`
 - `GET /api/v1/orders/:id`
 - `POST /api/v1/orders/:id/confirm`
@@ -151,13 +159,23 @@ Oversell or conflict returns:
 }
 ```
 
+## Home-service route fare
+
+- The route origin is always the persisted shop address. The customer submits a structured Japanese destination (`countryCode=JP`, postal code, prefecture, city, street, and optional building fields); a client cannot submit distance, duration, fare, shop origin, policy, or band.
+- Geoapify is the first routing provider and uses the driving profile. `TRAVEL_ROUTE_PROVIDER=geoapify` plus `GEOAPIFY_API_KEY` enables it. `GEOAPIFY_API_BASE_URL`, timeout, retry count, estimate TTL, and positive/negative cache TTL are environment-configured and validated.
+- Provider credentials, raw provider payloads, normalized address inputs, and address-hash inputs never appear in route-estimate/provider/operations responses or audit metadata. Operations receives only redacted readiness and policy visibility; the authenticated customer's own order detail may return its fulfillment-address snapshot.
+- An unconfigured provider returns `error.travel.provider_unconfigured`. The redacted operations status is `configured` before the first observed request, then records `healthy`, `rate_limited`, or `unavailable` with its observation time. Rate limits, timeouts, missing routes, malformed responses, provider failures, outside-area distances, and missing policies keep distinct stable errors. There is no static-distance or fabricated-fare fallback.
+- Fare policies are shop-owned immutable versions. Bands must have strictly increasing positive maximum driving distances and non-negative integer JPY fares. The first inclusive matching upper bound owns the fare; a distance beyond the greatest band is outside the service area.
+- Checkout arithmetic is `base JPY + accepted add-ons JPY + snapshotted travel fare JPY - discount JPY`. The immutable result is converted with the effective NDP rate using the existing ceiling rule.
+- Operations `travel_fare` recognizes only completed, payment-evidenced, non-refunded, non-reversed checkouts whose arithmetic and booking travel snapshot agree. Detail rows expose distance, policy version, band limit, and fare, never the full customer address.
+
 ## Manual Payment Rules
 
 - Initial methods are limited to `onsite` and `bank_transfer`; no external gateway can create a paid transaction.
 - A payment can be confirmed only after the order is confirmed and before/after service completion. The confirmed amount must equal the order price snapshot.
 - Merchant mutations are restricted to the authenticated shop. Operations/finance mutations require a platform identity and the backoffice payment-write permission.
 - Repeating the exact same confirmation or refund returns the existing order without another mutation or audit event. A different retry returns a stable conflict.
-- Cancelling a confirmed paid order changes payment status to `refundPending`. A cancelled `refundPending` payment or a completed confirmed payment can be marked `refunded`.
+- Cancelling a confirmed paid order changes payment status to `refundPending`; the direct merchant/backoffice payment-refund endpoints may finalize only that cancelled `refundPending` pre-completion path. A `COMPLETED` + `CONFIRMED` order must use the formal `OrderRefundCase` workflow and becomes `REFUNDED` only when its customer confirms receipt.
 - Confirmation and refund update the order plus `order_financials` money timeline in one database transaction. Each applied action also writes an audit log.
 
 ## Frontend Integration
@@ -190,3 +208,28 @@ ENV_FILE=.env.dev npm run check:manual-payment-flow
 ```
 
 It verifies amount matching, cross-shop hiding, confirmation/refund idempotency, `refundPending` cancellation behavior and order-finance synchronization before exact cleanup.
+
+## Unified calendar and multi-participant scheduling
+
+The user, technician, merchant, and participant-confirmation surfaces share the existing `UnifiedUserCalendar` timeline and draft-range renderer. Technician availability is not rendered as a normal event card: adjacent or overlapping availability rows are merged per technician lane and displayed as one narrow continuous strip on the left edge of that lane. Booking and personal-event cards keep the normal content area to the right. Availability may overlap a real booking and is never itself treated as a conflict.
+
+The shared event editor opens a two-step participant flow:
+
+- The contact step searches real active contacts and filters them by common, contact-tag, or group membership.
+- The confirmation step displays the current identity and selected contacts as parallel lanes, with one controlled draft range spanning every lane.
+- Moving or resizing that single range updates the original editor draft in 15-minute increments.
+- Strict overlap is `candidateStart < existingEnd && candidateEnd > existingStart`; adjacent ranges do not conflict.
+- Conflict is a red visual warning only. It does not disable “完成选择” or the final event save action.
+
+The authenticated privacy endpoint is:
+
+```text
+GET /api/v1/calendar-events/participant-busy
+  ?from=<ISO-8601>
+  &to=<ISO-8601>
+  &participant_identity_ids=<comma-separated identity ids>
+  &page=1
+  &page_size=100
+```
+
+It requires `calendar-events:read`, validates a maximum of 20 distinct positive identities and a maximum 24-hour query window, and authorizes every requested identity as an active, unblocked, non-deleted contact of the current personal identity. Any unauthorized identity rejects the whole request with `403`; partial disclosure is not allowed. The paginated result merges formal calendar events with confirmed/in-service booking occupancy before sorting. Successful rows contain only `participantIdentityId`, `startsAt`, `endsAt`, and `status: "locked"`. Event IDs, titles, services, locations, customers, notes, prices, and source identifiers never leave the repository projection.

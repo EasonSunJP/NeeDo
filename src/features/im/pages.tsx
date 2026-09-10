@@ -14,10 +14,12 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ApiClientError } from "../../api/httpClient";
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
+import { TestFeatureBadge } from "../../components/ui/TestFeatureBadge";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../../components/scheduling/ScheduleDraftRangeBlock";
@@ -53,9 +55,13 @@ import {
   type MerchantManualStaffRoleRecord
 } from "../../lib/merchantStaffRoles";
 import { cn } from "../../lib/utils";
-import { useI18n } from "../../i18n/I18nProvider";
+import { useI18n, useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
-import { SocialProfileMiniCard } from "../../shared/profile-card";
+import {
+  PlatformMembershipSimpleCard,
+  TechnicianPublicInfoCard,
+  type TechnicianFormalContactCardData,
+} from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import { getTechnicianScheduleStoreSnapshot } from "../../state/technicianScheduleStore";
@@ -93,19 +99,47 @@ import {
   ImTopBar,
   MessageBubble,
   SectionTag,
-  ToggleRow
+  ToggleRow,
+  type ImChatComposerPanel
 } from "./components";
 import {
   UnifiedChatHeaderAction,
   UnifiedChatHomePage,
   UnifiedConversationItem,
   UnifiedConversationList,
+  ImRuntimeI18nPreviewText,
   UnifiedPinnedConversationDivider,
-  UnifiedPinnedConversationToggle
+  UnifiedPinnedConversationToggle,
+  type ImRuntimeI18nPreview,
 } from "./chat-home";
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import { ConversationIdentityProfileCard } from "./ConversationIdentityProfileCard";
+import { ImVoiceRecordingOverlay } from "./ImVoiceRecordingOverlay";
+import { OpenedImMediaViewer } from "./OpenedImMediaViewer";
+import { MembershipSupportEntry } from "./MembershipSupportEntry";
+import {
+  ImMessageMultiSelectCircle,
+  ImMessageMultiSelectOverlay,
+  type ImMultiSelectAction,
+} from "./ImMessageMultiSelectOverlay";
+import {
+  buildImMessageMultiSelectCopyText,
+  isImMessageChatRecordSnapshotEligible,
+  isImMessageMultiSelectEligible,
+  useImMessageMultiSelect,
+} from "./useImMessageMultiSelect";
 import { getImReturnScrollBehavior, observeImLatestPosition } from "./conversation-scroll";
+import {
+  buildImMessageTranslationBatches,
+  collectCompletedImMessageTranslationIds,
+  getImMessageCopyText,
+  getImTranslationTargetLanguage,
+  imAutomaticTranslationRetryDelayMs,
+  isImMessageTranslationEligible,
+  mergeTranslatedImMessageResults,
+  resolveVisibleImMessageTranslation,
+  type VisibleMessageTranslation,
+} from "./message-translation";
 import {
   FriendDeletionConfirmDialog,
   useFriendDeletionConfirmation,
@@ -115,7 +149,8 @@ import {
   deriveCurrentUserReactionSlots,
   getImReactionCategory,
   getImReactionFailureMessage,
-  materializeImComposerDraft,
+  restoreImComposerDraft,
+  serializeImComposerMessage,
   sortImReactionSummaries,
   type ImReactionCategory
 } from "./reaction-policy";
@@ -144,12 +179,14 @@ import {
   type DirectoryProfile,
   type FriendRequest,
   type GroupInfoEditPolicy,
+  type ImContactCardCandidate,
   type ImMessageType,
   type ImRoleType,
   type ImSearchResult,
   type ImUser,
   type MessageCampaignImageInput,
   type MessageExt,
+  type TechnicianContactDetails,
   type TagMessageCampaignEstimate,
   type TagMessageCampaignResult
 } from "./model";
@@ -167,8 +204,10 @@ import {
   type GroupPrivacyCountdownField,
   type GroupPrivacyCountdownInput,
 } from "./privacy-countdown";
-import { canShareUserCard, getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImProfilePath } from "./role-config";
+import { getImHomeRoute, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImContactInformationPath, resolveImProfilePath } from "./role-config";
 import { useImScope } from "./scope";
+import { translateImUiText } from "./ui-copy";
+import { MAX_VOICE_RECORDING_SECONDS, useImVoiceRecording } from "./useImVoiceRecording";
 import {
   getBlockedContacts,
   getContactConversation,
@@ -179,7 +218,8 @@ import {
   getServiceContacts,
   getIncomingPendingFriendRequestCount,
   selectLatestFriendRequestsByCounterpart,
-  useImStore
+  useImStore,
+  type ImStoreHook
 } from "./store";
 import { useSocial } from "../social/context";
 import { socialPaths } from "../social/paths";
@@ -226,26 +266,103 @@ export type DirectoryProfileAction =
   | "waiting"
   | "status";
 
+type FormalTechnicianProfileCard = {
+  technician: Technician;
+  formalData: TechnicianFormalContactCardData;
+};
+
+function buildFormalTechnicianProfileCard(
+  profile: DirectoryProfile | null | undefined,
+): FormalTechnicianProfileCard | null {
+  if (
+    !profile ||
+    profile.identityCard.entityType !== "technician" ||
+    !profile.technicianContactDetails
+  ) {
+    return null;
+  }
+
+  const details: TechnicianContactDetails = profile.technicianContactDetails;
+  const identityCard = profile.identityCard;
+  const rating = identityCard.creditValue ?? 0;
+
+  return {
+    technician: {
+      id: identityCard.profileId ?? profile.user.id,
+      systemId: profile.user.userIdLabel,
+      name: identityCard.displayName,
+      nickname: identityCard.displayName,
+      storeId: details.services[0]?.shopId ? String(details.services[0].shopId) : "",
+      role: "therapist",
+      status: "available",
+      rating,
+      orderCount: details.completedOrderCount,
+      income: 0,
+      skills: [],
+      serviceAreas: identityCard.serviceArea ? [identityCard.serviceArea] : [],
+      acceptRate: details.acceptanceRateBps / 100,
+      cancelRate: 0,
+      reviewCount: identityCard.creditReviewCount,
+      languages: identityCard.languages,
+      avatar: profile.user.avatar,
+      age: identityCard.age === undefined ? undefined : String(identityCard.age),
+      height: identityCard.heightCm === undefined ? undefined : String(identityCard.heightCm),
+      bio: identityCard.bio,
+      identityLabel: identityCard.identityLabel === "店铺所属技师"
+        ? "店铺所属技师"
+        : "个人技师",
+    },
+    formalData: {
+      metrics: {
+        completedOrderCount: details.completedOrderCount,
+        ratingAverage: rating.toFixed(2),
+        reviewCount: identityCard.creditReviewCount,
+        acceptanceRateBps: details.acceptanceRateBps,
+      },
+      contactDetails: {
+        bidBudgetMinJpy: details.bidBudgetMinJpy,
+        bidBudgetMaxJpy: details.bidBudgetMaxJpy,
+        paymentMethods: details.paymentMethods,
+        specialTags: details.specialTags,
+        profileTags: details.profileTags,
+        services: details.services,
+      },
+    },
+  };
+}
+
+export function isActiveFriendRequest(
+  request: FriendRequest | null | undefined,
+  nowMs: number = Date.now(),
+) {
+  return Boolean(
+    request?.status === "pending" &&
+    Date.parse(request.expiresAt) > nowMs,
+  );
+}
+
 export function resolveDirectoryProfileActions(
   profile: DirectoryProfile,
   request: FriendRequest | null,
   currentUserId: string,
   nowMs: number = Date.now(),
 ): DirectoryProfileAction[] {
-  if (profile.relationship === "friend") {
+  if (profile.relationship === "self") {
     return [];
   }
 
-  const activePending =
-    request?.status === "pending" &&
-    Date.parse(request.expiresAt) > nowMs;
+  const activePending = isActiveFriendRequest(request, nowMs);
 
-  if (activePending && request.toUserId === currentUserId) {
+  if (activePending && request?.toUserId === currentUserId) {
     return ["reject", "accept"];
   }
 
   if (activePending) {
     return ["waiting"];
+  }
+
+  if (profile.relationship === "friend") {
+    return [];
   }
 
   if (request) {
@@ -1160,6 +1277,92 @@ function getConversationProfileTarget(scope: ReturnType<typeof useImScope>, stor
   return resolveImProfilePath(scope, getConversationPartner(store, conversation));
 }
 
+function getPreviewLabelForMessageType(messageType: ConversationMessage["type"] | undefined) {
+  if (messageType === "contact-card") return "[名片]";
+  if (messageType === "service-card") return "[服务]";
+  if (messageType === "social-post-card") return "[动态]";
+  if (messageType === "schedule-invite") return "[日程邀请]";
+  return undefined;
+}
+
+function buildConversationRawPreview(conversation: Conversation): ImRuntimeI18nPreview {
+  const preview = buildConversationRowPreview(conversation);
+
+  if (preview.isDraft) {
+    return {
+      ...preview,
+      runtimeI18nProtected: true,
+    };
+  }
+
+  if (
+    conversation.type === "system"
+    || conversation.privacyModeEnabled
+    || conversation.lastMessageStatus === "recalled"
+  ) {
+    return preview;
+  }
+
+  if (
+    conversation.lastMessageType === "text"
+    || conversation.lastMessageType === "emoji"
+    || (conversation.lastMessageType === "file" && preview.text !== "文件")
+  ) {
+    return { ...preview, runtimeI18nProtected: true };
+  }
+
+  const uiLabel = getPreviewLabelForMessageType(conversation.lastMessageType);
+  const prefix = uiLabel ? `${uiLabel} ` : "";
+  const dynamicValue = prefix && preview.text.startsWith(prefix)
+    ? preview.text.slice(prefix.length)
+    : undefined;
+
+  return {
+    ...preview,
+    runtimeI18nProtected: Boolean(dynamicValue),
+    uiLabel: dynamicValue ? uiLabel : undefined,
+    dynamicValue,
+  };
+}
+
+function buildMessageRawPreview(
+  message: ConversationMessage,
+  currentUserId: string,
+  usersById: Record<string, ImUser>,
+): ImRuntimeI18nPreview {
+  const text = buildMessagePreview(message, currentUserId, usersById);
+
+  if (message.type === "system" || message.type === "recalled" || message.status === "recalled") {
+    return { text };
+  }
+
+  if (message.type === "text" || message.type === "emoji") {
+    return { text, runtimeI18nProtected: true };
+  }
+
+  if (message.type === "file" && message.ext?.fileName?.trim()) {
+    return { text, runtimeI18nProtected: true };
+  }
+
+  const uiLabel = getPreviewLabelForMessageType(message.type);
+  const dynamicValue = message.type === "contact-card"
+    ? message.ext?.contactCard?.displayName?.trim()
+    : message.type === "service-card"
+      ? message.ext?.serviceCard?.name?.trim()
+      : message.type === "social-post-card"
+        ? message.ext?.socialPostCard?.authorName?.trim()
+      : message.type === "schedule-invite"
+        ? message.ext?.scheduleInvite?.title?.trim()
+        : undefined;
+
+  return {
+    text,
+    runtimeI18nProtected: Boolean(uiLabel && dynamicValue),
+    uiLabel: dynamicValue ? uiLabel : undefined,
+    dynamicValue,
+  };
+}
+
 function appendQuery(path: string, entries: Record<string, string | string[] | undefined>) {
   const searchParams = new URLSearchParams();
 
@@ -1249,31 +1452,7 @@ export function ImContactActivityEntry({
   );
 }
 
-const maxVoiceRecordingSeconds = 60;
-const preferredVoiceMimeTypes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"] as const;
-
-type VoiceRecordingState = {
-  active: boolean;
-  cancel: boolean;
-  durationSeconds: number;
-  startedAt?: number;
-};
-
-const idleVoiceRecordingState: VoiceRecordingState = {
-  active: false,
-  cancel: false,
-  durationSeconds: 0
-};
-
-function getSupportedVoiceMimeType() {
-  if (typeof MediaRecorder === "undefined") {
-    return undefined;
-  }
-
-  return preferredVoiceMimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType));
-}
-
-function readBlobAsDataUrl(blob: Blob) {
+function readImageBlobAsDataUrl(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
 
@@ -1289,6 +1468,31 @@ function readBlobAsDataUrl(blob: Blob) {
 
     reader.readAsDataURL(blob);
   });
+}
+
+function getVoiceRecordingFileExtension(blob: Blob) {
+  if (blob.type.toLowerCase().includes("mp4")) return "mp4";
+  if (blob.type.toLowerCase().includes("ogg")) return "ogg";
+  return "webm";
+}
+
+function getVoiceRecordingErrorSource(errorKey: string) {
+  if (errorKey === "error.im.voice_input_muted") {
+    return "没有检测到麦克风声音，请检查输入设备后重试";
+  }
+  if (errorKey === "error.im.voice_permission_denied") {
+    return "请允许麦克风权限后重试";
+  }
+  if (errorKey === "error.im.voice_unsupported") {
+    return "当前设备不支持浏览器录音";
+  }
+  if (errorKey === "error.im.voice_autoplay_blocked") {
+    return "自动播放已暂停，请点击重放";
+  }
+  if (errorKey === "error.im.voice_recording_failed") {
+    return "录音失败，请重试";
+  }
+  return "语音发送失败，请重试";
 }
 
 function readImageSize(src: string) {
@@ -1485,6 +1689,61 @@ function ImQuickMenuItem({
   );
 }
 
+function ImHeaderQuickMenu({
+  anchorRef,
+  children
+}: {
+  anchorRef: { current: HTMLDivElement | null };
+  children: ReactNode;
+}) {
+  const [position, setPosition] = useState<CSSProperties>({ opacity: 0 });
+
+  useLayoutEffect(() => {
+    const updatePosition = () => {
+      const anchor = anchorRef.current;
+
+      if (!anchor) {
+        return;
+      }
+
+      const rect = anchor.getBoundingClientRect();
+      setPosition({
+        opacity: 1,
+        right: Math.max(12, window.innerWidth - rect.right),
+        top: rect.bottom + 10
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("scroll", updatePosition, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.visualViewport?.removeEventListener("resize", updatePosition);
+      window.visualViewport?.removeEventListener("scroll", updatePosition);
+    };
+  }, [anchorRef]);
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const portalHost = anchorRef.current?.closest(".client-shell") ?? document.body;
+
+  return createPortal(
+    <div
+      className="fixed z-[120] w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl"
+      data-im-header-quick-menu="true"
+      style={position}
+    >
+      {children}
+    </div>,
+    portalHost
+  );
+}
+
 export function ImMessagesEntryPage() {
   const [searchParams] = useSearchParams();
   const compatConversationId = searchParams.get("chat");
@@ -1519,6 +1778,13 @@ export function ImConversationListPage() {
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
   const [conversationActionError, setConversationActionError] = useState("");
+  useEffect(() => {
+    if (store.status !== "ready") {
+      return;
+    }
+
+    void store.refresh();
+  }, [store.refresh, store.status]);
   const [pinnedCollapsed, setPinnedCollapsed] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -1610,7 +1876,11 @@ export function ImConversationListPage() {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
 
-      if (target instanceof Node && quickMenuRef.current?.contains(target)) {
+      if (
+        target instanceof Node &&
+        (quickMenuRef.current?.contains(target) ||
+          (target instanceof Element && target.closest('[data-im-header-quick-menu="true"]')))
+      ) {
         return;
       }
 
@@ -1685,7 +1955,7 @@ export function ImConversationListPage() {
       return;
     }
 
-    const url = await readBlobAsDataUrl(file);
+    const url = await readImageBlobAsDataUrl(file);
     const size = await readImageSize(url).catch(() => undefined);
 
     setCampaignImage({
@@ -1784,7 +2054,7 @@ export function ImConversationListPage() {
   }, [pinnedCollapsed, pinnedCollapsedStorageKey]);
 
   const renderConversationItem = (conversation: Conversation, showDivider: boolean) => {
-    const preview = buildConversationRowPreview(conversation);
+    const preview = buildConversationRawPreview(conversation);
     const title = getConversationDisplayName(store, conversation);
     const pinActionLabel = conversation.isPinned ? "取消置顶" : "置顶";
     const avatarTarget = getConversationProfileTarget(scope, store, conversation);
@@ -1867,13 +2137,13 @@ export function ImConversationListPage() {
               <ImIcon name="add" />
             </UnifiedChatHeaderAction>
             {quickMenuOpen ? (
-              <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl">
+              <ImHeaderQuickMenu anchorRef={quickMenuRef}>
                 <ImQuickMenuItem icon="group" label="发起群聊" onClick={() => openQuickEntry("group")} />
                 <ImQuickMenuItem icon="friend" label="添加好友" onClick={() => openQuickEntry("friend")} />
                 <ImQuickMenuItem icon="tag" label="群发" onClick={() => openTagCampaign()} />
                 <ImQuickMenuItem icon="payment" label="发起收款" onClick={() => openQuickEntry("collect")} />
                 <ImQuickMenuItem icon="scan" label="扫一扫" onClick={() => openQuickEntry("scan")} />
-              </div>
+              </ImHeaderQuickMenu>
             ) : null}
           </div>
         }
@@ -2012,6 +2282,7 @@ export function ImConversationListPage() {
 
 export function ImContactsListPage() {
   const { store, config, scope } = useImRuntime();
+  const { language } = useOptionalI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentUser = getCurrentUser(store);
@@ -2027,6 +2298,13 @@ export function ImContactsListPage() {
   const [contactQuery, setContactQuery] = useState(contactQueryFromParams);
   const deferredContactQuery = useDeferredValue(contactQuery);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  useEffect(() => {
+    if (store.status !== "ready") {
+      return;
+    }
+
+    void store.refresh();
+  }, [store.refresh, store.status]);
   const contactDeletion = useFriendDeletionConfirmation<ContactRelation>({
     deleteContact: store.deleteContact,
   });
@@ -2094,10 +2372,6 @@ export function ImContactsListPage() {
   const activeDragLetterRef = useRef<ContactIndexLetter | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const [activeIndexLetter, setActiveIndexLetter] = useState<ContactIndexLetter | null>(null);
-  const serviceContacts = getServiceContacts({
-    ...store,
-    contacts: visibleContacts
-  });
   const organizationContacts = useMemo(
     () => getOrganizationContacts(store, scope, entityStore),
     [entityStore, scope, store.contacts, store.organizationContacts, store.usersById]
@@ -2133,7 +2407,11 @@ export function ImContactsListPage() {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
 
-      if (target instanceof Node && quickMenuRef.current?.contains(target)) {
+      if (
+        target instanceof Node &&
+        (quickMenuRef.current?.contains(target) ||
+          (target instanceof Element && target.closest('[data-im-header-quick-menu="true"]')))
+      ) {
         return;
       }
 
@@ -2288,12 +2566,12 @@ export function ImContactsListPage() {
               <ImIcon name="add" />
             </UnifiedChatHeaderAction>
             {quickMenuOpen ? (
-              <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl">
+              <ImHeaderQuickMenu anchorRef={quickMenuRef}>
                 <ImQuickMenuItem icon="group" label="发起群聊" onClick={() => openQuickEntry("group")} />
                 <ImQuickMenuItem icon="friend" label="添加好友" onClick={() => openQuickEntry("friend")} />
                 <ImQuickMenuItem icon="payment" label="发起收款" onClick={() => openQuickEntry("collect")} />
                 <ImQuickMenuItem icon="scan" label="扫一扫" onClick={() => openQuickEntry("scan")} />
-              </div>
+              </ImHeaderQuickMenu>
             ) : null}
           </div>
         )}
@@ -2364,7 +2642,13 @@ export function ImContactsListPage() {
               {scope !== "user" ? <ImEntryCell caption={`${organizationContacts.length} 人`} icon={<ImIcon name="organization" />} title="组织" to={config.routes.organization} /> : null}
               <ImEntryCell icon={<ImIcon name="group" />} title="群聊" to={appendQuery(config.routes.newConversation, { mode: "group" })} />
               <ImEntryCell icon={<ImIcon name="tag" />} title="标签" to={config.routes.tags} />
-              {serviceContacts.length > 0 ? <ImEntryCell icon={<ImIcon name="service" />} title="服务号" to={config.routes.serviceAccounts} /> : null}
+              <ImEntryCell
+                icon={<ImIcon name="service" />}
+                title="服务号"
+                to={config.routes.serviceAccounts}
+                trailing={<TestFeatureBadge className="min-h-4 px-1.5 py-0 text-[8px]" />}
+              />
+              <MembershipSupportEntry enabled={scope === "user"} language={language} />
             </section>
 
             <div className="px-1 pt-3">
@@ -2704,12 +2988,15 @@ export function ImDirectoryProfilePage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [contactInfoRedirectFailed, setContactInfoRedirectFailed] = useState(false);
+  const [contactInfoRedirectAttempt, setContactInfoRedirectAttempt] = useState(0);
   const [activityStatus, setActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
   const request = profile?.friendRequest ?? (
     requestId
       ? store.friendRequests.find((item) => item.id === requestId)
       : undefined
   ) ?? null;
+  const activePendingRequest = isActiveFriendRequest(request);
   const actions = profile
     ? resolveDirectoryProfileActions(profile, request, store.currentUserId ?? "")
     : [];
@@ -2717,6 +3004,9 @@ export function ImDirectoryProfilePage() {
   const activityTo = profile && profile.user.profileKind !== "service" && Number.isInteger(numericUserId) && numericUserId > 0
     ? socialPaths.accountProfile(scope as SocialPortalScope, numericUserId)
     : undefined;
+  const isFriendProfile = profile?.user.id === userId && profile?.relationship === "friend" && !activePendingRequest;
+  const isSelfProfile = profile?.user.id === userId && profile?.relationship === "self";
+  const formalTechnicianProfileCard = buildFormalTechnicianProfileCard(profile);
 
   useFriendRequestExpiryRefresh(request ? [request] : [], store.refresh);
 
@@ -2741,6 +3031,39 @@ export function ImDirectoryProfilePage() {
   useEffect(() => {
     void loadProfile();
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId || profile?.user.id !== userId || !isFriendProfile) {
+      setContactInfoRedirectFailed(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setContactInfoRedirectFailed(false);
+    void store.ensureDirectConversation(userId)
+      .then((conversation) => {
+        if (!cancelled) {
+          navigate(config.routes.conversationInfo(conversation.id), { replace: true });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setContactInfoRedirectFailed(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    config.routes,
+    contactInfoRedirectAttempt,
+    isFriendProfile,
+    navigate,
+    profile?.user.id,
+    store.ensureDirectConversation,
+    userId,
+  ]);
 
   useEffect(() => {
     if (!activityTo || !Number.isInteger(numericUserId) || numericUserId <= 0) {
@@ -2810,17 +3133,46 @@ export function ImDirectoryProfilePage() {
     );
   };
 
+  const closeDirectoryProfile = () => {
+    if (fromRequests) {
+      navigate(config.routes.friendRequests);
+      return;
+    }
+
+    navigate(-1);
+  };
+
   return (
     <MobileFullscreenPage innerClassName="bg-[color:var(--client-bg)]">
       <MobileFullscreenHeader
         dark={isNight}
         info={t("查看资料")}
         onBack={fromRequests ? undefined : () => navigate(-1)}
-        onClose={fromRequests ? () => navigate(config.routes.friendRequests) : undefined}
-        title={t("账号信息")}
+        onClose={closeDirectoryProfile}
+        title={t("联系人信息")}
       />
       <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-32 pt-4">
-        {loading ? (
+        {isFriendProfile ? (
+          <div className="grid min-h-48 place-items-center px-4 text-center">
+            {contactInfoRedirectFailed ? (
+              <div className="space-y-4">
+                <p className="text-sm font-semibold text-[color:var(--client-muted)]">
+                  {t("暂时无法打开联系人信息，请稍后再试。")}
+                </p>
+                <Button
+                  onClick={() => setContactInfoRedirectAttempt((attempt) => attempt + 1)}
+                  variant="secondary"
+                >
+                  {t("重新加载")}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm font-semibold text-[color:var(--client-muted)]">
+                {t("正在进入联系人信息...")}
+              </p>
+            )}
+          </div>
+        ) : loading ? (
           <div className="grid min-h-48 place-items-center text-sm font-semibold text-[color:var(--client-muted)]">{t("加载中")}</div>
         ) : loadFailed || !profile ? (
           <div className="grid min-h-48 place-items-center">
@@ -2828,15 +3180,26 @@ export function ImDirectoryProfilePage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <ConversationIdentityProfileCard
-              identityCard={profile.identityCard}
-              user={profile.user}
-              viewerScope={scope}
-            />
-            <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
-              <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
-              <p className="mt-3 text-sm font-semibold text-[color:var(--client-muted)]">{t("还没有添加标签")}</p>
-            </section>
+            {formalTechnicianProfileCard ? (
+              <TechnicianPublicInfoCard
+                dynamicTo={activityTo}
+                formalData={formalTechnicianProfileCard.formalData}
+                technician={formalTechnicianProfileCard.technician}
+                themeScope={scope}
+              />
+            ) : (
+              <ConversationIdentityProfileCard
+                identityCard={profile.identityCard}
+                user={profile.user}
+                viewerScope={scope}
+              />
+            )}
+            {!isSelfProfile ? (
+              <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4">
+                <h2 className="text-[15px] font-black text-[color:var(--client-text)]">{t("标签")}</h2>
+                <p className="mt-3 text-sm font-semibold text-[color:var(--client-muted)]">{t("还没有添加标签")}</p>
+              </section>
+            ) : null}
             {activityTo ? <ImContactActivityEntry status={activityStatus} to={activityTo} /> : null}
             {mutationError ? (
               <p className="rounded-[18px] border border-[color:color-mix(in_srgb,#f15a63_48%,var(--client-line))] bg-[color:color-mix(in_srgb,#f15a63_10%,var(--client-surface))] px-4 py-3 text-sm font-bold text-[color:color-mix(in_srgb,#f15a63_82%,var(--client-text))]" role="alert">
@@ -2846,7 +3209,7 @@ export function ImDirectoryProfilePage() {
           </div>
         )}
       </main>
-      {profile ? (
+      {profile && !isFriendProfile && !isSelfProfile ? (
         <ImFriendProfileActionBar
           actions={actions}
           currentUserId={store.currentUserId ?? ""}
@@ -2865,6 +3228,8 @@ export function ImDirectoryProfilePage() {
 export function ImContactDetailPage() {
   const { store, config } = useImRuntime();
   const navigate = useNavigate();
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
   const { contactId } = useParams();
   const [redirectFailed, setRedirectFailed] = useState(false);
   const contact = store.contacts.find((item) => item.id === contactId);
@@ -2899,7 +3264,7 @@ export function ImContactDetailPage() {
   if (!contact || !user) {
     return (
       <ImStandaloneShell>
-        <ImTopBar onBack={() => navigate(config.routes.contacts)} title="信息设置" />
+        <ImTopBar onBack={() => navigate(config.routes.contacts)} title={t("联系人信息")} />
         <ImEmptyState caption="这个联系人可能已经被删除或还没同步到本地。" title="找不到联系人" />
       </ImStandaloneShell>
     );
@@ -2907,10 +3272,10 @@ export function ImContactDetailPage() {
 
   return (
     <ImStandaloneShell>
-      <ImTopBar onBack={() => navigate(config.routes.contacts)} title="信息设置" />
+      <ImTopBar onBack={() => navigate(config.routes.contacts)} title={t("联系人信息")} />
       <ImEmptyState
         action={redirectFailed ? <Button onClick={() => navigate(config.routes.contacts)} size="md" variant="secondary">返回通讯录</Button> : undefined}
-        caption={redirectFailed ? "暂时无法打开这个联系人的信息设置，请稍后再试。" : "正在进入信息设置..."}
+        caption={redirectFailed ? t("暂时无法打开联系人信息，请稍后再试。") : t("正在进入联系人信息...")}
         title={redirectFailed ? "打开失败" : "正在打开"}
       />
     </ImStandaloneShell>
@@ -3867,7 +4232,7 @@ export function ImSearchPage() {
                   group={conversation.type === "group"}
                   key={conversation.id}
                   privacyMode={conversation.privacyModeEnabled}
-                  preview={buildConversationRowPreview(conversation)}
+                  preview={buildConversationRawPreview(conversation)}
                   time={formatConversationTime(conversation.lastMessageTime)}
                   title={getConversationDisplayName(store, conversation)}
                   to={config.routes.conversation(conversation.id)}
@@ -3880,17 +4245,27 @@ export function ImSearchPage() {
           {result.messages.length > 0 ? (
             <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
               <SectionTag>聊天记录</SectionTag>
-              {result.messages.map((message) => (
-                <Link
-                  className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3 last:border-b-0"
-                  key={message.id}
-                  onClick={() => store.rememberSearchTerm(query)}
-                  to={appendQuery(config.routes.conversation(message.conversationId), { highlight: message.id })}
-                >
-                  <p className="text-sm font-semibold text-[color:var(--client-text)]">{message.content || "已撤回消息"}</p>
-                  <p className="mt-1 text-xs text-[color:var(--client-muted)]">{buildSearchMessageSubtitle(store, message)}</p>
-                </Link>
-              ))}
+              {result.messages.map((message) => {
+                const preview = buildMessageRawPreview(
+                  message,
+                  store.currentUserId ?? "",
+                  store.usersById,
+                );
+
+                return (
+                  <Link
+                    className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3 last:border-b-0"
+                    key={message.id}
+                    onClick={() => store.rememberSearchTerm(query)}
+                    to={appendQuery(config.routes.conversation(message.conversationId), { highlight: message.id })}
+                  >
+                    <p className="text-sm font-semibold text-[color:var(--client-text)]">
+                      <ImRuntimeI18nPreviewText preview={preview} />
+                    </p>
+                    <p className="mt-1 text-xs text-[color:var(--client-muted)]">{buildSearchMessageSubtitle(store, message)}</p>
+                  </Link>
+                );
+              })}
             </section>
           ) : null}
 
@@ -4225,6 +4600,8 @@ export function ImBlacklistPage() {
 
 export function ImContactTagsPage() {
   const { scope, store, config } = useImRuntime();
+  const { isNight } = useClientTheme();
+  const [tagComposerPanel, setTagComposerPanel] = useState<ImChatComposerPanel>(null);
   const navigate = useNavigate();
   const [tagSearchOpen, setTagSearchOpen] = useState(false);
   const [addTagOpen, setAddTagOpen] = useState(false);
@@ -4288,6 +4665,7 @@ export function ImContactTagsPage() {
     setNewTagName("");
     setTagQuery("");
     setAddTagOpen(false);
+    setTagComposerPanel(null);
   };
 
   return (
@@ -4375,19 +4753,27 @@ export function ImContactTagsPage() {
           />
         )}
       </div>
-      <ImBottomSheet onClose={() => setAddTagOpen(false)} open={addTagOpen} title="添加标签">
+      <ImBottomSheet
+        onClose={() => setAddTagOpen(false)}
+        open={addTagOpen}
+        panelClassName="im-tag-composer-sheet"
+        presentation="composer"
+        title="添加标签"
+      >
         <div className="space-y-3 pb-2">
-          <input
-            className="w-full rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] px-4 py-3 text-[15px] text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
-            onChange={(event) => setNewTagName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                addManualTag();
-              }
-            }}
+          <ImChatComposer
+            draft={newTagName}
+            embedded
+            isNight={isNight}
+            onDraftChange={(value) => setNewTagName(serializeImComposerMessage(value).content)}
+            onPanelChange={setTagComposerPanel}
+            onSend={addManualTag}
+            panel={tagComposerPanel}
             placeholder="输入标签名称"
-            type="text"
-            value={newTagName}
+            showMore={false}
+            showSend={false}
+            showVoice={false}
+            submitOnEnter
           />
           <div className="flex gap-2">
             <Button className="flex-1" onClick={() => setAddTagOpen(false)} variant="secondary">取消</Button>
@@ -4432,12 +4818,47 @@ export function isConversationNotFoundError(error: unknown) {
   );
 }
 
+function getManualTranslationErrorNotice(error: unknown) {
+  if (!(error instanceof ApiClientError)) {
+    return "翻译失败，请稍后重试";
+  }
+
+  if (
+    error.code === 45601
+    || error.status === 456
+    || error.message === "error.im.translation_quota_exceeded"
+  ) {
+    return "本月免费翻译额度已用完";
+  }
+
+  if (
+    error.code === 42905
+    || error.status === 429
+    || error.message === "error.im.translation_rate_limited"
+  ) {
+    return "翻译请求较多，请稍后重试";
+  }
+
+  if (
+    error.status === 408
+    || error.status === 503
+    || error.message === "error.network.timeout"
+    || error.message === "error.im.translation_timeout"
+    || error.message === "error.im.translation_provider_unavailable"
+  ) {
+    return "翻译服务暂不可用，请稍后重试";
+  }
+
+  return "翻译失败，请稍后重试";
+}
+
 export function ImConversationUnavailableState({
   onReturnHome
 }: {
   onReturnHome: () => void;
 }) {
   const { isNight } = useClientTheme();
+  const { language } = useOptionalI18n();
   const wallpaperFilter = isNight ? "saturate(0.8) brightness(0.42)" : "saturate(0.76) brightness(1.08)";
   const wallpaperOverlay = isNight
     ? "linear-gradient(90deg, rgba(0,0,0,0.62) 0%, rgba(7,20,29,0.54) 100%), linear-gradient(180deg, rgba(4,4,4,0.12) 0%, rgba(4,4,4,0.18) 24%, rgba(4,4,4,0.52) 100%)"
@@ -4488,6 +4909,7 @@ export function ImConversationUnavailableState({
               onPanelChange={() => undefined}
               onSend={() => undefined}
               panel={null}
+              voiceInputAriaLabel={translateText("录制语音", language)}
             />
           </div>
         </div>
@@ -4547,6 +4969,7 @@ export function ImConversationRoomPage({
   conversationId: string;
 }) {
   const { scope, store, config, api } = useImRuntime();
+  const { language } = useI18n();
   const { isNight } = useClientTheme();
   const social = useSocial();
   const entityStore = useEntityStore();
@@ -4554,21 +4977,30 @@ export function ImConversationRoomPage({
   const [searchParams] = useSearchParams();
   const back = useRoomBackTarget();
   const { conversation, messages, members } = useConversationData(store, conversationId);
+  const automaticTranslationEnabled = conversation?.autoTranslateMessages ?? false;
   const [draft, setDraft] = useState("");
   const [quotedMessageId, setQuotedMessageId] = useState<string | undefined>(undefined);
   const [panel, setPanel] = useState<"emoji" | "more" | null>(null);
-  const [voiceMode, setVoiceMode] = useState(false);
-  const [recording, setRecording] = useState<VoiceRecordingState>(idleVoiceRecordingState);
-  const [recordingNotice, setRecordingNotice] = useState<string | null>(null);
+  const voiceRecording = useImVoiceRecording();
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [recallPending, setRecallPending] = useState(false);
   const [menuState, setMenuState] = useState<MessageMenuState | null>(null);
   const [messageMenuExpanded, setMessageMenuExpanded] = useState(false);
   const [messageReactions, setMessageReactions] = useState<ImMessageReactionState>({});
+  const [manualTranslations, setManualTranslations] = useState<Record<string, VisibleMessageTranslation>>({});
+  const [automaticTranslations, setAutomaticTranslations] = useState<Record<string, VisibleMessageTranslation>>({});
+  const [manualTranslationPendingIds, setManualTranslationPendingIds] = useState<Set<string>>(() => new Set());
   const [mediaPreview, setMediaPreview] = useState<ConversationMessage | null>(null);
   const [mediaPreviewScale, setMediaPreviewScale] = useState(1);
+  const [mediaPreviewResolvedSource, setMediaPreviewResolvedSource] = useState<string | undefined>();
   const [contactCardPickerOpen, setContactCardPickerOpen] = useState(false);
   const [contactCardQuery, setContactCardQuery] = useState("");
+  const [contactCardCandidates, setContactCardCandidates] = useState<ImContactCardCandidate[]>([]);
+  const [contactCardPickerStatus, setContactCardPickerStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [contactCardPickerError, setContactCardPickerError] = useState(false);
+  const [contactCardReloadVersion, setContactCardReloadVersion] = useState(0);
+  const [contactCardPendingTargetId, setContactCardPendingTargetId] = useState<string | null>(null);
+  const contactCardCandidateRequestRef = useRef(0);
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
   const [serviceCardQuery, setServiceCardQuery] = useState("");
   const [scheduleInvitePickerOpen, setScheduleInvitePickerOpen] = useState(false);
@@ -4590,18 +5022,27 @@ export function ImConversationRoomPage({
   const listWasNearBottomRef = useRef(true);
   const listStateRef = useRef({ conversationId: "", messageCount: 0 });
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const multiSelect = useImMessageMultiSelect({ messages, messageRefs, scrollRoot: listRef });
+  const [multiSelectPendingAction, setMultiSelectPendingAction] = useState<ImMultiSelectAction | null>(null);
+  const multiSelectPendingRef = useRef<ImMultiSelectAction | null>(null);
+  const multiSelectMutationKeyRef = useRef<{ key: string; signature: string } | null>(null);
+  const suppressNextMultiSelectClickRef = useRef(false);
+  const suppressNextMultiSelectClickTimerRef = useRef<number | null>(null);
+  const [multiSelectNotice, setMultiSelectNotice] = useState<string | null>(null);
+  const [multiSelectDeleteConfirmationOpen, setMultiSelectDeleteConfirmationOpen] = useState(false);
   const reactionPendingKeysRef = useRef(new Set<string>());
+  const translationInflightIdsRef = useRef(new Set<string>());
+  const translationCompletedIdsRef = useRef(new Set<string>());
+  const translationRetryAfterRef = useRef(new Map<string, number>());
+  const translationScopeRef = useRef(`${conversationId}:${language}`);
+  const translationGenerationRef = useRef(0);
+  const manualTranslationPendingIdsRef = useRef(new Set<string>());
   const [reactionPendingKeys, setReactionPendingKeys] = useState<Set<string>>(() => new Set());
   const textareaRef = useRef<HTMLDivElement | null>(null);
-  const recordingRef = useRef<VoiceRecordingState>(idleVoiceRecordingState);
-  const recordingGestureStartYRef = useRef<number | null>(null);
-  const recordingTimerRef = useRef<number | null>(null);
-  const recordingDurationRef = useRef(0);
-  const recordingPendingRef = useRef(false);
-  const recordingChunksRef = useRef<Blob[]>([]);
-  const recordingStopReasonRef = useRef<"send" | "cancel" | "timeout" | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const voiceButtonRef = useRef<HTMLButtonElement | null>(null);
+  const voiceSendPendingRef = useRef(false);
+  const previousVoicePhaseRef = useRef(voiceRecording.phase);
+  const conversationUnderlayRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [imageSending, setImageSending] = useState(false);
   const [conversationRouteStatus, setConversationRouteStatus] =
@@ -4612,6 +5053,9 @@ export function ImConversationRoomPage({
     fileName: string;
     previewUrl: string;
   }>();
+  const voiceRecordingError = voiceRecording.error
+    ? translateText(getVoiceRecordingErrorSource(voiceRecording.error), language)
+    : null;
 
   useDocumentScrollLock(true);
   useIosScrollContainer(listRef, Boolean(menuState));
@@ -4634,9 +5078,32 @@ export function ImConversationRoomPage({
     setPendingImage(undefined);
   }, [conversationId]);
 
+  useEffect(() => () => {
+    if (suppressNextMultiSelectClickTimerRef.current !== null) {
+      window.clearTimeout(suppressNextMultiSelectClickTimerRef.current);
+    }
+  }, []);
+
   useEffect(() => {
-    recordingRef.current = recording;
-  }, [recording]);
+    translationGenerationRef.current += 1;
+    translationScopeRef.current = `${conversationId}:${language}`;
+    translationInflightIdsRef.current.clear();
+    translationCompletedIdsRef.current.clear();
+    translationRetryAfterRef.current.clear();
+    manualTranslationPendingIdsRef.current.clear();
+    setManualTranslations({});
+    setAutomaticTranslations({});
+    setManualTranslationPendingIds(new Set());
+  }, [conversationId, language]);
+
+  useEffect(() => {
+    multiSelect.exit();
+    multiSelectMutationKeyRef.current = null;
+    setMultiSelectNotice(null);
+    setMultiSelectDeleteConfirmationOpen(false);
+    multiSelectPendingRef.current = null;
+    setMultiSelectPendingAction(null);
+  }, [conversationId]);
 
   useEffect(() => {
     let disposed = false;
@@ -4683,6 +5150,42 @@ export function ImConversationRoomPage({
   }, [conversation?.draftText, conversationId]);
 
   useEffect(() => {
+    if (!contactCardPickerOpen) {
+      return;
+    }
+
+    const requestId = contactCardCandidateRequestRef.current + 1;
+    contactCardCandidateRequestRef.current = requestId;
+    let disposed = false;
+    setContactCardPickerStatus("loading");
+
+    const normalizedQuery = contactCardQuery.trim();
+    void api.listContactCardCandidates(conversationId, {
+      page: 1,
+      pageSize: 50,
+      ...(normalizedQuery ? { query: normalizedQuery } : {}),
+    }).then((result) => {
+      if (disposed || requestId !== contactCardCandidateRequestRef.current) {
+        return;
+      }
+
+      setContactCardCandidates(result.list);
+      setContactCardPickerStatus("ready");
+    }).catch(() => {
+      if (disposed || requestId !== contactCardCandidateRequestRef.current) {
+        return;
+      }
+
+      setContactCardCandidates([]);
+      setContactCardPickerStatus("error");
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [api, contactCardPickerOpen, contactCardQuery, contactCardReloadVersion, conversationId]);
+
+  useEffect(() => {
     const next: ImMessageReactionState = {};
     messages.forEach((message) => {
       if (!message.reactions || message.reactions.length === 0) return;
@@ -4692,6 +5195,81 @@ export function ImConversationRoomPage({
     });
     setMessageReactions(next);
   }, [messages]);
+
+  useEffect(() => {
+    if (!automaticTranslationEnabled) {
+      if (Object.keys(automaticTranslations).length > 0) {
+        setAutomaticTranslations({});
+      }
+      translationInflightIdsRef.current.clear();
+      translationCompletedIdsRef.current.clear();
+      translationRetryAfterRef.current.clear();
+      return;
+    }
+
+    const now = Date.now();
+    for (const [messageId, retryAfter] of translationRetryAfterRef.current.entries()) {
+      if (retryAfter <= now) {
+        translationRetryAfterRef.current.delete(messageId);
+      }
+    }
+
+    const excludedIds = new Set<string>([
+      ...translationCompletedIdsRef.current,
+      ...Object.keys(automaticTranslations),
+      ...translationInflightIdsRef.current,
+    ]);
+    translationRetryAfterRef.current.forEach((retryAfter, messageId) => {
+      if (retryAfter > now) {
+        excludedIds.add(messageId);
+      }
+    });
+    const chunks = buildImMessageTranslationBatches(
+      messages.filter((message) => message.senderId !== store.currentUserId),
+      excludedIds,
+    );
+    if (chunks.length === 0) {
+      return;
+    }
+
+    const scopeKey = `${conversationId}:${language}`;
+    const targetLanguage = getImTranslationTargetLanguage(language);
+    const generation = translationGenerationRef.current;
+    chunks.forEach((messageIds) => {
+      messageIds.forEach((messageId) => translationInflightIdsRef.current.add(messageId));
+      void store.translateMessages(conversationId, messageIds, targetLanguage)
+        .then((results) => {
+          if (
+            translationScopeRef.current !== scopeKey
+            || translationGenerationRef.current !== generation
+          ) {
+            return;
+          }
+          const completedIds = collectCompletedImMessageTranslationIds(results);
+          completedIds.forEach((messageId) => {
+            translationCompletedIdsRef.current.add(messageId);
+            translationRetryAfterRef.current.delete(messageId);
+          });
+          setAutomaticTranslations((current) => mergeTranslatedImMessageResults(current, results));
+        })
+        .catch(() => {
+          if (
+            translationScopeRef.current !== scopeKey
+            || translationGenerationRef.current !== generation
+          ) {
+            return;
+          }
+          const retryAfter = Date.now() + imAutomaticTranslationRetryDelayMs;
+          messageIds.forEach((messageId) => translationRetryAfterRef.current.set(messageId, retryAfter));
+        })
+        .finally(() => {
+          if (translationGenerationRef.current !== generation) {
+            return;
+          }
+          messageIds.forEach((messageId) => translationInflightIdsRef.current.delete(messageId));
+        });
+    });
+  }, [automaticTranslationEnabled, automaticTranslations, conversationId, language, messages, store.currentUserId]);
 
   useEffect(() => {
     if (!mediaPreview) {
@@ -4753,7 +5331,7 @@ export function ImConversationRoomPage({
       list.removeEventListener("load", keepTerminalMessageAboveComposer, true);
       list.removeEventListener("loadedmetadata", keepTerminalMessageAboveComposer, true);
     };
-  }, [conversationId, draft, messages.length, panel, pendingImage, quotedMessageId, voiceMode]);
+  }, [conversationId, draft, messages.length, panel, pendingImage, quotedMessageId]);
 
   useEffect(() => {
     const root = listRef.current;
@@ -4812,15 +5390,6 @@ export function ImConversationRoomPage({
   }, [conversationId, messages.length, searchParams, store.currentUserId]);
 
   useEffect(() => {
-    if (!recordingNotice || typeof window === "undefined") {
-      return;
-    }
-
-    const timer = window.setTimeout(() => setRecordingNotice(null), 2_600);
-    return () => window.clearTimeout(timer);
-  }, [recordingNotice]);
-
-  useEffect(() => {
     if (!actionNotice || typeof window === "undefined") {
       return;
     }
@@ -4829,21 +5398,30 @@ export function ImConversationRoomPage({
     return () => window.clearTimeout(timer);
   }, [actionNotice]);
 
-  useEffect(
-    () => () => {
-      if (recordingTimerRef.current !== null) {
-        window.clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-      }
+  useEffect(() => {
+    if (store.error === "error.im.local_cache_purge_failed") {
+      setActionNotice("本地媒体缓存清理失败，请在账户与安全中清除本机缓存");
+    }
+  }, [store.error]);
 
-      mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
-      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-      mediaRecorderRef.current = null;
-      recordingStreamRef.current = null;
-      recordingPendingRef.current = false;
-    },
-    []
-  );
+  useEffect(() => () => voiceRecording.cancel(), [conversationId, voiceRecording.cancel]);
+
+  useEffect(() => {
+    const previousPhase = previousVoicePhaseRef.current;
+    previousVoicePhaseRef.current = voiceRecording.phase;
+    if (previousPhase === "idle" || voiceRecording.phase !== "idle") {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => voiceButtonRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [voiceRecording.phase]);
+
+  useEffect(() => {
+    if (voiceRecording.phase === "idle" && voiceRecordingError) {
+      setActionNotice(voiceRecordingError);
+    }
+  }, [voiceRecording.openAttempt, voiceRecording.phase, voiceRecordingError]);
 
   const rows = useMemo(
     () => buildTimeSeparatedMessages(messages, store.config?.separatorThresholdMs ?? 300_000),
@@ -4941,7 +5519,7 @@ export function ImConversationRoomPage({
 
     return anonymousIdentity ? buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code) : user?.avatar;
   };
-  const getConversationMemberProfilePath = (user?: ImUser) => hiddenMemberProfilesActive ? undefined : resolveImProfilePath(scope, user);
+  const getConversationMemberProfilePath = (user?: ImUser) => resolveImContactInformationPath(scope, user, hiddenMemberProfilesActive);
   const currentSocialActor = social.profiles[social.getActorForScope(scope as SocialPortalScope)];
   const currentReactionPerson = useMemo<ImReactionPerson>(() => {
     const currentAnonymousIdentity = getAnonymousMemberIdentity(currentUser?.id);
@@ -4961,18 +5539,6 @@ export function ImConversationRoomPage({
       users: store.users
     });
   }, [activeContactByUserId, scope, store.currentUserId, store.users]);
-  const filteredShareableCardUsers = useMemo(() => {
-    const keyword = contactCardQuery.trim().toLowerCase();
-
-    if (!keyword) {
-      return shareableCardUsers;
-    }
-
-    return shareableCardUsers.filter((user) =>
-      [user.nickname, user.userIdLabel, user.signature, user.region, user.bio, ...user.searchableFields]
-        .some((field) => typeof field === "string" && field.toLowerCase().includes(keyword))
-    );
-  }, [contactCardQuery, shareableCardUsers]);
   const scheduleInviteSelectableAttendees = useMemo(() => {
     const excludedIds = new Set([partner?.id, store.currentUserId].filter((id): id is string => Boolean(id)));
 
@@ -5067,118 +5633,6 @@ export function ImConversationRoomPage({
   const loadMoreButtonClass = isNight
     ? "rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg)_22%)] px-4 py-2 text-xs text-[color:var(--client-muted)] shadow-[0_6px_18px_rgba(0,0,0,0.18)]"
     : "rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_68%,var(--client-bg)_32%)] px-4 py-2 text-xs text-[color:var(--client-muted)] shadow-[0_6px_18px_rgba(0,0,0,0.08)]";
-  const recordingHintClass = isNight
-    ? "border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,var(--client-bg)_16%)] text-[color:var(--client-muted)] backdrop-blur-md"
-    : "border-b border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_80%,var(--client-bg)_20%)] text-[color:var(--client-muted)] backdrop-blur-md";
-
-  const clearRecordingTimer = () => {
-    if (recordingTimerRef.current !== null) {
-      window.clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  };
-
-  const stopRecordingStream = () => {
-    mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
-    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaRecorderRef.current = null;
-    recordingStreamRef.current = null;
-  };
-
-  const resetRecording = (preserveStopReason = false) => {
-    clearRecordingTimer();
-    stopRecordingStream();
-    recordingPendingRef.current = false;
-    recordingChunksRef.current = [];
-    recordingDurationRef.current = 0;
-    if (!preserveStopReason) {
-      recordingStopReasonRef.current = null;
-    }
-    recordingGestureStartYRef.current = null;
-    recordingRef.current = idleVoiceRecordingState;
-    setRecording(idleVoiceRecordingState);
-  };
-
-  const updateRecordingCancel = (cancel: boolean) => {
-    recordingRef.current = {
-      ...recordingRef.current,
-      cancel
-    };
-    setRecording((current) => (current.active && current.cancel !== cancel ? { ...current, cancel } : current));
-  };
-
-  const stopActiveRecording = (reason: "send" | "cancel" | "timeout") => {
-    recordingStopReasonRef.current = reason;
-
-    if (recordingPendingRef.current && !mediaRecorderRef.current) {
-      resetRecording(true);
-      return;
-    }
-
-    const recorder = mediaRecorderRef.current;
-
-    if (!recorder || recorder.state === "inactive") {
-      resetRecording();
-      return;
-    }
-
-    recorder.stop();
-  };
-
-  const finalizeVoiceRecording = async (chunks: Blob[], mimeType: string, stopReason: "send" | "cancel" | "timeout" | null) => {
-    const durationSeconds = Math.min(maxVoiceRecordingSeconds, Math.max(1, recordingDurationRef.current));
-    resetRecording();
-
-    if (stopReason === "cancel") {
-      return;
-    }
-
-    if (chunks.length === 0) {
-      setRecordingNotice("没有录到语音，请再试一次。");
-      return;
-    }
-
-    try {
-      const blob = new Blob(chunks, { type: mimeType });
-      const audioUrl = await readBlobAsDataUrl(blob);
-
-      await store.sendMessage(conversationId, "voice", audioUrl, {
-        quotedMessageId,
-        ext: {
-          url: audioUrl,
-          fileName: `voice-${Date.now()}.webm`,
-          fileSize: blob.size,
-          mimeType,
-          duration: durationSeconds
-        }
-      });
-
-      setQuotedMessageId(undefined);
-
-      if (stopReason === "timeout") {
-        setRecordingNotice("语音已录满 60 秒，已自动发送。");
-      }
-    } catch {
-      setRecordingNotice("语音发送失败，请稍后重试。");
-    }
-  };
-
-  const startRecordingTimer = (startedAt: number) => {
-    clearRecordingTimer();
-    recordingTimerRef.current = window.setInterval(() => {
-      const elapsedSeconds = Math.min(maxVoiceRecordingSeconds, Math.max(1, Math.ceil((Date.now() - startedAt) / 1000)));
-      recordingDurationRef.current = elapsedSeconds;
-      recordingRef.current = {
-        ...recordingRef.current,
-        durationSeconds: elapsedSeconds
-      };
-      setRecording((current) => (current.active && current.durationSeconds !== elapsedSeconds ? { ...current, durationSeconds: elapsedSeconds } : current));
-
-      if (elapsedSeconds >= maxVoiceRecordingSeconds) {
-        stopActiveRecording("timeout");
-      }
-    }, 250);
-  };
 
   const clearPendingImage = () => {
     if (pendingImagePreviewUrlRef.current) {
@@ -5203,13 +5657,13 @@ export function ImConversationRoomPage({
       fileName: file.name || "待发送图片",
       previewUrl
     });
-    setVoiceMode(false);
     setPanel(null);
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const sendText = async () => {
-    const messageText = clampMessageText(materializeImComposerDraft(draft).trim());
+    const serializedMessage = serializeImComposerMessage(draft);
+    const messageText = serializedMessage.content;
 
     if (!messageText && !pendingImage) {
       return;
@@ -5231,7 +5685,8 @@ export function ImConversationRoomPage({
             mimeType: upload.mimeType,
             width: size?.width,
             height: size?.height,
-            caption: messageText || undefined
+            caption: messageText || undefined,
+            captionRichText: serializedMessage.richText
           }
         });
         setDraft("");
@@ -5249,7 +5704,10 @@ export function ImConversationRoomPage({
 
     try {
       await store.sendMessage(conversationId, "text", messageText, {
-        quotedMessageId
+        quotedMessageId,
+        ext: serializedMessage.richText
+          ? { richText: serializedMessage.richText }
+          : undefined
       });
       setDraft("");
       store.setDraft(conversationId, "");
@@ -5260,47 +5718,102 @@ export function ImConversationRoomPage({
     }
   };
 
-  const resolveContactCardDetailPath = (card: ContactCardPayload) => {
-    const cardUser = store.usersById[card.userId];
-    const directPath = resolveImProfilePath(scope, cardUser);
-
-    if (directPath) {
-      return directPath;
-    }
-
-    const profileRef = resolveContactCardProfileRef(card, cardUser);
-    return profileRef ? getScopedProfileDetailPath(scope, profileRef.entityType, profileRef.id) : undefined;
-  };
-
-  const openContactCardProfile = (card: ContactCardPayload) => {
-    const detailPath = resolveContactCardDetailPath(card);
-
-    if (detailPath) {
-      navigate(detailPath);
+  const sendVoiceRecording = async () => {
+    const blob = voiceRecording.blob;
+    if (!blob || voiceRecording.phase === "sending" || voiceSendPendingRef.current) {
       return;
     }
 
-    const targetContact = activeContactByUserId.get(card.userId);
-
-    if (targetContact) {
-      navigate(config.routes.contactDetail(targetContact.id));
+    voiceSendPendingRef.current = true;
+    voiceRecording.beginSending();
+    try {
+      await store.sendVoiceMessage(conversationId, blob, {
+        durationSeconds: voiceRecording.durationSeconds,
+        fileName: `voice-${Date.now()}.${getVoiceRecordingFileExtension(blob)}`
+      });
+      voiceRecording.finishSending();
+    } catch {
+      voiceRecording.failSending("error.im.voice_send_failed");
+    } finally {
+      voiceSendPendingRef.current = false;
     }
   };
 
-  const sendContactCard = async (cardUser: ImUser) => {
-    if (blocked || !canShareUserCard(scope, cardUser)) {
+  const resolveContactCardUser = (card: ContactCardPayload) => {
+    const publicIds = new Set(
+      [card.userId, card.needoId, card.userIdLabel]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    return store.users.find((user) => (
+      publicIds.has(user.id) ||
+      publicIds.has(user.accountId) ||
+      publicIds.has(user.userIdLabel)
+    ));
+  };
+
+  const openContactCardProfile = async (card: ContactCardPayload) => {
+    const cardUser = resolveContactCardUser(card);
+    if (cardUser) {
+      navigate(config.routes.directoryProfile(cardUser.id));
       return;
     }
 
-    await store.sendMessage(conversationId, "contact-card", cardUser.nickname, {
-      quotedMessageId,
-      ext: {
-        contactCard: buildContactCardPayload(cardUser)
+    const publicId = card.needoId?.trim() || card.userIdLabel?.trim() || card.userId.trim();
+    if (!publicId) {
+      setActionNotice(translateText("无法打开联系人信息，请稍后重试", language));
+      return;
+    }
+
+    try {
+      const result = await api.searchDirectory(publicId);
+      const exactUser = result.users.find((user) => (
+        user.accountId === publicId ||
+        user.userIdLabel === publicId ||
+        user.id === publicId
+      ));
+
+      if (exactUser) {
+        navigate(config.routes.directoryProfile(exactUser.id));
+        return;
       }
-    });
-    setQuotedMessageId(undefined);
+    } catch {
+      // Keep provider error details out of the user-facing notice.
+    }
+
+    setActionNotice(translateText("无法打开联系人信息，请稍后重试", language));
+  };
+
+  const closeContactCardPicker = () => {
+    contactCardCandidateRequestRef.current += 1;
     setContactCardPickerOpen(false);
     setContactCardQuery("");
+    setContactCardCandidates([]);
+    setContactCardPickerStatus("idle");
+    setContactCardPickerError(false);
+    setContactCardPendingTargetId(null);
+  };
+
+  const sendContactCard = async (candidate: ImContactCardCandidate) => {
+    if (blocked || contactCardPendingTargetId) {
+      return;
+    }
+
+    setContactCardPendingTargetId(candidate.targetUserId);
+    setContactCardPickerError(false);
+    try {
+      await store.sendContactCard(
+        conversationId,
+        candidate.targetUserId,
+        crypto.randomUUID(),
+      );
+      setQuotedMessageId(undefined);
+      closeContactCardPicker();
+    } catch {
+      setContactCardPickerError(true);
+      setContactCardPendingTargetId(null);
+    }
   };
 
   const sendServiceCard = async ({ service, provider, providerType, href }: ImServiceShareOption) => {
@@ -5429,123 +5942,57 @@ export function ImConversationRoomPage({
     setPanel(null);
   };
 
-  const renderContactCardAction = (card: ContactCardPayload, message?: ConversationMessage) => {
-    const cardUser = store.usersById[card.userId];
-    const contactFromCard = activeContactByUserId.get(card.userId);
-    const profileRef = resolveContactCardProfileRef(card, cardUser);
-    const targetKey = profileRef ? profileKey(profileRef) : undefined;
-    const actorKey = social.getActorForScope(scope as SocialPortalScope);
+  const renderContactCardAction = (card: ContactCardPayload) => {
+    const cardUser = resolveContactCardUser(card);
+    const contactFromCard = cardUser ? activeContactByUserId.get(cardUser.id) : undefined;
+    const isCurrentUser = Boolean(
+      cardUser?.id === store.currentUserId ||
+      currentUser?.accountId === card.needoId ||
+      currentUser?.accountId === card.userId,
+    );
     const statusClassName = "whitespace-nowrap text-[11px] font-black text-[color:var(--client-muted)]";
-    const actionClassName =
-      "rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]";
-    const renderActionButton = (label: string, run: () => unknown | Promise<unknown>) => (
-      <button
-        className={actionClassName}
-        onClick={(event) => {
-          event.stopPropagation();
-          void run();
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-        type="button"
-      >
-        {label}
-      </button>
-    );
 
-    if (card.userId === store.currentUserId || (targetKey && targetKey === actorKey)) {
-      return <span className={statusClassName}>我的名片</span>;
+    if (isCurrentUser) {
+      return <span className={statusClassName}>{translateText("我的名片", language)}</span>;
     }
 
-    if (contactFromCard || (message?.senderId === store.currentUserId && card.profileKind === "person")) {
-      return <span className={statusClassName}>好友</span>;
-    }
-
-    if (targetKey && social.profiles[targetKey]) {
-      const following = social.getFollowing(actorKey).some((profile) => profileKey(profile) === targetKey);
-      const targetFollowsActor = social.getFollowing(targetKey).some((profile) => profileKey(profile) === actorKey);
-
-      if (following && targetFollowsActor) {
-        return <span className={statusClassName}>好友</span>;
-      }
-
-      if (following) {
-        return (
-          <span className={`${statusClassName} inline-flex items-center gap-1`}>
-            已关注
-            <ImIcon className="h-3 w-3" name="check" />
-          </span>
-        );
-      }
-
-      return renderActionButton("关注", () => social.toggleFollow(actorKey, targetKey));
-    }
-
-    if (card.profileKind === "person") {
-      return renderActionButton("添加好友", () =>
-        store.sendFriendRequest(card.userId, "通过好友分享的名片申请添加")
-      );
-    }
-
-    return renderActionButton("添加", () =>
-      store.sendFriendRequest(card.userId, "通过好友分享的名片申请添加")
-    );
+    return contactFromCard
+      ? <span className={statusClassName}>{translateText("好友", language)}</span>
+      : undefined;
   };
 
-  const renderContactCard = (card: ContactCardPayload, message?: ConversationMessage) => {
-    const profileRef = resolveContactCardProfileRef(card, store.usersById[card.userId]);
-    const detailTo = resolveContactCardDetailPath(card);
-    const actionSlot = renderContactCardAction(card, message);
-    const cardClassName = "w-[330px] max-w-[84vw] shadow-[0_8px_20px_rgba(0,0,0,0.08)]";
+  const renderContactCard = (card: ContactCardPayload, _message?: ConversationMessage) => {
+    const entityKind = card.entityKind ?? (
+      card.profileKind === "person"
+        ? "customer"
+        : card.profileKind === "store"
+          ? "shop"
+          : card.profileKind
+    );
 
-    if (profileRef?.entityType === "shop") {
-      const shop = entityStore.stores.find((item) => item.id === profileRef.id);
-
-      if (shop) {
-        return (
-          <SocialProfileMiniCard
-            actionSlot={actionSlot}
-            className={cardClassName}
-            detailTo={detailTo}
-            onOpenDetails={detailTo ? undefined : () => openContactCardProfile(card)}
-            store={shop}
-          />
-        );
-      }
-    }
-
-    if (profileRef?.entityType === "technician") {
-      const technician = entityStore.technicians.find((item) => item.id === profileRef.id);
-
-      if (technician) {
-        return (
-          <SocialProfileMiniCard
-            actionSlot={actionSlot}
-            className={cardClassName}
-            detailTo={detailTo}
-            onOpenDetails={detailTo ? undefined : () => openContactCardProfile(card)}
-            technician={technician}
-          />
-        );
-      }
-    }
-
-    if (profileRef?.entityType === "user") {
-      const customer = entityStore.customers.find((item) => item.id === profileRef.id);
-
-      if (customer) {
-        return (
-          <SocialProfileMiniCard
-            actionSlot={actionSlot}
-            className={cardClassName}
-            customer={customer}
-            detailTo={detailTo}
-            onOpenDetails={detailTo ? undefined : () => openContactCardProfile(card)}
-          />
-        );
-      }
-    }
-
-    return undefined;
+    return (
+      <PlatformMembershipSimpleCard
+        actionSlot={renderContactCardAction(card)}
+        avatarUrl={card.avatar || null}
+        bio={card.headline ?? ""}
+        className="w-[min(520px,80vw)] max-w-full"
+        completedOrderCount={card.completedOrderCount}
+        displayName={card.displayName}
+        ekycVerified={card.ekycVerified ?? false}
+        entityKind={entityKind}
+        entityPublicId={card.entityPublicId}
+        favoriteCount={card.favoriteCount}
+        languages={card.languages}
+        level={card.level ?? null}
+        needoId={card.needoId ?? card.userIdLabel ?? card.userId}
+        onOpenDetails={() => void openContactCardProfile(card)}
+        rating={card.rating}
+        shareCount={card.shareCount}
+        simpleBottomColor={card.simpleBottomColor}
+        simpleTopColor={card.simpleTopColor}
+        specialReviewTags={card.specialReviewTags}
+      />
+    );
   };
 
   const sendPresetMessage = async (type: ImMessageType) => {
@@ -5567,101 +6014,9 @@ export function ImConversationRoomPage({
     if (type === "contact-card") {
       setPanel(null);
       setContactCardQuery("");
+      setContactCardPickerError(false);
       setContactCardPickerOpen(true);
     }
-  };
-
-  const startRecording = async (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (blocked || recordingPendingRef.current || recordingRef.current.active) {
-      return;
-    }
-
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setRecordingNotice("当前设备不支持浏览器录音。");
-      return;
-    }
-
-    const button = event.currentTarget;
-    button.setPointerCapture(event.pointerId);
-    recordingPendingRef.current = true;
-    recordingStopReasonRef.current = null;
-    recordingGestureStartYRef.current = event.clientY;
-    recordingChunksRef.current = [];
-    setPanel(null);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      if (recordingStopReasonRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        resetRecording();
-        return;
-      }
-
-      const mimeType = getSupportedVoiceMimeType();
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      const startedAt = Date.now();
-
-      recordingPendingRef.current = false;
-      recordingStreamRef.current = stream;
-      mediaRecorderRef.current = recorder;
-      recordingDurationRef.current = 0;
-      recordingRef.current = {
-        active: true,
-        cancel: false,
-        startedAt,
-        durationSeconds: 0
-      };
-      setRecording(recordingRef.current);
-
-      recorder.ondataavailable = (dataEvent) => {
-        if (dataEvent.data.size > 0) {
-          recordingChunksRef.current.push(dataEvent.data);
-        }
-      };
-
-      recorder.onerror = () => {
-        setRecordingNotice("录音时出了点问题，请再试一次。");
-        resetRecording();
-      };
-
-      recorder.onstop = () => {
-        const chunks = [...recordingChunksRef.current];
-        const stopReason = recordingStopReasonRef.current;
-        const nextMimeType = recorder.mimeType || chunks[0]?.type || mimeType || "audio/webm";
-
-        void finalizeVoiceRecording(chunks, nextMimeType, stopReason);
-      };
-
-      recorder.start(250);
-      startRecordingTimer(startedAt);
-    } catch {
-      if (recordingStopReasonRef.current) {
-        resetRecording();
-        return;
-      }
-
-      recordingPendingRef.current = false;
-      setRecordingNotice("请先允许麦克风权限，才能发送语音。");
-      resetRecording();
-    }
-  };
-
-  const moveRecording = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!recordingRef.current.active) {
-      return;
-    }
-
-    const gestureStartY = recordingGestureStartYRef.current ?? event.clientY;
-    updateRecordingCancel(gestureStartY - event.clientY > 56);
-  };
-
-  const endRecording = async () => {
-    if (!recordingPendingRef.current && !recordingRef.current.active) {
-      return;
-    }
-
-    stopActiveRecording(recordingRef.current.cancel ? "cancel" : "send");
   };
 
   const closeMessageMenu = () => {
@@ -5685,6 +6040,9 @@ export function ImConversationRoomPage({
   };
 
   const handleConversationPointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (multiSelect.active) {
+      return;
+    }
     const interactiveSelector = "[data-im-composer-root='true'], [data-im-message-action-sheet='true']";
     const pathContainsInteractiveSurface = event.nativeEvent.composedPath().some((target) => (
       target instanceof Element && Boolean(target.closest(interactiveSelector))
@@ -5705,6 +6063,28 @@ export function ImConversationRoomPage({
     closeConversationFloatingUi();
   };
 
+  const armMultiSelectReleaseClickSuppression = () => {
+    suppressNextMultiSelectClickRef.current = true;
+    if (suppressNextMultiSelectClickTimerRef.current !== null) {
+      window.clearTimeout(suppressNextMultiSelectClickTimerRef.current);
+    }
+    suppressNextMultiSelectClickTimerRef.current = window.setTimeout(() => {
+      suppressNextMultiSelectClickRef.current = false;
+      suppressNextMultiSelectClickTimerRef.current = null;
+    }, 0);
+  };
+
+  const handleConversationClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!suppressNextMultiSelectClickRef.current) return;
+    suppressNextMultiSelectClickRef.current = false;
+    if (suppressNextMultiSelectClickTimerRef.current !== null) {
+      window.clearTimeout(suppressNextMultiSelectClickTimerRef.current);
+      suppressNextMultiSelectClickTimerRef.current = null;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   const selectMessageText = (message: ConversationMessage) => {
     window.requestAnimationFrame(() => {
       const root = messageRefs.current[message.id];
@@ -5723,9 +6103,132 @@ export function ImConversationRoomPage({
   };
 
   const openMessageMenu = (message: ConversationMessage) => {
+    if (message.type === "chat-record") return;
     setMessageMenuExpanded(false);
     setMenuState({ message });
     selectMessageText(message);
+  };
+
+  const exitMultiSelect = () => {
+    multiSelectMutationKeyRef.current = null;
+    multiSelect.exit();
+    setMultiSelectNotice(null);
+    setMultiSelectDeleteConfirmationOpen(false);
+  };
+
+  const enterMultiSelect = (message: ConversationMessage) => {
+    closeMessageMenu();
+    setMultiSelectNotice(null);
+    setMultiSelectDeleteConfirmationOpen(false);
+    multiSelect.enter(message.id);
+  };
+
+  const showMultiSelectResult = (result: ReturnType<typeof multiSelect.selectToPoint>) => {
+    if (result.status === "overflow") {
+      setMultiSelectNotice("最多选择100条信息");
+      return;
+    }
+    setMultiSelectNotice(null);
+  };
+
+  const beginMultiSelectAction = (action: ImMultiSelectAction) => {
+    if (multiSelectPendingRef.current || multiSelect.selectedMessages.length === 0) return false;
+    multiSelectPendingRef.current = action;
+    setMultiSelectPendingAction(action);
+    setMultiSelectNotice(null);
+    return true;
+  };
+
+  const finishMultiSelectAction = () => {
+    multiSelectPendingRef.current = null;
+    setMultiSelectPendingAction(null);
+  };
+
+  const getMultiSelectMutationKey = (action: "delete" | "favorite", messageIds: string[]) => {
+    const canonicalIds = [...new Set(messageIds)].sort((left, right) => Number(left) - Number(right));
+    const signature = `${conversationId}:${action}:${canonicalIds.join(",")}`;
+    if (multiSelectMutationKeyRef.current?.signature === signature) {
+      return multiSelectMutationKeyRef.current.key;
+    }
+    const key = crypto.randomUUID();
+    multiSelectMutationKeyRef.current = { key, signature };
+    return key;
+  };
+
+  const forwardMultiSelectedMessages = () => {
+    if (!multiSelect.selectedMessages.every(isImMessageChatRecordSnapshotEligible)) {
+      setMultiSelectNotice("所选信息包含暂不支持转发或收藏的类型");
+      return;
+    }
+    if (!beginMultiSelectAction("forward")) return;
+    const messageIds = multiSelect.selectedMessages.map((message) => message.id);
+    store.setPendingChatRecordForward({ sourceConversationId: conversationId, messageIds });
+    finishMultiSelectAction();
+    exitMultiSelect();
+    navigate(appendQuery(config.routes.newConversation, { mode: "forward" }));
+  };
+
+  const copyMultiSelectedMessages = async () => {
+    if (!beginMultiSelectAction("copy")) return;
+    const content = buildImMessageMultiSelectCopyText({
+      messages: multiSelect.selectedMessages,
+      resolveDisplayedText: (message) => getVisibleMessageTranslation(message)?.content,
+      resolveSenderName: (message) => getConversationMemberDisplayName(store.usersById[message.senderId]) ?? "NeeDo",
+      translate: (value) => translateText(value, language),
+    });
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("error.clipboard_unavailable");
+      await navigator.clipboard.writeText(content);
+      finishMultiSelectAction();
+      exitMultiSelect();
+      setActionNotice("已复制");
+    } catch {
+      finishMultiSelectAction();
+      setMultiSelectNotice("复制失败，请重试");
+    }
+  };
+
+  const favoriteMultiSelectedMessages = async () => {
+    if (!multiSelect.selectedMessages.every(isImMessageChatRecordSnapshotEligible)) {
+      setMultiSelectNotice("所选信息包含暂不支持转发或收藏的类型");
+      return;
+    }
+    if (!beginMultiSelectAction("favorite")) return;
+    const selectedIds = multiSelect.selectedMessages.map((message) => message.id);
+    try {
+      await store.favoriteSelectedMessages(
+        conversationId,
+        selectedIds,
+        getMultiSelectMutationKey("favorite", selectedIds),
+      );
+      multiSelectMutationKeyRef.current = null;
+      finishMultiSelectAction();
+      exitMultiSelect();
+      setActionNotice("已收藏");
+    } catch {
+      finishMultiSelectAction();
+      setMultiSelectNotice("收藏失败，请稍后重试");
+    }
+  };
+
+  const deleteMultiSelectedMessages = async () => {
+    if (!beginMultiSelectAction("delete")) return;
+    const selectedIds = multiSelect.selectedMessages.map((message) => message.id);
+    try {
+      await store.batchDeleteMessages(
+        conversationId,
+        selectedIds,
+        getMultiSelectMutationKey("delete", selectedIds),
+      );
+      multiSelectMutationKeyRef.current = null;
+      setPinnedMessageIds((current) => current.filter((messageId) => !selectedIds.includes(messageId)));
+      if (mediaPreview && selectedIds.includes(mediaPreview.id)) closeMediaPreview();
+      finishMultiSelectAction();
+      exitMultiSelect();
+    } catch {
+      finishMultiSelectAction();
+      setMultiSelectNotice("删除失败，请稍后重试");
+    }
   };
 
   const toggleMessageReaction = (message: ConversationMessage, reaction: string, closeAfter = true) => {
@@ -5794,13 +6297,15 @@ export function ImConversationRoomPage({
       }))
     );
 
+  const getVisibleMessageTranslation = (message: ConversationMessage) =>
+    resolveVisibleImMessageTranslation(
+      automaticTranslationEnabled,
+      manualTranslations[message.id],
+      automaticTranslations[message.id],
+    );
+
   const copyMessageContent = async (message: ConversationMessage) => {
-    const root = messageRefs.current[message.id];
-    const selection = window.getSelection();
-    const selectedContent = selection && !selection.isCollapsed && root && selection.anchorNode && selection.focusNode && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
-      ? selection.toString().trim()
-      : "";
-    const content = selectedContent || message.content || message.ext?.previewText || "媒体消息";
+    const content = getImMessageCopyText(message, getVisibleMessageTranslation(message)?.content);
     closeMessageMenu();
 
     try {
@@ -5813,6 +6318,86 @@ export function ImConversationRoomPage({
     } catch {
       setActionNotice("复制失败，请重试");
     }
+  };
+
+  const translateMessageManually = (message: ConversationMessage) => {
+    if (
+      automaticTranslationEnabled
+      || !isImMessageTranslationEligible(message)
+      || manualTranslationPendingIdsRef.current.has(message.id)
+    ) {
+      closeMessageMenu();
+      return;
+    }
+
+    const cached = manualTranslations[message.id];
+    if (cached) {
+      setManualTranslations((current) => ({
+        ...current,
+        [message.id]: { ...cached, visible: !cached.visible },
+      }));
+      closeMessageMenu();
+      return;
+    }
+
+    const scopeKey = `${conversationId}:${language}`;
+    const generation = translationGenerationRef.current;
+    manualTranslationPendingIdsRef.current.add(message.id);
+    setManualTranslationPendingIds((current) => new Set(current).add(message.id));
+    void store.translateMessages(conversationId, [message.id], getImTranslationTargetLanguage(language))
+      .then((results) => {
+        if (
+          translationScopeRef.current !== scopeKey
+          || translationGenerationRef.current !== generation
+        ) {
+          return;
+        }
+        const result = results.find((candidate) => candidate.messageId === message.id);
+        if (result?.status === "same_language") {
+          setActionNotice("当前内容无需翻译");
+          return;
+        }
+        if (result?.status === "ineligible") {
+          setActionNotice("此消息不支持翻译");
+          return;
+        }
+        const translatedContent = result?.status === "translated" ? result.translatedContent : undefined;
+        if (typeof translatedContent !== "string" || !translatedContent.trim()) {
+          setActionNotice("翻译失败，请稍后重试");
+          return;
+        }
+        setManualTranslations((current) => ({
+          ...current,
+          [message.id]: { content: translatedContent, visible: true },
+        }));
+      })
+      .catch((error: unknown) => {
+        if (
+          translationScopeRef.current !== scopeKey
+          || translationGenerationRef.current !== generation
+        ) {
+          return;
+        }
+        setActionNotice(getManualTranslationErrorNotice(error));
+      })
+      .finally(() => {
+        if (
+          translationScopeRef.current !== scopeKey
+          || translationGenerationRef.current !== generation
+        ) {
+          return;
+        }
+        manualTranslationPendingIdsRef.current.delete(message.id);
+        setManualTranslationPendingIds((current) => {
+          if (!current.has(message.id)) {
+            return current;
+          }
+          const next = new Set(current);
+          next.delete(message.id);
+          return next;
+        });
+      });
+    closeMessageMenu();
   };
 
   const scrollToMessage = (messageId: string) => {
@@ -5846,7 +6431,9 @@ export function ImConversationRoomPage({
       return;
     }
 
-    const originalContent = message.type === "text" ? message.content : "";
+    const originalContent = message.type === "text"
+      ? restoreImComposerDraft(message.content, message.ext?.richText)
+      : "";
     setRecallPending(true);
     setActionNotice(null);
 
@@ -5892,15 +6479,18 @@ export function ImConversationRoomPage({
 
   const openMediaPreview = (message: ConversationMessage) => {
     setMediaPreviewScale(1);
+    setMediaPreviewResolvedSource(undefined);
     setMediaPreview(message);
   };
 
   const closeMediaPreview = () => {
     setMediaPreview(null);
     setMediaPreviewScale(1);
+    setMediaPreviewResolvedSource(undefined);
   };
 
   const createMessageActions = (message: ConversationMessage) => {
+    if (message.type === "chat-record") return { primaryActions: [], listActions: [] };
     const canRecall =
       getStandardRecallAvailability(message, store.currentUserId ?? "") !==
       "unavailable";
@@ -5920,9 +6510,14 @@ export function ImConversationRoomPage({
         key: "forward",
         label: "转发",
         icon: "forward",
+        disabled: !isImMessageChatRecordSnapshotEligible(message),
         onClick: () => {
           closeMessageMenu();
-          navigate(appendQuery(config.routes.newConversation, { mode: "forward", messageId: message.id }));
+          store.setPendingChatRecordForward({
+            sourceConversationId: conversationId,
+            messageIds: [message.id]
+          });
+          navigate(appendQuery(config.routes.newConversation, { mode: "forward" }));
         }
       },
       {
@@ -5930,6 +6525,19 @@ export function ImConversationRoomPage({
         label: "复制",
         icon: "copy",
         onClick: () => void copyMessageContent(message)
+      },
+      {
+        key: "translate-message",
+        label: automaticTranslationEnabled
+          ? "翻译"
+          : manualTranslations[message.id]?.visible
+            ? "隐藏译文"
+            : manualTranslations[message.id]
+              ? "显示译文"
+              : "翻译",
+        icon: "translate",
+        disabled: automaticTranslationEnabled || !isImMessageTranslationEligible(message) || manualTranslationPendingIds.has(message.id),
+        onClick: () => translateMessageManually(message)
       },
       {
         key: "pin-message",
@@ -5965,7 +6573,21 @@ export function ImConversationRoomPage({
       }
     });
 
-    return { primaryActions, listActions: [] };
+    primaryActions.push({
+      key: "multiselect",
+      label: "多选",
+      icon: "select",
+      disabled: !isImMessageMultiSelectEligible(message),
+      onClick: () => enterMultiSelect(message)
+    });
+
+    return {
+      primaryActions: primaryActions.map((item) => ({
+        ...item,
+        label: translateImUiText(item.label, language),
+      })),
+      listActions: [],
+    };
   };
 
   const availableMoreActions = [
@@ -6034,8 +6656,23 @@ export function ImConversationRoomPage({
   return (
     <ImStandaloneShell>
       <div
+        aria-hidden={voiceRecording.phase !== "idle" ? "true" : undefined}
         className="im-conversation-room-shell fixed inset-x-0 inset-y-0 z-20 mx-auto flex h-[100dvh] w-full min-w-0 max-w-full flex-col overflow-hidden overscroll-none [overflow-x:clip]"
-        onPointerDownCapture={handleConversationPointerDownCapture}
+        data-im-conversation-voice-underlay="true"
+        inert={voiceRecording.phase !== "idle" || undefined}
+        onClickCapture={handleConversationClickCapture}
+        onPointerCancelCapture={() => multiSelect.onPointerCancelCapture()}
+        onPointerDownCapture={(event) => {
+          multiSelect.onPointerDownCapture(event);
+          handleConversationPointerDownCapture(event);
+        }}
+        onPointerMoveCapture={(event) => multiSelect.onPointerMoveCapture(event)}
+        onPointerUpCapture={(event) => {
+          if (multiSelect.onPointerUpCapture(event) === "cancel-selection") {
+            armMultiSelectReleaseClickSuppression();
+          }
+        }}
+        ref={conversationUnderlayRef}
         style={{ maxWidth: "min(880px, 100%)" }}
       >
         <ImTopBar
@@ -6091,7 +6728,11 @@ export function ImConversationRoomPage({
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];
                   const senderName = getConversationMemberDisplayName(sender) ?? "消息";
-                  const preview = buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
+                  const preview = buildMessageRawPreview(
+                    message,
+                    store.currentUserId ?? "",
+                    store.usersById,
+                  );
 
                   return (
                     <div className="im-pinned-message-container flex min-w-0 items-center gap-2 rounded-[16px] px-2 py-2" key={message.id}>
@@ -6104,8 +6745,12 @@ export function ImConversationRoomPage({
                           <ImIcon className="h-4 w-4" name="top" />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[11px] font-black text-[color:var(--client-muted)]">信息置顶 · {senderName}</span>
-                          <span className="mt-0.5 block truncate text-[13px] font-black text-[color:var(--client-text)]">{preview}</span>
+                          <span className="block truncate text-[11px] font-black text-[color:var(--client-muted)]">
+                            信息置顶 · <span data-no-i18n="true">{senderName}</span>
+                          </span>
+                          <span className="mt-0.5 block truncate text-[13px] font-black text-[color:var(--client-text)]">
+                            <ImRuntimeI18nPreviewText preview={preview} />
+                          </span>
                         </span>
                       </button>
                       <button
@@ -6127,7 +6772,9 @@ export function ImConversationRoomPage({
             className={cn("im-conversation-scroll im-conversation-scroll--glass-underlay scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-scroll overscroll-y-contain px-1", menuState && "im-conversation-scroll--text-selecting")}
             data-page-drag-ignore="true"
             data-scroll-drag-ignore="true"
+            data-im-multiselect-active={multiSelect.active ? "true" : undefined}
             onClick={() => {
+              if (multiSelect.active) return;
               if (menuState && hasActiveImMessageTextSelection(messageRefs.current[menuState.message.id])) {
                 return;
               }
@@ -6169,53 +6816,64 @@ export function ImConversationRoomPage({
               const quotedSender = quoted ? store.usersById[quoted.senderId] : undefined;
               const quotedSenderName = getConversationMemberDisplayName(quotedSender);
               const quotedSenderAvatar = getConversationMemberAvatar(quotedSender);
+              const bubble = (
+                <MessageBubble
+                  avatar={senderAvatar}
+                  avatarTo={senderProfilePath}
+                  disappearingNow={hasRunningDisappearingCountdown ? disappearingNow : undefined}
+                  isMine={isMine}
+                  message={message}
+                  onOpenContact={(userId) => {
+                    if (hiddenMemberProfilesActive) return;
+                    const targetContact = store.contacts.find((item) => item.targetUserId === userId);
+                    const targetUser = store.usersById[userId];
+                    const targetProfilePath = resolveImProfilePath(scope, targetUser);
+                    if (targetProfilePath) { navigate(targetProfilePath); return; }
+                    if (targetContact) navigate(config.routes.contactDetail(targetContact.id));
+                  }}
+                  onOpenSocialPost={(socialPostId) => {
+                    navigate(socialPaths.post(scope, socialPostId));
+                  }}
+                  onPreviewMedia={openMediaPreview}
+                  quotedMessage={quoted}
+                  quotedSenderAvatar={quotedSenderAvatar}
+                  quotedSenderName={quotedSenderName}
+                  onToggleReaction={(reaction) => toggleMessageReaction(message, reaction, false)}
+                  reactions={getMessageReactionSummaries(message.id)}
+                  renderContactCard={renderContactCard}
+                  renderContactCardAction={renderContactCardAction}
+                  senderName={senderName}
+                  showSender={showSender}
+                  translation={{
+                    ...getVisibleMessageTranslation(message),
+                    language,
+                  }}
+                />
+              );
 
               return (
                 <div
                   className={cn("relative rounded-3xl transition", menuState ? "z-20" : "z-10", flashMessageId === message.id && "bg-[#fff7d4]", menuState?.message.id === message.id && "bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]")}
                   data-im-message-selected={menuState?.message.id === message.id ? "true" : undefined}
+                  data-im-message-multiselect-eligible={isImMessageMultiSelectEligible(message) ? "true" : "false"}
                   data-im-message-side={isMine ? "right" : "left"}
                   key={message.id}
                   ref={(element) => {
                     messageRefs.current[message.id] = element;
                   }}
                 >
-                  <MessagePressable onOpenMenu={() => openMessageMenu(message)}>
-                    <MessageBubble
-                      avatar={senderAvatar}
-                      avatarTo={senderProfilePath}
-                      disappearingNow={hasRunningDisappearingCountdown ? disappearingNow : undefined}
-                      isMine={isMine}
-                      message={message}
-                      onOpenContact={(userId) => {
-                        if (hiddenMemberProfilesActive) {
-                          return;
-                        }
-
-                        const targetContact = store.contacts.find((item) => item.targetUserId === userId);
-                        const targetUser = store.usersById[userId];
-                        const targetProfilePath = resolveImProfilePath(scope, targetUser);
-                        if (targetProfilePath) {
-                          navigate(targetProfilePath);
-                          return;
-                        }
-
-                        if (targetContact) {
-                          navigate(config.routes.contactDetail(targetContact.id));
-                        }
-                      }}
-                      onPreviewMedia={openMediaPreview}
-                      quotedMessage={quoted}
-                      quotedSenderAvatar={quotedSenderAvatar}
-                      quotedSenderName={quotedSenderName}
-                      onToggleReaction={(reaction) => toggleMessageReaction(message, reaction, false)}
-                      reactions={getMessageReactionSummaries(message.id)}
-                      renderContactCard={renderContactCard}
-                      renderContactCardAction={renderContactCardAction}
-                      senderName={senderName}
-                      showSender={showSender}
-                    />
-                  </MessagePressable>
+                  <div className="flex min-w-0 items-center">
+                    {multiSelect.active && isImMessageMultiSelectEligible(message) ? (
+                      <ImMessageMultiSelectCircle
+                        checked={multiSelect.selectedIds.has(message.id)}
+                        label={`${multiSelect.selectedIds.has(message.id) ? "取消选择" : "选择"}${senderName ?? "消息"}`}
+                        onToggle={() => showMultiSelectResult(multiSelect.toggle(message.id))}
+                      />
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      {message.type === "chat-record" ? bubble : <MessagePressable onOpenMenu={() => openMessageMenu(message)}>{bubble}</MessagePressable>}
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -6240,14 +6898,8 @@ export function ImConversationRoomPage({
                 top: list.scrollHeight
               });
             }}
-            visible={!latestPositionVisible && !menuState && !mediaPreview}
+            visible={!latestPositionVisible && !menuState && !mediaPreview && !multiSelect.active}
           />
-
-          {recordingNotice ? (
-            <div className={cn("relative z-10 px-4 py-2 text-xs", recordingHintClass)}>
-              <p>{recordingNotice}</p>
-            </div>
-          ) : null}
 
           {actionNotice ? (
             <div
@@ -6258,7 +6910,7 @@ export function ImConversationRoomPage({
               role="alert"
             >
               <p className="max-w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-[#202124]/95 px-4 py-3 text-center text-sm font-black leading-5 text-white shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur-md">
-                {actionNotice}
+                {translateImUiText(actionNotice, language)}
               </p>
             </div>
           ) : null}
@@ -6276,7 +6928,14 @@ export function ImConversationRoomPage({
 
               return (
                 <>
-                  <ImMessageSelectionHandles active messageRoot={messageRefs.current[menuState.message.id]} />
+                  <ImMessageSelectionHandles
+                    active
+                    messageRoot={messageRefs.current[menuState.message.id]}
+                    onDragStart={() => {
+                      closeMessageMenu();
+                      exitMultiSelect();
+                    }}
+                  />
                   <ImMessageActionSheet
                     actions={primaryActions}
                     anchorElement={messageRefs.current[menuState.message.id]}
@@ -6295,7 +6954,7 @@ export function ImConversationRoomPage({
             })()
           ) : null}
 
-          {!mediaPreview ? (
+          {!mediaPreview && !multiSelect.active ? (
             <>
               {quotedMessage ? (
                 <div className={cn("relative z-10 px-4 py-2 text-xs", quotedBarClass)}>
@@ -6316,32 +6975,24 @@ export function ImConversationRoomPage({
                 blocked={blocked}
                 draft={draft}
                 isNight={isNight}
-                maxVoiceRecordingSeconds={maxVoiceRecordingSeconds}
-                onCancelRecording={() => stopActiveRecording("cancel")}
                 onDraftChange={(value) => {
                   const nextDraft = clampMessageText(value);
                   setDraft(nextDraft);
                   store.setDraft(conversationId, nextDraft);
                 }}
-                onEndRecording={() => void endRecording()}
-                onMoveRecording={moveRecording}
+                onOpenVoiceRecording={() => {
+                  setPanel(null);
+                  void voiceRecording.open();
+                }}
                 onPanelChange={setPanel}
                 onRemovePendingImage={clearPendingImage}
                 onSend={() => void sendText()}
-                onStartRecording={(event) => void startRecording(event)}
-                onToggleVoice={() => {
-                  if (recordingPendingRef.current || recordingRef.current.active) {
-                    return;
-                  }
-
-                  setVoiceMode((value) => !value);
-                }}
                 panel={panel}
                 pendingImage={pendingImage}
-                recording={recording}
                 sending={imageSending}
                 textareaRef={textareaRef}
-                voiceMode={voiceMode}
+                voiceButtonRef={voiceButtonRef}
+                voiceInputAriaLabel={translateText("录制语音", language)}
               />
               <input
                 accept="image/jpeg,image/png,image/webp"
@@ -6357,41 +7008,139 @@ export function ImConversationRoomPage({
               />
             </>
           ) : null}
+
+          {multiSelect.active ? (
+            <ImMessageMultiSelectOverlay
+              deleteConfirmationOpen={multiSelectDeleteConfirmationOpen}
+              language={language}
+              notice={multiSelectNotice}
+              onCancel={exitMultiSelect}
+              onConfirmDelete={() => void deleteMultiSelectedMessages()}
+              onCopy={() => void copyMultiSelectedMessages()}
+              onDelete={() => setMultiSelectDeleteConfirmationOpen(true)}
+              onDismissDeleteConfirmation={() => setMultiSelectDeleteConfirmationOpen(false)}
+              onFavorite={() => void favoriteMultiSelectedMessages()}
+              onForward={forwardMultiSelectedMessages}
+              onSelectToPoint={(pointY) => showMultiSelectResult(multiSelect.selectToPoint(pointY))}
+              pendingAction={multiSelectPendingAction}
+              recordActionsSupported={multiSelect.selectedMessages.every(isImMessageChatRecordSnapshotEligible)}
+              selectedCount={multiSelect.selectedMessages.length}
+            />
+          ) : null}
         </div>
       </div>
 
-      <ImBottomSheet onClose={() => setContactCardPickerOpen(false)} open={contactCardPickerOpen} title="发送名片">
+      {voiceRecording.phase !== "idle" ? (
+        <ImVoiceRecordingOverlay
+          audioRef={voiceRecording.audioRef}
+          copy={{
+            acquiringPermission: translateText("正在连接麦克风", language),
+            cancelAriaLabel: translateText("取消录音", language),
+            deleteAriaLabel: translateText("删除录音", language),
+            previewPaused: translateText("录音预览", language),
+            previewPlaying: translateText("正在播放录音", language),
+            replayAriaLabel: translateText("重放录音", language),
+            remainingRecording: (remainingSeconds) =>
+              `${Math.min(MAX_VOICE_RECORDING_SECONDS, remainingSeconds)}″ ${translateText("后将停止录音", language)}`,
+            sendAriaLabel: translateText("发送录音", language),
+            sending: translateText("正在发送录音", language),
+            sendingAriaLabel: translateText("正在发送录音", language),
+            stopAriaLabel: translateText("停止录音", language)
+          }}
+          durationSeconds={voiceRecording.durationSeconds}
+          error={voiceRecordingError}
+          onCancel={voiceRecording.cancel}
+          onDelete={voiceRecording.cancel}
+          onPreviewEnded={voiceRecording.handlePlaybackEnded}
+          onReplay={() => void voiceRecording.replay()}
+          onSend={() => void sendVoiceRecording()}
+          onStop={() => voiceRecording.stop("manual")}
+          onTimeUpdate={(event) => voiceRecording.updatePlaybackSeconds(event.currentTarget.currentTime)}
+          phase={voiceRecording.phase}
+          playbackSeconds={voiceRecording.playbackSeconds}
+          previewUrl={voiceRecording.previewUrl}
+          remainingSeconds={voiceRecording.remainingSeconds}
+        />
+      ) : null}
+
+      <ImBottomSheet
+        onClose={closeContactCardPicker}
+        open={contactCardPickerOpen}
+        presentation="composer"
+        title={translateText("发送名片", language)}
+      >
         <div className="space-y-3 pb-2">
           <input
             className="h-11 w-full rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] px-4 text-[15px] text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
-            onChange={(event) => setContactCardQuery(event.target.value)}
-            placeholder="搜索用户、店铺或技师名片"
+            onChange={(event) => {
+              setContactCardPickerError(false);
+              setContactCardQuery(event.target.value);
+            }}
+            placeholder={translateText("搜索我或好友", language)}
             value={contactCardQuery}
           />
 
-          <section className="max-h-[62dvh] overflow-y-auto rounded-[24px] bg-[color:color-mix(in_srgb,var(--client-bg)_72%,var(--client-surface)_28%)]">
-            {filteredShareableCardUsers.length > 0 ? (
-              filteredShareableCardUsers.map((user) => {
-                const contactForUser = activeContactByUserId.get(user.id);
-                const currentUser = store.currentUserId ? store.usersById[store.currentUserId] : undefined;
-                const captionPrefix = getShareableCardCaptionPrefix(scope, user, store.currentUserId, currentUser);
-                const caption = captionPrefix
-                  ? `${captionPrefix} · ${user.signature ?? user.region ?? user.userIdLabel}`
-                  : buildContactCaption(user, contactForUser) || user.userIdLabel;
+          {contactCardPickerError ? (
+            <p className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-600" role="alert">
+              {translateText("名片发送失败，请稍后重试", language)}
+            </p>
+          ) : null}
 
-                return (
-                  <ContactRow
-                    caption={caption}
-                    contact={contactForUser}
-                    key={user.id}
-                    onClick={() => void sendContactCard(user)}
-                    user={user}
-                  />
-                );
-              })
+          <section className="overflow-y-auto rounded-2xl bg-[color:color-mix(in_srgb,var(--client-surface)_35%,transparent)]">
+            {contactCardPickerStatus === "loading" ? (
+              <div className="px-4 py-10 text-center text-sm text-[color:var(--client-muted)]">
+                {translateText("正在加载名片", language)}
+              </div>
+            ) : contactCardPickerStatus === "error" ? (
+              <div className="space-y-3 px-4 py-10 text-center text-sm text-[color:var(--client-muted)]">
+                <p>{translateText("名片加载失败，请稍后重试", language)}</p>
+                <Button
+                  onClick={() => setContactCardReloadVersion((version) => version + 1)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {translateText("重试", language)}
+                </Button>
+              </div>
+            ) : contactCardCandidates.length > 0 ? (
+              contactCardCandidates.map((candidate) => (
+                <button
+                  className="flex min-h-[74px] w-full items-center gap-3 border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3 text-left last:border-b-0 disabled:opacity-55"
+                  data-im-contact-card-candidate={candidate.targetUserId}
+                  disabled={Boolean(contactCardPendingTargetId)}
+                  key={candidate.targetUserId}
+                  onClick={() => void sendContactCard(candidate)}
+                  type="button"
+                >
+                  {candidate.avatarUrl ? (
+                    <img
+                      alt=""
+                      className="h-11 w-11 shrink-0 rounded-full object-cover"
+                      src={candidate.avatarUrl}
+                    />
+                  ) : (
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[color:var(--client-elevated)] text-sm font-black text-[color:var(--client-muted)]">
+                      {candidate.nickname.slice(0, 1)}
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-black text-[color:var(--client-text)]">
+                      {candidate.nickname}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-[color:var(--client-muted)]">
+                      {candidate.needoId}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs font-bold text-[color:var(--client-muted)]">
+                    {contactCardPendingTargetId === candidate.targetUserId
+                      ? translateText("发送中", language)
+                      : translateText(candidate.relationship === "self" ? "我的名片" : "好友", language)}
+                  </span>
+                </button>
+              ))
             ) : (
               <div className="px-4 py-10 text-center text-sm text-[color:var(--client-muted)]">
-                没有可发送的名片
+                {translateText("没有可发送的名片", language)}
               </div>
             )}
           </section>
@@ -6715,24 +7464,14 @@ export function ImConversationRoomPage({
             onClick={(event) => event.stopPropagation()}
             onDoubleClick={() => setMediaPreviewScale((scale) => (scale > 1 ? 1 : 2))}
           >
-            {mediaPreview.type === "image" ? (
-              <img
-                alt={mediaPreview.ext?.fileName ?? "图片"}
-                className="max-h-full max-w-full select-none object-contain transition-transform duration-150"
-                draggable={false}
-                src={mediaPreview.ext?.url ?? mediaPreview.content}
-                style={{ transform: `scale(${mediaPreviewScale})` }}
-              />
-            ) : mediaPreview.type === "video" ? (
-              <video
-                className="max-h-full max-w-full object-contain transition-transform duration-150"
-                controls
-                playsInline
-                poster={mediaPreview.ext?.thumbnailUrl}
-                src={mediaPreview.ext?.url ?? mediaPreview.content}
-                style={{ transform: `scale(${mediaPreviewScale})` }}
-              />
-            ) : null}
+            {mediaPreview.type === "image" || mediaPreview.type === "video" ? <OpenedImMediaViewer
+              cache={store}
+              className="max-h-full max-w-full select-none object-contain transition-transform duration-150"
+              message={mediaPreview}
+              onResolvedSourceChange={setMediaPreviewResolvedSource}
+              poster={mediaPreview.ext?.thumbnailUrl}
+              style={{ transform: `scale(${mediaPreviewScale})` }}
+            /> : null}
           </div>
 
           <footer
@@ -6766,9 +7505,10 @@ export function ImConversationRoomPage({
               +
             </button>
             <a
+              aria-disabled={!mediaPreviewResolvedSource}
               className="grid min-h-11 place-items-center rounded-full bg-white/12 text-xs font-black"
               download={mediaPreview.ext?.fileName ?? (mediaPreview.type === "video" ? "needo-video" : "needo-image")}
-              href={mediaPreview.ext?.url ?? mediaPreview.content}
+              href={mediaPreviewResolvedSource ?? undefined}
             >
               下载
             </a>
@@ -6776,7 +7516,11 @@ export function ImConversationRoomPage({
               className="min-h-11 rounded-full bg-[color:var(--client-primary)] px-2 text-xs font-black text-[color:var(--client-primary-contrast)]"
               onClick={() => {
                 closeMediaPreview();
-                navigate(appendQuery(config.routes.newConversation, { mode: "forward", messageId: mediaPreview.id }));
+                store.setPendingChatRecordForward({
+                  sourceConversationId: conversationId,
+                  messageIds: [mediaPreview.id]
+                });
+                navigate(appendQuery(config.routes.newConversation, { mode: "forward" }));
               }}
               type="button"
             >
@@ -6810,6 +7554,7 @@ export function ImConversationInfoPage() {
   const [formalActivityStatus, setFormalActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
   const [conversationDirectoryProfile, setConversationDirectoryProfile] = useState<DirectoryProfile | null>(null);
   const [conversationFriendMutationPending, setConversationFriendMutationPending] = useState(false);
+  const [autoTranslatePending, setAutoTranslatePending] = useState(false);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(Boolean(conversation?.privacyModeEnabled));
   const [hideMemberProfilesEnabled, setHideMemberProfilesEnabled] = useState(Boolean(conversation?.hideMemberProfiles));
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(() => createCountdownInput(conversation?.disappearingCountdown));
@@ -6876,6 +7621,21 @@ export function ImConversationInfoPage() {
   const showInfoToast = (message: string) => {
     toastIdRef.current += 1;
     setInfoToast({ id: toastIdRef.current, message });
+  };
+
+  const setConversationAutoTranslateMessages = async (next: boolean) => {
+    if (!conversation || conversation.type !== "single" || autoTranslatePending) {
+      return;
+    }
+
+    setAutoTranslatePending(true);
+    try {
+      await store.setConversationAutoTranslateMessages(conversation.id, next);
+    } catch {
+      showInfoToast(t("聊天内容自动翻译设置失败，请稍后重试"));
+    } finally {
+      setAutoTranslatePending(false);
+    }
   };
 
   useEffect(() => {
@@ -7142,7 +7902,7 @@ export function ImConversationInfoPage() {
   if (!conversation || !conversationId) {
     return (
       <ImStandaloneShell>
-        <ImTopBar onBack={() => navigate(-1)} title="信息设置" />
+        <ImTopBar onBack={() => navigate(-1)} title={t("信息设置")} />
         <ImEmptyState caption="会话信息还没同步完成。" title="暂无聊天信息" />
       </ImStandaloneShell>
     );
@@ -7159,7 +7919,7 @@ export function ImConversationInfoPage() {
   const groupOwnerAnonymousIdentity = groupOwner ? anonymousMemberIdentityByUserId.get(groupOwner.member.userId) : undefined;
   const groupOwnerDisplayName = groupOwner ? groupOwnerAnonymousIdentity?.displayName ?? groupOwner.member.nicknameInGroup ?? groupOwner.user.nickname : "";
   const groupOwnerAvatar = groupOwner ? (groupOwnerAnonymousIdentity ? buildAnonymousGroupAvatarDataUrl(groupOwnerAnonymousIdentity.code) : groupOwner.user.avatar) : undefined;
-  const groupOwnerProfilePath = groupOwner && !hiddenMemberProfilesActive ? resolveImProfilePath(scope, groupOwner.user) : undefined;
+  const groupOwnerProfilePath = resolveImContactInformationPath(scope, groupOwner?.user, hiddenMemberProfilesActive);
   const infoCardProfileRef = user ? resolveContactCardProfileRef(buildContactCardPayload(user), user) : undefined;
   const infoCardDetailTo = user
     ? resolveImProfilePath(scope, user) ?? (infoCardProfileRef ? getScopedProfileDetailPath(scope, infoCardProfileRef.entityType, infoCardProfileRef.id) : undefined)
@@ -7174,6 +7934,9 @@ export function ImConversationInfoPage() {
         languages: [],
       }
     : undefined;
+  const infoFormalTechnicianProfileCard = buildFormalTechnicianProfileCard(
+    conversationDirectoryProfile,
+  );
   const infoIdentityCardDetailTo = infoIdentityCard?.profileId && infoIdentityCard.entityType !== "account"
     ? getScopedProfileDetailPath(scope, infoIdentityCard.entityType, infoIdentityCard.profileId)
     : infoCardDetailTo;
@@ -7240,16 +8003,29 @@ export function ImConversationInfoPage() {
   return (
     <ImStandaloneShell>
       <div className="contents">
-        <ImTopBar onBack={() => navigate(-1)} title="信息设置" />
+        <ImTopBar
+          actions={<IconButton icon="close" label={t("关闭")} onClick={() => navigate(-1)} />}
+          onBack={() => navigate(-1)}
+          title={t(conversation.type === "single" ? "联系人信息" : "信息设置")}
+        />
       </div>
       <div className={cn("space-y-4 px-4 pt-4", startChatTarget ? "pb-32" : "pb-4")}>
         {conversation.type === "single" && user && infoIdentityCard ? (
-          <ConversationIdentityProfileCard
-            detailTo={infoIdentityCardDetailTo}
-            identityCard={infoIdentityCard}
-            user={user}
-            viewerScope={scope}
-          />
+          infoFormalTechnicianProfileCard ? (
+            <TechnicianPublicInfoCard
+              dynamicTo={infoActivityTo}
+              formalData={infoFormalTechnicianProfileCard.formalData}
+              technician={infoFormalTechnicianProfileCard.technician}
+              themeScope={scope}
+            />
+          ) : (
+            <ConversationIdentityProfileCard
+              detailTo={infoIdentityCardDetailTo}
+              identityCard={infoIdentityCard}
+              user={conversationDirectoryProfile?.user ?? user}
+              viewerScope={scope}
+            />
+          )
         ) : null}
 
         <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
@@ -7556,7 +8332,7 @@ export function ImConversationInfoPage() {
                   const anonymousIdentity = anonymousMemberIdentityByUserId.get(member.userId);
                   const displayName = anonymousIdentity?.displayName ?? member.nicknameInGroup ?? user.nickname;
                   const avatar = anonymousIdentity ? buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code) : user.avatar;
-                  const profilePath = hiddenMemberProfilesActive ? undefined : resolveImProfilePath(scope, user);
+                  const profilePath = resolveImContactInformationPath(scope, user, hiddenMemberProfilesActive);
 
                   return (
                     <div className="text-center" key={member.id}>
@@ -7575,6 +8351,15 @@ export function ImConversationInfoPage() {
           </section>
         ) : null}
 
+        {conversation.type === "single" ? (
+          <ToggleRow
+            caption={t("打开后按当前 App 语言显示；关闭后显示原文")}
+            checked={conversation.autoTranslateMessages}
+            disabled={autoTranslatePending}
+            onChange={(next) => void setConversationAutoTranslateMessages(next)}
+            title={t("聊天内容自动翻译")}
+          />
+        ) : null}
         <ToggleRow checked={conversation.isMuted} onChange={(next) => void store.muteConversation(conversation.id, next)} title="消息免打扰" />
         <ToggleRow checked={conversation.isPinned} onChange={(next) => void store.pinConversation(conversation.id, next)} title="置顶聊天" />
 
@@ -7867,6 +8652,7 @@ export function ImMediaRecordsPage() {
 
 export function ImNewConversationPage() {
   const { scope, store, config } = useImRuntime();
+  const { language } = useOptionalI18n();
   const { actions: dineInActions } = useDineInStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -7887,8 +8673,7 @@ export function ImNewConversationPage() {
             ? "选择聊天"
             : "新建聊天";
   const groupSourceConversationId = isGroupMode ? searchParams.get("from") : null;
-  const forwardMessageId = searchParams.get("messageId");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q")?.trim() ?? "");
   const deferredQuery = useDeferredValue(query);
   const [directoryCandidates, setDirectoryCandidates] = useState<ImUser[]>([]);
   const [directoryStatus, setDirectoryStatus] = useState<"idle" | "searching" | "ready" | "error">("idle");
@@ -7904,6 +8689,12 @@ export function ImNewConversationPage() {
   const [collectNote, setCollectNote] = useState("");
   const [scanToken, setScanToken] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
+  const [forwardError, setForwardError] = useState<string | null>(null);
+  const [forwardPending, setForwardPending] = useState(false);
+  const forwardInFlightRef = useRef(false);
+  const forwardOperationGenerationRef = useRef(0);
+  const forwardKeysByConversationRef = useRef(new Map<string, string>());
+  const resolvedForwardConversationsByUserRef = useRef(new Map<string, string>());
   const [myQrPurpose, setMyQrPurpose] = useState<MyQrCodePurpose>("friend");
   const contacts = useMemo(() => {
     const keyword = deferredQuery.trim().toLowerCase();
@@ -7925,6 +8716,22 @@ export function ImNewConversationPage() {
       return [getDisplayName(user, contact), user.userIdLabel, ...user.searchableFields].some((field) => field.toLowerCase().includes(keyword));
     });
   }, [deferredQuery, store.contacts, store.usersById]);
+  const forwardConversations = useMemo(() => {
+    if (mode !== "forward" || !store.pendingChatRecordForward) return [];
+    const keyword = deferredQuery.trim().toLowerCase();
+    return store.conversations.filter((conversation) => {
+      if (conversation.isDeleted || (conversation.type !== "single" && conversation.type !== "group")) return false;
+      return !keyword || getConversationDisplayName(store, conversation).toLowerCase().includes(keyword);
+    });
+  }, [deferredQuery, mode, store, store.conversations, store.pendingChatRecordForward]);
+  const existingForwardContactUserIds = useMemo(() => new Set(
+    store.conversations
+      .filter((conversation) => !conversation.isDeleted && conversation.type === "single" && conversation.contactUserId)
+      .map((conversation) => conversation.contactUserId as string)
+  ), [store.conversations]);
+  const newDirectForwardContacts = useMemo(() => mode === "forward"
+    ? contacts.filter((contact) => !existingForwardContactUserIds.has(contact.targetUserId))
+    : contacts, [contacts, existingForwardContactUserIds, mode]);
   const groupedContacts = useMemo(
     () => buildContactSections({ users: store.users, contacts }),
     [contacts, store.users]
@@ -8025,6 +8832,10 @@ export function ImNewConversationPage() {
     if (indexClearTimerRef.current !== null) {
       window.clearTimeout(indexClearTimerRef.current);
     }
+  }, []);
+
+  useEffect(() => () => {
+    forwardOperationGenerationRef.current += 1;
   }, []);
 
   useEffect(() => {
@@ -8180,11 +8991,43 @@ export function ImNewConversationPage() {
     }
   };
 
+  const forwardToResolvedConversation = async (conversationTarget: string | (() => Promise<string> | string)) => {
+    if (!store.pendingChatRecordForward || forwardInFlightRef.current) return;
+    forwardInFlightRef.current = true;
+    const operationGeneration = ++forwardOperationGenerationRef.current;
+    setForwardPending(true);
+    setForwardError(null);
+    try {
+      const conversationId = typeof conversationTarget === "string" ? conversationTarget : await conversationTarget();
+      if (operationGeneration !== forwardOperationGenerationRef.current) return;
+      let idempotencyKey = forwardKeysByConversationRef.current.get(conversationId);
+      if (!idempotencyKey) {
+        idempotencyKey = crypto.randomUUID();
+        forwardKeysByConversationRef.current.set(conversationId, idempotencyKey);
+      }
+      await store.forwardSelectedMessages(conversationId, idempotencyKey);
+      if (operationGeneration === forwardOperationGenerationRef.current) navigate(config.routes.conversation(conversationId));
+    } catch (error) {
+      if (operationGeneration === forwardOperationGenerationRef.current) setForwardError(error instanceof Error ? error.message : "转发失败，请重试");
+    } finally {
+      if (operationGeneration === forwardOperationGenerationRef.current) {
+        forwardInFlightRef.current = false;
+        setForwardPending(false);
+      }
+    }
+  };
+
+  const forwardToNewDirectConversation = (userId: string) => forwardToResolvedConversation(async () => {
+    const cachedConversationId = resolvedForwardConversationsByUserRef.current.get(userId);
+    if (cachedConversationId) return cachedConversationId;
+    const conversation = await store.ensureDirectConversation(userId);
+    resolvedForwardConversationsByUserRef.current.set(userId, conversation.id);
+    return conversation.id;
+  });
+
   const createOrForward = async (userId: string) => {
-    if (mode === "forward" && forwardMessageId) {
-      const conversation = await store.ensureDirectConversation(userId);
-      await store.forwardMessage(forwardMessageId, conversation.id);
-      navigate(config.routes.conversation(conversation.id));
+    if (mode === "forward") {
+      await forwardToNewDirectConversation(userId);
       return;
     }
 
@@ -8269,7 +9112,17 @@ export function ImNewConversationPage() {
         />
       ) : (
         <ImTopBar
-          onBack={() => navigate(-1)}
+          onBack={() => {
+            if (mode === "forward") {
+              if (forwardInFlightRef.current) return;
+              forwardOperationGenerationRef.current += 1;
+              store.setPendingChatRecordForward(null);
+            }
+            navigate(-1);
+          }}
+          subtitle={mode === "forward" && store.pendingChatRecordForward
+            ? `已选 ${store.pendingChatRecordForward.messageIds.length} 条消息`
+            : undefined}
           title={pageTitle}
         />
       )}
@@ -8425,7 +9278,17 @@ export function ImNewConversationPage() {
           />
         </div>
       ) : (
-        <div className="space-y-4 px-4 py-4">
+        <div aria-busy={mode === "forward" && forwardPending} className="space-y-4 px-4 py-4">
+          {mode === "forward" && !store.pendingChatRecordForward ? (
+            <div className="rounded-[24px] bg-white px-4 py-10 text-center text-sm text-ink/55 shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
+              {translateImUiText("转发内容已失效，请重新选择", language)}
+            </div>
+          ) : null}
+          {mode === "forward" && forwardError ? (
+            <div role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              转发失败，请重试
+            </div>
+          ) : null}
           <input
             className="h-11 w-full rounded-2xl bg-white px-4 text-[15px] outline-none shadow-[0_12px_32px_rgba(20,20,20,0.06)]"
             onChange={(event) => setQuery(event.target.value)}
@@ -8433,8 +9296,30 @@ export function ImNewConversationPage() {
             value={query}
           />
 
-          <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-            {contacts.map((contact) => {
+          {mode === "forward" && store.pendingChatRecordForward && forwardConversations.length > 0 ? (
+            <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
+              <SectionTag>已有会话</SectionTag>
+              {forwardConversations.map((conversation) => (
+                <div data-forward-conversation-id={conversation.id} key={conversation.id}>
+                  <ConversationRow
+                    avatar={getConversationAvatar(store, conversation)}
+                    group={conversation.type === "group"}
+                    onClick={() => { void forwardToResolvedConversation(conversation.id); }}
+                    preview={buildConversationRowPreview(conversation)}
+                    privacyMode={conversation.privacyModeEnabled}
+                    time={formatConversationTime(conversation.lastMessageTime)}
+                    title={getConversationDisplayName(store, conversation)}
+                    unreadCount={conversation.unreadCount}
+                  />
+                </div>
+              ))}
+            </section>
+          ) : null}
+
+          {mode !== "forward" || store.pendingChatRecordForward ? (
+            <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
+              {mode === "forward" ? <SectionTag>新建单聊</SectionTag> : null}
+              {newDirectForwardContacts.map((contact) => {
               const user = store.usersById[contact.targetUserId];
 
               if (!user) {
@@ -8451,8 +9336,9 @@ export function ImNewConversationPage() {
                   user={user}
                 />
               );
-            })}
-          </section>
+              })}
+            </section>
+          ) : null}
         </div>
       )}
 

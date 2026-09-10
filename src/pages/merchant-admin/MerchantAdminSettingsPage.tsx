@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
@@ -15,9 +15,13 @@ import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdm
 import { PayrollSchedulePolicyEditor } from "../../components/merchant-admin/PayrollSchedulePolicyEditor";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { coreReadApi, mapCoreShopToStore } from "../../features/core-read/api";
 import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import { describeMerchantReadError } from "../../features/merchant-admin/merchantReadError";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { readImageFileAsDataUrl } from "../../lib/imageUpload";
+import { StoreDetailExperience } from "../user/StoreDetailPage";
+import type { Store } from "../../types/domain";
 
 type ShopDraft = {
   name: string;
@@ -38,10 +42,6 @@ const emptyDraft: ShopDraft = {
 const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
 const unavailableCapabilities = [
-  {
-    title: "图片与轮播尚未启用",
-    description: "需要媒体文件表、对象存储、上传策略、删除审计和前台读取合同后才能开放。"
-  },
   {
     title: "营业时段尚未启用",
     description: "需要带时区的 OpeningHours 数据模型、例外日期和店铺范围写 API 后才能开放。"
@@ -77,12 +77,16 @@ function toUpdateInput(draft: ShopDraft): MerchantShopUpdateInput {
 }
 
 export function MerchantAdminSettingsPage() {
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [searchParams] = useSearchParams();
   const { language } = useOptionalI18n();
   const [shop, setShop] = useState<BackofficeShopPayload | null>(null);
+  const [presentationStore, setPresentationStore] = useState<Store | null>(null);
+  const [presentationLoadError, setPresentationLoadError] = useState("");
   const [draft, setDraft] = useState<ShopDraft>(emptyDraft);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [avatarSaving, setAvatarSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [payrollPolicy, setPayrollPolicy] =
@@ -94,6 +98,7 @@ export function MerchantAdminSettingsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+    setPresentationLoadError("");
     setSaved(false);
     try {
       const page = await loadCoreReadWithTransientRetry(
@@ -102,8 +107,20 @@ export function MerchantAdminSettingsPage() {
       const currentShop = page.list[0] ?? null;
       setShop(currentShop);
       setDraft(currentShop ? createDraft(currentShop) : emptyDraft);
+      if (currentShop) {
+        try {
+          const detail = await loadCoreReadWithTransientRetry(() => coreReadApi.getShopDetail(currentShop.id));
+          setPresentationStore(mapCoreShopToStore(detail));
+        } catch (presentationError) {
+          setPresentationStore(null);
+          setPresentationLoadError(describeMerchantReadError(presentationError, language));
+        }
+      } else {
+        setPresentationStore(null);
+      }
     } catch (loadError) {
       setShop(null);
+      setPresentationStore(null);
       setError(describeMerchantReadError(loadError, language));
     } finally {
       setLoading(false);
@@ -165,6 +182,31 @@ export function MerchantAdminSettingsPage() {
     setDraft(createDraft(shop));
     setError("");
     setSaved(false);
+  };
+
+  const uploadAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !shop || avatarSaving) return;
+
+    setAvatarSaving(true);
+    setError("");
+    setSaved(false);
+    try {
+      const nextAvatar = await readImageFileAsDataUrl(file, {
+        maxDimension: 1200,
+        maxStoredBytes: 1_200_000
+      });
+      const updated = await backofficeRealDataApi.updateMerchantShop({
+        avatarDataUrl: nextAvatar
+      });
+      setShop(updated);
+      setSaved(true);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : String(uploadError));
+    } finally {
+      setAvatarSaving(false);
+    }
   };
 
   const savePayrollPolicy = async (
@@ -236,6 +278,25 @@ export function MerchantAdminSettingsPage() {
               </div>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <div className="flex items-center gap-4 rounded-lg border border-line bg-paper p-4 sm:col-span-2">
+                  {shop.avatarUrl ? (
+                    <img alt={shop.name} className="h-20 w-20 shrink-0 rounded-[24px] object-cover" src={shop.avatarUrl} />
+                  ) : (
+                    <span className="grid h-20 w-20 shrink-0 place-items-center rounded-[24px] bg-moss/10 text-2xl font-black text-moss">
+                      {shop.name.trim().slice(0, 1) || "店"}
+                    </span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-black text-ink">店铺身份头像</p>
+                    <p className="mt-1 text-xs font-bold leading-5 text-ink/50">
+                      首次头像会成为同账号各身份的初始头像；以后在店铺端修改只更新店铺身份。
+                    </p>
+                    <input accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => void uploadAvatar(event)} ref={avatarInputRef} type="file" />
+                    <Button className="mt-3" disabled={avatarSaving} onClick={() => avatarInputRef.current?.click()} size="sm" variant="secondary">
+                      {avatarSaving ? "头像上传中..." : "更换店铺头像"}
+                    </Button>
+                  </div>
+                </div>
                 <label className="block">
                   <span className="mb-2 block text-sm font-black">店铺名称</span>
                   <input className={inputClassName} maxLength={160} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required value={draft.name} />
@@ -284,6 +345,34 @@ export function MerchantAdminSettingsPage() {
               </div>
             </aside>
           </div>
+        ) : null}
+
+        {shop ? (
+          <section className="mt-5 overflow-hidden rounded-lg border border-line bg-white shadow-panel">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
+              <div>
+                <h2 className="text-lg font-black text-ink">五语言店铺展示</h2>
+                <p className="mt-1 max-w-3xl text-sm font-bold leading-6 text-ink/50">
+                  店铺前端与店铺后台共用同一套展示数据。任一入口保存后，日语、英语、韩语、简体中文和繁体中文都会从同一数据库版本读取。
+                </p>
+              </div>
+              <Badge tone="green">与店铺前端同步</Badge>
+            </div>
+            {presentationLoadError ? (
+              <div className="m-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+                <span>{presentationLoadError}</span>
+                <Button onClick={() => void load()} size="sm" variant="secondary">重新加载五语言展示</Button>
+              </div>
+            ) : presentationStore ? (
+              <div className="bg-[color:var(--client-bg)] p-4 sm:p-5">
+                <StoreDetailExperience embedded scope="merchant" store={presentationStore} />
+              </div>
+            ) : (
+              <p className="m-5 rounded-lg border border-line bg-paper p-4 text-sm font-bold text-ink/55">
+                正在读取五语言店铺展示...
+              </p>
+            )}
+          </section>
         ) : null}
 
         <div className="mt-5">

@@ -1,4 +1,4 @@
-import { ConversationType } from "@prisma/client";
+import { ConversationAccessPolicy, ConversationType } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 
 import { RealtimeRepository } from "../src/repositories/realtime.repository";
@@ -34,10 +34,15 @@ describe("RealtimeRepository group privacy message countdown", () => {
           id: 1,
           conversation: {
             type: ConversationType.GROUP,
+            accessPolicy: ConversationAccessPolicy.BUSINESS_CONTEXT,
             privacyModeEnabled: true,
             disappearingTtlSeconds: 120,
             disappearingStartMode: "sent",
-            privacyPolicyVersion: 4
+            privacyPolicyVersion: 4,
+            participants: [
+              { userId: 7, identityId: 7, identity: { ownedContacts: [] } },
+              { userId: 8, identityId: 8, identity: { ownedContacts: [] } }
+            ]
           }
         })),
         updateMany: jest.fn(async () => ({ count: 1 }))
@@ -65,13 +70,15 @@ describe("RealtimeRepository group privacy message countdown", () => {
         content: "隐私倒计时消息"
       });
 
-      expect(messageCreate).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({
-          createdAt,
-          expiresAt: new Date("2026-08-30T06:02:00.000Z"),
-          privacyPolicyVersionAtSend: 4
+      expect(messageCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            createdAt,
+            expiresAt: new Date("2026-08-30T06:02:00.000Z"),
+            privacyPolicyVersionAtSend: 4
+          })
         })
-      }));
+      );
       expect(result).toMatchObject({
         status: "created",
         message: {
@@ -102,13 +109,19 @@ describe("RealtimeRepository group privacy message countdown", () => {
       userId: 7
     });
 
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        conversationId: 3,
-        deletedAt: null,
-        expiredAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }]
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          conversationId: 3,
+          deletedAt: null,
+          expiredAt: null,
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }]
+            })
+          ])
+        })
       })
-    }));
+    );
   });
 });

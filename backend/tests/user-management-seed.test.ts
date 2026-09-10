@@ -1,4 +1,6 @@
 import {
+  LEGAL_DOCUMENT_PERMISSIONS,
+  PLATFORM_SETTINGS_PERMISSIONS,
   SYSTEM_PERMISSIONS,
   SYSTEM_ROLE_CODES,
   buildRolePermissionAssignments
@@ -17,10 +19,23 @@ import {
   getRequestDispatchWalletSeedAmount,
   getAdminSeedConfig,
   getTestUserSeedPassword,
+  provisionRequiredTestAccountPortalData,
   shouldSeedRequiredTestAccounts
 } from "../prisma/seed";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 describe("user management seed contract", () => {
+  it("creates an active experience account with every seeded customer foundation", () => {
+    const seedSource = readFileSync(resolve(__dirname, "../prisma/seed.ts"), "utf8");
+    const foundation = seedSource.slice(
+      seedSource.indexOf("const ensureSeedCustomerFoundation"),
+      seedSource.indexOf("export const upsertSeedUser")
+    );
+    expect(foundation).toContain("userExperienceAccount.upsert");
+    expect(foundation).toContain("update: { deletedAt: null }");
+  });
+
   it("defines the Step 04 system roles in the required order", () => {
     expect(SYSTEM_ROLE_CODES).toEqual([
       "admin",
@@ -49,6 +64,30 @@ describe("user management seed contract", () => {
     const assignments = buildRolePermissionAssignments();
 
     expect(assignments.admin).toEqual(SYSTEM_PERMISSIONS.map((permission) => permission.code));
+  });
+
+  it("assigns system settings writes to operators and reads to viewers", () => {
+    const assignments = buildRolePermissionAssignments();
+    const readPermissions = [
+      PLATFORM_SETTINGS_PERMISSIONS.read,
+      PLATFORM_SETTINGS_PERMISSIONS.imRetentionRead,
+      LEGAL_DOCUMENT_PERMISSIONS.read,
+      PLATFORM_SETTINGS_PERMISSIONS.paymentRead
+    ];
+    const writePermissions = [
+      PLATFORM_SETTINGS_PERMISSIONS.write,
+      PLATFORM_SETTINGS_PERMISSIONS.brandMediaActivate,
+      PLATFORM_SETTINGS_PERMISSIONS.imRetentionWrite,
+      LEGAL_DOCUMENT_PERMISSIONS.write,
+      LEGAL_DOCUMENT_PERMISSIONS.publish,
+      PLATFORM_SETTINGS_PERMISSIONS.paymentWrite
+    ];
+
+    expect(assignments.operator).toEqual(
+      expect.arrayContaining([...readPermissions, ...writePermissions])
+    );
+    expect(assignments.viewer).toEqual(expect.arrayContaining(readPermissions));
+    for (const permission of writePermissions) expect(assignments.viewer).not.toContain(permission);
   });
 
   it("uses the correct password source for admin and required test accounts", () => {
@@ -146,6 +185,57 @@ describe("user management seed contract", () => {
       "scout"
     ]);
     expect(getTestAccountSwitchIdentityTypes("customer")).toEqual(["customer"]);
+  });
+
+  it("provisions independent merchant profile data and an independently configurable technician income model", async () => {
+    const tx = {
+      merchantIdentityProfile: { upsert: jest.fn(async () => ({ id: 1 })) },
+      technicianProfile: { update: jest.fn(async () => ({ id: 22 })) },
+      technicianShopAffiliation: { upsert: jest.fn(async () => ({ id: 3 })) },
+      technicianCompensationProfile: {
+        findFirst: jest.fn(async () => null),
+        create: jest.fn(async ({ data }) => ({ id: 4, ...data })),
+        update: jest.fn()
+      }
+    };
+
+    await provisionRequiredTestAccountPortalData(tx as never, {
+      identityType: "merchant",
+      identityId: 12,
+      userId: 7,
+      username: "Merchant",
+      shopId: 5,
+      scopeId: 5
+    });
+    await provisionRequiredTestAccountPortalData(tx as never, {
+      identityType: "technician",
+      identityId: 13,
+      userId: 8,
+      username: "Technician",
+      shopId: 5,
+      scopeId: 22
+    });
+
+    expect(tx.merchantIdentityProfile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { identityId: 12 },
+        create: expect.objectContaining({ identityId: 12, userId: 7, displayName: "Merchant" })
+      })
+    );
+    expect(tx.technicianShopAffiliation.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { activeKey: "technician:22:shop:5" }
+      })
+    );
+    expect(tx.technicianCompensationProfile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        shopId: 5,
+        technicianProfileId: 22,
+        commissionRateBps: 4000,
+        extensionCommissionRateBps: 5500,
+        nominationFeeJpy: 2000
+      })
+    });
   });
 
   it("funds customer seed wallets enough for Request dispatch-fee smoke flows", () => {

@@ -24,10 +24,18 @@ describe("DataCenterPage production data boundary", () => {
 
   it("makes unsupported datasets and failure states explicit", () => {
     expect(source).toContain("库存和评价数据接口尚未启用");
-    expect(source).toContain("历史全屏图表尚未启用");
     expect(source).toContain("正在从正式数据库加载数据");
     expect(source).toContain("重新加载当前数据");
     expect(source).toContain("当前数据集没有真实记录");
+  });
+
+  it("redirects every retired operations dashboard alias to the only data dashboard", () => {
+    expect(source).toContain('const retiredDashboardModules = new Set(["big-screen", "charts", "fullscreen-charts"])');
+    expect(source).toContain("retiredDashboardModules.has(module)");
+    expect(source).toContain('return <Navigate replace to="/admin" />;');
+    expect(source).not.toContain("HistoricalChartsUnavailable");
+    expect(source).not.toContain("历史全屏图表尚未启用");
+    expect(source).not.toContain("该入口保留");
   });
 
   it("shows order creation time separately from the appointment time", () => {

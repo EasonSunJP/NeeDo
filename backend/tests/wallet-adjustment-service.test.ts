@@ -113,9 +113,7 @@ const createRepository = (availableBalance = 1000, isTestAccount = false) => {
     findTransactionByIdempotencyKey: jest.fn(async () => null),
     findUserAccountClassification: jest.fn(async () => ({ isTestAccount })),
     getOrCreateWallet: jest.fn(async () => wallet),
-    lockWalletById: jest.fn(async (walletId: number) =>
-      wallet.id === walletId ? wallet : null
-    ),
+    lockWalletById: jest.fn(async (walletId: number) => (wallet.id === walletId ? wallet : null)),
     applyWalletDelta: jest.fn(
       async (input: { availableDelta: number; requireAvailableAtLeast?: number }) => {
         if (
@@ -163,25 +161,22 @@ const createRepository = (availableBalance = 1000, isTestAccount = false) => {
 };
 
 describe("LedgerService wallet adjustment requests", () => {
-  it.each(["topup", "withdrawal"] as const)(
-    "rejects %s for a Test NDP account",
-    async (type) => {
-      const repository = createRepository(1000, true);
-      const service = new LedgerService(repository as never);
+  it.each(["topup", "withdrawal"] as const)("rejects %s for a Test NDP account", async (type) => {
+    const repository = createRepository(1000, true);
+    const service = new LedgerService(repository as never);
 
-      await expect(
-        service.createWalletAdjustmentRequest(merchant, {
-          type,
-          amountNdp: 500,
-          idempotencyKey: `test-ndp-${type}-forbidden`
-        })
-      ).rejects.toMatchObject({
-        code: ERROR_CODES.TEST_NDP_SETTLEMENT_FORBIDDEN,
-        statusCode: 409
-      });
-      expect(repository.createWalletAdjustmentRequest).not.toHaveBeenCalled();
-    }
-  );
+    await expect(
+      service.createWalletAdjustmentRequest(merchant, {
+        type,
+        amountNdp: 500,
+        idempotencyKey: `test-ndp-${type}-forbidden`
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.TEST_NDP_SETTLEMENT_FORBIDDEN,
+      statusCode: 409
+    });
+    expect(repository.createWalletAdjustmentRequest).not.toHaveBeenCalled();
+  });
 
   it("rejects approval of an existing Test NDP adjustment request", async () => {
     const repository = createRepository(1_000, true);
@@ -301,6 +296,36 @@ describe("LedgerService wallet adjustment requests", () => {
     expect(repository.listOutstandingPlatformFeeDebtIds).toHaveBeenCalledWith({
       walletId: 3,
       limit: 100
+    });
+  });
+
+  it("settles pending membership rewards after the approved shop top-up in the same transaction", async () => {
+    const repository = createRepository();
+    const allocator = { allocatePendingForShopWallet: jest.fn(async () => undefined) };
+    const service = new LedgerService(
+      repository as never,
+      undefined,
+      undefined,
+      () => now,
+      undefined,
+      allocator
+    );
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 5_000,
+      idempotencyKey: "wallet-topup-membership-reward"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "会员返点补充资金"
+    });
+
+    expect(allocator.allocatePendingForShopWallet).toHaveBeenCalledWith({
+      walletId: 3,
+      shopId: 7,
+      actorUserId: 1,
+      transactionClient: {}
     });
   });
 

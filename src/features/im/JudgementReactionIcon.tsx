@@ -40,12 +40,14 @@ export function JudgementReactionIcon({
     <img
       alt={value}
       className={cn(
-        "block",
+        "pointer-events-none block select-none [-webkit-touch-callout:none]",
         display === "summary"
           ? "h-[22px] w-auto max-w-none"
           : "h-auto max-h-[26px] max-w-full",
         className
       )}
+      data-im-judgement-icon="true"
+      draggable={false}
       src={judgementIconUrl[value]}
     />
   );

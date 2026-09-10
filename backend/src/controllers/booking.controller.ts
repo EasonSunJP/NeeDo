@@ -1,23 +1,43 @@
 import type { NextFunction, Request, Response } from "express";
 import type { BookingService } from "../services/booking.service";
+import type { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import { successResponse } from "../utils/api-response";
 import {
+  availabilityWindowCreateBodySchema,
+  availabilityWindowListQuerySchema,
+  availabilityWindowUpdateBodySchema,
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  createOrderAddOnBodySchema,
+  confirmReceiptBodySchema,
+  endServiceBodySchema,
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
   orderCancelBodySchema,
   orderConfirmBodySchema,
+  orderAddOnDecisionBodySchema,
+  orderAddOnIdParamsSchema,
   orderIdParamSchema,
   orderListQuerySchema,
+  orderReviewCreateBodySchema,
+  orderTimelineCommentBodySchema,
+  payWithNdpBodySchema,
+  selectPaymentMethodBodySchema,
+  startServiceBodySchema,
   scheduleSlotCreateBodySchema,
+  scheduleSlotDeleteQuerySchema,
   scheduleSlotListQuerySchema,
-  scheduleSlotUpdateBodySchema
+  scheduleSlotUpdateBodySchema,
+  technicianManualBookingBodySchema,
+  technicianManualBookingIdempotencySchema
 } from "../validators/booking.validator";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 
 export class BookingController {
-  public constructor(private readonly bookingService: BookingService) {}
+  public constructor(
+    private readonly bookingService: BookingService,
+    private readonly automationProcessor?: Pick<TechnicianAutomationProcessor, "processBooking">
+  ) {}
 
   public listAvailableSlots = async (
     request: Request,
@@ -39,22 +59,83 @@ export class BookingController {
     }
   };
 
+  public listAvailabilityWindows = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.listAvailabilityWindows(
+        getAuthenticatedAccess(response),
+        availabilityWindowListQuerySchema.parse(request.query)
+      )));
+    } catch (error) { next(error); }
+  };
+
+  public createAvailabilityWindow = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(201).json(successResponse(await this.bookingService.createAvailabilityWindow(
+        getAuthenticatedAccess(response),
+        availabilityWindowCreateBodySchema.parse(request.body),
+        getRequestContext(request)
+      )));
+    } catch (error) { next(error); }
+  };
+
+  public updateAvailabilityWindow = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.updateAvailabilityWindow(
+        getAuthenticatedAccess(response),
+        this.getOrderId(request),
+        availabilityWindowUpdateBodySchema.parse(request.body),
+        getRequestContext(request)
+      )));
+    } catch (error) { next(error); }
+  };
+
+  public deleteAvailabilityWindow = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.deleteAvailabilityWindow(
+        getAuthenticatedAccess(response),
+        this.getOrderId(request),
+        getRequestContext(request)
+      )));
+    } catch (error) { next(error); }
+  };
+
   public createBooking = async (
     request: Request,
     response: Response,
     next: NextFunction
   ): Promise<void> => {
     try {
-      response
-        .status(201)
-        .json(
-          successResponse(
-            await this.bookingService.createBooking(
-              this.getActor(response),
-              bookingCreateBodySchema.parse(request.body)
-            )
-          )
-        );
+      const body = bookingCreateBodySchema.parse(request.body);
+      const rawIdempotencyKey = request.get("Idempotency-Key");
+      const created = await this.bookingService.createBooking(
+        this.getActor(response),
+        body,
+        ...(rawIdempotencyKey === undefined ? [] : [rawIdempotencyKey])
+      );
+      await this.automationProcessor?.processBooking(created.id).catch(() => undefined);
+      response.status(201).json(successResponse(created));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createTechnicianManualBooking = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const body = technicianManualBookingBodySchema.parse(request.body);
+      const idempotencyKey = technicianManualBookingIdempotencySchema.parse(
+        request.get("Idempotency-Key")
+      );
+      const created = await this.bookingService.createTechnicianManualBooking(
+        this.getActor(response),
+        body,
+        idempotencyKey,
+        getRequestContext(request)
+      );
+      response.status(201).json(successResponse(created));
     } catch (error) {
       next(error);
     }
@@ -149,7 +230,7 @@ export class BookingController {
     }
   };
 
-  public startOrder = async (
+  public startService = async (
     request: Request,
     response: Response,
     next: NextFunction
@@ -159,10 +240,11 @@ export class BookingController {
         .status(200)
         .json(
           successResponse(
-            await this.bookingService.transitionOrder(
+            await this.bookingService.startService(
               this.getActor(response),
               this.getOrderId(request),
-              "start"
+              startServiceBodySchema.parse(request.body),
+              getRequestContext(request)
             )
           )
         );
@@ -171,7 +253,7 @@ export class BookingController {
     }
   };
 
-  public completeOrder = async (
+  public createOrderAddOn = async (
     request: Request,
     response: Response,
     next: NextFunction
@@ -181,10 +263,263 @@ export class BookingController {
         .status(200)
         .json(
           successResponse(
-            await this.bookingService.transitionOrder(
+            await this.bookingService.createOrderAddOn(
               this.getActor(response),
               this.getOrderId(request),
-              "complete"
+              createOrderAddOnBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public acceptOrderAddOn = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const params = orderAddOnIdParamsSchema.parse(request.params);
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.acceptOrderAddOn(
+              this.getActor(response),
+              params.id,
+              params.addOnId,
+              orderAddOnDecisionBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public rejectOrderAddOn = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const params = orderAddOnIdParamsSchema.parse(request.params);
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.rejectOrderAddOn(
+              this.getActor(response),
+              params.id,
+              params.addOnId,
+              orderAddOnDecisionBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public endService = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.endService(
+              this.getActor(response),
+              this.getOrderId(request),
+              endServiceBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public getCheckout = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.getCheckout(this.getActor(response), this.getOrderId(request))
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createOrderReview = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.createOrderReview(
+              this.getActor(response),
+              this.getOrderId(request),
+              orderReviewCreateBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public getOwnOrderReview = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.getOwnOrderReview(
+              this.getActor(response),
+              this.getOrderId(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createOrderTimelineComment = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { body } = orderTimelineCommentBodySchema.parse(request.body);
+      response
+        .status(201)
+        .json(
+          successResponse(
+            await this.bookingService.createOrderTimelineComment(
+              this.getActor(response),
+              this.getOrderId(request),
+              body
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public selectCheckoutPaymentMethod = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.selectCheckoutPaymentMethod(
+              this.getActor(response),
+              this.getOrderId(request),
+              selectPaymentMethodBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public payCheckoutWithNdp = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.payCheckoutWithNdp(
+              this.getActor(response),
+              this.getOrderId(request),
+              payWithNdpBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public confirmCheckoutReceipt = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.confirmCheckoutReceipt(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              confirmReceiptBodySchema.parse(request.body),
+              getRequestContext(request),
+              false
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public overrideCheckoutReceipt = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.confirmCheckoutReceipt(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              confirmReceiptBodySchema.parse(request.body),
+              getRequestContext(request),
+              true
             )
           )
         );
@@ -199,16 +534,18 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.confirmManualPayment(
-            getAuthenticatedAccess(response),
-            this.getOrderId(request),
-            manualPaymentConfirmBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.confirmManualPayment(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              manualPaymentConfirmBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
@@ -220,25 +557,42 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.refundManualPayment(
-            getAuthenticatedAccess(response),
-            this.getOrderId(request),
-            manualPaymentRefundBodySchema.parse(request.body),
-            getRequestContext(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.refundManualPayment(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              manualPaymentRefundBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
   };
 
-  public listScheduleSlots = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+  public listScheduleSlots = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.bookingService.listScheduleSlots(getAuthenticatedAccess(response), scheduleSlotListQuerySchema.parse(request.query))));
-    } catch (error) { next(error); }
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.listScheduleSlots(
+              getAuthenticatedAccess(response),
+              scheduleSlotListQuerySchema.parse(request.query)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
   };
 
   public getScheduleSlot = async (
@@ -247,35 +601,87 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response.status(200).json(
-        successResponse(
-          await this.bookingService.getScheduleSlot(
-            getAuthenticatedAccess(response),
-            this.getOrderId(request)
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.getScheduleSlot(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request)
+            )
           )
-        )
-      );
+        );
     } catch (error) {
       next(error);
     }
   };
 
-  public createScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+  public createScheduleSlot = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      response.status(201).json(successResponse(await this.bookingService.createScheduleSlot(getAuthenticatedAccess(response), scheduleSlotCreateBodySchema.parse(request.body), getRequestContext(request))));
-    } catch (error) { next(error); }
+      response
+        .status(201)
+        .json(
+          successResponse(
+            await this.bookingService.createScheduleSlot(
+              getAuthenticatedAccess(response),
+              scheduleSlotCreateBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
   };
 
-  public updateScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+  public updateScheduleSlot = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.bookingService.updateScheduleSlot(getAuthenticatedAccess(response), this.getOrderId(request), scheduleSlotUpdateBodySchema.parse(request.body), getRequestContext(request))));
-    } catch (error) { next(error); }
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.updateScheduleSlot(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              scheduleSlotUpdateBodySchema.parse(request.body),
+              getRequestContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
   };
 
-  public deleteScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+  public deleteScheduleSlot = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      response.status(200).json(successResponse(await this.bookingService.deleteScheduleSlot(getAuthenticatedAccess(response), this.getOrderId(request), getRequestContext(request))));
-    } catch (error) { next(error); }
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.bookingService.deleteScheduleSlot(
+              getAuthenticatedAccess(response),
+              this.getOrderId(request),
+              getRequestContext(request),
+              scheduleSlotDeleteQuerySchema.parse(request.query)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
   };
 
   private getActor(response: Response) {

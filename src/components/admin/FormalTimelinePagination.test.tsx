@@ -33,7 +33,7 @@ describe("FormalTimelinePagination", () => {
     await act(async () => {
       root.render(
         <FormalTimelinePagination
-          ariaLabel="用户动态翻页"
+          ariaLabel="用户LOG翻页"
           onPageChange={onPageChange}
           onPageSizeChange={onPageSizeChange}
           page={2}
@@ -45,7 +45,7 @@ describe("FormalTimelinePagination", () => {
 
     const select = container.querySelector<HTMLSelectElement>("select")!;
     expect(container.querySelector("nav")?.getAttribute("aria-label")).toBe(
-      "用户动态翻页",
+      "用户LOG翻页",
     );
     expect(Array.from(select.options).map((option) => option.value)).toEqual([
       "10",

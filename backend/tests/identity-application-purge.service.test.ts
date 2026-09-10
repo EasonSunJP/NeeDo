@@ -23,13 +23,15 @@ describe("IdentityApplicationPurgeService", () => {
   it("physically deletes due files and finalizes application-only data at 30 days", async () => {
     const repository = createRepository();
     const storage = createStorage();
-    repository.listDue.mockResolvedValueOnce([
-      {
-        applicationId: 41,
-        version: 3,
-        fileKeys: ["a".repeat(64) + ".jpg", "b".repeat(64) + ".png"]
-      }
-    ]).mockResolvedValueOnce([]);
+    repository.listDue
+      .mockResolvedValueOnce([
+        {
+          applicationId: 41,
+          version: 3,
+          fileKeys: ["a".repeat(64) + ".jpg", "b".repeat(64) + ".png"]
+        }
+      ])
+      .mockResolvedValueOnce([]);
     repository.claim.mockResolvedValue(true);
     repository.complete.mockResolvedValue(undefined);
     storage.delete.mockResolvedValue(undefined);
@@ -69,9 +71,11 @@ describe("IdentityApplicationPurgeService", () => {
   it("releases the claim for an idempotent retry when physical deletion fails", async () => {
     const repository = createRepository();
     const storage = createStorage();
-    repository.listDue.mockResolvedValueOnce([
-      { applicationId: 41, version: 3, fileKeys: ["a".repeat(64) + ".jpg"] }
-    ]).mockResolvedValueOnce([]);
+    repository.listDue
+      .mockResolvedValueOnce([
+        { applicationId: 41, version: 3, fileKeys: ["a".repeat(64) + ".jpg"] }
+      ])
+      .mockResolvedValueOnce([]);
     repository.claim.mockResolvedValue(true);
     repository.release.mockResolvedValue(undefined);
     storage.delete.mockRejectedValue(new Error("disk unavailable"));
@@ -86,9 +90,11 @@ describe("IdentityApplicationPurgeService", () => {
   it("skips a record claimed by another worker", async () => {
     const repository = createRepository();
     const storage = createStorage();
-    repository.listDue.mockResolvedValueOnce([
-      { applicationId: 41, version: 3, fileKeys: ["a".repeat(64) + ".jpg"] }
-    ]).mockResolvedValueOnce([]);
+    repository.listDue
+      .mockResolvedValueOnce([
+        { applicationId: 41, version: 3, fileKeys: ["a".repeat(64) + ".jpg"] }
+      ])
+      .mockResolvedValueOnce([]);
     repository.claim.mockResolvedValue(false);
 
     await expect(

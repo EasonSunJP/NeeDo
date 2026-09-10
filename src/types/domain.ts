@@ -1,3 +1,4 @@
+import type { WorkStatus } from "../features/technician-work-status/api";
 export type FulfillmentMode = "home" | "store";
 export type ServicePaymentMethod =
   | "platform"
@@ -14,6 +15,8 @@ export type OrderStatus =
   | "confirmed"
   | "scheduled"
   | "inService"
+  | "awaitingCheckout"
+  | "awaitingPaymentConfirmation"
   | "completed"
   | "cancelled"
   | "refunding"
@@ -91,6 +94,7 @@ export interface Customer {
   points?: number;
   couponCount?: number;
   memberLevel: string;
+  experienceLevel?: number;
   tags: string[];
   ltv: number;
   orderCount: number;
@@ -229,6 +233,10 @@ export interface Store {
   address: string;
   rating: number;
   reviewCount: number;
+  completedOrderCount?: number;
+  favoriteCount?: number;
+  shareCount?: number;
+  distanceKm?: number;
   priceLabel: string;
   tags: string[];
   openStatus: "open" | "resting" | "closed";
@@ -258,12 +266,17 @@ export interface Staff {
 }
 
 export interface Technician extends Staff {
+  workStatus?: WorkStatus;
   systemId: string;
   skills: string[];
   serviceAreas: string[];
   acceptRate: number;
   cancelRate: number;
   reviewCount: number;
+  favoriteCount?: number;
+  shareCount?: number;
+  distanceKm?: number;
+  specialReviewTags?: Array<{ code: string; label: string; count: number }>;
   languages: string[];
   avatar: string;
   accountUsername?: string;
@@ -282,6 +295,13 @@ export interface Technician extends Staff {
   gallery?: string[];
   infoCardVisibility?: InfoCardVisibilitySettings;
   visible?: boolean;
+  primaryService?: {
+    id?: number;
+    name: string;
+    priceAmount: string;
+    currency: string;
+    durationMinutes: number;
+  } | null;
 }
 
 export interface ServiceCategory {
@@ -318,6 +338,14 @@ export interface ServiceItem {
   packages: ServicePackage[];
   notice: string[];
   flow: string[];
+  formal?: {
+    publicId: string;
+    usageCount: number;
+    currency: string;
+    durationMinutes: number;
+    shopPublicId: string;
+    shopAddress: string;
+  };
 }
 
 export interface Schedule {

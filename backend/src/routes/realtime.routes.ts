@@ -7,11 +7,15 @@ import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { RealtimeRepository } from "../repositories/realtime.repository";
 import { AuthRepository } from "../repositories/auth.repository";
+import { PlatformMembershipRepository } from "../repositories/platform-membership.repository";
 import { SseRealtimeEventGateway } from "../services/realtime-event.gateway";
 import { RealtimeService } from "../services/realtime.service";
 import { PersonalIdentityScopeService } from "../services/personal-identity-scope.service";
+import { PlatformMembershipService } from "../services/platform-membership.service";
 import {
   contactIdParamSchema,
+  contactCardCandidateListQuerySchema,
+  contactCardSendBodySchema,
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
@@ -27,6 +31,7 @@ import {
   friendRequestIdParamSchema,
   friendRequestListQuerySchema,
   messageCreateBodySchema,
+  messageBatchDeleteBodySchema,
   messageDeleteParamSchema,
   messageListQuerySchema,
   messageRecallBodySchema,
@@ -38,6 +43,7 @@ import {
   socialPostCreateBodySchema,
   socialPostIdParamSchema,
   socialPostListQuerySchema,
+  socialPostShareBodySchema,
   socialPostUpdateBodySchema,
   socialUserIdParamSchema
 } from "../validators/realtime.validator";
@@ -50,6 +56,7 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   createMessage: "message:create",
   recallMessage: "message:recall",
   deleteMessageForUser: "message:list",
+  deleteMessagesForUser: "message:list",
   reactToMessage: "message:react",
   markConversationRead: "message:read",
   markConversationUnread: "message:read",
@@ -70,6 +77,7 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   getSocialPost: "social-post:list",
   createSocialPost: "social-post:create",
   updateSocialPost: "social-post:create",
+  interactSocialPost: "social-post:interact",
   writeFollow: "follow:write",
   listNotifications: "notification:list",
   readNotification: "notification:read",
@@ -88,7 +96,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
       dependencies.realtimeRepository ?? new RealtimeRepository(),
       dependencies.realtimeEventGateway ?? new SseRealtimeEventGateway(),
       dependencies.personalIdentityScopeService ??
-        new PersonalIdentityScopeService(dependencies.authRepository ?? new AuthRepository())
+        new PersonalIdentityScopeService(dependencies.authRepository ?? new AuthRepository()),
+      undefined,
+      undefined,
+      dependencies.platformMembershipResolverService ??
+        new PlatformMembershipService(
+          dependencies.platformMembershipRepository ?? new PlatformMembershipRepository()
+        )
     );
   const controller = new RealtimeController(service);
 
@@ -120,12 +134,42 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     validateRequest({ params: conversationIdParamSchema, body: messageCreateBodySchema }),
     controller.createMessage
   );
+  router.get(
+    "/im/conversations/:conversationId/contact-card-candidates",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.createMessage),
+    validateRequest({
+      params: conversationIdParamSchema,
+      query: contactCardCandidateListQuerySchema
+    }),
+    controller.listContactCardCandidates
+  );
+  router.post(
+    "/im/conversations/:conversationId/contact-cards",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.createMessage),
+    validateRequest({
+      params: conversationIdParamSchema,
+      body: contactCardSendBodySchema
+    }),
+    controller.sendContactCard
+  );
   router.post(
     "/im/conversations/:conversationId/messages/:messageId/recall",
     authenticate(),
     authorize(REALTIME_ROUTE_PERMISSIONS.recallMessage),
     validateRequest({ params: messageRecallParamSchema, body: messageRecallBodySchema }),
     controller.recallMessage
+  );
+  router.post(
+    "/im/conversations/:conversationId/messages/delete-for-me",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.deleteMessagesForUser),
+    validateRequest({
+      params: conversationIdParamSchema,
+      body: messageBatchDeleteBodySchema
+    }),
+    controller.deleteMessagesForUser
   );
   router.delete(
     "/im/conversations/:conversationId/messages/:messageId",
@@ -314,6 +358,63 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.updateSocialPost),
     validateRequest({ params: socialPostIdParamSchema, body: socialPostUpdateBodySchema }),
     controller.updateSocialPost
+  );
+  router.put(
+    "/social/posts/:id/pin",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.updateSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.pinSocialPost
+  );
+  router.delete(
+    "/social/posts/:id/pin",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.updateSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.unpinSocialPost
+  );
+  router.put(
+    "/social/posts/:id/like",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.likeSocialPost
+  );
+  router.delete(
+    "/social/posts/:id/like",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.unlikeSocialPost
+  );
+  router.put(
+    "/social/posts/:id/bookmark",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.bookmarkSocialPost
+  );
+  router.delete(
+    "/social/posts/:id/bookmark",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.unbookmarkSocialPost
+  );
+  router.post(
+    "/social/posts/:id/view",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    validateRequest({ params: socialPostIdParamSchema }),
+    controller.recordSocialPostView
+  );
+  router.post(
+    "/social/posts/:id/shares",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.interactSocialPost),
+    authorize(REALTIME_ROUTE_PERMISSIONS.createMessage),
+    validateRequest({ params: socialPostIdParamSchema, body: socialPostShareBodySchema }),
+    controller.shareSocialPost
   );
   router.post(
     "/social/follows",

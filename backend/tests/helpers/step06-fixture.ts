@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import request from "supertest";
 import type { Express } from "express";
 import { createApp } from "../../src/app";
+import type { AppDependencies } from "../../src/app";
 
 interface StoredValue {
   value: string;
@@ -165,6 +166,7 @@ export interface TestUserIdentityRecord {
 
 export interface TestUserRecord {
   id: number;
+  needoId: string;
   email: string;
   phone: string | null;
   passwordHash: string;
@@ -229,7 +231,7 @@ const attachRolePermissions = (
   }
 };
 
-export const createStep06Fixture = async () => {
+export const createStep06Fixture = async (dependencyOverrides: Partial<AppDependencies> = {}) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const auditLogs: AuditLogEntry[] = [];
   const permissionAssignCalls: Array<{ roleId: number; permissionIds: number[] }> = [];
@@ -404,6 +406,7 @@ export const createStep06Fixture = async () => {
   const users: TestUserRecord[] = [
     {
       id: 1,
+      needoId: "needo0000000001",
       email: "admin@example.com",
       phone: null,
       passwordHash,
@@ -446,6 +449,7 @@ export const createStep06Fixture = async () => {
     },
     {
       id: 2,
+      needoId: "needo0000000002",
       email: "operator@example.com",
       phone: "+819012345678",
       passwordHash,
@@ -476,6 +480,7 @@ export const createStep06Fixture = async () => {
     },
     {
       id: 3,
+      needoId: "needo0000000003",
       email: "second-admin@example.com",
       phone: null,
       passwordHash,
@@ -655,30 +660,43 @@ export const createStep06Fixture = async () => {
     )
   };
   const userRepository = {
-    list: jest.fn(async ({
-      page,
-      pageSize,
-      isTestAccount
-    }: {
-      page: number;
-      pageSize: number;
-      isTestAccount?: boolean;
-    }) => ({
-      list: users
-        .filter(
+    list: jest.fn(
+      async ({
+        page,
+        pageSize,
+        isTestAccount,
+        roleId
+      }: {
+        page: number;
+        pageSize: number;
+        isTestAccount?: boolean;
+        roleId?: number;
+      }) => ({
+        list: users
+          .filter(
+            (user) =>
+              user.deletedAt === null &&
+              (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount) &&
+              (!roleId ||
+                user.userRoles.some(
+                  (assignment) =>
+                    assignment.roleId === roleId && assignment.deletedAt === null
+                ))
+          )
+          .slice((page - 1) * pageSize, page * pageSize),
+        total: users.filter(
           (user) =>
             user.deletedAt === null &&
-            (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount)
-        )
-        .slice((page - 1) * pageSize, page * pageSize),
-      total: users.filter(
-        (user) =>
-          user.deletedAt === null &&
-          (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount)
-      ).length,
-      page,
-      page_size: pageSize
-    })),
+            (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount) &&
+            (!roleId ||
+              user.userRoles.some(
+                (assignment) => assignment.roleId === roleId && assignment.deletedAt === null
+              ))
+        ).length,
+        page,
+        page_size: pageSize
+      })
+    ),
     findById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
     findByEmail: jest.fn(
       async (email: string) => users.find((user) => user.email === email) ?? null
@@ -697,6 +715,7 @@ export const createStep06Fixture = async () => {
       }) => {
         const user: TestUserRecord = {
           id: Math.max(...users.map((item) => item.id)) + 1,
+          needoId: `needo${String(Math.max(...users.map((item) => item.id)) + 1).padStart(10, "0")}`,
           email: input.email,
           phone: input.phone ?? null,
           passwordHash: input.passwordHash,
@@ -828,7 +847,8 @@ export const createStep06Fixture = async () => {
     permissionRepository,
     roleRepository,
     userRepository,
-    testAccountRepository
+    testAccountRepository,
+    ...dependencyOverrides
   } as never);
   const loginAsAdmin = async (): Promise<string> => {
     const response = await request(app)
@@ -841,7 +861,11 @@ export const createStep06Fixture = async () => {
 
   const replaceAdminPermissions = (codes: string[]): void => {
     roles[0].rolePermissions = codes.map((code, index) => {
-      const permission = permissions.find((item) => item.code === code) ?? permissions[0];
+      let permission = permissions.find((item) => item.code === code);
+      if (!permission) {
+        permission = makeAuthOnlyPermission(code);
+        permissions.push(permission);
+      }
       return {
         id: 5000 + index,
         roleId: 1,

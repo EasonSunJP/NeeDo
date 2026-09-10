@@ -28,6 +28,11 @@ type LockedWalletRow = {
   updatedAt: Date;
 };
 
+type LockedTestShopAuthorityRow = {
+  isTestAccount: boolean | number;
+  activeShopScope: boolean | number;
+};
+
 export class TestNdpProvisioningRepository
   implements TestNdpProvisioningRepositoryPort, TestNdpProvisioningTransactionPort
 {
@@ -78,9 +83,7 @@ export class TestNdpProvisioningRepository
     return { amount: transaction.amount, availableBalanceAfter };
   }
 
-  public async lockUser(
-    userId: number
-  ): Promise<{ id: number; isTestAccount: boolean } | null> {
+  public async lockUser(userId: number): Promise<{ id: number; isTestAccount: boolean } | null> {
     const rows = await this.client.$queryRaw<LockedUserRow[]>(
       Prisma.sql`SELECT id, is_test_account AS isTestAccount
         FROM users
@@ -142,6 +145,96 @@ export class TestNdpProvisioningRepository
     };
   }
 
+  public async findTestShopAuthorityForUpdate(input: {
+    shopId: number;
+    actorUserId: number;
+  }): Promise<{ isTestAccount: boolean; activeShopScope: boolean } | null> {
+    const rows = await this.client.$queryRaw<LockedTestShopAuthorityRow[]>(
+      Prisma.sql`SELECT
+          u.is_test_account AS isTestAccount,
+          (
+            s.owner_user_id = u.id
+            OR EXISTS (
+              SELECT 1
+              FROM merchant_accounts ma
+              INNER JOIN merchant_shop_memberships msm
+                ON msm.merchant_account_id = ma.id
+              WHERE ma.owner_user_id = u.id
+                AND ma.deleted_at IS NULL
+                AND msm.shop_id = s.id
+                AND msm.starts_at <= CURRENT_TIMESTAMP(3)
+                AND (msm.ends_at IS NULL OR msm.ends_at > CURRENT_TIMESTAMP(3))
+                AND msm.deleted_at IS NULL
+            )
+          ) AS activeShopScope
+        FROM users u
+        INNER JOIN shops s
+          ON s.id = ${input.shopId}
+         AND s.deleted_at IS NULL
+        WHERE u.id = ${input.actorUserId}
+          AND u.deleted_at IS NULL
+        FOR UPDATE`
+    );
+    const authority = rows[0];
+
+    return authority
+      ? {
+          isTestAccount: Boolean(authority.isTestAccount),
+          activeShopScope: Boolean(authority.activeShopScope)
+        }
+      : null;
+  }
+
+  public async getOrCreateAndLockTestShopWallet(shopId: number): Promise<WalletPayload> {
+    await this.client.$executeRaw(
+      Prisma.sql`INSERT INTO wallets (
+          owner_type,
+          owner_id,
+          currency,
+          available_balance,
+          frozen_balance,
+          updated_at,
+          deleted_at
+        )
+        VALUES ('shop', ${shopId}, 'TEST_NDP', 0, 0, CURRENT_TIMESTAMP(3), NULL)
+        ON DUPLICATE KEY UPDATE
+          deleted_at = NULL,
+          updated_at = CURRENT_TIMESTAMP(3)`
+    );
+    const rows = await this.client.$queryRaw<LockedWalletRow[]>(
+      Prisma.sql`SELECT
+          id,
+          owner_type AS ownerType,
+          owner_id AS ownerId,
+          currency,
+          available_balance AS availableBalance,
+          frozen_balance AS frozenBalance,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM wallets
+        WHERE owner_type = 'shop'
+          AND owner_id = ${shopId}
+          AND currency = 'TEST_NDP'
+          AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    const wallet = rows[0];
+    if (!wallet || wallet.currency !== "TEST_NDP" || wallet.ownerType !== "shop") {
+      throw this.mutationError();
+    }
+
+    return {
+      id: wallet.id,
+      ownerType: "shop",
+      ownerId: wallet.ownerId,
+      currency: "TEST_NDP",
+      availableBalance: Number(wallet.availableBalance),
+      frozenBalance: Number(wallet.frozenBalance),
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt
+    };
+  }
+
   public async createCalibration(input: {
     idempotencyKey: string;
     userId: number;
@@ -194,8 +287,7 @@ export class TestNdpProvisioningRepository
       data: {
         transactionId: transaction.id,
         walletId: input.walletId,
-        direction:
-          input.direction === "available_credit" ? "AVAILABLE_CREDIT" : "AVAILABLE_DEBIT",
+        direction: input.direction === "available_credit" ? "AVAILABLE_CREDIT" : "AVAILABLE_DEBIT",
         amount: input.amount,
         availableDelta: input.availableDelta,
         frozenDelta: 0,
@@ -204,6 +296,12 @@ export class TestNdpProvisioningRepository
         reason: "test_ndp_balance_calibration"
       }
     });
+    await this.createTestOnlyReconciliation(
+      transaction.id,
+      "test_ndp_backfill",
+      input.userId,
+      input.amount
+    );
     await this.createAudit({
       userId: input.userId,
       walletId: input.walletId,
@@ -250,6 +348,7 @@ export class TestNdpProvisioningRepository
         })
       }
     });
+    await this.createTestOnlyReconciliation(transaction.id, "test_ndp_backfill", input.userId, 0);
     await this.createAudit({
       userId: input.userId,
       walletId: input.walletId,
@@ -266,6 +365,184 @@ export class TestNdpProvisioningRepository
       adjustmentAmount: 0,
       availableBalance: input.availableBalance
     };
+  }
+
+  public async createShopCalibration(input: {
+    idempotencyKey: string;
+    actorUserId: number;
+    shopId: number;
+    walletId: number;
+    amount: number;
+    direction: "available_credit" | "available_debit";
+    availableDelta: number;
+    currency: "TEST_NDP";
+    frozenBalance: number;
+    targetAvailableBalance: number;
+  }): Promise<TestNdpCalibrationResult> {
+    const sourceAvailableBalance = input.targetAvailableBalance - input.availableDelta;
+    const updated = await this.client.wallet.updateMany({
+      where: {
+        id: input.walletId,
+        ownerType: "SHOP",
+        ownerId: input.shopId,
+        currency: input.currency,
+        availableBalance: sourceAvailableBalance,
+        frozenBalance: input.frozenBalance,
+        deletedAt: null
+      },
+      data: { availableBalance: { increment: input.availableDelta } }
+    });
+    if (updated.count !== 1) throw this.mutationError();
+
+    const transaction = await this.client.ledgerTransaction.create({
+      data: {
+        transactionNo: this.transactionNo(input.idempotencyKey),
+        idempotencyKey: input.idempotencyKey,
+        type: "TEST_BALANCE_CALIBRATION",
+        referenceType: "exchange_request_test_shop_funding",
+        referenceId: input.shopId,
+        actorUserId: input.actorUserId,
+        amount: input.amount,
+        currency: input.currency,
+        metadata: {
+          version: "exchange-request-shop-test-ndp-v1",
+          actorUserId: input.actorUserId,
+          shopId: input.shopId,
+          walletId: input.walletId,
+          currency: input.currency,
+          availableBalanceBefore: sourceAvailableBalance,
+          availableDelta: input.availableDelta,
+          availableBalanceAfter: input.targetAvailableBalance,
+          frozenBalance: input.frozenBalance
+        }
+      }
+    });
+    await this.client.walletLedger.create({
+      data: {
+        transactionId: transaction.id,
+        walletId: input.walletId,
+        direction: input.direction === "available_credit" ? "AVAILABLE_CREDIT" : "AVAILABLE_DEBIT",
+        amount: input.amount,
+        availableDelta: input.availableDelta,
+        frozenDelta: 0,
+        availableBalanceAfter: input.targetAvailableBalance,
+        frozenBalanceAfter: input.frozenBalance,
+        reason: "test_ndp_shop_balance_calibration"
+      }
+    });
+    await this.createTestOnlyReconciliation(
+      transaction.id,
+      "exchange_request_test_shop_funding",
+      input.shopId,
+      input.amount
+    );
+    await this.client.auditLog.create({
+      data: {
+        actorId: input.actorUserId,
+        action: "test_ndp.shop.calibrate",
+        targetType: "ledger_transaction",
+        targetId: transaction.id,
+        metadata: {
+          shopId: input.shopId,
+          walletId: input.walletId,
+          availableBalanceBefore: sourceAvailableBalance,
+          availableDelta: input.availableDelta,
+          availableBalanceAfter: input.targetAvailableBalance,
+          currency: input.currency
+        }
+      }
+    });
+
+    return {
+      status: "applied",
+      userId: input.actorUserId,
+      shopId: input.shopId,
+      adjustmentAmount: input.amount,
+      availableBalance: input.targetAvailableBalance
+    };
+  }
+
+  public async recordZeroShopCalibration(input: {
+    idempotencyKey: string;
+    actorUserId: number;
+    shopId: number;
+    walletId: number;
+    availableBalance: number;
+    frozenBalance: number;
+    currency: "TEST_NDP";
+  }): Promise<TestNdpCalibrationResult> {
+    const transaction = await this.client.ledgerTransaction.create({
+      data: {
+        transactionNo: this.transactionNo(input.idempotencyKey),
+        idempotencyKey: input.idempotencyKey,
+        type: "TEST_BALANCE_CALIBRATION",
+        referenceType: "exchange_request_test_shop_funding",
+        referenceId: input.shopId,
+        actorUserId: input.actorUserId,
+        amount: 0,
+        currency: input.currency,
+        metadata: {
+          version: "exchange-request-shop-test-ndp-v1",
+          actorUserId: input.actorUserId,
+          shopId: input.shopId,
+          walletId: input.walletId,
+          currency: input.currency,
+          availableBalanceBefore: input.availableBalance,
+          availableDelta: 0,
+          availableBalanceAfter: input.availableBalance,
+          frozenBalance: input.frozenBalance
+        }
+      }
+    });
+    await this.createTestOnlyReconciliation(
+      transaction.id,
+      "exchange_request_test_shop_funding",
+      input.shopId,
+      0
+    );
+    await this.client.auditLog.create({
+      data: {
+        actorId: input.actorUserId,
+        action: "test_ndp.shop.calibrate",
+        targetType: "ledger_transaction",
+        targetId: transaction.id,
+        metadata: {
+          shopId: input.shopId,
+          walletId: input.walletId,
+          availableDelta: 0,
+          availableBalanceAfter: input.availableBalance,
+          currency: input.currency
+        }
+      }
+    });
+
+    return {
+      status: "applied",
+      userId: input.actorUserId,
+      shopId: input.shopId,
+      adjustmentAmount: 0,
+      availableBalance: input.availableBalance
+    };
+  }
+
+  private createTestOnlyReconciliation(
+    transactionId: number,
+    referenceType: string,
+    referenceId: number,
+    amount: number
+  ): Promise<unknown> {
+    return this.client.financeReconciliation.create({
+      data: {
+        transactionId,
+        referenceType,
+        referenceId,
+        status: "TEST_ONLY",
+        currency: "TEST_NDP",
+        expectedAmount: amount,
+        actualAmount: amount,
+        differenceAmount: 0
+      }
+    });
   }
 
   private calibrationMetadata(input: {
@@ -316,7 +593,11 @@ export class TestNdpProvisioningRepository
   }
 
   private transactionNo(idempotencyKey: string): string {
-    const digest = createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 24).toUpperCase();
+    const digest = createHash("sha256")
+      .update(idempotencyKey)
+      .digest("hex")
+      .slice(0, 24)
+      .toUpperCase();
     return `LTTESTNDP${digest}`;
   }
 

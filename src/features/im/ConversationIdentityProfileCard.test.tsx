@@ -30,12 +30,33 @@ const identityCard: DirectoryIdentityCard = {
   gender: "female",
   age: 25,
   heightCm: 164,
-  languages: ["日本語", "中文"],
+  languages: ["ja", "zh", "en", "ko", "th", "vi", "es"],
   city: "东京",
   bio: "预约前请先确认时间、语言和付款方式。",
 };
 
 describe("ConversationIdentityProfileCard", () => {
+  it.each([
+    ["free", "免费会员"],
+    ["silver", "白银会员"],
+    ["gold", "黄金会员"],
+    ["black_diamond", "黑钻会员"],
+  ])("renders the formal platform membership tier %s", (tierCode, label) => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryRouter>
+          <ConversationIdentityProfileCard
+            identityCard={{ ...identityCard, identityLabel: tierCode }}
+            user={user}
+            viewerScope="user"
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(markup).toContain(label);
+  });
+
   it("keeps user basic fields but removes city and credit from user-side conversation settings", () => {
     const markup = renderToStaticMarkup(
       <I18nProvider>
@@ -66,11 +87,46 @@ describe("ConversationIdentityProfileCard", () => {
     expect(markup).not.toContain("城市");
     expect(markup).not.toContain("东京");
     expect(markup).toContain("语言能力");
+    ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"].forEach((label) => {
+      expect(markup).toContain(`>${label}</span>`);
+    });
+    ["ja", "zh", "en", "ko", "th", "vi", "es"].forEach((code) => {
+      expect(markup).not.toContain(`>${code}</span>`);
+    });
+    expect(markup).toContain('data-im-language-pills="true"');
+    expect(markup).toContain('data-no-i18n="true"');
+    expect(markup).toContain("flex-wrap");
+    expect(markup).toContain("w-fit");
+    expect(markup).toContain("max-w-full");
+    expect(markup).toContain("break-words");
+    expect(markup).not.toContain("truncate text-xs font-black text-[color:var(--client-primary)]");
+    expect(markup).toContain('data-im-language-section="true"');
+    expect(markup).toContain('data-im-language-card="true"');
     expect(markup).toContain("自我介绍");
     expect(markup).not.toContain("积分");
     expect(markup).not.toContain("利用次数");
     expect(markup).not.toContain("隐私模式");
     expect(markup).not.toContain("type=\"checkbox\"");
+  });
+
+  it("deduplicates normalized language pills, trims unknown values, and does not mutate the profile", () => {
+    const languages = [" ja ", "Japanese", " Klingon ", "", "Klingon"];
+    const duplicateIdentityCard = { ...identityCard, languages };
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryRouter>
+          <ConversationIdentityProfileCard
+            identityCard={duplicateIdentityCard}
+            user={user}
+            viewerScope="user"
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(markup.match(/>日本語<\/span>/g)).toHaveLength(1);
+    expect(markup.match(/>Klingon<\/span>/g)).toHaveLength(1);
+    expect(languages).toEqual([" ja ", "Japanese", " Klingon ", "", "Klingon"]);
   });
 
   it.each(["technician", "merchant"] as const)(
@@ -141,6 +197,52 @@ describe("ConversationIdentityProfileCard", () => {
     expect(markup).toContain("身高（cm）");
     expect(markup).not.toContain("城市");
     expect(markup).not.toContain("东京");
+  });
+
+  it("keeps empty language and bio sections visible instead of hiding the fields", () => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryRouter>
+          <ConversationIdentityProfileCard
+            identityCard={{
+              ...identityCard,
+              bio: undefined,
+              languages: [],
+            }}
+            user={user}
+            viewerScope="user"
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(markup).toContain('data-im-language-section="true"');
+    expect(markup).toContain('data-im-language-empty="true"');
+    expect(markup).toContain("语言能力");
+    expect(markup).toContain('data-im-bio-section="true"');
+    expect(markup).toContain("自我介绍");
+    expect(markup.match(/未设置/g)).toHaveLength(2);
+  });
+
+  it.each([
+    ["free", "免费会员"],
+    ["silver", "白银会员"],
+    ["gold", "黄金会员"],
+    ["black_diamond", "黑钻会员"],
+  ])("renders the formal %s membership tier without collapsing it", (tier, expectedLabel) => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <MemoryRouter>
+          <ConversationIdentityProfileCard
+            identityCard={{ ...identityCard, identityLabel: tier }}
+            user={user}
+            viewerScope="user"
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(markup).toContain(expectedLabel);
   });
 
   it.each([

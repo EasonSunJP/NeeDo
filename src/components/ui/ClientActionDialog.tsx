@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
 export function ClientActionDialog({
@@ -10,6 +10,7 @@ export function ClientActionDialog({
   onClose,
   closeOnBackdrop = true,
   placement = "center",
+  role = "dialog",
   className,
   panelClassName
 }: {
@@ -21,9 +22,12 @@ export function ClientActionDialog({
   onClose?: () => void;
   closeOnBackdrop?: boolean;
   placement?: "bottom" | "center";
+  role?: "alertdialog" | "dialog";
   className?: string;
   panelClassName?: string;
 }) {
+  const dialogId = useId().replace(/:/g, "");
+
   if (!open) {
     return null;
   }
@@ -37,13 +41,15 @@ export function ClientActionDialog({
   return (
     <div
       aria-modal="true"
+      aria-describedby={description ? `${dialogId}-description` : undefined}
+      aria-labelledby={`${dialogId}-title`}
       className={cn(
         "client-action-dialog-overlay fixed inset-0 z-[125] flex justify-center px-4 py-[max(16px,env(safe-area-inset-top))] pb-[max(18px,env(safe-area-inset-bottom))] text-[color:var(--client-text)]",
         placement === "center" ? "items-center" : "items-end sm:items-center",
         className
       )}
       onClick={handleBackdropClick}
-      role="dialog"
+      role={role}
     >
       <section
         className={cn(
@@ -55,9 +61,9 @@ export function ClientActionDialog({
         {placement === "bottom" ? (
           <div className="mx-auto mb-5 h-1.5 w-12 rounded-full bg-[color:color-mix(in_srgb,var(--client-muted)_28%,transparent)]" />
         ) : null}
-        <h2 className="text-[22px] font-black leading-tight">{title}</h2>
+        <h2 className="text-[22px] font-black leading-tight" id={`${dialogId}-title`}>{title}</h2>
         {description ? (
-          <p className="mt-3 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">{description}</p>
+          <p className="mt-3 text-sm font-semibold leading-6 text-[color:var(--client-muted)]" id={`${dialogId}-description`}>{description}</p>
         ) : null}
         {children ? <div className="mt-4">{children}</div> : null}
         {actions ? <div className="mt-5">{actions}</div> : null}

@@ -22,15 +22,15 @@ const main = async (): Promise<void> => {
   assert(databaseName.length > 0, "DATABASE_URL must include a database name");
 
   const [
-    { AuthRepository },
     { BackofficeRepository },
     { BookingRepository },
-    { prisma, disconnectPrisma }
+    { prisma, disconnectPrisma },
+    { createFormalTestUser, deleteFormalTestUserFoundations }
   ] = await Promise.all([
-    import("../src/repositories/auth.repository"),
     import("../src/repositories/backoffice.repository"),
     import("../src/repositories/booking.repository"),
-    import("../src/prisma/client")
+    import("../src/prisma/client"),
+    import("./support/formal-test-user")
   ]);
   const marker = `${Date.now()}-${process.pid}`;
   const passwordHash = await hash("ScheduleFlow.2026!", 12);
@@ -41,6 +41,7 @@ const main = async (): Promise<void> => {
   let shopId: number | null = null;
   let serviceId: number | null = null;
   let technicianServiceId: number | null = null;
+  let technicianShopAffiliationId: number | null = null;
 
   try {
     const category = await prisma.category.findFirst({
@@ -49,7 +50,6 @@ const main = async (): Promise<void> => {
     });
     assert(category, "at least one active category must be seeded");
 
-    const authRepository = new AuthRepository(prisma);
     const backofficeRepository = new BackofficeRepository(prisma);
     const bookingRepository = new BookingRepository(prisma);
     const shop = await backofficeRepository.createShop({
@@ -65,24 +65,24 @@ const main = async (): Promise<void> => {
     createdUserIds.push(shop.ownerUserId);
     await backofficeRepository.approveShop(shop.id, new Date());
 
-    const technicianAccount = await authRepository.registerUser({
-      accountType: "technician",
-      city: "Tokyo",
+    const technicianAccount = await createFormalTestUser(prisma, {
       email: `schedule-technician-${marker}@needo.test`,
-      ip: "127.0.0.1",
       passwordHash,
       username: `Schedule Technician ${marker}`
     });
-    const customerAccounts = await Promise.all([0, 1].map((index) => authRepository.registerUser({
-      accountType: "customer" as const,
+    const customerAccounts = await Promise.all([0, 1].map((index) => createFormalTestUser(prisma, {
       email: `schedule-customer-${index}-${marker}@needo.test`,
-      ip: "127.0.0.1",
       passwordHash,
       username: `Schedule Customer ${index} ${marker}`
     })));
     createdUserIds.push(technicianAccount.id, ...customerAccounts.map((account) => account.id));
-    const technicianProfile = await prisma.technicianProfile.findUnique({ where: { userId: technicianAccount.id } });
-    assert(technicianProfile, "technician profile was not created");
+    const technicianProfile = await prisma.technicianProfile.create({
+      data: {
+        userId: technicianAccount.id,
+        displayName: `Schedule Technician ${marker}`,
+        city: "Tokyo"
+      }
+    });
     await backofficeRepository.updateTechnician({
       scope: "platform",
       technicianId: technicianProfile.id,
@@ -94,6 +94,18 @@ const main = async (): Promise<void> => {
       shopId: shop.id,
       approvedAt: new Date()
     });
+    const technicianShopAffiliation = await prisma.technicianShopAffiliation.create({
+      data: {
+        technicianProfileId: technicianProfile.id,
+        shopId: shop.id,
+        relationshipType: "PARTNER",
+        workStatus: "ACTIVE",
+        activeKey: `technician:${technicianProfile.id}:shop:${shop.id}`,
+        createdById: technicianAccount.id,
+        updatedById: technicianAccount.id
+      }
+    });
+    technicianShopAffiliationId = technicianShopAffiliation.id;
 
     const service = await backofficeRepository.createService({
       scope: "platform",
@@ -168,8 +180,10 @@ const main = async (): Promise<void> => {
       scheduleSlotId: primary.slot.id,
       fulfillmentMode: "store"
     })));
-    const successfulConcurrentOrders = concurrent.filter((order) => order !== null);
-    createdOrderIds.push(...successfulConcurrentOrders.map((order) => order.id));
+    const successfulConcurrentOrders = concurrent.filter(
+      (result): result is NonNullable<typeof result> => result !== null
+    );
+    createdOrderIds.push(...successfulConcurrentOrders.map((result) => result.order.id));
     assert(successfulConcurrentOrders.length === 1, "capacity-one slot allowed more than one concurrent booking");
     const bookedPrimary = await prisma.scheduleSlot.findUnique({ where: { id: primary.slot.id } });
     assert(bookedPrimary?.bookedCount === 1 && bookedPrimary.status === "BOOKED", "capacity-one slot state was not atomically booked");
@@ -194,8 +208,10 @@ const main = async (): Promise<void> => {
       scheduleSlotId: pooled.slot.id,
       fulfillmentMode: "store"
     })));
-    const successfulPooledOrders = pooledBookings.filter((order) => order !== null);
-    createdOrderIds.push(...successfulPooledOrders.map((order) => order.id));
+    const successfulPooledOrders = pooledBookings.filter(
+      (result): result is NonNullable<typeof result> => result !== null
+    );
+    createdOrderIds.push(...successfulPooledOrders.map((result) => result.order.id));
     assert(successfulPooledOrders.length === 2, "capacity-two assigned slot did not accept two distinct customers");
 
     const technicianOwned = await bookingRepository.createScheduleSlot({
@@ -260,12 +276,25 @@ const main = async (): Promise<void> => {
         if (createdAvailabilityIds.length > 0) await transaction.availability.deleteMany({ where: { id: { in: createdAvailabilityIds } } });
         if (technicianServiceId) await transaction.technicianService.deleteMany({ where: { id: technicianServiceId } });
         if (serviceId) await transaction.service.deleteMany({ where: { id: serviceId } });
-        await transaction.auditLog.deleteMany({ where: { targetType: "User", targetId: { in: createdUserIds } } });
-        await transaction.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-        await transaction.userIdentity.deleteMany({ where: { userId: { in: createdUserIds } } });
-        await transaction.customerProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
+        await transaction.auditLog.deleteMany({
+          where: {
+            OR: [
+              { actorId: { in: createdUserIds } },
+              { targetType: "User", targetId: { in: createdUserIds } }
+            ]
+          }
+        });
+        await transaction.publicIdentifier.deleteMany({
+          where: shopId ? { shopId } : { id: { in: [] } }
+        });
+        if (technicianShopAffiliationId) {
+          await transaction.technicianShopAffiliation.deleteMany({
+            where: { id: technicianShopAffiliationId }
+          });
+        }
         await transaction.technicianProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
         if (shopId) await transaction.shop.deleteMany({ where: { id: shopId } });
+        await deleteFormalTestUserFoundations(transaction, createdUserIds);
         await transaction.user.deleteMany({ where: { id: { in: createdUserIds } } });
       });
     }

@@ -24,6 +24,28 @@ const profile = {
 };
 
 describe("CustomerProfileRepository", () => {
+  it("maps the current customer level from the formal experience account", async () => {
+    const client = {
+      customerProfile: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...profile,
+          user: {
+            avatarBootstrapUrl: null,
+            avatarUrl: null,
+            experienceAccount: { currentLevel: 72, deletedAt: null },
+            needoId: "u5314672018"
+          }
+        })
+      }
+    } as unknown as PrismaClient;
+    const repository = new CustomerProfileRepository(client);
+
+    await expect(repository.findMine(81, 464)).resolves.toMatchObject({
+      level: 72,
+      publicId: "u5314672018"
+    });
+  });
+
   it("uses the account avatar when the customer profile has no active avatar media", async () => {
     const accountAvatarUrl = "/images/generated/profiles/ai-profile-41.jpg";
     const client = {
@@ -31,7 +53,7 @@ describe("CustomerProfileRepository", () => {
         findFirst: jest.fn().mockResolvedValue({
           ...profile,
           mediaAssets: [],
-          user: { avatarUrl: accountAvatarUrl, needoId: "u5314672018" }
+          user: { avatarBootstrapUrl: null, avatarUrl: accountAvatarUrl, needoId: "u5314672018" }
         })
       }
     } as unknown as PrismaClient;
@@ -72,8 +94,14 @@ describe("CustomerProfileRepository", () => {
         findUniqueOrThrow: jest.fn().mockResolvedValue(updated),
         update: jest.fn().mockResolvedValue(updated)
       },
-      mediaAsset: { create: jest.fn().mockResolvedValue({ id: 82 }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      user: { update: jest.fn().mockResolvedValue({ id: 11 }) }
+      mediaAsset: {
+        create: jest.fn().mockResolvedValue({ id: 82 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      user: {
+        update: jest.fn().mockResolvedValue({ id: 11 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      }
     };
     const client = {
       $transaction: jest.fn(async (callback) => callback(transaction)),
@@ -85,9 +113,13 @@ describe("CustomerProfileRepository", () => {
       repository.updateMine(
         11,
         41,
+        17,
         {
           age: 36,
-          avatar: { mimeType: "image/png", url: "http://localhost:3000/media/customer-avatars/new.png" },
+          avatar: {
+            mimeType: "image/png",
+            url: "http://localhost:3000/media/customer-avatars/new.png"
+          },
           bio: "新资料",
           displayName: "新昵称",
           gender: "private",
@@ -122,14 +154,23 @@ describe("CustomerProfileRepository", () => {
       expect.objectContaining({ data: { isActive: false } })
     );
     expect(transaction.mediaAsset.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ customerProfileId: 41, usageType: "avatar" }) })
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerProfileId: 41,
+          ownerIdentityId: 17,
+          ownerUserId: 11,
+          usageType: "avatar"
+        })
+      })
     );
     expect(transaction.user.update).toHaveBeenCalledWith({
       where: { id: 11 },
       data: { avatarUrl: "http://localhost:3000/media/customer-avatars/new.png" }
     });
     expect(transaction.auditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ action: "customer_profile.self_update", targetId: 41 }) })
+      expect.objectContaining({
+        data: expect.objectContaining({ action: "customer_profile.self_update", targetId: 41 })
+      })
     );
     await expect(repository.findMine(11, 41)).resolves.toMatchObject({ displayName: "新昵称" });
   });
@@ -143,7 +184,7 @@ describe("CustomerProfileRepository", () => {
         update: jest.fn().mockResolvedValue(profile)
       },
       mediaAsset: { create: jest.fn(), updateMany: jest.fn() },
-      user: { update: jest.fn() }
+      user: { update: jest.fn(), updateMany: jest.fn() }
     };
     const client = {
       $transaction: jest.fn(async (callback) => callback(transaction)),
@@ -152,10 +193,16 @@ describe("CustomerProfileRepository", () => {
     const repository = new CustomerProfileRepository(client);
 
     await expect(
-      repository.updateMine(11, 41, { displayName: "不会提交" }, {
-        action: "customer_profile.self_update",
-        targetType: "CustomerProfile"
-      })
+      repository.updateMine(
+        11,
+        41,
+        17,
+        { displayName: "不会提交" },
+        {
+          action: "customer_profile.self_update",
+          targetType: "CustomerProfile"
+        }
+      )
     ).rejects.toThrow("audit unavailable");
     expect(transaction.customerProfile.findUniqueOrThrow).not.toHaveBeenCalled();
   });

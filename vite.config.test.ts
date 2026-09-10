@@ -1,14 +1,30 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  createPortalApiProxyConfig,
   createLegacyAuthProxyConfig,
   createNeedoApiProxyConfig,
   rewritePortalEntryRequest,
+  resolveNeedoManualChunk,
   resolveLegacyAuthProxyTarget,
   resolveNeedoApiProxyTarget
 } from "./vite.config";
 
 describe("Needo API proxy config", () => {
+  it("proxies operations and merchant API prefixes to different listeners", () => {
+    const proxy = createPortalApiProxyConfig(
+      "http://127.0.0.1:3001",
+      "http://127.0.0.1:3002"
+    );
+
+    expect(proxy["/ops-api/v1"]).toMatchObject({ target: "http://127.0.0.1:3001" });
+    expect(proxy["/merchant-api/v1"]).toMatchObject({ target: "http://127.0.0.1:3002" });
+    expect(proxy["/ops-api/v1"].rewrite?.("/ops-api/v1/health")).toBe("/api/v1/health");
+    expect(proxy["/merchant-api/v1"].rewrite?.("/merchant-api/v1/health")).toBe(
+      "/api/v1/health"
+    );
+  });
+
   it("defaults local dev API traffic to the formal backend port", () => {
     expect(resolveNeedoApiProxyTarget({})).toBe("http://127.0.0.1:3000");
   });
@@ -62,6 +78,63 @@ describe("Needo API proxy config", () => {
       target: "https://t.dackou.com"
     });
     expect(proxy["/legacy-auth"].rewrite?.("/legacy-auth/captcha?token=abc")).toBe("/captcha?token=abc");
+  });
+});
+
+describe("Needo production chunks", () => {
+  it("keeps feature translations outside the base i18n budget", () => {
+    expect(resolveNeedoManualChunk("/workspace/src/features/identity-applications/i18n.ts"))
+      .toBe("identity-applications-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/settings/ekycI18n.ts"))
+      .toBe("ekyc-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/i18n/translations.ts")).toBe("i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/travel-fare/i18n.ts"))
+      .toBe("travel-fare-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/operations-analytics/i18n.ts"))
+      .toBe("operations-analytics-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/affiliate-profile/i18n.ts"))
+      .toBe("affiliate-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/affiliate-marketplace/i18n.ts"))
+      .toBe("affiliate-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/technician-schedule/automation-i18n.ts"))
+      .toBe("technician-automation-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/components/scheduling/UnifiedUserCalendar.tsx"))
+      .toBe("unified-calendar");
+  });
+
+  it("loads the operations dashboard only after entering its route", () => {
+    const appSource = readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
+
+    expect(appSource).not.toContain(
+      'import { DashboardPage } from "./pages/admin/DashboardPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { DashboardMetricDetailPage } from "./pages/admin/DashboardMetricDetailPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { MerchantAdminDashboardPage } from "./pages/merchant-admin/MerchantAdminDashboardPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { MembershipAnalyticsPage } from "./pages/admin/MembershipAnalyticsPage";'
+    );
+    expect(appSource).not.toContain(
+      'import { DataCenterPage } from "./pages/admin/DataCenterPage";'
+    );
+    expect(appSource).toContain(
+      'const DashboardPage = lazy(() => import("./pages/admin/DashboardPage")'
+    );
+    expect(appSource).toContain(
+      'const DashboardMetricDetailPage = lazy(() => import("./pages/admin/DashboardMetricDetailPage")'
+    );
+    expect(appSource).toContain(
+      'const MerchantAdminDashboardPage = lazy(() => import("./pages/merchant-admin/MerchantAdminDashboardPage")'
+    );
+    expect(appSource).toContain(
+      'const MembershipAnalyticsPage = lazy(() => import("./pages/admin/MembershipAnalyticsPage")'
+    );
+    expect(appSource).toContain(
+      'const DataCenterPage = lazy(() => import("./pages/admin/DataCenterPage")'
+    );
   });
 });
 

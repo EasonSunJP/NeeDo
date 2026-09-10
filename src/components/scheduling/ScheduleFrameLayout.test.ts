@@ -1,18 +1,27 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import scheduleCycleBoardSource from "./ScheduleCycleBoard.tsx?raw";
 import cycleBoardSource from "./ScheduleCycleCalendarBoard.tsx?raw";
 import scheduleGridSource from "../../features/dispatch-center/components/ScheduleGrid.tsx?raw";
-import stepFeedbackCollectionSource from "../../features/scheduling/automation/StepFeedbackCollection.tsx?raw";
 import stepModeSelectionSource from "../../features/scheduling/automation/StepModeSelection.tsx?raw";
+import stepCreateCycleSource from "../../features/scheduling/automation/StepCreateCycle.tsx?raw";
+import stepFinalConfirmationSource from "../../features/scheduling/automation/StepFinalConfirmation.tsx?raw";
+import floatingActionsSource from "../../features/scheduling/automation/ScheduleFloatingActions.tsx?raw";
 import scheduleSearchFieldSource from "./ScheduleSearchField.tsx?raw";
 import unifiedCalendarSource from "./UnifiedUserCalendar.tsx?raw";
 import technicianScheduleSource from "../../features/technician-schedule/FormalTechnicianScheduleWorkspace.tsx?raw";
+const stylesSource = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 describe("shared schedule frame layout", () => {
   it("does not draw an outer frame around cycle calendar boards", () => {
     expect(cycleBoardSource).toContain('data-schedule-cycle-calendar-board="true"');
     expect(cycleBoardSource).toContain("<UnifiedCalendarSurface");
     expect(cycleBoardSource).not.toContain("rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[var(--client-shadow)]");
+  });
+
+  it("uses the themed schedule view menu instead of a native select popup", () => {
+    expect(cycleBoardSource).toContain("<ScheduleViewPicker");
+    expect(cycleBoardSource).not.toContain('<select\n            aria-label="切换排班展示范围"');
   });
 
   it("uses the same frameless calendar surface for user schedules and cycle schedules", () => {
@@ -40,7 +49,18 @@ describe("shared schedule frame layout", () => {
     expect(cycleBoardSource).toContain('view === "threeDay" || view === "week"');
     expect(cycleBoardSource).toContain('view === "month"');
     expect(cycleBoardSource).toContain("<UnifiedCalendarMonthGrid");
-    expect(cycleBoardSource).not.toContain("<UnifiedCalendarMultiDayTimeline");
+  });
+
+  it("lets employee schedules opt into the shared multi-day timeline", () => {
+    expect(cycleBoardSource).toContain('periodViewVariant = "grid"');
+    expect(cycleBoardSource).toContain('periodViewVariant === "timeline"');
+    expect(cycleBoardSource).toContain("<UnifiedCalendarMultiDayTimeline");
+  });
+
+  it("lets a formal merchant adapter provide the cycle window and matching day grids", () => {
+    expect(cycleBoardSource).toContain("dataOverride?.cycle");
+    expect(cycleBoardSource).toContain("formalGridByDate");
+    expect(cycleBoardSource).toContain("period.dates.map((date)");
   });
 
   it("keeps merchant matrix technician headers as square avatar plus name buttons", () => {
@@ -80,18 +100,22 @@ describe("shared schedule frame layout", () => {
     expect(scheduleGridSource).toContain("!collapsedTechnicians && !(isMobileSurface && onToggleCollapsed)");
   });
 
-  it("does not draw an extra frame around the feedback deadline label", () => {
-    expect(stepFeedbackCollectionSource).toContain('className="ml-auto flex min-w-0 shrink items-center justify-end gap-2"');
-    expect(stepFeedbackCollectionSource).toContain('className="min-w-0 justify-center truncate rounded-xl px-2.5 py-1 text-sm"');
-    expect(stepFeedbackCollectionSource).not.toContain('"ml-auto flex h-10 min-w-0 shrink items-center justify-end gap-2 rounded-full border px-3"');
-    expect(stepFeedbackCollectionSource).not.toContain("const deadlineClass");
-  });
-
   it("keeps mode-card info triggers outside selection buttons", () => {
     const modeCardButtonBlock = stepModeSelectionSource.match(/<button[\s\S]*?cardClass[\s\S]*?<\/button>/)?.[0] ?? "";
 
     expect(modeCardButtonBlock).not.toContain("<InfoTooltipTrigger");
     expect(stepModeSelectionSource).toContain("<InfoTooltipTrigger");
+  });
+
+  it("uses one lightweight safe-area action frame on every mobile scheduling step", () => {
+    [stepModeSelectionSource, stepCreateCycleSource, stepFinalConfirmationSource].forEach((source) => {
+      expect(source).toContain("<ScheduleFloatingActions");
+      expect(source).not.toContain("schedule-wizard-action-dock");
+    });
+    expect(floatingActionsSource).toContain('data-schedule-wizard-bottom-actions="true"');
+    expect(floatingActionsSource).toContain("schedule-wizard-floating-actions");
+    expect(floatingActionsSource).toContain('maxWidth: "var(--client-bottom-nav-max-width, 880px)"');
+    expect(stylesSource).toContain(".client-shell .schedule-wizard-floating-frame {\n  bottom: 0 !important;");
   });
 
   it("does not apply page theme background classes to the user calendar table itself", () => {
@@ -119,9 +143,11 @@ describe("shared schedule frame layout", () => {
 
   it("does not add local theme backgrounds around the technician schedule calendar", () => {
     expect(technicianScheduleSource).toContain('data-testid="formal-technician-schedule-workspace"');
-    expect(technicianScheduleSource).toContain('useState<TechnicianScheduleView>("day")');
-    expect(technicianScheduleSource).toContain('view === "week"');
-    expect(technicianScheduleSource).toContain('view === "month"');
+    expect(technicianScheduleSource).toContain("<UnifiedUserCalendar");
+    expect(technicianScheduleSource).toContain('displayMode="personal"');
+    expect(technicianScheduleSource).toContain("formalOnly");
+    expect(technicianScheduleSource).toContain("showSourceDrawer");
+    expect(technicianScheduleSource).not.toContain("function DayTimeline");
     expect(technicianScheduleSource).not.toContain("scheduleThemeRootClass");
   });
 

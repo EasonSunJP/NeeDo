@@ -7,6 +7,7 @@ import type {
   BackofficeCarouselScene,
   CarouselDraftReplaceInput,
   CarouselRelease,
+  CarouselSceneSlug,
 } from "../../api/contentPublication";
 import { LocalizedCarouselEditor } from "./LocalizedCarouselEditor";
 
@@ -252,14 +253,14 @@ async function selectOptionByName(name: string, value: string) {
   await setValue(select, value);
 }
 
-async function renderEditor() {
+async function renderEditor(editorScene: CarouselSceneSlug = "user-home") {
   await act(async () => {
     root.render(
       <LocalizedCarouselEditor
         editPermission="carousel:edit"
         publishPermission="carousel:publish"
         readPermission="carousel:read"
-        scene="user-home"
+        scene={editorScene}
       />,
     );
   });
@@ -270,6 +271,10 @@ describe("LocalizedCarouselEditor", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
     vi.resetAllMocks();
     allowedPermissions.clear();
     allowedPermissions.add("carousel:read");
@@ -354,6 +359,42 @@ describe("LocalizedCarouselEditor", () => {
     expect(container.textContent).toContain(
       "来自简体中文的初始复制，尚未人工校对",
     );
+  });
+
+  it("uses the compact replacement workflow only for the user-home scene", async () => {
+    await renderEditor();
+    await waitFor(() => expect(container.textContent).toContain("护理服务"));
+
+    expect(
+      container.querySelector('[data-testid="user-home-carousel-workspace"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="feature-carousel"]'),
+    ).not.toBeNull();
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(5);
+    expect(container.textContent).toContain("当前轮播内容");
+    expect(container.textContent).toContain("新的轮播内容");
+    const history = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="carousel-history"]',
+    );
+    expect(history).not.toBeNull();
+    expect(history?.open).toBe(false);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    apiMocks.getBackofficeCarouselScene.mockResolvedValue({
+      ...scene,
+      scene: "AFFILIATE_HOME_NOTICE",
+      draft: { ...draft, scene: "AFFILIATE_HOME_NOTICE" },
+      published: scene.published
+        ? { ...scene.published, scene: "AFFILIATE_HOME_NOTICE" }
+        : null,
+    });
+    await renderEditor("affiliate-home-notice");
+    await waitFor(() => expect(container.textContent).toContain("护理服务"));
+    expect(
+      container.querySelector('[data-testid="user-home-carousel-workspace"]'),
+    ).toBeNull();
   });
 
   it("keeps locale edits independent and copies only after explicit confirmation", async () => {
@@ -768,7 +809,91 @@ describe("LocalizedCarouselEditor", () => {
     expect(apiMocks.getBackofficeCarouselScene).toHaveBeenCalledTimes(2);
   });
 
-  it("bootstraps a published-only scene by cloning an explicitly selected historical release", async () => {
+  it("renders the published release when the scene has no draft", async () => {
+    const published = {
+      ...scene.published!,
+      slides: scene.published!.slides.map((slide, index) =>
+        index === 0
+          ? {
+              ...slide,
+              translations: {
+                ...slide.translations,
+                "zh-CN": {
+                  ...slide.translations["zh-CN"],
+                  title: "正式轮播",
+                },
+              },
+            }
+          : slide,
+      ),
+    };
+    apiMocks.getBackofficeCarouselScene.mockResolvedValue({
+      scene: "USER_HOME",
+      draft: null,
+      scheduled: null,
+      published,
+    });
+    apiMocks.getCarouselHistory.mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+
+    await renderEditor();
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="published-carousel-preview"]')
+          ?.textContent,
+      ).toContain("正式轮播"),
+    );
+    expect(container.querySelector('input[name="title"]')).toBeNull();
+  });
+
+  it("requires a reason to clone the published release when history is empty", async () => {
+    const publishedOnly = { ...scene, draft: null };
+    const clonedDraft = { ...draft, lockVersion: 1 };
+    apiMocks.getBackofficeCarouselScene
+      .mockResolvedValueOnce(publishedOnly)
+      .mockResolvedValueOnce({ ...publishedOnly, draft: clonedDraft });
+    apiMocks.getCarouselHistory.mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+    apiMocks.rollbackCarousel.mockResolvedValue(clonedDraft);
+
+    await renderEditor();
+
+    await waitFor(() =>
+      expect(
+        container.querySelector<HTMLInputElement>('input[name="cloneReason"]'),
+      ).not.toBeNull(),
+    );
+    expect((button("创建新草稿") as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      container.querySelector<HTMLInputElement>('input[name="bootstrapTitle"]'),
+    ).toBeNull();
+
+    await setValue(
+      container.querySelector<HTMLInputElement>('input[name="cloneReason"]')!,
+      "继续编辑已发布版本",
+    );
+    await click(button("创建新草稿"));
+
+    await waitFor(() =>
+      expect(apiMocks.rollbackCarousel).toHaveBeenCalledWith(
+        "user-home",
+        scene.published!.releaseId,
+        expect.objectContaining({ reason: "继续编辑已发布版本" }),
+      ),
+    );
+    expect(apiMocks.createCarouselDraft).not.toHaveBeenCalled();
+  });
+
+  it("clones a published-only scene through its current published release", async () => {
     const publishedOnly = { ...scene, draft: null };
     const clonedDraft = { ...draft, lockVersion: 1 };
     apiMocks.getBackofficeCarouselScene
@@ -785,12 +910,6 @@ describe("LocalizedCarouselEditor", () => {
     await renderEditor();
     await waitFor(() =>
       expect(container.textContent).toContain("从历史版本创建草稿"),
-    );
-    await setValue(
-      container.querySelector<HTMLSelectElement>(
-        'select[name="draftSourceReleaseId"]',
-      )!,
-      "80",
     );
     await setValue(
       container.querySelector<HTMLInputElement>('input[name="cloneReason"]')!,

@@ -13,6 +13,10 @@ describe("unified public identifier schema foundation", () => {
     join(process.cwd(), "src/repositories/realtime.repository.ts"),
     "utf8"
   );
+  const messageSendTransaction = readFileSync(
+    join(process.cwd(), "src/repositories/im-message-send.transaction.ts"),
+    "utf8"
+  );
   const deployedPrerequisiteMigrations = [
     "20260826132000_im_message_lifecycle_policy",
     "20260826133000_im_deletion_sync",
@@ -186,9 +190,11 @@ describe("unified public identifier schema foundation", () => {
   });
 
   it("keeps formal message writes compatible with the deployed lifecycle constraint", () => {
-    expect(realtimeRepository).toContain("tx.imPolicy.findFirst");
-    expect(realtimeRepository).toContain("recallWindowSeconds");
-    expect(realtimeRepository).toContain("recallDeadlineAt:");
-    expect(realtimeRepository).toContain("lifecycleVersion:");
+    expect(realtimeRepository).toContain('from "./im-message-send.transaction"');
+    expect(realtimeRepository).toContain("persistImMessageInTransaction(tx,");
+    expect(messageSendTransaction).toContain("transaction.imPolicy.findFirst");
+    expect(messageSendTransaction).toContain("recallWindowSeconds");
+    expect(messageSendTransaction).toContain("recallDeadlineAt:");
+    expect(messageSendTransaction).toContain("lifecycleVersion:");
   });
 });

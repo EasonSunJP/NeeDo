@@ -16,7 +16,9 @@ vi.mock("../../features/core-read/useCustomerSelfProfile", () => ({
 }));
 
 vi.mock("../../components/mobile/MobileShell", () => ({
-  MobileShell: ({ children }: { children: ReactNode }) => <main>{children}</main>
+  MobileShell: ({ children, showBottomNav }: { children: ReactNode; showBottomNav?: boolean }) => (
+    <main data-bottom-nav={showBottomNav === false ? "hidden" : "visible"}>{children}</main>
+  )
 }));
 
 vi.mock("../../components/mobile/FloatingHomeHeader", () => ({
@@ -25,19 +27,30 @@ vi.mock("../../components/mobile/FloatingHomeHeader", () => ({
   floatingHeaderInnerClassName: ""
 }));
 
-vi.mock("../../components/mobile/SharedHomeHeader", () => ({
-  SharedHomeHeader: ({ avatarAlt, locationLabel }: { avatarAlt: string; locationLabel: string }) => (
-    <div data-testid="formal-user-header">{avatarAlt} · {locationLabel}</div>
+vi.mock("../../components/scheduling/SchedulePageHeader", () => ({
+  SchedulePageHeader: () => (
+    <header data-testid="shared-schedule-header">
+      <button aria-label="返回" type="button" />
+      <input aria-label="搜索日程" />
+      <button aria-label="关闭" type="button" />
+    </header>
   )
 }));
 
-vi.mock("../../components/scheduling/ScheduleSearchField", () => ({
-  ScheduleSearchField: () => <input aria-label="search schedule" />
-}));
-
 vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
-  UnifiedUserCalendar: ({ currentCustomer, formalOnly }: { currentCustomer: { name: string }; formalOnly?: boolean }) => (
-    <div data-testid={formalOnly ? "formal-user-calendar" : "non-formal-user-calendar"}>
+  UnifiedUserCalendar: ({
+    currentCustomer,
+    formalOnly,
+    showSourceDrawer
+  }: {
+    currentCustomer: { name: string };
+    formalOnly?: boolean;
+    showSourceDrawer?: boolean;
+  }) => (
+    <div
+      data-source-drawer-enabled={showSourceDrawer ? "true" : "false"}
+      data-testid={formalOnly ? "formal-user-calendar" : "non-formal-user-calendar"}
+    >
       {currentCustomer.name}
     </div>
   )
@@ -52,6 +65,7 @@ const profileFixture = {
   bio: null,
   avatarUrl: null,
   membershipLevel: "free",
+  level: 1,
   gender: "private",
   age: null,
   heightCm: null,
@@ -101,9 +115,11 @@ describe("UserSchedulePage formal data boundary", () => {
 
     await renderUserSchedulePage();
 
-    expect(container.textContent).toContain(profileFixture.displayName);
-    expect(container.textContent).toContain(profileFixture.city);
-    expect(container.querySelector('[data-testid="formal-user-calendar"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="shared-schedule-header"]')).not.toBeNull();
+    expect(container.querySelector('[data-bottom-nav="hidden"]')).not.toBeNull();
+    const calendar = container.querySelector('[data-testid="formal-user-calendar"]');
+    expect(calendar).not.toBeNull();
+    expect(calendar?.getAttribute("data-source-drawer-enabled")).toBe("true");
   });
 
   it("shows a retryable API failure without a fallback customer", async () => {
@@ -119,6 +135,8 @@ describe("UserSchedulePage formal data boundary", () => {
     await renderUserSchedulePage();
 
     expect(container.textContent).toContain("profile unavailable");
+    expect(container.querySelector('[data-testid="shared-schedule-header"]')).not.toBeNull();
+    expect(container.querySelector('[data-bottom-nav="hidden"]')).not.toBeNull();
     expect(container.textContent).not.toContain("Mia");
     expect(container.querySelector('[data-testid="formal-user-calendar"]')).toBeNull();
     await act(async () => {
@@ -130,6 +148,9 @@ describe("UserSchedulePage formal data boundary", () => {
   it("keeps legacy browser stores and fallback rows out of the page source", () => {
     expect(pageSource).toContain("useCustomerSelfProfile");
     expect(pageSource).toContain("formalOnly");
+    expect(pageSource).toContain("SchedulePageHeader");
+    expect(pageSource).toContain("showBottomNav={false}");
+    expect(pageSource).not.toContain("SharedHomeHeader");
     expect(pageSource).not.toMatch(/useEntityStore|useHomeLayoutStore|customers\[0\]|config\.locations\[0\]/);
   });
 });

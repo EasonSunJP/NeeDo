@@ -117,6 +117,7 @@ const makeProfile = (): CustomerProfilePayload => ({
   displayName: "田中 彩",
   city: "Tokyo",
   membershipLevel: "standard",
+  level: 72,
   avatarUrl: `http://localhost:3101/media/customer-avatars/${avatarHash}.png`,
   gender: "private",
   age: null,
@@ -244,6 +245,11 @@ const createFixture = async () => {
     findVerifiedRegistrationByChallenge: jest.fn(async () => null),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
+    getSuccessfulLoginEvidence: jest.fn(async () => ({
+      hasAnySuccessfulLogin: false,
+      hasSuccessfulLoginInPeriod: false,
+      hasSuccessfulLoginFromIp: false
+    })),
     createAuditLog: jest.fn(async (entry: unknown) => {
       auditLogs.push(entry);
     })
@@ -253,8 +259,15 @@ const createFixture = async () => {
       userId === 11 && profileId === 41 ? profile : null
     ),
     updateMine: jest.fn(
-      async (userId: number, profileId: number, mutation: CustomerProfileMutation) => {
-        if (userId !== 11 || profileId !== 41) throw new Error("unexpected profile scope");
+      async (
+        userId: number,
+        profileId: number,
+        ownerIdentityId: number,
+        mutation: CustomerProfileMutation
+      ) => {
+        if (userId !== 11 || profileId !== 41 || ownerIdentityId !== 1) {
+          throw new Error("unexpected profile scope");
+        }
         profile = {
           ...profile,
           ...(mutation.displayName === undefined
@@ -336,6 +349,7 @@ describe("customer profile current-user API", () => {
       expect(fixture.customerProfileRepository.updateMine).toHaveBeenCalledWith(
         11,
         41,
+        1,
         expect.objectContaining({
           displayName: "松尾 雄大",
           visibility: "network",

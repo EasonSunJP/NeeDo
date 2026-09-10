@@ -24,6 +24,8 @@ const compensation: EmployeeCompensationResult = {
     dailyRateJpy: 0,
     fixedOrderPayJpy: 0,
     commissionRatePercent: 20,
+    extensionCommissionRatePercent: 60,
+    nominationFeeJpy: 1_500,
     guaranteedMinimumJpy: 180_000,
     ndpFeeBearer: "split",
     technicianNdpSharePercent: 30,
@@ -120,6 +122,12 @@ describe("EmployeeCompensationPanel", () => {
     expect(container.textContent).toContain("固定工资 + 分成");
     expect(container.textContent).toContain("230,000");
     expect(container.textContent).toContain("20%");
+    expect(container.textContent).toContain("店铺 80%：20% 技师");
+    expect(container.textContent).toContain("服务完成分成");
+    expect(container.textContent).toContain("加钟分成");
+    expect(container.textContent).toContain("60%");
+    expect(container.textContent).toContain("指名费");
+    expect(container.textContent).toContain("1,500");
     expect(container.textContent).toContain("财务人员手动登记");
     expect(container.textContent).not.toContain("最近工资单统计");
   });
@@ -137,10 +145,19 @@ describe("EmployeeCompensationPanel", () => {
     const commission = container.querySelector<HTMLInputElement>(
       '[data-testid="employee-compensation-commission"]',
     )!;
+    const extensionCommission = container.querySelector<HTMLInputElement>(
+      '[data-testid="employee-compensation-extension-commission"]',
+    )!;
+    const nominationFee = container.querySelector<HTMLInputElement>(
+      '[data-testid="employee-compensation-nomination-fee"]',
+    )!;
     await act(async () => {
       setInputValue(baseSalary, "240000");
       setInputValue(commission, "22");
+      setInputValue(extensionCommission, "65");
+      setInputValue(nominationFee, "1800");
     });
+    expect(container.textContent).toContain("店铺 78%：22% 技师");
     await act(async () => button("保存薪酬规则").click());
 
     expect(onSave).toHaveBeenCalledWith(
@@ -149,6 +166,8 @@ describe("EmployeeCompensationPanel", () => {
         wageMode: "base_plus_commission",
         baseSalaryJpy: 240_000,
         commissionRatePercent: 22,
+        extensionCommissionRatePercent: 65,
+        nominationFeeJpy: 1_800,
       }),
     );
     expect(

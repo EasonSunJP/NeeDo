@@ -9,6 +9,7 @@ export type MerchantPrimaryModule = {
   caption: string;
   route: string;
   icon: "sparkles" | "calendar" | "shield" | "heart" | "order" | "menu" | "floor";
+  badge?: "Test";
   permission?: FeaturePermission;
 };
 
@@ -44,6 +45,7 @@ export const merchantPrimaryModules: MerchantPrimaryModule[] = [
     caption: "会员与会员卡",
     route: "/merchant/member",
     icon: "heart",
+    badge: "Test",
     permission: "shop.member.view"
   },
   {
@@ -53,6 +55,7 @@ export const merchantPrimaryModules: MerchantPrimaryModule[] = [
     caption: "扫码店内单",
     route: "/merchant/dine/orders",
     icon: "order",
+    badge: "Test",
     permission: "store.dine-in.order.view"
   },
   {
@@ -62,6 +65,7 @@ export const merchantPrimaryModules: MerchantPrimaryModule[] = [
     caption: "商品与售罄",
     route: "/merchant/menu",
     icon: "menu",
+    badge: "Test",
     permission: "store.dine-in.menu.view"
   },
   {
@@ -71,6 +75,7 @@ export const merchantPrimaryModules: MerchantPrimaryModule[] = [
     caption: "桌台包厢床位",
     route: "/merchant/floor",
     icon: "floor",
+    badge: "Test",
     permission: "store.dine-in.floor.view"
   }
 ];

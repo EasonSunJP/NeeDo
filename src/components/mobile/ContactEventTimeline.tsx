@@ -1,9 +1,11 @@
 import { useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import { TimelineBubbleDisclosure } from "./TimelineBubbleDisclosure";
 
 export type ContactEventTimelineTone = "neutral" | "red" | "green" | "accent";
 
 export type ContactEventTimelineEntry = {
+  actions?: ReactNode;
   actorAvatarSrc?: string;
   actorName?: ReactNode;
   actorRole?: ReactNode;
@@ -22,6 +24,7 @@ export type ContactEventTimelineEntry = {
 };
 
 export function ContactEventTimeline({
+  bubbleMaxLines,
   className,
   commentAuthorAvatarSrc,
   commentAuthorName = "我",
@@ -30,9 +33,12 @@ export function ContactEventTimeline({
   commentPlaceholder = "写下留言...",
   emptyLabel = "暂无时间轴记录。",
   events,
+  layout = "responsive",
+  onCommentButtonClick,
   onCommentSubmit,
   showCommentComposer = true
 }: {
+  bubbleMaxLines?: number;
   className?: string;
   commentAuthorAvatarSrc?: string;
   commentAuthorName?: string;
@@ -41,6 +47,8 @@ export function ContactEventTimeline({
   commentPlaceholder?: string;
   emptyLabel?: ReactNode;
   events: ContactEventTimelineEntry[];
+  layout?: "responsive" | "three-column";
+  onCommentButtonClick?: () => void;
   onCommentSubmit?: (comment: string) => void;
   showCommentComposer?: boolean;
 }) {
@@ -81,7 +89,7 @@ export function ContactEventTimeline({
   if (renderedEvents.length === 0) {
     return (
       <div className={cn("grid gap-4", className)}>
-        <div className="rounded-[18px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-6 text-center text-xs font-bold text-[color:var(--client-muted)]">
+        <div className="flex min-h-[72px] items-center justify-center rounded-[18px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-6 text-center text-xs font-bold text-[color:var(--client-muted)]">
           {emptyLabel}
         </div>
         {showCommentComposer ? (
@@ -91,12 +99,19 @@ export function ContactEventTimeline({
             commentAuthorName={commentAuthorName}
             commentDraft={commentDraft}
             commentOpen={commentOpen}
+            layout={layout}
             onChange={setCommentDraft}
             onClose={() => {
               setCommentDraft("");
               setCommentOpen(false);
             }}
-            onOpen={() => setCommentOpen(true)}
+            onOpen={() => {
+              if (onCommentButtonClick) {
+                onCommentButtonClick();
+                return;
+              }
+              setCommentOpen(true);
+            }}
             onSubmit={handleCommentSubmit}
             placeholder={commentPlaceholder}
           />
@@ -117,11 +132,19 @@ export function ContactEventTimeline({
 
         return (
           <div
-            className="grid grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
+            className={cn(
+              "contact-event-row grid",
+              layout === "three-column"
+                ? "grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
+                : "grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
+            )}
             data-tone={event.tone ?? "default"}
             key={event.id}
           >
-            <div className="col-span-2 break-words whitespace-pre-line pt-1 text-left text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums sm:col-span-1 sm:text-right">
+            <div className={cn(
+              "break-words whitespace-pre-line pt-1 text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums",
+              layout === "three-column" ? "text-right" : "col-span-2 text-left sm:col-span-1 sm:text-right"
+            )}>
               {event.preserveAtLabel ? event.atLabel : formatContactTimelineAtLabel(event.atLabel, message)}
             </div>
             <div className="relative flex justify-center pb-7 pt-1">
@@ -134,12 +157,18 @@ export function ContactEventTimeline({
               <span className={cn("relative z-[1] h-[14px] w-[14px] rounded-full shadow-[0_0_0_4px_color-mix(in_srgb,var(--client-bg)_86%,transparent)]", getContactEventTimelineDotClassName(event.tone))} />
             </div>
             <div className={cn("min-w-0 pb-5", index === renderedEvents.length - 1 && "pb-0")}>
-              <div className="grid grid-cols-[32px,minmax(0,1fr)] items-start gap-2 sm:grid-cols-[40px,minmax(0,1fr)] sm:gap-2.5">
+              <div className={cn(
+                "contact-event-avatar-row grid items-start",
+                layout === "three-column"
+                  ? "grid-cols-[40px,minmax(0,1fr)] gap-2.5"
+                  : "grid-cols-[32px,minmax(0,1fr)] gap-2 sm:grid-cols-[40px,minmax(0,1fr)] sm:gap-2.5"
+              )}>
                 <ContactEventTimelineAvatar
                   icon={systemIcon ?? event.icon}
                   name={actorName}
                   src={event.actorAvatarSrc}
                   tone={event.tone === "red" ? "red" : "neutral"}
+                  wide={layout === "three-column"}
                 />
                 <div className="min-w-0">
                   <div
@@ -150,10 +179,15 @@ export function ContactEventTimeline({
                         : "bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,var(--client-primary)_8%)]"
                     )}
                   >
-                    <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
+                    {bubbleMaxLines ? <TimelineBubbleDisclosure maxLines={bubbleMaxLines}>
+                      <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
+                        <span>{actorName}（{actorRole}）：</span>
+                        {message ? <span>{message}</span> : null}
+                      </p>
+                    </TimelineBubbleDisclosure> : <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
                       <span>{actorName}（{actorRole}）：</span>
                       {message ? <span>{message}</span> : null}
-                    </p>
+                    </p>}
                   </div>
                 </div>
               </div>
@@ -184,6 +218,7 @@ export function ContactEventTimeline({
                   </p>
                 </div>
               ) : null}
+              {event.actions ? <div className="mt-2 flex justify-end pl-10 sm:pl-[50px]">{event.actions}</div> : null}
             </div>
           </div>
         );
@@ -195,12 +230,19 @@ export function ContactEventTimeline({
           commentAuthorName={commentAuthorName}
           commentDraft={commentDraft}
           commentOpen={commentOpen}
+          layout={layout}
           onChange={setCommentDraft}
           onClose={() => {
             setCommentDraft("");
             setCommentOpen(false);
           }}
-          onOpen={() => setCommentOpen(true)}
+          onOpen={() => {
+            if (onCommentButtonClick) {
+              onCommentButtonClick();
+              return;
+            }
+            setCommentOpen(true);
+          }}
           onSubmit={handleCommentSubmit}
           placeholder={commentPlaceholder}
         />
@@ -215,6 +257,7 @@ function ContactEventTimelineCommentRow({
   commentAuthorName,
   commentDraft,
   commentOpen,
+  layout,
   onChange,
   onClose,
   onOpen,
@@ -226,6 +269,7 @@ function ContactEventTimelineCommentRow({
   commentAuthorName: string;
   commentDraft: string;
   commentOpen: boolean;
+  layout: "responsive" | "three-column";
   onChange: (value: string) => void;
   onClose: () => void;
   onOpen: () => void;
@@ -243,8 +287,13 @@ function ContactEventTimelineCommentRow({
   }, [commentOpen]);
 
   return (
-    <div className="grid grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3">
-      <div className="hidden sm:block" />
+    <div className={cn(
+      "contact-event-comment-row grid",
+      layout === "three-column"
+        ? "grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
+        : "grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
+    )}>
+      <div className={layout === "three-column" ? "block" : "hidden sm:block"} />
       <div className="relative flex justify-center py-1">
         <button
           aria-label={buttonLabel}
@@ -257,8 +306,8 @@ function ContactEventTimelineCommentRow({
         </button>
       </div>
       <div className="min-w-0 py-1">
-        <div className="grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5">
-          <ContactEventTimelineAvatar name={commentAuthorName} src={commentAuthorAvatarSrc} />
+        <div className="contact-event-avatar-row grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5">
+          <ContactEventTimelineAvatar name={commentAuthorName} src={commentAuthorAvatarSrc} wide={layout === "three-column"} />
           <div className="min-w-0">
             {commentOpen ? (
               <form className="grid gap-2" onSubmit={onSubmit}>
@@ -300,6 +349,7 @@ function ContactEventTimelineCommentRow({
 }
 
 export function ContactEventTimelinePanel({
+  bubbleMaxLines,
   className,
   commentAuthorAvatarSrc,
   commentAuthorName,
@@ -309,11 +359,14 @@ export function ContactEventTimelinePanel({
   emptyLabel,
   events,
   headerVariant = "bar",
+  layout = "responsive",
+  onCommentButtonClick,
   onCommentSubmit,
   showCommentComposer = true,
   timelineClassName,
   title
 }: {
+  bubbleMaxLines?: number;
   className?: string;
   commentAuthorAvatarSrc?: string;
   commentAuthorName?: string;
@@ -323,6 +376,8 @@ export function ContactEventTimelinePanel({
   emptyLabel?: ReactNode;
   events: ContactEventTimelineEntry[];
   headerVariant?: "bar" | "plain";
+  layout?: "responsive" | "three-column";
+  onCommentButtonClick?: () => void;
   onCommentSubmit?: (comment: string) => void;
   showCommentComposer?: boolean;
   timelineClassName?: string;
@@ -342,6 +397,7 @@ export function ContactEventTimelinePanel({
         <p className="text-sm font-black text-[color:var(--client-text)]">{title}</p>
       )}
       <ContactEventTimeline
+        bubbleMaxLines={bubbleMaxLines}
         className={cn(headerVariant === "bar" ? "px-4 py-4" : "mt-4", timelineClassName)}
         commentAuthorAvatarSrc={commentAuthorAvatarSrc}
         commentAuthorName={commentAuthorName}
@@ -350,6 +406,8 @@ export function ContactEventTimelinePanel({
         commentPlaceholder={commentPlaceholder}
         emptyLabel={emptyLabel}
         events={events}
+        layout={layout}
+        onCommentButtonClick={onCommentButtonClick}
         onCommentSubmit={onCommentSubmit}
         showCommentComposer={showCommentComposer}
       />
@@ -385,25 +443,28 @@ function ContactEventTimelineAvatar({
   icon,
   name,
   src,
-  tone = "neutral"
+  tone = "neutral",
+  wide = false
 }: {
   icon?: ReactNode;
   name: ReactNode;
   src?: string;
   tone?: "neutral" | "red";
+  wide?: boolean;
 }) {
   const fallback = typeof name === "string" ? name.slice(0, 1) : "管";
 
   return (
     <span
       className={cn(
-        "grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[11px] border text-xs font-black sm:h-10 sm:w-10 sm:rounded-[14px] sm:text-sm",
+        "grid shrink-0 place-items-center overflow-hidden border font-black",
+        wide ? "h-10 w-10 rounded-[14px] text-sm" : "h-8 w-8 rounded-[11px] text-xs sm:h-10 sm:w-10 sm:rounded-[14px] sm:text-sm",
         tone === "red"
           ? "border-[#ef5b55]/30 bg-[#ef5b55]/12 text-[#ef5b55]"
           : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-muted)]"
       )}
     >
-      {src ? <img alt={typeof name === "string" ? name : "时间轴头像"} className="h-full w-full rounded-[11px] object-cover sm:rounded-[14px]" src={src} /> : icon ?? <span>{fallback || "管"}</span>}
+      {src ? <img alt={typeof name === "string" ? name : "时间轴头像"} className={cn("h-full w-full object-cover", wide ? "rounded-[14px]" : "rounded-[11px] sm:rounded-[14px]")} src={src} /> : icon ?? <span>{fallback || "管"}</span>}
     </span>
   );
 }

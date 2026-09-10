@@ -45,9 +45,7 @@ describe("affiliate alliance schema", () => {
     expect(schema).toMatch(
       /model AffiliateAllianceMember[\s\S]*@@index\(\[allianceId, role\]\)[\s\S]*@@index\(\[userId\]\)[\s\S]*@@index\(\[parentMemberId\]\)[\s\S]*@@index\(\[deletedAt\]\)/
     );
-    expect(schema).toMatch(
-      /model AffiliateAlliancePermission[\s\S]*@@index\(\[deletedAt\]\)/
-    );
+    expect(schema).toMatch(/model AffiliateAlliancePermission[\s\S]*@@index\(\[deletedAt\]\)/);
     expect(schema).toMatch(/ownedAffiliateAlliances\s+AffiliateAlliance\[\]/);
     expect(schema).toMatch(/affiliateAllianceMemberships\s+AffiliateAllianceMember\[\]/);
   });
@@ -70,7 +68,11 @@ describe("affiliate alliance schema", () => {
     );
     expect(schema).toMatch(/affiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
     expect(schema).toMatch(/sentAffiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
-    expect(schema).toMatch(/parentedAffiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
-    expect(schema).toMatch(/receivedAffiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
+    expect(schema).toMatch(
+      /parentedAffiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/
+    );
+    expect(schema).toMatch(
+      /receivedAffiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/
+    );
   });
 });

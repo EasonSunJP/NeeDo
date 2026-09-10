@@ -82,6 +82,9 @@ export function SettingsHomePage({
   actions,
   backTo,
   onBack,
+  onClose,
+  closeTo,
+  closeLabel,
   navItems,
   children,
   contentClassName
@@ -92,6 +95,9 @@ export function SettingsHomePage({
   actions?: ReactNode;
   backTo?: string;
   onBack?: () => void;
+  onClose?: () => void;
+  closeTo?: string;
+  closeLabel?: string;
   navItems?: MobileNavItem[];
   children: ReactNode;
   contentClassName?: string;
@@ -99,8 +105,8 @@ export function SettingsHomePage({
   const titleInfo = combineTitleInfo(info, subtitle);
 
   return (
-    <PageScaffold contentClassName={cn("space-y-5 pt-[calc(env(safe-area-inset-top)+5.75rem)]", contentClassName)} navItems={navItems}>
-      <AppTopBar actions={actions} backTo={backTo} fixed info={titleInfo} onBack={onBack} title={title} />
+    <PageScaffold contentClassName={cn("space-y-5 pt-[calc(env(safe-area-inset-top)+5.75rem)]", contentClassName)} navItems={navItems} showBottomNav={false}>
+      <AppTopBar actions={actions} backTo={backTo} closeLabel={closeLabel} closeTo={closeTo} fixed info={titleInfo} onBack={onBack} onClose={onClose} title={title} />
       {children}
     </PageScaffold>
   );
@@ -121,7 +127,9 @@ export function SettingsDetailPage({
   hideCloseButton,
   navItems,
   children,
-  contentClassName
+  contentClassName,
+  headerFrameClassName,
+  headerOverlay
 }: {
   title: ReactNode;
   info?: ReactNode;
@@ -138,6 +146,8 @@ export function SettingsDetailPage({
   navItems?: MobileNavItem[];
   children: ReactNode;
   contentClassName?: string;
+  headerFrameClassName?: string;
+  headerOverlay?: ReactNode;
 }) {
   const navigate = useNavigate();
   const titleInfo = combineTitleInfo(info, subtitle);
@@ -166,6 +176,8 @@ export function SettingsDetailPage({
         footerClassName={footerClassName}
         hideCloseButton={hideCloseButton}
         info={titleInfo}
+        frameClassName={headerFrameClassName}
+        overlay={headerOverlay}
         onBack={handleBack}
         onClose={onClose}
         title={title}

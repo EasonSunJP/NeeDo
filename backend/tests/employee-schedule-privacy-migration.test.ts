@@ -11,7 +11,9 @@ describe("employee schedule privacy migration", () => {
     const migration = readFileSync(migrationPath, "utf8");
 
     expect(migration).toContain("`source_type` ENUM('shop', 'technician') NOT NULL DEFAULT 'shop'");
-    expect(migration).toContain("`visibility` ENUM('shop_only', 'affiliated_shops') NOT NULL DEFAULT 'shop_only'");
+    expect(migration).toContain(
+      "`visibility` ENUM('shop_only', 'affiliated_shops') NOT NULL DEFAULT 'shop_only'"
+    );
     expect(migration).toContain("availability_technician_visibility_range_idx");
   });
 

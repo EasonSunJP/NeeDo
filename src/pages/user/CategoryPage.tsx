@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AppIcon, IconButton, floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
-import { featureCarouselFrameClassName, FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
+import { featureCarouselFrameClassName } from "../../components/client-ui/FeatureCarousel";
 import {
   FloatingHomeHeader,
   floatingHeaderGlassPanelClassName,
@@ -11,45 +11,38 @@ import {
   floatingHeaderSearchInputClassName
 } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { coreReadApi, mapCoreCategoryToServiceCategory, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import { useOptionalAuth } from "../../auth/AuthProvider";
+import {
+  coreReadApi,
+  mapCoreCategoryToServiceCategory,
+  mapCoreServiceToServiceItem,
+  type CoreShopCard,
+  type CoreTechnicianCard
+} from "../../features/core-read/api";
+import {
+  entityEngagementApi,
+  type EntityFavoriteState,
+  type EntityTarget
+} from "../../features/entity-engagement/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { PublishedCarousel } from "../../features/content-publication/PublishedCarousel";
+import { resolveSearchOrigin } from "../../features/location/searchOrigin";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
-import { getCategoryHeroImage, type HomeCategoryId } from "../../lib/homeCategories";
-import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
+import { type HomeCategoryId } from "../../lib/homeCategories";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
-import { cn, yen } from "../../lib/utils";
-import { TechnicianShowcaseCard, getTechnicianDynamicPath, UnifiedSimpleProfileCard } from "../../shared/profile-card";
-import type { ServiceCategory, ServiceItem, Store, Technician } from "../../types/domain";
-
-const categoryDescriptionMap: Record<HomeCategoryId, string> = {
-  cleaning: "日常保洁、深度保洁、厨卫清洁、退房清扫",
-  massage: "肩颈、腰背、全身、深夜到家",
-  recycle: "旧家电、家具、纸箱、搬家杂物",
-  pet: "喂养、遛狗、猫砂清理、洗护接送",
-  business: "办公室保洁、商旅按摩、接待预约、企业月结",
-  dining: "聚餐订位、包间预约、门店到店服务",
-  repair: "水电、门锁、家具、墙面小修",
-  laundry: "洗护、熨烫、取送、衣物整理",
-  moving: "同城搬家、行李搬运、小型货运",
-  appliance: "空调、洗衣机、油烟机、浴室干燥机",
-  install: "灯具、家电、家具、门锁安装",
-  beauty: "美甲、美睫、妆发、上门护理",
-  nanny: "保姆、月嫂、育儿陪护、住家服务",
-  care: "陪护、康养、术后护理、长期照料",
-  deep: "重油污、水垢、空置房、重点区域清洁",
-  storage: "收纳规划、衣橱整理、空间归位",
-  homecare: "木地板、沙发、家居保养维护",
-  guide: "景点讲解、路线规划、陪同接待",
-  property: "看房陪同、租住咨询、区域介绍",
-  tutor: "语言辅导、数学陪练、升学答疑",
-  sports: "健身陪练、拉伸放松、基础体能训练",
-  legal: "合同说明、法务咨询、纠纷整理",
-  renovation: "局部翻新、家具安装、小型改造",
-  other: "临时陪同、代办跑腿、非标准化需求"
-};
+import { useHomeLayoutStore } from "../../state/homeLayoutStore";
+import { useHomeLocationPreference } from "../../state/homeLocationStore";
+import { cn } from "../../lib/utils";
+import type { ServiceCategory, ServiceItem, Technician } from "../../types/domain";
+import {
+  SocialProfileMiniCard,
+  TechnicianShowcaseCard,
+  type SocialProfileMiniData
+} from "../../shared/profile-card";
+import { mapServiceItemToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
+import { canRunCategorySearch, parseCategorySearchDraft } from "./categorySearch";
 
 type PopularSearchTag = {
   id: string;
@@ -110,6 +103,70 @@ function uniqueStrings(items: string[]) {
   return Array.from(new Set(items));
 }
 
+function isFiniteMetric(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function normalizeMetric(value: unknown) {
+  return isFiniteMetric(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+function parseFormalRating(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function entityTargetKey(target: EntityTarget) {
+  return `${target.targetType}:${target.publicId}`;
+}
+
+function buildFormalShopCardData(shop: CoreShopCard): SocialProfileMiniData {
+  return {
+    id: shop.publicId,
+    entityType: "shop",
+    displayName: shop.name,
+    avatar: shop.coverUrl ?? "",
+    coverImage: shop.coverUrl ?? "",
+    regionLabel: shop.city,
+    addressLabel: shop.city,
+    addressValue: shop.address,
+    primaryLabel: "店铺",
+    kycVerified: false,
+    serviceTags: (Array.isArray(shop.businessKeywords) ? shop.businessKeywords : []).map((keyword) => keyword.label).slice(0, 5),
+    levelLabel: "",
+    scoreLabel: "服务评价",
+    scoreValue: `${parseFormalRating(shop.reviewSummary.ratingAverage).toFixed(1)}/5`,
+    followerCount: normalizeMetric(shop.favoriteCount),
+    followingCount: 0,
+    shareCount: normalizeMetric(shop.shareCount),
+    detailPath: `/stores/${shop.id}`
+  };
+}
+
+function buildFormalTechnicianInput(technician: CoreTechnicianCard): Technician {
+  return {
+    id: String(technician.id),
+    systemId: technician.publicId,
+    name: technician.displayName,
+    storeId: "",
+    role: "therapist",
+    status: "off",
+    rating: parseFormalRating(technician.reviewSummary.ratingAverage),
+    orderCount: normalizeMetric(technician.completedOrderCount),
+    income: 0,
+    skills: [],
+    serviceAreas: technician.city ? [technician.city] : [],
+    acceptRate: normalizeMetric(technician.acceptanceRatePercent),
+    cancelRate: 0,
+    reviewCount: normalizeMetric(technician.reviewSummary.reviewCount),
+    favoriteCount: normalizeMetric(technician.favoriteCount),
+    shareCount: normalizeMetric(technician.shareCount),
+    distanceKm: technician.distanceKm,
+    languages: [],
+    avatar: technician.avatarUrl ?? ""
+  };
+}
+
 function findTagByText(value: string) {
   const normalized = normalizeText(value);
 
@@ -145,139 +202,6 @@ function getTagIdsFromSearchParams(searchParams: URLSearchParams) {
 
 function areStringListsEqual(left: string[], right: string[]) {
   return left.length === right.length && left.every((item, index) => item === right[index]);
-}
-
-function getDeterministicRank(seed: string) {
-  let hash = 0;
-
-  for (const char of seed) {
-    hash = (hash * 33 + char.charCodeAt(0)) % 10007;
-  }
-
-  return hash % 17;
-}
-
-function buildCategoryTokens(category: ServiceCategory, relatedServices: ServiceItem[]) {
-  return Array.from(
-    new Set([
-      category.name,
-      category.id,
-      categoryDescriptionMap[category.id as HomeCategoryId] ?? "",
-      ...relatedServices.flatMap((service) => [service.name, service.summary, ...service.tags])
-    ])
-  );
-}
-
-function getTechnicianGenderLabels(gender?: Technician["gender"]) {
-  if (gender === "female") {
-    return ["女", "女性", "女性技师", "女技师"];
-  }
-
-  if (gender === "male") {
-    return ["男", "男性", "男性技师", "男技师"];
-  }
-
-  return [];
-}
-
-function buildServiceSearchFragments(service: ServiceItem, category?: ServiceCategory) {
-  return [
-    service.name,
-    service.summary,
-    service.fastestArrival,
-    service.mode,
-    category?.name ?? "",
-    category ? categoryDescriptionMap[category.id as HomeCategoryId] ?? "" : "",
-    ...service.tags,
-    ...service.serviceAreas,
-    ...service.notice,
-    ...service.flow,
-    ...service.packages.flatMap((item) => [item.name, item.description, ...item.includes])
-  ];
-}
-
-function buildTechnicianSearchFragments(technician: Technician) {
-  return [
-    technician.name,
-    technician.nickname ?? "",
-    technician.bio ?? "",
-    technician.identityLabel ?? "",
-    technician.role,
-    technician.status,
-    ...getTechnicianGenderLabels(technician.gender),
-    ...technician.skills,
-    ...technician.serviceAreas,
-    ...technician.languages,
-    ...(technician.profileTags ?? [])
-  ];
-}
-
-function buildStoreSearchFragments(store: Store, linkedTechnicians: Technician[]) {
-  return [
-    store.name,
-    store.area,
-    store.address,
-    store.description,
-    store.rankLabel,
-    store.businessHours,
-    store.mode,
-    ...store.tags,
-    ...linkedTechnicians.flatMap(buildTechnicianSearchFragments)
-  ];
-}
-
-function matchesAllSearchKeywords(fragments: string[], keywords: string[]) {
-  const normalizedKeywords = keywords.map(normalizeText).filter(Boolean);
-
-  if (normalizedKeywords.length === 0) {
-    return true;
-  }
-
-  const haystack = fragments.filter(Boolean).map(normalizeText).join("|");
-  return normalizedKeywords.every((keyword) => haystack.includes(keyword));
-}
-
-function parseSearchDraft(value: string) {
-  const parts = value
-    .trim()
-    .split(/[，、,]+|\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const tagIds: string[] = [];
-  const customLabels: string[] = [];
-
-  parts.forEach((part) => {
-    const matchedTag = findTagByText(part);
-
-    if (matchedTag) {
-      tagIds.push(matchedTag.id);
-      return;
-    }
-
-    const normalizedLabel = formatSearchDisplayLabel(part);
-
-    if (normalizedLabel) {
-      customLabels.push(normalizedLabel);
-    }
-  });
-
-  return {
-    tagIds: uniqueStrings(tagIds),
-    customLabels: uniqueStrings(customLabels)
-  };
-}
-
-function formatSearchDisplayLabel(value: string) {
-  const plainValue = value.replace(/^[＃#]+/, "").trim();
-  return plainValue;
-}
-
-function buildDisplayLabels(tagIds: string[], customLabels: string[]) {
-  const knownLabels = uniqueStrings(tagIds)
-    .map((tagId) => popularCategoryTagMap.get(tagId)?.label)
-    .filter((label): label is string => Boolean(label));
-
-  return [...knownLabels, ...uniqueStrings(customLabels)];
 }
 
 function normalizeEntityFilter(value: string | null): CategoryEntityFilter {
@@ -316,34 +240,6 @@ function resolveMatchedCategories(categories: ServiceCategory[], tagIds: string[
   return categories.filter((category) => selectedCategoryIds.includes(category.id as HomeCategoryId));
 }
 
-function scoreByTokens(fragments: string[], tokens: string[]) {
-  const haystack = fragments.filter(Boolean).map(normalizeText).join("|");
-
-  return tokens.reduce((total, token, index) => {
-    const normalized = normalizeText(token);
-
-    if (!normalized || !haystack.includes(normalized)) {
-      return total;
-    }
-
-    return total + Math.max(1, 6 - index);
-  }, 0);
-}
-
-function rankStoreForCategory(store: Store, linkedTechnicians: Technician[], category: ServiceCategory, tokens: string[]) {
-  const semanticScore = scoreByTokens(buildStoreSearchFragments(store, linkedTechnicians), tokens);
-  const modeScore = category.mode === "store" ? 12 : category.mode === "both" ? 6 : 2;
-
-  return semanticScore * 10 + modeScore + getDeterministicRank(`${category.id}:${store.id}`);
-}
-
-function rankTechnicianForCategory(technician: Technician, category: ServiceCategory, tokens: string[]) {
-  const semanticScore = scoreByTokens(buildTechnicianSearchFragments(technician), tokens);
-  const modeScore = category.mode === "home" ? 12 : category.mode === "both" ? 8 : 3;
-
-  return semanticScore * 10 + modeScore + getDeterministicRank(`${category.id}:${technician.id}`);
-}
-
 function CoreReadInlineState({
   description,
   title
@@ -359,6 +255,34 @@ function CoreReadInlineState({
   );
 }
 
+function CoreReadScopedState({
+  description,
+  onRetry,
+  title
+}: {
+  description: string;
+  onRetry?: () => void;
+  title: string;
+}) {
+  const { language } = useI18n();
+
+  return (
+    <div className="rounded-[24px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-4 py-5 text-center">
+      <p className="text-[14px] font-black text-[color:var(--client-text)]">{title}</p>
+      <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">{description}</p>
+      {onRetry ? (
+        <button
+          className="mt-3 rounded-full bg-[color:var(--client-primary)] px-4 py-2 text-[12px] font-black text-[#090806]"
+          onClick={onRetry}
+          type="button"
+        >
+          {translateText("重试", language)}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ChevronDownIcon({ open }: { open: boolean }) {
   return (
     <svg aria-hidden="true" className={cn("h-3.5 w-3.5 transition", open ? "rotate-180" : "")} fill="none" viewBox="0 0 20 20">
@@ -368,42 +292,12 @@ function ChevronDownIcon({ open }: { open: boolean }) {
 }
 
 function ServicePreviewCard({ service }: { service: ServiceItem }) {
-  return (
-    <Link
-      className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] shadow-[0_18px_36px_rgba(0,0,0,0.06)]"
-      to={`/services/${service.id}`}
-    >
-      <div className="relative h-[126px] overflow-hidden bg-black">
-        <img alt={service.name} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(service.cover)} />
-      </div>
-      <div className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="line-clamp-1 text-[15px] font-black text-[color:var(--client-text)]">{service.name}</h3>
-            <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-[color:var(--client-muted)]">{service.summary}</p>
-          </div>
-          <Badge className="shrink-0 whitespace-nowrap" tone="green">{service.fastestArrival}</Badge>
-        </div>
-        <div className="flex items-end justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap gap-2">
-            {service.tags.slice(0, 2).map((tag) => (
-              <span
-                className="inline-flex rounded-full bg-[color:var(--client-primary-soft)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-primary)]"
-                key={tag}
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-          <strong className="shrink-0 text-[15px] font-black text-[color:var(--client-text)]">{yen(service.priceFrom)} 起</strong>
-        </div>
-      </div>
-    </Link>
-  );
+  return <UnifiedServiceInfoCard data={mapServiceItemToUnifiedData(service)} detailTo={`/services/${service.id}`} />;
 }
 
 export function CategoryPage() {
   const navigate = useNavigate();
+  const auth = useOptionalAuth();
   const { language } = useI18n();
   const t = (text: string) => translateText(text, language);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -417,8 +311,22 @@ export function CategoryPage() {
   const [appliedTagIds, setAppliedTagIds] = useState<string[]>(initialTagIds);
   const [appliedCustomLabels, setAppliedCustomLabels] = useState<string[]>([]);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  const { config: homeLayoutConfig } = useHomeLayoutStore();
+  const { state: homeLocationPreference } = useHomeLocationPreference();
+  const selectedServiceLocation =
+    homeLayoutConfig.locations.find(
+      (location) => location.id === homeLayoutConfig.selectedLocationId
+    ) ?? homeLayoutConfig.locations[0];
+  const searchOrigin = resolveSearchOrigin({
+    selectedServiceLocation,
+    deviceLocation: homeLocationPreference
+  });
   const { scrollRef: tagRailRef, dragScrollProps: tagRailDragProps } = useHorizontalDragScroll({});
-  const categoryQuery = useCoreReadQuery(() => coreReadApi.listCategories({ pageSize: 100 }), []);
+  const categoryQuery = useCoreReadQuery(
+    () => coreReadApi.listCategories({ pageSize: 100 }),
+    [],
+    { key: "core:categories:page-size-100" }
+  );
   const availableCategories = useMemo(
     () => uniqueById((categoryQuery.data?.list ?? []).map(mapCoreCategoryToServiceCategory)),
     [categoryQuery.data]
@@ -427,77 +335,116 @@ export function CategoryPage() {
     () => new Set(availableCategories.map((category) => category.id)),
     [availableCategories]
   );
-  const apiCategoryId = useMemo(
-    () =>
-      categoryQuery.data?.list.find((category) => mapCoreCategoryToServiceCategory(category).id === activeCategoryId)?.id,
-    [activeCategoryId, categoryQuery.data]
-  );
-  const searchKeyword = useMemo(() => buildDisplayLabels(appliedTagIds, appliedCustomLabels).join(" "), [appliedCustomLabels, appliedTagIds]);
-  const hasExplicitCategoryScope = Boolean(searchParams.get("category")) || appliedTagIds.length > 0;
-  const shouldApplyCategoryScope = hasExplicitCategoryScope || (appliedCustomLabels.length === 0 && entityFilter !== "technician");
-  const searchCategoryId = shouldApplyCategoryScope ? apiCategoryId : undefined;
-  const searchQuery = useCoreReadQuery(
+  const selectedHomeCategoryIds = useMemo(
     () => {
-      if (shouldApplyCategoryScope && searchCategoryId === undefined) {
-        return null;
+      const explicitCategoryIds = uniqueStrings([
+        ...appliedTagIds
+        .map((tagId) => popularCategoryTagMap.get(tagId)?.categoryId ?? "")
+        .filter(Boolean),
+        searchParams.get("category") ?? ""
+      ].filter(Boolean));
+
+      if (explicitCategoryIds.length > 0 || appliedCustomLabels.length > 0) {
+        return explicitCategoryIds;
       }
 
-      return coreReadApi.search({
-        categoryId: searchCategoryId,
-        keyword: searchKeyword || undefined,
-        pageSize: 40,
-        sort: "rating_desc"
-      });
+      if (entityFilter !== "all") {
+        return [];
+      }
+
+      return ["cleaning"];
     },
-    [searchCategoryId, searchKeyword]
+    [appliedCustomLabels, appliedTagIds, entityFilter, searchParams]
+  );
+  const searchCategoryIds = useMemo(
+    () => uniqueStrings(
+      (categoryQuery.data?.list ?? [])
+        .filter((category) => selectedHomeCategoryIds.includes(mapCoreCategoryToServiceCategory(category).id))
+        .map((category) => String(category.id))
+    ).map(Number),
+    [categoryQuery.data, selectedHomeCategoryIds]
+  );
+  const coreSearchQuery = useMemo(
+    () => ({
+      keywords: appliedCustomLabels,
+      categoryIds: searchCategoryIds,
+      pageSize: 40,
+      sort: "rating_desc" as const
+    }),
+    [appliedCustomLabels, searchCategoryIds]
+  );
+  const technicianCoreSearchQuery = useMemo(
+    () => ({
+      ...coreSearchQuery,
+      ...(searchOrigin
+        ? { latitude: searchOrigin.latitude, longitude: searchOrigin.longitude }
+        : {})
+    }),
+    [coreSearchQuery, searchOrigin?.latitude, searchOrigin?.longitude]
+  );
+  const searchTermsKey = useMemo(
+    () => JSON.stringify({
+      categoryIds: [...searchCategoryIds].sort((left, right) => left - right),
+      keywords: [...appliedCustomLabels].sort()
+    }),
+    [appliedCustomLabels, searchCategoryIds]
+  );
+  const [shopRetryKey, setShopRetryKey] = useState(0);
+  const [technicianRetryKey, setTechnicianRetryKey] = useState(0);
+  const [serviceRetryKey, setServiceRetryKey] = useState(0);
+  const loadShops = entityFilter === "all" || entityFilter === "store";
+  const loadTechnicians = entityFilter === "all" || entityFilter === "technician";
+  const loadServices = entityFilter === "all" || entityFilter === "service";
+  const searchFiltersReady = canRunCategorySearch({
+    selectedHomeCategoryIds,
+    searchCategoryIds,
+    keywords: appliedCustomLabels
+  });
+  const shopSearchQuery = useCoreReadQuery(
+    () => loadShops && searchFiltersReady ? coreReadApi.searchShops(coreSearchQuery) : null,
+    [loadShops, searchFiltersReady, searchTermsKey, shopRetryKey],
+    {
+      enabled: loadShops && searchFiltersReady,
+      force: shopRetryKey > 0,
+      key: `core:shop-search:${searchTermsKey}`
+    }
+  );
+  const technicianSearchQuery = useCoreReadQuery(
+    () => loadTechnicians && searchFiltersReady ? coreReadApi.searchTechnicians(technicianCoreSearchQuery) : null,
+    [
+      loadTechnicians,
+      searchFiltersReady,
+      searchTermsKey,
+      searchOrigin?.latitude,
+      searchOrigin?.longitude,
+      technicianRetryKey
+    ],
+    {
+      enabled: loadTechnicians && searchFiltersReady,
+      force: technicianRetryKey > 0,
+      key: `core:technician-search:${searchTermsKey}:${searchOrigin?.latitude ?? ""}:${searchOrigin?.longitude ?? ""}`
+    }
+  );
+  const serviceSearchQuery = useCoreReadQuery(
+    () => loadServices && searchFiltersReady ? coreReadApi.searchServices(coreSearchQuery) : null,
+    [loadServices, searchFiltersReady, searchTermsKey, serviceRetryKey],
+    {
+      enabled: loadServices && searchFiltersReady,
+      force: serviceRetryKey > 0,
+      key: `core:service-search:${searchTermsKey}`
+    }
   );
   const apiServices = useMemo(
-    () => searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? [],
-    [searchQuery.data]
+    () => serviceSearchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? [],
+    [serviceSearchQuery.data]
   );
   const apiStores = useMemo(
-    () => {
-      if (!searchQuery.data) {
-        return [];
-      }
-
-      return Array.from(new Map(searchQuery.data.list.map((service) => {
-        const store = mapCoreShopToStore(service.shop);
-        return [store.id, store] as const;
-      })).values());
-    },
-    [searchQuery.data]
+    () => shopSearchQuery.data?.list ?? [],
+    [shopSearchQuery.data]
   );
   const apiTechnicians = useMemo(
-    () => {
-      if (!searchQuery.data) {
-        return [];
-      }
-
-      return Array.from(new Map(searchQuery.data.list.flatMap((service) => {
-        if (!service.technician) {
-          return [];
-        }
-
-        const technician = mapCoreTechnicianToTechnician(service.technician);
-        return [[technician.id, technician] as const];
-      })).values());
-    },
-    [searchQuery.data]
-  );
-  const serviceByTechnicianId = useMemo(
-    () => {
-      const entries = (searchQuery.data?.list ?? [])
-        .filter((service) => Boolean(service.technician))
-        .map((service) => [String(service.technician?.id), mapCoreServiceToServiceItem(service)] as const);
-
-      if (entries.length > 0) {
-        return new Map(entries);
-      }
-
-      return new Map<string, ServiceItem>();
-    },
-    [searchQuery.data]
+    () => technicianSearchQuery.data?.list ?? [],
+    [technicianSearchQuery.data]
   );
 
   useEffect(() => {
@@ -559,133 +506,107 @@ export function CategoryPage() {
     availableCategories[0] ??
     null;
   const appliedSearchKeywords = appliedCustomLabels;
-  const hasAppliedSearch = appliedTagIds.length > 0 || appliedSearchKeywords.length > 0;
-  const scopedCategoryIds = useMemo(
-    () => (appliedTagIds.length > 0 ? filteredCategories.map((category) => category.id) : []),
-    [appliedTagIds.length, filteredCategories]
-  );
+  const hasAppliedSearch = entityFilter !== "all" || appliedTagIds.length > 0 || appliedSearchKeywords.length > 0;
   const relatedServices = useMemo(
-    () => {
-      if (!activeCategory) {
-        return [];
-      }
-
-      const hasActiveCategoryResult = apiServices.some((service) => service.categoryId === activeCategory.id);
-      const categoryScope = scopedCategoryIds.length > 0 ? scopedCategoryIds : appliedSearchKeywords.length > 0 || !hasActiveCategoryResult ? [] : [activeCategory.id];
-
-      return apiServices
-        .filter((service) => categoryScope.length === 0 || categoryScope.includes(service.categoryId))
-        .filter((service) => {
-          const category = availableCategories.find((item) => item.id === service.categoryId);
-          return matchesAllSearchKeywords(buildServiceSearchFragments(service, category), appliedSearchKeywords);
-        })
-        .sort((left, right) => right.sales - left.sales || right.rating - left.rating)
-        .slice(0, 4);
-    },
-    [activeCategory, apiServices, appliedSearchKeywords, availableCategories, scopedCategoryIds]
+    () => [...apiServices]
+      .sort((left, right) => right.sales - left.sales || right.rating - left.rating)
+      .slice(0, entityFilter === "service" ? 20 : 4),
+    [apiServices, entityFilter]
   );
-  const categoryTokens = useMemo(
-    () => activeCategory
-      ? uniqueStrings([...buildCategoryTokens(activeCategory, relatedServices), ...appliedSearchKeywords])
-      : uniqueStrings(appliedSearchKeywords),
-    [activeCategory, appliedSearchKeywords, relatedServices]
-  );
-
   const relatedStores = useMemo(
-    () => {
-      if (!activeCategory) {
-        return [];
-      }
-
-      return apiStores
-        .map((store) => {
-          const linkedTechnicians = apiTechnicians.filter((technician) => technician.storeId === store.id);
-
-          return {
-            store,
-            technicians: linkedTechnicians,
-            score: rankStoreForCategory(store, linkedTechnicians, activeCategory, categoryTokens)
-          };
-        })
-        .filter((item) => matchesAllSearchKeywords(buildStoreSearchFragments(item.store, item.technicians), appliedSearchKeywords))
-        .sort((left, right) => right.score - left.score)
-        .slice(0, entityFilter === "store" ? 10 : 3);
-    },
-    [activeCategory, apiStores, apiTechnicians, appliedSearchKeywords, categoryTokens, entityFilter]
+    () => apiStores.slice(0, entityFilter === "store" ? 10 : 3),
+    [apiStores, entityFilter]
   );
 
   const relatedTechnicians = useMemo(
-    () => {
-      if (!activeCategory) {
-        return [];
-      }
-
-      return apiTechnicians
-        .map((technician) => ({
-          technician,
-          score: rankTechnicianForCategory(technician, activeCategory, categoryTokens)
-        }))
-        .filter((item) => matchesAllSearchKeywords(buildTechnicianSearchFragments(item.technician), appliedSearchKeywords))
-        .sort((left, right) => right.score - left.score)
-        .slice(0, entityFilter === "technician" ? 20 : 4);
-    },
-    [activeCategory, apiTechnicians, appliedSearchKeywords, categoryTokens, entityFilter]
+    () => apiTechnicians.slice(0, entityFilter === "technician" ? 20 : 4),
+    [apiTechnicians, entityFilter]
   );
 
-  const bookableProfiles = useMemo(
-    () =>
-      [
-        ...(entityFilter === "all" || entityFilter === "store"
-          ? relatedStores.map((item) => ({ id: `shop-${item.store.id}`, type: "shop" as const, score: item.score, store: item.store, technicians: item.technicians }))
-          : []),
-        ...(entityFilter === "all" || entityFilter === "technician"
-          ? relatedTechnicians.map((item) => ({ id: `technician-${item.technician.id}`, type: "technician" as const, score: item.score, technician: item.technician }))
-          : [])
-      ]
-        .sort((left, right) => right.score - left.score)
-        .slice(0, entityFilter === "technician" ? 20 : entityFilter === "store" ? 12 : 6),
-    [entityFilter, relatedStores, relatedTechnicians]
+  const shopProfiles = useMemo(
+    () => relatedStores.map((profile) => ({
+      id: `shop-${profile.id}`,
+      profile,
+      cardData: buildFormalShopCardData(profile)
+    })),
+    [relatedStores]
   );
-  const bookableStoreProfiles = useMemo(
-    () => bookableProfiles.filter((item): item is Extract<(typeof bookableProfiles)[number], { type: "shop" }> => item.type === "shop"),
-    [bookableProfiles]
+  const technicianProfiles = useMemo(
+    () => relatedTechnicians.map((profile) => ({
+      id: `technician-${profile.id}`,
+      profile,
+      technician: buildFormalTechnicianInput(profile)
+    })),
+    [relatedTechnicians]
   );
-  const bookableTechnicianProfiles = useMemo(
-    () => bookableProfiles.filter((item): item is Extract<(typeof bookableProfiles)[number], { type: "technician" }> => item.type === "technician"),
-    [bookableProfiles]
+  const visibleEngagementTargets = useMemo(
+    () => [
+      ...relatedStores.map((profile) => ({
+        targetType: "shop" as const,
+        publicId: profile.publicId,
+        favoriteCount: normalizeMetric(profile.favoriteCount),
+        shareCount: normalizeMetric(profile.shareCount)
+      })),
+      ...relatedTechnicians.map((profile) => ({
+        targetType: "technician" as const,
+        publicId: profile.publicId,
+        favoriteCount: normalizeMetric(profile.favoriteCount),
+        shareCount: normalizeMetric(profile.shareCount)
+      }))
+    ],
+    [relatedStores, relatedTechnicians]
   );
+  const visibleEngagementTargetKey = useMemo(
+    () => visibleEngagementTargets.map(entityTargetKey).join("|"),
+    [visibleEngagementTargets]
+  );
+  const [favoriteStates, setFavoriteStates] = useState<Record<string, EntityFavoriteState>>({});
 
-  const categoryHeroSlides = useMemo<FeatureCarouselSlide[]>(() => {
-    if (!activeCategory) {
-      return [];
+  useEffect(() => {
+    const visibleKeys = new Set(visibleEngagementTargets.map(entityTargetKey));
+
+    setFavoriteStates((current) => {
+      const next: Record<string, EntityFavoriteState> = {};
+      visibleEngagementTargets.forEach((target) => {
+        const key = entityTargetKey(target);
+        next[key] = current[key] ?? {
+          targetType: target.targetType,
+          publicId: target.publicId,
+          favoriteCount: target.favoriteCount,
+          isFavorited: false
+        };
+      });
+      return Object.keys(current).every((key) => visibleKeys.has(key)) && Object.keys(current).length === Object.keys(next).length
+        ? current
+        : next;
+    });
+    if (!auth?.isAuthenticated || visibleEngagementTargets.length === 0) {
+      return undefined;
     }
 
-    const serviceSlides = relatedServices.slice(0, 3).map((service) => ({
-      id: `category-service-${service.id}`,
-      badge: t("全部分类"),
-      title: t(activeCategory.name),
-      caption: `${t(service.name)} · ${t(service.summary)}`,
-      cta: t("查看服务"),
-      image: service.cover,
-      to: `/services/${service.id}`
-    }));
+    let stale = false;
+    void entityEngagementApi
+      .getFavoriteStatuses(visibleEngagementTargets.map(({ targetType, publicId }) => ({ targetType, publicId })))
+      .then(({ list }) => {
+        if (stale) return;
+        setFavoriteStates((current) => {
+          const next = { ...current };
+          list.forEach((state) => {
+            next[entityTargetKey(state)] = state;
+          });
+          return next;
+        });
+      })
+      .catch(() => undefined);
 
-    if (serviceSlides.length > 0) {
-      return serviceSlides;
-    }
+    return () => {
+      stale = true;
+    };
+  }, [auth?.isAuthenticated, visibleEngagementTargetKey]);
 
-    return uniqueById([activeCategory, ...filteredCategories])
-      .slice(0, 3)
-      .map((category) => ({
-        id: `category-fallback-${category.id}`,
-        badge: t("全部分类"),
-        title: t(category.name),
-        caption: t(categoryDescriptionMap[category.id as HomeCategoryId] ?? "从上方标签快速切换查看当前分类内容。"),
-        cta: t("进入分类"),
-        image: getCategoryHeroImage(category.id as HomeCategoryId),
-        to: `/categories?category=${category.id}`
-      }));
-  }, [activeCategory, filteredCategories, language, relatedServices]);
+  const getFavoriteState = (target: EntityTarget, fallbackCount: number): EntityFavoriteState =>
+    favoriteStates[entityTargetKey(target)] ?? { ...target, favoriteCount: fallbackCount, isFavorited: false };
+
   const appliedSearchChips = useMemo(() => {
     const chips: Array<
       | { kind: "entity"; key: string; label: string; value: CategoryEntityFilter }
@@ -730,15 +651,6 @@ export function CategoryPage() {
     }, { replace: true });
   };
 
-  const handleCategorySelect = (categoryId: HomeCategoryId) => {
-    setActiveCategoryId((current) => (current === categoryId ? current : categoryId));
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      next.set("category", categoryId);
-      return next;
-    }, { replace: true });
-  };
-
   const handleEntityFilterSelect = (nextEntityFilter: CategoryEntityFilter) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -754,7 +666,7 @@ export function CategoryPage() {
   };
 
   const applySearch = (draftValue = searchDraft) => {
-    const parsedDraft = parseSearchDraft(draftValue);
+    const parsedDraft = parseCategorySearchDraft(draftValue, findTagByText);
 
     if (parsedDraft.tagIds.length === 0 && parsedDraft.customLabels.length === 0) {
       setSearchDraft("");
@@ -822,109 +734,23 @@ export function CategoryPage() {
   };
 
   const entityFilterLabel = entityFilterTags.find((tag) => tag.value === entityFilter)?.label ?? "全部";
-  const showServiceSection = entityFilter === "all" || entityFilter === "service";
-  const hasVisibleResults = (showServiceSection && relatedServices.length > 0) || bookableProfiles.length > 0;
-  const showEmptyState = !activeCategory || filteredCategories.length === 0 || (hasAppliedSearch && !hasVisibleResults);
+  const showServiceSection = loadServices;
+  const showShopSection = loadShops;
+  const showTechnicianSection = loadTechnicians;
+  const requestedSearchQueries = [
+    ...(loadShops ? [shopSearchQuery] : []),
+    ...(loadTechnicians ? [technicianSearchQuery] : []),
+    ...(loadServices ? [serviceSearchQuery] : [])
+  ];
   const hasStaticSearchContent = apiServices.length > 0 || apiStores.length > 0 || apiTechnicians.length > 0;
-  const isCoreReadLoading = (categoryQuery.loading || searchQuery.loading) && !hasStaticSearchContent;
-  const coreReadError = hasStaticSearchContent ? null : categoryQuery.error ?? searchQuery.error;
+  const allRequestedSearchesLoading = requestedSearchQueries.length > 0 && requestedSearchQueries.every((query) => query.loading);
+  const allRequestedSearchesSucceeded = requestedSearchQueries.every((query) => !query.loading && !query.error);
+  const showEmptyState = !activeCategory || filteredCategories.length === 0 || (allRequestedSearchesSucceeded && !hasStaticSearchContent);
+  const isCoreReadLoading = (categoryQuery.loading || allRequestedSearchesLoading) && !hasStaticSearchContent;
+  const coreReadError = hasStaticSearchContent ? null : categoryQuery.error;
 
-  return (
-    <MobileShell>
-      <div className="relative">
-        {tagMenuOpen ? (
-          <button
-            aria-label="关闭筛选菜单"
-            className="fixed inset-0 z-30 cursor-default bg-black/28 backdrop-blur-[3px]"
-            onClick={() => setTagMenuOpen(false)}
-            type="button"
-          />
-        ) : null}
-
-        <FloatingHomeHeader
-          className="gap-0"
-          frameClassName="z-40"
-          panelClassName={floatingHeaderGlassPanelClassName}
-          spacerGapPx={0}
-          stacked
-        >
-          <div className="relative px-3 pb-3">
-            <div className="flex items-center gap-2">
-                <IconButton
-                  className={`${floatingHeaderControlButtonClassName} shrink-0`}
-                  icon="back"
-                  label="返回"
-                  onClick={() => navigate(-1)}
-                />
-
-                <label
-                  className={cn(
-                    floatingHeaderSearchFieldClassName,
-                    "pr-1.5"
-                  )}
-                >
-                  <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
-                  <input
-                    className={floatingHeaderSearchInputClassName}
-                    onChange={(event) => {
-                      setSearchDraft(event.target.value);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        applySearch();
-                      }
-                    }}
-                    placeholder="输入关键词后添加"
-                    value={searchDraft}
-                  />
-                  <button
-                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-[12px] font-black text-[#090806] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
-                    onClick={() => applySearch()}
-                    type="button"
-                  >
-                    添加
-                  </button>
-                </label>
-
-                <button
-                  className={cn(
-                    "inline-flex h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-black text-[color:var(--client-text)]",
-                    floatingHeaderPillSurfaceClassName,
-                    "bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
-                  )}
-                  onClick={() => setTagMenuOpen((current) => !current)}
-                  type="button"
-                >
-                  {entityFilterLabel}
-                  <ChevronDownIcon open={tagMenuOpen} />
-                </button>
-              </div>
-
-            <div
-              {...tagRailDragProps}
-              className="mt-2 flex gap-2 overflow-x-auto py-1 [scrollbar-width:none]"
-              ref={tagRailRef}
-              style={{ msOverflowStyle: "none" }}
-            >
-              {pinnedCategoryTags.map((tag) => {
-                const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory?.id === tag.categoryId);
-
-                return (
-                  <button
-                    className="shrink-0 whitespace-nowrap rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-3.5 py-2 text-[13px] font-black transition"
-                    key={tag.id}
-                    onClick={() => handleTagSelect(tag)}
-                    type="button"
-                  >
-                    <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{tag.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {tagMenuOpen ? (
-              <div className="absolute inset-x-3 top-full z-50 mt-2 rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] p-4 shadow-[0_22px_50px_rgba(0,0,0,0.16)] backdrop-blur-2xl">
+  const searchTagMenu = tagMenuOpen ? (
+              <div id="category-search-tags" className="absolute inset-x-3 top-full z-50 mt-2 max-h-[65dvh] overflow-y-auto rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] p-4 shadow-[0_22px_50px_rgba(0,0,0,0.16)] backdrop-blur-2xl">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[color:var(--client-primary)]">对象与人气标签</p>
@@ -975,13 +801,112 @@ export function CategoryPage() {
                   })}
                 </div>
               </div>
-            ) : null}
+            ) : null;
+
+  return (
+    <MobileShell>
+      <div className="relative">
+        {tagMenuOpen ? (
+          <button
+            aria-label="关闭筛选菜单"
+            className="fixed inset-0 z-30 cursor-default bg-black/28 backdrop-blur-[3px]"
+            onClick={() => setTagMenuOpen(false)}
+            type="button"
+          />
+        ) : null}
+
+        <FloatingHomeHeader
+          className="gap-0"
+          frameClassName="z-40"
+          overlay={searchTagMenu}
+          panelClassName={floatingHeaderGlassPanelClassName}
+          spacerGapPx={0}
+          stacked
+        >
+          <div className="relative px-3 pb-3">
+            <div className="flex items-center gap-2">
+                <IconButton
+                  className={`${floatingHeaderControlButtonClassName} shrink-0`}
+                  icon="back"
+                  label="返回"
+                  onClick={() => navigate(-1)}
+                />
+
+                <label
+                  className={cn(
+                    floatingHeaderSearchFieldClassName,
+                    "pr-1.5"
+                  )}
+                >
+                  <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
+                  <input
+                    className={floatingHeaderSearchInputClassName}
+                    onChange={(event) => {
+                      setSearchDraft(event.target.value);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        applySearch();
+                      }
+                    }}
+                    placeholder="输入关键词后添加"
+                    value={searchDraft}
+                  />
+                  <button
+                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-[12px] font-black text-[#090806] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
+                    onClick={() => applySearch()}
+                    type="button"
+                  >
+                    添加
+                  </button>
+                </label>
+
+                <button
+                  className={cn(
+                    "inline-flex h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-black text-[color:var(--client-text)]",
+                    floatingHeaderPillSurfaceClassName,
+                    "bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
+                  )}
+                  aria-controls="category-search-tags"
+                  aria-expanded={tagMenuOpen}
+                  onClick={() => setTagMenuOpen((current) => !current)}
+                  type="button"
+                >
+                  {entityFilterLabel}
+                  <ChevronDownIcon open={tagMenuOpen} />
+                </button>
+              </div>
+
+            <div
+              {...tagRailDragProps}
+              className="mt-2 flex gap-2 overflow-x-auto py-1 [scrollbar-width:none]"
+              ref={tagRailRef}
+              style={{ msOverflowStyle: "none" }}
+            >
+              {pinnedCategoryTags.map((tag) => {
+                const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory?.id === tag.categoryId);
+
+                return (
+                  <button
+                    className="shrink-0 whitespace-nowrap rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-3.5 py-2 text-[13px] font-black transition"
+                    key={tag.id}
+                    onClick={() => handleTagSelect(tag)}
+                    type="button"
+                  >
+                    <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{tag.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+
           </div>
         </FloatingHomeHeader>
 
         <div className="space-y-4 px-4 pb-28 pt-4">
           <section className="space-y-3">
-            <FeatureCarousel autoRotateMs={5200} cardHeightClassName="h-[204px]" slides={categoryHeroSlides} />
+            <PublishedCarousel scene="user-home" cardHeightClassName="h-[204px]" />
 
             <div className="flex flex-wrap items-center gap-2 px-1">
               {appliedSearchChips.length > 0 ? (
@@ -1034,65 +959,150 @@ export function CategoryPage() {
                     info={
                       <div className="space-y-2.5">
                         <p className="text-[13px] leading-6 text-[color:var(--client-text)]">
-                          当前分类切换后，这里的服务、店铺和技师推荐会同步刷新，不再固定显示同一批内容。
+                          {t("搜索店铺、技师、服务")}
                         </p>
                         <div className="rounded-[14px] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface))] px-3 py-2.5">
                           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[color:var(--client-primary)]">当前聚焦</p>
                           <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-text)]">
-                            {activeCategory?.name}，下面会优先展示对应的服务摘要与可预约店铺 / 个人技师。
+                            {activeCategory?.name} · {t("搜索结果")}
                           </p>
                         </div>
                       </div>
                     }
-                    label="可预约服务列表说明"
+                    label={t("搜索结果")}
                     infoPanelClassName="border-transparent"
-                    title="可预约服务列表"
+                    title={t("搜索结果")}
                     titleClassName="text-[20px] font-black tracking-[-0.02em] text-[color:var(--client-text)]"
                   />
                 </div>
               </div>
 
-              {showServiceSection && relatedServices.length > 0 ? (
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {relatedServices.slice(0, 2).map((service) => (
-                    <ServicePreviewCard key={service.id} service={service} />
-                  ))}
-                </div>
-              ) : showServiceSection ? (
-                <div className="rounded-[24px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-4 py-5 text-[13px] leading-6 text-[color:var(--client-muted)]">
-                  当前分类暂时没有独立服务套餐卡，先为你展示最匹配的可预约店铺与个人技师。
+              {showServiceSection ? (
+                <div className="space-y-3">
+                  <h3 className="text-[16px] font-black text-[color:var(--client-text)]">{t("服务")}</h3>
+                  {serviceSearchQuery.loading ? (
+                    <CoreReadScopedState description={t("正在载入真实数据")} title={t("正在载入服务")} />
+                  ) : serviceSearchQuery.error ? (
+                    <CoreReadScopedState
+                      description={serviceSearchQuery.error}
+                      onRetry={() => setServiceRetryKey((current) => current + 1)}
+                      title={`${t("服务")} · ${t("搜索失败，请稍后重试")}`}
+                    />
+                  ) : relatedServices.length > 0 ? (
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {relatedServices.map((service) => (
+                        <ServicePreviewCard key={service.id} service={service} />
+                      ))}
+                    </div>
+                  ) : (
+                    <CoreReadScopedState description={t("没有找到匹配结果")} title={t("服务")} />
+                  )}
                 </div>
               ) : null}
 
-              {bookableProfiles.length > 0 ? (
+              {showShopSection ? (
                 <div className="space-y-3">
-                  {bookableStoreProfiles.map((item) => (
-                    <UnifiedSimpleProfileCard
-                      className="border-transparent"
-                      detailTo={`/stores/${item.store.id}`}
-                      entityType="shop"
-                      key={item.id}
-                      store={item.store}
-                      technicians={item.technicians}
-                      variant="list"
+                  <h3 className="text-[16px] font-black text-[color:var(--client-text)]">{t("店铺")}</h3>
+                  {shopSearchQuery.loading ? (
+                    <CoreReadScopedState description={t("正在载入真实数据")} title={t("正在载入店铺")} />
+                  ) : shopSearchQuery.error ? (
+                    <CoreReadScopedState
+                      description={shopSearchQuery.error}
+                      onRetry={() => setShopRetryKey((current) => current + 1)}
+                      title={`${t("店铺")} · ${t("搜索失败，请稍后重试")}`}
                     />
-                  ))}
+                  ) : shopProfiles.length > 0 ? (
+                    <div className="space-y-3">
+                      {shopProfiles.map((item) => {
+                        const target: EntityTarget = { targetType: "shop", publicId: item.profile.publicId };
+                        const favoriteState = getFavoriteState(target, normalizeMetric(item.profile.favoriteCount));
+                        const detailPath = `/stores/${item.profile.id}`;
 
-                  {bookableTechnicianProfiles.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
-                      {bookableTechnicianProfiles.map((item, index) => (
-                        <TechnicianShowcaseCard
-                          detailTo={getTechnicianDynamicPath(item.technician)}
-                          directService={serviceByTechnicianId.get(item.technician.id)}
-                          fallbackServices={relatedServices}
-                          key={item.id}
-                          language={language}
-                          rankIndex={index}
-                          technician={item.technician}
-                        />
-                      ))}
+                        return (
+                          <SocialProfileMiniCard
+                            data={{
+                              ...item.cardData,
+                              favoriteCount: isFiniteMetric(item.profile.favoriteCount)
+                                ? favoriteState.favoriteCount
+                                : undefined,
+                              isFavorited: favoriteState.isFavorited,
+                              shareCount: isFiniteMetric(item.profile.shareCount)
+                                ? item.profile.shareCount
+                                : undefined,
+                            }}
+                            detailTo={detailPath}
+                            key={`${item.id}-${favoriteState.isFavorited}`}
+                          />
+                        );
+                      })}
                     </div>
+                  ) : (
+                    <CoreReadScopedState description={t("没有找到匹配结果")} title={t("店铺")} />
+                  )}
+                </div>
+              ) : null}
+
+              {showTechnicianSection ? (
+                <div className="space-y-3">
+                  <h3 className="text-[16px] font-black text-[color:var(--client-text)]">{t("技师")}</h3>
+                  {!searchOrigin ? (
+                    <p
+                      className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_8%,var(--client-surface))] px-3 py-2 text-[12px] leading-5 text-[color:var(--client-muted)]"
+                      data-search-origin-guidance
+                    >
+                      {t("开启首页服务位置或设备定位后，可查看附近技师排名。")}
+                    </p>
                   ) : null}
+                  {technicianSearchQuery.loading ? (
+                    <CoreReadScopedState description={t("正在载入真实数据")} title={t("正在载入技师")} />
+                  ) : technicianSearchQuery.error ? (
+                    <CoreReadScopedState
+                      description={technicianSearchQuery.error}
+                      onRetry={() => setTechnicianRetryKey((current) => current + 1)}
+                      title={`${t("技师")} · ${t("搜索失败，请稍后重试")}`}
+                    />
+                  ) : technicianProfiles.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
+                      {technicianProfiles.map((item, index) => {
+                        const target: EntityTarget = { targetType: "technician", publicId: item.profile.publicId };
+                        const favoriteState = getFavoriteState(target, normalizeMetric(item.profile.favoriteCount));
+                        const detailPath = `/profiles/technician/${item.profile.publicId}`;
+
+                        return (
+                          <TechnicianShowcaseCard
+                            detailTo={detailPath}
+                            formalData={{
+                              acceptanceRatePercent: item.profile.acceptanceRatePercent,
+                              age: item.profile.age,
+                              avatarUrl: item.profile.avatarUrl,
+                              city: item.profile.city,
+                              completedOrderCount: item.profile.completedOrderCount,
+                              displayName: item.profile.displayName,
+                              distanceKm: item.profile.distanceKm,
+                              favoriteCount: isFiniteMetric(item.profile.favoriteCount)
+                                ? favoriteState.favoriteCount
+                                : undefined,
+                              isFavorited: favoriteState.isFavorited,
+                              languages: item.technician.languages,
+                              nearbyRank: item.profile.nearbyRank,
+                              primaryService: item.profile.primaryService,
+                              ratingAverage: item.profile.reviewSummary.ratingAverage,
+                              reviewCount: item.profile.reviewSummary.reviewCount,
+                              shareCount: isFiniteMetric(item.profile.shareCount)
+                                ? item.profile.shareCount
+                                : undefined
+                            }}
+                            key={`${item.id}-${favoriteState.isFavorited}`}
+                            language={language}
+                            rankIndex={index}
+                            technician={item.technician}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <CoreReadScopedState description={t("没有找到匹配结果")} title={t("技师")} />
+                  )}
                 </div>
               ) : null}
             </section>

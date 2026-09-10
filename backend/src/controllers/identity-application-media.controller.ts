@@ -11,10 +11,7 @@ import {
   identityApplicationMediaUploadQuerySchema
 } from "../validators/identity-application-media.validator";
 
-const supportedMimeTypes = new Set<IdentityApplicationMediaMimeType>([
-  "image/jpeg",
-  "image/png"
-]);
+const supportedMimeTypes = new Set<IdentityApplicationMediaMimeType>(["image/jpeg", "image/png"]);
 
 export class IdentityApplicationMediaController {
   public constructor(private readonly service: IdentityApplicationMediaService) {}

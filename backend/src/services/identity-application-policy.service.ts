@@ -15,13 +15,11 @@ export interface IdentityApplicationTransitionInput {
   rejectionReason?: string;
 }
 
-const ACTIVE_STATUSES = new Set<IdentityApplicationStatus>([
-  "draft",
-  "submitted",
-  "under_review"
-]);
+const ACTIVE_STATUSES = new Set<IdentityApplicationStatus>(["draft", "submitted", "under_review"]);
 
-const ALLOWED_TRANSITIONS: Readonly<Record<IdentityApplicationStatus, IdentityApplicationStatus[]>> = {
+const ALLOWED_TRANSITIONS: Readonly<
+  Record<IdentityApplicationStatus, IdentityApplicationStatus[]>
+> = {
   draft: ["submitted", "withdrawn"],
   submitted: ["under_review", "approved", "rejected", "withdrawn"],
   under_review: ["approved", "rejected", "withdrawn"],

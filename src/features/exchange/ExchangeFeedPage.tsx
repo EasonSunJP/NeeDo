@@ -73,13 +73,20 @@ function formatJpy(value: number) {
 
 function priceLabel(post: ExchangePost) {
   if (post.type === "demand" && post.demand) {
-    return `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
+    return post.demand.budgetMinJpy === null
+      ? formatJpy(post.demand.budgetMaxJpy)
+      : `${formatJpy(post.demand.budgetMinJpy)}–${formatJpy(post.demand.budgetMaxJpy)}`;
   }
   return post.intelligence ? formatJpy(post.intelligence.campaignPriceJpy) : "—";
 }
 
 function postTags(post: ExchangePost, language: Language) {
-  const identity = `${post.publisher.displayName} · ${post.publisher.publicId}`;
+  const identity = post.publisher
+    ? `${post.publisher.displayName} · ${post.publisher.publicId}`
+    : exchangeText("publisherHidden", language);
+  if (post.demand) {
+    return [identity, exchangeText(post.demand.serviceMode === "home" ? "home" : "store", language), post.areaLabel];
+  }
   if (!post.intelligence) return [identity, post.areaLabel];
   const tags = [
     identity,
@@ -104,8 +111,8 @@ function matchesSearch(post: ExchangePost, query: string) {
     post.title,
     post.detail,
     post.areaLabel,
-    post.publisher.displayName,
-    post.publisher.publicId,
+    post.publisher?.displayName ?? "",
+    post.publisher?.publicId ?? "",
     ...(post.intelligence?.serviceAreas ?? [])
   ].some((value) => value.toLocaleLowerCase().includes(query));
 }
@@ -127,6 +134,7 @@ function PostCard({
   const [pending, setPending] = useState<"like" | "share" | null>(null);
   const [actionError, setActionError] = useState(false);
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
+  const publisherName = post.publisher?.displayName ?? t("publisherHidden");
   const detailPath = `${exchangeBasePath(context)}/posts/${post.id}`;
   const openDetail = () => navigate(detailPath);
 
@@ -214,8 +222,8 @@ function PostCard({
             ) : null}
           </div>
         }
-        image={post.publisher.avatarUrl || fallbackPublisherImage}
-        imageAlt={post.publisher.displayName}
+        image={post.publisher?.avatarUrl || fallbackPublisherImage}
+        imageAlt={publisherName}
         imageLabel={t(post.type)}
         noteLabel={t("note")}
         noteValue={<span data-no-i18n="true">{post.detail}</span>}

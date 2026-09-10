@@ -154,7 +154,7 @@ export function MerchantOrderParticipantDetailDrawer({
     ).then((timeline) => {
       if (current) setCustomerTimeline(timeline);
     }).catch((error: unknown) => {
-      if (current) setCustomerTimelineError(participantError(error, "用户动态读取失败，请重试", language));
+      if (current) setCustomerTimelineError(participantError(error, "用户LOG读取失败，请重试", language));
     }).finally(() => {
       if (current) setCustomerTimelineLoading(false);
     });
@@ -203,6 +203,7 @@ export function MerchantOrderParticipantDetailDrawer({
           </div>
         ) : customerDetail ? (
           <FormalCustomerDetailPanel
+            directoryScope="merchant"
             detail={customerDetail}
             onRetryTimeline={reload}
             onTimelinePageChange={setCustomerTimelinePage}

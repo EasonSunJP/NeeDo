@@ -9,6 +9,7 @@ const describeIntegration = runIntegration ? describe : describe.skip;
 const marker = `customer-profile-repository-${randomUUID()}`;
 let userId: number;
 let profileId: number;
+let identityId: number;
 
 describeIntegration("CustomerProfileRepository MySQL integration", () => {
   const repository = new CustomerProfileRepository(prisma);
@@ -26,6 +27,12 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
       data: { city: "Tokyo", displayName: "原始资料", languages: ["日本語"] }
     });
     profileId = profile.id;
+    identityId = (
+      await prisma.userIdentity.findFirstOrThrow({
+        where: { userId, type: "customer", deletedAt: null },
+        select: { id: true }
+      })
+    ).id;
     await prisma.mediaAsset.create({
       data: {
         customerProfileId: profileId,
@@ -44,7 +51,10 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
       await prisma.mediaAsset.deleteMany({ where: { customerProfileId: profileId } });
       await prisma.customerProfile.deleteMany({ where: { id: profileId } });
       await prisma.userRole.deleteMany({ where: { userId } });
-      const identities = await prisma.userIdentity.findMany({ where: { userId }, select: { id: true } });
+      const identities = await prisma.userIdentity.findMany({
+        where: { userId },
+        select: { id: true }
+      });
       await prisma.publicIdentifier.deleteMany({
         where: { userIdentityId: { in: identities.map((identity) => identity.id) } }
       });
@@ -59,6 +69,7 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
       repository.updateMine(
         userId,
         profileId,
+        identityId,
         {
           age: 36,
           avatar: { mimeType: "image/png", url: "https://media.local/new.png" },
@@ -92,7 +103,9 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
       visibility: "network"
     });
     await expect(repository.findMine(userId, profileId + 999_999)).resolves.toBeNull();
-    await expect(prisma.mediaAsset.findMany({ where: { customerProfileId: profileId, usageType: "avatar" } })).resolves.toEqual(
+    await expect(
+      prisma.mediaAsset.findMany({ where: { customerProfileId: profileId, usageType: "avatar" } })
+    ).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ isActive: false, url: "https://media.local/old.png" }),
         expect.objectContaining({ isActive: true, url: "https://media.local/new.png" })
@@ -101,19 +114,29 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
     await expect(prisma.user.findUniqueOrThrow({ where: { id: userId } })).resolves.toMatchObject({
       avatarUrl: "https://media.local/new.png"
     });
-    await expect(prisma.auditLog.findFirstOrThrow({ where: { action: "customer_profile.self_update", targetId: profileId } })).resolves.toMatchObject({
+    await expect(
+      prisma.auditLog.findFirstOrThrow({
+        where: { action: "customer_profile.self_update", targetId: profileId }
+      })
+    ).resolves.toMatchObject({
       actorId: userId
     });
   });
 
   it("rolls profile changes back when the audit insert fails", async () => {
     await expect(
-      repository.updateMine(userId, profileId, { displayName: "不得提交" }, {
-        action: "x".repeat(101),
-        actorId: userId,
-        targetId: profileId,
-        targetType: "CustomerProfile"
-      })
+      repository.updateMine(
+        userId,
+        profileId,
+        identityId,
+        { displayName: "不得提交" },
+        {
+          action: "x".repeat(101),
+          actorId: userId,
+          targetId: profileId,
+          targetType: "CustomerProfile"
+        }
+      )
     ).rejects.toBeDefined();
 
     await expect(repository.findMine(userId, profileId)).resolves.toMatchObject({

@@ -340,9 +340,9 @@ describe("AffiliateAllianceRepository", () => {
 
   it("discovers only reciprocal active Affiliate contacts through one paginated query", async () => {
     const count = jest.fn().mockResolvedValue(1);
-    const findMany = jest.fn().mockResolvedValue([
-      { needoId: "u0000000008", username: "佐藤花子", avatarUrl: null }
-    ]);
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([{ needoId: "u0000000008", username: "佐藤花子", avatarUrl: null }]);
     const client = { user: { count, findMany } } as unknown as PrismaClient;
     const repository = new AffiliateAllianceRepository(client);
 
@@ -490,8 +490,16 @@ describe("AffiliateAllianceRepository", () => {
         invitationId: 71,
         inviteeUserId: 8,
         now: expiresAt,
-        auditLog: { actorId: 8, action: "affiliate_alliance.invitation_accepted", targetType: "AffiliateAllianceInvitation" },
-        expiryAuditLog: { actorId: null, action: "affiliate_alliance.invitation_expired", targetType: "AffiliateAllianceInvitation" }
+        auditLog: {
+          actorId: 8,
+          action: "affiliate_alliance.invitation_accepted",
+          targetType: "AffiliateAllianceInvitation"
+        },
+        expiryAuditLog: {
+          actorId: null,
+          action: "affiliate_alliance.invitation_expired",
+          targetType: "AffiliateAllianceInvitation"
+        }
       })
     ).resolves.toEqual({ kind: "expired" });
 
@@ -632,8 +640,16 @@ describe("AffiliateAllianceRepository", () => {
         invitationId: 72,
         inviteeUserId: 8,
         now: expiresAt,
-        auditLog: { actorId: 8, action: "affiliate_alliance.invitation_rejected", targetType: "AffiliateAllianceInvitation" },
-        expiryAuditLog: { actorId: null, action: "affiliate_alliance.invitation_expired", targetType: "AffiliateAllianceInvitation" }
+        auditLog: {
+          actorId: 8,
+          action: "affiliate_alliance.invitation_rejected",
+          targetType: "AffiliateAllianceInvitation"
+        },
+        expiryAuditLog: {
+          actorId: null,
+          action: "affiliate_alliance.invitation_expired",
+          targetType: "AffiliateAllianceInvitation"
+        }
       })
     ).resolves.toEqual({ kind: "expired" });
     expect(transaction.affiliateAllianceInvitation.updateMany).toHaveBeenCalledWith({

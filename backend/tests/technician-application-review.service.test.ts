@@ -1,3 +1,4 @@
+import { applicationEkycPolicy } from "./helpers/application-ekyc-policy";
 import {
   TechnicianApplicationReviewService,
   type TechnicianApplicationContactPort,
@@ -61,7 +62,7 @@ describe("TechnicianApplicationReviewService", () => {
 
   it("approves only a submitted application targeted to the current shop", async () => {
     const repository = createRepository();
-    const service = new TechnicianApplicationReviewService(repository, createContacts());
+    const service = new TechnicianApplicationReviewService(repository, createContacts(), applicationEkycPolicy());
 
     await expect(
       service.approve({
@@ -79,6 +80,7 @@ describe("TechnicianApplicationReviewService", () => {
       reviewerUserId: 30,
       expectedVersion: 2,
       applicantName: "山本太郎",
+      ekycPolicy: { required: true, verified: true, policyVersionPublicId: "policy-test" },
       city: "东京",
       bio: "四年经验",
       reviewedAt: now,
@@ -99,7 +101,7 @@ describe("TechnicianApplicationReviewService", () => {
 
   it("requires an exact optimistic version and returns an already closed review idempotently", async () => {
     const repository = createRepository();
-    const service = new TechnicianApplicationReviewService(repository, createContacts());
+    const service = new TechnicianApplicationReviewService(repository, createContacts(), applicationEkycPolicy());
 
     await expect(
       service.approve({
@@ -129,7 +131,7 @@ describe("TechnicianApplicationReviewService", () => {
 
   it("rejects with a required reason and starts the 30-day purge clock", async () => {
     const repository = createRepository();
-    const service = new TechnicianApplicationReviewService(repository, createContacts());
+    const service = new TechnicianApplicationReviewService(repository, createContacts(), applicationEkycPolicy());
 
     await expect(
       service.reject({
@@ -164,7 +166,7 @@ describe("TechnicianApplicationReviewService", () => {
   it("contacts without approving, creates bilateral contacts once, and reuses direct chat", async () => {
     const repository = createRepository();
     const contacts = createContacts();
-    const service = new TechnicianApplicationReviewService(repository, contacts);
+    const service = new TechnicianApplicationReviewService(repository, contacts, applicationEkycPolicy());
 
     await expect(
       service.contact({

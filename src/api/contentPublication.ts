@@ -1,4 +1,5 @@
 import { httpClient } from "./httpClient";
+import { persistentResourceCache } from "../lib/persistentResourceCache";
 
 export type ContentLocaleCode = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
 export type PublishedCarouselScene = "USER_HOME" | "AFFILIATE_HOME_NOTICE";
@@ -363,19 +364,28 @@ function announcementBase(publicId: string) {
   return `/backoffice/affiliate/announcements/${encodeURIComponent(publicId)}`;
 }
 
-function carouselLifecycle<TInput>(
+async function carouselLifecycle<TInput>(
   scene: CarouselScene,
   releaseId: number,
   action: "publish" | "schedule" | "disable" | "rollback",
   body: TInput,
 ) {
-  return httpClient.request<CarouselRelease>(
+  const release = await httpClient.request<CarouselRelease>(
     `${carouselBase(scene)}/releases/${releaseId}/${action}`,
     {
       body,
       method: "POST",
     },
   );
+  if (action === "publish" || action === "disable" || action === "rollback") {
+    const sceneSlug = scene === "USER_HOME"
+      ? "user-home"
+      : scene === "AFFILIATE_HOME_NOTICE"
+        ? "affiliate-home-notice"
+        : scene;
+    await persistentResourceCache.invalidate("public", `carousel:${sceneSlug}:`);
+  }
+  return release;
 }
 
 function announcementLifecycle<TInput>(

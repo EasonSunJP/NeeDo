@@ -4,6 +4,7 @@ import { addDays } from "./domain";
 import {
   closeDispatchFeedback,
   createDispatchCycleDraft,
+  finalizeDispatchCycle,
   getDispatchCenterSnapshot,
   getDispatchCycleList,
   getDispatchOverviewSummary,
@@ -13,7 +14,8 @@ import {
   resetDispatchCenterStore,
   runDispatchAutoConfirm,
   runDispatchSmartSchedule,
-  saveDispatchCycleDraft
+  saveDispatchCycleDraft,
+  sendDispatchFeedbackReminder
 } from "./store";
 
 describe("dispatch center scheduling workflow", () => {
@@ -21,47 +23,64 @@ describe("dispatch center scheduling workflow", () => {
     resetDispatchCenterStore();
   });
 
-  it("starts new cycles at mode selection and moves collect-confirm cycles through feedback then final confirmation", () => {
+  it("collects completion feedback after technicians receive a self-scheduling cycle", () => {
     const cycle = createDispatchCycleDraft("store-1");
 
     expect(cycle.currentStep).toBe(1);
+    expect(cycle.mode).toBe("TECH_SELF_FINAL");
+    expect(cycle.feedbackDeadline).not.toBeNull();
 
-    const saved = saveDispatchCycleDraft({ ...cycle, currentStep: 2, mode: "STORE_COLLECT_CONFIRM" });
+    const saved = saveDispatchCycleDraft({ ...cycle, currentStep: 2 });
     expect(saved.ok).toBe(true);
 
     const launched = launchDispatchCycle(cycle.id, "store-1");
     expect(launched.ok).toBe(true);
     expect(launched.cycle?.currentStep).toBe(3);
     expect(launched.cycle?.status).toBe("collecting_feedback");
-
-    const closed = closeDispatchFeedback(cycle.id, "store-1");
-    expect(closed.ok).toBe(true);
-    expect(closed.cycle?.currentStep).toBe(4);
-    expect(closed.cycle?.status).toBe("feedback_closed");
-
-    const confirmed = runDispatchAutoConfirm(cycle.id, "store-1");
-    expect(confirmed.ok).toBe(true);
-    const storedCycle = getDispatchCycleList("store-1").find((item) => item.id === cycle.id);
-    expect(storedCycle?.status).toBe("final_confirming");
+    expect(getDispatchCenterSnapshot().finalBookableSlots.some((slot) => slot.cycleId === cycle.id)).toBe(false);
   });
 
-  it("publishes direct-assign cycles without collecting feedback", () => {
+  it("collects confirmations and leave or adjustment feedback before publishing a store schedule", () => {
     const cycle = createDispatchCycleDraft("store-1");
     const saved = saveDispatchCycleDraft({
       ...cycle,
       currentStep: 2,
       mode: "STORE_ASSIGN_FINAL",
-      feedbackDeadline: null
+      feedbackDeadline: cycle.feedbackDeadline
     });
 
     expect(saved.ok).toBe(true);
 
     const launched = launchDispatchCycle(cycle.id, "store-1");
     expect(launched.ok).toBe(true);
-    expect(launched.cycle?.currentStep).toBe(4);
-    expect(launched.cycle?.status).toBe("confirmed");
+    expect(launched.cycle?.currentStep).toBe(3);
+    expect(launched.cycle?.status).toBe("collecting_feedback");
     expect(getDispatchCenterSnapshot().feedbacks.some((entry) => entry.cycleId === cycle.id)).toBe(false);
+    expect(getDispatchCenterSnapshot().finalShifts.some((shift) => shift.cycleId === cycle.id)).toBe(true);
+    expect(getDispatchCenterSnapshot().finalBookableSlots.some((slot) => slot.cycleId === cycle.id)).toBe(false);
+
+    const closed = closeDispatchFeedback(cycle.id, "store-1");
+    expect(closed.ok).toBe(true);
+    expect(closed.cycle?.currentStep).toBe(4);
+    expect(closed.cycle?.status).toBe("feedback_closed");
+
+    const finalized = finalizeDispatchCycle(cycle.id, "store-1");
+    expect(finalized.ok).toBe(true);
+    expect(finalized.cycle?.status).toBe("confirmed");
     expect(getDispatchCenterSnapshot().finalBookableSlots.filter((slot) => slot.cycleId === cycle.id && slot.status === "available").length).toBeGreaterThan(0);
+  });
+
+  it("rejects feedback actions outside the collection state", () => {
+    const cycle = createDispatchCycleDraft("store-1");
+
+    expect(sendDispatchFeedbackReminder(cycle.id, "store-1")).toEqual({
+      ok: false,
+      message: "当前阶段不允许提醒反馈。"
+    });
+    expect(closeDispatchFeedback(cycle.id, "store-1")).toEqual({
+      ok: false,
+      message: "当前阶段不允许结束反馈收集。"
+    });
   });
 
   it("rejects cycles longer than one year before saving", () => {

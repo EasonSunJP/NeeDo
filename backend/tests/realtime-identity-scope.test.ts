@@ -20,7 +20,11 @@ describe("RealtimeService personal identity scope", () => {
   it("lists customer and affiliate contacts from their shared canonical identity", async () => {
     const result = { list: [], total: 0, page: 1, page_size: 20 };
     const repository = { listContacts: jest.fn(async () => result) };
-    const service = new RealtimeService(repository as never, eventGateway as never, scopeResolver as never);
+    const service = new RealtimeService(
+      repository as never,
+      eventGateway as never,
+      scopeResolver as never
+    );
 
     await expect(service.listContacts(auth, { page: 1, pageSize: 20 })).resolves.toBe(result);
 
@@ -36,21 +40,31 @@ describe("RealtimeService personal identity scope", () => {
       listConversations: jest.fn(async () => conversations),
       listMessages: jest.fn(async () => messages)
     };
-    const service = new RealtimeService(repository as never, eventGateway as never, scopeResolver as never);
+    const service = new RealtimeService(
+      repository as never,
+      eventGateway as never,
+      scopeResolver as never
+    );
 
-    await expect(service.listConversations(auth, { page: 1, pageSize: 20 })).resolves.toBe(conversations);
-    await expect(service.listMessages(auth, {
-      conversationId: 99,
-      userId: 7,
-      pageSize: 20
-    })).resolves.toBe(messages);
+    await expect(service.listConversations(auth, { page: 1, pageSize: 20 })).resolves.toBe(
+      conversations
+    );
+    await expect(
+      service.listMessages(auth, {
+        conversationId: 99,
+        userId: 7,
+        pageSize: 20
+      })
+    ).resolves.toBe(messages);
 
     expect(repository.listConversations).toHaveBeenCalledWith(70, { page: 1, pageSize: 20 });
-    expect(repository.listMessages).toHaveBeenCalledWith(expect.objectContaining({
-      conversationId: 99,
-      identityId: 70,
-      userId: 7
-    }));
+    expect(repository.listMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 99,
+        identityId: 70,
+        userId: 7
+      })
+    );
   });
 
   it("writes a friend request and message with server-derived identity ownership", async () => {
@@ -70,11 +84,16 @@ describe("RealtimeService personal identity scope", () => {
         status: "ready" as const,
         result: { friendRequest, created: true }
       })),
+      checkMessageSendEligibility: jest.fn(async () => "allowed" as const),
       isMessageSenderBlocked: jest.fn(async () => false),
       createMessage: jest.fn(async () => message),
       getConversationForUser: jest.fn(async () => ({ participants: [] }))
     };
-    const service = new RealtimeService(repository as never, eventGateway as never, scopeResolver as never);
+    const service = new RealtimeService(
+      repository as never,
+      eventGateway as never,
+      scopeResolver as never
+    );
 
     await service.createFriendRequest(auth, { targetUserId: 8 });
     await service.createMessage(auth, {
@@ -90,25 +109,67 @@ describe("RealtimeService personal identity scope", () => {
       targetUserId: 8,
       message: undefined
     });
-    expect(repository.createMessage).toHaveBeenCalledWith(expect.objectContaining({
-      senderIdentityId: 70,
-      senderUserId: 7
-    }));
-    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      recipientIdentityId: 80,
-      type: "friend_request.created"
-    }));
+    expect(repository.createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        senderIdentityId: 70,
+        senderUserId: 7
+      })
+    );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientIdentityId: 80,
+        type: "friend_request.created"
+      })
+    );
   });
 
   it("subscribes SSE by canonical identity instead of account user id", async () => {
     const repository = {};
-    const service = new RealtimeService(repository as never, eventGateway as never, scopeResolver as never);
+    const service = new RealtimeService(
+      repository as never,
+      eventGateway as never,
+      scopeResolver as never
+    );
     const response = {} as never;
 
     await service.streamEvents(auth, response);
 
     expect(eventGateway.subscribe).toHaveBeenCalledWith(70, response);
     expect(eventGateway.subscribe).not.toHaveBeenCalledWith(7, response);
+  });
+
+  it("publishes order changes to the exact participant identity, including another identity on the same account", async () => {
+    const service = new RealtimeService({} as never, eventGateway as never, scopeResolver as never);
+
+    await service.notifyOrderChanged({
+      actorUserId: 7,
+      actorIdentityId: 70,
+      orderId: 41,
+      orderNo: "ND202609030041",
+      changeType: "add_on",
+      recipients: [
+        { userId: 7, identityId: 70 },
+        { userId: 7, identityId: 71 },
+        { userId: 8, identityId: 80 },
+        { userId: 8, identityId: 80 }
+      ]
+    });
+
+    expect(eventGateway.publish).toHaveBeenCalledTimes(2);
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "booking.order_changed",
+        recipientUserId: 7,
+        recipientIdentityId: 71,
+        payload: { orderId: 41, orderNo: "ND202609030041", changeType: "add_on" }
+      })
+    );
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientUserId: 8,
+        recipientIdentityId: 80
+      })
+    );
   });
 
   it("owns social posts, follows, notifications, and unread counts by canonical identity", async () => {
@@ -122,9 +183,18 @@ describe("RealtimeService personal identity scope", () => {
       findCanonicalIdentityIdForUser: jest.fn(async () => 80),
       createFollow: jest.fn(async () => ({ id: 3 })),
       listNotifications: jest.fn(async () => notifications),
-      getUnreadCounts: jest.fn(async () => ({ conversations: 0, notifications: 0, friendRequests: 0, total: 0 }))
+      getUnreadCounts: jest.fn(async () => ({
+        conversations: 0,
+        notifications: 0,
+        friendRequests: 0,
+        total: 0
+      }))
     };
-    const service = new RealtimeService(repository as never, eventGateway as never, scopeResolver as never);
+    const service = new RealtimeService(
+      repository as never,
+      eventGateway as never,
+      scopeResolver as never
+    );
 
     await service.createSocialPost(
       auth,
@@ -136,10 +206,12 @@ describe("RealtimeService personal identity scope", () => {
     await service.listNotifications(auth, { page: 1, pageSize: 20 });
     await service.getUnreadCounts(auth);
 
-    expect(repository.createSocialPost).toHaveBeenCalledWith(expect.objectContaining({
-      authorIdentityId: 70,
-      authorUserId: 7
-    }));
+    expect(repository.createSocialPost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authorIdentityId: 70,
+        authorUserId: 7
+      })
+    );
     expect(repository.listSocialPosts).toHaveBeenCalledWith(70, { page: 1, pageSize: 20 }, 7);
     expect(repository.createFollow).toHaveBeenCalledWith({
       followerIdentityId: 70,
@@ -149,9 +221,11 @@ describe("RealtimeService personal identity scope", () => {
     });
     expect(repository.listNotifications).toHaveBeenCalledWith(70, { page: 1, pageSize: 20 });
     expect(repository.getUnreadCounts).toHaveBeenCalledWith(70);
-    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
-      recipientIdentityId: 80,
-      type: "social.post.created"
-    }));
+    expect(eventGateway.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientIdentityId: 80,
+        type: "social.post.created"
+      })
+    );
   });
 });

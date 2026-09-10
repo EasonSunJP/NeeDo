@@ -99,15 +99,11 @@ describe("LifeDance real operations persistence contract", () => {
     expect(compensationProfileQuery).toContain("status: true");
     expect(checkerSource).toContain("activeCompensationProfiles");
     expect(checkerSource).toContain("compensationProfileById");
-    expect(checkerSource).toContain(
-      "compensationProfileById.get(payslip.compensationProfileId)"
-    );
+    expect(checkerSource).toContain("compensationProfileById.get(payslip.compensationProfileId)");
     expect(checkerSource).toContain(
       "compensationProfile.technicianProfileId === payslip.technicianProfileId"
     );
     expect(checkerSource).toContain("compensationProfile.shopId === lifeDanceShop.id");
-    expect(checkerSource).not.toContain(
-      "payslip.compensationProfileId === compensationProfile.id"
-    );
+    expect(checkerSource).not.toContain("payslip.compensationProfileId === compensationProfile.id");
   });
 });

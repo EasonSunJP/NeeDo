@@ -1,44 +1,40 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { RouteScrollReset } from "./components/ui/RouteScrollReset";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
 import { getMerchantAdminPreview } from "./auth/merchantAdminPreview";
 import { isSessionAlignedWithPortal } from "./auth/rbac";
-import { I18nProvider, I18nRuntime } from "./i18n/I18nProvider";
+import { I18nProvider, I18nRuntime, useI18n } from "./i18n/I18nProvider";
+import { translateText } from "./i18n/translations";
+import { PlatformSettingsProvider, usePlatformSettings } from "./features/platform-settings/PlatformSettingsProvider";
 import { ClientThemeProvider, getClientThemeClassName, getClientThemeModeClassName, getInitialClientThemeState, isNightClientTheme, useClientTheme } from "./theme/ClientThemeProvider";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, isDarkAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, sharedAdminThemeOptions, type AdminTheme, type AdminThemeOption } from "./theme/AdminTheme";
 import { AdminLoginPage } from "./pages/auth/AdminLoginPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { BusinessCpsAdminPage } from "./pages/business-cps/BusinessCpsAdminPage";
-import { AnalyticsPage } from "./pages/admin/AnalyticsPage";
 import { AffiliateAdminPage } from "./pages/admin/AffiliateAdminPage";
 import { AffiliateFeeRulesPage } from "./pages/admin/AffiliateFeeRulesPage";
 import { AffiliateNoticeCarouselPage } from "./pages/admin/AffiliateNoticeCarouselPage";
 import { AdminDocsPage } from "./pages/admin/AdminDocsPage";
 import { AdminDispatchPage } from "./pages/admin/AdminDispatchPage";
-import { AdminNotificationComposePage } from "./pages/admin/AdminNotificationComposePage";
-import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
 import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
 import { AvatarBadgesPage } from "./pages/admin/AvatarBadgesPage";
-import { CarouselPage } from "./pages/admin/CarouselPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
-import { CRMPage } from "./pages/admin/CRMPage";
-import { DashboardPage } from "./pages/admin/DashboardPage";
-import { DataCenterPage } from "./pages/admin/DataCenterPage";
 import { FieldJobsPage } from "./pages/admin/FieldJobsPage";
 import { FinancePage } from "./pages/admin/FinancePage";
 import { FloorplanPage } from "./pages/admin/FloorplanPage";
 import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
+import { MembershipRewardFeePage } from "./pages/admin/MembershipRewardFeePage";
+import { NdpExchangeRatePage } from "./pages/admin/NdpExchangeRatePage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
-import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";
-import { OrdersAdminPage } from "./pages/admin/OrdersAdminPage";
 import { ReviewsPage } from "./pages/admin/ReviewsPage";
 import { RolesPage } from "./pages/admin/RolesPage";
 import { PermissionsPage } from "./pages/admin/PermissionsPage";
 import { TechniciansPage } from "./pages/admin/TechniciansPage";
-import { UsersPage } from "./pages/admin/UsersPage";
+import { LegacyUserManagementRedirect } from "./features/platform-user-management/LegacyUserManagementRedirect";
 import { MerchantPortalPage, MerchantStaffDetailRoutePage } from "./pages/mobile/MerchantPortalPage";
 import { BusinessCpsPage } from "./pages/mobile/BusinessCpsPage";
 import { AffiliateMarketplacePage } from "./pages/mobile/AffiliateMarketplacePage";
@@ -56,8 +52,6 @@ import { MomentsPage } from "./pages/mobile/MomentsPage";
 import { NeedoExchangePage } from "./pages/mobile/NeedoExchangePage";
 import { NeedoPostDetailRoutePage } from "./pages/mobile/NeedoRoutePages";
 import { TechnicianPayrollPage } from "./pages/mobile/TechnicianPayrollPage";
-import { MerchantAdminDashboardPage } from "./pages/merchant-admin/MerchantAdminDashboardPage";
-import { MerchantAdminAnalyticsPage } from "./pages/merchant-admin/MerchantAdminAnalyticsPage";
 import {
   MerchantAdminDispatchCenterAutomationPage,
   MerchantAdminDispatchCenterAppointmentsPage,
@@ -72,6 +66,7 @@ import { MerchantAdminOrdersPage } from "./pages/merchant-admin/MerchantAdminOrd
 import { MerchantAdminPeoplePage } from "./pages/merchant-admin/MerchantAdminPeoplePage";
 import { MerchantAdminSettingsPage } from "./pages/merchant-admin/MerchantAdminSettingsPage";
 import { MerchantAffiliateTasksPage } from "./pages/merchant-admin/MerchantAffiliateTasksPage";
+import { ShopTravelFarePolicyPage } from "./pages/merchant-admin/ShopTravelFarePolicyPage";
 import {
   MerchantAdminFinancePage,
   MerchantAdminInventoryPage,
@@ -96,6 +91,8 @@ import { StoreDetailPage } from "./pages/user/StoreDetailPage";
 import { TechnicianServicesPage } from "./pages/user/TechnicianServicesPage";
 import { SupportPage } from "./pages/user/SupportPage";
 import { UserCenterPage } from "./pages/user/UserCenterPage";
+import { UserFavoritesRoutePage } from "./pages/user/UserFavoritesPage";
+import { UserMembershipsPage } from "./pages/user/UserMembershipsPage";
 import { UserOrdersPage } from "./pages/user/UserOrdersPage";
 import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";
 import { UserSchedulePage } from "./pages/user/UserSchedulePage";
@@ -112,7 +109,6 @@ import {
   UserSettingsPortalPage,
   UserSettingsPrivacyPage,
   UserSettingsProfileCardBackgroundPage,
-  UserSettingsProfilePage,
   UserSettingsServiceRangePage,
   UserSettingsThemePage,
   UserSettingsTermsPage,
@@ -136,17 +132,19 @@ import {
   UnifiedSettingsVerificationPage
 } from "./features/settings/UnifiedSettingsPages";
 import { TechnicianApplicationPage } from "./features/identity-applications/TechnicianApplicationPage";
+import { TechnicianShopStayPage } from "./features/technician-shop-stays/TechnicianShopStayPage";
+import { technicianProfileApi } from "./features/core-read/technicianProfileApi";
 import { MerchantApplicationPage } from "./features/identity-applications/MerchantApplicationPage";
 import { AffiliateActivationPage } from "./features/identity-applications/AffiliateActivationPage";
 import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";
 import { AffiliateAlliancePage } from "./features/affiliate-alliance/AffiliateAlliancePage";
 import { AffiliateAnnouncementDetailPage } from "./features/content-publication/AffiliateAnnouncementDetailPage";
-import { MerchantApplicationsReviewPage, TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
+import { TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
-import { OfficialNoticeAutoPopup } from "./components/ui/OfficialNoticeAutoPopup";
 import { NeedoPet, NeedoPetRunningSprite } from "./components/ui/NeedoPet";
 import { clearNeedoStorage } from "./lib/browserStorage";
+import { isReducedClientPerformanceProfile } from "./lib/clientPerformance";
 import { isNonFatalBrowserRuntimeError } from "./lib/share";
 import { useEntityStore } from "./state/entityStore";
 import { preloadNeedoPetAssets } from "./state/needoPetAssets";
@@ -177,6 +175,7 @@ import {
   ImContactTagsPage,
   ImConversationInfoPage,
   ImConversationRoomRoutePage,
+  ImChatRecordDetailRoutePage,
   ImDirectoryProfilePage,
   ImFriendRequestsPage,
   ImMediaRecordsPage,
@@ -189,11 +188,13 @@ import {
 import { ImScopeProvider } from "./features/im/scope";
 import { SocialProvider } from "./features/social/context";
 import { RealtimeUnreadCountsProvider } from "./features/realtime/useRealtimeUnreadCounts";
+import { AccountComplianceGate } from "./features/auth/AccountComplianceGate";
 import {
   SocialAccountProfilePage,
   SocialComposerPage,
   SocialDraftsPage,
   SocialMediaViewerPage,
+  SocialLegacyReplyRedirectPage,
   SocialNotificationsPage,
   SocialPostDetailPage,
   SocialRelationshipsPage,
@@ -209,6 +210,31 @@ import {
 } from "./assets/runtime/images";
 
 const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalPage").then((module) => ({ default: module.TechnicianPortalPage })));
+const DashboardPage = lazy(() => import("./pages/admin/DashboardPage").then((module) => ({ default: module.DashboardPage })));
+const LiveDashboardPage = lazy(() => import("./pages/admin/LiveDashboardPage").then((module) => ({ default: module.LiveDashboardPage })));
+const DashboardMetricDetailPage = lazy(() => import("./pages/admin/DashboardMetricDetailPage").then((module) => ({ default: module.DashboardMetricDetailPage })));
+const MerchantAdminDashboardPage = lazy(() => import("./pages/merchant-admin/MerchantAdminDashboardPage").then((module) => ({ default: module.MerchantAdminDashboardPage })));
+const MembershipAnalyticsPage = lazy(() => import("./pages/admin/MembershipAnalyticsPage").then((module) => ({ default: module.MembershipAnalyticsPage })));
+const DataCenterPage = lazy(() => import("./pages/admin/DataCenterPage").then((module) => ({ default: module.DataCenterPage })));
+const AgentsPage = lazy(() => import("./pages/admin/AgentsPage").then((module) => ({ default: module.AgentsPage })));
+const OperatingCostsPage = lazy(() => import("./pages/admin/OperatingCostsPage").then((module) => ({ default: module.OperatingCostsPage })));
+const ServiceSearchAnalyticsPage = lazy(() => import("./pages/admin/ServiceSearchAnalyticsPage").then((module) => ({ default: module.ServiceSearchAnalyticsPage })));
+const PlatformUserListPage = lazy(() => import("./features/platform-user-management/UserListPage").then((module) => ({ default: module.UserListPage })));
+const UserGroupsPage = lazy(() => import("./features/platform-user-management/UserGroupsPage").then((module) => ({ default: module.UserGroupsPage })));
+const UserGlobalSettingsPage = lazy(() => import("./features/platform-user-management/UserGlobalSettingsPage").then((module) => ({ default: module.UserGlobalSettingsPage })));
+const MembershipTiersPage = lazy(() => import("./features/platform-user-management/MembershipTiersPage").then((module) => ({ default: module.MembershipTiersPage })));
+const MembershipBenefitsPage = lazy(() => import("./features/platform-user-management/MembershipBenefitsPage").then((module) => ({ default: module.MembershipBenefitsPage })));
+const SystemSettingsPage = lazy(() => import("./features/admin-system-settings/SystemSettingsPage").then((module) => ({ default: module.SystemSettingsPage })));
+const AccountCompliancePage = lazy(() => import("./features/auth/AccountCompliancePage").then((module) => ({ default: module.AccountCompliancePage })));
+const AdminNotificationComposePage = lazy(() => import("./pages/admin/AdminNotificationComposePage").then((module) => ({ default: module.AdminNotificationComposePage })));
+const AdminNotificationsPage = lazy(() => import("./pages/admin/AdminNotificationsPage").then((module) => ({ default: module.AdminNotificationsPage })));
+const MerchantAdminNotificationsPage = lazy(() => import("./pages/merchant-admin/MerchantAdminNotificationsPage").then((module) => ({ default: module.MerchantAdminNotificationsPage })));
+const EkycReviewPage = lazy(() => import("./features/settings/EkycReviewPage").then((module) => ({ default: module.EkycReviewPage })));
+const MerchantBackofficeApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages").then((module) => ({ default: module.MerchantBackofficeApplicationReviewPage })));
+const OperationsShopApplicationReviewPage = lazy(() => import("./features/identity-applications/BackofficeReviewPages").then((module) => ({ default: module.OperationsShopApplicationReviewPage })));
+const OperationTimelinePage = lazy(() => import("./pages/admin/OperationTimelinePage").then((module) => ({ default: module.OperationTimelinePage })));
+const OrdersAdminPage = lazy(() => import("./pages/admin/OrdersAdminPage").then((module) => ({ default: module.OrdersAdminPage })));
+const CarouselPage = lazy(() => import("./pages/admin/CarouselPage").then((module) => ({ default: module.CarouselPage })));
 
 type SplashPortal = "user" | "business" | "businessAdmin" | "merchant" | "technician" | "admin" | "merchantAdmin";
 
@@ -494,24 +520,18 @@ function getSplashPortal(pathname: string): SplashPortal | null {
   return "user";
 }
 
-function ScrollToTop() {
-  const location = useLocation();
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [location.pathname, location.search, location.hash]);
-
-  return null;
-}
-
 function EntityStoreBootstrap() {
   useEntityStore();
 
   return null;
 }
 
-function NeedoPetAssetBootstrap() {
+function NeedoPetAssetBootstrap({ disabled }: { disabled: boolean }) {
   useEffect(() => {
+    if (disabled) {
+      return undefined;
+    }
+
     let cancelled = false;
     let startTimer: number | null = null;
     let retryTimer: number | null = null;
@@ -545,7 +565,7 @@ function NeedoPetAssetBootstrap() {
         window.clearTimeout(retryTimer);
       }
     };
-  }, []);
+  }, [disabled]);
 
   return null;
 }
@@ -692,7 +712,7 @@ function getSplashThemeClassName(portal: SplashPortal, clientTheme: ReturnType<t
   ].join(" ");
 }
 
-function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPortal }) {
+function SplashScreen({ onDone, portal, reducedPerformance }: { onDone: () => void; portal: SplashPortal; reducedPerformance: boolean }) {
   const { theme } = useClientTheme();
   const splashImage = splashImages[portal];
   const copy = splashCopy[portal];
@@ -725,7 +745,7 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
       if (active) {
         setMinimumElapsed(true);
       }
-    }, 920);
+    }, reducedPerformance ? 140 : 920);
 
     return () => {
       active = false;
@@ -733,24 +753,24 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
       preload.onerror = null;
       window.clearTimeout(timer);
     };
-  }, [splashImage]);
+  }, [reducedPerformance, splashImage]);
 
   useEffect(() => {
     if (!imageReady || !minimumElapsed) {
       return;
     }
 
-    const timer = window.setTimeout(onDone, 620);
+    const timer = window.setTimeout(onDone, reducedPerformance ? 80 : 620);
 
     return () => window.clearTimeout(timer);
-  }, [imageReady, minimumElapsed, onDone]);
+  }, [imageReady, minimumElapsed, onDone, reducedPerformance]);
 
   return (
     <div
       className="fixed inset-0 z-[999] overflow-hidden bg-[#090806]"
       data-needo-splash-version={splashVersionLabel}
       style={{
-        backgroundImage: `url('${splashImage}')`,
+        backgroundImage: reducedPerformance ? undefined : `url('${splashImage}')`,
         backgroundPosition: "center",
         backgroundSize: "cover"
       }}
@@ -759,7 +779,7 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
         alt=""
         aria-hidden="true"
         className="absolute inset-0 h-full w-full object-cover"
-        decoding="sync"
+        decoding={reducedPerformance ? "async" : "sync"}
         fetchPriority="high"
         loading="eager"
         src={splashImage}
@@ -767,14 +787,16 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
       <div className={`relative h-full ${themeClassName}`}>
         <div className="absolute inset-0 bg-[color:var(--needo-splash-image-tint)]" />
         <div aria-hidden="true" className="needo-splash-gradient absolute inset-0" />
-        <img
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 h-full w-full object-cover opacity-[0.02]"
-          decoding="sync"
-          loading="eager"
-          src={splashImage}
-        />
+        {!reducedPerformance ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full object-cover opacity-[0.02]"
+            decoding="sync"
+            loading="eager"
+            src={splashImage}
+          />
+        ) : null}
         <div className="needo-splash-version-badge" aria-label={`版本 ${splashVersionLabel}`}>
           ver：{splashVersionLabel}
         </div>
@@ -940,6 +962,65 @@ function RequirePortalAuth({
   return children;
 }
 
+function RequireTechnicianShopStay({ children }: { children: ReactElement }) {
+  const location = useLocation();
+  const { session } = useAuth();
+  const { language } = useI18n();
+  const navigationState = location.state as {
+    settingsPortalTarget?: string;
+    settingsReturnTo?: string;
+    settingsSwitchedFromPortal?: boolean;
+  } | null;
+  const isShopStayRoute = location.pathname.startsWith("/technician/shop-stays");
+  const isTechnicianSwitchEntry = Boolean(
+    navigationState?.settingsSwitchedFromPortal &&
+      navigationState.settingsPortalTarget === "technician"
+  );
+  const shouldCheckTechnicianShopStay = isTechnicianSwitchEntry && !isShopStayRoute;
+  const [status, setStatus] = useState<"loading" | "active" | "requires_shop" | "error">(
+    shouldCheckTechnicianShopStay ? "loading" : "active"
+  );
+
+  useEffect(() => {
+    if (!shouldCheckTechnicianShopStay) {
+      setStatus("active");
+      return;
+    }
+    let current = true;
+    setStatus("loading");
+    void technicianProfileApi.getMine()
+      .then((profile) => {
+        if (current) setStatus(profile.shopAccessStatus);
+      })
+      .catch(() => {
+        if (current) setStatus("error");
+      });
+    return () => {
+      current = false;
+    };
+  }, [session?.currentIdentity.id, shouldCheckTechnicianShopStay]);
+
+  if (!shouldCheckTechnicianShopStay || status === "active") return children;
+  if (status === "requires_shop") {
+    return (
+      <Navigate
+        replace
+        state={{ technicianShopStayReturnTo: navigationState?.settingsReturnTo }}
+        to="/technician/shop-stays"
+      />
+    );
+  }
+  if (status === "loading") return null;
+  return (
+    <main className="grid min-h-screen place-items-center bg-paper px-6 text-center text-ink">
+      <section className="max-w-md rounded-lg border border-line bg-white p-6 shadow-panel">
+        <h1 className="text-xl font-black">{translateText("店铺入住状态暂时无法确认", language)}</h1>
+        <p className="mt-3 text-sm font-semibold leading-6 text-ink/55">{translateText("请刷新后重试，状态确认前不会开放技师工作功能。", language)}</p>
+      </section>
+    </main>
+  );
+}
+
 function LegacyBusinessRedirect() {
   const location = useLocation();
   const targetPath = location.pathname.replace(/^\/(?:business|cps)(?=\/|$)/, "/afirieito");
@@ -1020,18 +1101,57 @@ function RequirePermission({
   return children;
 }
 
+function PlatformAvailabilityGate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const { language } = useI18n();
+  const { settings, status } = usePlatformSettings();
+  const isOperationsRoute =
+    location.pathname === "/login/admin" ||
+    location.pathname === "/admin" ||
+    location.pathname.startsWith("/admin/");
+
+  if (status === "ready" && !settings.siteEnabled && !isOperationsRoute) {
+    return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-slate-950 px-6 text-white">
+        <section className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl">
+          <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-400">NeeDo</p>
+          <h1 className="mt-4 text-2xl font-black">{translateText("系统维护中", language)}</h1>
+          <p className="mt-3 text-sm font-semibold leading-6 text-slate-300">
+            {translateText("服务暂时停止开放，请稍后再试。", language)}
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  return children;
+}
+
 export default function App() {
   const location = useLocation();
   const currentPortal = getSplashPortal(location.pathname);
+  const reducedPerformance = isReducedClientPerformanceProfile();
   const [splashPortal, setSplashPortal] = useState<SplashPortal | null>(currentPortal);
   const [lastPortal, setLastPortal] = useState<SplashPortal | null>(null);
-  const protect = (portal: PortalScope, element: ReactElement) => <RequirePortalAuth portal={portal}>{element}</RequirePortalAuth>;
+  const protect = (portal: PortalScope, element: ReactElement) => (
+    <RequirePortalAuth portal={portal}>
+      {portal === "technician" ? <RequireTechnicianShopStay>{element}</RequireTechnicianShopStay> : element}
+    </RequirePortalAuth>
+  );
   const protectPermission = (portal: PortalScope, permission: string, element: ReactElement) =>
     protect(
       portal,
       <RequirePermission permission={permission}>
         {element}
       </RequirePermission>
+    );
+  const protectPermissions = (portal: PortalScope, permissions: string[], element: ReactElement) =>
+    protect(
+      portal,
+      permissions.reduceRight<ReactElement>(
+        (child, permission) => <RequirePermission permission={permission}>{child}</RequirePermission>,
+        element
+      )
     );
   const protectFeature = (portal: PortalScope, permission: FeaturePermission, element: ReactElement, fallbackTo?: string) =>
     protect(
@@ -1060,19 +1180,21 @@ export default function App() {
 
   return (
     <RootErrorBoundary>
+      <PlatformSettingsProvider>
       <AuthProvider>
         <RealtimeUnreadCountsProvider>
           <I18nProvider>
           <ClientThemeProvider>
             <I18nRuntime>
+              <PlatformAvailabilityGate>
               <EntityStoreBootstrap />
-              <NeedoPetAssetBootstrap />
+              <NeedoPetAssetBootstrap disabled={reducedPerformance} />
               <SocialProvider>
-                {splashPortal ? <SplashScreen onDone={completeSplash} portal={splashPortal} /> : null}
-                <ScrollToTop />
+                {splashPortal ? <SplashScreen onDone={completeSplash} portal={splashPortal} reducedPerformance={reducedPerformance} /> : null}
+                <RouteScrollReset />
                 <ShareFeedbackViewport />
-                <OfficialNoticeAutoPopup disabled={Boolean(splashPortal)} />
-                <NeedoPet disabled={Boolean(splashPortal)} />
+                <NeedoPet disabled={Boolean(splashPortal) || reducedPerformance} />
+                <AccountComplianceGate>
                 <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/login/admin" element={<AdminLoginPage portal="admin" />} />
@@ -1084,6 +1206,7 @@ export default function App() {
               <Route path="/login/cps-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
               <Route path="/login/business-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
               <Route path="/login/:portal" element={<LoginPage />} />
+              <Route path="/account-compliance" element={<Suspense fallback={null}><AccountCompliancePage /></Suspense>} />
 
               <Route path="/" element={protect("user", <HomePage />)} />
               <Route path="/categories" element={protect("user", <CategoryPage />)} />
@@ -1095,6 +1218,7 @@ export default function App() {
               <Route path="/profiles/:entityType/:id/followers" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id/following" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id" element={protect("user", <ProfileDetailPage />)} />
+              <Route path="/checkout/technician-service/:technicianServiceId" element={protect("user", <CheckoutPage />)} />
               <Route path="/checkout/:serviceId" element={protect("user", <CheckoutPage />)} />
               <Route path="/schedule" element={protect("user", <UserSchedulePage />)} />
               <Route path="/schedule/technicians/:technicianId" element={protect("user", <UserTechnicianScheduleDetailPage />)} />
@@ -1110,6 +1234,7 @@ export default function App() {
               <Route path="/reviews/new" element={protect("user", <DineInReviewPage />)} />
               <Route path="/messages" element={protect("user", <MessagesPage />)} />
               <Route path="/messages/new" element={protect("user", <ImScopeProvider scope="user"><ImNewConversationPage /></ImScopeProvider>)} />
+              <Route path="/messages/chat-records/:publicId" element={protect("user", <ImScopeProvider scope="user"><ImChatRecordDetailRoutePage /></ImScopeProvider>)} />
               <Route path="/messages/:conversationId/info" element={protect("user", <ImScopeProvider scope="user"><ImConversationInfoPage /></ImScopeProvider>)} />
               <Route path="/messages/:conversationId/media" element={protect("user", <ImScopeProvider scope="user"><ImMediaRecordsPage /></ImScopeProvider>)} />
               <Route path="/messages/:conversationId" element={protect("user", <ImScopeProvider scope="user"><ImConversationRoomRoutePage /></ImScopeProvider>)} />
@@ -1127,7 +1252,7 @@ export default function App() {
               <Route path="/moments/tags/:tag" element={protect("user", <SocialSearchPage />)} />
               <Route path="/moments/notifications" element={protect("user", <SocialNotificationsPage />)} />
               <Route path="/moments/users/:userId" element={protect("user", <SocialAccountProfilePage />)} />
-              <Route path="/moments/posts/:postId/replies" element={protect("user", <SocialPostDetailPage />)} />
+              <Route path="/moments/posts/:postId/replies" element={protect("user", <SocialLegacyReplyRedirectPage />)} />
               <Route path="/moments/posts/:postId/repost" element={protect("user", <SocialRepostPage />)} />
               <Route path="/moments/posts/:postId/media/:mediaId" element={protect("user", <SocialMediaViewerPage />)} />
               <Route path="/moments/posts/:postId" element={protect("user", <SocialPostDetailPage />)} />
@@ -1174,6 +1299,10 @@ export default function App() {
               <Route path="/orders" element={protect("user", <UserOrdersPage />)} />
               <Route path="/orders/:orderId" element={protect("user", <UserOrderDetailPage />)} />
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
+              <Route path="/me/favorites" element={protect("user", <UserFavoritesRoutePage />)} />
+              <Route path="/me/favorites/chat-records" element={protect("user", <Navigate replace to="/me/favorites" />)} />
+              <Route path="/me/memberships" element={protect("user", <UserMembershipsPage />)} />
+              <Route path="/me/memberships/:membershipPublicId" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/settings" element={protect("user", <UserSettingsPage />)} />
               <Route path="/me/settings/theme" element={protect("user", <UserSettingsThemePage />)} />
               <Route path="/me/settings/language" element={protect("user", <UserSettingsLanguagePage />)} />
@@ -1182,7 +1311,7 @@ export default function App() {
               <Route path="/me/identity/merchant/apply" element={protect("user", <MerchantApplicationPage />)} />
               <Route path="/me/identity/affiliate/contract" element={protect("user", <AffiliateActivationPage />)} />
               <Route path="/me/settings/home-shortcuts" element={protect("user", <Navigate replace to="/me/settings" />)} />
-              <Route path="/me/settings/profile" element={protect("user", <UserSettingsProfilePage />)} />
+              <Route path="/me/settings/profile" element={protect("user", <Navigate replace to="/me" />)} />
               <Route path="/me/settings/profile-card-background" element={protect("user", <UserSettingsProfileCardBackgroundPage />)} />
               <Route path="/me/settings/verification" element={protect("user", <UserSettingsVerificationPage />)} />
               <Route path="/me/settings/service-range" element={protect("user", <UserSettingsServiceRangePage />)} />
@@ -1200,6 +1329,7 @@ export default function App() {
               <Route path="/merchant/technician-applications" element={protectPermission("merchant", "merchant:technician-application:read", <TechnicianApplicationsReviewPage />)} />
               <Route path="/merchant/messages" element={protect("merchant", <ImScopeProvider scope="merchant"><ImMessagesEntryPage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/new" element={protect("merchant", <ImScopeProvider scope="merchant"><ImNewConversationPage /></ImScopeProvider>)} />
+              <Route path="/merchant/messages/chat-records/:publicId" element={protect("merchant", <ImScopeProvider scope="merchant"><ImChatRecordDetailRoutePage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/:conversationId/info" element={protect("merchant", <ImScopeProvider scope="merchant"><ImConversationInfoPage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/:conversationId/media" element={protect("merchant", <ImScopeProvider scope="merchant"><ImMediaRecordsPage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/:conversationId" element={protect("merchant", <ImScopeProvider scope="merchant"><ImConversationRoomRoutePage /></ImScopeProvider>)} />
@@ -1220,7 +1350,7 @@ export default function App() {
               <Route path="/merchant/moments/tags/:tag" element={protect("merchant", <SocialSearchPage />)} />
               <Route path="/merchant/moments/notifications" element={protect("merchant", <SocialNotificationsPage />)} />
               <Route path="/merchant/moments/users/:userId" element={protect("merchant", <SocialAccountProfilePage />)} />
-              <Route path="/merchant/moments/posts/:postId/replies" element={protect("merchant", <SocialPostDetailPage />)} />
+              <Route path="/merchant/moments/posts/:postId/replies" element={protect("merchant", <SocialLegacyReplyRedirectPage />)} />
               <Route path="/merchant/moments/posts/:postId/repost" element={protect("merchant", <SocialRepostPage />)} />
               <Route path="/merchant/moments/posts/:postId/media/:mediaId" element={protect("merchant", <SocialMediaViewerPage />)} />
               <Route path="/merchant/moments/posts/:postId" element={protect("merchant", <SocialPostDetailPage />)} />
@@ -1272,8 +1402,9 @@ export default function App() {
               <Route path="/merchant/settings/privacy" element={protect("merchant", <UnifiedSettingsPrivacyPage portal="merchant" />)} />
               <Route path="/merchant/settings/delete-account" element={protect("merchant", <UnifiedSettingsDeleteAccountPage portal="merchant" />)} />
               <Route path="/merchant/:view" element={protect("merchant", <MerchantPortalPage />)} />
-              <Route path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)} />
-              <Route path="/merchant-admin/analytics" element={protect("merchant", <MerchantAdminAnalyticsPage />)} />
+              <Route path="/merchant-admin" element={protect("merchant", <Suspense fallback={null}><MerchantAdminDashboardPage /></Suspense>)} />
+              <Route path="/merchant-admin/analytics" element={protect("merchant", <Navigate replace to="/merchant-admin" />)} />
+              <Route path="/merchant-admin/analytics/members" element={protectPermission("merchant", "shop.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="merchant-admin" /></Suspense>)} />
               <Route path="/merchant-admin/orders" element={protect("merchant", <MerchantAdminOrdersPage />)} />
               <Route path="/merchant-admin/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />
               <Route
@@ -1318,12 +1449,20 @@ export default function App() {
               <Route path="/merchant-admin/stage-layout" element={protectFeature("merchant", "store.stage-layout.view", <MerchantAdminStageLayoutPage />, "/merchant-admin")} />
               <Route path="/merchant-admin/inventory" element={protectFeature("merchant", "store.inventory.view", <MerchantAdminInventoryPage />, "/merchant-admin")} />
               <Route path="/merchant-admin/finance" element={protect("merchant", <MerchantAdminFinancePage />)} />
+              <Route path="/merchant-admin/employee-applications" element={protectPermission("merchant", "merchant:technician-application:read", <Suspense fallback={null}><MerchantBackofficeApplicationReviewPage /></Suspense>)} />
               <Route path="/merchant-admin/people" element={protect("merchant", <MerchantAdminPeoplePage />)} />
+              <Route path="/merchant-admin/notifications" element={protectPermission("merchant", "merchant-admin:notice:read", <MerchantAdminNotificationsPage view="list" />)} />
+              <Route path="/merchant-admin/notifications/compose" element={protectPermission("merchant", "merchant-admin:notice:create", <MerchantAdminNotificationsPage view="compose" />)} />
+              <Route path="/merchant-admin/notifications/compose/:publicId" element={protectPermission("merchant", "merchant-admin:notice:create", <MerchantAdminNotificationsPage view="compose" />)} />
+              <Route path="/merchant-admin/notifications/inbox" element={protect("merchant", <MerchantAdminNotificationsPage view="inbox" />)} />
               <Route path="/merchant-admin/docs" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/settings" element={protect("merchant", <MerchantAdminSettingsPage />)} />
+              <Route path="/merchant-admin/settings/travel-fare" element={protectPermission("merchant", "merchant-admin:travel-fare-policy:read", <ShopTravelFarePolicyPage />)} />
 
               <Route path="/technician" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
+              <Route path="/technician/shop-stays" element={protect("technician", <TechnicianShopStayPage />)} />
+              <Route path="/technician/shop-stays/apply" element={protect("technician", <TechnicianApplicationPage mode="additional-shop" />)} />
               <Route path="/technician/schedule" element={protect("technician", <TechnicianScheduleIndexRoutePage />)} />
               <Route path="/technician/schedule/new" element={protect("technician", <TechnicianScheduleEditorRoutePage />)} />
               <Route path="/technician/schedule/events/:eventId/edit" element={protect("technician", <TechnicianScheduleEditorRoutePage />)} />
@@ -1333,6 +1472,7 @@ export default function App() {
               <Route path="/technician/payroll" element={protect("technician", <TechnicianPayrollPage />)} />
               <Route path="/technician/messages" element={protect("technician", <ImScopeProvider scope="technician"><ImMessagesEntryPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/new" element={protect("technician", <ImScopeProvider scope="technician"><ImNewConversationPage /></ImScopeProvider>)} />
+              <Route path="/technician/messages/chat-records/:publicId" element={protect("technician", <ImScopeProvider scope="technician"><ImChatRecordDetailRoutePage /></ImScopeProvider>)} />
               <Route path="/technician/messages/:conversationId/info" element={protect("technician", <ImScopeProvider scope="technician"><ImConversationInfoPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/:conversationId/media" element={protect("technician", <ImScopeProvider scope="technician"><ImMediaRecordsPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/:conversationId" element={protect("technician", <ImScopeProvider scope="technician"><ImConversationRoomRoutePage /></ImScopeProvider>)} />
@@ -1353,7 +1493,7 @@ export default function App() {
               <Route path="/technician/moments/tags/:tag" element={protect("technician", <SocialSearchPage />)} />
               <Route path="/technician/moments/notifications" element={protect("technician", <SocialNotificationsPage />)} />
               <Route path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)} />
-              <Route path="/technician/moments/posts/:postId/replies" element={protect("technician", <SocialPostDetailPage />)} />
+              <Route path="/technician/moments/posts/:postId/replies" element={protect("technician", <SocialLegacyReplyRedirectPage />)} />
               <Route path="/technician/moments/posts/:postId/repost" element={protect("technician", <SocialRepostPage />)} />
               <Route path="/technician/moments/posts/:postId/media/:mediaId" element={protect("technician", <SocialMediaViewerPage />)} />
               <Route path="/technician/moments/posts/:postId" element={protect("technician", <SocialPostDetailPage />)} />
@@ -1379,49 +1519,69 @@ export default function App() {
               <Route path="/technician/settings/delete-account" element={protect("technician", <UnifiedSettingsDeleteAccountPage portal="technician" />)} />
               <Route path="/technician/:view" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
 
-              <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
-              <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
-              <Route path="/admin/analytics" element={protect("admin", <AnalyticsPage />)} />
-              <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <CarouselPage />)} />
-              <Route path="/admin/notifications/compose" element={protect("admin", <AdminNotificationComposePage />)} />
-              <Route path="/admin/notifications" element={protect("admin", <AdminNotificationsPage />)} />
+              <Route path="/admin" element={protectPermission("admin", "page:dashboard", <Suspense fallback={null}><DashboardPage /></Suspense>)} />
+              <Route path="/admin/live-screen" element={protectPermission("admin", "page:dashboard", <Suspense fallback={null}><LiveDashboardPage /></Suspense>)} />
+              <Route path="/admin/analytics" element={protectPermission("admin", "page:dashboard", <Navigate replace to="/admin" />)} />
+              <Route path="/admin/analytics/metrics/:metricKey" element={protectPermission("admin", "backoffice:dashboard-detail:read", <Suspense fallback={null}><DashboardMetricDetailPage /></Suspense>)} />
+              <Route path="/admin/analytics/members" element={protectPermission("admin", "backoffice.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="backoffice" /></Suspense>)} />
+              <Route path="/admin/operation-timeline" element={protectPermission("admin", "backoffice:dashboard:read", <Suspense fallback={null}><OperationTimelinePage /></Suspense>)} />
+              <Route path="/admin/carousel" element={protectPermission("admin", "page:backoffice-user-home-carousel", <Suspense fallback={null}><CarouselPage /></Suspense>)} />
+              <Route path="/admin/notifications/compose" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />
+              <Route path="/admin/notifications/compose/:publicId" element={protectPermission("admin", "button:backoffice-official-notice-create", <AdminNotificationComposePage />)} />
+              <Route path="/admin/notifications/inbox" element={protect("admin", <AdminNotificationsPage view="inbox" />)} />
+              <Route path="/admin/notifications" element={protectPermission("admin", "page:backoffice-official-notice", <AdminNotificationsPage />)} />
               <Route path="/admin/support" element={protect("admin", <AdminSupportPage />)} />
               <Route path="/admin/docs" element={protect("admin", <AdminDocsPage />)} />
               <Route path="/admin/docs/api" element={protect("admin", <AdminDocsPage />)} />
-              <Route path="/admin/data" element={protect("admin", <DataCenterPage />)} />
+              <Route path="/admin/data" element={protect("admin", <LegacyUserManagementRedirect source="data"><Suspense fallback={null}><DataCenterPage /></Suspense></LegacyUserManagementRedirect>)} />
               <Route path="/admin/cities" element={protect("admin", <CitySettingsPage />)} />
               <Route path="/admin/badges" element={protect("admin", <AvatarBadgesPage />)} />
               <Route path="/admin/technicians" element={protect("admin", <TechniciansPage />)} />
-              <Route path="/admin/orders" element={protect("admin", <OrdersAdminPage />)} />
+              <Route path="/admin/orders" element={protect("admin", <Suspense fallback={null}><OrdersAdminPage /></Suspense>)} />
               <Route path="/admin/orders/demands" element={protect("admin", <NeedoDemandAdminPage />)} />
               <Route path="/admin/orders/info" element={protect("admin", <NeedoInfoAdminPage />)} />
               <Route path="/admin/dispatch" element={protect("admin", <AdminDispatchPage />)} />
               <Route path="/admin/field-jobs" element={protect("admin", <FieldJobsPage />)} />
-              <Route path="/admin/crm" element={protect("admin", <CRMPage />)} />
-              <Route path="/admin/users" element={protectPermission("admin", "page:user-management", <UsersPage />)} />
+              <Route path="/admin/crm" element={protect("admin", <LegacyUserManagementRedirect source="crm" />)} />
+              <Route path="/admin/users" element={protectPermission("admin", "backoffice:users:read", <LegacyUserManagementRedirect source="users"><Suspense fallback={null}><PlatformUserListPage /></Suspense></LegacyUserManagementRedirect>)} />
+              <Route path="/admin/user-groups" element={protectPermission("admin", "backoffice:user-group:read", <Suspense fallback={null}><UserGroupsPage /></Suspense>)} />
+              <Route path="/admin/user-global-settings" element={protectPermission("admin", "backoffice:user-policy:read", <Suspense fallback={null}><UserGlobalSettingsPage /></Suspense>)} />
+              <Route path="/admin/membership-tiers" element={protectPermission("admin", "backoffice:membership-tier:read", <Suspense fallback={null}><MembershipTiersPage /></Suspense>)} />
+              <Route path="/admin/membership-benefits" element={protectPermission("admin", "backoffice:membership-benefit:read", <Suspense fallback={null}><MembershipBenefitsPage /></Suspense>)} />
               <Route path="/admin/afirieito" element={protect("admin", <AffiliateAdminPage />)} />
               <Route path="/admin/afirieito/fee-rules" element={protectPermission("admin", "page:backoffice-affiliate-fee-rule", <AffiliateFeeRulesPage />)} />
               <Route path="/admin/afirieito/announcements/carousel" element={protectPermission("admin", "page:backoffice-affiliate-notice-carousel", <AffiliateNoticeCarouselPage />)} />
               <Route path="/admin/cps" element={protect("admin", <LegacyAdminAfirieitoRedirect />)} />
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
+              <Route path="/admin/finance/membership-reward-fee" element={protectPermission("admin", "page:backoffice-membership-reward-fee", <MembershipRewardFeePage />)} />
+              <Route path="/admin/finance/operating-costs" element={protectPermission("admin", "backoffice:operating-cost:read", <Suspense fallback={null}><OperatingCostsPage /></Suspense>)} />
               <Route path="/admin/reviews" element={protect("admin", <ReviewsPage />)} />
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
-              <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <MerchantApplicationsReviewPage />)} />
+              <Route path="/admin/agents" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
+              <Route path="/admin/agents/:agentPublicId" element={protectPermission("admin", "backoffice:agent:read", <Suspense fallback={null}><AgentsPage /></Suspense>)} />
+              <Route path="/admin/application-reviews/ekyc" element={protectPermission("admin", "ops:ekyc-application:read", <Suspense fallback={null}><EkycReviewPage /></Suspense>)} />
+              <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <Suspense fallback={null}><OperationsShopApplicationReviewPage /></Suspense>)} />
               <Route path="/admin/inventory" element={protect("admin", <InventoryPage />)} />
               <Route path="/admin/floorplan" element={protect("admin", <FloorplanPage />)} />
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
-              <Route path="/admin/travel-settings" element={protect("admin", <TravelSettingsPage />)} />
+              <Route path="/admin/travel-settings" element={protectPermission("admin", "backoffice:travel-fare:read", <TravelSettingsPage />)} />
+              <Route path="/admin/settings/system" element={protectPermission("admin", "backoffice:system-settings:read", <Suspense fallback={null}><SystemSettingsPage /></Suspense>)} />
+              <Route path="/admin/settings/ndp-exchange-rate" element={protectPermission("admin", "backoffice:ndp-exchange-rate:read", <NdpExchangeRatePage />)} />
+              <Route path="/admin/settings/service-search" element={protectPermission("admin", "backoffice:service-taxonomy:read", <Suspense fallback={null}><ServiceSearchAnalyticsPage /></Suspense>)} />
 
                   <Route path="*" element={<Navigate replace to="/" />} />
                 </Routes>
+                </AccountComplianceGate>
               </SocialProvider>
+              </PlatformAvailabilityGate>
             </I18nRuntime>
           </ClientThemeProvider>
           </I18nProvider>
         </RealtimeUnreadCountsProvider>
       </AuthProvider>
+      </PlatformSettingsProvider>
     </RootErrorBoundary>
   );
 }

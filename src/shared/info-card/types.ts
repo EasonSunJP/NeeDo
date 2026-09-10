@@ -58,6 +58,7 @@ export interface BaseInfoCardData {
 
 export interface TechnicianInfoCardData extends BaseInfoCardData {
   entityType: "technician";
+  completedOrderCount?: number;
   gender?: string;
   age?: string;
   serviceTypes?: string[];

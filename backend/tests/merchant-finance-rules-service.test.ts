@@ -13,6 +13,7 @@ const merchantActor = {
   email: "merchant@example.com",
   accessTokenJti: "jti",
   accessTokenExpiresAt: Date.now() + 60_000,
+  currentIdentityType: "merchant_owner",
   currentIdentityScopeType: "shop",
   currentIdentityScopeId: 11,
   roles: ["merchant_owner"],
@@ -35,6 +36,8 @@ const activeRuleSet: ShopFinanceRuleSetPayload = {
   dailyRateJpy: 0,
   fixedOrderPayJpy: 1000,
   commissionRatePercent: 50,
+  extensionCommissionRatePercent: 50,
+  nominationFeeJpy: 0,
   guaranteedMinimumJpy: 0,
   ndpFeeBearer: "split",
   technicianNdpSharePercent: 30,
@@ -113,6 +116,8 @@ describe("MerchantFinanceRulesService", () => {
       name: "Roppongi hybrid payout",
       wageMode: "commission",
       commissionRatePercent: 62.5,
+      extensionCommissionRatePercent: 72.5,
+      nominationFeeJpy: 1_800,
       fixedOrderPayJpy: 0,
       guaranteedMinimumJpy: 4200,
       ndpFeeBearer: "technician",
@@ -126,6 +131,8 @@ describe("MerchantFinanceRulesService", () => {
       shopId: 11,
       name: "Roppongi hybrid payout",
       commissionRatePercent: 62.5,
+      extensionCommissionRatePercent: 72.5,
+      nominationFeeJpy: 1_800,
       ndpFeeBearer: "technician"
     });
     expect(repository.replaceActiveRuleSet).toHaveBeenCalledWith(
@@ -133,6 +140,8 @@ describe("MerchantFinanceRulesService", () => {
       expect.objectContaining({
         name: "Roppongi hybrid payout",
         commissionRatePercent: 62.5,
+        extensionCommissionRatePercent: 72.5,
+        nominationFeeJpy: 1_800,
         technicianNdpSharePercent: 100
       }),
       7
@@ -142,7 +151,11 @@ describe("MerchantFinanceRulesService", () => {
         actor: merchantActor,
         action: "merchant_admin.finance_rules.update",
         targetType: "shop",
-        targetId: 11
+        targetId: 11,
+        metadata: expect.objectContaining({
+          previousCommissionRatePercent: 50,
+          nextCommissionRatePercent: 62.5
+        })
       })
     );
   });

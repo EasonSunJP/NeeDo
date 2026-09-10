@@ -39,7 +39,7 @@ export class CustomerProfileService {
     context: AuthRequestContext,
     input: CustomerProfileUpdateBody
   ): Promise<CustomerProfilePayload> {
-    const { profileId, userId } = await this.getCustomerScope(actor);
+    const { identityId, profileId, userId } = await this.getCustomerScope(actor);
     const mutation = this.toMutation(input);
 
     if (input.avatarDataUrl) {
@@ -55,18 +55,26 @@ export class CustomerProfileService {
       targetId: profileId,
       metadata: { changedFields: this.changedFields(input) }
     });
-    const profile = await this.repository.updateMine(userId, profileId, mutation, auditLog);
+    const profile = await this.repository.updateMine(
+      userId,
+      profileId,
+      identityId,
+      mutation,
+      auditLog
+    );
 
     return profile;
   }
 
   private async getCustomerScope(actor: AuthenticatedAccessContext): Promise<{
+    identityId: number;
     userId: number;
     profileId: number;
   }> {
     const scope = this.personalIdentityScope
       ? await this.personalIdentityScope.resolve(actor)
       : {
+          identityId: actor.currentIdentityId,
           userId: actor.userId,
           identityType: actor.currentIdentityType,
           scopeType: actor.currentIdentityScopeType,
@@ -84,7 +92,15 @@ export class CustomerProfileService {
       });
     }
 
-    return { userId: scope.userId, profileId: scope.scopeId };
+    if (!scope.identityId) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.forbidden",
+        statusCode: 403
+      });
+    }
+
+    return { identityId: scope.identityId, userId: scope.userId, profileId: scope.scopeId };
   }
 
   private toMutation(input: CustomerProfileUpdateBody): CustomerProfileMutation {

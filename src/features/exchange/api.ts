@@ -1,12 +1,25 @@
 import { httpClient } from "../../api/httpClient";
 import type {
+  ConfirmQuickExchangeBudgetInput,
+  CreateExchangeClaimInput,
+  ExchangeClaim,
+  ExchangeClaimMine,
+  ExchangeClaimOption,
+  ExchangeClaimOptionListInput,
+  ExchangeBookingConversion,
+  ExchangeCancellation,
+  ExchangeCancellationAction,
   ExchangeComment,
   ExchangeInteractionCounts,
+  ExchangeIntelligenceServiceOption,
   ExchangeListInput,
+  ExchangeMatching,
   ExchangePost,
+  ExchangeRequestPublicationContext,
   Paginated,
   PaginationInput,
-  PublishExchangePostInput
+  PublishExchangePostInput,
+  SelectExchangeMatchingInput
 } from "./types";
 
 const idempotencyHeaders = (key: string) => ({ "Idempotency-Key": key });
@@ -24,6 +37,169 @@ export function listExchangePosts(input: ExchangeListInput): Promise<Paginated<E
 
 export function getExchangePost(postId: string, signal?: AbortSignal): Promise<ExchangePost> {
   return httpClient.request<ExchangePost>(`/exchange/posts/${postId}`, { signal });
+}
+
+export function listExchangeClaimOptions(
+  postId: string,
+  input: ExchangeClaimOptionListInput = {}
+): Promise<Paginated<ExchangeClaimOption>> {
+  return httpClient.request<Paginated<ExchangeClaimOption>>(
+    `/exchange/posts/${postId}/claim-options`,
+    {
+      query: {
+        page: input.page ?? 1,
+        page_size: input.pageSize ?? 20,
+        shop_id: input.shopId,
+        technician_profile_id: input.technicianProfileId,
+        service_ref: input.serviceRef
+      },
+      signal: input.signal
+    }
+  );
+}
+
+export function createExchangeClaim(
+  postId: string,
+  input: CreateExchangeClaimInput,
+  key: string
+): Promise<ExchangeClaim> {
+  return httpClient.request<ExchangeClaim>(`/exchange/posts/${postId}/claims`, {
+    body: input,
+    headers: idempotencyHeaders(key),
+    method: "POST"
+  });
+}
+
+export function listReceivedExchangeClaims(
+  postId: string,
+  input: PaginationInput = {}
+): Promise<Paginated<ExchangeClaim>> {
+  return httpClient.request<Paginated<ExchangeClaim>>(`/exchange/posts/${postId}/claims`, {
+    query: { page: input.page ?? 1, page_size: input.pageSize ?? 20 },
+    signal: input.signal
+  });
+}
+
+export function getExchangeMatching(
+  postId: string,
+  signal?: AbortSignal
+): Promise<ExchangeMatching> {
+  return httpClient.request<ExchangeMatching>(`/exchange/posts/${postId}/matching`, { signal });
+}
+
+export function selectExchangeMatching(
+  postId: string,
+  input: SelectExchangeMatchingInput,
+  key: string
+): Promise<ExchangeMatching> {
+  return httpClient.request<ExchangeMatching>(`/exchange/posts/${postId}/matching/select`, {
+    body: input,
+    headers: idempotencyHeaders(key),
+    method: "POST"
+  });
+}
+
+export function confirmQuickExchangeBudget(
+  postId: string,
+  input: ConfirmQuickExchangeBudgetInput,
+  key: string
+): Promise<ExchangeMatching> {
+  return httpClient.request<ExchangeMatching>(
+    `/exchange/posts/${postId}/matching/quick/confirm-budget`,
+    {
+      body: input,
+      headers: idempotencyHeaders(key),
+      method: "POST"
+    }
+  );
+}
+
+export function createExchangeMatchingBookings(
+  postId: string,
+  input: { expectedVersion: number },
+  key: string
+): Promise<ExchangeBookingConversion> {
+  return httpClient.request<ExchangeBookingConversion>(`/exchange/posts/${postId}/matching/bookings`, {
+    body: input,
+    headers: idempotencyHeaders(key),
+    method: "POST"
+  });
+}
+
+export function getExchangeCancellation(
+  orderId: number,
+  signal?: AbortSignal
+): Promise<ExchangeCancellation> {
+  return httpClient.request<ExchangeCancellation>(`/exchange/orders/${orderId}/cancellation`, {
+    signal
+  });
+}
+
+export function createExchangeCancellationRequest(
+  orderId: number,
+  input: { expectedVersion: number; reason: string },
+  key: string
+): Promise<ExchangeCancellation> {
+  return httpClient.request<ExchangeCancellation>(
+    `/exchange/orders/${orderId}/cancellation/requests`,
+    {
+      body: input,
+      headers: idempotencyHeaders(key),
+      method: "POST"
+    }
+  );
+}
+
+export function decideExchangeCancellation(
+  orderId: number,
+  action: Exclude<ExchangeCancellationAction, "request">,
+  expectedVersion: number,
+  key: string
+): Promise<ExchangeCancellation> {
+  return httpClient.request<ExchangeCancellation>(
+    `/exchange/orders/${orderId}/cancellation/${action}`,
+    {
+      body: { expectedVersion },
+      headers: idempotencyHeaders(key),
+      method: "POST"
+    }
+  );
+}
+
+export async function getMyExchangeClaim(
+  postId: string,
+  signal?: AbortSignal
+): Promise<ExchangeClaim | null> {
+  const payload = await httpClient.request<ExchangeClaimMine>(
+    `/exchange/posts/${postId}/claims/mine`,
+    {
+      signal
+    }
+  );
+  return payload.claim;
+}
+
+export function withdrawExchangeClaim(claimId: string, key: string): Promise<ExchangeClaim> {
+  return httpClient.request<ExchangeClaim>(`/exchange/claims/${claimId}/withdraw`, {
+    headers: idempotencyHeaders(key),
+    method: "POST"
+  });
+}
+
+export function getRequestPublicationContext(): Promise<ExchangeRequestPublicationContext> {
+  return httpClient.request<ExchangeRequestPublicationContext>("/exchange/request-publication-context");
+}
+
+export function listExchangeIntelligenceServiceOptions(
+  input: PaginationInput = {}
+): Promise<Paginated<ExchangeIntelligenceServiceOption>> {
+  return httpClient.request<Paginated<ExchangeIntelligenceServiceOption>>(
+    "/exchange/intelligence/service-options",
+    {
+      query: { page: input.page ?? 1, page_size: input.pageSize ?? 20 },
+      signal: input.signal
+    }
+  );
 }
 
 export function publishExchangePost(input: PublishExchangePostInput, key: string): Promise<ExchangePost> {

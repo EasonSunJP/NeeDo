@@ -1,3 +1,4 @@
+import type { ApplicationEkycPolicyPort } from "../domain/user-policy-enforcement";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { IdentityApplicationPolicyService } from "./identity-application-policy.service";
@@ -42,6 +43,7 @@ export interface TechnicianApplicationReviewPage {
 }
 
 export interface ApproveTechnicianApplicationRepositoryInput {
+  ekycPolicy?: { required: boolean; verified: boolean; policyVersionPublicId: string };
   applicationId: number;
   applicantUserId: number;
   targetShopId: number;
@@ -144,6 +146,7 @@ export class TechnicianApplicationReviewService {
   public constructor(
     private readonly repository: TechnicianApplicationReviewRepositoryPort,
     private readonly contacts: TechnicianApplicationContactPort,
+    private readonly ekycPolicy: ApplicationEkycPolicyPort,
     private readonly policy = new IdentityApplicationPolicyService()
   ) {}
 
@@ -174,6 +177,9 @@ export class TechnicianApplicationReviewService {
     }
     this.assertReviewable(application.status);
     this.assertVersion(application.version, input.expectedVersion);
+    const ekyc = await this.ekycPolicy.evaluateApplicationEkyc(application.applicantUserId, "technician", input.now);
+    if (ekyc.required && !ekyc.verified) throw new AppError({ code: ERROR_CODES.SAAS_BILLING_CONFLICT, message: "error.identity_application.ekyc_required", statusCode: 409 });
+
 
     return this.repository.approveInTransaction({
       applicationId: application.applicationId,
@@ -182,6 +188,7 @@ export class TechnicianApplicationReviewService {
       reviewerUserId: input.reviewerUserId,
       expectedVersion: input.expectedVersion,
       applicantName: application.applicantName,
+      ekycPolicy: ekyc,
       city: application.city,
       bio: application.bio,
       reviewedAt: input.now,
@@ -189,9 +196,7 @@ export class TechnicianApplicationReviewService {
     });
   }
 
-  public async reject(
-    input: RejectTechnicianApplicationInput
-  ): Promise<TechnicianRejectionResult> {
+  public async reject(input: RejectTechnicianApplicationInput): Promise<TechnicianRejectionResult> {
     const rejectionReason = input.rejectionReason.trim();
     if (!rejectionReason) {
       throw new AppError({

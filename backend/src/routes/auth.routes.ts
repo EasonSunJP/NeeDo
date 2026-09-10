@@ -1,4 +1,10 @@
-import { Router, type NextFunction, type Request, type Response } from "express";
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response
+} from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { AuthController } from "../controllers/auth.controller";
@@ -14,16 +20,19 @@ import {
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import {
   challengeVerificationBodySchema,
+  compliancePhoneBindingBodySchema,
   emptyAuthActionBodySchema,
   googleCredentialBodySchema,
   legacyLoginBodySchema,
   loginBodySchema,
   logoutBodySchema,
   passwordSetupBodySchema,
+  passwordLoginVerifyBodySchema,
   registerBodySchema,
   registerVerifyBodySchema,
   refreshBodySchema,
-  switchIdentityBodySchema
+  switchIdentityBodySchema,
+  switchMerchantShopBodySchema
 } from "../validators/auth.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 import { AppError } from "../utils/app-error";
@@ -32,11 +41,27 @@ import { ERROR_CODES } from "../constants/error-codes";
 export const AUTH_ROUTE_PERMISSIONS = {
   logout: "auth:logout",
   me: "auth:me",
+  merchantShopSwitch: "auth:me:read",
   googleRead: "auth:google:read",
   googleLink: "auth:google:link",
   googleUnlink: "auth:google:unlink",
   passwordSetup: "auth:password:setup"
 } as const;
+
+export const createRequireRegistrationEnabled = (config: AppConfig): RequestHandler =>
+  (_request, _response, next): void => {
+    if (config.AUTH_REGISTRATION_ENABLED === false) {
+      next(
+        new AppError({
+          code: ERROR_CODES.REGISTRATION_DISABLED,
+          message: "error.auth.registration_disabled",
+          statusCode: 403
+        })
+      );
+      return;
+    }
+    next();
+  };
 
 export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
   const router = Router();
@@ -44,6 +69,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   const controller = new AuthController(authService);
   const authenticate = createAuthenticateMiddleware(authService);
   const authorize = createAuthorizeMiddleware;
+  const requireRegistrationEnabled = createRequireRegistrationEnabled(config);
   const registrationRateLimit = createAuthRegistrationRateLimitMiddleware(config);
   const verificationRateLimit = createAuthVerificationRateLimitMiddleware(config);
   const googleInitRateLimit = createGoogleInitRateLimitMiddleware(config);
@@ -53,13 +79,21 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post("/login", validateRequest({ body: legacyLoginBodySchema }), controller.login);
   router.post("/auth/login", validateRequest({ body: loginBodySchema }), controller.login);
   router.post(
+    "/auth/login/verify",
+    verificationRateLimit,
+    validateRequest({ body: passwordLoginVerifyBodySchema }),
+    controller.verifyPasswordLogin
+  );
+  router.post(
     "/auth/register",
+    requireRegistrationEnabled,
     registrationRateLimit,
     validateRequest({ body: registerBodySchema }),
     controller.register
   );
   router.post(
     "/auth/register/verify",
+    requireRegistrationEnabled,
     verificationRateLimit,
     validateRequest({ body: registerVerifyBodySchema }),
     controller.verifyRegistration
@@ -91,16 +125,36 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
     controller.switchIdentity
   );
   router.post(
+    "/auth/merchant-shop/switch",
+    validateRequest({ body: switchMerchantShopBodySchema }),
+    authenticate(),
+    authorize(AUTH_ROUTE_PERMISSIONS.merchantShopSwitch),
+    controller.switchMerchantShop
+  );
+  router.post(
     "/auth/logout",
     validateRequest({ body: logoutBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.logout),
     controller.logout
   );
-  router.get("/auth/me", authenticate(), authorize(AUTH_ROUTE_PERMISSIONS.me), controller.me);
+  router.get(
+    "/auth/me",
+    authenticate({ allowDuringCompliance: true }),
+    authorize(AUTH_ROUTE_PERMISSIONS.me),
+    controller.me
+  );
+  router.put(
+    "/auth/account-compliance/phone",
+    validateRequest({ body: compliancePhoneBindingBodySchema }),
+    authenticate({ allowDuringCompliance: true }),
+    authorize(AUTH_ROUTE_PERMISSIONS.me),
+    accountSecurityRateLimit,
+    controller.bindCompliancePhone
+  );
   router.get(
     "/auth/google/link",
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleRead),
     accountSecurityRateLimit,
     controller.getGoogleLinkStatus
@@ -108,7 +162,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/google/link/init",
     validateRequest({ body: emptyAuthActionBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleLink),
     accountSecurityRateLimit,
     controller.initializeAuthenticatedGoogleLink
@@ -116,7 +170,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/google/link",
     validateRequest({ body: googleCredentialBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleLink),
     accountSecurityRateLimit,
     controller.submitAuthenticatedGoogleLink
@@ -124,7 +178,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/google/link/verify",
     validateRequest({ body: challengeVerificationBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleLink),
     accountSecurityRateLimit,
     verificationRateLimit,
@@ -133,7 +187,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/google/unlink",
     validateRequest({ body: emptyAuthActionBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.googleUnlink),
     accountSecurityRateLimit,
     controller.startGoogleUnlink
@@ -149,7 +203,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/password/setup",
     validateRequest({ body: passwordSetupBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.passwordSetup),
     accountSecurityRateLimit,
     controller.startPasswordSetup
@@ -157,7 +211,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post(
     "/auth/password/setup/verify",
     validateRequest({ body: challengeVerificationBodySchema }),
-    authenticate(),
+    authenticate({ allowDuringCompliance: true }),
     authorize(AUTH_ROUTE_PERMISSIONS.passwordSetup),
     accountSecurityRateLimit,
     verificationRateLimit,

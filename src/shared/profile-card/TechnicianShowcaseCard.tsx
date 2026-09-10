@@ -1,4 +1,4 @@
-import { useState } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AppIcon, IconMetricAction, type IconName } from "../../components/client-ui/AppScaffold";
 import { translateText, type Language } from "../../i18n/translations";
@@ -7,7 +7,6 @@ import { cn } from "../../lib/utils";
 import type { ServiceItem, Technician } from "../../types/domain";
 import { getScopedProfileDetailPath } from "../profile-detail/paths";
 import { SimpleRatingBadge } from "./SimpleRatingBadge";
-import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard";
 
 type TechnicianShowcaseCardProps = {
   "aria-label"?: string;
@@ -15,6 +14,8 @@ type TechnicianShowcaseCardProps = {
   detailTo?: string;
   directService?: ServiceItem;
   fallbackServices?: ServiceItem[];
+  formalActionSlot?: ReactNode;
+  formalData?: TechnicianShowcaseFormalData;
   language: Language;
   metricLayout?: "cluster" | "split";
   onSelect?: () => void;
@@ -25,6 +26,29 @@ type TechnicianShowcaseCardProps = {
   selectionDisabled?: boolean;
   selectionInactiveIcon?: IconName;
   technician: Technician;
+};
+
+export type TechnicianShowcaseFormalData = {
+  acceptanceRatePercent?: number;
+  age?: number | null;
+  avatarUrl?: string | null;
+  city?: string;
+  completedOrderCount?: number;
+  displayName?: string;
+  distanceKm?: number;
+  favoriteCount?: number;
+  isFavorited?: boolean;
+  languages?: string[];
+  nearbyRank?: 1 | 2 | 3 | null;
+  primaryService?: {
+    currency: string;
+    durationMinutes: number;
+    name: string;
+    priceAmount: string;
+  } | null;
+  ratingAverage?: string;
+  reviewCount?: number;
+  shareCount?: number;
 };
 
 type TechnicianCardBadge =
@@ -51,6 +75,21 @@ function formatCardYen(value: number) {
   return `¥${Math.max(0, Math.round(value)).toLocaleString("ja-JP")}`;
 }
 
+function formatFormalServicePrice(value: string, currency: string) {
+  const amount = Number.parseFloat(value);
+
+  if (!Number.isFinite(amount)) {
+    return null;
+  }
+
+  const formatted = Math.max(0, Math.round(amount)).toLocaleString("ja-JP");
+  return currency.toUpperCase() === "JPY" ? `¥${formatted}` : `${currency.toUpperCase()} ${formatted}`;
+}
+
+function normalizeFormalCount(value: number | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : null;
+}
+
 function getTechnicianDisplayName(technician: Technician) {
   return technician.nickname?.trim() || technician.name;
 }
@@ -67,8 +106,26 @@ function getTechnicianCardShareCount() {
   return 0;
 }
 
-export function getTechnicianDynamicPath(technician: Technician) {
-  return `/profiles/technician/${technician.id}`;
+type TechnicianPublicProfileReference = Pick<Technician, "id"> & Partial<Pick<Technician, "systemId">>;
+
+export function getTechnicianPublicProfileId(
+  technician: TechnicianPublicProfileReference
+) {
+  const publicId = technician.systemId?.trim();
+  return publicId && /^s\d{10}$/u.test(publicId) ? publicId : technician.id;
+}
+
+export function getTechnicianDynamicPath(
+  technician: TechnicianPublicProfileReference
+) {
+  return getScopedTechnicianDynamicPath("user", technician);
+}
+
+export function getScopedTechnicianDynamicPath(
+  scope: "user" | "merchant" | "technician",
+  technician: TechnicianPublicProfileReference
+) {
+  return getScopedProfileDetailPath(scope, "technician", getTechnicianPublicProfileId(technician));
 }
 
 function getStableBucketFromText(value: string) {
@@ -325,6 +382,8 @@ export function TechnicianShowcaseCard({
   detailTo,
   directService,
   fallbackServices = [],
+  formalActionSlot,
+  formalData,
   language,
   metricLayout = "cluster",
   onSelect,
@@ -337,36 +396,73 @@ export function TechnicianShowcaseCard({
   technician
 }: TechnicianShowcaseCardProps) {
   const location = useLocation();
-  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
-  const recommendedService = getRecommendedServiceForTechnician(technician, directService, fallbackServices);
+  const formalPrimaryService = formalData?.primaryService ?? null;
+  const persistedPrimaryService = formalData ? formalPrimaryService : technician.primaryService ?? null;
+  const recommendedService = formalData || persistedPrimaryService
+    ? null
+    : getRecommendedServiceForTechnician(technician, directService, fallbackServices);
   const copy = getTechnicianCardCopy(language);
-  const displayName = getTechnicianDisplayName(technician);
-  const topBadges = buildTechnicianCardBadges(technician, rankIndex, language);
-  const primarySkill = localizeTechnicianCardText(technician.skills[0] ?? technician.profileTags?.[0] ?? copy.serviceFallback, language);
-  const areaLabel = localizeTechnicianCardText(technician.serviceAreas[0] ?? copy.tokyo, language);
-  const statusLabel = technician.status === "available" ? copy.available : technician.status === "busy" ? copy.bookingConfirm : copy.off;
+  const displayName = formalData?.displayName?.trim() || getTechnicianDisplayName(technician);
+  const formalRankBadge = formalData?.nearbyRank ? getTechnicianCardRankBadge(formalData.nearbyRank - 1) : null;
+  const topBadges = formalData
+    ? formalRankBadge
+      ? [formalRankBadge]
+      : []
+    : buildTechnicianCardBadges(technician, rankIndex, language);
+  const primarySkillSource = persistedPrimaryService?.name ?? (
+    formalData ? "" : technician.skills[0] ?? technician.profileTags?.[0] ?? copy.serviceFallback
+  );
+  const primarySkill = primarySkillSource ? localizeTechnicianCardText(primarySkillSource, language) : "";
+  const areaSource = formalData ? formalData.city?.trim() ?? "" : technician.serviceAreas[0] ?? copy.tokyo;
+  const areaLabel = areaSource ? localizeTechnicianCardText(areaSource, language) : "";
+  const statusLabel = formalData
+    ? ""
+    : technician.status === "available"
+      ? copy.available
+      : technician.status === "busy"
+        ? copy.bookingConfirm
+        : copy.off;
+  const acceptanceRate = formalData
+    ? normalizeFormalCount(formalData.acceptanceRatePercent)
+    : normalizeFormalCount(technician.acceptRate);
+  const statusLine = [statusLabel, acceptanceRate === null ? "" : `${copy.acceptRate} ${acceptanceRate}%`].filter(Boolean).join(" · ");
   const packageInfo = recommendedService?.packages[0];
   const price = packageInfo?.price ?? recommendedService?.priceFrom ?? Number.parseInt(technician.bidBudgetMin ?? "", 10);
-  const duration = packageInfo?.durationMinutes ?? 60;
-  const priceLabel = Number.isFinite(price) && price > 0 ? formatCardYen(price) : copy.pricePending;
-  const serviceName = localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
+  const duration = persistedPrimaryService?.durationMinutes ?? (formalData ? undefined : packageInfo?.durationMinutes ?? 60);
+  const priceLabel = persistedPrimaryService
+    ? formatFormalServicePrice(persistedPrimaryService.priceAmount, persistedPrimaryService.currency)
+    : formalData
+      ? null
+    : Number.isFinite(price) && price > 0
+      ? formatCardYen(price)
+      : copy.pricePending;
+  const serviceName = persistedPrimaryService
+    ? localizeTechnicianCardText(persistedPrimaryService.name, language)
+    : formalData
+      ? ""
+    : localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
   const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
-  const detailHref = detailTo ?? getScopedProfileDetailPath(currentScope, "technician", technician.id);
+  const detailHref = detailTo ?? getScopedTechnicianDynamicPath(currentScope, technician);
   const selectionLabel = selectionAriaLabel ?? ariaLabel ?? (selected ? "已选技师" : "待选技师");
   const selectionIconName = selected ? selectionActiveIcon : selectionInactiveIcon;
-  const favoriteCount = getTechnicianCardFavoriteCount(technician);
-  const shareCount = getTechnicianCardShareCount();
-  const showBeginnerIcon = shouldShowTechnicianBeginnerIcon(technician);
-  const ageLabel = technician.age
+  const favoriteCount = formalData ? normalizeFormalCount(formalData.favoriteCount) : getTechnicianCardFavoriteCount(technician);
+  const shareCount = formalData ? normalizeFormalCount(formalData.shareCount) : getTechnicianCardShareCount();
+  const rating = formalData?.ratingAverage === undefined
+    ? technician.rating
+    : Number.parseFloat(formalData.ratingAverage);
+  const photoUrl = formalData ? formalData.avatarUrl?.trim() || null : getTechnicianPhoto(technician);
+  const showBeginnerIcon = formalData ? false : shouldShowTechnicianBeginnerIcon(technician);
+  const ageValue = formalData ? formalData.age : technician.age;
+  const ageLabel = ageValue
     ? language === "zh-Hant"
-      ? `${technician.age}歲`
+      ? `${ageValue}歲`
       : language === "ja"
-        ? `${technician.age}歳`
+        ? `${ageValue}歳`
         : language === "ko"
-          ? `${technician.age}세`
+          ? `${ageValue}세`
           : language === "en"
-            ? `${technician.age}`
-            : `${technician.age}岁`
+            ? `${ageValue}`
+            : `${ageValue}岁`
     : "";
   const cardClassName = cn(
     "group block overflow-hidden rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] text-left shadow-[0_16px_34px_rgba(0,0,0,0.16)] transition",
@@ -377,30 +473,44 @@ export function TechnicianShowcaseCard({
   );
   const photoContent = (
     <div className="relative aspect-[3/4] min-h-[228px] overflow-hidden bg-black">
-      <img
-        alt={displayName}
-        className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
-        src={getGeneratedImageThumbnailUrl(getTechnicianPhoto(technician))}
-      />
+      {photoUrl ? (
+        <img
+          alt={displayName}
+          className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
+          src={getGeneratedImageThumbnailUrl(photoUrl)}
+        />
+      ) : (
+        <div
+          aria-label={`${displayName} 暂无公开照片`}
+          className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_30%_20%,color-mix(in_srgb,var(--client-primary)_24%,transparent),transparent_42%),linear-gradient(145deg,#17242b,#071016)] text-[44px] font-black text-white/72"
+          role="img"
+        >
+          {Array.from(displayName)[0] ?? "·"}
+        </div>
+      )}
       <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/10" />
       <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-black/84 via-black/48 to-transparent" />
 
       <div className={cn("absolute left-2 top-2 z-20 flex items-start justify-between gap-1", metricLayout === "split" ? "right-[5px]" : "right-2")}>
-        <SimpleRatingBadge compact value={formatTechnicianCardRating(technician.rating).toFixed(1)} />
-        <div className="flex shrink-0 items-start -space-x-[4px]">
-          <IconMetricAction
-            count={favoriteCount}
-            icon="heart"
-            label={`${copy.favorite} ${favoriteCount}`}
-            size="cluster"
-          />
-          <IconMetricAction
-            count={shareCount}
-            icon="share"
-            label={`${copy.share} ${shareCount}`}
-            size="cluster"
-          />
-        </div>
+        <SimpleRatingBadge compact value={formatTechnicianCardRating(rating).toFixed(1)} />
+        {formalActionSlot ? null : <div className="flex shrink-0 items-start -space-x-[4px]">
+          {favoriteCount === null ? null : (
+            <IconMetricAction
+              count={favoriteCount}
+              icon="heart"
+              label={`${copy.favorite} ${favoriteCount}`}
+              size="cluster"
+            />
+          )}
+          {shareCount === null ? null : (
+            <IconMetricAction
+              count={shareCount}
+              icon="share"
+              label={`${copy.share} ${shareCount}`}
+              size="cluster"
+            />
+          )}
+        </div>}
       </div>
 
       <div className="absolute inset-x-0 bottom-0 px-3 pb-3 pt-12 text-white">
@@ -426,18 +536,24 @@ export function TechnicianShowcaseCard({
         <p className="mt-1 line-clamp-1 text-[12px] font-bold text-white/86">
           {[ageLabel, technician.height ?? "", primarySkill, areaLabel].filter(Boolean).join(" / ")}
         </p>
-        <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-white/72">
-          {statusLabel} · {copy.acceptRate} {technician.acceptRate}%
-        </p>
+        {statusLine ? <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-white/72">{statusLine}</p> : null}
       </div>
     </div>
   );
   const photoTrigger = (
-    <button aria-label={`查看${displayName}信息卡`} className="block w-full text-left active:scale-[0.99]" onClick={() => setTechnicianInfoCardOpen(true)} type="button">
+    <Link aria-label={`查看${displayName}详情`} className="block w-full text-left active:scale-[0.99]" to={detailHref}>
       {photoContent}
-    </button>
+    </Link>
   );
-  const detailContent = (
+  const photoSection = (
+    <div className="relative">
+      {photoTrigger}
+      {formalActionSlot ? <div className="absolute right-2 top-2 z-30">{formalActionSlot}</div> : null}
+    </div>
+  );
+  const detailContent = formalData && !formalPrimaryService ? (
+    <div aria-hidden="true" className="min-h-[104px]" />
+  ) : (
     <div className="relative px-3 py-3 text-left">
       <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]" data-no-i18n>
         {copy.recommendedService}
@@ -446,16 +562,17 @@ export function TechnicianShowcaseCard({
         {serviceName}
       </h4>
       <p className="mt-1 flex min-w-0 items-baseline justify-start gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
-        <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
-        <span className="min-w-0 truncate">/ {duration}{copy.minuteSuffix}({copy.taxSuffix})</span>
+        {priceLabel ? <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong> : null}
+        {typeof duration === "number" && Number.isFinite(duration) ? (
+          <span className="min-w-0 truncate">/ {duration}{copy.minuteSuffix}({copy.taxSuffix})</span>
+        ) : null}
       </p>
     </div>
   );
   return onSelect ? (
-    <>
-    <div className={cardClassName}>
+    <div className={cardClassName} data-testid="technician-showcase-card">
       <div className="relative">
-        {photoTrigger}
+        {photoSection}
         {typeof selected === "boolean" ? (
           <button
             aria-disabled={selectionDisabled}
@@ -484,33 +601,16 @@ export function TechnicianShowcaseCard({
           </button>
         ) : null}
       </div>
-      <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+      <Link aria-label={`查看${displayName}详情`} className="block active:scale-[0.99]" to={detailHref}>
         {detailContent}
       </Link>
     </div>
-    <TechnicianPublicInfoCardModal
-      dynamicTo={detailHref}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={technician}
-      themeScope={currentScope}
-    />
-    </>
   ) : (
-    <>
-    <div className={cardClassName}>
-      {photoTrigger}
-      <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+    <div className={cardClassName} data-testid="technician-showcase-card">
+      {photoSection}
+      <Link aria-label={`查看${displayName}详情`} className="block active:scale-[0.99]" to={detailHref}>
         {detailContent}
       </Link>
     </div>
-    <TechnicianPublicInfoCardModal
-      dynamicTo={detailHref}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={technician}
-      themeScope={currentScope}
-    />
-    </>
   );
 }

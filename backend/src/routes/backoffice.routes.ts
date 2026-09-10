@@ -1,19 +1,37 @@
+import { RealtimeRepository } from "../repositories/realtime.repository";
 import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { BackofficeController } from "../controllers/backoffice.controller";
+import { LiveDashboardController } from "../controllers/live-dashboard.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { BackofficeRepository } from "../repositories/backoffice.repository";
+import { DashboardRepository } from "../repositories/dashboard.repository";
+import { AdministrativeRegionRepository } from "../repositories/administrative-region.repository";
+import { LiveDashboardRepository } from "../repositories/live-dashboard.repository";
+import { prisma } from "../prisma/client";
+import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
+import { PlatformMembershipRepository } from "../repositories/platform-membership.repository";
 import { AuditLogService } from "../services/audit-log.service";
 import { BackofficeService } from "../services/backoffice.service";
+import { LiveDashboardCache } from "../services/live-dashboard-cache.service";
+import { LiveDashboardService } from "../services/live-dashboard.service";
+import { CustomerAvatarFileStorage } from "../services/customer-avatar.storage";
+import { PlatformMembershipService } from "../services/platform-membership.service";
 import {
+  backofficeAccountPostsQuerySchema,
   backofficeCustomerMembershipGrantBodySchema,
   backofficeCustomerUpdateBodySchema,
+  backofficeDashboardQuerySchema,
+  backofficeDashboardMetricParamSchema,
   backofficeEntityIdParamSchema,
   backofficeListQuerySchema,
+  backofficeManagedUserListQuerySchema,
+  backofficeManagedUserDetailQuerySchema,
+  backofficeManagedUserParamSchema,
   backofficeNdpSummaryQuerySchema,
   backofficeTimelineQuerySchema,
   backofficeServiceCreateBodySchema,
@@ -24,12 +42,17 @@ import {
   backofficeTechnicianApproveBodySchema,
   backofficeTechnicianUpdateBodySchema,
   merchantShopUpdateBodySchema,
+  merchantDashboardQuerySchema,
+  merchantAdminListQuerySchema,
+  manageableMerchantShopsQuerySchema,
   technicianRankingQuerySchema
 } from "../validators/backoffice.validator";
+import { liveDashboardQuerySchema } from "../validators/live-dashboard.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
 export const BACKOFFICE_ROUTE_PERMISSIONS = {
   dashboard: "backoffice:dashboard:read",
+  dashboardDetail: "backoffice:dashboard-detail:read",
   orders: "backoffice:orders:list",
   schedule: "backoffice:schedule:list",
   finance: "backoffice:finance:list",
@@ -40,6 +63,7 @@ export const BACKOFFICE_ROUTE_PERMISSIONS = {
   shopsWrite: "backoffice:shops:write",
   customers: "backoffice:customers:list",
   customersWrite: "backoffice:customers:write",
+  usersRead: "backoffice:users:read",
   services: "backoffice:services:list",
   servicesWrite: "backoffice:services:write",
   merchantDashboard: "merchant-admin:dashboard:read",
@@ -69,15 +93,98 @@ export const createBackofficeRoutes = (
   );
   const service = new BackofficeService(
     dependencies.backofficeRepository ?? new BackofficeRepository(),
-    auditLogService
+    auditLogService,
+    dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository(),
+    undefined,
+    dependencies.customerAvatarStorage ??
+      new CustomerAvatarFileStorage(
+        config.CUSTOMER_AVATAR_STORAGE_DIR,
+        config.CUSTOMER_AVATAR_PUBLIC_BASE_URL
+      ),
+    new DashboardRepository(),
+    dependencies.platformMembershipService ??
+      new PlatformMembershipService(
+        new PlatformMembershipRepository(),
+        auditLogService,
+        undefined,
+        dependencies.userExperienceService
+      ),
+    dependencies.realtimeRepository ?? new RealtimeRepository()
   );
   const controller = new BackofficeController(service);
+  for (const merchant of [false, true]) {
+    const prefix = merchant ? "/merchant-admin" : "/backoffice";
+    const technicianPermission = merchant ? BACKOFFICE_ROUTE_PERMISSIONS.merchantTechnicians : BACKOFFICE_ROUTE_PERMISSIONS.technicians;
+    router.get(`${prefix}/technicians/:id/user-log`, authenticate(), authorize(technicianPermission),
+      validateRequest({ params: backofficeEntityIdParamSchema, query: backofficeManagedUserDetailQuerySchema }), controller.technicianUserLog(merchant));
+    for (const subject of ["users", "technicians"] as const) {
+      const permission = subject === "technicians" ? technicianPermission : merchant ? BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers : BACKOFFICE_ROUTE_PERMISSIONS.usersRead;
+      router.get(`${prefix}/${subject}/:id/posts`, authenticate(), authorize(permission),
+        validateRequest({ params: backofficeEntityIdParamSchema, query: backofficeAccountPostsQuerySchema }), controller.accountPosts(subject, merchant));
+    }
+  }
+  const liveDashboardController = new LiveDashboardController(
+    new LiveDashboardService(
+      dependencies.liveDashboardRepository ?? new LiveDashboardRepository(prisma),
+      dependencies.administrativeRegionRepository ?? new AdministrativeRegionRepository(),
+      dependencies.liveDashboardCache ?? new LiveDashboardCache(),
+      auditLogService,
+      dependencies.liveDashboardClock,
+      dependencies.liveDashboardEventGateway
+    )
+  );
 
   router.get(
     "/backoffice/dashboard",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
+    validateRequest({ query: backofficeDashboardQuerySchema }),
     controller.platformDashboard
+  );
+  router.get(
+    "/backoffice/dashboard/overview",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
+    validateRequest({ query: backofficeDashboardQuerySchema }),
+    controller.dashboardOverview
+  );
+  router.get(
+    "/backoffice/dashboard/live-snapshot",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
+    validateRequest({ query: liveDashboardQuerySchema }),
+    liveDashboardController.snapshot
+  );
+  router.get(
+    "/backoffice/dashboard/live-events",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboard),
+    validateRequest({ query: liveDashboardQuerySchema }),
+    liveDashboardController.events
+  );
+  router.get(
+    "/backoffice/dashboard/metrics/:metricKey",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.dashboardDetail),
+    validateRequest({
+      params: backofficeDashboardMetricParamSchema,
+      query: backofficeDashboardQuerySchema
+    }),
+    controller.dashboardMetricDetail
+  );
+  router.get(
+    "/backoffice/users",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.usersRead),
+    validateRequest({ query: backofficeManagedUserListQuerySchema }),
+    controller.managedUsers
+  );
+  router.get(
+    "/backoffice/users/:userId",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.usersRead),
+    validateRequest({ params: backofficeManagedUserParamSchema, query: backofficeManagedUserDetailQuerySchema }),
+    controller.managedUser
   );
   router.get(
     "/backoffice/orders",
@@ -85,6 +192,13 @@ export const createBackofficeRoutes = (
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.orders),
     validateRequest({ query: backofficeListQuerySchema }),
     controller.platformOrders
+  );
+  router.get(
+    "/backoffice/orders/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.orders),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.platformOrder
   );
   router.get(
     "/backoffice/schedule",
@@ -142,64 +256,204 @@ export const createBackofficeRoutes = (
     validateRequest({ query: backofficeListQuerySchema }),
     controller.platformShops
   );
-  router.post("/backoffice/shops", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite), validateRequest({ body: backofficeShopCreateBodySchema }), controller.createPlatformShop);
-  router.patch("/backoffice/shops/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeShopUpdateBodySchema }), controller.updatePlatformShop);
-  router.post("/backoffice/shops/:id/approve", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.approvePlatformShop);
-  router.delete("/backoffice/shops/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.deletePlatformShop);
-  router.get("/backoffice/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.technicians), validateRequest({ params: backofficeEntityIdParamSchema }), controller.platformTechnician);
-  router.patch("/backoffice/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.techniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeTechnicianUpdateBodySchema }), controller.updatePlatformTechnician);
-  router.post("/backoffice/technicians/:id/approve", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.techniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeTechnicianApproveBodySchema }), controller.approvePlatformTechnician);
-  router.delete("/backoffice/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.techniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.deletePlatformTechnician);
-  router.get("/backoffice/customers", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.customers), validateRequest({ query: backofficeListQuerySchema }), controller.platformCustomers);
-  router.get("/backoffice/customers/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.customers), validateRequest({ params: backofficeEntityIdParamSchema }), controller.platformCustomer);
-  router.get("/backoffice/customers/:id/timeline", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.customers), validateRequest({ params: backofficeEntityIdParamSchema, query: backofficeTimelineQuerySchema }), controller.platformCustomerTimeline);
-  router.patch("/backoffice/customers/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.customersWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeCustomerUpdateBodySchema }), controller.updatePlatformCustomer);
-  router.put("/backoffice/customers/:id/membership", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.customersWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeCustomerMembershipGrantBodySchema }), controller.assignPlatformCustomerMembership);
-  router.delete("/backoffice/customers/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.customersWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.deletePlatformCustomer);
-  router.get("/backoffice/services", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.services), validateRequest({ query: backofficeListQuerySchema }), controller.platformServices);
-  router.post("/backoffice/shops/:shopId/services", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.servicesWrite), validateRequest({ params: backofficeShopIdParamSchema, body: backofficeServiceCreateBodySchema }), controller.createPlatformService);
-  router.patch("/backoffice/services/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.servicesWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeServiceUpdateBodySchema }), controller.updatePlatformService);
-  router.delete("/backoffice/services/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.servicesWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.deletePlatformService);
+  router.post(
+    "/backoffice/shops",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite),
+    validateRequest({ body: backofficeShopCreateBodySchema }),
+    controller.createPlatformShop
+  );
+  router.patch(
+    "/backoffice/shops/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      body: backofficeShopUpdateBodySchema
+    }),
+    controller.updatePlatformShop
+  );
+  router.post(
+    "/backoffice/shops/:id/approve",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.approvePlatformShop
+  );
+  router.delete(
+    "/backoffice/shops/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.deletePlatformShop
+  );
+  router.get(
+    "/backoffice/technicians/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.technicians),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.platformTechnician
+  );
+  router.patch(
+    "/backoffice/technicians/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.techniciansWrite),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      body: backofficeTechnicianUpdateBodySchema
+    }),
+    controller.updatePlatformTechnician
+  );
+  router.post(
+    "/backoffice/technicians/:id/approve",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.techniciansWrite),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      body: backofficeTechnicianApproveBodySchema
+    }),
+    controller.approvePlatformTechnician
+  );
+  router.delete(
+    "/backoffice/technicians/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.techniciansWrite),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.deletePlatformTechnician
+  );
+  router.get(
+    "/backoffice/customers",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.customers),
+    validateRequest({ query: backofficeListQuerySchema }),
+    controller.platformCustomers
+  );
+  router.get(
+    "/backoffice/customers/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.customers),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.platformCustomer
+  );
+  router.get(
+    "/backoffice/customers/:id/timeline",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.customers),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      query: backofficeTimelineQuerySchema
+    }),
+    controller.platformCustomerTimeline
+  );
+  router.patch(
+    "/backoffice/customers/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.customersWrite),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      body: backofficeCustomerUpdateBodySchema
+    }),
+    controller.updatePlatformCustomer
+  );
+  router.put(
+    "/backoffice/customers/:id/membership",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.customersWrite),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      body: backofficeCustomerMembershipGrantBodySchema
+    }),
+    controller.assignPlatformCustomerMembership
+  );
+  router.delete(
+    "/backoffice/customers/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.customersWrite),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.deletePlatformCustomer
+  );
+  router.get(
+    "/backoffice/services",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.services),
+    validateRequest({ query: backofficeListQuerySchema }),
+    controller.platformServices
+  );
+  router.post(
+    "/backoffice/shops/:shopId/services",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.servicesWrite),
+    validateRequest({
+      params: backofficeShopIdParamSchema,
+      body: backofficeServiceCreateBodySchema
+    }),
+    controller.createPlatformService
+  );
+  router.patch(
+    "/backoffice/services/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.servicesWrite),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      body: backofficeServiceUpdateBodySchema
+    }),
+    controller.updatePlatformService
+  );
+  router.delete(
+    "/backoffice/services/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.servicesWrite),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.deletePlatformService
+  );
 
   router.get(
     "/merchant-admin/dashboard",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantDashboard),
+    validateRequest({ query: merchantDashboardQuerySchema }),
     controller.merchantDashboard
+  );
+  router.get(
+    "/merchant-admin/manageable-shops",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantDashboard),
+    validateRequest({ query: manageableMerchantShopsQuerySchema }),
+    controller.manageableMerchantShops
   );
   router.get(
     "/merchant-admin/orders",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantOrders),
-    validateRequest({ query: backofficeListQuerySchema }),
+    validateRequest({ query: merchantAdminListQuerySchema }),
     controller.merchantOrders
   );
   router.get(
     "/merchant-admin/schedule",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantSchedule),
-    validateRequest({ query: backofficeListQuerySchema }),
+    validateRequest({ query: merchantAdminListQuerySchema }),
     controller.merchantSchedule
   );
   router.get(
     "/merchant-admin/finance/settlements",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantFinance),
-    validateRequest({ query: backofficeListQuerySchema }),
+    validateRequest({ query: merchantAdminListQuerySchema }),
     controller.merchantFinance
   );
   router.get(
     "/merchant-admin/finance/settlements/export",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantFinanceExport),
-    validateRequest({ query: backofficeListQuerySchema }),
+    validateRequest({ query: merchantAdminListQuerySchema }),
     controller.merchantFinanceExport
   );
   router.get(
     "/merchant-admin/technicians",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechnicians),
-    validateRequest({ query: backofficeListQuerySchema }),
+    validateRequest({ query: merchantAdminListQuerySchema }),
     controller.merchantTechnicians
   );
   router.get(
@@ -215,17 +469,106 @@ export const createBackofficeRoutes = (
     validateRequest({ body: merchantShopUpdateBodySchema }),
     controller.updateMerchantShop
   );
-  router.get("/merchant-admin/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechnicians), validateRequest({ params: backofficeEntityIdParamSchema }), controller.merchantTechnician);
-  router.patch("/merchant-admin/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeTechnicianUpdateBodySchema }), controller.updateMerchantTechnician);
-  router.post("/merchant-admin/technicians/:id/approve", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.approveMerchantTechnician);
-  router.delete("/merchant-admin/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.deleteMerchantTechnician);
-  router.get("/merchant-admin/customers", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers), validateRequest({ query: backofficeListQuerySchema }), controller.merchantCustomers);
-  router.get("/merchant-admin/customers/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers), validateRequest({ params: backofficeEntityIdParamSchema }), controller.merchantCustomer);
-  router.get("/merchant-admin/customers/:id/timeline", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers), validateRequest({ params: backofficeEntityIdParamSchema, query: backofficeTimelineQuerySchema }), controller.merchantCustomerTimeline);
-  router.get("/merchant-admin/services", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantServices), validateRequest({ query: backofficeListQuerySchema }), controller.merchantServices);
-  router.post("/merchant-admin/services", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantServicesWrite), validateRequest({ body: backofficeServiceCreateBodySchema }), controller.createMerchantService);
-  router.patch("/merchant-admin/services/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantServicesWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeServiceUpdateBodySchema }), controller.updateMerchantService);
-  router.delete("/merchant-admin/services/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantServicesWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.deleteMerchantService);
+  router.get(
+    "/merchant-admin/technicians/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechnicians),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.merchantTechnician
+  );
+  router.patch(
+    "/merchant-admin/technicians/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      body: backofficeTechnicianUpdateBodySchema
+    }),
+    controller.updateMerchantTechnician
+  );
+  router.post(
+    "/merchant-admin/technicians/:id/approve",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.approveMerchantTechnician
+  );
+  router.delete(
+    "/merchant-admin/technicians/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.deleteMerchantTechnician
+  );
+  router.get(
+    "/merchant-admin/users",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),
+    validateRequest({ query: backofficeManagedUserListQuerySchema }),
+    controller.merchantManagedUsers
+  );
+  router.get(
+    "/merchant-admin/users/:userId",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),
+    validateRequest({ params: backofficeManagedUserParamSchema, query: backofficeManagedUserDetailQuerySchema }),
+    controller.merchantManagedUser
+  );
+  router.get(
+    "/merchant-admin/customers",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),
+    validateRequest({ query: merchantAdminListQuerySchema }),
+    controller.merchantCustomers
+  );
+  router.get(
+    "/merchant-admin/customers/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.merchantCustomer
+  );
+  router.get(
+    "/merchant-admin/customers/:id/timeline",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantCustomers),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      query: backofficeTimelineQuerySchema
+    }),
+    controller.merchantCustomerTimeline
+  );
+  router.get(
+    "/merchant-admin/services",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantServices),
+    validateRequest({ query: merchantAdminListQuerySchema }),
+    controller.merchantServices
+  );
+  router.post(
+    "/merchant-admin/services",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantServicesWrite),
+    validateRequest({ body: backofficeServiceCreateBodySchema }),
+    controller.createMerchantService
+  );
+  router.patch(
+    "/merchant-admin/services/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantServicesWrite),
+    validateRequest({
+      params: backofficeEntityIdParamSchema,
+      body: backofficeServiceUpdateBodySchema
+    }),
+    controller.updateMerchantService
+  );
+  router.delete(
+    "/merchant-admin/services/:id",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantServicesWrite),
+    validateRequest({ params: backofficeEntityIdParamSchema }),
+    controller.deleteMerchantService
+  );
 
   return router;
 };

@@ -10,10 +10,22 @@ import type {
   Shop,
   TechnicianProfile
 } from "@prisma/client";
+import { ContentLocale } from "@prisma/client";
+import type { ContentLocaleCode } from "../constants/content-locales";
+import { shopPresentationContentSchema } from "../validators/shop-presentation.validator";
 import { prisma } from "../prisma/client";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
+import type {
+  Coordinates,
+  NearbyTechnicianCandidate
+} from "../services/nearby-technician-ranking.service";
+import { haversineDistanceKm } from "../services/nearby-technician-ranking.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
+import {
+  loadTechnicianReviewTagSummary,
+  type TechnicianReviewTagSummaryPayload
+} from "./technician-review-tag-summary.repository";
 
 const PUBLISHED_STATUS = "published";
 const DEFAULT_HOME_LIMIT = 6;
@@ -39,11 +51,25 @@ export interface ServiceListInput extends PaginationInput {
   minPrice?: number;
   maxPrice?: number;
   sort?: CoreReadSort;
+  latitude?: number;
+  longitude?: number;
+}
+
+export type CoreSearchEntityType = "service" | "shop" | "technician";
+
+export interface CoreSearchInput extends ServiceListInput {
+  entityType: CoreSearchEntityType;
+  keywords: string[];
+  categoryIds: number[];
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface HomeRecommendationsInput {
   city?: string;
   limit?: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface ReviewSummaryPayload {
@@ -86,6 +112,20 @@ export interface ShopCardPayload {
   address: string;
   coverUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  completedOrderCount: number;
+  favoriteCount: number;
+  shareCount: number;
+  distanceKm?: number;
+  serviceCategories: Array<{ id: number; code: string; label: string }>;
+  businessKeywords: Array<{ id: number; code: string; label: string; categoryId: number }>;
+}
+
+export interface PrimaryTechnicianServicePayload {
+  id: number;
+  name: string;
+  priceAmount: string;
+  currency: string;
+  durationMinutes: number;
 }
 
 export interface TechnicianCardPayload {
@@ -95,6 +135,15 @@ export interface TechnicianCardPayload {
   city: string;
   avatarUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  age: number | null;
+  favoriteCount: number;
+  shareCount: number;
+  completedOrderCount: number;
+  acceptanceRatePercent: number;
+  primaryService: PrimaryTechnicianServicePayload | null;
+  distanceKm?: number;
+  nearbyRank?: 1 | 2 | 3 | null;
+  resolvedRadiusKm?: number;
 }
 
 export interface ServiceCardPayload {
@@ -109,6 +158,11 @@ export interface ServiceCardPayload {
   priceAmount: string;
   currency: string;
   durationMinutes: number;
+  usageCount: number;
+  favoriteCount: number;
+  shareCount: number;
+  isBookable: boolean;
+  distanceKm?: number;
   coverUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
 }
@@ -118,6 +172,19 @@ export interface ServiceDetailPayload extends ServiceCardPayload {
   mediaAssets: MediaAssetPayload[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ServiceReviewPayload {
+  id: number;
+  title: string | null;
+  comment: string | null;
+  rating: number;
+  createdAt: Date;
+  reviewer: {
+    displayName: string;
+    avatarUrl: string | null;
+  };
+  mediaAssets: MediaAssetPayload[];
 }
 
 export interface ShopDetailPayload extends ShopCardPayload {
@@ -136,7 +203,11 @@ export interface TechnicianDetailPayload extends TechnicianCardPayload {
   shop: ShopCardPayload | null;
   bio: string | null;
   serviceArea: string | null;
+  gender: "female" | "male" | "private";
+  heightCm: number | null;
+  languages: string[];
   yearsExperience: number;
+  reviewTagSummary: TechnicianReviewTagSummaryPayload;
   mediaAssets: MediaAssetPayload[];
   services: ServiceCardPayload[];
   createdAt: Date;
@@ -163,14 +234,35 @@ export interface HomeRecommendationsPayload {
   technicians: TechnicianCardPayload[];
 }
 
+export type CoreSearchResponse =
+  | PaginatedResponse<ServiceCardPayload>
+  | PaginatedResponse<ShopCardPayload>
+  | PaginatedResponse<TechnicianCardPayload>;
+
 export interface CoreReadRepositoryPort {
   listCategories: (input: CategoryListInput) => Promise<PaginatedResponse<CategoryPayload>>;
   listServices: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
   findServiceDetail: (id: number | string) => Promise<ServiceDetailPayload | null>;
+  listServiceReviews: (
+    id: number | string,
+    input: PaginationInput
+  ) => Promise<PaginatedResponse<ServiceReviewPayload> | null>;
   getHomeRecommendations: (input: HomeRecommendationsInput) => Promise<HomeRecommendationsPayload>;
-  search: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
-  findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
-  findTechnicianDetail: (id: number) => Promise<TechnicianDetailPayload | null>;
+  search: (input: CoreSearchInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
+  searchShops: (input: CoreSearchInput) => Promise<PaginatedResponse<ShopCardPayload>>;
+  searchTechnicians: (input: CoreSearchInput) => Promise<PaginatedResponse<TechnicianCardPayload>>;
+  countEligibleLocatedTechnicians: (input: CoreSearchInput) => Promise<number>;
+  findEligibleTechniciansWithinBounds: (
+    input: CoreSearchInput,
+    origin: Coordinates,
+    radiusKm: number
+  ) => Promise<NearbyTechnicianCandidate[]>;
+  loadTechnicianCardsByRankedIds: (ids: number[]) => Promise<Map<number, TechnicianCardPayload>>;
+  findShopDetail: (id: number | string, locale?: ContentLocaleCode) => Promise<ShopDetailPayload | null>;
+  findTechnicianDetail: (
+    id: number | string,
+    coordinates?: { latitude?: number; longitude?: number }
+  ) => Promise<TechnicianDetailPayload | null>;
   findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
 }
 
@@ -178,14 +270,55 @@ type ShopCardRecord = Shop & {
   mediaAssets: MediaAsset[];
   publicIdentifier: PublicIdentifier | null;
   reviewSummary: ReviewSummary | null;
+  _count: {
+    bookingOrders: number;
+    entityFavorites: number;
+    entityShareEvents: number;
+  };
+  serviceCategorySelections: Array<{
+    category: {
+      id: number;
+      code: string;
+      translations: Array<{ name: string }>;
+    };
+  }>;
+  businessKeywordSelections: Array<{
+    businessKeyword: {
+      id: number;
+      code: string;
+      categoryId: number;
+      translations: Array<{ label: string }>;
+    };
+  }>;
 };
 
 type TechnicianCardRecord = TechnicianProfile & {
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
+  performanceSummary: {
+    completedOrderCount: number;
+    acceptanceRateBps: number;
+    deletedAt: Date | null;
+  } | null;
+  technicianServices: Array<{
+    id: number;
+    name: string;
+    priceAmount: number;
+    currency: string;
+    durationMinutes: number;
+  }>;
+  _count: {
+    entityFavorites: number;
+    entityShareEvents: number;
+  };
   user: {
+    avatarBootstrapUrl: string | null;
     identities: Array<{ publicIdentifier: PublicIdentifier | null }>;
   };
+  shop?: { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null } | null;
+  technicianShopAffiliations?: Array<{
+    shop: { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null };
+  }>;
 };
 
 type ServiceRecordBase = Service & {
@@ -193,6 +326,7 @@ type ServiceRecordBase = Service & {
   technicianProfile: TechnicianCardRecord | null;
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
+  _count: { bookingOrders: number; entityFavorites: number; entityShareEvents: number };
 };
 
 type ServiceCardRecord = ServiceRecordBase & {
@@ -202,6 +336,7 @@ type ServiceCardRecord = ServiceRecordBase & {
 type ShopDetailRecord = ShopCardRecord & {
   services: ServiceRecordBase[];
   technicians: TechnicianCardRecord[];
+  technicianShopAffiliations?: Array<{ technicianProfile: TechnicianCardRecord }>;
 };
 
 type TechnicianDetailRecord = TechnicianCardRecord & {
@@ -212,7 +347,7 @@ type TechnicianDetailRecord = TechnicianCardRecord & {
 type CustomerProfileRecord = CustomerProfile & {
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
-  user: { needoId: string };
+  user: { avatarBootstrapUrl: string | null; avatarUrl: string | null; needoId: string };
 };
 
 type DecimalLike = {
@@ -250,7 +385,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   }
 
   public async listServices(
-    input: ServiceListInput
+    input: ServiceListInput | CoreSearchInput
   ): Promise<PaginatedResponse<ServiceCardPayload>> {
     const pagination = toPrismaPagination(input);
     const where = this.buildServiceWhere(input);
@@ -266,7 +401,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((service) => this.mapServiceCard(service)),
+      list.map((service) => this.mapServiceCard(service, undefined, this.originFrom(input))),
       total,
       pagination
     );
@@ -283,6 +418,142 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     });
 
     return service ? this.mapServiceDetail(service) : null;
+  }
+
+  public async listServiceReviews(
+    id: number | string,
+    input: PaginationInput
+  ): Promise<PaginatedResponse<ServiceReviewPayload> | null> {
+    const service = await this.client.service.findFirst({
+      where: {
+        ...(typeof id === "number" ? { id } : { publicId: id }),
+        deletedAt: null,
+        status: PUBLISHED_STATUS
+      },
+      select: { id: true }
+    });
+    if (!service) return null;
+
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.OrderReviewWhereInput = {
+      targetType: "TECHNICIAN",
+      deletedAt: null,
+      reviewer: { deletedAt: null },
+      bookingOrder: {
+        serviceId: service.id,
+        status: "COMPLETED",
+        deletedAt: null
+      }
+    };
+    const [reviews, total] = await Promise.all([
+      this.client.orderReview.findMany({
+        where,
+        select: {
+          id: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
+          tags: {
+            where: { deletedAt: null },
+            orderBy: [{ id: "asc" }],
+            select: { label: true }
+          },
+          amendments: {
+            where: { deletedAt: null },
+            orderBy: [{ version: "desc" }, { id: "desc" }],
+            take: 1,
+            select: {
+              rating: true,
+              comment: true,
+              tags: {
+                where: { deletedAt: null },
+                orderBy: [{ id: "asc" }],
+                select: { label: true }
+              }
+            }
+          },
+          reviewer: {
+            select: {
+              username: true,
+              avatarUrl: true,
+              avatarBootstrapUrl: true,
+              customerProfile: {
+                select: { displayName: true, deletedAt: true }
+              }
+            }
+          }
+        },
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.orderReview.count({ where })
+    ]);
+    const mediaAssets = reviews.length > 0
+      ? await this.client.mediaAsset.findMany({
+          where: {
+            entityType: "order_review",
+            entityId: { in: reviews.map((review) => review.id) },
+            mimeType: { startsWith: "image/" },
+            isActive: true,
+            purgedAt: null,
+            deletedAt: null
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            entityId: true,
+            url: true,
+            mimeType: true,
+            usageType: true,
+            width: true,
+            height: true,
+            altText: true,
+            sortOrder: true
+          }
+        })
+      : [];
+    const mediaByReviewId = new Map<number, MediaAssetPayload[]>();
+    for (const asset of mediaAssets) {
+      const list = mediaByReviewId.get(asset.entityId) ?? [];
+      list.push({
+        id: asset.id,
+        url: asset.url,
+        mimeType: asset.mimeType,
+        usageType: asset.usageType,
+        width: asset.width,
+        height: asset.height,
+        altText: asset.altText,
+        sortOrder: asset.sortOrder
+      });
+      mediaByReviewId.set(asset.entityId, list);
+    }
+
+    return buildPaginatedResponse(
+      reviews.map((review) => {
+        const amendment = review.amendments[0];
+        const tags = amendment ? amendment.tags : review.tags;
+        const customerProfile = review.reviewer.customerProfile;
+
+        return {
+          id: review.id,
+          title: tags[0]?.label ?? null,
+          comment: amendment ? amendment.comment : review.comment,
+          rating: amendment?.rating ?? review.rating,
+          createdAt: review.createdAt,
+          reviewer: {
+            displayName:
+              customerProfile && !customerProfile.deletedAt
+                ? customerProfile.displayName
+                : review.reviewer.username,
+            avatarUrl: review.reviewer.avatarUrl ?? review.reviewer.avatarBootstrapUrl
+          },
+          mediaAssets: mediaByReviewId.get(review.id) ?? []
+        };
+      }),
+      total,
+      pagination
+    );
   }
 
   public async getHomeRecommendations(
@@ -318,8 +589,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       }),
       this.client.technicianProfile.findMany({
         where: {
-          deletedAt: null,
-          status: PUBLISHED_STATUS,
+          ...this.publishedTechnicianProfileWhere(),
           isRecommended: true,
           ...cityWhere
         },
@@ -331,17 +601,154 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
     return {
       categories: categories.map((category) => this.mapCategory(category)),
-      services: services.map((service) => this.mapServiceCard(service)),
-      shops: shops.map((shop) => this.mapShopCard(shop)),
-      technicians: technicians.map((technician) => this.mapTechnicianCard(technician))
+      services: services.map((service) =>
+        this.mapServiceCard(service, undefined, this.originFrom(input))
+      ),
+      shops: shops.map((shop) => this.mapShopCard(shop, this.originFrom(input))),
+      technicians: technicians.map((technician) =>
+        this.mapTechnicianCard(technician, this.originFrom(input))
+      )
     };
   }
 
-  public search(input: ServiceListInput): Promise<PaginatedResponse<ServiceCardPayload>> {
+  public search(input: CoreSearchInput): Promise<PaginatedResponse<ServiceCardPayload>> {
     return this.listServices({ ...input, sort: input.sort ?? "rating_desc" });
   }
 
-  public async findShopDetail(id: number | string): Promise<ShopDetailPayload | null> {
+  public async searchShops(input: CoreSearchInput): Promise<PaginatedResponse<ShopCardPayload>> {
+    const pagination = toPrismaPagination(input);
+    const where = this.buildShopSearchWhere(input);
+    const [list, total] = await Promise.all([
+      this.client.shop.findMany({
+        where,
+        include: this.shopCardInclude(),
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ isRecommended: "desc" }, { id: "asc" }]
+      }),
+      this.client.shop.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      list.map((shop) => this.mapShopCard(shop, this.originFrom(input))),
+      total,
+      pagination
+    );
+  }
+
+  public async searchTechnicians(
+    input: CoreSearchInput
+  ): Promise<PaginatedResponse<TechnicianCardPayload>> {
+    const pagination = toPrismaPagination(input);
+    const where = this.buildTechnicianSearchWhere(input);
+    const [list, total] = await Promise.all([
+      this.client.technicianProfile.findMany({
+        where,
+        include: this.technicianCardInclude(),
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ isRecommended: "desc" }, { id: "asc" }]
+      }),
+      this.client.technicianProfile.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      list.map((technician) => this.mapTechnicianCard(technician)),
+      total,
+      pagination
+    );
+  }
+
+  public countEligibleLocatedTechnicians(input: CoreSearchInput): Promise<number> {
+    return this.client.technicianProfile.count({
+      where: {
+        ...this.buildTechnicianSearchWhere(input),
+        AND: [{ OR: this.eligibleTechnicianLocationBranches() }]
+      }
+    });
+  }
+
+  public async findEligibleTechniciansWithinBounds(
+    input: CoreSearchInput,
+    origin: Coordinates,
+    radiusKm: number
+  ): Promise<NearbyTechnicianCandidate[]> {
+    const technicians = await this.client.technicianProfile.findMany({
+      where: {
+        ...this.buildTechnicianSearchWhere(input),
+        AND: [{ OR: this.boundedTechnicianLocationBranches(origin, radiusKm) }]
+      },
+      select: {
+        id: true,
+        baseLatitude: true,
+        baseLongitude: true,
+        reviewSummary: {
+          select: { ratingAverage: true, reviewCount: true, deletedAt: true }
+        },
+        performanceSummary: {
+          select: { completedOrderCount: true, deletedAt: true }
+        },
+        user: { select: { createdAt: true } },
+        technicianShopAffiliations: {
+          where: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              latitude: { not: null },
+              longitude: { not: null }
+            }
+          },
+          select: {
+            shop: { select: { latitude: true, longitude: true } }
+          }
+        }
+      }
+    });
+
+    return technicians.map((technician) => ({
+      technicianProfileId: technician.id,
+      locations: [
+        this.toCoordinates(technician.baseLatitude, technician.baseLongitude),
+        ...technician.technicianShopAffiliations.map(({ shop }) =>
+          this.toCoordinates(shop.latitude, shop.longitude)
+        )
+      ].filter((location): location is Coordinates => location !== null),
+      ratingAverage:
+        technician.reviewSummary?.deletedAt === null
+          ? technician.reviewSummary.ratingAverage.toString()
+          : null,
+      completedOrderCount:
+        technician.performanceSummary?.deletedAt === null
+          ? technician.performanceSummary.completedOrderCount
+          : 0,
+      reviewCount:
+        technician.reviewSummary?.deletedAt === null ? technician.reviewSummary.reviewCount : 0,
+      registeredAt: technician.user.createdAt
+    }));
+  }
+
+  public async loadTechnicianCardsByRankedIds(
+    ids: number[]
+  ): Promise<Map<number, TechnicianCardPayload>> {
+    if (ids.length === 0) {
+      return new Map();
+    }
+    const technicians = await this.client.technicianProfile.findMany({
+      where: {
+        ...this.publishedTechnicianProfileWhere(),
+        id: { in: ids }
+      },
+      include: this.technicianCardInclude()
+    });
+    return new Map(
+      technicians.map((technician) => [technician.id, this.mapTechnicianCard(technician)])
+    );
+  }
+
+  public async findShopDetail(id: number | string, locale?: ContentLocaleCode): Promise<ShopDetailPayload | null> {
+    const now = new Date();
     const shop = await this.client.shop.findFirst({
       where: {
         ...(typeof id === "number"
@@ -362,22 +769,73 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           orderBy: this.buildServiceOrderBy("recommended")
         },
         technicians: {
-          where: { deletedAt: null, status: PUBLISHED_STATUS },
+          where: this.publishedTechnicianProfileWhere(),
           include: this.technicianCardInclude(),
           orderBy: [{ id: "asc" }]
+        },
+        technicianShopAffiliations: {
+          where: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            startsAt: { lte: now },
+            OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+            technicianProfile: { is: this.publishedTechnicianProfileWhere() }
+          },
+          include: { technicianProfile: { include: this.technicianCardInclude() } },
+          orderBy: [{ technicianProfileId: "asc" }]
         }
       }
     });
 
-    return shop ? this.mapShopDetail(shop) : null;
+    if (!shop) return null;
+    const payload = this.mapShopDetail(shop);
+    if (!locale) return payload;
+    const localeMap: Record<ContentLocaleCode, ContentLocale> = {
+      "zh-CN": ContentLocale.ZH_CN,
+      "zh-TW": ContentLocale.ZH_TW,
+      en: ContentLocale.EN,
+      ja: ContentLocale.JA,
+      ko: ContentLocale.KO
+    };
+    const translation = await this.client.shopPresentationLocale.findFirst({
+      where: { shopId: shop.id, locale: localeMap[locale], deletedAt: null }
+    });
+    if (!translation) return payload;
+    const content = shopPresentationContentSchema.parse(translation.content);
+    const shopAssetByPublicId = new Map(shop.mediaAssets.flatMap((asset) => asset.checksumSha256 ? [[asset.checksumSha256, asset]] : []));
+    const localizedAssets = content.carousel.flatMap((item) => {
+      const asset = shopAssetByPublicId.get(item.mediaAssetPublicId);
+      return asset ? [{ ...this.mapMediaAsset(asset), altText: item.altText }] : [];
+    });
+    const menuByServiceId = new Map(content.serviceMenus.map((item) => [item.serviceId, item]));
+    return {
+      ...payload,
+      name: content.storeName,
+      description: content.description,
+      city: content.area,
+      address: content.address,
+      coverUrl: localizedAssets[0]?.url ?? payload.coverUrl,
+      mediaAssets: localizedAssets.length ? localizedAssets : payload.mediaAssets,
+      services: payload.services.map((service) => {
+        const menu = menuByServiceId.get(service.id);
+        if (!menu) return service;
+        const source = shop.services.find((item) => item.id === service.id);
+        const cover = menu.coverMediaAssetPublicId
+          ? source?.mediaAssets.find((asset) => asset.checksumSha256 === menu.coverMediaAssetPublicId)?.url
+          : undefined;
+        return { ...service, name: menu.name, description: menu.description, coverUrl: cover ?? service.coverUrl };
+      })
+    };
   }
 
-  public async findTechnicianDetail(id: number): Promise<TechnicianDetailPayload | null> {
+  public async findTechnicianDetail(
+    id: number | string,
+    coordinates: { latitude?: number; longitude?: number } = {}
+  ): Promise<TechnicianDetailPayload | null> {
     const technician = await this.client.technicianProfile.findFirst({
       where: {
-        id,
-        deletedAt: null,
-        status: PUBLISHED_STATUS
+        ...(typeof id === "number" ? { id } : {}),
+        ...this.publishedTechnicianProfileWhere(typeof id === "string" ? id : undefined)
       },
       include: {
         ...this.technicianCardInclude(),
@@ -392,7 +850,14 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       }
     });
 
-    return technician ? this.mapTechnicianDetail(technician) : null;
+    if (!technician) return null;
+    const reviewTagSummary = await loadTechnicianReviewTagSummary(this.client, technician.id);
+
+    return this.mapTechnicianDetail(
+      technician,
+      reviewTagSummary,
+      this.originFrom(coordinates)
+    );
   }
 
   public async findCustomerProfile(id: number): Promise<CustomerProfilePayload | null> {
@@ -405,7 +870,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       include: {
         mediaAssets: activeMediaArgs,
         reviewSummary: true,
-        user: { select: { needoId: true } }
+        user: { select: { avatarBootstrapUrl: true, avatarUrl: true, needoId: true } }
       }
     });
 
@@ -422,7 +887,14 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         include: this.technicianCardInclude()
       },
       mediaAssets: activeMediaArgs,
-      reviewSummary: true
+      reviewSummary: true,
+      _count: {
+        select: {
+          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } },
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
+        }
+      }
     };
   }
 
@@ -433,38 +905,462 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
         include: this.technicianCardInclude()
       },
       mediaAssets: activeMediaArgs,
-      reviewSummary: true
-    };
-  }
-
-  private shopCardInclude() {
-    return {
-      mediaAssets: activeMediaArgs,
-      publicIdentifier: true,
-      reviewSummary: true
-    };
-  }
-
-  private technicianCardInclude() {
-    return {
-      mediaAssets: activeMediaArgs,
       reviewSummary: true,
-      user: {
+      _count: {
         select: {
-          identities: {
-            where: {
-              deletedAt: null,
-              isActive: true,
-              type: { in: ["technician", "service", "s"] }
-            },
-            include: { publicIdentifier: true }
-          }
+          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } },
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
         }
       }
     };
   }
 
-  private buildServiceWhere(input: ServiceListInput): Prisma.ServiceWhereInput {
+  private shopCardInclude() {
+    return {
+      _count: {
+        select: {
+          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } },
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
+        }
+      },
+      mediaAssets: activeMediaArgs,
+      publicIdentifier: true,
+      reviewSummary: true,
+      serviceCategorySelections: {
+        where: {
+          deletedAt: null,
+          category: { isActive: true, deletedAt: null }
+        },
+        select: {
+          category: {
+            select: {
+              id: true,
+              code: true,
+              translations: {
+                where: { locale: "JA" as const, deletedAt: null },
+                select: { name: true },
+                take: 1
+              }
+            }
+          }
+        },
+        orderBy: [{ category: { sortOrder: "asc" as const } }, { id: "asc" as const }]
+      },
+      businessKeywordSelections: {
+        where: {
+          deletedAt: null,
+          businessKeyword: {
+            isActive: true,
+            deletedAt: null,
+            category: { isActive: true, deletedAt: null }
+          }
+        },
+        select: {
+          businessKeyword: {
+            select: {
+              id: true,
+              code: true,
+              categoryId: true,
+              translations: {
+                where: { locale: "JA" as const, deletedAt: null },
+                select: { label: true },
+                take: 1
+              }
+            }
+          }
+        },
+        orderBy: [{ businessKeyword: { sortOrder: "asc" as const } }, { id: "asc" as const }]
+      }
+    };
+  }
+
+  private technicianCardInclude() {
+    return {
+      _count: {
+        select: {
+          entityFavorites: { where: { deletedAt: null } },
+          entityShareEvents: { where: { deletedAt: null } }
+        }
+      },
+      mediaAssets: activeMediaArgs,
+      reviewSummary: true,
+      performanceSummary: true,
+      technicianServices: {
+        where: {
+          deletedAt: null,
+          isActive: true,
+          isBookable: true,
+          reviewStatus: "APPROVED" as const
+        },
+        select: {
+          id: true,
+          name: true,
+          priceAmount: true,
+          currency: true,
+          durationMinutes: true
+        },
+        orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
+        take: 1
+      },
+      user: {
+        select: {
+          avatarBootstrapUrl: true,
+          identities: {
+            where: {
+              deletedAt: null,
+              isActive: true,
+              type: { in: ["technician", "service", "s"] },
+              publicIdentifier: {
+                is: this.publicIdentifierWhere("S")
+              }
+            },
+            include: { publicIdentifier: true }
+          }
+        }
+      },
+      shop: {
+        select: { latitude: true, longitude: true }
+      },
+      technicianShopAffiliations: {
+        where: {
+          deletedAt: null,
+          workStatus: "ACTIVE" as const,
+          shop: { deletedAt: null, status: PUBLISHED_STATUS }
+        },
+        select: {
+          shop: { select: { latitude: true, longitude: true } }
+        }
+      }
+    };
+  }
+
+  private searchKeywords(input: Pick<CoreSearchInput, "keyword" | "keywords">): string[] {
+    return Array.from(
+      new Set(
+        [input.keyword, ...input.keywords]
+          .map((value) => value?.trim())
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+  }
+
+  private publicIdentifierWhere(kind: "S" | "SHOP"): Prisma.PublicIdentifierWhereInput {
+    return { kind, status: "ACTIVE", deletedAt: null };
+  }
+
+  private serviceKeywordBranches(keyword: string): Prisma.ServiceWhereInput[] {
+    return [
+      { name: { contains: keyword } },
+      { description: { contains: keyword } },
+      { category: { name: { contains: keyword } } },
+      { category: { nameJa: { contains: keyword } } },
+      { category: { nameEn: { contains: keyword } } },
+      { shop: { name: { contains: keyword } } },
+      { technicianProfile: { displayName: { contains: keyword } } }
+    ];
+  }
+
+  private publishedServiceKeywordWhere(keyword: string): Prisma.ServiceWhereInput {
+    return {
+      deletedAt: null,
+      status: PUBLISHED_STATUS,
+      category: { deletedAt: null, isActive: true },
+      OR: this.serviceKeywordBranches(keyword)
+    };
+  }
+
+  private publishedServiceCategoryWhere(categoryIds: number[]): Prisma.ServiceWhereInput {
+    return {
+      deletedAt: null,
+      status: PUBLISHED_STATUS,
+      categoryId: { in: categoryIds },
+      category: { deletedAt: null, isActive: true }
+    };
+  }
+
+  private technicianServiceKeywordWhere(keyword: string): Prisma.TechnicianServiceWhereInput {
+    return {
+      deletedAt: null,
+      isActive: true,
+      reviewStatus: "APPROVED",
+      OR: [
+        { name: { contains: keyword } },
+        { description: { contains: keyword } },
+        { category: { name: { contains: keyword } } },
+        { category: { nameJa: { contains: keyword } } },
+        { category: { nameEn: { contains: keyword } } }
+      ]
+    };
+  }
+
+  private technicianServiceCategoryWhere(
+    categoryIds: number[]
+  ): Prisma.TechnicianServiceWhereInput {
+    return {
+      deletedAt: null,
+      isActive: true,
+      reviewStatus: "APPROVED",
+      categoryId: { in: categoryIds },
+      category: { deletedAt: null, isActive: true }
+    };
+  }
+
+  private activeTechnicianIdentityWhere(publicId?: string): Prisma.UserIdentityWhereInput {
+    return {
+      deletedAt: null,
+      isActive: true,
+      type: { in: ["technician", "service", "s"] },
+      publicIdentifier: {
+        is: {
+          ...this.publicIdentifierWhere("S"),
+          ...(publicId ? { publicId } : {})
+        }
+      }
+    };
+  }
+
+  private publishedTechnicianProfileWhere(publicId?: string): Prisma.TechnicianProfileWhereInput {
+    return {
+      deletedAt: null,
+      status: PUBLISHED_STATUS,
+      visibility: "public",
+      user: {
+        identities: { some: this.activeTechnicianIdentityWhere(publicId) }
+      }
+    };
+  }
+
+  private eligibleTechnicianLocationBranches(): Prisma.TechnicianProfileWhereInput[] {
+    return [
+      {
+        baseLatitude: { not: null },
+        baseLongitude: { not: null }
+      },
+      {
+        technicianShopAffiliations: {
+          some: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              latitude: { not: null },
+              longitude: { not: null }
+            }
+          }
+        }
+      }
+    ];
+  }
+
+  private boundedTechnicianLocationBranches(
+    origin: Coordinates,
+    radiusKm: number
+  ): Prisma.TechnicianProfileWhereInput[] {
+    const latitudeDelta = radiusKm / 111.32;
+    const longitudeScale = Math.abs(Math.cos((origin.latitude * Math.PI) / 180));
+    const longitudeDelta =
+      longitudeScale < 1e-12 ? 180 : Math.min(180, radiusKm / (111.32 * longitudeScale));
+    const latitudeRange = {
+      gte: Math.max(-90, origin.latitude - latitudeDelta),
+      lte: Math.min(90, origin.latitude + latitudeDelta)
+    };
+    const personalLongitude = this.decimalLongitudeWhere(
+      "baseLongitude",
+      origin.longitude,
+      longitudeDelta
+    );
+    const shopLongitude = this.decimalLongitudeWhere("longitude", origin.longitude, longitudeDelta);
+
+    return [
+      {
+        AND: [
+          { baseLatitude: latitudeRange },
+          ...(personalLongitude as Prisma.TechnicianProfileWhereInput[])
+        ]
+      },
+      {
+        technicianShopAffiliations: {
+          some: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              AND: [{ latitude: latitudeRange }, ...(shopLongitude as Prisma.ShopWhereInput[])]
+            }
+          }
+        }
+      }
+    ];
+  }
+
+  private decimalLongitudeWhere(
+    field: "baseLongitude" | "longitude",
+    center: number,
+    delta: number
+  ): Array<Record<string, unknown>> {
+    if (delta >= 180) {
+      return [{ [field]: { gte: -180, lte: 180 } }];
+    }
+    const minimum = center - delta;
+    const maximum = center + delta;
+    if (minimum < -180) {
+      return [
+        {
+          OR: [{ [field]: { gte: minimum + 360 } }, { [field]: { lte: maximum } }]
+        }
+      ];
+    }
+    if (maximum > 180) {
+      return [
+        {
+          OR: [{ [field]: { gte: minimum } }, { [field]: { lte: maximum - 360 } }]
+        }
+      ];
+    }
+    return [{ [field]: { gte: minimum, lte: maximum } }];
+  }
+
+  private toCoordinates(
+    latitude: Prisma.Decimal | null,
+    longitude: Prisma.Decimal | null
+  ): Coordinates | null {
+    if (latitude === null || longitude === null) {
+      return null;
+    }
+    const coordinates = {
+      latitude: Number(latitude),
+      longitude: Number(longitude)
+    };
+    return Number.isFinite(coordinates.latitude) && Number.isFinite(coordinates.longitude)
+      ? coordinates
+      : null;
+  }
+
+  private buildShopSearchWhere(input: CoreSearchInput): Prisma.ShopWhereInput {
+    const keywords = this.searchKeywords(input);
+    const searchBranches: Prisma.ShopWhereInput[] = keywords.flatMap((keyword) => [
+      { name: { contains: keyword } },
+      { city: { contains: keyword } },
+      { address: { contains: keyword } },
+      { description: { contains: keyword } },
+      { publicIdentifier: { is: { publicId: keyword } } },
+      { services: { some: this.publishedServiceKeywordWhere(keyword) } },
+      {
+        serviceCategorySelections: {
+          some: {
+            deletedAt: null,
+            category: {
+              isActive: true,
+              deletedAt: null,
+              translations: { some: { name: { contains: keyword }, deletedAt: null } }
+            }
+          }
+        }
+      },
+      {
+        businessKeywordSelections: {
+          some: {
+            deletedAt: null,
+            businessKeyword: {
+              isActive: true,
+              deletedAt: null,
+              category: { isActive: true, deletedAt: null },
+              translations: { some: { label: { contains: keyword }, deletedAt: null } }
+            }
+          }
+        }
+      }
+    ]);
+
+    if (input.categoryIds.length > 0) {
+      searchBranches.push({
+        services: { some: this.publishedServiceCategoryWhere(input.categoryIds) }
+      });
+      searchBranches.push({
+        serviceCategorySelections: {
+          some: {
+            deletedAt: null,
+            categoryId: { in: input.categoryIds },
+            category: { isActive: true, deletedAt: null }
+          }
+        }
+      });
+    }
+
+    return {
+      deletedAt: null,
+      status: PUBLISHED_STATUS,
+      publicIdentifier: { is: this.publicIdentifierWhere("SHOP") },
+      ...(input.city ? { city: input.city } : {}),
+      ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
+    };
+  }
+
+  private buildTechnicianSearchWhere(input: CoreSearchInput): Prisma.TechnicianProfileWhereInput {
+    const keywords = this.searchKeywords(input);
+    const searchBranches: Prisma.TechnicianProfileWhereInput[] = keywords.flatMap((keyword) => [
+      { displayName: { contains: keyword } },
+      { city: { contains: keyword } },
+      { bio: { contains: keyword } },
+      { serviceArea: { contains: keyword } },
+      {
+        user: {
+          identities: { some: this.activeTechnicianIdentityWhere(keyword) }
+        }
+      },
+      { services: { some: this.publishedServiceKeywordWhere(keyword) } },
+      { technicianServices: { some: this.technicianServiceKeywordWhere(keyword) } },
+      {
+        technicianShopAffiliations: {
+          some: {
+            deletedAt: null,
+            workStatus: "ACTIVE",
+            shop: {
+              deletedAt: null,
+              status: PUBLISHED_STATUS,
+              services: { some: this.publishedServiceKeywordWhere(keyword) }
+            }
+          }
+        }
+      }
+    ]);
+
+    if (input.categoryIds.length > 0) {
+      searchBranches.push(
+        { services: { some: this.publishedServiceCategoryWhere(input.categoryIds) } },
+        {
+          technicianServices: {
+            some: this.technicianServiceCategoryWhere(input.categoryIds)
+          }
+        },
+        {
+          technicianShopAffiliations: {
+            some: {
+              deletedAt: null,
+              workStatus: "ACTIVE",
+              shop: {
+                deletedAt: null,
+                status: PUBLISHED_STATUS,
+                services: { some: this.publishedServiceCategoryWhere(input.categoryIds) }
+              }
+            }
+          }
+        }
+      );
+    }
+
+    return {
+      ...this.publishedTechnicianProfileWhere(),
+      ...(input.city ? { city: input.city } : {}),
+      ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
+    };
+  }
+
+  private buildServiceWhere(input: ServiceListInput | CoreSearchInput): Prisma.ServiceWhereInput {
     const priceAmount =
       input.minPrice !== undefined || input.maxPrice !== undefined
         ? {
@@ -473,6 +1369,18 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           }
         : undefined;
     const keyword = input.keyword?.trim();
+    const isCoreSearch = "keywords" in input && "categoryIds" in input;
+    const hasOrSearch = isCoreSearch && (input.keywords.length > 0 || input.categoryIds.length > 0);
+    const searchBranches = hasOrSearch
+      ? [
+          ...this.searchKeywords(input).flatMap((value) => this.serviceKeywordBranches(value)),
+          ...(input.categoryIds.length > 0
+            ? [{ categoryId: { in: input.categoryIds } } satisfies Prisma.ServiceWhereInput]
+            : [])
+        ]
+      : keyword
+        ? this.serviceKeywordBranches(keyword)
+        : [];
 
     return {
       deletedAt: null,
@@ -483,7 +1391,8 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       },
       shop: {
         deletedAt: null,
-        status: PUBLISHED_STATUS
+        status: PUBLISHED_STATUS,
+        publicIdentifier: { is: this.publicIdentifierWhere("SHOP") }
       },
       ...(input.categoryId ? { categoryId: input.categoryId } : {}),
       ...(input.shopId ? { shopId: input.shopId } : {}),
@@ -491,19 +1400,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       ...(input.city ? { city: input.city } : {}),
       ...(input.serviceMode ? { serviceMode: input.serviceMode } : {}),
       ...(priceAmount ? { priceAmount } : {}),
-      ...(keyword
-        ? {
-            OR: [
-              { name: { contains: keyword } },
-              { description: { contains: keyword } },
-              { category: { name: { contains: keyword } } },
-              { category: { nameJa: { contains: keyword } } },
-              { category: { nameEn: { contains: keyword } } },
-              { shop: { name: { contains: keyword } } },
-              { technicianProfile: { displayName: { contains: keyword } } }
-            ]
-          }
-        : {})
+      ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
     };
   }
 
@@ -549,9 +1446,11 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
 
   private mapServiceCard(
     service: ServiceRecordBase | ServiceCardRecord,
-    shopOverride?: ShopCardPayload
+    shopOverride?: ShopCardPayload,
+    origin?: Coordinates
   ): ServiceCardPayload {
-    const shop = shopOverride ?? ("shop" in service ? this.mapShopCard(service.shop) : undefined);
+    const shop =
+      shopOverride ?? ("shop" in service ? this.mapShopCard(service.shop, origin) : undefined);
 
     if (!shop) {
       throw new Error("Service card mapping requires a shop payload.");
@@ -564,13 +1463,19 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       description: service.description,
       category: this.mapCategory(service.category),
       shop,
-      technician: service.technicianProfile
-        ? this.mapTechnicianCard(service.technicianProfile)
-        : null,
+      technician:
+        service.technicianProfile && this.isPublicTechnicianCard(service.technicianProfile)
+          ? this.mapTechnicianCard(service.technicianProfile)
+          : null,
       city: service.city,
       priceAmount: this.formatDecimal(service.priceAmount, 2),
       currency: service.currency,
       durationMinutes: service.durationMinutes,
+      usageCount: service._count.bookingOrders,
+      favoriteCount: service._count.entityFavorites,
+      shareCount: service._count.entityShareEvents,
+      isBookable: service.status === PUBLISHED_STATUS,
+      ...(shop.distanceKm === undefined ? {} : { distanceKm: shop.distanceKm }),
       coverUrl: this.findMediaUrl(service.mediaAssets, "cover"),
       reviewSummary: this.mapReviewSummary(service.reviewSummary)
     };
@@ -586,7 +1491,8 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     };
   }
 
-  private mapShopCard(shop: ShopCardRecord): ShopCardPayload {
+  private mapShopCard(shop: ShopCardRecord, origin?: Coordinates): ShopCardPayload {
+    const distanceKm = this.distanceFrom(origin, shop.latitude, shop.longitude);
     return {
       id: shop.id,
       publicId: this.requirePublicId(shop.publicIdentifier, "SHOP"),
@@ -594,7 +1500,28 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       city: shop.city,
       address: shop.address,
       coverUrl: this.findMediaUrl(shop.mediaAssets, "cover"),
-      reviewSummary: this.mapReviewSummary(shop.reviewSummary)
+      reviewSummary: this.mapReviewSummary(shop.reviewSummary),
+      completedOrderCount: shop._count.bookingOrders,
+      favoriteCount: shop._count.entityFavorites,
+      shareCount: shop._count.entityShareEvents,
+      ...(distanceKm === null ? {} : { distanceKm }),
+      serviceCategories: (shop.serviceCategorySelections ?? []).flatMap(({ category }) =>
+        category.translations[0]
+          ? [{ id: category.id, code: category.code, label: category.translations[0].name }]
+          : []
+      ),
+      businessKeywords: (shop.businessKeywordSelections ?? []).flatMap(({ businessKeyword }) =>
+        businessKeyword.translations[0]
+          ? [
+              {
+                id: businessKeyword.id,
+                code: businessKeyword.code,
+                categoryId: businessKeyword.categoryId,
+                label: businessKeyword.translations[0].label
+              }
+            ]
+          : []
+      )
     };
   }
 
@@ -609,34 +1536,130 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       longitude: this.formatNullableDecimal(shop.longitude, 7),
       mediaAssets: shop.mediaAssets.map((asset) => this.mapMediaAsset(asset)),
       services: shop.services.map((service) => this.mapServiceCard(service, shopCard)),
-      technicians: shop.technicians.map((technician) => this.mapTechnicianCard(technician)),
+      technicians: [
+        ...new Map(
+          [
+            ...shop.technicians,
+            ...(shop.technicianShopAffiliations ?? []).map(
+              (affiliation) => affiliation.technicianProfile
+            )
+          ].map((technician) => [technician.id, technician])
+        ).values()
+      ]
+        .sort((left, right) => left.id - right.id)
+        .map((technician) => this.mapTechnicianCard(technician)),
       createdAt: shop.createdAt,
       updatedAt: shop.updatedAt
     };
   }
 
-  private mapTechnicianCard(technician: TechnicianCardRecord): TechnicianCardPayload {
-    const identifier = technician.user.identities.find(
-      (identity) => identity.publicIdentifier?.kind === "S"
+  private mapTechnicianCard(
+    technician: TechnicianCardRecord,
+    origin?: Coordinates
+  ): TechnicianCardPayload {
+    const identifier = technician.user.identities.find((identity) =>
+      this.isActivePublicIdentifier(identity.publicIdentifier, "S")
     )?.publicIdentifier;
+
+    const performanceSummary =
+      technician.performanceSummary?.deletedAt === null ? technician.performanceSummary : null;
+    const primaryService = technician.technicianServices[0] ?? null;
+    const distanceKm = [
+      technician.shop,
+      ...(technician.technicianShopAffiliations ?? []).map((affiliation) => affiliation.shop)
+    ].reduce<number | null>((nearest, shop) => {
+      const candidate = this.distanceFrom(origin, shop?.latitude ?? null, shop?.longitude ?? null);
+      return candidate === null || (nearest !== null && nearest <= candidate) ? nearest : candidate;
+    }, null);
 
     return {
       id: technician.id,
       publicId: this.requirePublicId(identifier ?? null, "S"),
       displayName: technician.displayName,
       city: technician.city,
-      avatarUrl: this.findMediaUrl(technician.mediaAssets, "avatar"),
-      reviewSummary: this.mapReviewSummary(technician.reviewSummary)
+      avatarUrl:
+        this.findMediaUrl(technician.mediaAssets, "avatar") ?? technician.user.avatarBootstrapUrl,
+      reviewSummary: this.mapReviewSummary(technician.reviewSummary),
+      age: technician.age,
+      favoriteCount: technician._count.entityFavorites,
+      shareCount: technician._count.entityShareEvents,
+      completedOrderCount: performanceSummary?.completedOrderCount ?? 0,
+      acceptanceRatePercent: Math.min(
+        100,
+        Math.max(0, (performanceSummary?.acceptanceRateBps ?? 10_000) / 100)
+      ),
+      primaryService: primaryService
+        ? {
+            id: primaryService.id,
+            name: primaryService.name,
+            priceAmount: String(primaryService.priceAmount),
+            currency: primaryService.currency,
+            durationMinutes: primaryService.durationMinutes
+          }
+        : null,
+      ...(distanceKm === null ? {} : { distanceKm })
     };
   }
 
-  private mapTechnicianDetail(technician: TechnicianDetailRecord): TechnicianDetailPayload {
+  private originFrom(input: { latitude?: number; longitude?: number }): Coordinates | undefined {
+    return input.latitude === undefined || input.longitude === undefined
+      ? undefined
+      : { latitude: input.latitude, longitude: input.longitude };
+  }
+
+  private distanceFrom(
+    origin: Coordinates | undefined,
+    latitude: Prisma.Decimal | null,
+    longitude: Prisma.Decimal | null
+  ): number | null {
+    if (!origin) return null;
+    const destination = this.toCoordinates(latitude, longitude);
+    if (!destination) return null;
+    const distance = haversineDistanceKm(origin, destination);
+    return Number.isFinite(distance) ? Number(distance.toFixed(2)) : null;
+  }
+
+  private isPublicTechnicianCard(technician: TechnicianCardRecord): boolean {
+    return (
+      technician.deletedAt === null &&
+      technician.status === PUBLISHED_STATUS &&
+      technician.visibility === "public" &&
+      technician.user.identities.some((identity) =>
+        this.isActivePublicIdentifier(identity.publicIdentifier, "S")
+      )
+    );
+  }
+
+  private isActivePublicIdentifier(
+    identifier: PublicIdentifier | null,
+    expectedKind: "S" | "SHOP"
+  ): identifier is PublicIdentifier {
+    return Boolean(
+      identifier &&
+      identifier.kind === expectedKind &&
+      identifier.status === "ACTIVE" &&
+      identifier.deletedAt === null
+    );
+  }
+
+  private mapTechnicianDetail(
+    technician: TechnicianDetailRecord,
+    reviewTagSummary: TechnicianReviewTagSummaryPayload,
+    origin?: Coordinates
+  ): TechnicianDetailPayload {
     return {
-      ...this.mapTechnicianCard(technician),
-      shop: technician.shop ? this.mapShopCard(technician.shop) : null,
+      ...this.mapTechnicianCard(technician, origin),
+      shop: technician.shop ? this.mapShopCard(technician.shop, origin) : null,
       bio: technician.bio,
       serviceArea: technician.serviceArea,
+      gender:
+        technician.gender === "female" || technician.gender === "male"
+          ? technician.gender
+          : "private",
+      heightCm: technician.heightCm === null ? null : Number(technician.heightCm),
+      languages: this.normalizeStringArray(technician.languages),
       yearsExperience: technician.yearsExperience,
+      reviewTagSummary,
       mediaAssets: technician.mediaAssets.map((asset) => this.mapMediaAsset(asset)),
       services: technician.services.map((service) => this.mapServiceCard(service)),
       createdAt: technician.createdAt,
@@ -651,7 +1674,10 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       displayName: customer.displayName,
       city: customer.city,
       bio: customer.bio,
-      avatarUrl: this.findMediaUrl(customer.mediaAssets, "avatar"),
+      avatarUrl:
+        this.findMediaUrl(customer.mediaAssets, "avatar") ??
+        customer.user.avatarUrl ??
+        customer.user.avatarBootstrapUrl,
       membershipLevel: resolveEffectiveCustomerMembershipLevel(customer),
       reviewSummary: this.mapReviewSummary(customer.reviewSummary),
       createdAt: customer.createdAt,
@@ -660,12 +1686,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   }
 
   private requirePublicId(identifier: PublicIdentifier | null, expectedKind: "S" | "SHOP"): string {
-    if (
-      identifier &&
-      identifier.kind === expectedKind &&
-      identifier.status === "ACTIVE" &&
-      identifier.deletedAt === null
-    ) {
+    if (this.isActivePublicIdentifier(identifier, expectedKind)) {
       return identifier.publicId;
     }
 
@@ -716,6 +1737,11 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       return [];
     }
 
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
+  private normalizeStringArray(value: Prisma.JsonValue | null): string[] {
+    if (!Array.isArray(value)) return [];
     return value.filter((item): item is string => typeof item === "string");
   }
 

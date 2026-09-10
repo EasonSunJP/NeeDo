@@ -43,7 +43,11 @@ export class TechnicianProfileService {
       action: "technician_profile.self_update",
       targetType: "TechnicianProfile",
       targetId: profileId,
-      metadata: { changedFields: Object.keys(input).map((field) => field === "avatarDataUrl" ? "avatar" : field).sort() }
+      metadata: {
+        changedFields: Object.keys(input)
+          .map((field) => (field === "avatarDataUrl" ? "avatar" : field))
+          .sort()
+      }
     });
     return this.repository.updateMine(userId, profileId, identityId, mutation, auditLog);
   }
@@ -75,18 +79,19 @@ export class TechnicianProfileService {
   private mutation(input: TechnicianProfileUpdateBody): TechnicianProfileMutation {
     return {
       ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+      ...(input.gender !== undefined ? { gender: input.gender } : {}),
       ...(input.age !== undefined ? { age: input.age } : {}),
       ...(input.heightCm !== undefined ? { heightCm: input.heightCm } : {}),
       ...(input.languages !== undefined ? { languages: input.languages } : {}),
       ...(input.bio !== undefined ? { bio: input.bio } : {}),
       ...(input.serviceAreas !== undefined ? { serviceAreas: input.serviceAreas } : {}),
-      ...(input.profileTags !== undefined ? { profileTags: input.profileTags } : {}),
       ...(input.canServeForeigners !== undefined
         ? { canServeForeigners: input.canServeForeigners }
         : {}),
       ...(input.bidBudgetMinJpy !== undefined ? { bidBudgetMinJpy: input.bidBudgetMinJpy } : {}),
       ...(input.bidBudgetMaxJpy !== undefined ? { bidBudgetMaxJpy: input.bidBudgetMaxJpy } : {}),
       ...(input.paymentMethods !== undefined ? { paymentMethods: input.paymentMethods } : {}),
+      ...(input.serviceBase !== undefined ? { serviceBase: input.serviceBase } : {}),
       ...(input.visibility !== undefined ? { visibility: input.visibility } : {})
     };
   }

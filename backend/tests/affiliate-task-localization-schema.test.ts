@@ -16,7 +16,9 @@ describe("affiliate task localization schema", () => {
     expect(schema).toMatch(
       /model AffiliateTaskTranslation \{[\s\S]*@@unique\(\[taskId, locale\]\)[\s\S]*@@index\(\[locale, deletedAt\]\)[\s\S]*@@index\(\[deletedAt\]\)/
     );
-    expect(schema).toMatch(/model AffiliateTask \{[\s\S]*translations\s+AffiliateTaskTranslation\[\]/);
+    expect(schema).toMatch(
+      /model AffiliateTask \{[\s\S]*translations\s+AffiliateTaskTranslation\[\]/
+    );
   });
 
   it("creates and backfills all five locale rows without rewriting tasks", () => {

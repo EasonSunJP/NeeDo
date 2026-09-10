@@ -6,6 +6,7 @@ import {
   UnifiedCalendarAgendaView,
   UnifiedCalendarEventDetailPage,
   UnifiedCalendarDayTimeline,
+  UnifiedCalendarMultiDayTimeline,
   UnifiedCalendarMonthGrid,
   UnifiedCalendarSurface,
   type UnifiedCalendarEvent,
@@ -38,6 +39,7 @@ import { getScheduleOrderDetailRoute } from "../../lib/scheduleDetailTarget";
 import { cn } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
 import type { Customer, Store, Technician } from "../../types/domain";
+import { ScheduleViewPicker } from "./ScheduleViewPicker";
 
 export type ScheduleCycleCalendarBoardView = "day" | "threeDay" | "week" | "month" | "agenda";
 export type ScheduleCycleCalendarStatusFilter = "all" | DispatchScheduleCellStatus;
@@ -51,6 +53,7 @@ type ScheduleCycleCalendarBoardProps = {
   onDateChange: (dateKey: string) => void;
   onOpenCell: (cell: DispatchScheduleCell) => void;
   onViewChange: (view: ScheduleCycleCalendarBoardView) => void;
+  periodViewVariant?: "grid" | "timeline";
   searchQuery?: string;
   statusFilter?: ScheduleCycleCalendarStatusFilter;
   storeId: string;
@@ -63,6 +66,7 @@ type ScheduleCycleCalendarBoardProps = {
 
 export type ScheduleCycleCalendarBoardDataOverride = {
   cellByEventId: ReadonlyMap<string, DispatchScheduleCell>;
+  cycle?: { periodStart: string; periodEnd: string };
   dayGrids: DispatchScheduleGridData[];
   events: UnifiedCalendarEvent[];
   lanes: UnifiedCalendarLane[];
@@ -837,6 +841,7 @@ export function ScheduleCycleCalendarBoard({
   onDateChange,
   onOpenCell,
   onViewChange,
+  periodViewVariant = "grid",
   searchQuery = "",
   statusFilter = "all",
   storeId,
@@ -854,15 +859,43 @@ export function ScheduleCycleCalendarBoard({
   const [statusVisibility, setStatusVisibility] = useState(createDefaultCycleStatusVisibility);
   const normalizedSearchQuery = normalizeSearchValue(searchQuery);
   const cycle = useMemo(
-    () => (cycleId ? getDispatchCycleList(storeId).find((item) => item.id === cycleId) ?? null : null),
-    [cycleId, dispatchSnapshot.revision, storeId]
+    () => dataOverride?.cycle ?? (cycleId ? getDispatchCycleList(storeId).find((item) => item.id === cycleId) ?? null : null),
+    [cycleId, dataOverride?.cycle, dispatchSnapshot.revision, storeId]
   );
   const period = useMemo(() => getCycleCalendarPeriod(view, dateKey, cycle), [cycle, dateKey, view]);
   const periodKey = period.dates.join("|");
-  const dayGrids = useMemo(
-    () => dataOverride?.dayGrids ?? period.dates.map((date) => getDispatchScheduleGrid(storeId, "day", date, cycleId)),
-    [cycleId, dataOverride, dispatchSnapshot.revision, periodKey, storeId]
-  );
+  const dayGrids = useMemo(() => {
+    if (!dataOverride) {
+      return period.dates.map((date) => getDispatchScheduleGrid(storeId, "day", date, cycleId));
+    }
+
+    const formalGridByDate = new Map(dataOverride.dayGrids.map((grid) => [grid.dates[0], grid]));
+    const templateGrid = dataOverride.dayGrids[0];
+
+    return period.dates.map((date) => formalGridByDate.get(date) ?? {
+      cycle: null,
+      dates: [date],
+      headers: [{ key: date, label: formatShortDate(date), sublabel: getWeekdayLabel(date) }],
+      nowHour: templateGrid?.nowHour ?? 0,
+      rows: (templateGrid?.rows ?? []).map((row) => ({
+        ...row,
+        cells: Array.from({ length: 24 }, (_, hour) => ({
+          darkened: false,
+          date,
+          detail: "暂无正式排班",
+          hour,
+          id: `formal-empty-${row.technicianId}-${date}-${hour}`,
+          isClickable: false,
+          isCurrent: false,
+          status: "idle" as const,
+          technicianId: row.technicianId,
+          technicianName: row.technicianName,
+          title: "未排班"
+        })),
+        scheduledHours: 0
+      }))
+    });
+  }, [cycleId, dataOverride, dispatchSnapshot.revision, period.dates, periodKey, storeId]);
   const computedCalendarData = useMemo(
     () => buildCycleCalendarData(
       dayGrids,
@@ -973,22 +1006,14 @@ export function ScheduleCycleCalendarBoard({
         >
           ‹
         </button>
-        <label className="focus-within:ring-focus relative min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-[color:var(--client-muted)]">显示</span>
-          <select
-            aria-label="切换排班展示范围"
-            className="h-9 w-full appearance-none rounded-full bg-transparent pl-12 pr-9 text-center text-[13px] font-black text-[color:var(--client-text)] outline-none"
-            onChange={(event) => onViewChange(event.target.value as ScheduleCycleCalendarBoardView)}
-            value={view === "agenda" ? "day" : view}
-          >
-            {cycleCalendarViewOptions
-              .filter((option) => !availableViews || availableViews.includes(option.value as "day" | "week" | "month"))
-              .map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-          </select>
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-black text-[color:var(--client-muted)]">⌄</span>
-        </label>
+        <ScheduleViewPicker
+          ariaLabel="切换排班展示范围"
+          onChange={onViewChange}
+          options={cycleCalendarViewOptions.filter(
+            (option) => !availableViews || availableViews.includes(option.value as "day" | "week" | "month"),
+          )}
+          value={view === "agenda" ? "day" : view}
+        />
         <button
           className="focus-ring grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-lg font-black text-[color:var(--client-text)]"
           onClick={() => onDateChange(shiftCycleCalendarDate(view, dateKey, 1))}
@@ -1016,26 +1041,37 @@ export function ScheduleCycleCalendarBoard({
         </div>
       ) : view === "threeDay" || view === "week" ? (
         <div className="mt-3">
-          <ScheduleGrid
-            collapsedTechnicians={periodTechniciansCollapsed}
-            compactHeader
-            data={periodGridData}
-            onSelectDate={openDateInDayView}
-            onToggleCollapsed={() => setPeriodTechniciansCollapsed((current) => !current)}
-            periodCellVariant="calendarSummary"
-            renderRowHeader={(row, context) => (
-              <CyclePeriodTechnicianHeader
-                collapsedTechnicians={context.collapsedTechnicians}
-                getTechnicianDetailPath={getTechnicianDetailPath}
-                isMobileSurface={context.isMobileSurface}
-                row={row}
-              />
-            )}
-            showActualWorkStatus={false}
-            stickyHeaderLabel="技师"
-            stickyTop={scheduleStickyTop}
-            surface={surface}
-          />
+          {periodViewVariant === "timeline" ? (
+            <UnifiedCalendarMultiDayTimeline
+              dates={period.dates}
+              emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
+              events={events}
+              onOpen={openEvent}
+              onSelectDate={openDateInDayView}
+              selectedDate={dateKey}
+            />
+          ) : (
+            <ScheduleGrid
+              collapsedTechnicians={periodTechniciansCollapsed}
+              compactHeader
+              data={periodGridData}
+              onSelectDate={openDateInDayView}
+              onToggleCollapsed={() => setPeriodTechniciansCollapsed((current) => !current)}
+              periodCellVariant="calendarSummary"
+              renderRowHeader={(row, context) => (
+                <CyclePeriodTechnicianHeader
+                  collapsedTechnicians={context.collapsedTechnicians}
+                  getTechnicianDetailPath={getTechnicianDetailPath}
+                  isMobileSurface={context.isMobileSurface}
+                  row={row}
+                />
+              )}
+              showActualWorkStatus={false}
+              stickyHeaderLabel="技师"
+              stickyTop={scheduleStickyTop}
+              surface={surface}
+            />
+          )}
         </div>
       ) : view === "month" ? (
         <div className="mt-3" data-testid="schedule-cycle-month-grid">

@@ -1,8 +1,7 @@
 import { z } from "zod";
-import {
-  IM_PRIVACY_TTL_MAX_SECONDS,
-  IM_PRIVACY_TTL_MIN_SECONDS
-} from "../constants/im-privacy";
+import { IM_PRIVACY_TTL_MAX_SECONDS, IM_PRIVACY_TTL_MIN_SECONDS } from "../constants/im-privacy";
+import { MESSAGE_JUDGEMENT_REACTIONS } from "../constants/message-reaction.constants";
+import { messageIdsSchema, safePositiveIntegerSchema } from "./im-chat-record.validator";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -26,7 +25,7 @@ const booleanQuerySchema = z.preprocess((value) => {
 }, z.boolean());
 
 export const conversationIdParamSchema = z.object({
-  conversationId: z.coerce.number().int().positive()
+  conversationId: safePositiveIntegerSchema
 });
 
 export const messageReactionParamSchema = conversationIdParamSchema.extend({
@@ -110,11 +109,16 @@ export const conversationPrivacyBodySchema = z
 export const conversationPreferencesBodySchema = z
   .object({
     isPinned: z.boolean().optional(),
-    isMuted: z.boolean().optional()
+    isMuted: z.boolean().optional(),
+    autoTranslateMessages: z.boolean().optional()
   })
-  .refine((value) => value.isPinned !== undefined || value.isMuted !== undefined, {
-    message: "At least one conversation preference is required"
-  });
+  .refine(
+    (value) =>
+      value.isPinned !== undefined ||
+      value.isMuted !== undefined ||
+      value.autoTranslateMessages !== undefined,
+    { message: "At least one conversation preference is required" }
+  );
 
 export const conversationLeaveBodySchema = z.object({
   transferOwnerUserId: z.coerce.number().int().positive().optional()
@@ -124,6 +128,24 @@ export const messageListQuerySchema = z.object({
   pageSize: z.coerce.number().int().positive().max(100).optional(),
   beforeId: z.coerce.number().int().positive().optional()
 });
+
+export const contactCardCandidateListQuerySchema = z
+  .object({
+    ...paginationQuerySchema,
+    query: z.string().trim().max(100).optional()
+  })
+  .strict();
+
+export const contactCardSendBodySchema = z
+  .object({
+    targetUserId: z
+      .string()
+      .trim()
+      .regex(/^(?:u|needo)[0-9]{10}$/u)
+  })
+  .strict();
+
+export const contactCardIdempotencyKeySchema = z.string().trim().min(8).max(191);
 
 export const messageCreateBodySchema = z.object({
   type: z.enum(["text", "system", "orderStatus"]).default("text"),
@@ -138,6 +160,13 @@ export const messageReactionBodySchema = z.object({
 export const messageRecallBodySchema = z.object({
   mode: z.literal("standard")
 });
+
+export const messageBatchDeleteBodySchema = z
+  .object({
+    messageIds: messageIdsSchema,
+    idempotencyKey: z.string().uuid()
+  })
+  .strict();
 
 export const contactListQuerySchema = z.object({
   ...paginationQuerySchema
@@ -169,8 +198,24 @@ export const friendRequestCreateBodySchema = z.object({
 
 export const socialPostListQuerySchema = z.object({
   ...paginationQuerySchema,
-  authorUserId: z.coerce.number().int().positive().optional()
+  authorUserId: z.coerce.number().int().positive().optional(),
+  replyToPostId: z.coerce.number().int().positive().optional(),
+  bookmarked: booleanQuerySchema.optional()
 });
+
+export const socialPostShareBodySchema = z
+  .object({
+    targetUserIds: z
+      .array(z.coerce.number().int().positive())
+      .min(1)
+      .max(20)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "error.social.duplicate_share_target"
+      })
+  })
+  .strict();
+
+export const socialPostIdempotencyKeySchema = z.string().trim().min(8).max(191);
 
 const socialCreateMediaItemSchema = z
   .object({
@@ -181,14 +226,31 @@ const socialCreateMediaItemSchema = z
   })
   .strict();
 
-const socialCreateMediaEnvelopeSchema = z.object({
-  items: z.array(socialCreateMediaItemSchema).max(9),
-  quotePostId: z.coerce.number().int().positive().optional(),
-  replyToPostId: z.coerce.number().int().positive().optional(),
-  repostPostId: z.coerce.number().int().positive().optional(),
-  postType: z.enum(["post", "reply", "quote", "repost", "announcement", "technician-daily"]).optional(),
-  locationLabel: z.string().trim().max(160).optional()
-}).strict();
+const socialRichTextPartSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), value: z.string().min(1).max(5000) }).strict(),
+  z.object({ type: z.literal("judgement"), value: z.enum(MESSAGE_JUDGEMENT_REACTIONS) }).strict()
+]);
+
+const socialRichTextSchema = z
+  .object({
+    version: z.literal(1),
+    parts: z.array(socialRichTextPartSchema).min(1).max(100)
+  })
+  .strict();
+
+const socialCreateMediaEnvelopeSchema = z
+  .object({
+    items: z.array(socialCreateMediaItemSchema).max(9),
+    quotePostId: z.coerce.number().int().positive().optional(),
+    replyToPostId: z.coerce.number().int().positive().optional(),
+    repostPostId: z.coerce.number().int().positive().optional(),
+    postType: z
+      .enum(["post", "reply", "quote", "repost", "announcement", "technician-daily"])
+      .optional(),
+    locationLabel: z.string().trim().max(160).optional(),
+    richText: socialRichTextSchema.optional()
+  })
+  .strict();
 
 export const socialPostCreateBodySchema = z
   .object({
@@ -207,6 +269,18 @@ export const socialPostCreateBodySchema = z
   .refine((value) => value.content.length > 0 || (value.media?.items.length ?? 0) > 0, {
     message: "error.social.post_empty",
     path: ["content"]
+  })
+  .superRefine((value, context) => {
+    if (
+      value.media?.richText &&
+      value.media.richText.parts.map((part) => part.value).join("") !== value.content
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "error.social.rich_text_mismatch",
+        path: ["media", "richText"]
+      });
+    }
   });
 
 export const socialPostUpdateBodySchema = socialPostCreateBodySchema;
@@ -237,5 +311,6 @@ export type FriendRequestListQuery = z.infer<typeof friendRequestListQuerySchema
 export type SocialPostCreateBody = z.infer<typeof socialPostCreateBodySchema>;
 export type SocialPostUpdateBody = z.infer<typeof socialPostUpdateBodySchema>;
 export type SocialPostListQuery = z.infer<typeof socialPostListQuerySchema>;
+export type SocialPostShareBody = z.infer<typeof socialPostShareBodySchema>;
 export type FollowCreateBody = z.infer<typeof followCreateBodySchema>;
 export type NotificationListQuery = z.infer<typeof notificationListQuerySchema>;

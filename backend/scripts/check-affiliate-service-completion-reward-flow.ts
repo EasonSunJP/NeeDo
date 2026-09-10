@@ -23,24 +23,32 @@ const main = async (): Promise<void> => {
     { AffiliateCheckoutRepository },
     { AffiliateCheckoutService },
     { AffiliateLinkTokenService },
+    { AuditLogRepository },
+    { AuditLogService },
     { BookingRepository },
     { BookingService },
     { FeeRuleRepository },
     { FeeCalculationService },
     { LedgerRepository },
     { LedgerService },
+    { NdpExchangeRateRepository },
+    { NdpExchangeRateService },
     { createFormalTestUser, deleteFormalTestUserFoundations },
     { prisma, disconnectPrisma }
   ] = await Promise.all([
     import("../src/repositories/affiliate-checkout.repository"),
     import("../src/services/affiliate-checkout.service"),
     import("../src/services/affiliate-link-token.service"),
+    import("../src/repositories/audit-log.repository"),
+    import("../src/services/audit-log.service"),
     import("../src/repositories/booking.repository"),
     import("../src/services/booking.service"),
     import("../src/repositories/fee-rule.repository"),
     import("../src/services/fee-calculation.service"),
     import("../src/repositories/ledger.repository"),
     import("../src/services/ledger.service"),
+    import("../src/repositories/ndp-exchange-rate.repository"),
+    import("../src/services/ndp-exchange-rate.service"),
     import("./support/formal-test-user"),
     import("../src/prisma/client")
   ]);
@@ -57,6 +65,7 @@ const main = async (): Promise<void> => {
   let categoryId: number | null = null;
   let shopId: number | null = null;
   let serviceId: number | null = null;
+  let technicianProfileId: number | null = null;
   let feeRuleSetId: number | null = null;
 
   try {
@@ -80,6 +89,7 @@ const main = async (): Promise<void> => {
     const customerRace = await createUser("customer-race");
     const customerClaimLimit = await createUser("customer-claim-limit");
     const customerFailure = await createUser("customer-failure");
+    const technician = await createUser("technician");
 
     const category = await prisma.category.create({
       data: { code: `${marker}-category`, name: `${marker} category` }
@@ -96,6 +106,27 @@ const main = async (): Promise<void> => {
       }
     });
     shopId = shop.id;
+    const technicianProfile = await prisma.technicianProfile.create({
+      data: {
+        userId: technician.id,
+        shopId: shop.id,
+        displayName: `${marker} technician`,
+        city: "Tokyo",
+        status: "published"
+      }
+    });
+    technicianProfileId = technicianProfile.id;
+    await prisma.technicianShopAffiliation.create({
+      data: {
+        technicianProfileId: technicianProfile.id,
+        shopId: shop.id,
+        relationshipType: "EXCLUSIVE",
+        workStatus: "ACTIVE",
+        activeKey: `technician:${technicianProfile.id}:shop:${shop.id}`,
+        createdById: technician.id,
+        updatedById: technician.id
+      }
+    });
     const service = await prisma.service.create({
       data: {
         categoryId: category.id,
@@ -155,14 +186,33 @@ const main = async (): Promise<void> => {
       linkTokens,
       { rewardLedger: ledger }
     );
+    const audit = new AuditLogService(new AuditLogRepository(prisma));
+    const rate = new NdpExchangeRateService(new NdpExchangeRateRepository(prisma), audit);
     const booking = new BookingService(
       new BookingRepository(prisma),
       ledger,
       undefined,
-      undefined,
-      affiliateCheckout
+      audit,
+      affiliateCheckout,
+      rate
     );
-    const actor = (userId: number) => ({ userId, roles: ["customer"] });
+    const customerActor = (userId: number) => ({
+      userId,
+      roles: ["customer"],
+      currentIdentityType: "customer",
+      currentIdentityScopeType: "customer_profile"
+    });
+    const technicianActor = {
+      userId: technician.id,
+      roles: ["technician"],
+      currentIdentityType: "technician",
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: technicianProfile.id
+    };
+    const requestContext = {
+      ip: "127.0.0.1",
+      userAgent: "affiliate-service-completion-checker"
+    };
     const taskStartsAt = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
     const taskEndsAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000);
     let slotOffsetHours = 2;
@@ -240,6 +290,8 @@ const main = async (): Promise<void> => {
             create: {
               walletId: publisherWallet.id,
               totalFrozenNdp: input.totalBudgetNdp,
+              commissionFrozenNdp: input.totalBudgetNdp,
+              platformFeeFrozenNdp: 0,
               idempotencyKey: `${marker}-${input.label}-reservation`
             }
           }
@@ -262,6 +314,7 @@ const main = async (): Promise<void> => {
         data: {
           serviceId: service.id,
           shopId: shop.id,
+          technicianProfileId: technicianProfile.id,
           startsAt,
           endsAt: new Date(startsAt.getTime() + 60 * 60 * 1_000),
           capacity: 1,
@@ -269,7 +322,7 @@ const main = async (): Promise<void> => {
         }
       });
       slotIds.push(slot.id);
-      const order = await booking.createBooking(actor(input.customerUserId), {
+      const order = await booking.createBooking(customerActor(input.customerUserId), {
         serviceId: service.id,
         scheduleSlotId: slot.id,
         fulfillmentMode: "store",
@@ -280,8 +333,58 @@ const main = async (): Promise<void> => {
     };
 
     const advanceToInService = async (customerUserId: number, bookingOrderId: number) => {
-      await booking.transitionOrder(actor(customerUserId), bookingOrderId, "confirm");
-      return booking.transitionOrder(actor(customerUserId), bookingOrderId, "start");
+      const customer = customerActor(customerUserId);
+      await booking.transitionOrder(customer, bookingOrderId, "confirm");
+      return booking.startService(
+        customer,
+        bookingOrderId,
+        {
+          actor: "customer",
+          idempotencyKey: `${marker}-${bookingOrderId}-start`
+        },
+        requestContext
+      );
+    };
+
+    const prepareOrderForCompletion = async (customerUserId: number, bookingOrderId: number) => {
+      const customer = customerActor(customerUserId);
+      await booking.endService(
+        customer,
+        bookingOrderId,
+        {
+          reason: "completed",
+          idempotencyKey: `${marker}-${bookingOrderId}-end`
+        },
+        requestContext
+      );
+      await booking.getCheckout(customer, bookingOrderId);
+      return booking.selectCheckoutPaymentMethod(
+        customer,
+        bookingOrderId,
+        {
+          method: "cash",
+          idempotencyKey: `${marker}-${bookingOrderId}-cash`
+        },
+        requestContext
+      );
+    };
+
+    const confirmPreparedOrder = async (customerUserId: number, bookingOrderId: number) => {
+      await booking.confirmCheckoutReceipt(
+        technicianActor,
+        bookingOrderId,
+        {
+          reason: "cash received",
+          idempotencyKey: `${marker}-${bookingOrderId}-receipt`
+        },
+        requestContext
+      );
+      return booking.getOrder(customerActor(customerUserId), bookingOrderId);
+    };
+
+    const completeOrder = async (customerUserId: number, bookingOrderId: number) => {
+      await prepareOrderForCompletion(customerUserId, bookingOrderId);
+      return confirmPreparedOrder(customerUserId, bookingOrderId);
     };
 
     const normal = await createTaskAndClaim({
@@ -308,11 +411,7 @@ const main = async (): Promise<void> => {
       "reward was created before service completion"
     );
 
-    const completedNormal = await booking.transitionOrder(
-      actor(customerNormal.id),
-      normalOrder.id,
-      "complete"
-    );
+    const completedNormal = await completeOrder(customerNormal.id, normalOrder.id);
     const normalAttribution = await prisma.affiliateAttribution.findFirstOrThrow({
       where: { bookingOrderId: normalOrder.id, deletedAt: null }
     });
@@ -436,11 +535,7 @@ const main = async (): Promise<void> => {
       publicCode: normal.claim.publicCode
     });
     await advanceToInService(customerNormal.id, customerLimitOrder.id);
-    const customerLimitCompleted = await booking.transitionOrder(
-      actor(customerNormal.id),
-      customerLimitOrder.id,
-      "complete"
-    );
+    const customerLimitCompleted = await completeOrder(customerNormal.id, customerLimitOrder.id);
     const customerLimitAttribution = await prisma.affiliateAttribution.findFirstOrThrow({
       where: { bookingOrderId: customerLimitOrder.id, deletedAt: null }
     });
@@ -466,7 +561,7 @@ const main = async (): Promise<void> => {
       publicCode: claimLimit.claim.publicCode
     });
     await advanceToInService(customerClaimLimit.id, claimLimitOrder.id);
-    await booking.transitionOrder(actor(customerClaimLimit.id), claimLimitOrder.id, "complete");
+    await completeOrder(customerClaimLimit.id, claimLimitOrder.id);
     const claimLimitAttribution = await prisma.affiliateAttribution.findFirstOrThrow({
       where: { bookingOrderId: claimLimitOrder.id, deletedAt: null }
     });
@@ -499,23 +594,21 @@ const main = async (): Promise<void> => {
       claimantUserId: claimantLimit.id,
       label: "customer-limit-race-second"
     });
-    const customerLimitRaceOrders = [
-      await createAttributedOrder({
-        customerUserId: customerRace.id,
-        publicCode: customerLimitRace.claim.publicCode
-      }),
-      await createAttributedOrder({
-        customerUserId: customerRace.id,
-        publicCode: customerLimitRaceSecondClaim.publicCode
-      })
-    ];
-    for (const order of customerLimitRaceOrders) {
-      await advanceToInService(customerRace.id, order.id);
-    }
+    const customerLimitRaceFirstOrder = await createAttributedOrder({
+      customerUserId: customerRace.id,
+      publicCode: customerLimitRace.claim.publicCode
+    });
+    await advanceToInService(customerRace.id, customerLimitRaceFirstOrder.id);
+    await prepareOrderForCompletion(customerRace.id, customerLimitRaceFirstOrder.id);
+    const customerLimitRaceSecondOrder = await createAttributedOrder({
+      customerUserId: customerRace.id,
+      publicCode: customerLimitRaceSecondClaim.publicCode
+    });
+    await advanceToInService(customerRace.id, customerLimitRaceSecondOrder.id);
+    await prepareOrderForCompletion(customerRace.id, customerLimitRaceSecondOrder.id);
+    const customerLimitRaceOrders = [customerLimitRaceFirstOrder, customerLimitRaceSecondOrder];
     const customerCompletionRace = await Promise.allSettled(
-      customerLimitRaceOrders.map((order) =>
-        booking.transitionOrder(actor(customerRace.id), order.id, "complete")
-      )
+      customerLimitRaceOrders.map((order) => confirmPreparedOrder(customerRace.id, order.id))
     );
     assert(
       customerCompletionRace.every((result) => result.status === "fulfilled"),
@@ -586,9 +679,11 @@ const main = async (): Promise<void> => {
     ];
     await advanceToInService(customerNormal.id, walletRaceOrders[0].id);
     await advanceToInService(customerRace.id, walletRaceOrders[1].id);
+    await prepareOrderForCompletion(customerNormal.id, walletRaceOrders[0].id);
+    await prepareOrderForCompletion(customerRace.id, walletRaceOrders[1].id);
     const claimantWalletCompletionRace = await Promise.allSettled([
-      booking.transitionOrder(actor(customerNormal.id), walletRaceOrders[0].id, "complete"),
-      booking.transitionOrder(actor(customerRace.id), walletRaceOrders[1].id, "complete")
+      confirmPreparedOrder(customerNormal.id, walletRaceOrders[0].id),
+      confirmPreparedOrder(customerRace.id, walletRaceOrders[1].id)
     ]);
     assert(
       claimantWalletCompletionRace.every((result) => result.status === "fulfilled"),
@@ -639,13 +734,14 @@ const main = async (): Promise<void> => {
       publicCode: race.claim.publicCode
     });
     await advanceToInService(customerRace.id, raceOrder.id);
+    await prepareOrderForCompletion(customerRace.id, raceOrder.id);
     const completionRace = await Promise.allSettled([
-      booking.transitionOrder(actor(customerRace.id), raceOrder.id, "complete"),
-      booking.transitionOrder(actor(customerRace.id), raceOrder.id, "complete")
+      confirmPreparedOrder(customerRace.id, raceOrder.id),
+      confirmPreparedOrder(customerRace.id, raceOrder.id)
     ]);
     assert(
-      completionRace.filter((result) => result.status === "fulfilled").length === 1,
-      "concurrent order completion did not admit exactly one winner"
+      completionRace.every((result) => result.status === "fulfilled"),
+      "concurrent order completion replay was not idempotent"
     );
     const raceAttribution = await prisma.affiliateAttribution.findFirstOrThrow({
       where: { bookingOrderId: raceOrder.id, deletedAt: null }
@@ -682,6 +778,7 @@ const main = async (): Promise<void> => {
       publicCode: failure.claim.publicCode
     });
     await advanceToInService(customerFailure.id, failureOrder.id);
+    await prepareOrderForCompletion(customerFailure.id, failureOrder.id);
     const failureAttributionBefore = await prisma.affiliateAttribution.findFirstOrThrow({
       where: { bookingOrderId: failureOrder.id, deletedAt: null }
     });
@@ -693,7 +790,7 @@ const main = async (): Promise<void> => {
       data: { frozenBalance: BOOKING_FEE_NDP }
     });
     try {
-      await booking.transitionOrder(actor(customerFailure.id), failureOrder.id, "complete");
+      await confirmPreparedOrder(customerFailure.id, failureOrder.id);
       throw new Error("expected error.wallet.insufficient_frozen");
     } catch (error) {
       assert(
@@ -717,7 +814,7 @@ const main = async (): Promise<void> => {
       where: { id: publisherWallet.id }
     });
     assert(
-      failureOrderAfter.status === "IN_SERVICE" &&
+      failureOrderAfter.status === "AWAITING_PAYMENT_CONFIRMATION" &&
         failureAttributionAfter.status === "ATTRIBUTED" &&
         failureReservationAfter.allocatedNdp === failureReservationBefore.allocatedNdp &&
         failureFinancialAfter.settlementStatus === "holding" &&
@@ -827,7 +924,16 @@ const main = async (): Promise<void> => {
         });
       }
       if (bookingIds.length > 0) {
+        await transaction.orderServiceEvent.deleteMany({
+          where: { bookingOrderId: { in: bookingIds } }
+        });
         await transaction.walletHold.deleteMany({
+          where: { bookingOrderId: { in: bookingIds } }
+        });
+        await transaction.orderCheckout.deleteMany({
+          where: { bookingOrderId: { in: bookingIds } }
+        });
+        await transaction.orderServiceSession.deleteMany({
           where: { bookingOrderId: { in: bookingIds } }
         });
         await transaction.orderFinancial.deleteMany({
@@ -897,7 +1003,22 @@ const main = async (): Promise<void> => {
       if (walletIds.length > 0) {
         await transaction.wallet.deleteMany({ where: { id: { in: walletIds } } });
       }
+      if (userIds.length > 0) {
+        await transaction.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
+        await deleteFormalTestUserFoundations(transaction, userIds);
+      }
       if (serviceId) await transaction.service.deleteMany({ where: { id: serviceId } });
+      if (technicianProfileId) {
+        await transaction.technicianPerformanceSummary.deleteMany({
+          where: { technicianProfileId }
+        });
+        await transaction.technicianShopAffiliation.deleteMany({
+          where: { technicianProfileId }
+        });
+        await transaction.technicianProfile.deleteMany({
+          where: { id: technicianProfileId }
+        });
+      }
       if (shopId) await transaction.shop.deleteMany({ where: { id: shopId } });
       if (categoryId) await transaction.category.deleteMany({ where: { id: categoryId } });
       if (feeRuleSetId) {
@@ -905,8 +1026,6 @@ const main = async (): Promise<void> => {
         await transaction.platformFeeRuleSet.deleteMany({ where: { id: feeRuleSetId } });
       }
       if (userIds.length > 0) {
-        await transaction.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
-        await deleteFormalTestUserFoundations(transaction, userIds);
         await transaction.user.deleteMany({ where: { id: { in: userIds } } });
       }
     });
@@ -931,6 +1050,6 @@ const main = async (): Promise<void> => {
 };
 
 void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
+  console.error(error instanceof Error ? (error.stack ?? error.message) : error);
   process.exitCode = 1;
 });

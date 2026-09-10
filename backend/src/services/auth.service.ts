@@ -1,4 +1,4 @@
-import { randomInt, timingSafeEqual } from "crypto";
+import { createHash, randomInt, randomUUID, timingSafeEqual } from "crypto";
 import { compare, hash } from "bcryptjs";
 import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import type { AppConfig } from "../config/env";
@@ -7,6 +7,7 @@ import {
   ExternalAuthAccountConflictError,
   createGoogleUnlinkRecoveryProof,
   GoogleLoginStateError,
+  PhoneBindingConflictError,
   type AuthRepositoryPort,
   type AuthUserRecord,
   type GoogleAuthRepositoryPort,
@@ -29,17 +30,46 @@ import {
   type AuthTokenPayload,
   type AuthTokenSubject
 } from "./auth-token.service";
+import type { MerchantShopContextRepositoryPort } from "../repositories/merchant-shop-context.repository";
+import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
+import type { UserExperienceService } from "./user-experience.service";
+import {
+  FORMAL_MERCHANT_IDENTITY_TYPES,
+  merchantShopIdentityForbidden,
+  resolveFormalMerchantIdentityKind,
+  resolveMerchantShopScope,
+  type ResolvedMerchantShopScope
+} from "./merchant-shop-scope";
+import type {
+  UserPolicyComplianceDecision,
+  UserPolicyComplianceRequirement
+} from "../domain/user-policy-enforcement";
+import type { UserPolicyEnforcementService } from "./user-policy-enforcement.service";
+import type {
+  PasswordLoginVerificationPolicy,
+  PlatformAccessPolicyPort
+} from "./platform-access-policy.service";
 
 export interface AuthRequestContext {
   ip: string;
   userAgent?: string;
 }
 
+export interface MerchantShopAuditOutboxTrigger {
+  trigger: () => void;
+}
+
+const TECHNICIAN_SHOP_ONBOARDING_PERMISSIONS = new Set(["identity-application:own", "technician-profile:read"]);
+
 export interface TokenPairPayload {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
 }
+
+export type PasswordLoginResult =
+  | ({ status: "authenticated" } & TokenPairPayload)
+  | ({ status: "verification_required" } & RegistrationChallengePayload);
 
 export interface RefreshPayload {
   accessToken: string;
@@ -48,6 +78,10 @@ export interface RefreshPayload {
 
 export interface SwitchIdentityPayload extends TokenPairPayload {
   me: AuthMePayload;
+}
+
+export interface SwitchMerchantShopPayload extends SwitchIdentityPayload {
+  shopPublicId: string;
 }
 
 export interface OtpSendPayload {
@@ -66,8 +100,11 @@ export interface AuthenticatedAccessContext {
   currentIdentityType?: string;
   currentIdentityScopeType?: string | null;
   currentIdentityScopeId?: number | null;
+  selectedMerchantShopId?: number;
+  selectedMerchantShopPublicId?: string;
   roles: string[];
   permissions: string[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
   isReadOnlyMerchantPreview?: boolean;
   merchantPreviewShopId?: number;
 }
@@ -78,6 +115,7 @@ export interface AuthIdentityPayload {
   scopeType: string | null;
   scopeId: number | null;
   publicId: string | null;
+  displayName: string | null;
 }
 
 export type AuthIdentityAvailabilityKind = "customer" | "technician" | "merchant" | "affiliate";
@@ -107,6 +145,7 @@ export interface AuthMePayload {
   hasPassword: boolean;
   username: string;
   avatarUrl: string | null;
+  profileDisplayName: string | null;
   isActive: boolean;
   isTestAccount: boolean;
   currentIdentity: AuthIdentityPayload;
@@ -115,6 +154,16 @@ export interface AuthMePayload {
   roles: string[];
   permissions: string[];
   menus: string[];
+  complianceRequirements?: UserPolicyComplianceRequirement[];
+  compliancePolicyVersionPublicId?: string;
+  complianceEffectiveAt?: string;
+  compliancePermittedNextRoutes?: string[];
+}
+
+export interface CompliancePhoneBindingPayload {
+  phone: string;
+  complianceRequirements: UserPolicyComplianceRequirement[];
+  smsVerified: false;
 }
 
 interface LoginFailureInput {
@@ -192,12 +241,23 @@ export class AuthService {
     private readonly googleCredentialVerifier: GoogleCredentialVerifierPort = new GoogleCredentialVerifierService(
       undefined,
       config
-    )
+    ),
+    private readonly merchantShopContextRepository: MerchantShopContextRepositoryPort = new MerchantShopContextRepository(),
+    private readonly merchantShopAuditOutboxTrigger?: MerchantShopAuditOutboxTrigger,
+    private readonly userExperienceService?: Pick<UserExperienceService, "recordEvent">,
+    private readonly userPolicyEnforcementService?: Pick<
+      UserPolicyEnforcementService,
+      "evaluateAccountCompliance"
+    >,
+    private readonly platformAccessPolicy?: PlatformAccessPolicyPort,
+    private readonly clock: () => Date = () => new Date()
   ) {
     this.tokenService = new AuthTokenService(config);
   }
 
   public async initializeGoogleLogin(): Promise<GoogleLoginInitializationPayload> {
+    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const nonce = await this.verificationChallengeStore.createGoogleNonce({});
     return {
       clientId: this.config.GOOGLE_AUTH_CLIENT_ID,
@@ -210,6 +270,7 @@ export class AuthService {
   public async getGoogleLinkStatus(
     auth: AuthenticatedAccessContext
   ): Promise<GoogleLinkStatusPayload> {
+    this.assertGoogleAuthEnabled();
     const user = await this.getActiveAccountSecurityUser(auth);
     const status = await this.accountSecurityRepository().getGoogleBindingStatus(user.id);
     return {
@@ -223,6 +284,8 @@ export class AuthService {
   public async initializeAuthenticatedGoogleLink(
     auth: AuthenticatedAccessContext
   ): Promise<GoogleLoginInitializationPayload> {
+    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     await this.getActiveAccountSecurityUser(auth);
     const nonce = await this.verificationChallengeStore.createGoogleNonce({ userId: auth.userId });
     return {
@@ -238,6 +301,8 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleAccountSecurityChallengePayload> {
+    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     void context;
     const user = await this.getActiveAccountSecurityUser(auth);
     const nonce = await this.verificationChallengeStore.readGoogleNonce({
@@ -281,6 +346,8 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<AuthenticatedGoogleLinkVerificationPayload> {
+    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
       challengeId,
       otp,
@@ -387,6 +454,7 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleAccountSecurityChallengePayload> {
+    this.assertGoogleAuthEnabled();
     void context;
     const user = await this.getActiveAccountSecurityUser(auth);
     const status = await this.accountSecurityRepository().getGoogleBindingStatus(user.id);
@@ -404,6 +472,7 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleUnlinkVerificationPayload> {
+    this.assertGoogleAuthEnabled();
     if (
       this.sessionStore.getGoogleUnlinkCompletion &&
       (await this.sessionStore.getGoogleUnlinkCompletion({
@@ -460,6 +529,8 @@ export class AuthService {
     input: { credential: string; nonceChallengeId: string },
     context: AuthRequestContext
   ): Promise<GoogleCredentialResult> {
+    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const nonce = await this.verificationChallengeStore.readGoogleNonce({
       challengeId: input.nonceChallengeId
     });
@@ -538,6 +609,8 @@ export class AuthService {
     otp: string,
     context: AuthRequestContext
   ): Promise<VerifiedGoogleRegistrationPayload> {
+    this.assertGoogleAuthEnabled();
+    await this.platformAccessPolicy?.assertGoogleLoginEnabled();
     const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
       challengeId,
       otp,
@@ -616,7 +689,7 @@ export class AuthService {
     loginIdentifierInput: string,
     password: string,
     context: AuthRequestContext
-  ): Promise<TokenPairPayload> {
+  ): Promise<PasswordLoginResult> {
     const loginIdentifier = this.normalizeLoginIdentifier(loginIdentifierInput);
 
     const user = await this.repository.findUserByLoginIdentifier(loginIdentifier);
@@ -683,10 +756,94 @@ export class AuthService {
       });
     }
 
-    return this.completeSuccessfulLogin(user, context, user.loginIdentityId);
+    const verificationPolicy = await this.platformAccessPolicy?.getPasswordLoginVerificationPolicy();
+    if (
+      verificationPolicy?.enabled &&
+      (await this.requiresPasswordLoginVerification(user.id, context.ip, verificationPolicy))
+    ) {
+      return this.createPasswordLoginChallenge(user, context, verificationPolicy);
+    }
+
+    return {
+      status: "authenticated",
+      ...(await this.completeSuccessfulLogin(user, context, user.loginIdentityId))
+    };
+  }
+
+  public async verifyPasswordLogin(
+    challengeId: string,
+    otp: string,
+    context: AuthRequestContext
+  ): Promise<TokenPairPayload> {
+    const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
+      challengeId,
+      otp,
+      purpose: "password_login"
+    });
+    if (!reserved.ok) this.throwVerificationChallengeError(reserved.reason);
+    const metadata = reserved.metadata as {
+      loginIdentityId?: unknown;
+      platformSettingsVersion?: unknown;
+    };
+    if (
+      !Number.isInteger(reserved.userId) ||
+      !Number.isInteger(metadata.loginIdentityId) ||
+      Number(metadata.loginIdentityId) < 1 ||
+      !Number.isInteger(metadata.platformSettingsVersion) ||
+      Number(metadata.platformSettingsVersion) < 1
+    ) {
+      await this.releasePasswordLoginChallenge(challengeId, reserved.reservationToken);
+      this.throwVerificationChallengeError("missing");
+    }
+
+    let loginReceipt: { payload: TokenPairPayload; refreshJti: string; userId: number } | undefined;
+    try {
+      const user = await this.repository.findUserById(Number(reserved.userId));
+      this.assertActiveUser(user);
+      if (
+        user.email !== reserved.email ||
+        !user.identities.some(
+          (identity) =>
+            identity.id === Number(metadata.loginIdentityId) &&
+            identity.isActive &&
+            identity.deletedAt === null
+        )
+      ) {
+        this.throwVerificationChallengeError("missing");
+      }
+      loginReceipt = await this.completeSuccessfulLoginWithReceipt(
+        user,
+        context,
+        Number(metadata.loginIdentityId)
+      );
+      if (
+        !(await this.verificationChallengeStore.finalizeEmailChallenge({
+          challengeId,
+          reservationToken: reserved.reservationToken
+        }))
+      ) {
+        throw this.redisUnavailableError();
+      }
+      return loginReceipt.payload;
+    } catch (error) {
+      const originalError = error;
+      try {
+        if (loginReceipt) {
+          await this.revokeRefreshTokenAfterFailedLogin(
+            loginReceipt.userId,
+            loginReceipt.refreshJti
+          );
+        }
+      } catch {
+        // Preserve the original challenge completion failure.
+      }
+      await this.releasePasswordLoginChallenge(challengeId, reserved.reservationToken);
+      throw originalError;
+    }
   }
 
   public async startRegistration(input: RegistrationInput): Promise<RegistrationChallengePayload> {
+    await this.platformAccessPolicy?.assertSelfRegistrationEnabled();
     const email = this.normalizeEmail(input.email);
     if (await this.repository.findUserByEmail(email)) {
       throw this.emailAlreadyExistsError();
@@ -749,6 +906,7 @@ export class AuthService {
 
     let loginReceipt: { payload: TokenPairPayload; refreshJti: string; userId: number } | undefined;
     try {
+      await this.platformAccessPolicy?.assertSelfRegistrationEnabled();
       let user = await this.repository.findVerifiedRegistrationByChallenge(
         challengeId,
         reserved.email
@@ -912,12 +1070,12 @@ export class AuthService {
       });
     }
 
-    const accessToken = this.tokenService.issueAccessToken({
-      id: user.id,
-      email: user.email,
-      currentIdentityId: payload.currentIdentityId,
-      sessionGeneration: payload.sessionGeneration
-    });
+    const { subject } = await this.buildAuthTokenContext(
+      user,
+      payload.currentIdentityId,
+      payload.merchantShopPublicId
+    );
+    const accessToken = this.tokenService.issueAccessToken(subject);
 
     return {
       accessToken: accessToken.token,
@@ -935,6 +1093,7 @@ export class AuthService {
     token: string,
     challengeId: string
   ): Promise<GoogleUnlinkVerificationPayload> {
+    this.assertGoogleAuthEnabled();
     const payload = this.tokenService.verifyAccessToken(token);
     const userId = this.getUserIdFromToken(payload);
     const user = await this.repository.findUserById(userId);
@@ -986,12 +1145,7 @@ export class AuthService {
       throw this.tokenInvalidError();
     }
     const me = this.buildMePayloadForIdentity(user, identityId);
-    const subject: AuthTokenSubject = {
-      id: user.id,
-      email: user.email,
-      currentIdentityId: me.currentIdentity.id,
-      sessionGeneration: refreshPayload.sessionGeneration
-    };
+    const { subject } = await this.buildAuthTokenContextFromMe(user, me);
     const nextAccessToken = this.tokenService.issueAccessToken(subject);
     const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
 
@@ -1032,6 +1186,121 @@ export class AuthService {
     };
   }
 
+  public async switchMerchantShop(
+    auth: AuthenticatedAccessContext,
+    refreshToken: string,
+    shopPublicId: string,
+    context: AuthRequestContext
+  ): Promise<SwitchMerchantShopPayload> {
+    const currentIdentityKind = resolveFormalMerchantIdentityKind({
+      type: auth.currentIdentityType ?? "",
+      scopeType: auth.currentIdentityScopeType ?? null,
+      scopeId: auth.currentIdentityScopeId ?? null
+    });
+    if (
+      currentIdentityKind !== "merchant_account" ||
+      !auth.currentIdentityId ||
+      !auth.selectedMerchantShopPublicId
+    ) {
+      throw merchantShopIdentityForbidden();
+    }
+
+    const refreshPayload = this.tokenService.verifyRefreshToken(refreshToken);
+    const refreshUserId = this.getUserIdFromToken(refreshPayload);
+    if (
+      refreshUserId !== auth.userId ||
+      refreshPayload.currentIdentityId !== auth.currentIdentityId ||
+      refreshPayload.merchantShopPublicId !== auth.selectedMerchantShopPublicId
+    ) {
+      throw this.tokenInvalidError();
+    }
+
+    const user = await this.repository.findUserById(refreshUserId);
+    this.assertActiveUser(user);
+    if (this.userSessionGeneration(user) !== refreshPayload.sessionGeneration) {
+      throw this.tokenInvalidError();
+    }
+
+    const me = this.buildMePayloadForIdentity(user, auth.currentIdentityId);
+    if (
+      resolveFormalMerchantIdentityKind(me.currentIdentity) !== "merchant_account" ||
+      me.currentIdentity.scopeId !== auth.currentIdentityScopeId
+    ) {
+      throw merchantShopIdentityForbidden();
+    }
+    const { subject, merchantShopScope } = await this.buildAuthTokenContextFromMe(
+      user,
+      me,
+      shopPublicId
+    );
+    if (!merchantShopScope?.tokenMerchantShopPublicId) {
+      throw merchantShopIdentityForbidden();
+    }
+
+    const nextAccessToken = this.tokenService.issueAccessToken(subject);
+    const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
+    if (!this.sessionStore.completeMerchantShopSwitch) throw this.redisUnavailableError();
+
+    const operationId = randomUUID();
+    const auditReceipt = await this.repository.createAuditLog({
+      actorId: auth.userId,
+      action: "auth.merchant_shop.switch",
+      targetType: "Shop",
+      targetId: null,
+      ip: context.ip,
+      userAgent: context.userAgent,
+      metadata: {
+        phase: "authorized_attempt",
+        operationId,
+        previousShopPublicId: auth.selectedMerchantShopPublicId,
+        nextShopPublicId: merchantShopScope.shopPublicId,
+        shopId: merchantShopScope.shopId
+      }
+    });
+    if (!auditReceipt) {
+      throw new Error("Merchant shop switch audit did not return a durable identifier");
+    }
+    const operationHash = createHash("sha256")
+      .update(operationId)
+      .update("\u0000")
+      .update(String(user.id))
+      .update("\u0000")
+      .update(refreshPayload.jti)
+      .update("\u0000")
+      .update(nextRefreshToken.jti)
+      .update("\u0000")
+      .update(auth.accessTokenJti)
+      .update("\u0000")
+      .update(merchantShopScope.shopPublicId)
+      .digest("hex");
+
+    const commit = await this.sessionStore.completeMerchantShopSwitch({
+      userId: user.id,
+      generation: refreshPayload.sessionGeneration,
+      oldRefreshJti: refreshPayload.jti,
+      newRefreshJti: nextRefreshToken.jti,
+      refreshTtlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+      oldAccessJti: auth.accessTokenJti,
+      oldAccessExpiresAt: auth.accessTokenExpiresAt,
+      operationId,
+      operationHash,
+      auditId: auditReceipt.id,
+      receiptTtlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
+    });
+    if (commit.status !== "committed" && commit.status !== "already_committed") {
+      throw this.tokenInvalidError();
+    }
+    this.merchantShopAuditOutboxTrigger?.trigger();
+
+    return {
+      accessToken: nextAccessToken.token,
+      refreshToken: nextRefreshToken.token,
+      expiresIn: nextAccessToken.expiresIn,
+      me,
+      shopPublicId: merchantShopScope.shopPublicId
+    };
+  }
+
   public async logout(
     auth: AuthenticatedAccessContext,
     refreshToken: string,
@@ -1069,12 +1338,51 @@ export class AuthService {
     const user = await this.repository.findUserById(auth.userId);
     this.assertActiveUser(user);
 
-    return this.buildMePayload(user, auth.currentIdentityId);
+    const payload = this.buildMePayload(user, auth.currentIdentityId);
+    const compliance = await this.evaluateAccountCompliance(user.id, new Date());
+    return compliance ? this.withCompliance(payload, compliance) : payload;
+  }
+
+  public async bindCompliancePhone(
+    phone: string,
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<CompliancePhoneBindingPayload> {
+    if (!this.repository.completePhoneBinding) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.unavailable",
+        statusCode: 503
+      });
+    }
+    try {
+      const updated = await this.repository.completePhoneBinding({
+        userId: auth.userId,
+        phone,
+        context
+      });
+      const compliance = await this.evaluateAccountCompliance(updated.id, new Date());
+      return {
+        phone: updated.phone ?? phone,
+        complianceRequirements: compliance?.requirements ?? [],
+        smsVerified: false
+      };
+    } catch (error) {
+      if (error instanceof PhoneBindingConflictError) {
+        throw new AppError({
+          code: ERROR_CODES.PHONE_ALREADY_EXISTS,
+          message: "error.user.phone_exists",
+          statusCode: 409
+        });
+      }
+      throw error;
+    }
   }
 
   public async authenticateAccessToken(
     token: string,
-    requiredPermission?: string
+    requiredPermission?: string,
+    options: { allowDuringCompliance?: boolean } = {}
   ): Promise<AuthenticatedAccessContext> {
     const payload = this.tokenService.verifyAccessToken(token);
 
@@ -1091,19 +1399,19 @@ export class AuthService {
     this.assertActiveUser(user);
     if (this.userSessionGeneration(user) !== payload.sessionGeneration)
       throw this.tokenInvalidError();
-    const me = this.buildMePayload(user, payload.currentIdentityId);
-
-    if (requiredPermission && !me.permissions.includes(requiredPermission)) {
-      throw new AppError({
-        code: ERROR_CODES.FORBIDDEN,
-        message: "error.forbidden",
-        statusCode: 403
-      });
+    const { me, merchantShopScope } = await this.buildAuthTokenContext(
+      user,
+      payload.currentIdentityId,
+      payload.merchantShopPublicId
+    );
+    const compliance = await this.evaluateAccountCompliance(userId, new Date());
+    if (compliance && !compliance.compliant && !options.allowDuringCompliance) {
+      throw this.accountComplianceRequired(compliance);
     }
 
-    return {
+    const authenticated: AuthenticatedAccessContext = {
       userId,
-      email: payload.email,
+      email: user.email,
       accessTokenJti: payload.jti,
       accessTokenExpiresAt: payload.exp,
       sessionGeneration: payload.sessionGeneration,
@@ -1112,9 +1420,76 @@ export class AuthService {
       currentIdentityType: me.currentIdentity.type,
       currentIdentityScopeType: me.currentIdentity.scopeType,
       currentIdentityScopeId: me.currentIdentity.scopeId,
+      ...(merchantShopScope
+        ? {
+            selectedMerchantShopId: merchantShopScope.shopId,
+            selectedMerchantShopPublicId: merchantShopScope.shopPublicId
+          }
+        : {}),
       roles: me.roles,
-      permissions: me.permissions
+      permissions: me.permissions,
+      ...(compliance ? { complianceRequirements: compliance.requirements } : {})
     };
+    await this.platformAccessPolicy?.assertAuthenticatedAccess(authenticated);
+
+    if (requiredPermission && !authenticated.permissions.includes(requiredPermission)) {
+      throw new AppError({
+        code: ERROR_CODES.FORBIDDEN,
+        message: "error.forbidden",
+        statusCode: 403
+      });
+    }
+
+    this.merchantShopAuditOutboxTrigger?.trigger();
+    return authenticated;
+  }
+
+  private async evaluateAccountCompliance(
+    userId: number,
+    occurredAt: Date
+  ): Promise<UserPolicyComplianceDecision | null> {
+    if (!this.userPolicyEnforcementService) return null;
+    return this.userPolicyEnforcementService.evaluateAccountCompliance(userId, occurredAt);
+  }
+
+  private withCompliance(
+    payload: AuthMePayload,
+    compliance: UserPolicyComplianceDecision
+  ): AuthMePayload {
+    return {
+      ...payload,
+      complianceRequirements: compliance.requirements,
+      compliancePolicyVersionPublicId: compliance.policyVersionPublicId,
+      complianceEffectiveAt: compliance.effectiveAt,
+      compliancePermittedNextRoutes: this.compliancePermittedNextRoutes()
+    };
+  }
+
+  private accountComplianceRequired(compliance: UserPolicyComplianceDecision): AppError {
+    return new AppError({
+      code: ERROR_CODES.USER_POLICY_COMPLIANCE_REQUIRED,
+      message: "error.user_policy.account_compliance_required",
+      statusCode: 403,
+      data: {
+        complianceRequirements: compliance.requirements,
+        policyVersionPublicId: compliance.policyVersionPublicId,
+        effectiveAt: compliance.effectiveAt,
+        permittedNextRoutes: this.compliancePermittedNextRoutes()
+      }
+    });
+  }
+
+  private compliancePermittedNextRoutes(): string[] {
+    return [
+      "/api/v1/auth/me",
+      "/api/v1/auth/logout",
+      "/api/v1/auth/account-compliance/phone",
+      "/api/v1/auth/google/link",
+      "/api/v1/auth/google/link/init",
+      "/api/v1/auth/google/link/verify",
+      "/api/v1/auth/password/setup",
+      "/api/v1/auth/password/setup/verify"
+    ];
   }
 
   private async completeSuccessfulLogin(
@@ -1124,6 +1499,103 @@ export class AuthService {
   ): Promise<TokenPairPayload> {
     return (await this.completeSuccessfulLoginWithReceipt(user, context, currentIdentityId))
       .payload;
+  }
+
+  private async requiresPasswordLoginVerification(
+    userId: number,
+    ip: string,
+    policy: PasswordLoginVerificationPolicy
+  ): Promise<boolean> {
+    if (policy.rule === "every_login") return true;
+    const { periodStart, periodEnd } = this.tokyoMonthBounds(this.clock());
+    const evidence = await this.repository.getSuccessfulLoginEvidence({
+      userId,
+      ip,
+      periodStart,
+      periodEnd
+    });
+    const timeRuleRequiresVerification =
+      policy.rule === "first_login"
+        ? !evidence.hasAnySuccessfulLogin
+        : !evidence.hasSuccessfulLoginInPeriod;
+    return (
+      timeRuleRequiresVerification ||
+      (policy.onNewIp && !evidence.hasSuccessfulLoginFromIp)
+    );
+  }
+
+  private async createPasswordLoginChallenge(
+    user: AuthUserRecord,
+    context: AuthRequestContext,
+    policy: PasswordLoginVerificationPolicy
+  ): Promise<Extract<PasswordLoginResult, { status: "verification_required" }>> {
+    if (!Number.isInteger(user.loginIdentityId) || Number(user.loginIdentityId) < 1) {
+      throw this.invalidCredentialsError();
+    }
+    try {
+      const otp = String(randomInt(0, 1_000_000)).padStart(6, "0");
+      const challenge = await this.verificationChallengeStore.createEmailChallenge({
+        email: user.email,
+        otp,
+        purpose: "password_login",
+        userId: user.id,
+        metadata: {
+          loginIdentityId: user.loginIdentityId,
+          platformSettingsVersion: policy.platformSettingsVersion
+        }
+      });
+      try {
+        await this.otpDeliveryClient.sendOtp(user.email, otp);
+      } catch (error) {
+        await this.verificationChallengeStore.cancelEmailChallenge({
+          challengeId: challenge.challengeId,
+          email: user.email,
+          purpose: "password_login"
+        });
+        throw error;
+      }
+      return {
+        status: "verification_required",
+        challengeId: challenge.challengeId,
+        maskedEmail: challenge.maskedEmail,
+        expiresIn: challenge.expiresInSeconds,
+        cooldownSeconds: 60
+      };
+    } catch (error) {
+      if (error instanceof VerificationChallengeCooldownError) {
+        throw new AppError({
+          code: ERROR_CODES.OTP_COOLDOWN,
+          message: "error.auth.otp_cooldown",
+          statusCode: 429
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async releasePasswordLoginChallenge(
+    challengeId: string,
+    reservationToken: string
+  ): Promise<void> {
+    try {
+      await this.verificationChallengeStore.releaseEmailChallenge({
+        challengeId,
+        reservationToken
+      });
+    } catch {
+      // Preserve the original verification failure without exposing challenge state.
+    }
+  }
+
+  private tokyoMonthBounds(now: Date): { periodStart: Date; periodEnd: Date } {
+    const tokyoOffsetMs = 9 * 60 * 60 * 1_000;
+    const tokyo = new Date(now.getTime() + tokyoOffsetMs);
+    const year = tokyo.getUTCFullYear();
+    const month = tokyo.getUTCMonth();
+    return {
+      periodStart: new Date(Date.UTC(year, month, 1) - tokyoOffsetMs),
+      periodEnd: new Date(Date.UTC(year, month + 1, 1) - tokyoOffsetMs)
+    };
   }
 
   private accountSecurityRepository(): AuthRepositoryPort & GoogleAuthRepositoryPort {
@@ -1143,6 +1615,16 @@ export class AuthService {
       });
     }
     return repository as AuthRepositoryPort & GoogleAuthRepositoryPort;
+  }
+
+  private assertGoogleAuthEnabled(): void {
+    if (this.config.AUTH_GOOGLE_ENABLED === false) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.google_auth_unavailable",
+        statusCode: 503
+      });
+    }
   }
 
   private async getActiveAccountSecurityUser(
@@ -1375,6 +1857,7 @@ export class AuthService {
     }
 
     try {
+      await this.platformAccessPolicy?.assertSelfRegistrationEnabled();
       const user = await this.repository.createVerifiedBaselineCustomer({
         email: googleIdentity.email,
         passwordHash: null,
@@ -1415,6 +1898,14 @@ export class AuthService {
     });
   }
 
+  private invalidCredentialsError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.INVALID_CREDENTIALS,
+      message: "error.auth.invalid_credentials",
+      statusCode: 401
+    });
+  }
+
   private googleConflictError(): AppError {
     return new AppError({
       code: ERROR_CODES.GOOGLE_CONFLICT,
@@ -1429,14 +1920,8 @@ export class AuthService {
     currentIdentityId?: number
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
     const loggedInAt = new Date();
-    const me = this.buildMePayload(user, currentIdentityId);
     const sessionGeneration = this.userSessionGeneration(user);
-    const subject: AuthTokenSubject = {
-      id: user.id,
-      email: user.email,
-      currentIdentityId: me.currentIdentity.id,
-      sessionGeneration
-    };
+    const { subject } = await this.buildAuthTokenContext(user, currentIdentityId);
     const accessToken = this.tokenService.issueAccessToken(subject);
     const refreshToken = this.tokenService.issueRefreshToken(subject);
 
@@ -1460,6 +1945,7 @@ export class AuthService {
         userAgent: context.userAgent,
         status: "success"
       });
+      await this.recordMemberSignInExperience(user, loggedInAt);
     } catch (error) {
       if (refreshStored) await this.revokeRefreshTokenAfterFailedLogin(user.id, refreshToken.jti);
       throw error;
@@ -1490,14 +1976,9 @@ export class AuthService {
     providerSubject: string,
     context: AuthRequestContext
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
-    const me = this.buildMePayload(user);
+    const loggedInAt = new Date();
     const sessionGeneration = this.userSessionGeneration(user);
-    const subject: AuthTokenSubject = {
-      id: user.id,
-      email: user.email,
-      currentIdentityId: me.currentIdentity.id,
-      sessionGeneration
-    };
+    const { me, subject } = await this.buildAuthTokenContext(user);
     const accessToken = this.tokenService.issueAccessToken(subject);
     const refreshToken = this.tokenService.issueRefreshToken(subject);
     let refreshStored = false;
@@ -1516,10 +1997,11 @@ export class AuthService {
         providerSubject,
         expectedUserId: user.id,
         expectedIdentityId: me.currentIdentity.id,
-        loggedInAt: new Date(),
+        loggedInAt,
         context: { ip: context.ip, userAgent: context.userAgent }
       });
       this.assertActiveUser(fresh);
+      await this.recordMemberSignInExperience(fresh, loggedInAt);
     } catch (error) {
       if (refreshStored) await this.revokeRefreshTokenAfterFailedLogin(user.id, refreshToken.jti);
       if (error instanceof GoogleLoginStateError) {
@@ -1550,6 +2032,40 @@ export class AuthService {
       refreshJti: refreshToken.jti,
       userId: user.id
     };
+  }
+
+  private async recordMemberSignInExperience(
+    user: AuthUserRecord,
+    occurredAt: Date
+  ): Promise<void> {
+    if (!this.userExperienceService) return;
+    const date = this.japanCalendarDate(occurredAt);
+    try {
+      await this.userExperienceService.recordEvent({
+        userId: user.id,
+        eventType: "member_sign_in",
+        sourceType: "member_sign_in",
+        sourcePublicId: date,
+        idempotencyKey: `member-sign-in:${user.needoId}:${date}`,
+        baseUnits: 10_000n,
+        requiredBenefit: "member_sign_in",
+        occurredAt
+      });
+    } catch {
+      // Authentication already succeeded. A later real login retries this idempotent daily event.
+    }
+  }
+
+  private japanCalendarDate(occurredAt: Date): string {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(occurredAt);
+    const value = (type: Intl.DateTimeFormatPartTypes): string =>
+      parts.find((part) => part.type === type)?.value ?? "";
+    return `${value("year")}-${value("month")}-${value("day")}`;
   }
 
   private async revokeRefreshTokenAfterFailedLogin(
@@ -1649,6 +2165,48 @@ export class AuthService {
     });
   }
 
+  private async buildAuthTokenContext(
+    user: AuthUserRecord,
+    currentIdentityId?: number,
+    merchantShopPublicId?: string
+  ): Promise<{
+    me: AuthMePayload;
+    subject: AuthTokenSubject;
+    merchantShopScope: ResolvedMerchantShopScope | null;
+  }> {
+    return this.buildAuthTokenContextFromMe(
+      user,
+      this.buildMePayload(user, currentIdentityId),
+      merchantShopPublicId
+    );
+  }
+
+  private async buildAuthTokenContextFromMe(
+    user: AuthUserRecord,
+    me: AuthMePayload,
+    merchantShopPublicId?: string
+  ): Promise<{
+    me: AuthMePayload;
+    subject: AuthTokenSubject;
+    merchantShopScope: ResolvedMerchantShopScope | null;
+  }> {
+    const merchantShopScope = await resolveMerchantShopScope({
+      repository: this.merchantShopContextRepository,
+      identity: me.currentIdentity,
+      merchantShopPublicId
+    });
+    const subject: AuthTokenSubject = {
+      id: user.id,
+      email: user.email,
+      currentIdentityId: me.currentIdentity.id,
+      sessionGeneration: this.userSessionGeneration(user),
+      ...(merchantShopScope?.tokenMerchantShopPublicId
+        ? { merchantShopPublicId: merchantShopScope.tokenMerchantShopPublicId }
+        : {})
+    };
+    return { me, subject, merchantShopScope };
+  }
+
   private buildMePayloadForIdentity(user: AuthUserRecord, identityId: number): AuthMePayload {
     const identity = user.identities.find(
       (item) => item.id === identityId && item.deletedAt === null && item.isActive
@@ -1683,6 +2241,7 @@ export class AuthService {
         type: identity.type,
         scopeType: identity.scopeType,
         scopeId: identity.scopeId,
+        displayName: identity.displayName,
         publicId:
           identity.publicIdentifier?.status === "ACTIVE" &&
           identity.publicIdentifier.deletedAt === null
@@ -1702,8 +2261,9 @@ export class AuthService {
         publicIdentityById.set(identity.publicId, identity);
       }
     }
-    const sharedPrimaryPublicId = allActiveIdentities.find((identity) => identity.publicId !== null)
-      ?.publicId;
+    const sharedPrimaryPublicId = allActiveIdentities.find(
+      (identity) => identity.publicId !== null
+    )?.publicId;
     const hasCustomerIdentity = allActiveIdentities.some((identity) =>
       ["customer", "user", "u"].includes(identity.type)
     );
@@ -1755,7 +2315,8 @@ export class AuthService {
       }
     }
 
-    const permissionCodes = Array.from(permissions.keys());
+    const technicianRequiresShop = ["technician", "service", "s"].includes(currentIdentity.type) && user.technicianProfile !== undefined && (user.technicianProfile === null || user.technicianProfile.technicianShopAffiliations.length === 0);
+    const permissionCodes = Array.from(permissions.keys()).filter((code) => !technicianRequiresShop || code.startsWith("auth:") || code.startsWith("menu:") || TECHNICIAN_SHOP_ONBOARDING_PERMISSIONS.has(code));
 
     return {
       id: user.id,
@@ -1768,6 +2329,10 @@ export class AuthService {
       hasPassword: Boolean(user.passwordHash),
       username: user.username,
       avatarUrl: user.avatarUrl,
+      profileDisplayName:
+        user.customerProfile?.deletedAt === null
+          ? user.customerProfile.displayName
+          : null,
       isActive: user.isActive,
       isTestAccount: user.isTestAccount,
       currentIdentity,
@@ -1786,14 +2351,7 @@ export class AuthService {
     const identityTypes: Readonly<Record<AuthIdentityAvailabilityKind, readonly string[]>> = {
       customer: ["customer"],
       technician: ["technician"],
-      merchant: [
-        "merchant",
-        "merchant_organization",
-        "merchant_owner",
-        "merchant_staff",
-        "o",
-        "owner"
-      ],
+      merchant: [...FORMAL_MERCHANT_IDENTITY_TYPES],
       affiliate: ["affiliate", "scout"]
     };
     const customerIdentity = identities.find((identity) =>
@@ -1819,7 +2377,10 @@ export class AuthService {
       const application =
         kind === "technician" || kind === "merchant"
           ? applications.find(
-              (candidate) => candidate.type === kind && candidate.deletedAt === null
+              (candidate) =>
+                candidate.type === kind &&
+                candidate.deletedAt === null &&
+                ["draft", "submitted", "under_review", "rejected"].includes(candidate.status)
             )
           : undefined;
       if (!application) {

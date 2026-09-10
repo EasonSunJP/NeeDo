@@ -59,9 +59,7 @@ type TechnicianReviewRow = Prisma.IdentityApplicationGetPayload<{
 const asStringArray = (value: Prisma.JsonValue | null): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
-export class TechnicianApplicationReviewRepository
-  implements TechnicianApplicationReviewRepositoryPort
-{
+export class TechnicianApplicationReviewRepository implements TechnicianApplicationReviewRepositoryPort {
   private readonly identityActivation: IdentityActivationRepository;
 
   public constructor(private readonly client: PrismaClient = prisma) {
@@ -75,7 +73,7 @@ export class TechnicianApplicationReviewRepository
     const where: Prisma.IdentityApplicationWhereInput = {
       type: "technician",
       deletedAt: null,
-      ...(query.status ? { status: query.status } : {}),
+      status: query.status ?? { in: ["submitted", "under_review", "approved", "rejected"] },
       technicianDetail: { targetShopId: shopId, deletedAt: null }
     };
     const [rows, total] = await this.client.$transaction([
@@ -108,6 +106,7 @@ export class TechnicianApplicationReviewRepository
         id: applicationId,
         type: "technician",
         deletedAt: null,
+        status: { not: "draft" },
         technicianDetail: { targetShopId: shopId, deletedAt: null }
       },
       select: technicianReviewSelect
@@ -120,40 +119,96 @@ export class TechnicianApplicationReviewRepository
   ): Promise<TechnicianApprovalResult> {
     return this.client.$transaction(async (transaction) => {
       await this.closeForReview(transaction, input, "approved", null);
-      const profile = await transaction.technicianProfile.upsert({
+      const existingProfile = await transaction.technicianProfile.findUnique({
         where: { userId: input.applicantUserId },
-        create: {
-          userId: input.applicantUserId,
-          shopId: input.targetShopId,
-          displayName: input.applicantName,
-          bio: input.bio,
-          city: input.city ?? "",
-          status: "published",
-          verifiedAt: input.reviewedAt
-        },
-        update: {
-          shopId: input.targetShopId,
-          displayName: input.applicantName,
-          bio: input.bio,
-          city: input.city ?? "",
-          status: "published",
-          verifiedAt: input.reviewedAt,
-          deletedAt: null
-        }
+        select: { id: true }
       });
-      const identity = await this.identityActivation.activateWithTransaction(
-        transaction,
-        buildIdentityActivationTransactionInput({
-          kind: "technician",
-          userId: input.applicantUserId,
-          actorUserId: input.reviewerUserId,
-          displayName: input.applicantName,
-          scopeId: profile.id,
-          applicationId: input.applicationId,
-          contractAcceptanceId: null,
-          activatedAt: input.reviewedAt
-        })
-      );
+      const profile = existingProfile
+        ? await transaction.technicianProfile.update({
+            where: { id: existingProfile.id },
+            data: { status: "published", verifiedAt: input.reviewedAt, deletedAt: null },
+            select: { id: true }
+          })
+        : await transaction.technicianProfile.create({
+            data: {
+              userId: input.applicantUserId,
+              shopId: input.targetShopId,
+              displayName: input.applicantName,
+              bio: input.bio,
+              city: input.city ?? "",
+              status: "published",
+              verifiedAt: input.reviewedAt
+            },
+            select: { id: true }
+          });
+      const currentAffiliation = await transaction.technicianShopAffiliation.findFirst({
+        where: { technicianProfileId: profile.id, shopId: input.targetShopId },
+        orderBy: { id: "desc" },
+        select: { id: true }
+      });
+      const activeKey = `technician:${profile.id}:shop:${input.targetShopId}`;
+      const affiliation = currentAffiliation
+        ? await transaction.technicianShopAffiliation.update({
+            where: { id: currentAffiliation.id },
+            data: {
+              relationshipType: "PARTNER",
+              workStatus: "ACTIVE",
+              startsAt: input.reviewedAt,
+              endsAt: null,
+              activeKey,
+              updatedById: input.reviewerUserId,
+              deletedAt: null
+            },
+            select: { id: true }
+          })
+        : await transaction.technicianShopAffiliation.create({
+            data: {
+              technicianProfileId: profile.id,
+              shopId: input.targetShopId,
+              relationshipType: "PARTNER",
+              workStatus: "ACTIVE",
+              startsAt: input.reviewedAt,
+              activeKey,
+              createdById: input.reviewerUserId,
+              updatedById: input.reviewerUserId
+            },
+            select: { id: true }
+          });
+      const currentIdentity = existingProfile
+        ? await transaction.userIdentity.findFirst({
+            where: {
+              userId: input.applicantUserId,
+              type: "technician",
+              scopeType: "technician_profile",
+              scopeId: profile.id,
+              isActive: true,
+              deletedAt: null
+            },
+            select: { id: true, userId: true, type: true, scopeType: true, scopeId: true }
+          })
+        : null;
+      const identity = currentIdentity
+        ? {
+            identityId: currentIdentity.id,
+            userId: currentIdentity.userId,
+            identityType: currentIdentity.type,
+            roleCode: "technician",
+            scopeType: currentIdentity.scopeType ?? "technician_profile",
+            scopeId: currentIdentity.scopeId
+          }
+        : await this.identityActivation.activateWithTransaction(
+            transaction,
+            buildIdentityActivationTransactionInput({
+              kind: "technician",
+              userId: input.applicantUserId,
+              actorUserId: input.reviewerUserId,
+              displayName: input.applicantName,
+              scopeId: profile.id,
+              applicationId: input.applicationId,
+              contractAcceptanceId: null,
+              activatedAt: input.reviewedAt
+            })
+          );
       await transaction.auditLog.create({
         data: {
           actorId: input.reviewerUserId,
@@ -166,6 +221,9 @@ export class TechnicianApplicationReviewRepository
             applicationId: input.applicationId,
             targetShopId: input.targetShopId,
             technicianProfileId: profile.id,
+            technicianShopAffiliationId: affiliation.id,
+            additionalShop: existingProfile !== null,
+            ekycPolicy: input.ekycPolicy,
             identityId: identity.identityId,
             version: input.expectedVersion + 1
           },
@@ -269,9 +327,7 @@ export class TechnicianApplicationReviewRepository
 
   private async closeForReview(
     transaction: Prisma.TransactionClient,
-    input:
-      | ApproveTechnicianApplicationRepositoryInput
-      | RejectTechnicianApplicationRepositoryInput,
+    input: ApproveTechnicianApplicationRepositoryInput | RejectTechnicianApplicationRepositoryInput,
     status: "approved" | "rejected",
     rejectionReason: string | null
   ): Promise<void> {

@@ -73,12 +73,15 @@ export function MobileFullscreenBackButton({
 
 export function MobileFullscreenHeader({
   title,
+  center,
   info,
   infoLabel,
   subtitle,
   onBack,
   onClose,
   action,
+  overlay,
+  footer,
   dark = false,
   className,
   maxWidth,
@@ -89,12 +92,15 @@ export function MobileFullscreenHeader({
   showSpacer = true
 }: {
   title: ReactNode;
+  center?: ReactNode;
   info?: ReactNode;
   infoLabel?: string;
   subtitle?: ReactNode;
   onBack?: () => void;
   onClose?: () => void;
   action?: ReactNode;
+  overlay?: ReactNode;
+  footer?: ReactNode;
   dark?: boolean;
   className?: string;
   maxWidth?: CSSProperties["maxWidth"];
@@ -119,6 +125,7 @@ export function MobileFullscreenHeader({
       className="gap-0"
       frameClassName="z-40"
       maxWidth={maxWidth ?? "480px"}
+      overlay={overlay}
       panelClassName={cn(dark ? mobileFullscreenHeaderDarkSurfaceClassName : mobileFullscreenHeaderSurfaceClassName, className)}
       showSpacer={showSpacer}
       spacerGapPx={0}
@@ -141,17 +148,21 @@ export function MobileFullscreenHeader({
             )}
           >
             <div className="flex min-h-10 flex-col justify-center">
-              <TitleWithInfo
-                as="h1"
-                info={headerInfo}
-                label={
-                  infoLabel ??
-                  (typeof title === "string" ? `${title} 说明` : "查看页面说明")
-                }
-                title={title}
-                titleClassName={cn("truncate text-[18px] font-black leading-none", dark ? "text-white" : "text-current")}
-                variant={dark ? "dark" : "client"}
-              />
+              {center ? (
+                <div className="min-w-0">{center}</div>
+              ) : (
+                <TitleWithInfo
+                  as="h1"
+                  info={headerInfo}
+                  label={
+                    infoLabel ??
+                    (typeof title === "string" ? `${title} 说明` : "查看页面说明")
+                  }
+                  title={title}
+                  titleClassName={cn("truncate text-[18px] font-black leading-none", dark ? "text-white" : "text-current")}
+                  variant={dark ? "dark" : "client"}
+                />
+              )}
             </div>
           </div>
           {hasRightControls ? (
@@ -161,6 +172,7 @@ export function MobileFullscreenHeader({
             </div>
           ) : null}
         </div>
+        {footer ? <div className="mt-3">{footer}</div> : null}
       </div>
     </FloatingHomeHeader>
   );

@@ -11,6 +11,8 @@ import {
   summarizeProfileStatus
 } from "./UnifiedSettingsPages";
 import { translateText, type Language } from "../../i18n/translations";
+import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
+import settingsDirectorySource from "../../components/client-ui/SettingsDirectory.tsx?raw";
 import backendPortalSource from "./TestOnlyBackendPortalEntries.tsx?raw";
 import source from "./UnifiedSettingsPages.tsx?raw";
 
@@ -351,6 +353,12 @@ describe("FormalAccountSecurityPanel", () => {
     expect(accountSource).not.toMatch(/fetchGoogleAccountApi|\/api\/google-account\/|GoogleCalendarAccountBinding|4176/);
   });
 
+  it("returns an ordinary logout directly to login instead of the cached merchant homepage", () => {
+    const logoutAction = source.slice(source.indexOf("void logout().then"), source.indexOf("void logout().then") + 380);
+    expect(logoutAction).toContain("window.location.replace(getPortalEntryUrl(portal, `/login/${portal}`))");
+    expect(logoutAction).toContain("window.location.reload()");
+  });
+
   it("wires successful unlink through AuthProvider logout and returns to the current portal login", () => {
     const accountPageSource = source.slice(source.indexOf("export function UnifiedSettingsAccountPage"), source.indexOf("export function UnifiedSettingsNotificationsPage"));
     expect(accountPageSource).toContain("logout");
@@ -358,6 +366,43 @@ describe("FormalAccountSecurityPanel", () => {
     expect(accountPageSource).toContain("navigate(`/login/${portal}`");
     expect(accountPageSource).toContain("session={session}");
     expect(accountPageSource).not.toContain("google-calendar");
+  });
+});
+
+describe("persisted public legal documents", () => {
+  it("renders the exact current-language release without static legal fallback", () => {
+    expect(source).toContain("usePublicLegalDocument(slug, language)");
+    expect(source).toContain('slug="terms-of-use"');
+    expect(source).toContain('slug="privacy-policy"');
+    expect(source).toContain("state.document.body");
+    expect(source).toContain("当前语言尚无已发布版本");
+    expect(source).not.toContain("getLegalTermsDocument(language)");
+    expect(source).not.toContain("getLegalPrivacyDocument(language)");
+  });
+});
+
+describe("UnifiedSettingsPage fullscreen exit", () => {
+  const pageScaffoldSource = appScaffoldSource.slice(
+    appScaffoldSource.indexOf("export function PageScaffold"),
+    appScaffoldSource.indexOf("export function AppTopBar")
+  );
+  const settingsHomeComponentSource = settingsDirectorySource.slice(
+    settingsDirectorySource.indexOf("export function SettingsHomePage"),
+    settingsDirectorySource.indexOf("export function SettingsDetailPage")
+  );
+  const settingsHomeSource = source.slice(
+    source.indexOf("export function UnifiedSettingsPage"),
+    source.indexOf("export function UnifiedSettingsProfileCardBackgroundPage")
+  );
+
+  it("uses the shared close control to leave the current portal settings home", () => {
+    expect(settingsHomeSource).toContain("closeTo={getPortalMePath(portal)}");
+    expect(settingsHomeComponentSource).toContain("closeTo={closeTo}");
+  });
+
+  it("removes the bottom navigation and its safe-area reservation from settings home", () => {
+    expect(settingsHomeComponentSource).toContain("showBottomNav={false}");
+    expect(pageScaffoldSource).toContain("showBottomNav={showBottomNav}");
   });
 });
 
@@ -405,7 +450,7 @@ describe("UnifiedSettingsServiceRangePage", () => {
 describe("UnifiedSettingsPortalPage", () => {
   const portalPageSource = source.slice(
     source.indexOf("export function UnifiedSettingsPortalPage"),
-    source.indexOf("function UserProfileSettingsPage")
+    source.indexOf("function SettingsProfileResourceState")
   );
 
   it("uses the current settings route as the selected frontend identity", () => {
@@ -456,6 +501,7 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(portalPageSource).toContain("const result = await switchPortal(nextPortal);");
     expect(portalPageSource).toContain("if (!result.ok)");
     expect(portalPageSource).toContain("navigate(nextEntry");
+    expect(portalPageSource).toContain("settingsReturnTo:");
   });
 
   it("renders inactive identities as applications instead of selectable radios", () => {
@@ -464,6 +510,8 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(portalPageSource).toContain('row.action === "retry"');
     expect(portalPageSource).toContain("getIdentityApplicationPath(row.kind)");
     expect(portalPageSource).toContain('t("申请")');
+    expect(portalPageSource).toContain('const disabled = row.action === "current" || switchingPortal !== null;');
+    expect(portalPageSource).not.toContain('row.action === "current" || row.action === "pending"');
   });
 
   it("keeps merchant identity switching on the merchant app instead of technician", () => {
@@ -478,6 +526,14 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(source).not.toContain("const backendSettingsPortalEntries");
     expect(portalPageSource).not.toContain("window.location.assign");
     expect(portalPageSource).not.toContain("openBackendPortal");
+  });
+});
+
+describe("UnifiedSettingsPage formal customer summary", () => {
+  it("loads the signed-in user summary from the formal customer profile without querying other portals", () => {
+    expect(source).toContain('useCustomerSelfProfile(portal === "user")');
+    expect(source).toContain('formalCustomerProfile.loading ? "正在加载我的正式数据"');
+    expect(source).toContain('formalCustomerProfile.error ? "我的数据加载失败"');
   });
 });
 
@@ -535,38 +591,33 @@ describe("UnifiedSettingsThemePage", () => {
 });
 
 describe("UnifiedSettingsProfilePage", () => {
-  const userProfileSource = source.slice(
-    source.indexOf("function UserProfileSettingsPage"),
-    source.indexOf("function TechnicianProfileSettingsPage")
-  );
   const technicianProfileSource = source.slice(
     source.indexOf("function TechnicianProfileSettingsPage"),
     source.indexOf("function MerchantProfileSettingsPage")
   );
 
-  it("keeps profile visibility controls out of user and technician profile edit pages", () => {
-    expect(userProfileSource).not.toContain("InfoCardVisibilityEditor");
-    expect(userProfileSource).not.toContain("信息卡可见范围");
+  it("keeps profile visibility controls out of the technician profile edit page", () => {
     expect(technicianProfileSource).not.toContain("InfoCardVisibilityEditor");
     expect(technicianProfileSource).not.toContain("信息卡可见范围");
     expect(technicianProfileSource).not.toContain("技师名片预览");
     expect(technicianProfileSource).not.toContain("实时预览");
   });
 
-  it("opens the technician profile edit page without the main bottom navigation", () => {
-    expect(technicianProfileSource).toContain("navItems={[]}");
-  });
-
-  it("loads and saves the user profile through the formal customer profile API", () => {
-    const profileRouteSource = source.slice(
-      source.indexOf("function FormalUserProfileSettingsPage"),
-      source.indexOf("export function UnifiedSettingsVerificationPage")
+  it("uses the personal center for user profile editing instead of keeping a duplicate editor", () => {
+    const settingsHome = source.slice(
+      source.indexOf("export function UnifiedSettingsPage"),
+      source.indexOf("export function UnifiedSettingsThemePage")
     );
 
-    expect(profileRouteSource).toContain("useCustomerSelfProfile()");
-    expect(userProfileSource).toContain("customerProfileApi.updateMine");
-    expect(userProfileSource).not.toContain("updateCustomerEntity(customer.id");
-    expect(profileRouteSource).toContain("SettingsProfileResourceState");
+    expect(settingsHome).toContain(
+      'to={portal === "user" ? getPortalMePath(portal) : getSettingsPath(portal, "profile")}'
+    );
+    expect(source).not.toContain("function UserProfileSettingsPage");
+    expect(source).not.toContain("function FormalUserProfileSettingsPage");
+  });
+
+  it("opens the technician profile edit page without the main bottom navigation", () => {
+    expect(technicianProfileSource).toContain("navItems={[]}");
   });
 
   it("loads and saves the technician profile through the formal technician profile API", () => {
@@ -589,5 +640,21 @@ describe("UnifiedSettingsProfilePage", () => {
 
     expect(profileRouteSource).toContain('if (!store)');
     expect(profileRouteSource).toContain("SettingsProfileResourceState");
+  });
+});
+
+
+describe("formal personal verification", () => {
+  it("does not advertise completion on the settings entry before checking records", () => {
+    const summary = source.slice(source.indexOf("function getVerificationStatusLabel"), source.indexOf("function getThemeCaption"));
+    expect(summary).toContain('if (portal === "user")');
+    expect(summary).toContain('return "查看状态"');
+  });
+  it("does not label personal identity and credit verified without records", () => {
+    const verification = source.slice(source.indexOf("export function UnifiedSettingsVerificationPage"), source.indexOf("export function UnifiedSettingsServiceRangePage"));
+    expect(verification).not.toContain("已通过基础实名校验。");
+    expect(verification).not.toContain("头像、昵称与预约资料一致性正常。");
+    expect(verification).toContain("EkycProfileForm");
+    expect(verification).not.toContain("PersonalVerificationStatus");
   });
 });

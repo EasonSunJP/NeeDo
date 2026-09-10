@@ -2,9 +2,298 @@ import { describe, expect, it } from "vitest";
 import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i18n";
 import { contentPublicationTranslations } from "../features/content-publication/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
-import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
+import { translateImUiText } from "../features/im/ui-copy";
+import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes merchant trend chart copy and count units in all supported languages", () => {
+    const expected = {
+      "订单趋势": { zh: "订单趋势", "zh-Hant": "訂單趨勢", ja: "注文トレンド", en: "Order trends", ko: "주문 추이" },
+      "同一期间 · 双独立刻度": { zh: "同一期间 · 双独立刻度", "zh-Hant": "同一期間 · 雙獨立刻度", ja: "同じ期間 · 2つの独立した目盛", en: "Same period · two independent scales", ko: "같은 기간 · 두 개의 독립 눈금" },
+      峰值: { zh: "峰值", "zh-Hant": "峰值", ja: "ピーク", en: "Peak", ko: "최고치" },
+      单: { zh: "单", "zh-Hant": "單", ja: "件", en: "orders", ko: "건" },
+      营业额: { zh: "营业额", "zh-Hant": "營業額", ja: "売上", en: "Revenue", ko: "매출" },
+      订单数: { zh: "订单数", "zh-Hant": "訂單數", ja: "注文数", en: "Orders", ko: "주문 수" },
+      "订单趋势图例": { zh: "订单趋势图例", "zh-Hant": "訂單趨勢圖例", ja: "注文トレンドの凡例", en: "Order trend legend", ko: "주문 추이 범례" },
+      "隐藏营业额趋势": { zh: "隐藏营业额趋势", "zh-Hant": "隱藏營業額趨勢", ja: "売上トレンドを非表示", en: "Hide revenue trend", ko: "매출 추세 숨기기" },
+      "显示营业额趋势": { zh: "显示营业额趋势", "zh-Hant": "顯示營業額趨勢", ja: "売上トレンドを表示", en: "Show revenue trend", ko: "매출 추세 표시" },
+      "隐藏订单数趋势": { zh: "隐藏订单数趋势", "zh-Hant": "隱藏訂單數趨勢", ja: "注文数トレンドを非表示", en: "Hide order trend", ko: "주문 추세 숨기기" },
+      "显示订单数趋势": { zh: "显示订单数趋势", "zh-Hant": "顯示訂單數趨勢", ja: "注文数トレンドを表示", en: "Show order trend", ko: "주문 추세 표시" }
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      expect(translations[source], source).toEqual({
+        "zh-Hant": localized["zh-Hant"],
+        ja: localized.ja,
+        en: localized.en,
+        ko: localized.ko
+      });
+      for (const { code } of languages) {
+        expect(translateText(source, code), `${source}:${code}`).toBe(localized[code]);
+      }
+    }
+  });
+
+  it("localizes the admin operator pending summaries in all five App languages", () => {
+    for (const source of [
+      "运营后台成员",
+      "暂无待处理订单",
+      "暂无待审核申请",
+      "待审核共",
+      "正在加载…",
+      "加载失败，请重试",
+      "权限已变化，请刷新页面",
+      "待确认",
+      "申请编号"
+    ]) {
+      for (const { code } of languages) {
+        const localized = translateText(source, code);
+        expect(localized, `${source}:${code}`).toBeTruthy();
+        if (code !== "zh") expect(localized, `${source}:${code}`).not.toBe(source);
+      }
+    }
+  });
+
+  it("localizes the formal travel-fare workflow in all five App languages", () => {
+    for (const source of [
+      "Geoapify 尚未配置",
+      "发布不可变版本",
+      "添加距离区间",
+      "距离必须是大于 0、精确到米的数值。",
+      "请输入有效的生效时间。",
+      "邮政编码",
+      "邮编 104-0061",
+      "丁目、番地（可选）",
+      "建筑物、房间号（可选）",
+      "请先从上方时间栏选定一个可用时段，再估算交通费。",
+      "为保护上门地址隐私，此处不加载第三方地图预览。",
+      "估算交通费",
+      "正式交通费",
+      "交通费估价已过期，请重新估算。",
+      "该地址超出店铺的上门服务范围。",
+      "路线供应商尚未配置，暂时无法估算交通费。",
+      "Geoapify 正常",
+      "Geoapify 已限流",
+      "Geoapify 不可用",
+      "Geoapify 已配置，尚未探测",
+      "供应商限流",
+      "供应商不可用",
+      "检测时间",
+      "距离费率区间最多为 50 个。",
+      "不可变发布历史",
+      "尚无已发布版本。",
+      "上一页历史",
+      "下一页历史",
+      "确认发布内容",
+      "确认发布",
+      "当前账号只有查看权限，不能发布新的交通费策略。",
+      "估价有效至"
+    ]) {
+      for (const { code } of languages) {
+        const localized = translateText(source, code);
+        expect(localized, `${source}:${code}`).toBeTruthy();
+        if (code !== "zh") expect(localized, `${source}:${code}`).not.toBe(source);
+      }
+    }
+  });
+
+  it("localizes media expiry and retry feedback in every App language", () => {
+    for (const source of ["图片已过期", "视频已过期", "图片加载失败，点击重试", "视频加载失败，点击重试", "语音加载失败，点击重试"]) {
+      for (const { code } of languages) {
+        const localized = translateText(source, code);
+        expect(localized, `${source}:${code}`).toBeTruthy();
+        if (code !== "zh") expect(localized, `${source}:${code}`).not.toBe(source);
+      }
+    }
+  });
+
+  it("localizes the technician service cover editor in all five App languages", () => {
+    const expected = {
+      "服务封面": { "zh-Hant": "服務封面", ja: "サービスカバー", en: "Service cover", ko: "서비스 커버" },
+      "上传服务封面": { "zh-Hant": "上傳服務封面", ja: "サービスカバーをアップロード", en: "Upload service cover", ko: "서비스 커버 업로드" },
+      "更换图片": { "zh-Hant": "更換圖片", ja: "画像を変更", en: "Change image", ko: "이미지 변경" },
+      "移除图片": { "zh-Hant": "移除圖片", ja: "画像を削除", en: "Remove image", ko: "이미지 삭제" },
+      "恢复当前封面": { "zh-Hant": "恢復目前封面", ja: "現在のカバーを復元", en: "Restore current cover", ko: "현재 커버 복원" },
+      "JPEG / PNG / WebP，最大 8 MiB": { "zh-Hant": "JPEG / PNG / WebP，最大 8 MiB", ja: "JPEG / PNG / WebP、最大 8 MiB", en: "JPEG / PNG / WebP, up to 8 MiB", ko: "JPEG / PNG / WebP, 최대 8 MiB" },
+      "仅支持 JPEG、PNG 或 WebP 图片": { "zh-Hant": "僅支援 JPEG、PNG 或 WebP 圖片", ja: "JPEG、PNG、WebP 画像のみ対応しています", en: "Only JPEG, PNG, or WebP images are supported", ko: "JPEG, PNG 또는 WebP 이미지만 지원합니다" },
+      "图片不能超过 8 MiB": { "zh-Hant": "圖片不能超過 8 MiB", ja: "画像は 8 MiB 以下にしてください", en: "The image must not exceed 8 MiB", ko: "이미지는 8 MiB를 초과할 수 없습니다" },
+      "服务已保存，封面上传失败，请重试": { "zh-Hant": "服務已儲存，封面上傳失敗，請重試", ja: "サービスは保存されましたが、カバーのアップロードに失敗しました。再試行してください", en: "Service saved, but the cover upload failed. Please retry", ko: "서비스는 저장되었지만 커버 업로드에 실패했습니다. 다시 시도해 주세요" },
+      "封面上传失败，请重试": { "zh-Hant": "封面上傳失敗，請重試", ja: "カバーのアップロードに失敗しました。再試行してください", en: "Cover upload failed. Please retry", ko: "커버 업로드에 실패했습니다. 다시 시도해 주세요" },
+      "重试上传封面": { "zh-Hant": "重試上傳封面", ja: "カバーのアップロードを再試行", en: "Retry cover upload", ko: "커버 업로드 다시 시도" },
+      "服务已保存，封面移除失败，请重试": { "zh-Hant": "服務已儲存，封面移除失敗，請重試", ja: "サービスは保存されましたが、カバーの削除に失敗しました。再試行してください", en: "Service saved, but cover removal failed. Please retry", ko: "서비스는 저장되었지만 커버 삭제에 실패했습니다. 다시 시도해 주세요" },
+      "封面移除失败，请重试": { "zh-Hant": "封面移除失敗，請重試", ja: "カバーの削除に失敗しました。再試行してください", en: "Cover removal failed. Please retry", ko: "커버 삭제에 실패했습니다. 다시 시도해 주세요" },
+      "重试移除封面": { "zh-Hant": "重試移除封面", ja: "カバーの削除を再試行", en: "Retry cover removal", ko: "커버 삭제 다시 시도" },
+      "完成并关闭": { "zh-Hant": "完成並關閉", ja: "完了して閉じる", en: "Finish and close", ko: "완료 후 닫기" }
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      expect(translations[source], source).toEqual(localized);
+      for (const { code } of languages) {
+        expect(translateText(source, code), `${source}:${code}`).toBe(code === "zh" ? source : localized[code]);
+      }
+    }
+  });
+
+  it("registers lazy feature copy without overriding the global source of truth", () => {
+    registerTranslationEntries({
+      "lazy feature probe": { ja: "遅延機能", en: "Lazy feature", ko: "지연 기능" },
+      "取消": { ja: "上書き禁止" },
+    });
+
+    expect(translateText("lazy feature probe", "ja")).toBe("遅延機能");
+    expect(translateText("取消", "ja")).not.toBe("上書き禁止");
+  });
+
+  it("localizes automatic chat translation controls in all five App languages", () => {
+    const expected = {
+      "聊天内容自动翻译": {
+        zh: "聊天内容自动翻译",
+        "zh-Hant": "聊天內容自動翻譯",
+        ja: "チャット内容を自動翻訳",
+        en: "Automatically translate chat",
+        ko: "채팅 내용 자동 번역",
+      },
+      "打开后按当前 App 语言显示；关闭后显示原文": {
+        zh: "打开后按当前 App 语言显示；关闭后显示原文",
+        "zh-Hant": "開啟後依目前 App 語言顯示；關閉後顯示原文",
+        ja: "オンにすると現在のアプリ言語で表示し、オフにすると原文を表示します",
+        en: "On: display in the current app language; Off: display the original text",
+        ko: "켜면 현재 앱 언어로 표시하고, 끄면 원문을 표시합니다",
+      },
+      "聊天内容自动翻译设置失败，请稍后重试": {
+        zh: "聊天内容自动翻译设置失败，请稍后重试",
+        "zh-Hant": "聊天內容自動翻譯設定失敗，請稍後再試",
+        ja: "チャット内容の自動翻訳設定に失敗しました。しばらくしてからもう一度お試しください",
+        en: "Couldn't update automatic chat translation. Try again later.",
+        ko: "채팅 내용 자동 번역 설정에 실패했습니다. 잠시 후 다시 시도해 주세요",
+      },
+    } as const;
+
+    Object.entries(expected).forEach(([source, translationsByLanguage]) => {
+      Object.entries(translationsByLanguage).forEach(([language, translated]) => {
+        expect(translateText(source, language as keyof typeof translationsByLanguage)).toBe(translated);
+      });
+    });
+  });
+
+  it("keeps the complete IM translation action labels localized without split-key fallback", () => {
+    const expected = {
+      "隐藏译文": {
+        zh: "隐藏译文",
+        "zh-Hant": "隱藏譯文",
+        ja: "翻訳を隠す",
+        en: "Hide translation",
+        ko: "번역 숨기기",
+      },
+      "显示译文": {
+        zh: "显示译文",
+        "zh-Hant": "顯示譯文",
+        ja: "翻訳を表示",
+        en: "Show translation",
+        ko: "번역 보기",
+      },
+      "多选": {
+        zh: "多选",
+        "zh-Hant": "多選",
+        ja: "複数選択",
+        en: "Multi-select",
+        ko: "다중 선택",
+      },
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      for (const { code } of languages) {
+        expect(translateText(source, code), `${source}:${code}`).toBe(localized[code]);
+      }
+      expect(translateText(source, "zh-Hant")).not.toBe(source);
+      expect(translateText(source, "ja")).not.toBe(source);
+      expect(translateText(source, "en")).not.toBe(source);
+      expect(translateText(source, "ko")).not.toBe(source);
+    }
+  });
+
+  it("localizes the complete IM voice recording confirmation flow", () => {
+    const voiceKeys = [
+      "录制语音",
+      "正在连接麦克风",
+      "后将停止录音",
+      "取消录音",
+      "停止录音",
+      "删除录音",
+      "重放录音",
+      "发送录音",
+      "录音预览",
+      "正在播放录音",
+      "正在发送录音",
+      "录音失败，请重试",
+      "请允许麦克风权限后重试",
+      "没有检测到麦克风声音，请检查输入设备后重试",
+      "当前设备不支持浏览器录音",
+      "自动播放已暂停，请点击重放",
+      "语音发送失败，请重试",
+    ] as const;
+
+    for (const key of voiceKeys) {
+      expect(translations[key], key).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String),
+      });
+      expect(translateText(key, "zh-Hant")).not.toBe(key);
+      expect(translateText(key, "ja")).not.toBe(key);
+      expect(translateText(key, "en")).not.toBe(key);
+      expect(translateText(key, "ko")).not.toBe(key);
+    }
+  });
+
+  it("preserves complete voice error guidance in all five languages", () => {
+    const expected = {
+      "请允许麦克风权限后重试": {
+        zh: "请允许麦克风权限后重试",
+        "zh-Hant": String.fromCodePoint(
+          0x8acb, 0x5141, 0x8a31, 0x9ea5, 0x514b, 0x98a8, 0x6b0a, 0x9650, 0x5f8c, 0x91cd, 0x8a66,
+        ),
+        ja: "マイクの使用を許可してから再試行してください",
+        en: "Allow microphone access, then try again",
+        ko: "마이크 권한을 허용한 후 다시 시도하세요",
+      },
+      "自动播放已暂停，请点击重放": {
+        zh: "自动播放已暂停，请点击重放",
+        "zh-Hant": String.fromCodePoint(
+          0x81ea, 0x52d5, 0x64ad, 0x653e, 0x5df2, 0x66ab, 0x505c, 0xff0c, 0x8acb, 0x9ede, 0x64ca,
+          0x91cd, 0x64ad,
+        ),
+        ja: "自動再生が一時停止しました。再生をタップしてください",
+        en: "Autoplay paused. Tap replay",
+        ko: "자동 재생이 일시 중지되었습니다. 다시 재생을 탭하세요",
+      },
+      "当前设备不支持浏览器录音": {
+        zh: "当前设备不支持浏览器录音",
+        "zh-Hant": String.fromCodePoint(
+          0x76ee, 0x524d, 0x88dd, 0x7f6e, 0x4e0d, 0x652f, 0x63f4, 0x700f, 0x89bd, 0x5668, 0x9304,
+          0x97f3,
+        ),
+        ja: "この端末ではブラウザ録音を利用できません",
+        en: "Browser recording is not supported on this device",
+        ko: "현재 기기에서는 브라우저 녹음을 지원하지 않습니다",
+      },
+      "没有检测到麦克风声音，请检查输入设备后重试": {
+        zh: "没有检测到麦克风声音，请检查输入设备后重试",
+        "zh-Hant": "沒有偵測到麥克風聲音，請檢查輸入裝置後重試",
+        ja: "マイクから音声が検出されません。入力デバイスを確認してから再試行してください",
+        en: "No microphone input detected. Check your input device and try again.",
+        ko: "마이크 입력이 감지되지 않았습니다. 입력 장치를 확인한 후 다시 시도하세요",
+      },
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      for (const { code } of languages) {
+        expect(translateText(source, code), `${source}:${code}`).toBe(localized[code]);
+      }
+    }
+  });
+
   it("localizes the complete friend-verification flow in all five languages", () => {
     const friendVerificationCopy = [
       "取消",
@@ -113,6 +402,58 @@ describe("translations", () => {
     expect(translateText("时间上限最大为99小时59分钟", "ko")).toBe("최대 시간은 99시간 59분입니다");
   });
 
+  it("localizes the Social quick-reply sending state without obsolete full-composer copy", () => {
+    expect(translations).not.toHaveProperty("打开完整回复");
+    expect(translations).not.toHaveProperty("回复草稿");
+    expect(translations).not.toHaveProperty("你可以从底部输入框直接回复，也可以进入完整发帖页继续补充文字、图片和引用内容。");
+    expect(translations["回复中"]).toEqual({
+      "zh-Hant": "回覆中",
+      ja: "返信中",
+      en: "Replying",
+      ko: "답글 작성 중",
+    });
+  });
+
+  it("localizes every Social quick-reply attachment state and action in all five languages", () => {
+    const keys = [
+      "图片上传中",
+      "上传失败",
+      "移除图片",
+      "重试图片",
+      "已选位置",
+      "移除位置"
+    ] as const;
+
+    keys.forEach((key) => {
+      expect(key.trim().length, `${key}:zh`).toBeGreaterThan(0);
+      expect(translations[key], key).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+      expect(Object.values(translations[key]).every((value) => value?.trim())).toBe(true);
+    });
+  });
+
+  it("localizes the canonical Social post-detail reply header", () => {
+    expect(translations["回复动态"]).toEqual({
+      "zh-Hant": "回覆動態",
+      ja: "投稿に返信",
+      en: "Reply to Post",
+      ko: "게시물에 답글"
+    });
+  });
+
+  it("localizes the semantic Social post-detail link label", () => {
+    expect(translations["查看动态详情"]).toEqual({
+      "zh-Hant": "查看動態詳情",
+      ja: "投稿の詳細を見る",
+      en: "View post details",
+      ko: "게시물 상세 보기"
+    });
+  });
+
   it("keeps truly unknown source text untouched", () => {
     const unknownText = "__test_unknown_translation_key__";
     expect(translateText(unknownText, "ko")).toBe(unknownText);
@@ -156,11 +497,93 @@ describe("translations", () => {
     expect(translateText("按已完成订单核算技师业绩；服务金额包含已记账的加钟金额，同一订单只计一单，至少完成一单计为一个工作日。", "ko")).toContain("기사 실적");
   });
 
+  it("localizes every order-performance timeline and operations control in five languages", () => {
+    const keys = [
+      "订单绩效判定",
+      "当前结果",
+      "当前处理",
+      "特殊取消（不计入）",
+      "正常计入",
+      "当前订单尚无技师绩效判定。",
+      "订单时间线与判定修订",
+      "公开原因",
+      "内部备注（仅运营可见）",
+      "会显示在订单时间线中",
+      "证据、投诉工单或复核说明（可选）",
+      "标记为技师未完单",
+      "撤销特殊取消并恢复计入",
+      "设为特殊取消并排除计算",
+      "正在提交绩效判定",
+      "技师原因取消",
+      "技师未完单",
+      "特殊取消已生效",
+      "特殊取消已撤销",
+      "本单已从接单率计算中排除",
+      "本单已恢复计入接单率计算",
+      "已计入技师原因取消记录",
+      "已计入技师未完单记录",
+      "无公开原因",
+      "请填写公开原因后再提交",
+      "请先查看最新版本并确认后再重新提交",
+      "订单绩效版本已经变化。已保留填写内容，请查看最新记录后确认再提交。",
+      "已查看最新版本，可以重新提交",
+      "正在加载最新订单详情",
+      "重新加载订单详情"
+    ] as const;
+
+    for (const key of keys) {
+      expect(translations[key]).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String)
+      });
+    }
+    expect(translateText("订单绩效判定", "ja")).toBe("注文パフォーマンス判定");
+    expect(translateText("内部备注（仅运营可见）", "en")).toBe(
+      "Internal note (operations only)"
+    );
+    expect(translateText("设为特殊取消并排除计算", "ko")).toBe(
+      "특별 취소로 지정하고 집계 제외"
+    );
+    expect(translateText("特殊取消（不计入）", "zh-Hant")).toBe("特殊取消（不計入）");
+  });
+
   it("localizes the IM start-chat CTA", () => {
     expect(translateText("开始聊天", "zh-Hant")).toBe("開始聊天");
     expect(translateText("开始聊天", "ja")).toBe("チャットを開始");
     expect(translateText("开始聊天", "en")).toBe("Start chat");
     expect(translateText("开始聊天", "ko")).toBe("채팅 시작");
+  });
+
+  it("localizes every static chat-record and favorites UI key exactly", () => {
+    const expected = {
+      "查看聊天记录": ["查看聊天記錄", "チャット履歴を表示", "View chat record", "채팅 기록 보기"],
+      "关闭聊天记录": ["關閉聊天記錄", "チャット履歴を閉じる", "Close chat record", "채팅 기록 닫기"],
+      "聊天记录说明": ["聊天記錄說明", "チャット履歴の説明", "About this chat record", "채팅 기록 안내"],
+      "此页面展示创建时保存的只读消息快照，不会随原聊天资料变化。": ["此頁面顯示建立時儲存的唯讀訊息快照，不會隨原聊天資料變更。", "このページには作成時に保存された読み取り専用のメッセージスナップショットが表示され、元のチャット情報が変わっても更新されません。", "This page shows a read-only message snapshot saved when the record was created. It does not change with the original chat.", "이 페이지에는 기록 생성 시 저장된 읽기 전용 메시지 스냅샷이 표시되며 원본 채팅 정보가 바뀌어도 변경되지 않습니다."],
+      "媒体读取失败": ["媒體讀取失敗", "メディアを読み込めませんでした", "Couldn't load media", "미디어를 불러오지 못했습니다"],
+      "收藏读取失败": ["收藏讀取失敗", "お気に入りを読み込めませんでした", "Couldn't load favorites", "즐겨찾기를 불러오지 못했습니다"],
+      "移除收藏": ["移除收藏", "お気に入りから削除", "Remove favorite", "즐겨찾기에서 삭제"],
+      "暂无收藏的聊天记录": ["暫無收藏的聊天記錄", "お気に入りのチャット履歴はありません", "No favorite chat records yet", "즐겨찾기한 채팅 기록이 없습니다"],
+    } as const;
+    for (const [source, values] of Object.entries(expected)) {
+      expect(translateImUiText(source, "zh-Hant")).toBe(values[0]);
+      expect(translateImUiText(source, "ja")).toBe(values[1]);
+      expect(translateImUiText(source, "en")).toBe(values[2]);
+      expect(translateImUiText(source, "ko")).toBe(values[3]);
+    }
+    const completeKeys = [
+      "查看聊天记录", "聊天记录", "关闭聊天记录", "聊天记录说明", "此页面展示创建时保存的只读消息快照，不会随原聊天资料变化。",
+      "聊天记录媒体", "媒体不可用", "媒体读取失败", "正在读取媒体", "正在读取聊天记录", "聊天记录不可用",
+      "加载更早", "正在加载", "返回个人中心", "我的收藏", "保存的聊天记录", "正在读取收藏", "收藏读取失败",
+      "暂无收藏的聊天记录", "移除失败", "正在移除", "移除收藏", "收藏分页", "上一页", "下一页", "重试",
+    ];
+    for (const key of completeKeys) {
+      for (const language of ["zh-Hant", "ja", "en", "ko"] as const) {
+        expect(translateImUiText(key, language)).not.toBe("");
+      }
+    }
   });
 
   it("uses the approved affiliate name in operations navigation", () => {
@@ -419,6 +842,14 @@ describe("translations", () => {
     expect(translateText("音频", "ja")).toBe("オーディオ");
     expect(translateText("音频", "en")).toBe("Audio");
     expect(translateText("音频", "ko")).toBe("오디오");
+    expect(translateText("联系人信息", "zh-Hant")).toBe("聯絡人資訊");
+    expect(translateText("联系人信息", "ja")).toBe("連絡先情報");
+    expect(translateText("联系人信息", "en")).toBe("Contact information");
+    expect(translateText("联系人信息", "ko")).toBe("연락처 정보");
+    expect(translateText("正在进入联系人信息...", "ja")).toBe("連絡先情報を開いています…");
+    expect(translateText("暂时无法打开联系人信息，请稍后再试。", "en")).toBe(
+      "Can't open contact information right now. Try again later.",
+    );
     expect(translateText("正在搜索账号…", "zh-Hant")).toBe("正在搜尋帳號…");
     expect(translateText("搜索失败，请稍后重试", "ja")).toContain("検索に失敗");
     expect(translateText("请输入昵称或 NeeDoID 搜索", "en")).toBe("Search by nickname or NeeDoID");
@@ -968,4 +1399,14 @@ describe("translations", () => {
     expect(translateText("帮助与反馈", "en")).toBe("Help Center");
     expect(translateText("帮助与反馈", "ko")).toBe("도움말 센터");
   });
+
+  it("localizes legacy-order labels", () => {
+    expect(translations["历史只读预约"]).toMatchObject({
+      "zh-Hant": "歷史唯讀預約",
+      ja: "過去の閲覧専用予約",
+      en: "Read-only booking history",
+      ko: "읽기 전용 예약 내역"
+    });
+  });
+
 });

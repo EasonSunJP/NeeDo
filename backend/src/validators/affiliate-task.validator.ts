@@ -58,16 +58,10 @@ type EditableTaskContract = {
   shopIds?: number[];
 };
 
-const addTaskIssue = (
-  context: z.RefinementCtx,
-  path: Array<string | number>,
-  message: string
-) => context.addIssue({ code: z.ZodIssueCode.custom, path, message });
+const addTaskIssue = (context: z.RefinementCtx, path: Array<string | number>, message: string) =>
+  context.addIssue({ code: z.ZodIssueCode.custom, path, message });
 
-const validateEditableTask = (
-  value: EditableTaskContract,
-  context: z.RefinementCtx
-): void => {
+const validateEditableTask = (value: EditableTaskContract, context: z.RefinementCtx): void => {
   if (value.totalBudgetNdp < value.rewardNdpPerCompletedOrder) {
     addTaskIssue(context, ["totalBudgetNdp"], "total budget must cover at least one reward");
   }
@@ -102,16 +96,10 @@ const validateEditableTask = (
   if (new Set(value.selectedServiceIds).size !== value.selectedServiceIds.length) {
     addTaskIssue(context, ["selectedServiceIds"], "service ids must be unique");
   }
-  if (
-    value.serviceScopeMode === "selected_services" &&
-    value.selectedServiceIds.length === 0
-  ) {
+  if (value.serviceScopeMode === "selected_services" && value.selectedServiceIds.length === 0) {
     addTaskIssue(context, ["selectedServiceIds"], "selected services are required");
   }
-  if (
-    value.serviceScopeMode === "all_current_services" &&
-    value.selectedServiceIds.length > 0
-  ) {
+  if (value.serviceScopeMode === "all_current_services" && value.selectedServiceIds.length > 0) {
     addTaskIssue(context, ["selectedServiceIds"], "all current services rejects explicit ids");
   }
   if (value.shopIds && new Set(value.shopIds).size !== value.shopIds.length) {

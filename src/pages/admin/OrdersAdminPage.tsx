@@ -1,9 +1,19 @@
-import { useEffect, useState } from "react";
-import { backofficeRealDataApi, type BackofficeOrderPayload } from "../../api/backofficeRealData";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  backofficeRealDataApi,
+  type BackofficeOrderDetailPayload,
+  type BackofficeOrderPayload,
+  type BackofficeOrderTimelineEvent
+} from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { ModuleShell } from "../../components/admin/ModuleShell";
+import {
+  ContactEventTimelinePanel,
+  type ContactEventTimelineEntry
+} from "../../components/mobile/ContactEventTimeline";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
@@ -13,6 +23,7 @@ import { statusLabel, yen } from "../../lib/utils";
 
 type StatusFilter = "all" | "pending" | "confirmed" | "inService" | "completed" | "cancelled";
 type ConfirmIntent = "cancel" | "payment-confirm" | "payment-refund" | null;
+type PerformanceAction = "classify-uncompleted" | "apply-special" | "revoke-special";
 
 const pageSize = 20;
 const statusFilters: Array<{ label: string; value: StatusFilter }> = [
@@ -23,6 +34,21 @@ const statusFilters: Array<{ label: string; value: StatusFilter }> = [
   { label: "已完成", value: "completed" },
   { label: "已取消", value: "cancelled" }
 ];
+const statusFilterValues = new Set<StatusFilter>(statusFilters.map(({ value }) => value));
+
+function readStatusFilter(searchParams: URLSearchParams): StatusFilter {
+  const status = searchParams.get("status");
+  return status && statusFilterValues.has(status as StatusFilter)
+    ? (status as StatusFilter)
+    : "all";
+}
+
+function readOrderId(searchParams: URLSearchParams) {
+  const value = searchParams.get("orderId");
+  if (!value || !/^\d+$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
 
 function describeOperationsOrderError(error: unknown) {
   if (error instanceof ApiClientError) {
@@ -56,9 +82,98 @@ function formatOrderDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function performanceActionForOrder(order: BackofficeOrderDetailPayload): PerformanceAction | null {
+  if (!order.performanceAssessment) {
+    return order.status === "cancelled" && order.technicianProfileId
+      ? "classify-uncompleted"
+      : null;
+  }
+  return order.performanceAssessment.treatment === "special_excluded"
+    ? "revoke-special"
+    : "apply-special";
+}
+
+function performanceActionLabel(action: PerformanceAction) {
+  if (action === "classify-uncompleted") return "标记为技师未完单";
+  if (action === "revoke-special") return "撤销特殊取消并恢复计入";
+  return "设为特殊取消并排除计算";
+}
+
+function performanceEventCopy(
+  type: Exclude<
+    BackofficeOrderTimelineEvent["type"],
+    "ADD_ON_PROPOSED" | "ADD_ON_ACCEPTED" | "ADD_ON_REJECTED"
+  >
+) {
+  if (type === "ORDER_STATUS_CHANGED") return "订单状态";
+  if (type === "TECHNICIAN_CANCEL_CLASSIFIED") return "技师原因取消";
+  if (type === "TECHNICIAN_UNCOMPLETED_CLASSIFIED") return "技师未完单";
+  if (type === "SPECIAL_CANCELLATION_APPLIED") return "特殊取消已生效";
+  return "特殊取消已撤销";
+}
+
+function mapOperationsTimeline(
+  events: BackofficeOrderTimelineEvent[]
+): ContactEventTimelineEntry[] {
+  return events.map((event) => {
+    const actorName = event.actorUserId ? `#${event.actorUserId}` : "系统";
+    if ("addOnId" in event) {
+      const copy = event.type === "ADD_ON_PROPOSED"
+        ? { label: "提出加钟", tone: "accent" as const }
+        : event.type === "ADD_ON_ACCEPTED"
+          ? { label: "加钟已确认", tone: "green" as const }
+          : { label: "加钟已拒绝", tone: "red" as const };
+      const addOnSummary = `${event.serviceName} · +${event.durationMinutes}分钟 · ${yen(event.priceAmountJpy)}`;
+      return {
+        actorName,
+        actorRole: copy.label,
+        atLabel: formatOrderDateTime(event.createdAt),
+        id: event.id,
+        message: event.publicReason
+          ? `${addOnSummary} · ${event.publicReason}`
+          : addOnSummary,
+        title: copy.label,
+        tone: copy.tone
+      };
+    }
+
+    if (event.type === "ORDER_STATUS_CHANGED") {
+      return {
+        actorName,
+        actorRole: performanceEventCopy(event.type),
+        atLabel: formatOrderDateTime(event.createdAt),
+        id: event.id,
+        message: event.publicReason ?? `${event.fromStatus ?? "created"} → ${event.toStatus}`,
+        title: performanceEventCopy(event.type),
+        tone: event.toStatus === "cancelled" ? "red" as const : "green" as const
+      };
+    }
+
+    return {
+      actorName,
+      actorRole: performanceEventCopy(event.type),
+      atLabel: formatOrderDateTime(event.createdAt),
+      id: event.id,
+      message: event.publicReason ?? "无公开原因",
+      reason: event.internalNote ?? undefined,
+      reasonLabel: "内部备注（仅运营可见）",
+      title: performanceEventCopy(event.type),
+      tone: event.type === "SPECIAL_CANCELLATION_APPLIED" ? "green" as const : "red" as const
+    };
+  });
+}
+
+function createPerformanceIdempotencyKey() {
+  return globalThis.crypto.randomUUID();
+}
+
 export function OrdersAdminPage() {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderPayload | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => readStatusFilter(searchParams));
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(() => readOrderId(searchParams));
+  const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderDetailPayload | null>(null);
+  const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [detailRevision, setDetailRevision] = useState(0);
   const [orderRows, setOrderRows] = useState<BackofficeOrderPayload[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -72,6 +187,17 @@ export function OrdersAdminPage() {
   const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("onsite");
   const [paymentReference, setPaymentReference] = useState("");
   const [refundReason, setRefundReason] = useState("运营已复核退款凭证并确认线下退款完成");
+  const [performancePublicReason, setPerformancePublicReason] = useState("");
+  const [performanceInternalNote, setPerformanceInternalNote] = useState("");
+  const [performanceConflictReviewRequired, setPerformanceConflictReviewRequired] = useState(false);
+  const performanceIntentRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+
+  const writeRouteState = (status: StatusFilter, orderId: number | null) => {
+    const next = new URLSearchParams();
+    if (status !== "all") next.set("status", status);
+    if (orderId !== null) next.set("orderId", String(orderId));
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     let current = true;
@@ -98,24 +224,58 @@ export function OrdersAdminPage() {
     };
   }, [page, revision, statusFilter]);
 
+  useEffect(() => {
+    if (selectedOrderId === null) return;
+    let current = true;
+    setDetailStatus("loading");
+    backofficeRealDataApi
+      .orderDetail(selectedOrderId)
+      .then((detail) => {
+        if (!current) return;
+        setSelectedOrder(detail);
+        setDetailStatus("success");
+      })
+      .catch((error: unknown) => {
+        if (!current) return;
+        setSelectedOrder(null);
+        setMutationError(describeOperationsOrderError(error));
+        setDetailStatus("error");
+      });
+    return () => {
+      current = false;
+    };
+  }, [detailRevision, selectedOrderId]);
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const openOrder = (order: BackofficeOrderPayload) => {
-    setSelectedOrder(order);
+    setSelectedOrderId(order.id);
+    setSelectedOrder(null);
+    setDetailStatus("loading");
     setMutationError("");
     setConfirmIntent(null);
     setPaymentReference("");
+    setPerformancePublicReason("");
+    setPerformanceInternalNote("");
+    setPerformanceConflictReviewRequired(false);
+    performanceIntentRef.current = null;
+    writeRouteState(statusFilter, order.id);
   };
   const closeOrder = () => {
     if (mutationStatus === "saving") return;
+    setSelectedOrderId(null);
     setSelectedOrder(null);
+    setDetailStatus("idle");
     setMutationError("");
     setConfirmIntent(null);
+    writeRouteState(statusFilter, null);
   };
   const finishMutation = () => {
+    setSelectedOrderId(null);
     setSelectedOrder(null);
     setConfirmIntent(null);
     setMutationError("");
     setRevision((value) => value + 1);
+    writeRouteState(statusFilter, null);
   };
 
   const runTransition = async (action: "confirm" | "start" | "complete" | "cancel") => {
@@ -186,10 +346,90 @@ export function OrdersAdminPage() {
     }
   };
 
+  const runPerformanceAction = async () => {
+    if (!selectedOrder || mutationStatus === "saving") return;
+    const action = performanceActionForOrder(selectedOrder);
+    const publicReason = performancePublicReason.trim();
+    const internalNote = performanceInternalNote.trim() || null;
+    if (!action) return;
+    if (!publicReason) {
+      setMutationError("请填写公开原因后再提交");
+      return;
+    }
+    if (performanceConflictReviewRequired) {
+      setMutationError("请先查看最新版本并确认后再重新提交");
+      return;
+    }
+
+    const expectedRevision = selectedOrder.performanceAssessment?.version ?? 0;
+    const fingerprint = JSON.stringify({
+      action,
+      expectedRevision,
+      internalNote,
+      publicReason
+    });
+    if (performanceIntentRef.current?.fingerprint !== fingerprint) {
+      performanceIntentRef.current = {
+        fingerprint,
+        idempotencyKey: createPerformanceIdempotencyKey()
+      };
+    }
+
+    setMutationStatus("saving");
+    setMutationError("");
+    const input = {
+      expectedRevision,
+      idempotencyKey: performanceIntentRef.current.idempotencyKey,
+      internalNote,
+      publicReason
+    };
+    try {
+      if (action === "classify-uncompleted") {
+        await backofficeRealDataApi.classifyTechnicianUncompleted(selectedOrder.id, input);
+      } else if (action === "revoke-special") {
+        await backofficeRealDataApi.revokeSpecialCancellation(selectedOrder.id, input);
+      } else {
+        await backofficeRealDataApi.applySpecialCancellation(selectedOrder.id, input);
+      }
+      performanceIntentRef.current = null;
+      setPerformancePublicReason("");
+      setPerformanceInternalNote("");
+      setPerformanceConflictReviewRequired(false);
+      setDetailRevision((value) => value + 1);
+      setRevision((value) => value + 1);
+    } catch (error: unknown) {
+      if (error instanceof ApiClientError && error.status === 409) {
+        performanceIntentRef.current = null;
+        setPerformanceConflictReviewRequired(true);
+        setMutationError("订单绩效版本已经变化。已保留填写内容，请查看最新记录后确认再提交。");
+        setDetailRevision((value) => value + 1);
+      } else {
+        setMutationError(describeOperationsOrderError(error));
+      }
+    } finally {
+      setMutationStatus("idle");
+    }
+  };
+
+  const updatePerformancePublicReason = (value: string) => {
+    performanceIntentRef.current = null;
+    setPerformancePublicReason(value);
+  };
+
+  const updatePerformanceInternalNote = (value: string) => {
+    performanceIntentRef.current = null;
+    setPerformanceInternalNote(value);
+  };
+
   const changeFilter = (value: StatusFilter) => {
     setStatusFilter(value);
     setPage(1);
-    closeOrder();
+    setSelectedOrderId(null);
+    setSelectedOrder(null);
+    setDetailStatus("idle");
+    setMutationError("");
+    setConfirmIntent(null);
+    writeRouteState(value, null);
   };
 
   return (
@@ -252,7 +492,20 @@ export function OrdersAdminPage() {
         ) : null}
       </ModuleShell>
 
-      <Drawer open={Boolean(selectedOrder)} title="全平台正式订单详情" onClose={closeOrder}>
+      <Drawer open={selectedOrderId !== null} title="全平台正式订单详情" onClose={closeOrder}>
+        {detailStatus === "loading" ? (
+          <p className="rounded-lg border border-line bg-white px-4 py-6 text-center text-sm font-black text-ink/55">
+            正在加载最新订单详情
+          </p>
+        ) : null}
+        {detailStatus === "error" ? (
+          <div className="rounded-lg border border-coral/30 bg-coral/5 px-4 py-5 text-sm font-black text-coral">
+            <p>{mutationError}</p>
+            <Button className="mt-3" onClick={() => setDetailRevision((value) => value + 1)}>
+              重新加载订单详情
+            </Button>
+          </div>
+        ) : null}
         {selectedOrder ? (
           <div className="space-y-5">
             <DetailGrid items={[
@@ -267,6 +520,99 @@ export function OrdersAdminPage() {
             ]} />
 
             {mutationError ? <p className="rounded-lg border border-coral/30 bg-coral/5 px-4 py-3 text-sm font-black text-coral" role="alert">{mutationError}</p> : null}
+
+            <section className="rounded-lg border border-line bg-white p-4">
+              <h3 className="font-black text-ink">订单绩效判定</h3>
+              {selectedOrder.performanceAssessment ? (
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg bg-paper p-3">
+                    <dt className="text-xs font-black text-ink/45">当前结果</dt>
+                    <dd className="mt-1 text-sm font-black text-ink">
+                      {selectedOrder.performanceAssessment.outcome === "technician_cancelled"
+                        ? "技师原因取消"
+                        : "技师未完单"}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg bg-paper p-3">
+                    <dt className="text-xs font-black text-ink/45">当前处理</dt>
+                    <dd className="mt-1 text-sm font-black text-ink">
+                      {selectedOrder.performanceAssessment.treatment === "special_excluded"
+                        ? "特殊取消（不计入）"
+                        : "正常计入"}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg bg-paper p-3">
+                    <dt className="text-xs font-black text-ink/45">版本</dt>
+                    <dd className="mt-1 text-sm font-black text-ink">
+                      {selectedOrder.performanceAssessment.version}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="mt-3 text-sm font-bold text-ink/55">当前订单尚无技师绩效判定。</p>
+              )}
+
+              <ContactEventTimelinePanel
+                className="mt-4"
+                events={mapOperationsTimeline(selectedOrder.timelineEvents)}
+                headerVariant="plain"
+                layout="three-column"
+                showCommentComposer={false}
+                title="订单时间线与判定修订"
+              />
+
+              {performanceActionForOrder(selectedOrder) ? (
+                <div className="mt-4 space-y-3 border-t border-line pt-4">
+                  <label className="grid gap-1 text-sm font-black text-ink">
+                    公开原因
+                    <textarea
+                      aria-label="特殊取消公开原因"
+                      className="focus-ring min-h-20 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm font-bold text-ink"
+                      maxLength={500}
+                      placeholder="会显示在订单时间线中"
+                      value={performancePublicReason}
+                      onChange={(event) => updatePerformancePublicReason(event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-black text-ink">
+                    内部备注（仅运营可见）
+                    <textarea
+                      aria-label="特殊取消内部备注"
+                      className="focus-ring min-h-20 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm font-bold text-ink"
+                      maxLength={1000}
+                      placeholder="证据、投诉工单或复核说明（可选）"
+                      value={performanceInternalNote}
+                      onChange={(event) => updatePerformanceInternalNote(event.target.value)}
+                    />
+                  </label>
+                  {performanceConflictReviewRequired ? (
+                    <Button
+                      onClick={() => {
+                        performanceIntentRef.current = null;
+                        setPerformanceConflictReviewRequired(false);
+                        setMutationError("");
+                      }}
+                      variant="secondary"
+                    >
+                      已查看最新版本，可以重新提交
+                    </Button>
+                  ) : null}
+                  <Button
+                    disabled={mutationStatus === "saving" || performanceConflictReviewRequired}
+                    onClick={() => void runPerformanceAction()}
+                    variant={
+                      performanceActionForOrder(selectedOrder) === "revoke-special"
+                        ? "danger"
+                        : "primary"
+                    }
+                  >
+                    {mutationStatus === "saving"
+                      ? "正在提交绩效判定"
+                      : performanceActionLabel(performanceActionForOrder(selectedOrder)!)}
+                  </Button>
+                </div>
+              ) : null}
+            </section>
 
             <section className="rounded-lg border border-line bg-white p-4">
               <h3 className="font-black text-ink">订单状态</h3>

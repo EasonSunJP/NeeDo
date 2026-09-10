@@ -1,15 +1,68 @@
 import { CompensationProfileRepository } from "../src/repositories/compensation-profile.repository";
 
 describe("CompensationProfileRepository employee scope", () => {
+  it("maps independent service, extension, and nomination compensation components", async () => {
+    const common = {
+      id: 51,
+      shopId: 16,
+      name: "银座技师收入模型",
+      wageMode: "base_plus_commission",
+      baseSalaryJpy: 240_000,
+      hourlyRateJpy: 0,
+      dailyRateJpy: 0,
+      fixedOrderPayJpy: 0,
+      commissionRateBps: 2_000,
+      extensionCommissionRateBps: 6_000,
+      nominationFeeJpy: 1_500,
+      guaranteedMinimumJpy: 0,
+      ndpFeeBearer: "shop",
+      technicianNdpShareBps: 0,
+      bonusRulesJson: [],
+      deductionRulesJson: [],
+      effectiveFrom: new Date("2026-09-01T00:00:00.000Z"),
+      effectiveTo: null,
+      createdAt: new Date("2026-09-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+      deletedAt: null
+    };
+    const repository = new CompensationProfileRepository({
+      technicianCompensationProfile: {
+        findFirst: jest.fn(async () => ({
+          ...common,
+          technicianProfileId: 71,
+          status: "active",
+          version: 3,
+          createdById: 9,
+          updatedById: 9
+        }))
+      },
+      shopFinanceRuleSet: {
+        findFirst: jest.fn(async () => ({ ...common, status: "active" }))
+      }
+    } as never);
+
+    await expect(repository.findActiveProfile(16, 71)).resolves.toMatchObject({
+      commissionRatePercent: 20,
+      extensionCommissionRatePercent: 60,
+      nominationFeeJpy: 1_500
+    });
+    await expect(repository.findShopFallbackRule(16)).resolves.toMatchObject({
+      commissionRatePercent: 20,
+      extensionCommissionRatePercent: 60,
+      nominationFeeJpy: 1_500
+    });
+  });
+
   it("resolves only a current employee affiliation from the shop and canonical NeeDoID", async () => {
     const findFirst = jest.fn(async () => ({ id: 47, technicianProfileId: 71 }));
     const repository = new CompensationProfileRepository({
       technicianShopAffiliation: { findFirst }
     } as never);
 
-    await expect(
-      repository.findCurrentEmployeeAffiliation(16, "s0000000047")
-    ).resolves.toEqual({ id: 47, technicianProfileId: 71 });
+    await expect(repository.findCurrentEmployeeAffiliation(16, "s0000000047")).resolves.toEqual({
+      id: 47,
+      technicianProfileId: 71
+    });
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

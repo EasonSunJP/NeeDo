@@ -3,80 +3,36 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookingOrder, BookingScheduleSlot } from "../booking/api";
 
 const mocks = vi.hoisted(() => ({
-  loadOrders: vi.fn(),
-  loadSlots: vi.fn()
+  calendarProps: vi.fn()
 }));
 
-vi.mock("../scheduling/window-loader", () => ({
-  loadEveryTechnicianOrder: mocks.loadOrders,
-  loadManagedScheduleWindow: mocks.loadSlots
+vi.mock("../../components/scheduling/UnifiedUserCalendar", () => ({
+  UnifiedUserCalendar: (props: Record<string, unknown>) => {
+    mocks.calendarProps(props);
+    return <div data-testid="shared-unified-calendar">共享正式日程</div>;
+  }
 }));
-vi.mock("../../components/technician/FormalTechnicianOrdersPanel", () => ({
-  FormalTechnicianOrdersPanel: () => <div data-testid="formal-order-panel">订单正式面板</div>
+vi.mock("./TechnicianAutomationSettingsPanel", () => ({
+  TechnicianAutomationSettingsPanel: ({ kind }: { kind: "booking" | "request" }) => <div data-kind={kind} data-testid="automation-settings-panel">自动设置</div>
+}));
+vi.mock("../../components/mobile/FloatingHomeHeader", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../components/mobile/FloatingHomeHeader")>();
+  return {
+    ...actual,
+    FloatingHomeHeader: ({ children }: { children: React.ReactNode }) => (
+      <header data-testid="formal-schedule-floating-header">{children}</header>
+    )
+  };
+});
+vi.mock("../../features/scheduling/window-loader", () => ({
+  loadEveryTechnicianOrder: vi.fn().mockResolvedValue([])
 }));
 
 import { FormalTechnicianScheduleWorkspace } from "./FormalTechnicianScheduleWorkspace";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-const slot: BookingScheduleSlot = {
-  id: 17,
-  serviceId: null,
-  technicianServiceId: 102,
-  shopId: 11,
-  technicianProfileId: 31,
-  startsAt: "2026-09-01T10:00:00+09:00",
-  endsAt: "2026-09-01T11:00:00+09:00",
-  capacity: 1,
-  bookedCount: 0,
-  status: "available",
-  serviceName: "Aroma 60",
-  shopName: "正式店铺",
-  technicianName: "正式技师",
-  priceAmount: "10000.00",
-  currency: "JPY",
-  durationMinutes: 60
-};
-
-const order: BookingOrder = {
-  id: 29,
-  orderNo: "ND202608280029",
-  orderType: "booking",
-  status: "confirmed",
-  paymentMethod: "onsite",
-  paymentStatus: "pending",
-  paymentAmountJpy: 10000,
-  paymentConfirmedById: null,
-  paymentConfirmedAt: null,
-  paymentReference: null,
-  paymentNote: null,
-  paymentRefundedById: null,
-  paymentRefundedAt: null,
-  paymentRefundReference: null,
-  paymentRefundReason: null,
-  customerUserId: 71,
-  serviceId: null,
-  technicianServiceId: 102,
-  shopId: 11,
-  technicianProfileId: 31,
-  scheduleSlotId: 18,
-  fulfillmentMode: "store",
-  serviceName: "指名护理",
-  shopName: "正式店铺",
-  technicianName: "正式技师",
-  priceAmount: "12000.00",
-  currency: "JPY",
-  startsAt: "2026-09-01T13:00:00+09:00",
-  endsAt: "2026-09-01T14:00:00+09:00",
-  note: null,
-  cancelReason: null,
-  createdAt: "2026-08-28T01:00:00+09:00",
-  updatedAt: "2026-08-28T01:00:00+09:00",
-  statusHistory: []
-};
 
 let container: HTMLDivElement;
 let root: Root;
@@ -95,33 +51,26 @@ async function waitFor(assertion: () => void) {
   throw lastError;
 }
 
-async function click(label: string) {
-  const button = Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.trim() === label);
-  if (!button) throw new Error(`Missing button: ${label}`);
-  await act(async () => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-}
-
-async function selectView(value: "day" | "week" | "month") {
-  const select = container.querySelector('select[aria-label="显示范围"]') as HTMLSelectElement | null;
-  if (!select) throw new Error("Missing schedule range select");
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(select, value);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-}
-
 describe("FormalTechnicianScheduleWorkspace", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-01T09:00:00+09:00"));
-    mocks.loadSlots.mockResolvedValue([slot]);
-    mocks.loadOrders.mockResolvedValue([order]);
+    mocks.calendarProps.mockClear();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
     await act(async () => root.render(
       <MemoryRouter>
-        <FormalTechnicianScheduleWorkspace profileAvatarUrl="/media/technician.jpg" profileName="正式技师" shopName="正式店铺" />
+        <FormalTechnicianScheduleWorkspace
+          dataCenterPeriod="last7days"
+          initialSelectedDate="2026-08-26"
+          profileAvatarUrl="/media/technician.jpg"
+          profileId={31}
+          profileName="正式技师"
+          shopId={11}
+          shopName="正式店铺"
+          tab="calendar"
+        />
       </MemoryRouter>
     ));
   });
@@ -132,32 +81,100 @@ describe("FormalTechnicianScheduleWorkspace", () => {
     vi.useRealTimers();
   });
 
-  it("renders the approved day, week, month and order surfaces from formal loaders", async () => {
-    await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-day-timeline"]')).not.toBeNull());
-    expect(container.textContent).toContain("Aroma 60");
-    expect(container.textContent).toContain("指名护理");
-    expect(mocks.loadSlots).toHaveBeenCalledWith("technician", expect.objectContaining({ from: expect.any(Date), to: expect.any(Date) }));
-    expect(mocks.loadOrders).toHaveBeenCalledWith(expect.objectContaining({ from: expect.any(String), to: expect.any(String) }));
+  it("renders the shared formal parallel calendar and keeps booking settings available", async () => {
+    await waitFor(() => expect(container.querySelector('[data-testid="shared-unified-calendar"]')).not.toBeNull());
+    expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({
+      displayMode: "personal",
+      formalOnly: true,
+      scope: "technician",
+      searchQuery: "",
+      showSourceDrawer: true,
+      initialSelectedDate: "2026-08-26",
+      currentTechnician: {
+        avatar: "/media/technician.jpg",
+        id: "31",
+        name: "正式技师",
+        storeId: "11"
+      }
+    }));
+    expect(container.textContent).toContain("数据中心期间：近7天");
 
-    await selectView("week");
-    await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-week-grid"]')).not.toBeNull());
-    await selectView("month");
-    await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-month-grid"]')).not.toBeNull());
-    await click("排班设置");
-    expect(container.querySelector('[data-testid="formal-order-panel"]')).not.toBeNull();
+    await act(async () => root.render(
+      <MemoryRouter>
+        <FormalTechnicianScheduleWorkspace
+          dataCenterPeriod="last7days"
+          initialSelectedDate="2026-08-26"
+          profileAvatarUrl="/media/technician.jpg"
+          profileId={31}
+          profileName="正式技师"
+          shopId={11}
+          shopName="正式店铺"
+          tab="bookingSettings"
+        />
+      </MemoryRouter>
+    ));
+    expect(container.querySelector('[data-testid="automation-settings-panel"]')?.getAttribute("data-kind")).toBe("booking");
   });
 
-  it("keeps the approved mobile schedule hierarchy and a complete 24-hour day grid", async () => {
-    await waitFor(() => expect(container.querySelector('[data-testid="formal-schedule-day-timeline"]')).not.toBeNull());
+  it("forwards the formal schedule search to the shared calendar", async () => {
+    await waitFor(() => expect(container.querySelector('[data-testid="shared-unified-calendar"]')).not.toBeNull());
+    await act(async () => root.render(
+      <MemoryRouter>
+        <FormalTechnicianScheduleWorkspace
+          dataCenterPeriod="last7days"
+          initialSelectedDate="2026-08-26"
+          profileAvatarUrl="/media/technician.jpg"
+          profileId={31}
+          profileName="正式技师"
+          searchQuery="预约"
+          shopId={11}
+          shopName="正式店铺"
+          tab="calendar"
+        />
+      </MemoryRouter>
+    ));
+    expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({ searchQuery: "预约" }));
+  });
 
-    expect(container.querySelector('[data-testid="formal-schedule-profile-row"]')?.textContent).toContain("正式技师");
-    expect(container.querySelector('img[src="/media/technician.jpg"]')).not.toBeNull();
-    expect(container.textContent).toContain("我的排班");
-    expect(container.textContent).toContain("排班设置");
-    expect(container.querySelector('input[aria-label="行程搜索"]')?.getAttribute("placeholder")).toBe("行程搜索");
-    expect(container.textContent).toContain("1日");
-    expect(container.querySelectorAll('[data-testid="formal-schedule-hour-row"]')).toHaveLength(24);
-    expect(container.textContent).toContain("00:00");
-    expect(container.textContent).toContain("23:00");
+  it("removes the obsolete bottom status record without deleting calendar data", async () => {
+    await waitFor(() => expect(container.querySelector('[data-testid="shared-unified-calendar"]')).not.toBeNull());
+    expect(container.textContent).not.toContain("状态记录");
+  });
+
+  it("keeps an independent technician's formal calendar and technician creation modes available", async () => {
+    await act(async () => root.render(
+      <MemoryRouter>
+        <FormalTechnicianScheduleWorkspace
+          profileAvatarUrl={null}
+          profileId={31}
+          profileName="独立技师"
+          shopId={null}
+          shopName="独立技师"
+          tab="calendar"
+        />
+      </MemoryRouter>
+    ));
+
+    expect(mocks.calendarProps).toHaveBeenLastCalledWith(expect.objectContaining({
+      currentTechnician: expect.objectContaining({ id: "31", storeId: "" }),
+      formalOnly: true,
+      scope: "technician"
+    }));
+    expect(container.textContent).not.toContain("新建正式排班");
+
+    await act(async () => root.render(
+      <MemoryRouter>
+        <FormalTechnicianScheduleWorkspace
+          profileAvatarUrl={null}
+          profileId={31}
+          profileName="独立技师"
+          shopId={null}
+          shopName="独立技师"
+          tab="requestSettings"
+        />
+      </MemoryRouter>
+    ));
+    expect(container.querySelector('[data-testid="automation-settings-panel"]')?.getAttribute("data-kind")).toBe("request");
+    expect(container.textContent).not.toContain("新建正式排班");
   });
 });

@@ -5,14 +5,17 @@ import { AppError } from "../utils/app-error";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   ChallengeVerificationBody,
+  CompliancePhoneBindingBody,
   GoogleCredentialBody,
   LoginBody,
   LogoutBody,
   PasswordSetupBody,
+  PasswordLoginVerifyBody,
   RefreshBody,
   RegisterBody,
   RegisterVerifyBody,
-  SwitchIdentityBody
+  SwitchIdentityBody,
+  SwitchMerchantShopBody
 } from "../validators/auth.validator";
 
 type BodyRequest<TBody> = Request<Record<string, string>, unknown, TBody>;
@@ -32,6 +35,28 @@ export class AuthController {
         .json(
           successResponse(
             await this.authService.login(loginIdentifier, password, this.getContext(request))
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public verifyPasswordLogin = async (
+    request: BodyRequest<PasswordLoginVerifyBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.verifyPasswordLogin(
+              request.body.challengeId,
+              request.body.otp,
+              this.getContext(request)
+            )
           )
         );
     } catch (error) {
@@ -300,6 +325,28 @@ export class AuthController {
     }
   };
 
+  public bindCompliancePhone = async (
+    request: BodyRequest<CompliancePhoneBindingBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.bindCompliancePhone(
+              request.body.phone,
+              this.getAuthenticatedAccess(response),
+              this.getContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
   public refresh = async (
     request: BodyRequest<RefreshBody>,
     response: Response,
@@ -328,6 +375,29 @@ export class AuthController {
               this.getAuthenticatedAccess(response),
               request.body.refreshToken,
               request.body.identityId,
+              this.getContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public switchMerchantShop = async (
+    request: BodyRequest<SwitchMerchantShopBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.switchMerchantShop(
+              this.getAuthenticatedAccess(response),
+              request.body.refreshToken,
+              request.body.shopPublicId,
               this.getContext(request)
             )
           )

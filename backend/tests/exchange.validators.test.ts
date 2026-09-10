@@ -10,11 +10,41 @@ const common = {
   title: "  渋谷でヘアセットをお願いしたい  ",
   detail: "  8月31日のイベント前にお願いします。  ",
   contentLocale: "ja" as const,
-  areaLabel: "  渋谷区  ",
   serviceStartAt: "2026-08-31T09:00:00+09:00",
   serviceEndAt: "2026-08-31T10:00:00+09:00",
   expiresAt: "2026-08-31T08:30:00Z"
 };
+
+const validDemand = (overrides: Record<string, unknown> = {}) => ({
+  ...common,
+  type: "demand" as const,
+  serviceMode: "store" as const,
+  targetProviderCount: 1,
+  matchMode: "quick" as const,
+  budgetMode: "total" as const,
+  budgetMinJpy: null,
+  budgetMaxJpy: 12_000,
+  addressLine1: "  東京都渋谷区  ",
+  addressLine2: "  道玄坂1-2-3  ",
+  addressLine3: null,
+  addressLine2Public: false,
+  addressLine3Public: false,
+  publisherIdentityPublic: false,
+  ...overrides
+});
+
+const validIntelligence = (overrides: Record<string, unknown> = {}) => ({
+  ...common,
+  type: "intelligence" as const,
+  serviceRef: "shop:501",
+  areaLabel: "  渋谷区  ",
+  serviceMode: "store" as const,
+  addressLabel: "  渋谷駅徒歩3分  ",
+  serviceAreas: ["渋谷区", "港区"],
+  originalPriceJpy: 15_000,
+  campaignPriceJpy: 10_000,
+  ...overrides
+});
 
 describe("formal NeeDo Exchange validators", () => {
   it("normalizes bounded pagination and accepts only the two public tabs", () => {
@@ -42,12 +72,7 @@ describe("formal NeeDo Exchange validators", () => {
   });
 
   it("parses a demand, trims authored text, and preserves the original locale", () => {
-    const parsed = publishExchangePostSchema.parse({
-      ...common,
-      type: "demand",
-      budgetMinJpy: 8_000,
-      budgetMaxJpy: 12_000
-    });
+    const parsed = publishExchangePostSchema.parse(validDemand());
 
     expect(parsed).toEqual(
       expect.objectContaining({
@@ -55,9 +80,17 @@ describe("formal NeeDo Exchange validators", () => {
         title: "渋谷でヘアセットをお願いしたい",
         detail: "8月31日のイベント前にお願いします。",
         contentLocale: "ja",
-        areaLabel: "渋谷区",
-        budgetMinJpy: 8_000,
+        targetProviderCount: 1,
+        matchMode: "quick",
+        budgetMode: "total",
+        budgetMinJpy: null,
         budgetMaxJpy: 12_000,
+        addressLine1: "東京都渋谷区",
+        addressLine2: "道玄坂1-2-3",
+        addressLine3: null,
+        addressLine2Public: false,
+        addressLine3Public: false,
+        publisherIdentityPublic: false,
         serviceStartAt: new Date("2026-08-31T00:00:00.000Z"),
         serviceEndAt: new Date("2026-08-31T01:00:00.000Z"),
         expiresAt: new Date("2026-08-31T08:30:00.000Z")
@@ -65,59 +98,89 @@ describe("formal NeeDo Exchange validators", () => {
     );
   });
 
-  it("rejects reversed demand budgets and timestamps without an explicit offset", () => {
+  it("accepts an absent minimum but rejects a minimum above the maximum", () => {
+    expect(publishExchangePostSchema.safeParse(validDemand({ budgetMinJpy: null })).success).toBe(
+      true
+    );
     expect(
-      publishExchangePostSchema.safeParse({
-        ...common,
-        type: "demand",
-        budgetMinJpy: 12_000,
-        budgetMaxJpy: 8_000
-      }).success
-    ).toBe(false);
-    expect(
-      publishExchangePostSchema.safeParse({
-        ...common,
-        type: "demand",
-        serviceStartAt: "2026-08-31T09:00:00",
-        budgetMinJpy: 8_000,
-        budgetMaxJpy: 12_000
-      }).success
+      publishExchangePostSchema.safeParse(
+        validDemand({ budgetMinJpy: 20_001, budgetMaxJpy: 20_000 })
+      ).success
     ).toBe(false);
   });
 
-  it("parses intelligence and rejects invalid price or service windows", () => {
+  it("rejects timestamps without an explicit offset and invalid disclosure switches", () => {
     expect(
-      publishExchangePostSchema.parse({
-        ...common,
+      publishExchangePostSchema.safeParse(validDemand({ serviceStartAt: "2026-08-31T09:00:00" }))
+        .success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(
+        validDemand({ addressLine2: null, addressLine2Public: true })
+      ).success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(
+        validDemand({ addressLine3: null, addressLine3Public: true })
+      ).success
+    ).toBe(false);
+  });
+
+  it("rejects legacy demand-only fields and provider counts outside 1 through 20", () => {
+    expect(
+      publishExchangePostSchema.safeParse({ ...validDemand(), areaLabel: "legacy" }).success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(validDemand({ targetProviderCount: 0 })).success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(validDemand({ targetProviderCount: 21 })).success
+    ).toBe(false);
+  });
+
+  it("requires one formal Intelligence service reference and treats legacy display fields as optional", () => {
+    expect(publishExchangePostSchema.parse(validIntelligence())).toEqual(
+      expect.objectContaining({
         type: "intelligence",
-        serviceMode: "store",
-        addressLabel: "  渋谷駅徒歩3分  ",
-        serviceAreas: ["渋谷区", "港区"],
-        originalPriceJpy: 15_000,
-        campaignPriceJpy: 10_000
+        serviceRef: "shop:501",
+        addressLabel: "渋谷駅徒歩3分"
       })
-    ).toEqual(expect.objectContaining({ type: "intelligence", addressLabel: "渋谷駅徒歩3分" }));
+    );
 
     expect(
-      publishExchangePostSchema.safeParse({
-        ...common,
-        type: "intelligence",
-        serviceMode: "store",
-        serviceAreas: ["渋谷区"],
-        originalPriceJpy: 9_000,
-        campaignPriceJpy: 10_000
-      }).success
+      publishExchangePostSchema.safeParse(
+        validIntelligence({ serviceAreas: ["渋谷区"], originalPriceJpy: 9_000 })
+      ).success
+    ).toBe(true);
+    expect(
+      publishExchangePostSchema.safeParse(validIntelligence({ serviceRef: undefined })).success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(validIntelligence({ serviceRef: "legacy:501" })).success
     ).toBe(false);
     expect(
       publishExchangePostSchema.safeParse({
         ...common,
         type: "intelligence",
-        serviceMode: "onsite",
-        serviceAreas: ["渋谷区"],
-        serviceEndAt: "2026-08-31T08:00:00+09:00",
-        originalPriceJpy: null,
+        serviceRef: "technician:701",
         campaignPriceJpy: 10_000
       }).success
+    ).toBe(true);
+  });
+
+  it("rejects invalid Intelligence prices or service windows", () => {
+    expect(
+      publishExchangePostSchema.safeParse(validIntelligence({ campaignPriceJpy: -1 })).success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(
+        validIntelligence({
+          serviceMode: "onsite",
+          serviceAreas: ["渋谷区"],
+          serviceEndAt: "2026-08-31T08:00:00+09:00",
+          originalPriceJpy: null
+        })
+      ).success
     ).toBe(false);
   });
 

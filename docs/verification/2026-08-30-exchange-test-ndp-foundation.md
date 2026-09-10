@@ -5,6 +5,7 @@
 - Date/time zone: 2026-08-30, Asia/Tokyo.
 - Isolated branch: `codex/exchange-demand-claim-step1`.
 - Browser-tested implementation commit: `04a693df722f255af9ee7691a73cb7d545cc27ed`.
+- Post-merge browser-tested code commit: `f8a02ea39b4d660ecce2c88f6c2ce3467a3dd082`.
 - Applied migration: `20260830210000_exchange_test_ndp_foundation`.
 - This evidence covers only account classification, Test NDP currency/provisioning, wallet reads, finance separation, export exclusion, RBAC/audit, and the existing high-fidelity UI integration.
 - Exchange Request publication fees, claiming, matching, booking, and payment remain unstarted behind the agreed stop gate.
@@ -44,6 +45,27 @@ Postflight reported:
 - Frontend TypeScript lint passed.
 - Formal frontend production build and bundle audit passed: 8 HTML entries and 22 assets. Existing Vite dynamic-import/chunk-size warnings remained warnings, not failures.
 
+## Latest main integration and post-merge verification
+
+The isolated branch was updated from the latest local `main` commit `3eddd24e` and integrated through merge commit `ea4c2d0b`. The resulting code commit `f8a02ea3` was then fast-forwarded into local `main`.
+
+The two merge conflicts were resolved without creating a parallel ledger implementation:
+
+- Affiliate platform-fee error codes remain `40947` through `40949`; the Test NDP ledger/account-classification codes continue from `40950` through `40953`.
+- Affiliate settlement continues to use the existing wallet/ledger transaction path, but now preserves and validates the publisher wallet currency for the claimant, platform wallet, ledger transaction, and idempotent replay. Test NDP therefore cannot leak into the formal settlement/reconciliation path.
+
+Post-merge verification on the clean isolated worktree at the same commit reported:
+
+- Full backend Jest: 322 suites and 2,139 tests passed; 10 suites / 38 tests skipped; no failures.
+- Full frontend Vitest: 249 files and 1,484 tests passed; no failures.
+- Backend lint and production build passed.
+- Frontend lint passed.
+- Formal frontend production build and bundle audit passed: 8 HTML entries and 22 assets.
+- Prisma schema validation passed; all 74 repository migrations were applied and the local database was up to date.
+- Test NDP postflight remained stable at 251 active/test users, 251 user wallets at 100,000 Test NDP, 25,100,000 available, 0 frozen, 0 currency mismatches, and 0 Test NDP rows eligible for formal export.
+
+The local root worktree's unrelated Social/IM and identity/profile changes were left unstaged and unmodified by this integration. No push, deployment, external payment, or real deduction was performed.
+
 ## Real browser acceptance
 
 Runtime ownership was the isolated worktree: formal backend on port 3000 and Vite frontend on port 5180. `/api/v1/health` was `ok`; `/api/v1/ready` was `ready` with MySQL and Redis healthy.
@@ -78,6 +100,15 @@ Responsive/runtime checks:
 - Browser console inspection reported no errors or warnings on the accepted operations and customer pages.
 - No failed application request was observed; the protected users, wallet, finance-summary, and CSV calls used the formal API and returned HTTP 200. Backend health/ready remained green after acceptance.
 
+Post-merge acceptance was repeated against a clean isolated runtime. The already-running backend on port 3000 had been started before the merge and still returned the older user response shape, so it was not used as evidence. A temporary backend on port 3004 and frontend on port 5184 were started from `f8a02ea3`, verified, and stopped afterward; no repository configuration was changed.
+
+- Health and readiness passed with MySQL and Redis healthy. The direct users API returned HTTP 200, total 251, page size 20, and a boolean `isTestAccount` plus both wallet balances for every returned row.
+- At 1280×720, the users page showed 20 Test Account badges, `0 NDP`, `100,000 Test NDP`, and working server pagination from page 1 to page 2 of 13.
+- The finance page showed six paired NDP/Test NDP metrics, formal-only settlement, and the Test NDP exclusion message.
+- The real customer account showed `100,000 Test NDP`; direct navigation/reload retained the persisted value.
+- At 390×844, both the finance page and customer personal center remained usable without document-level horizontal overflow.
+- Fresh accepted admin and customer tabs had no browser console errors or warnings and did not enter the recovery page.
+
 ## Rollback boundary
 
-All code is isolated on `codex/exchange-demand-claim-step1`. No push, merge, deployment, external payment, or real deduction was performed. The migration and audited calibration are independently identifiable; future Request/claim work must begin as another microstep only after this checkpoint is reviewed.
+The checkpoint is locally merged into `main`; no push, deployment, external payment, or real deduction was performed. The implementation commits and migration remain independently identifiable and revertible. Exchange Request publication fees and claim work remain unstarted behind the agreed stop gate and must begin as a separate microstep only after this checkpoint is reviewed.

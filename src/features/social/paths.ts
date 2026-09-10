@@ -1,6 +1,14 @@
 import type { SocialPortalScope, SocialProfileRef } from "./types";
 import { profileKey, scopePrefix } from "./utils";
 
+export type SocialComposeParams = {
+  author?: string;
+  editPostId?: string;
+  quotePostId?: string;
+};
+
+export const socialReplyFocusState = { focusSocialReply: true } as const;
+
 export function getSocialScopeFromPathname(pathname: string): SocialPortalScope {
   if (pathname.startsWith("/merchant/")) {
     return "merchant";
@@ -17,14 +25,12 @@ export const socialPaths = {
   timeline(scope: SocialPortalScope) {
     return `${scopePrefix(scope)}/moments`;
   },
-  compose(scope: SocialPortalScope, params?: Record<string, string | undefined>) {
+  compose(scope: SocialPortalScope, params?: SocialComposeParams) {
     const search = new URLSearchParams();
 
-    Object.entries(params ?? {}).forEach(([key, value]) => {
-      if (value) {
-        search.set(key, value);
-      }
-    });
+    if (params?.author) search.set("author", params.author);
+    if (params?.editPostId) search.set("editPostId", params.editPostId);
+    if (params?.quotePostId) search.set("quotePostId", params.quotePostId);
 
     const query = search.toString();
     return `${scopePrefix(scope)}/moments/compose${query ? `?${query}` : ""}`;
@@ -60,9 +66,6 @@ export const socialPaths = {
   },
   post(scope: SocialPortalScope, postId: string) {
     return `${scopePrefix(scope)}/moments/posts/${postId}`;
-  },
-  replies(scope: SocialPortalScope, postId: string) {
-    return `${scopePrefix(scope)}/moments/posts/${postId}/replies`;
   },
   repost(scope: SocialPortalScope, postId: string) {
     return `${scopePrefix(scope)}/moments/posts/${postId}/repost`;

@@ -2,10 +2,12 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
+import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
+import { persistIdentityAvatar } from "./identity-avatar.repository";
 import {
-  toAuditLogCreateData,
-  type AuditLogCreateInput
-} from "./audit-log.repository";
+  loadTechnicianReviewTagSummary,
+  type TechnicianReviewTagSummaryPayload
+} from "./technician-review-tag-summary.repository";
 
 export type TechnicianPaymentMethod =
   | "platform"
@@ -17,20 +19,37 @@ export type TechnicianPaymentMethod =
   | "wechatpay"
   | "alipay";
 export type TechnicianProfileVisibility = "public" | "privateAll" | "limited" | "network";
+export type TechnicianProfileGender = "female" | "male" | "private";
 export type TechnicianEmploymentTypePayload = "independent" | "full_time" | "temporary";
+export type TechnicianServiceBase = { latitude: number; longitude: number } | null;
+
+export type TechnicianShopAccessStatus = "active" | "requires_shop";
+
+export interface TechnicianShopAffiliationPayload {
+  id: number;
+  shopId: number;
+  publicId: string | null;
+  name: string;
+  city: string;
+  address: string;
+  relationshipType: "partner";
+  workStatus: "active" | "on_leave" | "suspended";
+  startsAt: string;
+}
 
 export interface TechnicianProfileMutation {
   displayName?: string;
+  gender?: TechnicianProfileGender;
   age?: number | null;
   heightCm?: number | null;
   languages?: string[];
   bio?: string | null;
   serviceAreas?: string[];
-  profileTags?: string[];
   canServeForeigners?: boolean;
   bidBudgetMinJpy?: number | null;
   bidBudgetMaxJpy?: number | null;
   paymentMethods?: TechnicianPaymentMethod[];
+  serviceBase?: TechnicianServiceBase;
   visibility?: TechnicianProfileVisibility;
   avatar?: { url: string; mimeType: string };
 }
@@ -40,19 +59,25 @@ export interface TechnicianProfilePayload {
   publicId: string;
   userId: number;
   shopId: number | null;
+  shopAccessStatus: TechnicianShopAccessStatus;
+  shopAffiliations: TechnicianShopAffiliationPayload[];
   displayName: string;
   avatarUrl: string | null;
   bio: string | null;
   city: string;
+  gender: TechnicianProfileGender;
   age: number | null;
   heightCm: number | null;
   languages: string[];
   serviceAreas: string[];
+  specialTags: string[];
   profileTags: string[];
+  reviewTagSummary: TechnicianReviewTagSummaryPayload;
   canServeForeigners: boolean;
   bidBudgetMinJpy: number | null;
   bidBudgetMaxJpy: number | null;
   paymentMethods: TechnicianPaymentMethod[];
+  serviceBase: TechnicianServiceBase;
   visibility: TechnicianProfileVisibility;
   employmentType: TechnicianEmploymentTypePayload;
   yearsExperience: number;
@@ -72,6 +97,31 @@ export interface TechnicianProfileRepositoryPort {
 }
 
 const profileInclude = {
+  technicianShopAffiliations: {
+    where: {
+      deletedAt: null,
+      workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
+      shop: { deletedAt: null }
+    },
+    orderBy: [{ startsAt: "asc" as const }, { id: "asc" as const }],
+    select: {
+      id: true,
+      shopId: true,
+      relationshipType: true,
+      workStatus: true,
+      startsAt: true,
+      shop: {
+        select: {
+          name: true,
+          city: true,
+          address: true,
+          publicIdentifier: {
+            select: { publicId: true, deletedAt: true }
+          }
+        }
+      }
+    }
+  },
   mediaAssets: {
     where: { usageType: "avatar", isActive: true, deletedAt: null },
     orderBy: { id: "desc" as const },
@@ -79,6 +129,7 @@ const profileInclude = {
   },
   user: {
     select: {
+      avatarBootstrapUrl: true,
       identities: {
         where: { type: { in: ["technician", "service", "s"] }, isActive: true, deletedAt: null },
         include: { publicIdentifier: true },
@@ -99,11 +150,14 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
     userId: number,
     profileId: number
   ): Promise<TechnicianProfilePayload | null> {
-    const profile = await this.client.technicianProfile.findFirst({
-      where: { id: profileId, userId, deletedAt: null },
-      include: profileInclude
-    });
-    return profile ? this.mapProfile(profile) : null;
+    const [profile, reviewTagSummary] = await Promise.all([
+      this.client.technicianProfile.findFirst({
+        where: { id: profileId, userId, deletedAt: null },
+        include: profileInclude
+      }),
+      loadTechnicianReviewTagSummary(this.client, profileId)
+    ]);
+    return profile ? this.mapProfile(profile, reviewTagSummary) : null;
   }
 
   public async updateMine(
@@ -125,26 +179,12 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       });
 
       if (mutation.avatar) {
-        await transaction.mediaAsset.updateMany({
-          where: {
-            technicianProfileId: profileId,
-            usageType: "avatar",
-            isActive: true,
-            deletedAt: null
-          },
-          data: { isActive: false }
-        });
-        await transaction.mediaAsset.create({
-          data: {
-            entityType: "technician_profile",
-            entityId: profileId,
-            technicianProfileId: profileId,
-            ownerUserId: userId,
-            ownerIdentityId,
-            url: mutation.avatar.url,
-            mimeType: mutation.avatar.mimeType,
-            usageType: "avatar"
-          }
+        await persistIdentityAvatar(transaction, {
+          avatar: mutation.avatar,
+          capturedAt: new Date(),
+          identityId: ownerIdentityId,
+          source: { kind: "technician", profileId },
+          userId
         });
       }
 
@@ -155,12 +195,14 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       });
     });
 
-    return this.mapProfile(profile);
+    const reviewTagSummary = await loadTechnicianReviewTagSummary(this.client, profile.id);
+    return this.mapProfile(profile, reviewTagSummary);
   }
 
   private profileData(mutation: TechnicianProfileMutation): Prisma.TechnicianProfileUpdateInput {
     return {
       ...(mutation.displayName !== undefined ? { displayName: mutation.displayName } : {}),
+      ...(mutation.gender !== undefined ? { gender: mutation.gender } : {}),
       ...(mutation.age !== undefined ? { age: mutation.age } : {}),
       ...(mutation.heightCm !== undefined ? { heightCm: mutation.heightCm } : {}),
       ...(mutation.languages !== undefined ? { languages: mutation.languages } : {}),
@@ -171,7 +213,6 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
             serviceArea: mutation.serviceAreas.join(", ") || null
           }
         : {}),
-      ...(mutation.profileTags !== undefined ? { profileTags: mutation.profileTags } : {}),
       ...(mutation.canServeForeigners !== undefined
         ? { canServeForeigners: mutation.canServeForeigners }
         : {}),
@@ -182,15 +223,26 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
         ? { bidBudgetMaxJpy: mutation.bidBudgetMaxJpy }
         : {}),
       ...(mutation.paymentMethods !== undefined ? { paymentMethods: mutation.paymentMethods } : {}),
+      ...(mutation.serviceBase !== undefined
+        ? {
+            baseLatitude: mutation.serviceBase?.latitude ?? null,
+            baseLongitude: mutation.serviceBase?.longitude ?? null
+          }
+        : {}),
       ...(mutation.visibility !== undefined ? { visibility: mutation.visibility } : {})
     };
   }
 
-  private mapProfile(profile: TechnicianProfileRecord): TechnicianProfilePayload {
+  private mapProfile(
+    profile: TechnicianProfileRecord,
+    reviewTagSummary: TechnicianReviewTagSummaryPayload
+  ): TechnicianProfilePayload {
     const publicId = profile.user.identities
       .map((identity) => identity.publicIdentifier)
-      .find((identifier) => identifier?.kind === "S" && identifier.status === "ACTIVE" && !identifier.deletedAt)
-      ?.publicId;
+      .find(
+        (identifier) =>
+          identifier?.kind === "S" && identifier.status === "ACTIVE" && !identifier.deletedAt
+      )?.publicId;
     if (!publicId) {
       throw new AppError({
         code: ERROR_CODES.INTERNAL,
@@ -199,30 +251,69 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
       });
     }
 
+    const shopAffiliations = (profile.technicianShopAffiliations ?? [])
+      .map((affiliation) => ({
+        id: affiliation.id,
+        shopId: affiliation.shopId,
+        publicId:
+          affiliation.shop.publicIdentifier?.deletedAt === null
+            ? affiliation.shop.publicIdentifier.publicId
+            : null,
+        name: affiliation.shop.name,
+        city: affiliation.shop.city,
+        address: affiliation.shop.address,
+        relationshipType: "partner" as const,
+        workStatus:
+          affiliation.workStatus === "ON_LEAVE"
+            ? ("on_leave" as const)
+            : affiliation.workStatus === "SUSPENDED"
+              ? ("suspended" as const)
+              : ("active" as const),
+        startsAt: affiliation.startsAt.toISOString()
+      }))
+      .sort((left, right) => {
+        if (left.shopId === profile.shopId) return -1;
+        if (right.shopId === profile.shopId) return 1;
+        return left.startsAt.localeCompare(right.startsAt) || left.id - right.id;
+      });
+
     return {
       id: profile.id,
       publicId,
       userId: profile.userId,
       shopId: profile.shopId,
+      shopAccessStatus: shopAffiliations.length > 0 ? "active" : "requires_shop",
+      shopAffiliations,
       displayName: profile.displayName,
-      avatarUrl: profile.mediaAssets[0]?.url ?? null,
+      avatarUrl: profile.mediaAssets[0]?.url ?? profile.user.avatarBootstrapUrl ?? null,
       bio: profile.bio,
       city: profile.city,
+      gender: this.gender(profile.gender),
       age: profile.age,
       heightCm: profile.heightCm === null ? null : Number(profile.heightCm),
       languages: this.stringArray(profile.languages, "languages"),
       serviceAreas: this.stringArray(profile.serviceAreasJson, "service_areas"),
-      profileTags: this.stringArray(profile.profileTags, "profile_tags"),
+      specialTags: [],
+      profileTags: [],
+      reviewTagSummary,
       canServeForeigners: profile.canServeForeigners,
       bidBudgetMinJpy: profile.bidBudgetMinJpy,
       bidBudgetMaxJpy: profile.bidBudgetMaxJpy,
       paymentMethods: this.paymentMethodArray(profile.paymentMethods),
+      serviceBase:
+        profile.baseLatitude === null || profile.baseLongitude === null
+          ? null
+          : {
+              latitude: Number(profile.baseLatitude),
+              longitude: Number(profile.baseLongitude)
+            },
       visibility: this.visibility(profile.visibility),
-      employmentType: profile.employmentType === "FULL_TIME"
-        ? "full_time"
-        : profile.employmentType === "TEMPORARY"
-          ? "temporary"
-          : "independent",
+      employmentType:
+        profile.employmentType === "FULL_TIME"
+          ? "full_time"
+          : profile.employmentType === "TEMPORARY"
+            ? "temporary"
+            : "independent",
       yearsExperience: profile.yearsExperience,
       createdAt: profile.createdAt.toISOString(),
       updatedAt: profile.updatedAt.toISOString()
@@ -262,9 +353,11 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
   }
 
   private visibility(value: string): TechnicianProfileVisibility {
-    return value === "privateAll" || value === "limited" || value === "network"
-      ? value
-      : "public";
+    return value === "privateAll" || value === "limited" || value === "network" ? value : "public";
+  }
+
+  private gender(value: string): TechnicianProfileGender {
+    return value === "female" || value === "male" ? value : "private";
   }
 
   private notFound(): AppError {

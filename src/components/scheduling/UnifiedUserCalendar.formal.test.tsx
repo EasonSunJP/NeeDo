@@ -1,17 +1,44 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
-import type { Customer } from "../../types/domain";
-import { UnifiedUserCalendar } from "./UnifiedUserCalendar";
+import type { BookingScheduleSlot } from "../../features/booking/api";
+import type { Customer, Store, Technician } from "../../types/domain";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
+import { getBookingConflictEventIds, getFormalAvailabilityWindowEvents, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedCalendarEventDetailPage, UnifiedUserCalendar, type UnifiedCalendarEvent } from "./UnifiedUserCalendar";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const testState = vi.hoisted(() => ({
+  createAvailabilityWindow: vi.fn(),
+  createCalendarEvent: vi.fn(),
+  deleteCalendarEvent: vi.fn(),
+  listCalendarEvents: vi.fn(),
+  listAllAvailabilityWindows: vi.fn(),
   legacyListOrders: vi.fn(),
-  loadCustomerOrderWindow: vi.fn()
+  loadCustomerOrderWindow: vi.fn(),
+  listScheduleSlots: vi.fn(),
+  updateAvailabilityWindow: vi.fn(),
+  updateCalendarEvent: vi.fn()
+}));
+
+vi.mock("../../features/scheduling/calendar-event-api", () => ({
+  calendarEventApi: {
+    create: testState.createCalendarEvent,
+    remove: testState.deleteCalendarEvent,
+    list: testState.listCalendarEvents,
+    update: testState.updateCalendarEvent
+  }
+}));
+
+vi.mock("../../features/scheduling/availability-window-api", () => ({
+  availabilityWindowApi: {
+    create: testState.createAvailabilityWindow,
+    listAll: testState.listAllAvailabilityWindows,
+    update: testState.updateAvailabilityWindow
+  }
 }));
 
 vi.mock("../../features/booking/window-loaders", () => ({
@@ -25,6 +52,17 @@ vi.mock("../../features/booking/api", async (importOriginal) => {
     bookingApi: {
       ...actual.bookingApi,
       listOrders: testState.legacyListOrders
+    }
+  };
+});
+
+vi.mock("../../features/scheduling/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../features/scheduling/api")>();
+  return {
+    ...actual,
+    schedulingApi: {
+      ...actual.schedulingApi,
+      listSlots: testState.listScheduleSlots
     }
   };
 });
@@ -45,6 +83,10 @@ vi.mock("../../features/dispatch-center/store", () => ({
   useDispatchCenterStore: () => ({ arrangements: [] })
 }));
 
+vi.mock("../../lib/persistentCacheScope", () => ({
+  getAuthenticatedPersistentCacheScope: () => "account:7"
+}));
+
 vi.mock("../../features/im/store", () => ({
   useImStore: () => ({
     contacts: [],
@@ -57,8 +99,17 @@ vi.mock("../../features/im/store", () => ({
 }));
 
 vi.mock("../mobile/FloatingActionButton", () => ({
-  FloatingActionButton: ({ ariaLabel }: { ariaLabel: string }) => (
-    <button aria-label={ariaLabel} type="button">floating action</button>
+  FloatingActionButton: ({ ariaLabel, onClick }: { ariaLabel: string; onClick?: () => void }) => (
+    <button aria-label={ariaLabel} onClick={onClick} type="button">floating action</button>
+  )
+}));
+vi.mock("../mobile/MobileFullscreenPage", () => ({
+  MobileFullscreenPage: ({ children }: { children: ReactNode }) => <section>{children}</section>
+}));
+vi.mock("../mobile/MobileFullscreenHeader", () => ({
+  MobileFullscreenCloseButton: () => null,
+  MobileFullscreenHeader: ({ action, overlay, title }: { action?: ReactNode; overlay?: ReactNode; title: string }) => (
+    <header><div className="overflow-hidden">{title}{action}</div>{overlay}</header>
   )
 }));
 
@@ -77,6 +128,13 @@ const customerFixture: Customer = {
   churnRisk: "low"
 };
 
+const technicianFixture = {
+  avatar: "",
+  id: "48",
+  name: "山崎 俊介",
+  storeId: "17"
+};
+
 function todayKey() {
   const today = new Date();
   return [
@@ -84,6 +142,10 @@ function todayKey() {
     String(today.getMonth() + 1).padStart(2, "0"),
     String(today.getDate()).padStart(2, "0")
   ].join("-");
+}
+
+function LocationProbe() {
+  return <span data-testid="location">{useLocation().pathname}</span>;
 }
 
 async function waitFor(assertion: () => void) {
@@ -106,7 +168,8 @@ let container: HTMLDivElement;
 let root: Root;
 
 describe("UnifiedUserCalendar formal-only mode", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await persistentResourceCache.clearScope("account:7");
     vi.clearAllMocks();
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
@@ -138,6 +201,9 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     }]));
     testState.legacyListOrders.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
     testState.loadCustomerOrderWindow.mockRejectedValue(new Error("schedule unavailable"));
+    testState.listScheduleSlots.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
+    testState.listAllAvailabilityWindows.mockResolvedValue([]);
+    testState.listCalendarEvents.mockResolvedValue({ list: [], total: 0, page: 1, page_size: 100 });
   });
 
   afterEach(async () => {
@@ -147,7 +213,201 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     vi.restoreAllMocks();
   });
 
-  it("does not replace a failed formal request with local events", async () => {
+  async function renderMerchant() {
+    await act(async () => root.render(
+      <MemoryRouter><I18nProvider><UnifiedUserCalendar
+        currentStore={{ id: "17", name: "Formal Shop" } as Store}
+        technicians={[{ ...technicianFixture, avatar: "/media/formal-avatar.jpg" } as Technician]}
+        scope="merchant" displayMode="parallel" merchantLaneMode="appointmentStatus" formalOnly
+      /></I18nProvider></MemoryRouter>
+    ));
+  }
+
+  it("keeps real technician avatar headers in appointment status mode on empty days", async () => {
+    await renderMerchant();
+    await waitFor(() => expect(container.querySelector('img[alt="山崎 俊介"]')).not.toBeNull());
+    expect(container.querySelector('img[alt="山崎 俊介"]')?.getAttribute("src")).toBe("/media/formal-avatar.jpg");
+    expect(container.textContent).toContain("已排预约");
+    expect(container.textContent).toContain("未排预约");
+  });
+
+  it("loads later real order pages and retains assigned orders under the status filter", async () => {
+    const slot = { id: 901, startsAt: `${todayKey()}T10:00:00`, endsAt: `${todayKey()}T11:00:00`,
+      status: "confirmed", orderNo: "TEST-901", serviceName: "first-page-service", technicianProfileId: 48, shopId: 17,
+      capacity: 1, bookedCount: 0, priceAmount: "8800", currency: "JPY", durationMinutes: 60 };
+    testState.legacyListOrders.mockImplementation(async (input) => ({
+      list: [{ ...slot, id: 900 + input.page, serviceName: input.page === 1 ? "first-page-service" : "last-page-service" }],
+      page: input.page, page_size: 1, total: 2
+    }));
+    await renderMerchant();
+    await waitFor(() => expect(container.textContent).toContain("last-page-service"));
+    const assigned = Array.from(container.querySelectorAll("button")).find(button => button.textContent === "已排预约");
+    await act(async () => assigned?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(container.textContent).toContain("last-page-service");
+  });
+
+  it("preserves historical orders when their technician is no longer in the current roster", async () => {
+    testState.legacyListOrders.mockResolvedValue({ list: [{ id: 903, orderNo: "TEST-903",
+      startsAt: `${todayKey()}T23:00:00`, endsAt: `${todayKey()}T23:59:00`,
+      status: "confirmed", serviceName: "departed-staff-service", technicianName: "Former Staff",
+      technicianProfileId: 49, shopId: 17, capacity: 1, bookedCount: 1,
+      priceAmount: "8800", currency: "JPY", durationMinutes: 59
+    }], total: 1, page: 1, page_size: 100 });
+    await renderMerchant();
+    await waitFor(() => expect(container.textContent).toContain("departed-staff-service"));
+    expect(container.textContent).toContain("Former Staff");
+  });
+
+  it("splits overnight slots into daily segments and preserves an exact midnight end", () => {
+    const events = getFormalScheduleEvents([{ id: 904,
+      startsAt: "2026-09-06T23:00:00", endsAt: "2026-09-07T01:00:00", serviceName: "overnight"
+    } as BookingScheduleSlot], "merchant");
+    expect(events).toEqual([
+      expect.objectContaining({ date: "2026-09-06", startTime: "23:00", endTime: "24:00" }),
+      expect.objectContaining({ date: "2026-09-07", startTime: "00:00", endTime: "01:00" })
+    ]);
+    const midnight = getFormalScheduleEvents([{ id: 905,
+      startsAt: "2026-09-06T23:00:00", endsAt: "2026-09-07T00:00:00", serviceName: "midnight"
+    } as BookingScheduleSlot], "merchant");
+    expect(midnight).toHaveLength(1);
+    expect(midnight[0]?.endTime).toBe("24:00");
+  });
+
+  it("preserves the persisted availability source when projecting technician schedule slots", () => {
+    const event = getFormalScheduleEvents([{
+      id: 906,
+      startsAt: "2026-09-09T10:00:00+09:00",
+      endsAt: "2026-09-09T11:00:00+09:00",
+      status: "booked",
+      bookedCount: 1,
+      availabilitySourceType: "shop",
+      shopName: "正式店铺",
+      serviceName: "正式服务"
+    } as BookingScheduleSlot], "technician")[0]!;
+
+    expect(event).toMatchObject({
+      scheduleSlotId: 906,
+      availabilitySourceType: "shop",
+      title: "正式店铺店铺排班（可排班日程）"
+    });
+  });
+
+  it("marks only overlapping real bookings as conflicts", () => {
+    const base = { sourceId: "user", calendarId: "user:me", calendarLabel: "我的行程", date: "2026-09-09", subtitle: "", badge: "预约", readOnly: true } as const;
+    const bookingA = { ...base, id: "booking-a", orderId: "A", startTime: "20:00", endTime: "21:30", title: "预约A" };
+    const bookingB = { ...base, id: "booking-b", orderId: "B", startTime: "21:00", endTime: "22:00", title: "预约B" };
+    const privateEvent = { ...base, id: "private", orderId: undefined, startTime: "20:30", endTime: "22:00", title: "私人日程" };
+    const availability = { ...base, id: "availability", orderId: undefined, scheduleSlotId: 3, startTime: "18:00", endTime: "24:00", title: "自由排班" };
+    expect([...getBookingConflictEventIds([bookingA, bookingB, privateEvent, availability])].sort()).toEqual(["booking-a", "booking-b"]);
+    expect(getBookingConflictEventIds([bookingA, privateEvent, availability])).toEqual(new Set());
+  });
+
+  it("projects a full independent availability range without subtracting its booking occupancy", () => {
+    const events = getFormalAvailabilityWindowEvents([{
+      id: 77,
+      shopId: 17,
+      technicianProfileId: 48,
+      sourceType: "technician",
+      visibility: "affiliated_shops",
+      startsAt: "2026-09-09T18:00:00+09:00",
+      endsAt: "2026-09-10T00:00:00+09:00",
+      capacity: 1,
+      isActive: true,
+      shopName: "Formal Shop",
+      createdAt: "2026-09-01T00:00:00Z",
+      updatedAt: "2026-09-01T00:00:00Z"
+    }], "technician");
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      availabilityWindowId: 77,
+      availabilitySourceType: "technician",
+      startTime: "18:00",
+      endTime: "24:00",
+      readOnly: false,
+      title: "自由排班"
+    });
+  });
+
+  it("requires the red impact confirmation before editing a shop-controlled availability window", async () => {
+    const onEdit = vi.fn();
+    const event = getFormalAvailabilityWindowEvents([{
+      id: 78,
+      shopId: 17,
+      technicianProfileId: 48,
+      sourceType: "shop",
+      visibility: "shop_only",
+      startsAt: "2026-09-09T10:00:00+09:00",
+      endsAt: "2026-09-09T15:00:00+09:00",
+      capacity: 1,
+      isActive: true,
+      shopName: "正式店铺",
+      createdAt: "2026-09-01T00:00:00Z",
+      updatedAt: "2026-09-01T00:00:00Z"
+    }], "technician")[0]!;
+    await act(async () => root.render(
+      <MemoryRouter>
+        <I18nProvider>
+          <UnifiedCalendarEventDetailPage event={event} onBack={() => {}} onEdit={onEdit} />
+        </I18nProvider>
+      </MemoryRouter>
+    ));
+
+    const edit = container.querySelector('button[aria-label="编辑行程"]') as HTMLButtonElement;
+    await act(async () => edit.click());
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("影响店铺安排");
+    const confirm = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("确认修改排班"));
+    await act(async () => confirm?.click());
+    expect(onEdit).toHaveBeenCalledWith(event);
+  });
+
+  it("renders the event more menu outside the clipped floating header panel", async () => {
+    const event: UnifiedCalendarEvent = {
+      id: "private-event",
+      sourceId: "technician",
+      date: "2026-09-09",
+      startTime: "10:00",
+      endTime: "11:00",
+      title: "私人日程",
+      subtitle: "",
+      badge: "行程",
+      readOnly: false,
+    };
+    await act(async () => root.render(
+      <MemoryRouter>
+        <I18nProvider>
+          <UnifiedCalendarEventDetailPage event={event} onBack={() => {}} onDelete={() => {}} />
+        </I18nProvider>
+      </MemoryRouter>
+    ));
+
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="更多行程操作"]')?.click());
+    const menuItem = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("制作一个复制"));
+    expect(menuItem).toBeDefined();
+    expect(menuItem?.closest(".overflow-hidden")).toBeNull();
+  });
+
+  it.each([["available", "可预约"], ["booked", "已预约"], ["blocked", "已锁定"]] as const)("keeps the persisted %s slot status visible on compact cards", async (status, badge) => {
+    const event = getFormalScheduleEvents([{ id: 906, status,
+      startsAt: "2026-09-06T00:00:00", endsAt: "2026-09-06T01:00:00", serviceName: "正式服务"
+    } as BookingScheduleSlot], "merchant")[0]!;
+    await act(async () => root.render(<UnifiedCalendarEventCard event={event} compact onOpen={() => {}} />));
+    expect(container.querySelector("button")?.textContent).toContain(badge);
+  });
+
+  it("does not present available staffing slots as customer appointments", async () => {
+    testState.listScheduleSlots.mockResolvedValue({ list: [{ id: 999,
+      startsAt: `${todayKey()}T00:00:00`, endsAt: `${todayKey()}T01:00:00`,
+      status: "available", serviceName: "unbooked-staffing-slot", technicianProfileId: 48
+    }], total: 1, page: 1, page_size: 100 });
+    await renderMerchant();
+    await waitFor(() => expect(testState.legacyListOrders).toHaveBeenCalled());
+    expect(container.textContent).not.toContain("unbooked-staffing-slot");
+    expect(testState.listScheduleSlots).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a failed formal request with browser events and still exposes formal creation", async () => {
     const storageWrite = vi.spyOn(Storage.prototype, "setItem");
     await act(async () => {
       root.render(
@@ -163,7 +423,7 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(container.textContent).not.toContain("local fixture event");
     const retryButton = Array.from(container.querySelectorAll("button")).find((button) => /重试|再试|retry/i.test(button.textContent ?? ""));
     expect(retryButton).toBeDefined();
-    expect(container.querySelector('button[aria-label="新增行程"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull();
     expect(testState.legacyListOrders).not.toHaveBeenCalled();
     expect(storageWrite.mock.calls.filter(([key]) => key === "needo.user-unified-calendar.v1")).toHaveLength(0);
 
@@ -171,5 +431,298 @@ describe("UnifiedUserCalendar formal-only mode", () => {
       retryButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await waitFor(() => expect(testState.loadCustomerOrderWindow).toHaveBeenCalledTimes(2));
+  });
+
+  it("creates a formal user event from the FAB instead of browser storage", async () => {
+    testState.loadCustomerOrderWindow.mockResolvedValue([]);
+    testState.createCalendarEvent.mockResolvedValue({
+      id: 42,
+      title: "正式私人日程",
+      startsAt: `${todayKey()}T10:00:00.000Z`,
+      endsAt: `${todayKey()}T11:00:00.000Z`,
+      allDay: false,
+      reminderMinutes: 30,
+      repeatRule: "none",
+      location: "",
+      url: "",
+      note: "",
+      visibility: "private",
+      participantIdentityIds: [],
+      imageUrls: [],
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem");
+    await act(async () => root.render(
+      <MemoryRouter><I18nProvider><UnifiedUserCalendar currentCustomer={customerFixture} formalOnly /></I18nProvider></MemoryRouter>
+    ));
+    await waitFor(() => expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="新增行程"]')?.click());
+    const title = container.querySelector<HTMLInputElement>('input[placeholder="新增标题"]');
+    expect(title).not.toBeNull();
+    await act(async () => {
+      if (title) {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        setter?.call(title, "正式私人日程");
+        title.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      container.querySelector<HTMLButtonElement>('button[aria-label="完成新增行程"]')?.click();
+    });
+    await waitFor(() => expect(testState.createCalendarEvent).toHaveBeenCalled());
+    expect(storageWrite.mock.calls.filter(([key]) => key === "needo.user-unified-calendar.v1")).toHaveLength(0);
+  });
+
+  it("shows mutually exclusive availability and manual-booking switches only in the technician editor", async () => {
+    await act(async () => root.render(
+      <MemoryRouter><I18nProvider><UnifiedUserCalendar currentTechnician={technicianFixture} formalOnly scope="technician" /></I18nProvider></MemoryRouter>
+    ));
+    await waitFor(() => expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="新增行程"]')?.click());
+    const availability = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="可排班"]');
+    const manual = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="手动预约"]');
+    expect(availability).not.toBeNull();
+    expect(manual).not.toBeNull();
+    expect(availability?.getAttribute("aria-checked")).toBe("false");
+    await act(async () => availability?.click());
+    expect(availability?.getAttribute("aria-checked")).toBe("true");
+    await act(async () => manual?.click());
+    expect(availability?.getAttribute("aria-checked")).toBe("false");
+    expect(manual?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("keeps technician creation modes visible for an independent technician", async () => {
+    await act(async () => root.render(
+      <MemoryRouter>
+        <I18nProvider>
+          <UnifiedUserCalendar
+            currentTechnician={{ ...technicianFixture, storeId: "" }}
+            formalOnly
+            scope="technician"
+          />
+        </I18nProvider>
+      </MemoryRouter>
+    ));
+    await waitFor(() => expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="新增行程"]')?.click());
+
+    expect(container.querySelector('input[placeholder="新增标题"]')).not.toBeNull();
+    expect(container.querySelector('[role="switch"][aria-label="可排班"]')).not.toBeNull();
+    expect(container.querySelector('[role="switch"][aria-label="手动预约"]')).not.toBeNull();
+  });
+
+  it("creates technician availability inside the shared calendar editor without opening the legacy schedule page", async () => {
+    testState.createAvailabilityWindow.mockImplementation(async (_scope, input) => ({
+      id: 88,
+      shopId: 17,
+      technicianProfileId: 48,
+      sourceType: "technician",
+      visibility: "affiliated_shops",
+      startsAt: input.startsAt.toISOString(),
+      endsAt: input.endsAt.toISOString(),
+      capacity: input.capacity,
+      isActive: true,
+      shopName: "Formal Shop",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }));
+
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={["/technician/schedule"]}>
+        <LocationProbe />
+        <I18nProvider><UnifiedUserCalendar currentTechnician={technicianFixture} formalOnly scope="technician" /></I18nProvider>
+      </MemoryRouter>
+    ));
+    await waitFor(() => expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="新增行程"]')?.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="可排班"]')?.click());
+    const capacity = container.querySelector<HTMLInputElement>('input[name="availabilityCapacity"]');
+    expect(capacity).not.toBeNull();
+    await act(async () => {
+      if (capacity) {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        setter?.call(capacity, "3");
+        capacity.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="完成新增行程"]')?.click());
+
+    await waitFor(() => expect(testState.createAvailabilityWindow).toHaveBeenCalledTimes(1));
+    expect(testState.createAvailabilityWindow).toHaveBeenCalledWith("technician", {
+      capacity: 3,
+      endsAt: expect.any(Date),
+      startsAt: expect.any(Date)
+    });
+    expect(testState.createCalendarEvent).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="location"]')?.textContent).toBe("/technician/schedule");
+  });
+
+  it("keeps invalid availability capacity from being saved in the shared editor", async () => {
+    await act(async () => root.render(
+      <MemoryRouter><I18nProvider><UnifiedUserCalendar currentTechnician={technicianFixture} formalOnly scope="technician" /></I18nProvider></MemoryRouter>
+    ));
+    await waitFor(() => expect(container.querySelector('button[aria-label="新增行程"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="新增行程"]')?.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="可排班"]')?.click());
+    const capacity = container.querySelector<HTMLInputElement>('input[name="availabilityCapacity"]');
+    await act(async () => {
+      if (capacity) {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        setter?.call(capacity, "0");
+        capacity.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+
+    const done = container.querySelector<HTMLButtonElement>('button[aria-label="完成新增行程"]');
+    expect(done?.disabled).toBe(true);
+    expect(container.textContent).toContain("容量必须为 1 到 100 的整数");
+    await act(async () => done?.click());
+    expect(testState.createAvailabilityWindow).not.toHaveBeenCalled();
+  });
+
+  it("edits technician availability in the same shared calendar editor", async () => {
+    const availability = {
+      id: 89,
+      shopId: 17,
+      technicianProfileId: 48,
+      sourceType: "technician" as const,
+      visibility: "affiliated_shops" as const,
+      startsAt: `${todayKey()}T10:00:00`,
+      endsAt: `${todayKey()}T12:00:00`,
+      capacity: 2,
+      isActive: true,
+      shopName: "Formal Shop",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    testState.listAllAvailabilityWindows.mockResolvedValue([availability]);
+    testState.updateAvailabilityWindow.mockImplementation(async (_scope, _id, input) => ({
+      ...availability,
+      startsAt: input.startsAt.toISOString(),
+      endsAt: input.endsAt.toISOString(),
+      capacity: input.capacity
+    }));
+
+    await act(async () => root.render(
+      <MemoryRouter><I18nProvider><UnifiedUserCalendar currentTechnician={technicianFixture} formalOnly scope="technician" /></I18nProvider></MemoryRouter>
+    ));
+    await waitFor(() => expect(container.querySelector('[data-calendar-availability-strip="true"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-calendar-availability-strip="true"]')?.click());
+    await waitFor(() => expect(container.querySelector('button[aria-label="编辑行程"]')).not.toBeNull());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="编辑行程"]')?.click());
+    const confirmEdit = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确认修改排班"));
+    expect(confirmEdit).not.toBeUndefined();
+    await act(async () => confirmEdit?.click());
+
+    await waitFor(() => expect(container.querySelector('input[name="availabilityCapacity"]')).not.toBeNull());
+    const capacity = container.querySelector<HTMLInputElement>('input[name="availabilityCapacity"]');
+    expect(capacity?.value).toBe("2");
+    await act(async () => {
+      if (capacity) {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        setter?.call(capacity, "4");
+        capacity.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="完成编辑行程"]')?.click());
+
+    await waitFor(() => expect(testState.updateAvailabilityWindow).toHaveBeenCalledTimes(1));
+    expect(testState.updateAvailabilityWindow).toHaveBeenCalledWith("technician", 89, {
+      capacity: 4,
+      endsAt: expect.any(Date),
+      startsAt: expect.any(Date)
+    });
+  });
+
+  it("opens the approved calendar-source menu without enabling local calendar persistence", async () => {
+    testState.loadCustomerOrderWindow.mockResolvedValue([]);
+    const storageWrite = vi.spyOn(Storage.prototype, "setItem");
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <I18nProvider>
+            <UnifiedUserCalendar currentCustomer={customerFixture} formalOnly showSourceDrawer />
+          </I18nProvider>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => expect(container.querySelector('button[aria-label="打开日历来源"]')).not.toBeNull());
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('button[aria-label="打开日历来源"]')?.click();
+    });
+
+    const menu = container.querySelector('[role="menu"]');
+    expect(menu?.textContent).toContain("日历来源");
+    expect(menu?.textContent).toContain("NeeDo 同步");
+    expect(menu?.textContent).toContain("我的行程");
+    expect(menu?.textContent).toContain("技师端行程");
+    expect(menu?.textContent).toContain("商户端行程");
+    expect(menu?.textContent).toContain("ToDo");
+    expect(menu?.textContent).toContain("生日");
+    expect(storageWrite.mock.calls.filter(([key]) => key === "needo.user-unified-calendar.v1")).toHaveLength(0);
+  });
+
+  it("keeps a formal technician search inside the selected calendar period", async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <I18nProvider>
+            <UnifiedUserCalendar
+              currentTechnician={technicianFixture}
+              displayMode="parallel"
+              formalOnly
+              scope="technician"
+              searchQuery="山崎"
+            />
+          </I18nProvider>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => expect(testState.listScheduleSlots).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(testState.listScheduleSlots).toHaveBeenCalledTimes(1);
+    const [, query] = testState.listScheduleSlots.mock.calls[0] as [string, { from: Date; to: Date }];
+    expect(query.to.getTime() - query.from.getTime()).toBeLessThanOrEqual(2 * 24 * 60 * 60 * 1000);
+    expect(container.textContent).toContain("搜索「山崎」");
+    expect(container.textContent).toContain("00:00");
+  });
+
+  it("restores a cached formal schedule immediately after route remount", async () => {
+    testState.listScheduleSlots.mockResolvedValue({
+      list: [{
+        id: 1001,
+        startsAt: `${todayKey()}T10:00:00`,
+        endsAt: `${todayKey()}T11:00:00`,
+        status: "available",
+        serviceName: "缓存排班",
+        technicianProfileId: 48
+      }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+    const view = (
+      <MemoryRouter>
+        <I18nProvider>
+          <UnifiedUserCalendar currentTechnician={technicianFixture} formalOnly scope="technician" />
+        </I18nProvider>
+      </MemoryRouter>
+    );
+    await act(async () => root.render(view));
+    await waitFor(() => expect(container.querySelector('[data-calendar-availability-strip="true"]')).not.toBeNull());
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => root.render(view));
+
+    expect(container.querySelector('[data-calendar-availability-strip="true"]')).not.toBeNull();
+    expect(testState.listScheduleSlots).toHaveBeenCalledTimes(1);
   });
 });

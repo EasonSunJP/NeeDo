@@ -25,6 +25,10 @@ describe("JudgementReactionIcon", () => {
     const stickerWords = Object.values(judgementSvgSources).map((svg) => {
       expect(svg).toContain("data-im-judgement-word-sticker");
       expect(svg).toContain("<text");
+      expect(svg).toContain('stroke="#000000"');
+      expect(svg).toContain('stroke-width="2"');
+      expect(svg).toContain('paint-order="stroke fill"');
+      expect(svg).toContain('stroke-linejoin="round"');
       return svg.match(/<text[^>]*>([^<]+)<\/text>/)?.[1];
     });
 
@@ -43,6 +47,10 @@ describe("JudgementReactionIcon", () => {
     expect(image?.getAttribute("src")).toMatch(/(?:\.svg|^data:image\/svg\+xml)/);
     expect(image?.getAttribute("alt")).toBe(value);
     expect(image?.className).toContain("max-h-[26px]");
+    expect(image?.getAttribute("draggable")).toBe("false");
+    expect(image?.getAttribute("data-im-judgement-icon")).toBe("true");
+    expect(image?.className).toContain("pointer-events-none");
+    expect(image?.className).toContain("[-webkit-touch-callout:none]");
     expect(container.innerHTML).not.toContain("bg-black");
 
     await act(async () => root.unmount());

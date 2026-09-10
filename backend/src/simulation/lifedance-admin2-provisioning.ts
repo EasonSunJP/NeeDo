@@ -12,6 +12,15 @@ export const LIFEDANCE_ADMIN2_PLAN = {
   shopAddress: "東京都港区麻布十番2丁目",
   shopPhone: "050-9101-1002",
   merchantCode: "lifedance-azabujuban-super-massage",
+  bookingService: {
+    categoryCode: "wellness",
+    name: "麻布十番ボディケア 60分",
+    description: "麻布十番の店舗で受けられる60分のボディケアです。",
+    city: "東京都",
+    serviceMode: "store",
+    priceAmount: "8800.00",
+    durationMinutes: 60
+  },
   friendCount: 20,
   identityTypes: [
     "platform",
@@ -42,6 +51,9 @@ export interface LifeDanceAdmin2ProvisioningResult {
   userId: number;
   shopId: number;
   technicianProfileId: number;
+  compensationProfileId: number;
+  bookingServiceId: number;
+  availableBookingSlotCount: number;
   merchantAccountId: number;
   friendUserIds: number[];
   sessionGeneration: number;
@@ -105,11 +117,81 @@ const activeIdentityKey = (
   scopeId: number | null
 ): string => ["lifedance-admin2-identity", userId, type, scopeType, scopeId ?? "global"].join(":");
 
-const assert: (condition: unknown, message: string) => asserts condition = (
-  condition,
-  message
-) => {
+const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(message);
+};
+
+const LIFEDANCE_ADMIN2_COMPENSATION_PROFILE_NAME =
+  "LifeDance 管理员 2 2026 正社員給与";
+
+export const buildLifeDanceAdmin2CompensationProfileData = (
+  adminUserId: number
+) => ({
+  name: LIFEDANCE_ADMIN2_COMPENSATION_PROFILE_NAME,
+  status: "active",
+  version: 1,
+  wageMode: "base_plus_commission",
+  baseSalaryJpy: 230_000,
+  hourlyRateJpy: 0,
+  dailyRateJpy: 0,
+  fixedOrderPayJpy: 0,
+  commissionRateBps: 2_000,
+  extensionCommissionRateBps: 2_000,
+  nominationFeeJpy: 0,
+  guaranteedMinimumJpy: 0,
+  ndpFeeBearer: "shop",
+  technicianNdpShareBps: 0,
+  bonusRulesJson: [],
+  deductionRulesJson: [],
+  effectiveFrom: new Date("2026-08-29T00:00:00.000Z"),
+  effectiveTo: null,
+  updatedById: adminUserId,
+  deletedAt: null
+} satisfies Prisma.TechnicianCompensationProfileUncheckedUpdateInput);
+
+export const ensureLifeDanceAdmin2CompensationProfile = async (
+  tx: Prisma.TransactionClient,
+  input: { shopId: number; technicianProfileId: number; adminUserId: number }
+): Promise<number> => {
+  const activeProfiles = await tx.technicianCompensationProfile.findMany({
+    where: {
+      shopId: input.shopId,
+      technicianProfileId: input.technicianProfileId,
+      status: "active",
+      deletedAt: null
+    },
+    select: { id: true, name: true }
+  });
+  assert(
+    activeProfiles.length <= 1 &&
+      activeProfiles.every(
+        (profile) => profile.name === LIFEDANCE_ADMIN2_COMPENSATION_PROFILE_NAME
+      ),
+    "LifeDance admin2 compensation profile conflicts with an active profile."
+  );
+  const existing =
+    activeProfiles[0] ??
+    (await tx.technicianCompensationProfile.findFirst({
+      where: {
+        shopId: input.shopId,
+        technicianProfileId: input.technicianProfileId,
+        name: LIFEDANCE_ADMIN2_COMPENSATION_PROFILE_NAME
+      },
+      orderBy: [{ id: "desc" }],
+      select: { id: true }
+    }));
+  const data = buildLifeDanceAdmin2CompensationProfileData(input.adminUserId);
+  const profile = existing
+    ? await tx.technicianCompensationProfile.update({ where: { id: existing.id }, data })
+    : await tx.technicianCompensationProfile.create({
+        data: {
+          shopId: input.shopId,
+          technicianProfileId: input.technicianProfileId,
+          createdById: input.adminUserId,
+          ...data
+        }
+      });
+  return profile.id;
 };
 
 export const selectAdmin2AccountCandidate = (
@@ -140,10 +222,7 @@ export const resolveLifeDanceAdmin2Password = (env: {
   return password;
 };
 
-export const buildLifeDanceAdmin2UserData = (
-  passwordHash: string,
-  sessionGeneration: number
-) => ({
+export const buildLifeDanceAdmin2UserData = (passwordHash: string, sessionGeneration: number) => ({
   email: LIFEDANCE_ADMIN2_PLAN.email,
   needoId: LIFEDANCE_ADMIN2_PLAN.needoId,
   accountNo: LIFEDANCE_ADMIN2_PLAN.numberPart,
@@ -163,6 +242,189 @@ export const calibrateLifeDanceAdmin2TestNdp = async (
   service: { calibrateUser(userId: number): Promise<unknown> }
 ): Promise<void> => {
   await service.calibrateUser(userId);
+};
+
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+export const buildLifeDanceAdmin2BookingSlotStarts = (
+  now: Date
+): Array<{ startsAt: Date; endsAt: Date }> => {
+  const jstNow = new Date(now.getTime() + JST_OFFSET_MS);
+  const year = jstNow.getUTCFullYear();
+  const month = jstNow.getUTCMonth();
+  const date = jstNow.getUTCDate();
+
+  return Array.from({ length: 7 }, (_, dayIndex) => dayIndex + 1).flatMap((dayOffset) =>
+    [10, 14].map((jstHour) => {
+      const startsAt = new Date(Date.UTC(year, month, date + dayOffset, jstHour - 9, 0, 0, 0));
+      return {
+        startsAt,
+        endsAt: new Date(
+          startsAt.getTime() + LIFEDANCE_ADMIN2_PLAN.bookingService.durationMinutes * 60 * 1000
+        )
+      };
+    })
+  );
+};
+
+export const ensureLifeDanceAdmin2BookingInventory = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    shopId: number;
+    technicianProfileId: number;
+    now?: Date;
+  }
+): Promise<{ serviceId: number; availableSlotCount: number }> => {
+  const category = await tx.category.findFirst({
+    where: {
+      code: LIFEDANCE_ADMIN2_PLAN.bookingService.categoryCode,
+      isActive: true,
+      deletedAt: null
+    },
+    select: { id: true }
+  });
+  assert(category, "LifeDance admin2 booking category is unavailable.");
+
+  const existingService = await tx.service.findFirst({
+    where: {
+      shopId: input.shopId,
+      name: LIFEDANCE_ADMIN2_PLAN.bookingService.name
+    },
+    select: { id: true }
+  });
+  const serviceData = {
+    categoryId: category.id,
+    shopId: input.shopId,
+    technicianProfileId: input.technicianProfileId,
+    name: LIFEDANCE_ADMIN2_PLAN.bookingService.name,
+    description: LIFEDANCE_ADMIN2_PLAN.bookingService.description,
+    city: LIFEDANCE_ADMIN2_PLAN.bookingService.city,
+    serviceMode: LIFEDANCE_ADMIN2_PLAN.bookingService.serviceMode,
+    priceAmount: LIFEDANCE_ADMIN2_PLAN.bookingService.priceAmount,
+    currency: "JPY",
+    durationMinutes: LIFEDANCE_ADMIN2_PLAN.bookingService.durationMinutes,
+    status: "published",
+    isRecommended: true,
+    sortOrder: 0,
+    deletedAt: null
+  } as const;
+  const service = existingService
+    ? await tx.service.update({ where: { id: existingService.id }, data: serviceData })
+    : await tx.service.create({ data: serviceData });
+
+  const now = input.now ?? new Date();
+  for (const slot of buildLifeDanceAdmin2BookingSlotStarts(now)) {
+    const exactSlot = await tx.scheduleSlot.findFirst({
+      where: {
+        serviceId: service.id,
+        shopId: input.shopId,
+        technicianProfileId: input.technicianProfileId,
+        startsAt: slot.startsAt
+      },
+      select: { id: true, availabilityId: true, bookedCount: true }
+    });
+
+    if (exactSlot) {
+      if (exactSlot.bookedCount > 0) continue;
+      const availability = exactSlot.availabilityId
+        ? await tx.availability.update({
+            where: { id: exactSlot.availabilityId },
+            data: {
+              shopId: input.shopId,
+              technicianProfileId: input.technicianProfileId,
+              sourceType: "SHOP",
+              visibility: "SHOP_ONLY",
+              startsAt: slot.startsAt,
+              endsAt: slot.endsAt,
+              capacity: 1,
+              isActive: true,
+              deletedAt: null
+            }
+          })
+        : await tx.availability.create({
+            data: {
+              shopId: input.shopId,
+              technicianProfileId: input.technicianProfileId,
+              sourceType: "SHOP",
+              visibility: "SHOP_ONLY",
+              startsAt: slot.startsAt,
+              endsAt: slot.endsAt,
+              capacity: 1,
+              isActive: true
+            }
+          });
+      await tx.scheduleSlot.update({
+        where: { id: exactSlot.id },
+        data: {
+          availabilityId: availability.id,
+          serviceId: service.id,
+          technicianServiceId: null,
+          shopId: input.shopId,
+          technicianProfileId: input.technicianProfileId,
+          startsAt: slot.startsAt,
+          endsAt: slot.endsAt,
+          capacity: 1,
+          bookedCount: 0,
+          status: "AVAILABLE",
+          deletedAt: null
+        }
+      });
+      continue;
+    }
+
+    const overlap = await tx.scheduleSlot.findFirst({
+      where: {
+        shopId: input.shopId,
+        technicianProfileId: input.technicianProfileId,
+        deletedAt: null,
+        startsAt: { lt: slot.endsAt },
+        endsAt: { gt: slot.startsAt }
+      },
+      select: { id: true }
+    });
+    if (overlap) continue;
+
+    const availability = await tx.availability.create({
+      data: {
+        shopId: input.shopId,
+        technicianProfileId: input.technicianProfileId,
+        sourceType: "SHOP",
+        visibility: "SHOP_ONLY",
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
+        capacity: 1,
+        isActive: true
+      }
+    });
+    await tx.scheduleSlot.create({
+      data: {
+        availabilityId: availability.id,
+        serviceId: service.id,
+        technicianServiceId: null,
+        shopId: input.shopId,
+        technicianProfileId: input.technicianProfileId,
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
+        capacity: 1,
+        bookedCount: 0,
+        status: "AVAILABLE"
+      }
+    });
+  }
+
+  const availableSlotCount = await tx.scheduleSlot.count({
+    where: {
+      serviceId: service.id,
+      shopId: input.shopId,
+      status: "AVAILABLE",
+      bookedCount: { lt: 1 },
+      startsAt: { gt: now },
+      deletedAt: null
+    }
+  });
+  assert(availableSlotCount > 0, "LifeDance admin2 has no available booking slots.");
+
+  return { serviceId: service.id, availableSlotCount };
 };
 
 const ensureIdentity = async (
@@ -188,12 +450,7 @@ const ensureIdentity = async (
     displayName: input.displayName,
     isDefault: input.isDefault,
     isActive: true,
-    activeKey: activeIdentityKey(
-      input.userId,
-      input.type,
-      input.scopeType,
-      input.scopeId
-    ),
+    activeKey: activeIdentityKey(input.userId, input.type, input.scopeType, input.scopeId),
     deletedAt: null
   };
 
@@ -459,6 +716,15 @@ export const provisionLifeDanceAdmin2 = async (
       deletedAt: null
     }
   });
+  const compensationProfileId = await ensureLifeDanceAdmin2CompensationProfile(tx, {
+    shopId: shop.id,
+    technicianProfileId: technicianProfile.id,
+    adminUserId: admin.id
+  });
+  const bookingInventory = await ensureLifeDanceAdmin2BookingInventory(tx, {
+    shopId: shop.id,
+    technicianProfileId: technicianProfile.id
+  });
 
   const merchantAccount = await tx.merchantAccount.upsert({
     where: { code: LIFEDANCE_ADMIN2_PLAN.merchantCode },
@@ -635,7 +901,10 @@ export const provisionLifeDanceAdmin2 = async (
   const allocator = new IdentifierAllocator(new PublicIdentifierRepository(tx));
   const persistedShop = await tx.shop.findUniqueOrThrow({
     where: { id: shop.id },
-    include: { publicIdentifier: true, customerSupportAccount: { include: { publicIdentifier: true } } }
+    include: {
+      publicIdentifier: true,
+      customerSupportAccount: { include: { publicIdentifier: true } }
+    }
   });
   const supportAccount = persistedShop.customerSupportAccount
     ? await tx.customerSupportAccount.update({
@@ -705,7 +974,10 @@ export const provisionLifeDanceAdmin2 = async (
     select: { id: true, code: true }
   });
   const roleIds = new Map(roles.map((role) => [role.code, role.id]));
-  assert(roleIds.size === LIFEDANCE_ADMIN2_PLAN.roleCodes.length, "LifeDance admin2 roles are incomplete.");
+  assert(
+    roleIds.size === LIFEDANCE_ADMIN2_PLAN.roleCodes.length,
+    "LifeDance admin2 roles are incomplete."
+  );
   for (const grant of [
     { code: "admin", scopeType: "global", scopeId: null },
     { code: "customer", scopeType: "customer_profile", scopeId: customerProfile.id },
@@ -715,7 +987,12 @@ export const provisionLifeDanceAdmin2 = async (
   ] as const) {
     const roleId = roleIds.get(grant.code);
     assert(roleId, `LifeDance admin2 role is missing: ${grant.code}`);
-    await ensureRole(tx, { userId: user.id, roleId, scopeType: grant.scopeType, scopeId: grant.scopeId });
+    await ensureRole(tx, {
+      userId: user.id,
+      roleId,
+      scopeType: grant.scopeType,
+      scopeId: grant.scopeId
+    });
   }
 
   const friendCandidates = await tx.user.findMany({
@@ -746,6 +1023,9 @@ export const provisionLifeDanceAdmin2 = async (
         email: LIFEDANCE_ADMIN2_PLAN.email,
         needoId: LIFEDANCE_ADMIN2_PLAN.needoId,
         shopId: shop.id,
+        compensationProfileId,
+        bookingServiceId: bookingInventory.serviceId,
+        availableBookingSlotCount: bookingInventory.availableSlotCount,
         merchantAccountId: merchantAccount.id,
         friendUserIds: [admin.id, ...selectedFriends.map((friend) => friend.id)]
       }
@@ -757,6 +1037,9 @@ export const provisionLifeDanceAdmin2 = async (
     userId: user.id,
     shopId: shop.id,
     technicianProfileId: technicianProfile.id,
+    compensationProfileId,
+    bookingServiceId: bookingInventory.serviceId,
+    availableBookingSlotCount: bookingInventory.availableSlotCount,
     merchantAccountId: merchantAccount.id,
     friendUserIds: [admin.id, ...selectedFriends.map((friend) => friend.id)],
     sessionGeneration

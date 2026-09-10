@@ -21,9 +21,23 @@ export const deleteFormalTestUserFoundations = async (
     where: { userId: { in: userIds } },
     select: { id: true }
   });
+  const shopEmployees = await transaction.shopEmployee.findMany({
+    where: { userId: { in: userIds } },
+    select: { id: true }
+  });
   await transaction.publicIdentifier.deleteMany({
     where: { userIdentityId: { in: identities.map((identity) => identity.id) } }
   });
+  if (shopEmployees.length > 0) {
+    const shopEmployeeIds = shopEmployees.map((employee) => employee.id);
+    await transaction.shopEmployeeRoleAssignment.deleteMany({
+      where: { shopEmployeeId: { in: shopEmployeeIds } }
+    });
+    await transaction.shopEmployee.deleteMany({ where: { id: { in: shopEmployeeIds } } });
+  }
+  await transaction.merchantIdentityProfile.deleteMany({ where: { userId: { in: userIds } } });
+  await transaction.userExperienceEntry.deleteMany({ where: { userId: { in: userIds } } });
+  await transaction.userExperienceAccount.deleteMany({ where: { userId: { in: userIds } } });
   await transaction.userRole.deleteMany({ where: { userId: { in: userIds } } });
   await transaction.customerProfile.deleteMany({ where: { userId: { in: userIds } } });
   await transaction.userIdentity.deleteMany({ where: { userId: { in: userIds } } });

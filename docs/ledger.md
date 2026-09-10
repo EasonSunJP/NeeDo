@@ -46,6 +46,8 @@ The Exchange Request publication fee and its future operations-configured 1,000 
 
 Manual service payments remain JPY records, not NDP wallet mutations. Confirming an `onsite` or `bank_transfer` payment updates the Booking payment snapshot and synchronizes the `order_financials` offline-income fields/timeline transactionally. NDP platform-fee holds and settlement remain exclusively inside `LedgerService`.
 
+Home-service travel fare is also a JPY checkout component, not a new wallet or ledger authority. `OrderCheckout.travelFareAmountJpy` is copied from the immutable Booking travel-fare snapshot, and the checkout calculation is `base + accepted add-ons + travel fare - discount`. For NDP payment, that full JPY checkout amount is converted using the same persisted exchange-rate snapshot and ceiling formula; 1:1 rates therefore produce the exact same integer amount. Refund and reversal exclusion belongs to the existing payment/financial evidence chain and does not create a separate travel-fare refund ledger.
+
 - `audit_logs`: ledger mutations write audit rows with target type `ledger_transaction`.
 
 ## Manual Top-up and Withdrawal
@@ -79,6 +81,31 @@ Manual service payments remain JPY records, not NDP wallet mutations. Confirming
   - Idempotency key: `booking:{orderId}:complete:settlement`
 
 These mutations run inside the same Prisma transaction as the booking state transition. If ledger settlement fails, the order transition rolls back.
+
+## Exchange Matching Financial Boundary
+
+Exchange Request publication and Booking Request dispatch are separate financial lifecycles. Selective or Quick matching, including an explicitly confirmed target reduction or total-budget increase where supported, only decides which active Exchange claims become participants; it never calls the Booking settlement path above.
+
+- The first adjustment attempt returns an exact server preview with no matching, participant, claim, event, audit, notification, wallet, or Booking write.
+- A successful exact or adjusted match leaves the existing Exchange publication-fee `WalletHold` active and its `ExchangeRequestFinancial` projection in `HELD`.
+- Available and frozen wallet balances, ledger transaction/entry counts, reconciliation rows, hold captured/released counters, and publication-fee currency are unchanged by matching.
+- Matching creates no `Booking`, `OrderFinancial`, `ExchangeRequestFinancial`, `LedgerTransaction`, or `FinanceReconciliation` row.
+- `ScheduleSlot.bookedCount` is unchanged. The matched technician-time lock is the active `ExchangeMatchParticipant.activeReservationKey`, which existing claim-option, claim-create, and Booking conflict checks must honor.
+- Budget increase changes only `ExchangeRequestMatching.effectiveBudgetMaxJpy`; it is a JPY matching ceiling and never a wallet top-up, hold increase, charge, or ledger entry.
+- Target reduction changes only `ExchangeRequestMatching.effectiveTargetProviderCount`; it never releases or captures the publication fee.
+- Quick mode waits for exactly `effectiveTargetProviderCount` active claims. If their quote total is within the effective budget it atomically matches all claims; if it is over budget the aggregate stays `OPEN`, further claims are blocked, and the owner may confirm only the exact required maximum for the full set.
+- Quick confirmation appends `BUDGET_INCREASED → QUICK_MATCHED` exactly once. It cannot select a subset. The Demand's original budget snapshot is immutable; `effectiveBudgetMaxJpy` is the current server-owned matching ceiling and is used by every owner-facing budget summary.
+- Capture or release of the publication fee remains owned by a later, explicit Exchange terminal lifecycle. Matching itself cannot charge, refund, settle, export, or cross currencies.
+
+The guarded local checker for this boundary is:
+
+```bash
+cd backend
+ENV_FILE=.env.dev npm run check:exchange-selective-matching-flow
+ENV_FILE=.env.dev npm run check:exchange-quick-matching-flow
+```
+
+The checkers execute the real matching service inside rollback-only marker fixtures. They prove Selective adjustment previews are write-free, verify the ordered `BUDGET_INCREASED → TARGET_REDUCED → SELECTIVE_MATCHED` and Quick `BUDGET_INCREASED → QUICK_MATCHED` version chains, and compare wallet, hold, Booking, ledger, reconciliation, Request-financial, and schedule-capacity snapshots before and after each confirmed command.
 
 The default seed keeps the historical behavior through rules rather than business constants:
 

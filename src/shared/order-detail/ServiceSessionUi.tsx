@@ -14,7 +14,8 @@ export type ServiceReviewTag = ServiceReviewTagOption;
 export type ServiceReviewSubmission = {
   rating: number;
   tags: string[];
-  tagCounts: Record<string, number>;
+  comment: string | null;
+  tagCounts?: Record<string, number>;
 };
 
 export function ContactInfoDetailText({ text }: { text: string }) {
@@ -161,7 +162,13 @@ export function ServiceReviewPrompt({
   submitLabel = "提交评价",
   submitHint,
   skipLabel = "跳过不评价",
-  topContent
+  topContent,
+  commentEnabled = false,
+  error,
+  helperMessage = "评价会在随机次数后反应，不会马上反应",
+  integerRating = false,
+  pending = false,
+  showTagCounts = true
 }: {
   title: ReactNode;
   message: ReactNode;
@@ -172,6 +179,12 @@ export function ServiceReviewPrompt({
   submitHint?: ReactNode;
   skipLabel?: string;
   topContent?: ReactNode;
+  commentEnabled?: boolean;
+  error?: ReactNode;
+  helperMessage?: ReactNode;
+  integerRating?: boolean;
+  pending?: boolean;
+  showTagCounts?: boolean;
 }) {
   const baseTags = useMemo(() => normalizeReviewTags(tagOptions), [tagOptions]);
   const hasStampTags = baseTags.some((tag) => tag.kind === "stamp");
@@ -179,10 +192,14 @@ export function ServiceReviewPrompt({
   const [customLabel, setCustomLabel] = useState("");
   const [customTag, setCustomTag] = useState<ServiceReviewTag | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [comment, setComment] = useState("");
   const [tagCounts, setTagCounts] = useState<Record<string, number>>(() =>
     Object.fromEntries(baseTags.map((tag) => [tag.label, tag.count ?? 0]))
   );
-  const selectedStampTag = selectedTags.find((label) => baseTags.some((tag) => tag.kind === "stamp" && tag.label === label));
+  const selectedCustomLabel = selectedTags.find((label) => {
+    const tag = baseTags.find((candidate) => candidate.label === label) ?? (customTag?.label === label ? customTag : undefined);
+    return tag?.kind !== "stamp";
+  });
   const headerInfo = (
     <div className="grid gap-1">
       <p className="text-xs font-black text-[color:var(--client-primary)]">服务评价</p>
@@ -191,13 +208,16 @@ export function ServiceReviewPrompt({
   );
 
   const clickTag = (label: string) => {
+    if (pending) {
+      return;
+    }
     if (selectedTags.includes(label)) {
       return;
     }
 
     const targetTag = baseTags.find((tag) => tag.label === label) ?? (customTag?.label === label ? customTag : undefined);
 
-    if (targetTag?.kind === "stamp" && selectedStampTag) {
+    if (targetTag?.kind !== "stamp" && selectedCustomLabel) {
       return;
     }
 
@@ -208,7 +228,7 @@ export function ServiceReviewPrompt({
     }));
   };
   const addCustomTag = () => {
-    if (customTag) {
+    if (pending || customTag || selectedCustomLabel) {
       return;
     }
 
@@ -230,7 +250,8 @@ export function ServiceReviewPrompt({
           className="service-review-prompt__header"
           closeLabel="关闭评价"
           info={headerInfo}
-          onClose={onSkip}
+          hideCloseButton={pending}
+          onClose={pending ? undefined : onSkip}
           title={title}
         />
 
@@ -260,15 +281,19 @@ export function ServiceReviewPrompt({
                     >
                       ★
                     </span>
-                    <button
-                      aria-label={`${score - 0.5}星`}
-                      className="focus-ring absolute inset-y-0 left-0 w-1/2 rounded-l-full"
-                      onClick={() => setRating(score - 0.5)}
-                      type="button"
-                    />
+                    {!integerRating ? (
+                      <button
+                        aria-label={`${score - 0.5}星`}
+                        className="focus-ring absolute inset-y-0 left-0 w-1/2 rounded-l-full"
+                        disabled={pending}
+                        onClick={() => setRating(score - 0.5)}
+                        type="button"
+                      />
+                    ) : null}
                     <button
                       aria-label={`${score}星`}
-                      className="focus-ring absolute inset-y-0 right-0 w-1/2 rounded-r-full"
+                      className={cn("focus-ring absolute inset-y-0 right-0 rounded-r-full", integerRating ? "left-0 w-full rounded-l-full" : "w-1/2")}
+                      disabled={pending}
                       onClick={() => setRating(score)}
                       type="button"
                     />
@@ -277,7 +302,7 @@ export function ServiceReviewPrompt({
               })}
             </div>
             <p className="mt-2 text-center text-[11px] font-bold leading-4 text-[color:var(--client-soft-muted)]">
-              评价会在随机次数后反应，不会马上反应
+              {helperMessage}
             </p>
           </section>
 
@@ -288,7 +313,7 @@ export function ServiceReviewPrompt({
                 const count = tagCounts[tag.label] ?? tag.count ?? 0;
                 const isStamp = tag.kind === "stamp";
                 const stampVisual = getServiceReviewStampVisual(tag, index);
-                const disabledByStampLimit = isStamp && Boolean(selectedStampTag) && !selected;
+                const disabledByCustomLimit = !isStamp && Boolean(selectedCustomLabel) && !selected;
 
                 return (
                   <button
@@ -298,9 +323,9 @@ export function ServiceReviewPrompt({
                         ? cn("service-review-stamp", `service-review-stamp--${stampVisual.tone}`, selected ? "is-selected" : "")
                         : "rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] px-3 py-3 text-sm font-black text-[color:var(--client-text)]",
                       selected && !isStamp ? "ring-2 ring-[color:var(--client-primary)]" : "",
-                      disabledByStampLimit ? "cursor-not-allowed opacity-48 saturate-50" : ""
+                      disabledByCustomLimit ? "cursor-not-allowed opacity-48 saturate-50" : ""
                     )}
-                    disabled={disabledByStampLimit}
+                    disabled={pending || disabledByCustomLimit}
                     key={`${tag.label}-${index}`}
                     onClick={() => clickTag(tag.label)}
                     type="button"
@@ -318,14 +343,12 @@ export function ServiceReviewPrompt({
                         <span className="service-review-stamp__label">
                           {renderStampLabel(tag.label)}
                         </span>
-                        <span className="service-review-stamp__count">
-                          ×{count}
-                        </span>
+                        {showTagCounts ? <span className="service-review-stamp__count">×{count}</span> : null}
                       </>
                     ) : (
                       <span className="break-words">{tag.label}</span>
                     )}
-                    {!isStamp ? (
+                    {!isStamp && showTagCounts ? (
                       <span className="absolute -right-1.5 -top-2 rounded-full bg-[#6f7480] px-2.5 py-1 text-xs font-black text-white shadow-[0_8px_18px_rgba(0,0,0,0.2)]">
                         ×{count}
                       </span>
@@ -342,15 +365,15 @@ export function ServiceReviewPrompt({
               <input
                 aria-label="自由追加标签"
                 className="h-12 min-w-0 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,var(--client-bg)_16%)] px-4 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
-                disabled={Boolean(customTag)}
+                disabled={pending || Boolean(customTag) || Boolean(selectedCustomLabel)}
                 maxLength={5}
                 onChange={(event) => setCustomLabel(clampReviewTag(event.target.value))}
-                placeholder={customTag ? "已追加" : "最多5个字"}
+                placeholder={customTag || selectedCustomLabel ? "已选择" : "最多5个字"}
                 value={customLabel}
               />
               <button
                 className="focus-ring h-12 rounded-[18px] bg-[color:var(--client-primary)] text-sm font-black text-[#090806] shadow-[0_12px_24px_color-mix(in_srgb,var(--client-primary)_26%,transparent)] disabled:opacity-45"
-                disabled={Boolean(customTag) || !customLabel.trim()}
+                disabled={pending || Boolean(customTag) || Boolean(selectedCustomLabel) || !customLabel.trim()}
                 onClick={addCustomTag}
                 type="button"
               >
@@ -361,13 +384,12 @@ export function ServiceReviewPrompt({
               {customTag ? (
                 <button
                   className="focus-ring relative rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_48%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_14%,var(--client-surface)_86%)] px-4 py-2.5 text-sm font-black text-[color:var(--client-text)]"
+                  disabled={pending}
                   onClick={() => clickTag(customTag.label)}
                   type="button"
                 >
                   {customTag.label}
-                  <span className="absolute -right-2 -top-2 rounded-full bg-[#6f7480] px-2 py-0.5 text-[11px] font-black text-white">
-                    ×{tagCounts[customTag.label] ?? 1}
-                  </span>
+                  {showTagCounts ? <span className="absolute -right-2 -top-2 rounded-full bg-[#6f7480] px-2 py-0.5 text-[11px] font-black text-white">×{tagCounts[customTag.label] ?? 1}</span> : null}
                 </button>
               ) : (
                 <Badge className="service-review-empty-tag" tone="neutral">
@@ -376,6 +398,21 @@ export function ServiceReviewPrompt({
               )}
             </div>
           </section>
+
+          {commentEnabled ? (
+            <section className="mt-4 rounded-[24px] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-4 shadow-panel">
+              <label className="text-sm font-black" htmlFor="service-review-comment">评价留言（可选）</label>
+              <textarea
+                aria-label="评价留言"
+                className="mt-3 min-h-24 w-full resize-none rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,var(--client-bg)_16%)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)] outline-none focus:border-[color:var(--client-primary)] disabled:opacity-50"
+                disabled={pending}
+                id="service-review-comment"
+                maxLength={1000}
+                onChange={(event) => setComment(event.target.value)}
+                value={comment}
+              />
+            </section>
+          ) : null}
         </main>
 
         <footer className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+14px)] pt-16">
@@ -387,9 +424,11 @@ export function ServiceReviewPrompt({
             {submitHint ? (
               <p className="text-center text-xs font-black text-[#f7c948]">{submitHint}</p>
             ) : null}
+            {error ? <p className="text-center text-xs font-black text-[#ff6b61]" role="alert">{error}</p> : null}
             <div className="grid grid-cols-[0.78fr_1fr] gap-3">
               <button
                 className="focus-ring h-12 rounded-[20px] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)_10%)] text-sm font-black text-[color:var(--client-muted)]"
+                disabled={pending}
                 onClick={onSkip}
                 type="button"
               >
@@ -397,7 +436,13 @@ export function ServiceReviewPrompt({
               </button>
               <button
                 className="focus-ring h-12 rounded-[20px] bg-[color:var(--client-primary)] px-3 text-sm font-black text-[#090806] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]"
-                onClick={() => onSubmit({ rating, tags: selectedTags, tagCounts })}
+                disabled={pending}
+                onClick={() => onSubmit({
+                  rating,
+                  tags: selectedTags,
+                  comment: comment.trim() || null,
+                  ...(showTagCounts ? { tagCounts } : {})
+                })}
                 type="button"
               >
                 {submitLabel}

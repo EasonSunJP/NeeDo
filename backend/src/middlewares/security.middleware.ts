@@ -75,6 +75,20 @@ export const createRateLimitMiddleware = (config: AppConfig): RequestHandler => 
   };
 };
 
+export const createTravelEstimateIpRateLimitMiddleware = (
+  config: AppConfig
+): RequestHandler =>
+  rateLimit({
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    limit: config.RATE_LIMIT_MAX,
+    identifier: "travel-estimate-ip",
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    handler: (_request, response) => {
+      response.status(429).json(errorResponse(ERROR_CODES.RATE_LIMITED, "error.rate_limited"));
+    }
+  });
+
 type AuthRateLimitName =
   | "registration"
   | "verification"

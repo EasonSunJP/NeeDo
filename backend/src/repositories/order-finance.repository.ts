@@ -15,6 +15,10 @@ import type {
   CompensationRuleSet,
   CompensationWageMode
 } from "../services/compensation-engine.service";
+import {
+  readCompensationBasisVersion,
+  type CompensationBasisVersion
+} from "../services/compensation-basis";
 
 type DecimalLike = {
   toString: () => string;
@@ -57,10 +61,10 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
       return null;
     }
 
-    const activeCompensationRule = await this.findActiveCompensationRule(
-      order.shopId,
-      order.technicianProfileId
-    );
+    const savedBasisVersion = readCompensationBasisVersion(order.serviceSnapshotJson);
+    const activeCompensationRule = savedBasisVersion
+      ? await this.findCompensationRuleByBasis(order.shopId, savedBasisVersion)
+      : await this.findActiveCompensationRule(order.shopId, order.technicianProfileId);
 
     return this.mapOrder(order, activeCompensationRule);
   }
@@ -79,9 +83,18 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
           orderType: true,
           customerUserId: true,
           shopId: true,
-          technicianProfileId: true
+          technicianProfileId: true,
+          status: true,
+          paymentStatus: true
         }
       });
+
+      const settlementStatus =
+        input.serviceIncomeStatus === "confirmed" &&
+        order.status === "COMPLETED" &&
+        order.paymentStatus === "CONFIRMED"
+          ? "ready_for_payroll"
+          : undefined;
 
       await transaction.orderFinancial.upsert({
         where: {
@@ -89,6 +102,11 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
         },
         update: {
           serviceAmountJpy: input.serviceAmountJpy,
+          baseServiceAmountJpy: input.baseServiceAmountJpy,
+          extensionAmountJpy: input.extensionAmountJpy,
+          nominationChargeAmountJpy: input.nominationChargeAmountJpy,
+          wasTechnicianNominated: input.wasTechnicianNominated,
+          compensationBasisVersion: input.compensationBasisVersion,
           platformCollectedServiceAmountJpy: input.platformCollectedServiceAmountJpy,
           offlineReportedServiceAmountJpy: input.offlineReportedServiceAmountJpy,
           unknownOrUnreportedServiceAmountJpy: input.unknownOrUnreportedServiceAmountJpy,
@@ -100,6 +118,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
           serviceIncomeConfirmedAt: input.confirmedById ? new Date() : null,
           serviceIncomeNote: input.note,
           serviceIncomeProofUrl: input.proofUrl,
+          settlementStatus,
           moneyTimelineJson: input.moneyTimeline as unknown as Prisma.InputJsonValue
         },
         create: {
@@ -109,6 +128,11 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
           shopId: order.shopId,
           technicianProfileId: order.technicianProfileId,
           serviceAmountJpy: input.serviceAmountJpy,
+          baseServiceAmountJpy: input.baseServiceAmountJpy,
+          extensionAmountJpy: input.extensionAmountJpy,
+          nominationChargeAmountJpy: input.nominationChargeAmountJpy,
+          wasTechnicianNominated: input.wasTechnicianNominated,
+          compensationBasisVersion: input.compensationBasisVersion,
           platformCollectedServiceAmountJpy: input.platformCollectedServiceAmountJpy,
           offlineReportedServiceAmountJpy: input.offlineReportedServiceAmountJpy,
           unknownOrUnreportedServiceAmountJpy: input.unknownOrUnreportedServiceAmountJpy,
@@ -120,6 +144,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
           serviceIncomeConfirmedAt: input.confirmedById ? new Date() : null,
           serviceIncomeNote: input.note,
           serviceIncomeProofUrl: input.proofUrl,
+          settlementStatus: settlementStatus ?? "pending",
           moneyTimelineJson: input.moneyTimeline as unknown as Prisma.InputJsonValue
         }
       });
@@ -164,6 +189,28 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
     });
 
     return fallback ? this.mapShopRule(fallback, technicianProfileId) : null;
+  }
+
+  private async findCompensationRuleByBasis(
+    shopId: number,
+    basisVersion: CompensationBasisVersion
+  ): Promise<CompensationRuleSet | null> {
+    const [sourceType, rawId] = basisVersion.split(":") as [
+      "shop_default" | "technician_override",
+      string
+    ];
+    const id = Number(rawId);
+    if (sourceType === "technician_override") {
+      const profile = await this.client.technicianCompensationProfile.findFirst({
+        where: { id, shopId }
+      });
+      return profile ? this.mapTechnicianProfile(profile) : null;
+    }
+
+    const rule = await this.client.shopFinanceRuleSet.findFirst({
+      where: { id, shopId }
+    });
+    return rule ? this.mapShopRule(rule, null) : null;
   }
 
   private orderInclude() {
@@ -213,6 +260,11 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
     return {
       id: record.id,
       serviceAmountJpy: record.serviceAmountJpy,
+      baseServiceAmountJpy: record.baseServiceAmountJpy,
+      extensionAmountJpy: record.extensionAmountJpy,
+      nominationChargeAmountJpy: record.nominationChargeAmountJpy,
+      wasTechnicianNominated: record.wasTechnicianNominated,
+      compensationBasisVersion: record.compensationBasisVersion,
       platformCollectedServiceAmountJpy: record.platformCollectedServiceAmountJpy,
       offlineReportedServiceAmountJpy: record.offlineReportedServiceAmountJpy,
       unknownOrUnreportedServiceAmountJpy: record.unknownOrUnreportedServiceAmountJpy,
@@ -254,6 +306,8 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
       dailyRateJpy: record.dailyRateJpy,
       fixedOrderPayJpy: record.fixedOrderPayJpy,
       commissionRatePercent: record.commissionRateBps / 100,
+      extensionCommissionRatePercent: record.extensionCommissionRateBps / 100,
+      nominationFeeJpy: record.nominationFeeJpy,
       guaranteedMinimumJpy: record.guaranteedMinimumJpy,
       ndpFeeBearer: this.ndpBearer(record.ndpFeeBearer),
       technicianNdpSharePercent: record.technicianNdpShareBps / 100,
@@ -278,6 +332,8 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
       dailyRateJpy: record.dailyRateJpy,
       fixedOrderPayJpy: record.fixedOrderPayJpy,
       commissionRatePercent: record.commissionRateBps / 100,
+      extensionCommissionRatePercent: record.extensionCommissionRateBps / 100,
+      nominationFeeJpy: record.nominationFeeJpy,
       guaranteedMinimumJpy: record.guaranteedMinimumJpy,
       ndpFeeBearer: this.ndpBearer(record.ndpFeeBearer),
       technicianNdpSharePercent: record.technicianNdpShareBps / 100,

@@ -1,8 +1,11 @@
 import {
   LIFEDANCE_ADMIN2_PLAN,
   assertLocalAdmin2ProvisioningTarget,
+  buildLifeDanceAdmin2BookingSlotStarts,
+  buildLifeDanceAdmin2CompensationProfileData,
   buildLifeDanceAdmin2UserData,
   calibrateLifeDanceAdmin2TestNdp,
+  ensureLifeDanceAdmin2CompensationProfile,
   resolveLifeDanceAdmin2Password,
   selectAdmin2AccountCandidate,
   selectAdmin2FriendTargets
@@ -16,6 +19,12 @@ describe("LifeDance admin2 provisioning plan", () => {
       needoId: "needo0000000002",
       numberPart: "0000000002",
       shopName: "麻布十番超级按摩",
+      bookingService: {
+        categoryCode: "wellness",
+        name: "麻布十番ボディケア 60分",
+        priceAmount: "8800.00",
+        durationMinutes: 60
+      },
       friendCount: 20,
       identityTypes: [
         "platform",
@@ -27,6 +36,94 @@ describe("LifeDance admin2 provisioning plan", () => {
       ],
       roleCodes: ["admin", "customer", "technician", "merchant_owner", "scout"]
     });
+  });
+
+  it("builds a deterministic seven-day JST booking horizon with two slots per day", () => {
+    const slots = buildLifeDanceAdmin2BookingSlotStarts(new Date("2026-09-02T09:00:00.000Z"));
+
+    expect(slots).toHaveLength(14);
+    expect(slots[0]).toEqual({
+      startsAt: new Date("2026-09-03T01:00:00.000Z"),
+      endsAt: new Date("2026-09-03T02:00:00.000Z")
+    });
+    expect(slots[1]).toEqual({
+      startsAt: new Date("2026-09-03T05:00:00.000Z"),
+      endsAt: new Date("2026-09-03T06:00:00.000Z")
+    });
+    expect(slots[13]).toEqual({
+      startsAt: new Date("2026-09-09T05:00:00.000Z"),
+      endsAt: new Date("2026-09-09T06:00:00.000Z")
+    });
+  });
+
+  it("defines a formal full-time compensation profile for completed admin2 services", () => {
+    expect(buildLifeDanceAdmin2CompensationProfileData(99)).toEqual({
+      name: "LifeDance 管理员 2 2026 正社員給与",
+      status: "active",
+      version: 1,
+      wageMode: "base_plus_commission",
+      baseSalaryJpy: 230_000,
+      hourlyRateJpy: 0,
+      dailyRateJpy: 0,
+      fixedOrderPayJpy: 0,
+      commissionRateBps: 2_000,
+      extensionCommissionRateBps: 2_000,
+      nominationFeeJpy: 0,
+      guaranteedMinimumJpy: 0,
+      ndpFeeBearer: "shop",
+      technicianNdpShareBps: 0,
+      bonusRulesJson: [],
+      deductionRulesJson: [],
+      effectiveFrom: new Date("2026-08-29T00:00:00.000Z"),
+      effectiveTo: null,
+      updatedById: 99,
+      deletedAt: null
+    });
+  });
+
+  it("creates the missing admin2 compensation profile with the formal rule", async () => {
+    const technicianCompensationProfile = {
+      findMany: jest.fn(async () => []),
+      findFirst: jest.fn(async () => null),
+      update: jest.fn(),
+      create: jest.fn(async () => ({ id: 501 }))
+    };
+
+    await expect(
+      ensureLifeDanceAdmin2CompensationProfile(
+        { technicianCompensationProfile } as never,
+        { shopId: 217, technicianProfileId: 186, adminUserId: 99 }
+      )
+    ).resolves.toBe(501);
+
+    expect(technicianCompensationProfile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        shopId: 217,
+        technicianProfileId: 186,
+        createdById: 99,
+        wageMode: "base_plus_commission",
+        baseSalaryJpy: 230_000,
+        effectiveFrom: new Date("2026-08-29T00:00:00.000Z")
+      })
+    });
+  });
+
+  it("fails closed instead of replacing a conflicting active compensation profile", async () => {
+    const technicianCompensationProfile = {
+      findMany: jest.fn(async () => [{ id: 77, name: "External payroll rule" }]),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn()
+    };
+
+    await expect(
+      ensureLifeDanceAdmin2CompensationProfile(
+        { technicianCompensationProfile } as never,
+        { shopId: 217, technicianProfileId: 186, adminUserId: 99 }
+      )
+    ).rejects.toThrow("conflicts with an active profile");
+    expect(technicianCompensationProfile.update).not.toHaveBeenCalled();
+    expect(technicianCompensationProfile.create).not.toHaveBeenCalled();
   });
 
   it("marks the local account as test and calibrates it once after provisioning", async () => {
@@ -127,8 +224,9 @@ describe("LifeDance admin2 provisioning plan", () => {
 
     expect(selected).toHaveLength(20);
     expect(selected.map((candidate) => candidate.email)).toEqual(
-      Array.from({ length: 20 }, (_, index) =>
-        `sim.customer.${String(index + 1).padStart(3, "0")}@needo.local`
+      Array.from(
+        { length: 20 },
+        (_, index) => `sim.customer.${String(index + 1).padStart(3, "0")}@needo.local`
       )
     );
   });
@@ -167,9 +265,7 @@ describe("LifeDance admin2 provisioning plan", () => {
         DATABASE_URL: "mysql://needo:secret@127.0.0.1:3307/needo_prod"
       }
     ]) {
-      expect(() => assertLocalAdmin2ProvisioningTarget(target)).toThrow(
-        "local needo_dev"
-      );
+      expect(() => assertLocalAdmin2ProvisioningTarget(target)).toThrow("local needo_dev");
     }
   });
 });

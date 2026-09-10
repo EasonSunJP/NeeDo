@@ -97,7 +97,8 @@ export function isNonFatalBrowserRuntimeError(error: Error) {
     "error.auth.token_invalid",
     "error.auth.token_expired",
     "error.auth.token_blacklisted",
-    "error.auth.refresh_missing"
+    "error.auth.refresh_missing",
+    "error.auth.operation_superseded"
   ]);
 
   if (isShareAbortError(error)) {
@@ -109,6 +110,10 @@ export function isNonFatalBrowserRuntimeError(error: Error) {
   }
 
   if (expectedExpiredSessionErrors.has(message)) {
+    return true;
+  }
+
+  if (error.name === "ApiClientError" && "status" in error && error.status === 429) {
     return true;
   }
 

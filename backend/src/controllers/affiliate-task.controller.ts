@@ -103,48 +103,56 @@ export class AffiliateTaskController {
   });
 
   public listBackofficeTasks = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.listBackofficeTasks(
-          this.actor(response),
-          backofficeAffiliateTaskListQuerySchema.parse(request.query)
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listBackofficeTasks(
+            this.actor(response),
+            backofficeAffiliateTaskListQuerySchema.parse(request.query)
+          )
         )
-      )
-    );
+      );
   });
 
   public getBackofficeTask = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.getBackofficeTask(
-          this.actor(response),
-          affiliateTaskIdParamSchema.parse(request.params).taskId
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.getBackofficeTask(
+            this.actor(response),
+            affiliateTaskIdParamSchema.parse(request.params).taskId
+          )
         )
-      )
-    );
+      );
   });
 
   public approve = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.approve(
-          this.actor(response),
-          affiliateTaskIdParamSchema.parse(request.params).taskId
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.approve(
+            this.actor(response),
+            affiliateTaskIdParamSchema.parse(request.params).taskId
+          )
         )
-      )
-    );
+      );
   });
 
   public reject = this.handle(async (request, response) => {
-    response.status(200).json(
-      successResponse(
-        await this.service.reject(
-          this.actor(response),
-          affiliateTaskIdParamSchema.parse(request.params).taskId,
-          rejectAffiliateTaskBodySchema.parse(request.body).reason
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.reject(
+            this.actor(response),
+            affiliateTaskIdParamSchema.parse(request.params).taskId,
+            rejectAffiliateTaskBodySchema.parse(request.body).reason
+          )
         )
-      )
-    );
+      );
   });
 
   private actor(response: Response): AuthenticatedAccessContext {

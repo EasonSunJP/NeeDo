@@ -13,6 +13,7 @@ import {
   type DispatchCycle
 } from "../../dispatch-center/domain";
 import { getDispatchContactGroup, getDispatchHolidayRules, saveDispatchCycleDraft, launchDispatchCycle } from "../../dispatch-center/store";
+import { ScheduleFloatingActions } from "./ScheduleFloatingActions";
 
 function NumberStepper({
   label,
@@ -152,16 +153,16 @@ function getCycleValidationMessage(cycle: DispatchCycle) {
     return "排班周期最长 1 年。";
   }
 
-  if (cycle.mode === "STORE_COLLECT_CONFIRM" && (!cycle.feedbackDeadline || cycle.feedbackDeadline.slice(0, 10) >= cycle.periodStart)) {
-    return "技师反馈截止时间必须早于周期开始日。";
-  }
-
   if (cycle.ruleSet.minStaff > cycle.ruleSet.targetStaff || cycle.ruleSet.targetStaff > cycle.ruleSet.maxStaff) {
     return "人数规则必须满足 最小人数 <= 目标人数 <= 最大人数。";
   }
 
   if (cycle.targetTechnicianIds.length === 0) {
     return "排班对象不能为空。";
+  }
+
+  if (!cycle.feedbackDeadline) {
+    return "请设置技师反馈截止时间。";
   }
 
   return null;
@@ -382,7 +383,7 @@ export function StepCreateCycle({
   };
 
   return (
-    <div className="space-y-5" ref={pageTopRef}>
+    <div className={cn("space-y-4", isMobileSurface && "pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]")} ref={pageTopRef}>
       <section className={cn("rounded-[28px] border p-4 shadow-panel", sectionClass)}>
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
@@ -439,11 +440,13 @@ export function StepCreateCycle({
               <div className={cn("mt-3 rounded-[22px] border px-4 py-4", panelCardClass)}>
                 <div className="flex flex-wrap items-center gap-2">
                   <strong className="text-base font-black">{getCycleModeLabel(draft.mode)}</strong>
-                  <Badge tone={draft.mode === "STORE_COLLECT_CONFIRM" ? "blue" : "green"}>
-                    {draft.mode === "STORE_COLLECT_CONFIRM" ? "商户最终确认" : "自动进入最终结果"}
-                  </Badge>
+                  <Badge tone="green">规则完成后进入技师反馈</Badge>
                 </div>
-                <p className={cn("mt-2 text-sm leading-6", quietTextClass)}>如需改变模式，请回到步骤 1。规则设定阶段只调整该模式下的周期、矩阵、容量和通知。</p>
+                <p className={cn("mt-2 text-sm leading-6", quietTextClass)}>
+                  {draft.mode === "STORE_ASSIGN_FINAL"
+                    ? "店铺完成排班后，技师确认班表或提交请假与调整信息。"
+                    : "技师直接完成自己的下一周期排班；商户不下发可排班范围供技师选择。"}
+                </p>
               </div>
             </div>
           </div>
@@ -484,17 +487,17 @@ export function StepCreateCycle({
                 value={draft.periodEnd}
               />
             </label>
-            {draft.mode === "STORE_COLLECT_CONFIRM" ? (
-              <label className="text-sm font-semibold text-ink">
-                反馈截止
-                <input
-                  className={inputClass}
-                  onChange={(event) => updateDraft({ feedbackDeadline: event.target.value })}
-                  type="datetime-local"
-                  value={(draft.feedbackDeadline ?? "").slice(0, 16)}
-                />
-              </label>
-            ) : null}
+            <label className="text-sm font-semibold text-ink">
+              技师反馈截止
+              <input
+                className={inputClass}
+                onChange={(event) => updateDraft({
+                  feedbackDeadline: event.target.value ? `${event.target.value}:00+09:00` : null
+                })}
+                type="datetime-local"
+                value={draft.feedbackDeadline?.slice(0, 16) ?? ""}
+              />
+            </label>
           </div>
         </section>
       ) : null}
@@ -535,7 +538,7 @@ export function StepCreateCycle({
             <div>
               <Badge tone="blue">9/10</Badge>
               <RuleCardTitle
-                info="商户确认模式下这些技师会收到反馈任务；直接排班模式下这些技师会收到正式排班和确认收到入口。"
+                info="技师自主排班会通知技师发布可上班时间；商户直接排班会发送正式排班和确认收到入口。"
                 surface={surface}
                 title="选择本周期对象"
               />
@@ -1082,8 +1085,11 @@ export function StepCreateCycle({
         </p>
       ) : null}
 
-      <div className={cn("sticky z-40", isMobileSurface ? "schedule-wizard-action-shell" : "bottom-4")}>
-        <div className={cn("grid gap-2 rounded-[28px] p-2", isMobileSurface && "schedule-wizard-action-dock")} style={{ gridTemplateColumns: `repeat(${actionColumnCount}, minmax(0, 1fr))` }}>
+      <ScheduleFloatingActions
+        columnCount={actionColumnCount}
+        desktopClassName="sticky bottom-4 z-40 grid gap-2"
+        surface={surface}
+      >
           {!isFirstRulePhase ? (
             <Button
               className={cn(secondaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}
@@ -1118,9 +1124,7 @@ export function StepCreateCycle({
                 const launched = launchDispatchCycle(draft.id, operatorId);
                 onMessage(
                   launched.ok
-                    ? draft.mode === "STORE_ASSIGN_FINAL"
-                      ? `已保存 ${draft.name}，商户直接排班已正式生效并生成 confirmed slots。`
-                      : `已发起 ${draft.name}，当前停留在 ${draft.mode === "STORE_COLLECT_CONFIRM" ? "步骤 3" : "步骤 4"}。`
+                    ? "已进入技师反馈"
                     : launched.message ?? "发起失败。"
                 );
               }}
@@ -1144,8 +1148,7 @@ export function StepCreateCycle({
               下一步
             </Button>
           ) : null}
-        </div>
-      </div>
+      </ScheduleFloatingActions>
     </div>
   );
 }

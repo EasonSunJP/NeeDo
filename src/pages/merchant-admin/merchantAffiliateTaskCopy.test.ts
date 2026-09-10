@@ -31,7 +31,7 @@ describe("merchant Affiliate task copy", () => {
     );
     expect(
       describeMerchantAffiliateTaskError(
-        new ApiClientError("error.affiliate.shop_public_id_unavailable", 40954, 409),
+        new ApiClientError("error.affiliate.shop_public_id_unavailable", 41040, 409),
         "zh"
       )
     ).toContain("公开 ID");

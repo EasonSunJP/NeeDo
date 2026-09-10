@@ -5,7 +5,7 @@ const floatingHeaderFrameGapPx = 8;
 
 export const floatingHeaderLiquidGlassClassName = "client-liquid-glass-header";
 export const floatingHeaderGlassPanelClassName =
-  `${floatingHeaderLiquidGlassClassName} client-floating-header-glass-frame !rounded-[28px] !border-transparent !px-0 !pb-0 !shadow-none`;
+  `${floatingHeaderLiquidGlassClassName} client-floating-header-glass-frame overflow-hidden !rounded-[28px] !border-transparent !px-0 !pb-0 !shadow-none`;
 export const floatingHeaderInnerClassName = "px-3 pb-3";
 export const floatingHeaderPillSurfaceClassName =
   "rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] shadow-[0_12px_30px_rgba(0,0,0,0.07)]";
@@ -21,6 +21,7 @@ export const floatingHeaderSearchActionClassName =
 
 export function FloatingHomeHeader({
   children,
+  overlay,
   dark = false,
   stacked = false,
   className,
@@ -33,6 +34,7 @@ export function FloatingHomeHeader({
   spacerGapPx = floatingHeaderFrameGapPx
 }: {
   children: ReactNode;
+  overlay?: ReactNode;
   dark?: boolean;
   stacked?: boolean;
   className?: string;
@@ -60,7 +62,7 @@ export function FloatingHomeHeader({
     }
 
     const updateSpacerHeight = () => {
-      setMeasuredSpacerHeight(Math.ceil(panel.getBoundingClientRect().height) + spacerGapPx);
+      setMeasuredSpacerHeight(Math.ceil(panel.getBoundingClientRect().bottom + spacerGapPx));
     };
 
     updateSpacerHeight();
@@ -78,7 +80,13 @@ export function FloatingHomeHeader({
   return (
     <>
       {showSpacer ? <div aria-hidden="true" className={spacerClassName ?? fallbackSpacerClassName} style={spacerStyle} /> : null}
-      <div className={cn("pointer-events-none fixed inset-x-0 top-0 z-[35] !mt-0", frameClassName)} data-page-drag-ignore="true">
+      <div
+        className={cn(
+          "client-floating-header-host pointer-events-none fixed inset-x-0 top-0 z-[35] !mt-0",
+          frameClassName
+        )}
+        data-page-drag-ignore="true"
+      >
         <div
           className="pointer-events-auto mx-auto w-full"
           style={{
@@ -100,6 +108,7 @@ export function FloatingHomeHeader({
           >
             <div className={cn("flex flex-col gap-3", className)}>{children}</div>
           </div>
+          {overlay ? <div className="relative">{overlay}</div> : null}
         </div>
       </div>
     </>

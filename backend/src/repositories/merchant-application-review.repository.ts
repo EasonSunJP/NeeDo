@@ -11,12 +11,12 @@ import type {
   MerchantApplicationRejectionResult,
   RejectMerchantApplicationRepositoryInput
 } from "../services/merchant-application-review.service";
-import { BankAccountHolderService } from "../services/bank-account-holder.service";
 import type { SensitiveFieldCipherService } from "../services/sensitive-field-cipher.service";
 import { AppError } from "../utils/app-error";
 import { buildIdentityActivationTransactionInput } from "../services/identity-activation.service";
 import { IdentityActivationRepository } from "./identity-activation.repository";
 import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
+import { provisionShopPublicIdentifier } from "./shop-public-identifier-provisioning";
 
 const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date) =>
   ({
@@ -49,7 +49,6 @@ const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date
             accountType: true,
             accountNumberEncrypted: true,
             accountHolderEncrypted: true,
-            holderMatchHash: true,
             verificationSource: true,
             verificationStatus: true,
             verifiedAt: true,
@@ -80,7 +79,7 @@ const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date
           },
           orderBy: [{ verifiedAt: "desc" as const }, { id: "desc" as const }],
           take: 1,
-          select: { nameMatchHash: true }
+          select: { id: true }
         }
       }
     },
@@ -92,6 +91,43 @@ const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date
       select: {
         purpose: true,
         mediaAsset: { select: { id: true, url: true, mimeType: true } }
+      }
+    },
+    serviceCategories: {
+      where: { deletedAt: null },
+      orderBy: [{ category: { sortOrder: "asc" as const } }, { id: "asc" as const }],
+      select: {
+        category: {
+          select: {
+            id: true,
+            code: true,
+            qualificationPolicy: true,
+            translations: {
+              where: { locale: "JA" as const, deletedAt: null },
+              select: { name: true },
+              take: 1
+            }
+          }
+        }
+      }
+    },
+    businessKeywords: {
+      where: { deletedAt: null },
+      orderBy: [{ businessKeyword: { sortOrder: "asc" as const } }, { id: "asc" as const }],
+      select: {
+        businessKeyword: {
+          select: {
+            id: true,
+            code: true,
+            categoryId: true,
+            qualificationPolicy: true,
+            translations: {
+              where: { locale: "JA" as const, deletedAt: null },
+              select: { label: true },
+              take: 1
+            }
+          }
+        }
       }
     }
   }) satisfies Prisma.IdentityApplicationSelect;
@@ -118,16 +154,14 @@ const maskHolder = (holderName: string): string => {
   return `${characters[0]}${"•".repeat(characters.length - 2)}${characters.at(-1)}`;
 };
 
-export class MerchantApplicationReviewRepository
-  implements MerchantApplicationReviewRepositoryPort
-{
+export class MerchantApplicationReviewRepository implements MerchantApplicationReviewRepositoryPort {
   private readonly identityActivation: IdentityActivationRepository;
-  private readonly holder = new BankAccountHolderService();
 
   public constructor(
     private readonly client: PrismaClient,
     private readonly cipher: SensitiveFieldCipherService,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly nextShopNumberCandidate?: () => string
   ) {
     this.identityActivation = new IdentityActivationRepository(client);
   }
@@ -140,7 +174,9 @@ export class MerchantApplicationReviewRepository
       type: "merchant",
       deletedAt: null,
       merchantDetail: { deletedAt: null },
-      ...(query.status ? { status: query.status } : {})
+      status: query.status ?? {
+        in: ["submitted", "under_review", "approved", "rejected", "withdrawn"]
+      }
     };
     const [rows, total] = await this.client.$transaction([
       this.client.identityApplication.findMany({
@@ -169,7 +205,7 @@ export class MerchantApplicationReviewRepository
     includeSensitiveDocuments: boolean
   ): Promise<MerchantApplicationReviewRecord | null> {
     const row = await this.client.identityApplication.findFirst({
-      where: { id: applicationId, type: "merchant", deletedAt: null },
+      where: { id: applicationId, type: "merchant", deletedAt: null, status: { not: "draft" } },
       select: buildMerchantReviewSelect(includeSensitiveDocuments, this.now())
     });
     return row ? this.map(row) : null;
@@ -195,6 +231,7 @@ export class MerchantApplicationReviewRepository
       const shop = await transaction.shop.create({
         data: {
           ownerUserId: input.applicantUserId,
+          createdById: input.reviewerUserId,
           name: input.shopName,
           description: stringFromRecord(input.showcaseDraft, "description"),
           city:
@@ -207,6 +244,52 @@ export class MerchantApplicationReviewRepository
           isRecommended: false
         }
       });
+      const shopPublicIdentifier = await provisionShopPublicIdentifier(transaction, {
+        shopId: shop.id,
+        shopName: input.shopName,
+        nextCandidate: this.nextShopNumberCandidate
+      });
+      const taxonomy = await this.requireApplicationTaxonomy(transaction, input);
+      await transaction.shopServiceCategory.createMany({
+        data: taxonomy.categories.map((category) => ({
+          shopId: shop.id,
+          categoryId: category.id,
+          selectedByUserId: input.applicantUserId
+        }))
+      });
+      if (taxonomy.keywords.length > 0) {
+        await transaction.shopBusinessKeyword.createMany({
+          data: taxonomy.keywords.map((keyword) => ({
+            shopId: shop.id,
+            businessKeywordId: keyword.id,
+            selectedByUserId: input.applicantUserId
+          }))
+        });
+      }
+      await transaction.shopServiceTaxonomyState.create({
+        data: { shopId: shop.id, version: 1 }
+      });
+      const qualifications = [
+        ...taxonomy.categories
+          .filter((category) => category.qualificationPolicy !== "OPEN")
+          .map((category) => ({ categoryId: category.id, businessKeywordId: null })),
+        ...taxonomy.keywords
+          .filter((keyword) => keyword.qualificationPolicy !== "OPEN")
+          .map((keyword) => ({ categoryId: null, businessKeywordId: keyword.id }))
+      ];
+      if (qualifications.length > 0) {
+        await transaction.shopServiceQualification.createMany({
+          data: qualifications.map((qualification) => ({
+            shopId: shop.id,
+            ...qualification,
+            sourceApplicationId: input.applicationId,
+            status: "APPROVED" as const,
+            expiresAt: null,
+            approvedByUserId: input.reviewerUserId,
+            reason: "Approved with merchant identity application"
+          }))
+        });
+      }
       await transaction.merchantShopMembership.create({
         data: {
           merchantAccountId: merchant.id,
@@ -273,10 +356,17 @@ export class MerchantApplicationReviewRepository
             applicationId: input.applicationId,
             merchantAccountId: merchant.id,
             shopId: shop.id,
+            shopPublicId: shopPublicIdentifier.publicId,
+            shopNo: shopPublicIdentifier.numberPart,
             identityId: identity.identityId,
             billingProfileId: billingProfile.id,
+            ekycPolicy: input.ekycPolicy,
+            bankVerification: input.bankVerification,
             bankAccountId: input.bankAccountId,
             contractAcceptanceId: input.contractAcceptanceId,
+            serviceCategoryIds: input.serviceCategoryIds,
+            businessKeywordIds: input.businessKeywordIds,
+            qualificationCount: qualifications.length,
             trialEndsAt: input.trialEndsAt.toISOString(),
             automaticBonusDays: input.automaticBonusDays,
             version: input.expectedVersion + 1
@@ -370,7 +460,8 @@ export class MerchantApplicationReviewRepository
           id: input.bankAccountId,
           ownerUserId: input.applicantUserId,
           purpose: "merchant_application",
-          verificationStatus: "verified",
+          verificationStatus: input.bankVerification?.status ?? "verified",
+          ...(input.bankVerification ? { verificationSource: input.bankVerification.source } : {}),
           deletedAt: null
         },
         select: { id: true }
@@ -447,13 +538,6 @@ export class MerchantApplicationReviewRepository
     const contract =
       detail.contractAcceptance?.deletedAt === null ? detail.contractAcceptance : null;
     const applicantKind = detail.applicantKind as "corporate" | "individual";
-    const expectedHolderHash =
-      applicantKind === "corporate" && detail.corporateLegalNameKana
-        ? this.cipher.matchHash(
-            this.holder.normalizeForMatch("corporate", detail.corporateLegalNameKana)
-          )
-        : (row.applicant.ekycVerifications[0]?.nameMatchHash ?? null);
-
     return {
       applicationId: row.id,
       applicantUserId: row.userId,
@@ -472,6 +556,31 @@ export class MerchantApplicationReviewRepository
       contactPhone: detail.contactPhone,
       responsiblePersonName: detail.responsiblePersonName,
       showcaseDraft: asRecord(detail.showcaseDraft),
+      serviceCategories: (row.serviceCategories ?? []).flatMap(({ category }) =>
+        category.translations[0]
+          ? [
+              {
+                id: category.id,
+                code: category.code,
+                label: category.translations[0].name,
+                qualificationPolicy: category.qualificationPolicy
+              }
+            ]
+          : []
+      ),
+      businessKeywords: (row.businessKeywords ?? []).flatMap(({ businessKeyword }) =>
+        businessKeyword.translations[0]
+          ? [
+              {
+                id: businessKeyword.id,
+                code: businessKeyword.code,
+                categoryId: businessKeyword.categoryId,
+                label: businessKeyword.translations[0].label,
+                qualificationPolicy: businessKeyword.qualificationPolicy
+              }
+            ]
+          : []
+      ),
       bankAccount: bank
         ? {
             id: bank.id,
@@ -486,8 +595,6 @@ export class MerchantApplicationReviewRepository
             accountHolderMasked: maskHolder(this.cipher.open(bank.accountHolderEncrypted)),
             verificationSource: bank.verificationSource,
             verificationStatus: bank.verificationStatus,
-            holderMatched:
-              expectedHolderHash !== null && expectedHolderHash === bank.holderMatchHash,
             verifiedAt: bank.verifiedAt
           }
         : null,
@@ -510,6 +617,57 @@ export class MerchantApplicationReviewRepository
         mimeType: item.mediaAsset.mimeType
       }))
     };
+  }
+
+  private async requireApplicationTaxonomy(
+    transaction: Prisma.TransactionClient,
+    input: ApproveMerchantApplicationRepositoryInput
+  ) {
+    const [categorySelections, keywordSelections] = await Promise.all([
+      transaction.merchantApplicationServiceCategory.findMany({
+        where: {
+          applicationId: input.applicationId,
+          deletedAt: null,
+          category: { isActive: true, deletedAt: null }
+        },
+        select: { category: { select: { id: true, qualificationPolicy: true } } }
+      }),
+      transaction.merchantApplicationBusinessKeyword.findMany({
+        where: {
+          applicationId: input.applicationId,
+          deletedAt: null,
+          businessKeyword: {
+            isActive: true,
+            deletedAt: null,
+            category: { isActive: true, deletedAt: null }
+          }
+        },
+        select: {
+          businessKeyword: {
+            select: { id: true, categoryId: true, qualificationPolicy: true }
+          }
+        }
+      })
+    ]);
+    const categories = categorySelections.map((selection) => selection.category);
+    const keywords = keywordSelections.map((selection) => selection.businessKeyword);
+    const categoryIds = new Set(categories.map((category) => category.id));
+    const expectedCategoryIds = [...input.serviceCategoryIds].sort((a, b) => a - b);
+    const expectedKeywordIds = [...input.businessKeywordIds].sort((a, b) => a - b);
+    const actualCategoryIds = categories.map((category) => category.id).sort((a, b) => a - b);
+    const actualKeywordIds = keywords.map((keyword) => keyword.id).sort((a, b) => a - b);
+    if (
+      JSON.stringify(actualCategoryIds) !== JSON.stringify(expectedCategoryIds) ||
+      JSON.stringify(actualKeywordIds) !== JSON.stringify(expectedKeywordIds) ||
+      keywords.some((keyword) => !categoryIds.has(keyword.categoryId))
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.SAAS_BILLING_CONFLICT,
+        message: "error.identity_application.taxonomy_selection_changed",
+        statusCode: 409
+      });
+    }
+    return { categories, keywords };
   }
 }
 

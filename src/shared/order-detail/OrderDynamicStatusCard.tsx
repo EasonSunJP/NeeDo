@@ -50,6 +50,10 @@ function resolveActiveStepIndex(order: Order) {
     return 3;
   }
 
+  if (order.status === "awaitingCheckout" || order.status === "awaitingPaymentConfirmation") {
+    return 3;
+  }
+
   if (acceptedOrderStatuses.includes(order.status) || order.autoConfirmed) {
     return 0;
   }
@@ -64,6 +68,14 @@ function resolveHeadline(order: Order, subject: string, activeStepIndex: number)
 
   if (order.status === "inService") {
     return `${subject}正在服务`;
+  }
+
+  if (order.status === "awaitingCheckout") {
+    return "服务已结束，等待结账";
+  }
+
+  if (order.status === "awaitingPaymentConfirmation") {
+    return "等待确认收款";
   }
 
   if (order.status === "cancelled") {
@@ -113,6 +125,7 @@ export function OrderDynamicStatusCard({
             <div className="min-w-0" key={`${step}-${index}`}>
               <div className="flex items-center">
                 <span
+                  aria-current={index === activeStepIndex ? "step" : undefined}
                   className={cn(
                     "grid h-9 w-9 shrink-0 place-items-center rounded-full border text-[15px] font-black",
                     active

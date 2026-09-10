@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ApiClientError } from "../api/httpClient";
 import { isNonFatalBrowserRuntimeError, isOpaqueBrowserScriptError, shareContent } from "./share";
 
 function createEnvironment() {
@@ -197,6 +198,10 @@ describe("shareContent", () => {
 });
 
 describe("isNonFatalBrowserRuntimeError", () => {
+  it("keeps an exhausted API read limit from replacing the signed-in app with the recovery page", () => {
+    expect(isNonFatalBrowserRuntimeError(new ApiClientError("error.rate_limited", 42903, 429))).toBe(true);
+  });
+
   it("ignores runtime rejections that originate from browser extension scripts", () => {
     const error = new Error("Failed to connect to MetaMask");
     error.stack = [
@@ -236,5 +241,11 @@ describe("isNonFatalBrowserRuntimeError", () => {
     ]) {
       expect(isNonFatalBrowserRuntimeError(new Error(message))).toBe(true);
     }
+  });
+
+  it("keeps superseded authentication operations out of the global recovery page", () => {
+    expect(
+      isNonFatalBrowserRuntimeError(new Error("error.auth.operation_superseded"))
+    ).toBe(true);
   });
 });

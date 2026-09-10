@@ -2,23 +2,33 @@ import { describe, expect, it } from "vitest";
 import centerSource from "./UserCenterPage.tsx?raw";
 
 describe("formal customer center integration", () => {
+  const compactSource = centerSource.replace(/\s+/gu, " ");
+
   it("keeps authenticated customers on the single complete user-center design", () => {
     expect(centerSource).not.toContain("FormalUserCenterPage");
     expect(centerSource).not.toContain("LegacyUserCenterPage");
     expect(centerSource).toContain("CompleteUserCenterPage");
     expect(centerSource).toContain("customerProfileApi.getMine()");
     expect(centerSource).toContain("profile.id !== customerProfileId");
-    expect(centerSource).toContain("walletApi.getMyWallet()");
-    expect(centerSource).toContain('formalData.wallet.currency === "TEST_NDP" ? "Test NDP" : "NDP"');
-    expect(centerSource).toContain("{ label: pointsLabel, value: points.toLocaleString(\"en-US\") }");
+    expect(centerSource).toContain("walletApi.getMyWalletSummary()");
+    expect(centerSource).toContain("platformMembershipSelfApi.getMyExperience()");
+    expect(centerSource).toContain("platformMembershipSelfApi.getMine()");
+    expect(centerSource).toContain("formalData.experience.level");
+    expect(centerSource).toContain("formalData.membership.theme");
+    expect(centerSource).toContain("<PlatformMembershipDetailCard");
+    expect(centerSource).not.toContain("getCustomerLevelLabel");
+    expect(centerSource).toContain("formalData.wallet.ndp.available");
+    expect(centerSource).toContain("hasTestNdpWallet(formalData.wallet)");
+    expect(compactSource).toContain("secondary: testPoints === null ? undefined : `Test NDP ${testPoints}`");
     expect(centerSource).toContain('data-testid="user-profile-privacy-control"');
+    expect(centerSource).toContain("afterDetailsSlot={profilePrivacyControl}");
     expect(centerSource).toContain("我的订单");
     expect(centerSource).toContain("serviceTools.map");
     expect(centerSource).toContain("账号与服务");
   });
 
   it("derives each reservation count from a status-filtered paginated API total", () => {
-    expect(centerSource).toContain("bookingApi.listOrders({ page: 1, pageSize: 1, status })");
+    expect(compactSource).toContain("bookingApi.listOrders({ page: 1, pageSize: 1, status, });");
     expect(centerSource).toContain('"pending"');
     expect(centerSource).toContain('"confirmed"');
     expect(centerSource).toContain('"inService"');

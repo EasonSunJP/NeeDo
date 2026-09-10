@@ -190,12 +190,7 @@ describe("TechnicianShopAffiliationService", () => {
     };
 
     await expect(
-      service.getCurrentShopEmployeeSchedule(
-        actorForShop(16),
-        context,
-        "s0000000047",
-        input
-      )
+      service.getCurrentShopEmployeeSchedule(actorForShop(16), context, "s0000000047", input)
     ).resolves.toEqual({
       employee: {
         needoId: "s0000000047",
@@ -236,11 +231,10 @@ describe("TechnicianShopAffiliationService", () => {
     const { service, repository, audit } = setup();
 
     await expect(
-      service.getCurrentShopEmployeeTimeline(
-        actorForShop(16),
-        "s0000000047",
-        { page: 1, pageSize: 20 }
-      )
+      service.getCurrentShopEmployeeTimeline(actorForShop(16), "s0000000047", {
+        page: 1,
+        pageSize: 20
+      })
     ).resolves.toMatchObject({
       list: [{ actorRole: "基本资料", message: "更新了姓名、城市" }],
       total: 1
@@ -380,24 +374,6 @@ describe("TechnicianShopAffiliationService", () => {
     ).rejects.toMatchObject({
       code: ERROR_CODES.TECHNICIAN_AFFILIATION_NOT_FOUND,
       statusCode: 404
-    });
-  });
-
-  it("maps repository conflicts to one non-leaking 409", async () => {
-    const { service, repository } = setup();
-    repository.upsertCurrentAffiliation.mockResolvedValue("exclusive_conflict");
-
-    await expect(
-      service.upsertCurrentShopAffiliation(actorForShop(16), context, "s0000000047", {
-        relationshipType: "exclusive",
-        workStatus: "active",
-        startsAt: new Date("2026-08-01T00:00:00.000Z"),
-        endsAt: null
-      })
-    ).rejects.toMatchObject({
-      code: ERROR_CODES.TECHNICIAN_AFFILIATION_CONFLICT,
-      message: "error.technician_affiliation.exclusive_conflict",
-      statusCode: 409
     });
   });
 

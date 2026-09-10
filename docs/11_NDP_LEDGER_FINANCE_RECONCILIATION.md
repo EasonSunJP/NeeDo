@@ -63,6 +63,68 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm --prefix backend run check:simu
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm --prefix backend run check:future-operations
 ```
 
+### 4.2 会员卡 NDP 返点方案地基（2026-08-31）
+
+- 会员权益不提供折扣、实物礼物、赠送服务或赠送次数；所有奖励统一表达为 NDP 返点。
+- 店铺可配置三类基础返点：每次完成固定 NDP、按符合条件金额比例返点、每满指定消费金额返固定 NDP；可叠加首次用卡、指定服务范围、完成次数里程碑、消费金额里程碑、生日月、指定时段和连续活跃月奖励。
+- 每条规则可限制服务/分类范围、排除项与生效区间；方案还支持单笔、单日、单月和生命周期 NDP 上限。服务范围引用必须属于当前 JWT 店铺。
+- 方案发布时保存平台费率不可变快照。默认平台费率为 10%（1000 bps）；客户应得 1000 NDP 时，平台费向上取整为 100 NDP，未来结算节点从店铺钱包合计扣 1100 NDP。
+- 保存或发布规则不会冻结钱包。真正完成服务并命中返点规则时，后续结算微步骤才按已发布版本快照扣除；余额不足应登记待结算负债并在未来充值节点处理，不允许绕过账本直接改余额。
+- 本微步骤只建立方案、规则、费率版本、RBAC、审计和服务端试算，没有接入开卡、充值、核销、退款或实际 NDP 账本写入。上述行为必须分别作为后续独立微步骤实现并复用这里的已发布版本。
+- 已应用迁移：`20260831150000_shop_membership_card_rule_configuration` 与 `20260831151000_membership_reward_fee_policy_utc_bootstrap`。后者只纠正非 UTC MySQL 会话下初始费率时间，不修改已应用 migration 历史。
+- `check:shop-membership-card-plan-flow` 在本地 `needo_dev` 的真实事务中验证十类规则、跨店隔离、发布快照、费率新版本与审计；试算为客户 1000、平台 100、店铺合计 1100 NDP。事务故意回滚后，费率、方案、版本、规则、会员卡、钱包、账本交易、账本明细和审计计数均为 0 变化。
+
+本地迁移与验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-plan-flow
+```
+
+### 4.3 会员卡正式发卡（2026-08-31）
+
+- 店铺负责人或管理员可使用 `shop.member.card.issue`，从当前店铺的有效会员和仍启用的当前已发布方案正式发卡；`merchant_staff` 默认保持只读。会员、方案和版本均由后端再次按 JWT 店铺范围校验。
+- 储值卡把线下已确认的初始本金同时写入 `initialPrincipalJpy` 和当前本金余额，赠送余额固定为 0；次卡把初始次数同时写入 `initialUses`、剩余次数和总次数；权益卡不写金额或次数。有效期严格由发布版本计算，客户端不能覆盖。
+- 每张新卡保存方案、方案版本、操作人、开卡来源、初始值、平台费率和幂等指纹快照。卡、`merchant.shop_membership_card.issue` 审计和用户 `SYSTEM` 通知在同一事务中写入；相同幂等键和相同内容返回原卡且不重复通知，内容变化则返回冲突。
+- 发卡只是登记线下付款或历史卡的最终初始状态，不是线上充值或返点节点。本步骤不改店铺/客户 NDP 钱包，不创建 `LedgerTransaction` 或 `WalletLedger`；方案中的平台费只在以后实际完成服务并发生返点时扣除。
+- 已应用 migration：`20260831160000_shop_membership_card_issuance`。物理库已独立确认 11 个新增快照字段、3 个 CHECK、3 个外键和开卡幂等唯一索引，并确认默认授权只有 `admin`、`merchant_owner`。
+- `check:shop-membership-card-issuance-flow` 在本地 `needo_dev` 的真实事务中验证储值卡 5000 JPY、次卡 4 次和权益卡三种发卡，验证有效期、1000 bps 费率快照、3 条审计、3 条通知、幂等重放和变更冲突；钱包与 NDP 账本不变，事务主动回滚后全库保护基线完全一致。
+
+本地验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-issuance-flow
+```
+
+### 4.4 会员卡客户确认调整（2026-08-31）
+
+- 店铺可为有效储值卡提交最终本金，为有效次数卡提交最终剩余次数。客户在 72 小时内明确同意后才更新；拒绝、撤回、到期或卡快照变化均不修改请求目标值到会员卡。
+- 储值卡调整只改 `principalBalanceJpy`，不改 `bonusBalanceJpy`。次数卡按剩余次数差额同步移动 `totalUses`，因此已消费次数保持不变。权益卡不支持本流程。
+- 此流程只是修正线下已付款或历史漏记的卡内业务值，不是充值、退款、核销或 NDP 返点节点；不得触发店铺钱包扣款、客户 NDP 入账、`LedgerTransaction` 或 `WalletLedger` 写入，也不收取返点平台费。
+- Migration `20260831170000_shop_membership_card_adjustment_approval` 新增请求状态机、待办唯一键、请求/决定幂等键、72 小时截止时间、卡 `lockVersion`、RBAC、审计和通知。worker 与读接口的惰性到期共用相同数据库时间事务。
+- 本地回滚式真实数据流已验证批准、拒绝、撤回、到期、快照失效、跨店/跨客户隔离和幂等；钱包全部余额快照、账本交易计数与账本明细计数前后完全一致，回滚后全库保护基线一致。
+
+本地验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-adjustment-flow
+```
+
+### 4.5 会员卡线下收款充值（2026-09-01）
+
+- 店铺负责人或管理员可使用 `shop.member.card.topup.create`，为当前 JWT 店铺范围内仍有效的储值会员卡登记已确认线下收款；`merchant_staff` 默认只读。次数卡、权益卡、冻结/到期/作废卡、已结束会员关系和存在未到期待确认调整的卡均不可充值。
+- 每笔充值只把实际收款整数金额增加到 `principalBalanceJpy`，不改 `bonusBalanceJpy`、次数、NDP 或钱包。收款凭证和备注至少填写一项；相同幂等键与相同内容只返回原记录，内容变化返回冲突。
+- 会员卡行先使用 `FOR UPDATE` 锁定，再按 `lockVersion` 和原本金执行条件更新；本金快照、不可变充值记录、`merchant.shop_membership_card.topup.create` 审计与客户系统通知在同一事务提交。商家历史按当前店铺分页，客户历史只按当前 customer identity 所有人分页。
+- Migration `20260901040000_shop_membership_card_topup` 新增 `shop_membership_card_topups`、正数/非负/守恒/锁版本 CHECK、三个外键、幂等唯一索引和 RBAC。因为本机 migration 历史存在与本分支无关的 Exchange/IM 分叉，验收时只执行该 additive SQL，独立确认物理表与 RBAC 后再登记本 migration，没有应用或改写其他 migration。
+- `check:shop-membership-card-topup-flow` 在本地 `needo_dev` 回滚事务中验证：实收 5000 JPY 使本金 10000→15000、赠送余额保持 500；充值/审计/通知各 1 条；幂等重放、内容冲突、待确认调整阻断、跨店隐藏、商家/客户历史范围均通过；Wallet、LedgerTransaction、WalletLedger 完全不变，事务结束后保护基线完全恢复。
+
+本地验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:shop-membership-card-topup-flow
+```
+
 ---
 
 ## 5. 交付物

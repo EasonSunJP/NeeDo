@@ -21,6 +21,18 @@ const reviewRecord = {
   contactPhone: "03-1234-5678",
   responsiblePersonName: "山本太郎",
   showcaseDraft: { city: "東京都中央区" },
+  serviceCategories: [
+    { id: 1, code: "massage", label: "マッサージ", qualificationPolicy: "PLATFORM_REVIEW" }
+  ],
+  businessKeywords: [
+    {
+      id: 10,
+      code: "massage_home_visit",
+      categoryId: 1,
+      label: "訪問マッサージ",
+      qualificationPolicy: "PLATFORM_REVIEW"
+    }
+  ],
   bankAccount: {
     id: 81,
     bankCode: "0001",
@@ -32,7 +44,6 @@ const reviewRecord = {
     accountHolderMasked: "カ•••••••••ド",
     verificationSource: "corporate_registration",
     verificationStatus: "verified",
-    holderMatched: true,
     verifiedAt: new Date("2026-08-15T02:00:00.000Z")
   },
   eKycVerified: false,
@@ -45,9 +56,7 @@ const reviewRecord = {
     language: "ja",
     receiptId: "receipt-91"
   },
-  media: [
-    { id: 101, purpose: "corporate_registration", url: "/media/101", mimeType: "image/png" }
-  ]
+  media: [{ id: 101, purpose: "corporate_registration", url: "/media/101", mimeType: "image/png" }]
 };
 
 const allPermissions = [
@@ -97,9 +106,7 @@ const createFixture = (permissions = allPermissions) => {
   };
   const merchantApplicationReviewService = {
     list: jest.fn(async (_query, includeSensitiveDocuments: boolean) => ({
-      list: [
-        includeSensitiveDocuments ? reviewRecord : { ...reviewRecord, media: [] }
-      ],
+      list: [includeSensitiveDocuments ? reviewRecord : { ...reviewRecord, media: [] }],
       total: 1,
       page: 1,
       page_size: 20
@@ -150,9 +157,9 @@ describe("operations merchant application HTTP API", () => {
         expect(response.body.data).toMatchObject({ total: 1, page: 1, page_size: 20 });
         expect(response.body.data.list[0].bankAccount).toMatchObject({
           accountNumberMasked: "•••4567",
-          accountHolderMasked: "カ•••••••••ド",
-          holderMatched: true
+          accountHolderMasked: "カ•••••••••ド"
         });
+        expect(response.body.data.list[0].bankAccount).not.toHaveProperty("holderMatched");
         expect(JSON.stringify(response.body)).not.toContain("1234567");
       });
     expect(fixture.merchantApplicationReviewService.list).toHaveBeenCalledWith(

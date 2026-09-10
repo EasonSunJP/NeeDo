@@ -2,17 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiClientError } from "../../api/httpClient";
 import type { AuthSession } from "../../auth/rbac";
 import { bookingApi, type BookingOrder, type BookingScheduleSlot } from "../booking/api";
-import { coreReadApi, type CoreTechnicianDetail } from "../core-read/api";
-import { technicianProfileApi } from "../core-read/technicianProfileApi";
+import { technicianProfileApi, type TechnicianSelfProfile } from "../core-read/technicianProfileApi";
 import {
   pricingModeApi,
   type TechnicianServicePayload
 } from "../pricing-mode/api";
 import { schedulingApi } from "../scheduling/api";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 
 export type FormalTechnicianScheduleContext = {
-  profile: CoreTechnicianDetail;
-  shopId: number;
+  profile: Pick<TechnicianSelfProfile, "id" | "displayName" | "avatarUrl">;
+  shopId: number | null;
+  shopName: string;
   services: TechnicianServicePayload[];
   slot: BookingScheduleSlot | null;
 };
@@ -28,7 +30,6 @@ type ResourceValue<T> = Omit<FormalResourceState<T>, "retry">;
 
 const technicianIdentityError = "error.auth.identity_forbidden";
 const invalidRouteIdError = "error.request.invalid";
-const missingShopError = "error.technician.shop_required";
 
 function normalizeFormalResourceError(error: unknown): string {
   if (error instanceof ApiClientError) {
@@ -64,9 +65,9 @@ export function getActiveTechnicianProfileId(session: AuthSession | null | undef
   return session.currentIdentity.scopeId;
 }
 
-export async function loadAllTechnicianServices(shopId: number): Promise<TechnicianServicePayload[]> {
+export async function loadAllTechnicianServices(_shopId?: number): Promise<TechnicianServicePayload[]> {
   const pageSize = 100;
-  const firstPage = await pricingModeApi.listTechnicianServices(shopId, {
+  const firstPage = await pricingModeApi.listMyTechnicianServices({
     activeOnly: true,
     page: 1,
     pageSize
@@ -75,7 +76,7 @@ export async function loadAllTechnicianServices(shopId: number): Promise<Technic
   const services = [...firstPage.list];
 
   for (let page = 2; page <= pages; page += 1) {
-    const response = await pricingModeApi.listTechnicianServices(shopId, {
+    const response = await pricingModeApi.listMyTechnicianServices({
       activeOnly: true,
       page,
       pageSize
@@ -93,11 +94,14 @@ export function useFormalTechnicianScheduleResource(
   slotId: number | null
 ): FormalResourceState<FormalTechnicianScheduleContext> {
   const technicianProfileId = getActiveTechnicianProfileId(session);
+  const cacheScope = getAuthenticatedPersistentCacheScope();
+  const cacheKey = `technician:schedule-context:v2:${technicianProfileId ?? "missing"}:slot:${slotId ?? "new"}`;
   const [revision, setRevision] = useState(0);
-  const [state, setState] = useState<ResourceValue<FormalTechnicianScheduleContext>>({
-    data: null,
-    error: null,
-    loading: true
+  const [state, setState] = useState<ResourceValue<FormalTechnicianScheduleContext>>(() => {
+    const cached = cacheScope
+      ? persistentResourceCache.peek<FormalTechnicianScheduleContext>(cacheScope, cacheKey)
+      : undefined;
+    return { data: cached ?? null, error: null, loading: cached === undefined };
   });
 
   useEffect(() => {
@@ -116,23 +120,49 @@ export function useFormalTechnicianScheduleResource(
       };
     }
 
-    setState({ data: null, error: null, loading: true });
+    const cached = cacheScope
+      ? persistentResourceCache.peek<FormalTechnicianScheduleContext>(cacheScope, cacheKey)
+      : undefined;
+    setState({ data: cached ?? null, error: null, loading: cached === undefined });
+    const unsubscribe = cacheScope
+      ? persistentResourceCache.subscribe<FormalTechnicianScheduleContext>(cacheScope, cacheKey, (data) => {
+          if (active) setState({ data, error: null, loading: false });
+        })
+      : () => undefined;
+    const loadFromServer = async () => {
+      const selfProfile = await technicianProfileApi.getMine();
+      const [services, slot] = await Promise.all([
+        loadAllTechnicianServices(),
+        slotId === null ? Promise.resolve(null) : schedulingApi.getTechnicianSlot(slotId)
+      ]);
+      return {
+        profile: {
+          avatarUrl: selfProfile.avatarUrl,
+          displayName: selfProfile.displayName,
+          id: selfProfile.id
+        },
+        shopId: selfProfile.shopId,
+        shopName: selfProfile.shopId
+          ? services.find((service) => service.shopId === selfProfile.shopId)?.shop?.name
+            ?? slot?.shopName
+            ?? "关联店铺"
+          : "独立技师",
+        services,
+        slot
+      };
+    };
     void (async () => {
       try {
-        const selfProfile = await technicianProfileApi.getMine();
-        if (!selfProfile.shopId) throw new Error(missingShopError);
-        const profile = await coreReadApi.getTechnicianDetail(technicianProfileId);
-        if (!profile.shop || profile.shop.id !== selfProfile.shopId) throw new Error(missingShopError);
-        const [services, slot] = await Promise.all([
-          loadAllTechnicianServices(profile.shop.id),
-          slotId === null ? Promise.resolve(null) : schedulingApi.getTechnicianSlot(slotId)
-        ]);
+        const data = cacheScope
+          ? await persistentResourceCache.load({
+              force: revision > 0,
+              key: cacheKey,
+              load: loadFromServer,
+              scope: cacheScope
+            })
+          : await loadFromServer();
         if (active) {
-          setState({
-            data: { profile, shopId: profile.shop.id, services, slot },
-            error: null,
-            loading: false
-          });
+          setState({ data, error: null, loading: false });
         }
       } catch (error) {
         if (active) {
@@ -143,8 +173,9 @@ export function useFormalTechnicianScheduleResource(
 
     return () => {
       active = false;
+      unsubscribe();
     };
-  }, [revision, slotId, technicianProfileId]);
+  }, [cacheKey, cacheScope, revision, slotId, technicianProfileId]);
 
   const retry = useCallback(() => setRevision((current) => current + 1), []);
   return { ...state, retry };
@@ -155,11 +186,14 @@ export function useFormalTechnicianOrderResource(
   orderId: number | null
 ): FormalResourceState<BookingOrder> {
   const technicianProfileId = getActiveTechnicianProfileId(session);
+  const cacheScope = getAuthenticatedPersistentCacheScope();
+  const cacheKey = `technician:order:${technicianProfileId ?? "missing"}:${orderId ?? "missing"}`;
   const [revision, setRevision] = useState(0);
-  const [state, setState] = useState<ResourceValue<BookingOrder>>({
-    data: null,
-    error: null,
-    loading: true
+  const [state, setState] = useState<ResourceValue<BookingOrder>>(() => {
+    const cached = cacheScope
+      ? persistentResourceCache.peek<BookingOrder>(cacheScope, cacheKey)
+      : undefined;
+    return { data: cached ?? null, error: null, loading: cached === undefined };
   });
 
   useEffect(() => {
@@ -178,8 +212,22 @@ export function useFormalTechnicianOrderResource(
       };
     }
 
-    setState({ data: null, error: null, loading: true });
-    void bookingApi.getOrder(orderId)
+    const cached = cacheScope ? persistentResourceCache.peek<BookingOrder>(cacheScope, cacheKey) : undefined;
+    setState({ data: cached ?? null, error: null, loading: cached === undefined });
+    const unsubscribe = cacheScope
+      ? persistentResourceCache.subscribe<BookingOrder>(cacheScope, cacheKey, (order) => {
+          if (active) setState({ data: order, error: null, loading: false });
+        })
+      : () => undefined;
+    const request = cacheScope
+      ? persistentResourceCache.load({
+          force: revision > 0,
+          key: cacheKey,
+          load: () => bookingApi.getOrder(orderId),
+          scope: cacheScope
+        })
+      : bookingApi.getOrder(orderId);
+    void request
       .then((order) => {
         if (active) setState({ data: order, error: null, loading: false });
       })
@@ -191,8 +239,9 @@ export function useFormalTechnicianOrderResource(
 
     return () => {
       active = false;
+      unsubscribe();
     };
-  }, [orderId, revision, technicianProfileId]);
+  }, [cacheKey, cacheScope, orderId, revision, technicianProfileId]);
 
   const retry = useCallback(() => setRevision((current) => current + 1), []);
   return { ...state, retry };

@@ -32,6 +32,8 @@ export interface CompensationRuleSet {
   dailyRateJpy: number;
   fixedOrderPayJpy: number;
   commissionRatePercent: number;
+  extensionCommissionRatePercent: number;
+  nominationFeeJpy: number;
   guaranteedMinimumJpy: number;
   ndpFeeBearer: CompensationNdpBearer;
   technicianNdpSharePercent: number;
@@ -40,7 +42,11 @@ export interface CompensationRuleSet {
 }
 
 export interface CompensationPreviewInput {
-  serviceAmountJpy: number;
+  serviceAmountJpy?: number;
+  baseServiceAmountJpy?: number;
+  extensionAmountJpy?: number;
+  nominationChargeAmountJpy?: number;
+  nominated?: boolean;
   platformFeeNdp?: number;
   workedMinutes?: number;
   monthlyCompletedOrders?: number;
@@ -57,8 +63,15 @@ export interface AppliedCompensationAdjustment {
 
 export interface CompensationPreviewPayload {
   serviceAmountJpy: number;
+  baseServiceAmountJpy: number;
+  extensionAmountJpy: number;
+  nominationChargeAmountJpy: number;
+  nominated: boolean;
   platformFeeNdp: number;
   basePayJpy: number;
+  serviceCommissionPayJpy: number;
+  extensionCommissionPayJpy: number;
+  nominationPayJpy: number;
   commissionPayJpy: number;
   minimumGuaranteeAdjustmentJpy: number;
   bonusPayJpy: number;
@@ -78,14 +91,35 @@ export class CompensationEngine {
     ruleSet: CompensationRuleSet,
     input: CompensationPreviewInput
   ): CompensationPreviewPayload {
-    const serviceAmountJpy = Math.round(input.serviceAmountJpy);
+    const componentMode =
+      input.baseServiceAmountJpy !== undefined || input.extensionAmountJpy !== undefined;
+    const baseServiceAmountJpy = Math.round(
+      componentMode ? (input.baseServiceAmountJpy ?? 0) : (input.serviceAmountJpy ?? 0)
+    );
+    const extensionAmountJpy = Math.round(componentMode ? (input.extensionAmountJpy ?? 0) : 0);
+    const nominationChargeAmountJpy = Math.round(
+      componentMode ? (input.nominationChargeAmountJpy ?? 0) : 0
+    );
+    const nominated = componentMode && Boolean(input.nominated);
+    const serviceAmountJpy = baseServiceAmountJpy + extensionAmountJpy + nominationChargeAmountJpy;
     const platformFeeNdp = Math.round(input.platformFeeNdp ?? 500);
     const workedMinutes = Math.max(0, input.workedMinutes ?? 60);
     const basePayJpy = this.calculateBasePay(ruleSet, workedMinutes);
-    const commissionPayJpy = this.calculateCommission(ruleSet, serviceAmountJpy);
+    const serviceCommissionPayJpy = this.calculateCommission(
+      ruleSet,
+      baseServiceAmountJpy,
+      ruleSet.commissionRatePercent
+    );
+    const extensionCommissionPayJpy = this.calculateCommission(
+      ruleSet,
+      extensionAmountJpy,
+      ruleSet.extensionCommissionRatePercent
+    );
+    const commissionPayJpy = serviceCommissionPayJpy + extensionCommissionPayJpy;
+    const nominationPayJpy = nominated ? ruleSet.nominationFeeJpy : 0;
     const minimumGuaranteeAdjustmentJpy = Math.max(
       0,
-      ruleSet.guaranteedMinimumJpy - basePayJpy - commissionPayJpy
+      ruleSet.guaranteedMinimumJpy - basePayJpy - commissionPayJpy - nominationPayJpy
     );
     const appliedBonusRules = this.evaluateBonusRules(ruleSet, input);
     const appliedDeductionRules = this.evaluateDeductionRules(ruleSet, input);
@@ -93,7 +127,12 @@ export class CompensationEngine {
     const deductionJpy = appliedDeductionRules.reduce((sum, rule) => sum + rule.amountJpy, 0);
     const technicianGrossIncomeJpy = Math.max(
       0,
-      basePayJpy + commissionPayJpy + minimumGuaranteeAdjustmentJpy + bonusPayJpy - deductionJpy
+      basePayJpy +
+        commissionPayJpy +
+        nominationPayJpy +
+        minimumGuaranteeAdjustmentJpy +
+        bonusPayJpy -
+        deductionJpy
     );
     const { shopNdpShareNdp, technicianNdpShareNdp } = this.splitPlatformFee(
       ruleSet,
@@ -105,8 +144,15 @@ export class CompensationEngine {
 
     return {
       serviceAmountJpy,
+      baseServiceAmountJpy,
+      extensionAmountJpy,
+      nominationChargeAmountJpy,
+      nominated,
       platformFeeNdp,
       basePayJpy,
+      serviceCommissionPayJpy,
+      extensionCommissionPayJpy,
+      nominationPayJpy,
       commissionPayJpy,
       minimumGuaranteeAdjustmentJpy,
       bonusPayJpy,
@@ -122,7 +168,9 @@ export class CompensationEngine {
         `source:${ruleSet.sourceType}`,
         `wage_mode:${ruleSet.wageMode}`,
         `ndp_fee_bearer:${ruleSet.ndpFeeBearer}`,
-        `commission_rate_percent:${ruleSet.commissionRatePercent}`
+        `commission_rate_percent:${ruleSet.commissionRatePercent}`,
+        `extension_commission_rate_percent:${ruleSet.extensionCommissionRatePercent}`,
+        `nomination_fee_jpy:${ruleSet.nominationFeeJpy}`
       ]
     };
   }
@@ -139,9 +187,13 @@ export class CompensationEngine {
     return 0;
   }
 
-  private calculateCommission(ruleSet: CompensationRuleSet, serviceAmountJpy: number): number {
+  private calculateCommission(
+    ruleSet: CompensationRuleSet,
+    serviceAmountJpy: number,
+    ratePercent: number
+  ): number {
     if (ruleSet.wageMode === "commission" || ruleSet.wageMode === "base_plus_commission") {
-      return Math.round(serviceAmountJpy * (ruleSet.commissionRatePercent / 100));
+      return Math.round(serviceAmountJpy * (ratePercent / 100));
     }
 
     return 0;

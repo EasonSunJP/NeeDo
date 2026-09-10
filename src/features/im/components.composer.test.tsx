@@ -4,8 +4,11 @@ import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ImChatComposer, ImReturnToLatestButton } from "./components";
+import { I18nProvider, I18nRuntime } from "../../i18n/I18nProvider";
+import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import { ImChatComposer, ImReturnToLatestButton, ImStandaloneShell } from "./components";
 import type { ImChatComposerPanel } from "./components";
 import { getRecentImReactionSnapshot } from "./reaction-catalog";
 import { encodeImComposerJudgement } from "./reaction-policy";
@@ -14,6 +17,7 @@ import { encodeImComposerJudgement } from "./reaction-policy";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   window.localStorage.clear();
   document.body.replaceChildren();
   vi.restoreAllMocks();
@@ -33,13 +37,330 @@ function ComposerHarness({ actionRun }: { actionRun: () => void }) {
         onPanelChange={setPanel}
         onSend={vi.fn()}
         panel={panel}
+        voiceInputAriaLabel="录制语音"
       />
       <button aria-label="重置测试草稿" onClick={() => setDraft("")} type="button" />
     </>
   );
 }
 
+function RuntimeComposerHarness({ onSend }: { onSend: (draft: string) => void }) {
+  const [draft, setDraft] = useState("");
+
+  return (
+    <ImChatComposer
+      draft={draft}
+      isNight
+      onDraftChange={setDraft}
+      onPanelChange={vi.fn()}
+      onSend={() => onSend(draft)}
+      panel={null}
+      submitOnEnter
+    />
+  );
+}
+
+async function waitForRuntimeTranslation() {
+  await new Promise<void>((resolveFrame) => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolveFrame()));
+  });
+}
+
 describe("ImChatComposer", () => {
+  it("supports an embedded tag editor with emoji and separate footer actions", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onPanelChange = vi.fn();
+    await act(async () => root.render(
+      <ImChatComposer draft="标签" isNight onDraftChange={vi.fn()} onPanelChange={onPanelChange}
+        onSend={vi.fn()} panel={null} embedded showVoice={false} showMore={false} showSend={false} />
+    ));
+    expect(container.querySelector('[data-im-composer-control="voice-input"]')).toBeNull();
+    expect(container.textContent).not.toContain("发送");
+    expect(container.querySelector('[aria-label="打开更多功能"]')).toBeNull();
+    const emoji = container.querySelector<HTMLButtonElement>('[data-im-composer-control="emoji-chat"]');
+    expect(emoji).not.toBeNull();
+    await act(async () => emoji!.click());
+    expect(onPanelChange).toHaveBeenCalled();
+    expect(container.querySelector(".safe-nav-bottom")).toBeNull();
+    await act(async () => root.unmount());
+  });
+  it("bounds the closed-keyboard chat frame to the dynamic viewport despite stale iOS window dimensions", async () => {
+    vi.stubGlobal("innerHeight", 1018);
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 690 },
+      offsetTop: { configurable: true, value: 20 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 5 }
+    });
+    vi.stubGlobal("visualViewport", visualViewport);
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ClientThemeProvider>
+            <ImStandaloneShell>
+              <div data-testid="chat-content" />
+            </ImStandaloneShell>
+          </ClientThemeProvider>
+        </MemoryRouter>
+      );
+    });
+
+    const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(stylesSource).toContain("height: var(--im-conversation-room-height, 100dvh)");
+
+    await act(async () => root.unmount());
+  });
+
+  it("follows the live visual viewport only while the keyboard editor has focus", async () => {
+    vi.stubGlobal("innerHeight", 844);
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 480 },
+      offsetTop: { configurable: true, value: 20 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 5 }
+    });
+    vi.stubGlobal("visualViewport", visualViewport);
+
+    const editor = document.createElement("input");
+    document.body.append(editor);
+    editor.focus();
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ClientThemeProvider>
+            <ImStandaloneShell>
+              <div data-testid="chat-content" />
+            </ImStandaloneShell>
+          </ClientThemeProvider>
+        </MemoryRouter>
+      );
+    });
+
+    const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("480px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("20px");
+    expect(shell?.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("344px");
+
+    // iOS can keep focus in the composer when the keyboard is dismissed.
+    await act(async () => {
+      Object.defineProperties(visualViewport, {
+        height: { configurable: true, value: 844 },
+        offsetTop: { configurable: true, value: 0 }
+      });
+      visualViewport.dispatchEvent(new Event("resize"));
+    });
+    expect(document.activeElement).toBe(editor);
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+
+    await act(async () => root.unmount());
+  });
+
+  it("returns to the CSS viewport when iOS keeps the editor focused after the keyboard closes", async () => {
+    vi.stubGlobal("innerHeight", 690);
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperties(visualViewport, {
+      height: { configurable: true, value: 690 },
+      offsetTop: { configurable: true, value: 0 },
+      width: { configurable: true, value: 390 },
+      offsetLeft: { configurable: true, value: 0 }
+    });
+    vi.stubGlobal("visualViewport", visualViewport);
+
+    const editor = document.createElement("input");
+    document.body.append(editor);
+    editor.focus();
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <ClientThemeProvider>
+            <ImStandaloneShell>
+              <div data-testid="chat-content" />
+            </ImStandaloneShell>
+          </ClientThemeProvider>
+        </MemoryRouter>
+      );
+    });
+
+    const shell = container.querySelector<HTMLElement>(".safe-screen-shell");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
+    expect(shell?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps the authoritative composer draft raw while localizing its placeholder", async () => {
+    window.localStorage.setItem("needo.language", "ja");
+    window.localStorage.setItem("needo.language.mode", "manual");
+    const onSend = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    let actualVisualPlaceholder: string | null | undefined;
+    let actualAriaPlaceholder: string | null | undefined;
+    let actualDraftAfterRuntime: string | null | undefined;
+
+    try {
+      await act(async () => {
+        root.render(
+          <MemoryRouter>
+            <I18nProvider>
+              <I18nRuntime>
+                <RuntimeComposerHarness onSend={onSend} />
+              </I18nRuntime>
+            </I18nProvider>
+          </MemoryRouter>
+        );
+      });
+      await act(waitForRuntimeTranslation);
+
+      const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+      actualVisualPlaceholder = editor.parentElement?.querySelector("span")?.textContent;
+      actualAriaPlaceholder = editor.getAttribute("aria-placeholder");
+
+      await act(async () => {
+        editor.textContent = "测试测试";
+        editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      });
+      await act(waitForRuntimeTranslation);
+      actualDraftAfterRuntime = editor.textContent;
+
+      await act(async () => {
+        editor.append(document.createTextNode("!"));
+        editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      });
+      await act(async () => {
+        editor.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" }));
+      });
+    } finally {
+      await act(async () => root.unmount());
+    }
+
+    expect.soft(actualDraftAfterRuntime).toBe("测试测试");
+    expect.soft(onSend).toHaveBeenCalledWith("测试测试!");
+    expect.soft(actualVisualPlaceholder).toBe("メッセージを送信");
+    expect.soft(actualAriaPlaceholder).toBe("メッセージを送信");
+  });
+
+  it("keeps the editable composer at the iOS no-zoom font size", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
+    const placeholder = editor?.parentElement?.querySelector("span");
+    expect(editor?.classList.contains("text-[16px]")).toBe(true);
+    expect(placeholder?.classList.contains("text-[16px]")).toBe(true);
+
+    await act(async () => root.unmount());
+  });
+
+  it("opens voice recording directly with caller copy and a ref without entering a gesture mode", async () => {
+    const onOpenVoiceRecording = vi.fn();
+    const callbackOrder: string[] = [];
+    const voiceButtonRef = { current: null as HTMLButtonElement | null };
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft=""
+          isNight={false}
+          onDraftChange={vi.fn()}
+          onOpenVoiceRecording={() => {
+            callbackOrder.push("open");
+            onOpenVoiceRecording();
+          }}
+          onPanelChange={() => callbackOrder.push("close-panel")}
+          onSend={vi.fn()}
+          panel="emoji"
+          voiceButtonRef={voiceButtonRef}
+          voiceInputAriaLabel="Start voice recording"
+        />,
+      );
+    });
+
+    await act(async () => {
+      voiceButtonRef.current?.click();
+    });
+
+    expect(voiceButtonRef.current?.getAttribute("aria-label")).toBe("Start voice recording");
+    expect(callbackOrder).toEqual(["close-panel", "open"]);
+    expect(onOpenVoiceRecording).toHaveBeenCalledTimes(1);
+    expect(container.textContent).not.toContain("按住说话");
+    expect(container.querySelector("[data-im-composer-rich-input='true']")).not.toBeNull();
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          disabled
+          draft=""
+          isNight={false}
+          onDraftChange={vi.fn()}
+          onOpenVoiceRecording={onOpenVoiceRecording}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+          voiceInputAriaLabel="Start voice recording"
+        />,
+      );
+    });
+    expect(container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.disabled).toBe(true);
+    await act(async () => container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.click());
+    expect(onOpenVoiceRecording).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          blocked
+          draft=""
+          isNight={false}
+          onDraftChange={vi.fn()}
+          onOpenVoiceRecording={onOpenVoiceRecording}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+          voiceInputAriaLabel="Start voice recording"
+        />,
+      );
+    });
+    expect(container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.disabled).toBe(true);
+    await act(async () => container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']")?.click());
+    expect(onOpenVoiceRecording).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
+
   it("keeps selected judgement replies as SVG inside the composer while ordinary emoji stay Unicode", async () => {
     const container = document.createElement("div");
     document.body.append(container);
@@ -87,6 +408,7 @@ describe("ImChatComposer", () => {
           onPanelChange={vi.fn()}
           onSend={vi.fn()}
           panel="emoji"
+          voiceInputAriaLabel="录制语音"
         />
       );
     });
@@ -109,6 +431,49 @@ describe("ImChatComposer", () => {
     });
     expect(onDraftChange).toHaveBeenLastCalledWith("existing😂");
     expect(getRecentImReactionSnapshot()[0]).toBe("😂");
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps common reactions stationary until the emoji panel is opened again", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='打开表情面板']")?.click();
+    });
+
+    const readCommonOrder = () => [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        '[data-im-reaction-section="common"] [data-im-reaction-value]'
+      )
+    ].map((button) => button.dataset.imReactionValue ?? "");
+    const initialOrder = readCommonOrder();
+    const selectedValue = initialOrder[1];
+    expect(selectedValue).toBeTruthy();
+    const selectedButton = [
+      ...container.querySelectorAll<HTMLButtonElement>(
+        '[data-im-reaction-section="common"] [data-im-reaction-value]'
+      )
+    ].find((button) => button.dataset.imReactionValue === selectedValue);
+    expect(selectedButton).toBeDefined();
+
+    await act(async () => {
+      selectedButton?.click();
+    });
+    expect(readCommonOrder()).toEqual(initialOrder);
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='关闭表情面板']")?.click();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='打开表情面板']")?.click();
+    });
+    expect(readCommonOrder()[0]).toBe(selectedValue);
 
     await act(async () => root.unmount());
   });
@@ -173,6 +538,7 @@ describe("ImChatComposer", () => {
     });
 
     const inputShell = container.querySelector<HTMLElement>("[data-im-composer-input-shell='true']");
+    const composerRoot = container.querySelector<HTMLElement>("[data-im-composer-root='true']");
     const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]');
     const controls = [
       container.querySelector<HTMLButtonElement>("[data-im-composer-control='voice-input']"),
@@ -181,6 +547,9 @@ describe("ImChatComposer", () => {
     ];
 
     expect(inputShell?.classList.contains("items-end")).toBe(true);
+    expect(composerRoot?.classList.contains("safe-nav-bottom")).toBe(true);
+    expect(composerRoot?.classList.contains("px-3")).toBe(true);
+    expect(composerRoot?.className).not.toContain("pb-[max(12px,env(safe-area-inset-bottom))]");
     expect(editor?.parentElement?.parentElement?.classList.contains("min-h-[40px]")).toBe(true);
     expect(editor?.classList.contains("block")).toBe(true);
     for (const control of controls) {
@@ -240,6 +609,7 @@ describe("ImChatComposer", () => {
           onSend={onSend}
           panel={null}
           pendingImage={{ fileName: "poster.png", previewUrl: "blob:poster-preview" }}
+          voiceInputAriaLabel="录制语音"
         />
       );
     });
@@ -262,12 +632,198 @@ describe("ImChatComposer", () => {
     await act(async () => root.unmount());
   });
 
+  it("replaces the voice control with a custom leading accessory and runs a direct plus action", async () => {
+    const onOpenMore = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft=""
+          isNight
+          leadingAccessory={<img alt="当前账号" src="/avatar.jpg" />}
+          moreAction={{ ariaLabel: "执行自定义操作", run: onOpenMore }}
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+          sendLabel="回复"
+          sendingLabel="回复中"
+          voiceInputAriaLabel="录制语音"
+        />
+      );
+    });
+
+    expect(container.querySelector("[data-im-composer-leading-accessory='true'] img")?.getAttribute("alt")).toBe("当前账号");
+    expect(container.querySelector("[data-im-composer-control='voice-input']")).toBeNull();
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[aria-label='执行自定义操作']")?.click();
+    });
+
+    expect(onOpenMore).toHaveBeenCalledTimes(1);
+    await act(async () => root.unmount());
+  });
+
+  it("uses custom send copy without changing the default chat copy", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft="回复内容"
+          isNight
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+          sendLabel="回复"
+          voiceInputAriaLabel="录制语音"
+        />
+      );
+    });
+
+    expect([...container.querySelectorAll("button")].some((button) => button.textContent === "回复")).toBe(true);
+    await act(async () => root.unmount());
+  });
+
+  it("submits on plain Enter only when the optional keyboard-submit seam is enabled", async () => {
+    const onSend = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft="回复内容"
+          isNight
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={onSend}
+          panel={null}
+          submitOnEnter
+          voiceInputAriaLabel="录制语音"
+        />
+      );
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+    const enter = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" });
+    await act(async () => {
+      editor.dispatchEvent(enter);
+    });
+    expect(enter.defaultPrevented).toBe(true);
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    const shiftEnter = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", shiftKey: true });
+    await act(async () => {
+      editor.dispatchEvent(shiftEnter);
+    });
+    expect(shiftEnter.defaultPrevented).toBe(false);
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    const composingEnter = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      isComposing: true,
+      key: "Enter"
+    });
+    await act(async () => {
+      editor.dispatchEvent(composingEnter);
+    });
+    expect(composingEnter.defaultPrevented).toBe(false);
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
+
+  it("preserves the default chat Enter behavior when keyboard submission is omitted", async () => {
+    const onSend = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft="聊天内容"
+          isNight
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={onSend}
+          panel={null}
+          voiceInputAriaLabel="录制语音"
+        />
+      );
+    });
+
+    const editor = container.querySelector<HTMLElement>('[data-im-composer-rich-input="true"]')!;
+    const enter = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" });
+    await act(async () => {
+      editor.dispatchEvent(enter);
+    });
+
+    expect(enter.defaultPrevented).toBe(false);
+    expect(onSend).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+
+  it("uses a native disabled textarea only when the caller opts into that restricted-input contract", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          disabled
+          draft="受限草稿"
+          isNight
+          nativeDisabledInput
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+        />
+      );
+    });
+
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[data-im-composer-native-input="true"]');
+    expect(textarea).not.toBeNull();
+    expect(textarea?.disabled).toBe(true);
+    expect(textarea?.value).toBe("受限草稿");
+    expect(container.querySelector('[data-im-composer-rich-input="true"]')).toBeNull();
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          draft="正常聊天"
+          isNight
+          nativeDisabledInput
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel={null}
+        />
+      );
+    });
+
+    expect(container.querySelector('textarea[data-im-composer-native-input="true"]')).toBeNull();
+    expect(container.querySelector('[data-im-composer-rich-input="true"]')).not.toBeNull();
+    await act(async () => root.unmount());
+  });
+
   it("defines bottom-navigation glass, upward panel growth, touch targets, and reduced motion", () => {
     expect(stylesSource).toContain(".client-shell .im-composer-glass");
     expect(stylesSource).toContain(".im-chat-composer-stack");
     expect(stylesSource).toContain("gap: 8px");
     expect(stylesSource).toContain(".im-composer-panel");
-    expect(stylesSource).toContain("max-height: 42dvh");
+    expect(stylesSource).toContain("max-height: min(42dvh, calc(var(--im-visual-viewport-height, 100dvh) * 0.42))");
     expect(stylesSource).toContain("overflow-y: auto");
     expect(stylesSource).toContain("@media (pointer: coarse)");
     expect(stylesSource).toContain("@media (prefers-reduced-motion: reduce)");
@@ -278,5 +834,63 @@ describe("ImChatComposer", () => {
     expect(stylesSource).toContain("margin-bottom: calc(-1 * var(--im-composer-overlay-height, 85px))");
     expect(stylesSource).toContain("padding-bottom: calc(var(--im-composer-overlay-height, 85px) + 12px)");
     expect(stylesSource).toContain("min-width: 36px");
+  });
+
+  it("gives the shared emoji and attachment panel a two-row mobile height while preserving short-viewport shrink", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<ComposerHarness actionRun={vi.fn()} />);
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[data-im-composer-control='emoji-chat']")?.click();
+    });
+    expect(container.querySelector("[data-im-composer-panel='emoji']")?.classList.contains("im-composer-panel")).toBe(true);
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("[data-im-composer-control='emoji-chat']")?.click();
+      container.querySelector<HTMLButtonElement>("[aria-label='打开更多功能']")?.click();
+    });
+    expect(container.querySelector("[data-im-composer-panel='more']")?.classList.contains("im-composer-panel")).toBe(true);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: min\(232px, calc\(var\(--im-visual-viewport-height, 100dvh\) \* 0\.42\)\);/s);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*height: min\(340px, calc\(var\(--im-visual-viewport-height, 100dvh\) \* 0\.42\)\);/s);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*flex: 0 1 min\(340px, calc\(var\(--im-visual-viewport-height, 100dvh\) \* 0\.42\)\);/s);
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps tall drafts and media scrollable inside a height-constrained composer", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImChatComposer
+          actions={[{ icon: "photo", key: "image", label: "相册", run: vi.fn() }]}
+          draft={Array.from({ length: 7 }, () => "输入窗口检查").join("\n")}
+          isNight
+          onDraftChange={vi.fn()}
+          onPanelChange={vi.fn()}
+          onSend={vi.fn()}
+          panel="emoji"
+          pendingImage={{ fileName: "layout.png", previewUrl: "blob:layout" }}
+        />
+      );
+    });
+
+    const editorShell = container.querySelector<HTMLElement>("[data-im-composer-editor-shell='true']");
+    expect(editorShell).not.toBeNull();
+    expect(editorShell?.classList.contains("max-h-full")).toBe(true);
+    expect(editorShell?.classList.contains("overflow-y-auto")).toBe(true);
+    expect(stylesSource).toMatch(/\.im-chat-composer-root \{[^}]*max-height: 100%;[^}]*flex: 0 1 auto;/s);
+    expect(stylesSource).toMatch(/\.im-composer-input-shell \{[^}]*flex: 0 1 auto;[^}]*overflow: hidden;/s);
+    expect(stylesSource).toMatch(/\.im-chat-composer-root:has\(\.im-composer-panel\) \.im-chat-composer-stack \{[^}]*gap: 4px;/s);
+    expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: min\(232px, calc\(var\(--im-visual-viewport-height, 100dvh\) \* 0\.42\)\);/s);
+
+    await act(async () => root.unmount());
   });
 });

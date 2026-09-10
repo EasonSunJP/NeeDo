@@ -12,6 +12,7 @@ import type {
 } from "./compensation-engine.service";
 import { CompensationEngine } from "./compensation-engine.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import { assertMerchantShopId, requireMerchantShopId } from "./merchant-shop-scope";
 
 export interface CompensationProfilePayload extends CompensationRuleSet {
   version: number;
@@ -54,11 +55,7 @@ export interface EmployeePayrollSummaryPayload {
 
 export type EmployeeCompensationProfilePayload = Omit<
   CompensationProfilePayload,
-  | "id"
-  | "shopId"
-  | "technicianProfileId"
-  | "createdById"
-  | "updatedById"
+  "id" | "shopId" | "technicianProfileId" | "createdById" | "updatedById"
 >;
 
 export interface EmployeeCompensationResult {
@@ -281,6 +278,8 @@ export class CompensationProfileService {
       dailyRateJpy: profile.dailyRateJpy,
       fixedOrderPayJpy: profile.fixedOrderPayJpy,
       commissionRatePercent: profile.commissionRatePercent,
+      extensionCommissionRatePercent: profile.extensionCommissionRatePercent,
+      nominationFeeJpy: profile.nominationFeeJpy,
       guaranteedMinimumJpy: profile.guaranteedMinimumJpy,
       ndpFeeBearer: profile.ndpFeeBearer,
       technicianNdpSharePercent: profile.technicianNdpSharePercent,
@@ -337,6 +336,8 @@ export class CompensationProfileService {
       dailyRateJpy: input.dailyRateJpy ?? 0,
       fixedOrderPayJpy: input.fixedOrderPayJpy ?? 0,
       commissionRatePercent: input.commissionRatePercent ?? 60,
+      extensionCommissionRatePercent: input.extensionCommissionRatePercent ?? 60,
+      nominationFeeJpy: input.nominationFeeJpy ?? 0,
       guaranteedMinimumJpy: input.guaranteedMinimumJpy ?? 0,
       ndpFeeBearer: input.ndpFeeBearer ?? "shop",
       technicianNdpSharePercent:
@@ -371,6 +372,8 @@ export class CompensationProfileService {
       dailyRateJpy: 0,
       fixedOrderPayJpy: 0,
       commissionRatePercent: 60,
+      extensionCommissionRatePercent: 60,
+      nominationFeeJpy: 0,
       guaranteedMinimumJpy: 0,
       ndpFeeBearer: "shop",
       technicianNdpSharePercent: 0,
@@ -388,30 +391,11 @@ export class CompensationProfileService {
   }
 
   private assertMerchantShopScope(actor: AuthenticatedAccessContext, shopId: number): void {
-    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId === shopId) {
-      return;
-    }
-
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    assertMerchantShopId(actor, shopId);
   }
 
   private requireMerchantShopScope(actor: AuthenticatedAccessContext): number {
-    if (
-      actor.currentIdentityScopeType === "shop" &&
-      typeof actor.currentIdentityScopeId === "number" &&
-      actor.currentIdentityScopeId > 0
-    ) {
-      return actor.currentIdentityScopeId;
-    }
-    throw new AppError({
-      code: ERROR_CODES.IDENTITY_FORBIDDEN,
-      message: "error.identity.forbidden",
-      statusCode: 403
-    });
+    return requireMerchantShopId(actor);
   }
 
   private async requireEmployeeAffiliation(shopId: number, needoId: string) {

@@ -39,9 +39,7 @@ describe("database index audit", () => {
     });
 
     expect(result.missingPrimaryKeys).toEqual(["order_events"]);
-    expect(result.unindexedForeignKeys).toEqual([
-      "order_events.order_id (order_events_order_fk)"
-    ]);
+    expect(result.unindexedForeignKeys).toEqual(["order_events.order_id (order_events_order_fk)"]);
     expect(result.softDeleteIndexWarnings).toEqual(["orders.deleted_at"]);
   });
 

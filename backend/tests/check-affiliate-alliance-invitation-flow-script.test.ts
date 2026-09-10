@@ -16,12 +16,58 @@ describe("affiliate alliance invitation real-database checker", () => {
   );
 
   it.each([
-    ["missing ENV_FILE", { envFile: "", envFileExists: false, databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" }, "requires ENV_FILE"],
-    ["missing file", { envFile: "/tmp/missing.env", envFileExists: false, databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" }, "environment file was not found"],
-    ["production runtime", { envFile: "/tmp/local.env", envFileExists: true, nodeEnv: "PRODUCTION", databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" }, "rejects production and staging"],
-    ["staging deployment", { envFile: "/tmp/local.env", envFileExists: true, deployEnv: "staging", databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" }, "rejects production and staging"],
-    ["remote MySQL", { envFile: "/tmp/local.env", envFileExists: true, databaseUrl: "mysql://root@db.example.com/needo_dev" }, "only accepts a local MySQL host"],
-    ["production database", { envFile: "/tmp/local.env", envFileExists: true, databaseUrl: "mysql://root@127.0.0.1/needo_prod" }, "rejects production-looking database names"]
+    [
+      "missing ENV_FILE",
+      { envFile: "", envFileExists: false, databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev" },
+      "requires ENV_FILE"
+    ],
+    [
+      "missing file",
+      {
+        envFile: "/tmp/missing.env",
+        envFileExists: false,
+        databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev"
+      },
+      "environment file was not found"
+    ],
+    [
+      "production runtime",
+      {
+        envFile: "/tmp/local.env",
+        envFileExists: true,
+        nodeEnv: "PRODUCTION",
+        databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev"
+      },
+      "rejects production and staging"
+    ],
+    [
+      "staging deployment",
+      {
+        envFile: "/tmp/local.env",
+        envFileExists: true,
+        deployEnv: "staging",
+        databaseUrl: "mysql://root@127.0.0.1:3307/needo_dev"
+      },
+      "rejects production and staging"
+    ],
+    [
+      "remote MySQL",
+      {
+        envFile: "/tmp/local.env",
+        envFileExists: true,
+        databaseUrl: "mysql://root@db.example.com/needo_dev"
+      },
+      "only accepts a local MySQL host"
+    ],
+    [
+      "production database",
+      {
+        envFile: "/tmp/local.env",
+        envFileExists: true,
+        databaseUrl: "mysql://root@127.0.0.1/needo_prod"
+      },
+      "rejects production-looking database names"
+    ]
   ])("rejects %s", (_label, input, message) => {
     expect(() => assertSafeAffiliateAllianceInvitationEnvironment(input)).toThrow(message);
   });

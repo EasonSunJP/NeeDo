@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import {
+  backofficeRealDataApi,
+  type ShopPresentationLocale,
+  type ShopPresentationWorkspacePayload
+} from "../../api/backofficeRealData";
+import {
   AppIcon,
   AppTopBar,
   EmptyStatePanel,
@@ -25,6 +30,7 @@ import { MomentActionBar } from "../../components/mobile/MomentActionBar";
 import { OfferInfoCard } from "../../components/mobile/OfferInfoCard";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { AvatarImage } from "../../components/ui/AvatarImage";
+import { DangerConfirmDialog } from "../../components/ui/DangerConfirmDialog";
 import { ImageAdjustmentEditor } from "../../components/ui/ImageAdjustmentEditor";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
@@ -44,11 +50,15 @@ import {
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
+import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
+import { canAddShopService, SHOP_SERVICE_LIMIT } from "../../features/pricing-mode/shopServiceLimit";
+import { applyShopPresentationLocale, buildShopPresentationContent, mergeUploadedCarouselImage } from "../../features/shop-presentation/model";
+import { ShopServiceTaxonomyEditor } from "../../features/shop-taxonomy/ShopServiceTaxonomyEditor";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
-import type { Language } from "../../i18n/translations";
+import { registerTranslationEntries, translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
 import { buildStoreCheckoutRoute } from "../../lib/storeBookingRoute";
@@ -61,13 +71,32 @@ import {
 import { getStoreCardDecorationConfig, getStoreDecorationBlockConfig, getStoreUiDecoration } from "../../lib/storeUiDecoration";
 import { cn, yen } from "../../lib/utils";
 import { shareContent } from "../../lib/share";
-import { TechnicianShowcaseCard } from "../../shared/profile-card";
-import { TechnicianPublicInfoCardModal } from "../../shared/profile-card/TechnicianPublicInfoCard";
+import { getScopedTechnicianDynamicPath, TechnicianShowcaseCard } from "../../shared/profile-card";
 import { SimpleRatingBadge } from "../../shared/profile-card/SimpleRatingBadge";
-import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
+import { getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
+import {
+  mapCoreServiceCardToUnifiedData,
+  mapStoreMenuConfigToUnifiedData,
+  UnifiedServiceInfoCard,
+  type UnifiedServiceInfoCardData
+} from "../../shared/service-card";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
 import type { Order, OrderStatus, Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
+
+registerTranslationEntries({
+  "同步": { "zh-Hant": "同步", ja: "同期", en: "Sync", ko: "동기화" },
+  "同步所有语言版本": { "zh-Hant": "同步所有語言版本", ja: "すべての言語版を同期", en: "Sync all language versions", ko: "모든 언어 버전 동기화" },
+  "将会用当前语言版本的图片和文字覆盖其他语言版本，真的要执行同步吗？": {
+    "zh-Hant": "目前語言版本的圖片和文字將覆蓋其他語言版本。確定要執行同步嗎？",
+    ja: "現在の言語版の画像と文章で、ほかの言語版を上書きします。本当に同期しますか？",
+    en: "The current language version's images and text will overwrite every other language version. Do you want to sync?",
+    ko: "현재 언어 버전의 이미지와 텍스트가 다른 모든 언어 버전을 덮어씁니다. 동기화하시겠습니까?"
+  },
+  "确认同步": { "zh-Hant": "確認同步", ja: "同期する", en: "Confirm sync", ko: "동기화 확인" },
+  "正在同步": { "zh-Hant": "正在同步", ja: "同期中", en: "Syncing", ko: "동기화 중" },
+  "同步失败，请重新读取后再试": { "zh-Hant": "同步失敗，請重新讀取後再試", ja: "同期できませんでした。再読み込みしてからもう一度お試しください", en: "Sync failed. Reload the drafts and try again.", ko: "동기화하지 못했습니다. 초안을 다시 불러온 후 재시도하세요." }
+});
 
 type StoreTab = "home" | "seats" | "menu" | "moments" | "offers" | "map";
 type StoreIndustry = StorePresentationIndustry;
@@ -78,6 +107,19 @@ type ActiveStoreDisplayEditor = {
   mode: StoreDisplayEditorMode;
   target: string;
 };
+const shopPresentationLocales: Array<{ code: ShopPresentationLocale; label: string; shortLabel: string }> = [
+  { code: "ja", label: "日本語", shortLabel: "日" },
+  { code: "en", label: "English", shortLabel: "EN" },
+  { code: "ko", label: "한국어", shortLabel: "한" },
+  { code: "zh-CN", label: "简体中文", shortLabel: "简" },
+  { code: "zh-TW", label: "繁體中文", shortLabel: "繁" }
+];
+
+function languageToShopPresentationLocale(language: Language): ShopPresentationLocale {
+  if (language === "ja" || language === "en" || language === "ko") return language;
+  if (language === "zh-Hant") return "zh-TW";
+  return "zh-CN";
+}
 type PendingStoreImageEdit = {
   apply: (editedImage: string) => void;
   aspectRatio: number;
@@ -89,15 +131,17 @@ type PendingStoreImageEdit = {
 };
 type StoreDetailExperienceProps = {
   embedded?: boolean;
+  formalApiOnly?: boolean;
   onEditFocus?: (focus: StoreDisplayExternalEditorMode) => void;
   pricingControl?: ReactNode;
   pricingMode?: "store" | "technician";
-  technicianPricingRatePercent?: number;
   privacyControl?: ReactNode;
   scope?: "user" | "merchant";
+  serviceCardsOverride?: UnifiedServiceInfoCardData[];
   store: Store;
   techniciansOverride?: Technician[];
   presentationOverride?: StorePresentationConfig;
+  transportSummary?: string;
   hideUnavailableReviewDetails?: boolean;
 };
 
@@ -132,7 +176,9 @@ type SeatCard = {
   cover: string;
 };
 
-type MenuCard = StoreMenuConfig;
+type MenuCard = StoreMenuConfig & {
+  serviceInfo?: UnifiedServiceInfoCardData;
+};
 
 type OfferCard = StoreOfferConfig;
 type StoreProfileConfig = StorePresentationConfig;
@@ -726,7 +772,7 @@ function buildServiceMenuPriceRangeLabel(store: Store, industry: StoreIndustry) 
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
 
-  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)}-${yen(maxPrice)}`;
+  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)} ~ ${yen(maxPrice)}`;
 }
 
 function buildDisplayedMenuPriceRangeLabel(menuCards: MenuCard[], fallback: string) {
@@ -742,7 +788,7 @@ function buildDisplayedMenuPriceRangeLabel(menuCards: MenuCard[], fallback: stri
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
 
-  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)}-${yen(maxPrice)}`;
+  return minPrice === maxPrice ? yen(minPrice) : `${yen(minPrice)} ~ ${yen(maxPrice)}`;
 }
 
 function buildMenuCards(store: Store, industry: StoreIndustry): MenuCard[] {
@@ -1280,7 +1326,7 @@ function StoreTechnicianServiceListRow({
   onSelect,
   onToggleVisibility,
   profileTo,
-  quoteRatePercent = 100,
+  hideServicePreview = false,
   selected,
   serviceListTo,
   technician,
@@ -1292,21 +1338,19 @@ function StoreTechnicianServiceListRow({
   onSelect?: () => void;
   onToggleVisibility?: () => void;
   profileTo: string;
-  quoteRatePercent?: number;
+  hideServicePreview?: boolean;
   selected?: boolean;
   serviceListTo: string;
   technician: Technician;
   technicianVisible?: boolean;
   unavailable?: boolean;
 }) {
-  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
   const displayName = getStoreTechnicianDisplayName(technician);
   const recommendedService = getStoreRecommendedServiceForTechnician(technician, fallbackServices);
   const packageInfo = recommendedService?.packages[0];
   const price = packageInfo?.price ?? recommendedService?.priceFrom ?? Number.parseInt(technician.bidBudgetMin ?? "", 10);
-  const displayedPrice = Number.isFinite(price) && price > 0 ? Math.round((price * quoteRatePercent) / 100) : price;
   const duration = packageInfo?.durationMinutes ?? 60;
-  const priceLabel = Number.isFinite(displayedPrice) && displayedPrice > 0 ? yen(displayedPrice) : "预约确认";
+  const priceLabel = Number.isFinite(price) && price > 0 ? yen(price) : "预约确认";
   const serviceName = recommendedService?.name ?? technician.skills[0] ?? "预约服务";
   const favoriteCount = Math.max(0, technician.orderCount);
   const shareCount = 0;
@@ -1317,7 +1361,6 @@ function StoreTechnicianServiceListRow({
   const showSelectionAction = !isMerchantEditable && typeof selected === "boolean" && Boolean(onSelect);
 
   return (
-    <>
     <article
       className={cn(
         "relative grid grid-cols-[118px_minmax(0,1fr)] gap-3 overflow-hidden rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_92%,transparent)] p-2.5 shadow-[0_14px_28px_rgba(0,0,0,0.14)]",
@@ -1346,12 +1389,11 @@ function StoreTechnicianServiceListRow({
           onSelect={onSelect}
         />
       ) : null}
-      <button
+      <Link
         aria-label={`查看${displayName}信息卡`}
         className="group relative min-h-[158px] overflow-hidden rounded-[14px] bg-black active:scale-[0.99]"
-        onClick={() => setTechnicianInfoCardOpen(true)}
         title="查看技师信息卡"
-        type="button"
+        to={profileTo}
       >
         <img
           alt={displayName}
@@ -1362,7 +1404,7 @@ function StoreTechnicianServiceListRow({
         <div className="absolute left-2 top-2 z-20">
           <SimpleRatingBadge compact value={formatStoreTechnicianRating(technician.rating).toFixed(1)} />
         </div>
-      </button>
+      </Link>
       <div className={cn("pointer-events-none absolute top-2 z-20 flex items-start gap-1", (isMerchantEditable || showSelectionAction) ? "right-[58px]" : "right-2")}>
         <IconMetricAction count={favoriteCount} icon="heart" label={`关注 ${favoriteCount}`} size="cluster" />
         <IconMetricAction count={shareCount} icon="share" label={`转发 ${shareCount}`} size="cluster" />
@@ -1391,23 +1433,21 @@ function StoreTechnicianServiceListRow({
           >
             <AppIcon className="h-4 w-4" name="info" />
           </span>
-          <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]">推荐服务</p>
-          <h4 className="mt-1.5 line-clamp-2 text-[14px] font-black leading-5 text-[color:var(--client-text)]">{serviceName}</h4>
-          <p className="mt-1 flex min-w-0 items-baseline gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
-            <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
-            <span className="min-w-0 truncate">/ {duration}分钟(含税)</span>
-          </p>
+          {hideServicePreview ? (
+            <p className="py-2 text-[13px] font-black text-[color:var(--client-text)]">选择该技师并查看服务</p>
+          ) : (
+            <>
+              <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]">推荐服务</p>
+              <h4 className="mt-1.5 line-clamp-2 text-[14px] font-black leading-5 text-[color:var(--client-text)]">{serviceName}</h4>
+              <p className="mt-1 flex min-w-0 items-baseline gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
+                <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
+                <span className="min-w-0 truncate">/ {duration}分钟(含税)</span>
+              </p>
+            </>
+          )}
         </div>
       </Link>
     </article>
-    <TechnicianPublicInfoCardModal
-      dynamicTo={profileTo}
-      onClose={() => setTechnicianInfoCardOpen(false)}
-      open={technicianInfoCardOpen}
-      technician={technician}
-      themeScope={isMerchantEditable ? "merchant" : "user"}
-    />
-    </>
   );
 }
 
@@ -1531,15 +1571,16 @@ function StoreMenuCoverImage({
   );
 }
 
-function MerchantAddServiceButton({ onAdd }: { onAdd: () => void }) {
+function MerchantAddServiceButton({ disabled, onAdd }: { disabled: boolean; onAdd: () => void }) {
   return (
     <button
       className="focus-ring inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_16%,var(--client-surface)_84%)] px-4 text-sm font-black text-[color:var(--client-text)] shadow-[0_14px_28px_color-mix(in_srgb,var(--client-primary)_10%,transparent)]"
+      disabled={disabled}
       onClick={onAdd}
       type="button"
     >
       <AppIcon className="h-4 w-4 text-[color:var(--client-primary)]" name="plus" />
-      添加服务
+      {disabled ? `服务已达上限 ${SHOP_SERVICE_LIMIT}/${SHOP_SERVICE_LIMIT}` : "添加服务"}
     </button>
   );
 }
@@ -2012,39 +2053,34 @@ function StoreDisplayInlineEditor({
   images,
   industry,
   mode,
-  store
+  store,
+  onGalleryChange,
+  onPresentationChange,
+  onStoreChange
 }: {
   config: StorePresentationConfig;
   images: string[];
   industry: StoreIndustry;
   mode: StoreDisplayEditorMode;
   store: Store;
+  onGalleryChange?: (images: string[]) => void;
+  onPresentationChange?: <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => void;
+  onStoreChange?: (changes: Partial<Store>) => void;
 }) {
   const updateBasicStoreField = (key: (typeof storeBasicEditorFields)[number]["key"], value: string) => {
-    updateStoreEntity(store.id, { [key]: value } as Partial<Pick<Store, (typeof storeBasicEditorFields)[number]["key"]>>);
+    onStoreChange?.({ [key]: value } as Partial<Store>);
   };
   const updatePresentationField = <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => {
-    updateStoreEntity(store.id, {
-      presentation: normalizeStorePresentationConfig({ ...config, [key]: value }, industry)
-    });
+    onPresentationChange?.(key, value);
   };
   const updateOfferField = <Key extends keyof StoreOfferConfig>(offerIndex: number, key: Key, value: StoreOfferConfig[Key]) => {
-    updateStoreEntity(store.id, {
-      presentation: normalizeStorePresentationConfig(
-        {
-          ...config,
-          offers: config.offers.map((offer, index) => (index === offerIndex ? { ...offer, [key]: value } : offer))
-        },
-        industry
-      )
-    });
+    onPresentationChange?.(
+      "offers",
+      config.offers.map((offer, index) => (index === offerIndex ? { ...offer, [key]: value } : offer))
+    );
   };
   const updateGallery = (nextImages: string[]) => {
-    const gallery = nextImages.filter(Boolean).slice(0, 5);
-    updateStoreEntity(store.id, {
-      cover: gallery[0] ?? store.cover,
-      gallery
-    });
+    onGalleryChange?.(nextImages.filter(Boolean).slice(0, 5));
   };
   const editorTitle = mode === "gallery" ? "编辑图片" : mode === "basic" ? "编辑资料" : "编辑展示文字";
 
@@ -2105,7 +2141,7 @@ function StoreDisplayInlineEditor({
             <span className="text-xs font-bold text-[color:var(--client-muted)]">店铺标签</span>
             <textarea
               className="min-h-[78px] rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-3 py-2 text-[color:var(--client-text)] outline-none"
-              onChange={(event) => updateStoreEntity(store.id, { tags: textToList(event.target.value) })}
+              onChange={(event) => onStoreChange?.({ tags: textToList(event.target.value) })}
               value={listToText(store.tags)}
             />
           </label>
@@ -2555,9 +2591,18 @@ function CompactMenuCard({
   onReplaceImage?: (files: FileList | null) => void;
 }) {
   const solidTags = cardUi?.tagStyle === "实心";
+  const serviceData = item.serviceInfo;
   const updateField = <Key extends keyof MenuCard>(key: Key, value: MenuCard[Key]) => {
     onChange?.({ ...item, [key]: value });
   };
+
+  if (serviceData && !editing) {
+    const actionSlot = showSelectAction ? (
+      <StoreSelectionIconButton active={selected} activeIcon={activeIcon} inactiveIcon={inactiveIcon} label={selectLabel} onSelect={onSelect} />
+    ) : editor;
+
+    return <UnifiedServiceInfoCard actionSlot={actionSlot} data={serviceData} />;
+  }
 
   return (
     <FlatCard className="p-2.5" editor={editor}>
@@ -2583,8 +2628,8 @@ function CompactMenuCard({
           <EditableMenuChipInputs editing={editing} items={item.tags} onChange={(tags) => updateField("tags", tags)} slotCount={3} solid={solidTags} wrap={false}>
             <InlineEditableText
               className="min-w-0 truncate whitespace-nowrap rounded-[9px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-muted)]"
-              editing={editing}
-              onChange={(value) => updateField("duration", value)}
+              editing={false}
+              onChange={() => undefined}
               value={item.duration}
             />
             <InlineEditableText
@@ -2613,8 +2658,8 @@ function CompactMenuCard({
           <div className="mt-2 flex min-w-0 items-center justify-between gap-2 sm:flex-wrap sm:justify-start sm:gap-x-3 sm:gap-y-1">
             <InlineEditableText
               className="min-w-[88px] shrink-0 text-[22px] font-black tracking-[-0.04em] text-[color:var(--client-primary)] sm:w-[112px]"
-              editing={editing}
-              onChange={(value) => updateField("priceLabel", value)}
+              editing={false}
+              onChange={() => undefined}
               value={item.priceLabel}
             />
             {showSelectAction ? (
@@ -2681,15 +2726,17 @@ function EnvironmentGalleryCard({
 
 export function StoreDetailExperience({
   embedded = false,
+  formalApiOnly = false,
   onEditFocus,
   pricingControl,
   pricingMode = "store",
   privacyControl,
   scope = "user",
-  store,
-  technicianPricingRatePercent,
+  serviceCardsOverride,
+  store: sourceStore,
   techniciansOverride,
   presentationOverride,
+  transportSummary,
   hideUnavailableReviewDetails = false
 }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
@@ -2698,24 +2745,62 @@ export function StoreDetailExperience({
   const { language } = useI18n();
   const { customers, technicians } = useEntityStore();
   const displayedTechnicians = techniciansOverride ?? technicians;
-  const storeApiId = useMemo(() => storeDetailRouteEntityIdToApiId(store.id), [store.id]);
+  const storeApiId = useMemo(() => storeDetailRouteEntityIdToApiId(sourceStore.id), [sourceStore.id]);
   const [bookingNavigation, setBookingNavigation] = useState<BookingNavigationResponse | null>(null);
   const { getActorForScope, getProfilePosts } = useSocial();
   const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
-  const industry = detectStoreIndustry(store);
+  const industry = detectStoreIndustry(sourceStore);
   const socialActorKey = getActorForScope(scope);
   const isMerchantShell =
     typeof window !== "undefined" && (window.location.pathname.includes("merchant") || window.location.hash.startsWith("#/merchant"));
-  const isMerchantOwnedStore = Boolean(session && session.linkedStoreId === store.id && session.allowedPortals.includes("merchant"));
+  const isMerchantOwnedStore = Boolean(session && session.linkedStoreId === sourceStore.id && session.allowedPortals.includes("merchant"));
   const isMerchantEditable = Boolean(
     onEditFocus || scope === "merchant" || (isMerchantOwnedStore && (session?.portal === "merchant" || isMerchantShell))
   );
+  const [editableStore, setEditableStore] = useState(sourceStore);
+  const store = isMerchantEditable ? editableStore : sourceStore;
+  const [presentationLocale, setPresentationLocale] = useState<ShopPresentationLocale>(() => languageToShopPresentationLocale(language));
+  const [presentationWorkspace, setPresentationWorkspace] = useState<ShopPresentationWorkspacePayload | null>(null);
+  const [presentationDrafts, setPresentationDrafts] = useState<Partial<Record<ShopPresentationLocale, Store>>>({});
+  const [presentationSaveState, setPresentationSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("idle");
+  const [presentationError, setPresentationError] = useState("");
+  const [presentationSyncConfirmOpen, setPresentationSyncConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    setEditableStore(sourceStore);
+    setPresentationWorkspace(null);
+    setPresentationDrafts({});
+    setPresentationSaveState("idle");
+    setPresentationError("");
+    setPresentationSyncConfirmOpen(false);
+  }, [sourceStore.id]);
+
+  useEffect(() => {
+    if (!isMerchantEditable || presentationWorkspace) return;
+    let mounted = true;
+    setPresentationSaveState("loading");
+    backofficeRealDataApi.merchantShopPresentation()
+      .then((workspace) => {
+        if (!mounted) return;
+        const drafts = Object.fromEntries(shopPresentationLocales.map(({ code }) => [
+          code,
+          applyShopPresentationLocale(sourceStore, workspace.locales[code], workspace.media, workspace.services)
+        ])) as Record<ShopPresentationLocale, Store>;
+        setPresentationWorkspace(workspace);
+        setPresentationDrafts(drafts);
+        setEditableStore(drafts[presentationLocale]);
+        setPresentationSaveState("idle");
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        setPresentationError(error instanceof Error ? error.message : "error.shop_presentation.load_failed");
+        setPresentationSaveState("error");
+      });
+    return () => { mounted = false; };
+  }, [isMerchantEditable, presentationLocale, presentationWorkspace, sourceStore]);
   const isTechnicianPricingEntry =
     !isMerchantEditable && bookingNavigation?.pricingMode === "technician";
   const isTechnicianPricingActive = isMerchantEditable ? pricingMode === "technician" : isTechnicianPricingEntry;
-  const effectiveTechnicianPricingRatePercent = isTechnicianPricingActive
-    ? technicianPricingRatePercent ?? bookingNavigation?.technicianPricingRatePercent ?? 100
-    : 100;
   const heroBlock = useMemo(() => getStoreDecorationBlockConfig(store, "hero"), [store.id, store.uiDecoration]);
   const bookingBlock = useMemo(() => getStoreDecorationBlockConfig(store, "booking"), [store.id, store.uiDecoration]);
   const menuBlock = useMemo(() => getStoreDecorationBlockConfig(store, "menu"), [store.id, store.uiDecoration]);
@@ -2770,8 +2855,35 @@ export function StoreDetailExperience({
     [industry, presentationOverride, store, store.presentation]
   );
   const seatCards = useMemo(() => buildSeatCards(store, industry), [industry, store]);
-  const baseMenuCards = useMemo(() => buildMenuCards(store, industry), [industry, store]);
-  const menuCards = useMemo(() => mergeMenuCardOverrides(baseMenuCards, config.menuCards), [baseMenuCards, config.menuCards]);
+  const formalBookingMenuCards = useMemo(
+    () => bookingNavigation?.entry === "service_menu"
+      ? bookingNavigation.services.list.map((service) => mapBookingNavigationServiceToMenuCard(service, store.cover))
+      : [],
+    [bookingNavigation, store.cover]
+  );
+  const baseMenuCards = useMemo<MenuCard[]>(
+    () => (formalApiOnly ? formalBookingMenuCards : buildMenuCards(store, industry)),
+    [formalApiOnly, formalBookingMenuCards, industry, store]
+  );
+  const serviceInfoById = useMemo(
+    () => new Map((serviceCardsOverride ?? []).map((service) => [service.id, service])),
+    [serviceCardsOverride]
+  );
+  const menuCards = useMemo(() => {
+    const sourceCards = formalApiOnly && !isMerchantEditable
+      ? baseMenuCards
+      : mergeMenuCardOverrides(baseMenuCards, config.menuCards);
+
+    return sourceCards.map((menuCard) => ({
+      ...menuCard,
+      serviceInfo:
+        serviceInfoById.get(menuCard.sourceServiceId) ??
+        menuCard.serviceInfo ??
+        mapStoreMenuConfigToUnifiedData(menuCard, store),
+    }));
+  },
+    [baseMenuCards, config.menuCards, formalApiOnly, isMerchantEditable, serviceInfoById, store]
+  );
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
   const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
   const mapDetailCopy = storeMapDetailCopyByIndustry[industry];
@@ -2839,7 +2951,8 @@ export function StoreDetailExperience({
       ) ?? null,
     [displayedTechnicians, routeTechnicianId, store.id]
   );
-  const primaryCheckoutTarget = menuCards[0]?.sourceServiceId ?? services[0]?.id ?? "svc-fallback";
+  const primaryCheckoutTarget =
+    menuCards[0]?.sourceServiceId ?? (formalApiOnly ? "" : services[0]?.id ?? "svc-fallback");
   const baseShareCount = useMemo(() => socialPosts.reduce((sum, post) => sum + post.repostCount, 0), [socialPosts]);
   const pinnedSocialPost = socialPosts.find((post) => post.isPinned);
   const regularSocialPosts = pinnedSocialPost ? socialPosts.filter((post) => post.id !== pinnedSocialPost.id) : socialPosts;
@@ -2864,6 +2977,7 @@ export function StoreDetailExperience({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [activeEditor, setActiveEditor] = useState<ActiveStoreDisplayEditor | null>(null);
   const [pendingStoreImageEdit, setPendingStoreImageEdit] = useState<PendingStoreImageEdit | null>(null);
+  const [displayedTaxonomyLabels, setDisplayedTaxonomyLabels] = useState(() => store.tags);
 
   useEffect(() => {
     setActiveTab("home");
@@ -2883,7 +2997,8 @@ export function StoreDetailExperience({
     setOfferReplyBoosts({});
     setLightboxIndex(null);
     setActiveEditor(null);
-  }, [industry, primaryCheckoutTarget, routeTechnicianId, routeTime, routeVisitDate, store.alwaysBookable, store.id, store.nextSlot]);
+    setDisplayedTaxonomyLabels(store.tags);
+  }, [routeTechnicianId, routeTime, routeVisitDate, sourceStore.id]);
 
   useEffect(() => {
     setActiveImageIndex((current) => Math.min(current, Math.max(0, images.length - 1)));
@@ -2934,6 +3049,7 @@ export function StoreDetailExperience({
   const favoriteCount = config.favoriteCount + (isFavorite ? 1 : 0);
   const shareCount = baseShareCount + shareBoost;
   const selectedCheckoutTarget = menuCards.some((item) => item.sourceServiceId === selectedMenuCardId) ? selectedMenuCardId : primaryCheckoutTarget;
+  const hasBookableCheckoutTarget = selectedCheckoutTarget.length > 0;
   const selectedBookingDurationMinutes = useMemo(
     () => parseBookingDurationMinutes(menuCards.find((item) => item.sourceServiceId === selectedCheckoutTarget)?.duration),
     [menuCards, selectedCheckoutTarget]
@@ -2994,47 +3110,70 @@ export function StoreDetailExperience({
       technicianId: selectedBookingTechnician?.id,
       time: selectedTime
     });
-  const bookingHref = buildBookingHref(selectedCheckoutTarget);
+  const bookingHref = hasBookableCheckoutTarget ? buildBookingHref(selectedCheckoutTarget) : undefined;
+  const renderBookingAction = (className: string, label: string) =>
+    hasBookableCheckoutTarget ? (
+      <PrimaryButton className={className} to={bookingHref}>
+        <AppIcon className="h-4 w-4" name="calendar" />
+        <span>{label}</span>
+      </PrimaryButton>
+    ) : (
+      <div
+        aria-disabled="true"
+        className={cn(
+          className,
+          "inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] px-5 text-sm font-black text-[color:var(--client-muted)] opacity-70"
+        )}
+        role="button"
+      >
+        <AppIcon className="h-4 w-4" name="calendar" />
+        <span>暂无可预约服务</span>
+      </div>
+    );
   const canForwardOfferToNeedo = session?.portal === "merchant" && session.linkedStoreId === store.id && !isMerchantEditable;
   const updateBasicStoreField = (key: StoreBasicEditorFieldKey, value: string) => {
-    updateStoreEntity(store.id, { [key]: value } as Partial<Pick<Store, StoreBasicEditorFieldKey>>);
+    setEditableStore((current) => ({ ...current, [key]: value }));
   };
   const updatePresentationField = <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => {
-    updateStoreEntity(store.id, {
-      presentation: normalizeStorePresentationConfig({ ...config, [key]: value }, industry)
-    });
+    setEditableStore((current) => ({
+      ...current,
+      presentation: normalizeStorePresentationConfig({ ...current.presentation, [key]: value }, industry)
+    }));
   };
   const updateOfferField = <Key extends keyof StoreOfferConfig>(offerIndex: number, key: Key, value: StoreOfferConfig[Key]) => {
-    updateStoreEntity(store.id, {
+    setEditableStore((current) => ({
+      ...current,
       presentation: normalizeStorePresentationConfig(
         {
-          ...config,
-          offers: config.offers.map((offer, index) => (index === offerIndex ? { ...offer, [key]: value } : offer))
+          ...current.presentation,
+          offers: normalizeStorePresentationConfig(current.presentation, industry).offers.map((offer, index) => (index === offerIndex ? { ...offer, [key]: value } : offer))
         },
         industry
       )
-    });
+    }));
   };
   const updateMenuCards = (nextMenuCards: MenuCard[]) => {
-    updateStoreEntity(store.id, {
+    setEditableStore((current) => ({
+      ...current,
       presentation: normalizeStorePresentationConfig(
         {
-          ...config,
+          ...current.presentation,
           menuCards: nextMenuCards
         },
         industry
       )
-    });
+    }));
   };
   const updateMenuCard = (menuIndex: number, nextMenuCard: MenuCard) => {
     updateMenuCards(menuCards.map((menuCard, index) => (index === menuIndex ? nextMenuCard : menuCard)));
   };
   const updateGallery = (nextImages: string[]) => {
     const gallery = nextImages.filter(Boolean).slice(0, 5);
-    updateStoreEntity(store.id, {
+    setEditableStore((current) => ({
+      ...current,
       cover: gallery[0] ?? store.cover,
       gallery
-    });
+    }));
   };
   const openStoreImageEditor = (source: string, apply: (editedImage: string) => void, options?: Partial<Pick<PendingStoreImageEdit, "aspectRatio" | "description" | "frameClassName" | "frameWidth" | "title">>) => {
     setPendingStoreImageEdit({
@@ -3059,40 +3198,81 @@ export function StoreDetailExperience({
       setSelectedTechnicianId("");
     }
   };
+  const uploadPresentationImage = async (files: FileList | null, altText: string) => {
+    const file = files?.[0];
+    if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) return null;
+    setPresentationSaveState("saving");
+    setPresentationError("");
+    try {
+      const uploaded = await backofficeRealDataApi.uploadMerchantShopPresentationMedia(file, altText);
+      setPresentationWorkspace((current) => current ? {
+        ...current,
+        media: { ...current.media, [uploaded.publicId]: { url: uploaded.url, altText } }
+      } : current);
+      setPresentationSaveState("idle");
+      return uploaded.url;
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "error.shop_presentation.media_invalid");
+      setPresentationSaveState("error");
+      return null;
+    }
+  };
+  const formalPresentationMediaUrls = new Set(
+    Object.values(presentationWorkspace?.media ?? {}).map((media) => media.url)
+  );
+  const formalCarouselImageCount = new Set(images.filter((image) => formalPresentationMediaUrls.has(image))).size;
   const replaceGalleryImage = async (imageIndex: number, files: FileList | null) => {
-    const [nextImage] = await readImageFilesAsDataUrls(files, 1);
-
+    const nextImage = await uploadPresentationImage(files, `${store.name} 首页轮播图 ${imageIndex + 1}`);
     if (!nextImage) {
       return;
     }
-
-    openStoreImageEditor(nextImage, (editedImage) => updateGallery(images.map((image, index) => (index === imageIndex ? editedImage : image))), {
-      aspectRatio: storeHeroGalleryAspectRatio,
-      frameClassName: storeHeroGalleryRadiusClassName,
-      frameWidth: storeHeroGalleryEditorFrameWidth,
-      title: "展示图片编辑"
-    });
+    updateGallery(mergeUploadedCarouselImage({
+      images,
+      formalMediaUrls: formalPresentationMediaUrls,
+      uploadedUrl: nextImage,
+      replaceIndex: imageIndex
+    }));
+  };
+  const addGalleryImage = async (files: FileList | null) => {
+    if (formalCarouselImageCount >= 5) return;
+    const nextImage = await uploadPresentationImage(files, `${store.name} 首页轮播图 ${formalCarouselImageCount + 1}`);
+    if (nextImage) {
+      updateGallery(mergeUploadedCarouselImage({
+        images,
+        formalMediaUrls: formalPresentationMediaUrls,
+        uploadedUrl: nextImage
+      }));
+    }
   };
   const replaceMenuCardImage = async (menuIndex: number, files: FileList | null) => {
-    const [nextImage] = await readImageFilesAsDataUrls(files, 1);
-
+    const nextImage = await uploadPresentationImage(files, `${store.name} 服务套餐图片`);
     if (!nextImage) {
       return;
     }
-
-    openStoreImageEditor(nextImage, (editedImage) => updateMenuCard(menuIndex, { ...menuCards[menuIndex], cover: editedImage }), {
-      aspectRatio: getStoreMenuImageEditorAspectRatio(packageCardUi),
-      frameClassName: storeMenuCoverRadiusClassName,
-      frameWidth: storeMenuCoverReferenceWidth,
-      title: "菜单图片编辑"
-    });
+    updateMenuCard(menuIndex, { ...menuCards[menuIndex], cover: nextImage });
   };
   const addMerchantMenuCard = () => {
-    const nextMenuCard = buildNextStoreMenuCard({
-      images,
-      menuCards,
-      store
-    });
+    if (!canAddShopService(menuCards.length) || !presentationWorkspace) return;
+    const usedServiceIds = new Set(menuCards.map((item) => Number(item.sourceServiceId)));
+    const service = presentationWorkspace.services.find((item) => !usedServiceIds.has(item.id));
+    if (!service) return;
+    const amount = Number(service.priceAmount);
+    const nextMenuCard: MenuCard = {
+      id: `shop-service-${service.id}`,
+      sourceServiceId: String(service.id),
+      name: service.name,
+      subtitle: service.description,
+      duration: `${service.durationMinutes} 分钟`,
+      priceLabel: Number.isFinite(amount)
+        ? new Intl.NumberFormat("ja-JP", { style: "currency", currency: service.currency, maximumFractionDigits: 0 }).format(amount)
+        : `${service.priceAmount} ${service.currency}`,
+      audience: "",
+      tags: [],
+      cover: service.coverMediaAssetPublicId
+        ? presentationWorkspace.media[service.coverMediaAssetPublicId]?.url ?? store.cover
+        : store.cover,
+      highlights: []
+    };
     const nextMenuCardEditorTarget = activeTab === "menu" ? `menu-${nextMenuCard.id}` : `home-menu-${nextMenuCard.id}`;
 
     setServiceMenuCollapsed(false);
@@ -3110,6 +3290,67 @@ export function StoreDetailExperience({
 
     setActiveEditor((current) => (current?.target === target ? null : { mode: focus, target }));
   };
+  const switchPresentationLocale = (locale: ShopPresentationLocale) => {
+    if (locale === presentationLocale) return;
+    setPresentationDrafts((current) => ({ ...current, [presentationLocale]: editableStore }));
+    const nextStore = presentationDrafts[locale];
+    if (nextStore) setEditableStore(nextStore);
+    setPresentationLocale(locale);
+    setPresentationSaveState("idle");
+    setPresentationError("");
+  };
+  const savePresentationLocale = async () => {
+    if (!presentationWorkspace) return;
+    setPresentationSaveState("saving");
+    setPresentationError("");
+    try {
+      const publicIdByUrl = new Map(Object.entries(presentationWorkspace.media).map(([publicId, item]) => [item.url, publicId]));
+      const content = buildShopPresentationContent(editableStore, publicIdByUrl);
+      const saved = await backofficeRealDataApi.updateMerchantShopPresentationLocale(
+        presentationLocale,
+        presentationWorkspace.locales[presentationLocale].lockVersion,
+        content
+      );
+      setPresentationWorkspace((current) => current ? {
+        ...current,
+        locales: { ...current.locales, [presentationLocale]: saved }
+      } : current);
+      setPresentationDrafts((current) => ({ ...current, [presentationLocale]: editableStore }));
+      setPresentationSaveState("saved");
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "error.shop_presentation.save_failed");
+      setPresentationSaveState("error");
+    }
+  };
+  const synchronizePresentationLocales = async () => {
+    if (!presentationWorkspace) return;
+    setPresentationSaveState("saving");
+    setPresentationError("");
+    try {
+      const publicIdByUrl = new Map(Object.entries(presentationWorkspace.media).map(([publicId, media]) => [media.url, publicId]));
+      const content = buildShopPresentationContent(editableStore, publicIdByUrl);
+      const expectedLockVersions = Object.fromEntries(
+        shopPresentationLocales.map(({ code }) => [code, presentationWorkspace.locales[code].lockVersion])
+      ) as Record<ShopPresentationLocale, number>;
+      const locales = await backofficeRealDataApi.synchronizeMerchantShopPresentationLocales(
+        presentationLocale,
+        expectedLockVersions,
+        content
+      );
+      const drafts = Object.fromEntries(shopPresentationLocales.map(({ code }) => [
+        code,
+        applyShopPresentationLocale(sourceStore, locales[code], presentationWorkspace.media, presentationWorkspace.services)
+      ])) as Record<ShopPresentationLocale, Store>;
+      setPresentationWorkspace((current) => current ? { ...current, locales } : current);
+      setPresentationDrafts(drafts);
+      setEditableStore(drafts[presentationLocale]);
+      setPresentationSyncConfirmOpen(false);
+      setPresentationSaveState("saved");
+    } catch (error) {
+      setPresentationError(error instanceof Error ? error.message : "同步失败，请重新读取后再试");
+      setPresentationSaveState("error");
+    }
+  };
   const isMerchantEditorActive = (target: string) => !onEditFocus && activeEditor?.target === target;
   const renderMerchantEditor = (
     focus: StoreDisplayEditorMode,
@@ -3126,7 +3367,75 @@ export function StoreDetailExperience({
         onClick={() => handleMerchantEditFocus(focus, target)}
       />
     ) : null;
-  const renderActiveInlineEditor = (_target: string) => null;
+  const renderActiveInlineEditor = (target: string) => {
+    if (!isMerchantEditorActive(target)) return null;
+    if (activeEditor?.mode === "basic") {
+      return (
+        <StoreDisplayInlineEditor
+          config={config}
+          images={images}
+          industry={industry}
+          mode="basic"
+          onGalleryChange={updateGallery}
+          onPresentationChange={updatePresentationField}
+          onStoreChange={(changes) => setEditableStore((current) => ({ ...current, ...changes }))}
+          store={store}
+        />
+      );
+    }
+    if (target === "hero-gallery") {
+      return (
+        <StoreDisplayEditorPanel title="轮播图文字">
+          <StoreDisplayEditorInput label="轮播简介" multiline onChange={(value) => updatePresentationField("subtitle", value)} rows={3} value={config.subtitle} />
+        </StoreDisplayEditorPanel>
+      );
+    }
+    return null;
+  };
+  const presentationLocaleRail = isMerchantEditable && activeEditor ? (
+    <aside
+      aria-label="店铺展示语言"
+      className="fixed right-2 top-1/2 z-[70] flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-1.5 shadow-[0_18px_45px_rgba(0,0,0,0.3)] backdrop-blur"
+      data-testid="shop-presentation-locale-rail"
+    >
+      {shopPresentationLocales.map((locale) => (
+        <button
+          aria-label={locale.label}
+          aria-pressed={presentationLocale === locale.code}
+          className={cn(
+            "focus-ring flex h-9 min-w-9 items-center justify-center rounded-[12px] px-2 text-[11px] font-black",
+            presentationLocale === locale.code
+              ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-ink)]"
+              : "text-[color:var(--client-muted)]"
+          )}
+          key={locale.code}
+          onClick={() => switchPresentationLocale(locale.code)}
+          title={locale.label}
+          type="button"
+        >
+          {locale.shortLabel}
+        </button>
+      ))}
+      <div className="my-0.5 h-px w-6 bg-[color:var(--client-line)]" />
+      <button
+        className="focus-ring rounded-[12px] bg-[color:var(--client-primary)] px-2 py-2 text-[10px] font-black text-[color:var(--client-primary-ink)] disabled:opacity-45"
+        disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
+        onClick={() => { void savePresentationLocale(); }}
+        type="button"
+      >
+        {presentationSaveState === "saving" ? "保存中" : presentationSaveState === "saved" ? "已保存" : "保存"}
+      </button>
+      <button
+        className="focus-ring rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-danger)_48%,transparent)] px-2 py-2 text-[10px] font-black text-[color:var(--client-danger)] disabled:opacity-45"
+        disabled={!presentationWorkspace || presentationSaveState === "saving" || presentationSaveState === "loading"}
+        onClick={() => setPresentationSyncConfirmOpen(true)}
+        type="button"
+      >
+        同步
+      </button>
+      {presentationError ? <span className="sr-only" role="alert">{presentationError}</span> : null}
+    </aside>
+  ) : null;
 
   const toggleOfferLike = (offerId: string) => {
     setLikedOfferIds((current) => (current.includes(offerId) ? current.filter((item) => item !== offerId) : [...current, offerId]));
@@ -3168,8 +3477,8 @@ export function StoreDetailExperience({
                 setSelectedTechnicianId(active ? "" : technician.id);
               } : undefined}
               onToggleVisibility={() => toggleTechnicianDisplayVisibility(technician)}
-              profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
-              quoteRatePercent={effectiveTechnicianPricingRatePercent}
+              profileTo={getScopedTechnicianDynamicPath(scope, technician)}
+              hideServicePreview={isTechnicianPricingActive && !isMerchantEditable}
               selected={selectable ? active : undefined}
               serviceListTo={getTechnicianServiceListTo(technician.id)}
               technician={technician}
@@ -3246,7 +3555,10 @@ export function StoreDetailExperience({
             );
           })}
           {isMerchantEditable ? (
-            <MerchantAddServiceButton onAdd={addMerchantMenuCard} />
+            <MerchantAddServiceButton
+              disabled={!canAddShopService(menuCards.length) || !presentationWorkspace?.services.some((service) => !menuCards.some((menu) => Number(menu.sourceServiceId) === service.id))}
+              onAdd={addMerchantMenuCard}
+            />
           ) : null}
           </div>
         ) : null}
@@ -3406,6 +3718,20 @@ export function StoreDetailExperience({
                       ) : null}
                     </div>
                   ))}
+                  {heroGalleryEditing && formalCarouselImageCount < 5 ? (
+                    <label className="focus-ring flex h-16 w-16 shrink-0 cursor-pointer items-center justify-center rounded-[20px] border border-dashed border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] text-center text-[11px] font-black text-[color:var(--client-primary)]">
+                      新增<br />轮播图
+                      <input
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(event) => {
+                          void addGalleryImage(event.target.files);
+                          event.target.value = "";
+                        }}
+                        type="file"
+                      />
+                    </label>
+                  ) : null}
                 </div>
                 {renderActiveInlineEditor("hero-gallery")}
               </div>
@@ -3430,7 +3756,12 @@ export function StoreDetailExperience({
                   metric="favorite"
                   onClick={() => setActiveMetricDetail((current) => (current === "favorite" ? null : "favorite"))}
                 />
-                <TransportEstimatePill className="w-full min-w-0 justify-center gap-1.5 px-2 text-[12px] !font-normal" distanceText={config.distance} />
+                {transportSummary !== undefined ? (
+                  <div className={cn(storeCompactMetricPillClassName, "min-w-0 gap-1.5 px-2 text-[12px] font-normal text-[color:var(--client-muted)]")}>
+                    <AppIcon className="h-4 w-4 shrink-0" name="map" />
+                    <span className="min-w-0 truncate">{transportSummary}</span>
+                  </div>
+                ) : <TransportEstimatePill className="w-full min-w-0 justify-center gap-1.5 px-2 text-[12px] !font-normal" distanceText={config.distance} />}
               </div>
               {activeMetricDetail ? (
                 <div className="inline-flex w-full items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_48%,transparent)] px-3 py-2 text-[12px] font-normal text-[color:var(--client-muted)]">
@@ -3471,7 +3802,7 @@ export function StoreDetailExperience({
                     </div>
                   ) : (
                     <p className="mt-1.5 text-sm font-semibold leading-6 text-[color:var(--client-text)]">
-                      {config.station} · {config.distance}
+                      {[config.station, config.distance].filter(Boolean).join(" · ")}
                     </p>
                   )}
                 </InfoRow>
@@ -3487,7 +3818,17 @@ export function StoreDetailExperience({
                 </InfoRow>
               </div>
 
-              <EditableTagChips editing={basicCardEditing} onChange={(tags) => updateStoreEntity(store.id, { tags })} tags={store.tags} />
+              {isMerchantEditable && basicCardEditing ? (
+                <ShopServiceTaxonomyEditor
+                  language={language}
+                  onSavedKeywords={(labels) => {
+                    setDisplayedTaxonomyLabels(labels);
+                    updateStoreEntity(store.id, { tags: labels });
+                  }}
+                />
+              ) : (
+                <EditableTagChips editing={false} onChange={() => undefined} tags={displayedTaxonomyLabels} />
+              )}
             </FlatCard>
           </section>
 
@@ -3520,10 +3861,7 @@ export function StoreDetailExperience({
                     title="来店日"
                   />
                   <div className="flex justify-center border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] pt-3">
-                    <PrimaryButton className={storeBookingCtaButtonClassName} to={bookingHref}>
-                      <AppIcon className="h-4 w-4" name="calendar" />
-                      <span>{bookingCtaCopy(store.openStatus)}</span>
-                    </PrimaryButton>
+                    {renderBookingAction(storeBookingCtaButtonClassName, bookingCtaCopy(store.openStatus))}
                   </div>
                 </FlatCard>
               </div>
@@ -3583,7 +3921,7 @@ export function StoreDetailExperience({
 
                             setSelectedTechnicianId(active ? "" : technician.id);
                           }}
-                          profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
+                          profileTo={getScopedTechnicianDynamicPath(scope, technician)}
                           rankIndex={index}
                           technician={technician}
                           technicianVisible={technicianVisible}
@@ -3836,10 +4174,7 @@ export function StoreDetailExperience({
                 <StoreMapTagList items={[config.distance, config.parking, store.openStatus === "open" ? "可预约" : "需确认时段"]} />
                 {isMerchantEditable ? null : (
                   <div className="flex justify-center border-t border-[color:color-mix(in_srgb,var(--client-line)_50%,transparent)] pt-3">
-                    <PrimaryButton className={storeBookingCtaButtonClassName} to={bookingHref}>
-                      <AppIcon className="h-4 w-4" name="calendar" />
-                      <span>立即预约</span>
-                    </PrimaryButton>
+                    {renderBookingAction(storeBookingCtaButtonClassName, "立即预约")}
                   </div>
                 )}
               </FlatCard>
@@ -3997,7 +4332,7 @@ export function StoreDetailExperience({
           </div>
         </div>
       ) : null;
-  const fullscreenEditor = activeEditor ? (
+  const fullscreenEditor = activeEditor && !isMerchantEditable ? (
     <StoreDisplayFullscreenEditor
       config={config}
       fallbackMenuCard={activeEditor.menuCard}
@@ -4024,6 +4359,22 @@ export function StoreDetailExperience({
       title={pendingStoreImageEdit.title}
     />
   ) : null;
+  const presentationSyncDialog = (
+    <DangerConfirmDialog
+      confirmLabel="确认同步"
+      description="将会用当前语言版本的图片和文字覆盖其他语言版本，真的要执行同步吗？"
+      error={presentationSyncConfirmOpen && presentationSaveState === "error" ? "同步失败，请重新读取后再试" : undefined}
+      onCancel={() => {
+        setPresentationSyncConfirmOpen(false);
+        setPresentationError("");
+      }}
+      onConfirm={synchronizePresentationLocales}
+      open={presentationSyncConfirmOpen}
+      pending={presentationSaveState === "saving"}
+      pendingLabel="正在同步"
+      title="同步所有语言版本"
+    />
+  );
 
   if (embedded) {
     const hasMerchantControls = Boolean(pricingControl || privacyControl);
@@ -4034,6 +4385,9 @@ export function StoreDetailExperience({
           {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")}
           <div className={cn("relative", hasMerchantControls && "min-h-[112px]")}>
             <div className="min-w-0 pr-12">
+              <p className="truncate text-[11px] font-black tracking-[0.08em] text-[color:var(--client-muted)]">
+                <span>店铺 ID</span> <span data-no-i18n>{store.systemId}</span>
+              </p>
               <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
               <p className="mt-1 text-sm text-[color:var(--client-muted)]">{store.address}</p>
             </div>
@@ -4044,13 +4398,15 @@ export function StoreDetailExperience({
               </div>
             ) : null}
           </div>
-          <div className="-mx-1">{tabSwitcher}</div>
+          <div className="min-w-0">{tabSwitcher}</div>
           {renderActiveInlineEditor("basic-card")}
         </section>
         <div className="relative z-0">{content}</div>
+        {presentationLocaleRail}
         {lightbox}
         {fullscreenEditor}
         {storeImageEditor}
+        {presentationSyncDialog}
       </div>
     );
   }
@@ -4112,6 +4468,7 @@ export function StoreDetailExperience({
       </FloatingHomeHeader>
 
       <div className="space-y-3">{content}</div>
+      {presentationLocaleRail}
 
       <div
         aria-hidden="true"
@@ -4123,16 +4480,14 @@ export function StoreDetailExperience({
             <AppIcon className="h-4 w-4" name="chat" />
             <span>聊天咨询</span>
           </SecondaryButton>
-          <PrimaryButton className={storeBottomPrimaryButtonClassName} to={bookingHref}>
-            <AppIcon className="h-4 w-4" name="calendar" />
-            <span>{bookingCtaCopy(store.openStatus)}</span>
-          </PrimaryButton>
+          {renderBookingAction(storeBottomPrimaryButtonClassName, bookingCtaCopy(store.openStatus))}
         </div>
       </div>
 
       {lightbox}
       {fullscreenEditor}
       {storeImageEditor}
+      {presentationSyncDialog}
     </PageScaffold>
   );
 }
@@ -4205,30 +4560,41 @@ function buildFormalStorePresentation(shop: CoreShopDetail, store: Store): Store
   };
 }
 
-function UnifiedFormalStoreDetail({
+export function UnifiedFormalStoreDetail({
   scope,
+  embedded = false,
   shopId
 }: {
   scope: "user" | "merchant";
   shopId: number | string;
+  embedded?: boolean;
 }) {
   const { language } = useI18n();
   const [revision, setRevision] = useState(0);
   const query = useCoreReadQuery(
-    () => coreReadApi.getShopDetail(shopId),
-    [shopId, revision]
+    () => coreReadApi.getShopDetail(shopId, { locale: languageToShopPresentationLocale(language) }),
+    [language, shopId, revision],
+    { force: revision > 0, key: `core:shop:${shopId}:${languageToShopPresentationLocale(language)}` }
   );
 
   if (query.loading) {
+    if (embedded) return <p role="status">{translateText("正在加载正式店铺资料", language)}</p>;
     return <StoreDetailStatus description="正在同步数据库正式资料。" scope={scope} title="正在加载店铺资料" />;
   }
   if (query.error || !query.data) {
     const unavailableCopy = formalStoreLinkCopy[language];
+    if (embedded) return (
+      <EmptyStatePanel
+        action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{translateText("重新加载", language)}</PrimaryButton>}
+        caption={query.error ?? unavailableCopy.description}
+        title={unavailableCopy.title}
+      />
+    );
     return (
       <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "merchant" ? [] : undefined}>
         <AppTopBar subtitle="真实 API 数据源" title="店铺详情" />
         <EmptyStatePanel
-          action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>重新加载</PrimaryButton>}
+          action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{translateText("重新加载", language)}</PrimaryButton>}
           caption={query.error ?? unavailableCopy.description}
           title={unavailableCopy.title}
         />
@@ -4244,9 +4610,12 @@ function UnifiedFormalStoreDetail({
 
   return (
     <StoreDetailExperience
+      embedded={embedded}
+      formalApiOnly={true}
       hideUnavailableReviewDetails
       presentationOverride={buildFormalStorePresentation(query.data, store)}
       scope={scope}
+      serviceCardsOverride={query.data.services.map(mapCoreServiceCardToUnifiedData)}
       store={store}
       techniciansOverride={technicians}
     />

@@ -1,0 +1,458 @@
+import { BackofficeRepository } from "../src/repositories/backoffice.repository";
+import { backofficeManagedUserListQuerySchema } from "../src/validators/backoffice.validator";
+
+const now = new Date("2026-09-01T12:00:00.000Z");
+
+const managedUserRow = () => ({
+  id: 41,
+  needoId: "u0000000041",
+  username: "Mia",
+  email: "mia@example.test",
+  phone: "+819012345678",
+  emailVerifiedAt: now,
+  avatarUrl: null,
+  avatarBootstrapUrl: null,
+  isActive: true,
+  isTestAccount: false,
+  primaryIdentityType: "CUSTOMER",
+  lastLoginAt: now,
+  createdAt: now,
+  updatedAt: now,
+  identities: [
+    { type: "customer", displayName: "Mia", scopeType: "customer_profile", scopeId: 7 }
+  ],
+  userRoles: [],
+  customerProfile: {
+    id: 7,
+    displayName: "Mia",
+    bio: "Formal profile",
+    city: "Tokyo",
+    gender: "private",
+    age: null,
+    heightCm: null,
+    languages: ["ja"],
+    visibility: "limited",
+    deletedAt: null
+  },
+  technicianProfile: null,
+  ownedShops: [],
+  experienceAccount: { currentLevel: 12, totalExpUnits: 345600n, deletedAt: null },
+  platformMembershipEntitlements: [
+    {
+      publicId: "entitlement-41",
+      expiresAt: null,
+      lockVersion: 2,
+      tierVersion: {
+        publicId: "tier-gold-v3",
+        experienceMultiplier: { toString: () => "5" },
+        tier: { code: "GOLD" }
+      }
+    }
+  ],
+  backofficeUserGroupMemberships: [],
+  ekycVerifications: [{ status: "verified", verifiedAt: now }],
+  externalAccounts: [],
+  _count: { bookingOrders: 3 }
+});
+
+describe("BackofficeRepository managed users", () => {
+  it.each(["ndpBalance", "bookingCount"])("accepts the formal numeric sort %s", (sortBy) => {
+    expect(backofficeManagedUserListQuerySchema.safeParse({ sortBy, sortDirection: "desc" }).success).toBe(true);
+  });
+  it("hydrates only the SQL-ordered page while retaining the same scope and total", async () => {
+    const findMany = jest.fn(async () => [managedUserRow(), { ...managedUserRow(), id: 42 }]);
+    const count = jest.fn(async () => 80);
+    const queryRaw = jest.fn(async () => [{ id: 42 }, { id: 41 }]);
+    const repository = new BackofficeRepository({
+      user: { findMany, count }, $queryRaw: queryRaw, wallet: { findMany: jest.fn(async () => []) }
+    } as never);
+    const page = await repository.listManagedUsers({ scope: "merchant", shopId: 7, page: 2, pageSize: 2, sortBy: "ndpBalance", sortDirection: "desc" } as never, now);
+    expect(page.list.map((row) => row.id)).toEqual([42,41]);
+    expect(page.total).toBe(80);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 2, where: { AND: [
+      { deletedAt: null, AND: [{ bookingOrders: { some: { shopId: 7, deletedAt: null } } }] },
+      { id: { in: [42,41] } }
+    ] } }));
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+  });
+  it("paginates all users with one aggregate user query and one wallet query", async () => {
+    const findMany = jest.fn(async () => [managedUserRow()]);
+    const count = jest.fn(async () => 1);
+    const walletFindMany = jest.fn(async () => [
+      { ownerId: 41, currency: "NDP", availableBalance: 900, frozenBalance: 100 },
+      { ownerId: 41, currency: "TEST_NDP", availableBalance: 2500, frozenBalance: 20 }
+    ]);
+    const repository = new BackofficeRepository({
+      user: { findMany, count },
+      wallet: { findMany: walletFindMany }
+    } as never);
+
+    const page = await repository.listManagedUsers(
+      { scope: "platform", page: 1, pageSize: 20 } as never,
+      now
+    );
+
+    expect(page.list[0]).toMatchObject({
+      needoId: "u0000000041",
+      identities: [expect.objectContaining({ type: "customer" })],
+      membership: expect.objectContaining({ tierCode: "gold" }),
+      experience: { currentLevel: 12, totalExpUnits: "345600", totalExp: "34.56" },
+      phoneBound: true,
+      emailBound: true,
+      displayName: "Mia",
+      city: "Tokyo",
+      privacyMode: true,
+      privacyScope: "limited",
+      ndpBalance: { available: 900, frozen: 100 },
+      testNdpBalance: { available: 2500, frozen: 20 }
+    });
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(walletFindMany).toHaveBeenCalledTimes(1);
+    expect(walletFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { ownerType: "USER", ownerId: { in: [41] }, currency: { in: ["NDP", "TEST_NDP"] }, deletedAt: null },
+      select: expect.objectContaining({ currency: true })
+    }));
+    expect(JSON.stringify(page)).not.toMatch(/passwordHash|otp|accessToken|refreshToken/);
+  });
+
+  it("uses identity personal names instead of shop labels and keeps active identities ahead of applications", async () => {
+    const base = managedUserRow();
+    const findMany = jest.fn(async () => [{ ...base,
+      identities: [...base.identities,
+        { type: "technician", displayName: "old technician", isActive: true, scopeType: "technician_profile", scopeId: 8 },
+        { type: "merchant", displayName: "SHOP NAME", isActive: true, scopeType: "shop", scopeId: 11,
+          merchantIdentityProfile: { displayName: "佐藤 美咲", deletedAt: null } }],
+      technicianProfile: { id: 8, displayName: "林 小雨", deletedAt: null },
+      identityApplications: [{ type: "merchant", status: "rejected" }]
+    }]);
+    const repository = new BackofficeRepository({ user: { findMany, count: jest.fn(async () => 1) }, wallet: { findMany: jest.fn(async () => []) } } as never);
+    const page = await repository.listManagedUsers({ scope: "platform", page: 1, pageSize: 20 } as never, now);
+    expect(page.list[0].identityProfiles).toEqual([
+      { type: "technician", status: "active", displayName: "林 小雨" },
+      { type: "merchant", status: "active", displayName: "佐藤 美咲" }
+    ]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({
+      identityApplications: expect.objectContaining({ where: { deletedAt: null, type: { in: ["technician", "merchant"] } }, distinct: ["type"], take: 2 })
+    }) }));
+  });
+
+  it.each([ ["draft", "not_enabled"], ["submitted", "under_review"], ["under_review", "under_review"], ["rejected", "rejected"], ["withdrawn", "not_enabled"] ])("projects the formal application status %s", async (status, expected) => {
+    const repository = new BackofficeRepository({ user: {
+      findMany: jest.fn(async () => [{ ...managedUserRow(), identityApplications: [{ type: "technician", status }] }]), count: jest.fn(async () => 1)
+    }, wallet: { findMany: jest.fn(async () => []) } } as never);
+    const page = await repository.listManagedUsers({ scope: "platform", page: 1, pageSize: 20 } as never, now);
+    expect(page.list[0].identityProfiles).toEqual([
+      { type: "technician", status: expected, displayName: null },
+      { type: "merchant", status: "not_enabled", displayName: null }
+    ]);
+  });
+
+  it("projects one merchant name from the personal merchant identity across portal roles", async () => {
+    const base = managedUserRow();
+    const repository = new BackofficeRepository({ user: {
+      findMany: jest.fn(async () => [{ ...base, identities: [
+        { type: "merchant_owner", isActive: true, merchantIdentityProfile: { displayName: "旧后台名称", deletedAt: null } },
+        { type: "merchant", isActive: true, merchantIdentityProfile: { displayName: "佐藤 美咲", deletedAt: null } },
+        { type: "merchant_staff", isActive: true, merchantIdentityProfile: { displayName: "佐藤 美咲", deletedAt: null } }
+      ] }]), count: jest.fn(async () => 1)
+    }, wallet: { findMany: jest.fn(async () => []) } } as never);
+    const page = await repository.listManagedUsers({ scope: "platform", page: 1, pageSize: 20 } as never, now);
+    expect(page.list[0].identityProfiles?.filter((profile) => profile.type === "merchant")).toEqual([
+      { type: "merchant", status: "active", displayName: "佐藤 美咲" }
+    ]);
+  });
+
+  it("filters merchant managed users by authenticated shop before pagination", async () => {
+    const findMany = jest.fn(async () => []);
+    const count = jest.fn(async () => 0);
+    const groupBy = jest.fn(async () => [
+      { customerUserId: 41, _count: { _all: 3 } },
+      { customerUserId: 42, _count: { _all: 1 } },
+      { customerUserId: 43, _count: { _all: 21 } }
+    ]);
+    const repository = new BackofficeRepository({
+      user: { findMany, count },
+      bookingOrder: { groupBy },
+      wallet: { findMany: jest.fn(async () => []) }
+    } as never);
+
+    await repository.listManagedUsers(
+      {
+        scope: "merchant",
+        shopId: 11,
+        page: 1,
+        pageSize: 20,
+        city: "Tokyo",
+        emailState: "set",
+        privacy: "enabled",
+        minBookings: 2,
+        maxBookings: 20,
+        identityTypes: ["platform", "merchant"],
+        sortBy: "city",
+        sortDirection: "desc"
+      } as never,
+      now
+    );
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            { bookingOrders: { some: { shopId: 11, deletedAt: null } } },
+            {
+              OR: [
+                { customerProfile: { is: { city: { contains: "Tokyo" }, deletedAt: null } } },
+                { technicianProfile: { is: { city: { contains: "Tokyo" }, deletedAt: null } } }
+              ]
+            },
+            { email: { not: "" } },
+            {
+              identities: {
+                some: {
+                  type: { in: ["platform", "merchant"] },
+                  isActive: true,
+                  deletedAt: null,
+                  OR: [
+                    { scopeType: "shop", scopeId: 11 },
+                    { scopeType: "customer_profile", type: "customer" }
+                  ]
+                }
+              }
+            },
+            {
+              OR: [
+                {
+                  customerProfile: {
+                    is: { visibility: { not: "public" }, deletedAt: null }
+                  }
+                },
+                {
+                  technicianProfile: {
+                    is: { visibility: { not: "public" }, deletedAt: null }
+                  }
+                }
+              ]
+            },
+            { id: { in: [41] } }
+          ])
+        }),
+        orderBy: [{ customerProfile: { city: "desc" } }, { id: "desc" }]
+      })
+    );
+    expect(groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ["customerUserId"],
+        where: { shopId: 11, deletedAt: null }
+      })
+    );
+  });
+
+  it("scopes detail bookings and received-review credit to the authenticated merchant shop", async () => {
+    const row = {
+      ...managedUserRow(),
+      userRoles: [
+      {
+        scopeType: "global",
+        scopeId: null,
+        role: {
+          code: "admin",
+          name: "Administrator",
+          rolePermissions: [{ permission: { code: "backoffice:customers:write" } }]
+        }
+      },
+      {
+        scopeType: "shop",
+        scopeId: 22,
+        role: {
+          code: "shop_owner",
+          name: "Other shop owner",
+          rolePermissions: [{ permission: { code: "shop:22:manage" } }]
+        }
+      },
+      {
+        scopeType: "shop",
+        scopeId: 11,
+        role: {
+          code: "shop_staff",
+          name: "Current shop staff",
+          rolePermissions: [{ permission: { code: "shop:customers:read" } }]
+        }
+      },
+      {
+        scopeType: "customer_profile",
+        scopeId: 7,
+        role: {
+          code: "customer",
+          name: "Customer",
+          rolePermissions: [{ permission: { code: "customer:profile:read" } }]
+        }
+      }
+      ],
+      identities: [
+        { type: "operations", displayName: "Global operator", scopeType: "global", scopeId: null },
+        { type: "merchant", displayName: "Other shop", scopeType: "shop", scopeId: 22 },
+        { type: "merchant", displayName: "Current shop", scopeType: "shop", scopeId: 11 },
+        { type: "customer", displayName: "Mia", scopeType: "customer_profile", scopeId: 7 }
+      ],
+      backofficeUserGroupMemberships: [{ group: { code: "operations-secret" } }]
+    };
+    let findFirstInput: unknown;
+    const findFirst = jest.fn(async (args: unknown) => {
+      findFirstInput = args;
+      return row;
+    });
+    const bookingCount = jest.fn().mockResolvedValueOnce(3).mockResolvedValueOnce(2);
+    const reviewFindMany = jest.fn(async () => [
+      {
+        rating: 2,
+        createdAt: new Date("2026-08-20T00:00:00.000Z"),
+        amendments: [{ rating: 5 }]
+      },
+      {
+        rating: 4,
+        createdAt: new Date("2026-08-18T00:00:00.000Z"),
+        amendments: []
+      }
+    ]);
+    const auditFindMany = jest.fn(async () => []);
+    const repository = new BackofficeRepository({
+      user: { findFirst },
+      wallet: { findMany: jest.fn(async () => [{ ownerId: 41, currency: "NDP", availableBalance: 900, frozenBalance: 0 }]) },
+      bookingOrder: {
+        count: bookingCount,
+        aggregate: jest.fn(async () => ({ _sum: { paymentAmountJpy: 18000 } }))
+      },
+      orderReview: { findMany: reviewFindMany },
+      auditLog: { count: jest.fn(async () => 126), findMany: auditFindMany }
+    } as never);
+
+    const detail = await repository.getManagedUser(
+      { scope: "merchant", shopId: 11, userId: 41, audit_page: 2, audit_page_size: 50 },
+      now
+    );
+
+    expect(auditFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      skip: 49, take: 50,
+      where: { deletedAt: null, targetType: "User", targetId: 41, metadata: { path: "$.shopId", equals: 11 } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    }));
+    expect(detail?.audit).toMatchObject({ total: 127, page: 2, page_size: 50 });
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 41,
+        bookingOrders: { some: { shopId: 11, deletedAt: null } }
+      })
+    }));
+    expect(bookingCount).toHaveBeenCalledWith({
+      where: { customerUserId: 41, shopId: 11, deletedAt: null }
+    });
+    expect(reviewFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        customerProfileId: 7,
+        bookingOrder: expect.objectContaining({ shopId: 11, status: "COMPLETED", deletedAt: null })
+      })
+    }));
+    expect(detail).toMatchObject({
+      privacyMode: true,
+      privacyScope: "limited",
+      metrics: {
+        ndpAvailable: 900,
+        usageCount: 3,
+        credit: { ratingAverage: 4.5, reviewCount: 2 }
+      },
+      identities: [
+        expect.objectContaining({ displayName: "Current shop" }),
+        expect.objectContaining({ type: "customer", displayName: "Mia" })
+      ],
+      roles: [
+        { code: "shop_staff", name: "Current shop staff" },
+        { code: "customer", name: "Customer" }
+      ],
+      groups: ["system:gold"],
+      account: {
+        roles: [
+          expect.objectContaining({ code: "shop_staff", permissions: ["shop:customers:read"] }),
+          expect.objectContaining({ code: "customer", permissions: ["customer:profile:read"] })
+        ]
+      }
+    });
+    expect(JSON.stringify(detail)).not.toMatch(
+      /Global operator|Other shop|Administrator|operations-secret|shop:22:manage/
+    );
+    expect(findFirstInput).toEqual(expect.objectContaining({
+      select: expect.objectContaining({
+        identities: expect.objectContaining({
+          where: {
+            deletedAt: null,
+            OR: [
+              { scopeType: "shop", scopeId: 11 },
+              { scopeType: "customer_profile", type: "customer" }
+            ]
+          }
+        }),
+        userRoles: expect.objectContaining({
+          where: expect.objectContaining({
+            deletedAt: null,
+            OR: [
+              { scopeType: "shop", scopeId: 11 },
+              { scopeType: "customer_profile", role: { code: "customer" } }
+            ]
+          })
+        })
+      })
+    }));
+  });
+
+  it("applies the date interval before audit count and pagination", async () => {
+    const count = jest.fn(async () => 1);
+    const findMany = jest.fn(async () => []);
+    const repository = new BackofficeRepository({
+      user: { findFirst: jest.fn(async () => managedUserRow()) },
+      wallet: { findMany: jest.fn(async () => []) },
+      bookingOrder: { count: jest.fn(async () => 0), aggregate: jest.fn(async () => ({ _sum: { paymentAmountJpy: 0 } })) },
+      orderReview: { findMany: jest.fn(async () => []) },
+      auditLog: { count, findMany }
+    } as never);
+    await repository.getManagedUser({ scope: "platform", userId: 41, audit_page: 2, audit_page_size: 10, audit_from: "2026-09-01T00:00:00.000Z", audit_to: "2026-09-08T00:00:00.000Z" }, now);
+    const createdAt = { gte: new Date("2026-09-01T00:00:00.000Z"), lt: new Date("2026-09-08T00:00:00.000Z") };
+    expect(count).toHaveBeenCalledWith({ where: expect.objectContaining({ createdAt }) });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ createdAt }), skip: 9, take: 10 }));
+  });
+
+  it("includes related immutable adjustment events in the operations audit panel", async () => {
+    const auditCount = jest.fn(async () => 0);
+    const repository = new BackofficeRepository({
+      user: { findFirst: jest.fn(async () => managedUserRow()) },
+      wallet: { findMany: jest.fn(async () => []) },
+      bookingOrder: {
+        count: jest.fn(async () => 0),
+        aggregate: jest.fn(async () => ({ _sum: { paymentAmountJpy: null } }))
+      },
+      orderReview: { findMany: jest.fn(async () => []) },
+      auditLog: { count: auditCount, findMany: jest.fn(async () => []) }
+    } as never);
+
+    await repository.getManagedUser({ scope: "platform", userId: 41 }, now);
+
+    expect(auditCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        deletedAt: null,
+        OR: expect.arrayContaining([
+          { targetType: "User", targetId: 41 },
+          {
+            targetType: {
+              in: [
+                "UserMembershipAdjustment",
+                "OrderReviewAmendment",
+                "OrderRefundAmendment",
+                "OrderTimelineComment",
+                "platform_partner_profile"
+              ]
+            },
+            metadata: { path: "$.userId", equals: 41 }
+          }
+        ])
+      })
+    });
+  });
+});

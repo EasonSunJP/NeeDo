@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import translationsSource from "../../../i18n/translations.ts?raw";
+import draftsSource from "./SocialDraftsPage.tsx?raw";
 import source from "./SocialComposerPage.tsx?raw";
+import typesSource from "../types.ts?raw";
 import {
+  areSocialComposerMediaUploadsComplete,
   getSocialComposerErrorMessage,
   getSocialImageValidationError,
   isSocialComposerPublishReady
@@ -16,6 +19,23 @@ const uploadedImage: SocialMediaItem = {
 };
 
 describe("SocialComposerPage formal contacts and image uploads", () => {
+  it("contains no reply-mode branch or reply-specific draft payload", () => {
+    expect(source).not.toContain('searchParams.get("replyToPostId")');
+    expect(source).not.toContain(["reply", "Post"].join(""));
+    expect(source).not.toContain("replyToPostId,");
+  });
+
+  it("removes reply drafts from the draft type and keeps the drafts page generic", () => {
+    const draftTypeSource = typesSource.slice(
+      typesSource.indexOf("export interface SocialComposerDraft"),
+      typesSource.indexOf("export interface SocialNotification")
+    );
+
+    expect(draftTypeSource).not.toContain("replyToPostId");
+    expect(draftsSource).not.toContain("draft.replyToPostId");
+    expect(draftsSource).toContain(".filter(([key]) => key.startsWith(`composer:${scope}:`))");
+  });
+
   it("loads reminder candidates from the formal contact API instead of Social profiles", () => {
     expect(source).toContain("loadFormalSocialMentionCandidates");
     expect(source).toContain("mentionUserIds");
@@ -32,15 +52,39 @@ describe("SocialComposerPage formal contacts and image uploads", () => {
     expect(source).not.toContain("createMediaFromFile");
   });
 
-  it("blocks publishing until every selected image has a server asset reference", () => {
+  it("allows a new post to publish while selected images are still uploading", () => {
     expect(isSocialComposerPublishReady({ text: "发布", media: [uploadedImage] })).toBe(true);
     expect(
       isSocialComposerPublishReady({
         text: "发布",
         media: [{ ...uploadedImage, mediaAssetPublicId: undefined, url: "blob:preview" }]
       })
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      isSocialComposerPublishReady({
+        text: "",
+        media: [{ ...uploadedImage, mediaAssetPublicId: undefined, url: "blob:preview" }]
+      })
+    ).toBe(true);
     expect(isSocialComposerPublishReady({ text: "", media: [] })).toBe(false);
+  });
+
+  it("keeps formal media completion as a separate edit-save guard", () => {
+    expect(areSocialComposerMediaUploadsComplete([uploadedImage])).toBe(true);
+    expect(
+      areSocialComposerMediaUploadsComplete([
+        { ...uploadedImage, mediaAssetPublicId: undefined, url: "blob:preview" }
+      ])
+    ).toBe(false);
+  });
+
+  it("queues new-post creation behind existing upload tasks and leaves the composer immediately", () => {
+    expect(source).toContain("mediaUploadTaskByIdRef");
+    expect(source).toContain("resolveSocialComposerMediaUploads");
+    expect(source).toContain("emitShareFeedback");
+    expect(source).toContain("failedMediaUploadStateById");
+    expect(source).toMatch(/navigate\(socialPaths\.timeline\(scope\), \{ replace: true \}\);[\s\S]*?void publishNewPostInBackground\(\);/u);
+    expect(source).toContain("areSocialComposerMediaUploadsComplete(media)");
   });
 
   it("accepts only formal image types up to eight MiB", () => {

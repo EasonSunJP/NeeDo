@@ -4,7 +4,12 @@ import { PublicIdentifierRepository } from "../src/repositories/public-identifie
 import { IdentifierAllocator } from "../src/services/public-identifier.service";
 
 const now = new Date("2026-08-28T00:00:00.000Z");
-const publicIdentifier = (id: number, publicId: string, kind: "U" | "S", userIdentityId: number) => ({
+const publicIdentifier = (
+  id: number,
+  publicId: string,
+  kind: "U" | "S",
+  userIdentityId: number
+) => ({
   id,
   publicId,
   numberPart: "1234567890",
@@ -85,6 +90,7 @@ describe("AuthRepository formal login identifiers", () => {
     const query = findFirst.mock.calls[0]?.[0];
 
     expect(JSON.stringify(query)).toContain("publicIdentifier");
+    expect(JSON.stringify(query)).toContain("customerProfile");
     expect(JSON.stringify(query)).toContain("loginAllowed");
     expect(result).toMatchObject({
       needoId: "u1234567890",
@@ -152,6 +158,7 @@ describe("AuthRepository formal login identifiers", () => {
         create: jest.fn(async () => ({ id: 8 })),
         update: jest.fn(async () => ({ id: 8 }))
       },
+      userExperienceAccount: { create: jest.fn(async () => ({ id: 18 })) },
       userIdentity: {
         create: jest.fn(async () => ({ id: 72 })),
         update: updateIdentity
@@ -174,11 +181,7 @@ describe("AuthRepository formal login identifiers", () => {
     const repository = new AuthRepository(
       client as never,
       bootstrapKeyAllocator as never,
-      (tx) =>
-        new IdentifierAllocator(
-          new PublicIdentifierRepository(tx),
-          () => "5831047296"
-        )
+      (tx) => new IdentifierAllocator(new PublicIdentifierRepository(tx), () => "5831047296")
     );
 
     const result = await repository.createVerifiedBaselineCustomer({
@@ -212,7 +215,125 @@ describe("AuthRepository formal login identifiers", () => {
       where: { id: 8 },
       data: { needoId: "u5831047296", username: "u5831047296" }
     });
+    expect(transaction.userExperienceAccount.create).toHaveBeenCalledWith({
+      data: { userId: 8, currentLevel: 1, totalExpUnits: 0n }
+    });
     expect(result).toMatchObject({ needoId: "u5831047296" });
     expect(result).not.toHaveProperty("loginIdentityId");
+  });
+
+  it("returns the durable audit id and completes that same merchant switch attempt idempotently", async () => {
+    const create = jest.fn(async () => ({ id: 91 }));
+    const findFirst = jest
+      .fn<
+        () => Promise<{ id: number; updatedAt: Date; metadata: Record<string, unknown> } | null>
+      >()
+      .mockResolvedValueOnce({
+        id: 91,
+        updatedAt: now,
+        metadata: { phase: "authorized_attempt", operationId: "operation-91", shopId: 11 }
+      })
+      .mockResolvedValueOnce({
+        id: 91,
+        updatedAt: new Date(now.getTime() + 1),
+        metadata: { phase: "completed", operationId: "operation-91", shopId: 11 }
+      });
+    const updateMany = jest.fn(async () => ({ count: 1 }));
+    const repository = new AuthRepository({ auditLog: { create, findFirst, updateMany } } as never);
+
+    await expect(
+      repository.createAuditLog({
+        actorId: 7,
+        action: "auth.merchant_shop.switch",
+        targetType: "Shop",
+        metadata: { phase: "authorized_attempt", operationId: "operation-91", shopId: 11 }
+      })
+    ).resolves.toEqual({ id: 91 });
+    await expect(
+      repository.completeMerchantShopSwitchAudit({
+        auditId: 91,
+        operationId: "operation-91"
+      })
+    ).resolves.toBe(true);
+    await expect(
+      repository.completeMerchantShopSwitchAudit({
+        auditId: 91,
+        operationId: "operation-91"
+      })
+    ).resolves.toBe(true);
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 91,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null
+      },
+      select: { id: true, updatedAt: true, metadata: true }
+    });
+    expect(updateMany).toHaveBeenCalledTimes(1);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 91,
+        action: "auth.merchant_shop.switch",
+        deletedAt: null,
+        updatedAt: now,
+        metadata: { path: "$.operationId", equals: "operation-91" }
+      },
+      data: {
+        metadata: {
+          phase: "completed",
+          operationId: "operation-91",
+          shopId: 11
+        }
+      }
+    });
+  });
+
+  it("does not complete a merchant switch audit for a mismatched operation", async () => {
+    const updateMany = jest.fn();
+    const repository = new AuthRepository({
+      auditLog: {
+        findFirst: jest.fn(async () => ({
+          id: 91,
+          updatedAt: now,
+          metadata: { phase: "authorized_attempt", operationId: "another-operation" }
+        })),
+        updateMany
+      }
+    } as never);
+
+    await expect(
+      repository.completeMerchantShopSwitchAudit({
+        auditId: 91,
+        operationId: "operation-91"
+      })
+    ).resolves.toBe(false);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it("re-reads after an AuditLog CAS loss and never overwrites concurrent metadata", async () => {
+    const findFirst = jest
+      .fn<
+        () => Promise<{ id: number; updatedAt: Date; metadata: Record<string, unknown> } | null>
+      >()
+      .mockResolvedValueOnce({
+        id: 91,
+        updatedAt: now,
+        metadata: { phase: "authorized_attempt", operationId: "operation-91", shopId: 11 }
+      })
+      .mockResolvedValueOnce({
+        id: 91,
+        updatedAt: new Date(now.getTime() + 1),
+        metadata: { phase: "completed", operationId: "other-operation", shopId: 12 }
+      });
+    const updateMany = jest.fn(async () => ({ count: 0 }));
+    const repository = new AuthRepository({ auditLog: { findFirst, updateMany } } as never);
+
+    await expect(
+      repository.completeMerchantShopSwitchAudit({ auditId: 91, operationId: "operation-91" })
+    ).resolves.toBe(false);
+
+    expect(findFirst).toHaveBeenCalledTimes(2);
+    expect(updateMany).toHaveBeenCalledTimes(1);
   });
 });

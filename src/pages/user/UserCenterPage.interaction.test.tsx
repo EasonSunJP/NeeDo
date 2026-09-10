@@ -4,13 +4,17 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { UserCenterPage } from "./UserCenterPage";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const testState = vi.hoisted(() => ({
   getMine: vi.fn(),
-  getMyWallet: vi.fn(),
+  getMyWalletSummary: vi.fn(),
+  getMyExperience: vi.fn(),
+  getPlatformMembership: vi.fn(),
+  listShopMemberships: vi.fn(),
   listOrders: vi.fn(),
   updateMine: vi.fn(),
   refreshSession: vi.fn(),
@@ -46,7 +50,24 @@ vi.mock("../../features/core-read/customerProfileApi", () => ({
 }));
 
 vi.mock("../../features/wallet/api", () => ({
-  walletApi: { getMyWallet: testState.getMyWallet }
+  walletApi: { getMyWalletSummary: testState.getMyWalletSummary }
+}));
+
+vi.mock("../../features/platform-membership/api", () => ({
+  platformMembershipSelfApi: {
+    getMyExperience: testState.getMyExperience,
+    getMine: testState.getPlatformMembership
+  }
+}));
+
+vi.mock("../../features/shop-member/api", () => ({
+  customerShopMembershipApi: {
+    list: testState.listShopMemberships
+  }
+}));
+
+vi.mock("../../lib/persistentCacheScope", () => ({
+  getAuthenticatedPersistentCacheScope: () => "account:12"
 }));
 
 vi.mock("../../state/entityStore", () => ({
@@ -81,10 +102,12 @@ const savedProfile: CustomerSelfProfile = {
   isPublic: false,
   languages: ["日本語"],
   membershipLevel: "standard",
+  level: 1,
   updatedAt: "2026-08-26T00:00:00.000Z",
   userId: 12,
   visibility: "network" as const
 };
+const formalOrderStatusCount = 5;
 
 let container: HTMLDivElement;
 let root: Root;
@@ -157,7 +180,8 @@ async function renderUserCenter(expectedName = "服务端原名") {
 }
 
 describe("UserCenterPage inline profile editing", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await persistentResourceCache.clearScope("account:12");
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -173,17 +197,41 @@ describe("UserCenterPage inline profile editing", () => {
     testState.previewCustomer = null;
     testState.getMine.mockResolvedValue(savedProfile);
     testState.refreshSession.mockResolvedValue({ ok: true });
-    testState.getMyWallet.mockResolvedValue({
-      availableBalance: 5_000,
-      createdAt: "2026-08-26T00:00:00.000Z",
-      currency: "NDP",
-      frozenBalance: 0,
-      id: 7,
-      ownerId: 12,
-      ownerType: "user",
-      updatedAt: "2026-08-26T00:00:00.000Z"
+    testState.getMyWalletSummary.mockResolvedValue({
+      activeCurrency: "NDP",
+      hasTestNdpWallet: false,
+      ndp: { available: 5_000, frozen: 0 },
+      testNdp: { available: 0, frozen: 0 }
     });
     testState.listOrders.mockResolvedValue({ list: [], page: 1, page_size: 1, total: 0 });
+    testState.listShopMemberships.mockResolvedValue({ list: [], page: 1, page_size: 1, total: 0 });
+    testState.getMyExperience.mockResolvedValue({
+      level: 1,
+      totalExp: "0",
+      currentLevelExp: "0",
+      nextLevelExp: "100",
+      progressBps: 0
+    });
+    testState.getPlatformMembership.mockResolvedValue({
+      tierCode: "free",
+      tierVersionPublicId: "tier-free-v1",
+      multiplier: 1,
+      expiresAt: null,
+      ekycVerified: false,
+      benefits: [],
+      theme: {
+        detailAccentColor: "#A8FF2F",
+        detailSurfaceColor: "#10212A",
+        detailSurfaceMiddleColor: "#183A32",
+        detailSurfaceBottomColor: "#24314B",
+        detailItemSurfaceColor: "#0A151C",
+        detailOuterBorderColor: "#5B7D3A",
+        detailItemBorderColor: "#263E48",
+        detailAvatarBorderColor: "#6C9048",
+        simpleTopColor: "#0B2418",
+        simpleBottomColor: "#102631"
+      }
+    });
   });
 
   afterEach(async () => {
@@ -191,22 +239,64 @@ describe("UserCenterPage inline profile editing", () => {
     container.remove();
   });
 
-  it("labels the active wallet as Test NDP from the server currency", async () => {
-    testState.getMyWallet.mockResolvedValue({
-      availableBalance: 100_000,
-      createdAt: "2026-08-26T00:00:00.000Z",
-      currency: "TEST_NDP",
-      frozenBalance: 0,
-      id: 7,
-      ownerId: 12,
-      ownerType: "user",
-      updatedAt: "2026-08-26T00:00:00.000Z"
+  it("restores the cached personal center immediately on route remount without repeating reads", async () => {
+    await renderUserCenter();
+
+    expect(testState.getMine).toHaveBeenCalledTimes(1);
+    expect(testState.getMyWalletSummary).toHaveBeenCalledTimes(1);
+    expect(testState.listOrders).toHaveBeenCalledTimes(formalOrderStatusCount);
+    expect(testState.listShopMemberships).toHaveBeenCalledTimes(1);
+    expect(testState.getMyExperience).toHaveBeenCalledTimes(1);
+    expect(testState.getPlatformMembership).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <UserCenterPage />
+        </MemoryRouter>
+      );
+    });
+
+    expect(container.textContent).toContain("服务端原名");
+    expect(container.textContent).not.toContain("正在加载我的正式数据");
+    expect(testState.getMine).toHaveBeenCalledTimes(1);
+    expect(testState.getMyWalletSummary).toHaveBeenCalledTimes(1);
+    expect(testState.listOrders).toHaveBeenCalledTimes(formalOrderStatusCount);
+    expect(testState.listShopMemberships).toHaveBeenCalledTimes(1);
+    expect(testState.getMyExperience).toHaveBeenCalledTimes(1);
+    expect(testState.getPlatformMembership).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps formal NDP primary and shows Test NDP as secondary wallet data", async () => {
+    testState.getMyWalletSummary.mockResolvedValue({
+      activeCurrency: "TEST_NDP",
+      hasTestNdpWallet: true,
+      ndp: { available: 5_000, frozen: 0 },
+      testNdp: { available: 100_000, frozen: 0 }
     });
 
     await renderUserCenter();
 
-    expect(container.textContent).toContain("Test NDP");
-    expect(container.textContent).toContain("100,000");
+    expect(container.textContent).toContain("NDP5,000Test NDP 100,000");
+  });
+
+  it("keeps every account-and-service row on the same left-aligned text column", async () => {
+    await renderUserCenter();
+
+    const section = container.querySelector('[data-testid="user-center-account-settings"]');
+    const rows = Array.from(section?.querySelectorAll<HTMLAnchorElement>("a") ?? []);
+
+    expect(section).not.toBeNull();
+    expect(rows).toHaveLength(6);
+    rows.forEach((row) => {
+      expect(row.className).toContain("grid-cols-[minmax(0,1fr)_auto]");
+      expect(row.firstElementChild?.className).toContain("min-w-0");
+      expect(row.firstElementChild?.className).toContain("text-left");
+      expect(row.firstElementChild?.className).toContain("col-start-1");
+      expect(row.lastElementChild?.className).toContain("col-start-2");
+    });
   });
 
   it("keeps the saved privacy value in view and restores it after cancelling an edited draft", async () => {
@@ -300,6 +390,58 @@ describe("UserCenterPage inline profile editing", () => {
     expect(nickname?.className).toContain("[field-sizing:content]");
   });
 
+  it("renders empty formal languages and biography honestly without inventing profile data", async () => {
+    testState.getMine.mockResolvedValueOnce({
+      ...savedProfile,
+      bio: null,
+      languages: []
+    });
+
+    await renderUserCenter();
+
+    expect(container.textContent).not.toContain("可在这里补充你的语言偏好");
+    expect(container.textContent).not.toContain("日本語");
+    expect(container.textContent?.match(/未设置/g)?.length).toBeGreaterThanOrEqual(2);
+
+    await click(findIconButton("编辑资料"));
+    expect(container.querySelector<HTMLTextAreaElement>('textarea[data-profile-field="bio"]')?.value).toBe("");
+    expect(findButton("日本語").className).not.toContain("client-primary-soft");
+  });
+
+  it("renders locale codes and localized language names as one canonical selection", async () => {
+    testState.getMine.mockResolvedValueOnce({
+      ...savedProfile,
+      languages: ["ja", "zh", "en", "日本語", "中文", "English"]
+    });
+
+    await renderUserCenter();
+
+    const languageSection = Array.from(container.querySelectorAll("section")).find((section) =>
+      section.textContent?.startsWith("语言能力")
+    );
+    const labels = Array.from(languageSection?.querySelectorAll("span") ?? []).map((element) => element.textContent);
+
+    expect(labels).toEqual(["日本語", "中文", "English"]);
+
+    await click(findIconButton("编辑资料"));
+
+    expect(findButton("日本語").className).toContain("client-primary-soft");
+    expect(findButton("中文").className).toContain("client-primary-soft");
+    expect(findButton("English").className).toContain("client-primary-soft");
+  });
+
+  it("places the edit-state privacy control after the basic-information labels", async () => {
+    await renderUserCenter();
+    await click(findIconButton("编辑资料"));
+
+    const languageLabel = Array.from(container.querySelectorAll("p")).find((element) => element.textContent === "语言能力");
+    const privacyControl = container.querySelector('[data-testid="user-profile-privacy-control"]');
+
+    expect(languageLabel).toBeDefined();
+    expect(privacyControl).not.toBeNull();
+    expect(languageLabel?.compareDocumentPosition(privacyControl!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("uses the same compact name font in view and edit modes so the ID remains visible", async () => {
     await renderUserCenter();
 
@@ -350,6 +492,21 @@ describe("UserCenterPage inline profile editing", () => {
     expect(levelLabel?.parentElement?.children).toHaveLength(1);
   });
 
+  it("shows the formal experience-account level instead of deriving Lv from the credit score", async () => {
+    testState.getMyExperience.mockResolvedValueOnce({
+      level: 72,
+      totalExp: "15000",
+      currentLevelExp: "500",
+      nextLevelExp: "750",
+      progressBps: 6667
+    });
+
+    await renderUserCenter();
+
+    expect(Array.from(container.querySelectorAll("span")).some((element) => element.textContent === "Lv.72")).toBe(true);
+    expect(Array.from(container.querySelectorAll("span")).some((element) => element.textContent === "Lv.1")).toBe(false);
+  });
+
   it("uses the server-returned profile after one disabled formal save", async () => {
     let resolveUpdate: (value: typeof savedProfile) => void = () => undefined;
     testState.updateMine.mockImplementation(
@@ -388,6 +545,22 @@ describe("UserCenterPage inline profile editing", () => {
     await renderUserCenter();
 
     await click(findIconButton("编辑资料"));
+    await click(findButton("保存并退出编辑模式"));
+
+    await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));
+  });
+
+  it("refreshes the authoritative account session when only the display name changes", async () => {
+    testState.updateMine.mockResolvedValue({
+      ...savedProfile,
+      displayName: "服务端新姓名"
+    });
+    await renderUserCenter();
+
+    await click(findIconButton("编辑资料"));
+    const nickname = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]');
+    expect(nickname).not.toBeNull();
+    await inputValue(nickname!, "服务端新姓名");
     await click(findButton("保存并退出编辑模式"));
 
     await waitFor(() => expect(testState.refreshSession).toHaveBeenCalledTimes(1));

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import panelSource from "./FormalTechnicianOrdersPanel.tsx?raw";
 import portalSource from "../../pages/mobile/TechnicianPortalPage.tsx?raw";
+import detailSource from "../../features/technician-schedule/route-pages.tsx?raw";
 
 describe("FormalTechnicianOrdersPanel", () => {
   it("replaces the visible technician order tab with identity-scoped server data", () => {
@@ -13,12 +14,22 @@ describe("FormalTechnicianOrdersPanel", () => {
     expect(panelSource).not.toContain("localStorage");
   });
 
-  it("drives each fulfillment transition through the formal order state machine", () => {
+  it("keeps only valid pre-service transitions in the list and delegates fulfillment to detail", () => {
     expect(panelSource).toContain("bookingApi.confirmOrder(order.id)");
-    expect(panelSource).toContain("bookingApi.startOrder(order.id)");
-    expect(panelSource).toContain("bookingApi.completeOrder(order.id)");
     expect(panelSource).toContain("bookingApi.cancelOrder(order.id");
     expect(panelSource).toContain("order.statusHistory.map");
+    expect(panelSource).not.toContain("bookingApi.startOrder");
+    expect(panelSource).not.toContain("bookingApi.completeOrder");
+    expect(detailSource).toContain("bookingApi.startService");
+    expect(detailSource).toContain("bookingApi.acceptAddOn");
+    expect(detailSource).toContain("bookingApi.rejectAddOn");
+    expect(detailSource).toContain("bookingApi.endService");
+    expect(detailSource).toContain("bookingApi.getCheckout");
+    expect(detailSource).toContain("bookingApi.confirmReceipt");
+    expect(detailSource).not.toContain("bookingApi.startOrder");
+    expect(detailSource).not.toContain("bookingApi.completeOrder");
+    expect(panelSource).toContain('status === "awaitingCheckout"');
+    expect(panelSource).toContain('status === "awaitingPaymentConfirmation"');
   });
 
   it("exposes loading, retry, empty, conflict, and in-flight states", () => {

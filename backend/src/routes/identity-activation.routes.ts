@@ -33,8 +33,10 @@ export const createIdentityActivationRoutes = (
   dependencies: AppDependencies
 ): Router => {
   const router = Router();
-  const authenticate = createAuthenticateMiddleware(createAuthServiceForRoutes(config, dependencies));
-  const catalog = createContractCatalogForRoutes();
+  const authenticate = createAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
+  const catalog = createContractCatalogForRoutes(dependencies);
   const controller = new IdentityActivationController(
     createAffiliateIdentityActivationServiceForRoutes(dependencies, catalog),
     catalog,

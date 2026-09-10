@@ -94,6 +94,8 @@ export class CompensationProfileRepository implements CompensationProfileReposit
           dailyRateJpy: input.dailyRateJpy,
           fixedOrderPayJpy: input.fixedOrderPayJpy,
           commissionRateBps: Math.round(input.commissionRatePercent * 100),
+          extensionCommissionRateBps: Math.round(input.extensionCommissionRatePercent * 100),
+          nominationFeeJpy: input.nominationFeeJpy,
           guaranteedMinimumJpy: input.guaranteedMinimumJpy,
           ndpFeeBearer: input.ndpFeeBearer,
           technicianNdpShareBps: Math.round(input.technicianNdpSharePercent * 100),
@@ -187,11 +189,13 @@ export class CompensationProfileRepository implements CompensationProfileReposit
     });
     if (!payslip) return this.emptyPayrollSummary();
 
-    const orderIds = [...new Set(
-      payslip.lines
-        .map((line) => line.orderId)
-        .filter((orderId): orderId is number => orderId !== null)
-    )];
+    const orderIds = [
+      ...new Set(
+        payslip.lines
+          .map((line) => line.orderId)
+          .filter((orderId): orderId is number => orderId !== null)
+      )
+    ];
     const [orders, serviceIncome, payoutRecordCount] = await Promise.all([
       orderIds.length > 0
         ? this.client.bookingOrder.findMany({
@@ -296,6 +300,8 @@ export class CompensationProfileRepository implements CompensationProfileReposit
       dailyRateJpy: record.dailyRateJpy,
       fixedOrderPayJpy: record.fixedOrderPayJpy,
       commissionRatePercent: record.commissionRateBps / 100,
+      extensionCommissionRatePercent: record.extensionCommissionRateBps / 100,
+      nominationFeeJpy: record.nominationFeeJpy,
       guaranteedMinimumJpy: record.guaranteedMinimumJpy,
       ndpFeeBearer: this.ndpBearer(record.ndpFeeBearer),
       technicianNdpSharePercent: record.technicianNdpShareBps / 100,
@@ -325,6 +331,8 @@ export class CompensationProfileRepository implements CompensationProfileReposit
       dailyRateJpy: record.dailyRateJpy,
       fixedOrderPayJpy: record.fixedOrderPayJpy,
       commissionRatePercent: record.commissionRateBps / 100,
+      extensionCommissionRatePercent: record.extensionCommissionRateBps / 100,
+      nominationFeeJpy: record.nominationFeeJpy,
       guaranteedMinimumJpy: record.guaranteedMinimumJpy,
       ndpFeeBearer: this.ndpBearer(record.ndpFeeBearer),
       technicianNdpSharePercent: record.technicianNdpShareBps / 100,

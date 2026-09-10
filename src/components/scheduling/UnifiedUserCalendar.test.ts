@@ -5,6 +5,16 @@ import source from "./UnifiedUserCalendar.tsx?raw";
 const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 describe("UnifiedUserCalendar event detail page", () => {
+  it("uses canonical public technician IDs for participant and self-profile links", () => {
+    expect(source).toContain("getScopedTechnicianDynamicPath(scope, technician)");
+    expect(source).toContain(
+      'getScopedTechnicianDynamicPath("technician", currentTechnician)'
+    );
+    expect(source).not.toContain(
+      'getScopedProfileDetailPath(scope, "technician", technician.id)'
+    );
+  });
+
   it("shows event creator details, participant list entry, and creator chat wiring", () => {
     expect(source).toContain("UnifiedCalendarEventDetailPage");
     expect(source).toContain("创建者");
@@ -88,6 +98,14 @@ describe("UnifiedUserCalendar event editor page", () => {
     expect(source).not.toContain("选择同步联系人");
     expect(source).not.toContain("最近联系多的通讯录中的人");
   });
+
+  it("opens the two-step participant flow from the shared event editor", () => {
+    expect(source).toContain("<CalendarParticipantFlow");
+    expect(source).toContain("setParticipantFlowOpen(true)");
+    expect(source).toContain("spanDraftAcrossLanes");
+    expect(source).toContain("draftRangeValue");
+    expect(source).not.toContain("visibleSyncContactOptions.map");
+  });
 });
 
 describe("UnifiedUserCalendar multi-day interactions", () => {
@@ -95,9 +113,9 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
     expect(source).toContain("formalOnly = false");
     expect(source).toContain("loadCustomerOrderWindow");
     expect(source).toContain("formalOnly ? [] : loadLocalCalendarEvents");
-    expect(source).toContain("formalOnly ? [] : getLocalCalendarEvents");
+    expect(source).toContain("getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator)");
     expect(source).toContain("if (!formalOnly) {");
-    expect(source).toContain("onCreate={formalOnly ? undefined : openCreate}");
+    expect(source).toContain('onCreate={formalOnly && activeScope === "merchant" ? undefined : openCreate}');
   });
 
   it("trusts the authenticated order scope instead of comparing customer profile and user IDs", () => {
@@ -114,7 +132,7 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
   it("loads persisted orders and schedule slots without the order mock", () => {
     expect(source).not.toContain('import { orders } from "../../data/mock"');
     expect(source).toContain("bookingApi.listOrders");
-    expect(source).toContain("schedulingApi.listSlots");
+    expect(source).toContain("loadManagedScheduleWindow");
     expect(source).toContain("mapScheduleSlotToCalendarItem");
   });
   it("keeps week and three-day timeline creation aligned with the day timeline", () => {
@@ -123,11 +141,11 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
     expect(source).toContain("onCreate(draftRange.date, minutesToTime(draftRange.start), minutesToTime(draftRange.end));");
     expect(source).toContain('title="新建行程"');
     expect(source).toContain("compact={useCompactDraftAction}");
-    expect(source).toContain("onCreate={formalOnly ? undefined : openCreate}");
+    expect(source).toContain('onCreate={formalOnly && activeScope === "merchant" ? undefined : openCreate}');
     expect(source).not.toContain("onCreate={isMerchantAppointmentStatusMode ? undefined : openCreate}");
   });
 
-  it("keeps merchant appointment status mode able to create local itinerary items", () => {
+  it("keeps formal personal events while merchant appointment mode filters only real appointments", () => {
     const allEventsSource = source.slice(
       source.indexOf("const allEvents = useMemo"),
       source.indexOf("const periodEvents = useMemo")
@@ -141,13 +159,24 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
       source.indexOf("</UnifiedCalendarSurface>")
     );
 
-    expect(allEventsSource).toContain("const localCalendarEvents = formalOnly ? [] : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);");
-    expect(allEventsSource).toContain("return [");
+    expect(allEventsSource).toContain("getFormalPersonalCalendarEvents(formalCalendarEvents, currentScopeCreator)");
+    expect(allEventsSource).toContain("return markBookingConflicts([");
     expect(allEventsSource).toContain("...localCalendarEvents,");
     expect(allEventsSource).toContain("...neeDoEvents");
     expect(filterSource).toContain('event.sourceId !== "merchant" || matchesMerchantAppointmentStatusFilter(event, appointmentStatusFilter)');
     expect(floatingActionSource).toContain("<FloatingActionButton");
     expect(floatingActionSource).not.toContain("!isMerchantAppointmentStatusMode");
+  });
+
+  it("keeps technician avatar lanes visible in the merchant appointment overview", () => {
+    const laneSource = source.slice(
+      source.indexOf("const parallelCalendarLanes = useMemo"),
+      source.indexOf("const allEvents = useMemo")
+    );
+
+    expect(laneSource).toContain('getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, "technician")');
+    expect(laneSource).not.toContain("&& !isMerchantAppointmentStatusMode");
+    expect(source).toContain('const assigned = event.calendarId?.startsWith("technician:") ?? false');
   });
 
   it("centers day, three-day, and week timelines on the first timed event", () => {

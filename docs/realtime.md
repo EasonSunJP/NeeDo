@@ -14,6 +14,10 @@ New tables:
 - `social_posts`: basic text/media social posts with `public` or `followers` visibility.
 - `follows`: user follow graph.
 - `notifications`: durable notification inbox with `read_at`.
+- `im_chat_record_bundles`, `im_chat_record_items`, and `im_chat_record_deliveries`: immutable, identity-owned chat-record snapshots and their formal message deliveries.
+- `im_chat_record_favorites`: current-identity favorite relations for one complete chat-record bundle.
+- `im_message_translations`: successful provider results keyed by message, source hash, target language, and provider.
+- `im_message_batch_delete_commands`: idempotent current-identity batch-delete command results. Shared `messages` rows are not removed.
 
 All tables include `id`, `created_at`, `updated_at`, and `deleted_at`. Reads filter soft-deleted rows.
 
@@ -39,6 +43,15 @@ IM:
 - `POST /im/friend-requests`
 - `POST /im/friend-requests/:id/accept`
 - `POST /im/friend-requests/:id/reject`
+- `POST /im/conversations/:targetConversationId/chat-records` (`message:forward`)
+- `GET /im/chat-records/:publicId`
+- `GET /im/chat-records/:publicId/items?beforePosition=&pageSize=50`
+- `GET /im/chat-records/:publicId/media/:checksumSha256`
+- `POST /im/chat-record-favorites` (`message:favorite`)
+- `GET /im/chat-record-favorites?page=1&pageSize=20` (`message:favorite`)
+- `DELETE /im/chat-record-favorites/:favoriteId` (`message:favorite`)
+- `POST /im/conversations/:conversationId/messages/delete-for-me`
+- `POST /im/conversations/:conversationId/messages/translations` (`message:translate`)
 
 Social:
 
@@ -60,9 +73,27 @@ Notifications and realtime:
 
 Messages use cursor pagination through `beforeId`. The first page returns newest messages. If `nextCursor` is present, pass it as the next `beforeId`. Contact deletion is owner-scoped: it soft-deletes only the current account's contact row, writes an audit record in the same transaction, and leaves the other account's contacts and shared conversation history unchanged.
 
+Chat-record creation accepts only a source conversation and 1–100 message IDs. The server reloads and orders visible source messages under the active identity, snapshots eligible content and protected media, and never trusts client-supplied titles, senders, or bodies. One sender, two senders, and three-or-more senders render as the localized single, pair, and group-chat titles. Detail access is limited to the creator identity, an active favorite owner, or a still-authorized delivery-conversation participant whose delivery message is not deleted for that identity; inaccessible records return the same safe not-found response. Favorite removal soft-deletes only the relation.
+
+Batch delete accepts 1–100 message IDs and an idempotency key. It validates the whole batch before writing `message_user_deletions` for the active identity; the peer and shared `messages` rows remain unchanged. All record/favorite/delete writes are audited without message bodies.
+
+Message translation accepts 1–50 server-authoritative message IDs plus one of `zh`, `zh-Hant`, `ja`, `en`, or `ko`. Only user text and image/video captions are eligible. Successful translations are cached separately and do not modify message content or metadata. The menu supports one-message manual translation; automatic translation disables that action and batches visible eligible messages. The original stays visible above the translated block.
+
 ## Unread Counts
 
 Message unread counts are stored on `conversation_participants.unread_count`. Sending a message increments other active participants in one update and resets the sender. Marking a conversation read or unread changes only the current participant. Pin and mute are also participant preferences. Deleting a conversation sets `hidden_at` only for the current participant; it does not delete shared membership or messages, and a new message makes the conversation visible again. Clearing a conversation advances only that participant's `cleared_through_message_id`. Deleting one message writes a viewer-scoped `message_user_deletions` tombstone; message history and conversation previews exclude that tombstone only for the deleting user while the shared message remains available to other participants. Notification unread counts come from `notifications.read_at IS NULL`. Friend request unread counts come from pending incoming requests.
+
+## Server-authoritative standard and traceless recall
+
+`POST /im/conversations/:conversationId/messages/:messageId/recall` keeps the compatible generic request body `{ "mode": "standard" }`; it is not a client choice of recall mode. Before the recall repository transaction, the server resolves the sender's effective `traceless_recall` platform-membership benefit at the request time. Effective entitlement requires the active customer membership, its current published tier/version switch, the global benefit switch, and an available delivery capability. A missing entitlement is standard recall; a membership/catalog/capability infrastructure failure rejects the request before it changes the message and never silently downgrades it.
+
+The repository persists the server-selected terminal `recallMode` as either `STANDARD` or `TRACELESS`. The API response action is respectively `standard_recall` or `traceless_recall`, and replay returns the already persisted mode even if membership changes later. Sender authorization, participant scope, and the authoritative 180-second recall window remain unchanged. Standard recall remains the existing content-free tombstone for both participants. A newly applied traceless recall clears identifiable message material, writes the `TRACELESS_RECALL` deletion-sync fact and a content-free `im.message.traceless_recall` audit fact, and decrements only unread recipients who were participants when the message was created. Replays do not decrement unread counters or emit another visible transition.
+
+`TRACELESS` messages are excluded by the shared visible-message predicate used for history pagination and conversation last-message selection, so neither history nor a conversation preview can leak content, type, or a recalled summary. Standard tombstones remain visible. Realtime terminal messages and persisted deletion-sync facts are content-free and exclude original content, translations, media URLs, storage keys, filenames, and thumbnails; their safe terminal fields are not constrained here to an exact minimal schema.
+
+The frontend sends the same generic action and validates that the returned action agrees with the server message `recallMode`. For a standard outcome it retains the existing tombstone and sender draft-restore behavior. For a traceless HTTP or `message.recalled` SSE outcome it terminalizes local media, removes the message row, rebuilds the conversation summary from remaining rows, and refreshes the authoritative bootstrap. A traceless deletion barrier takes precedence over stale history, optimistic responses, and duplicate or out-of-order events, so a recall residue cannot be restored locally.
+
+This local slice persists content-free `TRACELESS_RECALL` deletion-sync facts and delivers the online `message.recalled` SSE outcome, but it does not add an `/im/sync` route or client reader; durable offline deletion-sync consumption remains a separate gate. It added or applied no migration and performed no staging deployment, push, or authenticated browser acceptance. Database migration application and cross-account browser acceptance remain separate release gates.
 
 ## Order Status Notifications
 

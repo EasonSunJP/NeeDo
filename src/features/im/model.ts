@@ -1,9 +1,16 @@
-import { materializeImComposerDraft } from "./reaction-policy";
+import {
+  materializeImComposerDraft,
+  type ImMessageRichText,
+} from "./reaction-policy";
 
 export type ImRoleType = "user" | "merchant" | "technician";
 export type ImProfileKind = "person" | "technician" | "store" | "service";
 export type ImRelationStatus = "active" | "deleted";
-export type ImFriendRequestStatus = "pending" | "accepted" | "rejected" | "expired";
+export type ImFriendRequestStatus =
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "expired";
 export type ImConversationType = "single" | "group" | "system";
 export type ImMessageType =
   | "text"
@@ -15,15 +22,29 @@ export type ImMessageType =
   | "location"
   | "contact-card"
   | "service-card"
+  | "shop-card"
+  | "technician-card"
+  | "social-post-card"
   | "schedule-invite"
+  | "chat-record"
   | "system"
   | "recalled";
-export type ImMessageStatus = "sending" | "sent" | "delivered" | "failed" | "recalled";
+export type ImMessageStatus =
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "failed"
+  | "recalled";
 export type ImMessageServerState = "active" | "recalled";
-export type ImRecallMode = "standard";
+export type ImRecallMode = "standard" | "traceless";
 export type ConversationDisappearingStartMode = "sent" | "read_by_all";
 export type GroupInfoEditPolicy = "owner" | "members";
-export type MessageCampaignType = "marketing" | "crm" | "transactional" | "system" | "risk";
+export type MessageCampaignType =
+  | "marketing"
+  | "crm"
+  | "transactional"
+  | "system"
+  | "risk";
 
 export const IM_ASSISTANT_USER_ID = "im-assistant";
 export const IM_ASSISTANT_CONTACT_ID = "contact-assistant";
@@ -62,6 +83,7 @@ export type ContactRelation = {
   id: string;
   ownerUserId: string;
   targetUserId: string;
+  contactIdentityId?: string;
   relationStatus: ImRelationStatus;
   source: string;
   remarkName?: string;
@@ -86,13 +108,51 @@ export type FriendRequest = {
   handledAt?: string;
 };
 
-export type DirectoryProfile = {
+type DirectoryProfileBase = {
   user: ImUser;
-  identityCard: DirectoryIdentityCard;
-  relationship: "none" | "friend" | "incoming_pending" | "outgoing_pending";
+  relationship:
+    | "none"
+    | "friend"
+    | "incoming_pending"
+    | "outgoing_pending"
+    | "self";
   contactId?: string;
   friendRequest?: FriendRequest;
 };
+
+export type TechnicianContactService = {
+  id: number;
+  shopId: number | null;
+  name: string;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  taxIncluded: true;
+  sortOrder: number;
+};
+
+export type TechnicianContactDetails = {
+  bidBudgetMinJpy: number | null;
+  bidBudgetMaxJpy: number | null;
+  paymentMethods: string[];
+  specialTags: string[];
+  profileTags: string[];
+  services: TechnicianContactService[];
+  completedOrderCount: number;
+  acceptanceRateBps: number;
+};
+
+export type DirectoryProfile =
+  | (DirectoryProfileBase & {
+      identityCard: DirectoryIdentityCard & { entityType: "technician" };
+      technicianContactDetails?: TechnicianContactDetails;
+    })
+  | (DirectoryProfileBase & {
+      identityCard: DirectoryIdentityCard & {
+        entityType: "user" | "shop" | "account";
+      };
+      technicianContactDetails?: never;
+    });
 
 export type DirectoryIdentityCard = {
   entityType: "user" | "technician" | "shop" | "account";
@@ -119,7 +179,7 @@ const generatedContactSignaturePatterns = [
   /%\s*接单/,
   /最近下单/,
   /^(营业中|已打烊)\s*·/,
-  /^(店铺所属技师|个人技师)$/
+  /^(店铺所属技师|个人技师)$/,
 ];
 
 export function getImContactSignatureCaption(user?: Pick<ImUser, "signature">) {
@@ -129,7 +189,11 @@ export function getImContactSignatureCaption(user?: Pick<ImUser, "signature">) {
     return "";
   }
 
-  return generatedContactSignaturePatterns.some((pattern) => pattern.test(signature)) ? "" : signature;
+  return generatedContactSignaturePatterns.some((pattern) =>
+    pattern.test(signature),
+  )
+    ? ""
+    : signature;
 }
 
 export type ConversationDisappearingCountdown = {
@@ -175,10 +239,13 @@ export type Conversation = {
   contactUserId?: string;
   lastMessageId?: string;
   lastMessagePreview: string;
+  lastMessageType?: ImMessageType;
+  lastMessageStatus?: ImMessageStatus;
   lastMessageTime: string;
   unreadCount: number;
   isPinned: boolean;
   isMuted: boolean;
+  autoTranslateMessages: boolean;
   draftText?: string;
   draftUpdatedAt?: string;
   updatedAt: string;
@@ -219,7 +286,49 @@ export type MessageAttachment = {
   height?: number;
 };
 
+export type ImContactCardCandidate = {
+  targetUserId: string;
+  needoId: string;
+  nickname: string;
+  avatarUrl: string | null;
+  relationship: "self" | "friend";
+};
+
+export type ImContactCardSnapshot = {
+  userId: string;
+  displayName: string;
+  avatar: string;
+  profileKind: ImProfileKind;
+  entityType?: "user" | "technician" | "shop";
+  entityId?: string;
+  userIdLabel?: string;
+  headline?: string;
+  snapshotVersion?: 2;
+  needoId?: string;
+  entityKind?: "customer" | "technician" | "shop" | "service";
+  entityPublicId?: string | null;
+  ekycVerified?: boolean;
+  level?: number | null;
+  tierCode?: "free" | "silver" | "gold" | "black_diamond" | null;
+  themeVersionPublicId?: string | null;
+  simpleTopColor?: string | null;
+  simpleBottomColor?: string | null;
+  bio?: string | null;
+  languages?: string[];
+  rating?: number | null;
+  completedOrderCount?: number | null;
+  favoriteCount?: number | null;
+  shareCount?: number | null;
+  specialReviewTags?: Array<{
+    code: string;
+    label: string;
+    icon: string;
+    count: number;
+  }>;
+};
+
 export type MessageExt = {
+  mediaState?: "available" | "expired";
   width?: number;
   height?: number;
   duration?: number;
@@ -229,22 +338,15 @@ export type MessageExt = {
   url?: string;
   thumbnailUrl?: string;
   caption?: string;
+  richText?: ImMessageRichText;
+  captionRichText?: ImMessageRichText;
   location?: {
     title: string;
     address: string;
     latitude: number;
     longitude: number;
   };
-  contactCard?: {
-    userId: string;
-    displayName: string;
-    avatar: string;
-    profileKind: ImProfileKind;
-    entityType?: "user" | "technician" | "shop";
-    entityId?: string;
-    userIdLabel?: string;
-    headline?: string;
-  };
+  contactCard?: ImContactCardSnapshot;
   serviceCard?: {
     serviceId: string;
     name: string;
@@ -257,6 +359,55 @@ export type MessageExt = {
     providerType?: "store" | "technician";
     href?: string;
     tags?: string[];
+    priceAmount?: number;
+    currency?: string;
+    durationMinutes?: number;
+    usageCount?: number;
+    favoriteCount?: number;
+    shareCount?: number;
+    isBookable?: boolean;
+    shopAddress?: string | null;
+    targetType?: "service" | "technician_service";
+  };
+  shopCard?: {
+    publicId: string;
+    name: string;
+    imageUrl: string | null;
+    description: string | null;
+    address: string;
+    rating: number;
+    reviewCount: number;
+    completedOrderCount: number;
+    favoriteCount: number;
+    shareCount: number;
+    tags: string[];
+  };
+  technicianCard?: {
+    publicId: string;
+    name: string;
+    imageUrl: string | null;
+    description: string | null;
+    languages: string[];
+    rating: number;
+    completedOrderCount: number;
+    favoriteCount: number;
+    shareCount: number;
+    tags: string[];
+    specialReviewTags: Array<{
+      code: string;
+      label: string;
+      icon: string;
+      count: number;
+    }>;
+  };
+  socialPostCard?: {
+    postId: string;
+    authorName: string;
+    authorAvatar: string;
+    text: string;
+    mediaUrl?: string;
+    mediaType?: "image" | "video";
+    mediaThumbnailUrl?: string;
   };
   scheduleInvite?: {
     scheduleId: string;
@@ -270,6 +421,13 @@ export type MessageExt = {
     reminderLabel?: string;
     statusLabel?: string;
     href?: string;
+  };
+  chatRecord?: {
+    publicId: string;
+    itemCount: number;
+    preview: string;
+    senderNames: string[];
+    titleKind: "single" | "pair" | "group";
   };
   mentions?: string[];
   mentionAll?: boolean;
@@ -330,6 +488,12 @@ export type ImStoreUpdate =
   | { type: "message.created"; message: ConversationMessage }
   | { type: "message.updated"; message: ConversationMessage }
   | { type: "message.recalled"; message: ConversationMessage }
+  | {
+      type: "message.deleted";
+      conversationId: string;
+      messageId: string;
+      reason: "privacy_expired" | "traceless_recall";
+    }
   | { type: "refresh" };
 
 export type ReadCursor = {
@@ -448,14 +612,32 @@ export type ImSearchResult = {
 };
 
 export type ImRealtimeEvent =
-  | { type: "message.created"; payload: { conversation: Conversation; message: ConversationMessage } }
-  | { type: "message.updated"; payload: { conversation: Conversation; message: ConversationMessage } }
-  | { type: "message.recalled"; payload: { conversation: Conversation; message: ConversationMessage } }
+  | {
+      type: "message.created";
+      payload: { conversation: Conversation; message: ConversationMessage };
+    }
+  | {
+      type: "message.updated";
+      payload: { conversation: Conversation; message: ConversationMessage };
+    }
+  | {
+      type: "message.recalled";
+      payload: { conversation: Conversation; message: ConversationMessage };
+    }
   | { type: "conversation.updated"; payload: { conversation: Conversation } }
-  | { type: "friend_request.created"; payload: { friendRequest: FriendRequest } }
-  | { type: "friend_request.updated"; payload: { friendRequest: FriendRequest; contact?: ContactRelation } }
+  | {
+      type: "friend_request.created";
+      payload: { friendRequest: FriendRequest };
+    }
+  | {
+      type: "friend_request.updated";
+      payload: { friendRequest: FriendRequest; contact?: ContactRelation };
+    }
   | { type: "contact.updated"; payload: { contact: ContactRelation } }
-  | { type: "unread.updated"; payload: { conversationId: string; unreadCount: number } };
+  | {
+      type: "unread.updated";
+      payload: { conversationId: string; unreadCount: number };
+    };
 
 export const CONTACT_INDEX_ORDER = [
   "A",
@@ -484,7 +666,7 @@ export const CONTACT_INDEX_ORDER = [
   "X",
   "Y",
   "Z",
-  "#"
+  "#",
 ] as const;
 
 export type ContactIndexLetter = (typeof CONTACT_INDEX_ORDER)[number];
@@ -505,8 +687,13 @@ export type ContactSection = {
 
 const seedNow = new Date("2026-04-17T19:30:00+09:00");
 let idSeed = 0;
-const contactIndexOrderMap = new Map(CONTACT_INDEX_ORDER.map((letter, index) => [letter, index]));
-const kanaInitialGroups: Array<{ letter: ContactIndexLetter; characters: string }> = [
+const contactIndexOrderMap = new Map(
+  CONTACT_INDEX_ORDER.map((letter, index) => [letter, index]),
+);
+const kanaInitialGroups: Array<{
+  letter: ContactIndexLetter;
+  characters: string;
+}> = [
   { letter: "A", characters: "あぁアァ" },
   { letter: "I", characters: "いぃイィ" },
   { letter: "U", characters: "うぅウゥ" },
@@ -526,9 +713,12 @@ const kanaInitialGroups: Array<{ letter: ContactIndexLetter; characters: string 
   { letter: "Y", characters: "やゆよゃゅょヤユヨャュョ" },
   { letter: "R", characters: "らりるれろラリルレロ" },
   { letter: "W", characters: "わをゎワヲヮ" },
-  { letter: "V", characters: "ゔヴ" }
+  { letter: "V", characters: "ゔヴ" },
 ];
-const hanInitialBoundaries: Array<{ letter: Exclude<ContactIndexLetter, "#">; sample: string }> = [
+const hanInitialBoundaries: Array<{
+  letter: Exclude<ContactIndexLetter, "#">;
+  sample: string;
+}> = [
   { letter: "A", sample: "阿" },
   { letter: "B", sample: "芭" },
   { letter: "C", sample: "擦" },
@@ -551,9 +741,11 @@ const hanInitialBoundaries: Array<{ letter: Exclude<ContactIndexLetter, "#">; sa
   { letter: "W", sample: "挖" },
   { letter: "X", sample: "昔" },
   { letter: "Y", sample: "压" },
-  { letter: "Z", sample: "匝" }
+  { letter: "Z", sample: "匝" },
 ];
-const hanInitialCollator = new Intl.Collator("zh-CN-u-co-pinyin", { sensitivity: "base" });
+const hanInitialCollator = new Intl.Collator("zh-CN-u-co-pinyin", {
+  sensitivity: "base",
+});
 
 function nextId(prefix: string) {
   idSeed += 1;
@@ -572,33 +764,60 @@ function atDaysAgo(days: number) {
   return new Date(seedNow.getTime() - days * 86_400_000).toISOString();
 }
 
-function createUser(input: Omit<ImUser, "searchableFields" | "status" | "canCall" | "canVideoCall"> & { searchableFields?: string[] }) {
+function createUser(
+  input: Omit<
+    ImUser,
+    "searchableFields" | "status" | "canCall" | "canVideoCall"
+  > & { searchableFields?: string[] },
+) {
   return {
     status: "active" as const,
     canCall: true,
     canVideoCall: true,
-    searchableFields: input.searchableFields ?? [input.nickname, input.accountId, input.userIdLabel, input.sortKey],
-    ...input
+    searchableFields: input.searchableFields ?? [
+      input.nickname,
+      input.accountId,
+      input.userIdLabel,
+      input.sortKey,
+    ],
+    ...input,
   };
 }
 
-function createContact(input: Omit<ContactRelation, "createdAt" | "updatedAt"> & { createdAt?: string; updatedAt?: string }) {
+function createContact(
+  input: Omit<ContactRelation, "createdAt" | "updatedAt"> & {
+    createdAt?: string;
+    updatedAt?: string;
+  },
+) {
   return {
     createdAt: input.createdAt ?? atDaysAgo(12),
     updatedAt: input.updatedAt ?? atHoursAgo(6),
-    ...input
+    ...input,
   };
 }
 
-function createFriendRequest(input: Omit<FriendRequest, "createdAt"> & { createdAt?: string }) {
+function createFriendRequest(
+  input: Omit<FriendRequest, "createdAt"> & { createdAt?: string },
+) {
   return {
     createdAt: input.createdAt ?? atHoursAgo(4),
-    ...input
+    ...input,
   };
 }
 
 function createConversation(
-  input: Omit<Conversation, "lastMessagePreview" | "lastMessageTime" | "updatedAt" | "unreadCount" | "isPinned" | "isMuted" | "avatar"> & {
+  input: Omit<
+    Conversation,
+    | "lastMessagePreview"
+    | "lastMessageTime"
+    | "updatedAt"
+    | "unreadCount"
+    | "isPinned"
+    | "isMuted"
+    | "autoTranslateMessages"
+    | "avatar"
+  > & {
     avatar?: string;
     lastMessagePreview?: string;
     lastMessageTime?: string;
@@ -606,7 +825,8 @@ function createConversation(
     unreadCount?: number;
     isPinned?: boolean;
     isMuted?: boolean;
-  }
+    autoTranslateMessages?: boolean;
+  },
 ) {
   return {
     avatar: input.avatar ?? "",
@@ -615,25 +835,31 @@ function createConversation(
     unreadCount: input.unreadCount ?? 0,
     isPinned: input.isPinned ?? false,
     isMuted: input.isMuted ?? false,
+    autoTranslateMessages: input.autoTranslateMessages ?? false,
     updatedAt: input.updatedAt ?? input.lastMessageTime ?? atDaysAgo(3),
-    ...input
+    ...input,
   };
 }
 
-function createMember(input: Omit<ConversationMember, "joinedAt"> & { joinedAt?: string }) {
+function createMember(
+  input: Omit<ConversationMember, "joinedAt"> & { joinedAt?: string },
+) {
   return {
     joinedAt: input.joinedAt ?? atDaysAgo(40),
-    ...input
+    ...input,
   };
 }
 
 function createMessage(
-  input: Omit<ConversationMessage, "id" | "localId" | "clientSeq" | "status"> & {
+  input: Omit<
+    ConversationMessage,
+    "id" | "localId" | "clientSeq" | "status"
+  > & {
     id?: string;
     localId?: string;
     clientSeq?: number;
     status?: ImMessageStatus;
-  }
+  },
 ) {
   const messageId = input.id ?? nextId("msg");
 
@@ -642,53 +868,87 @@ function createMessage(
     localId: input.localId ?? `${messageId}-local`,
     clientSeq: input.clientSeq ?? idSeed,
     status: input.status ?? "sent",
-    ...input
+    ...input,
   };
 }
 
 function createAttachment(input: Omit<MessageAttachment, "id">) {
   return {
     id: nextId("attachment"),
-    ...input
+    ...input,
   };
 }
 
 function toRecord<T extends { id: string }>(items: T[]) {
-  return Object.fromEntries(items.map((item) => [item.id, item])) as Record<string, T>;
+  return Object.fromEntries(items.map((item) => [item.id, item])) as Record<
+    string,
+    T
+  >;
 }
 
 export function cloneImDatabase(database: ImDatabase): ImDatabase {
   return JSON.parse(JSON.stringify(database)) as ImDatabase;
 }
 
-export function getUserById(database: Pick<ImDatabase, "users">, userId: string) {
+export function getUserById(
+  database: Pick<ImDatabase, "users">,
+  userId: string,
+) {
   return database.users.find((user) => user.id === userId);
 }
 
-export function getContactByUserId(database: Pick<ImDatabase, "contacts">, userId: string) {
+export function getContactByUserId(
+  database: Pick<ImDatabase, "contacts">,
+  userId: string,
+) {
   return database.contacts.find((contact) => contact.targetUserId === userId);
 }
 
-export function getConversationById(database: Pick<ImDatabase, "conversations">, conversationId: string) {
-  return database.conversations.find((conversation) => conversation.id === conversationId);
+export function getConversationById(
+  database: Pick<ImDatabase, "conversations">,
+  conversationId: string,
+) {
+  return database.conversations.find(
+    (conversation) => conversation.id === conversationId,
+  );
 }
 
-export function getMessagesForConversation(database: Pick<ImDatabase, "messages">, conversationId: string) {
+export function getMessagesForConversation(
+  database: Pick<ImDatabase, "messages">,
+  conversationId: string,
+) {
   return database.messages
     .filter((message) => message.conversationId === conversationId)
-    .sort((left, right) => new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime());
+    .sort(
+      (left, right) =>
+        new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime(),
+    );
 }
 
-export function getConversationMembers(database: Pick<ImDatabase, "members">, conversationId: string) {
-  return database.members.filter((member) => member.conversationId === conversationId);
+export function getConversationMembers(
+  database: Pick<ImDatabase, "members">,
+  conversationId: string,
+) {
+  return database.members.filter(
+    (member) => member.conversationId === conversationId,
+  );
 }
 
-export function getConversationMember(database: Pick<ImDatabase, "members">, conversationId: string, userId: string) {
-  return database.members.find((member) => member.conversationId === conversationId && member.userId === userId);
+export function getConversationMember(
+  database: Pick<ImDatabase, "members">,
+  conversationId: string,
+  userId: string,
+) {
+  return database.members.find(
+    (member) =>
+      member.conversationId === conversationId && member.userId === userId,
+  );
 }
 
 export function getDisplayName(user: ImUser, contact?: ContactRelation) {
-  return contact?.remarkName?.trim() || user.remarkName?.trim() || user.nickname;
+  return (
+    contact?.remarkName?.trim() || user.remarkName?.trim() || user.nickname
+  );
 }
 
 function getAnonymousGroupMemberCode(index: number) {
@@ -705,27 +965,41 @@ function getAnonymousGroupMemberCode(index: number) {
 
 export function getAnonymousGroupMemberIdentity(
   conversation: Pick<Conversation, "memberIds">,
-  userId: string
+  userId: string,
 ) {
   const memberIndex = conversation.memberIds.indexOf(userId);
   const code = getAnonymousGroupMemberCode(memberIndex >= 0 ? memberIndex : 0);
 
   return {
     code,
-    displayName: `ユーザー${code}`
+    displayName: `ユーザー${code}`,
   };
 }
 
-export function getAnonymousGroupConversationTitle(conversation: Pick<Conversation, "memberIds">) {
+export function getAnonymousGroupConversationTitle(
+  conversation: Pick<Conversation, "memberIds">,
+) {
   const visibleNames = conversation.memberIds
     .slice(0, 3)
-    .map((userId) => getAnonymousGroupMemberIdentity(conversation, userId).displayName);
+    .map(
+      (userId) =>
+        getAnonymousGroupMemberIdentity(conversation, userId).displayName,
+    );
 
-  return conversation.memberIds.length > 3 ? `${visibleNames.join("、")}、...` : visibleNames.join("、");
+  return conversation.memberIds.length > 3
+    ? `${visibleNames.join("、")}、...`
+    : visibleNames.join("、");
 }
 
-export function getConversationTitle(database: Pick<ImDatabase, "users" | "contacts">, conversation: Conversation) {
-  if (conversation.type === "group" || conversation.type === "system" || !conversation.contactUserId) {
+export function getConversationTitle(
+  database: Pick<ImDatabase, "users" | "contacts">,
+  conversation: Conversation,
+) {
+  if (
+    conversation.type === "group" ||
+    conversation.type === "system" ||
+    !conversation.contactUserId
+  ) {
     return conversation.title;
   }
 
@@ -741,7 +1015,7 @@ function trimLeadingWhitespace(value?: string | null) {
 
 function getFirstCharacter(value?: string | null) {
   const trimmed = trimLeadingWhitespace(value);
-  return trimmed ? Array.from(trimmed)[0] ?? "" : "";
+  return trimmed ? (Array.from(trimmed)[0] ?? "") : "";
 }
 
 function stripDiacritics(value: string) {
@@ -760,7 +1034,9 @@ function getKanaIndexLetter(value: string) {
     return null;
   }
 
-  const matched = kanaInitialGroups.find((group) => group.characters.includes(first));
+  const matched = kanaInitialGroups.find((group) =>
+    group.characters.includes(first),
+  );
   return matched?.letter ?? null;
 }
 
@@ -774,7 +1050,9 @@ function getHanIndexLetter(value: string) {
   }
 
   for (let index = hanInitialBoundaries.length - 1; index >= 0; index -= 1) {
-    if (hanInitialCollator.compare(value, hanInitialBoundaries[index].sample) >= 0) {
+    if (
+      hanInitialCollator.compare(value, hanInitialBoundaries[index].sample) >= 0
+    ) {
       return hanInitialBoundaries[index].letter;
     }
   }
@@ -821,12 +1099,14 @@ function getContactSortSeed(contact: ContactIndexSource) {
   }
 
   if (isHanCharacter(first)) {
-    return trimLeadingWhitespace(contact.sortName)
-      || trimLeadingWhitespace(contact.romajiName)
-      || trimLeadingWhitespace(contact.kanaName)
-      || trimLeadingWhitespace(contact.furigana)
-      || trimLeadingWhitespace(contact.phoneticName)
-      || displayName;
+    return (
+      trimLeadingWhitespace(contact.sortName) ||
+      trimLeadingWhitespace(contact.romajiName) ||
+      trimLeadingWhitespace(contact.kanaName) ||
+      trimLeadingWhitespace(contact.furigana) ||
+      trimLeadingWhitespace(contact.phoneticName) ||
+      displayName
+    );
   }
 
   return displayName;
@@ -835,7 +1115,7 @@ function getContactSortSeed(contact: ContactIndexSource) {
 function compareContactSortValues(left: string, right: string) {
   return left.localeCompare(right, ["zh-CN-u-co-pinyin", "ja-JP", "en"], {
     sensitivity: "base",
-    numeric: true
+    numeric: true,
   });
 }
 
@@ -847,7 +1127,9 @@ export function getInitialLetter(value: string) {
   return getContactIndexLetter({ displayName: value });
 }
 
-export function getContactIndexLetter(contact: ContactIndexSource): ContactIndexLetter {
+export function getContactIndexLetter(
+  contact: ContactIndexSource,
+): ContactIndexLetter {
   const displayName = trimLeadingWhitespace(contact.displayName);
   const first = getFirstCharacter(displayName);
 
@@ -873,7 +1155,7 @@ export function getContactIndexLetter(contact: ContactIndexSource): ContactIndex
       contact.kanaName,
       contact.furigana,
       contact.romajiName,
-      contact.sortName
+      contact.sortName,
     ]
       .map((value) => resolveIndexLetterFromReading(value))
       .find((value): value is ContactIndexLetter => Boolean(value));
@@ -884,16 +1166,19 @@ export function getContactIndexLetter(contact: ContactIndexSource): ContactIndex
   return "#";
 }
 
-export function groupContactsByIndex<T extends ContactIndexSource>(contacts: T[]) {
+export function groupContactsByIndex<T extends ContactIndexSource>(
+  contacts: T[],
+) {
   const sorted = contacts
     .map((contact, index) => ({
       contact,
       index,
       letter: getContactIndexLetter(contact),
-      sortSeed: getContactSortSeed(contact)
+      sortSeed: getContactSortSeed(contact),
     }))
     .sort((left, right) => {
-      const letterDiff = getContactIndexOrder(left.letter) - getContactIndexOrder(right.letter);
+      const letterDiff =
+        getContactIndexOrder(left.letter) - getContactIndexOrder(right.letter);
 
       if (letterDiff !== 0) {
         return letterDiff;
@@ -918,13 +1203,13 @@ export function groupContactsByIndex<T extends ContactIndexSource>(contacts: T[]
 
   return Array.from(bucket.entries()).map(([letter, items]) => ({
     letter,
-    items
+    items,
   }));
 }
 
 export function getVisibleIndexLetters(
   sections: Array<{ letter: ContactIndexLetter; items: unknown[] }>,
-  options: { includeSymbolFallback?: boolean } = {}
+  options: { includeSymbolFallback?: boolean } = {},
 ) {
   const visibleLetters: ContactIndexLetter[] = [];
   const seen = new Set<ContactIndexLetter>();
@@ -938,7 +1223,11 @@ export function getVisibleIndexLetters(
     visibleLetters.push(section.letter);
   });
 
-  if (options.includeSymbolFallback && visibleLetters.length > 0 && !seen.has("#")) {
+  if (
+    options.includeSymbolFallback &&
+    visibleLetters.length > 0 &&
+    !seen.has("#")
+  ) {
     visibleLetters.push("#");
   }
 
@@ -949,7 +1238,7 @@ export function resolveIndexLetterFromTouchY(
   y: number,
   containerTop: number,
   itemHeight: number,
-  letters: ContactIndexLetter[]
+  letters: ContactIndexLetter[],
 ) {
   if (letters.length === 0) {
     return null;
@@ -967,9 +1256,19 @@ export function resolveIndexLetterFromTouchY(
 export function formatConversationTime(value: string, now = new Date()) {
   const target = new Date(value);
   const diff = now.getTime() - target.getTime();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate());
-  const dayDiff = Math.round((startOfToday.getTime() - startOfTarget.getTime()) / 86_400_000);
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  const startOfTarget = new Date(
+    target.getFullYear(),
+    target.getMonth(),
+    target.getDate(),
+  );
+  const dayDiff = Math.round(
+    (startOfToday.getTime() - startOfTarget.getTime()) / 86_400_000,
+  );
 
   if (diff < 0) {
     return `${String(target.getHours()).padStart(2, "0")}:${String(target.getMinutes()).padStart(2, "0")}`;
@@ -984,13 +1283,19 @@ export function formatConversationTime(value: string, now = new Date()) {
   }
 
   if (dayDiff < 7) {
-    return new Intl.DateTimeFormat("zh-CN", { weekday: "short" }).format(target).replace("周", "周");
+    return new Intl.DateTimeFormat("zh-CN", { weekday: "short" })
+      .format(target)
+      .replace("周", "周");
   }
 
   return `${target.getFullYear()}/${target.getMonth() + 1}/${target.getDate()}`;
 }
 
-export function buildMessagePreview(message: ConversationMessage, currentUserId: string, users: Record<string, ImUser>) {
+export function buildMessagePreview(
+  message: ConversationMessage,
+  currentUserId: string,
+  _users: Record<string, ImUser>,
+) {
   if (message.type === "recalled" || message.status === "recalled") {
     return getRecallResidueLabel(message.senderId === currentUserId);
   }
@@ -1020,25 +1325,61 @@ export function buildMessagePreview(message: ConversationMessage, currentUserId:
   }
 
   if (message.type === "contact-card") {
-    return message.ext?.contactCard?.displayName ? `[名片] ${message.ext.contactCard.displayName}` : "[名片]";
+    return message.ext?.contactCard?.displayName
+      ? `[名片] ${message.ext.contactCard.displayName}`
+      : "[名片]";
   }
 
   if (message.type === "service-card") {
-    return message.ext?.serviceCard?.name ? `[服务] ${message.ext.serviceCard.name}` : "[服务]";
+    return message.ext?.serviceCard?.name
+      ? `[服务] ${message.ext.serviceCard.name}`
+      : "[服务]";
+  }
+
+  if (message.type === "social-post-card") {
+    return message.ext?.socialPostCard?.authorName
+      ? `[动态] ${message.ext.socialPostCard.authorName}`
+      : "[动态]";
   }
 
   if (message.type === "schedule-invite") {
-    return message.ext?.scheduleInvite?.title ? `[日程邀请] ${message.ext.scheduleInvite.title}` : "[日程邀请]";
+    return message.ext?.scheduleInvite?.title
+      ? `[日程邀请] ${message.ext.scheduleInvite.title}`
+      : "[日程邀请]";
   }
 
   return message.content;
+}
+
+export function buildConversationLastMessageSummary(
+  message: ConversationMessage | undefined,
+  currentUserId: string,
+  users: Record<string, ImUser>,
+  fallbackTime: string,
+): Pick<
+  Conversation,
+  | "lastMessageId"
+  | "lastMessagePreview"
+  | "lastMessageType"
+  | "lastMessageStatus"
+  | "lastMessageTime"
+> {
+  return {
+    lastMessageId: message?.id,
+    lastMessagePreview: message
+      ? buildMessagePreview(message, currentUserId, users)
+      : "",
+    lastMessageType: message?.type,
+    lastMessageStatus: message?.status,
+    lastMessageTime: message?.sentAt ?? fallbackTime,
+  };
 }
 
 export function buildConversationRowPreview(conversation: Conversation) {
   if (conversation.privacyModeEnabled) {
     return {
       text: "私密群消息已隐藏",
-      isDraft: false
+      isDraft: false,
     };
   }
 
@@ -1047,13 +1388,13 @@ export function buildConversationRowPreview(conversation: Conversation) {
   if (draftText) {
     return {
       text: materializeImComposerDraft(draftText),
-      isDraft: true
+      isDraft: true,
     };
   }
 
   return {
     text: conversation.lastMessagePreview || "暂无消息",
-    isDraft: false
+    isDraft: false,
   };
 }
 
@@ -1065,14 +1406,20 @@ export function sortConversations(conversations: Conversation[]) {
         return Number(right.isPinned) - Number(left.isPinned);
       }
 
-      return new Date(right.lastMessageTime).getTime() - new Date(left.lastMessageTime).getTime();
+      return (
+        new Date(right.lastMessageTime).getTime() -
+        new Date(left.lastMessageTime).getTime()
+      );
     });
 }
 
-export function buildContactSections(database: Pick<ImDatabase, "users" | "contacts">) {
+export function buildContactSections(
+  database: Pick<ImDatabase, "users" | "contacts">,
+) {
   const users = toRecord(database.users);
-  const visibleContacts = database.contacts
-    .filter((contact) => contact.relationStatus === "active" && !contact.isBlocked);
+  const visibleContacts = database.contacts.filter(
+    (contact) => contact.relationStatus === "active" && !contact.isBlocked,
+  );
 
   return groupContactsByIndex(
     visibleContacts.map((contact) => {
@@ -1080,22 +1427,30 @@ export function buildContactSections(database: Pick<ImDatabase, "users" | "conta
 
       return {
         contact,
-        displayName: user ? getDisplayName(user, contact) : contact.remarkName ?? "",
+        displayName: user
+          ? getDisplayName(user, contact)
+          : (contact.remarkName ?? ""),
         phoneticName: user?.phoneticName,
         kanaName: user?.kanaName,
         furigana: user?.furigana,
         romajiName: user?.romajiName,
-        sortName: user?.sortKey
+        sortName: user?.sortKey,
       };
-    })
+    }),
   ).map((section) => ({
     letter: section.letter,
-    items: section.items.map((item) => item.contact)
+    items: section.items.map((item) => item.contact),
   }));
 }
 
-export function buildTimeSeparatedMessages(messages: ConversationMessage[], thresholdMs: number) {
-  const rows: Array<{ kind: "divider"; id: string; label: string } | { kind: "message"; message: ConversationMessage }> = [];
+export function buildTimeSeparatedMessages(
+  messages: ConversationMessage[],
+  thresholdMs: number,
+) {
+  const rows: Array<
+    | { kind: "divider"; id: string; label: string }
+    | { kind: "message"; message: ConversationMessage }
+  > = [];
 
   messages.forEach((message, index) => {
     const previous = messages[index - 1];
@@ -1107,13 +1462,13 @@ export function buildTimeSeparatedMessages(messages: ConversationMessage[], thre
       rows.push({
         kind: "divider",
         id: `divider-${message.id}`,
-        label: formatMessageDivider(message.sentAt)
+        label: formatMessageDivider(message.sentAt),
       });
     }
 
     rows.push({
       kind: "message",
-      message
+      message,
     });
   });
 
@@ -1126,23 +1481,35 @@ export function formatMessageDivider(value: string) {
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
   }).format(target);
 }
 
-export function canRecallMessage(message: ConversationMessage, currentUserId: string, config: ImRuntimeConfig, now = Date.now()) {
+export function canRecallMessage(
+  message: ConversationMessage,
+  currentUserId: string,
+  config: ImRuntimeConfig,
+  now = Date.now(),
+) {
   if (message.senderId !== currentUserId) {
     return false;
   }
 
-  if (message.type === "system" || message.type === "recalled" || message.status === "failed") {
+  if (
+    message.type === "system" ||
+    message.type === "recalled" ||
+    message.status === "failed"
+  ) {
     return false;
   }
 
   return now - new Date(message.sentAt).getTime() <= config.recallWindowMs;
 }
 
-export type StandardRecallAvailability = "available" | "expired" | "unavailable";
+export type StandardRecallAvailability =
+  | "available"
+  | "expired"
+  | "unavailable";
 
 export function getStandardRecallAvailability(
   message: ConversationMessage,
@@ -1180,14 +1547,18 @@ export function getRecallResidueLabel(isMine: boolean) {
   return isMine ? "你撤回了一条消息" : "对方撤回了一条消息";
 }
 
-export function buildSearchResults(database: ImDatabase, query: string, conversationId?: string): ImSearchResult {
+export function buildSearchResults(
+  database: ImDatabase,
+  query: string,
+  conversationId?: string,
+): ImSearchResult {
   const keyword = query.trim().toLowerCase();
 
   if (!keyword) {
     return {
       contacts: [],
       conversations: [],
-      messages: []
+      messages: [],
     };
   }
 
@@ -1200,10 +1571,17 @@ export function buildSearchResults(database: ImDatabase, query: string, conversa
 
     return Boolean(
       user &&
-        !contact.isBlocked &&
-        [getDisplayName(user, contact), user.userIdLabel, user.signature, ...user.searchableFields, ...contact.tags, contact.description]
-          .filter(Boolean)
-          .some((field) => field?.toLowerCase().includes(keyword))
+      !contact.isBlocked &&
+      [
+        getDisplayName(user, contact),
+        user.userIdLabel,
+        user.signature,
+        ...user.searchableFields,
+        ...contact.tags,
+        contact.description,
+      ]
+        .filter(Boolean)
+        .some((field) => field?.toLowerCase().includes(keyword)),
     );
   });
 
@@ -1234,11 +1612,19 @@ export function buildSearchResults(database: ImDatabase, query: string, conversa
         contact?.remarkName,
         contact?.source,
         contact?.description,
-        ...(contact?.tags ?? [])
+        ...(contact?.tags ?? []),
       ];
     });
 
-    return [title, conversation.title, conversation.lastMessagePreview, conversation.announcement, conversation.nicknameInGroup, ...(conversation.tags ?? []), ...participantFields]
+    return [
+      title,
+      conversation.title,
+      conversation.lastMessagePreview,
+      conversation.announcement,
+      conversation.nicknameInGroup,
+      ...(conversation.tags ?? []),
+      ...participantFields,
+    ]
       .filter(Boolean)
       .some((field) => field?.toLowerCase().includes(keyword));
   });
@@ -1254,7 +1640,13 @@ export function buildSearchResults(database: ImDatabase, query: string, conversa
       return false;
     }
 
-    const text = [message.content, message.ext?.fileName, message.ext?.location?.title, message.ext?.contactCard?.displayName, message.ext?.previewText]
+    const text = [
+      message.content,
+      message.ext?.fileName,
+      message.ext?.location?.title,
+      message.ext?.contactCard?.displayName,
+      message.ext?.previewText,
+    ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
@@ -1265,33 +1657,53 @@ export function buildSearchResults(database: ImDatabase, query: string, conversa
   return {
     contacts,
     conversations,
-    messages
+    messages,
   };
 }
 
-export function getAttachmentForMessage(database: Pick<ImDatabase, "attachments">, messageId: string) {
-  return database.attachments.find((attachment) => attachment.messageId === messageId);
+export function getAttachmentForMessage(
+  database: Pick<ImDatabase, "attachments">,
+  messageId: string,
+) {
+  return database.attachments.find(
+    (attachment) => attachment.messageId === messageId,
+  );
 }
 
-export function buildMediaBuckets(database: ImDatabase, conversationId: string) {
+export function buildMediaBuckets(
+  database: ImDatabase,
+  conversationId: string,
+) {
   const messages = getMessagesForConversation(database, conversationId);
-  const media = messages.filter((message) => message.type === "image" || message.type === "video");
+  const media = messages.filter(
+    (message) => message.type === "image" || message.type === "video",
+  );
   const files = messages.filter((message) => message.type === "file");
-  const links = messages.filter((message) => /(https?:\/\/[^\s]+)/i.test(message.content));
+  const links = messages.filter((message) =>
+    /(https?:\/\/[^\s]+)/i.test(message.content),
+  );
 
   return { media, files, links };
 }
 
-export function applyConversationDraft(conversation: Conversation, draftText?: string, draftUpdatedAt?: string) {
+export function applyConversationDraft(
+  conversation: Conversation,
+  draftText?: string,
+  draftUpdatedAt?: string,
+) {
   return {
     ...conversation,
     draftText,
-    draftUpdatedAt
+    draftUpdatedAt,
   };
 }
 
 function ensureReadCursor(database: ImDatabase, conversationId: string) {
-  const existing = database.readCursors.find((cursor) => cursor.conversationId === conversationId && cursor.userId === database.currentUserId);
+  const existing = database.readCursors.find(
+    (cursor) =>
+      cursor.conversationId === conversationId &&
+      cursor.userId === database.currentUserId,
+  );
 
   if (existing) {
     return existing;
@@ -1301,14 +1713,17 @@ function ensureReadCursor(database: ImDatabase, conversationId: string) {
     id: nextId("cursor"),
     conversationId,
     userId: database.currentUserId,
-    lastReadAt: atDaysAgo(1)
+    lastReadAt: atDaysAgo(1),
   };
 
   database.readCursors.push(created);
   return created;
 }
 
-export function recomputeConversationSummary(database: ImDatabase, conversationId: string) {
+export function recomputeConversationSummary(
+  database: ImDatabase,
+  conversationId: string,
+) {
   const conversation = getConversationById(database, conversationId);
 
   if (!conversation) {
@@ -1320,21 +1735,36 @@ export function recomputeConversationSummary(database: ImDatabase, conversationI
   const lastMessage = messages.at(-1);
 
   if (!lastMessage) {
-    conversation.lastMessageId = undefined;
-    conversation.lastMessagePreview = "";
-    conversation.lastMessageTime = conversation.updatedAt;
+    Object.assign(
+      conversation,
+      buildConversationLastMessageSummary(
+        undefined,
+        database.currentUserId,
+        users,
+        conversation.updatedAt,
+      ),
+    );
     return conversation;
   }
 
-  conversation.lastMessageId = lastMessage.id;
-  conversation.lastMessageTime = lastMessage.sentAt;
+  Object.assign(
+    conversation,
+    buildConversationLastMessageSummary(
+      lastMessage,
+      database.currentUserId,
+      users,
+      conversation.updatedAt,
+    ),
+  );
   conversation.updatedAt = lastMessage.sentAt;
-  conversation.lastMessagePreview = buildMessagePreview(lastMessage, database.currentUserId, users);
 
   return conversation;
 }
 
-function buildGroupConversationTitle(database: Pick<ImDatabase, "users" | "contacts">, memberIds: string[]) {
+function buildGroupConversationTitle(
+  database: Pick<ImDatabase, "users" | "contacts">,
+  memberIds: string[],
+) {
   const users = memberIds
     .map((userId) => getUserById(database, userId))
     .filter((user): user is ImUser => Boolean(user))
@@ -1347,7 +1777,10 @@ function buildGroupConversationTitle(database: Pick<ImDatabase, "users" | "conta
   return `${users.slice(0, 3).join("、")}等${users.length}人`;
 }
 
-function addDisappearingCountdown(startAt: string, countdown: ConversationDisappearingCountdown) {
+function addDisappearingCountdown(
+  startAt: string,
+  countdown: ConversationDisappearingCountdown,
+) {
   const date = new Date(startAt);
 
   if (Number.isNaN(date.getTime())) {
@@ -1362,13 +1795,19 @@ function addDisappearingCountdown(startAt: string, countdown: ConversationDisapp
   return date.toISOString();
 }
 
-function isPrivacyConversation(conversation?: Conversation): conversation is Conversation & {
+function isPrivacyConversation(
+  conversation?: Conversation,
+): conversation is Conversation & {
   disappearingCountdown: ConversationDisappearingCountdown;
 } {
-  return Boolean(conversation?.privacyModeEnabled && conversation.disappearingCountdown);
+  return Boolean(
+    conversation?.privacyModeEnabled && conversation.disappearingCountdown,
+  );
 }
 
-export function normalizeDisappearingCountdown(input?: Partial<ConversationDisappearingCountdown>) {
+export function normalizeDisappearingCountdown(
+  input?: Partial<ConversationDisappearingCountdown>,
+) {
   if (!input) {
     return undefined;
   }
@@ -1377,10 +1816,16 @@ export function normalizeDisappearingCountdown(input?: Partial<ConversationDisap
     months: Math.min(12, Math.max(0, Math.floor(Number(input.months) || 0))),
     days: Math.min(30, Math.max(0, Math.floor(Number(input.days) || 0))),
     hours: Math.min(23, Math.max(0, Math.floor(Number(input.hours) || 0))),
-    minutes: Math.min(59, Math.max(0, Math.floor(Number(input.minutes) || 0)))
+    minutes: Math.min(59, Math.max(0, Math.floor(Number(input.minutes) || 0))),
   };
 
-  return countdown.months + countdown.days + countdown.hours + countdown.minutes > 0 ? countdown : undefined;
+  return countdown.months +
+    countdown.days +
+    countdown.hours +
+    countdown.minutes >
+    0
+    ? countdown
+    : undefined;
 }
 
 function getDisappearingStartMode(mode?: ConversationDisappearingStartMode) {
@@ -1391,14 +1836,21 @@ function normalizeGroupInfoEditPolicy(policy?: GroupInfoEditPolicy) {
   return policy === "members" ? "members" : "owner";
 }
 
-function canEditGroupInfoField(conversation: Conversation, member: ConversationMember, policy?: GroupInfoEditPolicy) {
-  return member.role === "owner" || normalizeGroupInfoEditPolicy(policy) === "members";
+function canEditGroupInfoField(
+  conversation: Conversation,
+  member: ConversationMember,
+  policy?: GroupInfoEditPolicy,
+) {
+  return (
+    member.role === "owner" ||
+    normalizeGroupInfoEditPolicy(policy) === "members"
+  );
 }
 
 function buildDisappearingMessageExt(
   conversation: Conversation,
   sentAt: string,
-  ext?: MessageExt
+  ext?: MessageExt,
 ): MessageExt | undefined {
   if (!isPrivacyConversation(conversation)) {
     return ext;
@@ -1406,7 +1858,9 @@ function buildDisappearingMessageExt(
 
   const mode = getDisappearingStartMode(conversation.disappearingStartMode);
   const startedAt = mode === "sent" ? sentAt : undefined;
-  const expiresAt = startedAt ? addDisappearingCountdown(startedAt, conversation.disappearingCountdown) : undefined;
+  const expiresAt = startedAt
+    ? addDisappearingCountdown(startedAt, conversation.disappearingCountdown)
+    : undefined;
 
   return {
     ...ext,
@@ -1414,26 +1868,39 @@ function buildDisappearingMessageExt(
       mode,
       countdown: conversation.disappearingCountdown,
       startedAt,
-      expiresAt
-    }
+      expiresAt,
+    },
   };
 }
 
-export function createConversationMutation(database: ImDatabase, memberIds: string[], title?: string, privacyOptions?: CreateConversationPrivacyOptions) {
-  const normalizedMemberIds = Array.from(new Set([database.currentUserId, ...memberIds]));
-  const isGroupConversation = privacyOptions?.forceGroup === true || normalizedMemberIds.length > 2;
-  const disappearingCountdown = isGroupConversation && privacyOptions?.privacyModeEnabled
-    ? normalizeDisappearingCountdown(privacyOptions.disappearingCountdown)
-    : undefined;
+export function createConversationMutation(
+  database: ImDatabase,
+  memberIds: string[],
+  title?: string,
+  privacyOptions?: CreateConversationPrivacyOptions,
+) {
+  const normalizedMemberIds = Array.from(
+    new Set([database.currentUserId, ...memberIds]),
+  );
+  const isGroupConversation =
+    privacyOptions?.forceGroup === true || normalizedMemberIds.length > 2;
+  const disappearingCountdown =
+    isGroupConversation && privacyOptions?.privacyModeEnabled
+      ? normalizeDisappearingCountdown(privacyOptions.disappearingCountdown)
+      : undefined;
 
   if (!isGroupConversation && normalizedMemberIds.length === 2) {
-    const targetUserId = normalizedMemberIds.find((userId) => userId !== database.currentUserId);
+    const targetUserId = normalizedMemberIds.find(
+      (userId) => userId !== database.currentUserId,
+    );
     const existing = database.conversations.find(
       (conversation) =>
         conversation.type === "single" &&
         conversation.contactUserId === targetUserId &&
         conversation.memberIds.length === normalizedMemberIds.length &&
-        normalizedMemberIds.every((userId) => conversation.memberIds.includes(userId))
+        normalizedMemberIds.every((userId) =>
+          conversation.memberIds.includes(userId),
+        ),
     );
 
     if (existing) {
@@ -1446,10 +1913,22 @@ export function createConversationMutation(database: ImDatabase, memberIds: stri
   const conversation = createConversation({
     id: conversationId,
     type: isGroupConversation ? "group" : "single",
-    title: title?.trim() || buildGroupConversationTitle(database, normalizedMemberIds.filter((item) => item !== database.currentUserId)),
-    avatar: isGroupConversation ? "" : getUserById(database, normalizedMemberIds.find((id) => id !== database.currentUserId) ?? "")?.avatar ?? "",
+    title:
+      title?.trim() ||
+      buildGroupConversationTitle(
+        database,
+        normalizedMemberIds.filter((item) => item !== database.currentUserId),
+      ),
+    avatar: isGroupConversation
+      ? ""
+      : (getUserById(
+          database,
+          normalizedMemberIds.find((id) => id !== database.currentUserId) ?? "",
+        )?.avatar ?? ""),
     memberIds: normalizedMemberIds,
-    contactUserId: isGroupConversation ? undefined : normalizedMemberIds.find((id) => id !== database.currentUserId),
+    contactUserId: isGroupConversation
+      ? undefined
+      : normalizedMemberIds.find((id) => id !== database.currentUserId),
     lastMessagePreview: "",
     lastMessageTime: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -1457,11 +1936,15 @@ export function createConversationMutation(database: ImDatabase, memberIds: stri
     nicknameInGroup: undefined,
     savedToContacts: isGroupConversation,
     privacyModeEnabled: Boolean(disappearingCountdown),
-    hideMemberProfiles: isGroupConversation ? Boolean(privacyOptions?.hideMemberProfiles) : undefined,
+    hideMemberProfiles: isGroupConversation
+      ? Boolean(privacyOptions?.hideMemberProfiles)
+      : undefined,
     disappearingCountdown,
-    disappearingStartMode: disappearingCountdown ? getDisappearingStartMode(privacyOptions?.disappearingStartMode) : undefined,
+    disappearingStartMode: disappearingCountdown
+      ? getDisappearingStartMode(privacyOptions?.disappearingStartMode)
+      : undefined,
     titleEditPolicy: isGroupConversation ? "owner" : undefined,
-    announcementEditPolicy: isGroupConversation ? "owner" : undefined
+    announcementEditPolicy: isGroupConversation ? "owner" : undefined,
   });
 
   database.conversations.unshift(conversation);
@@ -1472,8 +1955,8 @@ export function createConversationMutation(database: ImDatabase, memberIds: stri
         id: nextId("member"),
         conversationId,
         userId,
-        role: index === 0 ? "owner" : "member"
-      })
+        role: index === 0 ? "owner" : "member",
+      }),
     );
   });
 
@@ -1482,35 +1965,56 @@ export function createConversationMutation(database: ImDatabase, memberIds: stri
   return conversation;
 }
 
-export function updateConversationGroupInfoMutation(database: ImDatabase, conversationId: string, options: UpdateConversationGroupInfoOptions) {
+export function updateConversationGroupInfoMutation(
+  database: ImDatabase,
+  conversationId: string,
+  options: UpdateConversationGroupInfoOptions,
+) {
   const conversation = getConversationById(database, conversationId);
 
   if (!conversation || conversation.type !== "group") {
     return undefined;
   }
 
-  const currentMember = getConversationMember(database, conversationId, database.currentUserId);
+  const currentMember = getConversationMember(
+    database,
+    conversationId,
+    database.currentUserId,
+  );
 
   if (!currentMember) {
     return undefined;
   }
 
-  if (options.titleEditPolicy !== undefined || options.announcementEditPolicy !== undefined) {
+  if (
+    options.titleEditPolicy !== undefined ||
+    options.announcementEditPolicy !== undefined
+  ) {
     if (currentMember.role !== "owner") {
       return undefined;
     }
 
     if (options.titleEditPolicy !== undefined) {
-      conversation.titleEditPolicy = normalizeGroupInfoEditPolicy(options.titleEditPolicy);
+      conversation.titleEditPolicy = normalizeGroupInfoEditPolicy(
+        options.titleEditPolicy,
+      );
     }
 
     if (options.announcementEditPolicy !== undefined) {
-      conversation.announcementEditPolicy = normalizeGroupInfoEditPolicy(options.announcementEditPolicy);
+      conversation.announcementEditPolicy = normalizeGroupInfoEditPolicy(
+        options.announcementEditPolicy,
+      );
     }
   }
 
   if (options.title !== undefined) {
-    if (!canEditGroupInfoField(conversation, currentMember, conversation.titleEditPolicy)) {
+    if (
+      !canEditGroupInfoField(
+        conversation,
+        currentMember,
+        conversation.titleEditPolicy,
+      )
+    ) {
       return undefined;
     }
 
@@ -1523,7 +2027,13 @@ export function updateConversationGroupInfoMutation(database: ImDatabase, conver
   }
 
   if (options.announcement !== undefined) {
-    if (!canEditGroupInfoField(conversation, currentMember, conversation.announcementEditPolicy)) {
+    if (
+      !canEditGroupInfoField(
+        conversation,
+        currentMember,
+        conversation.announcementEditPolicy,
+      )
+    ) {
       return undefined;
     }
 
@@ -1539,7 +2049,10 @@ export function updateConversationGroupInfoMutation(database: ImDatabase, conver
   return conversation;
 }
 
-export function markConversationReadMutation(database: ImDatabase, conversationId: string) {
+export function markConversationReadMutation(
+  database: ImDatabase,
+  conversationId: string,
+) {
   const conversation = getConversationById(database, conversationId);
 
   if (!conversation) {
@@ -1559,7 +2072,10 @@ export function markConversationReadMutation(database: ImDatabase, conversationI
   return getConversationById(database, conversationId) ?? conversation;
 }
 
-export function markConversationUnreadMutation(database: ImDatabase, conversationId: string) {
+export function markConversationUnreadMutation(
+  database: ImDatabase,
+  conversationId: string,
+) {
   const conversation = getConversationById(database, conversationId);
   if (!conversation) return undefined;
 
@@ -1567,7 +2083,11 @@ export function markConversationUnreadMutation(database: ImDatabase, conversatio
   return conversation;
 }
 
-export function toggleConversationPinMutation(database: ImDatabase, conversationId: string, isPinned: boolean) {
+export function toggleConversationPinMutation(
+  database: ImDatabase,
+  conversationId: string,
+  isPinned: boolean,
+) {
   const conversation = getConversationById(database, conversationId);
 
   if (!conversation) {
@@ -1578,7 +2098,11 @@ export function toggleConversationPinMutation(database: ImDatabase, conversation
   return conversation;
 }
 
-export function toggleConversationMuteMutation(database: ImDatabase, conversationId: string, isMuted: boolean) {
+export function toggleConversationMuteMutation(
+  database: ImDatabase,
+  conversationId: string,
+  isMuted: boolean,
+) {
   const conversation = getConversationById(database, conversationId);
 
   if (!conversation) {
@@ -1589,14 +2113,22 @@ export function toggleConversationMuteMutation(database: ImDatabase, conversatio
   return conversation;
 }
 
-export function updateConversationPrivacyMutation(database: ImDatabase, conversationId: string, options: UpdateConversationPrivacyOptions) {
+export function updateConversationPrivacyMutation(
+  database: ImDatabase,
+  conversationId: string,
+  options: UpdateConversationPrivacyOptions,
+) {
   const conversation = getConversationById(database, conversationId);
 
   if (!conversation || conversation.type !== "group") {
     return undefined;
   }
 
-  const currentMember = getConversationMember(database, conversationId, database.currentUserId);
+  const currentMember = getConversationMember(
+    database,
+    conversationId,
+    database.currentUserId,
+  );
 
   if (currentMember?.role !== "owner") {
     return undefined;
@@ -1613,7 +2145,9 @@ export function updateConversationPrivacyMutation(database: ImDatabase, conversa
     return conversation;
   }
 
-  const disappearingCountdown = normalizeDisappearingCountdown(options.disappearingCountdown);
+  const disappearingCountdown = normalizeDisappearingCountdown(
+    options.disappearingCountdown,
+  );
 
   if (!disappearingCountdown) {
     return undefined;
@@ -1621,11 +2155,16 @@ export function updateConversationPrivacyMutation(database: ImDatabase, conversa
 
   conversation.privacyModeEnabled = true;
   conversation.disappearingCountdown = disappearingCountdown;
-  conversation.disappearingStartMode = getDisappearingStartMode(options.disappearingStartMode);
+  conversation.disappearingStartMode = getDisappearingStartMode(
+    options.disappearingStartMode,
+  );
   return conversation;
 }
 
-export function deleteConversationMutation(database: ImDatabase, conversationId: string) {
+export function deleteConversationMutation(
+  database: ImDatabase,
+  conversationId: string,
+) {
   const conversation = getConversationById(database, conversationId);
 
   if (!conversation) {
@@ -1638,10 +2177,21 @@ export function deleteConversationMutation(database: ImDatabase, conversationId:
   return conversation;
 }
 
-export function clearConversationMutation(database: ImDatabase, conversationId: string) {
-  const removedMessageIds = new Set(database.messages.filter((message) => message.conversationId === conversationId).map((message) => message.id));
-  database.messages = database.messages.filter((message) => message.conversationId !== conversationId);
-  database.attachments = database.attachments.filter((attachment) => !removedMessageIds.has(attachment.messageId));
+export function clearConversationMutation(
+  database: ImDatabase,
+  conversationId: string,
+) {
+  const removedMessageIds = new Set(
+    database.messages
+      .filter((message) => message.conversationId === conversationId)
+      .map((message) => message.id),
+  );
+  database.messages = database.messages.filter(
+    (message) => message.conversationId !== conversationId,
+  );
+  database.attachments = database.attachments.filter(
+    (attachment) => !removedMessageIds.has(attachment.messageId),
+  );
   return recomputeConversationSummary(database, conversationId);
 }
 
@@ -1653,44 +2203,80 @@ function messageIndexById(messages: ConversationMessage[], messageId?: string) {
   return messages.findIndex((message) => message.id === messageId);
 }
 
-function resolveMemberReadAt(database: ImDatabase, conversation: Conversation, message: ConversationMessage, memberId: string) {
+function resolveMemberReadAt(
+  database: ImDatabase,
+  conversation: Conversation,
+  message: ConversationMessage,
+  memberId: string,
+) {
   if (memberId === message.senderId) {
     return message.sentAt;
   }
 
-  const cursor = database.readCursors.find((item) => item.conversationId === conversation.id && item.userId === memberId);
+  const cursor = database.readCursors.find(
+    (item) =>
+      item.conversationId === conversation.id && item.userId === memberId,
+  );
 
   if (!cursor) {
     return undefined;
   }
 
-  const conversationMessages = getMessagesForConversation(database, conversation.id);
-  const readIndex = messageIndexById(conversationMessages, cursor.lastReadMessageId);
+  const conversationMessages = getMessagesForConversation(
+    database,
+    conversation.id,
+  );
+  const readIndex = messageIndexById(
+    conversationMessages,
+    cursor.lastReadMessageId,
+  );
   const messageIndex = messageIndexById(conversationMessages, message.id);
-  const readByMessageId = readIndex >= 0 && messageIndex >= 0 && readIndex >= messageIndex;
-  const readByTime = cursor.lastReadAt ? new Date(cursor.lastReadAt).getTime() >= new Date(message.sentAt).getTime() : false;
+  const readByMessageId =
+    readIndex >= 0 && messageIndex >= 0 && readIndex >= messageIndex;
+  const readByTime = cursor.lastReadAt
+    ? new Date(cursor.lastReadAt).getTime() >=
+      new Date(message.sentAt).getTime()
+    : false;
 
   return readByMessageId || readByTime ? cursor.lastReadAt : undefined;
 }
 
-function resolveReadByAllAt(database: ImDatabase, conversation: Conversation, message: ConversationMessage) {
-  const readTimes = conversation.memberIds.map((memberId) => resolveMemberReadAt(database, conversation, message, memberId));
+function resolveReadByAllAt(
+  database: ImDatabase,
+  conversation: Conversation,
+  message: ConversationMessage,
+) {
+  const readTimes = conversation.memberIds.map((memberId) =>
+    resolveMemberReadAt(database, conversation, message, memberId),
+  );
 
   if (readTimes.some((time) => !time)) {
     return undefined;
   }
 
-  const latestReadTime = Math.max(...readTimes.map((time) => new Date(time ?? message.sentAt).getTime()));
-  return Number.isFinite(latestReadTime) ? new Date(latestReadTime).toISOString() : undefined;
+  const latestReadTime = Math.max(
+    ...readTimes.map((time) => new Date(time ?? message.sentAt).getTime()),
+  );
+  return Number.isFinite(latestReadTime)
+    ? new Date(latestReadTime).toISOString()
+    : undefined;
 }
 
-function startReadByAllDisappearingMessages(database: ImDatabase, conversation: Conversation) {
+function startReadByAllDisappearingMessages(
+  database: ImDatabase,
+  conversation: Conversation,
+) {
   let changed = false;
 
   getMessagesForConversation(database, conversation.id).forEach((message) => {
     const disappearing = message.ext?.disappearing;
 
-    if (message.status === "recalled" || !disappearing || disappearing.mode !== "read_by_all" || disappearing.expiresAt) {
+    if (
+      message.status === "recalled" ||
+      !disappearing ||
+      disappearing.mode !== "read_by_all" ||
+      disappearing.expiresAt
+    ) {
       return;
     }
 
@@ -1714,8 +2300,8 @@ function startReadByAllDisappearingMessages(database: ImDatabase, conversation: 
         countdown,
         startedAt: readByAllAt,
         readByAllAt,
-        expiresAt: addDisappearingCountdown(readByAllAt, countdown)
-      }
+        expiresAt: addDisappearingCountdown(readByAllAt, countdown),
+      },
     };
     changed = true;
   });
@@ -1727,9 +2313,13 @@ export function getMessageDisappearingExpiresAt(message: ConversationMessage) {
   return message.ext?.disappearing?.expiresAt;
 }
 
-export function expireDisappearingMessagesMutation(database: ImDatabase, conversationId?: string, now = Date.now()) {
+export function expireDisappearingMessagesMutation(
+  database: ImDatabase,
+  conversationId?: string,
+  now = Date.now(),
+) {
   const targetConversations = database.conversations.filter((conversation) =>
-    conversationId ? conversation.id === conversationId : true
+    conversationId ? conversation.id === conversationId : true,
   );
   const removedMessageIds = new Set<string>();
   const touchedConversationIds = new Set<string>();
@@ -1758,8 +2348,12 @@ export function expireDisappearingMessagesMutation(database: ImDatabase, convers
   });
 
   if (removedMessageIds.size > 0) {
-    database.messages = database.messages.filter((message) => !removedMessageIds.has(message.id));
-    database.attachments = database.attachments.filter((attachment) => !removedMessageIds.has(attachment.messageId));
+    database.messages = database.messages.filter(
+      (message) => !removedMessageIds.has(message.id),
+    );
+    database.attachments = database.attachments.filter(
+      (attachment) => !removedMessageIds.has(attachment.messageId),
+    );
     changed = true;
   }
 
@@ -1772,11 +2366,17 @@ export function expireDisappearingMessagesMutation(database: ImDatabase, convers
     removedMessageIds: Array.from(removedMessageIds),
     conversations: Array.from(touchedConversationIds)
       .map((id) => getConversationById(database, id))
-      .filter((conversation): conversation is Conversation => Boolean(conversation))
+      .filter((conversation): conversation is Conversation =>
+        Boolean(conversation),
+      ),
   };
 }
 
-export function updateContactRemarkMutation(database: ImDatabase, contactId: string, remarkName: string) {
+export function updateContactRemarkMutation(
+  database: ImDatabase,
+  contactId: string,
+  remarkName: string,
+) {
   const contact = database.contacts.find((item) => item.id === contactId);
 
   if (!contact) {
@@ -1788,26 +2388,38 @@ export function updateContactRemarkMutation(database: ImDatabase, contactId: str
   return contact;
 }
 
-export function updateContactTagsMutation(database: ImDatabase, contactId: string, tags: string[]) {
+export function updateContactTagsMutation(
+  database: ImDatabase,
+  contactId: string,
+  tags: string[],
+) {
   const contact = database.contacts.find((item) => item.id === contactId);
 
   if (!contact) {
     return undefined;
   }
 
-  contact.tags = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
+  contact.tags = Array.from(
+    new Set(tags.map((tag) => tag.trim()).filter(Boolean)),
+  );
   contact.updatedAt = new Date().toISOString();
   return contact;
 }
 
-export function updateConversationTagsMutation(database: ImDatabase, conversationId: string, tags: string[]) {
+export function updateConversationTagsMutation(
+  database: ImDatabase,
+  conversationId: string,
+  tags: string[],
+) {
   const conversation = getConversationById(database, conversationId);
 
   if (!conversation) {
     return undefined;
   }
 
-  conversation.tags = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
+  conversation.tags = Array.from(
+    new Set(tags.map((tag) => tag.trim()).filter(Boolean)),
+  );
   conversation.updatedAt = new Date().toISOString();
   return conversation;
 }
@@ -1821,11 +2433,21 @@ function normalizeCampaignTags(tags: string[]) {
 }
 
 function normalizeCampaignTargetUserIds(userIds?: string[]) {
-  return Array.from(new Set((userIds ?? []).map((userId) => userId.trim()).filter(Boolean)));
+  return Array.from(
+    new Set((userIds ?? []).map((userId) => userId.trim()).filter(Boolean)),
+  );
 }
 
-function isTagMessageCampaignType(value?: MessageCampaignType): value is MessageCampaignType {
-  return value === "marketing" || value === "crm" || value === "transactional" || value === "system" || value === "risk";
+function isTagMessageCampaignType(
+  value?: MessageCampaignType,
+): value is MessageCampaignType {
+  return (
+    value === "marketing" ||
+    value === "crm" ||
+    value === "transactional" ||
+    value === "system" ||
+    value === "risk"
+  );
 }
 
 function shouldRespectOptOut(type: MessageCampaignType) {
@@ -1833,22 +2455,32 @@ function shouldRespectOptOut(type: MessageCampaignType) {
 }
 
 function isOptOutTagged(tags: string[]) {
-  return tags.some((tag) => /退订|拒收|免打扰|勿扰|不接收|opt[\s-]?out/i.test(tag));
+  return tags.some((tag) =>
+    /退订|拒收|免打扰|勿扰|不接收|opt[\s-]?out/i.test(tag),
+  );
 }
 
 function getContactCampaignTags(contact: ContactRelation, user?: ImUser) {
-  return Array.from(new Set([...contact.tags, ...(user?.tags ?? [])].map((tag) => tag.trim()).filter(Boolean)));
+  return Array.from(
+    new Set(
+      [...contact.tags, ...(user?.tags ?? [])]
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function buildTagMessageCampaignRecipients(
   database: ImDatabase,
-  input: TagMessageCampaignInput
+  input: TagMessageCampaignInput,
 ): TagMessageCampaignEstimate {
   const targetTags = normalizeCampaignTags(input.tagIds);
   const targetTagSet = new Set(targetTags.map(normalizeCampaignTag));
   const targetUserIds = normalizeCampaignTargetUserIds(input.targetUserIds);
   const targetUserIdSet = new Set(targetUserIds);
-  const type = isTagMessageCampaignType(input.messageType) ? input.messageType : "crm";
+  const type = isTagMessageCampaignType(input.messageType)
+    ? input.messageType
+    : "crm";
   const seenUserIds = new Set<string>();
   const recipients: MessageCampaignRecipientPreview[] = [];
 
@@ -1858,12 +2490,17 @@ function buildTagMessageCampaignRecipients(
       targetUserIds,
       recipientCount: 0,
       skippedCount: 0,
-      recipients: []
+      recipients: [],
     };
   }
 
   database.contacts.forEach((contact) => {
-    if (contact.relationStatus !== "active" || contact.isBlocked || contact.targetUserId === database.currentUserId || seenUserIds.has(contact.targetUserId)) {
+    if (
+      contact.relationStatus !== "active" ||
+      contact.isBlocked ||
+      contact.targetUserId === database.currentUserId ||
+      seenUserIds.has(contact.targetUserId)
+    ) {
       return;
     }
 
@@ -1874,7 +2511,9 @@ function buildTagMessageCampaignRecipients(
     }
 
     const candidateTags = getContactCampaignTags(contact, user);
-    const matchedTags = candidateTags.filter((tag) => targetTagSet.has(normalizeCampaignTag(tag)));
+    const matchedTags = candidateTags.filter((tag) =>
+      targetTagSet.has(normalizeCampaignTag(tag)),
+    );
     const selectedDirectly = targetUserIdSet.has(contact.targetUserId);
 
     if (!selectedDirectly && matchedTags.length === 0) {
@@ -1883,27 +2522,35 @@ function buildTagMessageCampaignRecipients(
 
     seenUserIds.add(contact.targetUserId);
 
-    const skippedReason = shouldRespectOptOut(type) && isOptOutTagged(candidateTags) ? "已设置拒收营销/运营消息" : undefined;
+    const skippedReason =
+      shouldRespectOptOut(type) && isOptOutTagged(candidateTags)
+        ? "已设置拒收营销/运营消息"
+        : undefined;
     recipients.push({
       targetUserId: contact.targetUserId,
       contactId: contact.id,
       matchedTags,
       status: skippedReason ? "skipped" : "pending",
-      skippedReason
+      skippedReason,
     });
   });
 
   return {
     targetTags,
     targetUserIds,
-    recipientCount: recipients.filter((recipient) => recipient.status !== "skipped").length,
-    skippedCount: recipients.filter((recipient) => recipient.status === "skipped").length,
-    recipients
+    recipientCount: recipients.filter(
+      (recipient) => recipient.status !== "skipped",
+    ).length,
+    skippedCount: recipients.filter(
+      (recipient) => recipient.status === "skipped",
+    ).length,
+    recipients,
   };
 }
 
 export function ensureMessageCampaignCollections(database: ImDatabase) {
-  const mutableDatabase = database as ImDatabase & Partial<Pick<ImDatabase, "messageCampaignRecipients" | "messageCampaigns">>;
+  const mutableDatabase = database as ImDatabase &
+    Partial<Pick<ImDatabase, "messageCampaignRecipients" | "messageCampaigns">>;
   let changed = false;
 
   if (!Array.isArray(mutableDatabase.messageCampaigns)) {
@@ -1919,12 +2566,18 @@ export function ensureMessageCampaignCollections(database: ImDatabase) {
   return changed;
 }
 
-export function estimateTagMessageCampaign(database: ImDatabase, input: TagMessageCampaignInput): TagMessageCampaignEstimate {
+export function estimateTagMessageCampaign(
+  database: ImDatabase,
+  input: TagMessageCampaignInput,
+): TagMessageCampaignEstimate {
   ensureMessageCampaignCollections(database);
   return buildTagMessageCampaignRecipients(database, input);
 }
 
-export function sendTagMessageCampaignMutation(database: ImDatabase, input: TagMessageCampaignInput): TagMessageCampaignResult {
+export function sendTagMessageCampaignMutation(
+  database: ImDatabase,
+  input: TagMessageCampaignInput,
+): TagMessageCampaignResult {
   ensureMessageCampaignCollections(database);
   const content = input.content?.trim() ?? "";
   const image = input.image?.url ? input.image : undefined;
@@ -1933,12 +2586,14 @@ export function sendTagMessageCampaignMutation(database: ImDatabase, input: TagM
     throw new Error("Message content or image is required");
   }
 
-  const type = isTagMessageCampaignType(input.messageType) ? input.messageType : "crm";
+  const type = isTagMessageCampaignType(input.messageType)
+    ? input.messageType
+    : "crm";
   const estimate = buildTagMessageCampaignRecipients(database, input);
   const directRecipientCount = estimate.targetUserIds.length;
   const targetLabel = [
     ...estimate.targetTags,
-    ...(directRecipientCount > 0 ? [`${directRecipientCount} 位朋友`] : [])
+    ...(directRecipientCount > 0 ? [`${directRecipientCount} 位朋友`] : []),
   ].join(" / ");
   const createdAt = new Date().toISOString();
   const campaign: MessageCampaign = {
@@ -1952,7 +2607,7 @@ export function sendTagMessageCampaignMutation(database: ImDatabase, input: TagM
     createdAt,
     sentCount: 0,
     skippedCount: estimate.skippedCount,
-    status: "sending"
+    status: "sending",
   };
   const recipients: MessageCampaignRecipient[] = [];
   const deliveries: TagMessageCampaignResult["deliveries"] = [];
@@ -1966,12 +2621,14 @@ export function sendTagMessageCampaignMutation(database: ImDatabase, input: TagM
         contactId: recipient.contactId,
         matchedTags: recipient.matchedTags,
         status: "skipped",
-        skippedReason: recipient.skippedReason
+        skippedReason: recipient.skippedReason,
       });
       return;
     }
 
-    const conversation = createConversationMutation(database, [recipient.targetUserId]);
+    const conversation = createConversationMutation(database, [
+      recipient.targetUserId,
+    ]);
     const messageType: ImMessageType = image ? "image" : "text";
     const messageContent = image?.url ?? content;
     const messageExt: MessageExt = image
@@ -1984,17 +2641,19 @@ export function sendTagMessageCampaignMutation(database: ImDatabase, input: TagM
           width: image.width,
           height: image.height,
           caption: content || undefined,
-          previewText: content ? `群发 · ${content}` : `群发 · 图片${targetLabel ? ` · ${targetLabel}` : ""}`
+          previewText: content
+            ? `群发 · ${content}`
+            : `群发 · 图片${targetLabel ? ` · ${targetLabel}` : ""}`,
         }
       : {
-          previewText: `群发${targetLabel ? ` · ${targetLabel}` : ""}`
+          previewText: `群发${targetLabel ? ` · ${targetLabel}` : ""}`,
         };
     const result = sendMessageMutation(database, {
       conversationId: conversation.id,
       senderId: database.currentUserId,
       type: messageType,
       content: messageContent,
-      ext: messageExt
+      ext: messageExt,
     });
 
     campaign.sentCount += 1;
@@ -2007,24 +2666,31 @@ export function sendTagMessageCampaignMutation(database: ImDatabase, input: TagM
       status: "sent",
       conversationId: result.conversation.id,
       messageId: result.message.id,
-      sentAt: result.message.sentAt
+      sentAt: result.message.sentAt,
     });
     deliveries.push(result);
   });
 
-  campaign.skippedCount = recipients.filter((recipient) => recipient.status === "skipped").length;
-  campaign.status = campaign.sentCount > 0 && campaign.skippedCount > 0 ? "partial" : "sent";
+  campaign.skippedCount = recipients.filter(
+    (recipient) => recipient.status === "skipped",
+  ).length;
+  campaign.status =
+    campaign.sentCount > 0 && campaign.skippedCount > 0 ? "partial" : "sent";
   database.messageCampaigns.unshift(campaign);
   database.messageCampaignRecipients.unshift(...recipients);
 
   return {
     campaign,
     recipients,
-    deliveries
+    deliveries,
   };
 }
 
-export function setContactBlockedMutation(database: ImDatabase, contactId: string, isBlocked: boolean) {
+export function setContactBlockedMutation(
+  database: ImDatabase,
+  contactId: string,
+  isBlocked: boolean,
+) {
   const contact = database.contacts.find((item) => item.id === contactId);
 
   if (!contact) {
@@ -2048,7 +2714,10 @@ export function deleteContactMutation(database: ImDatabase, contactId: string) {
   return contact;
 }
 
-export function acceptFriendRequestMutation(database: ImDatabase, requestId: string) {
+export function acceptFriendRequestMutation(
+  database: ImDatabase,
+  requestId: string,
+) {
   const request = database.friendRequests.find((item) => item.id === requestId);
 
   if (!request) {
@@ -2070,7 +2739,7 @@ export function acceptFriendRequestMutation(database: ImDatabase, requestId: str
       tags: ["新朋友"],
       isStarred: false,
       isBlocked: false,
-      description: "通过好友申请建立联系"
+      description: "通过好友申请建立联系",
     });
     database.contacts.push(contact);
   } else {
@@ -2086,7 +2755,7 @@ export function addContactMutation(
   database: ImDatabase,
   targetUserId: string,
   source: string,
-  description = "通过聊天页手动添加"
+  description = "通过聊天页手动添加",
 ) {
   const user = getUserById(database, targetUserId);
 
@@ -2106,7 +2775,7 @@ export function addContactMutation(
       tags: ["新朋友"],
       isStarred: false,
       isBlocked: false,
-      description
+      description,
     });
     database.contacts.push(contact);
     return contact;
@@ -2120,7 +2789,10 @@ export function addContactMutation(
   return contact;
 }
 
-export function rejectFriendRequestMutation(database: ImDatabase, requestId: string) {
+export function rejectFriendRequestMutation(
+  database: ImDatabase,
+  requestId: string,
+) {
   const request = database.friendRequests.find((item) => item.id === requestId);
 
   if (!request) {
@@ -2143,12 +2815,15 @@ export function recallMessageMutation(database: ImDatabase, messageId: string) {
   message.recalledAt = new Date().toISOString();
   message.ext = {
     ...message.ext,
-    originalType: message.type
+    originalType: message.type,
   };
   message.type = "recalled";
   message.content = "";
 
-  const conversation = recomputeConversationSummary(database, message.conversationId);
+  const conversation = recomputeConversationSummary(
+    database,
+    message.conversationId,
+  );
   return conversation ? { conversation, message } : undefined;
 }
 
@@ -2161,7 +2836,10 @@ export function resendMessageMutation(database: ImDatabase, messageId: string) {
 
   message.status = "sent";
   message.sentAt = new Date().toISOString();
-  const conversation = recomputeConversationSummary(database, message.conversationId);
+  const conversation = recomputeConversationSummary(
+    database,
+    message.conversationId,
+  );
   return conversation ? { conversation, message } : undefined;
 }
 
@@ -2174,7 +2852,7 @@ export function sendMessageMutation(
     content: string;
     quotedMessageId?: string;
     ext?: MessageExt;
-  }
+  },
 ) {
   const conversation = getConversationById(database, input.conversationId);
 
@@ -2191,12 +2869,17 @@ export function sendMessageMutation(
     content: input.content,
     quotedMessageId: input.quotedMessageId,
     sentAt,
-    ext: buildDisappearingMessageExt(conversation, sentAt, input.ext)
+    ext: buildDisappearingMessageExt(conversation, sentAt, input.ext),
   });
 
   database.messages.push(message);
 
-  if (input.type === "image" || input.type === "video" || input.type === "file" || input.type === "voice") {
+  if (
+    input.type === "image" ||
+    input.type === "video" ||
+    input.type === "file" ||
+    input.type === "voice"
+  ) {
     database.attachments.push(
       createAttachment({
         messageId: message.id,
@@ -2207,14 +2890,16 @@ export function sendMessageMutation(
         thumbnailUrl: input.ext?.thumbnailUrl,
         duration: input.ext?.duration,
         width: input.ext?.width,
-        height: input.ext?.height
-      })
+        height: input.ext?.height,
+      }),
     );
   }
 
   if (message.senderId !== database.currentUserId) {
     conversation.unreadCount += 1;
-    conversation.mentionMe = Boolean(message.ext?.mentions?.includes(database.currentUserId));
+    conversation.mentionMe = Boolean(
+      message.ext?.mentions?.includes(database.currentUserId),
+    );
     conversation.mentionAll = Boolean(message.ext?.mentionAll);
   }
 
@@ -2222,11 +2907,15 @@ export function sendMessageMutation(
 
   return {
     message,
-    conversation
+    conversation,
   };
 }
 
-export function forwardMessageMutation(database: ImDatabase, messageId: string, conversationId: string) {
+export function forwardMessageMutation(
+  database: ImDatabase,
+  messageId: string,
+  conversationId: string,
+) {
   const source = database.messages.find((message) => message.id === messageId);
 
   if (!source) {
@@ -2237,12 +2926,17 @@ export function forwardMessageMutation(database: ImDatabase, messageId: string, 
     conversationId,
     senderId: database.currentUserId,
     type: source.type === "recalled" ? "text" : source.type,
-    content: source.type === "recalled" ? "转发了一条已撤回消息" : source.content,
-    ext: source.ext ? { ...source.ext, mentions: undefined, mentionAll: undefined } : undefined
+    content:
+      source.type === "recalled" ? "转发了一条已撤回消息" : source.content,
+    ext: source.ext
+      ? { ...source.ext, mentions: undefined, mentionAll: undefined }
+      : undefined,
   });
 }
 
-export function buildBootstrapPayload(database: ImDatabase): ImBootstrapPayload {
+export function buildBootstrapPayload(
+  database: ImDatabase,
+): ImBootstrapPayload {
   return {
     currentUserId: database.currentUserId,
     config: database.config,
@@ -2250,27 +2944,35 @@ export function buildBootstrapPayload(database: ImDatabase): ImBootstrapPayload 
     contacts: database.contacts,
     friendRequests: database.friendRequests,
     conversations: database.conversations,
-    members: database.members
+    members: database.members,
   };
 }
 
-export function paginateMessages(messages: ConversationMessage[], limit = 30, cursor?: string | null) {
+export function paginateMessages(
+  messages: ConversationMessage[],
+  limit = 30,
+  cursor?: string | null,
+) {
   if (messages.length === 0) {
     return {
       messages: [] as ConversationMessage[],
       nextCursor: null as string | null,
-      hasMore: false
+      hasMore: false,
     };
   }
 
-  const sorted = [...messages].sort((left, right) => new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime());
+  const sorted = [...messages].sort(
+    (left, right) =>
+      new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime(),
+  );
 
   if (!cursor) {
     const slice = sorted.slice(-limit);
     return {
       messages: slice,
-      nextCursor: slice[0]?.id && slice[0].id !== sorted[0]?.id ? slice[0].id : null,
-      hasMore: slice[0]?.id !== sorted[0]?.id
+      nextCursor:
+        slice[0]?.id && slice[0].id !== sorted[0]?.id ? slice[0].id : null,
+      hasMore: slice[0]?.id !== sorted[0]?.id,
     };
   }
 
@@ -2280,7 +2982,7 @@ export function paginateMessages(messages: ConversationMessage[], limit = 30, cu
     return {
       messages: sorted.slice(0, Math.min(limit, sorted.length)),
       nextCursor: null,
-      hasMore: false
+      hasMore: false,
     };
   }
 
@@ -2289,7 +2991,7 @@ export function paginateMessages(messages: ConversationMessage[], limit = 30, cu
 
   return {
     messages: slice,
-    nextCursor: start > 0 ? slice[0]?.id ?? null : null,
-    hasMore: start > 0
+    nextCursor: start > 0 ? (slice[0]?.id ?? null) : null,
+    hasMore: start > 0,
   };
 }

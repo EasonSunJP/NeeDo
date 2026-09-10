@@ -13,7 +13,12 @@ describe("MerchantAdminOrdersPage formal workflow", () => {
   });
 
   it("uses the formal order state machine and manual-payment endpoints", () => {
-    expect(source).toContain("bookingApi.confirmOrder(selectedOrder.id)");
+    expect(source).toContain("await bookingApi.confirmOrder(");
+    expect(source).toContain("selectedOrder.id,");
+    expect(source).toContain("insufficientBalanceConfirmation");
+    expect(source).toContain("createBookingIdempotencyKey()");
+    expect(source).toContain("余额不足，仍确认预约");
+    expect(source).toContain("店铺平台费余额不足");
     expect(source).toContain("bookingApi.startOrder(selectedOrder.id)");
     expect(source).toContain("bookingApi.completeOrder(selectedOrder.id)");
     expect(source).toContain("bookingApi.cancelOrder(selectedOrder.id");
