@@ -83,7 +83,9 @@ describe("TechnicianApplicationsReviewPage", () => {
       review(11, "submitted"),
       review(12, "under_review"),
       review(13, "approved"),
-      review(14, "rejected")
+      review(14, "rejected"),
+      review(15, "draft"),
+      review(16, "withdrawn")
     ];
     vi.spyOn(identityApplicationsApi, "listTechnicianReviews").mockResolvedValue({
       list: items,
@@ -109,6 +111,8 @@ describe("TechnicianApplicationsReviewPage", () => {
     expect(container.querySelector('[aria-label="审核未通过"]')?.textContent).toBe("×");
     expect(container.querySelector('[data-application-status="approved"]')).not.toBeNull();
     expect(container.querySelector('[data-application-status="rejected"]')).not.toBeNull();
+    expect(container.querySelector('[data-application-status="draft"]')).toBeNull();
+    expect(container.querySelector('[data-application-status="withdrawn"]')).toBeNull();
 
     await act(async () => {
       container.querySelector<HTMLElement>('[data-application-status="approved"] button[aria-label^="查看技师"]')?.click();
