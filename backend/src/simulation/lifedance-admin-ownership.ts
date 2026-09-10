@@ -36,6 +36,35 @@ export interface LifeDanceAdminOwnershipResult {
   previousOwnerUserId: number | null;
 }
 
+export const buildLifeDanceAdminTechnicianProfileUpsertData = (adminUserId: number) => ({
+  create: {
+    userId: adminUserId,
+    shopId: null,
+    displayName: LIFEDANCE_ADMIN_DISPLAY_NAME,
+    bio: "LifeDance の権限切替確認専用プロフィールです。予約受付には使用しません。",
+    city: "東京都",
+    serviceArea: null,
+    yearsExperience: 0,
+    employmentType: TechnicianEmploymentType.INDEPENDENT,
+    employmentStartedAt: null,
+    status: "private",
+    visibility: "public",
+    verifiedAt: new Date("2026-05-25T00:00:00.000Z")
+  },
+  update: {
+    shopId: null,
+    displayName: LIFEDANCE_ADMIN_DISPLAY_NAME,
+    bio: "LifeDance の権限切替確認専用プロフィールです。予約受付には使用しません。",
+    city: "東京都",
+    serviceArea: null,
+    yearsExperience: 0,
+    employmentType: TechnicianEmploymentType.INDEPENDENT,
+    employmentStartedAt: null,
+    verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
+    deletedAt: null
+  }
+});
+
 export const migrateLifeDanceAdminOwnership = async (
   tx: Prisma.TransactionClient
 ): Promise<LifeDanceAdminOwnershipResult> => {
@@ -111,34 +140,10 @@ export const migrateLifeDanceAdminOwnership = async (
       deletedAt: null
     }
   });
+  const technicianProfileUpsertData = buildLifeDanceAdminTechnicianProfileUpsertData(admin.id);
   const technicianProfile = await tx.technicianProfile.upsert({
     where: { userId: admin.id },
-    create: {
-      userId: admin.id,
-      shopId: null,
-      displayName: LIFEDANCE_ADMIN_DISPLAY_NAME,
-      bio: "LifeDance の権限切替確認専用プロフィールです。予約受付には使用しません。",
-      city: "東京都",
-      serviceArea: null,
-      yearsExperience: 0,
-      employmentType: TechnicianEmploymentType.INDEPENDENT,
-      employmentStartedAt: null,
-      status: "private",
-      verifiedAt: new Date("2026-05-25T00:00:00.000Z")
-    },
-    update: {
-      shopId: null,
-      displayName: LIFEDANCE_ADMIN_DISPLAY_NAME,
-      bio: "LifeDance の権限切替確認専用プロフィールです。予約受付には使用しません。",
-      city: "東京都",
-      serviceArea: null,
-      yearsExperience: 0,
-      employmentType: TechnicianEmploymentType.INDEPENDENT,
-      employmentStartedAt: null,
-      status: "private",
-      verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
-      deletedAt: null
-    }
+    ...technicianProfileUpsertData
   });
 
   const roleRows = await tx.role.findMany({

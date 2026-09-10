@@ -75,7 +75,7 @@ const main = async (): Promise<void> => {
           avatarUrl: true,
           customerProfile: { select: { id: true } },
           technicianProfile: {
-            select: { id: true, shopId: true, status: true, employmentType: true }
+            select: { id: true, shopId: true, visibility: true, employmentType: true }
           }
         }
       }),
@@ -286,9 +286,11 @@ const main = async (): Promise<void> => {
     );
     assert(
       admin.technicianProfile.shopId === null &&
-        admin.technicianProfile.status === "private" &&
+        ["public", "privateAll", "limited", "network"].includes(
+          admin.technicianProfile.visibility
+        ) &&
         admin.technicianProfile.employmentType === TechnicianEmploymentType.INDEPENDENT,
-      "LifeDance administrator technician profile must remain private and independent"
+      "LifeDance administrator technician profile must retain a valid personal-card visibility and remain independent"
     );
     assert(
       roleCodesByUser.get(admin.id)?.has("admin") &&
@@ -323,7 +325,6 @@ const main = async (): Promise<void> => {
       previousLifeDanceOwner,
       lifeDanceMerchantAccounts,
       adminTechnicianServices,
-      adminAvailabilities,
       adminBookings
     ] = await Promise.all([
       prisma.user.findFirst({
@@ -359,9 +360,6 @@ const main = async (): Promise<void> => {
       prisma.technicianService.count({
         where: { technicianId: admin.technicianProfile.id, deletedAt: null }
       }),
-      prisma.availability.count({
-        where: { technicianProfileId: admin.technicianProfile.id, deletedAt: null }
-      }),
       prisma.bookingOrder.count({
         where: { technicianProfileId: admin.technicianProfile.id, deletedAt: null }
       })
@@ -376,8 +374,8 @@ const main = async (): Promise<void> => {
       "LifeDance administrator must own one active merchant account and shop membership"
     );
     assert(
-      adminTechnicianServices === 0 && adminAvailabilities === 0 && adminBookings === 0,
-      "LifeDance administrator private technician profile must be non-bookable"
+      adminTechnicianServices === 0 && adminBookings === 0,
+      "LifeDance administrator technician profile must not have bookable services or bookings"
     );
     if (previousLifeDanceOwner) {
       const [previousMerchantIdentities, previousMerchantRoles] = await Promise.all([
