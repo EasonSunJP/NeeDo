@@ -113,6 +113,20 @@ describe("RealtimeRepository friend request lifecycle", () => {
       include: expect.any(Object)
     });
     expect(tx.notification.create).toHaveBeenCalledTimes(1);
+    expect(tx.userIdentity.count).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        OR: [
+          { id: requesterIdentityId, userId: requester.id },
+          {
+            id: targetIdentityId,
+            userId: target.id,
+            type: { in: ["customer", "user", "u", "technician", "scout"] }
+          }
+        ]
+      }
+    });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         actorId: requester.id,

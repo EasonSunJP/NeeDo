@@ -530,6 +530,7 @@ describe("ImNewConversationPage directory query handoff", () => {
     );
     expect(source).toContain("store.searchDirectory(keyword)");
     expect(source).toContain('value={query}');
+    expect(source).toContain("const filteredFriendCandidates = availableFriendCandidates;");
   });
 
   it("opens an account profile instead of directly adding or starting chat", () => {
