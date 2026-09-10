@@ -578,16 +578,18 @@ export function PageScaffold({
   navItems,
   className,
   contentClassName,
-  showTopEdgeMask
+  showTopEdgeMask,
+  showBottomNav = true
 }: {
   children: ReactNode;
   navItems?: MobileNavItem[];
   className?: string;
   contentClassName?: string;
   showTopEdgeMask?: boolean;
+  showBottomNav?: boolean;
 }) {
   return (
-    <MobileShell className={className} navItems={navItems} showTopEdgeMask={showTopEdgeMask}>
+    <MobileShell className={className} navItems={navItems} showBottomNav={showBottomNav} showTopEdgeMask={showTopEdgeMask}>
       <div className={cn("mx-auto w-full max-w-[1480px] px-4 pb-28 pt-4 sm:px-6 lg:px-8", contentClassName)}>{children}</div>
     </MobileShell>
   );

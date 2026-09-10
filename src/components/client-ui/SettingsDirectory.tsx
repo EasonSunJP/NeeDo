@@ -82,6 +82,9 @@ export function SettingsHomePage({
   actions,
   backTo,
   onBack,
+  onClose,
+  closeTo,
+  closeLabel,
   navItems,
   children,
   contentClassName
@@ -92,6 +95,9 @@ export function SettingsHomePage({
   actions?: ReactNode;
   backTo?: string;
   onBack?: () => void;
+  onClose?: () => void;
+  closeTo?: string;
+  closeLabel?: string;
   navItems?: MobileNavItem[];
   children: ReactNode;
   contentClassName?: string;
@@ -99,8 +105,8 @@ export function SettingsHomePage({
   const titleInfo = combineTitleInfo(info, subtitle);
 
   return (
-    <PageScaffold contentClassName={cn("space-y-5 pt-[calc(env(safe-area-inset-top)+5.75rem)]", contentClassName)} navItems={navItems}>
-      <AppTopBar actions={actions} backTo={backTo} fixed info={titleInfo} onBack={onBack} title={title} />
+    <PageScaffold contentClassName={cn("space-y-5 pt-[calc(env(safe-area-inset-top)+5.75rem)]", contentClassName)} navItems={navItems} showBottomNav={false}>
+      <AppTopBar actions={actions} backTo={backTo} closeLabel={closeLabel} closeTo={closeTo} fixed info={titleInfo} onBack={onBack} onClose={onClose} title={title} />
       {children}
     </PageScaffold>
   );

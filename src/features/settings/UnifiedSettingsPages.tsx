@@ -1766,6 +1766,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   return (
     <PortalScopedSettingsPage portal={portal}>
       <SettingsHomePage
+        closeTo={getPortalMePath(portal)}
         info={t(isBusinessPortal ? "NeeDoAfirieito 使用独立 Afirieito App 设置中心，基础设置与用户端保持同一套交互。" : "统一设置模块现在使用同一套首页、列表项和子页承载三端配置，仅通过身份决定显示哪些内容。")}
         navItems={getSettingsNavItems(portal)}
         onBack={
