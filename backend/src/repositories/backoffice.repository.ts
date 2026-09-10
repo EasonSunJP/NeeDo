@@ -390,6 +390,7 @@ type OrderDetailRecord = OrderRecord & {
     fromStatus: BookingOrderStatus | null;
     toStatus: BookingOrderStatus;
     actorUserId: number | null;
+    actor: { username: string; avatarUrl: string | null; avatarBootstrapUrl: string | null } | null;
     reason: string | null;
     createdAt: Date;
   }>;
@@ -408,6 +409,7 @@ type OrderDetailRecord = OrderRecord & {
     id: number;
     action: OrderPerformanceRevisionAction;
     actorUserId: number | null;
+    actor: { username: string; avatarUrl: string | null; avatarBootstrapUrl: string | null } | null;
     publicReason: string | null;
     internalNote: string | null;
     createdAt: Date;
@@ -416,6 +418,7 @@ type OrderDetailRecord = OrderRecord & {
     id: number;
     eventType: OrderServiceEventType;
     actorUserId: number | null;
+    actor: { username: string; avatarUrl: string | null; avatarBootstrapUrl: string | null } | null;
     reason: string | null;
     occurredAt: Date;
     orderAddOn: {
@@ -519,6 +522,11 @@ type CustomerRecord = Prisma.CustomerProfileGetPayload<{
 type ServiceRecord = Prisma.ServiceGetPayload<{
   include: {
     category: {
+      select: {
+        name: true;
+      };
+    };
+    shop: {
       select: {
         name: true;
       };
@@ -787,7 +795,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       include: this.orderDetailInclude()
     });
 
-    return order ? this.mapOrderDetail(order) : null;
+    return order ? this.mapOrderDetail(order, input.scope === "platform") : null;
   }
 
   public async listSchedule(
@@ -2542,7 +2550,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   private serviceInclude() {
     return {
-      category: { select: { name: true } }
+      category: { select: { name: true } },
+      shop: { select: { name: true } }
     } satisfies Prisma.ServiceInclude;
   }
 
@@ -2906,6 +2915,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           fromStatus: true,
           toStatus: true,
           actorUserId: true,
+          actor: {
+            select: { username: true, avatarUrl: true, avatarBootstrapUrl: true }
+          },
           reason: true,
           createdAt: true
         }
@@ -2930,6 +2942,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           id: true,
           action: true,
           actorUserId: true,
+          actor: {
+            select: { username: true, avatarUrl: true, avatarBootstrapUrl: true }
+          },
           publicReason: true,
           internalNote: true,
           createdAt: true
@@ -2951,6 +2966,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           id: true,
           eventType: true,
           actorUserId: true,
+          actor: {
+            select: { username: true, avatarUrl: true, avatarBootstrapUrl: true }
+          },
           reason: true,
           occurredAt: true,
           orderAddOn: {
@@ -3179,13 +3197,17 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     };
   }
 
-  private mapOrderDetail(order: OrderDetailRecord): BackofficeOrderDetailPayload {
+  private mapOrderDetail(
+    order: OrderDetailRecord,
+    includeInternalNotes: boolean
+  ): BackofficeOrderDetailPayload {
     const timelineEvents: BackofficeOrderTimelineEventPayload[] = [
       ...order.statusHistory.map((history) => ({
         type: "ORDER_STATUS_CHANGED" as const,
         id: `status:${history.id}`,
         createdAt: history.createdAt.toISOString(),
         actorUserId: history.actorUserId,
+        ...this.mapOrderTimelineActor(history.actor),
         fromStatus: history.fromStatus ? this.statusFromDb(history.fromStatus) : null,
         toStatus: this.statusFromDb(history.toStatus),
         publicReason: history.reason
@@ -3195,8 +3217,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         id: `performance:${revision.id}`,
         createdAt: revision.createdAt.toISOString(),
         actorUserId: revision.actorUserId,
+        ...this.mapOrderTimelineActor(revision.actor),
         publicReason: revision.publicReason,
-        internalNote: revision.internalNote
+        internalNote: includeInternalNotes ? revision.internalNote : null
       })),
       ...order.serviceEvents.flatMap((event) => {
         if (!event.orderAddOn) return [];
@@ -3206,6 +3229,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             id: `service:${event.id}`,
             createdAt: event.occurredAt.toISOString(),
             actorUserId: event.actorUserId,
+            ...this.mapOrderTimelineActor(event.actor),
             publicReason: event.reason,
             addOnId: event.orderAddOn.id,
             serviceId: event.orderAddOn.serviceId,
@@ -3243,6 +3267,17 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           }
         : null,
       timelineEvents
+    };
+  }
+
+  private mapOrderTimelineActor(actor: {
+    username: string;
+    avatarUrl: string | null;
+    avatarBootstrapUrl: string | null;
+  } | null) {
+    return {
+      actorName: actor?.username.trim() || "NeeDo系统",
+      actorAvatarUrl: actor?.avatarUrl ?? actor?.avatarBootstrapUrl ?? null
     };
   }
 
@@ -3703,6 +3738,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       categoryId: service.categoryId,
       categoryName: service.category.name,
       shopId: service.shopId,
+      shopName: service.shop.name,
       technicianProfileId: service.technicianProfileId,
       name: service.name,
       description: service.description,

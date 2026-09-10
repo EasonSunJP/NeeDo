@@ -298,7 +298,7 @@ export function MerchantsPage({ embeddedDetail }: {
 
         {active === "服务项目" ? <div className="mt-4 space-y-4"><div className="flex justify-end"><Button onClick={() => setCreateServiceOpen(true)} variant="secondary">新增服务项目</Button></div><DataTable columns={[
           { key: "name", title: "服务项目", render: (row: BackofficeServicePayload) => row.name },
-          { key: "shop", title: "店铺", render: (row: BackofficeServicePayload) => shops.find((shop) => shop.id === row.shopId)?.name ?? `#${row.shopId}` },
+          { key: "shop", title: "店铺", render: (row: BackofficeServicePayload) => row.shopName },
           { key: "category", title: "分类", render: (row: BackofficeServicePayload) => row.categoryName },
           { key: "mode", title: "模式", render: (row: BackofficeServicePayload) => row.serviceMode },
           { key: "price", title: "价格", render: (row: BackofficeServicePayload) => yen(row.priceAmount) },

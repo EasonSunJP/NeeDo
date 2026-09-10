@@ -210,6 +210,14 @@ export class BackofficeController {
     )
   );
 
+  public merchantOrder = this.createListHandler((service, request, response) =>
+    service.getMerchantOrder(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
+  );
+
   public platformSchedule = this.createListHandler((service, request, response) =>
     service.listPlatformSchedule(
       getAuthenticatedAccess(response),

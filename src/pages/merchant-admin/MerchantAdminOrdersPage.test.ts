@@ -35,13 +35,21 @@ describe("MerchantAdminOrdersPage formal workflow", () => {
     expect(source).toContain("再次点击确认退款");
   });
 
-  it("opens real user and employee detail cards in a stacked drawer", () => {
+  it("opens all four related business entities in a stacked detail drawer", () => {
     expect(source).toContain('title: "用户"');
     expect(source).not.toContain('{ key: "customer", title: "顾客"');
     expect(source).toContain('aria-label="查看用户资料"');
     expect(source).toContain('aria-label="查看员工资料"');
-    expect(source).toContain("MerchantOrderParticipantDetailDrawer");
+    expect(source).toContain("OrderRelatedEntityDrawer");
     expect(source).toContain('setParticipant("customer")');
     expect(source).toContain('setParticipant("technician")');
+    expect(source).toContain('setParticipant("shop")');
+    expect(source).toContain('setParticipant("service")');
+  });
+
+  it("loads the scoped formal order detail and displays its real timeline", () => {
+    expect(source).toContain('backofficeRealDataApi.orderDetail("merchant-admin"');
+    expect(source).toContain("AdminEventTimeline");
+    expect(source).toContain('title="订单时间线"');
   });
 });

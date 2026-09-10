@@ -5,11 +5,11 @@
 ## 本次接入范围
 
 - 运营后台 Dashboard：读取真实订单、排班、财务对账、技师、店铺汇总。
-- 运营后台订单中心：读取 `/api/v1/backoffice/orders`。
+- 运营后台订单中心：分页读取 `/api/v1/backoffice/orders`，详情读取 `/api/v1/backoffice/orders/:id`。
 - 运营后台财务结算：读取 `/api/v1/backoffice/finance/settlements`，并可调用导出接口。
 - 运营后台技师 / 店铺管理：读取真实 `TechnicianProfile` 与 `Shop` 数据。
 - 商户后台 Dashboard：按当前登录身份的 `shop` scope 读取本店数据。
-- 商户后台订单中心：读取 `/api/v1/merchant-admin/orders`。
+- 商户后台订单中心：分页读取 `/api/v1/merchant-admin/orders`，详情读取店铺范围强制隔离的 `/api/v1/merchant-admin/orders/:id`。
 - 商户后台财务结算：读取 `/api/v1/merchant-admin/finance/settlements`。
 - 商户后台财务规则中心：读取、更新并预览本店工资、分成、奖金和 NDP 承担规则。
 - 商户后台订单钱路：读取订单服务收入、NDP 冻结/扣除/返点、技师收入预估和 Money Timeline。
@@ -146,6 +146,7 @@ Dashboard 与店铺列表读取分别要求 `backoffice:dashboard:read`、`merch
 
 - `GET /api/v1/backoffice/dashboard`
 - `GET /api/v1/backoffice/orders`
+- `GET /api/v1/backoffice/orders/:id`
 - `GET /api/v1/backoffice/schedule`
 - `GET /api/v1/backoffice/finance/settlements`
 - `GET /api/v1/backoffice/finance/settlements/export`
@@ -159,6 +160,7 @@ Dashboard 与店铺列表读取分别要求 `backoffice:dashboard:read`、`merch
 
 - `GET /api/v1/merchant-admin/dashboard`
 - `GET /api/v1/merchant-admin/orders`
+- `GET /api/v1/merchant-admin/orders/:id`
 - `GET /api/v1/merchant-admin/schedule`
 - `GET /api/v1/merchant-admin/finance/settlements`
 - `GET /api/v1/merchant-admin/finance/settlements/export`

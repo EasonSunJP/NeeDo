@@ -45,4 +45,20 @@ describe("OrdersAdminPage formal operations workflow", () => {
     expect(source).toContain('searchParams.get("orderId")');
     expect(source).toContain("setSearchParams");
   });
+
+  it("opens human-facing related entity drawers from the order detail", () => {
+    expect(source).toContain("OrderRelatedEntityDrawer");
+    expect(source).toContain('setRelatedEntity("customer")');
+    expect(source).toContain('setRelatedEntity("shop")');
+    expect(source).toContain('setRelatedEntity("technician")');
+    expect(source).toContain('setRelatedEntity("service")');
+    expect(source).not.toContain("customerName} / #");
+  });
+
+  it("renders one shared admin timeline with one visible section title", () => {
+    expect(source).toContain("AdminEventTimeline");
+    expect(source).toContain('title="订单时间线与绩效判定"');
+    expect(source).not.toContain('title="订单时间线与判定修订"');
+    expect(source).not.toContain("ContactEventTimelinePanel");
+  });
 });

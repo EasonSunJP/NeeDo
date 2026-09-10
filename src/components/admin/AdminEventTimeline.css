@@ -32,12 +32,13 @@
 }
 @container (max-width: 420px) {
   .admin-event-timeline .contact-event-row > :first-child {
-    font-size: 10px;
-    white-space: pre;
+    font-size: 9px;
+    line-height: 1.45;
+    white-space: normal;
   }
   .admin-event-timeline .contact-event-row,
   .admin-event-timeline .contact-event-comment-row {
-    grid-template-columns: 72px 20px minmax(0, 1fr);
+    grid-template-columns: 84px 18px minmax(0, 1fr);
     gap: 8px;
   }
   .admin-event-timeline .contact-event-avatar-row {
