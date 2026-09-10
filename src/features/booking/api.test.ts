@@ -448,6 +448,27 @@ describe("bookingApi", () => {
     });
   });
 
+  it("preserves the formal customer display name with a safe fallback", () => {
+    const formalOrder = createBookingResponse("booking").data;
+    const customer = {
+      userId: formalOrder.customerUserId,
+      profileId: 17,
+      publicId: "u0000000005",
+      displayName: "山田 花子",
+      avatarUrl: null,
+      membershipLevel: "regular",
+      ratingAverage: "4.90",
+      reviewCount: 12
+    };
+
+    expect(mapBookingOrderToDomainOrder({ ...formalOrder, customer }).customerName).toBe("山田 花子");
+    expect(mapBookingOrderToDomainOrder({
+      ...formalOrder,
+      customer: { ...customer, displayName: "   " }
+    }).customerName).toBe("NeeDo 用户");
+    expect(mapBookingOrderToDomainOrder({ ...formalOrder, customer: undefined }).customerName).toBe("NeeDo 用户");
+  });
+
   it.each(["awaitingCheckout", "awaitingPaymentConfirmation"] as const)("preserves the formal %s status for list and calendar projections", (status) => {
     const apiOrder = { ...createBookingResponse("booking").data, status };
 

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 import {
   backofficeRealDataApi,
   type BackofficeDashboardPayload,
+  type DashboardQuery,
   type DashboardBucketPayload,
   type DashboardPeriod
 } from "../../api/backofficeRealData";
@@ -24,14 +25,26 @@ export interface ShopAnalyticsDashboardProps {
   surface?: "mobile" | "admin";
   className?: string;
   loadDashboard?: ShopDashboardLoader;
+  initialPeriod?: DashboardPeriod;
+  periodControl?: "buttons" | "select";
+  periodSelectRef?: RefObject<HTMLSelectElement | null>;
 }
 
 const periodOptions: Array<{ label: string; value: DashboardPeriod }> = [
   { label: "今日", value: "today" },
   { label: "近7天", value: "last7days" },
   { label: "近30天", value: "last30days" },
-  { label: "本月", value: "month" }
+  { label: "本周", value: "week" },
+  { label: "本月", value: "month" },
+  { label: "今年", value: "year" },
+  { label: "自定义日期", value: "custom" }
 ];
+
+function isValidDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
 
 function formatCount(value: number) {
   return Math.round(value).toLocaleString("zh-CN");
@@ -191,22 +204,49 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 
 export function ShopAnalyticsDashboard({
   className,
+  initialPeriod = "last7days",
   loadDashboard = backofficeRealDataApi.dashboard,
+  periodControl = "buttons",
+  periodSelectRef,
   store
 }: ShopAnalyticsDashboardProps) {
-  const [period, setPeriod] = useState<DashboardPeriod>("last7days");
+  const { language } = useOptionalI18n();
+  const text = (source: string) => translateText(source, language);
+  const [period, setPeriod] = useState<DashboardPeriod>(initialPeriod);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [requestVersion, setRequestVersion] = useState(0);
   const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
+  const customRangeError = useMemo(() => {
+    if (period !== "custom") return null;
+    if (!customFrom || !customTo || !isValidDate(customFrom) || !isValidDate(customTo)) {
+      return "请选择开始日期和结束日期";
+    }
+    if (customFrom > customTo) return "开始日期不能晚于结束日期";
+    return null;
+  }, [customFrom, customTo, period]);
+  const query = useMemo<DashboardQuery | null>(() => {
+    if (period !== "custom") return { period };
+    if (customRangeError) return null;
+    return { period, from: customFrom, to: customTo };
+  }, [customFrom, customRangeError, customTo, period]);
+
   useEffect(() => {
+    if (!query) {
+      setLoading(false);
+      setFailed(false);
+      return;
+    }
+
     const controller = new AbortController();
     setLoading(true);
     setFailed(false);
     setDashboard(null);
 
-    void loadDashboard("merchant-admin", { period }, { signal: controller.signal })
+    void loadDashboard("merchant-admin", query, { signal: controller.signal })
       .then((payload) => {
         if (controller.signal.aborted) return;
         setDashboard(payload);
@@ -219,7 +259,7 @@ export function ShopAnalyticsDashboard({
       });
 
     return () => controller.abort();
-  }, [loadDashboard, period, requestVersion, store.id]);
+  }, [loadDashboard, query, requestVersion, store.id]);
 
   const metricTiles = useMemo(() => {
     if (!dashboard) return [];
@@ -248,24 +288,55 @@ export function ShopAnalyticsDashboard({
         </div>
       </div>
 
-      <div className="shop-analytics-filter-panel flex min-w-0 gap-1 overflow-x-auto rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] p-1 shadow-panel">
-        {periodOptions.map((option) => (
-          <button
-            aria-pressed={period === option.value}
-            className={cn(
-              "focus-ring h-10 min-w-[70px] flex-1 shrink-0 rounded-full px-3 text-xs font-black transition",
-              period === option.value
-                ? "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_8px_20px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
-                : "shop-analytics-control-inactive text-[color:var(--client-muted)]"
-            )}
-            key={option.value}
-            onClick={() => setPeriod(option.value)}
-            type="button"
+      {periodControl === "select" ? (
+        <div className="shop-analytics-filter-panel rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] p-2 shadow-panel">
+          <label className="sr-only" htmlFor="shop-analytics-period">{text("选择数据期间")}</label>
+          <select
+            aria-label={text("选择数据期间")}
+            className="focus-ring h-10 w-full rounded-xl bg-transparent px-3 text-sm font-black text-[color:var(--client-text)]"
+            id="shop-analytics-period"
+            onChange={(event) => setPeriod(event.target.value as DashboardPeriod)}
+            ref={periodSelectRef}
+            value={period}
           >
-            {option.label}
-          </button>
-        ))}
-      </div>
+            {periodOptions.map((option) => <option key={option.value} value={option.value}>{text(option.label)}</option>)}
+          </select>
+        </div>
+      ) : (
+        <div className="shop-analytics-filter-panel flex min-w-0 gap-1 overflow-x-auto rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] p-1 shadow-panel">
+          {periodOptions.map((option) => (
+            <button
+              aria-pressed={period === option.value}
+              className={cn(
+                "focus-ring h-10 min-w-[70px] flex-1 shrink-0 rounded-full px-3 text-xs font-black transition",
+                period === option.value
+                  ? "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_8px_20px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
+                  : "shop-analytics-control-inactive text-[color:var(--client-muted)]"
+              )}
+              key={option.value}
+              onClick={() => setPeriod(option.value)}
+              type="button"
+            >
+              {text(option.label)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {period === "custom" ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs font-black text-[color:var(--client-muted)]">
+            <span>{text("开始日期")}</span>
+            <input aria-label={text("开始日期")} className="focus-ring h-11 rounded-xl border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 text-sm text-[color:var(--client-text)]" onChange={(event) => setCustomFrom(event.target.value)} type="date" value={customFrom} />
+          </label>
+          <label className="grid gap-1 text-xs font-black text-[color:var(--client-muted)]">
+            <span>{text("结束日期")}</span>
+            <input aria-label={text("结束日期")} className="focus-ring h-11 rounded-xl border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 text-sm text-[color:var(--client-text)]" onChange={(event) => setCustomTo(event.target.value)} type="date" value={customTo} />
+          </label>
+        </div>
+      ) : null}
+
+      {customRangeError ? <p className="text-sm font-bold text-[color:var(--client-accent)]" role="alert">{text(customRangeError)}</p> : null}
 
       {loading ? (
         <div aria-busy="true" className="shop-analytics-panel grid min-h-56 place-items-center rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 text-sm font-black text-[color:var(--client-muted)] shadow-panel">
@@ -283,7 +354,7 @@ export function ShopAnalyticsDashboard({
             重新加载
           </button>
         </div>
-      ) : dashboard ? (
+      ) : dashboard && !customRangeError ? (
         <>
           <div className="grid grid-cols-2 gap-2">
             {metricTiles.map((metric) => <MetricTile key={metric.label} {...metric} />)}
