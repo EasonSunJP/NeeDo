@@ -1304,6 +1304,79 @@ function MerchantOrdersHeader({
   );
 }
 
+export function MerchantTodayAppointmentsTimeline({
+  error = false,
+  loading = false,
+  onExit,
+  onSearchQueryChange,
+  orders,
+  searchQuery
+}: {
+  error?: boolean;
+  loading?: boolean;
+  onExit: () => void;
+  onSearchQueryChange: (value: string) => void;
+  orders: Order[];
+  searchQuery: string;
+}) {
+  const { language } = useOptionalI18n();
+  const t = (source: string) => translateText(source, language);
+  const filteredOrders = useMemo(
+    () => [...orders]
+      .sort((left, right) => left.bookedAt.localeCompare(right.bookedAt))
+      .filter((order) => merchantOrderMatchesSearch(order, searchQuery)),
+    [orders, searchQuery]
+  );
+
+  return (
+    <>
+      <MobileFullscreenHeader
+        backLabel={t("返回")}
+        center={(
+          <label className="focus-within:ring-focus flex h-10 min-w-0 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3 text-[color:var(--client-text)]">
+            <span className="sr-only">{t("搜索今日预约")}</span>
+            <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
+            <input
+              aria-label={t("搜索今日预约")}
+              className="min-w-0 flex-1 bg-transparent text-sm font-black outline-none placeholder:text-[color:var(--client-muted)]"
+              onChange={(event) => onSearchQueryChange(event.target.value)}
+              placeholder={t("搜索预约、客户、员工、状态")}
+              value={searchQuery}
+            />
+          </label>
+        )}
+        closeLabel={t("关闭")}
+        onBack={onExit}
+        onClose={onExit}
+        title={t("今日预约")}
+      />
+      <section aria-label={t("今日预约时间线")} className="space-y-3 px-4 pb-4 pt-0">
+        {loading ? <p role="status">{t("正在加载今日预约")}</p> : null}
+        {error ? <p role="alert">{t("本店今日预约加载失败")}</p> : null}
+        {!loading && !error ? filteredOrders.map((order) => (
+          <div className="grid grid-cols-[68px_minmax(0,1fr)] gap-3" key={order.id}>
+            <time className="pt-4 text-right text-xs font-black leading-5 text-[color:var(--client-muted)]" dateTime={order.bookedAt}>
+              {getMerchantAppointmentEventTime(order.bookedAt)}
+            </time>
+            <div className="relative min-w-0 pb-3 before:absolute before:bottom-0 before:left-0 before:top-4 before:w-px before:bg-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)]">
+              <span aria-hidden="true" className="absolute left-0 top-4 z-10 h-3 w-3 -translate-x-[5px] rounded-full border-2 border-[color:var(--client-surface)] bg-[color:var(--client-primary)]" />
+              <UnifiedServiceInfoCard
+                data={buildOrderServiceMiniCardData(order)}
+                detailTo={`/merchant/orders/${order.id}`}
+              />
+            </div>
+          </div>
+        )) : null}
+        {!loading && !error && filteredOrders.length === 0 ? (
+          <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 py-8 text-center">
+            <p className="text-sm font-black text-[color:var(--client-text)]">{t("没有匹配的今日预约")}</p>
+          </div>
+        ) : null}
+      </section>
+    </>
+  );
+}
+
 function getMerchantStorePrivacyLabel(visibility: MerchantStorePrivacyVisibility) {
   switch (visibility) {
     case "limited":
@@ -1637,6 +1710,8 @@ export function MerchantPortalContent({
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
+  const { language } = useOptionalI18n();
+  const t = (source: string) => translateText(source, language);
   const { customers } = useEntityStore();
   const merchantImStore = useImStore("merchant");
   const activeView = getMerchantView(view);
@@ -1753,11 +1828,6 @@ export function MerchantPortalContent({
   const filteredStoreOrders = useMemo(
     () => storeOrders.filter((order) => merchantOrderMatchesSearch(order, merchantOrderSearchQuery, merchantOrderStartDate, merchantOrderEndDate)),
     [merchantOrderEndDate, merchantOrderSearchQuery, merchantOrderStartDate, storeOrders]
-  );
-  const todayAppointmentOrders = useMemo(
-    () => [...todayOrders].sort((left, right) => left.bookedAt.localeCompare(right.bookedAt))
-      .filter((order) => merchantOrderMatchesSearch(order, todayAppointmentSearchQuery)),
-    [todayAppointmentSearchQuery, todayOrders]
   );
   const merchantOrderHeaderSubtitle = useMemo(
     () => getMerchantOrderHeaderSubtitle(storeOrders, merchantOrderStartDate, merchantOrderEndDate),
@@ -2497,23 +2567,13 @@ export function MerchantPortalContent({
         />
       ) : null}
       {activeView === "today-appointments" ? (
-        <MobileFullscreenHeader
-          center={(
-            <label className="focus-within:ring-focus flex h-10 min-w-0 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3 text-[color:var(--client-text)]">
-              <span className="sr-only">搜索今日预约</span>
-              <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
-              <input
-                aria-label="搜索今日预约"
-                className="min-w-0 flex-1 bg-transparent text-sm font-black outline-none placeholder:text-[color:var(--client-muted)]"
-                onChange={(event) => setTodayAppointmentSearchQuery(event.target.value)}
-                placeholder="搜索预约、客户、员工、状态"
-                value={todayAppointmentSearchQuery}
-              />
-            </label>
-          )}
-          onBack={() => navigate("/merchant")}
-          onClose={() => navigate("/merchant")}
-          title="今日预约"
+        <MerchantTodayAppointmentsTimeline
+          error={Boolean(formalHomeQuery.error)}
+          loading={formalHomeQuery.loading}
+          onExit={() => navigate("/merchant")}
+          onSearchQueryChange={setTodayAppointmentSearchQuery}
+          orders={todayOrders}
+          searchQuery={todayAppointmentSearchQuery}
         />
       ) : null}
 
@@ -2562,7 +2622,7 @@ export function MerchantPortalContent({
                       const className = "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-4 py-3 backdrop-blur";
 
                       return to ? (
-                        <Link aria-label={`查看${label}`} className={cn(className, "focus-ring block transition hover:bg-[color:color-mix(in_srgb,var(--client-bg)_30%,transparent)]")} key={label} to={to}>
+                        <Link aria-label={label === "今日预约" ? t("查看今日预约") : t("查看营业额")} className={cn(className, "focus-ring block transition hover:bg-[color:color-mix(in_srgb,var(--client-bg)_30%,transparent)]")} key={label} to={to}>
                           {content}
                         </Link>
                       ) : (
@@ -2672,32 +2732,6 @@ export function MerchantPortalContent({
               ) : null}
             </section>
           </>
-        )}
-
-        {activeView === "today-appointments" && (
-          <section aria-label="今日预约时间线" className="space-y-3">
-            {formalHomeQuery.loading ? <p role="status">加载中</p> : null}
-            {formalHomeQuery.error ? <p role="alert">本店今日预约加载失败</p> : null}
-            {todayAppointmentOrders.map((order) => (
-              <div className="grid grid-cols-[68px_minmax(0,1fr)] gap-3" key={order.id}>
-                <time className="pt-4 text-right text-xs font-black leading-5 text-[color:var(--client-muted)]" dateTime={order.bookedAt}>
-                  {getMerchantAppointmentEventTime(order.bookedAt)}
-                </time>
-                <div className="relative min-w-0 pb-3 before:absolute before:bottom-0 before:left-0 before:top-4 before:w-px before:bg-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)]">
-                  <span aria-hidden="true" className="absolute left-0 top-4 z-10 h-3 w-3 -translate-x-[5px] rounded-full border-2 border-[color:var(--client-surface)] bg-[color:var(--client-primary)]" />
-                  <UnifiedServiceInfoCard
-                    data={buildOrderServiceMiniCardData(order)}
-                    detailTo={`/merchant/orders/${order.id}`}
-                  />
-                </div>
-              </div>
-            ))}
-            {!formalHomeQuery.loading && !formalHomeQuery.error && todayAppointmentOrders.length === 0 ? (
-              <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 py-8 text-center">
-                <p className="text-sm font-black text-[color:var(--client-text)]">没有匹配的今日预约</p>
-              </div>
-            ) : null}
-          </section>
         )}
 
         {activeView === "staff" && (

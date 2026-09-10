@@ -280,6 +280,14 @@ export const authTrustGatewayTranslations: TranslationMap = {
 
 export const translations: TranslationMap = {
   ...technicianAutomationTranslations,
+  "搜索今日预约": fourLanguageTranslation("搜尋今日預約", "本日の予約を検索", "Search today's bookings", "오늘 예약 검색"),
+  "搜索预约、客户、员工、状态": fourLanguageTranslation("搜尋預約、顧客、員工、狀態", "予約、顧客、スタッフ、状態を検索", "Search bookings, customers, staff, or status", "예약, 고객, 직원 또는 상태 검색"),
+  "今日预约时间线": fourLanguageTranslation("今日預約時間線", "本日の予約タイムライン", "Today's booking timeline", "오늘 예약 타임라인"),
+  "正在加载今日预约": fourLanguageTranslation("正在載入今日預約", "本日の予約を読み込んでいます", "Loading today's bookings", "오늘 예약을 불러오는 중입니다"),
+  "本店今日预约加载失败": fourLanguageTranslation("本店今日預約載入失敗", "本日の予約を読み込めませんでした", "Today's bookings could not be loaded", "오늘 예약을 불러오지 못했습니다"),
+  "没有匹配的今日预约": fourLanguageTranslation("沒有符合的今日預約", "本日の予約はありません", "No matching bookings today", "일치하는 오늘 예약이 없습니다"),
+  "查看今日预约": fourLanguageTranslation("查看今日預約", "本日の予約を表示", "View today's bookings", "오늘 예약 보기"),
+  "查看营业额": fourLanguageTranslation("查看營業額", "売上を表示", "View revenue", "매출 보기"),
   "实时数据大屏": fourLanguageTranslation("即時數據大屏", "リアルタイムデータ画面", "Live data screen", "실시간 데이터 화면"),
   "NeeDo 实时运营数据": fourLanguageTranslation("NeeDo 即時營運數據", "NeeDo リアルタイム運営データ", "NeeDo live operations", "NeeDo 실시간 운영 데이터"),
   "退出全屏": fourLanguageTranslation("退出全螢幕", "全画面を終了", "Exit fullscreen", "전체 화면 종료"),

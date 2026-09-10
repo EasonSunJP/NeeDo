@@ -284,12 +284,8 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf("</section>\n\n            {formalHomeQuery.loading")
     );
     const appointmentTimeline = merchantSource.slice(
-      merchantSource.indexOf('{activeView === "today-appointments" && ('),
-      merchantSource.indexOf('{activeView === "staff" && (')
-    );
-    const appointmentHeader = merchantSource.slice(
-      merchantSource.indexOf('{activeView === "today-appointments" ? ('),
-      merchantSource.indexOf('<div\n        className={cn(', merchantSource.indexOf('{activeView === "today-appointments" ? ('))
+      merchantSource.indexOf("export function MerchantTodayAppointmentsTimeline"),
+      merchantSource.indexOf("function getMerchantStorePrivacyLabel")
     );
 
     expect(merchantSource).toContain('type MerchantView = "dashboard" | "today-appointments"');
@@ -297,11 +293,11 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain('const isMerchantAppointmentTimelineView = activeView === "today-appointments";');
     expect(dashboardMetrics).toContain('to: "/merchant/today-appointments"');
     expect(dashboardMetrics).toContain('to: "/merchant/revenue"');
-    expect(appointmentHeader).toContain("<MobileFullscreenHeader");
-    expect(appointmentHeader).toContain('aria-label="搜索今日预约"');
-    expect(merchantSource).toContain("merchantOrderMatchesSearch(order, todayAppointmentSearchQuery)");
-    expect(merchantSource).toContain("[...todayOrders].sort((left, right) => left.bookedAt.localeCompare(right.bookedAt))");
-    expect(appointmentTimeline).toContain("todayAppointmentOrders.map((order) => (");
+    expect(appointmentTimeline).toContain("<MobileFullscreenHeader");
+    expect(appointmentTimeline).toContain('aria-label={t("搜索今日预约")}');
+    expect(appointmentTimeline).toContain("merchantOrderMatchesSearch(order, searchQuery)");
+    expect(appointmentTimeline).toContain("[...orders]");
+    expect(appointmentTimeline).toContain("filteredOrders.map((order) => (");
     expect(appointmentTimeline).toContain("<UnifiedServiceInfoCard");
     expect(appointmentTimeline).toContain("data={buildOrderServiceMiniCardData(order)}");
     expect(merchantSource).toContain("!isMerchantAppointmentTimelineView");
