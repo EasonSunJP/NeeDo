@@ -2643,6 +2643,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       id: { not: userId },
       isActive: true,
       deletedAt: null,
+      identities: {
+        some: {
+          type: { in: PERSONAL_IDENTITY_TYPES },
+          isActive: true,
+          deletedAt: null
+        }
+      },
       OR: [
         { username: { contains: query } },
         { needoId: { contains: query } },
@@ -2715,7 +2722,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   public async addContact(input: AddContactInput): Promise<ContactPayload> {
     const ownerIdentityId =
       input.ownerIdentityId ?? (await this.findCanonicalIdentityIdForUser(input.ownerUserId));
-    const contactIdentityId = await this.findCanonicalIdentityIdForUser(input.contactUserId);
+    const contactIdentityId = await this.findCanonicalPersonalIdentityId(
+      this.client,
+      input.contactUserId
+    );
     if (!ownerIdentityId || !contactIdentityId) {
       throw new AppError({
         code: ERROR_CODES.IDENTITY_NOT_FOUND,
@@ -3198,7 +3208,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         input.requesterIdentityId ??
         (await this.findCanonicalIdentityId(tx, input.requesterUserId));
       const targetIdentityId =
-        input.targetIdentityId ?? (await this.findCanonicalIdentityId(tx, input.targetUserId));
+        input.targetIdentityId ??
+        (await this.findCanonicalPersonalIdentityId(tx, input.targetUserId));
       if (!requesterIdentityId || !targetIdentityId) {
         throw new AppError({
           code: ERROR_CODES.IDENTITY_NOT_FOUND,
@@ -3236,7 +3247,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           isActive: true,
           OR: [
             { id: requesterIdentityId, userId: input.requesterUserId },
-            { id: targetIdentityId, userId: input.targetUserId }
+            {
+              id: targetIdentityId,
+              userId: input.targetUserId,
+              type: { in: PERSONAL_IDENTITY_TYPES }
+            }
           ]
         }
       });
@@ -5134,6 +5149,35 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     const fallback = await client.userIdentity.findFirst({
       where: { userId, isActive: true, deletedAt: null },
+      orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+      select: { id: true }
+    });
+    return fallback?.id ?? null;
+  }
+
+  private async findCanonicalPersonalIdentityId(
+    client: Pick<PrismaClient, "userIdentity"> | Pick<Prisma.TransactionClient, "userIdentity">,
+    userId: number
+  ): Promise<number | null> {
+    const customer = await client.userIdentity.findFirst({
+      where: {
+        userId,
+        type: { in: ["customer", "user", "u"] },
+        isActive: true,
+        deletedAt: null
+      },
+      orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+      select: { id: true }
+    });
+    if (customer) return customer.id;
+
+    const fallback = await client.userIdentity.findFirst({
+      where: {
+        userId,
+        type: { in: ["technician", "scout"] },
+        isActive: true,
+        deletedAt: null
+      },
       orderBy: [{ isDefault: "desc" }, { id: "asc" }],
       select: { id: true }
     });

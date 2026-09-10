@@ -249,6 +249,19 @@ describe("RealtimeRepository formal identity payloads", () => {
     });
 
     expect(result.list[0]?.username).toBe("José");
+    expect(client.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          identities: {
+            some: {
+              type: { in: ["customer", "user", "u", "technician", "scout"] },
+              isActive: true,
+              deletedAt: null
+            }
+          }
+        })
+      })
+    );
   });
 
   it("returns the current profile name to the IM store after opening contact information", async () => {
