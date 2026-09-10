@@ -167,7 +167,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(meHeaderSource).toContain("footer={");
     expect(meHeaderSource).not.toContain("<SharedHomeHeader");
     expect(merchantSource).toContain('? "space-y-4 pt-4"');
-    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !merchantProfileEditing}');
+    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !isMerchantRevenueView && !merchantProfileEditing}');
   });
 
   it("keeps the personal-center status panel inside the same mobile content inset", () => {
@@ -302,6 +302,30 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(appointmentTimeline).toContain("<UnifiedServiceInfoCard");
     expect(appointmentTimeline).toContain("data={buildOrderServiceMiniCardData(order)}");
     expect(merchantSource).toContain("!isMerchantAppointmentTimelineView");
+  });
+
+  it("renders the revenue drilldown as a fullscreen formal analytics page", () => {
+    expect(merchantSource).toContain('type MerchantView = "dashboard" | "today-appointments" | "revenue"');
+    expect(merchantSource).toContain('if (view === "revenue")');
+    expect(merchantSource).toContain('const isMerchantRevenueView = activeView === "revenue";');
+    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !isMerchantRevenueView && !merchantProfileEditing}');
+
+    const revenueView = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "revenue" ? ('),
+      merchantSource.indexOf('{activeView === "today-appointments" ? (')
+    );
+    expect(revenueView).toContain("<MobileFullscreenHeader");
+    expect(revenueView).toContain('title={t("营业额")}');
+    expect(revenueView).toContain('onBack={() => navigate("/merchant")}');
+    expect(revenueView).toContain('onClose={() => navigate("/merchant")}');
+
+    const revenueContent = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "revenue" && ('),
+      merchantSource.indexOf('{activeView === "me" && (')
+    );
+    expect(revenueContent).toContain("<ShopAnalyticsDashboard");
+    expect(revenueContent).toContain('initialPeriod="today"');
+    expect(revenueContent).toContain('periodControl="select"');
   });
 
   it("removes the extra employee-list containers so shared cards use the available width", () => {

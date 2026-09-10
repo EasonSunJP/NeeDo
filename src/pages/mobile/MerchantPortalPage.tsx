@@ -97,7 +97,7 @@ import { loadFormalMerchantHome } from "../../features/shop-analytics/merchant-h
 import { mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { ShopAnalyticsDashboard } from "../../features/shop-analytics/ShopAnalyticsDashboard";
 
-type MerchantView = "dashboard" | "today-appointments" | "orders" | "messages" | "schedule" | "staff" | "contacts" | "moments" | "me";
+type MerchantView = "dashboard" | "today-appointments" | "revenue" | "orders" | "messages" | "schedule" | "staff" | "contacts" | "moments" | "me";
 type MerchantMeTab = "info" | "service" | "data";
 type MerchantSchedulePrimaryTab = "current" | "appointments" | "planning";
 type MerchantStaffTab = "all" | "fullTime" | "partTime" | "review";
@@ -243,6 +243,10 @@ const merchantCityLabelMap: Record<string, string> = {
 function getMerchantView(view?: string): MerchantView {
   if (view === "today-appointments") {
     return "today-appointments";
+  }
+
+  if (view === "revenue") {
+    return "revenue";
   }
 
   if (view === "staff") {
@@ -1748,6 +1752,8 @@ export function MerchantPortalContent({
   store: Store;
   technicians: Technician[];
 }) {
+  const { language } = useOptionalI18n();
+  const t = (source: string) => translateText(source, language);
   const merchantPortalConfig = roleBasedTabConfig.merchant;
   const { view } = useParams();
   const navigate = useNavigate();
@@ -1761,10 +1767,11 @@ export function MerchantPortalContent({
   const storeTechnicians = useMemo(() => {
     return technicians.filter((tech) => tech.storeId === store.id);
   }, [store.id, technicians]);
-  const embeddedHeaderViews: MerchantView[] = ["today-appointments", "orders", "schedule", "staff", "messages", "contacts", "me"];
+  const embeddedHeaderViews: MerchantView[] = ["today-appointments", "revenue", "orders", "schedule", "staff", "messages", "contacts", "me"];
   const pageTitleMap: Record<MerchantView, string> = {
     dashboard: "门店工作台",
     "today-appointments": "今日预约",
+    revenue: "营业额",
     orders: "订单处理",
     messages: "聊天",
     schedule: "排班",
@@ -1909,6 +1916,7 @@ export function MerchantPortalContent({
   const merchantSchedulePrimaryTab = getMerchantScheduleTab(searchParams.get("tab"));
   const isMerchantScheduleView = activeView === "schedule";
   const isMerchantAppointmentTimelineView = activeView === "today-appointments";
+  const isMerchantRevenueView = activeView === "revenue";
   const merchantStaffTab = getMerchantStaffTab(searchParams.get("staffType"));
   const normalizedStaffSearchQuery = staffSearchQuery.trim().toLowerCase();
   const storeStaffEntries = useMemo(() => {
@@ -2565,11 +2573,11 @@ export function MerchantPortalContent({
 
   return (
     <MobileShell
-      className={isMerchantDataCenterView ? "merchant-analytics-clean-shell" : undefined}
+      className={isMerchantDataCenterView || isMerchantRevenueView ? "merchant-analytics-clean-shell" : undefined}
       navItems={merchantNavItems}
       navPanelStyle={activeView === "me" ? "plain" : "default"}
-      showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !merchantProfileEditing}
-      showTopEdgeMask={activeView !== "today-appointments" && activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
+      showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !isMerchantRevenueView && !merchantProfileEditing}
+      showTopEdgeMask={activeView !== "today-appointments" && activeView !== "revenue" && activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
     >
       {activeView === "dashboard" ? (
         <FloatingHomeHeader
@@ -2607,6 +2615,15 @@ export function MerchantPortalContent({
           title="个人中心"
         />
       ) : null}
+      {activeView === "revenue" ? (
+        <MobileFullscreenHeader
+          backLabel={t("返回")}
+          closeLabel={t("关闭")}
+          onBack={() => navigate("/merchant")}
+          onClose={() => navigate("/merchant")}
+          title={t("营业额")}
+        />
+      ) : null}
       {activeView === "today-appointments" ? (
         <MerchantTodayAppointmentsTimeline
           error={Boolean(formalHomeQuery.error)}
@@ -2622,7 +2639,7 @@ export function MerchantPortalContent({
         className={cn(
           activeView === "me"
             ? "space-y-4 pt-4"
-            : activeView === "schedule" || activeView === "staff" || activeView === "today-appointments"
+            : activeView === "schedule" || activeView === "staff" || activeView === "today-appointments" || activeView === "revenue"
               ? "px-4 pb-4 pt-0"
               : activeView === "dashboard"
                 ? "space-y-4 px-4 pb-4 pt-2"
@@ -2967,6 +2984,15 @@ export function MerchantPortalContent({
           </>
         )}
 
+        {activeView === "revenue" && (
+          <ShopAnalyticsDashboard
+            initialPeriod="today"
+            key={store.id}
+            periodControl="select"
+            store={store}
+          />
+        )}
+
         {activeView === "contacts" && (
           <ImScopeProvider scope="merchant">
             <ImContactsListPage />
@@ -3133,7 +3159,7 @@ export function MerchantPortalContent({
             onFilterChange={setAppointmentContactStatusFilter}
             title="异常信息"
           />
-        ) : activeView !== "schedule" && !isMerchantAppointmentTimelineView ? (
+        ) : activeView !== "schedule" && !isMerchantAppointmentTimelineView && !isMerchantRevenueView ? (
           <MerchantHomeContactStatusPanel
             className={activeView === "me" ? "mx-4 !w-auto" : undefined}
             emptyDetail={contactLog}

@@ -200,6 +200,75 @@ describe("ShopAnalyticsDashboard formal API", () => {
     );
   });
 
+  it("uses a revenue range selector to request presets and a valid custom range", async () => {
+    const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+
+    await act(async () => {
+      root.render(
+        <ShopAnalyticsDashboard
+          {...{ initialPeriod: "today", periodControl: "select" }}
+          loadDashboard={loadDashboard}
+          store={store}
+        />
+      );
+    });
+
+    await waitFor(() => expect(loadDashboard).toHaveBeenCalledTimes(1));
+    expect(loadDashboard).toHaveBeenLastCalledWith(
+      "merchant-admin",
+      { period: "today" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+
+    const periodSelect = container.querySelector<HTMLSelectElement>('select[aria-label="选择数据期间"]');
+    expect(periodSelect).not.toBeNull();
+    expect(Array.from(periodSelect?.options ?? []).map((option) => option.value)).toEqual([
+      "today", "last7days", "last30days", "week", "month", "year", "custom"
+    ]);
+
+    await act(async () => {
+      if (!periodSelect) return;
+      periodSelect.value = "year";
+      periodSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await waitFor(() => expect(loadDashboard).toHaveBeenCalledTimes(2));
+    expect(loadDashboard).toHaveBeenLastCalledWith(
+      "merchant-admin",
+      { period: "year" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+
+    await act(async () => {
+      if (!periodSelect) return;
+      periodSelect.value = "custom";
+      periodSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(container.querySelector('input[aria-label="开始日期"]')).not.toBeNull();
+    expect(container.querySelector('input[aria-label="结束日期"]')).not.toBeNull();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("请选择开始日期和结束日期");
+    expect(loadDashboard).toHaveBeenCalledTimes(2);
+
+    const fromInput = container.querySelector<HTMLInputElement>('input[aria-label="开始日期"]');
+    const toInput = container.querySelector<HTMLInputElement>('input[aria-label="结束日期"]');
+    await act(async () => {
+      if (!fromInput) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(fromInput, "2026-09-01");
+      fromInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(loadDashboard).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      if (!toInput) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(toInput, "2026-09-06");
+      toInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await waitFor(() => expect(loadDashboard).toHaveBeenCalledTimes(3));
+    expect(loadDashboard).toHaveBeenLastCalledWith(
+      "merchant-admin",
+      { period: "custom", from: "2026-09-01", to: "2026-09-06" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
   it("shows an explicit retry state without falling back to browser aggregates", async () => {
     const loadDashboard = vi
       .fn()
