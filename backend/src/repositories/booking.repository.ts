@@ -226,6 +226,49 @@ export interface AvailabilityListInput extends PaginationInput {
   to: Date;
 }
 
+const currentBookableScheduleSlotSourcesWhere = (): Prisma.ScheduleSlotWhereInput => ({
+  AND: [
+    {
+      OR: [
+        { serviceId: null },
+        {
+          service: {
+            is: {
+              deletedAt: null,
+              status: "published",
+              category: { is: { deletedAt: null, isActive: true } }
+            }
+          }
+        }
+      ]
+    },
+    {
+      OR: [
+        { technicianServiceId: null },
+        {
+          technicianService: {
+            is: {
+              deletedAt: null,
+              isActive: true,
+              isBookable: true,
+              reviewStatus: "APPROVED",
+              category: { is: { deletedAt: null, isActive: true } },
+              technicianProfile: {
+                is: {
+                  deletedAt: null,
+                  status: "published",
+                  user: { is: { deletedAt: null, isActive: true } }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    { OR: [{ serviceId: { not: null } }, { technicianServiceId: { not: null } }] }
+  ]
+});
+
 export type AvailabilityWindowPayload = {
   id: number;
   shopId: number;
@@ -1149,6 +1192,7 @@ export class BookingRepository implements BookingRepositoryPort {
     const pagination = toPrismaPagination(input);
     const where: Prisma.ScheduleSlotWhereInput = {
       deletedAt: null,
+      ...currentBookableScheduleSlotSourcesWhere(),
       ...(input.includeUnavailable
         ? {}
         : {
@@ -1701,6 +1745,7 @@ export class BookingRepository implements BookingRepositoryPort {
             let slot = await tx.scheduleSlot.findFirst({
               where: {
                 id: input.scheduleSlotId,
+                ...currentBookableScheduleSlotSourcesWhere(),
                 ...(input.serviceId ? { serviceId: input.serviceId } : {}),
                 ...(input.technicianServiceId
                   ? { technicianServiceId: input.technicianServiceId }
@@ -1807,6 +1852,7 @@ export class BookingRepository implements BookingRepositoryPort {
             slot = await tx.scheduleSlot.findFirst({
               where: {
                 id: input.scheduleSlotId,
+                ...currentBookableScheduleSlotSourcesWhere(),
                 ...(input.serviceId ? { serviceId: input.serviceId } : {}),
                 ...(input.technicianServiceId
                   ? { technicianServiceId: input.technicianServiceId }
