@@ -97,7 +97,7 @@ import { loadFormalMerchantHome } from "../../features/shop-analytics/merchant-h
 import { mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { ShopAnalyticsDashboard } from "../../features/shop-analytics/ShopAnalyticsDashboard";
 
-type MerchantView = "dashboard" | "orders" | "messages" | "schedule" | "staff" | "contacts" | "moments" | "me";
+type MerchantView = "dashboard" | "today-appointments" | "orders" | "messages" | "schedule" | "staff" | "contacts" | "moments" | "me";
 type MerchantMeTab = "info" | "service" | "data";
 type MerchantSchedulePrimaryTab = "current" | "appointments" | "planning";
 type MerchantStaffTab = "all" | "fullTime" | "partTime" | "review";
@@ -241,6 +241,10 @@ const merchantCityLabelMap: Record<string, string> = {
   愛知県: "名古屋"
 };
 function getMerchantView(view?: string): MerchantView {
+  if (view === "today-appointments") {
+    return "today-appointments";
+  }
+
   if (view === "staff") {
     return "staff";
   }
@@ -1641,9 +1645,10 @@ export function MerchantPortalContent({
   const storeTechnicians = useMemo(() => {
     return technicians.filter((tech) => tech.storeId === store.id);
   }, [store.id, technicians]);
-  const embeddedHeaderViews: MerchantView[] = ["orders", "schedule", "staff", "messages", "contacts", "me"];
+  const embeddedHeaderViews: MerchantView[] = ["today-appointments", "orders", "schedule", "staff", "messages", "contacts", "me"];
   const pageTitleMap: Record<MerchantView, string> = {
     dashboard: "门店工作台",
+    "today-appointments": "今日预约",
     orders: "订单处理",
     messages: "聊天",
     schedule: "排班",
@@ -1662,6 +1667,7 @@ export function MerchantPortalContent({
   const [merchantOrderSearchQuery, setMerchantOrderSearchQuery] = useState("");
   const [merchantOrderStartDate, setMerchantOrderStartDate] = useState("");
   const [merchantOrderEndDate, setMerchantOrderEndDate] = useState("");
+  const [todayAppointmentSearchQuery, setTodayAppointmentSearchQuery] = useState("");
   const [followedStaffIds, setFollowedStaffIds] = useState<string[]>(["tech-1"]);
   const [followedCustomerIds, setFollowedCustomerIds] = useState<string[]>(["cus-1", "cus-3"]);
   const [storePricingMode, setStorePricingMode] = useState<MerchantStorePricingMode>("store");
@@ -1748,6 +1754,11 @@ export function MerchantPortalContent({
     () => storeOrders.filter((order) => merchantOrderMatchesSearch(order, merchantOrderSearchQuery, merchantOrderStartDate, merchantOrderEndDate)),
     [merchantOrderEndDate, merchantOrderSearchQuery, merchantOrderStartDate, storeOrders]
   );
+  const todayAppointmentOrders = useMemo(
+    () => [...todayOrders].sort((left, right) => left.bookedAt.localeCompare(right.bookedAt))
+      .filter((order) => merchantOrderMatchesSearch(order, todayAppointmentSearchQuery)),
+    [todayAppointmentSearchQuery, todayOrders]
+  );
   const merchantOrderHeaderSubtitle = useMemo(
     () => getMerchantOrderHeaderSubtitle(storeOrders, merchantOrderStartDate, merchantOrderEndDate),
     [merchantOrderEndDate, merchantOrderStartDate, storeOrders]
@@ -1786,6 +1797,7 @@ export function MerchantPortalContent({
     : orders[0];
   const merchantSchedulePrimaryTab = getMerchantScheduleTab(searchParams.get("tab"));
   const isMerchantScheduleView = activeView === "schedule";
+  const isMerchantAppointmentTimelineView = activeView === "today-appointments";
   const merchantStaffTab = getMerchantStaffTab(searchParams.get("staffType"));
   const normalizedStaffSearchQuery = staffSearchQuery.trim().toLowerCase();
   const storeStaffEntries = useMemo(() => {
@@ -2445,8 +2457,8 @@ export function MerchantPortalContent({
       className={isMerchantDataCenterView ? "merchant-analytics-clean-shell" : undefined}
       navItems={merchantNavItems}
       navPanelStyle={activeView === "me" ? "plain" : "default"}
-      showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !merchantProfileEditing}
-      showTopEdgeMask={activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
+      showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !merchantProfileEditing}
+      showTopEdgeMask={activeView !== "today-appointments" && activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
     >
       {activeView === "dashboard" ? (
         <FloatingHomeHeader
@@ -2484,12 +2496,32 @@ export function MerchantPortalContent({
           title="个人中心"
         />
       ) : null}
+      {activeView === "today-appointments" ? (
+        <MobileFullscreenHeader
+          center={(
+            <label className="focus-within:ring-focus flex h-10 min-w-0 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3 text-[color:var(--client-text)]">
+              <span className="sr-only">搜索今日预约</span>
+              <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
+              <input
+                aria-label="搜索今日预约"
+                className="min-w-0 flex-1 bg-transparent text-sm font-black outline-none placeholder:text-[color:var(--client-muted)]"
+                onChange={(event) => setTodayAppointmentSearchQuery(event.target.value)}
+                placeholder="搜索预约、客户、员工、状态"
+                value={todayAppointmentSearchQuery}
+              />
+            </label>
+          )}
+          onBack={() => navigate("/merchant")}
+          onClose={() => navigate("/merchant")}
+          title="今日预约"
+        />
+      ) : null}
 
       <div
         className={cn(
           activeView === "me"
             ? "space-y-4 pt-4"
-            : activeView === "schedule" || activeView === "staff"
+            : activeView === "schedule" || activeView === "staff" || activeView === "today-appointments"
               ? "px-4 pb-4 pt-0"
               : activeView === "dashboard"
                 ? "space-y-4 px-4 pb-4 pt-2"
@@ -2516,16 +2548,27 @@ export function MerchantPortalContent({
                   </div>
                   <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[
-                      ["今日预约", formalHome ? `${todayOrders.length} 单` : "—"],
-                      ["在线员工", formalStaffEmploymentLoaded && !formalStaffEmploymentError ? `${onlineTechnicianCount} 人` : "—"],
-                      ["营业额", formalHome ? yen(formalHome.dashboard.summary.serviceGmvJpy) : "—"],
-                      ["可预约时段", formalHome ? String(formalHome.dashboard.summary.availableScheduleSlots.current) : "—"]
-                    ].map(([label, value]) => (
-                      <div className="rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-4 py-3 backdrop-blur" key={label}>
-                        <p className="text-[11px] font-bold text-white/55">{label}</p>
-                        <strong className="mt-1 block text-base font-black text-white">{value}</strong>
-                      </div>
-                    ))}
+                      { label: "今日预约", value: formalHome ? `${todayOrders.length} 单` : "—", to: "/merchant/today-appointments" },
+                      { label: "在线员工", value: formalStaffEmploymentLoaded && !formalStaffEmploymentError ? `${onlineTechnicianCount} 人` : "—" },
+                      { label: "营业额", value: formalHome ? yen(formalHome.dashboard.summary.serviceGmvJpy) : "—", to: "/merchant/revenue" },
+                      { label: "可预约时段", value: formalHome ? String(formalHome.dashboard.summary.availableScheduleSlots.current) : "—" }
+                    ].map(({ label, to, value }) => {
+                      const content = (
+                        <>
+                          <p className="text-[11px] font-bold text-white/55">{label}</p>
+                          <strong className="mt-1 block text-base font-black text-white">{value}</strong>
+                        </>
+                      );
+                      const className = "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-4 py-3 backdrop-blur";
+
+                      return to ? (
+                        <Link aria-label={`查看${label}`} className={cn(className, "focus-ring block transition hover:bg-[color:color-mix(in_srgb,var(--client-bg)_30%,transparent)]")} key={label} to={to}>
+                          {content}
+                        </Link>
+                      ) : (
+                        <div className={className} key={label}>{content}</div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -2629,6 +2672,32 @@ export function MerchantPortalContent({
               ) : null}
             </section>
           </>
+        )}
+
+        {activeView === "today-appointments" && (
+          <section aria-label="今日预约时间线" className="space-y-3">
+            {formalHomeQuery.loading ? <p role="status">加载中</p> : null}
+            {formalHomeQuery.error ? <p role="alert">本店今日预约加载失败</p> : null}
+            {todayAppointmentOrders.map((order) => (
+              <div className="grid grid-cols-[68px_minmax(0,1fr)] gap-3" key={order.id}>
+                <time className="pt-4 text-right text-xs font-black leading-5 text-[color:var(--client-muted)]" dateTime={order.bookedAt}>
+                  {getMerchantAppointmentEventTime(order.bookedAt)}
+                </time>
+                <div className="relative min-w-0 pb-3 before:absolute before:bottom-0 before:left-0 before:top-4 before:w-px before:bg-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)]">
+                  <span aria-hidden="true" className="absolute left-0 top-4 z-10 h-3 w-3 -translate-x-[5px] rounded-full border-2 border-[color:var(--client-surface)] bg-[color:var(--client-primary)]" />
+                  <UnifiedServiceInfoCard
+                    data={buildOrderServiceMiniCardData(order)}
+                    detailTo={`/merchant/orders/${order.id}`}
+                  />
+                </div>
+              </div>
+            ))}
+            {!formalHomeQuery.loading && !formalHomeQuery.error && todayAppointmentOrders.length === 0 ? (
+              <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 py-8 text-center">
+                <p className="text-sm font-black text-[color:var(--client-text)]">没有匹配的今日预约</p>
+              </div>
+            ) : null}
+          </section>
         )}
 
         {activeView === "staff" && (
@@ -3007,7 +3076,7 @@ export function MerchantPortalContent({
             onFilterChange={setAppointmentContactStatusFilter}
             title="异常信息"
           />
-        ) : activeView !== "schedule" ? (
+        ) : activeView !== "schedule" && !isMerchantAppointmentTimelineView ? (
           <MerchantHomeContactStatusPanel
             className={activeView === "me" ? "mx-4 !w-auto" : undefined}
             emptyDetail={contactLog}

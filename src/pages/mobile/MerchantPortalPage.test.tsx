@@ -167,7 +167,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(meHeaderSource).toContain("footer={");
     expect(meHeaderSource).not.toContain("<SharedHomeHeader");
     expect(merchantSource).toContain('? "space-y-4 pt-4"');
-    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !merchantProfileEditing}');
+    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !merchantProfileEditing}');
   });
 
   it("keeps the personal-center status panel inside the same mobile content inset", () => {
@@ -276,6 +276,35 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(dashboardAppointments).not.toContain("merchant-dashboard-appointment-service");
     expect(orderList).toContain("<UnifiedServiceInfoCard");
     expect(orderList).not.toContain("<OrderServiceMiniCard");
+  });
+
+  it("links dashboard metrics to formal drilldowns and renders today appointments as a searchable timeline", () => {
+    const dashboardMetrics = merchantSource.slice(
+      merchantSource.indexOf('className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4"'),
+      merchantSource.indexOf("</section>\n\n            {formalHomeQuery.loading")
+    );
+    const appointmentTimeline = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "today-appointments" && ('),
+      merchantSource.indexOf('{activeView === "staff" && (')
+    );
+    const appointmentHeader = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "today-appointments" ? ('),
+      merchantSource.indexOf('<div\n        className={cn(', merchantSource.indexOf('{activeView === "today-appointments" ? ('))
+    );
+
+    expect(merchantSource).toContain('type MerchantView = "dashboard" | "today-appointments"');
+    expect(merchantSource).toContain('if (view === "today-appointments")');
+    expect(merchantSource).toContain('const isMerchantAppointmentTimelineView = activeView === "today-appointments";');
+    expect(dashboardMetrics).toContain('to: "/merchant/today-appointments"');
+    expect(dashboardMetrics).toContain('to: "/merchant/revenue"');
+    expect(appointmentHeader).toContain("<MobileFullscreenHeader");
+    expect(appointmentHeader).toContain('aria-label="搜索今日预约"');
+    expect(merchantSource).toContain("merchantOrderMatchesSearch(order, todayAppointmentSearchQuery)");
+    expect(merchantSource).toContain("[...todayOrders].sort((left, right) => left.bookedAt.localeCompare(right.bookedAt))");
+    expect(appointmentTimeline).toContain("todayAppointmentOrders.map((order) => (");
+    expect(appointmentTimeline).toContain("<UnifiedServiceInfoCard");
+    expect(appointmentTimeline).toContain("data={buildOrderServiceMiniCardData(order)}");
+    expect(merchantSource).toContain("!isMerchantAppointmentTimelineView");
   });
 
   it("removes the extra employee-list containers so shared cards use the available width", () => {
