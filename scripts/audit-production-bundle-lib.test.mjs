@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -42,6 +42,49 @@ async function createBundleFixture({
 }
 
 describe("production bundle audit", () => {
+  it.each([
+    "icons/icon.psd",
+    "icons/nested/source.PSD",
+    "icons/source.psb",
+    "icons/design.fig",
+    ".DS_Store",
+    "images/.DS_Store",
+    "icons/development-plan.md",
+    "backups/resources.zip",
+    "icons/old.png.bak",
+    "signing/private.pem"
+  ])("rejects non-runtime file %s anywhere in the artifact", async (relativePath) => {
+    const distDir = await createBundleFixture();
+    const target = path.join(distDir, relativePath);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, "non-runtime fixture");
+    const report = await auditProductionBundle(distDir);
+    expect(report.failures).toContain(`production assets include a non-runtime file: ${relativePath}`);
+  });
+
+  it("retains ordinary nested images, manifests, map data and license text", async () => {
+    const distDir = await createBundleFixture();
+    for (const relativePath of ["icons/valid.png", "images/valid.svg", "maps/01.json", "app.webmanifest", "LICENSE.txt"]) {
+      const target = path.join(distDir, relativePath);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, "runtime fixture");
+    }
+    expect((await auditProductionBundle(distDir)).failures).toEqual([]);
+  });
+
+  it("rejects directory symlinks without traversing their targets", async () => {
+    const distDir = await createBundleFixture();
+    await symlink(distDir, path.join(distDir, "loop"), "dir");
+    expect((await auditProductionBundle(distDir)).failures).toContain(
+      "production assets include a symbolic link: loop"
+    );
+  });
+
+  it("does not turn an unreadable artifact into a passing report", async () => {
+    const distDir = await createBundleFixture();
+    await expect(auditProductionBundle(path.join(distDir, "absent"))).rejects.toThrow();
+  });
+
   it("accepts a formal artifact within the size budgets", async () => {
     const report = await auditProductionBundle(await createBundleFixture());
     expect(report.failures).toEqual([]);

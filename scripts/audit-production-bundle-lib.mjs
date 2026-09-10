@@ -16,6 +16,25 @@ const defaultBudgets = {
   i18n: 3_704_096
 };
 
+const nonRuntimeExtension = /\.(psd|psb|ai|sketch|fig|md|docx|zip|rar|7z|bak|orig|tmp|pem|key|p12|pfx)$/i;
+
+async function auditNonRuntimeFiles(root, directory = root) {
+  const failures = [];
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const absolute = path.join(directory, entry.name);
+    const relative = path.relative(root, absolute).split(path.sep).join("/");
+    if (entry.isSymbolicLink()) {
+      failures.push(`production assets include a symbolic link: ${relative}`);
+    } else if (entry.isDirectory()) {
+      failures.push(...await auditNonRuntimeFiles(root, absolute));
+    } else if (entry.isFile() && (entry.name === ".DS_Store" || nonRuntimeExtension.test(entry.name))) {
+      failures.push(`production assets include a non-runtime file: ${relative}`);
+    }
+  }
+  return failures;
+}
+
 async function listFiles(directory) {
   return (await readdir(directory, { withFileTypes: true }))
     .filter((entry) => entry.isFile())
@@ -27,7 +46,7 @@ export async function auditProductionBundle(distDir, budgets = defaultBudgets) {
   const assetsDir = path.join(distDir, "assets");
   const assetNames = await listFiles(assetsDir);
   const htmlNames = (await listFiles(distDir)).filter((name) => name.endsWith(".html"));
-  const failures = [];
+  const failures = await auditNonRuntimeFiles(distDir);
 
   if (assetNames.some((name) => /^staticDemo-.*\.js$/.test(name))) {
     failures.push("production assets include a staticDemo JavaScript chunk");
