@@ -153,7 +153,21 @@ const main = async (): Promise<void> => {
 
     const shops = await prisma.shop.findMany({
       where: { ownerUserId: { in: owners.map((owner) => owner.id) }, deletedAt: null },
-      select: { id: true, ownerUserId: true, name: true, status: true }
+      select: {
+        id: true,
+        ownerUserId: true,
+        name: true,
+        status: true,
+        serviceLocation: {
+          select: {
+            countryCode: true,
+            datasetVersion: true,
+            deletedAt: true,
+            admin1Region: { select: { id: true, officialCode: true, deletedAt: true } },
+            admin2Region: { select: { officialCode: true, parentId: true, deletedAt: true } }
+          }
+        }
+      }
     });
     assert(shops.length === 10, `expected 10 simulation shops, found ${shops.length}`);
     assert(
@@ -273,6 +287,18 @@ const main = async (): Promise<void> => {
     assert(admin.technicianProfile, "LifeDance administrator technician profile is missing");
     const lifeDanceShop = shops.find((shop) => shop.name === LIFEDANCE_SHOP_NAME);
     assert(lifeDanceShop, "LifeDance shop was not updated in place");
+    assert(
+      lifeDanceShop.serviceLocation?.countryCode === "JP" &&
+        lifeDanceShop.serviceLocation.datasetVersion === "N03-20260101" &&
+        lifeDanceShop.serviceLocation.deletedAt === null &&
+        lifeDanceShop.serviceLocation.admin1Region.officialCode === "13" &&
+        lifeDanceShop.serviceLocation.admin1Region.deletedAt === null &&
+        lifeDanceShop.serviceLocation.admin2Region.officialCode === "13113" &&
+        lifeDanceShop.serviceLocation.admin2Region.parentId ===
+          lifeDanceShop.serviceLocation.admin1Region.id &&
+        lifeDanceShop.serviceLocation.admin2Region.deletedAt === null,
+      "LifeDance shop service location is not verified against the current Shibuya hierarchy"
+    );
     expectIdentity(admin, "platform", "global", null);
     expectIdentity(admin, "customer", "customer_profile", admin.customerProfile.id);
     expectIdentity(admin, "merchant_owner", "shop", lifeDanceShop.id);

@@ -59,6 +59,16 @@ const main = async (): Promise<void> => {
           shopId: shop.id,
           technicianProfileId: technicianProfile.id
         });
+        const { verifyShopServiceLocationInTransaction } = await import(
+          "../src/repositories/shop-service-location.repository"
+        );
+        await verifyShopServiceLocationInTransaction(tx, {
+          shopId: shop.id,
+          verifiedById: admin.id,
+          serviceLocation: provisioning.LIFEDANCE_ADMIN2_PLAN.serviceLocation,
+          auditAction: "seed.lifedance_admin2.service_location.verify",
+          auditMetadata: { repair: "booking_inventory" }
+        });
         await tx.auditLog.create({
           data: {
             actorId: admin.id,

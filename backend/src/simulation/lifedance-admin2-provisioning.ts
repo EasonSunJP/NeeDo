@@ -11,6 +11,11 @@ export const LIFEDANCE_ADMIN2_PLAN = {
   shopCity: "東京都",
   shopAddress: "東京都港区麻布十番2丁目",
   shopPhone: "050-9101-1002",
+  serviceLocation: {
+    countryCode: "JP",
+    admin1Code: "13",
+    admin2Code: "13103"
+  },
   merchantCode: "lifedance-azabujuban-super-massage",
   bookingService: {
     categoryCode: "wellness",
@@ -662,6 +667,14 @@ export const provisionLifeDanceAdmin2 = async (
     ? await tx.shop.update({ where: { id: existingShop.id }, data: shopData })
     : await tx.shop.create({ data: shopData });
 
+  await verifyShopServiceLocationInTransaction(tx, {
+    shopId: shop.id,
+    verifiedById: admin.id,
+    serviceLocation: LIFEDANCE_ADMIN2_PLAN.serviceLocation,
+    auditAction: "seed.lifedance_admin2.service_location.verify",
+    auditMetadata: { accountEmail: LIFEDANCE_ADMIN2_PLAN.email }
+  });
+
   const customerProfile = await tx.customerProfile.upsert({
     where: { userId: user.id },
     create: {
@@ -1060,3 +1073,4 @@ import {
 
 import { PublicIdentifierRepository } from "../repositories/public-identifier.repository";
 import { IdentifierAllocator } from "../services/public-identifier.service";
+import { verifyShopServiceLocationInTransaction } from "../repositories/shop-service-location.repository";

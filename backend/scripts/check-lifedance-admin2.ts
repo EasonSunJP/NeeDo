@@ -1,6 +1,7 @@
 import { compare } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
+import { inspectLifeDanceAdmin2ContactCohort } from "../src/simulation/lifedance-admin2-contact-check";
 
 const assert: (condition: unknown, message: string) => asserts condition = (
   condition,
@@ -28,12 +29,22 @@ const main = async (): Promise<void> => {
         affiliateProfile: true,
         identities: { where: { isActive: true, deletedAt: null }, include: { publicIdentifier: true } },
         userRoles: { where: { deletedAt: null }, include: { role: true } },
-        ownedShops: { where: { deletedAt: null }, include: { publicIdentifier: true } },
+        ownedShops: {
+          where: { deletedAt: null },
+          include: {
+            publicIdentifier: true,
+            serviceLocation: {
+              include: {
+                admin1Region: true,
+                admin2Region: true
+              }
+            }
+          }
+        },
         ownedMerchantAccounts: {
           where: { deletedAt: null },
           include: { publicIdentifier: true, memberships: { where: { deletedAt: null, endsAt: null } } }
         },
-        ownedContacts: { where: { deletedAt: null } }
       }
     });
     assert(user?.isActive && !user.deletedAt, "LifeDance admin2 is not active.");
@@ -53,6 +64,18 @@ const main = async (): Promise<void> => {
         user.ownedShops[0].status === "published" &&
         user.ownedShops[0].publicIdentifier?.kind === "SHOP",
       "LifeDance admin2 shop is incomplete."
+    );
+    const serviceLocation = user.ownedShops[0]?.serviceLocation;
+    assert(
+      serviceLocation?.countryCode === "JP" &&
+        serviceLocation.datasetVersion === "N03-20260101" &&
+        serviceLocation.deletedAt === null &&
+        serviceLocation.admin1Region.officialCode === "13" &&
+        serviceLocation.admin1Region.deletedAt === null &&
+        serviceLocation.admin2Region.officialCode === "13103" &&
+        serviceLocation.admin2Region.parentId === serviceLocation.admin1Region.id &&
+        serviceLocation.admin2Region.deletedAt === null,
+      "LifeDance admin2 shop service location is not verified against the current Minato hierarchy."
     );
     assert(
       user.ownedMerchantAccounts.length === 1 &&
@@ -81,16 +104,64 @@ const main = async (): Promise<void> => {
       ),
       "LifeDance admin2 person identifiers are incomplete."
     );
-    assert(user.ownedContacts.length === 21, "LifeDance admin2 must have admin plus 20 formal test friends.");
-    const reciprocalCount = await prisma.contact.count({
-      where: {
-        ownerUserId: { in: user.ownedContacts.map((contact) => contact.contactUserId) },
-        contactUserId: user.id,
-        deletedAt: null,
-        blockedAt: null
-      }
-    });
-    assert(reciprocalCount === 21, "LifeDance admin2 reciprocal contacts are incomplete.");
+    const [lifeDanceAdmin, friendCandidates] = await Promise.all([
+      prisma.user.findUnique({
+        where: { email: "admin@lifedance.com" },
+        select: { id: true, isActive: true, deletedAt: true }
+      }),
+      prisma.user.findMany({
+        where: {
+          email: { endsWith: "@needo.local" },
+          isActive: true,
+          deletedAt: null,
+          customerProfile: { isNot: null },
+          identities: { some: { type: "customer", isActive: true, deletedAt: null } }
+        },
+        select: { id: true, email: true, needoId: true }
+      })
+    ]);
+    assert(
+      lifeDanceAdmin?.isActive && !lifeDanceAdmin.deletedAt,
+      "LifeDance administrator contact target is missing."
+    );
+    const selectedFriends = provisioning.selectAdmin2FriendTargets(friendCandidates);
+    const requiredContactUserIds = [
+      lifeDanceAdmin.id,
+      ...selectedFriends.map((friend) => friend.id)
+    ];
+    const [outboundContacts, inboundContacts] = await Promise.all([
+      prisma.contact.findMany({
+        where: {
+          ownerUserId: user.id,
+          contactUserId: { in: requiredContactUserIds },
+          deletedAt: null,
+          blockedAt: null
+        },
+        select: { contactUserId: true }
+      }),
+      prisma.contact.findMany({
+        where: {
+          ownerUserId: { in: requiredContactUserIds },
+          contactUserId: user.id,
+          deletedAt: null,
+          blockedAt: null
+        },
+        select: { ownerUserId: true }
+      })
+    ]);
+    const contactInspection = inspectLifeDanceAdmin2ContactCohort(
+      requiredContactUserIds,
+      outboundContacts,
+      inboundContacts
+    );
+    assert(
+      contactInspection.missingOutboundUserIds.length === 0,
+      "LifeDance admin2 required contacts are incomplete."
+    );
+    assert(
+      contactInspection.missingInboundUserIds.length === 0,
+      "LifeDance admin2 reciprocal contacts are incomplete."
+    );
 
     console.log(
       JSON.stringify({
@@ -100,7 +171,7 @@ const main = async (): Promise<void> => {
         shopName: user.ownedShops[0]?.name,
         identities: [...identityTypes].sort(),
         roles: [...roleCodes].sort(),
-        friendCount: user.ownedContacts.length
+        requiredContactCount: requiredContactUserIds.length
       })
     );
   } finally {
