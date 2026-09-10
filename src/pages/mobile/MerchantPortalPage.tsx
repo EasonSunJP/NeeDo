@@ -70,6 +70,7 @@ import { AutomationWizard } from "../../features/scheduling/automation/Automatio
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { partitionDirectoryContacts } from "../../lib/contactDirectory";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getStoreCardDecorationConfig } from "../../lib/storeUiDecoration";
 import { getMerchantCustomerConversationId, getMerchantTechnicianConversationId, getMessagePath } from "../../lib/messageCenter";
@@ -1633,6 +1634,7 @@ export function MerchantPortalContent({
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
+  const persistentCacheScope = getAuthenticatedPersistentCacheScope();
   const { customers } = useEntityStore();
   const merchantImStore = useImStore("merchant");
   const activeView = getMerchantView(view);
@@ -1734,13 +1736,24 @@ export function MerchantPortalContent({
   }, [session, workRevision]);
   const formalHomeQuery = useCoreReadQuery(
     () => session?.portal === "merchant" ? loadFormalMerchantHome().then((data) => ({ ...data, storeId: store.id })) : null,
-    [store.id, session?.portal, workRevision]
+    [store.id, session?.portal, workRevision],
+    {
+      enabled: session?.portal === "merchant",
+      force: workRevision > 0,
+      key: `merchant:home:${store.id}`,
+      scope: persistentCacheScope
+    }
   );
   const formalHome = !formalHomeQuery.loading && formalHomeQuery.data?.storeId === store.id ? formalHomeQuery.data : null;
   const todayOrders = useMemo(() => formalHome?.orders.map(mapBookingOrderToDomainOrder) ?? [], [formalHome]);
   const formalOrdersQuery = useCoreReadQuery(
     () => session?.portal === "merchant" && activeView === "orders" ? loadEveryScopedOrder({}).then((items) => ({ storeId: store.id, items })) : null,
-    [store.id, session?.portal, activeView]
+    [store.id, session?.portal, activeView],
+    {
+      enabled: session?.portal === "merchant" && activeView === "orders",
+      key: `booking:merchant-orders:${store.id}:all`,
+      scope: persistentCacheScope
+    }
   );
   const storeOrders = useMemo(() => !formalOrdersQuery.loading && formalOrdersQuery.data?.storeId === store.id ? formalOrdersQuery.data.items.map(mapBookingOrderToDomainOrder) : [], [formalOrdersQuery.data, formalOrdersQuery.loading, store.id]);
   const pendingOrders = useMemo(() => todayOrders.filter((order) => ["pending", "confirmed", "scheduled", "inService"].includes(order.status)), [todayOrders]);

@@ -49,7 +49,15 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
   const [retryRevision, setRetryRevision] = useState(0);
   const [canonicalAlias, setCanonicalAlias] = useState<{ internalId: number; publicId: string } | null>(null);
   const requestId = typeof id === "string" && canonicalAlias?.publicId === id ? canonicalAlias.internalId : id;
-  const detailQuery = useCoreReadQuery(() => requestId ? coreReadApi.getTechnicianDetail(requestId) : null, [requestId, retryRevision]);
+  const detailQuery = useCoreReadQuery(
+    () => requestId ? coreReadApi.getTechnicianDetail(requestId) : null,
+    [requestId, retryRevision],
+    {
+      enabled: Boolean(requestId),
+      force: retryRevision > 0,
+      key: `core:technician:${requestId ?? "missing"}`
+    }
+  );
   const queriedDetail = detailQuery.data;
   const detailMatchesRoute = !queriedDetail || (typeof id === "number" ? queriedDetail.id === id : queriedDetail.publicId === id);
   const detail = detailMatchesRoute ? queriedDetail : null;
@@ -57,7 +65,12 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
   const technicianId = detail?.id ?? null;
   const servicesQuery = useCoreReadQuery(
     () => shopId && technicianId ? pricingModeApi.listPublicTechnicianServices(shopId, technicianId, { page: 1, pageSize: 20 }) : null,
-    [shopId, technicianId, retryRevision]
+    [shopId, technicianId, retryRevision],
+    {
+      enabled: Boolean(shopId && technicianId),
+      force: retryRevision > 0,
+      key: `technician:services:${shopId ?? "missing"}:${technicianId ?? "missing"}:page-1:size-20`
+    }
   );
   const scope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
 
