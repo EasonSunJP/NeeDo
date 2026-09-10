@@ -41,7 +41,13 @@ const main = async (): Promise<void> => {
           deletedAt: true,
           customerProfile: { select: { id: true } },
           technicianProfile: {
-            select: { id: true, shopId: true, status: true, employmentType: true }
+            select: {
+              id: true,
+              shopId: true,
+              status: true,
+              visibility: true,
+              employmentType: true
+            }
           },
           identities: {
             where: { isActive: true, deletedAt: null },
@@ -87,9 +93,11 @@ const main = async (): Promise<void> => {
     assert(admin.technicianProfile, "LifeDance administrator technician profile is missing.");
     assert(
       admin.technicianProfile.shopId === null &&
-        admin.technicianProfile.status === "private" &&
+        ["public", "privateAll", "limited", "network"].includes(
+          admin.technicianProfile.visibility
+        ) &&
         admin.technicianProfile.employmentType === TechnicianEmploymentType.INDEPENDENT,
-      "LifeDance administrator technician profile must be private and independent."
+      "LifeDance administrator technician profile must retain a valid personal-card visibility and remain independent."
     );
 
     const merchantAccount = await prisma.merchantAccount.findFirst({
@@ -140,7 +148,7 @@ const main = async (): Promise<void> => {
       "LifeDance administrator cross-portal roles are incomplete."
     );
 
-    const [merchantAccounts, services, availabilities, bookings] = await Promise.all([
+    const [merchantAccounts, services, bookings] = await Promise.all([
       prisma.merchantAccount.findMany({
         where: {
           code: "lifedance-real-ops",
@@ -159,9 +167,6 @@ const main = async (): Promise<void> => {
       prisma.technicianService.count({
         where: { technicianId: admin.technicianProfile.id, deletedAt: null }
       }),
-      prisma.availability.count({
-        where: { technicianProfileId: admin.technicianProfile.id, deletedAt: null }
-      }),
       prisma.bookingOrder.count({
         where: { technicianProfileId: admin.technicianProfile.id, deletedAt: null }
       })
@@ -171,8 +176,8 @@ const main = async (): Promise<void> => {
       "LifeDance merchant account membership is not exact."
     );
     assert(
-      services === 0 && availabilities === 0 && bookings === 0,
-      "LifeDance administrator private technician profile is bookable."
+      services === 0 && bookings === 0,
+      "LifeDance administrator technician profile has bookable services or bookings."
     );
 
     if (previousOwner) {
@@ -218,6 +223,8 @@ const main = async (): Promise<void> => {
         needoId: admin.needoId,
         shopId: shop.id,
         technicianProfileId: admin.technicianProfile.id,
+        technicianStatus: admin.technicianProfile.status,
+        technicianVisibility: admin.technicianProfile.visibility,
         identities: [...actualIdentityKeys].sort(),
         roles: [...roleCodes].sort()
       })
