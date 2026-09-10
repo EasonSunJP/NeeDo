@@ -9,6 +9,7 @@ import {
   type CoreShopDetail,
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ProfileDetailPage } from "./ProfileDetailPage";
 
@@ -126,7 +127,8 @@ async function renderRoute(path: string) {
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await persistentResourceCache.clearScope("public");
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -160,9 +162,11 @@ describe("ProfileDetailPage routing behavior", () => {
 
     await renderRoute(path);
 
-    await waitFor(() => expect(getTechnicianDetail).toHaveBeenCalledWith(17));
+    await waitFor(() => {
+      expect(getTechnicianDetail).toHaveBeenCalledWith(17);
+      expect(container.textContent).toContain("Misaki");
+    });
     expect(container.textContent).toContain("详细信息卡");
-    expect(container.textContent).toContain("Misaki");
     expect(container.querySelector('main[aria-label="社交资料页"]')).toBeNull();
   });
 

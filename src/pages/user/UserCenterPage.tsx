@@ -32,6 +32,7 @@ import {
   customerProfileApi,
   type CustomerSelfProfile,
 } from "../../features/core-read/customerProfileApi";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { walletApi, type WalletSummary } from "../../features/wallet/api";
 import {
   formatWalletAmount,
@@ -45,6 +46,8 @@ import {
 } from "../../features/platform-membership/api";
 import { CurrentMembershipBenefits } from "../../features/platform-membership/CurrentMembershipBenefits";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { PlatformMembershipDetailCard } from "../../shared/profile-card/PlatformMembershipDetailCard";
@@ -697,99 +700,86 @@ function FormalUserCenterDataGate({
 }: {
   customerProfileId: number;
 }) {
-  const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">(
-    "loading",
-  );
-  const [loadError, setLoadError] = useState("");
   const [revision, setRevision] = useState(0);
-  const [formalData, setFormalData] = useState<FormalUserCenterData | null>(
-    null,
+  const cacheScope = getAuthenticatedPersistentCacheScope();
+  const cacheKey = `user-center:self:${customerProfileId}`;
+  const formalDataQuery = useCoreReadQuery(
+    async () => {
+      const [
+        profile,
+        wallet,
+        counts,
+        activeShopMembershipCount,
+        experience,
+        membership,
+      ] = await Promise.all([
+        customerProfileApi.getMine(),
+        walletApi.getMyWalletSummary(),
+        Promise.all(
+          formalOrderStatuses.map(async (status) => {
+            const page = await bookingApi.listOrders({
+              page: 1,
+              pageSize: 1,
+              status,
+            });
+            return [status, page.total] as const;
+          }),
+        ),
+        customerShopMembershipApi
+          .list({ page: 1, pageSize: 1, status: "active" })
+          .then((result) => result.total)
+          .catch(() => null),
+        platformMembershipSelfApi.getMyExperience(),
+        platformMembershipSelfApi.getMine(),
+      ]);
+
+      if (profile.id !== customerProfileId) {
+        throw new ApiClientError("error.forbidden", 403, 403);
+      }
+
+      return {
+        activeShopMembershipCount,
+        experience,
+        membership,
+        profile,
+        wallet,
+        orderCounts: {
+          ...emptyFormalOrderCounts,
+          ...Object.fromEntries(counts),
+        },
+      } satisfies FormalUserCenterData;
+    },
+    [customerProfileId, revision],
+    {
+      force: revision > 0,
+      key: cacheKey,
+      scope: cacheScope,
+    },
   );
 
-  useEffect(() => {
-    let active = true;
-    setLoadStatus("loading");
-    setLoadError("");
-
-    Promise.all([
-      customerProfileApi.getMine(),
-      walletApi.getMyWalletSummary(),
-      Promise.all(
-        formalOrderStatuses.map(async (status) => {
-          const page = await bookingApi.listOrders({
-            page: 1,
-            pageSize: 1,
-            status,
-          });
-          return [status, page.total] as const;
-        }),
-      ),
-      customerShopMembershipApi
-        .list({ page: 1, pageSize: 1, status: "active" })
-        .then((result) => result.total)
-        .catch(() => null),
-      platformMembershipSelfApi.getMyExperience(),
-      platformMembershipSelfApi.getMine(),
-    ])
-      .then(
-        ([
-          profile,
-          wallet,
-          counts,
-          activeShopMembershipCount,
-          experience,
-          membership,
-        ]) => {
-          if (!active) return;
-          if (profile.id !== customerProfileId) {
-            throw new ApiClientError("error.forbidden", 403, 403);
-          }
-          setFormalData({
-            activeShopMembershipCount,
-            experience,
-            membership,
-            profile,
-            wallet,
-            orderCounts: {
-              ...emptyFormalOrderCounts,
-              ...Object.fromEntries(counts),
-            },
-          });
-          setLoadStatus("success");
-        },
-      )
-      .catch((error: unknown) => {
-        if (!active) return;
-        setFormalData(null);
-        setLoadError(describeUserCenterError(error));
-        setLoadStatus("error");
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [customerProfileId, revision]);
-
-  if (loadStatus === "loading") {
+  if (formalDataQuery.loading) {
     return <UserCenterDataStatus loading />;
   }
 
-  if (loadStatus === "error" || !formalData) {
+  if (formalDataQuery.error || !formalDataQuery.data) {
     return (
       <UserCenterDataStatus
-        error={loadError}
+        error={describeUserCenterError(formalDataQuery.error)}
         onRetry={() => setRevision((current) => current + 1)}
       />
     );
   }
 
+  const formalData = formalDataQuery.data;
   return (
     <CompleteUserCenterPage
       formalData={formalData}
       onFormalProfileUpdated={(profile) => {
-        setFormalData((current) =>
-          current ? { ...current, profile } : current,
-        );
+        if (!cacheScope) return;
+        void persistentResourceCache.write(cacheScope, cacheKey, {
+          ...formalData,
+          profile,
+        });
       }}
     />
   );

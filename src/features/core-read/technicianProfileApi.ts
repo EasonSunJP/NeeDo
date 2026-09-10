@@ -1,4 +1,6 @@
 import { httpClient } from "../../api/httpClient";
+import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import type { TechnicianReviewTagSummary } from "./api";
 
 export type TechnicianProfileVisibility = "public" | "privateAll" | "limited" | "network";
@@ -80,10 +82,13 @@ export const technicianProfileApi = {
   getMine() {
     return httpClient.request<TechnicianSelfProfile>("/technician-profile/me");
   },
-  updateMine(input: TechnicianSelfProfileUpdate) {
-    return httpClient.request<TechnicianSelfProfile>("/technician-profile/me", {
+  async updateMine(input: TechnicianSelfProfileUpdate) {
+    const profile = await httpClient.request<TechnicianSelfProfile>("/technician-profile/me", {
       method: "PATCH",
       body: input
     });
+    const scope = getAuthenticatedPersistentCacheScope();
+    if (scope) await persistentResourceCache.write(scope, "technician:self", profile);
+    return profile;
   }
 };

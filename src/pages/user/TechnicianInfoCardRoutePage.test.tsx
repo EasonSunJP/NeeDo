@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read/api";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ProfileDetailPage } from "./ProfileDetailPage";
 import { TechnicianInfoCardRoutePage } from "./TechnicianInfoCardRoutePage";
@@ -85,7 +86,8 @@ function renderPage(initialEntries = ["/profiles/technician/17?view=card"], init
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await persistentResourceCache.clearScope("public");
   window.history.replaceState({ idx: 0 }, "", "/");
   container = document.createElement("div");
   document.body.appendChild(container);

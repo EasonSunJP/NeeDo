@@ -34,6 +34,9 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).toContain("<FormalTechnicianOrdersPanel />");
     expect(tasksSource).toContain("loadEveryTechnicianOrder");
     expect(tasksSource).toContain("loadManagedScheduleWindow");
+    expect(tasksSource).toContain("useCoreReadQuery");
+    expect(tasksSource).toContain("getAuthenticatedPersistentCacheScope");
+    expect(tasksSource).toContain("technician:tasks:");
     expect(tasksSource).toContain('data-testid="technician-formal-income-dashboard"');
     expect(tasksSource).toContain("<WorkStatusControls");
     expect(tasksSource).toContain("本月收入");

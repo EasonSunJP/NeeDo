@@ -34,6 +34,11 @@ export type CustomerSelfProfileUpdate = {
   visibility?: CustomerProfileVisibility;
 };
 
+type UserCenterProfileCache = {
+  profile: CustomerSelfProfile;
+  [key: string]: unknown;
+};
+
 export const customerProfileApi = {
   getMine() {
     return httpClient.request<CustomerSelfProfile>("/customer-profile/me");
@@ -44,7 +49,20 @@ export const customerProfileApi = {
       method: "PATCH"
     });
     const scope = getAuthenticatedPersistentCacheScope();
-    if (scope) await persistentResourceCache.write(scope, "customer:self", profile);
+    if (scope) {
+      const userCenterCacheKey = `user-center:self:${profile.id}`;
+      const userCenterCache = persistentResourceCache.peek<UserCenterProfileCache>(
+        scope,
+        userCenterCacheKey
+      );
+      await persistentResourceCache.write(scope, "customer:self", profile);
+      if (userCenterCache) {
+        await persistentResourceCache.write(scope, userCenterCacheKey, {
+          ...userCenterCache,
+          profile
+        });
+      }
+    }
     return profile;
   }
 };

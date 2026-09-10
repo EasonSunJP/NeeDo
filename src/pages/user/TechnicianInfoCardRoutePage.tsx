@@ -92,7 +92,14 @@ function StatusPanel({
 export function TechnicianInfoCardRoutePage({ id }: { id: number }) {
   const navigate = useNavigate();
   const [revision, setRevision] = useState(0);
-  const query = useCoreReadQuery(() => coreReadApi.getTechnicianDetail(id), [id, revision]);
+  const query = useCoreReadQuery(
+    () => coreReadApi.getTechnicianDetail(id),
+    [id, revision],
+    {
+      force: revision > 0,
+      key: `core:technician:${id}`
+    }
+  );
   const closePage = () => {
     if (typeof window !== "undefined") {
       const historyState = window.history.state as { idx?: number } | null;
