@@ -644,7 +644,11 @@ describe("LedgerService wallet mutations", () => {
 
     await service.freezeBookingAcceptance(input);
     repository.accountClassifications.set(3, false);
-    const settled = await service.settleBookingCompletion({ ...input, customerUserId: 3 });
+    const settled = await service.settleBookingCompletion({
+      ...input,
+      customerUserId: 3,
+      checkoutPayment: { method: "ndp", payableNdp: 8_800 }
+    } as never);
 
     expect(settled).toMatchObject({ currency: "TEST_NDP" });
     expect(repository.wallets.get("shop:10:TEST_NDP")).toMatchObject({
@@ -657,6 +661,13 @@ describe("LedgerService wallet mutations", () => {
     });
     expect(repository.wallets.has("user:3:NDP")).toBe(false);
     expect(repository.reconciliationRows).toHaveLength(0);
+    expect(repository.financials.get(303)).toMatchObject({
+      ndpCurrency: "TEST_NDP",
+      platformCollectedServiceAmountJpy: 0,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "platform_test_ndp",
+      serviceIncomeStatus: "confirmed"
+    });
   });
 
   it("pays merchant-cancel compensation only in the booking's Test NDP currency", async () => {

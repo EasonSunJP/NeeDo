@@ -9,6 +9,8 @@ export interface FinanceNdpCopy {
   campaignDiscount: string;
   settleable: string;
   testExcluded: string;
+  testPaymentChannel: string;
+  testPaymentExcluded: string;
   loadFailed: string;
 }
 
@@ -22,6 +24,8 @@ const copies: Record<Language, FinanceNdpCopy> = {
     campaignDiscount: "活动减免",
     settleable: "正式可结算",
     testExcluded: "Test NDP 不参与结算",
+    testPaymentChannel: "Test NDP 测试渠道",
+    testPaymentExcluded: "Test NDP 支付，不计入正式营收或结算",
     loadFailed: "NDP 汇总读取失败"
   },
   "zh-Hant": {
@@ -33,6 +37,8 @@ const copies: Record<Language, FinanceNdpCopy> = {
     campaignDiscount: "活動減免",
     settleable: "正式可結算",
     testExcluded: "Test NDP 不參與結算",
+    testPaymentChannel: "Test NDP 測試渠道",
+    testPaymentExcluded: "Test NDP 支付，不計入正式營收或結算",
     loadFailed: "NDP 彙總讀取失敗"
   },
   ja: {
@@ -44,6 +50,8 @@ const copies: Record<Language, FinanceNdpCopy> = {
     campaignDiscount: "キャンペーン割引",
     settleable: "正式精算対象",
     testExcluded: "Test NDP は精算対象外",
+    testPaymentChannel: "Test NDP テストチャネル",
+    testPaymentExcluded: "Test NDP 支払い。正式な売上・精算には含みません",
     loadFailed: "NDP 集計を読み込めませんでした"
   },
   en: {
@@ -55,6 +63,8 @@ const copies: Record<Language, FinanceNdpCopy> = {
     campaignDiscount: "Campaign discounts",
     settleable: "Formal settleable amount",
     testExcluded: "Test NDP is excluded from settlement",
+    testPaymentChannel: "Test NDP test channel",
+    testPaymentExcluded: "Test NDP payment; excluded from formal revenue and settlement",
     loadFailed: "Couldn't load the NDP summary"
   },
   ko: {
@@ -66,6 +76,8 @@ const copies: Record<Language, FinanceNdpCopy> = {
     campaignDiscount: "캠페인 할인",
     settleable: "정식 정산 가능액",
     testExcluded: "Test NDP는 정산에서 제외",
+    testPaymentChannel: "Test NDP 테스트 채널",
+    testPaymentExcluded: "Test NDP 결제이며 정식 매출 및 정산에서 제외됩니다",
     loadFailed: "NDP 요약을 불러오지 못했습니다"
   }
 };

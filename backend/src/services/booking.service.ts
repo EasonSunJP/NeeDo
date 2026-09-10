@@ -1141,7 +1141,15 @@ export class BookingService {
         acceptedAt: confirmed?.createdAt,
         completedAt: this.now(),
         customerUserId: context.order.customerUserId,
-        actorUserId
+        actorUserId,
+        ...(context.checkout.paymentMethod === "ndp"
+          ? {
+              checkoutPayment: {
+                method: "ndp" as const,
+                payableNdp: context.checkout.payableNdp
+              }
+            }
+          : {})
       },
       { transactionClient: context.transactionClient }
     );

@@ -1982,6 +1982,8 @@ describe("GET /api/v1/openapi.json", () => {
     const orderFinanceSchema = response.body.components.schemas.OrderFinanceDetail;
     expect(orderFinanceSchema.properties).toMatchObject({
       orderType: { type: "string", enum: ["booking", "request"] },
+      ndpCurrency: { type: ["string", "null"], enum: ["NDP", "TEST_NDP", null] },
+      checkoutPaymentAmountNdp: { type: ["integer", "null"], minimum: 0 },
       cRequestFeeHoldNdp: { type: "integer" },
       cRequestFeeActualNdp: { type: "integer" },
       requestFeeNdpRevenue: { type: "integer" }

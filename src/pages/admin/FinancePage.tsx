@@ -236,10 +236,10 @@ export function FinancePage() {
                { key: "merchant", title: "商家 / 订单", render: (row) => `${row.shopName} / ${row.orderNo}` },
                { key: "orderType", title: "类型", render: (row) => row.orderType },
                { key: "gross", title: "估算服务 GMV", render: (row) => yen(row.estimatedServiceGmvJpy) },
-               { key: "platform", title: "平台 NDP 收入", render: (row) => formatNdp(row.platformNdpRevenue) },
-               { key: "requestFee", title: "Request 费用", render: (row) => formatNdp(row.requestFeeNdpRevenue) },
-               { key: "reward", title: "返点成本", render: (row) => formatNdp(row.userRewardNdpCost) },
-              { key: "hold", title: "冻结 / 释放", render: (row) => `${formatNdp(row.pendingHoldNdp)} / ${formatNdp(row.releasedNdp)}` },
+               { key: "platform", title: "平台 NDP 收入", render: (row) => formatNdpCurrency(row.platformNdpRevenue, row.ndpCurrency) },
+               { key: "requestFee", title: "Request 费用", render: (row) => formatNdpCurrency(row.requestFeeNdpRevenue, row.ndpCurrency) },
+               { key: "reward", title: "返点成本", render: (row) => formatNdpCurrency(row.userRewardNdpCost, row.ndpCurrency) },
+              { key: "hold", title: "冻结 / 释放", render: (row) => `${formatNdpCurrency(row.pendingHoldNdp, row.ndpCurrency)} / ${formatNdpCurrency(row.releasedNdp, row.ndpCurrency)}` },
               { key: "technician", title: "技师收入", render: (row) => `${row.technicianName ?? "-"} / ${yen(row.technicianEstimatedIncomeJpy)}` },
               { key: "income", title: "服务收入", render: (row) => <Badge tone={row.serviceIncomeStatus === "confirmed" ? "green" : row.serviceIncomeStatus === "reported" ? "yellow" : "red"}>{row.serviceIncomeStatus}</Badge> },
               { key: "rules", title: "命中规则", render: (row) => row.appliedFeeRuleIds.slice(0, 2).join(" / ") || "-" },
@@ -260,20 +260,20 @@ export function FinancePage() {
                  { label: "订单类型", value: selected.orderType },
                  { label: "订单", value: selected.orderNo },
                 { label: "估算服务 GMV", value: yen(selected.estimatedServiceGmvJpy) },
-                { label: "平台支付收入", value: yen(selected.platformCollectedServiceAmountJpy) },
+                { label: "平台支付收入", value: formatPlatformPayment(selected, ndpCopy) },
                 { label: "线下上报收入", value: yen(selected.offlineReportedServiceAmountJpy) },
                 { label: "未上报服务收入", value: yen(selected.unknownOrUnreportedServiceAmountJpy) },
                 { label: "服务收入状态", value: selected.serviceIncomeStatus },
-                { label: "支付渠道", value: selected.paymentChannel },
-                 { label: "平台 NDP 净收入", value: formatNdp(selected.platformNdpRevenue) },
-                 { label: "Request 费用", value: formatNdp(selected.requestFeeNdpRevenue) },
-                 { label: "Request 冻结/实扣", value: `${formatNdp(selected.cRequestFeeHoldNdp)} / ${formatNdp(selected.cRequestFeeActualNdp)}` },
-                 { label: "用户返点成本", value: formatNdp(selected.userRewardNdpCost) },
+                { label: "支付渠道", value: selected.paymentChannel === "platform_test_ndp" ? ndpCopy.testPaymentChannel : selected.paymentChannel },
+                 { label: "平台 NDP 净收入", value: formatNdpCurrency(selected.platformNdpRevenue, selected.ndpCurrency) },
+                 { label: "Request 费用", value: formatNdpCurrency(selected.requestFeeNdpRevenue, selected.ndpCurrency) },
+                 { label: "Request 冻结/实扣", value: `${formatNdpCurrency(selected.cRequestFeeHoldNdp, selected.ndpCurrency)} / ${formatNdpCurrency(selected.cRequestFeeActualNdp, selected.ndpCurrency)}` },
+                 { label: "用户返点成本", value: formatNdpCurrency(selected.userRewardNdpCost, selected.ndpCurrency) },
                 { label: "技师", value: selected.technicianName ?? "-" },
                 { label: "技师收入预估", value: yen(selected.technicianEstimatedIncomeJpy) },
                 { label: "店铺预估毛利", value: yen(selected.shopEstimatedGrossProfitJpy) },
-                { label: "冻结中", value: formatNdp(selected.pendingHoldNdp) },
-                { label: "已释放", value: formatNdp(selected.releasedNdp) },
+                { label: "冻结中", value: formatNdpCurrency(selected.pendingHoldNdp, selected.ndpCurrency) },
+                { label: "已释放", value: formatNdpCurrency(selected.releasedNdp, selected.ndpCurrency) },
                 { label: "结算状态", value: selected.status },
                 { label: "钱路状态", value: selected.moneyTimelineStatus }
               ]}
@@ -298,7 +298,7 @@ export function FinancePage() {
                         <p className="text-xs text-ink/45">{item.type ?? "-"} · {item.status ?? "-"}</p>
                       </div>
                       <strong className="text-sm">
-                        {typeof item.amountJpy === "number" ? yen(item.amountJpy) : typeof item.amountNdp === "number" ? formatNdp(item.amountNdp) : "-"}
+                        {typeof item.amountJpy === "number" ? yen(item.amountJpy) : typeof item.amountNdp === "number" ? formatNdpCurrency(item.amountNdp, selected.ndpCurrency) : "-"}
                       </strong>
                     </div>
                   );
@@ -321,6 +321,26 @@ export function FinancePage() {
 
 function formatNdp(value: number) {
   return `${value.toLocaleString("ja-JP")} NDP`;
+}
+
+function formatNdpCurrency(value: number, currency: "NDP" | "TEST_NDP") {
+  return `${value.toLocaleString("ja-JP")} ${currency === "TEST_NDP" ? "Test NDP" : "NDP"}`;
+}
+
+function formatPlatformPayment(
+  settlement: BackofficeFinanceSettlementPayload,
+  copy: ReturnType<typeof getFinanceNdpCopy>
+) {
+  if (settlement.paymentChannel !== "platform_test_ndp") {
+    return yen(settlement.platformCollectedServiceAmountJpy);
+  }
+
+  const amount = settlement.checkoutPaymentAmountNdp;
+  const paymentEvidence = amount === null
+    ? copy.testPaymentChannel
+    : formatNdpCurrency(amount, settlement.ndpCurrency);
+
+  return `${paymentEvidence} · ${copy.testPaymentExcluded}`;
 }
 
 function formatFinanceAmount(value: number, unit: "jpy" | "ndp") {

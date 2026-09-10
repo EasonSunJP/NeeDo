@@ -15,6 +15,7 @@ export type ServicePaymentChannel =
   | "offline_card"
   | "bank_transfer"
   | "other";
+export type OrderFinancePaymentChannel = ServicePaymentChannel | "platform_test_ndp";
 
 export interface MoneyTimelineEvent {
   type: string;
@@ -146,10 +147,12 @@ export interface OrderFinanceDetailPayload {
   technicianName: string | null;
   serviceName: string;
   estimatedServiceGmvJpy: number;
+  ndpCurrency: "NDP" | "TEST_NDP" | null;
+  checkoutPaymentAmountNdp: number | null;
   platformCollectedServiceAmountJpy: number;
   offlineReportedServiceAmountJpy: number;
   unknownOrUnreportedServiceAmountJpy: number;
-  paymentChannel: ServicePaymentChannel;
+  paymentChannel: OrderFinancePaymentChannel;
   serviceIncomeStatus: ServiceIncomeStatus;
   serviceIncomeReportedById: number | null;
   serviceIncomeReportedAt: string | null;

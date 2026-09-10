@@ -37,10 +37,12 @@ const orderFinanceRecord: OrderFinanceRecord = {
   technicianName: "Misaki",
   serviceName: "Aroma Treatment",
   priceAmountJpy: 8800,
+  checkoutPaymentAmountNdp: null,
   startsAt: "2026-06-03T10:00:00.000Z",
   endsAt: "2026-06-03T11:00:00.000Z",
   financial: {
     id: 301,
+    ndpCurrency: "NDP",
     serviceAmountJpy: 8800,
     baseServiceAmountJpy: null,
     extensionAmountJpy: null,

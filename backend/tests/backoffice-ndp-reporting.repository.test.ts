@@ -2,6 +2,67 @@ import { BackofficeRepository } from "../src/repositories/backoffice.repository"
 import { ERROR_CODES } from "../src/constants/error-codes";
 
 describe("BackofficeRepository NDP reporting", () => {
+  it("maps Test NDP checkout evidence as visible non-settleable payment", async () => {
+    const createdAt = new Date("2026-09-10T01:00:00.000Z");
+    const findMany = jest.fn(async () => [
+      {
+        id: 51,
+        bookingOrderId: 71,
+        orderType: "booking",
+        ndpCurrency: "TEST_NDP",
+        customerUserId: 3,
+        shopId: 10,
+        technicianProfileId: null,
+        serviceAmountJpy: 8_800,
+        platformCollectedServiceAmountJpy: 0,
+        offlineReportedServiceAmountJpy: 0,
+        unknownOrUnreportedServiceAmountJpy: 0,
+        paymentChannel: "platform_test_ndp",
+        serviceIncomeStatus: "confirmed",
+        bPlatformFeeHoldNdp: 500,
+        bPlatformFeeActualNdp: 500,
+        cRequestFeeHoldNdp: 0,
+        cRequestFeeActualNdp: 0,
+        userRewardNdp: 100,
+        campaignDiscountNdp: 0,
+        releasedNdp: 0,
+        penaltyNdp: 0,
+        compensationToUserNdp: 0,
+        appliedFeeRuleIdsJson: [],
+        moneyTimelineJson: [],
+        settlementStatus: "settled",
+        createdAt,
+        bookingOrder: {
+          id: 71,
+          orderNo: "ND-TEST-71",
+          shopId: 10,
+          technicianProfileId: null,
+          technicianProfile: null,
+          shop: { name: "Test shop" },
+          checkout: { payableNdp: 13_200 }
+        }
+      }
+    ]);
+    const repository = new BackofficeRepository({
+      orderFinancial: { findMany, count: jest.fn(async () => 1) }
+    } as never);
+
+    await expect(
+      repository.listFinanceSettlements({ scope: "platform", page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({
+      list: [
+        {
+          ndpCurrency: "TEST_NDP",
+          checkoutPaymentAmountNdp: 13_200,
+          platformCollectedServiceAmountJpy: 0,
+          unknownOrUnreportedServiceAmountJpy: 0,
+          paymentChannel: "platform_test_ndp",
+          serviceIncomeStatus: "confirmed"
+        }
+      ]
+    });
+  });
+
   it("keeps Test NDP rows out of formal finance settlement exports", async () => {
     const findMany = jest.fn(async () => []);
     const repository = new BackofficeRepository({ orderFinancial: { findMany } } as never);
