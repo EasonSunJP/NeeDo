@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -56,7 +57,8 @@ describe("ProfileDetailPage formal technician rendering", () => {
   let container: HTMLDivElement;
   let root: Root;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await persistentResourceCache.clearScope("public");
     apiMocks.getTechnicianDetail.mockResolvedValue(technicianDetail);
     apiMocks.listPublicTechnicianServices.mockResolvedValue(technicianServices);
     container = document.createElement("div");
@@ -80,10 +82,12 @@ describe("ProfileDetailPage formal technician rendering", () => {
     });
 
     expect(apiMocks.getTechnicianDetail).toHaveBeenCalledWith("s0000000186");
-    expect(apiMocks.listPublicTechnicianServices).toHaveBeenCalledWith(217, 186, { page: 1, pageSize: 20 });
+    await vi.waitFor(() => {
+      expect(apiMocks.listPublicTechnicianServices).toHaveBeenCalledWith(217, 186, { page: 1, pageSize: 20 });
+      expect(container.querySelector('[data-testid="technician-profile-info-view"]')).not.toBeNull();
+      expect(container.textContent).toContain("正式服务卡");
+    });
     expect(container.textContent).toContain("详细信息卡");
-    expect(container.querySelector('[data-testid="technician-profile-info-view"]')).not.toBeNull();
-    expect(container.textContent).toContain("正式服务卡");
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 
@@ -96,7 +100,9 @@ describe("ProfileDetailPage formal technician rendering", () => {
       await Promise.resolve();
     });
 
-    expect(container.querySelector('a[href="/merchant/moments/users/186"]')).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(container.querySelector('a[href="/merchant/moments/users/186"]')).not.toBeNull();
+    });
   });
 
   it("retries a failed formal technician read without a fallback profile", async () => {
@@ -120,8 +126,10 @@ describe("ProfileDetailPage formal technician rendering", () => {
       await Promise.resolve();
     });
 
-    expect(apiMocks.getTechnicianDetail).toHaveBeenCalledTimes(2);
-    expect(container.querySelector('[data-testid="technician-profile-info-view"]')).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(apiMocks.getTechnicianDetail).toHaveBeenCalledTimes(2);
+      expect(container.querySelector('[data-testid="technician-profile-info-view"]')).not.toBeNull();
+    });
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 });

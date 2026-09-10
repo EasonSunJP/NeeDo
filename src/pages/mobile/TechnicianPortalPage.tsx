@@ -151,7 +151,7 @@ function TechnicianPortalDataGate() {
     {
       enabled: Boolean(formalTechnicianProfileId),
       force: revision > 0,
-      key: `technician:self-profile:${formalTechnicianProfileId ?? "missing"}`,
+      key: "technician:self",
       scope: persistentCacheScope
     }
   );
@@ -193,39 +193,46 @@ function TechnicianPortalDataGate() {
 function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
   const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
   const shopName = technician?.shop?.name ?? (profile.shopId ? "关联店铺" : "个人技师");
-  const [orders, setOrders] = useState<BookingOrder[]>([]);
-  const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
   const [tasksPanelTab, setTasksPanelTab] = useState<"schedule" | "orders">("schedule");
-
-  useEffect(() => {
-    let active = true;
-    const now = new Date();
-    const todayFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayTo = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    const monthFrom = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthTo = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-    setLoading(true);
-    setLoadError("");
-    Promise.allSettled([
-      loadEveryTechnicianOrder({ from: monthFrom.toISOString(), to: monthTo.toISOString() }),
-      loadManagedScheduleWindow("technician", { from: todayFrom, to: todayTo })
-    ]).then(([orderResult, slotResult]) => {
-      if (!active) return;
-      if (orderResult.status === "fulfilled") setOrders(orderResult.value);
-      if (slotResult.status === "fulfilled") setSlots(slotResult.value);
+  const cacheScope = getAuthenticatedPersistentCacheScope();
+  const now = new Date();
+  const todayFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayTo = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const monthFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthTo = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const todayFromIso = todayFrom.toISOString();
+  const todayToIso = todayTo.toISOString();
+  const monthFromIso = monthFrom.toISOString();
+  const monthToIso = monthTo.toISOString();
+  const tasksQuery = useCoreReadQuery(
+    async () => {
+      const [orderResult, slotResult] = await Promise.allSettled([
+        loadEveryTechnicianOrder({ from: monthFromIso, to: monthToIso }),
+        loadManagedScheduleWindow("technician", {
+          from: new Date(todayFromIso),
+          to: new Date(todayToIso)
+        })
+      ]);
       if (orderResult.status === "rejected" && slotResult.status === "rejected") {
-        const reason = orderResult.reason instanceof Error ? orderResult.reason.message : "error.technician_dashboard.load_failed";
-        setLoadError(reason);
+        throw orderResult.reason instanceof Error
+          ? orderResult.reason
+          : new Error("error.technician_dashboard.load_failed");
       }
-      setLoading(false);
-    });
-
-    return () => { active = false; };
-  }, []);
-
+      return {
+        orders: orderResult.status === "fulfilled" ? orderResult.value : [],
+        slots: slotResult.status === "fulfilled" ? slotResult.value : []
+      };
+    },
+    [profile.id, todayFromIso, todayToIso, monthFromIso, monthToIso],
+    {
+      key: `technician:tasks:${profile.id}:${todayFromIso}`,
+      scope: cacheScope
+    }
+  );
+  const orders: BookingOrder[] = tasksQuery.data?.orders ?? [];
+  const slots: BookingScheduleSlot[] = tasksQuery.data?.slots ?? [];
+  const loading = tasksQuery.loading;
+  const loadError = tasksQuery.error ?? "";
   const todayKey = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const todayOrders = orders
     .filter((order) => new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(order.startsAt)) === todayKey)
