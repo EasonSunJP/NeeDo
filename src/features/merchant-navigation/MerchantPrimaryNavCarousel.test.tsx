@@ -103,7 +103,7 @@ describe("MerchantPrimaryNavCarousel", () => {
     expect(indicators[1]?.getAttribute("data-navigation-page-state")).toBe("inactive");
   });
 
-  it("keeps mobile actions and empty slots at exactly 76px while preserving the bilingual sm layout", async () => {
+  it("keeps actions and empty slots square while preserving the centered bilingual sm layout", async () => {
     vi.spyOn(identityApplicationsApi, "listTechnicianReviews").mockResolvedValue({
       list: [],
       total: 0,
@@ -122,15 +122,20 @@ describe("MerchantPrimaryNavCarousel", () => {
     expect(visibleLinks).toHaveLength(4);
 
     visibleLinks.forEach((link) => {
-      expect(link.classList).toContain("h-[76px]");
+      expect(link.classList).toContain("aspect-square");
       expect(link.classList).toContain("before:hidden");
-      expect(link.classList).toContain("grid-rows-[30px_28px]");
-      expect(link.classList).toContain("gap-1");
-      expect(link.classList).toContain("py-1.5");
-      expect(link.classList).not.toContain("min-h-[82px]");
-      expect(link.classList).toContain("sm:min-h-[82px]");
-      expect(link.classList).toContain("sm:h-auto");
-      expect(link.classList).toContain("sm:grid-rows-[34px_1fr]");
+      expect(link.classList).toContain("grid-rows-[24px_auto]");
+      expect(link.classList).toContain("min-[380px]:grid-rows-[30px_auto]");
+      expect(link.classList).toContain("content-center");
+      expect(link.classList).toContain("gap-0.5");
+      expect(link.classList).toContain("min-[380px]:gap-1");
+      expect(link.classList).toContain("py-1");
+      expect(link.classList).toContain("min-[380px]:py-1.5");
+      expect(link.classList).not.toContain("h-[76px]");
+      expect(link.classList).not.toContain("sm:min-h-[82px]");
+      expect(link.classList).toContain("sm:grid-rows-[34px_auto]");
+      expect(link.classList).toContain("sm:content-center");
+      expect(link.classList).not.toContain("sm:grid-rows-[34px_1fr]");
       expect(link.classList).toContain("sm:gap-1.5");
       expect(link.classList).toContain("sm:py-3");
     });
@@ -140,8 +145,9 @@ describe("MerchantPrimaryNavCarousel", () => {
     ) ?? [];
     expect(mobileEmptySlots).toHaveLength(1);
     mobileEmptySlots.forEach((slot) => {
-      expect(slot.classList).toContain("h-[76px]");
-      expect(slot.classList).not.toContain("min-h-[82px]");
+      expect(slot.classList).toContain("aspect-square");
+      expect(slot.classList).not.toContain("h-[76px]");
+      expect(slot.classList).not.toContain("sm:min-h-[82px]");
     });
   });
 });
