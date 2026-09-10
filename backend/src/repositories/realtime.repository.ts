@@ -2649,6 +2649,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           customerProfile: {
             is: { displayName: { contains: query }, deletedAt: null }
           }
+        },
+        {
+          technicianProfile: {
+            is: { displayName: { contains: query }, deletedAt: null }
+          }
+        },
+        {
+          identities: {
+            some: {
+              displayName: { contains: query },
+              type: { in: ["customer", "user", "u", "technician", "scout"] },
+              isActive: true,
+              deletedAt: null
+            }
+          }
         }
       ],
       NOT: {
@@ -2680,9 +2695,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     ]);
 
     return buildPaginatedResponse(
-      list.map((user) =>
-        this.mapParticipant(user, undefined, this.findCanonicalParticipantIdentity(user.identities))
-      ),
+      list.map((user) => this.mapDirectorySearchParticipant(user, query)),
       total,
       pagination
     );
@@ -5633,6 +5646,29 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       avatarUrl: user.avatarUrl,
       ...(role === "owner" || role === "admin" || role === "member" ? { role } : {})
     };
+  }
+
+  private mapDirectorySearchParticipant(
+    user: ImParticipantUserRecord & { identities: ImParticipantIdentityRecord[] },
+    query: string
+  ): ParticipantPayload {
+    const participant = this.mapParticipant(
+      user,
+      undefined,
+      this.findCanonicalParticipantIdentity(user.identities)
+    );
+    const normalizedQuery = query.toLocaleLowerCase();
+    const matchingDisplayName = [
+      user.customerProfile?.deletedAt === null ? user.customerProfile.displayName : null,
+      user.technicianProfile?.deletedAt === null ? user.technicianProfile.displayName : null,
+      user.username,
+      ...user.identities.map((identity) => identity.displayName)
+    ].find(
+      (displayName): displayName is string =>
+        typeof displayName === "string" && displayName.toLocaleLowerCase().includes(normalizedQuery)
+    );
+
+    return matchingDisplayName ? { ...participant, username: matchingDisplayName } : participant;
   }
 
   private resolveParticipantDisplayName(

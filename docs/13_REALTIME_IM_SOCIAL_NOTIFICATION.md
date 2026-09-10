@@ -473,6 +473,7 @@
 
 - 客户端或技师端修改个人显示名时，在同一 Prisma 事务内同步账号 `User.username`、仍有效的 `CustomerProfile`、`TechnicianProfile`，以及仍启用且未删除的 `customer/user/u/technician/scout` 个人身份快照；既有资料审计继续覆盖本次变更。店铺商户身份、运营身份和已停用身份仍保持原值，不在个人名称同步范围内。
 - IM 会话、联系人和联系人资料继续以当前身份对应的正式资料表为权威名称。联系人资料响应写回 store 时会提升实体刷新代次，使更早发出的 bootstrap 响应失效并自动补拉一次，避免新名称被延迟旧响应短暂覆盖后再次跳回。
+- 添加好友搜索同时匹配账号名、NeeDoID、当前客户/技师资料名和仍启用的个人身份名；响应显示名采用实际命中的名称字段，避免历史不一致数据被后端命中后又被前端关键词过滤掉。已存在的当前身份联系人仍按原规则排除，防止重复添加。
 - Social 动态作者不再直接读取 `UserIdentity.displayName` 快照：客户、技师与商户作者分别读取当前 `CustomerProfile`、`TechnicianProfile` 与 `MerchantIdentityProfile`，其他身份才回退到身份快照或账号名。动态时间线每次重新进入路由时刷新正式数据，且与 Provider 首次加载共用单航请求。
 - 店铺端员工简易信息卡继续消费正式 core-read 店铺详情里的技师资料；商户路由切换时强制复验店铺/员工数据，防止同一登录会话中的持久缓存让旧员工名长期停留。
 - 本切片不新增或修改 API 路径、响应结构或数据库表，也不新增 mock；migration `20260910130000_personal_display_name_capacity` 只把 `users.username` 与 `user_identities.display_name` 从 100 扩为 120 字符，使同步存储容量与既有客户/技师显示名 API 的 120 字符校验一致。

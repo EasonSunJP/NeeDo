@@ -189,11 +189,54 @@ describe("RealtimeRepository formal identity payloads", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           OR: expect.arrayContaining([
-            { customerProfile: { is: { displayName: { contains: "Eason" }, deletedAt: null } } }
+            { customerProfile: { is: { displayName: { contains: "Eason" }, deletedAt: null } } },
+            {
+              technicianProfile: {
+                is: { displayName: { contains: "Eason" }, deletedAt: null }
+              }
+            },
+            {
+              identities: {
+                some: {
+                  displayName: { contains: "Eason" },
+                  type: { in: ["customer", "user", "u", "technician", "scout"] },
+                  isActive: true,
+                  deletedAt: null
+                }
+              }
+            }
           ])
         })
       })
     );
+  });
+
+  it("returns the name field that matched add-friend search while legacy personal rows differ", async () => {
+    const client = {
+      user: {
+        findMany: jest.fn(async () => [
+          {
+            id: 237,
+            needoId: "u0000000237",
+            username: "CutGirl",
+            avatarUrl: null,
+            identities: [{ id: 2370, type: "customer", displayName: "旧身份名", isDefault: true }],
+            customerProfile: { displayName: "旧资料名", deletedAt: null },
+            technicianProfile: { displayName: "旧技师名", deletedAt: null }
+          }
+        ]),
+        count: jest.fn(async () => 1)
+      }
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).searchDirectory(137, {
+      ownerIdentityId: 1370,
+      query: "cutgirl",
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result.list[0]?.username).toBe("CutGirl");
   });
 
   it("returns the current profile name to the IM store after opening contact information", async () => {
