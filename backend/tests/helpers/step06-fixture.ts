@@ -197,6 +197,7 @@ interface AuditLogEntry {
 }
 
 const now = (): Date => new Date("2026-05-25T00:00:00.000Z");
+const fixturePasswordHashPromise = hash("Abcd@1234", 12);
 
 const activePermissions = (permissions: TestPermissionRecord[]): TestPermissionRecord[] =>
   permissions.filter((permission) => permission.deletedAt === null);
@@ -232,7 +233,7 @@ const attachRolePermissions = (
 };
 
 export const createStep06Fixture = async (dependencyOverrides: Partial<AppDependencies> = {}) => {
-  const passwordHash = await hash("Abcd@1234", 12);
+  const passwordHash = await fixturePasswordHashPromise;
   const auditLogs: AuditLogEntry[] = [];
   const permissionAssignCalls: Array<{ roleId: number; permissionIds: number[] }> = [];
   const userRoleAssignCalls: Array<{
@@ -679,8 +680,7 @@ export const createStep06Fixture = async (dependencyOverrides: Partial<AppDepend
               (typeof isTestAccount !== "boolean" || user.isTestAccount === isTestAccount) &&
               (!roleId ||
                 user.userRoles.some(
-                  (assignment) =>
-                    assignment.roleId === roleId && assignment.deletedAt === null
+                  (assignment) => assignment.roleId === roleId && assignment.deletedAt === null
                 ))
           )
           .slice((page - 1) * pageSize, page * pageSize),

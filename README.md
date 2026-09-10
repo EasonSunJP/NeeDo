@@ -49,6 +49,24 @@ npm run dev:frontend
 npm run build
 ```
 
+## Backend tests
+
+Run the complete backend inventory from `backend/` with either command:
+
+```bash
+npm test
+npm test -- --runInBand
+```
+
+Both complete-suite forms discover the current test inventory and run it as sequential,
+process-isolated Jest batches. A batch contains at most 12 files and 128 KiB of test source; files
+at or above 48 KiB plus resource-intensive test files that directly load `supertest` or `bcryptjs`
+run alone. Each batch releases its Node heap before the next batch starts, every batch is attempted
+even when an earlier batch fails, and the runner prints aggregate suite/test counts with a
+deterministic nonzero exit status on any batch failure. `JEST_SHARD_COUNT` remains an explicit
+compatibility override for a positive fixed shard count. Passing test paths, `--runTestsByPath`, or
+`-t` keeps a focused command in one serial Jest process.
+
 ## Formal Auth Frontend
 
 The recovered platform announcement backend, delivery guarantees, guarded local
