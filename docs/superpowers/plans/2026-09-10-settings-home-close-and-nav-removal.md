@@ -88,6 +88,6 @@ git diff --check
 
 Expected: all commands pass with no new warnings or whitespace errors.
 
-- [ ] **Step 5: Verify the rendered mobile page**
+- [x] **Step 5: Verify the rendered mobile page**
 
 Open the authenticated user settings route at an approximately 440-pixel mobile viewport. Confirm the shared close button is visible at the upper right, activates `/me`, the left back button remains, and no bottom navigation or bottom navigation safe-area gap is rendered.
