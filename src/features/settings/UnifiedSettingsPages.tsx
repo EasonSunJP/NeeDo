@@ -3769,10 +3769,10 @@ export function UnifiedSettingsAboutPage({ portal }: { portal: UnifiedSettingsPo
 
 type LegalDocumentKind = "terms" | "privacy";
 
-function PersistedLegalDocumentPage({ portal, slug }: { portal: UnifiedSettingsPortal; slug: "terms-of-use" | "privacy-policy" }) {
+function PersistedLegalDocumentPage({ portal, slug, fallbackTitleSource }: { portal: UnifiedSettingsPortal; slug: string; fallbackTitleSource: string }) {
   const { language } = useI18n();
   const state = usePublicLegalDocument(slug, language);
-  const fallbackTitle = translateText(slug === "terms-of-use" ? "利用规约" : "个人信息保护方针", language);
+  const fallbackTitle = translateText(fallbackTitleSource, language);
   return (
     <PortalScopedSettingsPage portal={portal}>
       <SettingsDetailPage backTo={getSettingsBasePath(portal)} contentClassName="pb-28" info={translateText("只显示运营后台已发布的当前语言版本。", language)} navItems={getSettingsNavItems(portal)} title={state.document?.title ?? fallbackTitle}>
@@ -3788,11 +3788,19 @@ function PersistedLegalDocumentPage({ portal, slug }: { portal: UnifiedSettingsP
 }
 
 function UnifiedSettingsTermsDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  return <PersistedLegalDocumentPage portal={portal} slug="terms-of-use" />;
+  return <PersistedLegalDocumentPage fallbackTitleSource="利用规约" portal={portal} slug="terms-of-use" />;
 }
 
 function UnifiedSettingsPrivacyDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  return <PersistedLegalDocumentPage portal={portal} slug="privacy-policy" />;
+  return <PersistedLegalDocumentPage fallbackTitleSource="个人信息保护方针" portal={portal} slug="privacy-policy" />;
+}
+
+export function UnifiedSettingsMerchantAgreementPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  return <PersistedLegalDocumentPage fallbackTitleSource="店铺服务规则与合同" portal={portal} slug="merchant-agreement" />;
+}
+
+export function UnifiedSettingsAffiliateAgreementPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  return <PersistedLegalDocumentPage fallbackTitleSource="联盟营销规则与合同" portal={portal} slug="affiliate-agreement" />;
 }
 
 function UnifiedSettingsLegalDocumentPage({

@@ -28,6 +28,26 @@ describe("LegalDocumentsTab", () => {
     expect(source).toContain("版本发布日期");
   });
 
+  it("explains the workflow and replaces unexplained technical inputs with guided choices", () => {
+    for (const label of [
+      "1. 选择政策类型",
+      "2. 确认用户入口",
+      "3. 完善各语言",
+      "4. 保存并发布",
+      "URL 从哪里来？",
+      "稳定标识（slug）",
+      "用户会在哪里看到",
+      "选择推荐类型"
+    ]) {
+      expect(source).toContain(label);
+    }
+    expect(source).toContain("legalDocumentTemplates");
+    expect(source).toContain("legalInternalRouteOptions");
+    expect(source).toContain("legalDisplayLocationOptions");
+    expect(source).toContain('type="checkbox"');
+    expect(source).not.toContain("显示位置（逗号分隔）");
+  });
+
   it("retains drafts on conflicts and never inserts another locale as fallback", () => {
     expect(source).toContain("当前语言草稿已保留");
     expect(source).toContain("不会使用其他语言替代");

@@ -716,3 +716,22 @@ FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK
 - 基础设置品牌区已在认证浏览器中确认：两张卡片显示“系统默认 · 当前启用”，登录页中央标识与 Request 主导航中央按钮均显示实际默认资源；Request 预览呈现当前示例主题颜色，并明确提示其会随每位用户的 UI 主题适配。选择控件使用后台统一的圆角按钮，不再暴露浏览器原生文件输入。
 - 储存页在浏览器显示默认 30/3 天和“只影响服务器前瞻保留、不删除设备本地记录/缓存”的边界；支付页显示当前线下/NDP 开关与 PayPay、PayPal、Stripe、Apple、LINE 的未接入项目入口。支付启停与 IM 保留期的真实写入/恢复由上述 checker 覆盖，本次浏览器没有重复制造额外版本。
 - 角色卡片人员列表与权限树/API 最新性对账不在本系统设置微步骤内，未修改；它们必须作为独立的小步骤，以最新 User Management、权限常量、路由声明和数据库授权为共同依据实施。
+
+## 政策目录补齐与编辑指引（2026-09-10）
+
+运营后台政策目录固定覆盖 10 类当前业务文档：利用规约、个人信息保护方针、店铺服务规则与合同、联盟营销规则与合同、技师服务提供者协议、eKYC 同意与身份信息处理说明、取消与退款政策、NDP 使用规则、社区与内容发布规则，以及特定商取引法表示。
+
+利用规约与个人信息保护方针继续从现有五语言正式内容源导入；店铺与联盟营销合同继续复用不可变合同正文和版本。其余六类在没有经过法务与运营审阅的正文时只创建后台目录，固定为 `isEnabled=false` 且没有发布版本，不会成为用户可见的假条款。运营人员仍须按语言保存草稿，并通过既有发布权限、版本锁和审计链路发布。
+
+政策页顶部增加“选择政策类型 → 确认用户入口 → 完善各语言 → 保存并发布”流程图。新增表单可从推荐类型自动带出后台名称、稳定 slug、现有站内页面和建议展示场景；站内页面通过候选列表和 URL 组成示例说明，展示场景改为带中文用途说明的多选项，不再要求手工填写逗号代码。未知的历史显示位置会原样展示并保留，除非运营人员主动取消。
+
+新增目录的业务关联如下：
+
+- 技师协议：`technician-application`。
+- eKYC 说明：`ekyc`、`merchant-application`、`technician-application`、`withdrawal`。
+- 取消与退款：`booking-checkout`、`order-detail`、`cancellation`。
+- NDP 规则：`ndp-wallet`、`booking-checkout`、`withdrawal`。
+- 社区规则：`social-compose`、`social-report`。
+- 特定商取引法表示：`paid-service`、`membership-purchase`、`footer`。
+
+目录范围参考日本官方规则边界：个人信息的利用目的和第三方提供同意应具体、清晰；在线收费服务需要容易识别的销售条件及取消条件；符合前払式支払手段定义的价值还可能需要单独法定表示。运营主体、地址、代表者、价格、支付方式、eKYC 受托方、保存期限、退款和 NDP 法律性质等事实必须在启用前由 NeeDo 法务与运营确认。参考：[个人信息保护委员会通则指南](https://www.ppc.go.jp/personalinfo/legal/guidelines_tsusoku/)、[消费者厅通信销售规则](https://www.no-trouble.caa.go.jp/what/mailorder/rule.html)、[金融厅前払式支払手段资料](https://www.fsa.go.jp/common/about/pamphlet/shin-kessai.pdf)。

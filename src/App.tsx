@@ -115,11 +115,13 @@ import {
   UserSettingsVerificationPage
 } from "./pages/user/UserSettingsPages";
 import {
+  UnifiedSettingsAffiliateAgreementPage,
   UnifiedSettingsAboutPage,
   UnifiedSettingsAccountPage,
   UnifiedSettingsDeleteAccountPage,
   UnifiedSettingsHelpPage,
   UnifiedSettingsLanguagePage,
+  UnifiedSettingsMerchantAgreementPage,
   UnifiedSettingsNotificationsPage,
   UnifiedSettingsPage,
   UnifiedSettingsPortalPage,
@@ -1321,6 +1323,8 @@ export default function App() {
               <Route path="/me/settings/about" element={protect("user", <UserSettingsAboutPage />)} />
               <Route path="/me/settings/terms" element={protect("user", <UserSettingsTermsPage />)} />
               <Route path="/me/settings/privacy" element={protect("user", <UserSettingsPrivacyPage />)} />
+              <Route path="/me/settings/merchant-agreement" element={protect("user", <UnifiedSettingsMerchantAgreementPage portal="user" />)} />
+              <Route path="/me/settings/affiliate-agreement" element={protect("user", <UnifiedSettingsAffiliateAgreementPage portal="user" />)} />
               <Route path="/me/settings/ndp-guide" element={protect("user", <UserSettingsNdpGuidePage />)} />
               <Route path="/me/settings/delete-account" element={protect("user", <UserSettingsDeleteAccountPage />)} />
               <Route path="/support" element={protect("user", <SupportPage />)} />
