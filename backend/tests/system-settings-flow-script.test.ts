@@ -45,6 +45,24 @@ describe("system settings formal data tooling", () => {
     expect(source).not.toContain("upsert(");
   });
 
+  it("soft-retires only the exact empty disabled legacy placeholders", () => {
+    const source = read("backfill-system-settings.ts");
+    for (const slug of [
+      "other-rules-and-guides",
+      "cancellation-policy",
+      "service-provider-guide"
+    ]) {
+      expect(source).toContain(`slug: "${slug}"`);
+    }
+    expect(source).toContain("LEGACY_EMPTY_LEGAL_DOCUMENTS");
+    expect(source).toContain('action: "system.legal_document.legacy_placeholder_retired"');
+    expect(source).toContain("drafts: { where: { deletedAt: null } }");
+    expect(source).toContain("releases: { where: { deletedAt: null } }");
+    expect(source).toContain("lockVersion: { increment: 1 }");
+    expect(source).toContain('status: "retired"');
+    expect(source).not.toMatch(/legalDocument\.delete(?:Many)?\(/u);
+  });
+
   it("keeps the checker local-only, rollback-contained, and residue-aware", () => {
     const source = read("check-system-settings-flow.ts");
     expect(source).toContain("assertNonProductionLocalDatabase");
