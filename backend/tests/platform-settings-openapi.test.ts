@@ -37,6 +37,7 @@ describe("platform settings OpenAPI contract", () => {
         "passwordLoginOtpEnabled",
         "passwordLoginOtpRule",
         "passwordLoginOtpOnNewIp",
+        "anytimeServiceTestEnabled",
         "loginLogoMediaPublicId",
         "requestButtonMediaPublicId"
       ])
@@ -46,6 +47,11 @@ describe("platform settings OpenAPI contract", () => {
       "monthly_first",
       "every_login"
     ]);
+    expect(basic.properties.anytimeServiceTestEnabled).toEqual({ type: "boolean" });
+
+    expect(schemas.PlatformOperationsSettings.required).toContain(
+      "anytimeServiceTestEnabled"
+    );
 
     expect(payment).toMatchObject({
       additionalProperties: false,

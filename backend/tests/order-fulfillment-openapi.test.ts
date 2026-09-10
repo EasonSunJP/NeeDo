@@ -76,6 +76,21 @@ const idempotentMutationOperations = operations.filter(
 );
 
 describe("formal order fulfillment OpenAPI contract", () => {
+  it("documents the persisted service-time gate and the operations test override", () => {
+    expect((paths["/api/v1/orders/{id}/service/start"].post as unknown as { description: string }).description).toMatch(
+      /30 minutes before startsAt/i
+    );
+    expect((paths["/api/v1/orders/{id}/service/end"].post as unknown as { description: string }).description).toMatch(
+      /expectedEndsAt/i
+    );
+    expect(
+      responseDescription("post", "/api/v1/orders/{id}/service/start", "409")
+    ).toContain("error.order.service_start_too_early");
+    expect(
+      responseDescription("post", "/api/v1/orders/{id}/service/end", "409")
+    ).toContain("error.order.service_end_too_early");
+  });
+
   it("documents all 15 authenticated operations with exact permissions and unique operation IDs", () => {
     const operationIds: string[] = [];
     for (const [method, path, permission, success] of operations) {

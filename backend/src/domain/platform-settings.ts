@@ -25,6 +25,7 @@ export interface PlatformSettingsSnapshot {
   requestButtonMediaAssetId: number | null;
   offlinePaymentEnabled: boolean;
   ndpPaymentEnabled: boolean;
+  anytimeServiceTestEnabled: boolean;
   createdByUserId: number | null;
   createdAt: Date;
 }

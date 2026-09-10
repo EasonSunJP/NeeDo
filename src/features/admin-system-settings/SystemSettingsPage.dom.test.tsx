@@ -49,6 +49,7 @@ const settings = {
   passwordLoginOtpEnabled: true,
   passwordLoginOtpRule: "monthly_first" as const,
   passwordLoginOtpOnNewIp: true,
+  anytimeServiceTestEnabled: false,
   loginLogoMediaAssetId: null,
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
@@ -138,5 +139,25 @@ describe("SystemSettingsPage interactions", () => {
     expect(container.textContent?.match(/系统默认 · 当前启用/g)).toHaveLength(2);
     expect(Array.from(container.querySelectorAll('input[type="file"]')).every((input) => input.classList.contains("sr-only"))).toBe(true);
     expect(Array.from(container.querySelectorAll("label")).filter((label) => label.textContent?.includes("选择新图片"))).toHaveLength(2);
+  });
+
+  it("publishes the anytime-service test switch through the protected basic settings write", async () => {
+    mocked.hasPermission.mockImplementation((permission?: string) =>
+      permission === "backoffice:system-settings:write"
+    );
+    mocked.updateBasic.mockResolvedValue({ ...settings, anytimeServiceTestEnabled: true });
+    await act(async () => {
+      root.render(createElement(MemoryRouter, { initialEntries: ["/admin/settings/system?tab=basic"] }, createElement(SystemSettingsPage)));
+    });
+
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"][aria-label="随时服务测试"]');
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    await act(async () => toggle?.click());
+    const save = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("保存并发布"));
+    await act(async () => save?.click());
+
+    expect(mocked.updateBasic).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedVersion: 2, anytimeServiceTestEnabled: true })
+    );
   });
 });

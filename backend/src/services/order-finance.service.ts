@@ -9,12 +9,14 @@ import type {
 import { CompensationEngine } from "./compensation-engine.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import { assertMerchantShopId } from "./merchant-shop-scope";
+import type { LedgerCurrency } from "./ledger.service";
 
 export type ServiceIncomeStatus = "unreported" | "reported" | "confirmed";
 export type OrderFinanceType = "booking" | "request";
 export type ServicePaymentChannel =
   | "unknown"
   | "platform_online"
+  | "platform_test_ndp"
   | "offline_cash"
   | "offline_card"
   | "bank_transfer"
@@ -33,6 +35,7 @@ export interface MoneyTimelineEvent {
 
 export interface OrderFinancialRecordPayload {
   id: number;
+  ndpCurrency: LedgerCurrency;
   serviceAmountJpy: number;
   baseServiceAmountJpy: number | null;
   extensionAmountJpy: number | null;
@@ -78,6 +81,7 @@ export interface OrderFinanceRecord {
   technicianName: string | null;
   serviceName: string;
   priceAmountJpy: number;
+  checkoutPaymentAmountNdp: number | null;
   startsAt: string;
   endsAt: string;
   financial: OrderFinancialRecordPayload | null;
@@ -122,6 +126,8 @@ export interface OrderFinanceDetailPayload {
   technicianName: string | null;
   serviceName: string;
   estimatedServiceGmvJpy: number;
+  ndpCurrency: LedgerCurrency | null;
+  checkoutPaymentAmountNdp: number | null;
   platformCollectedServiceAmountJpy: number;
   offlineReportedServiceAmountJpy: number;
   unknownOrUnreportedServiceAmountJpy: number;
@@ -348,6 +354,8 @@ export class OrderFinanceService {
       technicianName: record.technicianName,
       serviceName: record.serviceName,
       estimatedServiceGmvJpy,
+      ndpCurrency: record.financial?.ndpCurrency ?? null,
+      checkoutPaymentAmountNdp: record.checkoutPaymentAmountNdp,
       platformCollectedServiceAmountJpy: financial.platformCollectedServiceAmountJpy,
       offlineReportedServiceAmountJpy: financial.offlineReportedServiceAmountJpy,
       unknownOrUnreportedServiceAmountJpy: financial.unknownOrUnreportedServiceAmountJpy,
@@ -484,6 +492,7 @@ export class OrderFinanceService {
 
     return {
       id: 0,
+      ndpCurrency: "NDP",
       serviceAmountJpy: record.priceAmountJpy,
       baseServiceAmountJpy: null,
       extensionAmountJpy: null,

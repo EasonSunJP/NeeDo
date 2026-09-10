@@ -271,7 +271,11 @@ export interface OrderFinancialUpsertInput {
   shopId: number;
   technicianProfileId?: number | null;
   serviceAmountJpy: number;
+  platformCollectedServiceAmountJpy?: number;
+  offlineReportedServiceAmountJpy?: number;
   unknownOrUnreportedServiceAmountJpy?: number;
+  paymentChannel?: "platform_online" | "platform_test_ndp";
+  serviceIncomeStatus?: "confirmed";
   bPlatformFeeHoldNdp?: number;
   bPlatformFeeActualNdp?: number;
   cRequestFeeHoldNdp?: number;
@@ -578,6 +582,10 @@ export interface BookingLedgerSettlementInput {
   completedAt?: Date;
   customerUserId?: number;
   actorUserId: number | null;
+  checkoutPayment?: {
+    method: "ndp";
+    payableNdp: number;
+  };
   insufficientBalanceConfirmation?: {
     confirmed: true;
     idempotencyKey: string;
@@ -3354,6 +3362,20 @@ export class LedgerService
     override: Partial<OrderFinancialUpsertInput>,
     ndpCurrency: LedgerCurrency
   ): Promise<void> {
+    const checkoutIncome =
+      input.checkoutPayment?.method === "ndp"
+        ? {
+            platformCollectedServiceAmountJpy:
+              ndpCurrency === "NDP" ? input.serviceAmountJpy : 0,
+            offlineReportedServiceAmountJpy: 0,
+            unknownOrUnreportedServiceAmountJpy: 0,
+            paymentChannel:
+              ndpCurrency === "TEST_NDP"
+                ? ("platform_test_ndp" as const)
+                : ("platform_online" as const),
+            serviceIncomeStatus: "confirmed" as const
+          }
+        : {};
     return repository.upsertOrderFinancial!({
       bookingOrderId: input.bookingOrderId,
       orderType: input.orderType,
@@ -3363,6 +3385,7 @@ export class LedgerService
       technicianProfileId: input.technicianProfileId ?? null,
       serviceAmountJpy: input.serviceAmountJpy,
       unknownOrUnreportedServiceAmountJpy: input.serviceAmountJpy,
+      ...checkoutIncome,
       ...override
     });
   }

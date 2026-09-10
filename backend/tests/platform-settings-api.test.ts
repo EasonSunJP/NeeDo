@@ -21,6 +21,7 @@ const operationsSettings = {
   passwordLoginOtpEnabled: false,
   passwordLoginOtpRule: "first_login" as const,
   passwordLoginOtpOnNewIp: false,
+  anytimeServiceTestEnabled: false,
   loginLogoMediaAssetId: null,
   requestButtonMediaAssetId: null,
   offlinePaymentEnabled: true,
@@ -49,6 +50,7 @@ const basicBody = {
   passwordLoginOtpEnabled: true,
   passwordLoginOtpRule: "monthly_first",
   passwordLoginOtpOnNewIp: true,
+  anytimeServiceTestEnabled: true,
   loginLogoMediaPublicId: null,
   requestButtonMediaPublicId: null
 };
