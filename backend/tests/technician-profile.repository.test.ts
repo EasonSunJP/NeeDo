@@ -94,6 +94,9 @@ describe("TechnicianProfileRepository", () => {
         update: jest.fn().mockResolvedValue(updated),
         findUniqueOrThrow: jest.fn().mockResolvedValue(updated)
       },
+      customerProfile: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       mediaAsset: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         create: jest.fn().mockResolvedValue({ id: 91 })
@@ -101,6 +104,9 @@ describe("TechnicianProfileRepository", () => {
       user: {
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
+      userIdentity: {
+        updateMany: jest.fn().mockResolvedValue({ count: 2 })
       },
       auditLog: { create: jest.fn().mockResolvedValue({ id: 1 }) }
     };
@@ -151,6 +157,23 @@ describe("TechnicianProfileRepository", () => {
         ownerIdentityId: 19,
         usageType: "avatar"
       })
+    });
+    expect(transaction.customerProfile.updateMany).toHaveBeenCalledWith({
+      where: { userId: 9, deletedAt: null },
+      data: { displayName: "彩" }
+    });
+    expect(transaction.userIdentity.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 9,
+        type: { in: ["customer", "user", "u", "technician", "scout"] },
+        isActive: true,
+        deletedAt: null
+      },
+      data: { displayName: "彩" }
+    });
+    expect(transaction.user.update).toHaveBeenCalledWith({
+      where: { id: 9 },
+      data: { username: "彩" }
     });
     expect(transaction.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: "technician_profile.self_update", targetId: 31 })

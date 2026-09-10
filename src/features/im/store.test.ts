@@ -314,6 +314,84 @@ function deferred<T>() {
 }
 
 describe("formal IM recall terminal precedence", () => {
+  it("does not let an in-flight bootstrap restore an old contact name after directory refresh", async () => {
+    mocked.session = {
+      activePublicId: "u0000010111",
+      avatarUrl: null,
+      id: 10_111,
+      primaryPublicId: "u0000010111",
+      username: "测试用户",
+    };
+    const oldUser = {
+      id: "201",
+      accountId: "u0000000201",
+      nickname: "旧名字",
+      avatar: "",
+      status: "active" as const,
+      searchableFields: ["旧名字", "u0000000201"],
+      sortKey: "旧名字",
+      profileKind: "person" as const,
+      tags: [],
+      userIdLabel: "u0000000201",
+    };
+    const newUser = {
+      ...oldUser,
+      nickname: "新名字",
+      searchableFields: ["新名字", "u0000000201"],
+      sortKey: "新名字",
+    };
+    const bootstrapState = (user: typeof oldUser) => ({
+      currentUserId: "10111",
+      config: {
+        allowStrangerMessaging: true,
+        preserveConversationAfterDelete: true,
+        recallWindowMs: 180_000,
+        separatorThresholdMs: 300_000,
+        syncDraftAcrossDevices: false,
+      },
+      users: [user],
+      contacts: [],
+      friendRequests: [],
+      conversations: [],
+      members: [],
+    });
+    const staleBootstrap = deferred<ReturnType<typeof bootstrapState>>();
+    const bootstrap = vi.fn()
+      .mockResolvedValueOnce(bootstrapState(oldUser))
+      .mockImplementationOnce(() => staleBootstrap.promise)
+      .mockResolvedValueOnce(bootstrapState(newUser));
+    mocked.api = {
+      bootstrap,
+      getDirectoryProfile: vi.fn().mockResolvedValue({
+        user: newUser,
+        relationship: "friend",
+        identityCard: {
+          entityType: "user",
+          displayName: "新名字",
+          verified: false,
+          creditReviewCount: 0,
+          languages: [],
+        },
+      }),
+    };
+
+    await renderStore();
+    let refreshPromise: Promise<void> | undefined;
+    await act(async () => {
+      refreshPromise = store?.refresh();
+      await store?.getDirectoryProfile("201");
+    });
+    expect(store?.usersById["201"]?.nickname).toBe("新名字");
+
+    await act(async () => {
+      staleBootstrap.resolve(bootstrapState(oldUser));
+      await refreshPromise;
+    });
+
+    expect(bootstrap).toHaveBeenCalledTimes(3);
+    expect(store?.usersById["201"]?.nickname).toBe("新名字");
+  });
+
   it("never lets a stale active row overwrite a confirmed recall tombstone", () => {
     expect(preferTerminalMessage(recalled, message())).toBe(recalled);
     expect(upsertConversationMessage([recalled], message())).toEqual([recalled]);

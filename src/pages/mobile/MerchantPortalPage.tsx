@@ -1591,12 +1591,18 @@ export function MerchantPortalPage() {
 }
 
 function MerchantPortalDataGate() {
+  const { view } = useParams();
   const { session } = useAuth();
+  const activeView = getMerchantView(view);
   const storeApiId = getMerchantStoreApiId(session?.linkedStoreId);
   const formalStoreQuery = useCoreReadQuery(
     () => storeApiId ? coreReadApi.getShopDetail(storeApiId) : null,
-    [storeApiId],
-    { enabled: Boolean(storeApiId), key: `core:shop:${storeApiId ?? "missing"}` }
+    [storeApiId, activeView],
+    {
+      enabled: Boolean(storeApiId),
+      force: true,
+      key: `core:shop:${storeApiId ?? "missing"}`
+    }
   );
 
   if (!storeApiId || !formalStoreQuery.data) {
