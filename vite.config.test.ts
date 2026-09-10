@@ -136,6 +136,17 @@ describe("Needo production chunks", () => {
       'const DataCenterPage = lazy(() => import("./pages/admin/DataCenterPage")'
     );
   });
+
+  it("loads the quarantined merchant Affiliate workspace only after entering its route", () => {
+    const appSource = readFileSync(new URL("./src/App.tsx", import.meta.url), "utf8");
+
+    expect(appSource).not.toContain(
+      'import { MerchantAffiliateTasksPage } from "./pages/merchant-admin/MerchantAffiliateTasksPage";'
+    );
+    expect(appSource).toContain(
+      'const MerchantAffiliateTasksPage = lazy(() => import("./pages/merchant-admin/MerchantAffiliateTasksPage")'
+    );
+  });
 });
 
 describe("NeeDo portal entry fallback", () => {
