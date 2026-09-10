@@ -461,6 +461,14 @@
 - 本地前端使用 `codex/temp` 分支的独立 `5190` 端口运行；本节不构成 staging 或 iPhone 真机验收，未推送、未部署，也未修改任何远程环境。
 - 前端定向 5 个文件、40 项及排除两份 Node runner `.mjs` 后的 Vitest 全量 500 个文件、3,356 项通过；根目录 TypeScript lint、formal production build 和 8 个 HTML/61 个资产的产物审计通过。后端相关仓储/服务/API 127 项、ESLint 与 TypeScript build 通过。默认 12 分片全量中，除既有 `backfill-technician-shop-affiliations.ts` 对可空 `shopId` 的类型错误外其余分片完成；一次无关 Backoffice HTTP 解析波动单文件复跑 32/32 通过，未为本切片扩大修改范围。
 
+## 6.32 iPhone PWA 键盘收起后输入区底部空白修复（2026-09-10，本地）
+
+- iPhone 已安装 PWA 在键盘收起后可能把 `visualViewport.height` 恢复到约 759px，但保留接近 956px 的布局视口高度。旧逻辑使用固定 96px 容差，会把残余约 197px 的浏览器/显示区域差继续判断为键盘，使会话房间写入 `bottom: 197px`，输入区因此停在页面中部并露出大块底部背景。
+- iOS 安装态的静止视口容差改为随参考高度计算，并限制在 120–240px；956px 参考高度下容差约为 210px。键盘关闭后的 197px 差值会恢复 `bottom: 0`，而键盘动画中 266px 及更大的收缩仍保持双边锚定。Android PWA、普通 Safari、键盘打开时的定位以及 composer 内部滚动规则保持原有判定。
+- 新增生命周期回归，覆盖 956→540→690→759px 且编辑器仍保持焦点的 iPhone PWA 序列。旧实现最终得到 `bottom: 197px`，修复后最终为 `bottom: 0px`，同时中间帧继续保持 `bottom: 266px`。
+- IM/PWA 定向回归 6 个文件、170 项通过；TypeScript lint、formal production build 和 8 个 HTML/65 个资产的 bundle audit 通过。全量前端除当前 `main` 已能独立复现的技师排班手动预约失败项外，529 个文件、3,475 项通过；该基线失败不涉及本节修改的 viewport hook 或测试。真实 Chromium 布局检查继续使用生产 `.im-conversation-room-shell` 样式，确认 540/690px 中间态分别停在键盘边界，759px 恢复态的房间与输入框底边均回到布局视口底边。
+- 本节不修改 IM API、数据库、migration、消息业务逻辑或视觉主题；只进行本地代码和自动化验证，不构成 staging 或 iPhone PWA 重新发布后的验收。
+
 ---
 
 ## 7. 给 Codex 的命令

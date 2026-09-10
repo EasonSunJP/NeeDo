@@ -62,6 +62,41 @@ describe("chat visual viewport lifecycle", () => {
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
+  it("releases an installed iPhone PWA room when keyboard dismissal settles below layout height", async () => {
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(540);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(heightOf(frame)).toBe("540px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("416px");
+
+    await act(async () => {
+      setViewport(690);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("266px");
+
+    // Installed iOS PWAs can settle below innerHeight after the keyboard has
+    // disappeared. The remaining browser/display inset must not keep the
+    // conversation pinned above an empty bottom region.
+    await act(async () => {
+      setViewport(759);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(document.activeElement).toBe(editor);
+    expect(heightOf(frame)).toBe("759px");
+    expect(roomHeightOf(frame)).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+  });
+
   it("bounds an installed Android PWA room to the visible viewport when the keyboard is closed", async () => {
     document.documentElement.dataset.needoDisplayMode = "standalone";
     vi.stubGlobal("navigator", {
