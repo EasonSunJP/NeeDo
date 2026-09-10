@@ -177,6 +177,7 @@ describe("CustomerProfileRepository", () => {
       where: {
         userId: 11,
         type: { in: ["customer", "user", "u", "technician", "scout"] },
+        isActive: true,
         deletedAt: null
       },
       data: { displayName: "新昵称" }

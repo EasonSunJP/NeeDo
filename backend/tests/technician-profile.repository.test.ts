@@ -166,6 +166,7 @@ describe("TechnicianProfileRepository", () => {
       where: {
         userId: 9,
         type: { in: ["customer", "user", "u", "technician", "scout"] },
+        isActive: true,
         deletedAt: null
       },
       data: { displayName: "彩" }

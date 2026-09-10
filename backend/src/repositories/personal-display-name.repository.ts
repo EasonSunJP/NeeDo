@@ -31,6 +31,7 @@ export async function syncPersonalDisplayName(
       where: {
         userId: input.userId,
         type: { in: personalIdentityTypes },
+        isActive: true,
         deletedAt: null
       },
       data: { displayName: input.displayName }
