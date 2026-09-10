@@ -684,7 +684,7 @@ function buildSelfProfileEditPath(scope: SocialPortalScope) {
     return "/technician/me";
   }
 
-  return "/me/settings/profile";
+  return "/me";
 }
 
 function ProfileMetaRow({
