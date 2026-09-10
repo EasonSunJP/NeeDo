@@ -215,6 +215,7 @@ const DashboardPage = lazy(() => import("./pages/admin/DashboardPage").then((mod
 const LiveDashboardPage = lazy(() => import("./pages/admin/LiveDashboardPage").then((module) => ({ default: module.LiveDashboardPage })));
 const DashboardMetricDetailPage = lazy(() => import("./pages/admin/DashboardMetricDetailPage").then((module) => ({ default: module.DashboardMetricDetailPage })));
 const MerchantAdminDashboardPage = lazy(() => import("./pages/merchant-admin/MerchantAdminDashboardPage").then((module) => ({ default: module.MerchantAdminDashboardPage })));
+const MerchantAffiliateTasksPage = lazy(() => import("./pages/merchant-admin/MerchantAffiliateTasksPage").then((module) => ({ default: module.MerchantAffiliateTasksPage })));
 const MembershipAnalyticsPage = lazy(() => import("./pages/admin/MembershipAnalyticsPage").then((module) => ({ default: module.MembershipAnalyticsPage })));
 const DataCenterPage = lazy(() => import("./pages/admin/DataCenterPage").then((module) => ({ default: module.DataCenterPage })));
 const AgentsPage = lazy(() => import("./pages/admin/AgentsPage").then((module) => ({ default: module.AgentsPage })));
@@ -1410,6 +1411,10 @@ export default function App() {
               <Route path="/merchant-admin/analytics/members" element={protectPermission("merchant", "shop.member.analytics.view", <Suspense fallback={null}><MembershipAnalyticsPage scope="merchant-admin" /></Suspense>)} />
               <Route path="/merchant-admin/orders" element={protect("merchant", <MerchantAdminOrdersPage />)} />
               <Route path="/merchant-admin/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />
+              <Route
+                path="/merchant-admin/affiliate/tasks"
+                element={protectPermission("merchant", "page:merchant-affiliate-task", <Suspense fallback={null}><MerchantAffiliateTasksPage /></Suspense>)}
+              />
               <Route path="/merchant-admin/dine" element={protectFeature("merchant", "store.dine-in.order.view", <Navigate replace to="/merchant-admin/dine/orders" />, "/merchant-admin")} />
               <Route path="/merchant-admin/dine/orders" element={protectFeature("merchant", "store.dine-in.order.view", <MerchantAdminDineOrderRoutePage view="orders" />, "/merchant-admin")} />
               <Route path="/merchant-admin/dine/kds" element={protectFeature("merchant", "store.dine-in.order.manage", <MerchantAdminDineOrderRoutePage view="kds" />, "/merchant-admin")} />

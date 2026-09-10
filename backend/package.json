@@ -38,6 +38,7 @@
     "check:order-refund-case-flow": "tsx scripts/check-order-refund-case-flow.ts",
     "check:affiliate-task-expiry-flow": "tsx scripts/check-affiliate-task-expiry-flow.ts",
     "check:affiliate-platform-fee-flow": "tsx scripts/check-affiliate-platform-fee-flow.ts",
+    "check:merchant-affiliate-task-workspace": "tsx scripts/check-merchant-affiliate-task-workspace.ts",
     "check:booking-platform-fee-debt-flow": "tsx scripts/check-booking-platform-fee-debt-flow.ts",
     "check:shop-membership-card-plan-flow": "tsx scripts/check-shop-membership-card-plan-flow.ts",
     "check:shop-membership-card-issuance-flow": "tsx scripts/check-shop-membership-card-issuance-flow.ts",

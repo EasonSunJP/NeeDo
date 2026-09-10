@@ -69,6 +69,16 @@ const task = {
   budgetReservation: null
 };
 
+const merchantTask = {
+  ...task,
+  id: 82,
+  taskCode: "AFF-TEST-82",
+  publisherType: "merchant_account",
+  publisherMerchantAccountId: 31,
+  publisherShopId: null,
+  shops: [{ id: 2, shopId: 12, shopNameSnapshot: "Shinjuku Shop" }]
+};
+
 const editableBody = {
   name: task.name,
   description: task.description,
@@ -212,7 +222,9 @@ const createFixture = () => {
       page_size: 20
     })),
     createDraft: jest.fn(async () => task),
-    getPublisherTask: jest.fn(async () => task),
+    getPublisherTask: jest.fn(async (_actor, taskId: number) =>
+      taskId === merchantTask.id ? merchantTask : task
+    ),
     updateDraft: jest.fn(async () => task),
     updateDraftLocale: jest.fn(async () => task),
     submit: jest.fn(async () => ({ ...task, status: "pending_review" })),
@@ -226,6 +238,22 @@ const createFixture = () => {
     approve: jest.fn(async () => ({ ...task, status: "scheduled" })),
     reject: jest.fn(async () => ({ ...task, status: "rejected" }))
   };
+  const present = async (record: typeof task) => ({
+    ...record,
+    publisherDisplayName:
+      record.publisherType === "merchant_account" ? "NeeDo Group" : record.shops[0].shopNameSnapshot,
+    shops: record.shops.map((shop) => ({
+      ...shop,
+      publicId: shop.shopId === 11 ? "shop0000000011" : "shop0000000012"
+    }))
+  });
+  const merchantAffiliateTaskContextService = {
+    presentTask: jest.fn(present),
+    presentTaskPage: jest.fn(async (page: { list: Array<typeof task> }) => ({
+      ...page,
+      list: await Promise.all(page.list.map(present))
+    }))
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     testOnlyAllowLegacyAuthAdapters: true,
@@ -237,7 +265,8 @@ const createFixture = () => {
     },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     merchantShopContextRepository: createDirectShopContextRepository({ shopId: 11 }),
-    affiliateTaskService
+    affiliateTaskService,
+    merchantAffiliateTaskContextService
   } as never);
   const tokens = Object.fromEntries(
     users.map((user) => [
@@ -250,7 +279,7 @@ const createFixture = () => {
     ])
   ) as Record<number, string>;
 
-  return { app, affiliateTaskService, tokens };
+  return { app, affiliateTaskService, merchantAffiliateTaskContextService, tokens };
 };
 
 describe("affiliate task publishing HTTP API", () => {
@@ -266,7 +295,18 @@ describe("affiliate task publishing HTTP API", () => {
         expect(response.body).toMatchObject({
           code: 0,
           message: "success",
-          data: { total: 1, page: 1, page_size: 20 }
+          data: {
+            total: 1,
+            page: 1,
+            page_size: 20,
+            list: [
+              expect.objectContaining({
+                taskCode: "AFF-TEST-81",
+                publisherDisplayName: "Shibuya Shop",
+                shops: [expect.objectContaining({ publicId: "shop0000000011" })]
+              })
+            ]
+          }
         });
       });
 
@@ -289,6 +329,17 @@ describe("affiliate task publishing HTTP API", () => {
       .get(`/api/v1/merchant-admin/affiliate/tasks/${task.id}`)
       .set("Authorization", authorization)
       .expect(200);
+    await request(fixture.app)
+      .get(`/api/v1/merchant-admin/affiliate/tasks/${merchantTask.id}`)
+      .set("Authorization", authorization)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          taskCode: "AFF-TEST-82",
+          publisherDisplayName: "NeeDo Group",
+          shops: [expect.objectContaining({ publicId: "shop0000000012" })]
+        });
+      });
     await request(fixture.app)
       .patch(`/api/v1/merchant-admin/affiliate/tasks/${task.id}`)
       .set("Authorization", authorization)
@@ -327,7 +378,7 @@ describe("affiliate task publishing HTTP API", () => {
     const fixture = createFixture();
     const authorization = `Bearer ${fixture.tokens[99]}`;
 
-    await request(fixture.app)
+    const listResponse = await request(fixture.app)
       .get("/api/v1/backoffice/affiliate/tasks?page=1&pageSize=20&status=pending_review")
       .set("Authorization", authorization)
       .expect(200);
@@ -352,6 +403,8 @@ describe("affiliate task publishing HTTP API", () => {
       task.id,
       "Campaign proof is incomplete"
     );
+    expect(listResponse.body.data.list[0]).not.toHaveProperty("publisherDisplayName");
+    expect(fixture.merchantAffiliateTaskContextService.presentTaskPage).not.toHaveBeenCalled();
   });
 
   it("enforces authentication and least-privilege RBAC before service execution", async () => {

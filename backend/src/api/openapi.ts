@@ -13929,6 +13929,162 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      MerchantAffiliateTaskShopSnapshot: {
+        type: "object",
+        required: ["id", "shopId", "shopNameSnapshot", "publicId"],
+        properties: {
+          id: { type: "integer", minimum: 1, description: "Technical task-snapshot key; not a public display identifier." },
+          shopId: { type: "integer", minimum: 1, description: "Technical shop key for API mutations; not a public display identifier." },
+          shopNameSnapshot: { type: "string", maxLength: 160 },
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$", description: "Formal public shop identifier shown to merchants." }
+        }
+      },
+      MerchantAffiliateTaskView: {
+        allOf: [
+          { $ref: "#/components/schemas/AffiliateTask" },
+          {
+            type: "object",
+            required: ["publisherDisplayName", "shops"],
+            properties: {
+              publisherDisplayName: { type: "string", minLength: 1, maxLength: 160 },
+              shops: {
+                type: "array",
+                items: { $ref: "#/components/schemas/MerchantAffiliateTaskShopSnapshot" }
+              }
+            }
+          }
+        ]
+      },
+      MerchantAffiliateTaskPage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MerchantAffiliateTaskView" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      MerchantAffiliatePublisherOption: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publisherType",
+          "merchantAccountId",
+          "shopId",
+          "publicId",
+          "displayName",
+          "current",
+          "manageableShopCount"
+        ],
+        properties: {
+          publisherType: { type: "string", enum: ["shop", "merchant_account"] },
+          merchantAccountId: { type: ["integer", "null"], minimum: 1, description: "Technical merchant-account key for API requests; not a public display identifier." },
+          shopId: { type: ["integer", "null"], minimum: 1, description: "Technical shop key for API requests; not a public display identifier." },
+          publicId: { type: ["string", "null"], pattern: "^shop[0-9]{10}$", description: "Formal public shop identifier; null for merchant-account publishers." },
+          displayName: { type: "string", minLength: 1, maxLength: 160 },
+          current: { type: "boolean" },
+          manageableShopCount: { type: "integer", minimum: 0 }
+        }
+      },
+      MerchantAffiliatePublisherPage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/MerchantAffiliatePublisherOption" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      MerchantAffiliateShopOption: {
+        type: "object",
+        additionalProperties: false,
+        required: ["shopId", "publicId", "name", "city", "activeServiceCount"],
+        properties: {
+          shopId: { type: "integer", minimum: 1, description: "Technical shop key for API requests; not a public display identifier." },
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$", description: "Formal public shop identifier shown to merchants." },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          city: { type: "string", maxLength: 100 },
+          activeServiceCount: { type: "integer", minimum: 0 }
+        }
+      },
+      MerchantAffiliateShopPage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/MerchantAffiliateShopOption" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      MerchantAffiliateServiceOption: {
+        type: "object",
+        additionalProperties: false,
+        required: ["serviceId", "shopId", "serviceName", "priceJpy", "shopName", "shopPublicId"],
+        properties: {
+          serviceId: { type: "integer", minimum: 1, description: "Technical service key for API requests; not a public display identifier." },
+          shopId: { type: "integer", minimum: 1, description: "Technical shop key for API requests; not a public display identifier." },
+          serviceName: { type: "string", minLength: 1, maxLength: 160 },
+          priceJpy: { type: "integer", minimum: 0 },
+          shopName: { type: "string", minLength: 1, maxLength: 160 },
+          shopPublicId: { type: "string", pattern: "^shop[0-9]{10}$" }
+        }
+      },
+      MerchantAffiliateServicePage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/MerchantAffiliateServiceOption" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      MerchantAffiliateFeePreviewRequest: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["publisherType", "shopIds", "totalBudgetNdp"],
+            properties: {
+              publisherType: { type: "string", const: "shop" },
+              shopIds: { type: "array", minItems: 1, maxItems: 1000, uniqueItems: true, items: { type: "integer", minimum: 1, description: "Technical shop key; not a public display identifier." } },
+              totalBudgetNdp: { type: "integer", minimum: 1, maximum: 2000000000 }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["publisherType", "merchantAccountId", "shopIds", "totalBudgetNdp"],
+            properties: {
+              publisherType: { type: "string", const: "merchant_account" },
+              merchantAccountId: { type: "integer", minimum: 1, description: "Technical merchant-account key; not a public display identifier." },
+              shopIds: { type: "array", minItems: 1, maxItems: 1000, uniqueItems: true, items: { type: "integer", minimum: 1, description: "Technical shop key; not a public display identifier." } },
+              totalBudgetNdp: { type: "integer", minimum: 1, maximum: 2000000000 }
+            }
+          }
+        ],
+        discriminator: { propertyName: "publisherType" }
+      },
+      MerchantAffiliateFeePreview: {
+        type: "object",
+        additionalProperties: false,
+        required: ["evaluatedAt", "effectiveAt", "platformFeeBps", "commissionBudgetNdp", "platformFeeReserveNdp", "grossFreezeNdp", "shopRateStatus"],
+        properties: {
+          evaluatedAt: { type: "string", format: "date-time" },
+          effectiveAt: { type: "string", format: "date-time" },
+          platformFeeBps: { type: "integer", minimum: 0, maximum: 10000 },
+          commissionBudgetNdp: { type: "integer", minimum: 1 },
+          platformFeeReserveNdp: { type: "integer", minimum: 0 },
+          grossFreezeNdp: { type: "integer", minimum: 1 },
+          shopRateStatus: { type: "string", enum: ["consistent"] }
+        }
+      },
       AffiliatePlatformFeeRule: {
         type: "object",
         additionalProperties: false,
@@ -18793,6 +18949,96 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/affiliate/publishers`]: {
+      get: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "List publisher scopes manageable by the authenticated merchant",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "keyword", in: "query", schema: { type: "string", minLength: 1, maxLength: 160 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated manageable Affiliate publishers", {
+            $ref: "#/components/schemas/MerchantAffiliatePublisherPage"
+          }),
+          "400": { description: "Invalid query" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Missing merchant Affiliate task permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/affiliate/shops`]: {
+      get: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "List formal shops in a manageable publisher scope",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "publisherType", in: "query", required: true, schema: { type: "string", enum: ["shop", "merchant_account"] } },
+          { name: "merchantAccountId", in: "query", description: "Technical API key; not a public display identifier.", schema: { type: "integer", minimum: 1 } },
+          { name: "keyword", in: "query", schema: { type: "string", minLength: 1, maxLength: 160 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated formal Affiliate shops", {
+            $ref: "#/components/schemas/MerchantAffiliateShopPage"
+          }),
+          "400": { description: "Invalid query" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Publisher scope denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/affiliate/services`]: {
+      get: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "List active JPY services in selected formal shops",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "publisherType", in: "query", required: true, schema: { type: "string", enum: ["shop", "merchant_account"] } },
+          { name: "merchantAccountId", in: "query", description: "Technical API key; not a public display identifier.", schema: { type: "integer", minimum: 1 } },
+          { name: "shopIds", in: "query", required: true, description: "Comma-separated technical shop keys; not public display identifiers.", schema: { type: "string", pattern: "^[1-9][0-9]*(?:,[1-9][0-9]*)*$" } },
+          { name: "keyword", in: "query", schema: { type: "string", minLength: 1, maxLength: 160 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated formal Affiliate services", {
+            $ref: "#/components/schemas/MerchantAffiliateServicePage"
+          }),
+          "400": { description: "Invalid query" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Publisher scope denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/affiliate/tasks/fee-preview`]: {
+      post: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "Preview the server-authoritative Affiliate platform fee reserve",
+        description: "Does not mutate tasks and performs no wallet, reservation, ledger, or task write.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantAffiliateFeePreviewRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Read-only Affiliate fee preview", {
+            $ref: "#/components/schemas/MerchantAffiliateFeePreview"
+          }),
+          "400": { description: "Invalid budget or shop selection" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Publisher scope denied" },
+          "409": { description: "Selected shops have inconsistent effective platform fee rates" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/affiliate/tasks`]: {
       get: {
         tags: ["Affiliate Task Publishing"],
@@ -18801,7 +19047,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: affiliateTaskListParameters,
         responses: {
           "200": jsonDataResponse("Paginated publisher affiliate tasks", {
-            $ref: "#/components/schemas/AffiliateTaskPage"
+            $ref: "#/components/schemas/MerchantAffiliateTaskPage"
           }),
           ...affiliateTaskErrorResponses
         }
@@ -18820,7 +19066,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "201": jsonDataResponse("Created affiliate task draft", {
-            $ref: "#/components/schemas/AffiliateTask"
+            $ref: "#/components/schemas/MerchantAffiliateTaskView"
           }),
           ...affiliateTaskErrorResponses
         }
@@ -18834,7 +19080,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [idPathParameter("taskId")],
         responses: {
           "200": jsonDataResponse("Publisher affiliate task", {
-            $ref: "#/components/schemas/AffiliateTask"
+            $ref: "#/components/schemas/MerchantAffiliateTaskView"
           }),
           ...affiliateTaskErrorResponses
         }
@@ -18854,7 +19100,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": jsonDataResponse("Updated affiliate task draft", {
-            $ref: "#/components/schemas/AffiliateTask"
+            $ref: "#/components/schemas/MerchantAffiliateTaskView"
           }),
           ...affiliateTaskErrorResponses
         }
@@ -18884,7 +19130,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "200": jsonDataResponse("Updated affiliate task language", {
-            $ref: "#/components/schemas/AffiliateTask"
+            $ref: "#/components/schemas/MerchantAffiliateTaskView"
           }),
           ...affiliateTaskErrorResponses
         }
@@ -18898,7 +19144,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [idPathParameter("taskId")],
         responses: {
           "200": jsonDataResponse("Submitted affiliate task", {
-            $ref: "#/components/schemas/AffiliateTask"
+            $ref: "#/components/schemas/MerchantAffiliateTaskView"
           }),
           ...affiliateTaskErrorResponses
         }

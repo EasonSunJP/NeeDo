@@ -667,6 +667,7 @@ function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
                     setCreationMode(checked ? null : mode);
                     setActionError("");
                   }}
+                  key={mode}
                   role="switch"
                   type="button"
                 >

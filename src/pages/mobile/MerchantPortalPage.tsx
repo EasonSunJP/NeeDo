@@ -97,6 +97,7 @@ import { buildFormalMerchantStaffCard } from "../../features/shop-analytics/form
 import { loadFormalMerchantHome } from "../../features/shop-analytics/merchant-home-data";
 import { mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { ShopAnalyticsDashboard } from "../../features/shop-analytics/ShopAnalyticsDashboard";
+import "../../features/shop-analytics/registerI18n";
 
 type MerchantView = "dashboard" | "today-appointments" | "revenue" | "orders" | "messages" | "schedule" | "staff" | "contacts" | "moments" | "me";
 type MerchantMeTab = "info" | "service" | "data";

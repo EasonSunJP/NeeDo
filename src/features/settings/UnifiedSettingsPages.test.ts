@@ -493,6 +493,15 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(backendPortalSource).not.toContain("subtitle={t(entry.subtitle)}");
   });
 
+  it("marks only the affiliate identity as a TEST surface", () => {
+    expect(portalPageSource).toContain('row.kind === "affiliate" ? <AffiliateTestBadge /> : null');
+    expect(source).toContain("function AffiliateTestBadge()");
+    expect(source).toContain('aria-label="TEST"');
+    expect(portalPageSource).toContain('row.kind === "affiliate" ? " TEST" : ""');
+    expect(portalPageSource).not.toContain('row.kind === "merchant" ? <AffiliateTestBadge />');
+    expect(portalPageSource).not.toContain('row.kind === "technician" ? <AffiliateTestBadge />');
+  });
+
   it("waits for a formal identity switch before navigating", () => {
     expect(portalPageSource).toContain("const selectPortal = async (nextPortal: SwitchableSettingsPortal) => {");
     expect(portalPageSource).toContain("const nextEntry = getPortalEntry(nextPortal);");

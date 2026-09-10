@@ -212,6 +212,17 @@ function SettingsPortalInfoTrigger({ content, label }: { content: ReactNode; lab
   );
 }
 
+function AffiliateTestBadge() {
+  return (
+    <span
+      aria-label="TEST"
+      className="inline-flex rounded-full border border-[color:var(--client-primary)] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-[color:var(--client-primary)]"
+    >
+      TEST
+    </span>
+  );
+}
+
 function SettingsPortalActionRow({
   active = false,
   actionLabel,
@@ -2052,7 +2063,7 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
             return (
               <SettingsPortalActionRow
                 active={row.active}
-                actionLabel={`${actionText}：${t(label)}`}
+                actionLabel={`${actionText}：${t(label)}${row.kind === "affiliate" ? " TEST" : ""}`}
                 disabled={disabled}
                 info={
                   <span>
@@ -2070,7 +2081,12 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
 
                   navigate(getIdentityApplicationPath(row.kind));
                 }}
-                title={t(label)}
+                title={
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <span>{t(label)}</span>
+                    {row.kind === "affiliate" ? <AffiliateTestBadge /> : null}
+                  </span>
+                }
                 trailing={
                   row.action === "current" ? (
                     <SettingsPortalSelectionIndicator active />

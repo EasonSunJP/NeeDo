@@ -266,6 +266,10 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "operations-analytics-i18n";
   }
 
+  if (normalizedId.endsWith("/src/features/shop-analytics/i18n.ts")) {
+    return "shop-analytics-i18n";
+  }
+
   if (normalizedId.endsWith("/src/features/order-performance/i18n.ts")) {
     return "order-performance-i18n";
   }

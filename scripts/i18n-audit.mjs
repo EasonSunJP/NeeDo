@@ -33,6 +33,10 @@ const operationsAnalyticsTranslationsPath = path.join(
   workspaceRoot,
   "src/features/operations-analytics/i18n.ts",
 );
+const shopAnalyticsTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/shop-analytics/i18n.ts",
+);
 const orderPerformanceTranslationsPath = path.join(
   workspaceRoot,
   "src/features/order-performance/i18n.ts",
@@ -67,6 +71,7 @@ const excludedFilePatterns = [
   /src\/i18n\/translations\.ts$/u,
   /src\/features\/dashboard\/dashboardTranslations\.ts$/u,
   /src\/features\/operations-analytics\/i18n\.ts$/u,
+  /src\/features\/shop-analytics\/i18n\.ts$/u,
   /src\/features\/platform-user-management\/i18n\.ts$/u,
   /src\/features\/travel-fare\/i18n\.ts$/u,
   /src\/features\/technician-schedule\/automation-i18n\.ts$/u,
@@ -165,6 +170,7 @@ let affiliateProfileTranslationsPromise;
 let affiliateMarketplaceTranslationsPromise;
 let dashboardTranslationsPromise;
 let operationsAnalyticsTranslationsPromise;
+let shopAnalyticsTranslationsPromise;
 let orderPerformanceTranslationsPromise;
 let platformUserManagementTranslationsPromise;
 let travelFareTranslationsPromise;
@@ -277,6 +283,22 @@ async function loadOperationsAnalyticsTranslations() {
   })();
 
   return operationsAnalyticsTranslationsPromise;
+}
+async function loadShopAnalyticsTranslations() {
+  shopAnalyticsTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(shopAnalyticsTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.shopAnalyticsTranslations ?? {};
+  })();
+
+  return shopAnalyticsTranslationsPromise;
 }
 async function loadOrderPerformanceTranslations() {
   orderPerformanceTranslationsPromise ??= (async () => {
@@ -397,6 +419,7 @@ async function loadTranslationsFromSource(sourceCode) {
     await loadAffiliateMarketplaceTranslations();
   const dashboardTranslations = await loadDashboardTranslations();
   const operationsAnalyticsTranslations = await loadOperationsAnalyticsTranslations();
+  const shopAnalyticsTranslations = await loadShopAnalyticsTranslations();
   const orderPerformanceTranslations = await loadOrderPerformanceTranslations();
   const platformUserManagementTranslations = await loadPlatformUserManagementTranslations();
   const travelFareTranslations = await loadTravelFareTranslations();
@@ -453,6 +476,7 @@ async function loadTranslationsFromSource(sourceCode) {
     const loaded = await import(pathToFileURL(tempFile).href);
     return {
       ...operationsAnalyticsTranslations,
+      ...shopAnalyticsTranslations,
       ...platformUserManagementTranslations,
       ...travelFareTranslations,
       ...calendarParticipantTranslations,

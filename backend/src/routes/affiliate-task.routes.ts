@@ -9,10 +9,12 @@ import { AffiliateTaskRepository } from "../repositories/affiliate-task.reposito
 import { AffiliatePlatformFeeRepository } from "../repositories/affiliate-platform-fee.repository";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { MerchantAffiliateTaskContextRepository } from "../repositories/merchant-affiliate-task-context.repository";
 import { AffiliateTaskService } from "../services/affiliate-task.service";
 import { AffiliatePlatformFeeService } from "../services/affiliate-platform-fee.service";
 import { AuditLogService } from "../services/audit-log.service";
 import { LedgerService } from "../services/ledger.service";
+import { MerchantAffiliateTaskContextService } from "../services/merchant-affiliate-task-context.service";
 import {
   affiliateTaskIdParamSchema,
   affiliateTaskLocaleParamSchema,
@@ -52,7 +54,14 @@ export const createAffiliateTaskRoutes = (
   const service =
     dependencies.affiliateTaskService ??
     new AffiliateTaskService(taskRepository, ledgerService, { platformFeeService });
-  const controller = new AffiliateTaskController(service);
+  const presenter =
+    dependencies.merchantAffiliateTaskContextService ??
+    new MerchantAffiliateTaskContextService(
+      dependencies.merchantAffiliateTaskContextRepository ??
+        new MerchantAffiliateTaskContextRepository(),
+      platformFeeService
+    );
+  const controller = new AffiliateTaskController(service, presenter);
 
   router.get(
     "/merchant-admin/affiliate/tasks",

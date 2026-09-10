@@ -190,4 +190,15 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).not.toContain("联系顾客");
     expect(source).not.toContain("搜索订单、顾客");
   });
+
+  it("exposes one permission-gated Affiliate task workspace without demo submenus", () => {
+    expect(source).toContain('key: "affiliate"');
+    expect(source).toContain('title: "联盟营销"');
+    expect(source).toContain('label: "我的联盟营销"');
+    expect(source).toContain('rbacPermission: "page:merchant-affiliate-task"');
+    expect(source).not.toContain('permission: "page:merchant-affiliate-task"');
+    expect(source).not.toContain("达人广场");
+    expect(source).not.toContain("达人动态");
+    expect(source).not.toContain("营销热榜");
+  });
 });

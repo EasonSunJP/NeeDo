@@ -41,6 +41,10 @@ import type {
   AffiliateTaskService
 } from "./services/affiliate-task.service";
 import type {
+  MerchantAffiliateTaskContextRepositoryPort,
+  MerchantAffiliateTaskContextService
+} from "./services/merchant-affiliate-task-context.service";
+import type {
   AffiliateMarketplaceRepositoryPort,
   AffiliateMarketplaceService
 } from "./services/affiliate-marketplace.service";
@@ -191,6 +195,7 @@ import type { UserRepositoryPort } from "./repositories/user.repository";
 import type { TestAccountRepositoryPort } from "./repositories/test-account.repository";
 import { createAuthRoutes } from "./routes/auth.routes";
 import { createAffiliateTaskRoutes } from "./routes/affiliate-task.routes";
+import { createMerchantAffiliateTaskContextRoutes } from "./routes/merchant-affiliate-task-context.routes";
 import { createAffiliateMarketplaceRoutes } from "./routes/affiliate-marketplace.routes";
 import { createAffiliateProfileRoutes } from "./routes/affiliate-profile.routes";
 import { createAffiliateAllianceRoutes } from "./routes/affiliate-alliance.routes";
@@ -561,6 +566,8 @@ export interface AppDependencies {
   ndpExperienceCampaignRepository?: NdpExperienceCampaignRepositoryPort;
   affiliateTaskRepository?: AffiliateTaskRepositoryPort;
   affiliateTaskService?: AffiliateTaskService;
+  merchantAffiliateTaskContextRepository?: MerchantAffiliateTaskContextRepositoryPort;
+  merchantAffiliateTaskContextService?: MerchantAffiliateTaskContextService;
   affiliateMarketplaceRepository?: AffiliateMarketplaceRepositoryPort;
   affiliateMarketplaceService?: AffiliateMarketplaceService;
   affiliateCheckoutService?: AffiliateCheckoutService;
@@ -814,6 +821,7 @@ export const createApp = (
   mount("shared", createAffiliateAllianceRoutes(config, resolvedDependencies));
   mount("merchant-admin", createMerchantTechnicianApplicationRoutes(config, resolvedDependencies));
   mount("backoffice", createOperationsMerchantApplicationRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createMerchantAffiliateTaskContextRoutes(config, resolvedDependencies));
   mount(["backoffice", "merchant-admin"], createAffiliateTaskRoutes(config, resolvedDependencies));
   mount("shared", createAffiliateMarketplaceRoutes(config, resolvedDependencies));
   mount(["backoffice", "merchant-admin"], createBookingRoutes(config, resolvedDependencies));

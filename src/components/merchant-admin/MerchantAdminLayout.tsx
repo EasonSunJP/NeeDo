@@ -251,6 +251,19 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     ]
   },
   {
+    key: "affiliate",
+    title: "联盟营销",
+    items: [
+      {
+        label: "我的联盟营销",
+        to: "/merchant-admin/affiliate/tasks",
+        icon: "联",
+        children: ["任务", "多店范围", "预算"],
+        rbacPermission: "page:merchant-affiliate-task"
+      }
+    ]
+  },
+  {
     key: "settings",
     title: "门店设置",
     items: [

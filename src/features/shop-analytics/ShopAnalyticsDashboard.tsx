@@ -11,6 +11,7 @@ import type { Customer, Order, Settlement, Store, Technician } from "../../types
 import { cn, yen } from "../../lib/utils";
 import { buildTrendCoordinates } from "../../lib/technicianWorkTrendChart";
 import { translateText } from "../../i18n/translations";
+import "./registerI18n";
 
 type ShopDashboardLoader = typeof backofficeRealDataApi.dashboard;
 
