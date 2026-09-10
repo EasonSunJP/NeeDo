@@ -288,6 +288,7 @@ export const translations: TranslationMap = {
   "没有匹配的今日预约": fourLanguageTranslation("沒有符合的今日預約", "本日の予約はありません", "No matching bookings today", "일치하는 오늘 예약이 없습니다"),
   "查看今日预约": fourLanguageTranslation("查看今日預約", "本日の予約を表示", "View today's bookings", "오늘 예약 보기"),
   "查看营业额": fourLanguageTranslation("查看營業額", "売上を表示", "View revenue", "매출 보기"),
+  "查询营业额日期": { "zh-Hant": "查詢營業額日期", ja: "売上の日付を検索", en: "Query revenue dates", ko: "매출 날짜 조회" },
   "实时数据大屏": fourLanguageTranslation("即時數據大屏", "リアルタイムデータ画面", "Live data screen", "실시간 데이터 화면"),
   "NeeDo 实时运营数据": fourLanguageTranslation("NeeDo 即時營運數據", "NeeDo リアルタイム運営データ", "NeeDo live operations", "NeeDo 실시간 운영 데이터"),
   "退出全屏": fourLanguageTranslation("退出全螢幕", "全画面を終了", "Exit fullscreen", "전체 화면 종료"),

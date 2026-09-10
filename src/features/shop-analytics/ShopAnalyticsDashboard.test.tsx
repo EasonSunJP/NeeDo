@@ -269,6 +269,69 @@ describe("ShopAnalyticsDashboard formal API", () => {
     );
   });
 
+  it("rejects reversed custom dates without issuing another formal dashboard request", async () => {
+    const loadDashboard = vi.fn().mockResolvedValue(dashboard);
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard {...{ initialPeriod: "today", periodControl: "select" }} loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(loadDashboard).toHaveBeenCalledTimes(1));
+
+    const periodSelect = container.querySelector<HTMLSelectElement>('select[aria-label="选择数据期间"]');
+    await act(async () => {
+      if (!periodSelect) return;
+      periodSelect.value = "custom";
+      periodSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const fromInput = container.querySelector<HTMLInputElement>('input[aria-label="开始日期"]');
+    const toInput = container.querySelector<HTMLInputElement>('input[aria-label="结束日期"]');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(fromInput, "2026-09-06");
+      fromInput?.dispatchEvent(new Event("input", { bubbles: true }));
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(toInput, "2026-09-01");
+      toInput?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("开始日期不能晚于结束日期");
+    expect(loadDashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts a replaced period request and ignores its late response", async () => {
+    let resolveToday: ((payload: BackofficeDashboardPayload) => void) | undefined;
+    let resolveYear: ((payload: BackofficeDashboardPayload) => void) | undefined;
+    const todayResponse = new Promise<BackofficeDashboardPayload>((resolve) => { resolveToday = resolve; });
+    const yearResponse = new Promise<BackofficeDashboardPayload>((resolve) => { resolveYear = resolve; });
+    const loadDashboard = vi.fn()
+      .mockImplementationOnce(() => todayResponse)
+      .mockImplementationOnce(() => yearResponse);
+    const yearDashboard: BackofficeDashboardPayload = {
+      ...dashboard,
+      summary: { ...dashboard.summary, serviceGmvJpy: 210_000 }
+    };
+
+    await act(async () => {
+      root.render(<ShopAnalyticsDashboard {...{ initialPeriod: "today", periodControl: "select" }} loadDashboard={loadDashboard} store={store} />);
+    });
+    await waitFor(() => expect(loadDashboard).toHaveBeenCalledTimes(1));
+    const todaySignal = (loadDashboard.mock.calls[0]?.[2] as { signal: AbortSignal }).signal;
+
+    const periodSelect = container.querySelector<HTMLSelectElement>('select[aria-label="选择数据期间"]');
+    await act(async () => {
+      if (!periodSelect) return;
+      periodSelect.value = "year";
+      periodSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await waitFor(() => expect(loadDashboard).toHaveBeenCalledTimes(2));
+    expect(todaySignal.aborted).toBe(true);
+
+    await act(async () => resolveYear?.(yearDashboard));
+    await waitFor(() => expect(container.textContent).toContain("210,000"));
+    await act(async () => resolveToday?.(dashboard));
+    await act(async () => Promise.resolve());
+    expect(container.textContent).toContain("210,000");
+    expect(container.textContent).not.toContain("128,000");
+  });
+
   it("shows an explicit retry state without falling back to browser aggregates", async () => {
     const loadDashboard = vi
       .fn()

@@ -1381,6 +1381,51 @@ export function MerchantTodayAppointmentsTimeline({
   );
 }
 
+export function MerchantRevenueDrilldown({
+  loadDashboard,
+  onExit,
+  store
+}: {
+  loadDashboard?: typeof backofficeRealDataApi.dashboard;
+  onExit: () => void;
+  store: Store;
+}) {
+  const { language } = useOptionalI18n();
+  const t = (source: string) => translateText(source, language);
+  const periodSelectRef = useRef<HTMLSelectElement>(null);
+
+  return (
+    <>
+      <MobileFullscreenHeader
+        action={(
+          <button
+            aria-label={t("查询营业额日期")}
+            className="focus-ring inline-flex h-10 w-10 items-center justify-center rounded-full text-[color:var(--client-primary)]"
+            onClick={() => periodSelectRef.current?.focus()}
+            type="button"
+          >
+            <AppIcon className="h-5 w-5" name="search" />
+          </button>
+        )}
+        backLabel={t("返回")}
+        closeLabel={t("关闭")}
+        onBack={onExit}
+        onClose={onExit}
+        title={t("营业额")}
+      />
+      <section className="space-y-4 px-4 pb-4 pt-0">
+        <ShopAnalyticsDashboard
+          initialPeriod="today"
+          loadDashboard={loadDashboard}
+          periodControl="select"
+          periodSelectRef={periodSelectRef}
+          store={store}
+        />
+      </section>
+    </>
+  );
+}
+
 export function MerchantWorkbenchMetrics({
   availableScheduleSlotsValue,
   onlineEmployeeValue,
@@ -1752,8 +1797,6 @@ export function MerchantPortalContent({
   store: Store;
   technicians: Technician[];
 }) {
-  const { language } = useOptionalI18n();
-  const t = (source: string) => translateText(source, language);
   const merchantPortalConfig = roleBasedTabConfig.merchant;
   const { view } = useParams();
   const navigate = useNavigate();
@@ -2615,15 +2658,7 @@ export function MerchantPortalContent({
           title="个人中心"
         />
       ) : null}
-      {activeView === "revenue" ? (
-        <MobileFullscreenHeader
-          backLabel={t("返回")}
-          closeLabel={t("关闭")}
-          onBack={() => navigate("/merchant")}
-          onClose={() => navigate("/merchant")}
-          title={t("营业额")}
-        />
-      ) : null}
+      {activeView === "revenue" ? <MerchantRevenueDrilldown onExit={() => navigate("/merchant")} store={store} /> : null}
       {activeView === "today-appointments" ? (
         <MerchantTodayAppointmentsTimeline
           error={Boolean(formalHomeQuery.error)}
@@ -2639,7 +2674,7 @@ export function MerchantPortalContent({
         className={cn(
           activeView === "me"
             ? "space-y-4 pt-4"
-            : activeView === "schedule" || activeView === "staff" || activeView === "today-appointments" || activeView === "revenue"
+            : activeView === "schedule" || activeView === "staff" || activeView === "today-appointments"
               ? "px-4 pb-4 pt-0"
               : activeView === "dashboard"
                 ? "space-y-4 px-4 pb-4 pt-2"
@@ -2982,15 +3017,6 @@ export function MerchantPortalContent({
               />
             ) : null}
           </>
-        )}
-
-        {activeView === "revenue" && (
-          <ShopAnalyticsDashboard
-            initialPeriod="today"
-            key={store.id}
-            periodControl="select"
-            store={store}
-          />
         )}
 
         {activeView === "contacts" && (

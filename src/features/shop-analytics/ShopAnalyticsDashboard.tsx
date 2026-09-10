@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 import {
   backofficeRealDataApi,
   type BackofficeDashboardPayload,
@@ -27,6 +27,7 @@ export interface ShopAnalyticsDashboardProps {
   loadDashboard?: ShopDashboardLoader;
   initialPeriod?: DashboardPeriod;
   periodControl?: "buttons" | "select";
+  periodSelectRef?: RefObject<HTMLSelectElement | null>;
 }
 
 const periodOptions: Array<{ label: string; value: DashboardPeriod }> = [
@@ -206,6 +207,7 @@ export function ShopAnalyticsDashboard({
   initialPeriod = "last7days",
   loadDashboard = backofficeRealDataApi.dashboard,
   periodControl = "buttons",
+  periodSelectRef,
   store
 }: ShopAnalyticsDashboardProps) {
   const { language } = useOptionalI18n();
@@ -294,6 +296,7 @@ export function ShopAnalyticsDashboard({
             className="focus-ring h-10 w-full rounded-xl bg-transparent px-3 text-sm font-black text-[color:var(--client-text)]"
             id="shop-analytics-period"
             onChange={(event) => setPeriod(event.target.value as DashboardPeriod)}
+            ref={periodSelectRef}
             value={period}
           >
             {periodOptions.map((option) => <option key={option.value} value={option.value}>{text(option.label)}</option>)}

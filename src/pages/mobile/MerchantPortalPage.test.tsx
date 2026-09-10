@@ -311,21 +311,12 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !isMerchantRevenueView && !merchantProfileEditing}');
 
     const revenueView = merchantSource.slice(
-      merchantSource.indexOf('{activeView === "revenue" ? ('),
+      merchantSource.indexOf('{activeView === "revenue" ?'),
       merchantSource.indexOf('{activeView === "today-appointments" ? (')
     );
-    expect(revenueView).toContain("<MobileFullscreenHeader");
-    expect(revenueView).toContain('title={t("营业额")}');
-    expect(revenueView).toContain('onBack={() => navigate("/merchant")}');
-    expect(revenueView).toContain('onClose={() => navigate("/merchant")}');
-
-    const revenueContent = merchantSource.slice(
-      merchantSource.indexOf('{activeView === "revenue" && ('),
-      merchantSource.indexOf('{activeView === "me" && (')
-    );
-    expect(revenueContent).toContain("<ShopAnalyticsDashboard");
-    expect(revenueContent).toContain('initialPeriod="today"');
-    expect(revenueContent).toContain('periodControl="select"');
+    expect(revenueView).toContain("<MerchantRevenueDrilldown");
+    expect(revenueView).toContain('onExit={() => navigate("/merchant")}');
+    expect(merchantSource).toContain("export function MerchantRevenueDrilldown");
   });
 
   it("removes the extra employee-list containers so shared cards use the available width", () => {
