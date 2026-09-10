@@ -48,6 +48,23 @@ describe("rollback-only formal order fulfillment flow checker", () => {
     expect(source).not.toContain("needoId: `${marker}-technician`");
   });
 
+  it("keeps timing bypass isolated to rollback fixture rows instead of the shared platform setting", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    expect(source).not.toContain("anytimeServiceTestEnabled: true");
+    expect(source).not.toContain("tx.platformSettingVersion.updateMany");
+    expect(source).toContain(
+      "const startsAt = new Date(now.getTime() - sequence * 3_600_000);"
+    );
+    expect(source).toContain("async function withServiceSessionReadyToEnd<TResult>(");
+    expect(source).toContain("bookingOrderId: orderId, deletedAt: null");
+    expect(source).toContain("expectedEndsAt: new Date(now.getTime() - 1_000)");
+    expect(source).toContain(
+      "startedAt: new Date(now.getTime() - durationMs - 1_000)"
+    );
+    expect(source.match(/await withServiceSessionReadyToEnd\(/g)).toHaveLength(4);
+  });
+
   it("tracks and removes technician work events created by the concurrency fixture", () => {
     const source = readFileSync(concurrencyScriptPath, "utf8");
 

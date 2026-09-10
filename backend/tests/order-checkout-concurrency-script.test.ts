@@ -43,6 +43,19 @@ describe("formal TEST_NDP checkout concurrency checker", () => {
     expect(() => assertConcurrentCheckoutEvidence(validEvidence())).not.toThrow();
   });
 
+  it("seeds a checkout-ready fixture without depending on the anytime service switch", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    expect(source).toContain('status: "AWAITING_CHECKOUT"');
+    expect(source).toContain("tx.orderServiceSession.create");
+    expect(source).toContain("tx.orderCheckout.create");
+    expect(source).toContain('formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount"');
+    expect(source).toContain('rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"');
+    expect(source).toContain("acceptedAddOnIds: []");
+    expect(source).not.toContain("await serviceA.startService");
+    expect(source).not.toContain("await serviceA.endService");
+  });
+
   it.each([
     ["same connection", { connectionIds: [101, 101] }],
     ["one rejected request", { resultStatuses: ["completed", "rejected"] }],

@@ -40,6 +40,15 @@ type ConcurrentFixture = {
   walletId: number;
 };
 
+type ConcurrentRate = {
+  id: number;
+  publicId: string;
+  version: number;
+  ndpUnits: number;
+  jpyUnits: number;
+  effectiveFrom: Date;
+};
+
 type BaselineRow = { rowCount: string; idSum: string; updatedAtMax: Date | null };
 
 const BASELINE_TABLES = [
@@ -129,7 +138,8 @@ async function captureExternalBaseline(client: PrismaClient): Promise<Record<str
 
 async function createConcurrentFixture(
   client: PrismaClient,
-  now: Date
+  now: Date,
+  rate: ConcurrentRate
 ): Promise<ConcurrentFixture> {
   const marker = `order-concurrency-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
   const accountPrefix = String(Math.floor(Math.random() * 100_000_000)).padStart(8, "0");
@@ -198,7 +208,7 @@ async function createConcurrentFixture(
       shopId: shop.id,
       technicianProfileId: technicianProfile.id,
       scheduleSlotId: slot.id,
-      status: "CONFIRMED",
+      status: "AWAITING_CHECKOUT",
       fulfillmentMode: "store",
       priceAmount: 8_800,
       serviceNameSnapshot: "Concurrency service",
@@ -211,9 +221,51 @@ async function createConcurrentFixture(
     await tx.orderStatusHistory.create({ data: {
       bookingOrderId: order.id,
       fromStatus: "PENDING",
-      toStatus: "CONFIRMED",
+      toStatus: "AWAITING_CHECKOUT",
       actorUserId: technician.id,
       reason: "Formal concurrency checker fixture"
+    } });
+    const startedAt = new Date(now.getTime() - 2 * 3_600_000);
+    const endedAt = new Date(now.getTime() - 3_600_000);
+    const payableNdp = Number(
+      (8_800n * BigInt(rate.ndpUnits) + BigInt(rate.jpyUnits) - 1n) /
+        BigInt(rate.jpyUnits)
+    );
+    await tx.orderServiceSession.create({ data: {
+      bookingOrderId: order.id,
+      verificationHash: `${marker}-verification-hash`,
+      startedByUserId: customer.id,
+      startedAt,
+      expectedEndsAt: endedAt,
+      endedByUserId: customer.id,
+      endedAt
+    } });
+    await tx.orderCheckout.create({ data: {
+      bookingOrderId: order.id,
+      baseAmountJpy: 8_800,
+      checkoutAmountJpy: 8_800,
+      payableNdp,
+      ndpRateRuleId: rate.id,
+      rateSnapshotJson: {
+        ruleId: rate.id,
+        publicId: rate.publicId,
+        version: rate.version,
+        ndpUnits: rate.ndpUnits,
+        jpyUnits: rate.jpyUnits,
+        effectiveFrom: rate.effectiveFrom.toISOString()
+      },
+      calculationSnapshotJson: {
+        formula: "base_plus_accepted_add_ons_plus_travel_fare_minus_discount",
+        baseAmountJpy: 8_800,
+        acceptedAddOnIds: [],
+        addOnAmountJpy: 0,
+        travelFareAmountJpy: 0,
+        discountAmountJpy: 0,
+        checkoutAmountJpy: 8_800,
+        rateFormula: "ceil(jpy_times_ndp_units_divided_by_jpy_units)"
+      },
+      paymentMethod: "NDP",
+      paymentSelectedAt: now
     } });
     await tx.orderFinancial.create({ data: {
       bookingOrderId: order.id,
@@ -376,10 +428,17 @@ async function runConcurrentCheckoutCheck(): Promise<void> {
         effectiveFrom: { lte: new Date() },
         OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }]
       },
-      select: { id: true }
+      select: {
+        id: true,
+        publicId: true,
+        version: true,
+        ndpUnits: true,
+        jpyUnits: true,
+        effectiveFrom: true
+      }
     });
     assert(effectiveRate !== null, "no effective NDP exchange rate is available");
-    fixture = await createConcurrentFixture(primary, new Date());
+    fixture = await createConcurrentFixture(primary, new Date(), effectiveRate);
     await Promise.all([clientA.$connect(), clientB.$connect()]);
 
     const connectionRows = await Promise.all([
@@ -421,19 +480,7 @@ async function runConcurrentCheckoutCheck(): Promise<void> {
     const serviceA = createService(clientA);
     const serviceB = createService(clientB);
 
-    await serviceA.startService(customer, fixture.orderId, {
-      actor: "customer",
-      idempotencyKey: `${fixture.marker}-start`
-    }, context);
-    await serviceA.endService(customer, fixture.orderId, {
-      reason: "completed",
-      idempotencyKey: `${fixture.marker}-end`
-    }, context);
     const checkout = await serviceA.getCheckout(customer, fixture.orderId);
-    await serviceA.selectCheckoutPaymentMethod(customer, fixture.orderId, {
-      method: "ndp",
-      idempotencyKey: `${fixture.marker}-select`
-    }, context);
     const walletBefore = await primary.wallet.findUniqueOrThrow({
       where: { id: fixture.walletId }
     });
