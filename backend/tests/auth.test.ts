@@ -1873,7 +1873,7 @@ describe("verified email registration and formal password authentication", () =>
     expect(response.body.data.profileDisplayName).toBeNull();
   });
 
-  it("exposes and switches to a platform account customer identity with the shared NeeDo ID", async () => {
+  it("exposes and switches to a platform account customer identity when both identities share the persisted NeeDo ID", async () => {
     const fixture = await createAuthFixture();
     (fixture.user.identities as Array<Record<string, unknown>>).push({
       id: 12,
@@ -1884,7 +1884,12 @@ describe("verified email registration and formal password authentication", () =>
       displayName: "Admin customer profile",
       isDefault: false,
       isActive: true,
-      deletedAt: null
+      deletedAt: null,
+      publicIdentifier: {
+        publicId: "needo1234567890",
+        status: "ACTIVE",
+        deletedAt: null
+      }
     });
 
     const loginResponse = await request(fixture.app)

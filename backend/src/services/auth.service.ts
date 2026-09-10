@@ -2277,9 +2277,24 @@ export class AuthService {
           )
           .map((identity) => ({ ...identity, publicId: sharedPrimaryPublicId }))
       : [];
+    const defaultIdentity = allActiveIdentities.find((identity) =>
+      user.identities.some((source) => source.id === identity.id && source.isDefault)
+    );
+    const preservedDefaultIdentities =
+      defaultIdentity &&
+      defaultIdentity.publicId !== null &&
+      !Array.from(publicIdentityById.values()).some(
+        (identity) => identity.id === defaultIdentity.id
+      )
+        ? [defaultIdentity]
+        : [];
     const identities =
       publicIdentityById.size > 0
-        ? [...Array.from(publicIdentityById.values()), ...sharedPrimaryIdentities]
+        ? [
+            ...preservedDefaultIdentities,
+            ...Array.from(publicIdentityById.values()),
+            ...sharedPrimaryIdentities
+          ]
         : this.allowLegacyAuthAdaptersForTest
           ? allActiveIdentities
           : [];
