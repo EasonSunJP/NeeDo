@@ -193,7 +193,6 @@ import {
   SocialAccountProfilePage,
   SocialComposerPage,
   SocialDraftsPage,
-  SocialFavoritesPage,
   SocialMediaViewerPage,
   SocialLegacyReplyRedirectPage,
   SocialNotificationsPage,
@@ -1300,8 +1299,8 @@ export default function App() {
               <Route path="/orders" element={protect("user", <UserOrdersPage />)} />
               <Route path="/orders/:orderId" element={protect("user", <UserOrderDetailPage />)} />
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
-              <Route path="/me/favorites" element={protect("user", <SocialFavoritesPage />)} />
-              <Route path="/me/favorites/chat-records" element={protect("user", <UserFavoritesRoutePage />)} />
+              <Route path="/me/favorites" element={protect("user", <UserFavoritesRoutePage />)} />
+              <Route path="/me/favorites/chat-records" element={protect("user", <Navigate replace to="/me/favorites" />)} />
               <Route path="/me/memberships" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/memberships/:membershipPublicId" element={protect("user", <UserMembershipsPage />)} />
               <Route path="/me/settings" element={protect("user", <UserSettingsPage />)} />

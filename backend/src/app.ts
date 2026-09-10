@@ -128,6 +128,7 @@ import type { IdentityApplicationMediaService } from "./services/identity-applic
 import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
 import type { ContentMediaRepositoryPort } from "./services/content-media.service";
 import type { ContentMediaService } from "./services/content-media.service";
+import type { ShopPresentationRepositoryPort, ShopPresentationService } from "./services/shop-presentation.service";
 import type { OfficialNoticeMediaStoragePort } from "./services/official-notice-media.storage";
 import type {
   OfficialNoticeMediaRepositoryPort,
@@ -194,6 +195,7 @@ import { createAffiliateMarketplaceRoutes } from "./routes/affiliate-marketplace
 import { createAffiliateProfileRoutes } from "./routes/affiliate-profile.routes";
 import { createAffiliateAllianceRoutes } from "./routes/affiliate-alliance.routes";
 import { createBackofficeRoutes } from "./routes/backoffice.routes";
+import { createShopPresentationRoutes } from "./routes/shop-presentation.routes";
 import { createBackofficeUserReviewRoutes } from "./routes/backoffice-user-review.routes";
 import { createBackofficeUserUsageRoutes } from "./routes/backoffice-user-usage.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
@@ -430,6 +432,8 @@ export interface AppDependencies {
   contentMediaRepository?: ContentMediaRepositoryPort;
   contentMediaService?: ContentMediaService;
   contentMediaStorage?: ContentMediaStoragePort;
+  shopPresentationRepository?: ShopPresentationRepositoryPort;
+  shopPresentationService?: ShopPresentationService;
   officialNoticeMediaRepository?: OfficialNoticeMediaRepositoryPort;
   officialNoticeMediaService?: OfficialNoticeMediaService;
   officialNoticeMediaStorage?: OfficialNoticeMediaStoragePort;
@@ -761,6 +765,7 @@ export const createApp = (
   mount("shared", createTechnicianProfileRoutes(config, resolvedDependencies));
   mount("shared", createTechnicianDataCenterRoutes(config, resolvedDependencies));
   mount("merchant-admin", createMerchantProfileRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createShopPresentationRoutes(config, resolvedDependencies));
   mount("merchant-admin", createPricingModeRoutes(config, resolvedDependencies));
   mount("shared", createFeeRuleRoutes(config, resolvedDependencies));
   mount(

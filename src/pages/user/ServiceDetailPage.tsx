@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName, type IconName } from "../../components/client-ui/AppScaffold";
-import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
 import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -11,7 +10,13 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
-import { coreReadApi, coreReadIdFromRoute, mapCoreServiceToServiceItem, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import {
+  coreReadApi,
+  coreReadIdFromRoute,
+  mapCoreServiceToServiceItem,
+  mapCoreTechnicianToTechnician,
+  type CoreServiceReview
+} from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
@@ -22,6 +27,79 @@ const servicePriceHighlightClassName = "text-[color:var(--client-primary)]";
 
 export function buildServiceTagLabels(serviceAreas: string[], tags: string[]) {
   return Array.from(new Set([...serviceAreas, ...tags])).slice(0, 12);
+}
+
+export function formatServiceReviewDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric"
+  }).format(date);
+}
+
+export function ServiceReviewCard({ review }: { review: CoreServiceReview }) {
+  const reviewerInitial = review.reviewer.displayName.trim().slice(0, 1) || "用";
+
+  return (
+    <article className="flex items-start gap-3">
+      {review.reviewer.avatarUrl ? (
+        <AvatarImage
+          alt={review.reviewer.displayName}
+          className="h-11 w-11 shrink-0 !rounded-[14px] border border-[color:var(--client-line)]"
+          src={review.reviewer.avatarUrl}
+        />
+      ) : (
+        <div
+          aria-label={review.reviewer.displayName}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-primary-soft)] text-sm font-black text-[color:var(--client-primary)]"
+          role="img"
+        >
+          {reviewerInitial}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <header>
+          <h3 className="truncate text-[15px] font-black text-[color:var(--client-text)]">
+            {review.reviewer.displayName}
+          </h3>
+          <time
+            className="mt-1 block text-[11px] font-semibold text-[color:var(--client-soft-muted)]"
+            dateTime={review.createdAt}
+          >
+            {formatServiceReviewDate(review.createdAt)}
+          </time>
+        </header>
+        <div className="relative mt-3 rounded-[20px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] p-4 before:absolute before:-top-[7px] before:left-4 before:h-3 before:w-3 before:rotate-45 before:border-l before:border-t before:border-[color:var(--client-line)] before:bg-[color:var(--client-bg)]">
+          <h4 className="relative text-sm font-black leading-6 text-[color:var(--client-text)]">
+            {review.title || "服务评价"}
+          </h4>
+          {review.comment ? (
+            <p className="relative mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[color:var(--client-muted)]">
+              {review.comment}
+            </p>
+          ) : null}
+          {review.mediaAssets.length > 0 ? (
+            <div className="relative mt-3 grid grid-cols-2 gap-2">
+              {review.mediaAssets.map((asset) => (
+                <img
+                  alt={asset.altText || review.title || "评价图片"}
+                  className="aspect-[4/3] w-full rounded-[14px] object-cover"
+                  key={asset.id}
+                  loading="lazy"
+                  src={getGeneratedImageThumbnailUrl(asset.url)}
+                />
+              ))}
+            </div>
+          ) : null}
+          <p className="relative mt-3 text-left text-[12px] font-black text-[color:var(--client-primary)]">
+            ★ {review.rating.toFixed(1)} / 5
+          </p>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 type ServiceTopActionIconName = "favorite" | "forward";
@@ -101,6 +179,7 @@ function ServiceDetailStatus({
   return (
     <MobileFullscreenPage>
       <MobileFullscreenHeader
+        className="service-detail-header"
         closeLabel="关闭服务详情"
         onBack={() => navigate(-1)}
         onClose={() => navigate(-1)}
@@ -125,6 +204,11 @@ function ServiceDetailContent() {
     () => (apiId ? coreReadApi.getServiceDetail(apiId) : null),
     [apiId],
     { enabled: Boolean(apiId), key: `core:service:${apiId ?? "invalid"}` }
+  );
+  const serviceReviewsQuery = useCoreReadQuery(
+    () => (apiId ? coreReadApi.listServiceReviews(apiId, { page: 1, pageSize: 20 }) : null),
+    [apiId],
+    { enabled: Boolean(apiId), key: `core:service:${apiId ?? "invalid"}:reviews` }
   );
   const service = useMemo(
     () => (serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : null),
@@ -174,7 +258,8 @@ function ServiceDetailContent() {
              <ServiceTopActionButton active={favorited} label="收藏" name="favorite" onClick={() => setFavorited((current) => !current)} />
              <ServiceTopActionButton active={forwarded} label="转发" name="forward" onClick={() => setForwarded((current) => !current)} />
            </>
-         )}
+        )}
+        className="service-detail-header"
         closeLabel="关闭服务详情"
         info={`${service.fastestArrival} · ${service.serviceAreas.slice(0, 2).join(" / ")}`}
         onBack={() => navigate(-1)}
@@ -294,15 +379,30 @@ function ServiceDetailContent() {
         <section className={mobileDetailCardClassName}>
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-black">评价摘要</h2>
-            <Badge tone="green">{service.sales} 条</Badge>
+            <Badge tone="green">{serviceReviewsQuery.data?.total ?? 0} 条</Badge>
           </div>
-          <div className="mt-3 rounded-[18px] bg-paper p-3 text-xs leading-5 text-ink/55">
-            {service.tags.length > 0 ? service.tags.join(" / ") : "暂无公开评价摘要。"}
-          </div>
+          {serviceReviewsQuery.loading ? (
+            <p className="mt-3 rounded-[18px] bg-paper p-3 text-xs leading-5 text-ink/55" role="status">
+              正在读取评价…
+            </p>
+          ) : serviceReviewsQuery.error ? (
+            <p className="mt-3 rounded-[18px] bg-paper p-3 text-xs leading-5 text-ink/55" role="alert">
+              评价读取失败，请稍后重试。
+            </p>
+          ) : serviceReviewsQuery.data && serviceReviewsQuery.data.list.length > 0 ? (
+            <div className="mt-4 space-y-5">
+              {serviceReviewsQuery.data.list.map((review) => (
+                <ServiceReviewCard key={review.id} review={review} />
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 rounded-[18px] bg-paper p-3 text-xs leading-5 text-ink/55">
+              暂无公开评价。
+            </p>
+          )}
         </section>
       </main>
 
-      <ClientEdgeMask className="z-10" edge="bottom" mode="absolute" />
       <footer className="absolute inset-x-0 bottom-0 z-20 grid grid-cols-[1fr,auto] items-center gap-3 border-t border-transparent bg-transparent px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-4">
         <div>
           <p className="text-xs font-bold text-ink/45">价格</p>

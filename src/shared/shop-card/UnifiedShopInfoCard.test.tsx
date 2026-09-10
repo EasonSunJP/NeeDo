@@ -34,7 +34,8 @@ describe("UnifiedShopInfoCard", () => {
     expect(text.indexOf("LifeDance 银座")).toBeLessThan(
       text.indexOf("東京都中央区銀座1-2-3"),
     );
-    expect(text).toContain("评分");
+    expect(text).toContain("4.9");
+    expect(text).not.toContain("评分");
     expect(text).not.toContain("可预约");
     expect(markup).not.toContain("unified-card-duration-overlay");
     expect(markup).not.toContain("unified-card-price-overlay");

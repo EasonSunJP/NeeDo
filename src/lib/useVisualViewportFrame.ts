@@ -11,6 +11,18 @@ const isKeyboardEditor = (element: Element | null): boolean => {
 
 const minimumKeyboardViewportReduction = 80;
 const installedPwaRestingViewportTolerance = 96;
+const installedIosPwaMinimumRestingViewportTolerance = 120;
+const installedIosPwaMaximumRestingViewportTolerance = 240;
+const installedIosPwaRestingViewportToleranceRatio = 0.22;
+
+const getInstalledIosPwaRestingViewportTolerance = (referenceHeight: number): number =>
+  Math.min(
+    installedIosPwaMaximumRestingViewportTolerance,
+    Math.max(
+      installedIosPwaMinimumRestingViewportTolerance,
+      Math.round(referenceHeight * installedIosPwaRestingViewportToleranceRatio)
+    )
+  );
 
 export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T | null>) {
   useLayoutEffect(() => {
@@ -52,11 +64,19 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         ? Math.max(0, keyboardReferenceHeight - viewport.height)
         : 0;
       const editorFocused = isKeyboardEditor(document.activeElement);
+      // Installed iOS PWAs can report a resting visual viewport that is
+      // materially shorter than innerHeight after the keyboard closes. Scale
+      // this tolerance with the display so that the residual browser/display
+      // inset does not become a permanent bottom offset, while a real keyboard
+      // reduction remains large enough to keep the room above it.
+      const installedMobileRestingViewportTolerance = installPlatform === "ios"
+        ? getInstalledIosPwaRestingViewportTolerance(keyboardReferenceHeight)
+        : installedPwaRestingViewportTolerance;
       const keyboardOpenThreshold = useInstalledMobileViewport
-        ? installedPwaRestingViewportTolerance
+        ? installedMobileRestingViewportTolerance
         : minimumKeyboardViewportReduction;
       const keyboardRecoveryThreshold = useInstalledMobileViewport
-        ? installedPwaRestingViewportTolerance
+        ? installedMobileRestingViewportTolerance
         : 2;
       const keyboardOpen = Boolean(
         viewport &&

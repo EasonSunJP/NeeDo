@@ -37,7 +37,8 @@ describe("Step 08 core read API", () => {
     city: "Tokyo",
     address: "3-1 Kita Aoyama",
     coverUrl: "https://cdn.example.test/shops/aoyama-cover.jpg",
-    reviewSummary
+    reviewSummary,
+    completedOrderCount: 1999
   };
   const technicianCard = {
     id: 1,
@@ -78,6 +79,31 @@ describe("Step 08 core read API", () => {
     coverUrl: "https://cdn.example.test/services/shiatsu-cover.jpg",
     reviewSummary
   };
+  const serviceReviews = paginated([
+    {
+      id: 901,
+      title: "非常专业",
+      comment: "手法细致，沟通也很清楚。",
+      rating: 5,
+      createdAt: nowIso,
+      reviewer: {
+        displayName: "Aya Customer",
+        avatarUrl: "https://cdn.example.test/customers/aya.jpg"
+      },
+      mediaAssets: [
+        {
+          id: 801,
+          url: "https://cdn.example.test/reviews/901.jpg",
+          mimeType: "image/jpeg",
+          usageType: "review",
+          width: 960,
+          height: 720,
+          altText: "Review image",
+          sortOrder: 0
+        }
+      ]
+    }
+  ]);
 
   const createFixture = () => {
     const searchQueryRecorder = {
@@ -92,6 +118,7 @@ describe("Step 08 core read API", () => {
         createdAt: nowIso,
         updatedAt: nowIso
       })),
+      listServiceReviews: jest.fn(async () => serviceReviews),
       getHomeRecommendations: jest.fn(async () => ({
         categories: [category],
         services: [serviceCard],
@@ -419,6 +446,7 @@ describe("Step 08 core read API", () => {
       id: 1,
       publicId: "shop5831047296",
       name: "Aoyama Care Studio",
+      completedOrderCount: 1999,
       services: [serviceCard],
       technicians: [technicianCard]
     });
@@ -471,6 +499,54 @@ describe("Step 08 core read API", () => {
     );
   });
 
+  it("lists public service reviews by numeric or UUID id with validated pagination", async () => {
+    const fixture = createFixture();
+
+    const numericResponse = await request(fixture.app)
+      .get("/api/v1/services/1/reviews?page=1&pageSize=20")
+      .expect(200);
+    const publicResponse = await request(fixture.app)
+      .get(`/api/v1/services/${serviceCard.publicId}/reviews?page=1&pageSize=20`)
+      .expect(200);
+
+    expect(numericResponse.body.data).toEqual(serviceReviews);
+    expect(publicResponse.body.data).toEqual(serviceReviews);
+    expect(fixture.coreReadRepository.listServiceReviews).toHaveBeenNthCalledWith(1, 1, {
+      page: 1,
+      pageSize: 20
+    });
+    expect(fixture.coreReadRepository.listServiceReviews).toHaveBeenNthCalledWith(
+      2,
+      serviceCard.publicId,
+      { page: 1, pageSize: 20 }
+    );
+    expect(JSON.stringify(publicResponse.body)).not.toContain("needoId");
+    expect(JSON.stringify(publicResponse.body)).not.toContain("email");
+  });
+
+  it("rejects invalid service review pagination", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app).get("/api/v1/services/1/reviews?page=0").expect(400);
+    await request(fixture.app).get("/api/v1/services/1/reviews?pageSize=101").expect(400);
+    expect(fixture.coreReadRepository.listServiceReviews).not.toHaveBeenCalled();
+  });
+
+  it("returns the formal not-found envelope when a public service has no readable record", async () => {
+    const fixture = createFixture();
+    fixture.coreReadRepository.listServiceReviews.mockResolvedValueOnce(null as never);
+
+    const response = await request(fixture.app)
+      .get("/api/v1/services/999/reviews")
+      .expect(404);
+
+    expect(response.body).toEqual({
+      code: 40401,
+      message: "error.service.not_found",
+      data: null
+    });
+  });
+
   it("resolves public Shop identifiers without exposing an internal id in navigation", async () => {
     const fixture = createFixture();
 
@@ -481,7 +557,8 @@ describe("Step 08 core read API", () => {
     expect(response.body.data).toMatchObject({
       id: 1,
       publicId: shopCard.publicId,
-      name: "Aoyama Care Studio"
+      name: "Aoyama Care Studio",
+      completedOrderCount: 1999
     });
     expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(shopCard.publicId);
   });

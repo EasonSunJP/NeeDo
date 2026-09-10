@@ -267,6 +267,7 @@ export function MerchantEmployeeDetailWorkspace({
       payrollPolicyLoading={payrollPolicyLoading}
       payrollPolicySaving={payrollPolicySaving}
       saving={saving}
+      scheduleSurface="mobile"
       timeline={timeline}
       timelineError={timelineError}
       timelineLoading={timelineLoading}

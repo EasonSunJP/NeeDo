@@ -13,6 +13,8 @@ import {
   type CoreTechnicianCard,
   type CoreTechnicianDetail
 } from "./api";
+import { mapCoreShopToUnifiedData } from "../../shared/shop-card/mappers";
+import { mapStoreToUnifiedEntityData } from "../../shared/profile-card/unifiedEntityMappers";
 
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -54,6 +56,7 @@ const coreService = {
     address: "3-1 Kita Aoyama, Minato-ku",
     coverUrl: "/images/generated/home-merchant-feature.jpg",
     reviewSummary,
+    completedOrderCount: 1999,
     favoriteCount: 1540,
     shareCount: 29,
     serviceCategories: [{ id: 2, code: "wellness", label: "リラクゼーション" }],
@@ -115,6 +118,29 @@ describe("core read API adapter", () => {
     expect(technician.primaryService?.name).toBe("肩颈调理");
   });
 
+  it("propagates formal shop completed totals and omits absent legacy totals", () => {
+    const formalShop = {
+      ...coreService.shop,
+      completedOrderCount: 1999
+    } as CoreShopCard;
+    const store = mapCoreShopToStore(formalShop);
+
+    expect(store).toMatchObject({ completedOrderCount: 1999 });
+    expect(mapCoreShopToUnifiedData(formalShop)).toMatchObject({
+      completedOrderCount: 1999
+    });
+    expect(mapStoreToUnifiedEntityData(store)).toMatchObject({
+      completedOrderCount: 1999
+    });
+
+    const { completedOrderCount: _completedOrderCount, ...legacyStore } = store as typeof store & {
+      completedOrderCount?: number;
+    };
+    expect(mapStoreToUnifiedEntityData(legacyStore)).not.toHaveProperty(
+      "completedOrderCount"
+    );
+  });
+
   it("calls the Step 08 public search endpoint without auth", async () => {
     const sessionValues = new Map<string, string>();
     vi.stubGlobal("window", {
@@ -140,6 +166,23 @@ describe("core read API adapter", () => {
           "X-Search-Session": expect.stringMatching(/^[a-f0-9]{32}$/)
         })
       })
+    );
+  });
+
+  it("loads paginated public reviews for a service without auth", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        code: 0,
+        message: "success",
+        data: { list: [], page: 1, page_size: 20, total: 0 }
+      })
+    );
+
+    await expect(coreReadApi.listServiceReviews(coreService.publicId, { page: 1, pageSize: 20 }))
+      .resolves.toEqual({ list: [], page: 1, page_size: 20, total: 0 });
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/v1/services/${coreService.publicId}/reviews?page=1&pageSize=20`,
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) })
     );
   });
 

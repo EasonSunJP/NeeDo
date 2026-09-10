@@ -5,7 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MerchantEmployee } from "../../features/merchant-admin/employeeApi";
 import { merchantEmployeeApi } from "../../features/merchant-admin/employeeApi";
-import { EmployeeSchedulePanel } from "./EmployeeSchedulePanel";
+import {
+  createEmployeeScheduleCalendarData,
+  EmployeeSchedulePanel,
+} from "./EmployeeSchedulePanel";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -28,6 +31,8 @@ vi.mock("../scheduling/ScheduleCycleCalendarBoard", () => ({
   ScheduleCycleCalendarBoard: ({
     dataOverride,
     onViewChange,
+    periodViewVariant,
+    surface,
   }: {
     dataOverride: {
       events: Array<{ id: string; title: string }>;
@@ -37,8 +42,14 @@ vi.mock("../scheduling/ScheduleCycleCalendarBoard", () => ({
       >;
     };
     onViewChange: (view: string) => void;
+    periodViewVariant?: "grid" | "timeline";
+    surface: "desktop" | "mobile";
   }) => (
-    <div data-testid="shared-schedule-board">
+    <div
+      data-period-view-variant={periodViewVariant}
+      data-surface={surface}
+      data-testid="shared-schedule-board"
+    >
       {dataOverride.events.map((event) => {
         const cell = dataOverride.cellByEventId.get(event.id);
         return (
@@ -65,7 +76,7 @@ const employee = {
   affiliation: {
     relationshipType: "partner",
     workStatus: "active",
-    shop: { publicId: "shop0000000016" },
+    shop: { id: 16, publicId: "shop0000000016", name: "麻布十番超级按摩" },
   },
 } as MerchantEmployee;
 
@@ -123,15 +134,67 @@ describe("EmployeeSchedulePanel", () => {
   });
 
   it("reuses the shared board and keeps cross-shop confirmed time generic and non-clickable", async () => {
-    await act(async () => root.render(<EmployeeSchedulePanel employee={employee} />));
+    await act(async () => root.render(<EmployeeSchedulePanel employee={employee} scheduleSurface="mobile" />));
     await flush();
 
     expect(container.querySelector('[data-testid="shared-schedule-board"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="shared-schedule-board"]')?.getAttribute("data-surface")).toBe("mobile");
+    expect(container.querySelector('[data-testid="shared-schedule-board"]')?.getAttribute("data-period-view-variant")).toBe("timeline");
     expect(container.textContent).toContain("其他店铺已有确认安排");
     expect(container.textContent).not.toMatch(/客户|服务|订单|金额|店铺名称/);
     expect(
       container.querySelector('[data-employee-schedule-visibility="busy_redacted"]'),
     ).not.toBeNull();
+  });
+
+  it("maps technician and current-shop availability into shared source-labelled strips", () => {
+    const data = createEmployeeScheduleCalendarData(
+      {
+        ...projection,
+        events: [
+          {
+            projectionId: "availability:2026-09-10T01:00:00.000Z:2026-09-10T02:00:00.000Z",
+            kind: "availability",
+            visibility: "affiliated_shops",
+            status: "available",
+            startsAt: "2026-09-10T01:00:00.000Z",
+            endsAt: "2026-09-10T02:00:00.000Z",
+            title: "合作技师可排班",
+            isClickable: false,
+            isEditable: false,
+          },
+          {
+            projectionId: "schedule:81",
+            kind: "schedule",
+            visibility: "current_shop",
+            status: "available",
+            startsAt: "2026-09-10T05:00:00.000Z",
+            endsAt: "2026-09-10T06:00:00.000Z",
+            title: "可排班",
+            detail: "本店排班",
+            isClickable: false,
+            isEditable: true,
+          },
+        ],
+      },
+      employee,
+      ["2026-09-10"],
+    );
+
+    expect(data.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: expect.stringMatching(/^availability:/),
+        availabilitySourceType: "technician",
+        calendarLabel: "自由排班",
+        badge: "可排班",
+      }),
+      expect.objectContaining({
+        id: "schedule:81",
+        availabilitySourceType: "shop",
+        calendarLabel: "麻布十番超级按摩",
+        badge: "可排班",
+      }),
+    ]));
   });
 
   it("shows a retry state and reloads the visible window", async () => {

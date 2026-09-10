@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import type { Language } from "../../i18n/translations";
 import type {
   EntityFavoriteState,
@@ -6,6 +7,7 @@ import type {
 } from "../../features/entity-engagement/api";
 import {
   UnifiedCardDetails,
+  UnifiedDistanceMetricValue,
   UnifiedCardImage,
   UnifiedInfoCardFrame,
   type UnifiedCardMetric,
@@ -20,6 +22,7 @@ import {
   ServiceFavoriteAction,
   ServiceShareAction,
 } from "../service-card/ServiceCardEngagementActions";
+import { formatCompactCount } from "../engagement/formatCompactCount";
 
 export type UnifiedEntityInfoCardData = {
   kind: "shop" | "technician" | "user";
@@ -41,14 +44,14 @@ export type UnifiedEntityInfoCardData = {
   specialReviewTags?: SpecialReviewTag[];
 };
 
-const metricValue = (value: number | null | undefined, unavailable: string) =>
+const metricValue = (value: number | null | undefined) =>
   value === null || value === undefined || !Number.isFinite(value)
-    ? unavailable
-    : `${value}`;
-const distanceValue = (value: number | null | undefined, unavailable: string) =>
+    ? "-"
+    : formatCompactCount(value);
+const ratingValue = (value: number | null | undefined) =>
   value === null || value === undefined || !Number.isFinite(value)
-    ? unavailable
-    : `${value.toFixed(value < 10 ? 1 : 0)}km`;
+    ? "-"
+    : value.toFixed(1);
 
 export function UnifiedEntityInfoCard({
   actionSlot,
@@ -57,6 +60,7 @@ export function UnifiedEntityInfoCard({
   detailTo,
   language = "zh",
   onOpenDetails,
+  showLanguageTags = true,
 }: {
   actionSlot?: ReactNode;
   className?: string;
@@ -64,26 +68,32 @@ export function UnifiedEntityInfoCard({
   detailTo?: string;
   language?: Language;
   onOpenDetails?: () => void;
+  showLanguageTags?: boolean;
 }) {
   const text = getUnifiedCardCopy(language);
   const target = data.engagementTarget ?? null;
   const [favoriteState, setFavoriteState] =
     useState<EntityFavoriteState | null>(() =>
-      target
+      target && data.favoriteCount !== null && data.favoriteCount !== undefined
         ? {
             ...target,
             isFavorited: data.isFavorited ?? false,
-            favoriteCount: data.favoriteCount ?? 0,
+            favoriteCount: data.favoriteCount,
           }
         : null,
     );
   const [shareCount, setShareCount] = useState(data.shareCount ?? null);
   useEffect(() => {
-    if (!target || data.isFavorited === undefined) return;
+    if (
+      !target ||
+      data.isFavorited === undefined ||
+      data.favoriteCount === null ||
+      data.favoriteCount === undefined
+    ) return;
     setFavoriteState({
       ...target,
       isFavorited: data.isFavorited,
-      favoriteCount: data.favoriteCount ?? 0,
+      favoriteCount: data.favoriteCount,
     });
   }, [
     data.favoriteCount,
@@ -106,10 +116,7 @@ export function UnifiedEntityInfoCard({
   const favoriteMetric: UnifiedCardMetric = {
     icon: "heart",
     label: text.favorite,
-    value: metricValue(
-      favoriteState?.favoriteCount ?? data.favoriteCount,
-      text.unavailable,
-    ),
+    value: metricValue(favoriteState?.favoriteCount ?? data.favoriteCount),
     ...(favoriteState
       ? {
           action: (
@@ -125,7 +132,7 @@ export function UnifiedEntityInfoCard({
   const shareMetric: UnifiedCardMetric = {
     icon: "share",
     label: text.share,
-    value: metricValue(shareCount, text.unavailable),
+    value: metricValue(shareCount),
     ...(target
       ? {
           action: (
@@ -146,17 +153,17 @@ export function UnifiedEntityInfoCard({
             {
               icon: "star",
               label: text.rating,
-              value: metricValue(data.rating, text.unavailable),
+              value: ratingValue(data.rating),
             },
             {
-              icon: "moments",
-              label: text.reviews,
-              value: metricValue(data.reviewCount, text.unavailable),
+              icon: "completed",
+              label: text.completedOrders,
+              value: metricValue(data.completedOrderCount),
             },
             {
               icon: "map",
               label: text.distance,
-              value: distanceValue(data.distanceKm, text.distanceUnavailable),
+              value: <UnifiedDistanceMetricValue value={data.distanceKm} />,
             },
             favoriteMetric,
             shareMetric,
@@ -165,37 +172,47 @@ export function UnifiedEntityInfoCard({
             {
               icon: "star",
               label: text.rating,
-              value: metricValue(data.rating, text.unavailable),
+              value: ratingValue(data.rating),
             },
             {
-              icon: "moments",
+              icon: "completed",
               label: text.completedOrders,
-              value: metricValue(data.completedOrderCount, text.unavailable),
+              value: metricValue(data.completedOrderCount),
             },
             {
               icon: "map",
               label: text.distance,
-              value: distanceValue(data.distanceKm, text.distanceUnavailable),
+              value: <UnifiedDistanceMetricValue value={data.distanceKm} />,
             },
             favoriteMetric,
             shareMetric,
           ];
-  const detailTags = [...data.languages, ...data.tags];
+  const detailTags = [
+    ...(showLanguageTags ? data.languages : []),
+    ...data.tags,
+  ];
   const details = (
     <UnifiedCardDetails
+      afterDescription={data.kind === "technician" ? (
+        <SpecialReviewIconRow tags={data.specialReviewTags ?? []} />
+      ) : undefined}
       description={data.description}
+      density={data.kind === "user" ? "name-card" : "default"}
       language={language}
       name={data.name}
+      showEmptyTags={showLanguageTags}
       tags={detailTags}
     >
       {data.kind === "shop" && data.address ? (
-        <p className="mt-2 flex items-start gap-2 text-[13px] font-bold leading-5 text-[#9aacb5]">
-          <span className="text-[#b8ff4a]">⌖</span>
+        <p className="mt-1 flex items-center gap-1.5 text-[10px] font-bold leading-4 text-[color:var(--client-muted)] sm:mt-2 sm:gap-2 sm:text-[14px] sm:leading-5">
+          <span
+            className="shrink-0 text-[color:var(--client-primary)]"
+            data-testid="unified-card-location-icon"
+          >
+            <AppIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" name="map" />
+          </span>
           {data.address}
         </p>
-      ) : null}
-      {data.kind === "technician" ? (
-        <SpecialReviewIconRow tags={data.specialReviewTags ?? []} />
       ) : null}
     </UnifiedCardDetails>
   );
@@ -204,7 +221,10 @@ export function UnifiedEntityInfoCard({
       actionSlot={actionSlot}
       ariaLabel={`${data.kind === "shop" ? text.viewShop : data.kind === "technician" ? text.viewTechnician : text.viewUser} ${data.name}`}
       body={
-        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+        <div
+          className={`grid grid-cols-[minmax(132px,38%)_minmax(0,1fr)] gap-3 p-3 sm:gap-7 sm:p-6 ${data.kind === "user" ? "" : "pt-0 sm:pt-0"}`}
+          data-testid="unified-card-body"
+        >
           <UnifiedCardImage alt={data.name} language={language} src={data.imageUrl} />
           {details}
         </div>

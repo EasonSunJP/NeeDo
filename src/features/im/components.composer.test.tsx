@@ -67,6 +67,25 @@ async function waitForRuntimeTranslation() {
 }
 
 describe("ImChatComposer", () => {
+  it("supports an embedded tag editor with emoji and separate footer actions", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onPanelChange = vi.fn();
+    await act(async () => root.render(
+      <ImChatComposer draft="标签" isNight onDraftChange={vi.fn()} onPanelChange={onPanelChange}
+        onSend={vi.fn()} panel={null} embedded showVoice={false} showMore={false} showSend={false} />
+    ));
+    expect(container.querySelector('[data-im-composer-control="voice-input"]')).toBeNull();
+    expect(container.textContent).not.toContain("发送");
+    expect(container.querySelector('[aria-label="打开更多功能"]')).toBeNull();
+    const emoji = container.querySelector<HTMLButtonElement>('[data-im-composer-control="emoji-chat"]');
+    expect(emoji).not.toBeNull();
+    await act(async () => emoji!.click());
+    expect(onPanelChange).toHaveBeenCalled();
+    expect(container.querySelector(".safe-nav-bottom")).toBeNull();
+    await act(async () => root.unmount());
+  });
   it("bounds the closed-keyboard chat frame to the dynamic viewport despite stale iOS window dimensions", async () => {
     vi.stubGlobal("innerHeight", 1018);
     const visualViewport = new EventTarget() as VisualViewport;

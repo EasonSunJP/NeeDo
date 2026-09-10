@@ -45,14 +45,14 @@ it("keeps unavailable shop loading and retry inside the drawer", async () => {
   expect(retry).toBeDefined();
   await act(async () => retry!.click());
   expect(request).toHaveBeenCalledTimes(2);
-  expect(request).toHaveBeenLastCalledWith(21);
+  expect(request).toHaveBeenLastCalledWith(21, { locale: "zh-CN" });
 });
 it("renders and switches all six public presentation tabs without a page shell", async () => {
   const shop = {
     id: 21, publicId: "S0000000021", name: "正式店铺资料", city: "東京都", address: "渋谷区",
     coverUrl: null, description: "店铺介绍", phone: null, latitude: null, longitude: null,
     reviewSummary: { ratingAverage: "0", reviewCount: 0, latestReviewAt: null, highlights: [] },
-    favoriteCount: 0, shareCount: 0, serviceCategories: [], businessKeywords: [], mediaAssets: [], services: [], technicians: [],
+    completedOrderCount: 0, favoriteCount: 0, shareCount: 0, serviceCategories: [], businessKeywords: [], mediaAssets: [], services: [], technicians: [],
     createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z"
   } satisfies CoreShopDetail;
   vi.spyOn(coreReadApi, "getShopDetail").mockResolvedValue(shop);

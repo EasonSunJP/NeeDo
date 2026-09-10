@@ -23,6 +23,7 @@ import {
   UnifiedEntityInfoCard,
   type UnifiedEntityInfoCardData,
 } from "./UnifiedEntityInfoCard";
+import type { SpecialReviewTag } from "./SpecialReviewIconRow";
 import {
   mapCustomerToUnifiedEntityData,
   mapStoreToUnifiedEntityData,
@@ -63,6 +64,7 @@ export type SocialProfileMiniData = {
   distanceKm?: number;
   favoriteCount?: number;
   languages?: string[];
+  specialReviewTags?: SpecialReviewTag[];
   serviceInfo?: UnifiedServiceInfoCardData;
   actionLabel?: SocialProfileMiniActionLabel;
   detailPath?: string;
@@ -138,7 +140,7 @@ export function buildServiceMiniCardData(
     scoreValue: "",
     followerCount: 0,
     followingCount: 0,
-    usageCount: serviceInfo.usageCount ?? undefined,
+    usageCount: serviceInfo.completedOrderCount ?? undefined,
     serviceTags: service.tags,
     serviceInfo,
     detailPath: `/services/${service.id}`,
@@ -190,6 +192,7 @@ function fromTechnician(technician: Technician): SocialProfileMiniData {
     completedOrderCount: technician.orderCount,
     distanceKm: technician.distanceKm,
     languages: technician.languages,
+    specialReviewTags: technician.specialReviewTags ?? [],
   };
 }
 
@@ -312,6 +315,7 @@ function normalizeData(
     shareCount: shareCount ?? data.shareCount,
     engagementTarget,
     isFavorited: data.isFavorited,
+    specialReviewTags: data.specialReviewTags ?? [],
   };
 }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTENT_LOCALES } from "../constants/content-locales";
 
 const paginationQuerySchema = {
   page: z.coerce.number().int().positive().optional(),
@@ -16,6 +17,10 @@ export const coreReadServiceIdParamSchema = z.object({
 export const coreReadShopIdParamSchema = z.object({
   id: z.union([z.coerce.number().int().positive(), z.string().regex(/^shop\d{10}$/)])
 });
+
+export const coreReadShopDetailQuerySchema = z.object({
+  locale: z.enum(CONTENT_LOCALES).optional()
+}).strict();
 
 export const coreReadTechnicianIdParamSchema = z.object({
   id: z.union([z.coerce.number().int().positive(), z.string().regex(/^s\d{10}$/)])
@@ -87,6 +92,10 @@ export const serviceListQuerySchema = serviceListQueryBaseSchema
     "minPrice must be less than or equal to maxPrice"
   );
 
+export const serviceReviewListQuerySchema = z.object({
+  ...paginationQuerySchema
+});
+
 export const coreSearchQuerySchema = serviceListQueryBaseSchema
   .extend({
     entityType: z.enum(["service", "shop", "technician"]).default("service"),
@@ -125,6 +134,7 @@ export type CoreReadShopIdParams = z.infer<typeof coreReadShopIdParamSchema>;
 export type CoreReadTechnicianIdParams = z.infer<typeof coreReadTechnicianIdParamSchema>;
 export type CategoryListQuery = z.infer<typeof categoryListQuerySchema>;
 export type ServiceListQuery = z.infer<typeof serviceListQuerySchema>;
+export type ServiceReviewListQuery = z.infer<typeof serviceReviewListQuerySchema>;
 export type CoreSearchQuery = z.infer<typeof coreSearchQuerySchema>;
 export type HomeRecommendationsQuery = z.infer<typeof homeRecommendationsQuerySchema>;
 export type CoreReadCoordinateQuery = z.infer<typeof coreReadCoordinateQuerySchema>;

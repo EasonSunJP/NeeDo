@@ -63,6 +63,52 @@ describe("IM media delivery failures", () => {
     expect(container.querySelector("audio")).not.toBeNull();
   });
 
+  it("gives only voice messages the wider responsive player layout", async () => {
+    await act(async () => root.render(<MessageBubble isMine={false} message={message("voice")} />));
+
+    const voiceBubble = container.querySelector<HTMLElement>("[data-im-message-bubble='true']")!;
+    const voiceColumn = voiceBubble.parentElement!;
+    const audio = voiceBubble.querySelector<HTMLAudioElement>("audio")!;
+
+    expect(voiceColumn.className).toContain("w-[calc(100%-3.25rem)]");
+    expect(voiceColumn.className).toContain("max-w-[320px]");
+    expect(voiceBubble.className.split(/\s+/)).toContain("w-full");
+    expect(audio.className.split(/\s+/)).toContain("w-full");
+    expect(audio.className.split(/\s+/)).not.toContain("max-w-[220px]");
+
+    await act(async () => root.render(
+      <MessageBubble
+        isMine={false}
+        message={{ ...message("voice"), type: "text", content: "ordinary" }}
+      />,
+    ));
+
+    const textBubble = container.querySelector<HTMLElement>("[data-im-message-bubble='true']")!;
+    expect(textBubble.parentElement?.className).toContain("max-w-[78%]");
+    expect(textBubble.parentElement?.className).not.toContain("max-w-[320px]");
+    expect(textBubble.className.split(/\s+/)).not.toContain("w-full");
+  });
+
+  it("keeps a reacted voice player's content wrapper at the full bubble width", async () => {
+    await act(async () => root.render(
+      <MessageBubble
+        isMine={false}
+        message={message("voice")}
+        reactions={[{
+          emoji: "Good",
+          people: [{ id: "admin-1", name: "LifeDance 管理员" }],
+        }]}
+      />,
+    ));
+
+    const voiceBubble = container.querySelector<HTMLElement>("[data-im-message-bubble='true']")!;
+    const contentWrapper = voiceBubble.firstElementChild as HTMLElement;
+
+    expect(contentWrapper.className.split(/\s+/)).toContain("w-full");
+    expect(contentWrapper.querySelector("audio")).not.toBeNull();
+    expect(contentWrapper.textContent).toContain("LifeDance 管理员");
+  });
+
   it("clears a previous failure when the message source changes", async () => {
     await act(async () => root.render(<MessageBubble isMine={false} message={message("image")} />));
     await act(async () => container.querySelector('[data-im-message-bubble] img')!.dispatchEvent(new Event("error")));

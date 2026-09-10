@@ -250,13 +250,15 @@ describe("CategoryPage formal category state", () => {
 
     expect(html).toContain("LifeDance Wellness 渋谷");
     expect(html).toContain("橘 ひかり");
-    expect(html).toContain("完单次数");
-    expect(html).toContain("1280");
-    expect(html).toContain("距离");
-    expect(html).toContain('aria-label="收藏 橘 ひかり"');
-    expect(html).toContain(">154</div>");
-    expect(html).not.toContain("肩颈调理");
-    expect(html).not.toContain("接单率");
+    expect(html).toContain('data-testid="technician-showcase-card"');
+    expect(html).toContain("aspect-[3/4]");
+    expect(html).toContain("推荐服务");
+    expect(html).toContain("肩颈调理");
+    expect(html).toContain("¥8,800");
+    expect(html).toContain("接单率 98%");
+    expect(html).toContain("收藏 154");
+    expect(html).not.toContain('data-card-kind="technician"');
+    expect(html).not.toContain("完单次数");
     expect(html).toContain("包间");
     expect(html).not.toContain(">放松<");
   });
@@ -287,7 +289,8 @@ describe("CategoryPage formal category state", () => {
     expect(html).toContain("橘 ひかり");
     expect(html).toContain("收藏");
     expect(html).toContain("分享");
-    expect(html).toContain("未读取");
+    expect(html).toContain(">-<");
+    expect(html).not.toContain("未读取");
     expect(html).not.toContain("接单率");
     expect(html).not.toContain("肩颈调理");
   });

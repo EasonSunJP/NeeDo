@@ -289,7 +289,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               ? {
                   ...serviceInfo,
                   tags: bookingMetadata.tags,
-                  usageCount: bookingMetadata.usageCount
+                  completedOrderCount: bookingMetadata.usageCount
                 }
               : serviceInfo,
             serviceDetailPath: `/services/${serviceDetail.id}`,
@@ -346,7 +346,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               serviceInfo: {
                 ...mapCoreServiceCardToUnifiedData(serviceDetail),
                 tags: technicianService.tags,
-                usageCount: technicianService.usageCount
+                completedOrderCount: technicianService.usageCount
               },
               serviceDetailPath: `/stores/${shop.publicId}/technicians/${technician.publicId}/services`,
               serviceMode: "store",

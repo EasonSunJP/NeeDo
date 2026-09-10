@@ -51,6 +51,10 @@ const technician: Technician = {
   favoriteCount: 18,
   shareCount: 4,
   bio: "深层放松",
+  specialReviewTags: [
+    { code: "appeal_max", label: "魅力max", count: 3 },
+    { code: "service_max", label: "服务max", count: 4 },
+  ],
 };
 
 describe("SocialProfileMiniCard unified delegation", () => {
@@ -75,7 +79,17 @@ describe("SocialProfileMiniCard unified delegation", () => {
     expect(cardSource).not.toContain("SimpleRatingBadge");
     expect(cardSource).not.toContain("SocialStatsLine");
     expect(frameSource).toContain('data-testid="unified-info-card"');
-    expect(frameSource).toContain("#b8ff4a");
+    expect(frameSource).toContain("var(--client-surface)");
+    expect(frameSource).toContain("var(--client-bg)");
+    expect(frameSource).toContain("var(--client-line)");
+    expect(frameSource).toContain("var(--client-text)");
+    expect(frameSource).toContain("var(--client-muted)");
+    expect(frameSource).toContain("var(--client-primary)");
+    expect(frameSource).toContain("var(--client-primary-soft)");
+    expect(frameSource).toContain("var(--client-primary-contrast)");
+    ["#031014", "#f7f9f7", "#9aacb5", "#b8ff4a", "#244047"].forEach((fixed) => {
+      expect(frameSource).not.toContain(fixed);
+    });
   });
 
   it("renders a shop with rating metrics and its address, without image price or duration", () => {
@@ -102,10 +116,15 @@ describe("SocialProfileMiniCard unified delegation", () => {
         createElement(SocialProfileMiniCard, { technician }),
       ),
     );
+    const text = markup.replace(/<[^>]+>/gu, "");
 
     expect(markup).toContain('data-card-kind="technician"');
-    expect(markup).toContain("完单次数");
-    expect(markup).toContain("日本語");
+    expect(text).not.toContain("完单次数");
+    expect(text).toContain("日本語");
+    expect(markup).toContain('data-testid="special-review-icon"');
+    expect(markup).toContain("魅力max");
+    expect(markup).toContain("服务max");
+    expect(markup).toContain("var(--client-primary)");
     expect(markup).not.toContain("粉丝：");
     expect(markup).not.toContain("Lv.");
   });

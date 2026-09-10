@@ -31,7 +31,8 @@ describe("OrderServiceMiniCard legacy snapshots", () => {
       createElement(MemoryRouter, null, createElement(OrderServiceMiniCard, { order: legacyOrder }))
     );
 
-    expect(markup).toContain("时长未读取");
+    expect(markup).toContain('data-testid="unified-card-duration-overlay"');
+    expect(markup).toMatch(/data-testid="unified-card-duration-overlay"[^>]*>[\s\S]*?-/u);
     expect(markup).not.toContain("/0分钟");
   });
 

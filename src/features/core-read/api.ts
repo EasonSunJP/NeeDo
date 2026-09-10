@@ -59,6 +59,7 @@ export type CoreShopCard = {
   address: string;
   coverUrl: string | null;
   reviewSummary: CoreReviewSummary;
+  completedOrderCount: number;
   favoriteCount: number;
   shareCount: number;
   distanceKm?: number;
@@ -118,6 +119,19 @@ export type CoreServiceDetail = CoreServiceCard & {
   mediaAssets: CoreMediaAsset[];
   createdAt: string;
   updatedAt: string;
+};
+
+export type CoreServiceReview = {
+  id: number;
+  title: string | null;
+  comment: string | null;
+  rating: number;
+  createdAt: string;
+  reviewer: {
+    displayName: string;
+    avatarUrl: string | null;
+  };
+  mediaAssets: CoreMediaAsset[];
 };
 
 export type CoreShopDetail = CoreShopCard & {
@@ -407,6 +421,7 @@ export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
     address: shop.address,
     rating: parseRating(shop.reviewSummary),
     reviewCount: shop.reviewSummary.reviewCount,
+    completedOrderCount: shop.completedOrderCount,
     favoriteCount: shop.favoriteCount,
     shareCount: shop.shareCount,
     distanceKm: shop.distanceKm,
@@ -556,8 +571,18 @@ export const coreReadApi = {
     return httpClient.request<CoreServiceDetail>(`/services/${id}`, { auth: false });
   },
 
-  getShopDetail(id: number | string) {
-    return httpClient.request<CoreShopDetail>(`/shops/${id}`, { auth: false });
+  listServiceReviews(
+    id: number | string,
+    query: { page?: number; pageSize?: number } = {}
+  ) {
+    return httpClient.request<PaginatedCoreReadData<CoreServiceReview>>(
+      `/services/${id}/reviews`,
+      { auth: false, query }
+    );
+  },
+
+  getShopDetail(id: number | string, query: { locale?: "ja" | "en" | "ko" | "zh-CN" | "zh-TW" } = {}) {
+    return httpClient.request<CoreShopDetail>(`/shops/${id}`, { auth: false, query });
   },
 
   getTechnicianDetail(

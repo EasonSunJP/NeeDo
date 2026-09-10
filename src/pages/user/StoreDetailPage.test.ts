@@ -25,6 +25,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("setSelectedMenuCardId(item.sourceServiceId);");
     expect(pageSource).toContain("selectLabel={serviceSelectLabel}");
     expect(pageSource).not.toContain('cardUi?.cta ?? "预约"');
+    expect(pageSource).toContain("const sourceCards = formalApiOnly && !isMerchantEditable");
+    expect(pageSource).toContain("return sourceCards.map((menuCard) => ({");
   });
 
   it("uses one consistent edit button size and avoids duplicate menu card edit actions", () => {
@@ -44,6 +46,19 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(compactMenuSource).toContain("{showSelectAction ? (");
     expect(menuPackageSource).toContain("showSelectAction={!isMerchantEditable}");
     expect(menuPackageSource).not.toContain("merchantServiceEditLabel");
+  });
+
+  it("keeps the active inline editor open while localized drafts change", () => {
+    const resetEffectSource = pageSource.slice(
+      pageSource.indexOf('setActiveTab("home");'),
+      pageSource.indexOf('setActiveImageIndex((current) =>')
+    );
+
+    expect(resetEffectSource).toContain(
+      "[routeTechnicianId, routeTime, routeVisitDate, sourceStore.id]"
+    );
+    expect(resetEffectSource).not.toContain("store.nextSlot]");
+    expect(resetEffectSource).not.toContain("primaryCheckoutTarget, routeTechnicianId");
   });
 
   it("shows a merchant-only add service action between menu and technicians", () => {
@@ -259,12 +274,25 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(bookingSectionSource).not.toContain("bookingModeCopy(store.openStatus)");
   });
 
-  it("opens merchant-owned service display edits in a fullscreen editor", () => {
-    expect(pageSource).toContain("StoreDisplayFullscreenEditor");
-    expect(pageSource).toContain("activeEditor ? (");
-    expect(pageSource).toContain('mode={activeEditor.mode}');
-    expect(pageSource).toContain('target={activeEditor.target}');
-    expect(pageSource).toContain('onClose={() => setActiveEditor(null)}');
+  it("keeps merchant-owned display edits on the current page with a five-language rail", () => {
+    expect(pageSource).toContain("activeEditor && !isMerchantEditable ? (");
+    expect(pageSource).toContain('data-testid="shop-presentation-locale-rail"');
+    expect(pageSource).toContain('{ code: "ja", label: "日本語"');
+    expect(pageSource).toContain('{ code: "en", label: "English"');
+    expect(pageSource).toContain('{ code: "ko", label: "한국어"');
+    expect(pageSource).toContain('{ code: "zh-CN", label: "简体中文"');
+    expect(pageSource).toContain('{ code: "zh-TW", label: "繁體中文"');
+    expect(pageSource).toContain("renderActiveInlineEditor");
+  });
+
+  it("requires the shared red confirmation before synchronizing the current draft to every locale", () => {
+    expect(pageSource).toContain('import { DangerConfirmDialog }');
+    expect(pageSource).toContain("synchronizeMerchantShopPresentationLocales");
+    expect(pageSource).toContain("expectedLockVersions");
+    expect(pageSource).toContain("将会用当前语言版本的图片和文字覆盖其他语言版本，真的要执行同步吗？");
+    expect(pageSource).toContain('confirmLabel="确认同步"');
+    expect(pageSource).toContain('title="同步所有语言版本"');
+    expect(pageSource).toContain("setPresentationDrafts(drafts)");
   });
 
   it("uses the working basic-card editor in the embedded merchant header without duplicating the info-card edit button", () => {
@@ -303,14 +331,14 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).not.toContain('handleMerchantEditFocus("technician", technicianEditorTarget);');
   });
 
-  it("opens the shared image adjustment editor before merchant image replacements are saved", () => {
-    expect(pageSource).toContain("ImageAdjustmentEditor");
-    expect(pageSource).toContain("pendingStoreImageEdit");
-    expect(pageSource).toContain("openStoreImageEditor");
-    expect(pageSource).toContain("setPendingFullscreenImageEdit");
-    expect(pageSource).toContain("replaceFullscreenMenuImage");
-    expect(pageSource).toContain("const fileInput = event.currentTarget;");
-    expect(pageSource).toContain("void replaceFullscreenMenuImage(fileInput.files).finally(() => {");
+  it("uploads carousel and service-package images through the formal merchant API", () => {
+    const merchantUploadSource = pageSource.slice(pageSource.indexOf("const uploadPresentationImage"), pageSource.indexOf("const addMerchantMenuCard"));
+    expect(merchantUploadSource).toContain("uploadMerchantShopPresentationMedia");
+    expect(merchantUploadSource).toContain("const addGalleryImage");
+    expect(pageSource).toContain("新增<br />轮播图");
+    expect(merchantUploadSource).toContain("const replaceGalleryImage");
+    expect(merchantUploadSource).toContain("const replaceMenuCardImage");
+    expect(merchantUploadSource).not.toContain("readImageFilesAsDataUrls(files, 1);");
   });
 
   it("keeps the fullscreen merchant editor header compact with bottom actions", () => {
@@ -399,9 +427,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(inlineEditorSource).toContain("editorFrameClassName={storeHeroGalleryRadiusClassName}");
     expect(inlineEditorSource).toContain("editorFrameWidth={storeHeroGalleryEditorFrameWidth}");
     expect(inlineEditorSource).toContain("previewAspectRatio={storeHeroGalleryAspectRatio}");
-    expect(pageSource).toContain("aspectRatio: storeHeroGalleryAspectRatio");
-    expect(pageSource).toContain("frameClassName: storeHeroGalleryRadiusClassName");
-    expect(pageSource).toContain("frameWidth: storeHeroGalleryEditorFrameWidth");
+    expect(pageSource).toContain("uploadPresentationImage(files");
     expect(pageSource).not.toContain("aspectRatio: 16 / 10");
     expect(pageSource).not.toContain("editorAspectRatio={16 / 10}");
   });

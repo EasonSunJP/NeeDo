@@ -7,10 +7,12 @@ import {
   coreReadIdParamSchema,
   coreReadServiceIdParamSchema,
   coreReadShopIdParamSchema,
+  coreReadShopDetailQuerySchema,
   coreReadTechnicianIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
-  serviceListQuerySchema
+  serviceListQuerySchema,
+  serviceReviewListQuerySchema
 } from "../validators/core-read.validator";
 
 export class CoreReadController {
@@ -62,6 +64,27 @@ export class CoreReadController {
         .status(200)
         .json(
           successResponse(await this.coreReadService.getServiceDetail(this.getServiceId(request)))
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listServiceReviews = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.coreReadService.listServiceReviews(
+              this.getServiceId(request),
+              serviceReviewListQuerySchema.parse(request.query)
+            )
+          )
         );
     } catch (error) {
       next(error);
@@ -122,7 +145,10 @@ export class CoreReadController {
     try {
       response
         .status(200)
-        .json(successResponse(await this.coreReadService.getShopDetail(this.getShopId(request))));
+        .json(successResponse(await this.coreReadService.getShopDetail(
+          this.getShopId(request),
+          coreReadShopDetailQuerySchema.parse(request.query).locale
+        )));
     } catch (error) {
       next(error);
     }

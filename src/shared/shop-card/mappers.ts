@@ -23,6 +23,7 @@ export function mapCoreShopToUnifiedData(
       .slice(0, 8),
     rating: Number.parseFloat(shop.reviewSummary.ratingAverage),
     reviewCount: shop.reviewSummary.reviewCount,
+    completedOrderCount: shop.completedOrderCount,
     distanceKm: shop.distanceKm ?? null,
     favoriteCount: shop.favoriteCount,
     shareCount: shop.shareCount,

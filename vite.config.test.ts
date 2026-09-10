@@ -85,6 +85,8 @@ describe("Needo production chunks", () => {
   it("keeps feature translations outside the base i18n budget", () => {
     expect(resolveNeedoManualChunk("/workspace/src/features/identity-applications/i18n.ts"))
       .toBe("identity-applications-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/settings/ekycI18n.ts"))
+      .toBe("ekyc-i18n");
     expect(resolveNeedoManualChunk("/workspace/src/i18n/translations.ts")).toBe("i18n");
     expect(resolveNeedoManualChunk("/workspace/src/features/travel-fare/i18n.ts"))
       .toBe("travel-fare-i18n");
@@ -94,6 +96,8 @@ describe("Needo production chunks", () => {
       .toBe("affiliate-i18n");
     expect(resolveNeedoManualChunk("/workspace/src/features/affiliate-marketplace/i18n.ts"))
       .toBe("affiliate-i18n");
+    expect(resolveNeedoManualChunk("/workspace/src/features/technician-schedule/automation-i18n.ts"))
+      .toBe("technician-automation-i18n");
     expect(resolveNeedoManualChunk("/workspace/src/components/scheduling/UnifiedUserCalendar.tsx"))
       .toBe("unified-calendar");
   });

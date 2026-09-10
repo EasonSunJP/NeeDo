@@ -10299,6 +10299,31 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           sortOrder: { type: "integer" }
         }
       },
+      ServiceReview: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "title", "comment", "rating", "createdAt", "reviewer", "mediaAssets"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          title: { type: ["string", "null"], maxLength: 40 },
+          comment: { type: ["string", "null"], maxLength: 1000 },
+          rating: { type: "integer", minimum: 1, maximum: 5 },
+          createdAt: { type: "string", format: "date-time" },
+          reviewer: {
+            type: "object",
+            additionalProperties: false,
+            required: ["displayName", "avatarUrl"],
+            properties: {
+              displayName: { type: "string" },
+              avatarUrl: { type: ["string", "null"] }
+            }
+          },
+          mediaAssets: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MediaAsset" }
+          }
+        }
+      },
       Category: {
         type: "object",
         required: [
@@ -10338,6 +10363,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "address",
           "coverUrl",
           "reviewSummary",
+          "completedOrderCount",
           "favoriteCount",
           "shareCount",
           "serviceCategories",
@@ -10351,6 +10377,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           address: { type: "string" },
           coverUrl: { type: ["string", "null"] },
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" },
+          completedOrderCount: { type: "integer", minimum: 0 },
           favoriteCount: { type: "integer", minimum: 0 },
           shareCount: { type: "integer", minimum: 0 },
           distanceKm: {
@@ -10536,6 +10563,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "imageUrl",
           "rating",
           "reviewCount",
+          "completedOrderCount",
           "shareCount"
         ],
         properties: {
@@ -10546,6 +10574,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           imageUrl: { type: ["string", "null"] },
           rating: { type: "number", minimum: 0, maximum: 5 },
           reviewCount: { type: "integer", minimum: 0 },
+          completedOrderCount: { type: "integer", minimum: 0 },
           shareCount: { type: "integer", minimum: 0 }
         }
       },
@@ -16814,6 +16843,93 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
     ...createOrderRefundCaseOpenApiPaths(config),
+    [`${config.API_PREFIX}/merchant-admin/shop/presentation`]: {
+      get: {
+        operationId: "getMerchantShopPresentationWorkspace",
+        tags: ["Merchant Shop Presentation"],
+        summary: "Read five-locale shop presentation drafts and formal media/service references",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "merchant-admin:shop:read",
+        responses: {
+          "200": jsonDataResponse("Shop presentation workspace", { type: "object" }),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop/presentation/locales/{locale}`]: {
+      put: {
+        operationId: "updateMerchantShopPresentationLocale",
+        tags: ["Merchant Shop Presentation"],
+        summary: "Update one locale with optimistic locking and audited references",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "merchant-admin:shop:write",
+        parameters: [{ name: "locale", in: "path", required: true, schema: { type: "string", enum: ["ja", "en", "ko", "zh-CN", "zh-TW"] } }],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["expectedLockVersion", "content"], properties: { expectedLockVersion: { type: "integer", minimum: 0 }, content: { type: "object" } } } } } },
+        responses: {
+          "200": jsonDataResponse("Updated locale", { type: "object" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden"),
+          "409": jsonErrorResponse("error.shop_presentation.version_conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop/presentation/locales/{locale}/sync`]: {
+      post: {
+        operationId: "synchronizeMerchantShopPresentationLocales",
+        tags: ["Merchant Shop Presentation"],
+        summary: "Atomically overwrite all five locale drafts from the selected locale content",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "merchant-admin:shop:write",
+        parameters: [{ name: "locale", in: "path", required: true, schema: { type: "string", enum: ["ja", "en", "ko", "zh-CN", "zh-TW"] } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["expectedLockVersions", "content"],
+                properties: {
+                  expectedLockVersions: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["ja", "en", "ko", "zh-CN", "zh-TW"],
+                    properties: Object.fromEntries(["ja", "en", "ko", "zh-CN", "zh-TW"].map((locale) => [locale, { type: "integer", minimum: 0 }]))
+                  },
+                  content: { type: "object" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Synchronized locale drafts", { type: "object" }),
+          "400": jsonErrorResponse("error.validation"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden"),
+          "409": jsonErrorResponse("error.shop_presentation.version_conflict")
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop/presentation/media`]: {
+      post: {
+        operationId: "uploadMerchantShopPresentationMedia",
+        tags: ["Merchant Shop Presentation"],
+        summary: "Upload a JPEG, PNG, or WebP for the current shop presentation",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "merchant-admin:shop:write",
+        parameters: [{ name: "alt_text", in: "query", required: false, schema: { type: "string", minLength: 1, maxLength: 255 } }],
+        requestBody: { required: true, content: { "image/jpeg": { schema: { type: "string", format: "binary" } }, "image/png": { schema: { type: "string", format: "binary" } }, "image/webp": { schema: { type: "string", format: "binary" } } } },
+        responses: {
+          "201": jsonDataResponse("Uploaded media", { type: "object" }),
+          "400": jsonErrorResponse("error.shop_presentation.media_invalid"),
+          "401": jsonErrorResponse("error.auth.unauthorized"),
+          "403": jsonErrorResponse("error.identity.forbidden"),
+          "413": jsonErrorResponse("error.shop_presentation.media_too_large")
+        }
+      }
+    },
     [`${config.API_PREFIX}/platform/settings/public`]: {
       get: {
         operationId: "getPublicPlatformSettings",
@@ -20740,6 +20856,48 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/services/{id}/reviews`]: {
+      get: {
+        tags: ["Core Read"],
+        summary: "Public reviews for a published service",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: {
+              oneOf: [
+                { type: "integer", minimum: 1 },
+                { type: "string", format: "uuid" }
+              ]
+            }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated service reviews", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: { $ref: "#/components/schemas/ServiceReview" }
+              },
+              total: { type: "integer", minimum: 0 },
+              page: { type: "integer", minimum: 1 },
+              page_size: { type: "integer", minimum: 1, maximum: 100 }
+            }
+          }),
+          "400": jsonErrorResponse("error.validation"),
+          "404": jsonErrorResponse("error.service.not_found")
+        }
+      }
+    },
     [`${config.API_PREFIX}/home/recommendations`]: {
       get: {
         tags: ["Core Read"],
@@ -21156,7 +21314,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 { type: "string", pattern: "^shop[0-9]{10}$" }
               ]
             }
-          }
+          },
+          { name: "locale", in: "query", required: false, schema: { type: "string", enum: ["ja", "en", "ko", "zh-CN", "zh-TW"] } }
         ],
         responses: {
           "200": { description: "Shop detail" },

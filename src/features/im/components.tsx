@@ -52,6 +52,7 @@ import {
 } from "./JudgementReactionIcon";
 import { ImChatRecordCard } from "./ImChatRecordCard";
 import { resolveImNoStoreMediaSource } from "./media-source";
+import { SocialPostCompactCard } from "./SocialPostCompactCard";
 import { ReactionCatalog } from "./ReactionCatalog";
 import {
   getRecentImReactionSnapshot,
@@ -84,15 +85,6 @@ import {
 const defaultImMessageTranslation: ImMessageTranslationOptions = {
   language: "zh",
 };
-
-const socialPostCardCopy: Record<Language, { fallback: string; open: string }> =
-  {
-    zh: { fallback: "查看这条动态", open: "打开原动态" },
-    "zh-Hant": { fallback: "查看這則動態", open: "開啟原動態" },
-    ja: { fallback: "この投稿を見る", open: "元の投稿を開く" },
-    en: { fallback: "View this post", open: "Open original post" },
-    ko: { fallback: "이 게시물 보기", open: "원본 게시물 열기" },
-  };
 
 export function ImIcon({
   name,
@@ -1314,6 +1306,10 @@ export function ImChatComposer({
   textareaRef,
   voiceButtonRef,
   voiceInputAriaLabel = "录制语音",
+  embedded = false,
+  showVoice = true,
+  showMore = true,
+  showSend = true,
 }: {
   actions?: ImChatComposerAction[];
   blocked?: boolean;
@@ -1342,6 +1338,10 @@ export function ImChatComposer({
   textareaRef?: Ref<HTMLDivElement>;
   voiceButtonRef?: Ref<HTMLButtonElement>;
   voiceInputAriaLabel?: string;
+  embedded?: boolean;
+  showVoice?: boolean;
+  showMore?: boolean;
+  showSend?: boolean;
 }) {
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   const previousPanelRef = useRef<ImChatComposerPanel>(null);
@@ -1441,7 +1441,8 @@ export function ImChatComposer({
   return (
     <div
       className={cn(
-        "im-chat-composer-root safe-nav-bottom relative z-10 max-w-full px-3 pt-2 [overflow-x:clip]",
+        "im-chat-composer-root relative z-10 max-w-full [overflow-x:clip]",
+        embedded ? "" : "safe-nav-bottom px-3 pt-2",
         disabled ? "cursor-not-allowed opacity-60" : "",
       )}
       data-im-composer-disabled={disabled ? "true" : undefined}
@@ -1464,7 +1465,7 @@ export function ImChatComposer({
             >
               {leadingAccessory}
             </div>
-          ) : (
+          ) : showVoice ? (
             <button
               aria-label={voiceInputAriaLabel}
               className={cn(
@@ -1482,7 +1483,7 @@ export function ImChatComposer({
             >
               <ImIcon className="h-[18px] w-[18px]" name="voice-input" />
             </button>
-          )}
+          ) : null}
           <div
             className={composerInputShellClass}
             data-im-composer-editor-shell="true"
@@ -1535,7 +1536,7 @@ export function ImChatComposer({
           >
             <ImIcon className="h-[18px] w-[18px]" name="emoji-chat" />
           </button>
-          {draft.trim() || pendingImage ? (
+          {showSend && (draft.trim() || pendingImage) ? (
             <Button
               className="h-9 shrink-0 rounded-full px-3 text-sm"
               disabled={disabled || blocked || sending}
@@ -1543,7 +1544,7 @@ export function ImChatComposer({
             >
               {sending ? sendingLabel : sendLabel}
             </Button>
-          ) : (
+          ) : showMore ? (
             <button
               aria-label={
                 moreAction?.ariaLabel ??
@@ -1566,7 +1567,7 @@ export function ImChatComposer({
             >
               <ImIcon name="plus" />
             </button>
-          )}
+          ) : null}
         </div>
 
         {panel === "emoji" ? (
@@ -4106,7 +4107,6 @@ export function MessageBubble({
   translation?: ImMessageTranslationOptions;
 }) {
   const i18n = useProvidedI18n();
-  const postCardCopy = socialPostCardCopy[i18n?.language ?? "zh"];
   const rawMediaSource =
     message.type === "image" || (message.type === "video" && !readOnly)
       ? (message.ext?.thumbnailUrl ?? message.ext?.url ?? message.content)
@@ -4116,6 +4116,8 @@ export function MessageBubble({
   const bubbleClass = isMine
     ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
     : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
+  const isForwardedCard =
+    message.type === "chat-record" || message.type === "social-post-card";
   const visibleTranslation =
     translation.visible &&
     typeof translation.content === "string" &&
@@ -4272,7 +4274,7 @@ export function MessageBubble({
 
     if (message.type === "voice") {
       return (
-        <div className="min-w-[200px] space-y-2">
+        <div className="w-full space-y-2">
           <div className="flex items-center gap-2">
             <ImIcon className="h-4 w-4" name="mic" />
             <div className="h-0.5 flex-1 rounded-full bg-black/20" />
@@ -4280,7 +4282,7 @@ export function MessageBubble({
           </div>
           {mediaLoad.failed ? (
             <button
-              className="block w-full max-w-[220px] rounded-2xl bg-black/10"
+              className="block w-full rounded-2xl bg-black/10"
               onClick={(event) => {
                 event.stopPropagation();
                 mediaLoad.retry();
@@ -4291,7 +4293,7 @@ export function MessageBubble({
             </button>
           ) : (
             <audio
-              className="block h-10 w-full max-w-[220px]"
+              className="block h-10 w-full"
               controls
               key={mediaLoad.key}
               onError={mediaLoad.onError}
@@ -4412,6 +4414,7 @@ export function MessageBubble({
             }}
             language={i18n?.language}
             onOpenDetails={() => onOpenContact?.(card.userId)}
+            showLanguageTags={false}
           />
         </div>
       );
@@ -4438,7 +4441,7 @@ export function MessageBubble({
               priceAmount: numericPrice,
               currency: card.currency ?? "JPY",
               durationMinutes: numericDuration,
-              usageCount: card.usageCount ?? null,
+              completedOrderCount: card.usageCount ?? null,
               engagementTarget: card.targetType
                 ? { targetType: card.targetType, publicId: card.serviceId }
                 : null,
@@ -4468,10 +4471,12 @@ export function MessageBubble({
               kind: "shop",
               id: card.publicId,
               imageUrl: card.imageUrl,
+              completedOrderCount: card.completedOrderCount,
               languages: [],
               engagementTarget: { targetType: "shop", publicId: card.publicId },
             }}
             language={i18n?.language}
+            showLanguageTags={false}
           />
         </div>
       );
@@ -4493,6 +4498,7 @@ export function MessageBubble({
               },
             }}
             language={i18n?.language}
+            showLanguageTags={false}
           />
         </div>
       );
@@ -4501,37 +4507,12 @@ export function MessageBubble({
     if (message.type === "social-post-card" && message.ext?.socialPostCard) {
       const card = message.ext.socialPostCard;
       return (
-        <button
-          className="block w-[292px] max-w-[82vw] overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-left text-[color:var(--client-text)]"
-          onClick={() => onOpenSocialPost?.(card.postId)}
-          type="button"
-        >
-          {card.mediaUrl ? (
-            <img
-              alt=""
-              className="h-36 w-full object-cover"
-              src={card.mediaUrl}
-            />
-          ) : null}
-          <div className="p-3">
-            <div className="flex items-center gap-2">
-              <AvatarImage
-                alt={card.authorName}
-                className="h-8 w-8"
-                src={card.authorAvatar}
-              />
-              <p className="min-w-0 flex-1 truncate text-[13px] font-black">
-                {card.authorName}
-              </p>
-            </div>
-            <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-[13px] leading-5 text-[color:var(--client-muted)]">
-              {card.text || postCardCopy.fallback}
-            </p>
-            <p className="mt-3 border-t border-[color:var(--client-line)] pt-2 text-[11px] font-black text-[color:var(--client-primary)]">
-              {postCardCopy.open}
-            </p>
-          </div>
-        </button>
+        <SocialPostCompactCard
+          card={card}
+          className="w-full !max-w-full"
+          language={i18n?.language ?? "zh"}
+          onOpen={onOpenSocialPost}
+        />
       );
     }
 
@@ -4739,13 +4720,17 @@ export function MessageBubble({
       </div>
     ) : null;
   const bubbleShellClass =
-    (message.type === "contact-card" || message.type === "social-post-card") &&
-    !quotedMessage
+    message.type === "contact-card" && !quotedMessage
       ? "rounded-[24px]"
       : cn("rounded-[20px] px-3 py-2", bubbleClass);
   const contentNode =
     quoteNode || reactionNode ? (
-      <div className="min-w-0 max-w-full overflow-hidden">
+      <div
+        className={cn(
+          "min-w-0 max-w-full overflow-hidden",
+          message.type === "voice" && "w-full",
+        )}
+      >
         {quoteNode}
         {bubbleContent}
         {reactionNode}
@@ -4764,10 +4749,14 @@ export function MessageBubble({
       {!isMine ? avatarNode : null}
       <div
         className={cn(
-          "flex flex-col",
-          message.type === "contact-card"
-            ? "max-w-[calc(100%-3.25rem)]"
-            : "max-w-[78%]",
+            "flex flex-col",
+            message.type === "contact-card"
+              ? "max-w-[calc(100%-3.25rem)]"
+              : message.type === "voice"
+                ? "w-[calc(100%-3.25rem)] max-w-[320px]"
+                : isForwardedCard
+                  ? "w-full max-w-[78%]"
+                  : "max-w-[78%]",
           isMine ? "items-end" : "items-start",
         )}
       >
@@ -4782,6 +4771,7 @@ export function MessageBubble({
         <div
           className={cn(
             "inline-flex min-w-0 max-w-full overflow-hidden",
+            (message.type === "voice" || isForwardedCard) && "w-full",
             bubbleShellClass,
           )}
           data-im-message-bubble="true"

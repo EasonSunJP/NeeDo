@@ -9,6 +9,7 @@ import type {
   HomeRecommendationsPayload,
   ServiceCardPayload,
   ServiceDetailPayload,
+  ServiceReviewPayload,
   ServiceListInput,
   ShopDetailPayload,
   CustomerProfilePayload,
@@ -25,6 +26,7 @@ import { AppError } from "../utils/app-error";
 import { buildPaginatedResponse, normalizePagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { SearchQueryRecorderPort } from "./search-query-recorder.service";
+import type { ContentLocaleCode } from "../constants/content-locales";
 
 const INITIAL_NEARBY_RADIUS_KM = 3;
 const REQUIRED_NEARBY_TECHNICIANS = 3;
@@ -52,6 +54,19 @@ export class CoreReadService {
     }
 
     return service;
+  }
+
+  public async listServiceReviews(
+    id: number | string,
+    input: { page?: number; pageSize?: number }
+  ): Promise<PaginatedResponse<ServiceReviewPayload>> {
+    const reviews = await this.repository.listServiceReviews(id, input);
+
+    if (!reviews) {
+      throw this.notFoundError("error.service.not_found");
+    }
+
+    return reviews;
   }
 
   public getHomeRecommendations(
@@ -148,8 +163,10 @@ export class CoreReadService {
     return buildPaginatedResponse(cards, ranked.length, pagination);
   }
 
-  public async getShopDetail(id: number | string): Promise<ShopDetailPayload> {
-    const shop = await this.repository.findShopDetail(id);
+  public async getShopDetail(id: number | string, locale?: ContentLocaleCode): Promise<ShopDetailPayload> {
+    const shop = locale === undefined
+      ? await this.repository.findShopDetail(id)
+      : await this.repository.findShopDetail(id, locale);
 
     if (!shop) {
       throw this.notFoundError("error.shop.not_found");

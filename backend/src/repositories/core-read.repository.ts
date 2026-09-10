@@ -10,6 +10,9 @@ import type {
   Shop,
   TechnicianProfile
 } from "@prisma/client";
+import { ContentLocale } from "@prisma/client";
+import type { ContentLocaleCode } from "../constants/content-locales";
+import { shopPresentationContentSchema } from "../validators/shop-presentation.validator";
 import { prisma } from "../prisma/client";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import type {
@@ -109,6 +112,7 @@ export interface ShopCardPayload {
   address: string;
   coverUrl: string | null;
   reviewSummary: ReviewSummaryPayload;
+  completedOrderCount: number;
   favoriteCount: number;
   shareCount: number;
   distanceKm?: number;
@@ -170,6 +174,19 @@ export interface ServiceDetailPayload extends ServiceCardPayload {
   updatedAt: Date;
 }
 
+export interface ServiceReviewPayload {
+  id: number;
+  title: string | null;
+  comment: string | null;
+  rating: number;
+  createdAt: Date;
+  reviewer: {
+    displayName: string;
+    avatarUrl: string | null;
+  };
+  mediaAssets: MediaAssetPayload[];
+}
+
 export interface ShopDetailPayload extends ShopCardPayload {
   description: string | null;
   phone: string | null;
@@ -226,6 +243,10 @@ export interface CoreReadRepositoryPort {
   listCategories: (input: CategoryListInput) => Promise<PaginatedResponse<CategoryPayload>>;
   listServices: (input: ServiceListInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
   findServiceDetail: (id: number | string) => Promise<ServiceDetailPayload | null>;
+  listServiceReviews: (
+    id: number | string,
+    input: PaginationInput
+  ) => Promise<PaginatedResponse<ServiceReviewPayload> | null>;
   getHomeRecommendations: (input: HomeRecommendationsInput) => Promise<HomeRecommendationsPayload>;
   search: (input: CoreSearchInput) => Promise<PaginatedResponse<ServiceCardPayload>>;
   searchShops: (input: CoreSearchInput) => Promise<PaginatedResponse<ShopCardPayload>>;
@@ -237,7 +258,7 @@ export interface CoreReadRepositoryPort {
     radiusKm: number
   ) => Promise<NearbyTechnicianCandidate[]>;
   loadTechnicianCardsByRankedIds: (ids: number[]) => Promise<Map<number, TechnicianCardPayload>>;
-  findShopDetail: (id: number | string) => Promise<ShopDetailPayload | null>;
+  findShopDetail: (id: number | string, locale?: ContentLocaleCode) => Promise<ShopDetailPayload | null>;
   findTechnicianDetail: (
     id: number | string,
     coordinates?: { latitude?: number; longitude?: number }
@@ -250,6 +271,7 @@ type ShopCardRecord = Shop & {
   publicIdentifier: PublicIdentifier | null;
   reviewSummary: ReviewSummary | null;
   _count: {
+    bookingOrders: number;
     entityFavorites: number;
     entityShareEvents: number;
   };
@@ -396,6 +418,142 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     });
 
     return service ? this.mapServiceDetail(service) : null;
+  }
+
+  public async listServiceReviews(
+    id: number | string,
+    input: PaginationInput
+  ): Promise<PaginatedResponse<ServiceReviewPayload> | null> {
+    const service = await this.client.service.findFirst({
+      where: {
+        ...(typeof id === "number" ? { id } : { publicId: id }),
+        deletedAt: null,
+        status: PUBLISHED_STATUS
+      },
+      select: { id: true }
+    });
+    if (!service) return null;
+
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.OrderReviewWhereInput = {
+      targetType: "TECHNICIAN",
+      deletedAt: null,
+      reviewer: { deletedAt: null },
+      bookingOrder: {
+        serviceId: service.id,
+        status: "COMPLETED",
+        deletedAt: null
+      }
+    };
+    const [reviews, total] = await Promise.all([
+      this.client.orderReview.findMany({
+        where,
+        select: {
+          id: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
+          tags: {
+            where: { deletedAt: null },
+            orderBy: [{ id: "asc" }],
+            select: { label: true }
+          },
+          amendments: {
+            where: { deletedAt: null },
+            orderBy: [{ version: "desc" }, { id: "desc" }],
+            take: 1,
+            select: {
+              rating: true,
+              comment: true,
+              tags: {
+                where: { deletedAt: null },
+                orderBy: [{ id: "asc" }],
+                select: { label: true }
+              }
+            }
+          },
+          reviewer: {
+            select: {
+              username: true,
+              avatarUrl: true,
+              avatarBootstrapUrl: true,
+              customerProfile: {
+                select: { displayName: true, deletedAt: true }
+              }
+            }
+          }
+        },
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.orderReview.count({ where })
+    ]);
+    const mediaAssets = reviews.length > 0
+      ? await this.client.mediaAsset.findMany({
+          where: {
+            entityType: "order_review",
+            entityId: { in: reviews.map((review) => review.id) },
+            mimeType: { startsWith: "image/" },
+            isActive: true,
+            purgedAt: null,
+            deletedAt: null
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            entityId: true,
+            url: true,
+            mimeType: true,
+            usageType: true,
+            width: true,
+            height: true,
+            altText: true,
+            sortOrder: true
+          }
+        })
+      : [];
+    const mediaByReviewId = new Map<number, MediaAssetPayload[]>();
+    for (const asset of mediaAssets) {
+      const list = mediaByReviewId.get(asset.entityId) ?? [];
+      list.push({
+        id: asset.id,
+        url: asset.url,
+        mimeType: asset.mimeType,
+        usageType: asset.usageType,
+        width: asset.width,
+        height: asset.height,
+        altText: asset.altText,
+        sortOrder: asset.sortOrder
+      });
+      mediaByReviewId.set(asset.entityId, list);
+    }
+
+    return buildPaginatedResponse(
+      reviews.map((review) => {
+        const amendment = review.amendments[0];
+        const tags = amendment ? amendment.tags : review.tags;
+        const customerProfile = review.reviewer.customerProfile;
+
+        return {
+          id: review.id,
+          title: tags[0]?.label ?? null,
+          comment: amendment ? amendment.comment : review.comment,
+          rating: amendment?.rating ?? review.rating,
+          createdAt: review.createdAt,
+          reviewer: {
+            displayName:
+              customerProfile && !customerProfile.deletedAt
+                ? customerProfile.displayName
+                : review.reviewer.username,
+            avatarUrl: review.reviewer.avatarUrl ?? review.reviewer.avatarBootstrapUrl
+          },
+          mediaAssets: mediaByReviewId.get(review.id) ?? []
+        };
+      }),
+      total,
+      pagination
+    );
   }
 
   public async getHomeRecommendations(
@@ -589,7 +747,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     );
   }
 
-  public async findShopDetail(id: number | string): Promise<ShopDetailPayload | null> {
+  public async findShopDetail(id: number | string, locale?: ContentLocaleCode): Promise<ShopDetailPayload | null> {
     const now = new Date();
     const shop = await this.client.shop.findFirst({
       where: {
@@ -629,7 +787,45 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       }
     });
 
-    return shop ? this.mapShopDetail(shop) : null;
+    if (!shop) return null;
+    const payload = this.mapShopDetail(shop);
+    if (!locale) return payload;
+    const localeMap: Record<ContentLocaleCode, ContentLocale> = {
+      "zh-CN": ContentLocale.ZH_CN,
+      "zh-TW": ContentLocale.ZH_TW,
+      en: ContentLocale.EN,
+      ja: ContentLocale.JA,
+      ko: ContentLocale.KO
+    };
+    const translation = await this.client.shopPresentationLocale.findFirst({
+      where: { shopId: shop.id, locale: localeMap[locale], deletedAt: null }
+    });
+    if (!translation) return payload;
+    const content = shopPresentationContentSchema.parse(translation.content);
+    const shopAssetByPublicId = new Map(shop.mediaAssets.flatMap((asset) => asset.checksumSha256 ? [[asset.checksumSha256, asset]] : []));
+    const localizedAssets = content.carousel.flatMap((item) => {
+      const asset = shopAssetByPublicId.get(item.mediaAssetPublicId);
+      return asset ? [{ ...this.mapMediaAsset(asset), altText: item.altText }] : [];
+    });
+    const menuByServiceId = new Map(content.serviceMenus.map((item) => [item.serviceId, item]));
+    return {
+      ...payload,
+      name: content.storeName,
+      description: content.description,
+      city: content.area,
+      address: content.address,
+      coverUrl: localizedAssets[0]?.url ?? payload.coverUrl,
+      mediaAssets: localizedAssets.length ? localizedAssets : payload.mediaAssets,
+      services: payload.services.map((service) => {
+        const menu = menuByServiceId.get(service.id);
+        if (!menu) return service;
+        const source = shop.services.find((item) => item.id === service.id);
+        const cover = menu.coverMediaAssetPublicId
+          ? source?.mediaAssets.find((asset) => asset.checksumSha256 === menu.coverMediaAssetPublicId)?.url
+          : undefined;
+        return { ...service, name: menu.name, description: menu.description, coverUrl: cover ?? service.coverUrl };
+      })
+    };
   }
 
   public async findTechnicianDetail(
@@ -724,6 +920,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     return {
       _count: {
         select: {
+          bookingOrders: { where: { status: "COMPLETED" as const, deletedAt: null } },
           entityFavorites: { where: { deletedAt: null } },
           entityShareEvents: { where: { deletedAt: null } }
         }
@@ -1304,6 +1501,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       address: shop.address,
       coverUrl: this.findMediaUrl(shop.mediaAssets, "cover"),
       reviewSummary: this.mapReviewSummary(shop.reviewSummary),
+      completedOrderCount: shop._count.bookingOrders,
       favoriteCount: shop._count.entityFavorites,
       shareCount: shop._count.entityShareEvents,
       ...(distanceKm === null ? {} : { distanceKm }),

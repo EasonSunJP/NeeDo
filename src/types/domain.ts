@@ -233,6 +233,7 @@ export interface Store {
   address: string;
   rating: number;
   reviewCount: number;
+  completedOrderCount?: number;
   favoriteCount?: number;
   shareCount?: number;
   distanceKm?: number;

@@ -679,6 +679,67 @@ export type MerchantShopUpdateInput = Partial<
 > & {
   avatarDataUrl?: string;
 };
+
+export type ShopPresentationLocale = "ja" | "en" | "ko" | "zh-CN" | "zh-TW";
+export interface ShopPresentationCarouselItem {
+  mediaAssetPublicId: string;
+  altText: string;
+}
+export interface ShopPresentationServiceMenu {
+  serviceId: number;
+  name: string;
+  description: string;
+  audience: string;
+  tags: string[];
+  highlights: string[];
+  coverMediaAssetPublicId: string | null;
+}
+export interface ShopPresentationContent {
+  storeName: string;
+  description: string;
+  address: string;
+  area: string;
+  rankLabel: string;
+  businessHours: string;
+  subtitle: string;
+  station: string;
+  distance: string;
+  parking: string;
+  routeGuide: string;
+  paymentMethods: string[];
+  equipment: string[];
+  carousel: ShopPresentationCarouselItem[];
+  serviceMenus: ShopPresentationServiceMenu[];
+}
+export interface ShopPresentationLocalePayload {
+  locale: ShopPresentationLocale;
+  lockVersion: number;
+  content: ShopPresentationContent;
+  updatedAt: string | null;
+}
+export interface ShopPresentationWorkspacePayload {
+  shopId: number;
+  locales: Record<ShopPresentationLocale, ShopPresentationLocalePayload>;
+  media: Record<string, { url: string; altText: string | null }>;
+  services: Array<{
+    id: number;
+    name: string;
+    description: string;
+    priceAmount: string;
+    currency: string;
+    durationMinutes: number;
+    coverMediaAssetPublicId: string | null;
+  }>;
+}
+export interface ShopPresentationMediaPayload {
+  publicId: string;
+  mediaAssetId: number;
+  url: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  checksumSha256: string;
+}
 export type BackofficeTechnicianUpdateInput = Partial<
   Pick<
     BackofficeTechnicianPayload,
@@ -1795,6 +1856,37 @@ export const backofficeRealDataApi = {
     return httpClient.request<BackofficeShopPayload>("/merchant-admin/shop", {
       body: input,
       method: "PATCH"
+    });
+  },
+  merchantShopPresentation() {
+    return httpClient.request<ShopPresentationWorkspacePayload>("/merchant-admin/shop/presentation");
+  },
+  updateMerchantShopPresentationLocale(
+    locale: ShopPresentationLocale,
+    expectedLockVersion: number,
+    content: ShopPresentationContent
+  ) {
+    return httpClient.request<ShopPresentationLocalePayload>(
+      `/merchant-admin/shop/presentation/locales/${locale}`,
+      { body: { expectedLockVersion, content }, method: "PUT" }
+    );
+  },
+  synchronizeMerchantShopPresentationLocales(
+    locale: ShopPresentationLocale,
+    expectedLockVersions: Record<ShopPresentationLocale, number>,
+    content: ShopPresentationContent
+  ) {
+    return httpClient.request<Record<ShopPresentationLocale, ShopPresentationLocalePayload>>(
+      `/merchant-admin/shop/presentation/locales/${locale}/sync`,
+      { body: { expectedLockVersions, content }, method: "POST" }
+    );
+  },
+  uploadMerchantShopPresentationMedia(file: Blob, altText: string) {
+    return httpClient.request<ShopPresentationMediaPayload>("/merchant-admin/shop/presentation/media", {
+      body: file,
+      headers: { "Content-Type": file.type },
+      method: "POST",
+      query: { alt_text: altText }
     });
   },
   createShop(input: BackofficeShopCreateInput) {

@@ -13,10 +13,12 @@ import {
   coreReadIdParamSchema,
   coreReadServiceIdParamSchema,
   coreReadShopIdParamSchema,
+  coreReadShopDetailQuerySchema,
   coreReadTechnicianIdParamSchema,
   coreSearchQuerySchema,
   homeRecommendationsQuerySchema,
-  serviceListQuerySchema
+  serviceListQuerySchema,
+  serviceReviewListQuerySchema
 } from "../validators/core-read.validator";
 
 export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
@@ -47,6 +49,11 @@ export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDepende
     controller.getServiceDetail
   );
   router.get(
+    "/services/:id/reviews",
+    validateRequest({ params: coreReadServiceIdParamSchema, query: serviceReviewListQuerySchema }),
+    controller.listServiceReviews
+  );
+  router.get(
     "/home/recommendations",
     validateRequest({ query: homeRecommendationsQuerySchema }),
     controller.getHomeRecommendations
@@ -54,7 +61,7 @@ export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDepende
   router.get("/search", validateRequest({ query: coreSearchQuerySchema }), controller.search);
   router.get(
     "/shops/:id",
-    validateRequest({ params: coreReadShopIdParamSchema }),
+    validateRequest({ params: coreReadShopIdParamSchema, query: coreReadShopDetailQuerySchema }),
     controller.getShopDetail
   );
   router.get(

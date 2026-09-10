@@ -5,6 +5,51 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents the paginated public service review contract", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    };
+    const operation = document.paths["/api/v1/services/{id}/reviews"]?.get;
+
+    expect(operation).toMatchObject({
+      tags: ["Core Read"],
+      responses: {
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "404": expect.any(Object)
+      }
+    });
+    expect(document.components.schemas.ServiceReview).toMatchObject({
+      additionalProperties: false,
+      required: expect.arrayContaining([
+        "title",
+        "comment",
+        "rating",
+        "createdAt",
+        "reviewer",
+        "mediaAssets"
+      ])
+    });
+  });
+
+  it("documents the five-locale merchant shop presentation and public locale projection", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+    };
+    const workspace = document.paths["/api/v1/merchant-admin/shop/presentation"]?.get;
+    const update = document.paths["/api/v1/merchant-admin/shop/presentation/locales/{locale}"]?.put;
+    const sync = document.paths["/api/v1/merchant-admin/shop/presentation/locales/{locale}/sync"]?.post;
+    const upload = document.paths["/api/v1/merchant-admin/shop/presentation/media"]?.post;
+    const shopDetail = document.paths["/api/v1/shops/{id}"]?.get as { parameters?: Array<{ name?: string; schema?: { enum?: string[] } }> };
+
+    expect(workspace).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "merchant-admin:shop:read" });
+    expect(update).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "merchant-admin:shop:write" });
+    expect(sync).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "merchant-admin:shop:write" });
+    expect(upload).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "merchant-admin:shop:write" });
+    expect(shopDetail.parameters?.find((parameter) => parameter.name === "locale")?.schema?.enum).toEqual(["ja", "en", "ko", "zh-CN", "zh-TW"]);
+  });
+
   it("publishes partner as the only active employee affiliation relationship", () => {
     type Schema = {
       enum?: string[];
@@ -3537,10 +3582,15 @@ describe("GET /api/v1/openapi.json", () => {
       expect.arrayContaining([
         "serviceCategories",
         "businessKeywords",
+        "completedOrderCount",
         "favoriteCount",
         "shareCount"
       ])
     );
+    expect(schemas.ShopCard.properties.completedOrderCount).toEqual({
+      type: "integer",
+      minimum: 0
+    });
     expect(schemas.ShopCard.properties.favoriteCount).toEqual(
       expect.objectContaining({ type: "integer", minimum: 0 })
     );

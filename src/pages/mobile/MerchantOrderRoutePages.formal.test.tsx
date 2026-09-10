@@ -57,6 +57,7 @@ vi.mock("../../components/mobile/MobileFullscreenPage", () => ({ MobileFullscree
 vi.mock("../../components/mobile/MobileFullscreenHeader", () => ({ MobileFullscreenHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock("../../components/mobile/MobileBottomActionBar", () => ({ MobileBottomActionBar: ({ children }: { children: React.ReactNode }) => <footer>{children}</footer> }));
 vi.mock("../../components/client-ui/AppScaffold", () => ({
+  AppIcon: ({ name }: { name: string }) => <span data-app-icon={name} />,
   AppTopBar: ({ actions, closeLabel, onBack, onClose, title }: { actions?: React.ReactNode; closeLabel?: string; onBack?: () => void; onClose?: () => void; title: string }) => (
     <header>
       <button aria-label="返回" onClick={onBack} type="button">返回</button>
@@ -193,6 +194,7 @@ const service: CoreServiceDetail = {
     address: "东京都渋谷区",
     coverUrl: null,
     reviewSummary: { ratingAverage: "5.0", reviewCount: 1, latestReviewAt: null, highlights: [] },
+    completedOrderCount: 0,
     favoriteCount: 0,
     shareCount: 0,
     serviceCategories: [],

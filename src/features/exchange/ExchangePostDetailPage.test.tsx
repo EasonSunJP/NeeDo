@@ -414,7 +414,7 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.querySelector('[data-testid="exchange-intelligence-publisher-card"]')).not.toBeNull();
     expect(document.body.querySelector('[data-testid="unified-info-card"][data-card-kind="service"]')).not.toBeNull();
     expect(document.body.textContent).toContain("4.8");
-    expect(document.body.textContent).toContain("126");
+    expect(document.body.textContent).not.toContain("126");
     expect(document.body.textContent).toContain("￥9,800");
     expect(document.body.textContent).not.toContain("￥12,250");
     expect(document.body.textContent).toContain("90分钟");
@@ -493,7 +493,7 @@ describe("ExchangePostDetailPage", () => {
 
     expect(document.body.textContent).toContain("Service post details");
     expect(document.body.textContent).toContain("Service posts");
-    expect(document.body.textContent).toContain("Rating");
+    expect(document.body.textContent).not.toContain("Rating");
     expect(document.body.textContent).not.toContain("merchant_owner");
     expect(document.body.textContent).not.toContain("情报");
   });

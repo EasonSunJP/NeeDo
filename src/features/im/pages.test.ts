@@ -20,6 +20,25 @@ import componentsSource from "./components.tsx?raw";
 const stylesSource = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 describe("IM pages", () => {
+  it("renders the add-tag editor as one glass sheet without a nested outer card", () => {
+    const pageStart = pagesSource.indexOf("export function ImContactTagsPage");
+    const pageEnd = pagesSource.indexOf("export function ImServiceAccountsPage", pageStart);
+    const pageSource = pagesSource.slice(pageStart, pageEnd);
+    const sheetStart = pageSource.indexOf("<ImBottomSheet");
+    const sheetEnd = pageSource.indexOf("</ImBottomSheet>", sheetStart);
+    const sheetSource = pageSource.slice(sheetStart, sheetEnd);
+
+    expect(pageStart).toBeGreaterThan(-1);
+    expect(sheetStart).toBeGreaterThan(-1);
+    expect(sheetSource).toContain('presentation="composer"');
+    expect(sheetSource).toContain('panelClassName="im-tag-composer-sheet"');
+    expect(sheetSource).not.toContain('data-im-tag-composer-card="true"');
+    expect(sheetSource).not.toContain('className="client-liquid-glass-surface im-composer-glass');
+    expect(sheetSource.indexOf("<ImChatComposer")).toBeLessThan(sheetSource.indexOf(">取消</Button>"));
+    expect(sheetSource.indexOf(">取消</Button>")).toBeLessThan(sheetSource.indexOf(">添加</Button>"));
+    expect(stylesSource).toMatch(/\.im-tag-composer-sheet \{[^}]*height: auto;[^}]*max-height:/s);
+  });
+
   it("renders the header quick menu outside the glass header clipping context", () => {
     const componentStart = pagesSource.indexOf("function ImHeaderQuickMenu");
     const componentEnd = pagesSource.indexOf("export function ImMessagesEntryPage", componentStart);
@@ -301,6 +320,18 @@ describe("IM pages", () => {
     expect(pagesSource).toContain("config.routes.directoryProfile(counterpartId)");
     expect(componentsSource).toContain('message.failureReason === "not_friends"');
     expect(componentsSource).toContain("对方不是你的好友，信息发送失败");
+  });
+
+  it("gives every custom chat name card the same friend-card width", () => {
+    const renderStart = pagesSource.indexOf("const renderContactCardAction =");
+    const renderEnd = pagesSource.indexOf("const sendPresetMessage", renderStart);
+    const renderSource = pagesSource.slice(renderStart, renderEnd);
+
+    expect(renderStart).toBeGreaterThan(-1);
+    expect(renderSource).toContain('className="w-[min(520px,80vw)] max-w-full"');
+    expect(renderSource).toContain("<PlatformMembershipSimpleCard");
+    expect(renderSource).toContain("text-[color:var(--client-muted)]");
+    expect(renderSource).not.toContain("text-white/68");
   });
 
   it("routes message and visible group-member avatars by the represented account", () => {

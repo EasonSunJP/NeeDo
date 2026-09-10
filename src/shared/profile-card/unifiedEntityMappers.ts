@@ -1,13 +1,6 @@
 import type { Customer, Store, Technician } from "../../types/domain";
 import type { UnifiedEntityInfoCardData } from "./UnifiedEntityInfoCard";
 
-const specialIcon: Record<string, string> = {
-  appeal_max: "✨",
-  service_max: "💙",
-  emotion_max: "💛",
-  energy_max: "☀️",
-};
-
 export const mapStoreToUnifiedEntityData = (
   store: Store,
 ): UnifiedEntityInfoCardData => ({
@@ -21,6 +14,9 @@ export const mapStoreToUnifiedEntityData = (
   tags: store.tags,
   rating: store.rating,
   reviewCount: store.reviewCount,
+  ...(store.completedOrderCount === undefined
+    ? {}
+    : { completedOrderCount: store.completedOrderCount }),
   distanceKm: store.distanceKm ?? null,
   favoriteCount: store.favoriteCount ?? null,
   shareCount: store.shareCount ?? null,
@@ -48,10 +44,7 @@ export const mapTechnicianToUnifiedEntityData = (
   engagementTarget: /^s\d{10}$/u.test(technician.systemId)
     ? { targetType: "technician", publicId: technician.systemId }
     : null,
-  specialReviewTags: (technician.specialReviewTags ?? []).map((tag) => ({
-    ...tag,
-    icon: specialIcon[tag.code] ?? "✦",
-  })),
+  specialReviewTags: technician.specialReviewTags ?? [],
 });
 
 export const mapCustomerToUnifiedEntityData = (

@@ -109,8 +109,19 @@ describe("MerchantPortalPage store privacy control", () => {
 
     expect(employeeDetailWorkspaceSource).toContain("merchantEmployeeApi.detail(needoId)");
     expect(employeeDetailWorkspaceSource).toContain("<EmployeeDetailCard");
+    expect(employeeDetailWorkspaceSource).toContain('scheduleSurface="mobile"');
     expect(staffDetailSource).not.toContain('backofficeRealDataApi.technician("merchant-admin"');
     expect(employeeDetailWorkspaceSource).toContain("正在读取员工详细信息卡");
+  });
+
+  it("keeps termination off technician summary cards and in the formal detail workspace", () => {
+    const staffCardSource = merchantSource.slice(
+      merchantSource.indexOf("group.technicianEntries.map"),
+      merchantSource.indexOf("group.employees.map"),
+    );
+    expect(staffCardSource).toContain("getMerchantStaffDetailPath");
+    expect(staffCardSource).not.toContain("MerchantRemoveStaffIconButton");
+    expect(employeeDetailWorkspaceSource).toContain("<EmployeeDetailCard");
   });
 
   it("adds the floating privacy menu to the merchant service card only", () => {
@@ -265,5 +276,20 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(dashboardAppointments).not.toContain("merchant-dashboard-appointment-service");
     expect(orderList).toContain("<UnifiedServiceInfoCard");
     expect(orderList).not.toContain("<OrderServiceMiniCard");
+  });
+
+  it("removes the extra employee-list containers so shared cards use the available width", () => {
+    const roleSection = merchantSource.slice(
+      merchantSource.indexOf("function MerchantStaffRoleSection"),
+      merchantSource.indexOf("function getMerchantOrderProvider"),
+    );
+    const employeeStatus = merchantSource.slice(
+      merchantSource.indexOf('title="员工状态"'),
+      merchantSource.indexOf('activeView === "staff"'),
+    );
+
+    expect(roleSection).toContain('<section className="space-y-3">');
+    expect(roleSection).not.toContain("rounded-[28px]");
+    expect(employeeStatus).not.toContain("rounded-[28px] border border-line bg-white p-4 shadow-panel");
   });
 });

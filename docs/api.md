@@ -129,6 +129,7 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `GET` | `/api/v1/categories` | Paginated public category list | Public |
 | `GET` | `/api/v1/services` | Paginated public service cards | Public |
 | `GET` | `/api/v1/services/:id` | Public service detail | Public |
+| `GET` | `/api/v1/services/:id/reviews` | Paginated reviews for completed orders of a public service | Public |
 | `GET` | `/api/v1/home/recommendations` | Home recommendation rows | Public |
 | `GET` | `/api/v1/search` | Typed shop, technician, or service search | Public |
 | `GET` | `/api/v1/shops/:id` | Public shop detail | Public |
@@ -163,6 +164,20 @@ links must use `publicId` and must not display the numeric key as the account ID
 | `serviceMode` | string | Example: `store`, `onsite`. |
 | `minPrice` / `maxPrice` | number | Validated so min cannot exceed max. |
 | `sort` | enum | `recommended`, `rating_desc`, `price_asc`, `price_desc`, `newest`. |
+
+`GET /services/:id/reviews`
+
+| Name | Type | Notes |
+|---|---|---|
+| `page` | integer | Defaults to `1`. |
+| `pageSize` | integer | Defaults to `20`, max `100`. |
+
+Only reviews linked to completed, non-deleted booking orders for the requested
+published service are returned. Each row exposes the effective rating and
+comment (including the latest review amendment), the reviewer display identity,
+the first effective review tag as the optional title, and active image media
+attached to that review. Account credentials and non-image attachments are not
+exposed.
 | `page` / `pageSize` | integer | Same pagination contract as above. |
 
 `GET /search`

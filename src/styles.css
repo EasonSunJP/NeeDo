@@ -2383,6 +2383,14 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   backdrop-filter: blur(18px) saturate(1.7) contrast(1.04) brightness(1.03) !important;
 }
 
+.client-shell .service-detail-header.client-floating-header-glass-frame {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 .client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header, .client-store-display-editor-glass-header).client-floating-header-glass-frame {
   background:
     linear-gradient(
@@ -2568,6 +2576,15 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
 .im-contact-card-panel {
   width: min(calc(100% - 24px), calc(var(--client-bottom-nav-max-width, 880px) - 24px));
   bottom: max(env(safe-area-inset-bottom), 6px);
+}
+
+.im-tag-composer-sheet {
+  min-height: 0;
+  height: auto;
+  max-height: min(calc(var(--im-visual-viewport-height, 100dvh) - 24px), 620px);
+  flex: none;
+  overflow-x: clip;
+  overflow-y: auto;
 }
 
 @keyframes im-composer-panel-enter {
@@ -7996,7 +8013,7 @@ body:has(.admin-theme-dark),
 }
 
 .social-profile-review-stamps .service-review-stamp {
-  --profile-review-stamp-color: color-mix(in srgb, var(--client-primary) 40%, rgb(var(--review-stamp-accent-rgb)) 60%);
+  --profile-review-stamp-color: var(--client-primary);
   min-height: 64px;
   aspect-ratio: auto;
   grid-template-rows: 40px minmax(0, 1fr);
@@ -8006,22 +8023,6 @@ body:has(.admin-theme-dark),
   box-shadow: none;
   color: var(--profile-review-stamp-color);
   padding: 0 1px;
-}
-
-.social-profile-review-stamps .service-review-stamp--appeal {
-  --profile-review-stamp-color: color-mix(in srgb, var(--client-primary) 54%, rgb(var(--review-stamp-accent-rgb)) 46%);
-}
-
-.social-profile-review-stamps .service-review-stamp--service {
-  --profile-review-stamp-color: color-mix(in srgb, var(--client-primary) 38%, rgb(var(--review-stamp-accent-rgb)) 62%);
-}
-
-.social-profile-review-stamps .service-review-stamp--empathy {
-  --profile-review-stamp-color: color-mix(in srgb, var(--client-warning) 72%, rgb(var(--review-stamp-accent-rgb)) 28%);
-}
-
-.social-profile-review-stamps .service-review-stamp--energy {
-  --profile-review-stamp-color: color-mix(in srgb, var(--client-accent) 72%, rgb(var(--review-stamp-accent-rgb)) 28%);
 }
 
 .social-profile-review-stamps .service-review-stamp::before,
@@ -8035,7 +8036,7 @@ body:has(.admin-theme-dark),
   height: 40px;
 }
 
-.social-profile-review-stamps .service-review-stamp__icon img {
+.social-profile-review-stamps .service-review-stamp__icon [data-testid="theme-review-stamp-icon"] {
   filter: drop-shadow(0 4px 8px color-mix(in srgb, var(--profile-review-stamp-color) 28%, transparent));
 }
 

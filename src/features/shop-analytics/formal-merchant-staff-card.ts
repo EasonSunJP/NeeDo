@@ -1,7 +1,7 @@
 import type { SocialProfileMiniData } from "../../shared/profile-card";
 import type { Technician } from "../../types/domain";
 
-type FormalStaffFields = Pick<Technician, "id" | "name" | "nickname" | "avatar" | "bio" | "serviceAreas" | "rating" | "reviewCount">;
+type FormalStaffFields = Pick<Technician, "id" | "name" | "nickname" | "avatar" | "bio" | "serviceAreas" | "rating" | "reviewCount" | "specialReviewTags">;
 
 export function buildFormalMerchantStaffCard(technician: FormalStaffFields): SocialProfileMiniData {
   return {
@@ -18,6 +18,7 @@ export function buildFormalMerchantStaffCard(technician: FormalStaffFields): Soc
     scoreLabel: "服务评价",
     scoreValue: technician.reviewCount > 0 ? String(technician.rating) : "—",
     followerCount: 0,
-    followingCount: 0
+    followingCount: 0,
+    specialReviewTags: technician.specialReviewTags ?? []
   };
 }

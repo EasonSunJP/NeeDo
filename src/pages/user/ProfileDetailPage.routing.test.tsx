@@ -46,6 +46,7 @@ const shop: CoreShopDetail = {
   address: "东京都中央区银座 1-2-3",
   coverUrl: null,
   reviewSummary,
+  completedOrderCount: 0,
   favoriteCount: 4,
   shareCount: 2,
   serviceCategories: [],
