@@ -865,9 +865,23 @@ const socialAuthorSelect = {
   username: true,
   avatarUrl: true,
   createdAt: true,
+  customerProfile: {
+    select: { displayName: true, deletedAt: true }
+  },
+  technicianProfile: {
+    select: { displayName: true, deletedAt: true }
+  },
   identities: {
     where: { deletedAt: null, isActive: true },
-    select: { id: true, type: true, displayName: true, isDefault: true },
+    select: {
+      id: true,
+      type: true,
+      displayName: true,
+      isDefault: true,
+      merchantIdentityProfile: {
+        select: { displayName: true, deletedAt: true }
+      }
+    },
     orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
   }
 } satisfies Prisma.UserSelect;
@@ -877,7 +891,15 @@ const socialPostInclude = {
     select: socialAuthorSelect
   },
   authorIdentity: {
-    select: { id: true, type: true, displayName: true, pinnedSocialPostId: true }
+    select: {
+      id: true,
+      type: true,
+      displayName: true,
+      pinnedSocialPostId: true,
+      merchantIdentityProfile: {
+        select: { displayName: true, deletedAt: true }
+      }
+    }
   },
   _count: {
     select: {
@@ -6048,7 +6070,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   private mapSocialAuthor(
     author: SocialAuthorRecord,
-    postIdentity?: { id: number; type: string; displayName: string | null }
+    postIdentity?: ImParticipantIdentityRecord
   ): SocialPostAuthorPayload {
     const identity =
       postIdentity ??
@@ -6071,7 +6093,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       userId: author.id,
       identityId: identity?.id ?? author.id,
       username: author.username,
-      displayName: identity?.displayName?.trim() || author.username,
+      displayName: this.resolveParticipantDisplayName(author, identity),
       avatarUrl: author.avatarUrl,
       entityType,
       joinedAt: author.createdAt

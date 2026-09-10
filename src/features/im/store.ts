@@ -1704,6 +1704,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   async function getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
     await hydrateStore();
     const profile = await api.getDirectoryProfile(userId);
+    entityRefreshGeneration += 1;
     mergeUsers([profile.user]);
     if (profile.friendRequest) {
       snapshot = {

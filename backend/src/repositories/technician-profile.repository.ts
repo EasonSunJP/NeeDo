@@ -4,6 +4,7 @@ import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
 import { toAuditLogCreateData, type AuditLogCreateInput } from "./audit-log.repository";
 import { persistIdentityAvatar } from "./identity-avatar.repository";
+import { syncPersonalDisplayName } from "./personal-display-name.repository";
 import {
   loadTechnicianReviewTagSummary,
   type TechnicianReviewTagSummaryPayload
@@ -177,6 +178,14 @@ export class TechnicianProfileRepository implements TechnicianProfileRepositoryP
         where: { id: current.id },
         data: this.profileData(mutation)
       });
+
+      if (mutation.displayName !== undefined) {
+        await syncPersonalDisplayName(transaction, {
+          displayName: mutation.displayName,
+          source: "technician",
+          userId
+        });
+      }
 
       if (mutation.avatar) {
         await persistIdentityAvatar(transaction, {

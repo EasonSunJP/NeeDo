@@ -469,6 +469,14 @@
 - IM/PWA 定向回归 6 个文件、170 项通过；TypeScript lint、formal production build 和 8 个 HTML/65 个资产的 bundle audit 通过。全量前端除当前 `main` 已能独立复现的技师排班手动预约失败项外，529 个文件、3,475 项通过；该基线失败不涉及本节修改的 viewport hook 或测试。真实 Chromium 布局检查继续使用生产 `.im-conversation-room-shell` 样式，确认 540/690px 中间态分别停在键盘边界，759px 恢复态的房间与输入框底边均回到布局视口底边。
 - 本节不修改 IM API、数据库、migration、消息业务逻辑或视觉主题；只进行本地代码和自动化验证，不构成 staging 或 iPhone PWA 重新发布后的验收。
 
+## 6.33 联系人、会话与动态作者名称一致性（2026-09-10，本地）
+
+- 客户端或技师端修改个人显示名时，在同一 Prisma 事务内同步账号 `User.username`、仍有效的 `CustomerProfile`、`TechnicianProfile`，以及 `customer/user/u/technician/scout` 个人身份快照；既有资料审计继续覆盖本次变更。店铺商户身份和运营身份仍可独立命名，不在个人名称同步范围内。
+- IM 会话、联系人和联系人资料继续以当前身份对应的正式资料表为权威名称。联系人资料响应写回 store 时会提升实体刷新代次，使更早发出的 bootstrap 响应失效并自动补拉一次，避免新名称被延迟旧响应短暂覆盖后再次跳回。
+- Social 动态作者不再直接读取 `UserIdentity.displayName` 快照：客户、技师与商户作者分别读取当前 `CustomerProfile`、`TechnicianProfile` 与 `MerchantIdentityProfile`，其他身份才回退到身份快照或账号名。动态时间线每次重新进入路由时刷新正式数据，且与 Provider 首次加载共用单航请求。
+- 店铺端员工简易信息卡继续消费正式 core-read 店铺详情里的技师资料；商户路由切换时强制复验店铺/员工数据，防止同一登录会话中的持久缓存让旧员工名长期停留。
+- 本切片不新增或修改 API 路径、响应结构、数据库表或 migration，不新增 mock；只修正正式数据投影、事务一致性和前端刷新竞态。
+
 ---
 
 ## 7. 给 Codex 的命令

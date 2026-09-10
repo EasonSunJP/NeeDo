@@ -791,6 +791,9 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     },
     [formalSessionKey, performFormalSocialLoad]
   );
+  const refreshFeeds = useCallback(() => {
+    void loadFormalSocial();
+  }, [loadFormalSocial]);
 
   useEffect(() => () => {
     postThreadAbortControllersRef.current.forEach((controller) => controller.abort());
@@ -1135,7 +1138,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
           .then(() => loadFormalSocial())
           .catch(handleFormalSocialLoadError);
       },
-      refreshFeeds: () => { void loadFormalSocial(); },
+      refreshFeeds,
       ensureAccountProfile,
       ensurePostThread,
       releasePostThread
@@ -1147,6 +1150,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
     formalSessionKey,
     feedStatus,
     loadFormalSocial,
+    refreshFeeds,
     releasePostThread,
     saveDraft,
     session,
