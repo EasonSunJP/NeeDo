@@ -45,7 +45,7 @@ it("keeps unavailable shop loading and retry inside the drawer", async () => {
   expect(retry).toBeDefined();
   await act(async () => retry!.click());
   expect(request).toHaveBeenCalledTimes(2);
-  expect(request).toHaveBeenLastCalledWith(21);
+  expect(request).toHaveBeenLastCalledWith(21, { locale: "zh-CN" });
 });
 it("renders and switches all six public presentation tabs without a page shell", async () => {
   const shop = {

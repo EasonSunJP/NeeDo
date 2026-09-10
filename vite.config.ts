@@ -250,6 +250,10 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
     return "identity-applications-i18n";
   }
 
+  if (normalizedId.endsWith("/src/features/settings/ekycI18n.ts")) {
+    return "ekyc-i18n";
+  }
+
   if (normalizedId.endsWith("/src/features/dashboard/dashboardTranslations.ts")) {
     return "dashboard-i18n";
   }
@@ -264,6 +268,10 @@ export function resolveNeedoManualChunk(id: string): string | undefined {
 
   if (normalizedId.endsWith("/src/features/order-performance/i18n.ts")) {
     return "order-performance-i18n";
+  }
+
+  if (normalizedId.endsWith("/src/features/technician-schedule/automation-i18n.ts")) {
+    return "technician-automation-i18n";
   }
 
   if (normalizedId.endsWith("/src/features/affiliate-profile/i18n.ts") ||
