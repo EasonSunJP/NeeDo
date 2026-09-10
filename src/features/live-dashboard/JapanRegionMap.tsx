@@ -243,10 +243,10 @@ export function JapanRegionMap({ breadcrumbs = [], children, evaluatedAt, onSele
             onPointerDown={(event) => {
               if (event.pointerType === "mouse" && event.button !== 0) return;
               pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-              event.currentTarget.setPointerCapture?.(event.pointerId);
               gestureMoved.current = false;
               const points = [...pointers.current.values()];
               if (points.length === 2) {
+                for (const pointerId of pointers.current.keys()) event.currentTarget.setPointerCapture?.(pointerId);
                 pinch.current = { distance: Math.max(1, distance(points)), viewport: viewportRef.current };
                 pan.current = null; setInteracting(true);
               } else if (points.length === 1 && viewportRef.current.scale > 1) {
@@ -264,6 +264,7 @@ export function JapanRegionMap({ breadcrumbs = [], children, evaluatedAt, onSele
                 gestureMoved.current = true; updateViewport(next); return;
               }
               if (points.length === 1 && pan.current && Math.hypot(event.clientX - previous.x, event.clientY - previous.y) >= 2) {
+                event.currentTarget.setPointerCapture?.(event.pointerId);
                 const rect = event.currentTarget.getBoundingClientRect();
                 const renderedScale = Math.min(rect.width / (stageSize?.width ?? asset.viewBox[2]), rect.height / (stageSize?.height ?? asset.viewBox[3])) * projection.scale;
                 const dx = (event.clientX - pan.current.last.x) / Math.max(renderedScale, 0.0001);
