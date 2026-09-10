@@ -31,7 +31,16 @@ describe("system settings formal data tooling", () => {
     expect(source).toContain('"privacy-policy"');
     expect(source).toContain('"merchant-agreement"');
     expect(source).toContain('"affiliate-agreement"');
-    expect(source).toContain('"other-rules-and-guides"');
+    for (const slug of [
+      "technician-agreement",
+      "ekyc-consent",
+      "cancellation-refund-policy",
+      "ndp-rules",
+      "community-guidelines",
+      "specified-commercial-transactions-disclosure"
+    ]) {
+      expect(source).toContain(`"${slug}"`);
+    }
     expect(source).toContain('status: "conflict"');
     expect(source).not.toContain("upsert(");
   });
@@ -47,8 +56,20 @@ describe("system settings formal data tooling", () => {
     expect(source).not.toMatch(/DELETE\s+FROM/iu);
   });
 
-  it("builds exact five-locale terms/privacy sources and no invented contract translations", () => {
+  it("builds the exact required policy catalog without publishing unreviewed additions", () => {
     const bySlug = new Map(SYSTEM_LEGAL_DOCUMENT_SOURCES.map((source) => [source.slug, source]));
+    expect([...bySlug.keys()]).toEqual([
+      "terms-of-use",
+      "privacy-policy",
+      "merchant-agreement",
+      "affiliate-agreement",
+      "technician-agreement",
+      "ekyc-consent",
+      "cancellation-refund-policy",
+      "ndp-rules",
+      "community-guidelines",
+      "specified-commercial-transactions-disclosure"
+    ]);
     expect(Object.keys(bySlug.get("terms-of-use")?.releases ?? {})).toEqual([
       "zh-CN",
       "zh-TW",
@@ -73,7 +94,39 @@ describe("system settings formal data tooling", () => {
       "ja",
       "en"
     ]);
-    expect(bySlug.get("other-rules-and-guides")).toMatchObject({
+    expect(bySlug.get("technician-agreement")).toMatchObject({
+      internalPath: "/me/identity/technician/apply",
+      displayLocations: ["technician-application"],
+      isEnabled: false,
+      releases: {}
+    });
+    expect(bySlug.get("ekyc-consent")).toMatchObject({
+      internalPath: "/me/settings/verification",
+      displayLocations: ["ekyc", "merchant-application", "technician-application", "withdrawal"],
+      isEnabled: false,
+      releases: {}
+    });
+    expect(bySlug.get("cancellation-refund-policy")).toMatchObject({
+      internalPath: "/orders",
+      displayLocations: ["booking-checkout", "order-detail", "cancellation"],
+      isEnabled: false,
+      releases: {}
+    });
+    expect(bySlug.get("ndp-rules")).toMatchObject({
+      internalPath: "/me/settings/ndp-guide",
+      displayLocations: ["ndp-wallet", "booking-checkout", "withdrawal"],
+      isEnabled: false,
+      releases: {}
+    });
+    expect(bySlug.get("community-guidelines")).toMatchObject({
+      internalPath: "/moments",
+      displayLocations: ["social-compose", "social-report"],
+      isEnabled: false,
+      releases: {}
+    });
+    expect(bySlug.get("specified-commercial-transactions-disclosure")).toMatchObject({
+      internalPath: "/me/settings/about",
+      displayLocations: ["paid-service", "membership-purchase", "footer"],
       isEnabled: false,
       releases: {}
     });

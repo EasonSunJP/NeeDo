@@ -169,7 +169,7 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(meHeaderSource).toContain("footer={");
     expect(meHeaderSource).not.toContain("<SharedHomeHeader");
     expect(merchantSource).toContain('? "space-y-4 pt-4"');
-    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !merchantProfileEditing}');
+    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !isMerchantRevenueView && !merchantProfileEditing}');
   });
 
   it("keeps the personal-center status panel inside the same mobile content inset", () => {
@@ -278,6 +278,47 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(dashboardAppointments).not.toContain("merchant-dashboard-appointment-service");
     expect(orderList).toContain("<UnifiedServiceInfoCard");
     expect(orderList).not.toContain("<OrderServiceMiniCard");
+  });
+
+  it("links dashboard metrics to formal drilldowns and renders today appointments as a searchable timeline", () => {
+    const workbenchMetrics = merchantSource.slice(
+      merchantSource.indexOf("export function MerchantWorkbenchMetrics"),
+      merchantSource.indexOf("function getMerchantStorePrivacyLabel")
+    );
+    const appointmentTimeline = merchantSource.slice(
+      merchantSource.indexOf("export function MerchantTodayAppointmentsTimeline"),
+      merchantSource.indexOf("function getMerchantStorePrivacyLabel")
+    );
+
+    expect(merchantSource).toContain('type MerchantView = "dashboard" | "today-appointments"');
+    expect(merchantSource).toContain('if (view === "today-appointments")');
+    expect(merchantSource).toContain('const isMerchantAppointmentTimelineView = activeView === "today-appointments";');
+    expect(merchantSource).toContain("<MerchantWorkbenchMetrics");
+    expect(workbenchMetrics).toContain('to: "/merchant/today-appointments"');
+    expect(workbenchMetrics).toContain('to: "/merchant/revenue"');
+    expect(appointmentTimeline).toContain("<MobileFullscreenHeader");
+    expect(appointmentTimeline).toContain('aria-label={t("搜索今日预约")}');
+    expect(appointmentTimeline).toContain("merchantOrderMatchesSearch(order, searchQuery)");
+    expect(appointmentTimeline).toContain("[...orders]");
+    expect(appointmentTimeline).toContain("filteredOrders.map((order) => (");
+    expect(appointmentTimeline).toContain("<UnifiedServiceInfoCard");
+    expect(appointmentTimeline).toContain("data={buildOrderServiceMiniCardData(order)}");
+    expect(merchantSource).toContain("!isMerchantAppointmentTimelineView");
+  });
+
+  it("renders the revenue drilldown as a fullscreen formal analytics page", () => {
+    expect(merchantSource).toContain('type MerchantView = "dashboard" | "today-appointments" | "revenue"');
+    expect(merchantSource).toContain('if (view === "revenue")');
+    expect(merchantSource).toContain('const isMerchantRevenueView = activeView === "revenue";');
+    expect(merchantSource).toContain('showBottomNav={activeView !== "me" && activeView !== "staff" && !isMerchantScheduleView && !isMerchantAppointmentTimelineView && !isMerchantRevenueView && !merchantProfileEditing}');
+
+    const revenueView = merchantSource.slice(
+      merchantSource.indexOf('{activeView === "revenue" ?'),
+      merchantSource.indexOf('{activeView === "today-appointments" ? (')
+    );
+    expect(revenueView).toContain("<MerchantRevenueDrilldown");
+    expect(revenueView).toContain('onExit={() => navigate("/merchant")}');
+    expect(merchantSource).toContain("export function MerchantRevenueDrilldown");
   });
 
   it("removes the extra employee-list containers so shared cards use the available width", () => {

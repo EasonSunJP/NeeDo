@@ -209,28 +209,52 @@ const contractSources = (): SystemLegalDocumentSource[] => {
   }));
 };
 
-const futureSources: SystemLegalDocumentSource[] = [
+const reviewRequiredSources: SystemLegalDocumentSource[] = [
   {
-    slug: "other-rules-and-guides",
-    name: "Other rules and guides",
-    internalPath: "/me/settings/guides",
-    displayLocations: [],
+    slug: "technician-agreement",
+    name: "NeeDo Technician Service Provider Agreement",
+    internalPath: "/me/identity/technician/apply",
+    displayLocations: ["technician-application"],
     isEnabled: false,
     releases: {}
   },
   {
-    slug: "cancellation-policy",
-    name: "Cancellation policy",
-    internalPath: "/me/settings/cancellation-policy",
-    displayLocations: [],
+    slug: "ekyc-consent",
+    name: "NeeDo eKYC Consent and Identity Data Handling Notice",
+    internalPath: "/me/settings/verification",
+    displayLocations: ["ekyc", "merchant-application", "technician-application", "withdrawal"],
     isEnabled: false,
     releases: {}
   },
   {
-    slug: "service-provider-guide",
-    name: "Service provider guide",
-    internalPath: "/me/settings/service-provider-guide",
-    displayLocations: [],
+    slug: "cancellation-refund-policy",
+    name: "NeeDo Cancellation and Refund Policy",
+    internalPath: "/orders",
+    displayLocations: ["booking-checkout", "order-detail", "cancellation"],
+    isEnabled: false,
+    releases: {}
+  },
+  {
+    slug: "ndp-rules",
+    name: "NeeDo NDP Rules",
+    internalPath: "/me/settings/ndp-guide",
+    displayLocations: ["ndp-wallet", "booking-checkout", "withdrawal"],
+    isEnabled: false,
+    releases: {}
+  },
+  {
+    slug: "community-guidelines",
+    name: "NeeDo Community and Content Guidelines",
+    internalPath: "/moments",
+    displayLocations: ["social-compose", "social-report"],
+    isEnabled: false,
+    releases: {}
+  },
+  {
+    slug: "specified-commercial-transactions-disclosure",
+    name: "Disclosure under the Specified Commercial Transactions Act",
+    internalPath: "/me/settings/about",
+    displayLocations: ["paid-service", "membership-purchase", "footer"],
     isEnabled: false,
     releases: {}
   }
@@ -239,7 +263,7 @@ const futureSources: SystemLegalDocumentSource[] = [
 export const SYSTEM_LEGAL_DOCUMENT_SOURCES: readonly SystemLegalDocumentSource[] = [
   ...frontendSources(),
   ...contractSources(),
-  ...futureSources
+  ...reviewRequiredSources
 ];
 
 const sameStrings = (left: unknown, right: readonly string[]): boolean =>

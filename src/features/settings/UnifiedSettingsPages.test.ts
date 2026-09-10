@@ -379,6 +379,13 @@ describe("persisted public legal documents", () => {
     expect(source).not.toContain("getLegalTermsDocument(language)");
     expect(source).not.toContain("getLegalPrivacyDocument(language)");
   });
+
+  it("provides persisted merchant and Affiliate agreement pages for catalog links", () => {
+    expect(source).toContain("export function UnifiedSettingsMerchantAgreementPage");
+    expect(source).toContain('slug="merchant-agreement"');
+    expect(source).toContain("export function UnifiedSettingsAffiliateAgreementPage");
+    expect(source).toContain('slug="affiliate-agreement"');
+  });
 });
 
 describe("UnifiedSettingsPage fullscreen exit", () => {
