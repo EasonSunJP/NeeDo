@@ -1377,6 +1377,49 @@ export function MerchantTodayAppointmentsTimeline({
   );
 }
 
+export function MerchantWorkbenchMetrics({
+  availableScheduleSlotsValue,
+  onlineEmployeeValue,
+  revenueValue,
+  todayAppointmentsValue
+}: {
+  availableScheduleSlotsValue: string;
+  onlineEmployeeValue: string;
+  revenueValue: string;
+  todayAppointmentsValue: string;
+}) {
+  const { language } = useOptionalI18n();
+  const t = (source: string) => translateText(source, language);
+  const metrics = [
+    { label: "今日预约", value: todayAppointmentsValue, to: "/merchant/today-appointments", ariaLabel: t("查看今日预约") },
+    { label: "在线员工", value: onlineEmployeeValue },
+    { label: "营业额", value: revenueValue, to: "/merchant/revenue", ariaLabel: t("查看营业额") },
+    { label: "可预约时段", value: availableScheduleSlotsValue }
+  ];
+
+  return (
+    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {metrics.map(({ ariaLabel, label, to, value }) => {
+        const content = (
+          <>
+            <p className="text-[11px] font-bold text-white/55">{label}</p>
+            <strong className="mt-1 block text-base font-black text-white">{value}</strong>
+          </>
+        );
+        const className = "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-4 py-3 backdrop-blur";
+
+        return to ? (
+          <Link aria-label={ariaLabel} className={cn(className, "focus-ring block transition hover:bg-[color:color-mix(in_srgb,var(--client-bg)_30%,transparent)]")} key={label} to={to}>
+            {content}
+          </Link>
+        ) : (
+          <div className={className} key={label}>{content}</div>
+        );
+      })}
+    </div>
+  );
+}
+
 function getMerchantStorePrivacyLabel(visibility: MerchantStorePrivacyVisibility) {
   switch (visibility) {
     case "limited":
@@ -1710,8 +1753,6 @@ export function MerchantPortalContent({
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
-  const { language } = useOptionalI18n();
-  const t = (source: string) => translateText(source, language);
   const { customers } = useEntityStore();
   const merchantImStore = useImStore("merchant");
   const activeView = getMerchantView(view);
@@ -2606,30 +2647,12 @@ export function MerchantPortalContent({
                     />
                     <p className="mt-2 text-sm text-white/70">{store.name} · {store.area}</p>
                   </div>
-                  <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {[
-                      { label: "今日预约", value: formalHome ? `${todayOrders.length} 单` : "—", to: "/merchant/today-appointments" },
-                      { label: "在线员工", value: formalStaffEmploymentLoaded && !formalStaffEmploymentError ? `${onlineTechnicianCount} 人` : "—" },
-                      { label: "营业额", value: formalHome ? yen(formalHome.dashboard.summary.serviceGmvJpy) : "—", to: "/merchant/revenue" },
-                      { label: "可预约时段", value: formalHome ? String(formalHome.dashboard.summary.availableScheduleSlots.current) : "—" }
-                    ].map(({ label, to, value }) => {
-                      const content = (
-                        <>
-                          <p className="text-[11px] font-bold text-white/55">{label}</p>
-                          <strong className="mt-1 block text-base font-black text-white">{value}</strong>
-                        </>
-                      );
-                      const className = "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-4 py-3 backdrop-blur";
-
-                      return to ? (
-                        <Link aria-label={label === "今日预约" ? t("查看今日预约") : t("查看营业额")} className={cn(className, "focus-ring block transition hover:bg-[color:color-mix(in_srgb,var(--client-bg)_30%,transparent)]")} key={label} to={to}>
-                          {content}
-                        </Link>
-                      ) : (
-                        <div className={className} key={label}>{content}</div>
-                      );
-                    })}
-                  </div>
+                  <MerchantWorkbenchMetrics
+                    availableScheduleSlotsValue={formalHome ? String(formalHome.dashboard.summary.availableScheduleSlots.current) : "—"}
+                    onlineEmployeeValue={formalStaffEmploymentLoaded && !formalStaffEmploymentError ? `${onlineTechnicianCount} 人` : "—"}
+                    revenueValue={formalHome ? yen(formalHome.dashboard.summary.serviceGmvJpy) : "—"}
+                    todayAppointmentsValue={formalHome ? `${todayOrders.length} 单` : "—"}
+                  />
                 </div>
               </div>
             </section>

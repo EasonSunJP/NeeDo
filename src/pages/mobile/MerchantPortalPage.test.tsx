@@ -279,9 +279,9 @@ describe("MerchantPortalPage store privacy control", () => {
   });
 
   it("links dashboard metrics to formal drilldowns and renders today appointments as a searchable timeline", () => {
-    const dashboardMetrics = merchantSource.slice(
-      merchantSource.indexOf('className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4"'),
-      merchantSource.indexOf("</section>\n\n            {formalHomeQuery.loading")
+    const workbenchMetrics = merchantSource.slice(
+      merchantSource.indexOf("export function MerchantWorkbenchMetrics"),
+      merchantSource.indexOf("function getMerchantStorePrivacyLabel")
     );
     const appointmentTimeline = merchantSource.slice(
       merchantSource.indexOf("export function MerchantTodayAppointmentsTimeline"),
@@ -291,8 +291,9 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain('type MerchantView = "dashboard" | "today-appointments"');
     expect(merchantSource).toContain('if (view === "today-appointments")');
     expect(merchantSource).toContain('const isMerchantAppointmentTimelineView = activeView === "today-appointments";');
-    expect(dashboardMetrics).toContain('to: "/merchant/today-appointments"');
-    expect(dashboardMetrics).toContain('to: "/merchant/revenue"');
+    expect(merchantSource).toContain("<MerchantWorkbenchMetrics");
+    expect(workbenchMetrics).toContain('to: "/merchant/today-appointments"');
+    expect(workbenchMetrics).toContain('to: "/merchant/revenue"');
     expect(appointmentTimeline).toContain("<MobileFullscreenHeader");
     expect(appointmentTimeline).toContain('aria-label={t("搜索今日预约")}');
     expect(appointmentTimeline).toContain("merchantOrderMatchesSearch(order, searchQuery)");

@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { translateText } from "../../i18n/translations";
 import type { Order } from "../../types/domain";
-import { MerchantTodayAppointmentsTimeline } from "./MerchantPortalPage";
+import { MerchantTodayAppointmentsTimeline, MerchantWorkbenchMetrics } from "./MerchantPortalPage";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -128,5 +128,24 @@ describe("MerchantTodayAppointmentsTimeline", () => {
     expect(container.textContent).toContain("本日の予約はありません");
     expect(translateText("查看今日预约", "ja")).toBe("本日の予約を表示");
     expect(translateText("查看营业额", "ja")).toBe("売上を表示");
+  });
+
+  it("renders localized accessible metric links for both dashboard drilldowns", async () => {
+    localeState.language = "ja";
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <MerchantWorkbenchMetrics
+            availableScheduleSlotsValue="8"
+            onlineEmployeeValue="3 人"
+            revenueValue="￥24,000"
+            todayAppointmentsValue="2 件"
+          />
+        </MemoryRouter>
+      );
+    });
+
+    expect(container.querySelector('a[href="/merchant/today-appointments"]')?.getAttribute("aria-label")).toBe("本日の予約を表示");
+    expect(container.querySelector('a[href="/merchant/revenue"]')?.getAttribute("aria-label")).toBe("売上を表示");
   });
 });
