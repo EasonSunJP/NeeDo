@@ -3,6 +3,7 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mapBookingOrderToDomainOrder, type BookingOrder } from "../../features/booking/api";
 import { translateText } from "../../i18n/translations";
 import type { Order } from "../../types/domain";
 import { MerchantTodayAppointmentsTimeline, MerchantWorkbenchMetrics } from "./MerchantPortalPage";
@@ -15,41 +16,88 @@ vi.mock("../../i18n/I18nProvider", () => ({
   useOptionalI18n: () => localeState
 }));
 
-const orders: Order[] = [
-  {
-    id: "order-late",
-    orderNo: "NDO-LATE",
-    mode: "store",
+function createMappedBookingOrder({
+  id,
+  customerDisplayName,
+  serviceName,
+  shopName,
+  startsAt,
+  technicianName
+}: {
+  id: number;
+  customerDisplayName: string;
+  serviceName: string;
+  shopName: string;
+  startsAt: string;
+  technicianName: string;
+}) {
+  const bookingOrder: BookingOrder = {
+    id,
+    orderNo: `NDO-${id}`,
+    orderType: "booking",
     status: "confirmed",
-    customerId: "customer-late",
-    customerName: "午后客户",
-    itemName: "午后足疗",
-    technicianName: "技师乙",
-    city: "東京都",
-    area: "涩谷",
-    amount: 6800,
-    paymentStatus: "paid",
-    bookedAt: "2026-09-10 15:30",
-    createdAt: "2026-09-01 10:00",
-    source: "app"
-  },
-  {
-    id: "order-early",
-    orderNo: "NDO-EARLY",
-    mode: "home",
-    status: "scheduled",
-    customerId: "customer-early",
-    customerName: "早间客户",
-    itemName: "早间肩颈护理",
-    technicianName: "技师甲",
-    city: "東京都",
-    area: "新宿",
-    amount: 8800,
-    paymentStatus: "paid",
-    bookedAt: "2026-09-10 09:15",
-    createdAt: "2026-09-01 10:00",
-    source: "web"
-  }
+    paymentMethod: "onsite",
+    paymentStatus: "confirmed",
+    paymentAmountJpy: 8_800,
+    paymentConfirmedById: 9,
+    paymentConfirmedAt: startsAt,
+    paymentReference: null,
+    paymentNote: null,
+    paymentRefundedById: null,
+    paymentRefundedAt: null,
+    paymentRefundReference: null,
+    paymentRefundReason: null,
+    customerUserId: id + 100,
+    customer: {
+      userId: id + 100,
+      profileId: id + 200,
+      publicId: `u${String(id + 100).padStart(10, "0")}`,
+      displayName: customerDisplayName,
+      avatarUrl: null,
+      membershipLevel: "regular",
+      ratingAverage: "4.90",
+      reviewCount: 12
+    },
+    serviceId: id + 300,
+    technicianServiceId: null,
+    shopId: 7,
+    technicianProfileId: id + 400,
+    scheduleSlotId: id + 500,
+    fulfillmentMode: "store",
+    serviceName,
+    shopName,
+    technicianName,
+    priceAmount: "8800.00",
+    currency: "JPY",
+    startsAt,
+    endsAt: new Date(new Date(startsAt).getTime() + 60 * 60 * 1000).toISOString(),
+    note: null,
+    cancelReason: null,
+    createdAt: new Date(2026, 8, 1, 10).toISOString(),
+    updatedAt: new Date(2026, 8, 1, 10).toISOString(),
+    statusHistory: []
+  };
+
+  return mapBookingOrderToDomainOrder(bookingOrder);
+}
+
+const orders: Order[] = [
+  createMappedBookingOrder({
+    id: 2,
+    customerDisplayName: "午后客户",
+    serviceName: "午后足疗",
+    shopName: "涩谷店",
+    startsAt: new Date(2026, 8, 10, 15, 30).toISOString(),
+    technicianName: "技师乙"
+  }),
+  createMappedBookingOrder({
+    id: 1,
+    customerDisplayName: "早间客户",
+    serviceName: "早间肩颈护理",
+    shopName: "新宿店",
+    startsAt: new Date(2026, 8, 10, 9, 15).toISOString(),
+    technicianName: "技师甲"
+  })
 ];
 
 let container: HTMLDivElement;
@@ -96,8 +144,8 @@ describe("MerchantTodayAppointmentsTimeline", () => {
 
     const timelineText = container.textContent ?? "";
     expect(timelineText.indexOf("早间肩颈护理")).toBeLessThan(timelineText.indexOf("午后足疗"));
-    expect(container.querySelector('a[href="/merchant/orders/order-early"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/merchant/orders/order-late"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/merchant/orders/1"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/merchant/orders/2"]')).not.toBeNull();
     expect(container.querySelector('input[aria-label="搜索今日预约"]')).not.toBeNull();
     expect(container.querySelector('button[aria-label="返回"]')).not.toBeNull();
     expect(container.querySelector('button[aria-label="关闭"]')).not.toBeNull();
@@ -111,6 +159,15 @@ describe("MerchantTodayAppointmentsTimeline", () => {
 
     expect(container.textContent).toContain("午后足疗");
     expect(container.textContent).not.toContain("早间肩颈护理");
+
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      valueSetter?.call(searchInput, "09:15");
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("早间肩颈护理");
+    expect(container.textContent).not.toContain("午后足疗");
   });
 
   it("renders translated loading, error, and empty states", async () => {

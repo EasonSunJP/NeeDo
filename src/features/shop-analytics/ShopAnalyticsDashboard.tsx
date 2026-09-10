@@ -37,7 +37,7 @@ const periodOptions: Array<{ label: string; value: DashboardPeriod }> = [
   { label: "本周", value: "week" },
   { label: "本月", value: "month" },
   { label: "今年", value: "year" },
-  { label: "自定义", value: "custom" }
+  { label: "自定义日期", value: "custom" }
 ];
 
 function isValidDate(value: string) {

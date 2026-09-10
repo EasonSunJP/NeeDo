@@ -407,7 +407,7 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
     mode: order.fulfillmentMode,
     status: order.status,
     customerId: String(order.customerUserId),
-    customerName: "NeeDo 用户",
+    customerName: order.customer?.displayName.trim() || "NeeDo 用户",
     itemName: order.serviceName,
     storeName: order.shopName,
     technicianName: order.technicianName ?? undefined,

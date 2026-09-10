@@ -6,6 +6,20 @@ import { translateImUiText } from "../features/im/ui-copy";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes the merchant revenue custom-date option in all five App languages", () => {
+    const expected = {
+      zh: "自定义日期",
+      "zh-Hant": "自訂日期",
+      ja: "期間を指定",
+      en: "Custom dates",
+      ko: "사용자 지정 날짜"
+    } as const;
+
+    for (const { code } of languages) {
+      expect(translateText("自定义日期", code), code).toBe(expected[code]);
+    }
+  });
+
   it("localizes merchant trend chart copy and count units in all supported languages", () => {
     const expected = {
       "订单趋势": { zh: "订单趋势", "zh-Hant": "訂單趨勢", ja: "注文トレンド", en: "Order trends", ko: "주문 추이" },

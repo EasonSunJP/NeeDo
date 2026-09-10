@@ -225,6 +225,8 @@ describe("ShopAnalyticsDashboard formal API", () => {
     expect(Array.from(periodSelect?.options ?? []).map((option) => option.value)).toEqual([
       "today", "last7days", "last30days", "week", "month", "year", "custom"
     ]);
+    expect(Array.from(periodSelect?.options ?? []).map((option) => option.textContent)).toContain("自定义日期");
+    expect(Array.from(periodSelect?.options ?? []).map((option) => option.textContent)).not.toContain("自定义");
 
     await act(async () => {
       if (!periodSelect) return;
