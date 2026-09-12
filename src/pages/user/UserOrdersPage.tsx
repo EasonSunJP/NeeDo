@@ -119,8 +119,8 @@ function OrderProviderInfoCard({ order }: { order: Order }) {
         </div>
         {appointmentTime ? (
           <dl className="user-orders-appointment-time mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 rounded-[12px] bg-[color:var(--client-primary-soft)] px-2.5 py-2 text-[11px]">
-            <dt className="font-black text-[color:var(--client-primary)]">预约时间</dt>
-            <dd className="min-w-0 text-right font-black text-[color:var(--client-text)]">
+            <dt className="whitespace-nowrap font-black text-[color:var(--client-primary)]">预约时间</dt>
+            <dd className="min-w-0 whitespace-nowrap text-right font-black text-[color:var(--client-text)]">
               <time data-no-i18n dateTime={appointmentTime}>{appointmentTime}</time>
             </dd>
           </dl>
@@ -129,7 +129,7 @@ function OrderProviderInfoCard({ order }: { order: Order }) {
     </div>
   );
 
-  return detailTo ? <Link to={detailTo}>{card}</Link> : card;
+  return detailTo ? <Link className="block" to={detailTo}>{card}</Link> : card;
 }
 
 function OrderActionButton({
