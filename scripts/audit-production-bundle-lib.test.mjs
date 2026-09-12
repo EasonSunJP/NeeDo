@@ -92,17 +92,17 @@ describe("production bundle audit", () => {
 
   it("accepts the measured i18n artifact within the default budget", async () => {
     const report = await auditProductionBundle(
-      await createBundleFixture({ i18nBytes: 3_705_361 })
+      await createBundleFixture({ i18nBytes: 3_706_579 })
     );
     expect(report.failures).toEqual([]);
   });
 
   it("rejects an i18n artifact one byte above the calibrated default budget", async () => {
     const report = await auditProductionBundle(
-      await createBundleFixture({ i18nBytes: 3_706_001 })
+      await createBundleFixture({ i18nBytes: 3_707_201 })
     );
     expect(report.failures).toEqual([
-      "i18n-hash.js is 3706001 bytes; budget is 3706000"
+      "i18n-hash.js is 3707201 bytes; budget is 3707200"
     ]);
   });
 
