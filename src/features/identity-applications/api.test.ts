@@ -64,13 +64,24 @@ describe("identity application API client", () => {
     );
   });
 
-  it("uploads protected raw media with purpose and optimistic version", async () => {
+  it("uploads an untouched sensitive original and local preview as one bundle", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
-    const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], "portrait.jpg", { type: "image/jpeg" });
-    await identityApplicationsApi.uploadMedia(41, "portrait", 3, file);
-    expect(httpClient.request).toHaveBeenCalledWith("/identity-applications/41/media", {
-      body: file,
-      headers: { "Content-Type": "image/jpeg" },
+    const original = new File([new Uint8Array([0xff, 0xd8, 0xff])], "portrait.jpg", { type: "image/jpeg" });
+    const preview = new File(["preview"], "portrait-preview.jpg", { type: "image/jpeg" });
+    vi.mocked(optimizeImageUpload).mockResolvedValue({
+      file: preview, height: 600, mimeType: "image/jpeg", resultBytes: 7,
+      sourceBytes: 3, ssim: 0.999, status: "reencoded", width: 900
+    });
+
+    await identityApplicationsApi.uploadSensitiveMediaBundle(41, "portrait", 3, original);
+
+    expect(optimizeImageUpload).toHaveBeenCalledWith(original, "identity-preview");
+    const request = vi.mocked(httpClient.request).mock.calls[0]![1]!;
+    expect(request.body).toBeInstanceOf(FormData);
+    expect((request.body as FormData).get("original")).toEqual(original);
+    expect((request.body as FormData).get("preview")).toEqual(preview);
+    expect(httpClient.request).toHaveBeenCalledWith("/identity-applications/41/media-bundle", {
+      body: expect.any(FormData),
       method: "POST",
       query: { expected_version: 3, purpose: "portrait" }
     });

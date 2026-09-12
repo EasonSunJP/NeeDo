@@ -169,12 +169,30 @@ export const identityApplicationsApi = {
     return httpClient.request<{ applicationVersion: number; accountNumberMasked: string }>(`/identity-applications/${id}/merchant-bank-account`, { body, method: "PATCH" });
   },
   async uploadMedia(id: number, purpose: string, expectedVersion: number, file: File) {
-    const upload = purpose === "showcase"
-      ? (await optimizeImageUpload(file, "shop-presentation")).file
-      : file;
+    const upload = (await optimizeImageUpload(file, "shop-presentation")).file;
     return httpClient.request<{ id: number; applicationVersion: number }>(`/identity-applications/${id}/media`, {
       body: upload,
       headers: { "Content-Type": upload.type },
+      method: "POST",
+      query: { expected_version: expectedVersion, purpose }
+    });
+  },
+  async uploadSensitiveMediaBundle(
+    id: number,
+    purpose: "portrait" | "identity_document" | "corporate_registration" | "representative_identity",
+    expectedVersion: number,
+    originalFile: File
+  ) {
+    const preview = (await optimizeImageUpload(originalFile, "identity-preview")).file;
+    const body = new FormData();
+    body.append("original", originalFile, originalFile.name);
+    body.append("preview", preview, preview.name);
+    return httpClient.request<{
+      original: { id: number };
+      preview: { id: number };
+      applicationVersion: number;
+    }>(`/identity-applications/${id}/media-bundle`, {
+      body,
       method: "POST",
       query: { expected_version: expectedVersion, purpose }
     });

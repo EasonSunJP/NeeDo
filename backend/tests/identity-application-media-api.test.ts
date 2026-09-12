@@ -48,10 +48,31 @@ const createFixture = () => {
     upload: jest.fn(async () => ({
       id: 101,
       applicationId: 41,
-      purpose: "portrait",
+      purpose: "showcase",
       mimeType: "image/png",
       applicationVersion: 3,
       createdAt: new Date("2026-08-26T05:00:00.000Z")
+    })),
+    uploadBundle: jest.fn(async () => ({
+      original: {
+        id: 101,
+        applicationId: 41,
+        purpose: "portrait",
+        mimeType: "image/png",
+        applicationVersion: 3,
+        createdAt: new Date("2026-08-26T05:00:00.000Z"),
+        variant: "original"
+      },
+      preview: {
+        id: 102,
+        applicationId: 41,
+        purpose: "portrait",
+        mimeType: "image/png",
+        applicationVersion: 3,
+        createdAt: new Date("2026-08-26T05:00:00.000Z"),
+        variant: "preview"
+      },
+      applicationVersion: 3
     })),
     read: jest.fn(async () => ({ buffer: png, mimeType: "image/png" }))
   };
@@ -72,10 +93,10 @@ const createFixture = () => {
 };
 
 describe("identity application media HTTP API", () => {
-  it("uploads raw protected image bytes with purpose and optimistic version", async () => {
+  it("keeps the raw endpoint for non-sensitive showcase uploads", async () => {
     const fixture = createFixture();
     await request(fixture.app)
-      .post("/api/v1/identity-applications/41/media?purpose=portrait&expected_version=2")
+      .post("/api/v1/identity-applications/41/media?purpose=showcase&expected_version=2")
       .set("Authorization", `Bearer ${fixture.token}`)
       .set("Content-Type", "image/png")
       .send(png)
@@ -84,7 +105,7 @@ describe("identity application media HTTP API", () => {
         expect(response.body.data).toMatchObject({
           id: 101,
           applicationVersion: 3,
-          purpose: "portrait"
+          purpose: "showcase"
         })
       );
     expect(fixture.identityApplicationMediaService.upload).toHaveBeenCalledWith(
@@ -92,11 +113,62 @@ describe("identity application media HTTP API", () => {
         userId: 7,
         applicationId: 41,
         expectedVersion: 2,
-        purpose: "portrait",
+        purpose: "showcase",
         mimeType: "image/png",
         bytes: png
       })
     );
+  });
+
+  it("accepts exactly one original and one client-generated preview", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .post("/api/v1/identity-applications/41/media-bundle?purpose=portrait&expected_version=2")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .attach("original", png, { filename: "portrait.png", contentType: "image/png" })
+      .attach("preview", png, { filename: "portrait-preview.png", contentType: "image/png" })
+      .expect(201)
+      .expect((response) => expect(response.body.data).toMatchObject({
+        original: { id: 101 },
+        preview: { id: 102 },
+        applicationVersion: 3
+      }));
+    expect(fixture.identityApplicationMediaService.uploadBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 7,
+        applicationId: 41,
+        expectedVersion: 2,
+        purpose: "portrait",
+        original: expect.objectContaining({ bytes: png, mimeType: "image/png" }),
+        preview: expect.objectContaining({ bytes: png, mimeType: "image/png" })
+      })
+    );
+  });
+
+  it("rejects incomplete, unexpected, and oversized preview bundles", async () => {
+    const fixture = createFixture();
+    const url = "/api/v1/identity-applications/41/media-bundle?purpose=portrait&expected_version=2";
+    await request(fixture.app)
+      .post(url)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .attach("original", png, { filename: "portrait.png", contentType: "image/png" })
+      .expect(400);
+    await request(fixture.app)
+      .post(url)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .attach("original", png, { filename: "portrait.png", contentType: "image/png" })
+      .attach("unexpected", png, { filename: "preview.png", contentType: "image/png" })
+      .expect(400);
+    await request(fixture.app)
+      .post(url)
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .attach("original", png, { filename: "portrait.png", contentType: "image/png" })
+      .attach("preview", Buffer.alloc(2 * 1024 * 1024 + 1), {
+        filename: "preview.png",
+        contentType: "image/png"
+      })
+      .expect(413);
+    expect(fixture.identityApplicationMediaService.uploadBundle).not.toHaveBeenCalled();
   });
 
   it("streams authorized private media without exposing a public file path", async () => {
@@ -119,7 +191,7 @@ describe("identity application media HTTP API", () => {
   it("rejects unsupported MIME types and invalid purposes at the route boundary", async () => {
     const fixture = createFixture();
     await request(fixture.app)
-      .post("/api/v1/identity-applications/41/media?purpose=portrait&expected_version=2")
+      .post("/api/v1/identity-applications/41/media?purpose=showcase&expected_version=2")
       .set("Authorization", `Bearer ${fixture.token}`)
       .set("Content-Type", "application/octet-stream")
       .send(png)
