@@ -122,6 +122,7 @@ describe("RealtimeRepository formal identity payloads", () => {
   it("uses the current customer profile name in contacts", async () => {
     const createdAt = new Date("2026-09-08T00:00:00.000Z");
     const client = {
+      conversation: { findMany: jest.fn(async () => []) },
       contact: {
         findMany: jest.fn(async () => [
           {
@@ -543,6 +544,7 @@ describe("RealtimeRepository formal identity payloads", () => {
   it("returns the immutable NeeDoID and persisted profile with every contact", async () => {
     const createdAt = new Date("2026-08-25T00:00:00.000Z");
     const client = {
+      conversation: { findMany: jest.fn(async () => []) },
       contact: {
         findMany: jest.fn(async () => [
           {

@@ -3227,6 +3227,7 @@ export function ImDirectoryProfilePage() {
 
 export function ImContactDetailPage() {
   const { store, config } = useImRuntime();
+  const ensureDirectConversation = store.ensureDirectConversation;
   const navigate = useNavigate();
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
@@ -3243,8 +3244,15 @@ export function ImContactDetailPage() {
     let cancelled = false;
     const userId = user.id;
 
+    if (contact.source !== "friend_request") {
+      navigate(config.routes.directoryProfile(user.id), { replace: true });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setRedirectFailed(false);
-    void store.ensureDirectConversation(userId)
+    void ensureDirectConversation(userId)
       .then((conversation) => {
         if (!cancelled) {
           navigate(config.routes.conversationInfo(conversation.id), { replace: true });
@@ -3259,7 +3267,7 @@ export function ImContactDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [config.routes, contact?.id, navigate, store, user?.id]);
+  }, [config.routes, contact?.id, contact?.source, ensureDirectConversation, navigate, user?.id]);
 
   if (!contact || !user) {
     return (
