@@ -121,6 +121,7 @@ export function UnifiedEntityInfoCard({
       ? {
           action: (
             <ServiceFavoriteAction
+              language={language}
               onChange={setFavoriteState}
               state={favoriteState}
               targetLabel={data.name}
@@ -137,6 +138,7 @@ export function UnifiedEntityInfoCard({
       ? {
           action: (
             <ServiceShareAction
+              language={language}
               onShareCountChange={setShareCount}
               target={target}
               targetLabel={data.name}

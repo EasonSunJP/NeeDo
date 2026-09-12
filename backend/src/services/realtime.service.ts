@@ -86,6 +86,7 @@ export interface OrderStatusNotificationPort {
 export interface ProfileUpdatedNotificationInput {
   userId: number;
   identityId: number;
+  includePersonalIdentities: boolean;
 }
 
 export interface ProfileUpdatedNotificationPort {
@@ -112,20 +113,25 @@ export class RealtimeService
     }
 
     try {
-      const recipients = await this.repository.listProfileUpdateRecipients(input.identityId);
+      const recipients = await this.repository.listProfileUpdateRecipients(input);
       for (const recipient of recipients) {
         this.eventGateway.publish({
           id: this.createEventId(),
           type: "profile.updated",
           recipientUserId: recipient.userId,
           recipientIdentityId: recipient.identityId,
-          payload: input,
+          payload: { userId: input.userId, identityId: input.identityId },
           createdAt: new Date().toISOString()
         });
       }
     } catch (error) {
       logger.error(
-        { error, identityId: input.identityId, userId: input.userId },
+        {
+          error,
+          identityId: input.identityId,
+          includePersonalIdentities: input.includePersonalIdentities,
+          userId: input.userId
+        },
         "Realtime profile publication failed after profile commit"
       );
     }

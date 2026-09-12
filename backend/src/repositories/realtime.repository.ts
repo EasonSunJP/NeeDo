@@ -47,6 +47,12 @@ export type FriendRequestStatusPayload = "pending" | "accepted" | "rejected" | "
 export type SocialPostVisibilityPayload = "public" | "followers";
 export type NotificationTypePayload = "orderStatus" | "friendRequest" | "system" | "social";
 
+export interface ProfileUpdateRecipientInput {
+  userId: number;
+  identityId: number;
+  includePersonalIdentities: boolean;
+}
+
 export function toFriendshipPairKey(leftIdentityId: number, rightIdentityId: number): string {
   const [lowIdentityId, highIdentityId] = [leftIdentityId, rightIdentityId].sort(
     (left, right) => left - right
@@ -724,7 +730,7 @@ export interface RealtimeRepositoryPort {
     conversationId: number
   ) => Promise<Array<{ userId: number; identityId: number }>>;
   listProfileUpdateRecipients?: (
-    identityId: number
+    input: ProfileUpdateRecipientInput
   ) => Promise<Array<{ userId: number; identityId: number }>>;
   listConversations: (
     userId: number,
@@ -1108,14 +1114,33 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   public listProfileUpdateRecipients(
-    identityId: number
+    input: ProfileUpdateRecipientInput
   ): Promise<Array<{ userId: number; identityId: number }>> {
     return this.client.conversationParticipant.findMany({
       where: {
         deletedAt: null,
         conversation: {
           deletedAt: null,
-          participants: { some: { identityId, deletedAt: null } }
+          participants: {
+            some: {
+              deletedAt: null,
+              OR: [
+                { identityId: input.identityId },
+                ...(input.includePersonalIdentities
+                  ? [
+                      {
+                        userId: input.userId,
+                        identity: {
+                          type: { in: PERSONAL_IDENTITY_TYPES },
+                          isActive: true,
+                          deletedAt: null
+                        }
+                      }
+                    ]
+                  : [])
+              ]
+            }
+          }
         }
       },
       distinct: ["identityId"],
@@ -3401,9 +3426,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           actorUserId: input.requesterUserId,
           actorIdentityId: requesterIdentityId,
           type: NotificationType.FRIEND_REQUEST,
-          title: "New friend request",
-          body: "You have a new friend request.",
-          payload: { friendRequestId: friendRequest.id }
+          title: "notification.friend_request.created.title",
+          body: "notification.friend_request.created.body",
+          payload: {
+            eventCode: "im.friend_request.created",
+            friendRequestId: friendRequest.id
+          }
         }
       });
       await tx.auditLog.create({
@@ -5191,11 +5219,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             actorUserId: input.actorUserId,
             actorIdentityId,
             type: NotificationType.ORDER_STATUS,
-            title: "Order status updated",
-            body: `${input.serviceName} changed from ${input.fromStatus} to ${input.toStatus}.`,
+            title: "notification.order_status_changed.title",
+            body: "notification.order_status_changed.body",
             payload: {
+              eventCode: "booking.order_status_changed",
               orderId: input.orderId,
               orderNo: input.orderNo,
+              serviceName: input.serviceName,
               fromStatus: input.fromStatus,
               toStatus: input.toStatus
             }

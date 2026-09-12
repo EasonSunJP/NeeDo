@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
+import { translateText, type Language } from "../../i18n/translations";
 
 export const featureCarouselFrameClassName = "client-app-panel-frame relative";
 
@@ -53,7 +54,8 @@ export function FeatureCarousel({
   viewportClassName,
   slideClassName,
   renderSlide,
-  dataNoI18n = false
+  dataNoI18n = false,
+  language = "zh"
 }: {
   slides: FeatureCarouselSlide[];
   className?: string;
@@ -67,6 +69,7 @@ export function FeatureCarousel({
   slideClassName?: string;
   renderSlide?: (args: { slide: FeatureCarouselSlide; index: number; isActive: boolean }) => React.ReactNode;
   dataNoI18n?: boolean;
+  language?: Language;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
@@ -180,7 +183,7 @@ export function FeatureCarousel({
             className="inline-flex w-fit items-center gap-1 rounded-full bg-white/14 px-3 py-2 text-[12px] font-black backdrop-blur"
             data-feature-carousel-cta="true"
           >
-            {slide.cta ?? "查看详情"}
+            {slide.cta ?? translateText("查看轮播详情", language)}
             <svg aria-hidden="true" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
               <path d="m9 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
             </svg>
@@ -284,7 +287,7 @@ export function FeatureCarousel({
           <div className="flex items-center justify-center gap-2">
             {slides.map((slide, index) => (
               <button
-                aria-label={`切换到第 ${index + 1} 张轮播`}
+                aria-label={translateText("切换到第 {index} 张轮播", language).replace("{index}", String(index + 1))}
                 className={cn(
                   "h-2 rounded-full transition",
                   resolvedActiveIndex === index

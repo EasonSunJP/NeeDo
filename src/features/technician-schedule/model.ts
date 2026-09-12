@@ -1,5 +1,7 @@
 import type { ScheduleDetailTargetType, ScheduleEventType } from "../../lib/scheduleDetailTarget";
 
+import { translateText, type Language } from "../../i18n/translations";
+
 export type TechnicianScheduleView = "day" | "week" | "month";
 export type TechnicianScheduleDensityMode = "entries" | "all";
 export type TechnicianScheduleEventKind = "availability" | "leave" | "locked" | "rest" | "travel" | "other";
@@ -430,12 +432,21 @@ export function formatShortDate(date: string) {
   return `${current.getMonth() + 1}/${current.getDate()}`;
 }
 
-export function getWeekdayLabel(date: string) {
-  return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][parseDateKey(date).getDay()];
+const weekdaySourceLabels = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"] as const;
+
+export function getWeekdayLabel(date: string, language: Language = "zh") {
+  return translateText(weekdaySourceLabels[parseDateKey(date).getDay()], language);
 }
 
-export function getWeekdayHeaderLabel() {
-  return ["日", "一", "二", "三", "四", "五", "六"];
+export function getWeekdayHeaderLabel(language: Language = "zh") {
+  return weekdaySourceLabels.map((source) => {
+    const localized = translateText(source, language);
+
+    if (language === "zh" || language === "zh-Hant") return localized.replace(/^[周週]/u, "");
+    if (language === "ja") return localized.replace(/曜$/u, "");
+    if (language === "ko") return localized.replace(/요일$/u, "");
+    return localized;
+  });
 }
 
 export function getEventKindLabel(kind: TechnicianCalendarItem["kind"]) {

@@ -427,7 +427,7 @@ export function createPersistentResourceCache(input: { database: PersistentCache
       const cached = await read<T>(scope, key);
       if (force || !cached) {
         checkedThisSession.add(id);
-        return refresh(scope, key, load, !force);
+        return refresh(scope, key, load, true);
       }
       if (!checkedThisSession.has(id)) {
         checkedThisSession.add(id);

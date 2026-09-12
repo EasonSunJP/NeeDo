@@ -1,4 +1,5 @@
 import { buildAbsolutePortalUrl } from "../../lib/share";
+import type { Language } from "../../i18n/translations";
 import type { SocialEntityType, SocialMediaItem, SocialPortalScope, SocialPost, SocialProfile, SocialProfileRef } from "./types";
 import type { SocialCommentPermission, SocialVisibility } from "./types";
 
@@ -73,33 +74,41 @@ export function buildProfileMentionMatcher(profiles: Array<Pick<SocialProfile, "
   return new RegExp(labels.join("|"), "gu");
 }
 
-export function formatRelativeTime(value: string) {
-  const now = Date.now();
+const relativeTimeLocales: Record<Language, string> = {
+  zh: "zh-CN",
+  "zh-Hant": "zh-TW",
+  ja: "ja-JP",
+  en: "en-US",
+  ko: "ko-KR"
+};
+
+export function formatRelativeTime(value: string, language: Language, now = Date.now()) {
   const target = new Date(value).getTime();
 
   if (Number.isNaN(target)) {
     return value;
   }
 
-  const diffMinutes = Math.max(1, Math.floor((now - target) / 60000));
+  const diffMinutes = Math.max(1, Math.floor(Math.max(0, now - target) / 60000));
+  const formatter = new Intl.RelativeTimeFormat(relativeTimeLocales[language], { numeric: "always" });
 
   if (diffMinutes < 60) {
-    return `${diffMinutes} 分钟前`;
+    return formatter.format(-diffMinutes, "minute");
   }
 
   const diffHours = Math.floor(diffMinutes / 60);
 
   if (diffHours < 24) {
-    return `${diffHours} 小时前`;
+    return formatter.format(-diffHours, "hour");
   }
 
   const diffDays = Math.floor(diffHours / 24);
 
   if (diffDays < 7) {
-    return `${diffDays} 天前`;
+    return formatter.format(-diffDays, "day");
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(relativeTimeLocales[language], {
     month: "short",
     day: "numeric"
   }).format(new Date(value));

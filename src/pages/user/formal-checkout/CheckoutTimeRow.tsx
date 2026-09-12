@@ -7,6 +7,7 @@ import {
   remainingCheckoutCapacity,
   slotsForCheckoutDate
 } from "./checkoutTimeSlots";
+import { useCheckoutText } from "./i18n";
 
 export function CheckoutTimeRow({ date, people, slots, selectedSlotId, nowMs = Date.now(), onSelect }: {
   date: string;
@@ -16,6 +17,7 @@ export function CheckoutTimeRow({ date, people, slots, selectedSlotId, nowMs = D
   nowMs?: number;
   onSelect: (slotId: number) => void;
 }) {
+  const { t } = useCheckoutText();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const sameDaySlots = useMemo(() => slotsForCheckoutDate(slots, date), [date, slots]);
@@ -40,35 +42,35 @@ export function CheckoutTimeRow({ date, people, slots, selectedSlotId, nowMs = D
   }, [open]);
 
   return (
-    <div className="relative mt-2" ref={rootRef}>
+    <div className="relative mt-2" data-no-i18n ref={rootRef}>
       <div className="grid grid-cols-2 gap-2">
         <button
           aria-controls="formal-checkout-time-options"
           aria-expanded={open}
-          aria-label="选择预约时间"
+          aria-label={t("selectBookingTime")}
           className="focus-ring rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4 text-left"
           onClick={() => setOpen((value) => !value)}
           type="button"
         >
-          <p className="text-xs font-bold text-[color:var(--client-muted)]">时间</p>
+          <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("time")}</p>
           <p className="mt-2 text-[22px] font-black text-[color:var(--client-primary)]">
             {selectedSlot ? getTokyoSlotParts(selectedSlot.startsAt)?.time : "—"}
           </p>
           <p className="mt-1 truncate text-[11px] font-semibold text-[color:var(--client-muted)]">
-            {selectedSlot?.technicianName ?? "店铺安排技师"}
+            {selectedSlot?.technicianName ?? t("assignedByShop")}
           </p>
         </button>
         <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
-          <p className="text-xs font-bold text-[color:var(--client-muted)]">人数</p>
+          <p className="text-xs font-bold text-[color:var(--client-muted)]">{t("people")}</p>
           <p className="mt-2 text-[22px] font-black text-[color:var(--client-text)]">{people}</p>
           <p className="mt-1 text-[11px] font-semibold text-[color:var(--client-muted)]">
-            剩余 {selectedSlot ? remainingCheckoutCapacity(selectedSlot) : 0} 名
+            {t("remainingCapacity", { count: selectedSlot ? remainingCheckoutCapacity(selectedSlot) : 0 })}
           </p>
         </div>
       </div>
       {open ? (
         <div
-          aria-label={`${date} 可预约时间`}
+          aria-label={t("availableTimesAria", { date })}
           className="absolute inset-x-0 top-[calc(100%+8px)] z-50 grid max-h-60 gap-2 overflow-y-auto rounded-[20px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-2 shadow-[0_20px_46px_rgba(0,0,0,0.34)]"
           id="formal-checkout-time-options"
           role="listbox"
