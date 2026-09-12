@@ -144,11 +144,11 @@ export function WorkStatusControls({
           >
             <span
               aria-hidden="true"
-              className="technician-work-status-icon inline-flex h-9 w-9 items-center justify-center rounded-[14px]"
+              className="technician-work-status-icon inline-flex h-9 w-9 items-center justify-center rounded-[14px] leading-none"
             >
               {item.icon}
             </span>
-            <strong className="mt-2 text-xs">{t(item.status)}</strong>
+            <strong className="mt-2 flex w-full items-center justify-center text-center text-xs leading-4">{t(item.status)}</strong>
           </button>
         ))}
       </div>

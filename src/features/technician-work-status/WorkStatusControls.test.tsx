@@ -37,6 +37,37 @@ afterEach(async () => {
   container.remove();
 });
 describe("work status submission", () => {
+  it("centers every home shortcut icon and label inside its button", async () => {
+    await act(async () =>
+      root.render(
+        <MemoryRouter>
+          <WorkStatusControls />
+        </MemoryRouter>,
+      ),
+    );
+
+    const statusButtons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button[data-status]"),
+    );
+    expect(statusButtons).toHaveLength(5);
+
+    statusButtons.forEach((button) => {
+      expect(button.classList).toContain("items-center");
+      expect(button.classList).toContain("justify-center");
+
+      const icon = button.querySelector<HTMLElement>(
+        ".technician-work-status-icon",
+      );
+      const label = button.querySelector<HTMLElement>("strong");
+      expect(icon?.classList).toContain("leading-none");
+      expect(label?.classList).toContain("flex");
+      expect(label?.classList).toContain("w-full");
+      expect(label?.classList).toContain("items-center");
+      expect(label?.classList).toContain("justify-center");
+      expect(label?.classList).toContain("text-center");
+    });
+  });
+
   it("blocks starting work actions without a shop while keeping off-duty available", async () => {
     await act(async () =>
       root.render(

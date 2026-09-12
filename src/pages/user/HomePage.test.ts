@@ -249,6 +249,38 @@ describe("HomePage quick action responsive pagination", () => {
     expect(stylesSource).toMatch(
       /\.home-quick-action-card\s*\{[\s\S]*?height:\s*clamp\(/u,
     );
+    expect(stylesSource).toContain("height: clamp(86px, 22cqw, 104px);");
+    expect(stylesSource).toMatch(
+      /@container \(max-width: 340px\)\s*\{[\s\S]*?\.home-quick-action-card\s*\{[\s\S]*?height:\s*76px;/u,
+    );
+  });
+
+  it("centers each icon and label as one stable column inside its card", () => {
+    const rendererStart = homePageSource.indexOf(
+      "{quickActionPages.map((page, pageIndex) => (",
+    );
+    const rendererEnd = homePageSource.indexOf("</section>", rendererStart);
+    const quickActionRenderer = homePageSource.slice(
+      rendererStart,
+      rendererEnd,
+    );
+
+    expect(rendererStart).toBeGreaterThan(-1);
+    expect(rendererEnd).toBeGreaterThan(rendererStart);
+    expect(quickActionRenderer).toContain(
+      "home-quick-action-card flex min-w-0 flex-col items-center justify-center",
+    );
+    expect(quickActionRenderer).toContain("before:hidden");
+    expect(quickActionRenderer).not.toContain("grid-rows-[34px_28px]");
+    expect(quickActionRenderer).toContain(
+      "home-quick-action-card__icon inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center",
+    );
+    expect(quickActionRenderer).toContain(
+      "home-quick-action-card__label flex h-[28px] w-full shrink-0 items-center justify-center",
+    );
+    expect(quickActionRenderer).toContain(
+      "home-quick-action-card__title w-full text-center",
+    );
   });
 });
 
