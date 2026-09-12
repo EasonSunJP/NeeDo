@@ -112,8 +112,8 @@ const accountSettings = [
   },
   {
     label: "支付方式",
-    caption: "银行卡、PayPay、现金",
-    to: "/me/settings/account",
+    caption: "现金、NDP 与外部渠道状态",
+    to: "/me/settings/payment-methods",
   },
   {
     label: "发票记录",

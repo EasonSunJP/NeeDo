@@ -11,6 +11,15 @@ describe("UserCenterPage", () => {
     expect(source).not.toContain('to: "/categories?type=store"');
   });
 
+  it("routes payment-method management to its own settings page", () => {
+    expect(source).toMatch(
+      /label: "支付方式",[^}]*caption: "现金、NDP 与外部渠道状态",[^}]*to: "\/me\/settings\/payment-methods"/u,
+    );
+    expect(source).not.toMatch(
+      /label: "支付方式",[^}]*to: "\/me\/settings\/account"/u,
+    );
+  });
+
   it("has no legacy mock or static-preview fallback in the formal user center", () => {
     expect(source).not.toContain('from "../../data/mock"');
     expect(source).not.toContain("legacyOrderShortcuts");

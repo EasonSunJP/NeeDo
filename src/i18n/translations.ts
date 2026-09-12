@@ -279,6 +279,12 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  "现金、NDP 与外部渠道状态": fourLanguageTranslation(
+    "現金、NDP 與外部渠道狀態",
+    "現金、NDP、外部決済の状態",
+    "Cash, NDP, and external channel status",
+    "현금, NDP 및 외부 채널 상태",
+  ),
   ...technicianAutomationTranslations,
   "实时数据大屏": fourLanguageTranslation("即時數據大屏", "リアルタイムデータ画面", "Live data screen", "실시간 데이터 화면"),
   "NeeDo 实时运营数据": fourLanguageTranslation("NeeDo 即時營運數據", "NeeDo リアルタイム運営データ", "NeeDo live operations", "NeeDo 실시간 운영 데이터"),
