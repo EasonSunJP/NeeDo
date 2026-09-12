@@ -29,6 +29,7 @@ import {
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
 import type { ExchangeCancellation } from "../../features/exchange/types";
 import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
@@ -207,6 +208,7 @@ function AddOnRow({ addOn, actions }: { addOn: BookingOrderAddOn; actions?: Reac
 function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const language = useProvidedI18n()?.language ?? "zh";
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [checkout, setCheckout] = useState<OrderCheckout | null>(null);
   const [checkoutStatus, setCheckoutStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -595,7 +597,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
 
           <ContactEventTimelinePanel
             title="订单追踪信息"
-            events={buildFormalOrderTimelineEvents(order)}
+            events={buildFormalOrderTimelineEvents(order, { audience: "customer", language })}
             onCommentSubmit={(body) => {
               void runOrderMutation("timeline-comment", () =>
                 bookingApi.createTimelineComment(orderId, { body })

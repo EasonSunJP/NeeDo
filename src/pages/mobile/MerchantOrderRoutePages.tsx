@@ -35,6 +35,7 @@ import {
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
 import type { ExchangeCancellation } from "../../features/exchange/types";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
@@ -1054,6 +1055,7 @@ function describeFormalMerchantCancellationError(error: unknown) {
 
 function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
   const navigate = useNavigate();
+  const language = useProvidedI18n()?.language ?? "zh";
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [checkout, setCheckout] = useState<OrderCheckout | null>(null);
   const [merchantOrder, setMerchantOrder] = useState<BackofficeOrderPayload | null>(null);
@@ -1282,7 +1284,7 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
             ]} />
           ) : null}
 
-          <ContactEventTimelinePanel events={buildFormalOrderTimelineEvents(order)} title="订单追踪信息" />
+          <ContactEventTimelinePanel events={buildFormalOrderTimelineEvents(order, { audience: "merchant", language })} title="订单追踪信息" />
           {order.status === "pending" || order.status === "confirmed" || order.status === "cancelled" ? (
             <ExchangeOrderCancellationPanel
               onCancellationChange={handleExchangeCancellationChange}
