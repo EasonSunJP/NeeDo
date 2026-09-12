@@ -4,6 +4,7 @@ export type StoreBookingRouteInput = {
   date?: string;
   time?: string;
   people?: string;
+  scheduleSlotId?: number;
 };
 
 function appendOptionalParam(params: URLSearchParams, key: string, value: string | null | undefined) {
@@ -24,12 +25,15 @@ export function buildStoreBookingRoute({ date, storeId, technicianId, time }: St
   return `/stores/${encodeURIComponent(storeId)}${query ? `?${query}` : ""}`;
 }
 
-export function buildStoreCheckoutRoute(serviceId: string, { date, people, storeId, technicianId, time }: StoreBookingRouteInput) {
+export function buildStoreCheckoutRoute(serviceId: string, { date, people, scheduleSlotId, storeId, technicianId, time }: StoreBookingRouteInput) {
   const params = new URLSearchParams({ mode: "store", store: storeId });
   appendOptionalParam(params, "technician", technicianId);
   appendOptionalParam(params, "date", date);
   appendOptionalParam(params, "people", people);
   appendOptionalParam(params, "time", time);
+  if (Number.isInteger(scheduleSlotId) && Number(scheduleSlotId) > 0) {
+    params.set("scheduleSlotId", String(scheduleSlotId));
+  }
 
   return `/checkout/${encodeURIComponent(serviceId)}?${params.toString()}`;
 }

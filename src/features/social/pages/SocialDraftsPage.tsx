@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AppTopBar, PageScaffold, PrimaryButton, SurfacePanel } from "../../../components/client-ui/AppScaffold";
 import { Button } from "../../../components/ui/Button";
+import { useOptionalI18n } from "../../../i18n/I18nProvider";
 import { InteractiveAvatar } from "../../../components/ui/InteractiveAvatar";
 import { useSocial } from "../context";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
@@ -9,6 +10,7 @@ import { navItemsForSocialScope, SocialEmptyState, SocialTopActions } from "../c
 import { formatRelativeTime, formatSocialVisibilityLabel } from "../utils";
 
 export function SocialDraftsPage() {
+  const { language } = useOptionalI18n();
   const location = useLocation();
   const scope = getSocialScopeFromPathname(location.pathname);
   const { state, profiles, getActorForScope, getUnreadNotificationCount, clearDraft } = useSocial();
@@ -57,7 +59,7 @@ export function SocialDraftsPage() {
                       <p className="mt-1 text-sm text-[color:var(--client-muted)]">
                         {draft.quotePostId ? "引用转发草稿" : draft.editPostId ? "编辑草稿" : "公开动态草稿"} ·
                         {" "}
-                        {formatRelativeTime(draft.updatedAt)}
+                        <span data-no-i18n>{formatRelativeTime(draft.updatedAt, language)}</span>
                       </p>
                     </div>
                   </div>

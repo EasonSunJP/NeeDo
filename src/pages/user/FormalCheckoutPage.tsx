@@ -54,6 +54,11 @@ import {
 } from "./formal-checkout/CheckoutProgressNav";
 import { CheckoutTimeRow } from "./formal-checkout/CheckoutTimeRow";
 import {
+  useCheckoutText,
+  type CheckoutTextKey,
+  type CheckoutTextValues
+} from "./formal-checkout/i18n";
+import {
   getTokyoDayWindow,
   getTokyoSlotParts,
   isCheckoutSlotBookable,
@@ -84,10 +89,14 @@ type CheckoutServiceContext = {
 
 type BookingIdempotencyState = { fingerprint: string; key: string };
 
-class CheckoutSourceError extends Error {}
+class CheckoutSourceError extends Error {
+  constructor(readonly copyKey: CheckoutTextKey) {
+    super(copyKey);
+  }
+}
 type EstimateStatus = "idle" | "loading" | "success" | "error" | "expired";
 
-const quickNotes = ["女性技师优先", "请提前联系", "需要安静环境"];
+const quickNotes = ["preferFemaleTechnician", "contactInAdvance", "quietEnvironment"] as const satisfies readonly CheckoutTextKey[];
 const checkoutScheduleSlotStateKey = "checkoutScheduleSlotId";
 const emptyHomeAddress: JapaneseRouteAddress = { countryCode: "JP", postalCode: "", prefecture: "", city: "", addressLine1: "", addressLine2: "", building: "" };
 
@@ -102,27 +111,31 @@ function persistedCheckoutScheduleSlotId(value: unknown) {
   return typeof slotId === "number" && Number.isInteger(slotId) && slotId > 0 ? slotId : null;
 }
 
-function describeCheckoutError(error: unknown) {
-  if (error instanceof CheckoutSourceError) return error.message;
-  if (error instanceof ApiClientError) {
-    if (error.code === 41038) return "价格已更新，请确认最新金额后重新提交";
-    if (error.status === 401) return "登录状态已失效，请重新登录";
-    if (error.status === 403) return "当前身份没有创建预约的权限";
-    if (error.status === 404) return "服务不存在或已停止预约";
-    if (error.status === 409) return "预约状态已变化，请重新选择时段";
-    if (error.status >= 500) return "预约服务暂时不可用，请稍后重试";
-  }
-  return "预约页加载失败，请检查网络后重试";
+function requestedCheckoutScheduleSlotId(value: string | null) {
+  return value && /^[1-9]\d*$/u.test(value) ? Number(value) : null;
 }
 
-function describeEstimateError(error: unknown) {
+function describeCheckoutError(error: unknown): CheckoutTextKey {
+  if (error instanceof CheckoutSourceError) return error.copyKey;
   if (error instanceof ApiClientError) {
-    if (error.message === "error.travel.outside_service_area") return "该地址超出店铺的上门服务范围。";
-    if (error.message === "error.travel.provider_unconfigured") return "路线供应商尚未配置，暂时无法估算交通费。";
-    if (error.message === "error.travel.route_not_found") return "没有找到可用的驾驶路线，请检查地址。";
-    if (error.message.startsWith("error.travel.provider_")) return "路线供应商暂时不可用，请稍后重试。";
+    if (error.code === 41038) return "priceUpdated";
+    if (error.status === 401) return "loginExpired";
+    if (error.status === 403) return "permissionDenied";
+    if (error.status === 404) return "serviceUnavailable";
+    if (error.status === 409) return "bookingStateChanged";
+    if (error.status >= 500) return "bookingServiceUnavailable";
   }
-  return "交通费估算失败，请检查地址后重试。";
+  return "checkoutLoadNetworkError";
+}
+
+function describeEstimateError(error: unknown): CheckoutTextKey {
+  if (error instanceof ApiClientError) {
+    if (error.message === "error.travel.outside_service_area") return "travelOutsideArea";
+    if (error.message === "error.travel.provider_unconfigured") return "travelProviderUnconfigured";
+    if (error.message === "error.travel.route_not_found") return "travelRouteNotFound";
+    if (error.message.startsWith("error.travel.provider_")) return "travelProviderUnavailable";
+  }
+  return "travelEstimateFailed";
 }
 
 function resolveFulfillmentMode(serviceMode: string, requestedMode: string | null): FulfillmentMode {
@@ -156,31 +169,32 @@ function resolveBookingIdempotencyKey(
 
 function ensureIntelligenceCheckoutSource(post: ExchangePost, catalogRef: CheckoutCatalogRef) {
   if (post.type !== "intelligence" || !post.intelligence) {
-    throw new CheckoutSourceError("来源情报无效，无法预约");
+    throw new CheckoutSourceError("sourceInvalid");
   }
   if (post.status !== "published" || !post.intelligence.booking.available) {
-    throw new CheckoutSourceError("来源情报已结束或当前不可预约，请返回情报详情刷新");
+    throw new CheckoutSourceError("sourceEnded");
   }
   const target = post.intelligence.booking.target;
   if (!target || target.type !== catalogRef.type || target.id !== catalogRef.id) {
-    throw new CheckoutSourceError("来源情报与当前正式服务不一致，无法提交预约");
+    throw new CheckoutSourceError("sourceMismatch");
   }
   if (!post.intelligence.publisherCard || !post.intelligence.serviceCard) {
-    throw new CheckoutSourceError("来源情报的正式服务资料不完整，请稍后重试");
+    throw new CheckoutSourceError("sourceIncomplete");
   }
   return post.intelligence;
 }
 
-function serviceModeLabel(serviceMode: string) {
+function serviceModeLabel(serviceMode: string, t: (key: CheckoutTextKey, values?: CheckoutTextValues) => string) {
   const modes = serviceFulfillmentModes(serviceMode);
-  if (modes.length === 2) return "到店或上门";
-  return modes[0] === "home" ? "上门" : "到店";
+  if (modes.length === 2) return t("storeOrHomeShort");
+  return t(modes[0] === "home" ? "homeShort" : "storeShort");
 }
 
-function formatTokyoDate(value: string) {
+function formatTokyoDate(value: string, language: "zh" | "zh-Hant" | "ja" | "en" | "ko") {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
+  const locale = { zh: "zh-CN", "zh-Hant": "zh-TW", ja: "ja-JP", en: "en-US", ko: "ko-KR" }[language];
+  return new Intl.DateTimeFormat(locale, {
     day: "numeric",
     month: "long",
     timeZone: "Asia/Tokyo",
@@ -219,12 +233,14 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     ? Number(exchangePostParam)
     : null;
   const { isAuthenticated } = useAuth();
+  const { language, t } = useCheckoutText();
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState<CheckoutTextKey | null>(null);
   const [revision, setRevision] = useState(0);
   const [service, setService] = useState<CheckoutServiceContext | null>(null);
   const [intelligenceSource, setIntelligenceSource] = useState<NonNullable<ExchangePost["intelligence"]> | null>(null);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
+  const [slotSelectionInvalid, setSlotSelectionInvalid] = useState(false);
   const [checkoutNowMs, setCheckoutNowMs] = useState(() => Date.now());
   const [selectedTechnicianDetail, setSelectedTechnicianDetail] = useState<CoreTechnicianCard | null>(null);
   const [technicianLoadStatus, setTechnicianLoadStatus] = useState<TechnicianLoadStatus>("idle");
@@ -239,7 +255,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [homeAddress, setHomeAddress] = useState<JapaneseRouteAddress>(emptyHomeAddress);
   const [estimate, setEstimate] = useState<RouteEstimate | null>(null);
   const [estimateStatus, setEstimateStatus] = useState<EstimateStatus>("idle");
-  const [estimateError, setEstimateError] = useState("");
+  const [estimateError, setEstimateError] = useState<CheckoutTextKey | null>(null);
   const estimateRequestVersionRef = useRef(0);
   const [prefectures, setPrefectures] = useState<AdministrativeRegionReference[]>([]);
   const [municipalities, setMunicipalities] = useState<AdministrativeRegionReference[]>([]);
@@ -247,14 +263,14 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [selectedAdmin2Code, setSelectedAdmin2Code] = useState("");
   const [savedAddresses, setSavedAddresses] = useState<CustomerAddress[]>([]);
   const [selectedSavedAddressPublicId, setSelectedSavedAddressPublicId] = useState("");
-  const [savedAddressLoadError, setSavedAddressLoadError] = useState("");
+  const [savedAddressLoadError, setSavedAddressLoadError] = useState<CheckoutTextKey | null>(null);
   const homeAddressTouchedRef = useRef(false);
-  const [regionLoadError, setRegionLoadError] = useState("");
+  const [regionLoadError, setRegionLoadError] = useState<CheckoutTextKey | null>(null);
   const [municipalitiesLoading, setMunicipalitiesLoading] = useState(false);
   const [note, setNote] = useState(searchParams.get("remark") ?? "");
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-  const [addressCopyLabel, setAddressCopyLabel] = useState("复制地址");
+  const [submitError, setSubmitError] = useState<CheckoutTextKey | null>(null);
+  const [addressCopyLabel, setAddressCopyLabel] = useState<CheckoutTextKey>("copyAddress");
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Array<HTMLDivElement | null>>([]);
   const remarkInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -262,6 +278,11 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [activeProgressStep, setActiveProgressStep] = useState(0);
   const selectedDayWindow = useMemo(() => getTokyoDayWindow(selectedDate), [selectedDate]);
   const persistedSlotId = persistedCheckoutScheduleSlotId(location.state);
+  const requestedDateParam = searchParams.get("date");
+  const requestedSlotParam = searchParams.get("scheduleSlotId");
+  const requestedSlotId = requestedCheckoutScheduleSlotId(requestedSlotParam);
+  const hasRequestedSlotSelection = requestedSlotParam !== null || searchParams.get("time") !== null || persistedSlotId !== null;
+  const requestedDateInvalid = requestedDateParam !== null && getTokyoDayWindow(requestedDateParam) === null;
   const requestedTechnicianId = searchParams.get("technician");
   const shopServiceTechnicianId = requestedTechnicianId && /^[1-9]\d*$/.test(requestedTechnicianId)
     ? Number(requestedTechnicianId)
@@ -273,7 +294,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     setHomeAddress((current) => ({ ...current, [field]: value }));
     setEstimate(null);
     setEstimateStatus("idle");
-    setEstimateError("");
+    setEstimateError(null);
   };
 
   const applySavedAddress = (address: CustomerAddress) => {
@@ -293,14 +314,14 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     });
     setEstimate(null);
     setEstimateStatus("idle");
-    setEstimateError("");
+    setEstimateError(null);
   };
 
   useEffect(() => {
     if (!selectedDayWindow) return undefined;
     let active = true;
     setLoadStatus("loading");
-    setLoadError("");
+    setLoadError(null);
     const servicePromise: Promise<CheckoutServiceContext> = serviceId !== null
       ? coreReadApi.getServiceDetail(serviceId).then(async (serviceDetail) => {
           const navigation = await pricingModeApi
@@ -310,7 +331,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
             ? navigation.services.list.find((item) => item.id === serviceId) ?? null
             : null;
           if (navigation && !bookingMetadata) {
-            throw new CheckoutSourceError("当前定价模式下该服务不可预约，请返回店铺刷新");
+            throw new CheckoutSourceError("pricingModeUnavailable");
           }
           const serviceInfo = mapCoreServiceCardToUnifiedData(serviceDetail);
           return {
@@ -349,7 +370,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
             const category = categories.list.find((item) => item.id === technicianService?.categoryId);
             const technician = shop.technicians.find((item) => item.id === technicianServiceTechnicianId) ?? null;
             if (!technicianService || !category || !technician) {
-              throw new CheckoutSourceError("技师服务资料与预约链接不一致，请返回后重试");
+              throw new CheckoutSourceError("technicianServiceMismatch");
             }
             const serviceDetail: CoreServiceDetail = {
               id: technicianService.id,
@@ -393,14 +414,14 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           })
         : bookingApi.getTechnicianServiceBookingContext(technicianServiceId!).then((bookingContext: TechnicianServiceBookingContext) => {
             if (bookingContext.target.id !== technicianServiceId) {
-              throw new CheckoutSourceError("技师服务资料与预约链接不一致，请返回后重试");
+              throw new CheckoutSourceError("technicianServiceMismatch");
             }
             return {
               catalogRef,
               publicId: bookingContext.serviceCard.publicId,
               serviceInfo: mapTechnicianBookingContextServiceToUnifiedData(
                 bookingContext.serviceCard,
-                serviceModeLabel(bookingContext.serviceCard.serviceMode)
+                serviceModeLabel(bookingContext.serviceCard.serviceMode, t)
               ),
               serviceDetailPath: bookingContext.serviceCard.detailPath,
               serviceMode: bookingContext.serviceCard.serviceMode,
@@ -417,7 +438,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     const exchangePromise = exchangePostParam === null
       ? Promise.resolve<ExchangePost | null>(null)
       : exchangePostId === null
-        ? Promise.reject<ExchangePost | null>(new CheckoutSourceError("来源情报链接无效，请返回后重新进入预约"))
+        ? Promise.reject<ExchangePost | null>(new CheckoutSourceError("sourceLinkInvalid"))
         : getExchangePost(String(exchangePostId));
 
     Promise.all([servicePromise, exchangePromise])
@@ -449,11 +470,16 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           .slice()
           .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.id - right.id);
         const requestedTime = searchParams.get("time");
+        const explicitSlotId = requestedSlotParam !== null ? requestedSlotId : persistedSlotId;
+        const resolvedSlotId = requestedDateInvalid || (requestedSlotParam !== null && requestedSlotId === null)
+          ? null
+          : resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, explicitSlotId);
 
         setService(serviceContext);
         setIntelligenceSource(source);
         setSlots(formalSlots);
-        setSelectedSlotId(resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, persistedSlotId));
+        setSelectedSlotId(resolvedSlotId);
+        setSlotSelectionInvalid(hasRequestedSlotSelection && resolvedSlotId === null);
         setFulfillmentMode(resolveFulfillmentMode(source?.serviceMode ?? serviceContext.serviceMode, searchParams.get("mode")));
         setLoadStatus("success");
       })
@@ -469,7 +495,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     return () => {
       active = false;
     };
-  }, [catalogRef.id, catalogRef.type, exchangePostId, exchangePostParam, persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId, shopServiceTechnicianId, technicianServiceId, technicianServiceShopId, technicianServiceTechnicianId]);
+  }, [catalogRef.id, catalogRef.type, exchangePostId, exchangePostParam, hasRequestedSlotSelection, language, persistedSlotId, requestedDateInvalid, requestedSlotId, requestedSlotParam, revision, searchParams, selectedDate, selectedDayWindow, serviceId, shopServiceTechnicianId, technicianServiceId, technicianServiceShopId, technicianServiceTechnicianId]);
 
   useEffect(() => {
     const nextBoundaryMs = slots.reduce<number | null>((earliest, slot) => {
@@ -491,12 +517,13 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       && !slots.some((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, checkoutNowMs))
     ) {
       setSelectedSlotId(null);
+      setSlotSelectionInvalid(true);
     }
   }, [checkoutNowMs, selectedSlotId, slots]);
 
   useEffect(() => {
     let active = true;
-    setRegionLoadError("");
+    setRegionLoadError(null);
     void bookingApi
       .listAdministrativeRegions({ country: "JP", locale: "ja" })
       .then(({ list }) => {
@@ -505,7 +532,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       .catch(() => {
         if (active) {
           setPrefectures([]);
-          setRegionLoadError("行政区域加载失败，请重试");
+          setRegionLoadError("regionLoadFailed");
         }
       });
     return () => {
@@ -520,7 +547,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       return undefined;
     }
     let active = true;
-    setSavedAddressLoadError("");
+    setSavedAddressLoadError(null);
     void customerAddressApi.list({ page: 1, pageSize: 100 })
       .then(({ list }) => {
         if (!active) return;
@@ -544,7 +571,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       .catch(() => {
         if (active) {
           setSavedAddresses([]);
-          setSavedAddressLoadError("常用地址读取失败，可继续手动填写。");
+          setSavedAddressLoadError("savedAddressLoadFailed");
         }
       });
     return () => {
@@ -560,7 +587,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     }
     let active = true;
     setMunicipalitiesLoading(true);
-    setRegionLoadError("");
+    setRegionLoadError(null);
     void bookingApi
       .listAdministrativeRegions({
         country: "JP",
@@ -573,7 +600,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       .catch(() => {
         if (active) {
           setMunicipalities([]);
-          setRegionLoadError("行政区域加载失败，请重试");
+          setRegionLoadError("regionLoadFailed");
         }
       })
       .finally(() => {
@@ -668,10 +695,13 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     fulfillmentMode === "store" ||
     Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")
   );
-  const people = searchParams.get("people") ?? "1名";
+  const requestedPeople = searchParams.get("people");
+  const peopleCount = requestedPeople?.match(/^\d+/u)?.[0] ?? "1";
+  const people = t("peopleCount", { count: peopleCount });
+  const valueLocale = language === "zh" ? "ja-JP" : language;
   const formattedHomeAddress = [homeAddress.postalCode, homeAddress.prefecture, homeAddress.city, homeAddress.addressLine1, homeAddress.addressLine2, homeAddress.building].map((value) => value?.trim()).filter(Boolean).join(" ");
   const locationAddress = fulfillmentMode === "store" ? service?.shop.address.trim() ?? "" : formattedHomeAddress;
-  const locationTitle = fulfillmentMode === "store" ? service?.shop.name ?? "" : "上门服务地址";
+  const locationTitle = fulfillmentMode === "store" ? service?.shop.name ?? "" : t("homeService");
   const locationQuery = fulfillmentMode === "store" ? [locationTitle, locationAddress].filter(Boolean).join(" ") : "";
   const selectedTechnician = useMemo(() => {
     if (!selectedTechnicianProfileId) return null;
@@ -692,43 +722,43 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       coverImage: technician.avatarUrl ?? "",
       regionLabel: technician.city,
       addressValue: technician.city,
-      primaryLabel: "技师",
+      primaryLabel: t("technician"),
       kycVerified: false,
       levelLabel: "",
-      scoreLabel: "服务评价",
+      scoreLabel: t("serviceReviews"),
       scoreValue: `${finiteRating(technician.reviewSummary.ratingAverage).toFixed(1)}/5`,
       followerCount: 0,
       followingCount: 0
     };
-  }, [selectedTechnician]);
+  }, [language, selectedTechnician]);
   const displayServiceInfo = useMemo(
     () => intelligenceSource?.serviceCard
       ? mapExchangeIntelligenceServiceToUnifiedData(
           intelligenceSource.serviceCard,
-          serviceModeLabel(intelligenceSource.serviceMode)
+          serviceModeLabel(intelligenceSource.serviceMode, t)
         )
       : service?.serviceInfo ?? null,
-    [intelligenceSource, service?.serviceInfo]
+    [intelligenceSource, language, service?.serviceInfo]
   );
   const sourcePublisherData = useMemo(() => {
     const publisher = intelligenceSource?.publisherCard ?? fixedTechnicianPublisher;
     if (!publisher) return null;
     return mapExchangeIntelligencePublisherToProfileData(
       publisher,
-      serviceModeLabel(service?.serviceMode ?? "store"),
+      serviceModeLabel(service?.serviceMode ?? "store", t),
       {
-        entity: publisher.type === "shop" ? "店铺" : "技师",
-        bookable: "可预约",
-        unavailable: "当前不可预约",
-        rating: publisher.type === "shop" ? "店铺评分" : "服务评分",
-        reviews: "评价",
-        serviceMode: "服务方式",
-        completedOrders: "完成订单",
-        acceptanceRate: "接单率",
-        experience: publisher.type === "technician" ? `${publisher.yearsExperience}年` : ""
+        entity: publisher.type === "shop" ? t("shop") : t("technician"),
+        bookable: t("available"),
+        unavailable: t("unavailable"),
+        rating: publisher.type === "shop" ? t("shopRating") : t("serviceRating"),
+        reviews: t("reviews"),
+        serviceMode: t("serviceMethod"),
+        completedOrders: t("completedOrders"),
+        acceptanceRate: t("acceptanceRate"),
+        experience: publisher.type === "technician" ? t("experienceYears", { count: publisher.yearsExperience }) : ""
       }
     );
-  }, [fixedTechnicianPublisher, intelligenceSource?.publisherCard, service?.serviceMode]);
+  }, [fixedTechnicianPublisher, intelligenceSource?.publisherCard, language, service?.serviceMode]);
 
   const appendQuickNote = (value: string) => {
     setNote((current) => current.includes(value) ? current : [current.trim(), value].filter(Boolean).join("、"));
@@ -737,18 +767,18 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const requestTravelEstimate = async () => {
     if (!service || estimateStatus === "loading") return;
     if (!selectedSlotId) {
-      setEstimateError("请先从上方时间栏选定一个可用时段，再估算交通费。");
+      setEstimateError("selectTimeBeforeEstimate");
       setEstimateStatus("error");
       return;
     }
     const normalizedAddress = Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress;
     if (!/^\d{3}-?\d{4}$/.test(normalizedAddress.postalCode) || !normalizedAddress.prefecture || !normalizedAddress.city || !normalizedAddress.addressLine1) {
-      setEstimateError("请完整填写邮编、都道府县、市区町村和街道地址。");
+      setEstimateError("completeAddressForEstimate");
       setEstimateStatus("error");
       return;
     }
     const requestVersion = ++estimateRequestVersionRef.current;
-    setEstimateStatus("loading"); setEstimateError(""); setEstimate(null);
+    setEstimateStatus("loading"); setEstimateError(null); setEstimate(null);
     try {
       const result = await travelFareApi.createEstimate({ servicePublicId: service.publicId, scheduleSlotId: selectedSlotId, destination: normalizedAddress });
       if (requestVersion !== estimateRequestVersionRef.current) return;
@@ -771,9 +801,10 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       estimateRequestVersionRef.current += 1;
       setEstimate(null);
       setEstimateStatus("idle");
-      setEstimateError("");
+      setEstimateError(null);
     }
     setSelectedSlotId(slot.id);
+    setSlotSelectionInvalid(false);
     const nextSearchParams = new URLSearchParams(location.search);
     const previousState = checkoutHistoryState(location.state);
     if (
@@ -781,6 +812,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       && persistedCheckoutScheduleSlotId(previousState) === slot.id
     ) return;
     nextSearchParams.set("time", selectedTime);
+    nextSearchParams.set("scheduleSlotId", String(slot.id));
     navigate({
       pathname: location.pathname,
       search: `?${nextSearchParams.toString()}`,
@@ -798,11 +830,11 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     if (!locationAddress) return;
     try {
       await navigator.clipboard.writeText(locationAddress);
-      setAddressCopyLabel("已复制");
-      window.setTimeout(() => setAddressCopyLabel("复制地址"), 1600);
+      setAddressCopyLabel("copied");
+      window.setTimeout(() => setAddressCopyLabel("copyAddress"), 1600);
     } catch {
-      setAddressCopyLabel("复制失败");
-      window.setTimeout(() => setAddressCopyLabel("复制地址"), 1600);
+      setAddressCopyLabel("copyFailed");
+      window.setTimeout(() => setAddressCopyLabel("copyAddress"), 1600);
     }
   };
 
@@ -825,6 +857,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     );
     if (!freshSelectedSlot) {
       setSelectedSlotId(null);
+      setSlotSelectionInvalid(true);
       return;
     }
     if (!isAuthenticated) {
@@ -833,22 +866,22 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     }
     if (fulfillmentMode === "home" && (!estimate || estimateStatus !== "success" || Date.parse(estimate.expiresAt) <= Date.now())) {
       setEstimateStatus(estimate ? "expired" : estimateStatus);
-      setSubmitError("请先取得有效的正式交通费估价，再提交预约");
+      setSubmitError("validEstimateRequired");
       return;
     }
     if (fulfillmentMode === "home") {
       if (!selectedAdmin1Code || !selectedAdmin2Code) {
-        setSubmitError("请先选择都道府县和市区町村，再提交预约");
+        setSubmitError("chooseRegionsBeforeSubmit");
         return;
       }
       if (!homeAddress.addressLine1.trim()) {
-        setSubmitError("请先填写完整上门地址，再提交预约");
+        setSubmitError("completeHomeAddressBeforeSubmit");
         return;
       }
     }
 
     setSubmitting(true);
-    setSubmitError("");
+    setSubmitError(null);
     try {
       const fulfillment = fulfillmentMode === "home"
         ? { fulfillmentMode: "home" as const, serviceLocation: { countryCode: "JP" as const, admin1Code: selectedAdmin1Code, admin2Code: selectedAdmin2Code }, fulfillmentAddress: Object.fromEntries(Object.entries(homeAddress).map(([key, value]) => [key, value.trim()])) as JapaneseRouteAddress, travelEstimatePublicId: estimate!.publicId }
@@ -874,10 +907,14 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
         : await bookingApi.createBooking(bookingInput);
       navigate(`/orders/${order.id}`, {
         replace: true,
-        state: { notice: "预约成功，已进入订单详情。" }
+        state: { notice: t("bookingCreated") }
       });
     } catch (error) {
       setSubmitError(describeCheckoutError(error));
+      if (error instanceof ApiClientError && error.status === 409) {
+        setSelectedSlotId(null);
+        setSlotSelectionInvalid(true);
+      }
       if (error instanceof ApiClientError && error.code === 41038) {
         setRevision((current) => current + 1);
       }
@@ -892,7 +929,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       navItems={[]}
     >
       <AppTopBar
-        closeLabel="关闭确认预约"
+        closeLabel={t("closeCheckout")}
         fixed
         footer={(
           <CheckoutProgressNav
@@ -903,25 +940,25 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           />
         )}
         footerClassName="mt-3"
-        info="请逐项确认正式服务、时间、地址及担当信息后再提交。"
+        info={t("checkoutInfo")}
         onBack={() => navigate(-1)}
         onClose={() => navigate("/", { replace: true })}
-        title="确认预约"
+        title={t("checkoutTitle")}
       />
 
       {loadStatus === "loading" ? (
         <SurfacePanel className="p-6 text-center" aria-live="polite">
-          <p className="text-sm font-black text-[color:var(--client-text)]">正在加载正式预约信息</p>
+          <p className="text-sm font-black text-[color:var(--client-text)]" data-no-i18n>{t("loadingCheckout")}</p>
         </SurfacePanel>
       ) : null}
 
       {loadStatus === "error" ? (
         <div role="alert">
           <SurfacePanel className="p-6 text-center">
-            <h2 className="text-lg font-black text-[color:var(--client-text)]">预约页加载失败</h2>
-            <p className="mt-2 text-sm font-bold leading-6 text-[color:var(--client-muted)]">{loadError}</p>
+            <h2 className="text-lg font-black text-[color:var(--client-text)]" data-no-i18n>{t("checkoutLoadFailed")}</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-[color:var(--client-muted)]" data-no-i18n>{loadError ? t(loadError) : null}</p>
             <PrimaryButton className="mt-4 w-full" onClick={() => setRevision((current) => current + 1)}>
-              重新加载预约页
+              <span data-no-i18n>{t("reloadCheckout")}</span>
             </PrimaryButton>
           </SurfacePanel>
         </div>
@@ -930,11 +967,11 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       {loadStatus === "success" && service && displayServiceInfo ? (
         <>
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[0] = node)}>
-            <SectionTitle>套餐</SectionTitle>
+            <SectionTitle>{t("package")}</SectionTitle>
             {intelligenceSource ? (
               <SurfacePanel className="border-[color:var(--client-primary)]/25 bg-[color:var(--client-primary-soft)] p-4">
-                <p className="text-xs font-black text-[color:var(--client-primary)]"><span>来源情报</span> · <span data-no-i18n="true">#{exchangePostId}</span></p>
-                <p className="mt-1 text-sm font-bold text-[color:var(--client-text)]">活动价与可预约时段已按正式情报锁定</p>
+                <p className="text-xs font-black text-[color:var(--client-primary)]" data-no-i18n>{t("sourceInfo")} · #{exchangePostId}</p>
+                <p className="mt-1 text-sm font-bold text-[color:var(--client-text)]" data-no-i18n>{t("sourceLocked")}</p>
               </SurfacePanel>
             ) : null}
             <UnifiedServiceInfoCard data={displayServiceInfo} detailTo={intelligenceSource?.serviceCard?.detailPath ?? service.serviceDetailPath} />
@@ -948,7 +985,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[1] = node)}>
-            <SectionTitle>服务方式</SectionTitle>
+            <SectionTitle>{t("serviceMethod")}</SectionTitle>
             <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
               <div className="grid grid-cols-2 gap-2">
                 {(["store", "home"] as const).map((mode) => {
@@ -967,7 +1004,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                       onClick={() => setFulfillmentMode(mode)}
                       type="button"
                     >
-                      {mode === "store" ? "到店服务" : "上门服务"}
+                      <span data-no-i18n>{mode === "store" ? t("storeService") : t("homeService")}</span>
                     </button>
                   );
                 })}
@@ -975,7 +1012,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               {fulfillmentMode === "store" ? (
                 <div className="mt-3 space-y-3">
                   <div>
-                    <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">到店服务</p>
+                    <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]" data-no-i18n>{t("storeService")}</p>
                     <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">{service.shop.name}</p>
                   </div>
                   <div className="rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-3">
@@ -985,11 +1022,12 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                 </div>
               ) : (
                 <div className="mt-3 space-y-3">
-                  <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">上门服务</p>
+                  <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]" data-no-i18n>{t("homeService")}</p>
                   {isAuthenticated ? (
                     <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                       <select
-                        aria-label="常用地址"
+                        aria-label={t("savedAddress")}
+                        data-no-i18n
                         className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
                         onChange={(event) => {
                           const address = savedAddresses.find((item) => item.publicId === event.target.value);
@@ -998,7 +1036,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                         }}
                         value={selectedSavedAddressPublicId}
                       >
-                        <option value="">选择常用地址</option>
+                        <option value="">{t("selectSavedAddress")}</option>
                         {savedAddresses.map((address) => (
                           <option key={address.publicId} value={address.publicId}>
                             {address.label}{address.isDefault ? " ★" : ""} · {address.prefecture}{address.city}{address.addressLine1}
@@ -1010,14 +1048,15 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                         onClick={() => navigate("/me/addresses")}
                         type="button"
                       >
-                        管理
+                        <span data-no-i18n>{t("manage")}</span>
                       </button>
                     </div>
                   ) : null}
-                  {savedAddressLoadError ? <p className="text-xs font-bold text-amber-700">{savedAddressLoadError}</p> : null}
+                  {savedAddressLoadError ? <p className="text-xs font-bold text-amber-700" data-no-i18n>{t(savedAddressLoadError)}</p> : null}
                   <div className="grid gap-2 sm:grid-cols-2">
                     <select
-                      aria-label="都道府县"
+                      aria-label={t("prefecture")}
+                      data-no-i18n
                       className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
                       onChange={(event) => {
                         setSelectedAdmin1Code(event.target.value);
@@ -1027,13 +1066,14 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                       }}
                       value={selectedAdmin1Code}
                     >
-                      <option value="">请选择都道府县</option>
+                      <option value="">{t("choosePrefecture")}</option>
                       {prefectures.map((region) => (
                         <option key={region.code} value={region.code}>{region.name}</option>
                       ))}
                     </select>
                     <select
-                      aria-label="市区町村"
+                      aria-label={t("municipality")}
+                      data-no-i18n
                       className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)] disabled:opacity-50"
                       disabled={!selectedAdmin1Code || municipalitiesLoading}
                       onChange={(event) => {
@@ -1042,35 +1082,35 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                       }}
                       value={selectedAdmin2Code}
                     >
-                      <option value="">{municipalitiesLoading ? "正在加载市区町村" : "请选择市区町村"}</option>
+                      <option value="">{municipalitiesLoading ? t("loadingMunicipalities") : t("chooseMunicipality")}</option>
                       {municipalities.map((region) => (
                         <option key={region.code} value={region.code}>{region.name}</option>
                       ))}
                     </select>
                   </div>
-                  {regionLoadError ? <p className="text-xs font-bold text-red-500">{regionLoadError}</p> : null}
+                  {regionLoadError ? <p className="text-xs font-bold text-red-500" data-no-i18n>{t(regionLoadError)}</p> : null}
                   <div className="grid grid-cols-2 gap-2">
-                    <input aria-label="邮政编码" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("postalCode", event.target.value)} placeholder="邮编 104-0061" value={homeAddress.postalCode} />
-                    <input aria-label="街道地址" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("addressLine1", event.target.value)} placeholder="銀座1-2-3" value={homeAddress.addressLine1} />
-                    <input aria-label="地址补充" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("addressLine2", event.target.value)} placeholder="丁目、番地（可选）" value={homeAddress.addressLine2} />
-                    <input aria-label="建筑物与房间" className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" onChange={(event) => updateHomeAddress("building", event.target.value)} placeholder="建筑物、房间号（可选）" value={homeAddress.building} />
+                    <input aria-label={t("postalCode")} className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("postalCode", event.target.value)} placeholder={t("postalCodePlaceholder")} value={homeAddress.postalCode} />
+                    <input aria-label={t("streetAddress")} className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("addressLine1", event.target.value)} placeholder="銀座1-2-3" value={homeAddress.addressLine1} />
+                    <input aria-label={t("addressExtra")} className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("addressLine2", event.target.value)} placeholder={t("addressExtraPlaceholder")} value={homeAddress.addressLine2} />
+                    <input aria-label={t("buildingRoom")} className="focus-ring rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-3 py-2.5 text-sm font-bold" data-no-i18n onChange={(event) => updateHomeAddress("building", event.target.value)} placeholder={t("buildingRoomPlaceholder")} value={homeAddress.building} />
                   </div>
-                  <button className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-50" disabled={estimateStatus === "loading" || !selectedSlotId} onClick={() => void requestTravelEstimate()} type="button">{estimateStatus === "loading" ? "正在计算驾驶路线…" : estimateStatus === "error" || estimateStatus === "expired" ? "重新估算交通费" : "估算交通费"}</button>
-                  {estimateStatus === "success" && estimate ? <div className="rounded-[20px] bg-[color:var(--client-primary-soft)] p-3"><p className="text-sm font-black text-[color:var(--client-primary)]">正式交通费 ¥{estimate.fareAmountJpy.toLocaleString("ja-JP")}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">驾驶距离 {(estimate.distanceMeters / 1000).toFixed(1)} km · 适用上限 {(estimate.bandMaximumDistanceMeters / 1000).toFixed(1)} km · 策略 v{estimate.policyVersion}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">估价有效至 {new Date(estimate.expiresAt).toLocaleString("ja-JP")}</p></div> : null}
-                  {estimateStatus === "expired" ? <p className="text-sm font-black text-amber-700" role="alert">交通费估价已过期，请重新估算。</p> : null}
-                  {estimateStatus === "error" ? <p className="text-sm font-black text-red-600" role="alert">{estimateError}</p> : null}
+                  <button className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-50" data-no-i18n disabled={estimateStatus === "loading" || !selectedSlotId} onClick={() => void requestTravelEstimate()} type="button">{estimateStatus === "loading" ? t("calculatingRoute") : estimateStatus === "error" || estimateStatus === "expired" ? t("recalculateTravelFee") : t("estimateTravelFee")}</button>
+                  {estimateStatus === "success" && estimate ? <div className="rounded-[20px] bg-[color:var(--client-primary-soft)] p-3" data-no-i18n><p className="text-sm font-black text-[color:var(--client-primary)]">{t("formalTravelFee", { amount: estimate.fareAmountJpy.toLocaleString(valueLocale) })}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{t("routeDetails", { distance: (estimate.distanceMeters / 1000).toFixed(1), maximum: (estimate.bandMaximumDistanceMeters / 1000).toFixed(1), version: estimate.policyVersion })}</p><p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{t("estimateValidUntil", { expiresAt: new Date(estimate.expiresAt).toLocaleString(valueLocale) })}</p></div> : null}
+                  {estimateStatus === "expired" ? <p className="text-sm font-black text-amber-700" data-no-i18n role="alert">{t("estimateExpired")}</p> : null}
+                  {estimateStatus === "error" && estimateError ? <p className="text-sm font-black text-red-600" data-no-i18n role="alert">{t(estimateError)}</p> : null}
                 </div>
               )}
             </div>
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[2] = node)}>
-            <SectionTitle>时间</SectionTitle>
+            <SectionTitle>{t("time")}</SectionTitle>
             <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
-              <p className="text-xs font-black text-[color:var(--client-primary)]">预约时间</p>
+              <p className="text-xs font-black text-[color:var(--client-primary)]" data-no-i18n>{t("bookingTime")}</p>
               <div className="mt-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
-                <p className="text-xs font-bold text-[color:var(--client-muted)]">日期</p>
-                <p className="mt-2 text-[18px] font-black text-[color:var(--client-text)]">{formatTokyoDate(`${selectedDate}T00:00:00+09:00`)}</p>
+                <p className="text-xs font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("date")}</p>
+                <p className="mt-2 text-[18px] font-black text-[color:var(--client-text)]" data-no-i18n>{formatTokyoDate(`${selectedDate}T00:00:00+09:00`, language)}</p>
               </div>
               {slots.length ? (
                 <>
@@ -1082,23 +1122,31 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                     selectedSlotId={selectedSlotId}
                     slots={slots}
                   />
-                  <p className="mt-3 text-xs leading-5 text-[color:var(--client-muted)]">*请提前10分钟到达，迟到无联系保留15分钟</p>
+                  {slotSelectionInvalid ? (
+                    <div className="mt-3 rounded-[18px] border border-amber-400/40 bg-amber-500/10 px-4 py-3" data-no-i18n role="alert">
+                      <p className="text-sm font-black text-amber-700">{t("invalidCheckoutSlot")}</p>
+                    </div>
+                  ) : null}
+                  <p className="mt-3 text-xs leading-5 text-[color:var(--client-muted)]" data-no-i18n>{t("arrivalReminder")}</p>
                 </>
               ) : (
                 <div className="mt-3 rounded-[22px] border border-dashed border-[color:var(--client-line)] px-4 py-8 text-center">
-                  <p className="text-sm font-black text-[color:var(--client-text)]">暂时没有可预约时段</p>
-                  <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">店铺发布新的正式排班后会自动显示。</p>
+                  <p className="text-sm font-black text-[color:var(--client-text)]" data-no-i18n>{t("noSlots")}</p>
+                  <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("slotsAppearAfterPublish")}</p>
+                  {slotSelectionInvalid ? (
+                    <p className="mt-3 text-sm font-black text-amber-700" data-no-i18n role="alert">{t("invalidCheckoutSlot")}</p>
+                  ) : null}
                 </div>
               )}
             </div>
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[3] = node)}>
-            <SectionTitle>地址</SectionTitle>
+            <SectionTitle>{t("address")}</SectionTitle>
             <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
               {fulfillmentMode === "home" ? (
                 <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:var(--client-surface)] px-4 py-6 text-center">
-                  <p className="text-sm font-black text-[color:var(--client-text)]">为保护上门地址隐私，此处不加载第三方地图预览。</p>
+                  <p className="text-sm font-black text-[color:var(--client-text)]" data-no-i18n>{t("homeAddressPrivacy")}</p>
                 </div>
               ) : locationQuery ? (
                 <div className="relative overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[#101318]">
@@ -1108,20 +1156,20 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
                     src={googleMapsEmbedUrl(locationQuery)}
-                    title="Google 地图缩略图"
+                    title={t("mapThumbnailTitle")}
                   />
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black/55 via-black/15 to-transparent px-3 pb-3 pt-8">
                     <span className="rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/92">Google Maps</span>
-                    <span className="text-[10px] font-semibold text-white/82">{fulfillmentMode === "store" ? "门店位置预览" : "上门地址预览"}</span>
+                    <span className="text-[10px] font-semibold text-white/82" data-no-i18n>{fulfillmentMode === "store" ? t("storeMapPreview") : t("homeMapPreview")}</span>
                   </div>
                 </div>
               ) : (
                 <div className="rounded-[22px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] px-4 py-8 text-center">
-                  <p className="text-sm font-black text-[color:var(--client-text)]">填写地址后会显示地图缩略图</p>
+                  <p className="text-sm font-black text-[color:var(--client-text)]" data-no-i18n>{t("mapAfterAddress")}</p>
                 </div>
               )}
               <div className="mt-3">
-                <p className="text-sm font-black text-[color:var(--client-text)]">{locationAddress || "请填写上门地址"}</p>
+                <p className="text-sm font-black text-[color:var(--client-text)]" data-no-i18n>{locationAddress || t("enterHomeAddress")}</p>
                     <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{locationTitle}{service.shop.city ? ` · ${service.shop.city}` : ""}</p>
               </div>
               <div className="mt-3 flex gap-2">
@@ -1132,7 +1180,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                     rel="noreferrer"
                     target="_blank"
                   >
-                    Google 地图
+                    <span data-no-i18n>{t("googleMaps")}</span>
                   </a>
                 ) : null}
                 <button
@@ -1141,14 +1189,14 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                   onClick={() => void copyAddress()}
                   type="button"
                 >
-                  {addressCopyLabel}
+                  <span data-no-i18n>{t(addressCopyLabel)}</span>
                 </button>
               </div>
             </div>
           </div>
 
           <div className="scroll-mt-[170px] space-y-2" ref={(node) => void (sectionRefs.current[4] = node)}>
-            <SectionTitle>技师</SectionTitle>
+            <SectionTitle>{t("technician")}</SectionTitle>
             {fixedTechnicianPublisher && sourcePublisherData ? (
               <UnifiedProfileCard
                 data={sourcePublisherData}
@@ -1172,30 +1220,31 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                 role={technicianLoadStatus === "error" ? "alert" : undefined}
               >
                 <p className="text-sm font-black text-[color:var(--client-text)]">
-                  {technicianLoadStatus === "error" ? "当前技师资料不可用" : "正在读取技师详细信息"}
+                  <span data-no-i18n>{technicianLoadStatus === "error" ? t("technicianDetailsUnavailable") : t("loadingTechnicianDetails")}</span>
                 </p>
               </div>
             ) : (
               <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
-                <p className="text-sm font-black text-[color:var(--client-text)]">由店铺安排技师</p>
-                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">确认接单后将在预约详情中显示正式担当信息。</p>
+                <p className="text-sm font-black text-[color:var(--client-text)]" data-no-i18n>{t("assignedByShop")}</p>
+                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("assignedAfterConfirmation")}</p>
               </div>
             )}
           </div>
 
           <div className="scroll-mt-[170px] space-y-2 pt-1" ref={(node) => void (sectionRefs.current[5] = node)}>
-            <SectionTitle>备注</SectionTitle>
+            <SectionTitle>{t("remark")}</SectionTitle>
             <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
               <div className="flex items-center justify-between gap-3 px-1 pb-2">
-                <p className="text-sm font-black text-[color:var(--client-text)]">特殊需求</p>
-                <p className="text-xs font-semibold text-[color:var(--client-muted)]">{note.trim() ? `已填写 ${note.trim().length} 字` : "可选填写"}</p>
+                <p className="text-sm font-black text-[color:var(--client-text)]" data-no-i18n>{t("specialRequests")}</p>
+                <p className="text-xs font-semibold text-[color:var(--client-muted)]" data-no-i18n>{note.trim() ? t("noteCount", { count: note.trim().length }) : t("optional")}</p>
               </div>
               <textarea
                 className="focus-ring min-h-[156px] w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3.5 text-sm font-bold leading-6 text-[color:var(--client-text)]"
                 id="formal-checkout-note"
                 maxLength={500}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="填写特殊需求：忌口、靠窗座位、门禁、停车、语言偏好等"
+                data-no-i18n
+                placeholder={t("notePlaceholder")}
                 ref={remarkInputRef}
                 value={note}
               />
@@ -1203,11 +1252,12 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                 {quickNotes.map((quickNote) => (
                   <button
                     className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]"
+                    data-no-i18n
                     key={quickNote}
-                    onClick={() => appendQuickNote(quickNote)}
+                    onClick={() => appendQuickNote(t(quickNote))}
                     type="button"
                   >
-                    {quickNote}
+                    {t(quickNote)}
                   </button>
                 ))}
               </div>
@@ -1215,19 +1265,19 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           </div>
 
           <div className="space-y-2 pt-1">
-            <SectionTitle>注意事项</SectionTitle>
+            <SectionTitle>{t("notices")}</SectionTitle>
             <div className="space-y-4 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_14px_28px_rgba(0,0,0,0.06)]">
               <div className="flex items-start gap-3">
                 <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--client-primary)]" />
-                <p className="text-sm leading-6 text-[color:var(--client-muted)]">预约前请确认服务时间、地址与付款方式；服务内容以本页正式数据及店铺最终确认结果为准。</p>
+                <p className="text-sm leading-6 text-[color:var(--client-muted)]" data-no-i18n>{t("bookingNotice")}</p>
               </div>
               <div className="border-t border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] pt-4">
-                <h3 className="text-sm font-black text-[color:var(--client-text)]">取消政策</h3>
-                <p className="mt-2 text-xs leading-5 text-[color:var(--client-muted)]">提交后可在预约详情查看当前状态；取消条件以正式订单状态与店铺规则为准。</p>
+                <h3 className="text-sm font-black text-[color:var(--client-text)]" data-no-i18n>{t("cancellationPolicy")}</h3>
+                <p className="mt-2 text-xs leading-5 text-[color:var(--client-muted)]" data-no-i18n>{t("cancellationNotice")}</p>
               </div>
               <div className="border-t border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] pt-4">
                 <h3 className="text-sm font-black text-[color:var(--client-text)]">NDP（NeeDoPoint）</h3>
-                <p className="mt-2 text-xs leading-5 text-[color:var(--client-muted)]">本次订单的 NDP 使用与结算结果，以服务完成后的正式结算记录为准。</p>
+                <p className="mt-2 text-xs leading-5 text-[color:var(--client-muted)]" data-no-i18n>{t("ndpNotice")}</p>
               </div>
             </div>
           </div>
@@ -1235,10 +1285,10 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           {submitError ? (
             <div role="alert">
               <SurfacePanel className="border-red-400/35 bg-red-500/10 p-4">
-                <p className="text-sm font-black text-red-500">{submitError}</p>
-                {submitError === "预约状态已变化，请重新选择时段" ? (
+                <p className="text-sm font-black text-red-500" data-no-i18n>{t(submitError)}</p>
+                {submitError === "bookingStateChanged" ? (
                   <SecondaryButton className="mt-3 w-full" onClick={() => setRevision((current) => current + 1)}>
-                    重新加载可预约时段
+                    <span data-no-i18n>{t("reloadAvailableTimes")}</span>
                   </SecondaryButton>
                 ) : null}
               </SurfacePanel>
@@ -1249,9 +1299,9 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
             <div className="pointer-events-auto space-y-3">
               <div className="grid grid-cols-[minmax(0,1fr),auto] items-end gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-black text-[color:color-mix(in_srgb,var(--client-text)_72%,var(--client-muted)_28%)]">应付金额</p>
+                  <p className="text-xs font-black text-[color:color-mix(in_srgb,var(--client-text)_72%,var(--client-muted)_28%)]" data-no-i18n>{t("amountDue")}</p>
                   <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(Number(displayServiceInfo.priceAmount) + (fulfillmentMode === "home" && estimateStatus === "success" ? estimate?.fareAmountJpy ?? 0 : 0))}</strong>
-                  {fulfillmentMode === "home" ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]">服务费 + 正式交通费</span> : null}
+                  {fulfillmentMode === "home" ? <span className="mt-1 block text-[10px] font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("serviceAndTravelFee")}</span> : null}
                 </div>
                 <div className="flex max-w-[54vw] flex-wrap justify-end gap-2">
                   {(["onsite", "bank_transfer"] as const).map((method) => (
@@ -1267,20 +1317,20 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                       onClick={() => setPaymentMethod(method)}
                       type="button"
                     >
-                      {method === "onsite" ? "到店后支付" : "银行转账"}
+                      <span data-no-i18n>{method === "onsite" ? t("payOnArrival") : t("bankTransfer")}</span>
                     </button>
                   ))}
                 </div>
               </div>
               <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2.5">
-                <SecondaryButton className="w-full" onClick={() => navigate(service.shop.contactPath)}>联系</SecondaryButton>
+                <SecondaryButton className="w-full" onClick={() => navigate(service.shop.contactPath)}><span data-no-i18n>{t("contact")}</span></SecondaryButton>
                 <button
                   className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!canSubmitBooking || submitting}
                   onClick={() => void submitBooking()}
                   type="button"
                 >
-                  {submitting ? "创建预约中" : isAuthenticated ? "确定预约" : "登录后确定预约"}
+                  <span data-no-i18n>{submitting ? t("creatingBooking") : isAuthenticated ? t("confirmBooking") : t("loginToConfirmBooking")}</span>
                 </button>
               </div>
             </div>

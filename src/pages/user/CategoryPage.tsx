@@ -291,8 +291,8 @@ function ChevronDownIcon({ open }: { open: boolean }) {
   );
 }
 
-function ServicePreviewCard({ service }: { service: ServiceItem }) {
-  return <UnifiedServiceInfoCard data={mapServiceItemToUnifiedData(service)} detailTo={`/services/${service.id}`} />;
+function ServicePreviewCard({ language, service }: { language: Parameters<typeof UnifiedServiceInfoCard>[0]["language"]; service: ServiceItem }) {
+  return <UnifiedServiceInfoCard data={mapServiceItemToUnifiedData(service)} detailTo={`/services/${service.id}`} language={language} />;
 }
 
 export function CategoryPage() {
@@ -633,7 +633,7 @@ export function CategoryPage() {
 
     return chips;
   }, [appliedCustomLabels, appliedTagIds, entityFilter]);
-  const emptySearchLabels = appliedSearchChips.map((chip) => chip.label);
+  const emptySearchLabels = appliedSearchChips.map((chip) => chip.kind === "custom" ? chip.label : t(chip.label));
 
   const syncTagSearchParams = (nextTagIds: string[], nextCategoryId?: HomeCategoryId) => {
     setSearchParams((current) => {
@@ -733,7 +733,7 @@ export function CategoryPage() {
     handleCustomLabelRemove(chip.label);
   };
 
-  const entityFilterLabel = entityFilterTags.find((tag) => tag.value === entityFilter)?.label ?? "全部";
+  const entityFilterLabel = t(entityFilterTags.find((tag) => tag.value === entityFilter)?.label ?? "全部");
   const showServiceSection = loadServices;
   const showShopSection = loadShops;
   const showTechnicianSection = loadTechnicians;
@@ -753,15 +753,15 @@ export function CategoryPage() {
               <div id="category-search-tags" className="absolute inset-x-3 top-full z-50 mt-2 max-h-[65dvh] overflow-y-auto rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] p-4 shadow-[0_22px_50px_rgba(0,0,0,0.16)] backdrop-blur-2xl">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[color:var(--client-primary)]">对象与人气标签</p>
-                    <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">先选店铺、技师或服务，也可以继续多选分类标签刷新下方内容。</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[color:var(--client-primary)]">{t("对象与人气标签")}</p>
+                    <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">{t("先选店铺、技师或服务，也可以继续多选分类标签刷新下方内容。")}</p>
                   </div>
                   <button
                     className="inline-flex h-9 shrink-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-3 text-[12px] font-black text-[color:var(--client-text)]"
                     onClick={() => setTagMenuOpen(false)}
                     type="button"
                   >
-                    收起
+                    {t("收起")}
                   </button>
                 </div>
 
@@ -776,7 +776,7 @@ export function CategoryPage() {
                         onClick={() => handleEntityFilterSelect(tag.value)}
                         type="button"
                       >
-                        <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{tag.label}</span>
+                        <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{t(tag.label)}</span>
                       </button>
                     );
                   })}
@@ -795,7 +795,7 @@ export function CategoryPage() {
                         onClick={() => handleTagSelect(tag)}
                         type="button"
                       >
-                        <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{tag.label}</span>
+                        <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{t(tag.label)}</span>
                       </button>
                     );
                   })}
@@ -808,7 +808,7 @@ export function CategoryPage() {
       <div className="relative">
         {tagMenuOpen ? (
           <button
-            aria-label="关闭筛选菜单"
+            aria-label={t("关闭筛选菜单")}
             className="fixed inset-0 z-30 cursor-default bg-black/28 backdrop-blur-[3px]"
             onClick={() => setTagMenuOpen(false)}
             type="button"
@@ -828,7 +828,7 @@ export function CategoryPage() {
                 <IconButton
                   className={`${floatingHeaderControlButtonClassName} shrink-0`}
                   icon="back"
-                  label="返回"
+                  label={t("返回")}
                   onClick={() => navigate(-1)}
                 />
 
@@ -840,6 +840,7 @@ export function CategoryPage() {
                 >
                   <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
                   <input
+                    aria-label={t("搜索关键词")}
                     className={floatingHeaderSearchInputClassName}
                     onChange={(event) => {
                       setSearchDraft(event.target.value);
@@ -850,7 +851,7 @@ export function CategoryPage() {
                         applySearch();
                       }
                     }}
-                    placeholder="输入关键词后添加"
+                    placeholder={t("输入搜索关键词")}
                     value={searchDraft}
                   />
                   <button
@@ -858,7 +859,7 @@ export function CategoryPage() {
                     onClick={() => applySearch()}
                     type="button"
                   >
-                    添加
+                    {t("搜索")}
                   </button>
                 </label>
 
@@ -894,7 +895,7 @@ export function CategoryPage() {
                     onClick={() => handleTagSelect(tag)}
                     type="button"
                   >
-                    <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{tag.label}</span>
+                    <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{t(tag.label)}</span>
                   </button>
                 );
               })}
@@ -917,25 +918,25 @@ export function CategoryPage() {
                     onClick={() => handleAppliedSearchChipRemove(chip)}
                     type="button"
                   >
-                    {chip.label}
+                    {chip.kind === "custom" ? chip.label : t(chip.label)}
                     <span aria-hidden="true" className="ml-1.5 opacity-70">x</span>
                   </button>
                 ))
               ) : (
                 <span className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-3 py-1.5 text-[12px] font-black text-[color:var(--client-muted)]">
-                  暂无生效标签
+                  {t("暂无生效标签")}
                 </span>
               )}
             </div>
           </section>
 
           {isCoreReadLoading ? (
-            <CoreReadInlineState description="正在从 /api/v1/search 与 /api/v1/categories 读取分类和搜索结果。" title="正在载入真实数据" />
+            <CoreReadInlineState description={t("正在从 /api/v1/search 与 /api/v1/categories 读取分类和搜索结果。")} title={t("正在载入真实数据")} />
           ) : coreReadError ? (
-            <CoreReadInlineState description={coreReadError} title="搜索数据读取失败" />
+            <CoreReadInlineState description={coreReadError} title={t("搜索数据读取失败")} />
           ) : showEmptyState ? (
             <section className={cn(featureCarouselFrameClassName, "rounded-[28px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-5 py-10 text-center")}>
-              <p className="text-[16px] font-black text-[color:var(--client-text)]">{emptySearchLabels.length > 0 ? "没有找到匹配结果" : "没有找到匹配的标签或分类"}</p>
+              <p className="text-[16px] font-black text-[color:var(--client-text)]">{emptySearchLabels.length > 0 ? t("没有找到匹配结果") : t("没有找到匹配的标签或分类")}</p>
               {emptySearchLabels.length > 0 ? (
                 <div className="mt-4 flex flex-wrap justify-center gap-2">
                   {emptySearchLabels.map((label) => (
@@ -948,7 +949,7 @@ export function CategoryPage() {
                   ))}
                 </div>
               ) : null}
-              <p className="mt-2 text-[13px] leading-6 text-[color:var(--client-muted)]">可以调整上方标签，或重新输入别的关键词再试试。</p>
+              <p className="mt-2 text-[13px] leading-6 text-[color:var(--client-muted)]">{t("可以调整上方标签，或重新输入别的关键词再试试。")}</p>
             </section>
           ) : (
             <section className={cn(featureCarouselFrameClassName, "space-y-4")}>
@@ -962,7 +963,7 @@ export function CategoryPage() {
                           {t("搜索店铺、技师、服务")}
                         </p>
                         <div className="rounded-[14px] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface))] px-3 py-2.5">
-                          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[color:var(--client-primary)]">当前聚焦</p>
+                          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[color:var(--client-primary)]">{t("当前聚焦")}</p>
                           <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-text)]">
                             {activeCategory?.name} · {t("搜索结果")}
                           </p>
@@ -991,7 +992,7 @@ export function CategoryPage() {
                   ) : relatedServices.length > 0 ? (
                     <div className="grid gap-3 lg:grid-cols-2">
                       {relatedServices.map((service) => (
-                        <ServicePreviewCard key={service.id} service={service} />
+                        <ServicePreviewCard key={service.id} language={language} service={service} />
                       ))}
                     </div>
                   ) : (
@@ -1032,6 +1033,7 @@ export function CategoryPage() {
                             }}
                             detailTo={detailPath}
                             key={`${item.id}-${favoriteState.isFavorited}`}
+                            language={language}
                           />
                         );
                       })}
