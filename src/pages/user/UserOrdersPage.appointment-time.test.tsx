@@ -144,6 +144,8 @@ describe("UserOrdersPage appointment time", () => {
     await renderOrders([order()]);
 
     const providerCard = document.querySelector<HTMLElement>(".user-orders-provider-card");
+    const providerAvatar = providerCard?.querySelector<HTMLElement>("img");
+    const providerContent = providerCard?.querySelector<HTMLElement>(":scope > div");
     const providerLink = providerCard?.parentElement;
     const appointmentRow = document.querySelector<HTMLElement>(".user-orders-appointment-time");
     const appointmentLabel = appointmentRow?.querySelector<HTMLElement>("dt");
@@ -151,6 +153,10 @@ describe("UserOrdersPage appointment time", () => {
     const actionRow = document.querySelector<HTMLElement>(".user-orders-action-row");
 
     expect(providerCard?.className).toContain("grid-cols-[58px_minmax(0,1fr)]");
+    expect(providerAvatar?.className).toContain("col-start-1");
+    expect(providerAvatar?.className).toContain("row-start-1");
+    expect(providerContent?.className).toContain("col-start-2");
+    expect(providerContent?.className).toContain("row-start-1");
     expect(providerLink?.className).toContain("block");
     expect(appointmentRow?.className).toContain("grid-cols-[auto_minmax(0,1fr)]");
     expect(appointmentRow?.parentElement?.className).toContain("min-w-0");
