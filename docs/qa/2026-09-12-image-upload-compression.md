@@ -39,11 +39,10 @@
 - Static/staging Node tests: 38 passed.
 - `npm run verify:production-images`: passed, 289 files and exact manifest hashes.
 - Focused frontend image/identity tests: 109 passed.
-- Full frontend with the existing slow-test allowance (`npx vitest run --testTimeout=20000 --maxWorkers=4`): 547 files, 3,650 tests passed.
+- Full frontend before the final local-main refresh (`npx vitest run --testTimeout=20000 --maxWorkers=4`): 547 files, 3,650 tests passed. After merging the latest local `main`, 548 files / 3,656 tests passed and the sole remaining case hit the 20-second i18n audit timeout; that unchanged audit passed independently in 16.14 seconds with a 120-second ceiling. Fourteen merged-state focused files then passed all 144 tests.
 - `npm run lint`: passed.
 - `npm run verify:production-build`: build passed; production bundle audit passed after calibrating the i18n budget to the measured new localized upload-state copy.
-- Focused backend public-media suites: 9 suites, 82 tests passed.
-- Focused backend identity/schema/repository/OpenAPI suites: 10 suites, 75 tests passed.
+- The final merged-state backend image/media/identity selection covered 16 suites and 124 tests. Four cases hit their built-in 5-second timeout during the loaded combined run; all three affected suites then passed all 43 tests with a 30-second ceiling, with no assertion changes.
 - Backend ESLint, production TypeScript build, Prisma Client generation, and `prisma validate`: passed.
 
 ## Local runtime evidence away from 5180
@@ -58,5 +57,5 @@
 ## Known unrelated baseline issues
 
 - Plain `npm test` can exceed the existing 5-second timeout in `ImChatRecordDetailPage.test.tsx` on a heavily loaded machine; the full suite passes with a 20-second test timeout.
-- The complete backend 12-shard attempt encountered an existing `finance-center-api.test.ts` fixture missing `ndpCurrency`, plus unrelated 5-second API-test timeouts under load. All media-related suites, backend source build, and full-project TypeScript check passed.
+- The complete backend 12-shard attempt encountered an existing `finance-center-api.test.ts` fixture missing `ndpCurrency`, plus unrelated 5-second API-test timeouts under load. All media-related suites and the backend production source build passed. A separate full test-project TypeScript run was interrupted after extended machine contention and is not claimed as passing.
 - Dependency installation reports existing audit findings (root: two moderate and two high; backend: one high). Automated `npm audit fix` was not run because it could introduce unrelated or breaking dependency changes.
