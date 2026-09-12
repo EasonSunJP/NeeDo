@@ -7,6 +7,7 @@ const copy = {
   permissionDenied: ["当前身份没有创建预约的权限", "目前身分沒有建立預約的權限", "現在のアカウントには予約を作成する権限がありません。", "Your current identity cannot create bookings.", "현재 계정에는 예약 생성 권한이 없습니다."],
   serviceUnavailable: ["服务不存在或已停止预约", "服務不存在或已停止預約", "サービスが見つからないか、予約受付を終了しています。", "This service does not exist or is no longer accepting bookings.", "서비스가 없거나 예약 접수가 종료되었습니다."],
   bookingStateChanged: ["预约状态已变化，请重新选择时段", "預約狀態已變更，請重新選擇時段", "予約状況が更新されました。時間帯を選び直してください。", "Booking availability has changed. Choose a time again.", "예약 상태가 변경되었습니다. 시간대를 다시 선택해 주세요."],
+  invalidCheckoutSlot: ["所选预约时段已失效，请重新选择并确认预约时间。", "所選預約時段已失效，請重新選擇並確認預約時間。", "選択した予約枠は利用できなくなりました。予約時間を選び直して確認してください。", "The selected appointment time is no longer available. Please choose and confirm another time.", "선택한 예약 시간이 더 이상 유효하지 않습니다. 예약 시간을 다시 선택하고 확인해 주세요."],
   bookingServiceUnavailable: ["预约服务暂时不可用，请稍后重试", "預約服務暫時無法使用，請稍後再試", "予約サービスを一時的に利用できません。しばらくしてからもう一度お試しください。", "Booking is temporarily unavailable. Try again later.", "예약 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."],
   checkoutLoadNetworkError: ["预约页加载失败，请检查网络后重试", "預約頁載入失敗，請檢查網路後再試", "予約画面を読み込めませんでした。通信状況を確認して、もう一度お試しください。", "Could not load checkout. Check your connection and try again.", "예약 화면을 불러오지 못했습니다. 네트워크를 확인한 후 다시 시도해 주세요."],
   travelOutsideArea: ["该地址超出店铺的上门服务范围。", "此地址超出店鋪的上門服務範圍。", "この住所は店舗の訪問サービス対象エリア外です。", "This address is outside the shop's home-service area.", "이 주소는 매장의 방문 서비스 지역 밖입니다."],

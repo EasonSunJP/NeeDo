@@ -66,8 +66,9 @@ describe("checkout time slots", () => {
     expect(isCheckoutSlotBookable(slots[1]!)).toBe(false);
     expect(isCheckoutSlotBookable(slots[2]!)).toBe(false);
     expect(isCheckoutSlotBookable(slots[4]!)).toBe(false);
-    expect(resolveInitialCheckoutSlotId(slots, "2026-09-03", "10:00")).toBe(1);
+    expect(resolveInitialCheckoutSlotId(slots, "2026-09-03", "10:00")).toBeNull();
     expect(resolveInitialCheckoutSlotId(slots, "2026-09-04", "08:00")).toBe(4);
+    expect(resolveInitialCheckoutSlotId(slots, "2026-09-03", null)).toBe(1);
   });
 
   it("treats an otherwise available slot at or before now as unbookable", () => {
@@ -86,7 +87,7 @@ describe("checkout time slots", () => {
     expect(resolveInitialCheckoutSlotId(unavailableDayThenAvailableDay, "2026-09-03", "08:00")).toBeNull();
   });
 
-  it("prefers an exact persisted same-day bookable slot and rejects stale or unbookable persisted ids", () => {
+  it("requires an explicitly requested slot to remain exact and bookable", () => {
     const duplicateTimeSlots = [
       slot(20, "2026-09-02T23:00:00.000Z", "available"),
       slot(21, "2026-09-02T23:00:00.000Z", "available"),
@@ -94,8 +95,8 @@ describe("checkout time slots", () => {
     ];
 
     expect(resolveInitialCheckoutSlotId(duplicateTimeSlots, "2026-09-03", "08:00", 21)).toBe(21);
-    expect(resolveInitialCheckoutSlotId(duplicateTimeSlots, "2026-09-03", "08:00", 22)).toBe(20);
-    expect(resolveInitialCheckoutSlotId(duplicateTimeSlots, "2026-09-03", "08:00", 999)).toBe(20);
-    expect(resolveInitialCheckoutSlotId(slots, "2026-09-03", "08:00", 4)).toBe(1);
+    expect(resolveInitialCheckoutSlotId(duplicateTimeSlots, "2026-09-03", "08:00", 22)).toBeNull();
+    expect(resolveInitialCheckoutSlotId(duplicateTimeSlots, "2026-09-03", "08:00", 999)).toBeNull();
+    expect(resolveInitialCheckoutSlotId(slots, "2026-09-03", "08:00", 4)).toBeNull();
   });
 });

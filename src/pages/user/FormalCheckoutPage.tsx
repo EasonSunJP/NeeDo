@@ -110,6 +110,10 @@ function persistedCheckoutScheduleSlotId(value: unknown) {
   return typeof slotId === "number" && Number.isInteger(slotId) && slotId > 0 ? slotId : null;
 }
 
+function requestedCheckoutScheduleSlotId(value: string | null) {
+  return value && /^[1-9]\d*$/u.test(value) ? Number(value) : null;
+}
+
 function describeCheckoutError(error: unknown): CheckoutTextKey {
   if (error instanceof CheckoutSourceError) return error.copyKey;
   if (error instanceof ApiClientError) {
@@ -234,6 +238,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [service, setService] = useState<CheckoutServiceContext | null>(null);
   const [intelligenceSource, setIntelligenceSource] = useState<NonNullable<ExchangePost["intelligence"]> | null>(null);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
+  const [slotSelectionInvalid, setSlotSelectionInvalid] = useState(false);
   const [checkoutNowMs, setCheckoutNowMs] = useState(() => Date.now());
   const [selectedTechnicianDetail, setSelectedTechnicianDetail] = useState<CoreTechnicianCard | null>(null);
   const [technicianLoadStatus, setTechnicianLoadStatus] = useState<TechnicianLoadStatus>("idle");
@@ -271,6 +276,11 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [activeProgressStep, setActiveProgressStep] = useState(0);
   const selectedDayWindow = useMemo(() => getTokyoDayWindow(selectedDate), [selectedDate]);
   const persistedSlotId = persistedCheckoutScheduleSlotId(location.state);
+  const requestedDateParam = searchParams.get("date");
+  const requestedSlotParam = searchParams.get("scheduleSlotId");
+  const requestedSlotId = requestedCheckoutScheduleSlotId(requestedSlotParam);
+  const hasRequestedSlotSelection = requestedSlotParam !== null || searchParams.get("time") !== null || persistedSlotId !== null;
+  const requestedDateInvalid = requestedDateParam !== null && getTokyoDayWindow(requestedDateParam) === null;
   const requestedTechnicianId = searchParams.get("technician");
   const shopServiceTechnicianId = requestedTechnicianId && /^[1-9]\d*$/.test(requestedTechnicianId)
     ? Number(requestedTechnicianId)
@@ -458,11 +468,16 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
           .slice()
           .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.id - right.id);
         const requestedTime = searchParams.get("time");
+        const explicitSlotId = requestedSlotParam !== null ? requestedSlotId : persistedSlotId;
+        const resolvedSlotId = requestedDateInvalid || (requestedSlotParam !== null && requestedSlotId === null)
+          ? null
+          : resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, explicitSlotId);
 
         setService(serviceContext);
         setIntelligenceSource(source);
         setSlots(formalSlots);
-        setSelectedSlotId(resolveInitialCheckoutSlotId(formalSlots, selectedDate, requestedTime, persistedSlotId));
+        setSelectedSlotId(resolvedSlotId);
+        setSlotSelectionInvalid(hasRequestedSlotSelection && resolvedSlotId === null);
         setFulfillmentMode(resolveFulfillmentMode(source?.serviceMode ?? serviceContext.serviceMode, searchParams.get("mode")));
         setLoadStatus("success");
       })
@@ -478,7 +493,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     return () => {
       active = false;
     };
-  }, [catalogRef.id, catalogRef.type, exchangePostId, exchangePostParam, language, persistedSlotId, revision, searchParams, selectedDate, selectedDayWindow, serviceId, shopServiceTechnicianId, technicianServiceId, technicianServiceShopId, technicianServiceTechnicianId]);
+  }, [catalogRef.id, catalogRef.type, exchangePostId, exchangePostParam, hasRequestedSlotSelection, language, persistedSlotId, requestedDateInvalid, requestedSlotId, requestedSlotParam, revision, searchParams, selectedDate, selectedDayWindow, serviceId, shopServiceTechnicianId, technicianServiceId, technicianServiceShopId, technicianServiceTechnicianId]);
 
   useEffect(() => {
     const nextBoundaryMs = slots.reduce<number | null>((earliest, slot) => {
@@ -500,6 +515,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       && !slots.some((slot) => slot.id === selectedSlotId && isCheckoutSlotBookable(slot, checkoutNowMs))
     ) {
       setSelectedSlotId(null);
+      setSlotSelectionInvalid(true);
     }
   }, [checkoutNowMs, selectedSlotId, slots]);
 
@@ -784,6 +800,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       setEstimateError(null);
     }
     setSelectedSlotId(slot.id);
+    setSlotSelectionInvalid(false);
     const nextSearchParams = new URLSearchParams(location.search);
     const previousState = checkoutHistoryState(location.state);
     if (
@@ -791,6 +808,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       && persistedCheckoutScheduleSlotId(previousState) === slot.id
     ) return;
     nextSearchParams.set("time", selectedTime);
+    nextSearchParams.set("scheduleSlotId", String(slot.id));
     navigate({
       pathname: location.pathname,
       search: `?${nextSearchParams.toString()}`,
@@ -835,6 +853,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     );
     if (!freshSelectedSlot) {
       setSelectedSlotId(null);
+      setSlotSelectionInvalid(true);
       return;
     }
     if (!isAuthenticated) {
@@ -888,6 +907,10 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       });
     } catch (error) {
       setSubmitError(describeCheckoutError(error));
+      if (error instanceof ApiClientError && error.status === 409) {
+        setSelectedSlotId(null);
+        setSlotSelectionInvalid(true);
+      }
       if (error instanceof ApiClientError && error.code === 41038) {
         setRevision((current) => current + 1);
       }
@@ -1095,12 +1118,20 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
                     selectedSlotId={selectedSlotId}
                     slots={slots}
                   />
+                  {slotSelectionInvalid ? (
+                    <div className="mt-3 rounded-[18px] border border-amber-400/40 bg-amber-500/10 px-4 py-3" data-no-i18n role="alert">
+                      <p className="text-sm font-black text-amber-700">{t("invalidCheckoutSlot")}</p>
+                    </div>
+                  ) : null}
                   <p className="mt-3 text-xs leading-5 text-[color:var(--client-muted)]" data-no-i18n>{t("arrivalReminder")}</p>
                 </>
               ) : (
                 <div className="mt-3 rounded-[22px] border border-dashed border-[color:var(--client-line)] px-4 py-8 text-center">
                   <p className="text-sm font-black text-[color:var(--client-text)]" data-no-i18n>{t("noSlots")}</p>
                   <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]" data-no-i18n>{t("slotsAppearAfterPublish")}</p>
+                  {slotSelectionInvalid ? (
+                    <p className="mt-3 text-sm font-black text-amber-700" data-no-i18n role="alert">{t("invalidCheckoutSlot")}</p>
+                  ) : null}
                 </div>
               )}
             </div>
