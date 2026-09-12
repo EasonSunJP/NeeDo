@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { AppIcon, floatingHeaderControlButtonClassName } from "../client-ui/AppScaffold";
 import { TitleWithInfo } from "../ui/TitleWithInfo";
-import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "./FloatingHomeHeader";
+import { clientAppMaxWidth, FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "./FloatingHomeHeader";
 
 export const mobileFullscreenHeaderSurfaceClassName =
   `${floatingHeaderGlassPanelClassName} text-[color:var(--client-text)]`;
@@ -124,7 +124,7 @@ export function MobileFullscreenHeader({
     <FloatingHomeHeader
       className="gap-0"
       frameClassName="z-40"
-      maxWidth={maxWidth ?? "480px"}
+      maxWidth={maxWidth ?? clientAppMaxWidth}
       overlay={overlay}
       panelClassName={cn(dark ? mobileFullscreenHeaderDarkSurfaceClassName : mobileFullscreenHeaderSurfaceClassName, className)}
       showSpacer={showSpacer}

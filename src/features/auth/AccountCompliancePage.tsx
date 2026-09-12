@@ -131,7 +131,7 @@ export function AccountCompliancePage() {
   return (
     <MobileFullscreenPage>
       <MobileFullscreenHeader closeLabel={text.close} info={text.info} onClose={() => { void signOut(); }} title={text.title} />
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-4">
+      <main className="client-app-gutter min-h-0 flex-1 overflow-y-auto pb-[max(24px,env(safe-area-inset-bottom))] pt-4">
         <div className="rounded-[28px] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface))] p-5">
           <p className="text-sm font-bold leading-6 text-[color:var(--client-muted)]">{text.intro}</p>
           <p className="mt-3 text-xs font-black uppercase tracking-[0.12em] text-[color:var(--client-primary)]">{text.policy}: {session.compliancePolicyVersionPublicId ?? "—"}</p>

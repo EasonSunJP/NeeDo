@@ -15,7 +15,7 @@ export function MerchantAutoDispatchRoutePage() {
         subtitle="正式调度服务"
         title="自动派单"
       />
-      <main className="px-4 pb-28 pt-4">
+      <main className="client-app-gutter pb-28 pt-4">
         <section className="rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 text-[color:var(--client-text)]">
           <p className="text-xs font-black text-[color:var(--client-primary)]">功能暂未开放</p>
           <h1 className="mt-2 text-xl font-black">等待正式派单状态机与审计接口</h1>

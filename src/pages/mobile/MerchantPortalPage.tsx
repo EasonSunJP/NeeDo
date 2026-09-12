@@ -2673,7 +2673,6 @@ export function MerchantPortalContent({
             value={activeMeTab}
             variant="header"
           />}
-          maxWidth="880px"
           onBack={() => navigate("/merchant")}
           onClose={() => navigate("/merchant")}
           title="个人中心"
@@ -2696,10 +2695,10 @@ export function MerchantPortalContent({
           activeView === "me"
             ? "space-y-4 pt-4"
             : activeView === "schedule" || activeView === "staff" || activeView === "today-appointments"
-              ? "px-4 pb-4 pt-0"
+              ? "client-app-gutter pb-4 pt-0"
               : activeView === "dashboard"
-                ? "space-y-4 px-4 pb-4 pt-2"
-                : "space-y-4 px-4 py-4",
+                ? "client-app-gutter space-y-4 pb-4 pt-2"
+                : "client-app-gutter space-y-4 py-4",
           activeView === "schedule" && "relative z-30"
         )}
       >
@@ -3048,7 +3047,7 @@ export function MerchantPortalContent({
 
         {activeView === "me" && (
           <>
-            <div className={cn("space-y-4 px-4 pb-0", isMerchantDataCenterView && "merchant-analytics-clean-content")}>
+            <div className={cn("client-app-gutter space-y-4 pb-0", isMerchantDataCenterView && "merchant-analytics-clean-content")}>
               {activeMeTab === "info" ? <MerchantIdentityInfoCard onEditingChange={setMerchantProfileEditing} /> : null}
               {activeMeTab === "service" ? (
                 <StoreDetailExperience
@@ -3208,7 +3207,7 @@ export function MerchantPortalContent({
           />
         ) : activeView !== "schedule" && !isMerchantAppointmentTimelineView && !isMerchantRevenueView ? (
           <MerchantHomeContactStatusPanel
-            className={activeView === "me" ? "mx-4 !w-auto" : undefined}
+            className={activeView === "me" ? "client-app-margin !w-auto" : undefined}
             emptyDetail={contactLog}
             filter={generalContactStatusFilter}
             items={generalContactStatusItems}

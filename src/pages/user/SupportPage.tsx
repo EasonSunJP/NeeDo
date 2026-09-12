@@ -45,7 +45,7 @@ export function SupportPage() {
           title="联系客服"
         />
 
-        <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(116px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
+        <main className="client-app-gutter scrollbar-none min-h-0 flex-1 overflow-y-auto pb-[calc(116px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
           <section className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,var(--client-bg)_16%)] p-5 shadow-[0_18px_42px_rgba(0,0,0,0.06)]">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-black">客服功能正在准备中</h2>
@@ -74,10 +74,10 @@ export function SupportPage() {
         </main>
 
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-6"
+          className="client-app-gutter pointer-events-none absolute inset-x-0 bottom-0 z-40 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-6"
           data-testid="support-floating-actions"
         >
-          <div className="pointer-events-auto mx-auto grid w-full max-w-[480px] grid-cols-2 gap-3">
+          <div className="pointer-events-auto grid w-full grid-cols-2 gap-3">
             <SecondaryButton className="min-w-0 px-3 text-center" to="/">
               返回首页
             </SecondaryButton>

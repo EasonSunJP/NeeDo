@@ -94,11 +94,10 @@ function SelectorLayout({
   const hasFooter = Boolean(footer);
 
   return (
-    <div className={cn("mx-auto w-full max-w-[720px] px-4 pt-0 text-[color:var(--client-text)] sm:px-6", hasFooter ? "pb-[calc(env(safe-area-inset-bottom)+128px)]" : "pb-10")}>
+    <div className={cn("client-app-frame client-app-gutter w-full pt-0 text-[color:var(--client-text)]", hasFooter ? "pb-[calc(env(safe-area-inset-bottom)+128px)]" : "pb-10")}>
       <MobileFullscreenHeader
         className="needo-composer-glass-header"
         info={subtitle}
-        maxWidth="720px"
         onBack={onBack}
         title={title}
       />
@@ -109,7 +108,7 @@ function SelectorLayout({
             aria-hidden="true"
             className="absolute inset-x-0 bottom-0 h-[96px] bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_82%,transparent)_36%,var(--client-bg)_100%)]"
           />
-          <div className="pointer-events-auto relative mx-auto w-full max-w-[720px]">{footer}</div>
+          <div className="client-app-frame pointer-events-auto relative">{footer}</div>
         </div>
       ) : null}
     </div>
@@ -193,7 +192,7 @@ export function ComposerTextArea({
   return (
     <>
       <div className="fixed inset-x-0 top-0 z-[70] border-b border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] text-[color:var(--client-text)]">
-        <div className="safe-header-top mx-auto w-full max-w-[720px] px-4 pb-3 pt-3 sm:px-6">
+        <div className="client-app-frame client-app-gutter safe-header-top pb-3 pt-3">
           {author ? (
             <div className="flex items-center gap-3 pr-16">
               <InteractiveAvatar alt={author.displayName} className="h-11 w-11" src={author.avatar} to={authorTo} />

@@ -295,7 +295,7 @@ function SocialQuickReplyComposerState({
 
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[720px]"
+      className="client-app-frame fixed inset-x-0 bottom-0 z-40"
       data-social-quick-reply-composer="true"
     >
       <input

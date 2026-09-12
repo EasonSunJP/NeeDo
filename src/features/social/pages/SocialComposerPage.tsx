@@ -701,8 +701,8 @@ export function SocialComposerPage() {
             publishLabel={editPostId ? "保存" : "发表"}
           />
 
-          <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+392px)] top-[calc(env(safe-area-inset-top)+88px)] z-20 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-6">
-            <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col">
+          <div className="client-app-gutter fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+392px)] top-[calc(env(safe-area-inset-top)+88px)] z-20 overflow-y-auto overscroll-contain pb-4">
+            <div className="client-app-frame flex min-h-full flex-col">
               <ComposerTextArea
                 author={author}
                 authorTo={author ? socialPaths.profile(scope, author) : undefined}
@@ -739,8 +739,8 @@ export function SocialComposerPage() {
             </div>
           </div>
 
-          <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+112px)] z-[80] px-4 sm:px-6">
-            <div className="mx-auto w-full max-w-[720px]">
+          <div className="client-app-gutter fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+112px)] z-[80]">
+            <div className="client-app-frame">
               <ComposerSettingList>
                 <ComposerSettingItem icon="location" label="所在位置" onClick={() => setView("location")} value={locationLabel} />
                 <ComposerSettingItem

@@ -3645,7 +3645,7 @@ function StickySaveBar({
             "--client-edge-mask-bottom-strong-stop": "78%"
           } as CSSProperties}
         />
-        <div className="safe-nav-bottom pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] bg-gradient-to-t from-[color:var(--client-bg)] via-[color:color-mix(in_srgb,var(--client-bg)_88%,transparent)] to-transparent px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-16 sm:px-6 lg:px-8">
+        <div className="safe-nav-bottom client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-[color:var(--client-bg)] via-[color:color-mix(in_srgb,var(--client-bg)_88%,transparent)] to-transparent pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-16">
           <div className="pointer-events-auto">{content}</div>
         </div>
       </>
@@ -3653,7 +3653,7 @@ function StickySaveBar({
   }
 
   return (
-    <div className="safe-nav-bottom client-bottom-action-shell fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-4 pb-3 sm:px-6 lg:px-8">
+    <div className="safe-nav-bottom client-app-frame client-app-gutter client-bottom-action-shell fixed inset-x-0 bottom-0 z-40 pb-3">
       <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[0_-18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl">
         {content}
       </div>

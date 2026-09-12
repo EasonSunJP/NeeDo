@@ -283,6 +283,12 @@ export const translations: TranslationMap = {
   "图片质量验证未通过，请重新选择图片。": fourLanguageTranslation("圖片品質驗證未通過，請重新選擇圖片。", "画像の品質検証に合格しませんでした。別の画像を選択してください。", "The image did not pass quality verification. Choose another image.", "이미지 품질 검증을 통과하지 못했습니다. 다른 이미지를 선택해 주세요."),
   "当前设备无法安全处理这张图片。": fourLanguageTranslation("目前裝置無法安全處理這張圖片。", "この端末では画像を安全に処理できません。", "This device cannot process the image safely.", "현재 기기에서 이 이미지를 안전하게 처리할 수 없습니다."),
   "图片处理已取消。": fourLanguageTranslation("圖片處理已取消。", "画像処理をキャンセルしました。", "Image processing was cancelled.", "이미지 처리가 취소되었습니다."),
+  "现金、NDP 与外部渠道状态": fourLanguageTranslation(
+    "現金、NDP 與外部渠道狀態",
+    "現金、NDP、外部決済の状態",
+    "Cash, NDP, and external channel status",
+    "현금, NDP 및 외부 채널 상태",
+  ),
   ...technicianAutomationTranslations,
   "实时数据大屏": fourLanguageTranslation("即時數據大屏", "リアルタイムデータ画面", "Live data screen", "실시간 데이터 화면"),
   "NeeDo 实时运营数据": fourLanguageTranslation("NeeDo 即時營運數據", "NeeDo リアルタイム運営データ", "NeeDo live operations", "NeeDo 실시간 운영 데이터"),

@@ -32,7 +32,7 @@ export function MerchantScheduleArrangementRoutePage() {
           onClose={() => navigate("/merchant/schedule")}
           title="预约安排详情"
         />
-        <main className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
+        <main className="client-app-gutter min-h-0 flex-1 space-y-4 overflow-y-auto py-4 pb-28">
           {flashMessage ? (
             <p className="rounded-2xl bg-lemon/25 px-4 py-3 text-sm font-semibold text-[#795b00]">{flashMessage}</p>
           ) : null}

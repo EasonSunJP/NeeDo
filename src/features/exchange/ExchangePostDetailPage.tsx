@@ -475,7 +475,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
       />
 
       <main
-        className="scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+9.5rem)] pt-[calc(env(safe-area-inset-top)+86px)]"
+        className="client-app-gutter scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+9.5rem)] pt-[calc(env(safe-area-inset-top)+86px)]"
         data-testid="exchange-detail-page"
       >
         {originalNotice ? (
@@ -632,7 +632,7 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
       </main>
 
       <ClientEdgeMask className="z-10" edge="bottom" mode="absolute" />
-      <footer className="absolute inset-x-0 bottom-0 z-20 grid grid-cols-[1fr,auto] items-center gap-3 border-t border-transparent bg-[color:color-mix(in_srgb,var(--client-bg)_84%,transparent)] px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-4 backdrop-blur-xl">
+      <footer className="client-app-gutter absolute inset-x-0 bottom-0 z-20 grid grid-cols-[1fr,auto] items-center gap-3 border-t border-transparent bg-[color:color-mix(in_srgb,var(--client-bg)_84%,transparent)] pb-[max(env(safe-area-inset-bottom),12px)] pt-4 backdrop-blur-xl">
         <div data-no-i18n="true">
           <p className="text-xs font-bold text-[color:var(--client-muted)]">{t(post.type === "demand" ? "budget" : "price")}</p>
           <strong className="text-xl font-black text-[color:var(--client-primary)]">{price}</strong>

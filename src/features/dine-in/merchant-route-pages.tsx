@@ -23,7 +23,7 @@ function MerchantDineMobileShell({
   return (
     <MobileShell navItems={merchantNavItems}>
       <MobileFullscreenHeader onBack={() => navigate("/merchant")} subtitle={subtitle} title={title} />
-      <div className="space-y-4 px-4 pb-28 pt-4">
+      <div className="client-app-gutter space-y-4 pb-28 pt-4">
         {children}
       </div>
     </MobileShell>

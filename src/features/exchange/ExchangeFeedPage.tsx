@@ -281,7 +281,6 @@ export function ExchangeFeedPage({ context }: { context: MessageCenterContext })
       <FloatingHomeHeader
         className="relative z-10"
         frameClassName="z-40"
-        maxWidth="680px"
         panelClassName="relative overflow-hidden"
       >
         <FloatingHeaderSearchBar
@@ -304,7 +303,7 @@ export function ExchangeFeedPage({ context }: { context: MessageCenterContext })
         />
       </FloatingHomeHeader>
 
-      <section aria-busy={feed.loading} aria-live="polite" className="mx-auto w-full max-w-[680px] space-y-4 px-4 pb-4">
+      <section aria-busy={feed.loading} aria-live="polite" className="client-app-gutter w-full space-y-4 pb-4">
         {feed.loading ? (
           <div className="space-y-3" data-testid="exchange-loading">
             <p className="px-1 text-sm font-black text-[color:var(--client-muted)]">{t(isDemand ? "loadingDemand" : "loadingIntelligence")}</p>
@@ -345,7 +344,7 @@ export function ExchangeFeedPage({ context }: { context: MessageCenterContext })
       </section>
 
       {feed.hasMore && !feed.loading ? (
-        <div className="mx-auto w-full max-w-[680px] px-4">
+        <div className="client-app-gutter w-full">
           <button className="mt-1 min-h-12 w-full rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-sm font-black text-[color:var(--client-text)] disabled:opacity-50" disabled={feed.loadingMore} onClick={feed.loadMore} type="button">
             {t(feed.loadingMore ? "loadingMore" : "loadMore")}
           </button>
