@@ -1,5 +1,6 @@
 import { ApiClientError, buildApiUrl, getAccessToken, httpClient } from "../../api/httpClient";
 import { optimizeImageUpload } from "../../lib/image-upload";
+import type { OptimizeImageUploadOptions } from "../../lib/image-upload";
 import type { ImMessageRichText } from "../im/reaction-policy";
 
 export type PaginatedRealtimeData<TItem> = {
@@ -7,6 +8,10 @@ export type PaginatedRealtimeData<TItem> = {
   page: number;
   page_size: number;
   total: number;
+};
+
+export type RealtimeImageUploadOptions = OptimizeImageUploadOptions & {
+  onUploadStart?: () => void;
 };
 
 export type RealtimeParticipant = {
@@ -502,22 +507,34 @@ export const realtimeApi = {
   getDirectoryProfile(userId: number) {
     return httpClient.request<RealtimeDirectoryProfile>(`/im/directory/${userId}`);
   },
-  async uploadConversationImage(conversationId: number, file: File) {
-    const optimized = await optimizeImageUpload(file, "im");
+  async uploadConversationImage(
+    conversationId: number,
+    file: File,
+    options?: RealtimeImageUploadOptions
+  ) {
+    const optimized = options
+      ? await optimizeImageUpload(file, "im", options)
+      : await optimizeImageUpload(file, "im");
+    options?.onUploadStart?.();
     return httpClient.request<RealtimeUploadedImage>(`/im/conversations/${conversationId}/media`, {
       body: optimized.file,
       headers: { "Content-Type": optimized.mimeType },
       method: "POST",
-      query: { fileName: optimized.file.name }
+      query: { fileName: optimized.file.name },
+      ...(options?.signal ? { signal: options.signal } : {})
     });
   },
-  async uploadSocialMedia(file: File) {
-    const optimized = await optimizeImageUpload(file, "social");
+  async uploadSocialMedia(file: File, options?: RealtimeImageUploadOptions) {
+    const optimized = options
+      ? await optimizeImageUpload(file, "social", options)
+      : await optimizeImageUpload(file, "social");
+    options?.onUploadStart?.();
     return httpClient.request<RealtimeSocialMediaUpload>("/social/media", {
       body: optimized.file,
       headers: { "Content-Type": optimized.mimeType },
       method: "POST",
-      query: { fileName: optimized.file.name }
+      query: { fileName: optimized.file.name },
+      ...(options?.signal ? { signal: options.signal } : {})
     });
   },
   blockContact(contactId: number) {

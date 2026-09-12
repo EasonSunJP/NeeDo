@@ -100,6 +100,12 @@ describe("SocialComposerPage formal contacts and image uploads", () => {
   });
 
   it("maps internal API error keys to readable composer copy", () => {
+    expect(getSocialComposerErrorMessage(new Error("error.image_upload.quality_failed"))).toBe(
+      "图片质量验证未通过，请重新选择图片。"
+    );
+    expect(getSocialComposerErrorMessage(new Error("error.image_upload.unsupported"))).toBe(
+      "当前设备无法安全处理这张图片。"
+    );
     expect(getSocialComposerErrorMessage(new Error("error.social.media_upload_unavailable"))).toBe(
       "图片上传失败，请重试。"
     );
@@ -115,6 +121,10 @@ describe("SocialComposerPage formal contacts and image uploads", () => {
       "联系人加载失败，请重试。",
       "当前没有可提醒的联系人。",
       "图片上传失败，请重试。",
+      "图片正在本地优化并上传…",
+      "图片质量验证未通过，请重新选择图片。",
+      "当前设备无法安全处理这张图片。",
+      "图片处理已取消。",
       "最多 9 张图片；单张不超过 8 MiB。",
       "提醒你查看一条新动态。"
     ].forEach((copy) => expect(translationsSource).toContain(`\"${copy}\"`));

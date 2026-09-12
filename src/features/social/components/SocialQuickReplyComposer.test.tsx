@@ -17,6 +17,12 @@ afterEach(() => {
 });
 
 describe("SocialQuickReplyComposer", () => {
+  it("exposes separate device-optimization and network-upload states", () => {
+    expect(source).toContain('status: "optimizing"');
+    expect(source).toContain("图片正在本地优化并上传…");
+    expect(source).toContain("onUploadStart");
+    expect(source).toContain("AbortController");
+  });
   it("exposes a focus handle that places the caret at the end of the rich reply draft", async () => {
     const container = document.createElement("div");
     document.body.append(container);
@@ -435,7 +441,7 @@ describe("SocialQuickReplyComposer", () => {
     await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
 
     const pendingSend = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "图片上传中"
+      (button) => button.textContent === "本地优化中"
     )!;
     expect(pendingSend.disabled).toBe(true);
     expect(onSubmit).not.toHaveBeenCalled();
