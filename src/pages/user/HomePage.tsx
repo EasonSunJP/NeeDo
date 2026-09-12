@@ -1271,13 +1271,13 @@ export function HomePage() {
 
                   return (
                     <Link
-                      className="home-quick-action-card grid min-w-0 grid-rows-[34px_28px] content-center items-center justify-items-center gap-1.5 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_100%,transparent),color-mix(in_srgb,var(--client-surface)_86%,transparent))] px-2 py-2 text-center shadow-[0_12px_26px_rgba(0,0,0,0.09)]"
+                      className="home-quick-action-card flex min-w-0 flex-col items-center justify-center gap-1.5 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_100%,transparent),color-mix(in_srgb,var(--client-surface)_86%,transparent))] px-2 py-2 text-center shadow-[0_12px_26px_rgba(0,0,0,0.09)] before:hidden"
                       key={item.id}
                       to={item.to}
                     >
                       <span
                         className={cn(
-                          "home-quick-action-card__icon inline-flex h-[34px] w-[34px] items-center justify-center rounded-[13px]",
+                          "home-quick-action-card__icon inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[13px]",
                           getQuickActionIconClassName(theme),
                         )}
                       >
@@ -1287,12 +1287,12 @@ export function HomePage() {
                         />
                       </span>
                       <span
-                        className="home-quick-action-card__label flex h-[28px] w-full items-center justify-center overflow-hidden"
+                        className="home-quick-action-card__label flex h-[28px] w-full shrink-0 items-center justify-center overflow-hidden"
                         data-no-i18n
                       >
                         <span
                           className={cn(
-                            "home-quick-action-card__title w-full text-[12px] font-black leading-[14px] text-[color:var(--client-text)]",
+                            "home-quick-action-card__title w-full text-center text-[12px] font-black leading-[14px] text-[color:var(--client-text)]",
                             getQuickActionTitleClassName(title),
                           )}
                         >

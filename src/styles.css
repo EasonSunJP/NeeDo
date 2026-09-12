@@ -2026,12 +2026,12 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
 }
 
 .home-quick-action-card {
-  height: clamp(76px, 22cqw, 104px);
+  height: clamp(86px, 22cqw, 104px);
 }
 
 @container (max-width: 340px) {
   .home-quick-action-card {
-    grid-template-rows: minmax(0, 1fr);
+    height: 76px;
   }
 
   .home-quick-action-card__icon {
