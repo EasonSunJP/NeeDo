@@ -6,7 +6,7 @@ import type {
 import type {
   TechnicianServiceBookingContextServiceCardProjection
 } from "../../shared/service-card";
-import type { FulfillmentMode, Order } from "../../types/domain";
+import type { FulfillmentMode, Order, OrderRebookDecision } from "../../types/domain";
 
 export type BookingOrderStatus =
   | "pending"
@@ -262,6 +262,7 @@ export type BookingOrder = {
   servicePriceSnapshot?: string | null;
   serviceDurationSnapshot?: number | null;
   serviceSnapshot?: unknown;
+  rebook?: OrderRebookDecision;
   shopName: string;
   technicianName: string | null;
   priceAmount: string;
@@ -443,7 +444,8 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
     bookedAt: formatApiOrderDateTime(order.startsAt),
     createdAt: formatApiOrderDateTime(order.createdAt),
     source: "app",
-    remark: order.note ?? undefined
+    remark: order.note ?? undefined,
+    rebook: order.rebook
   };
 }
 

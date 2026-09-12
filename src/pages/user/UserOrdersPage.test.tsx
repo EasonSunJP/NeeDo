@@ -32,4 +32,10 @@ describe("UserOrdersPage", () => {
     expect(source).not.toContain("orderServiceSessionStore");
     expect(source).not.toContain("删除订单");
   });
+
+  it("uses the server-authoritative rebook decision and exposes the stopped-service notice", () => {
+    expect(source).toContain("getRebookAction(order.rebook)");
+    expect(source).toContain("{rebook.notice}");
+    expect(source).toContain("aria-disabled");
+  });
 });

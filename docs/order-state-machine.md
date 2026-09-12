@@ -243,3 +243,13 @@ GET /api/v1/calendar-events/participant-busy
 ```
 
 It requires `calendar-events:read`, validates a maximum of 20 distinct positive identities and a maximum 24-hour query window, and authorizes every requested identity as an active, unblocked, non-deleted contact of the current personal identity. Any unauthorized identity rejects the whole request with `403`; partial disclosure is not allowed. The paginated result merges formal calendar events with confirmed/in-service booking occupancy before sorting. Successful rows contain only `participantIdentityId`, `startsAt`, `endsAt`, and `status: "locked"`. Event IDs, titles, services, locations, customers, notes, prices, and source identifiers never leave the repository projection.
+
+## Historical order rebooking
+
+Order responses preserve the immutable service identifiers and service snapshots captured when the booking was created. They additionally expose a read-only `rebook` decision derived from the current catalog, pricing mode, shop publication/suspension state, technician publication and affiliation, and service bookability state.
+
+- `checkout` keeps fast rebooking for a currently valid service and returns the current shop and technician context.
+- `select_service` means the historical service is no longer directly bookable while the original shop remains valid; clients must open that shop's current service list and show `原服务已停止，请重新选择服务`.
+- `unavailable` means the original shop is no longer a safe navigation target; clients must disable direct checkout and show the same explicit notice.
+
+The decision is projected while reading the order and never updates `serviceId`, `technicianServiceId`, snapshot JSON, status history, or audit records.

@@ -605,6 +605,29 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(profileSource).toContain("contactInfoRedirectFailed");
   });
 
+  it("does not repeatedly create a conversation while a contact detail failure rerenders", () => {
+    const start = source.indexOf("export function ImContactDetailPage");
+    const end = source.indexOf("function buildSearchMessageSubtitle", start);
+    const contactDetailSource = source.slice(start, end);
+
+    expect(contactDetailSource).toContain(
+      "const ensureDirectConversation = store.ensureDirectConversation;",
+    );
+    expect(contactDetailSource).toContain("ensureDirectConversation(userId)");
+    expect(contactDetailSource).not.toContain(
+      "[config.routes, contact?.id, navigate, store, user?.id]",
+    );
+  });
+
+  it("opens non-friend contact records as relationship-scoped profiles without creating chat", () => {
+    const start = source.indexOf("export function ImContactDetailPage");
+    const end = source.indexOf("function buildSearchMessageSubtitle", start);
+    const contactDetailSource = source.slice(start, end);
+
+    expect(contactDetailSource).toContain('contact.source !== "friend_request"');
+    expect(contactDetailSource).toContain("config.routes.directoryProfile(user.id)");
+  });
+
   it("keeps an active request from either directory source on the independent friend action page", () => {
     const start = source.indexOf("export function ImDirectoryProfilePage");
     const end = source.indexOf("export function ImContactDetailPage", start);

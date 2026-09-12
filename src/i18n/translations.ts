@@ -687,6 +687,7 @@ export const translations: TranslationMap = {
   "取消处理中": fourLanguageTranslation("正在取消", "キャンセル処理中", "Cancelling", "취소 처리 중"),
   "当前身份没有创建预约的权限": fourLanguageTranslation("目前身分沒有建立預約的權限", "現在のアカウントには予約を作成する権限がありません", "The current identity cannot create reservations", "현재 계정에는 예약을 생성할 권한이 없습니다"),
   "服务不存在或已停止预约": fourLanguageTranslation("服務不存在或已停止預約", "サービスが存在しないか、予約受付を終了しています", "The service does not exist or is no longer accepting reservations", "서비스가 없거나 예약 접수가 종료되었습니다"),
+  "原服务已停止，请重新选择服务": fourLanguageTranslation("原服務已停止，請重新選擇服務", "元のサービスは受付を終了しました。サービスを選び直してください", "The original service is no longer available. Please select another service", "기존 서비스가 종료되었습니다. 서비스를 다시 선택해 주세요"),
   "预约状态已变化，请重新选择时段": fourLanguageTranslation("預約狀態已變更，請重新選擇時段", "予約状況が変更されました。時間枠を選び直してください", "Availability has changed. Select a time slot again", "예약 가능 상태가 변경되었습니다. 시간을 다시 선택하세요"),
   "预约页加载失败，请检查网络后重试": fourLanguageTranslation("預約頁載入失敗，請檢查網路後再試", "予約画面の読み込みに失敗しました。ネットワークを確認してもう一度お試しください", "The reservation page failed to load. Check your connection and try again", "예약 화면을 불러오지 못했습니다. 네트워크를 확인한 후 다시 시도하세요"),
   "来源情报无效，无法预约": fourLanguageTranslation("來源情報無效，無法預約", "参照元のサービス情報が無効なため予約できません", "The source service post is invalid and cannot be booked", "출처 서비스 정보가 유효하지 않아 예약할 수 없습니다"),

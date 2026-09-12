@@ -11799,6 +11799,43 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           reviewCount: { type: "integer", minimum: 0 }
         }
       },
+      BookingOrderRebook: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["action", "serviceType", "serviceId", "shopId", "technicianProfileId", "fulfillmentMode"],
+            properties: {
+              action: { type: "string", const: "checkout" },
+              serviceType: { type: "string", enum: ["shop_service", "technician_service"] },
+              serviceId: { type: "integer", minimum: 1 },
+              shopId: { type: "integer", minimum: 1 },
+              technicianProfileId: { type: ["integer", "null"], minimum: 1 },
+              fulfillmentMode: { type: "string", enum: ["home", "store"] }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["action", "shopId", "reason"],
+            properties: {
+              action: { type: "string", const: "select_service" },
+              shopId: { type: "integer", minimum: 1 },
+              reason: { type: "string", const: "original_service_unavailable" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["action", "reason"],
+            properties: {
+              action: { type: "string", const: "unavailable" },
+              reason: { type: "string", const: "shop_unavailable" }
+            }
+          }
+        ],
+        discriminator: { propertyName: "action" }
+      },
       BookingOrder: {
         type: "object",
         required: [
@@ -11834,6 +11871,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "servicePriceSnapshot",
           "serviceDurationSnapshot",
           "serviceSnapshot",
+          "rebook",
           "serviceSession",
           "shopName",
           "technicianName",
@@ -11901,6 +11939,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           serviceDurationSnapshot: { type: ["integer", "null"], minimum: 1 },
           serviceSnapshot: {
             description: "Immutable formal service payload captured when the order was created"
+          },
+          rebook: {
+            $ref: "#/components/schemas/BookingOrderRebook",
+            description:
+              "Current server-authoritative rebooking decision. Historical service identifiers and snapshots remain unchanged."
           },
           serviceSession: {
             oneOf: [{ $ref: "#/components/schemas/OrderServiceSession" }, { type: "null" }]
