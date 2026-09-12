@@ -541,7 +541,7 @@ describe("StoreDetailPage routed booking defaults", () => {
 
   it("keeps store booking capsule CTAs compact instead of relying on h-14 overrides", () => {
     expect(pageSource).toContain('const storeBookingCtaButtonClassName = "h-[52px] min-w-[176px] justify-center gap-2 px-7 text-center text-sm";');
-    expect(pageSource).toContain('const storeBottomActionRowClassName = "mx-auto flex w-full max-w-[888px] items-center gap-3 px-4 pb-2";');
+    expect(pageSource).toContain('const storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-3 pb-2";');
     expect(pageSource).toContain('const storeBottomSecondaryButtonClassName = "h-[52px] shrink-0 gap-2 px-5 shadow-[0_12px_26px_rgba(0,0,0,0.20)] backdrop-blur-xl";');
     expect(pageSource).toContain('const storeBottomPrimaryButtonClassName = "h-[52px] flex-1 gap-2 px-5 text-sm shadow-[0_12px_30px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]";');
     expect(pageSource).not.toContain("min-h-14 min-w-[188px]");

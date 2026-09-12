@@ -395,7 +395,7 @@ export function MobileShell({
       )}
     >
       <main
-        className="client-app-content-container safe-main-top min-h-[100dvh] overflow-x-hidden [container-type:inline-size] [overflow-x:clip]"
+        className="client-app-frame client-app-content-container safe-main-top min-h-[100dvh] overflow-x-hidden [container-type:inline-size] [overflow-x:clip]"
         onClickCapture={handlePageClickCapture}
         onDragStartCapture={handlePageDragStartCapture}
         onPointerCancel={handlePagePointerCancel}
@@ -414,14 +414,9 @@ export function MobileShell({
       {displayedNavItems.length > 0 ? (
         <nav
           className={cn(
-            "safe-nav-bottom client-bottom-nav pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full pt-2",
+            "safe-nav-bottom client-app-frame client-app-gutter client-bottom-nav pointer-events-none fixed inset-x-0 bottom-0 z-[100] pt-2",
             "border-t border-transparent bg-transparent text-[color:var(--client-text)] shadow-none"
           )}
-          style={{
-            maxWidth: "var(--client-bottom-nav-max-width, 880px)",
-            paddingLeft: "var(--client-bottom-nav-inline-gap, 12px)",
-            paddingRight: "var(--client-bottom-nav-inline-gap, 12px)"
-          }}
         >
           {featuredItem && (
             <NavLink

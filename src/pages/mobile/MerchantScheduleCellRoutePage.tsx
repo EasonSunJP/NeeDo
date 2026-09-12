@@ -136,7 +136,7 @@ export function MerchantScheduleCellRoutePage() {
           onClose={() => navigate("/merchant/schedule")}
           title={t("日程格详情")}
         />
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-28">
+        <main className="client-app-gutter min-h-0 flex-1 overflow-y-auto py-4 pb-28">
           {cell ? (
             <ScheduleCellDetailContent cell={cell} surface="mobile" />
           ) : (

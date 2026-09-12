@@ -392,7 +392,7 @@ export function ImChatRecordDetailPage({ api, scope = "user", language: requeste
         onClose={close}
         title={<span data-no-i18n="true">{title}</span>}
       />
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(24px+env(safe-area-inset-bottom))] pt-3">
+      <main className="client-app-gutter min-h-0 flex-1 overflow-y-auto pb-[calc(24px+env(safe-area-inset-bottom))] pt-3">
         {status === "loading" ? <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]">{translateText("正在读取聊天记录", language)}</p> : null}
         {status === "unavailable" ? <p className="py-10 text-center text-sm font-bold text-[color:var(--client-muted)]" role="status">{translateText("聊天记录不可用", language)}</p> : null}
         {status === "ready" ? (

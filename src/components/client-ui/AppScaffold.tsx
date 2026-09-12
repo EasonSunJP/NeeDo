@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn, hasLocalizedTitleText } from "../../lib/utils";
-import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../mobile/FloatingHomeHeader";
+import { clientAppMaxWidth, FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../mobile/FloatingHomeHeader";
 import { MobileShell, type MobileNavItem } from "../mobile/MobileShell";
 import { ShareNetworkIconPath } from "../ui/ShareNetworkIcon";
 import { TitleWithInfo } from "../ui/TitleWithInfo";
@@ -483,7 +483,7 @@ export function FloatingTopLeftControl({
 }) {
   return (
     <div className={cn("pointer-events-none fixed inset-x-0 safe-floating-top z-[80]", className)}>
-      <div className={cn("mx-auto flex w-full max-w-[480px] justify-start px-4", contentClassName)}>
+      <div className={cn("client-app-frame client-app-gutter flex justify-start", contentClassName)}>
         <div className="pointer-events-auto">{children}</div>
       </div>
     </div>
@@ -501,7 +501,7 @@ export function FloatingTopRightControl({
 }) {
   return (
     <div className={cn("pointer-events-none fixed inset-x-0 safe-floating-top z-[80]", className)}>
-      <div className={cn("mx-auto flex w-full max-w-[480px] justify-end px-4", contentClassName)}>
+      <div className={cn("client-app-frame client-app-gutter flex justify-end", contentClassName)}>
         <div className="pointer-events-auto">{children}</div>
       </div>
     </div>
@@ -590,7 +590,7 @@ export function PageScaffold({
 }) {
   return (
     <MobileShell className={className} navItems={navItems} showBottomNav={showBottomNav} showTopEdgeMask={showTopEdgeMask}>
-      <div className={cn("mx-auto w-full max-w-[1480px] px-4 pb-28 pt-4 sm:px-6 lg:px-8", contentClassName)}>{children}</div>
+      <div className={cn("client-app-frame client-app-gutter pb-28 pt-4", contentClassName)}>{children}</div>
     </MobileShell>
   );
 }
@@ -679,7 +679,7 @@ export function AppTopBar({
     <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5", containerClassName)}>
       <div
         className={cn(
-          "mx-auto grid w-full max-w-[1480px] items-center gap-x-3",
+          "grid w-full items-center gap-x-3",
           hideBackButton ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-[44px_minmax(0,1fr)_auto]"
         )}
       >
@@ -696,7 +696,7 @@ export function AppTopBar({
         {hasRightControls ? <div className={cn("row-start-1 flex h-11 shrink-0 items-center gap-2", actionsColumnClassName)}>{rightControls}</div> : null}
         {subtitle ? <p className={cn("mt-1 truncate text-[12px] font-semibold text-[color:var(--client-muted)]", subtitleColumnClassName)}>{subtitle}</p> : null}
       </div>
-      {footer ? <div className={cn("mx-auto mt-2 w-full max-w-[1480px]", footerClassName)}>{footer}</div> : null}
+      {footer ? <div className={cn("mt-2 w-full", footerClassName)}>{footer}</div> : null}
     </div>
   );
 
@@ -704,7 +704,7 @@ export function AppTopBar({
     <FloatingHomeHeader
       className="gap-0"
       frameClassName={cn("z-40", frameClassName)}
-      maxWidth="1600px"
+      maxWidth={clientAppMaxWidth}
       overlay={overlay}
       panelClassName={cn(appTopBarPanelClassName, className)}
       showSpacer={!fixed}
@@ -1161,7 +1161,7 @@ export function StickyBottomBar({
   style?: CSSProperties;
 }) {
   return (
-    <div className={cn("safe-nav-bottom client-bottom-action-shell fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-3 pb-3", className)} style={style}>
+    <div className={cn("safe-nav-bottom client-app-frame client-app-gutter client-bottom-action-shell fixed inset-x-0 bottom-0 z-40 pb-3", className)} style={style}>
       <div className={cn("rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[0_-18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl", panelClassName)}>
         {children}
       </div>

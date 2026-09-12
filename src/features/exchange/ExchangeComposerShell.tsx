@@ -105,7 +105,7 @@ export function ExchangeComposerShell({
       <main
         aria-label={title}
         aria-modal="true"
-        className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+9rem)] pt-[calc(env(safe-area-inset-top)+86px)]"
+        className="client-app-gutter scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+9rem)] pt-[calc(env(safe-area-inset-top)+86px)]"
         role="dialog"
       >
         {step === "edit" ? (

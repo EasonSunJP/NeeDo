@@ -25,7 +25,7 @@ export function MobileFullscreenPage({
     >
       <div
         className={cn(
-          "mx-auto relative flex h-full w-full max-w-[480px] flex-col overflow-hidden bg-[color:var(--client-bg)] shadow-soft",
+          "client-app-frame relative flex h-full flex-col overflow-hidden bg-[color:var(--client-bg)] shadow-soft",
           innerClassName
         )}
       >

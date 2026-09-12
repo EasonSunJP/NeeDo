@@ -29,7 +29,8 @@ describe("SupportPage", () => {
   it("anchors home on the left and orders on the right in a safe-area aligned action bar", () => {
     expect(source).toContain('data-testid="support-floating-actions"');
     expect(source).toContain("absolute inset-x-0 bottom-0");
-    expect(source).toContain("max-w-[480px]");
+    expect(source).toContain("client-app-gutter");
+    expect(source).not.toContain("max-w-[480px]");
     expect(source).toContain("grid-cols-2");
     expect(source).toContain("env(safe-area-inset-bottom)");
 

@@ -497,7 +497,7 @@ export function UserFavoritesPage({
         onClose={() => navigate("/me", { replace: true })}
         title={translateText("我的收藏", language)}
       />
-      <main className="mx-auto w-full max-w-[480px] px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-3 text-[color:var(--client-text)]">
+      <main className="client-app-frame client-app-gutter pb-[max(24px,env(safe-area-inset-bottom))] pt-3 text-[color:var(--client-text)]">
       {entityApi ? (
         <EntityFavoritesSection
           api={entityApi}

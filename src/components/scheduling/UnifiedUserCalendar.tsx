@@ -4704,12 +4704,12 @@ export function UnifiedCalendarEventDetailPage({
         showSpacer={false}
         title={headerTitle}
       />
-      <main className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+104px)] pt-[calc(env(safe-area-inset-top)+92px)]">
+      <main className="client-app-gutter scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom,0px)+104px)] pt-[calc(env(safe-area-inset-top)+92px)]">
         {detailMode === "participants" ? renderParticipants() : renderDetail()}
       </main>
 
       {detailMode === "detail" ? (
-        <footer className="safe-bottom fixed bottom-0 left-1/2 z-[122] w-full max-w-[480px] -translate-x-1/2 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
+        <footer className="safe-bottom client-app-frame client-app-gutter fixed inset-x-0 bottom-0 z-[122] pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
           {statusSheetOpen ? (
             <>
               <button
@@ -5058,7 +5058,7 @@ function CalendarEventEditorPage({
         </section>
       </div>
       </main>
-      <footer className="safe-bottom pointer-events-none fixed bottom-0 left-1/2 z-[132] w-full max-w-[480px] -translate-x-1/2 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-12">
+      <footer className="safe-bottom client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[132] pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-12">
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[140px] bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_76%,transparent)_42%,var(--client-bg)_100%)]" />
         <div className="pointer-events-auto relative z-10 grid grid-cols-[0.9fr_1.1fr] gap-2">
           <button

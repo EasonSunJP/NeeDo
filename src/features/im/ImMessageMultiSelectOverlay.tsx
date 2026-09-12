@@ -101,7 +101,7 @@ export function ImMessageMultiSelectOverlay({
   return (
     <>
       <header
-        className="fixed inset-x-0 top-0 z-[72] mx-auto flex h-[calc(env(safe-area-inset-top)+62px)] max-w-[880px] items-end justify-between border-b border-[color:color-mix(in_srgb,var(--client-line)_52%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 pb-3"
+        className="client-app-frame client-app-gutter fixed inset-x-0 top-0 z-[72] flex h-[calc(env(safe-area-inset-top)+62px)] items-end justify-between border-b border-[color:color-mix(in_srgb,var(--client-line)_52%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] pb-3"
       >
         <button
           className="focus-ring min-h-11 min-w-11 rounded-full px-2 text-sm font-black text-[color:var(--client-primary)]"
