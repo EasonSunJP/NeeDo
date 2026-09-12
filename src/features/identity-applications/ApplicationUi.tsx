@@ -42,7 +42,7 @@ export function ApplicationShell({
       contentClassName="pb-[calc(env(safe-area-inset-bottom)+10.5rem)]"
       headerFrameClassName="!z-[140]"
       headerOverlay={error ? (
-        <div className="pointer-events-none absolute inset-x-0 top-2 mx-auto w-full max-w-[880px]">
+        <div className="client-app-frame pointer-events-none absolute inset-x-0 top-2">
           <div aria-atomic="true" className="pointer-events-auto flex items-start gap-3 rounded-[20px] border border-[#ff4d5e] bg-[#26060b] px-4 py-3 text-sm font-semibold leading-6 text-white shadow-[0_12px_32px_rgba(255,36,64,0.26)]" role="alert">
             <span className="min-w-0 flex-1 break-words">{t(error)}</span>
             {onDismissError ? <button aria-label={t("关闭提示")} className="focus-ring inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#ffd6dc]" onClick={onDismissError} type="button"><AppIcon className="h-4 w-4" name="close" /></button> : null}
@@ -106,7 +106,7 @@ export function ApplicationFileUpload({ accept, file, label, onChange }: {
 
 export function ApplicationBottomAction({ children }: { children: ReactNode }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full max-w-[880px] px-[var(--client-bottom-nav-inline-gap,12px)] pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8">
+    <div className="client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[100] pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8">
       <div className="pointer-events-auto p-3">{children}</div>
     </div>
   );

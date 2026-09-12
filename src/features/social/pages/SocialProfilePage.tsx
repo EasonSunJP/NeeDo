@@ -259,13 +259,13 @@ function CoreReadTechnicianSocialProfileScene({
 
   return (
     <PageScaffold contentClassName="space-y-0 pb-32 pt-0" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
-      <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+      <div className="client-app-breakout">
         <SocialProfileTopBar actorKey={actorKey} onBack={onClose} postCount={postCount} profile={profile} scope={scope} />
       </div>
 
       <div>
         <SocialProfileHeader actorKey={actorKey} profile={profile} relatedShopEntries={relatedShopEntries} scope={scope} />
-        <div className="-mx-4 px-3 py-3 sm:-mx-6 sm:px-4 lg:-mx-8">
+        <div className="client-app-breakout client-app-gutter py-3">
           <SocialProfileTabs onChange={setTab} value={tab} />
         </div>
       </div>
@@ -398,13 +398,13 @@ function SocialProfileScene({
   );
   return (
     <PageScaffold contentClassName="space-y-0 pb-32 pt-0" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
-      <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+      <div className="client-app-breakout">
         <SocialProfileTopBar actorKey={actorKey} onBack={onClose} postCount={postCount} profile={profile} scope={scope} />
       </div>
 
       <div>
         <SocialProfileHeader actorKey={actorKey} profile={profile} scope={scope} />
-        <div className="-mx-4 px-3 py-3 sm:-mx-6 sm:px-4 lg:-mx-8">
+        <div className="client-app-breakout client-app-gutter py-3">
           <SocialProfileTabs onChange={setTab} value={tab} />
         </div>
       </div>

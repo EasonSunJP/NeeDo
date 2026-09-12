@@ -105,6 +105,7 @@ import {
   UserSettingsLanguagePage,
   UserSettingsNotificationsPage,
   UserSettingsNdpGuidePage,
+  UserSettingsPaymentMethodsPage,
   UserSettingsPage,
   UserSettingsPortalPage,
   UserSettingsPrivacyPage,
@@ -1320,6 +1321,7 @@ export default function App() {
               <Route path="/me/settings/verification" element={protect("user", <UserSettingsVerificationPage />)} />
               <Route path="/me/settings/service-range" element={protect("user", <UserSettingsServiceRangePage />)} />
               <Route path="/me/settings/account" element={protect("user", <UserSettingsAccountPage />)} />
+              <Route path="/me/settings/payment-methods" element={protect("user", <UserSettingsPaymentMethodsPage />)} />
               <Route path="/me/settings/notifications" element={protect("user", <UserSettingsNotificationsPage />)} />
               <Route path="/me/settings/help" element={protect("user", <UserSettingsHelpPage />)} />
               <Route path="/me/settings/about" element={protect("user", <UserSettingsAboutPage />)} />

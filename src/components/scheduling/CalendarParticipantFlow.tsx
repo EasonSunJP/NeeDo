@@ -306,7 +306,7 @@ export function CalendarParticipantFlow({
             ) : null}
           </div>
         ) : (
-          <div className="mx-auto max-w-[720px] space-y-3">
+          <div className="client-app-frame space-y-3">
             {busyError ? (
               <p className="rounded-[16px] border border-red-300 bg-red-50 px-3 py-2 text-xs font-black text-red-700" role="alert">
                 <span>参加者占用时间读取失败：</span><span data-no-i18n>{busyError}</span>
@@ -334,7 +334,7 @@ export function CalendarParticipantFlow({
         )}
       </main>
 
-      <footer className="safe-bottom pointer-events-none fixed bottom-0 left-1/2 z-[140] w-full max-w-[720px] -translate-x-1/2 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-12">
+      <footer className="safe-bottom client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[140] pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-12">
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[140px] bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_76%,transparent)_42%,var(--client-bg)_100%)]" />
         <div className="pointer-events-auto relative z-10 grid grid-cols-2 gap-2">
           <button

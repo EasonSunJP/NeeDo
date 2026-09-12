@@ -104,7 +104,12 @@ const platformMembershipTierLabels: Record<
   black_diamond: "黑钻会员",
 };
 
-const accountSettings = [
+const accountSettings: Array<{
+  caption: string;
+  label: string;
+  test?: boolean;
+  to?: string;
+}> = [
   {
     label: "账号设置",
     caption: "手机号、邮箱、登录密码",
@@ -112,13 +117,13 @@ const accountSettings = [
   },
   {
     label: "支付方式",
-    caption: "银行卡、PayPay、现金",
-    to: "/me/settings/account",
+    caption: "现金、NDP 与外部渠道状态",
+    to: "/me/settings/payment-methods",
   },
   {
     label: "发票记录",
-    caption: "企业抬头与历史发票",
-    to: "/me/settings/account",
+    caption: "发票功能暂未开放",
+    test: true,
   },
   {
     label: "通知设置",
@@ -130,7 +135,7 @@ const accountSettings = [
     caption: "登录设备、数据授权",
     to: "/me/settings/account",
   },
-  { label: "联系客服", caption: "退款、改期、投诉风控", to: "/support" },
+  { label: "联系客服", caption: "退款、改期、投诉风控", to: "/support", test: true },
 ];
 
 const pagePanelClassName =
@@ -669,7 +674,7 @@ function UserCenterDataStatus({
           showSpacer={false}
           title="个人中心"
         />
-        <main className="px-4 pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
+        <main className="client-app-gutter pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
           <section
             className={cn(pagePanelClassName, "py-8 text-center")}
             aria-live="polite"
@@ -1368,7 +1373,7 @@ function CompleteUserCenterPage({
 
         <main
           className={cn(
-            "scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pt-[calc(env(safe-area-inset-top)+86px)]",
+            "client-app-gutter scrollbar-none min-h-0 flex-1 overflow-y-auto pt-[calc(env(safe-area-inset-top)+86px)]",
             isEditingProfile
               ? "scroll-pb-[calc(132px+env(safe-area-inset-bottom))] pb-[calc(132px+env(safe-area-inset-bottom))]"
               : "pb-[calc(24px+env(safe-area-inset-bottom))]",
@@ -1998,35 +2003,58 @@ function CompleteUserCenterPage({
             <section className={pagePanelClassName} data-testid="user-center-account-settings">
               <h2 className="font-black">账号与服务</h2>
               <div className="mt-3 grid gap-2">
-                {accountSettings.map((entry) => (
-                  <Link
-                    className={cn(
-                      pageInnerCardClassName,
-                      "grid min-h-[76px] w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3",
-                    )}
-                    key={entry.label}
-                    to={entry.to}
-                  >
-                    <div className="col-start-1 row-start-1 min-w-0 text-left">
-                      <strong className="block text-sm">{entry.label}</strong>
-                      <p className="mt-1 break-words text-xs leading-5 text-ink/50">
-                        {entry.caption}
-                      </p>
-                    </div>
-                    <span className="col-start-2 row-start-1 justify-self-end text-sm font-black text-ink/35">›</span>
-                  </Link>
-                ))}
+                {accountSettings.map((entry) => {
+                  const content = (
+                    <>
+                      {entry.test ? (
+                        <TestFeatureBadge className="pointer-events-none absolute -right-1 -top-1 z-20 min-h-4 px-1.5 py-0 text-[8px]" />
+                      ) : null}
+                      <div className="col-start-1 row-start-1 min-w-0 text-left">
+                        <strong className="block text-sm">{entry.label}</strong>
+                        <p className="mt-1 break-words text-xs leading-5 text-ink/50">
+                          {entry.caption}
+                        </p>
+                      </div>
+                      <span className="col-start-2 row-start-1 justify-self-end text-sm font-black text-ink/35">
+                        {entry.to ? "›" : "—"}
+                      </span>
+                    </>
+                  );
+                  const className = cn(
+                    pageInnerCardClassName,
+                    "relative grid min-h-[76px] w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3",
+                  );
+
+                  if (!entry.to) {
+                    return (
+                      <div
+                        aria-disabled="true"
+                        className={cn(className, "cursor-not-allowed opacity-65")}
+                        data-testid="user-center-invoice-entry"
+                        key={entry.label}
+                      >
+                        {content}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <Link className={className} key={entry.label} to={entry.to}>
+                      {content}
+                    </Link>
+                  );
+                })}
               </div>
             </section>
           </div>
         </main>
         {isEditingProfile ? (
           <div
-            className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8"
+            className="client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[80] pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8"
             data-testid="user-profile-save-action"
           >
             <button
-              className="pointer-events-auto mx-auto block w-full max-w-[620px] rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-needo-text)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60"
+              className="pointer-events-auto block w-full rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-needo-text)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60"
               disabled={isSavingProfile}
               onClick={() => void saveProfileEdit()}
               type="button"

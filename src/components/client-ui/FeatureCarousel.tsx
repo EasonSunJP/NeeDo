@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
 
-export const featureCarouselFrameClassName = "relative mx-auto w-full max-w-[856px]";
+export const featureCarouselFrameClassName = "client-app-panel-frame relative";
 
 export type FeatureCarouselSlide = {
   id: string;

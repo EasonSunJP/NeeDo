@@ -1241,7 +1241,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
             </div>
           ) : null}
 
-          <footer className="safe-nav-bottom pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] bg-gradient-to-t from-[color:var(--client-bg)] via-[color:var(--client-bg)] to-transparent px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-14">
+          <footer className="safe-nav-bottom client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-[color:var(--client-bg)] via-[color:var(--client-bg)] to-transparent pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-14">
             <div className="pointer-events-auto space-y-3">
               <div className="grid grid-cols-[minmax(0,1fr),auto] items-end gap-3">
                 <div className="min-w-0">

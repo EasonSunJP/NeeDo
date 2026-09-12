@@ -93,7 +93,7 @@ function TechnicianSchedulePageShell({
   const { isNight } = useClientTheme();
   return (
     <MobileShell navItems={technicianNavItems} showBottomNav={showBottomNav}>
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
+      <div className="client-app-frame flex min-h-[100dvh] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
         {showHeader ? (
           <MobileFullscreenHeader
             action={action}

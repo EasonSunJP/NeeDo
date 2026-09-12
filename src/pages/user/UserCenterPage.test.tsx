@@ -11,6 +11,15 @@ describe("UserCenterPage", () => {
     expect(source).not.toContain('to: "/categories?type=store"');
   });
 
+  it("routes payment-method management to its own settings page", () => {
+    expect(source).toMatch(
+      /label: "支付方式",[^}]*caption: "现金、NDP 与外部渠道状态",[^}]*to: "\/me\/settings\/payment-methods"/u,
+    );
+    expect(source).not.toMatch(
+      /label: "支付方式",[^}]*to: "\/me\/settings\/account"/u,
+    );
+  });
+
   it("has no legacy mock or static-preview fallback in the formal user center", () => {
     expect(source).not.toContain('from "../../data/mock"');
     expect(source).not.toContain("legacyOrderShortcuts");
@@ -61,6 +70,15 @@ describe("UserCenterPage", () => {
     expect(source).not.toContain('caption: "查看已加入店铺与会员卡状态"');
     expect(source).toContain("min-h-[74px]");
     expect(source).toContain("<InfoTooltipTrigger");
+  });
+
+  it("marks the contact-support account entry with the shared Test badge", () => {
+    expect(source).toMatch(
+      /label: "联系客服", caption: "退款、改期、投诉风控", to: "\/support", test: true/u,
+    );
+    expect(source).toMatch(
+      /accountSettings\.map\([\s\S]*?entry\.test[\s\S]*?<TestFeatureBadge/u,
+    );
   });
 
   it("places eKYC, shop membership and NeeDo benefits in the requested lower-grid order", () => {

@@ -67,7 +67,6 @@ export function UnifiedChatHomePage({
       <FloatingHomeHeader
         className="gap-0"
         frameClassName="z-40"
-        maxWidth="880px"
         panelClassName={cn(floatingHeaderGlassPanelClassName, "text-[color:var(--client-text)]")}
         showSpacer={false}
         spacerGapPx={0}

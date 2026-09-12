@@ -1817,7 +1817,7 @@ export function DispatchOverviewWorkspace({
 
       {isMobileSurface ? (
         <div
-          className="safe-bottom fixed bottom-0 left-1/2 z-[80] w-full max-w-[480px] -translate-x-1/2 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]"
+          className="safe-bottom client-app-frame client-app-gutter fixed inset-x-0 bottom-0 z-[80] pb-[calc(env(safe-area-inset-bottom,0px)+12px)]"
           data-testid="merchant-current-schedule-detail-action"
         >
           <Button
@@ -1870,7 +1870,7 @@ export function DispatchOverviewWorkspace({
             showSpacer={false}
             title="周期排班表"
           />
-          <div className="scrollbar-none client-mobile-schedule-detail__refractive-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-3">
+          <div className="client-app-gutter scrollbar-none client-mobile-schedule-detail__refractive-scroll min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-3">
             {usesFormalMerchantSchedule && (formalScheduleLoading || formalScheduleError) ? (
               <div aria-live="polite" className="rounded-2xl border border-line p-3 text-sm">
                 {t(formalScheduleLoading ? "加载正式排班中" : "本店经营数据加载失败，请检查网络后重试")}
@@ -1909,7 +1909,7 @@ export function DispatchOverviewWorkspace({
             subtitle={`${currentSelectedContactStatusItem.dateLabel} · ${currentSelectedContactStatusItem.markerLabel}`}
             title="异常信息详情"
           />
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">
+          <div className="client-app-gutter min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">
             <ContactStatusDetailContent
               extraTimeline={contactStatusExtraTimeline[currentSelectedContactStatusItem.id] ?? []}
               item={currentSelectedContactStatusItem}

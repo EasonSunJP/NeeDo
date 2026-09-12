@@ -60,6 +60,40 @@ function matchesSearch(query: string, values: Array<string | null | undefined>) 
   return values.some((value) => value?.toLocaleLowerCase().includes(query));
 }
 
+const formalServicePublicIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function entityFavoriteDetailPath(
+  favorite: EntityFavoriteListItem,
+): string | undefined {
+  const { publicId, targetType } = favorite;
+  if (typeof publicId !== "string") return undefined;
+
+  if (
+    favorite.card.kind === "shop" &&
+    targetType === "shop" &&
+    /^shop\d{10}$/u.test(publicId)
+  ) {
+    return `/stores/${publicId}`;
+  }
+  if (
+    favorite.card.kind === "technician" &&
+    targetType === "technician" &&
+    /^s\d{10}$/u.test(publicId)
+  ) {
+    return `/profiles/technician/${publicId}`;
+  }
+  if (
+    favorite.card.kind === "service" &&
+    targetType === "service" &&
+    formalServicePublicIdPattern.test(publicId)
+  ) {
+    return `/services/${publicId}`;
+  }
+
+  return undefined;
+}
+
 function FavoritesSection({
   children,
   empty,
@@ -94,6 +128,7 @@ function EntityFavoriteCardView({
   favorite: EntityFavoriteListItem;
   language: Language;
 }) {
+  const detailTo = entityFavoriteDetailPath(favorite);
   if (favorite.card.kind === "service") {
     return (
       <UnifiedServiceInfoCard
@@ -114,6 +149,7 @@ function EntityFavoriteCardView({
           description: favorite.card.description,
           tags: favorite.card.tags,
         }}
+        detailTo={detailTo}
         language={language}
       />
     );
@@ -155,6 +191,7 @@ function EntityFavoriteCardView({
               specialReviewTags: [],
             }
       }
+      detailTo={detailTo}
       language={language}
     />
   );
@@ -497,7 +534,7 @@ export function UserFavoritesPage({
         onClose={() => navigate("/me", { replace: true })}
         title={translateText("我的收藏", language)}
       />
-      <main className="mx-auto w-full max-w-[480px] px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-3 text-[color:var(--client-text)]">
+      <main className="client-app-frame client-app-gutter pb-[max(24px,env(safe-area-inset-bottom))] pt-3 text-[color:var(--client-text)]">
       {entityApi ? (
         <EntityFavoritesSection
           api={entityApi}

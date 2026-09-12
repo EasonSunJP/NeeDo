@@ -2944,7 +2944,7 @@ function ImFriendProfileActionBar({
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[75] mx-auto w-full max-w-[480px] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+    <div className="client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[75] pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
       <div className="pointer-events-auto flex gap-3">
         {actions.includes("cancel") ? (
           <Button className="flex-1" onClick={onCancel} variant="secondary">{t("取消")}</Button>
@@ -3151,7 +3151,7 @@ export function ImDirectoryProfilePage() {
         onClose={closeDirectoryProfile}
         title={t("联系人信息")}
       />
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-32 pt-4">
+      <main className="client-app-gutter min-h-0 flex-1 overflow-y-auto pb-32 pt-4">
         {isFriendProfile ? (
           <div className="grid min-h-48 place-items-center px-4 text-center">
             {contactInfoRedirectFailed ? (
@@ -4190,7 +4190,7 @@ export function ImSearchPage() {
         </FloatingHomeHeader>
 
         {!searching ? (
-          <div className="mx-auto w-full max-w-[880px] px-7 pt-4">
+          <div className="client-app-frame client-app-gutter pt-4">
             <p className="text-center text-sm font-black text-[color:color-mix(in_srgb,var(--client-text)_76%,var(--client-muted))]">聊天快速搜索</p>
             <div className="mt-9 grid grid-cols-3 gap-y-8">
               {imConversationQuickSearchItems.map((item, index) => (
@@ -4210,7 +4210,7 @@ export function ImSearchPage() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-[880px] space-y-4 px-4 py-4">
+          <div className="client-app-frame client-app-gutter space-y-4 py-4">
           {result.contacts.length > 0 ? (
             <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
               <SectionTag>联系人</SectionTag>
@@ -4787,18 +4787,47 @@ export function ImContactTagsPage() {
 
 export function ImServiceAccountsPage() {
   const { scope, store, config } = useImRuntime();
+  const { language } = useOptionalI18n();
   const navigate = useNavigate();
   const contacts = getServiceContacts(store);
+  const translate = (source: string) => translateImUiText(source, language);
+
+  const content = store.status === "error" ? (
+    <ImEmptyState
+      caption={translate("请稍后重试。")}
+      title={translate("服务号加载失败")}
+    />
+  ) : store.status !== "ready" ? (
+    <ImEmptyState
+      caption={translate("请稍候。")}
+      title={translate("正在加载服务号")}
+    />
+  ) : contacts.length === 0 ? (
+    <ImEmptyState
+      caption={translate("正式服务号能力尚未接入，当前没有可展示的服务号。")}
+      title={translate("暂无服务号")}
+    />
+  ) : (
+    contacts.map((contact) => {
+      const user = store.usersById[contact.targetUserId];
+      const contactInfoTarget = getContactInfoSettingsTarget(config, contact);
+      return user ? <ContactRow avatarTo={resolveImProfilePath(scope, user)} caption={buildContactCaption(user, contact)} contact={contact} key={contact.id} to={contactInfoTarget} user={user} /> : null;
+    })
+  );
 
   return (
     <ImStandaloneShell>
-      <ImTopBar onBack={() => navigate(config.routes.contacts)} title="服务号" />
+      <ImTopBar
+        onBack={() => navigate(config.routes.contacts)}
+        title={(
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate">{translate("服务号")}</span>
+            <TestFeatureBadge className="min-h-4 shrink-0 px-1.5 py-0 text-[8px]" />
+          </span>
+        )}
+      />
       <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-        {contacts.map((contact) => {
-          const user = store.usersById[contact.targetUserId];
-          const contactInfoTarget = getContactInfoSettingsTarget(config, contact);
-          return user ? <ContactRow avatarTo={resolveImProfilePath(scope, user)} caption={buildContactCaption(user, contact)} contact={contact} key={contact.id} to={contactInfoTarget} user={user} /> : null;
-        })}
+        {content}
       </div>
     </ImStandaloneShell>
   );
@@ -9404,7 +9433,7 @@ export function ImNewConversationPage() {
               privacyModeEnabled ? "h-[436px]" : "h-[316px]"
             )}
           />
-          <div className="pointer-events-auto relative mx-auto w-full min-w-0 max-w-[880px] space-y-3 overflow-x-hidden [overflow-x:clip]">
+          <div className="client-app-frame pointer-events-auto relative min-w-0 space-y-3 overflow-x-hidden [overflow-x:clip]">
             <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 py-3 backdrop-blur-xl">
               <div className="flex min-w-0 items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">

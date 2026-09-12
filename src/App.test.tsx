@@ -142,6 +142,18 @@ describe("user profile settings compatibility route", () => {
   });
 });
 
+describe("user payment-method settings route", () => {
+  it("mounts a dedicated protected page without redirecting to checkout or account security", () => {
+    expect(appSource).toContain("UserSettingsPaymentMethodsPage");
+    expect(appSource).toContain(
+      'path="/me/settings/payment-methods" element={protect("user", <UserSettingsPaymentMethodsPage />)}',
+    );
+    expect(appSource).not.toContain(
+      '<Route path="/me/settings/payment-methods" element={<Navigate',
+    );
+  });
+});
+
 describe("legal document catalog routes", () => {
   it("keeps merchant and Affiliate agreement catalog links on real protected pages", () => {
     expect(appSource).toContain('path="/me/settings/merchant-agreement"');

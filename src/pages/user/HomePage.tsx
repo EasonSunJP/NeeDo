@@ -1234,7 +1234,7 @@ export function HomePage() {
         </div>
       </FloatingHomeHeader>
 
-      <div className="space-y-5 px-3 pb-28 pt-2">
+      <div className="client-app-gutter space-y-5 pb-28 pt-2">
         {activeReminder ? (
           <ReminderBanner
             highPriority={activeReminder.minutesUntil <= 10}
