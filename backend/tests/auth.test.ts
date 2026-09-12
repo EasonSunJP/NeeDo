@@ -2,7 +2,9 @@ import { compare, hash } from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { createApp, type AppDependencies } from "../src/app";
-import { env } from "../src/config/env";
+import { createMerchantApp } from "../src/apps/merchant-app";
+import { createOpsApp } from "../src/apps/ops-app";
+import { env, type AppConfig } from "../src/config/env";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { UserBootstrapKeyAllocationExhaustedError } from "../src/services/user-bootstrap-key.service";
 import { AppError } from "../src/utils/app-error";
@@ -299,8 +301,12 @@ class InMemoryVerificationChallengeStore {
 }
 
 const createAuthFixture = async (
-  config?: Parameters<typeof createApp>[0],
-  dependencyOverrides: Partial<AppDependencies> = {}
+  config?: AppConfig,
+  dependencyOverrides: Partial<AppDependencies> = {},
+  appFactory: (
+    config: AppConfig,
+    dependencies: AppDependencies
+  ) => ReturnType<typeof createApp> = createApp
 ) => {
   const sessionStore = new InMemoryAuthSessionStore();
   const deliveredOtps: Array<{ email: string; otp: string }> = [];
@@ -667,7 +673,7 @@ const createAuthFixture = async (
     })
   };
 
-  const app = createApp(config, {
+  const app = appFactory(config ?? env, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: repository,
     authSessionStore: sessionStore,
@@ -1767,6 +1773,63 @@ describe("verified email registration and formal password authentication", () =>
     });
     expect(response.body.data.accessToken).not.toBe(loginResponse.body.data.accessToken);
   });
+
+  it.each([
+    ["compatibility API", createApp],
+    ["operations API", createOpsApp],
+    ["merchant API", createMerchantApp]
+  ])(
+    "uses the database session generation across login, refresh, identity switch, and logout on the %s",
+    async (_name, appFactory) => {
+      const fixture = await createAuthFixture(undefined, {}, appFactory);
+      const oldLogin = await request(fixture.app)
+        .post("/api/v1/auth/login")
+        .send({ loginIdentifier: "multi@example.com", password: "Abcd@1234" })
+        .expect(200);
+
+      fixture.multiPortalUser.sessionGeneration += 1;
+
+      await request(fixture.app)
+        .get("/api/v1/auth/me")
+        .set("Authorization", `Bearer ${oldLogin.body.data.accessToken}`)
+        .expect(401)
+        .expect((response) => {
+          expect(response.body.message).toBe("error.auth.token_invalid");
+        });
+      await request(fixture.app)
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: oldLogin.body.data.refreshToken })
+        .expect(401)
+        .expect((response) => {
+          expect(response.body.message).toBe("error.auth.token_invalid");
+        });
+
+      const currentLogin = await request(fixture.app)
+        .post("/api/v1/auth/login")
+        .send({ loginIdentifier: "multi@example.com", password: "Abcd@1234" })
+        .expect(200);
+      await request(fixture.app)
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: currentLogin.body.data.refreshToken })
+        .expect(200);
+
+      const switched = await request(fixture.app)
+        .post("/api/v1/auth/switch-identity")
+        .set("Authorization", `Bearer ${currentLogin.body.data.accessToken}`)
+        .send({ refreshToken: currentLogin.body.data.refreshToken, identityId: 51 })
+        .expect(200);
+
+      await request(fixture.app)
+        .post("/api/v1/auth/logout")
+        .set("Authorization", `Bearer ${switched.body.data.accessToken}`)
+        .send({ refreshToken: switched.body.data.refreshToken })
+        .expect(200);
+      await request(fixture.app)
+        .post("/api/v1/auth/refresh")
+        .send({ refreshToken: switched.body.data.refreshToken })
+        .expect(401);
+    }
+  );
 
   it("returns /auth/me permissions and rejects a blacklisted access token after logout", async () => {
     const fixture = await createAuthFixture();

@@ -30,7 +30,12 @@ describeRedis("Redis auth-store Lua integration", () => {
     `${marker}-max-old`,
     `${marker}-max-new`,
     `${marker}-disconnect-old`,
-    `${marker}-disconnect-new`
+    `${marker}-disconnect-new`,
+    `${marker}-lagging-old`,
+    `${marker}-lagging-new`,
+    `${marker}-lagging-stale`,
+    `${marker}-lagging-invalid-negative`,
+    `${marker}-lagging-invalid-fractional`
   ];
   const challengeIds: string[] = [];
   const nonceIds: string[] = [];
@@ -72,6 +77,7 @@ describeRedis("Redis auth-store Lua integration", () => {
     registrationCooldownKey(registrationCancelEmail),
     ...challengeIds.map((challengeId) => `auth:verification:email:${challengeId}`),
     ...nonceIds.map((challengeId) => `auth:verification:google-nonce:${challengeId}`),
+    `auth:v2:session:generation:${userId}`,
     `auth:v2:refresh:user:${userId}`,
     `auth:v2:login:account:fail:${userId}`,
     `auth:v2:login:account:lock:${userId}`,
@@ -175,6 +181,64 @@ describeRedis("Redis auth-store Lua integration", () => {
     await sessionStore.revokeAllRefreshTokens(userId);
     await expect(sessionStore.hasRefreshToken(userId, jtis[1])).resolves.toBe(false);
     await expect(sessionStore.hasRefreshToken(userId, jtis[2])).resolves.toBe(false);
+  });
+
+  it("fast-forwards a lagging logical database and revokes its old-generation sessions", async () => {
+    await sessionStore.revokeAllRefreshTokens(userId, 0);
+    await expect(sessionStore.storeRefreshToken(userId, jtis[14]!, 600, 0)).resolves.toBe(true);
+
+    await expect(sessionStore.storeRefreshToken(userId, jtis[15]!, 600, 4)).resolves.toBe(true);
+
+    await expect(sessionStore.getSessionGeneration(userId)).resolves.toBe(4);
+    await expect(sessionStore.hasRefreshToken(userId, jtis[14]!)).resolves.toBe(false);
+    await expect(sessionStore.hasRefreshToken(userId, jtis[15]!)).resolves.toBe(true);
+    await expect(sessionStore.storeRefreshToken(userId, jtis[16]!, 600, 3)).resolves.toBe(false);
+    await expect(sessionStore.hasRefreshToken(userId, jtis[16]!)).resolves.toBe(false);
+  });
+
+  it.each([
+    ["negative", "-1", 17],
+    ["fractional", "1.5", 18]
+  ])("fails closed for a %s stored session generation", async (_name, invalidGeneration, jtiIndex) => {
+    await client!.set(`auth:v2:session:generation:${userId}`, invalidGeneration);
+
+    await expect(sessionStore.storeRefreshToken(userId, jtis[jtiIndex]!, 600, 4)).resolves.toBe(
+      false
+    );
+    await expect(sessionStore.hasRefreshToken(userId, jtis[jtiIndex]!)).resolves.toBe(false);
+  });
+
+  it.each([
+    ["compatibility API", 0],
+    ["operations API", 1],
+    ["merchant API", 2]
+  ])("reconciles the %s Redis database from the shared database generation", async (_name, database) => {
+    const redisUrl = new URL(env.REDIS_URL);
+    redisUrl.pathname = `/${database}`;
+    const logicalClient = createRedisClient({ ...env, REDIS_URL: redisUrl.toString() });
+    extraClients.push(logicalClient);
+    await logicalClient.connect();
+    const logicalStore = new RedisAuthSessionStore(() => logicalClient);
+    const oldJti = `${marker}-db-${database}-old`;
+    const currentJti = `${marker}-db-${database}-current`;
+    const keys = [
+      `auth:v2:session:generation:${userId}`,
+      `auth:v2:refresh:user:${userId}`,
+      `auth:v2:refresh:${userId}:${oldJti}`,
+      `auth:v2:refresh:${userId}:${currentJti}`
+    ];
+
+    try {
+      await logicalClient.del(keys);
+      await expect(logicalStore.storeRefreshToken(userId, oldJti, 600, 0)).resolves.toBe(true);
+      await expect(logicalStore.storeRefreshToken(userId, currentJti, 600, 4)).resolves.toBe(true);
+
+      await expect(logicalStore.getSessionGeneration(userId)).resolves.toBe(4);
+      await expect(logicalStore.hasRefreshToken(userId, oldJti)).resolves.toBe(false);
+      await expect(logicalStore.hasRefreshToken(userId, currentJti)).resolves.toBe(true);
+    } finally {
+      await logicalClient.del(keys);
+    }
   });
 
   it("enforces reservation CAS, exact cancellation cleanup, and immutable account locks in Redis", async () => {

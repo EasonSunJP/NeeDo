@@ -88,12 +88,24 @@ class FakeRedis {
     }
     if (script.includes("auth-refresh-store")) {
       const [refreshKey, userIndexKey, generationKey] = options.keys;
-      const [jti, ttl, requestedGeneration] = options.arguments;
+      const [jti, ttl, requestedGeneration, refreshKeyPrefix] = options.arguments;
       const currentGeneration = await this.get(generationKey);
-      if (currentGeneration === null) {
-        await this.set(generationKey, requestedGeneration);
-      } else if (currentGeneration !== requestedGeneration) {
+      const parsedCurrentGeneration = Number(currentGeneration);
+      if (
+        currentGeneration !== null &&
+        (!Number.isInteger(parsedCurrentGeneration) ||
+          parsedCurrentGeneration < 0 ||
+          parsedCurrentGeneration > Number(requestedGeneration))
+      ) {
         return ["generation_mismatch"];
+      }
+      if (currentGeneration === null || parsedCurrentGeneration < Number(requestedGeneration)) {
+        const indexedJtis = await this.sMembers(userIndexKey);
+        await this.del(
+          userIndexKey,
+          ...indexedJtis.map((indexedJti) => `${refreshKeyPrefix}${indexedJti}`)
+        );
+        await this.set(generationKey, requestedGeneration);
       }
       await this.set(refreshKey, "1", { EX: Number(ttl) });
       await this.sAdd(userIndexKey, jti);
@@ -502,15 +514,41 @@ describe("RedisAuthSessionStore refresh-session index", () => {
     const client = new FakeRedis();
     const store = new RedisAuthSessionStore(() => client as never);
 
-    await expect(store.storeRefreshToken(7, "old-session", 600, 0)).resolves.toBe(true);
-    await expect(store.storeRefreshToken(7, "blocked-session", 600, 1)).resolves.toBe(false);
+    await expect(store.storeRefreshToken(7, "old-session", 600, 1)).resolves.toBe(true);
+    await expect(store.storeRefreshToken(7, "blocked-session", 600, 0)).resolves.toBe(false);
 
-    await store.revokeAllRefreshTokens(7, 1);
+    await store.revokeAllRefreshTokens(7, 2);
 
-    expect(await client.get("auth:v2:session:generation:7")).toBe("1");
+    expect(await client.get("auth:v2:session:generation:7")).toBe("2");
     await expect(store.hasRefreshToken(7, "old-session")).resolves.toBe(false);
-    await expect(store.storeRefreshToken(7, "new-session", 600, 1)).resolves.toBe(true);
+    await expect(store.storeRefreshToken(7, "new-session", 600, 2)).resolves.toBe(true);
   });
+
+  it("atomically fast-forwards a lagging service generation before storing a new login", async () => {
+    const client = new FakeRedis();
+    const store = new RedisAuthSessionStore(() => client as never);
+
+    await expect(store.storeRefreshToken(7, "compat-session", 600, 0)).resolves.toBe(true);
+    await expect(store.storeRefreshToken(7, "merchant-login", 600, 4)).resolves.toBe(true);
+
+    expect(await client.get("auth:v2:session:generation:7")).toBe("4");
+    await expect(store.hasRefreshToken(7, "compat-session")).resolves.toBe(false);
+    await expect(store.hasRefreshToken(7, "merchant-login")).resolves.toBe(true);
+    await expect(store.storeRefreshToken(7, "stale-login", 600, 3)).resolves.toBe(false);
+    await expect(store.hasRefreshToken(7, "stale-login")).resolves.toBe(false);
+  });
+
+  it.each(["-1", "1.5"])(
+    "fails closed for an invalid stored session generation of %s",
+    async (invalidGeneration) => {
+      const client = new FakeRedis();
+      client.values.set("auth:v2:session:generation:7", invalidGeneration);
+      const store = new RedisAuthSessionStore(() => client as never);
+
+      await expect(store.storeRefreshToken(7, "new-session", 600, 4)).resolves.toBe(false);
+      await expect(store.hasRefreshToken(7, "new-session")).resolves.toBe(false);
+    }
+  );
 
   it("ignores legacy unindexed refresh keys and uses the v2 session namespace", async () => {
     const client = new FakeRedis();

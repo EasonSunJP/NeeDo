@@ -318,7 +318,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
         this.refreshUserKey(userId),
         this.sessionGenerationKey(userId)
       ],
-      [jti, String(ttlSeconds), String(generation)]
+      [jti, String(ttlSeconds), String(generation), this.refreshKey(userId, "")]
     );
     return result === "ok";
   }
@@ -860,8 +860,23 @@ const MERCHANT_SHOP_SWITCH_AUDIT_CONSUMER = "auth-merchant-shop-switch-audit-wor
 const REFRESH_STORE_LUA = `
 -- auth-refresh-store
 local generation = redis.call('GET', KEYS[3])
-if not generation then redis.call('SET', KEYS[3], ARGV[3]); generation = ARGV[3] end
-if generation ~= ARGV[3] then return {'generation_mismatch'} end
+local requestedGeneration = tonumber(ARGV[3])
+local currentGeneration = generation and tonumber(generation) or nil
+if not requestedGeneration or requestedGeneration < 0 or requestedGeneration % 1 ~= 0 then
+  return {'generation_mismatch'}
+end
+if generation and (not currentGeneration or currentGeneration < 0 or currentGeneration % 1 ~= 0) then
+  return {'generation_mismatch'}
+end
+if currentGeneration and currentGeneration > requestedGeneration then
+  return {'generation_mismatch'}
+end
+if not currentGeneration or currentGeneration < requestedGeneration then
+  local jtis = redis.call('SMEMBERS', KEYS[2])
+  redis.call('DEL', KEYS[2])
+  for _, indexedJti in ipairs(jtis) do redis.call('DEL', ARGV[4] .. indexedJti) end
+  redis.call('SET', KEYS[3], ARGV[3])
+end
 redis.call('SET', KEYS[1], '1', 'EX', ARGV[2])
 redis.call('SADD', KEYS[2], ARGV[1])
 local indexTtl = redis.call('TTL', KEYS[2])
