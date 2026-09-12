@@ -4230,6 +4230,7 @@ export const translations: TranslationMap = {
   "发放时间": { "zh-Hant": "發放時間", ja: "配送時間", en: "Distribution time", ko: "배포 시간" },
   "发放数量": { "zh-Hant": "發放數量", ja: "分布量", en: "Distribution quantity", ko: "유통량" },
   "发票": { "zh-Hant": "發票", ja: "請求書", en: "Bill", ko: "청구서" },
+  "发票功能暂未开放": { "zh-Hant": "發票功能暫未開放", ja: "請求書機能は現在利用できません", en: "Invoice features are not available yet", ko: "청구서 기능은 아직 사용할 수 없습니다" },
   "发票记录": { "zh-Hant": "發票記錄", ja: "請求書記録", en: "Invoice records", ko: "송장 기록" },
   "发票月度归档": { "zh-Hant": "發票月度歸檔", ja: "月次請求書ファイリング", en: "Monthly Invoice Filing", ko: "월별 청구서 정리" },
   "发起": { "zh-Hant": "發起", ja: "发起", en: "Start", ko: "시작" },
