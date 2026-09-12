@@ -1,4 +1,5 @@
 import { httpClient } from "../../api/httpClient";
+import { resolveServiceFulfillmentMode } from "../../lib/serviceFulfillment";
 import type { Customer, FulfillmentMode, ServiceCategory, ServiceItem, Store, Technician } from "../../types/domain";
 
 export type PaginatedCoreReadData<TItem> = {
@@ -312,12 +313,12 @@ function priceRangeFromServices(services?: CoreServiceCard[]) {
 
 function firstServiceMode(services?: CoreServiceCard[]): FulfillmentMode {
   const mode = (services?.[0] as Partial<CoreServiceDetail> | undefined)?.serviceMode;
-  return mode === "home" || mode === "onsite" ? "home" : "store";
+  return resolveServiceFulfillmentMode(mode ?? "store");
 }
 
 function serviceModeToFulfillmentMode(service: CoreServiceCard | CoreServiceDetail): FulfillmentMode {
   const mode = "serviceMode" in service ? service.serviceMode : undefined;
-  return mode === "home" || mode === "onsite" ? "home" : "store";
+  return resolveServiceFulfillmentMode(mode ?? "store");
 }
 
 export function isCoreReadApiId(id: string | number | null | undefined) {

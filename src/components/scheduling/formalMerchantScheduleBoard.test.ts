@@ -5,16 +5,18 @@ import { buildFormalMerchantScheduleBoard, getFormalMerchantScheduleCycleRange }
 const technicians = [
   {
     avatar: "/media/technicians/misaki.webp",
-    id: "31",
+    internalProfileId: "31",
     identityLabel: "店铺所属技师" as const,
     name: "佐藤 美咲",
-    nickname: "Misaki"
+    nickname: "Misaki",
+    publicNeedoId: "s5148317836"
   },
   {
     avatar: "/media/technicians/riko.webp",
-    id: "32",
+    internalProfileId: "32",
     identityLabel: "店铺所属技师" as const,
-    name: "高桥 莉子"
+    name: "高桥 莉子",
+    publicNeedoId: "s6259428947"
   }
 ];
 
@@ -53,8 +55,8 @@ describe("formal merchant schedule board", () => {
     expect(range).toEqual({ periodEnd: "2026-09-14", periodStart: "2026-09-01" });
     expect(result.periodLabel).toBe("2026-09-01 - 2026-09-14");
     expect(result.dataOverride.lanes).toEqual([
-      expect.objectContaining({ avatar: "/media/technicians/misaki.webp", id: "technician:31", label: "Misaki" }),
-      expect.objectContaining({ avatar: "/media/technicians/riko.webp", id: "technician:32", label: "高桥 莉子" })
+      expect.objectContaining({ avatar: "/media/technicians/misaki.webp", detailPath: "/merchant/staff/s5148317836", id: "technician:31", label: "Misaki" }),
+      expect.objectContaining({ avatar: "/media/technicians/riko.webp", detailPath: "/merchant/staff/s6259428947", id: "technician:32", label: "高桥 莉子" })
     ]);
     expect(result.dataOverride.dayGrids).toHaveLength(14);
     expect(result.dataOverride.dayGrids[1]?.rows).toHaveLength(2);
@@ -71,6 +73,9 @@ describe("formal merchant schedule board", () => {
       startTime: "10:00",
       title: "ND预约-上门护理"
     }));
+    expect(result.dataOverride.events[0]?.participants).toContainEqual(
+      expect.objectContaining({ id: "technician:31", to: "/merchant/staff/s5148317836" })
+    );
     expect(result.summary).toEqual({ bookedCount: 1, scheduledDayCount: 1, scheduledTechnicianCount: 1, technicianCount: 2 });
   });
 
@@ -80,10 +85,11 @@ describe("formal merchant schedule board", () => {
       range: getFormalMerchantScheduleCycleRange("2026-09-02"),
       shop: { cover: "", id: "16", name: "LifeDance" },
       slots: [],
-      technicians: [{ avatar: "", id: "31", name: "佐藤 美咲" }]
+      technicians: [{ avatar: "", internalProfileId: "31", name: "佐藤 美咲", publicNeedoId: null }]
     });
 
     expect(result.dataOverride.lanes[0]?.avatar).toBe("");
+    expect(result.dataOverride.lanes[0]?.detailPath).toBeUndefined();
     expect(result.dataOverride.dayGrids[0]?.rows[0]?.technicianAvatar).toBe("");
   });
 });
