@@ -251,6 +251,20 @@ function syncDocumentTitle() {
   document.title = resolveDocumentTitle(window.location.hash);
 }
 
+function installDocumentTitleNavigationSync() {
+  ["pushState", "replaceState"].forEach((methodName) => {
+    const originalMethod = window.history[methodName];
+    window.history[methodName] = function (...args) {
+      const result = originalMethod.apply(this, args);
+      syncDocumentTitle();
+      return result;
+    };
+  });
+
+  window.addEventListener("hashchange", syncDocumentTitle);
+  window.addEventListener("popstate", syncDocumentTitle);
+}
+
 const isFileSourceHtml = window.location.protocol === "file:" && !window.location.pathname.includes("/dist/");
 const builtDistHtml = isBuiltDistHtml();
 const viteDevRuntime = isViteDevRuntime();
@@ -264,7 +278,7 @@ if (redirectLocalDistEntryToDevSource()) {
   redirectToDist();
 } else {
   syncDocumentTitle();
-  window.addEventListener("hashchange", syncDocumentTitle);
+  installDocumentTitleNavigationSync();
 
   if (!window.location.hash) {
     const target = new URL(window.location.href);
