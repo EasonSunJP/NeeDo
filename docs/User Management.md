@@ -981,6 +981,12 @@ access/refresh token。新用户 nickname/display name 初始等于 NeeDoID，�
 | 用户 me 缓存 | `auth:me:{userId}:identity:{identityId}` | 120s |
 
 权限、角色、用户身份变化时，必须清理相关 RBAC 和 `/auth/me` 缓存。
+数据库 `users.session_generation` 是账号级会话代数的唯一事实来源。多 API 可以为
+audience 隔离 refresh token 和 Redis logical DB，但每次 access/refresh 校验必须读取
+数据库代数；新登录只能把当前 API 的 Redis 代数单向推进到数据库值，并在同一个
+Redis 原子操作中撤销该分区的旧代数 refresh token。Redis 代数高于数据库值时必须
+拒绝，禁止回退。账号安全事务先提交数据库代数后，即使其他 API 的 Redis 分区尚未
+清理，旧 token 也会因数据库代数不匹配立即失效，随后由各分区的新登录安全收敛。
 正式注册/Google/account-security 流不得使用历史 `otp:{email}` 通用 key；它们
 必须携带 purpose、user binding 和 attempt counter。OTP 只存 HMAC digest，
 cooldown email identity 使用 HMAC，Google nonce 使用 AES-256-GCM；allowlisted

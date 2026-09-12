@@ -45,9 +45,12 @@ describe("session generation authority", () => {
     ).resolves.toBe(false);
   });
 
-  it("rejects stale-generation refresh storage and treats legacy tokens as generation zero", async () => {
-    const store = new RedisAuthSessionStore(() => new FakeRedis() as never);
-    await expect(store.getSessionGeneration(7)).resolves.toBe(0);
+  it("rejects a refresh store that would roll the service generation backward", async () => {
+    const redis = new FakeRedis();
+    redis.values.set("auth:v2:session:generation:7", "2");
+    const store = new RedisAuthSessionStore(() => redis as never);
+
+    await expect(store.getSessionGeneration(7)).resolves.toBe(2);
     await expect(store.storeRefreshToken(7, "stale", 600, 1)).resolves.toBe(false);
   });
 

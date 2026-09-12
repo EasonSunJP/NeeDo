@@ -37,6 +37,7 @@ npm run dev:frontend
 - IM/Social 媒体通过 `dev:formal` 启动时统一使用 Git 主检出目录的 `backend/runtime/im-media` 与 `backend/runtime/content-media`，切换 linked worktree 后仍读取同一批文件。环境变量或所选环境文件中的绝对 `IM_MEDIA_STORAGE_DIR` / `CONTENT_MEDIA_STORAGE_DIR` 可覆盖默认目录；自定义相对路径会被拒绝。非 Git 源码包使用项目绝对目录，并在启动日志中标出回退来源。
 - 直接运行 `backend` 或生产部署时应显式配置媒体目录的绝对持久卷路径，生产环境会拒绝相对值。修改目录后须重启已运行的 API（启动器复用现有进程时不会更新其环境变量）。已有文件无需移动，禁止清理仍被数据库引用的 runtime 文件。
 - 三个 API 进程共享 `DATABASE_URL` 指向的唯一 MySQL 数据源。运营与商户 API 默认分别使用 Redis logical DB `/1`、`/2`，可用 `FORMAL_OPS_API_REDIS_URL` 和 `FORMAL_MERCHANT_API_REDIS_URL` 配置，但两者不得相同。
+- `users.session_generation` 是跨 API 的账号会话代数事实来源。各 API 的 refresh token 可保留在独立 Redis logical DB；所有 token 校验都对照数据库代数，登录时只允许把当前 Redis 分区单向推进到数据库代数并原子撤销该分区旧会话，禁止代数回退。
 - 本项目默认前端端口已改为 `5180`，避免占用其他项目正在使用的 `5173`、`5175` 和 `5176`。
 - 如果 `5180` 已被占用，Vite 会自动切到下一个可用端口。
 - Chrome 直接双击打开 `dist/*.html` 时，`file://` 模式通常不会正常执行 Vite 的 ES module 入口，表现就是白屏、进入页/聊天页/错误页背景都像“没了”。请改用 `npm run dev` 或 `npm run preview` 通过本地 HTTP 服务访问。
