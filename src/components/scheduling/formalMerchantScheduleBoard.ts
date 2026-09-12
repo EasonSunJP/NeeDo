@@ -152,6 +152,7 @@ function buildFormalScheduleLanes(input: FormalMerchantScheduleBoardInput): Form
     lanes.push({
       avatar: "",
       caption: "正式排班记录",
+      detailPath: undefined,
       id: String(slot.technicianProfileId),
       label: slot.technicianName?.trim() || `技师 ${slot.technicianProfileId}`,
       technicianProfileId: slot.technicianProfileId
@@ -162,6 +163,7 @@ function buildFormalScheduleLanes(input: FormalMerchantScheduleBoardInput): Form
     lanes.push({
       avatar: input.shop.cover,
       caption: "未指定技师",
+      detailPath: undefined,
       id: `shop-${input.shop.id}`,
       label: "店铺公共",
       technicianProfileId: null

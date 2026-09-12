@@ -14,7 +14,12 @@ function board(periodStart: string, periodEnd: string, slots = [nightShift]) {
   return buildFormalMerchantScheduleBoard({
     dateKey: periodStart, range: { periodStart, periodEnd }, slots,
     shop: { id: "16", name: "LifeDance", cover: "" },
-    technicians: [{ id: "31", name: "佐藤", avatar: "/media/technicians/sato.webp" }]
+    technicians: [{
+      avatar: "/media/technicians/sato.webp",
+      internalProfileId: "31",
+      name: "佐藤",
+      publicNeedoId: "s5148317836"
+    }]
   });
 }
 
