@@ -19,10 +19,13 @@ import { Button } from "../../../components/ui/Button";
 import { Drawer } from "../../../components/ui/Drawer";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { ScheduleCycleCalendarBoard, type ScheduleCycleCalendarBoardView } from "../../../components/scheduling/ScheduleCycleCalendarBoard";
+import { ScheduleCacheRefreshIndicator } from "../../../components/scheduling/ScheduleCacheRefreshIndicator";
 import { buildFormalMerchantScheduleBoard, getFormalMerchantScheduleCycleRange } from "../../../components/scheduling/formalMerchantScheduleBoard";
 import { emptyOrders as orders } from "../../../data/formalRuntimeFallbacks";
 import { loadCoreReadWithTransientRetry } from "../../core-read/transientRetry";
 import { loadManagedScheduleWindow } from "../../scheduling/window-loader";
+import { readFormalScheduleWindow, refreshFormalScheduleWindow } from "../../scheduling/formalScheduleWindowCache";
+import { getAuthenticatedPersistentCacheScope } from "../../../lib/persistentCacheScope";
 import { getMerchantCustomerConversationId, getMessagePath } from "../../../lib/messageCenter";
 import { shareContent } from "../../../lib/share";
 import { cn, statusLabel as formatOrderStatusLabel, yen } from "../../../lib/utils";
@@ -780,7 +783,14 @@ export function DispatchOverviewWorkspace({
   const [contactStatusDecisions, setContactStatusDecisions] = useState<Record<string, ContactDecision>>({});
   const [selectedCell, setSelectedCell] = useState<DispatchScheduleCell | null>(null);
   const [selectedContactStatusItem, setSelectedContactStatusItem] = useState<MobileContactStatusItem | null>(null);
-  const [formalScheduleResult, setFormalScheduleResult] = useState<{ scopeKey: string; slots: Awaited<ReturnType<typeof loadManagedScheduleWindow>>; loading: boolean; error: string }>({ scopeKey: "", slots: [], loading: false, error: "" });
+  const [formalScheduleResult, setFormalScheduleResult] = useState<{
+    scopeKey: string;
+    slots: Awaited<ReturnType<typeof loadManagedScheduleWindow>>;
+    loading: boolean;
+    refreshingCachedData: boolean;
+    hasFallbackCache: boolean;
+    error: string;
+  }>({ scopeKey: "", slots: [], loading: false, refreshingCachedData: false, hasFallbackCache: false, error: "" });
   const [formalScheduleReloadKey, setFormalScheduleReloadKey] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
@@ -795,6 +805,10 @@ export function DispatchOverviewWorkspace({
   const formalScheduleSlots = formalScheduleMatchesScope ? formalScheduleResult.slots : [];
   const formalScheduleLoading = usesFormalMerchantSchedule && (!formalScheduleMatchesScope || formalScheduleResult.loading);
   const formalScheduleError = formalScheduleMatchesScope ? formalScheduleResult.error : "";
+  const formalScheduleRefreshingCachedData =
+    formalScheduleMatchesScope && formalScheduleResult.refreshingCachedData;
+  const formalScheduleHasFallbackCache =
+    formalScheduleMatchesScope && formalScheduleResult.hasFallbackCache;
   const formalScheduleBoard = useMemo(() => {
     if (!usesFormalMerchantSchedule || !formalStore) {
       return null;
@@ -846,19 +860,70 @@ export function DispatchOverviewWorkspace({
   useEffect(() => {
     if (!usesFormalMerchantSchedule) return;
     let active = true;
-    setFormalScheduleResult({ scopeKey: formalScheduleScopeKey, slots: [], loading: true, error: "" });
-    loadCoreReadWithTransientRetry(() => loadManagedScheduleWindow("merchant-admin", {
-      from: new Date(`${formalCycleRange.periodStart}T00:00:00+09:00`),
-      to: new Date(`${formalCycleRange.periodEnd}T23:59:59.999+09:00`)
-    }))
-      .then((slots) => {
-        if (active) setFormalScheduleResult({ scopeKey: formalScheduleScopeKey, slots, loading: false, error: "" });
-      })
-      .catch((error: unknown) => {
-        if (active) setFormalScheduleResult({ scopeKey: formalScheduleScopeKey, slots: [], loading: false, error: error instanceof Error && error.message.trim() ? error.message : "正式排班数据加载失败" });
-      });
+    const from = new Date(`${formalCycleRange.periodStart}T00:00:00+09:00`);
+    const to = new Date(`${formalCycleRange.periodEnd}T23:59:59.999+09:00`);
+    const cacheScope = getAuthenticatedPersistentCacheScope();
+    const cacheInput = cacheScope && formalStore
+      ? { cacheScope, from, resourceKey: formalStore.id, scheduleScope: "merchant-admin" as const, to }
+      : null;
+    setFormalScheduleResult({
+      scopeKey: formalScheduleScopeKey,
+      slots: [],
+      loading: true,
+      refreshingCachedData: false,
+      hasFallbackCache: false,
+      error: ""
+    });
+    void (async () => {
+      let cachedSlots: Awaited<ReturnType<typeof loadManagedScheduleWindow>> | null = null;
+      if (cacheInput) {
+        cachedSlots = await readFormalScheduleWindow(cacheInput).catch(() => null);
+        if (active && cachedSlots) {
+          setFormalScheduleResult({
+            scopeKey: formalScheduleScopeKey,
+            slots: cachedSlots,
+            loading: false,
+            refreshingCachedData: true,
+            hasFallbackCache: true,
+            error: ""
+          });
+        }
+      }
+      try {
+        const load = () => loadCoreReadWithTransientRetry(() => loadManagedScheduleWindow(
+          "merchant-admin",
+          { from, to }
+        ));
+        const slots = cacheInput
+          ? await refreshFormalScheduleWindow(cacheInput, load)
+          : await load();
+        if (active) {
+          setFormalScheduleResult({
+            scopeKey: formalScheduleScopeKey,
+            slots,
+            loading: false,
+            refreshingCachedData: false,
+            hasFallbackCache: false,
+            error: ""
+          });
+        }
+      } catch (error: unknown) {
+        if (active) {
+          setFormalScheduleResult({
+            scopeKey: formalScheduleScopeKey,
+            slots: cachedSlots ?? [],
+            loading: false,
+            refreshingCachedData: false,
+            hasFallbackCache: cachedSlots !== null,
+            error: error instanceof Error && error.message.trim()
+              ? error.message
+              : "正式排班数据加载失败"
+          });
+        }
+      }
+    })();
     return () => { active = false; };
-  }, [formalCycleRange.periodEnd, formalCycleRange.periodStart, formalScheduleReloadKey, formalScheduleScopeKey, usesFormalMerchantSchedule]);
+  }, [formalCycleRange.periodEnd, formalCycleRange.periodStart, formalScheduleReloadKey, formalScheduleScopeKey, formalStore?.id, usesFormalMerchantSchedule]);
 
   const openDateSchedule = (nextDateKey: string) => {
     setDateKey(nextDateKey);
@@ -1712,6 +1777,9 @@ export function DispatchOverviewWorkspace({
 
   return (
     <>
+      {formalScheduleRefreshingCachedData ? (
+        <ScheduleCacheRefreshIndicator label={t("加载正式排班中")} />
+      ) : null}
       {!isMobileSurface ? (
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {cards.map((card) => (
@@ -1822,7 +1890,7 @@ export function DispatchOverviewWorkspace({
         >
           <Button
             className="h-14 w-full text-[15px] font-black shadow-[0_18px_46px_color-mix(in_srgb,var(--client-primary)_28%,rgba(0,0,0,0.28))]"
-            disabled={formalScheduleLoading || Boolean(formalScheduleError)}
+            disabled={formalScheduleLoading || (Boolean(formalScheduleError) && !formalScheduleHasFallbackCache)}
             onClick={() => setScheduleDetailOpen(true)}
           >
             {formalScheduleLoading ? t("加载正式排班中") : t("查看详细排班表")}

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookingOrder, BookingScheduleSlot } from "../booking/api";
+import type { BookingOrder, BookingScheduleSlot, PaginatedBookingData } from "../booking/api";
 
 const apiMocks = vi.hoisted(() => ({
   listOrders: vi.fn(),
@@ -91,5 +91,27 @@ describe("formal schedule window loaders", () => {
       })
       .mockResolvedValueOnce({ list: [makeOrder(101, "2026-09-02T10:00:00.000Z")], total: 101, page: 1, page_size: 100 });
     await expect(loadEveryTechnicianOrder()).rejects.toThrow("error.pagination.no_progress");
+  });
+
+  it("loads remaining pages in bounded parallel batches", async () => {
+    let resolveSecond!: (value: PaginatedBookingData<BookingScheduleSlot>) => void;
+    let resolveThird!: (value: PaginatedBookingData<BookingScheduleSlot>) => void;
+    const second = new Promise<PaginatedBookingData<BookingScheduleSlot>>((resolve) => { resolveSecond = resolve; });
+    const third = new Promise<PaginatedBookingData<BookingScheduleSlot>>((resolve) => { resolveThird = resolve; });
+    apiMocks.listSlots.mockImplementation((_scope, input: { page: number }) => {
+      if (input.page === 1) return Promise.resolve({ list: [makeSlot(1, "2026-09-01T10:00:00.000Z")], total: 3, page: 1, page_size: 1 });
+      if (input.page === 2) return second;
+      return third;
+    });
+
+    const loading = loadManagedScheduleWindow("merchant-admin", {
+      from: new Date("2026-09-01T00:00:00.000Z"),
+      to: new Date("2026-09-02T00:00:00.000Z")
+    });
+    await vi.waitFor(() => expect(apiMocks.listSlots).toHaveBeenCalledTimes(3));
+    resolveThird({ list: [makeSlot(3, "2026-09-01T12:00:00.000Z")], total: 3, page: 3, page_size: 1 });
+    resolveSecond({ list: [makeSlot(2, "2026-09-01T11:00:00.000Z")], total: 3, page: 2, page_size: 1 });
+
+    await expect(loading).resolves.toHaveLength(3);
   });
 });

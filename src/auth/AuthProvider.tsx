@@ -281,6 +281,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       !previousAccountAlreadyLocked
     ) {
       persistentResourceCache.lockScopePrefix(`account:${previousAccountId}`);
+      void persistentResourceCache
+        .clearScopePrefix(`account:${previousAccountId}`)
+        .catch(() => undefined);
     }
     void transitionImOpenedMediaCacheAccount(
       previousAccountAlreadyLocked ? null : previousAccountId,
@@ -942,8 +945,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    const previousAccountId = sessionRef.current ? String(sessionRef.current.id) : null;
     const credentials = terminateLocalSession();
     const tombstoneWritten = await persistAnonymousTombstone();
+    if (previousAccountId) {
+      await persistentResourceCache
+        .clearScopePrefix(`account:${previousAccountId}`)
+        .catch(() => undefined);
+    }
     let revoked = false;
     if (credentials) {
       try {

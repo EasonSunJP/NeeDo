@@ -19,6 +19,18 @@ describe("schedulingApi", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/technician/schedule/slots", { query: expect.objectContaining({ from: from.toISOString(), to: to.toISOString() }) });
   });
 
+  it("preloads account-linked schedules without client-supplied identity scopes", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    const from = new Date("2026-09-13T00:00:00.000Z");
+    const to = new Date("2026-09-27T00:00:00.000Z");
+
+    await schedulingApi.preload({ from, to, page: 1, pageSize: 100 });
+
+    expect(httpClient.request).toHaveBeenCalledWith("/schedule/preload", {
+      query: { from: from.toISOString(), to: to.toISOString(), page: 1, pageSize: 100 }
+    });
+  });
+
   it("writes shop and technician services without accepting a shop scope parameter", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
     const startsAt = new Date("2026-08-26T01:00:00.000Z");

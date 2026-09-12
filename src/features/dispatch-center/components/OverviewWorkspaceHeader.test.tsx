@@ -20,7 +20,10 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
   it("reloads and isolates formal data when switching shops", () => {
     expect(source).toContain("formalScheduleScopeKey");
     expect(source).toContain("formalScheduleResult.scopeKey === formalScheduleScopeKey");
-    expect(source).toContain("formalScheduleReloadKey, formalScheduleScopeKey, usesFormalMerchantSchedule]");
+    expect(source).toContain("formalScheduleReloadKey, formalScheduleScopeKey, formalStore?.id, usesFormalMerchantSchedule]");
+    expect(source).toContain("readFormalScheduleWindow(cacheInput)");
+    expect(source).toContain("refreshFormalScheduleWindow(cacheInput, load)");
+    expect(source).toContain("<ScheduleCacheRefreshIndicator");
   });
 
   it("keeps the formal board override during loading and errors", () => {

@@ -1099,6 +1099,32 @@ type SlotRecord = Prisma.ScheduleSlotGetPayload<{
   };
 }>;
 
+const scheduleSlotListSelect = {
+  id: true,
+  serviceId: true,
+  technicianServiceId: true,
+  shopId: true,
+  technicianProfileId: true,
+  startsAt: true,
+  endsAt: true,
+  capacity: true,
+  bookedCount: true,
+  status: true,
+  availability: { select: { sourceType: true } },
+  service: {
+    select: { name: true, priceAmount: true, currency: true, durationMinutes: true }
+  },
+  technicianService: {
+    select: { name: true, priceAmount: true, currency: true, durationMinutes: true }
+  },
+  shop: { select: { name: true } },
+  technicianProfile: { select: { displayName: true } }
+} satisfies Prisma.ScheduleSlotSelect;
+
+type ScheduleSlotListRecord = Prisma.ScheduleSlotGetPayload<{
+  select: typeof scheduleSlotListSelect;
+}>;
+
 type AvailabilityWindowRecord = Prisma.AvailabilityGetPayload<{
   include: { shop: true };
 }>;
@@ -1555,7 +1581,7 @@ export class BookingRepository implements BookingRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.scheduleSlot.findMany({
         where,
-        include: this.slotInclude(),
+        select: scheduleSlotListSelect,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ startsAt: "asc" }, { id: "asc" }]
@@ -6166,7 +6192,7 @@ export class BookingRepository implements BookingRepositoryPort {
     };
   }
 
-  private mapSlot(slot: SlotRecord): ScheduleSlotPayload {
+  private mapSlot(slot: SlotRecord | ScheduleSlotListRecord): ScheduleSlotPayload {
     const serviceName = slot.service?.name ?? slot.technicianService?.name ?? "Unknown service";
     const priceAmount = slot.service?.priceAmount ?? slot.technicianService?.priceAmount ?? 0;
     const currency = slot.service?.currency ?? slot.technicianService?.currency ?? "JPY";

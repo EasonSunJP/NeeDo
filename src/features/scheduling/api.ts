@@ -50,6 +50,16 @@ export type FormalScheduleCalendarItem = {
   technicianProfileId: number | null;
 };
 
+export type SchedulePreloadResource = PaginatedBookingData<BookingScheduleSlot> & {
+  identityId: number;
+};
+
+export type SchedulePreloadPayload = {
+  fetchedAt: string;
+  merchant: (SchedulePreloadResource & { shopId: number }) | null;
+  technician: (SchedulePreloadResource & { technicianProfileId: number }) | null;
+};
+
 const prefix = (scope: SchedulingScope) => `/${scope}/schedule/slots`;
 const pad = (value: number) => String(value).padStart(2, "0");
 
@@ -76,6 +86,15 @@ export function mapScheduleSlotToCalendarItem(slot: BookingScheduleSlot): Formal
 }
 
 export const schedulingApi = {
+  preload(input: Pick<ScheduleSlotListInput, "from" | "to" | "page" | "pageSize">) {
+    return httpClient.request<SchedulePreloadPayload>("/schedule/preload", {
+      query: {
+        ...input,
+        from: input.from.toISOString(),
+        to: input.to.toISOString()
+      }
+    });
+  },
   getTechnicianSlot(id: number) {
     return httpClient.request<BookingScheduleSlot>(`/technician/schedule/slots/${id}`);
   },

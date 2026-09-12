@@ -5,6 +5,23 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents authenticated account-scoped schedule preloading", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    };
+    const operation = document.paths["/api/v1/schedule/preload"]?.get;
+
+    expect(operation).toMatchObject({
+      tags: ["Schedule"],
+      security: [{ bearerAuth: [] }],
+      responses: { "200": expect.any(Object), "400": expect.any(Object), "401": expect.any(Object) }
+    });
+    expect(document.components.schemas.SchedulePreload).toMatchObject({
+      required: ["fetchedAt", "merchant", "technician"]
+    });
+  });
+
   it("documents authenticated customer address CRUD with the checkout address schema", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, Record<string, Record<string, unknown>>>;

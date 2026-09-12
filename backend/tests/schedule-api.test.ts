@@ -63,7 +63,13 @@ const createFixture = async (options: { technicianPermissions?: string[] } = {})
       permission: { id: index + 1, code: permission, type: "api", deletedAt: null }
     }))
   });
-  const permissions = ["auth:me", "schedule:slots:list", "schedule:slots:write"];
+  const permissions = [
+    "auth:me",
+    "page:merchant-app",
+    "page:technician-app",
+    "schedule:slots:list",
+    "schedule:slots:write"
+  ];
   const users = [
     {
       id: 1,
@@ -84,6 +90,17 @@ const createFixture = async (options: { technicianPermissions?: string[] } = {})
           scopeId: 11,
           displayName: "Merchant",
           isDefault: true,
+          isActive: true,
+          deletedAt: null
+        },
+        {
+          id: 3,
+          userId: 1,
+          type: "technician",
+          scopeType: "technician_profile",
+          scopeId: 31,
+          displayName: "Merchant Technician",
+          isDefault: false,
           isActive: true,
           deletedAt: null
         }
@@ -218,6 +235,52 @@ const createFixture = async (options: { technicianPermissions?: string[] } = {})
 };
 
 describe("schedule slot write APIs", () => {
+  it("preloads every schedule scope linked to the authenticated account", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("merchant@example.com");
+
+    await request(fixture.app)
+      .get(
+        `/api/v1/schedule/preload?from=${encodeURIComponent(startsAt.toISOString())}&to=${encodeURIComponent(endsAt.toISOString())}&page=1&pageSize=100`
+      )
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          merchant: { identityId: 1, shopId: 11, list: [{ id: 10 }] },
+          technician: { identityId: 3, technicianProfileId: 31, list: [{ id: 10 }] }
+        });
+      });
+
+    expect(fixture.bookingRepository.listScheduleSlots).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "merchant", shopId: 11 })
+    );
+    expect(fixture.bookingRepository.listScheduleSlots).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "technician", technicianProfileId: 31 })
+    );
+  });
+
+  it("rejects client-supplied scope ids and oversized preload windows", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("merchant@example.com");
+    const authorization = { Authorization: `Bearer ${token}` };
+
+    await request(fixture.app)
+      .get(
+        `/api/v1/schedule/preload?from=${encodeURIComponent(startsAt.toISOString())}&to=${encodeURIComponent(endsAt.toISOString())}&shopId=11`
+      )
+      .set(authorization)
+      .expect(400);
+    await request(fixture.app)
+      .get(
+        `/api/v1/schedule/preload?from=${encodeURIComponent(startsAt.toISOString())}&to=${encodeURIComponent(new Date(startsAt.getTime() + 94 * 24 * 60 * 60_000).toISOString())}`
+      )
+      .set(authorization)
+      .expect(400);
+
+    expect(fixture.bookingRepository.listScheduleSlots).not.toHaveBeenCalled();
+  });
+
   it("creates and lists independent technician availability windows through authenticated formal routes", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("technician@example.com");
