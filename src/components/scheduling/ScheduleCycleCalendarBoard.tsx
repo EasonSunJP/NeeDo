@@ -40,6 +40,8 @@ import { cn } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
 import type { Customer, Store, Technician } from "../../types/domain";
 import { ScheduleViewPicker } from "./ScheduleViewPicker";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { translateText, type Language } from "../../i18n/translations";
 
 export type ScheduleCycleCalendarBoardView = "day" | "threeDay" | "week" | "month" | "agenda";
 export type ScheduleCycleCalendarStatusFilter = "all" | DispatchScheduleCellStatus;
@@ -744,6 +746,7 @@ function getCycleLabelOptionCount(option: CycleCalendarLabelOption, statusCounts
 }
 
 function CycleCalendarLabelDrawer({
+  language,
   open,
   statusCounts,
   statusVisibility,
@@ -751,6 +754,7 @@ function CycleCalendarLabelDrawer({
   onShowAll,
   onToggle
 }: {
+  language: Language;
   open: boolean;
   statusCounts: Record<DispatchScheduleCellStatus, number>;
   statusVisibility: Record<DispatchScheduleCellStatus, boolean>;
@@ -770,7 +774,7 @@ function CycleCalendarLabelDrawer({
   return (
     <>
       <button
-        aria-label="关闭排班标签遮罩"
+        aria-label={translateText("关闭排班标签遮罩", language)}
         className="fixed inset-0 z-[145] bg-[color:color-mix(in_srgb,var(--client-bg)_40%,transparent)] backdrop-blur-md"
         onClick={onClose}
         type="button"
@@ -781,7 +785,7 @@ function CycleCalendarLabelDrawer({
             <strong className="block text-sm font-black text-[color:var(--client-text)]">显示标签</strong>
             <span className="mt-1 block text-[10px] font-black text-[color:var(--client-muted)]">选择周期排班表里显示的状态</span>
           </div>
-          <MobileFullscreenCloseButton className="h-10 w-10" label="关闭显示标签" onClose={onClose} />
+          <MobileFullscreenCloseButton className="h-10 w-10" label={translateText("关闭显示标签", language)} onClose={onClose} />
         </div>
 
         <div className="max-h-[calc(100dvh-180px)] space-y-3 overflow-y-auto px-3.5 py-3">
@@ -851,6 +855,7 @@ export function ScheduleCycleCalendarBoard({
   view
 }: ScheduleCycleCalendarBoardProps) {
   const navigate = useNavigate();
+  const { language } = useOptionalI18n();
   const dispatchSnapshot = useDispatchCenterStore();
   const entitySnapshot = useEntityStore();
   const [labelDrawerOpen, setLabelDrawerOpen] = useState(false);
@@ -875,7 +880,7 @@ export function ScheduleCycleCalendarBoard({
     return period.dates.map((date) => formalGridByDate.get(date) ?? {
       cycle: null,
       dates: [date],
-      headers: [{ key: date, label: formatShortDate(date), sublabel: getWeekdayLabel(date) }],
+      headers: [{ key: date, label: formatShortDate(date), sublabel: getWeekdayLabel(date, language) }],
       nowHour: templateGrid?.nowHour ?? 0,
       rows: (templateGrid?.rows ?? []).map((row) => ({
         ...row,
@@ -895,7 +900,7 @@ export function ScheduleCycleCalendarBoard({
         scheduledHours: 0
       }))
     });
-  }, [cycleId, dataOverride, dispatchSnapshot.revision, period.dates, periodKey, storeId]);
+  }, [cycleId, dataOverride, dispatchSnapshot.revision, language, period.dates, periodKey, storeId]);
   const computedCalendarData = useMemo(
     () => buildCycleCalendarData(
       dayGrids,
@@ -977,7 +982,7 @@ export function ScheduleCycleCalendarBoard({
         <div className="flex min-w-0 items-center gap-2">
           <button
             aria-expanded={labelDrawerOpen}
-            aria-label="打开排班标签显示选项"
+            aria-label={translateText("打开排班标签显示选项", language)}
             className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-text)]"
             onClick={() => setLabelDrawerOpen((current) => !current)}
             type="button"
@@ -1007,7 +1012,7 @@ export function ScheduleCycleCalendarBoard({
           ‹
         </button>
         <ScheduleViewPicker
-          ariaLabel="切换排班展示范围"
+          ariaLabel={translateText("切换排班展示范围", language)}
           onChange={onViewChange}
           options={cycleCalendarViewOptions.filter(
             (option) => !availableViews || availableViews.includes(option.value as "day" | "week" | "month"),
@@ -1046,6 +1051,7 @@ export function ScheduleCycleCalendarBoard({
               dates={period.dates}
               emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
               events={events}
+              language={language}
               onOpen={openEvent}
               onSelectDate={openDateInDayView}
               selectedDate={dateKey}
@@ -1079,6 +1085,7 @@ export function ScheduleCycleCalendarBoard({
             anchorDate={dateKey}
             dates={period.dates}
             eventsByDate={groupedEvents}
+            language={language}
             onOpen={openEvent}
             onSelectDate={openDateInDayView}
             selectedDate={dateKey}
@@ -1104,6 +1111,7 @@ export function ScheduleCycleCalendarBoard({
         )
       )}
       <CycleCalendarLabelDrawer
+        language={language}
         onClose={() => setLabelDrawerOpen(false)}
         onShowAll={showAllStatusLabels}
         onToggle={toggleStatusLabels}

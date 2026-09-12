@@ -37,7 +37,7 @@ import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { getScopedTechnicianDynamicPath } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useI18n } from "../../i18n/I18nProvider";
-import { translateText } from "../../i18n/translations";
+import { translateText, type Language } from "../../i18n/translations";
 import {
   fetchGoogleCalendarApi,
   getGoogleCalendarActorId,
@@ -3694,6 +3694,7 @@ type MultiDayTimelineProps = {
   dates: string[];
   emptySearchQuery?: string;
   events: UnifiedCalendarEvent[];
+  language?: Language;
   onCreate?: (date: string, startTime: string, endTime: string) => void;
   onOpen: (event: UnifiedCalendarEvent) => void;
   onSelectDate?: (date: string) => void;
@@ -3708,6 +3709,7 @@ export function UnifiedCalendarMultiDayTimeline({
   dates,
   emptySearchQuery,
   events,
+  language = "zh",
   onCreate,
   onOpen,
   onSelectDate,
@@ -3980,7 +3982,7 @@ export function UnifiedCalendarMultiDayTimeline({
                   type="button"
                 >
                   <span className={cn("block text-[10px] font-black", isToday ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-muted)]")}>
-                    {getWeekdayLabel(date).replace("周", "")}
+                    {getWeekdayHeaderLabel(language)[parseDateKey(date).getDay()]}
                   </span>
                   <strong
                     className={cn(
@@ -4147,6 +4149,7 @@ type CalendarMonthGridProps = {
   anchorDate: string;
   dates: string[];
   eventsByDate: Record<string, UnifiedCalendarEvent[]>;
+  language?: Language;
   onOpen: (event: UnifiedCalendarEvent) => void;
   onSelectDate?: (date: string) => void;
   selectedDate?: string;
@@ -4156,6 +4159,7 @@ export function UnifiedCalendarMonthGrid({
   anchorDate,
   dates,
   eventsByDate,
+  language = "zh",
   onOpen,
   onSelectDate,
   selectedDate
@@ -4166,7 +4170,7 @@ export function UnifiedCalendarMonthGrid({
   return (
     <div className="overflow-hidden rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)]">
       <div className="grid grid-cols-7 border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] text-center text-[11px] font-black text-[color:var(--client-muted)]">
-        {getWeekdayHeaderLabel().map((label) => (
+        {getWeekdayHeaderLabel(language).map((label) => (
           <span className="border-r border-[color:color-mix(in_srgb,var(--client-line)_38%,transparent)] py-2 last:border-r-0" key={label}>{label}</span>
         ))}
       </div>
@@ -6349,6 +6353,7 @@ export function UnifiedUserCalendar({
             dates={view === "threeDay" ? getThreeDayDates(anchorDate) : getWeekDates(anchorDate)}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={searchedVisiblePeriodEvents}
+            language={language}
             onCreate={formalOnly && activeScope === "merchant" ? undefined : openCreate}
             onOpen={openCalendarEvent}
             onSelectDate={openDateInDayView}
@@ -6361,6 +6366,7 @@ export function UnifiedUserCalendar({
             anchorDate={anchorDate}
             dates={getMonthGridDates(anchorDate)}
             eventsByDate={groupedVisibleEvents}
+            language={language}
             onOpen={openCalendarEvent}
             onSelectDate={openDateInDayView}
             selectedDate={selectedDate}

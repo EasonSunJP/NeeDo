@@ -20,7 +20,7 @@ import type {
   DispatchScheduleGridData,
 } from "../../features/dispatch-center/store";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { translateText } from "../../i18n/translations";
+import { translateText, type Language } from "../../i18n/translations";
 import type {
   UnifiedCalendarEvent,
   UnifiedCalendarLane,
@@ -136,6 +136,7 @@ function createDayGrid(
   dateKey: string,
   projection: EmployeeScheduleProjection,
   employee: MerchantEmployee,
+  language: Language,
 ): DispatchScheduleGridData {
   const cells = Array.from({ length: 24 }, (_, hour) => {
     const overlapping = projection.events
@@ -168,7 +169,7 @@ function createDayGrid(
       {
         key: dateKey,
         label: formatShortDate(dateKey),
-        sublabel: getWeekdayLabel(dateKey),
+        sublabel: getWeekdayLabel(dateKey, language),
       },
     ],
     nowHour: new Date().getHours(),
@@ -190,6 +191,7 @@ export function createEmployeeScheduleCalendarData(
   employee: MerchantEmployee,
   dates: string[],
   readOnly = false,
+  language: Language = "zh",
 ): ScheduleCycleCalendarBoardDataOverride {
   const cellByEventId = new Map<string, DispatchScheduleCell>();
   const events: UnifiedCalendarEvent[] = projection.events.map((event) => {
@@ -272,7 +274,7 @@ export function createEmployeeScheduleCalendarData(
   ];
   return {
     cellByEventId,
-    dayGrids: dates.map((date) => createDayGrid(date, projection, employee)),
+    dayGrids: dates.map((date) => createDayGrid(date, projection, employee, language)),
     events,
     lanes,
   };
@@ -316,9 +318,9 @@ export function EmployeeSchedulePanel({ employee, readOnly = false, scheduleSurf
   const dataOverride = useMemo(
     () =>
       projection
-        ? createEmployeeScheduleCalendarData(projection, employee, dates, readOnly)
+        ? createEmployeeScheduleCalendarData(projection, employee, dates, readOnly, language)
         : null,
-    [dates, employee, projection, readOnly],
+    [dates, employee, language, projection, readOnly],
   );
   const changeView = useCallback((next: ScheduleCycleCalendarBoardView) => {
     if (next === "day" || next === "week" || next === "month") {
