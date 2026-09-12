@@ -15,9 +15,17 @@ describe("RealtimeService profile updates", () => {
     const gateway = { publish: jest.fn(), subscribe: jest.fn() };
     const service = new RealtimeService(repository as never, gateway);
 
-    await service.notifyProfileUpdated({ userId: 167, identityId: 1670 });
+    await service.notifyProfileUpdated({
+      userId: 167,
+      identityId: 1670,
+      includePersonalIdentities: true
+    });
 
-    expect(repository.listProfileUpdateRecipients).toHaveBeenCalledWith(1670);
+    expect(repository.listProfileUpdateRecipients).toHaveBeenCalledWith({
+      userId: 167,
+      identityId: 1670,
+      includePersonalIdentities: true
+    });
     expect(gateway.publish).toHaveBeenCalledTimes(2);
     expect(gateway.publish).toHaveBeenNthCalledWith(
       1,
@@ -32,7 +40,7 @@ describe("RealtimeService profile updates", () => {
 });
 
 describe("RealtimeRepository profile update recipients", () => {
-  it("finds active identities from every active conversation containing the changed identity", async () => {
+  it("finds active identities from conversations containing any synced personal identity", async () => {
     const findMany = jest.fn(async () => [
       { userId: 41, identityId: 410 },
       { userId: 167, identityId: 1670 }
@@ -41,7 +49,13 @@ describe("RealtimeRepository profile update recipients", () => {
       conversationParticipant: { findMany }
     } as never);
 
-    await expect(repository.listProfileUpdateRecipients(1670)).resolves.toEqual([
+    await expect(
+      repository.listProfileUpdateRecipients({
+        userId: 167,
+        identityId: 1670,
+        includePersonalIdentities: true
+      })
+    ).resolves.toEqual([
       { userId: 41, identityId: 410 },
       { userId: 167, identityId: 1670 }
     ]);
@@ -50,7 +64,52 @@ describe("RealtimeRepository profile update recipients", () => {
         deletedAt: null,
         conversation: {
           deletedAt: null,
-          participants: { some: { identityId: 1670, deletedAt: null } }
+          participants: {
+            some: {
+              deletedAt: null,
+              OR: [
+                { identityId: 1670 },
+                {
+                  userId: 167,
+                  identity: {
+                    type: { in: ["customer", "user", "u", "technician", "scout"] },
+                    isActive: true,
+                    deletedAt: null
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      distinct: ["identityId"],
+      select: { userId: true, identityId: true }
+    });
+  });
+
+  it("keeps merchant profile refreshes scoped to the changed merchant identity", async () => {
+    const findMany = jest.fn(async () => []);
+    const repository = new RealtimeRepository({
+      conversationParticipant: { findMany }
+    } as never);
+
+    await repository.listProfileUpdateRecipients({
+      userId: 167,
+      identityId: 1670,
+      includePersonalIdentities: false
+    });
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        conversation: {
+          deletedAt: null,
+          participants: {
+            some: {
+              deletedAt: null,
+              OR: [{ identityId: 1670 }]
+            }
+          }
         }
       },
       distinct: ["identityId"],
