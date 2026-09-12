@@ -104,6 +104,7 @@ describe("MerchantProfileService", () => {
     );
     expect(profileNotifier.notifyProfileUpdated).toHaveBeenCalledWith({
       identityId: 109,
+      includePersonalIdentities: false,
       userId: 9
     });
   });

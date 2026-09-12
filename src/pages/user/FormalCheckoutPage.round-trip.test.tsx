@@ -966,4 +966,41 @@ describe("formal checkout technician-card round trip", () => {
     await click(confirm);
     expect(createBooking).not.toHaveBeenCalled();
   });
+
+  it("does not silently replace an expired route slot with another technician or time", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    const getTechnicianDetail = vi.spyOn(coreReadApi, "getTechnicianDetail");
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
+      list: [
+        { ...slots[0]!, status: "booked", bookedCount: 1 },
+        slots[1]!
+      ],
+      total: 2,
+      page: 1,
+      page_size: 100
+    });
+    const createBooking = vi.spyOn(bookingApi, "createBooking");
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00&scheduleSlotId=101&mode=store"]}>
+            <Routes>
+              <Route element={<CheckoutPage />} path="/checkout/:serviceId" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("selected appointment time is no longer available"));
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')?.textContent).toContain("—");
+    expect(container.textContent).not.toContain("Haruka");
+    expect(getTechnicianDetail).not.toHaveBeenCalled();
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+    expect(confirm.disabled).toBe(true);
+    expect(createBooking).not.toHaveBeenCalled();
+  });
 });

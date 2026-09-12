@@ -93,6 +93,7 @@ describe("CustomerProfileService", () => {
     expect(audit.createInput).toHaveBeenCalledWith(expect.objectContaining({ targetId: 41 }));
     expect(profileNotifier.notifyProfileUpdated).toHaveBeenCalledWith({
       identityId: 17,
+      includePersonalIdentities: true,
       userId: 11
     });
   });

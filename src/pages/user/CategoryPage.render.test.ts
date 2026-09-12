@@ -50,6 +50,9 @@ const locationHarness = vi.hoisted((): LocationHarness => ({
 }));
 
 const authHarness = vi.hoisted(() => ({ isAuthenticated: false }));
+const i18nHarness = vi.hoisted(() => ({
+  language: "zh" as "zh" | "zh-Hant" | "ja" | "en" | "ko"
+}));
 
 const category = {
   id: 3,
@@ -125,6 +128,24 @@ const technician = {
   }
 };
 
+const service = {
+  id: 71,
+  publicId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  name: "肩颈调理",
+  description: "肩颈护理服务",
+  category,
+  shop,
+  technician,
+  city: "Tokyo",
+  priceAmount: "8800",
+  currency: "JPY",
+  durationMinutes: 60,
+  usageCount: 18,
+  coverUrl: null,
+  reviewSummary,
+  serviceMode: "store"
+};
+
 function page<T>(list: T[]) {
   return { list, total: list.length, page: 1, page_size: 40 };
 }
@@ -150,6 +171,7 @@ function resetQueryStates(overrides: Partial<Record<QueryKey, QueryState>> = {})
   };
   locationHarness.state = { promptStatus: "unrequested", source: "default" };
   authHarness.isAuthenticated = false;
+  i18nHarness.language = "zh";
 }
 
 function renderCategoryPage(path: string) {
@@ -224,8 +246,8 @@ vi.mock("../../features/core-read/hooks", () => ({
 }));
 
 vi.mock("../../i18n/I18nProvider", () => ({
-  useI18n: () => ({ language: "zh" }),
-  useOptionalI18n: () => ({ language: "zh" })
+  useI18n: () => ({ language: i18nHarness.language }),
+  useOptionalI18n: () => ({ language: i18nHarness.language })
 }));
 
 vi.mock("../../state/homeLayoutStore", () => ({
@@ -237,6 +259,37 @@ vi.mock("../../state/homeLocationStore", () => ({
 }));
 
 describe("CategoryPage formal category state", () => {
+  it("renders Japanese search controls and result-card accessibility copy without mixed Chinese", () => {
+    resetQueryStates({ service: { data: page([service]), error: null, loading: false } });
+    i18nHarness.language = "ja";
+
+    const html = renderCategoryPage("/categories?type=service");
+
+    expect(html).toContain('placeholder="キーワードを入力"');
+    expect(html).toContain('aria-label="キーワードを検索"');
+    expect(html).toContain(">検索</button>");
+    expect(html).toContain('aria-label="完了件数"');
+    expect(html).toContain('aria-label="現在地から"');
+    expect(html).toContain('aria-label="サービスを見る 肩颈调理"');
+    expect(html).not.toMatch(/に追加|完特異|距離你|正在|搜索|载入|读取/u);
+  });
+
+  it("renders the page-level loading state in Japanese", () => {
+    resetQueryStates({
+      categories: { data: null, error: null, loading: true },
+      service: { data: null, error: null, loading: true },
+      shop: { data: null, error: null, loading: true },
+      technician: { data: null, error: null, loading: true }
+    });
+    i18nHarness.language = "ja";
+
+    const html = renderCategoryPage("/categories");
+
+    expect(html).toContain("検索結果を読み込んでいます");
+    expect(html).toContain("サービスとカテゴリを検索しています。");
+    expect(html).not.toMatch(/正在|载入|读取/u);
+  });
+
   it("renders the real empty state when the category API returns no records", () => {
     resetQueryStates({ categories: { data: page([]), error: null, loading: false } });
     const html = renderCategoryPage("/categories");
