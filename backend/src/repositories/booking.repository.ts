@@ -814,6 +814,7 @@ export interface BookingOrderPayload {
   servicePriceSnapshot: string | null;
   serviceDurationSnapshot: number | null;
   serviceSnapshot: unknown;
+  rebook: BookingOrderRebookPayload;
   fulfillmentAddressSnapshot: FulfillmentAddressSnapshot | null;
   shopName: string;
   technicianName: string | null;
@@ -832,6 +833,25 @@ export interface BookingOrderPayload {
   performanceAssessment: OrderPerformanceAssessmentPublicPayload | null;
   timelineEvents: OrderTimelineEventPayload[];
 }
+
+export type BookingOrderRebookPayload =
+  | {
+      action: "checkout";
+      serviceType: "shop_service" | "technician_service";
+      serviceId: number;
+      shopId: number;
+      technicianProfileId: number | null;
+      fulfillmentMode: BookingFulfillmentMode;
+    }
+  | {
+      action: "select_service";
+      shopId: number;
+      reason: "original_service_unavailable";
+    }
+  | {
+      action: "unavailable";
+      reason: "shop_unavailable";
+    };
 
 export type FulfillmentAddressSnapshot = {
   line1: string;
@@ -1095,9 +1115,28 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
         };
       };
     };
-    service: true;
-    technicianService: true;
-    shop: true;
+    service: { include: { category: true } };
+    technicianService: {
+      include: {
+        category: true;
+        technicianProfile: {
+          include: {
+            technicianShopAffiliations: true;
+            user: {
+              include: {
+                identities: { include: { publicIdentifier: true } };
+              };
+            };
+          };
+        };
+      };
+    };
+    shop: {
+      include: {
+        entitySuspensions: true;
+        publicIdentifier: true;
+      };
+    };
     technicianProfile: true;
     serviceSession: {
       include: {
@@ -6039,9 +6078,35 @@ export class BookingRepository implements BookingRepositoryPort {
           }
         }
       },
-      service: true,
-      technicianService: true,
-      shop: true,
+      service: { include: { category: true } },
+      technicianService: {
+        include: {
+          category: true,
+          technicianProfile: {
+            include: {
+              technicianShopAffiliations: {
+                where: { deletedAt: null, workStatus: "ACTIVE" as const }
+              },
+              user: {
+                include: {
+                  identities: {
+                    where: { deletedAt: null, isActive: true },
+                    include: { publicIdentifier: true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      shop: {
+        include: {
+          entitySuspensions: {
+            where: { activeKey: { not: null }, status: "active", deletedAt: null }
+          },
+          publicIdentifier: true
+        }
+      },
       technicianProfile: true,
       serviceSession: {
         include: {
@@ -6232,6 +6297,7 @@ export class BookingRepository implements BookingRepositoryPort {
         : null,
       serviceDurationSnapshot: order.serviceDurationSnapshot,
       serviceSnapshot: order.serviceSnapshotJson,
+      rebook: this.resolveRebook(order),
       fulfillmentAddressSnapshot: this.fulfillmentAddressSnapshot(order.fulfillmentAddressSnapshot),
       shopName: order.shop.name,
       technicianName: order.technicianProfile?.displayName ?? null,
@@ -6309,6 +6375,97 @@ export class BookingRepository implements BookingRepositoryPort {
         : null,
       timelineEvents
     };
+  }
+
+  private resolveRebook(order: OrderRecord): BookingOrderRebookPayload {
+    if (!this.isCurrentRebookShop(order.shop)) {
+      return { action: "unavailable", reason: "shop_unavailable" };
+    }
+
+    if (
+      order.serviceId !== null &&
+      order.shop.pricingMode === "MERCHANT" &&
+      order.service?.id === order.serviceId &&
+      order.service.shopId === order.shopId &&
+      order.service.status === "published" &&
+      order.service.deletedAt === null &&
+      order.service.category.isActive &&
+      order.service.category.deletedAt === null
+    ) {
+      return {
+        action: "checkout",
+        serviceType: "shop_service",
+        serviceId: order.serviceId,
+        shopId: order.shopId,
+        technicianProfileId: order.technicianProfileId,
+        fulfillmentMode: order.fulfillmentMode === "home" ? "home" : "store"
+      };
+    }
+
+    const technicianService = order.technicianService;
+    const technician = technicianService?.technicianProfile;
+    const now = Date.now();
+    if (
+      order.technicianServiceId !== null &&
+      order.technicianProfileId !== null &&
+      order.shop.pricingMode === "TECHNICIAN" &&
+      technicianService?.id === order.technicianServiceId &&
+      technicianService.shopId === order.shopId &&
+      technicianService.technicianId === order.technicianProfileId &&
+      technicianService.isActive &&
+      technicianService.isBookable &&
+      technicianService.reviewStatus === "APPROVED" &&
+      technicianService.deletedAt === null &&
+      technicianService.category.isActive &&
+      technicianService.category.deletedAt === null &&
+      technician?.status === "published" &&
+      technician.visibility === "public" &&
+      technician.deletedAt === null &&
+      technician.user.isActive &&
+      technician.user.deletedAt === null &&
+      technician.user.identities.some((identity) =>
+        identity.isActive &&
+        identity.deletedAt === null &&
+        ["technician", "service", "s"].includes(identity.type) &&
+        identity.publicIdentifier?.kind === "S" &&
+        identity.publicIdentifier.status === "ACTIVE" &&
+        identity.publicIdentifier.deletedAt === null
+      ) &&
+      technician.technicianShopAffiliations.some((affiliation) =>
+        affiliation.shopId === order.shopId &&
+        affiliation.workStatus === "ACTIVE" &&
+        affiliation.activeKey !== null &&
+        affiliation.deletedAt === null &&
+        affiliation.startsAt.getTime() <= now &&
+        (affiliation.endsAt === null || affiliation.endsAt.getTime() > now)
+      )
+    ) {
+      return {
+        action: "checkout",
+        serviceType: "technician_service",
+        serviceId: order.technicianServiceId,
+        shopId: order.shopId,
+        technicianProfileId: order.technicianProfileId,
+        fulfillmentMode: order.fulfillmentMode === "home" ? "home" : "store"
+      };
+    }
+
+    return {
+      action: "select_service",
+      shopId: order.shopId,
+      reason: "original_service_unavailable"
+    };
+  }
+
+  private isCurrentRebookShop(shop: OrderRecord["shop"]): boolean {
+    return (
+      shop.status === "published" &&
+      shop.deletedAt === null &&
+      shop.publicIdentifier?.kind === "SHOP" &&
+      shop.publicIdentifier.status === "ACTIVE" &&
+      shop.publicIdentifier.deletedAt === null &&
+      shop.entitySuspensions.length === 0
+    );
   }
 
   private fulfillmentAddressSnapshot(value: unknown): FulfillmentAddressSnapshot | null {

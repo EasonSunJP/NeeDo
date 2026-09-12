@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import pageSource from "./StoreDetailPage.tsx?raw";
 
 describe("StoreDetailPage routed booking defaults", () => {
+  it("shows the validated rebook notice on the original formal shop service list", () => {
+    expect(pageSource).toContain("routeState?.notice === \"原服务已停止，请重新选择服务\"");
+    expect(pageSource).toContain("<UnifiedFormalStoreDetail notice={notice}");
+    expect(pageSource).toContain("{translateText(notice, language)}");
+  });
+
   it("keeps technician and schedule query defaults when opening checkout", () => {
     expect(pageSource).toContain("useSearchParams");
     expect(pageSource).toContain('searchParams.get("technician")');
@@ -555,7 +561,7 @@ describe("StoreDetailPage formal route isolation", () => {
   it("hydrates numeric IDs into the single complete store experience", () => {
     expect(pageSource).not.toContain('import { FormalStoreDetailPage } from "./FormalStoreDetailPage";');
     expect(pageSource).toContain("if (apiId) {");
-    expect(pageSource).toContain("return <UnifiedFormalStoreDetail scope={scope} shopId={apiId} />;");
+    expect(pageSource).toContain("return <UnifiedFormalStoreDetail notice={notice} scope={scope} shopId={apiId} />;");
     expect(pageSource).toContain("<StoreDetailExperience");
     expect(pageSource).toContain("presentationOverride={buildFormalStorePresentation(query.data, store)}");
     expect(pageSource).toContain("techniciansOverride={technicians}");
