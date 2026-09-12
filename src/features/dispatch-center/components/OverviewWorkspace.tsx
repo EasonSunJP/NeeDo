@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MobileFullscreenHeader } from "../../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../../components/mobile/MobileFullscreenPage";
@@ -26,6 +26,7 @@ import { loadCoreReadWithTransientRetry } from "../../core-read/transientRetry";
 import { loadManagedScheduleWindow } from "../../scheduling/window-loader";
 import { readFormalScheduleWindow, refreshFormalScheduleWindow } from "../../scheduling/formalScheduleWindowCache";
 import { getAuthenticatedPersistentCacheScope } from "../../../lib/persistentCacheScope";
+import { getMerchantStaffDetailPath } from "../../../lib/merchantStaffRoute";
 import { getMerchantCustomerConversationId, getMessagePath } from "../../../lib/messageCenter";
 import { shareContent } from "../../../lib/share";
 import { cn, statusLabel as formatOrderStatusLabel, yen } from "../../../lib/utils";
@@ -72,10 +73,6 @@ function formatCompactPeriodLabel(periodLabel: string) {
   }
 
   return `${startYear.slice(2)}.${startMonth}.${startDay} - ${endYear.slice(2)}.${endMonth}.${endDay}`;
-}
-
-function getMerchantStaffDetailPath(technicianId: string) {
-  return `/merchant/staff/${encodeURIComponent(technicianId)}`;
 }
 
 function ComputerAvatarIcon() {
@@ -819,7 +816,14 @@ export function DispatchOverviewWorkspace({
       range: formalCycleRange,
       shop: { cover: formalStore.cover, id: formalStore.id, name: formalStore.name },
       slots: formalScheduleSlots,
-      technicians: formalTechnicians
+      technicians: formalTechnicians.map((technician) => ({
+        avatar: technician.avatar,
+        identityLabel: technician.identityLabel,
+        internalProfileId: technician.id,
+        name: technician.name,
+        nickname: technician.nickname,
+        publicNeedoId: technician.systemId
+      }))
     });
   }, [dateKey, formalCycleRange, formalScheduleSlots, formalStore, formalTechnicians, usesFormalMerchantSchedule]);
   const schedulePeriodLabel = formalScheduleBoard?.periodLabel ?? summary.activePeriodLabel;
@@ -835,6 +839,9 @@ export function DispatchOverviewWorkspace({
 
     return scoped.length > 0 ? scoped : entitySnapshot.technicians;
   }, [entitySnapshot.technicians, storeId]);
+  const getTechnicianPublicDetailPath = useCallback((technicianInternalId: string) => getMerchantStaffDetailPath(
+    activeTechnicians.find((technician) => technician.id === technicianInternalId)?.systemId
+  ), [activeTechnicians]);
   const technicianById = useMemo(
     () => new Map(entitySnapshot.technicians.map((technician) => [technician.id, technician])),
     [entitySnapshot.technicians]
@@ -1851,7 +1858,7 @@ export function DispatchOverviewWorkspace({
               cycleId={formalScheduleBoard ? null : summary.activeCycle?.id ?? null}
               dataOverride={formalScheduleBoard?.dataOverride}
               dateKey={dateKey}
-              getTechnicianDetailPath={getMerchantStaffDetailPath}
+              getTechnicianDetailPath={getTechnicianPublicDetailPath}
               onDateChange={(nextDateKey) => {
                 setDateKey(nextDateKey);
                 setSelectedCell(null);
@@ -1950,7 +1957,7 @@ export function DispatchOverviewWorkspace({
               cycleId={formalScheduleBoard ? null : summary.activeCycle?.id ?? null}
               dataOverride={formalScheduleBoard?.dataOverride}
               dateKey={dateKey}
-              getTechnicianDetailPath={getMerchantStaffDetailPath}
+              getTechnicianDetailPath={getTechnicianPublicDetailPath}
               onDateChange={(nextDateKey) => {
                 setDateKey(nextDateKey);
                 setSelectedCell(null);

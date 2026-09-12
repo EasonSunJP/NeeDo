@@ -2,6 +2,7 @@ import type { BookingScheduleSlot } from "../../features/booking/api";
 import { addDays, getTodayDateKey, getWeekdayLabel } from "../../features/technician-schedule/model";
 import type { DispatchScheduleCell, DispatchScheduleGridData, DispatchScheduleRow } from "../../features/dispatch-center/store";
 import type { Technician } from "../../types/domain";
+import { getMerchantStaffDetailPath } from "../../lib/merchantStaffRoute";
 import type { UnifiedCalendarEvent, UnifiedCalendarLane } from "./UnifiedUserCalendar";
 
 type FormalMerchantScheduleCycleRange = {
@@ -14,8 +15,14 @@ type FormalMerchantScheduleBoardInput = {
   range: FormalMerchantScheduleCycleRange;
   shop: { cover: string; id: string; name: string };
   slots: BookingScheduleSlot[];
-  technicians: Array<Pick<Technician, "avatar" | "id" | "identityLabel" | "name" | "nickname">>;
+  technicians: FormalMerchantScheduleTechnician[];
 };
+
+export type FormalMerchantScheduleTechnician =
+  Pick<Technician, "avatar" | "identityLabel" | "name" | "nickname"> & {
+    internalProfileId: string;
+    publicNeedoId: string | null;
+  };
 
 type FormalMerchantScheduleBoardResult = {
   dataOverride: {
@@ -37,6 +44,7 @@ type FormalMerchantScheduleBoardResult = {
 type FormalScheduleLane = {
   avatar: string;
   caption: string;
+  detailPath?: string;
   id: string;
   label: string;
   technicianProfileId: number | null;
@@ -128,9 +136,10 @@ function buildFormalScheduleLanes(input: FormalMerchantScheduleBoardInput): Form
   const lanes = input.technicians.map((technician) => ({
     avatar: technician.avatar,
     caption: [technician.identityLabel, technician.nickname ? technician.name : null].filter(Boolean).join(" · "),
-    id: technician.id,
+    detailPath: getMerchantStaffDetailPath(technician.publicNeedoId),
+    id: technician.internalProfileId,
     label: technician.nickname?.trim() || technician.name,
-    technicianProfileId: Number.isInteger(Number(technician.id)) ? Number(technician.id) : null
+    technicianProfileId: Number.isInteger(Number(technician.internalProfileId)) ? Number(technician.internalProfileId) : null
   }));
   const knownTechnicianIds = new Set(lanes.map((lane) => lane.technicianProfileId).filter((id): id is number => id != null));
 
@@ -143,6 +152,7 @@ function buildFormalScheduleLanes(input: FormalMerchantScheduleBoardInput): Form
     lanes.push({
       avatar: "",
       caption: "正式排班记录",
+      detailPath: undefined,
       id: String(slot.technicianProfileId),
       label: slot.technicianName?.trim() || `技师 ${slot.technicianProfileId}`,
       technicianProfileId: slot.technicianProfileId
@@ -153,6 +163,7 @@ function buildFormalScheduleLanes(input: FormalMerchantScheduleBoardInput): Form
     lanes.push({
       avatar: input.shop.cover,
       caption: "未指定技师",
+      detailPath: undefined,
       id: `shop-${input.shop.id}`,
       label: "店铺公共",
       technicianProfileId: null
@@ -224,7 +235,7 @@ export function buildFormalMerchantScheduleBoard(input: FormalMerchantScheduleBo
     accent: laneAccents[index % laneAccents.length] ?? "var(--client-primary)",
     avatar: lane.avatar,
     caption: lane.caption,
-    detailPath: lane.technicianProfileId == null ? undefined : `/merchant/staff/${encodeURIComponent(lane.id)}`,
+    detailPath: lane.detailPath,
     id: `technician:${lane.id}`,
     label: lane.label
   }));
@@ -273,7 +284,7 @@ export function buildFormalMerchantScheduleBoard(input: FormalMerchantScheduleBo
         id: eventId,
         scheduleSlotId: slot.id,
         participants: [
-          { avatar: lane.avatar, id: `technician:${lane.id}`, meta: lane.caption, name: lane.label, role: "参加者" },
+          { avatar: lane.avatar, id: `technician:${lane.id}`, meta: lane.caption, name: lane.label, role: "参加者", to: lane.detailPath },
           { avatar: input.shop.cover, id: `store:${input.shop.id}`, name: input.shop.name, role: "创建者" }
         ],
         readOnly: true,

@@ -126,6 +126,13 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(employeeDetailWorkspaceSource).toContain("<EmployeeDetailCard");
   });
 
+  it("uses the public NeeDo technician id for every merchant staff detail action", () => {
+    expect(merchantSource).toContain('import { getMerchantStaffDetailPath } from "../../lib/merchantStaffRoute";');
+    expect(merchantSource).toContain("onClick: () => openStaffDetail(newestTechnician.systemId)");
+    expect(merchantSource).not.toContain("onClick: () => openStaffDetail(newestTechnician.id)");
+    expect(merchantSource).not.toContain("function getMerchantStaffDetailPath(id: string)");
+  });
+
   it("adds the floating privacy menu to the merchant service card only", () => {
     expect(merchantSource).toContain('{ label: "信息卡", value: "info" }');
     expect(merchantSource).toContain('{ label: "店铺展示", value: "service" }');
