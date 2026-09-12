@@ -238,8 +238,8 @@ describe("formal Exchange OpenAPI contract", () => {
         addressLine1: expect.objectContaining({ minLength: 1, maxLength: 255 }),
         addressLine2: expect.objectContaining({ type: ["string", "null"] }),
         addressLine3: expect.objectContaining({ type: ["string", "null"] }),
-        addressLine2Public: { type: "boolean", default: false },
-        addressLine3Public: { type: "boolean", default: false },
+        addressLine2Public: { type: "boolean", const: false, default: false },
+        addressLine3Public: { type: "boolean", const: false, default: false },
         publisherIdentityPublic: { type: "boolean", default: false }
       })
     );
@@ -262,6 +262,14 @@ describe("formal Exchange OpenAPI contract", () => {
     expect(demand.properties.address).toEqual({
       $ref: "#/components/schemas/ExchangeRequestAddress"
     });
+    expect(schemas.ExchangeRequestAddress.properties.line1).toEqual(
+      expect.objectContaining({ type: ["string", "null"] })
+    );
+    expect(schemas.ExchangeRequestAddress.properties.disclosure.enum).toEqual([
+      "owner",
+      "matched_participant",
+      "general"
+    ]);
     expect(schemas.ExchangePost.properties.publisher.oneOf).toEqual([
       { $ref: "#/components/schemas/ExchangeActor" },
       { type: "null" }

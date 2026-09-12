@@ -403,10 +403,10 @@ export function ExchangeComposer({
                   : `${formatComposerMoney(normalizedPayload.budgetMinJpy)} ～ ${formatComposerMoney(normalizedPayload.budgetMaxJpy)}`
               },
               ...(normalizedPayload.addressLine2
-                ? [{ label: t("addressLine2"), value: `${normalizedPayload.addressLine2} · ${t(normalizedPayload.addressLine2Public ? "visibleToProviders" : "hiddenUntilMatch")}` }]
+                ? [{ label: t("addressLine2"), value: `${normalizedPayload.addressLine2} · ${t("hiddenUntilMatch")}` }]
                 : []),
               ...(normalizedPayload.addressLine3
-                ? [{ label: t("addressLine3"), value: `${normalizedPayload.addressLine3} · ${t(normalizedPayload.addressLine3Public ? "visibleToProviders" : "hiddenUntilMatch")}` }]
+                ? [{ label: t("addressLine3"), value: `${normalizedPayload.addressLine3} · ${t("hiddenUntilMatch")}` }]
                 : []),
               { label: t("publisherIdentityVisible"), value: t(normalizedPayload.publisherIdentityPublic ? "visibleToProviders" : "hiddenUntilMatch") }
               ]

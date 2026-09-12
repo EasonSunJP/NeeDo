@@ -99,9 +99,6 @@ export function RequestComposerFields({
   onChange: (patch: Partial<RequestComposerDraft>) => void;
 }) {
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
-  const optionalLine2Present = draft.addressLine2.trim().length > 0;
-  const optionalLine3Present = draft.addressLine3.trim().length > 0;
-
   return (
     <section
       className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel"
@@ -225,18 +222,11 @@ export function RequestComposerFields({
             name="addressLine2"
             onChange={(event) => onChange({
               addressLine2: event.target.value,
-              ...(!event.target.value.trim() ? { addressLine2Public: false } : {})
+              addressLine2Public: false
             })}
             value={draft.addressLine2}
           />
         </Field>
-        <VisibilitySwitch
-          checked={optionalLine2Present && draft.addressLine2Public}
-          disabled={!optionalLine2Present}
-          label={t("generallyVisible")}
-          name="addressLine2Public"
-          onChange={(addressLine2Public) => onChange({ addressLine2Public })}
-        />
 
         <Field label={t("addressLine3")}>
           <input
@@ -245,18 +235,11 @@ export function RequestComposerFields({
             name="addressLine3"
             onChange={(event) => onChange({
               addressLine3: event.target.value,
-              ...(!event.target.value.trim() ? { addressLine3Public: false } : {})
+              addressLine3Public: false
             })}
             value={draft.addressLine3}
           />
         </Field>
-        <VisibilitySwitch
-          checked={optionalLine3Present && draft.addressLine3Public}
-          disabled={!optionalLine3Present}
-          label={t("generallyVisible")}
-          name="addressLine3Public"
-          onChange={(addressLine3Public) => onChange({ addressLine3Public })}
-        />
 
         <VisibilitySwitch
           checked={draft.publisherIdentityPublic}

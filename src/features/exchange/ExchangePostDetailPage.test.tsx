@@ -351,9 +351,12 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.textContent).not.toContain("u0000000041");
   });
 
-  it("renders only the Request address lines projected by the server", async () => {
+  it.each(["general", undefined] as const)(
+    "renders only the coarse Request service area for disclosure %s",
+    async (disclosure) => {
     vi.mocked(getExchangePost).mockResolvedValue({
       ...demandPost,
+      areaLabel: "東京都港区",
       publisher: null,
       demand: {
         ...demandPost.demand!,
@@ -361,23 +364,26 @@ describe("ExchangePostDetailPage", () => {
         address: {
           line1: "東京都港区六本木 3-2-1",
           line2: "Prince Tower 12F",
-          line3: null,
+          line3: "受付で田中を呼び出してください",
           line2GenerallyVisible: true,
-          line3GenerallyVisible: false,
-          disclosure: "general"
+          line3GenerallyVisible: true,
+          disclosure: disclosure as never
         }
       }
     });
     await renderDetail();
     await waitFor(() => expect(document.body.textContent).toContain("正式详情标题"));
 
-    expect(document.body.textContent).toContain("東京都港区六本木 3-2-1");
-    expect(document.body.textContent).toContain("Prince Tower 12F");
+    expect(document.body.textContent).toContain("東京都港区");
+    expect(document.body.textContent).not.toContain("東京都港区六本木 3-2-1");
+    expect(document.body.textContent).not.toContain("Prince Tower 12F");
+    expect(document.body.textContent).not.toContain("田中");
     expect(document.body.textContent).not.toContain("测试客户 41");
     expect(document.body.textContent).not.toContain("u0000000041");
     expect(document.body.textContent).toContain("¥12,000");
     expect(document.body.textContent).not.toContain("¥0–¥12,000");
-  });
+    }
+  );
 
   it("restores the approved full-screen intelligence detail composition with formal fields", async () => {
     vi.mocked(getExchangePost).mockResolvedValue(intelligencePost);
