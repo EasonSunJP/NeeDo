@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
@@ -167,11 +167,18 @@ async function waitFor(assertion: () => void) {
   throw lastError;
 }
 
+function LocationProbe() {
+  const location = useLocation();
+
+  return <output data-testid="location-probe">{location.pathname}</output>;
+}
+
 async function renderUserCenter(expectedName = "服务端原名") {
   await act(async () => {
     root.render(
       <MemoryRouter>
         <UserCenterPage />
+        <LocationProbe />
       </MemoryRouter>
     );
   });
@@ -286,17 +293,50 @@ describe("UserCenterPage inline profile editing", () => {
     await renderUserCenter();
 
     const section = container.querySelector('[data-testid="user-center-account-settings"]');
-    const rows = Array.from(section?.querySelectorAll<HTMLAnchorElement>("a") ?? []);
+    const rows = Array.from(section?.querySelector(".mt-3.grid.gap-2")?.children ?? []);
 
     expect(section).not.toBeNull();
     expect(rows).toHaveLength(6);
     rows.forEach((row) => {
+      const textColumn = row.querySelector<HTMLElement>(":scope > .col-start-1");
+      const accessory = row.querySelector<HTMLElement>(":scope > .col-start-2");
+
       expect(row.className).toContain("grid-cols-[minmax(0,1fr)_auto]");
-      expect(row.firstElementChild?.className).toContain("min-w-0");
-      expect(row.firstElementChild?.className).toContain("text-left");
-      expect(row.firstElementChild?.className).toContain("col-start-1");
-      expect(row.lastElementChild?.className).toContain("col-start-2");
+      expect(textColumn?.className).toContain("min-w-0");
+      expect(textColumn?.className).toContain("text-left");
+      expect(accessory).not.toBeNull();
     });
+  });
+
+  it("keeps invoice records visible but disabled while other account links remain active", async () => {
+    await renderUserCenter();
+
+    const section = container.querySelector('[data-testid="user-center-account-settings"]');
+    const invoiceEntry = section?.querySelector<HTMLElement>('[data-testid="user-center-invoice-entry"]');
+    const activeLinks = Array.from(section?.querySelectorAll<HTMLAnchorElement>("a") ?? []);
+
+    expect(invoiceEntry?.tagName).toBe("DIV");
+    expect(invoiceEntry?.getAttribute("aria-disabled")).toBe("true");
+    expect(invoiceEntry?.querySelector("a")).toBeNull();
+    expect(invoiceEntry?.getAttribute("href")).toBeNull();
+    expect(invoiceEntry?.tabIndex).toBe(-1);
+    expect(invoiceEntry?.textContent).toContain("发票记录");
+    expect(invoiceEntry?.textContent).toContain("发票功能暂未开放");
+    expect(invoiceEntry?.querySelector('[aria-label="Test 功能"]')).not.toBeNull();
+    expect(activeLinks.map((link) => [link.querySelector("strong")?.textContent, link.getAttribute("href")])).toEqual([
+      ["账号设置", "/me/settings/account"],
+      ["支付方式", "/me/settings/account"],
+      ["通知设置", "/me/settings/notifications"],
+      ["隐私与安全", "/me/settings/account"],
+      ["联系客服", "/support"]
+    ]);
+
+    await click(invoiceEntry!);
+    await act(async () => {
+      invoiceEntry?.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      invoiceEntry?.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: " " }));
+    });
+    expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe("/");
   });
 
   it("keeps the saved privacy value in view and restores it after cancelling an edited draft", async () => {
