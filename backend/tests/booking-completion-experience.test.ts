@@ -51,6 +51,14 @@ const order = (status: BookingOrderPayload["status"]): BookingOrderPayload => ({
   serviceDurationSnapshot: 60,
   fulfillmentAddressSnapshot: null,
   serviceSnapshot: null,
+  rebook: {
+    action: "checkout",
+    serviceType: "shop_service",
+    serviceId: 4,
+    shopId: 2,
+    technicianProfileId: 31,
+    fulfillmentMode: "store"
+  },
   shopName: "Aoyama Studio",
   technicianName: "Mika",
   priceAmount: "10000.00",

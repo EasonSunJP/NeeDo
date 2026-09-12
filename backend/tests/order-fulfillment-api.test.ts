@@ -48,6 +48,14 @@ const order: BookingOrderPayload = {
   serviceDurationSnapshot: 60,
   fulfillmentAddressSnapshot: null,
   serviceSnapshot: { serviceId: 11, durationMinutes: 60 },
+  rebook: {
+    action: "checkout",
+    serviceType: "shop_service",
+    serviceId: 11,
+    shopId: 12,
+    technicianProfileId: 702,
+    fulfillmentMode: "store"
+  },
   shopName: "銀座店",
   technicianName: "Misaki",
   priceAmount: "8800.00",

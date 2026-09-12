@@ -69,6 +69,14 @@ const order = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPayloa
   serviceDurationSnapshot: 60,
   fulfillmentAddressSnapshot: null,
   serviceSnapshot: null,
+  rebook: {
+    action: "checkout",
+    serviceType: "shop_service",
+    serviceId: 2,
+    shopId: 7,
+    technicianProfileId: 4,
+    fulfillmentMode: "store"
+  },
   shopName: "Aoyama Care Studio",
   technicianName: "Mika Tanaka",
   priceAmount: "8800.00",

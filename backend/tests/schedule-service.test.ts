@@ -88,6 +88,7 @@ const repository = (result: "ok" | "conflict" = "ok") =>
     createOrderAddOn: jest.fn(),
     decideOrderAddOn: jest.fn(),
     endService: jest.fn(),
+    resolveOverdueAppointment: jest.fn(),
     getOrCreateCheckout: jest.fn(),
     selectCheckoutPaymentMethod: jest.fn(),
     payCheckoutWithNdp: jest.fn(),

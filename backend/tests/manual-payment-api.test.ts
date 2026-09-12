@@ -85,6 +85,14 @@ const makeOrder = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPa
   serviceDurationSnapshot: 60,
   fulfillmentAddressSnapshot: null,
   serviceSnapshot: null,
+  rebook: {
+    action: "checkout",
+    serviceType: "shop_service",
+    serviceId: 1,
+    shopId: 11,
+    technicianProfileId: 31,
+    fulfillmentMode: "store"
+  },
   shopName: "Aoyama Studio",
   technicianName: "Mika",
   priceAmount: "8800.00",

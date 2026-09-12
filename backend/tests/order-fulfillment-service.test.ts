@@ -66,6 +66,14 @@ const makeOrder = (
   servicePriceSnapshot: "8800.00",
   serviceDurationSnapshot: 60,
   serviceSnapshot: { serviceId: 11, durationMinutes: 60 },
+  rebook: {
+    action: "checkout",
+    serviceType: "shop_service",
+    serviceId: 11,
+    shopId: 12,
+    technicianProfileId: assignedTechnician.currentIdentityScopeId,
+    fulfillmentMode: "store"
+  },
   shopName: "銀座店",
   technicianName: "Misaki",
   priceAmount: "8800.00",

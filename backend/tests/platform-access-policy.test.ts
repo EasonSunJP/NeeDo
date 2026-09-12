@@ -18,6 +18,7 @@ const settings = (overrides: Partial<PlatformSettingsRecord> = {}): PlatformSett
   offlinePaymentEnabled: true,
   ndpPaymentEnabled: true,
   anytimeServiceTestEnabled: false,
+  overdueAppointmentGateEnabled: false,
   createdByUserId: null,
   createdAt: new Date("2026-09-01T00:00:00.000Z"),
   updatedAt: new Date("2026-09-01T00:00:00.000Z"),

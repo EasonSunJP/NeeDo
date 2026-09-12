@@ -83,8 +83,10 @@ describe("BackofficeService merchant shop updates", () => {
     const record = jest.fn(async () => undefined);
     const save = jest.fn(async () => ({
       absolutePath: "/private/tmp/shop.png",
+      height: 1,
       mimeType: "image/png" as const,
-      url: "/media/customer-avatars/shop.png"
+      url: "/media/customer-avatars/shop.png",
+      width: 1
     }));
     const service = new BackofficeService(
       { updateMerchantShopProfile } as never,

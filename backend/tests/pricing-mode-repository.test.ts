@@ -603,6 +603,8 @@ describe("PricingModeRepository", () => {
         mimeType: "image/jpeg",
         checksumSha256: "a".repeat(64),
         fileSize: 4,
+        width: 1200,
+        height: 800,
         now,
         action: "technician.service.cover.updated",
         context: { ip: "127.0.0.1", userAgent: "jest" }
@@ -728,6 +730,8 @@ describe("PricingModeRepository", () => {
           mimeType: "image/jpeg",
           checksumSha256: "a".repeat(64),
           fileSize: 225,
+          width: 1200,
+          height: 800,
           now: new Date("2026-09-04T00:00:00.000Z"),
           action: "technician.service.cover.updated",
           context: { ip: "127.0.0.1", userAgent: "jest" }
@@ -994,6 +998,8 @@ describe("PricingModeRepository", () => {
         mimeType: "image/jpeg",
         checksumSha256: "a".repeat(64),
         fileSize: 4,
+        width: 1200,
+        height: 800,
         now: new Date("2026-09-04T00:00:00.000Z"),
         action: "technician.service.cover.updated",
         context: { ip: "127.0.0.1", userAgent: "jest" }

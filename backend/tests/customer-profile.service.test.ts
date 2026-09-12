@@ -109,8 +109,10 @@ describe("CustomerProfileService", () => {
     const customerStorage = storage();
     customerStorage.save.mockResolvedValue({
       absolutePath: "/private/tmp/avatar.png",
+      height: 1,
       mimeType: "image/png",
-      url: "http://localhost:3000/media/customer-avatars/avatar.png"
+      url: "http://localhost:3000/media/customer-avatars/avatar.png",
+      width: 1
     });
     customerRepository.updateMine.mockResolvedValue({
       ...updatedProfile,

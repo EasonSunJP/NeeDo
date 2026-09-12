@@ -113,6 +113,14 @@ const makeOrder = (
   servicePriceSnapshot: "8800.00",
   serviceDurationSnapshot: 60,
   serviceSnapshot: null,
+  rebook: {
+    action: "checkout",
+    serviceType: "shop_service",
+    serviceId: 1,
+    shopId: 1,
+    technicianProfileId: 1,
+    fulfillmentMode: "store"
+  },
   fulfillmentAddressSnapshot: null,
   shopName: "Aoyama Care Studio",
   technicianName: "Mika Tanaka",
