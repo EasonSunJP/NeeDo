@@ -24,19 +24,35 @@ const initialOrderRenderCount = 12;
 const orderRenderBatchSize = 12;
 
 function parseOrderDateTime(value: string) {
-  const [datePart, timePart = "00:00"] = value.split(" ");
-  const [year = "1970", month = "01", day = "01"] = datePart.split("-");
-  const [hour = "00", minute = "00"] = timePart.split(":");
+  const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(value.trim());
 
-  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), 0, 0);
+  if (!match) return null;
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day ||
+    date.getHours() !== hour ||
+    date.getMinutes() !== minute
+  ) {
+    return null;
+  }
+
+  return date;
 }
 
 function getOrderSortValue(order: Order) {
-  const bookedTime = parseOrderDateTime(order.bookedAt).getTime();
+  const bookedTime = parseOrderDateTime(order.bookedAt)?.getTime();
 
-  if (Number.isFinite(bookedTime) && bookedTime > 0) return bookedTime;
-  const createdTime = parseOrderDateTime(order.createdAt).getTime();
-  return Number.isFinite(createdTime) ? createdTime : 0;
+  if (bookedTime !== undefined && bookedTime > 0) return bookedTime;
+  return parseOrderDateTime(order.createdAt)?.getTime() ?? 0;
 }
 
 function sortOrdersNewestFirst(orderList: Order[]) {
@@ -81,6 +97,7 @@ function describeOrderLoadError(error: unknown) {
 function OrderProviderInfoCard({ order }: { order: Order }) {
   const detailTo = getProviderDetailPath(order);
   const providerName = getProviderName(order);
+  const appointmentTime = parseOrderDateTime(order.bookedAt) ? order.bookedAt.trim() : null;
   const avatar =
     order.mode === "store"
       ? "/images/generated/stores/store-cafe-consult.jpg"
@@ -100,6 +117,14 @@ function OrderProviderInfoCard({ order }: { order: Order }) {
           <span className="truncate">{order.city} · {order.area}</span>
           <span className="max-w-36 shrink-0 truncate font-normal">{order.orderNo}</span>
         </div>
+        {appointmentTime ? (
+          <dl className="user-orders-appointment-time mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 rounded-[12px] bg-[color:var(--client-primary-soft)] px-2.5 py-2 text-[11px]">
+            <dt className="font-black text-[color:var(--client-primary)]">预约时间</dt>
+            <dd className="min-w-0 text-right font-black text-[color:var(--client-text)]">
+              <time data-no-i18n dateTime={appointmentTime}>{appointmentTime}</time>
+            </dd>
+          </dl>
+        ) : null}
       </div>
     </div>
   );
