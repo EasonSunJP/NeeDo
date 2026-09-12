@@ -7867,7 +7867,15 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "technicianName",
           "fulfillmentMode",
           "priceAmount",
+          "totalAmountJpy",
+          "amountSource",
           "currency",
+          "paymentMethod",
+          "effectivePaymentMethod",
+          "otherMethodCode",
+          "otherMethodLabel",
+          "checkoutPaymentAmountNdp",
+          "ndpCurrency",
           "startsAt",
           "endsAt",
           "note",
@@ -7895,7 +7903,24 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           technicianName: { type: ["string", "null"] },
           fulfillmentMode: { type: "string" },
           priceAmount: { type: "number" },
+          totalAmountJpy: { type: "integer", minimum: 0 },
+          amountSource: {
+            type: "string",
+            enum: ["order_payment", "checkout"]
+          },
           currency: { type: "string" },
+          paymentMethod: {
+            type: "string",
+            enum: ["onsite", "bank_transfer", "cash", "ndp", "other"]
+          },
+          effectivePaymentMethod: {
+            type: ["string", "null"],
+            enum: ["onsite", "bank_transfer", "cash", "ndp", "other", null]
+          },
+          otherMethodCode: { type: ["string", "null"], maxLength: 40 },
+          otherMethodLabel: { type: ["string", "null"], maxLength: 80 },
+          checkoutPaymentAmountNdp: { type: ["integer", "null"], minimum: 0 },
+          ndpCurrency: { type: ["string", "null"], enum: ["NDP", "TEST_NDP", null] },
           startsAt: { type: "string", format: "date-time" },
           endsAt: { type: "string", format: "date-time" },
           note: { type: ["string", "null"] },
@@ -11963,6 +11988,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "paymentMethod",
           "paymentStatus",
           "paymentAmountJpy",
+          "amountSource",
+          "effectivePaymentMethod",
+          "otherMethodCode",
+          "otherMethodLabel",
+          "checkoutPaymentAmountNdp",
+          "ndpCurrency",
           "paymentConfirmedById",
           "paymentConfirmedAt",
           "paymentReference",
@@ -12030,6 +12061,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             enum: ["pending", "confirmed", "refundPending", "refunded"]
           },
           paymentAmountJpy: { type: "integer", minimum: 0 },
+          amountSource: {
+            type: "string",
+            enum: ["order_payment", "checkout"]
+          },
+          effectivePaymentMethod: {
+            type: ["string", "null"],
+            enum: ["onsite", "bank_transfer", "cash", "ndp", "other", null]
+          },
+          otherMethodCode: { type: ["string", "null"], maxLength: 40 },
+          otherMethodLabel: { type: ["string", "null"], maxLength: 80 },
+          checkoutPaymentAmountNdp: { type: ["integer", "null"], minimum: 0 },
+          ndpCurrency: { type: ["string", "null"], enum: ["NDP", "TEST_NDP", null] },
           paymentConfirmedById: { type: ["integer", "null"] },
           paymentConfirmedAt: { type: ["string", "null"], format: "date-time" },
           paymentReference: { type: ["string", "null"], maxLength: 120 },

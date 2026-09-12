@@ -14,6 +14,8 @@ describe("UserOrdersPage", () => {
     expect(source).toContain("<OrderProviderInfoCard order={order} />");
     expect(source).toContain("{order.itemName}");
     expect(source).toContain("{yen(order.amount)}");
+    expect(source).toContain("const paymentSummary = formatOrderPaymentSummary(order)");
+    expect(source).toContain('order.ndpCurrency === "TEST_NDP" ? "Test NDP" : "NDP"');
     expect(source).toContain("{order.orderNo}");
     expect(source).toContain("getProviderDetailPath(order)");
   });

@@ -25,6 +25,9 @@ function createBookingResponse(orderType: "booking" | "request"): {
       paymentMethod: "onsite",
       paymentStatus: "pending",
       paymentAmountJpy: 8800,
+      amountSource: "order_payment",
+      checkoutPaymentAmountNdp: null,
+      ndpCurrency: null,
       paymentConfirmedById: null,
       paymentConfirmedAt: null,
       paymentReference: null,
@@ -445,6 +448,49 @@ describe("bookingApi", () => {
       shopId: "7",
       technicianProfileId: "9",
       scheduleSlotId: "33"
+    });
+  });
+
+  it("uses the authoritative order payment total instead of the immutable base service price", () => {
+    const order = mapBookingOrderToDomainOrder({
+      ...createBookingResponse("booking").data,
+      status: "completed",
+      paymentStatus: "confirmed",
+      paymentMethod: "ndp",
+      effectivePaymentMethod: "ndp",
+      paymentAmountJpy: 14_500,
+      amountSource: "checkout",
+      checkoutPaymentAmountNdp: 14_500,
+      ndpCurrency: "TEST_NDP",
+      priceAmount: "8000.00"
+    });
+
+    expect(order).toMatchObject({
+      amount: 14_500,
+      paymentMethod: "platform",
+      paymentChannel: "ndp",
+      checkoutPaymentAmountNdp: 14_500,
+      ndpCurrency: "TEST_NDP"
+    });
+  });
+
+  it("keeps a pending checkout channel empty and preserves a selected custom method", () => {
+    const pending = mapBookingOrderToDomainOrder({
+      ...createBookingResponse("booking").data,
+      effectivePaymentMethod: null
+    });
+    const custom = mapBookingOrderToDomainOrder({
+      ...createBookingResponse("booking").data,
+      effectivePaymentMethod: "other",
+      otherMethodCode: "paypay",
+      otherMethodLabel: "PayPay"
+    });
+
+    expect(pending.paymentChannel).toBeUndefined();
+    expect(custom).toMatchObject({
+      paymentChannel: "other",
+      otherPaymentMethodCode: "paypay",
+      otherPaymentMethodLabel: "PayPay"
     });
   });
 

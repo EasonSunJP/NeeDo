@@ -52,4 +52,15 @@ describe("MerchantAdminOrdersPage formal workflow", () => {
     expect(source).toContain("AdminEventTimeline");
     expect(source).toContain('title="订单时间线"');
   });
+
+  it("renders and confirms the authoritative order total instead of the base catalog price", () => {
+    expect(source).toContain("selectedOrder.totalAmountJpy");
+    expect(source).not.toContain("yen(selectedOrder.priceAmount)");
+  });
+
+  it("keeps the JPY total separate from the persisted payment channel and NDP unit", () => {
+    expect(source).toContain("formatBackofficeOrderPaymentSummary");
+    expect(source).toContain("selectedOrder.checkoutPaymentAmountNdp");
+    expect(source).toContain("selectedOrder.ndpCurrency");
+  });
 });

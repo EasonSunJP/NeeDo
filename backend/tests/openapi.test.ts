@@ -1973,6 +1973,57 @@ describe("GET /api/v1/openapi.json", () => {
       "BackofficeTechnicianDetail",
       "BackofficeCustomerDetail"
     ].forEach((schema) => expect(response.body.components.schemas).toHaveProperty(schema));
+    expect(response.body.components.schemas.BackofficeBookingSummary.required).toEqual(
+      expect.arrayContaining([
+        "totalAmountJpy",
+        "amountSource",
+        "paymentMethod",
+        "effectivePaymentMethod",
+        "otherMethodCode",
+        "otherMethodLabel",
+        "checkoutPaymentAmountNdp",
+        "ndpCurrency"
+      ])
+    );
+    expect(response.body.components.schemas.BackofficeBookingSummary.properties).toMatchObject({
+      totalAmountJpy: { type: "integer", minimum: 0 },
+      amountSource: { type: "string", enum: ["order_payment", "checkout"] },
+      paymentMethod: {
+        type: "string",
+        enum: ["onsite", "bank_transfer", "cash", "ndp", "other"]
+      },
+      effectivePaymentMethod: {
+        type: ["string", "null"],
+        enum: ["onsite", "bank_transfer", "cash", "ndp", "other", null]
+      },
+      otherMethodCode: { type: ["string", "null"], maxLength: 40 },
+      otherMethodLabel: { type: ["string", "null"], maxLength: 80 },
+      checkoutPaymentAmountNdp: { type: ["integer", "null"], minimum: 0 },
+      ndpCurrency: { type: ["string", "null"], enum: ["NDP", "TEST_NDP", null] }
+    });
+    expect(response.body.components.schemas.BookingOrder.required).toEqual(
+      expect.arrayContaining([
+        "paymentAmountJpy",
+        "amountSource",
+        "effectivePaymentMethod",
+        "otherMethodCode",
+        "otherMethodLabel",
+        "checkoutPaymentAmountNdp",
+        "ndpCurrency"
+      ])
+    );
+    expect(response.body.components.schemas.BookingOrder.properties).toMatchObject({
+      paymentAmountJpy: { type: "integer", minimum: 0 },
+      amountSource: { type: "string", enum: ["order_payment", "checkout"] },
+      effectivePaymentMethod: {
+        type: ["string", "null"],
+        enum: ["onsite", "bank_transfer", "cash", "ndp", "other", null]
+      },
+      otherMethodCode: { type: ["string", "null"], maxLength: 40 },
+      otherMethodLabel: { type: ["string", "null"], maxLength: 80 },
+      checkoutPaymentAmountNdp: { type: ["integer", "null"], minimum: 0 },
+      ndpCurrency: { type: ["string", "null"], enum: ["NDP", "TEST_NDP", null] }
+    });
     expect(
       response.body.paths["/api/v1/backoffice/technicians/{id}"].get.responses["200"].content[
         "application/json"

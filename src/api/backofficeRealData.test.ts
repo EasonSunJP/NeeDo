@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   backofficeRealDataApi,
+  formatBackofficeOrderPaymentSummary,
   mapBackofficeOrder,
   type BackofficeOrderPayload,
   type BackofficeTechnicianRankingPayload,
@@ -415,7 +416,15 @@ describe("backofficeRealDataApi master data writes", () => {
       technicianName: null,
       fulfillmentMode: "store",
       priceAmount: 9800,
+      totalAmountJpy: 14_500,
+      amountSource: "checkout",
       currency: "JPY",
+      paymentMethod: "ndp",
+      effectivePaymentMethod: "ndp",
+      otherMethodCode: null,
+      otherMethodLabel: null,
+      checkoutPaymentAmountNdp: 14_500,
+      ndpCurrency: "TEST_NDP",
       startsAt: "2026-08-25T01:00:00.000Z",
       endsAt: "2026-08-25T02:00:00.000Z",
       note: null,
@@ -425,5 +434,49 @@ describe("backofficeRealDataApi master data writes", () => {
     };
 
     expect(mapBackofficeOrder(order).paymentStatus).toBe(expected);
+  });
+
+  it.each([
+    ["NDP", 14_500, "NDP", "14,500 NDP"],
+    ["Test NDP", 14_500, "TEST_NDP", "14,500 Test NDP"],
+    ["an unresolved NDP unit", null, null, "NDP · UNKNOWN UNIT"]
+  ] as const)("formats %s without treating the JPY order total as a token amount", (_label, amount, unit, expected) => {
+    expect(formatBackofficeOrderPaymentSummary({
+      effectivePaymentMethod: "ndp",
+      otherMethodLabel: null,
+      checkoutPaymentAmountNdp: amount,
+      ndpCurrency: unit
+    })).toBe(expected);
+  });
+
+  it("does not invent a checkout channel before the customer selects one", () => {
+    expect(formatBackofficeOrderPaymentSummary({
+      effectivePaymentMethod: null,
+      otherMethodLabel: null,
+      checkoutPaymentAmountNdp: null,
+      ndpCurrency: null
+    })).toBe("");
+  });
+
+  it("formats an authoritative custom checkout payment label", () => {
+    expect(formatBackofficeOrderPaymentSummary({
+      effectivePaymentMethod: "other",
+      otherMethodLabel: "PayPay",
+      checkoutPaymentAmountNdp: null,
+      ndpCurrency: null
+    })).toBe("PayPay");
+  });
+
+  it.each([
+    ["onsite", "ONSITE"],
+    ["cash", "CASH"],
+    ["bank_transfer", "BANK TRANSFER"]
+  ] as const)("formats the persisted %s payment channel", (paymentMethod, expected) => {
+    expect(formatBackofficeOrderPaymentSummary({
+      effectivePaymentMethod: paymentMethod,
+      otherMethodLabel: null,
+      checkoutPaymentAmountNdp: null,
+      ndpCurrency: null
+    })).toBe(expected);
   });
 });

@@ -411,6 +411,11 @@ export interface Order {
   amount: number;
   paymentStatus: "paid" | "unpaid" | "depositPaid" | "refunded";
   paymentMethod?: ServicePaymentMethod;
+  paymentChannel?: "onsite" | "bank_transfer" | "cash" | "ndp" | "other";
+  otherPaymentMethodCode?: string;
+  otherPaymentMethodLabel?: string;
+  checkoutPaymentAmountNdp?: number;
+  ndpCurrency?: "NDP" | "TEST_NDP";
   autoConfirmed?: boolean;
   expectedArrivalAt?: string;
   bookedAt: string;
