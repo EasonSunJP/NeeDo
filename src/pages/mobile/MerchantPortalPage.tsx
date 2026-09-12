@@ -1431,13 +1431,17 @@ export function MerchantRevenueDrilldown({
 
 export function MerchantWorkbenchMetrics({
   availableScheduleSlotsValue,
+  onRetry,
   onlineEmployeeValue,
   revenueValue,
+  summaryStatus = "ready",
   todayAppointmentsValue
 }: {
   availableScheduleSlotsValue: string;
+  onRetry?: () => void;
   onlineEmployeeValue: string;
   revenueValue: string;
+  summaryStatus?: "loading" | "ready" | "empty" | "error";
   todayAppointmentsValue: string;
 }) {
   const { language } = useOptionalI18n();
@@ -1450,24 +1454,40 @@ export function MerchantWorkbenchMetrics({
   ];
 
   return (
-    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {metrics.map(({ ariaLabel, label, to, value }) => {
-        const content = (
-          <>
-            <p className="text-[11px] font-bold text-white/55">{label}</p>
-            <strong className="mt-1 block text-base font-black text-white">{value}</strong>
-          </>
-        );
-        const className = "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-4 py-3 backdrop-blur";
+    <div className="mt-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {metrics.map(({ ariaLabel, label, to, value }) => {
+          const content = (
+            <>
+              <p className="text-[11px] font-bold text-white/55">{t(label)}</p>
+              <strong className="mt-1 block text-base font-black text-white">{value}</strong>
+            </>
+          );
+          const className = "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-4 py-3 backdrop-blur";
 
-        return to ? (
-          <Link aria-label={ariaLabel} className={cn(className, "focus-ring block transition hover:bg-[color:color-mix(in_srgb,var(--client-bg)_30%,transparent)]")} key={label} to={to}>
-            {content}
-          </Link>
-        ) : (
-          <div className={className} key={label}>{content}</div>
-        );
-      })}
+          return to ? (
+            <Link aria-label={ariaLabel} className={cn(className, "focus-ring block transition hover:bg-[color:color-mix(in_srgb,var(--client-bg)_30%,transparent)]")} key={label} to={to}>
+              {content}
+            </Link>
+          ) : (
+            <div className={className} key={label}>{content}</div>
+          );
+        })}
+      </div>
+      {summaryStatus === "loading" ? (
+        <p className="mt-3 text-xs font-bold text-white/70" role="status">{t("本店今日经营汇总正在加载")}</p>
+      ) : summaryStatus === "error" ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold text-white/75" role="alert">
+          <span>{t("本店今日经营汇总加载失败")}</span>
+          {onRetry ? (
+            <button className="focus-ring rounded-full border border-white/25 px-3 py-1.5 text-white" onClick={onRetry} type="button">
+              {t("重新加载今日汇总")}
+            </button>
+          ) : null}
+        </div>
+      ) : summaryStatus === "empty" ? (
+        <p className="mt-3 text-xs font-bold text-white/70" role="status">{t("本店今日暂无预约、收入或可预约时段")}</p>
+      ) : null}
     </div>
   );
 }
@@ -1811,6 +1831,8 @@ export function MerchantPortalContent({
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
+  const { language } = useOptionalI18n();
+  const t = (source: string) => translateText(source, language);
   const persistentCacheScope = getAuthenticatedPersistentCacheScope();
   const { customers } = useEntityStore();
   const merchantImStore = useImStore("merchant");
@@ -1926,6 +1948,16 @@ export function MerchantPortalContent({
   );
   const formalHome = !formalHomeQuery.loading && formalHomeQuery.data?.storeId === store.id ? formalHomeQuery.data : null;
   const todayOrders = useMemo(() => formalHome?.orders.map(mapBookingOrderToDomainOrder) ?? [], [formalHome]);
+  const formalHomeSummaryStatus = formalHomeQuery.loading
+    ? "loading"
+    : formalHomeQuery.error
+      ? "error"
+      : formalHome &&
+          todayOrders.length === 0 &&
+          formalHome.dashboard.summary.serviceGmvJpy === 0 &&
+          formalHome.dashboard.summary.availableScheduleSlots.current === 0
+        ? "empty"
+        : "ready";
   const formalOrdersQuery = useCoreReadQuery(
     () => session?.portal === "merchant" && activeView === "orders" ? loadEveryScopedOrder({}).then((items) => ({ storeId: store.id, items })) : null,
     [store.id, session?.portal, activeView],
@@ -2721,15 +2753,16 @@ export function MerchantPortalContent({
                   </div>
                   <MerchantWorkbenchMetrics
                     availableScheduleSlotsValue={formalHome ? String(formalHome.dashboard.summary.availableScheduleSlots.current) : "—"}
-                    onlineEmployeeValue={formalStaffEmploymentLoaded && !formalStaffEmploymentError ? `${onlineTechnicianCount} 人` : "—"}
+                    onRetry={() => setWorkRevision((value) => value + 1)}
+                    onlineEmployeeValue={formalStaffEmploymentLoaded && !formalStaffEmploymentError ? t(`${onlineTechnicianCount} 人`) : "—"}
                     revenueValue={formalHome ? yen(formalHome.dashboard.summary.serviceGmvJpy) : "—"}
-                    todayAppointmentsValue={formalHome ? `${todayOrders.length} 单` : "—"}
+                    summaryStatus={formalHomeSummaryStatus}
+                    todayAppointmentsValue={formalHome ? t(`${todayOrders.length} 单`) : "—"}
                   />
                 </div>
               </div>
             </section>
 
-            {formalHomeQuery.loading ? <p role="status">加载中</p> : formalHomeQuery.error ? <p role="alert">本店经营数据加载失败，请检查网络后重试</p> : null}
             <MerchantPrimaryNavCarousel />
 
             <section className="space-y-3">
