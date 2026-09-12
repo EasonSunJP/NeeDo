@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
+import { ImageUploadValidator } from "./image-upload-validator.service";
 
 const MAX_AVATAR_BYTES = 675_000;
 
@@ -28,8 +29,10 @@ type CustomerAvatarMimeType = keyof typeof imageMetadata;
 
 export interface StoredCustomerAvatar {
   absolutePath: string;
+  height: number;
   mimeType: CustomerAvatarMimeType;
   url: string;
+  width: number;
 }
 
 export interface CustomerAvatarStoragePort {
@@ -37,6 +40,7 @@ export interface CustomerAvatarStoragePort {
 }
 
 export class CustomerAvatarFileStorage implements CustomerAvatarStoragePort {
+  private readonly validator = new ImageUploadValidator();
   public constructor(
     private readonly directory: string,
     private readonly publicBaseUrl: string
@@ -47,6 +51,16 @@ export class CustomerAvatarFileStorage implements CustomerAvatarStoragePort {
     const metadata = imageMetadata[mimeType];
 
     if (bytes.length > MAX_AVATAR_BYTES || !metadata.matches(bytes)) {
+      throw this.invalidAvatar();
+    }
+    let validated;
+    try {
+      validated = await this.validator.validate({
+        bytes,
+        declaredMimeType: mimeType,
+        purpose: "avatar"
+      });
+    } catch {
       throw this.invalidAvatar();
     }
 
@@ -65,8 +79,10 @@ export class CustomerAvatarFileStorage implements CustomerAvatarStoragePort {
 
     return {
       absolutePath,
+      height: validated.height,
       mimeType,
-      url: `${this.publicBaseUrl.replace(/\/$/, "")}/${filename}`
+      url: `${this.publicBaseUrl.replace(/\/$/, "")}/${filename}`,
+      width: validated.width
     };
   }
 

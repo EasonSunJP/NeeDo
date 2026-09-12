@@ -137,6 +137,8 @@ export interface TechnicianServiceCoverWriteInput {
   mimeType: ContentMediaMimeType;
   checksumSha256: string;
   fileSize: number;
+  width: number | null;
+  height: number | null;
   now: Date;
   action: "technician.service.cover.updated";
   context: AuthRequestContext;

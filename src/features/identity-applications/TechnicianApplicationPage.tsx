@@ -22,7 +22,11 @@ import {
 import { identityApplicationsApi, type EligibleShop, type IdentityApplication } from "./api";
 import { UnifiedSimpleProfileCard } from "../../shared/profile-card/UnifiedSimpleProfileCard";
 import { ApplicationReviewActions } from "./ApplicationReviewActions";
-import { splitApplicationList, validateTechnicianProfile } from "./formModel";
+import {
+  identityApplicationMediaErrorMessage,
+  splitApplicationList,
+  validateTechnicianProfile
+} from "./formModel";
 
 type TechnicianForm = {
   applicantName: string;
@@ -114,7 +118,7 @@ export function TechnicianApplicationPage({ mode = "identity" }: { mode?: "ident
       const result = await identityApplicationsApi.searchShops(query.trim());
       setShops(result.list);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(identityApplicationMediaErrorMessage(caught));
     } finally {
       setBusy(false);
     }
@@ -152,7 +156,12 @@ export function TechnicianApplicationPage({ mode = "identity" }: { mode?: "ident
       let version = working.version;
       for (const [purpose, file] of [["portrait", portrait], ["identity_document", identityDocument]] as const) {
         if (file) {
-          const uploaded = await identityApplicationsApi.uploadMedia(working.id, purpose, version, file);
+          const uploaded = await identityApplicationsApi.uploadSensitiveMediaBundle(
+            working.id,
+            purpose,
+            version,
+            file
+          );
           version = uploaded.applicationVersion;
           working = { ...working, version };
           setApplication(working);
@@ -163,7 +172,7 @@ export function TechnicianApplicationPage({ mode = "identity" }: { mode?: "ident
       await refreshSession();
       setStep(2);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(identityApplicationMediaErrorMessage(caught));
     } finally {
       setBusy(false);
     }

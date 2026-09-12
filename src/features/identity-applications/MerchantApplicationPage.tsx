@@ -354,7 +354,12 @@ function MerchantApplicationForm({ accountId }: { accountId: number | null }) {
     try {
       let version = application.version;
       if (corporateRegistration) {
-        const registrationUploaded = await identityApplicationsApi.uploadMedia(application.id, "corporate_registration", version, corporateRegistration);
+        const registrationUploaded = await identityApplicationsApi.uploadSensitiveMediaBundle(
+          application.id,
+          "corporate_registration",
+          version,
+          corporateRegistration
+        );
         version = registrationUploaded.applicationVersion;
         setApplication((current) => current ? { ...current, version } : current);
       }

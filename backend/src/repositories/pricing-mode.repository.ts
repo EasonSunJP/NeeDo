@@ -309,6 +309,8 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
           mimeType: input.mimeType,
           usageType: "cover",
           checksumSha256: input.checksumSha256,
+          width: input.width,
+          height: input.height,
           isActive: true,
           createdAt: input.now
         }

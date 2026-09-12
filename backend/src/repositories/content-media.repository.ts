@@ -151,8 +151,8 @@ export class ContentMediaRepository implements ContentMediaRepositoryPort {
         url: input.url,
         mimeType: input.mimeType,
         usageType: input.usageType ?? "content_publication_public",
-        width: null,
-        height: null,
+        width: input.width ?? null,
+        height: input.height ?? null,
         altText: input.altText,
         checksumSha256: input.checksumSha256,
         isActive: true,
@@ -191,8 +191,8 @@ export class ContentMediaRepository implements ContentMediaRepositoryPort {
       mediaAssetId: mediaAsset.id,
       url: input.url,
       mimeType: input.mimeType,
-      width: null,
-      height: null,
+      width: input.width ?? null,
+      height: input.height ?? null,
       checksumSha256: input.checksumSha256
     };
   }

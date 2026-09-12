@@ -11872,6 +11872,43 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           reviewCount: { type: "integer", minimum: 0 }
         }
       },
+      BookingOrderRebook: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["action", "serviceType", "serviceId", "shopId", "technicianProfileId", "fulfillmentMode"],
+            properties: {
+              action: { type: "string", const: "checkout" },
+              serviceType: { type: "string", enum: ["shop_service", "technician_service"] },
+              serviceId: { type: "integer", minimum: 1 },
+              shopId: { type: "integer", minimum: 1 },
+              technicianProfileId: { type: ["integer", "null"], minimum: 1 },
+              fulfillmentMode: { type: "string", enum: ["home", "store"] }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["action", "shopId", "reason"],
+            properties: {
+              action: { type: "string", const: "select_service" },
+              shopId: { type: "integer", minimum: 1 },
+              reason: { type: "string", const: "original_service_unavailable" }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["action", "reason"],
+            properties: {
+              action: { type: "string", const: "unavailable" },
+              reason: { type: "string", const: "shop_unavailable" }
+            }
+          }
+        ],
+        discriminator: { propertyName: "action" }
+      },
       BookingOrder: {
         type: "object",
         required: [
@@ -11907,6 +11944,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "servicePriceSnapshot",
           "serviceDurationSnapshot",
           "serviceSnapshot",
+          "rebook",
           "serviceSession",
           "shopName",
           "technicianName",
@@ -11974,6 +12012,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           serviceDurationSnapshot: { type: ["integer", "null"], minimum: 1 },
           serviceSnapshot: {
             description: "Immutable formal service payload captured when the order was created"
+          },
+          rebook: {
+            $ref: "#/components/schemas/BookingOrderRebook",
+            description:
+              "Current server-authoritative rebooking decision. Historical service identifiers and snapshots remain unchanged."
           },
           serviceSession: {
             oneOf: [{ $ref: "#/components/schemas/OrderServiceSession" }, { type: "null" }]
@@ -29795,9 +29838,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         requestBody: {
           required: true,
           content: {
-            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
-            "image/png": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
-            "image/webp": { schema: { type: "string", format: "binary", maxLength: 8388608 } }
+            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 3145728 } },
+            "image/png": { schema: { type: "string", format: "binary", maxLength: 3145728 } },
+            "image/webp": { schema: { type: "string", format: "binary", maxLength: 3145728 } }
           }
         },
         responses: {
@@ -29853,9 +29896,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         requestBody: {
           required: true,
           content: {
-            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
-            "image/png": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
-            "image/webp": { schema: { type: "string", format: "binary", maxLength: 8388608 } }
+            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 3145728 } },
+            "image/png": { schema: { type: "string", format: "binary", maxLength: 3145728 } },
+            "image/webp": { schema: { type: "string", format: "binary", maxLength: 3145728 } }
           }
         },
         responses: {
@@ -29889,7 +29932,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             name: "purpose",
             in: "query",
             required: true,
-            schema: { type: "string", maxLength: 50 }
+            schema: { type: "string", enum: ["showcase"] }
           },
           {
             name: "expected_version",
@@ -29901,11 +29944,68 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         requestBody: {
           required: true,
           content: {
-            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
-            "image/png": { schema: { type: "string", format: "binary", maxLength: 8388608 } }
+            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 3145728 } },
+            "image/png": { schema: { type: "string", format: "binary", maxLength: 3145728 } },
+            "image/webp": { schema: { type: "string", format: "binary", maxLength: 3145728 } }
           }
         }
       })
+    },
+    [`${config.API_PREFIX}/identity-applications/{id}/media-bundle`]: {
+      post: identityWorkflowOperation(
+        "Upload an untouched sensitive original and its client-generated preview atomically",
+        {
+          parameters: [
+            idPathParameter(),
+            {
+              name: "purpose",
+              in: "query",
+              required: true,
+              schema: {
+                type: "string",
+                enum: [
+                  "portrait",
+                  "identity_document",
+                  "corporate_registration",
+                  "representative_identity"
+                ]
+              }
+            },
+            {
+              name: "expected_version",
+              in: "query",
+              required: true,
+              schema: { type: "integer", minimum: 1 }
+            }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "multipart/form-data": {
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["original", "preview"],
+                  properties: {
+                    original: { type: "string", format: "binary", maxLength: 8388608 },
+                    preview: { type: "string", format: "binary", maxLength: 2097152 }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            "201": { description: "Original and preview persisted in one transaction" },
+            "400": { description: "Invalid bundle, purpose, bytes, or preview relationship" },
+            "401": { description: "Missing or invalid access token" },
+            "403": { description: "Missing identity-application:own permission" },
+            "404": { description: "Application not found in the authenticated owner scope" },
+            "409": { description: "Application snapshot is locked or version is stale" },
+            "413": { description: "Original or preview exceeds its byte limit" },
+            "415": { description: "Unsupported declared media type" }
+          }
+        }
+      )
     },
     [`${config.API_PREFIX}/identity-applications/{id}/media/{mediaId}`]: {
       get: identityWorkflowOperation("Read protected application media in authorized scope", {

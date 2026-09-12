@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import {
   backofficeRealDataApi,
@@ -143,6 +143,7 @@ type StoreDetailExperienceProps = {
   presentationOverride?: StorePresentationConfig;
   transportSummary?: string;
   hideUnavailableReviewDetails?: boolean;
+  notice?: string;
 };
 
 function storeDetailRouteEntityIdToApiId(value: string | number | null | undefined) {
@@ -2737,7 +2738,8 @@ export function StoreDetailExperience({
   techniciansOverride,
   presentationOverride,
   transportSummary,
-  hideUnavailableReviewDetails = false
+  hideUnavailableReviewDetails = false,
+  notice
 }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -4466,6 +4468,11 @@ export function StoreDetailExperience({
         </div>
       </FloatingHomeHeader>
 
+      {notice ? (
+        <section className="mx-4 rounded-[18px] bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-black text-[color:var(--client-text)]" role="status">
+          {translateText(notice, language)}
+        </section>
+      ) : null}
       <div className="space-y-3">{content}</div>
       {presentationLocaleRail}
 
@@ -4562,11 +4569,13 @@ function buildFormalStorePresentation(shop: CoreShopDetail, store: Store): Store
 export function UnifiedFormalStoreDetail({
   scope,
   embedded = false,
+  notice,
   shopId
 }: {
   scope: "user" | "merchant";
   shopId: number | string;
   embedded?: boolean;
+  notice?: string;
 }) {
   const { language } = useI18n();
   const [revision, setRevision] = useState(0);
@@ -4612,6 +4621,7 @@ export function UnifiedFormalStoreDetail({
       embedded={embedded}
       formalApiOnly={true}
       hideUnavailableReviewDetails
+      notice={notice}
       presentationOverride={buildFormalStorePresentation(query.data, store)}
       scope={scope}
       serviceCardsOverride={query.data.services.map(mapCoreServiceCardToUnifiedData)}
@@ -4623,11 +4633,18 @@ export function UnifiedFormalStoreDetail({
 
 export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant" } = {}) {
   const { id } = useParams();
+  const location = useLocation();
   const { language } = useI18n();
   const apiId = coreReadShopIdFromRoute(id);
+  const routeState = location.state && typeof location.state === "object"
+    ? location.state as { notice?: unknown }
+    : null;
+  const notice = routeState?.notice === "原服务已停止，请重新选择服务"
+    ? routeState.notice
+    : undefined;
 
   if (apiId) {
-    return <UnifiedFormalStoreDetail scope={scope} shopId={apiId} />;
+    return <UnifiedFormalStoreDetail notice={notice} scope={scope} shopId={apiId} />;
   }
 
   const legacyStore = null;

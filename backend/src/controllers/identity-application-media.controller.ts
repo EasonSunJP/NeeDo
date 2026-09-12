@@ -3,6 +3,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import type { AuthenticatedAccessContext } from "../services/auth.service";
 import type { IdentityApplicationMediaMimeType } from "../services/identity-application-media.storage";
 import type { IdentityApplicationMediaService } from "../services/identity-application-media.service";
+import { MAX_IDENTITY_PREVIEW_BYTES } from "../middlewares/identity-media-bundle.middleware";
 import { successResponse } from "../utils/api-response";
 import { AppError } from "../utils/app-error";
 import {
@@ -11,7 +12,11 @@ import {
   identityApplicationMediaUploadQuerySchema
 } from "../validators/identity-application-media.validator";
 
-const supportedMimeTypes = new Set<IdentityApplicationMediaMimeType>(["image/jpeg", "image/png"]);
+const supportedMimeTypes = new Set<IdentityApplicationMediaMimeType>([
+  "image/jpeg",
+  "image/png",
+  "image/webp"
+]);
 
 export class IdentityApplicationMediaController {
   public constructor(private readonly service: IdentityApplicationMediaService) {}
@@ -19,6 +24,13 @@ export class IdentityApplicationMediaController {
   public upload = this.handle(async (request, response) => {
     const { id } = identityApplicationMediaUploadParamSchema.parse(request.params);
     const query = identityApplicationMediaUploadQuerySchema.parse(request.query);
+    if (query.purpose !== "showcase") {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.identity_application.media_purpose_invalid",
+        statusCode: 400
+      });
+    }
     const mimeType = request.headers["content-type"]?.split(";", 1)[0]?.trim();
     if (!mimeType || !supportedMimeTypes.has(mimeType as IdentityApplicationMediaMimeType)) {
       throw new AppError({
@@ -47,6 +59,45 @@ export class IdentityApplicationMediaController {
         })
       )
     );
+  });
+
+  public uploadBundle = this.handle(async (request, response) => {
+    const { id } = identityApplicationMediaUploadParamSchema.parse(request.params);
+    const query = identityApplicationMediaUploadQuerySchema.parse(request.query);
+    if (query.purpose === "showcase") {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.identity_application.media_purpose_invalid",
+        statusCode: 400
+      });
+    }
+    const files = request.files as Record<string, Express.Multer.File[]> | undefined;
+    const original = files?.original?.[0];
+    const preview = files?.preview?.[0];
+    if (!original || !preview || preview.buffer.length > MAX_IDENTITY_PREVIEW_BYTES) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: preview && preview.buffer.length > MAX_IDENTITY_PREVIEW_BYTES
+          ? "error.identity_application.media_too_large"
+          : "error.identity_application.media_invalid",
+        statusCode: preview && preview.buffer.length > MAX_IDENTITY_PREVIEW_BYTES ? 413 : 400
+      });
+    }
+    response.status(201).json(successResponse(await this.service.uploadBundle({
+      userId: this.auth(response).userId,
+      applicationId: id,
+      expectedVersion: query.expected_version,
+      purpose: query.purpose,
+      original: {
+        bytes: original.buffer,
+        mimeType: original.mimetype as IdentityApplicationMediaMimeType
+      },
+      preview: {
+        bytes: preview.buffer,
+        mimeType: preview.mimetype as IdentityApplicationMediaMimeType
+      },
+      now: new Date()
+    })));
   });
 
   public read = this.handle(async (request, response) => {

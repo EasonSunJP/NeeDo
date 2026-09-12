@@ -142,12 +142,18 @@ describe("UserOrdersPage appointment time", () => {
     await renderOrders([order()]);
 
     const providerCard = document.querySelector<HTMLElement>(".user-orders-provider-card");
+    const providerLink = providerCard?.parentElement;
     const appointmentRow = document.querySelector<HTMLElement>(".user-orders-appointment-time");
+    const appointmentLabel = appointmentRow?.querySelector<HTMLElement>("dt");
+    const appointmentValue = appointmentRow?.querySelector<HTMLElement>("dd");
     const actionRow = document.querySelector<HTMLElement>(".user-orders-action-row");
 
     expect(providerCard?.className).toContain("grid-cols-[58px_minmax(0,1fr)]");
+    expect(providerLink?.className).toContain("block");
     expect(appointmentRow?.className).toContain("grid-cols-[auto_minmax(0,1fr)]");
     expect(appointmentRow?.parentElement?.className).toContain("min-w-0");
+    expect(appointmentLabel?.className).toContain("whitespace-nowrap");
+    expect(appointmentValue?.className).toContain("whitespace-nowrap");
     expect(actionRow).not.toBeNull();
   });
 });

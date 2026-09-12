@@ -87,4 +87,40 @@ describe("UserOrdersPage persistent cache", () => {
     expect(document.body.textContent).not.toContain("正在加载预约");
     expect(testState.listOrders).toHaveBeenCalledTimes(1);
   });
+
+  it("renders the server-unavailable rebook decision as a disabled action with guidance", async () => {
+    testState.listOrders.mockResolvedValueOnce({
+      list: [{
+        id: "46540",
+        orderNo: "ND46540",
+        mode: "store",
+        status: "completed",
+        customerId: "12",
+        customerName: "山田",
+        itemName: "ボディケア 60分",
+        storeName: "LifeDance",
+        city: "东京",
+        area: "涩谷",
+        amount: 8800,
+        paymentStatus: "paid",
+        bookedAt: "2026-09-01 10:00",
+        createdAt: "2026-09-01 09:00",
+        source: "app",
+        rebook: { action: "unavailable", reason: "shop_unavailable" }
+      }],
+      page: 1,
+      page_size: 100,
+      total: 1
+    });
+
+    await act(async () => {
+      root.render(<MemoryRouter><UserOrdersPage /></MemoryRouter>);
+    });
+    await waitFor(() => expect(document.body.textContent).toContain("原服务已停止，请重新选择服务"));
+
+    const rebookButton = Array.from(document.body.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("再次预约"));
+    expect(rebookButton).toBeInstanceOf(HTMLButtonElement);
+    expect(rebookButton).toHaveProperty("disabled", true);
+  });
 });

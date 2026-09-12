@@ -8,8 +8,10 @@ import {
   type TechnicianRankingQuery
 } from "./backofficeRealData";
 import { httpClient } from "./httpClient";
+import { optimizeImageUpload } from "../lib/image-upload";
 
 vi.mock("./httpClient", () => ({ httpClient: { request: vi.fn() } }));
+vi.mock("../lib/image-upload", () => ({ optimizeImageUpload: vi.fn() }));
 
 describe("backofficeRealDataApi master data writes", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -368,6 +370,25 @@ describe("backofficeRealDataApi master data writes", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/shop", {
       body: { name: "Updated Studio", description: "Updated profile", city: "Yokohama" },
       method: "PATCH"
+    });
+  });
+
+  it("uploads only locally optimized merchant presentation media", async () => {
+    const original = new File(["original"], "shop.png", { type: "image/png" });
+    const optimized = new File(["optimized"], "shop.webp", { type: "image/webp" });
+    vi.mocked(optimizeImageUpload).mockResolvedValue({
+      file: optimized, height: 800, mimeType: "image/webp", resultBytes: 9,
+      sourceBytes: 8, ssim: 0.999, status: "reencoded", width: 1200
+    });
+
+    await backofficeRealDataApi.uploadMerchantShopPresentationMedia(original, "店铺");
+
+    expect(optimizeImageUpload).toHaveBeenCalledWith(original, "shop-presentation");
+    expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/shop/presentation/media", {
+      body: optimized,
+      headers: { "Content-Type": "image/webp" },
+      method: "POST",
+      query: { alt_text: "店铺" }
     });
   });
 

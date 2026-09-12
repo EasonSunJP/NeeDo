@@ -267,9 +267,16 @@ describe("formal order fulfillment OpenAPI contract", () => {
         servicePriceSnapshot: expect.any(Object),
         serviceDurationSnapshot: expect.any(Object),
         serviceSnapshot: expect.any(Object),
+        rebook: expect.objectContaining({ $ref: "#/components/schemas/BookingOrderRebook" }),
         serviceSession: expect.any(Object)
       })
     );
+    expect(schemas.BookingOrder.required).toContain("rebook");
+    expect(schemas.BookingOrderRebook.oneOf).toEqual([
+      expect.objectContaining({ properties: expect.objectContaining({ action: { type: "string", const: "checkout" } }) }),
+      expect.objectContaining({ properties: expect.objectContaining({ action: { type: "string", const: "select_service" } }) }),
+      expect.objectContaining({ properties: expect.objectContaining({ action: { type: "string", const: "unavailable" } }) })
+    ]);
     expect(schemas.OrderServiceSession.properties.addOns.items.$ref).toBe(
       "#/components/schemas/OrderAddOn"
     );

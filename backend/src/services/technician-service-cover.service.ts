@@ -32,6 +32,7 @@ export class TechnicianServiceCoverService {
     const storageInput = {
       bytes: input.bytes,
       mimeType: input.mimeType,
+      purpose: "service-cover",
       validationProfile: CONTENT_MEDIA_VALIDATION_PROFILES.decodedSingleFrame
     } as const;
     let prepared: Awaited<ReturnType<ContentMediaStoragePort["prepare"]>>;
@@ -79,6 +80,8 @@ export class TechnicianServiceCoverService {
           mimeType: stored.mimeType,
           checksumSha256: stored.checksumSha256,
           fileSize: input.bytes.length,
+          width: stored.width ?? prepared.width ?? null,
+          height: stored.height ?? prepared.height ?? null,
           now: input.now,
           action: "technician.service.cover.updated",
           context

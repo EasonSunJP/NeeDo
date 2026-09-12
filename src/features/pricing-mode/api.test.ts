@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "../../api/httpClient";
 import { pricingModeApi, type TechnicianServicePayload } from "./api";
+import { optimizeImageUpload } from "../../lib/image-upload";
 
 vi.mock("../../api/httpClient", () => ({
   httpClient: { request: vi.fn() },
 }));
+vi.mock("../../lib/image-upload", () => ({ optimizeImageUpload: vi.fn() }));
 
 describe("pricingModeApi technician portfolio", () => {
   beforeEach(() => vi.mocked(httpClient.request).mockReset());
@@ -108,17 +110,25 @@ describe("pricingModeApi technician portfolio", () => {
     );
   });
 
-  it("uploads a technician service cover as raw image bytes", async () => {
+  it("uploads a locally optimized technician service cover", async () => {
     const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], "cover.jpg", {
       type: "image/jpeg"
+    });
+    const optimized = new File([new Uint8Array([0xff, 0xd8])], "cover-optimized.jpg", {
+      type: "image/jpeg"
+    });
+    vi.mocked(optimizeImageUpload).mockResolvedValue({
+      file: optimized, height: 720, mimeType: "image/jpeg", resultBytes: 2,
+      sourceBytes: 3, ssim: 0.999, status: "optimized", width: 1280
     });
     vi.mocked(httpClient.request).mockResolvedValue(serviceFixture);
 
     await pricingModeApi.uploadTechnicianServiceCover(71, 901, file);
 
+    expect(optimizeImageUpload).toHaveBeenCalledWith(file, "service-cover");
     expect(httpClient.request).toHaveBeenCalledWith(
       "/technicians/me/shops/71/services/901/cover",
-      { body: file, headers: { "Content-Type": "image/jpeg" }, method: "PUT" }
+      { body: optimized, headers: { "Content-Type": "image/jpeg" }, method: "PUT" }
     );
   });
 

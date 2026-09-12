@@ -3,6 +3,7 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
+import { ImageUploadValidator } from "./image-upload-validator.service";
 
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -31,6 +32,8 @@ export interface StoredImMedia {
   fileKey: string;
   mimeType: ImMediaMimeType;
   size: number;
+  width?: number;
+  height?: number;
 }
 
 export interface ImMediaStoragePort {
@@ -39,6 +42,7 @@ export interface ImMediaStoragePort {
 }
 
 export class ImMediaFileStorage implements ImMediaStoragePort {
+  private readonly validator = new ImageUploadValidator();
   public constructor(
     private readonly directory: string,
     private readonly maxBytes: number = DEFAULT_MAX_BYTES
@@ -49,6 +53,16 @@ export class ImMediaFileStorage implements ImMediaStoragePort {
     if (bytes.length === 0 || bytes.length > this.maxBytes || !metadata.matches(bytes)) {
       throw this.invalid();
     }
+    let validated;
+    try {
+      validated = await this.validator.validate({
+        bytes,
+        declaredMimeType: mimeType,
+        purpose: "im"
+      });
+    } catch {
+      throw this.invalid();
+    }
 
     const fileKey = `${randomBytes(32).toString("hex")}.${metadata.extension}`;
     await mkdir(this.directory, { recursive: true });
@@ -56,8 +70,10 @@ export class ImMediaFileStorage implements ImMediaStoragePort {
     return {
       checksumSha256: createHash("sha256").update(bytes).digest("hex"),
       fileKey,
+      height: validated.height,
       mimeType,
-      size: bytes.length
+      size: bytes.length,
+      width: validated.width
     };
   }
 

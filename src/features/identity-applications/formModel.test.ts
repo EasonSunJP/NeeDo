@@ -1,5 +1,10 @@
 import { ApiClientError } from "../../api/httpClient";
-import { merchantApplicationErrorMessage, normalizeBankDigits, validateMerchantBankAccount } from "./formModel";
+import {
+  identityApplicationMediaErrorMessage,
+  merchantApplicationErrorMessage,
+  normalizeBankDigits,
+  validateMerchantBankAccount
+} from "./formModel";
 import { describe, expect, it } from "vitest";
 import {
   getContractLanguage,
@@ -73,5 +78,12 @@ describe("merchant bank validation", () => {
     expect(merchantApplicationErrorMessage(new ApiClientError("error.auth.expired", 401, 401))).toContain("重新登录");
     expect(merchantApplicationErrorMessage(new Error("error.identity_application.version_conflict"))).toContain("申请资料已变更");
     expect(merchantApplicationErrorMessage(new Error("error.identity_application.ekyc_required"))).toContain("eKYC");
+  });
+  it("turns local and server media validation failures into actionable copy", () => {
+    expect(identityApplicationMediaErrorMessage(new Error("error.image_upload.quality_failed")))
+      .toContain("质量验证未通过");
+    expect(identityApplicationMediaErrorMessage(
+      new Error("error.identity_application.preview_mismatch")
+    )).toContain("与原始材料不一致");
   });
 });

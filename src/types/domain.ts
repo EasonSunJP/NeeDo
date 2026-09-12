@@ -372,6 +372,25 @@ export interface OrderTimeline {
   operator: string;
 }
 
+export type OrderRebookDecision =
+  | {
+      action: "checkout";
+      serviceType: "shop_service" | "technician_service";
+      serviceId: number;
+      shopId: number;
+      technicianProfileId: number | null;
+      fulfillmentMode: FulfillmentMode;
+    }
+  | {
+      action: "select_service";
+      shopId: number;
+      reason: "original_service_unavailable";
+    }
+  | {
+      action: "unavailable";
+      reason: "shop_unavailable";
+    };
+
 export interface Order {
   id: string;
   serviceId?: string;
@@ -398,6 +417,7 @@ export interface Order {
   createdAt: string;
   source: "app" | "web" | "line" | "partner";
   remark?: string;
+  rebook?: OrderRebookDecision;
 }
 
 export interface FieldJob {

@@ -17,6 +17,7 @@ import { restoreImChatRecordFocus } from "./chat-record-focus";
 import type { ConversationMessage, ImMessageType, ImRoleType } from "./model";
 import { getImRoleConfig } from "./role-config";
 import { translateImUiText as translateText } from "./ui-copy";
+import { ApiClientError } from "../../api/httpClient";
 
 export type ImChatRecordReadApi = {
   getChatRecord(publicId: string): Promise<ImChatRecordSummary>;
@@ -253,21 +254,29 @@ function ProtectedSnapshotMedia({
   const metadata = snapshotMedia(item);
   const [revision, setRevision] = useState(0);
   const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<"none" | "retryable" | "unavailable">("none");
 
   useEffect(() => {
     if (!metadata) return;
     let active = true;
     let objectUrl: string | null = null;
-    setFailed(false);
+    setFailure("none");
     setUrl(null);
     void api.getChatRecordMedia(publicId, metadata.checksumSha256).then((media) => {
       if (!active) return;
       if (!mediaMatchesSnapshot(media, metadata)) throw new Error("error.im.chat_record_media_mismatch");
       objectUrl = URL.createObjectURL(media.blob);
       setUrl(objectUrl);
-    }).catch(() => {
-      if (active) setFailed(true);
+    }).catch((error) => {
+      if (!active) return;
+      setFailure(
+        error instanceof ApiClientError &&
+          error.status === 404 &&
+          error.code === 40401 &&
+          error.message === "error.im.chat_record_media_unavailable"
+          ? "unavailable"
+          : "retryable",
+      );
     });
     return () => {
       active = false;
@@ -276,7 +285,12 @@ function ProtectedSnapshotMedia({
   }, [api, item.id, metadata?.checksumSha256, publicId, revision]);
 
   if (!metadata) return <p className="px-3 text-xs font-bold text-[color:var(--client-muted)]">{translateText("媒体不可用", language)}</p>;
-  if (failed) return (
+  if (failure === "unavailable") return (
+    <p className="px-3 text-xs font-bold text-[color:var(--client-muted)]" role="alert">
+      {translateText("媒体不可用", language)}
+    </p>
+  );
+  if (failure === "retryable") return (
     <div className="px-3 text-xs font-bold text-[color:var(--client-muted)]">
       <p role="alert">{translateText("媒体读取失败", language)}</p>
       <button className="mt-2 rounded-full border border-[color:var(--client-line)] px-3 py-1.5 text-[color:var(--client-primary)] focus-visible:outline focus-visible:outline-2" onClick={() => setRevision((value) => value + 1)} type="button">

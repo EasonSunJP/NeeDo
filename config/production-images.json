@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "roots": ["public", "src/assets/runtime"],
+  "extensions": [".jpg", ".jpeg", ".png", ".webp"],
+  "criticalPatterns": [
+    "public/apple-touch-icon.png",
+    "public/images/needo-pet/",
+    "icon",
+    "logo",
+    "carousel",
+    "login",
+    "error_bg",
+    "chat_bg",
+    "timeline",
+    "rank",
+    "badge",
+    "qr"
+  ],
+  "photoMinSsim": 0.995,
+  "criticalMinSsim": 0.998,
+  "minimumSavingsRatio": 0.1,
+  "minimumSavingsBytes": 32768,
+  "jpegQualities": [88, 90, 92, 94, 96],
+  "webpQualities": [86, 88, 90, 92, 94, 96],
+  "pngQualities": [95, 97, 99, 100]
+}

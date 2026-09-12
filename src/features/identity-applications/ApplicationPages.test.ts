@@ -43,6 +43,8 @@ describe("identity application page chrome", () => {
     expect(merchantApplicationSource).toContain("ApplicationFileUpload");
     expect(merchantApplicationSource).toContain("StoreDetailExperience embedded");
     expect(merchantApplicationSource).toContain('identityApplicationsApi.uploadMedia(working.id, "showcase", working.version, showcaseImage)');
+    expect(merchantApplicationSource).toContain("identityApplicationsApi.uploadSensitiveMediaBundle(");
+    expect(technicianApplicationSource).toContain("identityApplicationsApi.uploadSensitiveMediaBundle(");
   });
 
   it("validates the normalized corporate payload without adding unapproved form fields", () => {

@@ -16,7 +16,7 @@ describe("IM media delivery failures", () => {
     ext: { fileName: "private-name.jpeg", duration: 15 }
   });
   beforeEach(() => { container = document.createElement("div"); document.body.append(container); root = createRoot(container); });
-  afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+  afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
 
   it.each(["image", "video"] as const)("shows retry rather than expiry or a filename for failed %s", async (type) => {
     const open = vi.fn();
@@ -62,6 +62,30 @@ describe("IM media delivery failures", () => {
     await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
     expect(container.querySelector("audio")).not.toBeNull();
   });
+
+  it.each(["image", "voice"] as const)(
+    "renders a missing immutable %s object as unavailable without a retry loop",
+    async (type) => {
+      const fetcher = vi.fn(async () => ({ ok: false, status: 404 }) as Response);
+      vi.stubGlobal("fetch", fetcher);
+      await act(async () => root.render(<MessageBubble isMine={false} message={message(type)} />));
+      const media = container.querySelector(
+        type === "voice" ? "audio" : "[data-im-message-bubble] img",
+      )!;
+
+      await act(async () => {
+        media.dispatchEvent(new Event("error"));
+      });
+      await act(async () => new Promise<void>((resolve) => window.setTimeout(resolve, 0)));
+
+      expect(container.textContent).toContain("媒体不可用");
+      expect(container.textContent).not.toContain("重试");
+      expect(container.querySelector(
+        type === "voice" ? "audio" : "[data-im-message-bubble] img",
+      )).toBeNull();
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("prepares the voice element for audible playback on the first user play", async () => {
     await act(async () => root.render(<MessageBubble isMine={false} message={message("voice")} />));

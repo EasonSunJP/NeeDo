@@ -2,7 +2,10 @@ import { access, mkdtemp, mkdir, readdir, rm, symlink, unlink, writeFile } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
-import { ImChatRecordMediaFileStorage } from "../src/services/im-chat-record-media.storage";
+import {
+  ImChatRecordMediaFileStorage,
+  resolveImChatRecordMediaDirectory
+} from "../src/services/im-chat-record-media.storage";
 
 const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]);
 const mp4 = Buffer.from([0, 0, 0, 20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
@@ -13,6 +16,41 @@ describe("ImChatRecordMediaFileStorage", () => {
     ["video.mp4", "video/mp4", mp4],
     ["document.pdf", "application/pdf", pdf]
   ];
+
+  it("derives protected chat-record storage beside the shared IM media directory", () => {
+    expect(
+      resolveImChatRecordMediaDirectory("/srv/needo/backend/runtime/im-media")
+    ).toBe("/srv/needo/backend/runtime/im-chat-record-media");
+  });
+
+  it("losslessly restores a missing protected copy from a matching shared source checksum", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "needo-chat-record-media-restore-"));
+    const source = join(parent, "content");
+    const target = join(parent, "records");
+    const checksum = "275f1bcbbb585c71e3b2184304eccfa0e37de92022ca3b6f4e9c10df32318d85";
+    await mkdir(source);
+    await writeFile(join(source, `${checksum}.png`), png);
+    const storage = new ImChatRecordMediaFileStorage({
+      directory: target,
+      sourceRoots: [{ directory: source, publicBaseUrl: "/media/content" }]
+    });
+
+    try {
+      await expect(storage.read(checksum, "image/png")).resolves.toMatchObject({
+        bytes: png,
+        checksumSha256: checksum,
+        mimeType: "image/png",
+        size: png.length
+      });
+      const restoredAttempts = await readdir(join(target, checksum));
+      expect(restoredAttempts).toHaveLength(1);
+      await expect(
+        access(join(target, checksum, restoredAttempts[0]!, `${checksum}.png`))
+      ).resolves.toBeUndefined();
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
 
   it.each(richMediaCases)(
     "clones and reads protected formal %s media with MIME magic validation",

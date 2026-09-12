@@ -49,6 +49,8 @@ describe("IdentityApplicationMediaRepository", () => {
         mimeType: "image/png",
         usageType: "identity_application_private",
         checksumSha256: "b".repeat(64),
+        width: null,
+        height: null,
         isActive: true,
         createdAt: now
       }
@@ -71,5 +73,60 @@ describe("IdentityApplicationMediaRepository", () => {
         createdAt: now
       }
     });
+  });
+
+  it("attaches original and preview links in one optimistic transaction", async () => {
+    const tx = {
+      identityApplication: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      mediaAsset: {
+        create: jest.fn()
+          .mockResolvedValueOnce({ id: 101, mimeType: "image/jpeg", createdAt: now })
+          .mockResolvedValueOnce({ id: 102, mimeType: "image/jpeg", createdAt: now })
+      },
+      identityApplicationMedia: {
+        create: jest.fn()
+          .mockResolvedValueOnce({ id: 111 })
+          .mockResolvedValueOnce({ id: 112 })
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 121 }) }
+    };
+    const client = {
+      $transaction: jest.fn(async (callback: (database: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaClient;
+    const repository = new IdentityApplicationMediaRepository(client);
+
+    await expect(repository.attachBundleInTransaction({
+      applicationId: 41,
+      userId: 7,
+      expectedVersion: 2,
+      purpose: "identity_document",
+      original: {
+        fileKey: "a".repeat(64) + ".jpg",
+        mimeType: "image/jpeg",
+        checksumSha256: "b".repeat(64),
+        width: 1200,
+        height: 800
+      },
+      preview: {
+        fileKey: "c".repeat(64) + ".jpg",
+        mimeType: "image/jpeg",
+        checksumSha256: "d".repeat(64),
+        width: 900,
+        height: 600
+      },
+      createdAt: now
+    })).resolves.toMatchObject({
+      original: { id: 101, variant: "original" },
+      preview: { id: 102, variant: "preview" },
+      applicationVersion: 3
+    });
+    expect(tx.identityApplicationMedia.create).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({
+        mediaAssetId: 102,
+        variant: "preview",
+        sourceMediaId: 111
+      })
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
   });
 });

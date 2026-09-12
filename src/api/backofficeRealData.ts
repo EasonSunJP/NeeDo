@@ -3,6 +3,7 @@ import type { WorkStatus } from "../features/technician-work-status/api";
 import { httpClient } from "./httpClient";
 import type { Merchant, Order, OrderStatus, Settlement, Store, Technician } from "../types/domain";
 import { formatSystemId } from "../lib/systemIds";
+import { optimizeImageUpload } from "../lib/image-upload";
 
 export type BackofficeScope = "backoffice" | "merchant-admin";
 
@@ -1890,10 +1891,14 @@ export const backofficeRealDataApi = {
       { body: { expectedLockVersions, content }, method: "POST" }
     );
   },
-  uploadMerchantShopPresentationMedia(file: Blob, altText: string) {
+  async uploadMerchantShopPresentationMedia(file: Blob, altText: string) {
+    const source = file instanceof File
+      ? file
+      : new File([file], "shop-presentation", { type: file.type });
+    const optimized = await optimizeImageUpload(source, "shop-presentation");
     return httpClient.request<ShopPresentationMediaPayload>("/merchant-admin/shop/presentation/media", {
-      body: file,
-      headers: { "Content-Type": file.type },
+      body: optimized.file,
+      headers: { "Content-Type": optimized.mimeType },
       method: "POST",
       query: { alt_text: altText }
     });

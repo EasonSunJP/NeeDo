@@ -113,6 +113,9 @@ describe("identity application schema contract", () => {
     expect(link).toContain("applicationId");
     expect(link).toContain("mediaAssetId");
     expect(link).toContain("purpose");
+    expect(link).toContain("variant");
+    expect(link).toContain("sourceMediaId");
+    expect(link).toMatch(/@@unique\(\[sourceMediaId, variant\]\)/);
     expect(link).toMatch(/@@unique\(\[applicationId, mediaAssetId\]/);
     expect(media).toContain("checksumSha256");
     expect(media).toContain("purgeAt");

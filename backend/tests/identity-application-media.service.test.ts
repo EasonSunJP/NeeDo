@@ -4,6 +4,7 @@ import {
   type IdentityApplicationMediaRepositoryPort
 } from "../src/services/identity-application-media.service";
 import type { IdentityApplicationMediaStoragePort } from "../src/services/identity-application-media.storage";
+import sharp from "sharp";
 
 const now = new Date("2026-08-26T05:00:00.000Z");
 const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -45,6 +46,27 @@ const createRepository = (): jest.Mocked<IdentityApplicationMediaRepositoryPort>
     applicationVersion: input.expectedVersion + 1,
     createdAt: input.createdAt
   })),
+  attachBundleInTransaction: jest.fn(async (input) => ({
+    original: {
+      id: 101,
+      applicationId: input.applicationId,
+      purpose: input.purpose,
+      mimeType: input.original.mimeType,
+      applicationVersion: input.expectedVersion + 1,
+      createdAt: input.createdAt,
+      variant: "original" as const
+    },
+    preview: {
+      id: 102,
+      applicationId: input.applicationId,
+      purpose: input.purpose,
+      mimeType: input.preview.mimeType,
+      applicationVersion: input.expectedVersion + 1,
+      createdAt: input.createdAt,
+      variant: "preview" as const
+    },
+    applicationVersion: input.expectedVersion + 1
+  })),
   findMediaAccess: jest.fn(async (applicationId, mediaAssetId) => {
     void applicationId;
     void mediaAssetId;
@@ -66,7 +88,10 @@ const createStorage = (): jest.Mocked<IdentityApplicationMediaStoragePort> => ({
       absolutePath: "/tmp/media.png",
       fileKey: "a".repeat(64) + ".png",
       mimeType: "image/png" as const,
-      checksumSha256: "b".repeat(64)
+      checksumSha256: "b".repeat(64),
+      width: 2,
+      height: 2,
+      created: true
     };
   }),
   read: jest.fn(async (fileKey) => {
@@ -173,5 +198,73 @@ describe("IdentityApplicationMediaService", () => {
       )
     ).resolves.toMatchObject({ buffer: png });
     await expect(service.read(actor(99), 41, 101)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("stores a related original and preview as one versioned bundle", async () => {
+    const repository = createRepository();
+    const storage = createStorage();
+    storage.save
+      .mockResolvedValueOnce({
+        absolutePath: "/tmp/original.jpg",
+        fileKey: "a".repeat(64) + ".jpg",
+        mimeType: "image/jpeg",
+        checksumSha256: "b".repeat(64),
+        width: 900,
+        height: 600,
+        created: true
+      })
+      .mockResolvedValueOnce({
+        absolutePath: "/tmp/preview.jpg",
+        fileKey: "c".repeat(64) + ".jpg",
+        mimeType: "image/jpeg",
+        checksumSha256: "d".repeat(64),
+        width: 700,
+        height: 467,
+        created: true
+      });
+    const original = await sharp({
+      create: { width: 900, height: 600, channels: 3, background: "#38bdf8" }
+    }).jpeg({ quality: 100 }).toBuffer();
+    const preview = await sharp(original).resize({ width: 700 }).jpeg({ quality: 94 }).toBuffer();
+    const service = new IdentityApplicationMediaService(repository, storage);
+
+    await expect(service.uploadBundle({
+      userId: 7,
+      applicationId: 41,
+      expectedVersion: 2,
+      purpose: "identity_document",
+      original: { bytes: original, mimeType: "image/jpeg" },
+      preview: { bytes: preview, mimeType: "image/jpeg" },
+      now
+    })).resolves.toMatchObject({ applicationVersion: 3 });
+    expect(repository.attachBundleInTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        applicationId: 41,
+        purpose: "identity_document",
+        original: expect.objectContaining({ width: 900, height: 600 }),
+        preview: expect.objectContaining({ width: 700, height: 467 })
+      })
+    );
+  });
+
+  it("removes both new files when bundle persistence fails", async () => {
+    const repository = createRepository();
+    repository.attachBundleInTransaction.mockRejectedValueOnce(new Error("database unavailable"));
+    const storage = createStorage();
+    const image = await sharp({
+      create: { width: 40, height: 40, channels: 3, background: "#38bdf8" }
+    }).png().toBuffer();
+    const service = new IdentityApplicationMediaService(repository, storage);
+
+    await expect(service.uploadBundle({
+      userId: 7,
+      applicationId: 41,
+      expectedVersion: 2,
+      purpose: "identity_document",
+      original: { bytes: image, mimeType: "image/png" },
+      preview: { bytes: image, mimeType: "image/png" },
+      now
+    })).rejects.toThrow("database unavailable");
+    expect(storage.delete).toHaveBeenCalledTimes(2);
   });
 });

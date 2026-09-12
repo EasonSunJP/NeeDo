@@ -921,6 +921,36 @@ describe("ImChatRecordService", () => {
     );
   });
 
+  it("does not persist a new favorite when the authoritative source bytes are missing", async () => {
+    const fixture = createFixture();
+    fixture.repository.readSourceMessages.mockResolvedValue([
+      sourceMessage(1, "A", {
+        metadata: {
+          needoMessageType: "voice",
+          needoMessageExt: {
+            duration: 15,
+            fileSize: 16,
+            mimeType: "audio/webm",
+            url: "/media/im/missing.webm"
+          }
+        }
+      })
+    ]);
+    fixture.mediaStorage.clone.mockRejectedValue(
+      new Error("error.im.chat_record_media_unavailable")
+    );
+
+    await expect(
+      fixture.service.createFavorite(auth, context, {
+        idempotencyKey: "missing-media",
+        messageIds: [1],
+        sourceConversationId: 91
+      })
+    ).rejects.toMatchObject({ message: "error.im.chat_record_media_unavailable" });
+
+    expect(fixture.repository.createFavorite).not.toHaveBeenCalled();
+  });
+
   it("logs a structured warning when persistence compensation fails", async () => {
     const fixture = createFixture();
     fixture.repository.readSourceMessages.mockResolvedValue([

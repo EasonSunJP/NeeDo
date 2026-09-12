@@ -125,14 +125,17 @@ export function SocialComposerPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [postType, setPostType] = useState<SocialPostType>(initialComposerState.postType);
   const [mediaError, setMediaError] = useState("");
-  const [mediaUploadStateById, setMediaUploadStateById] = useState<Record<string, "uploading" | "failed">>({});
+  const [mediaUploadStateById, setMediaUploadStateById] = useState<Record<string, "optimizing" | "uploading" | "failed" | "cancelled">>({});
   const mediaFileByIdRef = useRef(new Map<string, File>());
   const mediaPreviewUrlByIdRef = useRef(new Map<string, string>());
   const mediaUploadTaskByIdRef = useRef(new Map<string, Promise<SocialMediaItem>>());
+  const mediaUploadAbortByIdRef = useRef(new Map<string, AbortController>());
   const publishStartedRef = useRef(false);
   const isMountedRef = useRef(true);
 
   const clearTransientMedia = useCallback(() => {
+    mediaUploadAbortByIdRef.current.forEach((controller) => controller.abort());
+    mediaUploadAbortByIdRef.current.clear();
     mediaPreviewUrlByIdRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
     mediaPreviewUrlByIdRef.current.clear();
     mediaFileByIdRef.current.clear();
@@ -175,6 +178,7 @@ export function SocialComposerPage() {
 
     return () => {
       isMountedRef.current = false;
+      mediaUploadAbortByIdRef.current.forEach((controller) => controller.abort());
       mediaPreviewUrlByIdRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
     };
   }, []);
@@ -337,8 +341,25 @@ export function SocialComposerPage() {
   }, [author?.location, locationQuery]);
 
   const uploadMediaFile = useCallback(async (mediaId: string, file: File) => {
-    setMediaUploadStateById((current) => ({ ...current, [mediaId]: "uploading" }));
-    const uploadTask = realtimeApi.uploadSocialMedia(file).then<SocialMediaItem>((uploaded) => ({
+    mediaUploadAbortByIdRef.current.get(mediaId)?.abort();
+    const controller = new AbortController();
+    mediaUploadAbortByIdRef.current.set(mediaId, controller);
+    setMediaUploadStateById((current) => ({ ...current, [mediaId]: "optimizing" }));
+    setMediaError("图片正在本地优化并上传…");
+    const uploadTask = realtimeApi.uploadSocialMedia(file, {
+      signal: controller.signal,
+      onStage: () => {
+        if (isMountedRef.current && mediaFileByIdRef.current.get(mediaId) === file) {
+          setMediaUploadStateById((current) => ({ ...current, [mediaId]: "optimizing" }));
+        }
+      },
+      onUploadStart: () => {
+        if (isMountedRef.current && mediaFileByIdRef.current.get(mediaId) === file) {
+          setMediaUploadStateById((current) => ({ ...current, [mediaId]: "uploading" }));
+          setMediaError("");
+        }
+      }
+    }).then<SocialMediaItem>((uploaded) => ({
       id: mediaId,
       type: "image",
       url: uploaded.url,
@@ -378,8 +399,16 @@ export function SocialComposerPage() {
       }
 
       if (isMountedRef.current) {
-        setMediaUploadStateById((current) => ({ ...current, [mediaId]: "failed" }));
+        const cancelled = error instanceof DOMException && error.name === "AbortError";
+        setMediaUploadStateById((current) => ({
+          ...current,
+          [mediaId]: cancelled ? "cancelled" : "failed"
+        }));
         setMediaError(getSocialComposerErrorMessage(error));
+      }
+    } finally {
+      if (mediaUploadAbortByIdRef.current.get(mediaId) === controller) {
+        mediaUploadAbortByIdRef.current.delete(mediaId);
       }
     }
   }, []);
@@ -441,6 +470,8 @@ export function SocialComposerPage() {
   };
 
   const handleRemoveMedia = (mediaId: string) => {
+    mediaUploadAbortByIdRef.current.get(mediaId)?.abort();
+    mediaUploadAbortByIdRef.current.delete(mediaId);
     const previewUrl = mediaPreviewUrlByIdRef.current.get(mediaId);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);

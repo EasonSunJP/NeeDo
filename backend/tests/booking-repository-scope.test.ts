@@ -1475,4 +1475,195 @@ serviceLocation: { source: "SHOP_LOCATION" }
       list: [{ fulfillmentAddressSnapshot: null }]
     });
   });
+
+  it("keeps an effective shop service on the fast rebook checkout path", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("COMPLETED"),
+      service: {
+        id: 11,
+        shopId: 16,
+        status: "published",
+        deletedAt: null,
+        category: { isActive: true, deletedAt: null }
+      },
+      shop: {
+        id: 16,
+        name: "LifeDance",
+        status: "published",
+        pricingMode: "MERCHANT",
+        deletedAt: null,
+        publicIdentifier: { kind: "SHOP", status: "ACTIVE", deletedAt: null },
+        entitySuspensions: []
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([order]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as never);
+
+    await expect(repository.listOrders({ page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{
+        serviceId: 11,
+        serviceNameSnapshot: "肩颈调理",
+        rebook: {
+          action: "checkout",
+          serviceType: "shop_service",
+          serviceId: 11,
+          shopId: 16,
+          technicianProfileId: 31,
+          fulfillmentMode: "store"
+        }
+      }]
+    });
+  });
+
+  it("keeps an effective technician service on checkout with its current shop and technician context", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("COMPLETED"),
+      serviceId: null,
+      technicianServiceId: 77,
+      service: null,
+      technicianService: {
+        id: 77,
+        shopId: 16,
+        technicianId: 31,
+        isActive: true,
+        isBookable: true,
+        reviewStatus: "APPROVED",
+        deletedAt: null,
+        category: { isActive: true, deletedAt: null },
+        technicianProfile: {
+          status: "published",
+          visibility: "public",
+          deletedAt: null,
+          user: {
+            isActive: true,
+            deletedAt: null,
+            identities: [{
+              type: "technician",
+              isActive: true,
+              deletedAt: null,
+              publicIdentifier: { kind: "S", status: "ACTIVE", deletedAt: null }
+            }]
+          },
+          technicianShopAffiliations: [{
+            shopId: 16,
+            workStatus: "ACTIVE",
+            activeKey: "technician:31:shop:16",
+            startsAt: new Date("2026-01-01T00:00:00.000Z"),
+            endsAt: null,
+            deletedAt: null
+          }]
+        }
+      },
+      shop: {
+        id: 16,
+        name: "LifeDance",
+        status: "published",
+        pricingMode: "TECHNICIAN",
+        deletedAt: null,
+        publicIdentifier: { kind: "SHOP", status: "ACTIVE", deletedAt: null },
+        entitySuspensions: []
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([order]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as never);
+
+    await expect(repository.listOrders({ page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{
+        rebook: {
+          action: "checkout",
+          serviceType: "technician_service",
+          serviceId: 77,
+          shopId: 16,
+          technicianProfileId: 31,
+          fulfillmentMode: "store"
+        }
+      }]
+    });
+  });
+
+  it("routes a stopped historical service to the still-effective original shop service list", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("COMPLETED"),
+      service: {
+        id: 11,
+        shopId: 16,
+        status: "stopped",
+        deletedAt: null,
+        category: { isActive: true, deletedAt: null }
+      },
+      shop: {
+        id: 16,
+        name: "LifeDance",
+        status: "published",
+        pricingMode: "MERCHANT",
+        deletedAt: null,
+        publicIdentifier: { kind: "SHOP", status: "ACTIVE", deletedAt: null },
+        entitySuspensions: []
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([order]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as never);
+
+    await expect(repository.listOrders({ page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{
+        serviceId: 11,
+        serviceNameSnapshot: "肩颈调理",
+        rebook: {
+          action: "select_service",
+          shopId: 16,
+          reason: "original_service_unavailable"
+        }
+      }]
+    });
+  });
+
+  it.each([
+    ["unpublished", { status: "closed", deletedAt: null }],
+    ["deleted", { status: "published", deletedAt: new Date("2026-09-10T00:00:00.000Z") }]
+  ])("disables direct rebooking when the original shop is %s", async (_label, shopState) => {
+    const order = {
+      ...makeTransitionOrderRecord("COMPLETED"),
+      service: {
+        id: 11,
+        shopId: 16,
+        status: "published",
+        deletedAt: null,
+        category: { isActive: true, deletedAt: null }
+      },
+      shop: {
+        id: 16,
+        name: "LifeDance",
+        pricingMode: "MERCHANT",
+        publicIdentifier: { kind: "SHOP", status: "ACTIVE", deletedAt: null },
+        entitySuspensions: [],
+        ...shopState
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([order]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as never);
+
+    await expect(repository.listOrders({ page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{
+        serviceId: 11,
+        serviceNameSnapshot: "肩颈调理",
+        rebook: { action: "unavailable", reason: "shop_unavailable" }
+      }]
+    });
+  });
 });

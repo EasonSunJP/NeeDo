@@ -340,10 +340,15 @@ describe("chat-record HTTP API", () => {
         statusCode: 404
       })
     );
-    await request(fixture.app)
+    const mediaResponse = await request(fixture.app)
       .get(`/api/v1/im/chat-records/${publicId}/media/${checksum}`)
       .set("Authorization", `Bearer ${fixture.token}`)
       .expect(404);
+    expect(mediaResponse.body).toEqual({
+      code: ERROR_CODES.NOT_FOUND,
+      message: "error.im.chat_record_media_unavailable",
+      data: null
+    });
   });
 
   it("returns cursor-paginated items with the standard list envelope", async () => {

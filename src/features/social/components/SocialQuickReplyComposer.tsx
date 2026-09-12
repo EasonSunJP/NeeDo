@@ -46,7 +46,7 @@ type PendingReplyImage = {
   ownsObjectUrl: boolean;
   previewUrl: string;
   requestId: number;
-  status: "uploading" | "failed" | "uploaded";
+  status: "optimizing" | "uploading" | "failed" | "uploaded" | "cancelled";
 };
 
 export type SocialQuickReplyComposerHandle = {
@@ -75,6 +75,7 @@ function SocialQuickReplyComposerState({
   const locationCandidateRef = useRef("");
   const pendingImageRef = useRef<PendingReplyImage | null>(null);
   const requestIdRef = useRef(0);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
 
   const updatePendingImage = useCallback((next: PendingReplyImage | null) => {
@@ -90,6 +91,8 @@ function SocialQuickReplyComposerState({
 
   const clearPendingImage = useCallback(() => {
     requestIdRef.current += 1;
+    uploadAbortRef.current?.abort();
+    uploadAbortRef.current = null;
     revokePendingPreview(pendingImageRef.current);
     updatePendingImage(null);
     setImageError(null);
@@ -100,6 +103,7 @@ function SocialQuickReplyComposerState({
     return () => {
       mountedRef.current = false;
       requestIdRef.current += 1;
+      uploadAbortRef.current?.abort();
       revokePendingPreview(pendingImageRef.current);
       pendingImageRef.current = null;
     };
@@ -124,17 +128,29 @@ function SocialQuickReplyComposerState({
 
   const uploadImage = useCallback(async (image: PendingReplyImage) => {
     const requestId = ++requestIdRef.current;
+    uploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
     const uploadingImage: PendingReplyImage = {
       ...image,
       media: undefined,
       requestId,
-      status: "uploading"
+      status: "optimizing"
     };
     updatePendingImage(uploadingImage);
     setImageError(null);
 
     try {
-      const uploaded = await realtimeApi.uploadSocialMedia(image.file);
+      const uploaded = await realtimeApi.uploadSocialMedia(image.file, {
+        signal: controller.signal,
+        onStage: () => undefined,
+        onUploadStart: () => {
+          const current = pendingImageRef.current;
+          if (mountedRef.current && current?.requestId === requestId) {
+            updatePendingImage({ ...current, status: "uploading" });
+          }
+        }
+      });
       const current = pendingImageRef.current;
       if (!mountedRef.current || !current || current.requestId !== requestId) {
         return;
@@ -160,8 +176,13 @@ function SocialQuickReplyComposerState({
         return;
       }
 
-      updatePendingImage({ ...current, status: "failed" });
+      updatePendingImage({
+        ...current,
+        status: error instanceof DOMException && error.name === "AbortError" ? "cancelled" : "failed"
+      });
       setImageError(getSocialComposerErrorMessage(error));
+    } finally {
+      if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
     }
   }, [revokePendingPreview, updatePendingImage]);
 
@@ -189,7 +210,7 @@ function SocialQuickReplyComposerState({
       ownsObjectUrl: true,
       previewUrl: URL.createObjectURL(file),
       requestId: 0,
-      status: "uploading"
+      status: "optimizing"
     };
     void uploadImage(next);
     setPanel(null);
@@ -201,7 +222,7 @@ function SocialQuickReplyComposerState({
     const uploadedMedia = pendingImageRef.current?.status === "uploaded"
       ? pendingImageRef.current.media
       : undefined;
-    const uploadPending = pendingImageRef.current?.status === "uploading";
+    const uploadPending = pendingImageRef.current?.status === "optimizing" || pendingImageRef.current?.status === "uploading";
     if (!canComment || sending || uploadPending || (!text && !uploadedMedia)) return;
 
     setSubmissionError(null);
@@ -252,7 +273,7 @@ function SocialQuickReplyComposerState({
     { key: "camera", label: "拍照", icon: "camera", run: () => cameraInputRef.current?.click() },
     { key: "location", label: "位置", icon: "location", run: openLocation }
   ];
-  const uploadPending = pendingImage?.status === "uploading";
+  const uploadPending = pendingImage?.status === "optimizing" || pendingImage?.status === "uploading";
   const composerDisabled = !canComment || sending;
 
   if (locationOpen) {
@@ -316,9 +337,9 @@ function SocialQuickReplyComposerState({
       ) : null}
       {pendingImage ? (
         <div className="mx-3 flex items-center justify-between gap-3 border border-b-0 border-white/10 bg-black/[0.82] px-4 py-2 text-sm text-white">
-          <span>{pendingImage.status === "uploading" ? "图片上传中" : pendingImage.status === "failed" ? "上传失败" : pendingImage.fileName}</span>
+          <span>{pendingImage.status === "optimizing" ? "图片正在本地优化并上传…" : pendingImage.status === "uploading" ? "图片上传中" : pendingImage.status === "failed" || pendingImage.status === "cancelled" ? "上传失败" : pendingImage.fileName}</span>
           <span className="flex shrink-0 items-center gap-3">
-            {pendingImage.status === "failed" ? (
+            {pendingImage.status === "failed" || pendingImage.status === "cancelled" ? (
               <button
                 className="focus-ring text-xs font-semibold text-[#d1ff4d]"
                 disabled={composerDisabled}
@@ -366,7 +387,7 @@ function SocialQuickReplyComposerState({
         placeholder={canComment ? "发布你的回复" : "仅好友可以评论"}
         sendLabel="回复"
         sending={sending || uploadPending}
-        sendingLabel={uploadPending ? "图片上传中" : "回复中"}
+        sendingLabel={pendingImage?.status === "optimizing" ? "本地优化中" : uploadPending ? "图片上传中" : "回复中"}
         submitOnEnter
         textareaRef={richInputRef}
         voiceInputAriaLabel="录制语音"

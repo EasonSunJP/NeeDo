@@ -657,6 +657,7 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/identity-applications/{id}/merchant-bank-account",
       "/api/v1/identity-applications/{id}/merchant-contract-acceptance",
       "/api/v1/identity-applications/{id}/media",
+      "/api/v1/identity-applications/{id}/media-bundle",
       "/api/v1/identity-applications/{id}/media/{mediaId}",
       "/api/v1/backoffice/content/media",
       "/api/v1/social/media",
