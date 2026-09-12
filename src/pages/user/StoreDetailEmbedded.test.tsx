@@ -181,9 +181,11 @@ it("builds checkout actions only from an exact future formal slot", async () => 
   });
 
   expect(listAvailability).toHaveBeenCalledWith(expect.objectContaining({
+    from: "2026-09-12T15:00:00.000Z",
     includeUnavailable: true,
     serviceId: 31,
-    shopId: 21
+    shopId: 21,
+    to: "2026-09-13T15:00:00.000Z"
   }));
   const checkoutHref = container.querySelector<HTMLAnchorElement>('a[href*="scheduleSlotId=902"]')!.getAttribute("href")!;
   expect(checkoutHref).toContain("date=2026-09-13");

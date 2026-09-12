@@ -12,6 +12,15 @@ function Probe({ load }: { load: () => Promise<{ title: string }> }) {
   return <output>{query.loading ? "loading" : query.data?.title ?? query.error}</output>;
 }
 
+function RefreshingProbe({ load, revision }: { load: () => Promise<{ bookings: number }>; revision: number }) {
+  const query = useCoreReadQuery(load, [load, revision], {
+    force: revision > 0,
+    key: "merchant:home:store-7",
+    scope: "account:9"
+  });
+  return <output>{query.loading ? "loading" : query.data?.bookings ?? query.error}</output>;
+}
+
 async function waitFor(assertion: () => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -53,5 +62,22 @@ describe("useCoreReadQuery persistent cache", () => {
 
     expect(container.textContent).toBe("cached card");
     expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles the merchant home query when realtime revisions repeat during its initial request", async () => {
+    let resolveServer!: (value: { bookings: number }) => void;
+    const server = new Promise<{ bookings: number }>((resolve) => {
+      resolveServer = resolve;
+    });
+    const load = vi.fn(() => server);
+
+    await act(async () => root.render(<RefreshingProbe load={load} revision={1} />));
+    await act(async () => root.render(<RefreshingProbe load={load} revision={2} />));
+    await act(async () => root.render(<RefreshingProbe load={load} revision={3} />));
+    await waitFor(() => expect(load).toHaveBeenCalled());
+
+    expect(load).toHaveBeenCalledTimes(1);
+    await act(async () => resolveServer({ bookings: 5 }));
+    await waitFor(() => expect(container.textContent).toBe("5"));
   });
 });

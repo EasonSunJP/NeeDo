@@ -20,6 +20,10 @@ type FormalProviderBehavior = {
     profiles: Record<string, SocialProfile>,
     language: "zh" | "zh-Hant" | "ja" | "en" | "ko"
   ) => SocialNotification;
+  resolveFormalNotificationContent?: (
+    notification: RealtimeNotification,
+    language: "zh" | "zh-Hant" | "ja" | "en" | "ko"
+  ) => string;
   createFormalSocialPost?: (
     request: () => Promise<RealtimeSocialPost>,
     onSuccess: (created: RealtimeSocialPost, mapped: SocialPost) => void
@@ -157,6 +161,117 @@ describe("formal social provider gate", () => {
       read: false
     });
     expect(mapped.content).not.toContain("exchange.cancellation");
+  });
+
+  it("localizes structured order status events and business status names in every supported language", () => {
+    expect(behavior.resolveFormalNotificationContent).toBeTypeOf("function");
+    if (!behavior.resolveFormalNotificationContent) return;
+
+    const notification: RealtimeNotification = {
+      actorUserId: 51,
+      body: "notification.order_status_changed.body",
+      createdAt: "2026-09-13T03:05:00.000Z",
+      id: 902,
+      payload: {
+        eventCode: "booking.order_status_changed",
+        orderId: 501,
+        orderNo: "ND501",
+        serviceName: "ボディケア 60分",
+        fromStatus: "inService",
+        toStatus: "awaitingCheckout"
+      },
+      readAt: null,
+      recipientUserId: 41,
+      title: "notification.order_status_changed.title",
+      type: "orderStatus"
+    };
+
+    expect(behavior.resolveFormalNotificationContent(notification, "ja"))
+      .toBe("ボディケア 60分の状態が「サービス中」から「お会計待ち」に更新されました。");
+    expect(behavior.resolveFormalNotificationContent(notification, "zh"))
+      .toBe("ボディケア 60分的状态已从“服务中”更新为“待结账”。");
+    expect(behavior.resolveFormalNotificationContent(notification, "en"))
+      .toBe("ボディケア 60分 status changed from In service to Awaiting checkout.");
+    expect(behavior.resolveFormalNotificationContent(notification, "ko"))
+      .toBe("ボディケア 60分 상태가 ‘서비스 중’에서 ‘결제 대기’로 변경되었습니다.");
+  });
+
+  it("supports historical structured order events without parsing their legacy English body", () => {
+    expect(behavior.resolveFormalNotificationContent).toBeTypeOf("function");
+    if (!behavior.resolveFormalNotificationContent) return;
+
+    const content = behavior.resolveFormalNotificationContent({
+      actorUserId: 51,
+      body: "ボディケア 60分 changed from pending to confirmed.",
+      createdAt: "2026-09-13T03:05:00.000Z",
+      id: 903,
+      payload: {
+        orderId: 501,
+        orderNo: "ND501",
+        fromStatus: "pending",
+        toStatus: "confirmed"
+      },
+      readAt: null,
+      recipientUserId: 41,
+      title: "Order status updated",
+      type: "orderStatus"
+    }, "ja");
+
+    expect(content).toBe("予約状況が「確認待ち」から「確認済み」に更新されました。");
+    expect(content).not.toContain("changed from");
+  });
+
+  it("localizes friend requests and hides unknown system payloads behind safe generic copy", () => {
+    expect(behavior.resolveFormalNotificationContent).toBeTypeOf("function");
+    if (!behavior.resolveFormalNotificationContent) return;
+
+    const friendRequest: RealtimeNotification = {
+      actorUserId: 51,
+      body: "You have a new friend request.",
+      createdAt: "2026-09-13T03:05:00.000Z",
+      id: 904,
+      payload: { friendRequestId: 77 },
+      readAt: null,
+      recipientUserId: 41,
+      title: "New friend request",
+      type: "friendRequest"
+    };
+    expect(behavior.resolveFormalNotificationContent(friendRequest, "zh")).toBe("你收到了新的好友申请。");
+    expect(behavior.resolveFormalNotificationContent(friendRequest, "ja")).toBe("新しい友だち申請が届きました。");
+    expect(behavior.resolveFormalNotificationContent(friendRequest, "en")).toBe("You have a new friend request.");
+    expect(behavior.resolveFormalNotificationContent(friendRequest, "ko")).toBe("새 친구 요청이 도착했습니다.");
+
+    const unknown: RealtimeNotification = {
+      ...friendRequest,
+      id: 905,
+      body: "internal: secret-token=abc",
+      payload: { eventCode: "internal.unknown", secretToken: "abc" },
+      title: "Internal payload",
+      type: "system"
+    };
+    const safe = behavior.resolveFormalNotificationContent(unknown, "en");
+    expect(safe).toBe("You have a new system notification.");
+    expect(safe).not.toContain("secret");
+    expect(safe).not.toContain("internal");
+  });
+
+  it("preserves localized official-notice content instead of rewriting authored copy", () => {
+    expect(behavior.resolveFormalNotificationContent).toBeTypeOf("function");
+    if (!behavior.resolveFormalNotificationContent) return;
+
+    const content = behavior.resolveFormalNotificationContent({
+      actorUserId: 1,
+      body: "本日の営業時間は18時までです。",
+      createdAt: "2026-09-13T03:05:00.000Z",
+      id: 906,
+      payload: { kind: "official_notice", publicId: "notice-1" },
+      readAt: null,
+      recipientUserId: 41,
+      title: "営業時間のお知らせ",
+      type: "system"
+    }, "ja");
+
+    expect(content).toBe("本日の営業時間は18時までです。");
   });
 
   it("always mounts the formal provider", () => {

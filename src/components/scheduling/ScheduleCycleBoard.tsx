@@ -8,6 +8,7 @@ import { translateText } from "../../i18n/translations";
 import { buildCurrentRoute, withReturnTo } from "../../lib/navigationReturn";
 import { cn } from "../../lib/utils";
 import { resolveScheduleEventDetailTarget } from "../../lib/scheduleDetailTarget";
+import { getMerchantStaffDetailPath } from "../../lib/merchantStaffRoute";
 import { useEntityStore } from "../../state/entityStore";
 import {
   adjustDispatchFinalShift,
@@ -69,7 +70,7 @@ export function ScheduleCycleBoard({
   const navigate = useNavigate();
   const location = useLocation();
   const { language } = useI18n();
-  const { stores } = useEntityStore();
+  const { stores, technicians } = useEntityStore();
   const dispatchSnapshot = useDispatchCenterStore();
   const isMobileSurface = surface === "mobile";
   const currentStore = useMemo(() => stores.find((store) => store.id === storeId) ?? stores[0], [storeId, stores]);
@@ -200,7 +201,9 @@ export function ScheduleCycleBoard({
         <ScheduleCycleCalendarBoard
           cycleId={cycle.id}
           dateKey={dateKey}
-          getTechnicianDetailPath={(technicianId) => `/merchant/staff/${encodeURIComponent(technicianId)}`}
+          getTechnicianDetailPath={(technicianInternalId) => getMerchantStaffDetailPath(
+            technicians.find((technician) => technician.id === technicianInternalId)?.systemId
+          )}
           onDateChange={changeScheduleDate}
           onOpenCell={canSelectCells ? selectScheduleCell : (cell) => openDateSchedule(cell.date)}
           onViewChange={setView}

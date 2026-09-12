@@ -130,6 +130,28 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
     expect(strip?.closest(`[data-calendar-date-column="${targetDate}"]`)).not.toBeNull();
   });
 
+  it.each([
+    ["ja", ["日", "月", "火", "水", "木", "金", "土"]],
+    ["en", ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]],
+    ["ko", ["일", "월", "화", "수", "목", "금", "토"]],
+  ] as const)("renders %s weekday headers in the active language", async (language, expected) => {
+    const dates = Array.from({ length: 7 }, (_, index) => `2026-09-${String(13 + index).padStart(2, "0")}`);
+
+    await act(async () => root.render(
+      <UnifiedCalendarMultiDayTimeline
+        dates={dates}
+        events={[]}
+        language={language}
+        onOpen={vi.fn()}
+      />,
+    ));
+
+    const labels = Array.from(container.querySelectorAll("button > span:first-child"))
+      .slice(0, 7)
+      .map((label) => label.textContent);
+    expect(labels).toEqual(expected);
+  });
+
   it("shows availability as an unlabelled thin strip on the left edge of a month cell", async () => {
     const date = "2026-09-09";
     const availability: UnifiedCalendarEvent = {
@@ -158,6 +180,21 @@ describe("UnifiedCalendarDayTimeline availability and participant draft renderin
     expect(strip?.style.left).toBe("0px");
     expect(strip?.style.width).toBe("6px");
     expect(container.textContent).not.toContain("LifeDance店铺排班");
+  });
+
+  it("renders Japanese month-view weekday headers", async () => {
+    await act(async () => root.render(
+      <UnifiedCalendarMonthGrid
+        anchorDate="2026-09-13"
+        dates={[]}
+        eventsByDate={{}}
+        language="ja"
+        onOpen={vi.fn()}
+      />,
+    ));
+
+    expect(Array.from(container.querySelectorAll(".grid-cols-7 > span")).map((label) => label.textContent))
+      .toEqual(["日", "月", "火", "水", "木", "金", "土"]);
   });
 
   it("spans one controlled draft block across all participant lanes and marks only conflicting lanes", async () => {

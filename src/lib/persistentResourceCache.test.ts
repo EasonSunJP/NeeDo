@@ -121,6 +121,38 @@ describe("persistent resource cache", () => {
     expect(cache.peek("public", "cards:shop:1")).toEqual({ name: "cached" });
   });
 
+  it("keeps a forced refresh single-flight when realtime polling fires again", async () => {
+    const database = createMemoryPersistentCacheDatabase();
+    const cache = createPersistentResourceCache({ database });
+    let resolveServer!: (value: { bookings: number }) => void;
+    const server = new Promise<{ bookings: number }>((resolve) => {
+      resolveServer = resolve;
+    });
+    const load = vi.fn(() => server);
+
+    const first = cache.load({
+      force: true,
+      key: "merchant:home:store-7",
+      load,
+      scope: "account:9"
+    });
+    const repeated = cache.load({
+      force: true,
+      key: "merchant:home:store-7",
+      load,
+      scope: "account:9"
+    });
+
+    await vi.waitFor(() => expect(load).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(load).toHaveBeenCalledTimes(1);
+    resolveServer({ bookings: 5 });
+    await expect(Promise.all([first, repeated])).resolves.toEqual([
+      { bookings: 5 },
+      { bookings: 5 }
+    ]);
+  });
+
   it("invalidates matching durable entries even when they are not loaded in memory", async () => {
     const database = createMemoryPersistentCacheDatabase();
     const writer = createPersistentResourceCache({ database });

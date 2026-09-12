@@ -82,6 +82,7 @@ export function DataTable<T>({
   onView,
   frozenDetailLabel,
   pageSize = 8,
+  showFooter = true,
   showFooterActions = footerPlacement === "fixed"
 }: {
   rows: T[];
@@ -91,6 +92,7 @@ export function DataTable<T>({
   onView?: (row: T) => void;
   frozenDetailLabel?: string;
   pageSize?: number;
+  showFooter?: boolean;
   showFooterActions?: boolean;
 }) {
   const safePageSize = Math.max(1, pageSize);
@@ -422,8 +424,8 @@ export function DataTable<T>({
           </tbody>
         </table>
       </HorizontalScrollArea>
-      {footerPlacement === "fixed" ? <div className="h-24" aria-hidden="true" /> : null}
-      {footer}
+      {showFooter && footerPlacement === "fixed" ? <div className="h-24" aria-hidden="true" /> : null}
+      {showFooter ? footer : null}
     </div>
   );
 }

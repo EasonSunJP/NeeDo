@@ -34,6 +34,7 @@ import { shareContent } from "../../../lib/share";
 import { buildStoreBookingRoute } from "../../../lib/storeBookingRoute";
 import { getVisibleRelatedShopsForTechnician, type TechnicianRelatedShopEntry } from "../../../lib/technicianRelatedShops";
 import { cn } from "../../../lib/utils";
+import { useOptionalI18n } from "../../../i18n/I18nProvider";
 import { CustomerMembershipBadge } from "../../../shared/profile-card";
 import { resolveCustomerMembership } from "../../../shared/profile-card/customerMembership";
 import { useEntityStore } from "../../../state/entityStore";
@@ -1221,6 +1222,7 @@ function EmbeddedPostCard({
   profiles: Record<string, SocialProfile>;
 }) {
   const navigate = useNavigate();
+  const { language } = useOptionalI18n();
 
   if (!post || post.status !== "published") {
     return (
@@ -1253,7 +1255,7 @@ function EmbeddedPostCard({
       <div className="px-4 py-3">
         <div className="flex items-center gap-2 text-sm">
           <span className="truncate font-black text-[color:var(--client-text)]">{author?.displayName ?? "动态作者"}</span>
-          <span className="text-[color:var(--client-muted)]">{formatRelativeTime(post.createdAt)}</span>
+          <span className="text-[color:var(--client-muted)]" data-no-i18n>{formatRelativeTime(post.createdAt, language)}</span>
         </div>
         {post.text ? (
           <UnifiedPostText
@@ -1549,6 +1551,7 @@ export function SocialPostItem({
   disableDetailNavigation?: boolean;
 }) {
   const navigate = useNavigate();
+  const { language } = useOptionalI18n();
   const { profiles, getPostById } = useSocial();
   const mergedProfiles = profileOverrides ? { ...profiles, ...profileOverrides } : profiles;
   const activityAuthor = mergedProfiles[profileKey({ entityType: post.authorType, id: post.authorId })];
@@ -1587,12 +1590,12 @@ export function SocialPostItem({
                 <SocialMembershipStatusBadge compact profile={contentAuthor} />
                 <span className="text-sm text-[color:var(--client-muted)]">·</span>
                 {disableDetailNavigation ? (
-                  <span className="text-sm text-[color:var(--client-muted)]">
-                    {formatRelativeTime(contentPost.createdAt)}
+                  <span className="text-sm text-[color:var(--client-muted)]" data-no-i18n>
+                    {formatRelativeTime(contentPost.createdAt, language)}
                   </span>
                 ) : (
-                  <Link className="text-sm text-[color:var(--client-muted)] hover:text-[color:var(--client-text)]" to={detailHref}>
-                    {formatRelativeTime(contentPost.createdAt)}
+                  <Link className="text-sm text-[color:var(--client-muted)] hover:text-[color:var(--client-text)]" data-no-i18n to={detailHref}>
+                    {formatRelativeTime(contentPost.createdAt, language)}
                   </Link>
                 )}
               </div>
@@ -2574,13 +2577,14 @@ export function NotificationRow({
   unread?: boolean;
   avatarTo?: string;
 }) {
+  const { language } = useOptionalI18n();
   const contentBody = (
     <div className="min-w-0 flex-1">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-black text-[color:var(--client-text)]">{actor?.displayName ?? "系统通知"}</span>
       </div>
-      <p className="mt-1 text-sm leading-6 text-[color:var(--client-text)]">{content}</p>
-      <p className="mt-2 text-xs font-semibold text-[color:var(--client-muted)]">{formatRelativeTime(at)}</p>
+      <p className="mt-1 text-sm leading-6 text-[color:var(--client-text)]" data-no-i18n>{content}</p>
+      <p className="mt-2 text-xs font-semibold text-[color:var(--client-muted)]" data-no-i18n>{formatRelativeTime(at, language)}</p>
     </div>
   );
 
