@@ -67,7 +67,7 @@ export function BusinessCpsPage() {
           </Link>
         </div>
       </FloatingHomeHeader>
-      <main className="space-y-5 px-4 pb-28 pt-2">
+      <main className="client-app-gutter space-y-5 pb-28 pt-2">
         <PublishedCarousel scene="affiliate-home-notice" />
         <AffiliateMarketplaceSection pageSize={6} />
       </main>

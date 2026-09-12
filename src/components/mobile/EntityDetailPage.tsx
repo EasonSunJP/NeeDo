@@ -241,7 +241,7 @@ function GalleryCarousel({ title, images, dark }: { title: string; images: Detai
           <FloatingTopRightControl className="z-[89]">
             <MobileFullscreenCloseButton className="border-white/25 bg-black/40 text-white" label="关闭大图" onClose={() => setPreviewOpen(false)} />
           </FloatingTopRightControl>
-          <div className="mx-auto flex h-full w-full max-w-[480px] flex-col">
+          <div className="client-app-frame flex h-full flex-col">
             <div className="flex min-h-0 flex-1 items-center justify-center">
               <img alt={currentImage.alt} className="max-h-full w-full rounded-[28px] object-contain" src={getGeneratedImageThumbnailUrl(currentImage.src)} />
             </div>
@@ -1191,7 +1191,7 @@ export function StickyActionBar({
   const columnCount = Math.max(actions.length, 1);
 
   return (
-    <div className={cn("pointer-events-none fixed inset-x-0 bottom-0 z-[75] mx-auto w-full max-w-[480px] px-3 pb-3", className)}>
+    <div className={cn("client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[75] pb-3", className)}>
       <div
         className={cn(
           "pointer-events-auto rounded-[28px] border p-3 shadow-soft backdrop-blur-xl",
@@ -1260,14 +1260,14 @@ export function EntityDetailPage({
   const surfaceClass = dark ? "bg-[#090806] text-white" : "bg-paper text-ink";
 
   return (
-    <section className={cn("safe-screen-shell fixed inset-y-0 left-1/2 z-[72] flex h-[100dvh] w-full max-w-[480px] -translate-x-1/2 flex-col overflow-hidden shadow-soft", surfaceClass)}>
+    <section className={cn("client-app-frame safe-screen-shell fixed inset-y-0 left-1/2 z-[72] flex h-[100dvh] -translate-x-1/2 flex-col overflow-hidden shadow-soft", surfaceClass)}>
       <MobileFullscreenHeader
         dark={dark}
         onClose={onClose}
         subtitle={detail.subtitle}
         title={detail.displayName}
       />
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <main className="client-app-gutter min-h-0 flex-1 overflow-y-auto py-4">
         <DetailPageBody
           availabilitySection={availabilitySection}
           dark={dark}

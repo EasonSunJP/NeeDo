@@ -114,7 +114,7 @@ export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPorta
     <PageScaffold contentClassName="space-y-0 pb-32 pt-0" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
       {technicianProfile ? (
         <>
-          <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+          <div className="client-app-breakout">
             <SocialProfileTopBar
               actorKey={actorKey}
               onBack={() => navigate(-1)}

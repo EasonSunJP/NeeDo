@@ -3,6 +3,8 @@ import { cn } from "../../lib/utils";
 
 const floatingHeaderFrameGapPx = 8;
 
+export const clientAppMaxWidth = "var(--client-app-max-width, 880px)";
+export const clientAppInlineGap = "var(--client-app-inline-gap, 12px)";
 export const floatingHeaderLiquidGlassClassName = "client-liquid-glass-header";
 export const floatingHeaderGlassPanelClassName =
   `${floatingHeaderLiquidGlassClassName} client-floating-header-glass-frame overflow-hidden !rounded-[28px] !border-transparent !px-0 !pb-0 !shadow-none`;
@@ -26,8 +28,8 @@ export function FloatingHomeHeader({
   stacked = false,
   className,
   frameClassName,
-  maxWidth = "var(--client-bottom-nav-max-width, 880px)",
-  inlineGap = "var(--client-bottom-nav-inline-gap, 12px)",
+  maxWidth = clientAppMaxWidth,
+  inlineGap = clientAppInlineGap,
   panelClassName,
   spacerClassName,
   showSpacer = true,
@@ -88,7 +90,7 @@ export function FloatingHomeHeader({
         data-page-drag-ignore="true"
       >
         <div
-          className="pointer-events-auto mx-auto w-full"
+          className="client-app-frame client-app-gutter pointer-events-auto"
           style={{
             maxWidth,
             paddingLeft: inlineGap,

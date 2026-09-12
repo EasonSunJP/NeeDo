@@ -49,7 +49,7 @@ function DineInCustomerPageShell({
         subtitle={subtitle}
         title={title}
       />
-      <div className="space-y-4 px-4 pb-28 pt-4">{children}</div>
+      <div className="client-app-gutter space-y-4 pb-28 pt-4">{children}</div>
     </MobileShell>
   );
 }
@@ -369,7 +369,7 @@ function DineInBottomOrderNav({
   onChange: (tab: DineInCustomerOrderTab) => void;
 }) {
   return (
-    <nav className="safe-nav-bottom fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-3 pt-2">
+    <nav className="safe-nav-bottom client-app-frame client-app-gutter fixed inset-x-0 bottom-0 z-40 pt-2">
       <div className="grid grid-cols-4 rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-1.5 text-[color:var(--client-text)] shadow-[0_18px_50px_color-mix(in_srgb,var(--client-shadow)_22%,transparent)] backdrop-blur-2xl">
         {dineInCustomerOrderTabs.map((tab) => {
           const active = activeTab === tab.value;
@@ -671,7 +671,7 @@ export function DineInCustomerMenuPage() {
           onClose={() => navigate("/scan")}
           statusLabel={`${facilityStatusLabels[facility.status]} · ${availableMenus.map((menu) => getLocalizedName(menu.name)).join(" / ")}`}
         />
-        <main className="mx-auto w-full max-w-[880px] px-4 pb-[calc(env(safe-area-inset-bottom)+6.25rem)] pt-4">
+        <main className="client-app-frame client-app-gutter pb-[calc(env(safe-area-inset-bottom)+6.25rem)] pt-4">
           {activeTab === "menu" ? (
             <div className="space-y-3">
               {activeCategory ? (

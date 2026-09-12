@@ -36,7 +36,8 @@ describe("UnifiedSocialUi technician store booking links", () => {
   it("uses the chat-style shared glass header inside composer selectors", () => {
     expect(composerSource).toContain("<MobileFullscreenHeader");
     expect(composerSource).toContain('className="needo-composer-glass-header"');
-    expect(composerSource).toContain('maxWidth="720px"');
+    expect(composerSource).toContain("client-app-frame client-app-gutter");
+    expect(composerSource).not.toContain('maxWidth="720px"');
     expect(composerSource).not.toContain("fixed inset-x-0 top-0 z-30 border-b");
     expect(composerSource).not.toContain("<FloatingBackButton onClick={onBack}");
   });

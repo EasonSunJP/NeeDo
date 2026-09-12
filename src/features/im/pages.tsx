@@ -2944,7 +2944,7 @@ function ImFriendProfileActionBar({
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[75] mx-auto w-full max-w-[480px] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+    <div className="client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-[75] pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
       <div className="pointer-events-auto flex gap-3">
         {actions.includes("cancel") ? (
           <Button className="flex-1" onClick={onCancel} variant="secondary">{t("取消")}</Button>
@@ -3151,7 +3151,7 @@ export function ImDirectoryProfilePage() {
         onClose={closeDirectoryProfile}
         title={t("联系人信息")}
       />
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-32 pt-4">
+      <main className="client-app-gutter min-h-0 flex-1 overflow-y-auto pb-32 pt-4">
         {isFriendProfile ? (
           <div className="grid min-h-48 place-items-center px-4 text-center">
             {contactInfoRedirectFailed ? (
@@ -4190,7 +4190,7 @@ export function ImSearchPage() {
         </FloatingHomeHeader>
 
         {!searching ? (
-          <div className="mx-auto w-full max-w-[880px] px-7 pt-4">
+          <div className="client-app-frame client-app-gutter pt-4">
             <p className="text-center text-sm font-black text-[color:color-mix(in_srgb,var(--client-text)_76%,var(--client-muted))]">聊天快速搜索</p>
             <div className="mt-9 grid grid-cols-3 gap-y-8">
               {imConversationQuickSearchItems.map((item, index) => (
@@ -4210,7 +4210,7 @@ export function ImSearchPage() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-[880px] space-y-4 px-4 py-4">
+          <div className="client-app-frame client-app-gutter space-y-4 py-4">
           {result.contacts.length > 0 ? (
             <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
               <SectionTag>联系人</SectionTag>
@@ -9404,7 +9404,7 @@ export function ImNewConversationPage() {
               privacyModeEnabled ? "h-[436px]" : "h-[316px]"
             )}
           />
-          <div className="pointer-events-auto relative mx-auto w-full min-w-0 max-w-[880px] space-y-3 overflow-x-hidden [overflow-x:clip]">
+          <div className="client-app-frame pointer-events-auto relative min-w-0 space-y-3 overflow-x-hidden [overflow-x:clip]">
             <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 py-3 backdrop-blur-xl">
               <div className="flex min-w-0 items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">

@@ -5,7 +5,7 @@ import { Button } from "../../components/ui/Button";
 export function SupportPage() {
   return (
     <MobileShell>
-      <div className="space-y-4 px-4 py-4">
+      <div className="client-app-gutter space-y-4 py-4">
         <section className="grid gap-3">
           {["订单咨询", "退款申请", "改期协助", "商家入驻", "投诉与风控"].map((item) => (
             <button className="rounded-lg border border-line bg-white p-4 text-left font-bold shadow-panel" key={item} type="button">

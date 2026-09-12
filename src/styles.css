@@ -1400,8 +1400,10 @@ thead .table-frozen-action,
   --client-primary-soft: rgba(54, 122, 113, 0.14);
   --client-nav-active: rgba(54, 122, 113, 0.16);
   --client-accent-text: #1f5b51;
-  --client-bottom-nav-max-width: 880px;
-  --client-bottom-nav-inline-gap: 12px;
+  --client-app-max-width: 880px;
+  --client-app-inline-gap: 12px;
+  --client-bottom-nav-max-width: var(--client-app-max-width);
+  --client-bottom-nav-inline-gap: var(--client-app-inline-gap);
   --client-edge-mask-rgb: 255 255 255;
   --client-edge-mask-top-height: calc(env(safe-area-inset-top) + 8.75rem);
   --client-edge-mask-bottom-height: calc(env(safe-area-inset-bottom) + 9.5rem);
@@ -1974,9 +1976,35 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   overscroll-behavior-y: auto;
 }
 
-.client-shell .client-app-content-container {
+.client-app-frame {
   width: 100%;
-  max-width: var(--client-bottom-nav-max-width, 880px);
+  max-width: var(--client-app-max-width, 880px);
+  margin-inline: auto;
+}
+
+.client-shell main.client-app-frame {
+  max-width: var(--client-app-max-width, 880px);
+}
+
+.client-shell .client-app-content-container {
+  max-width: var(--client-app-max-width, 880px);
+}
+
+.client-app-gutter {
+  padding-inline: var(--client-app-inline-gap, 12px);
+}
+
+.client-app-margin {
+  margin-inline: var(--client-app-inline-gap, 12px);
+}
+
+.client-app-breakout {
+  margin-inline: calc(0px - var(--client-app-inline-gap, 12px));
+}
+
+.client-app-panel-frame {
+  width: 100%;
+  max-width: calc(var(--client-app-max-width, 880px) - var(--client-app-inline-gap, 12px) - var(--client-app-inline-gap, 12px));
   margin-inline: auto;
 }
 
