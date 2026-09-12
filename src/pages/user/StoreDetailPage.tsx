@@ -3070,8 +3070,7 @@ export function StoreDetailExperience({
       return;
     }
 
-    const today = getTokyoSlotParts(new Date().toISOString())?.date;
-    const dayWindow = today ? getTokyoDayWindow(today) : null;
+    const dayWindow = getTokyoDayWindow(formatDateParam(selectedVisitDate));
     if (!dayWindow) {
       setFormalSlots([]);
       setFormalSlotsStatus("error");
@@ -3085,7 +3084,7 @@ export function StoreDetailExperience({
       includeUnavailable: true,
       serviceId: formalServiceId,
       shopId: storeApiId,
-      to: new Date(new Date(dayWindow.from).getTime() + 93 * 86_400_000).toISOString()
+      to: dayWindow.to
     })
       .then((slots) => {
         if (!active) return;
@@ -3101,7 +3100,7 @@ export function StoreDetailExperience({
     return () => {
       active = false;
     };
-  }, [formalApiOnly, formalServiceId, isMerchantEditable, storeApiId]);
+  }, [formalApiOnly, formalServiceId, isMerchantEditable, selectedVisitDate, storeApiId]);
 
   const formalBookableSlots = useMemo(
     () => formalSlots.filter((slot) => (
@@ -3975,6 +3974,7 @@ export function StoreDetailExperience({
                     onTimeChange={setSelectedTime}
                     alwaysAvailable={store.alwaysBookable}
                     availableDateKeys={formalApiOnly ? formalAvailableDateKeys : undefined}
+                    authoritativeAvailability={formalApiOnly}
                     people={selectedPeople}
                     selectedDate={selectedVisitDate}
                     selectedDay={selectedVisitDate.getDate()}

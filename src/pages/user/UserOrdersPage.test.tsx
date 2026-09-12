@@ -12,7 +12,10 @@ describe("UserOrdersPage", () => {
 
   it("keeps formal provider, service, amount, and order identity together", () => {
     expect(source).toContain("<OrderProviderInfoCard order={order} />");
-    expect(source).toContain("{order.itemName}");
+    expect(source).toContain("const serviceName = order.itemName.trim()");
+    expect(source).toContain("const shopName = order.storeName?.trim()");
+    expect(source).toContain('data-testid="user-order-service-field"');
+    expect(source).toContain('data-testid="user-order-shop-field"');
     expect(source).toContain("{yen(order.amount)}");
     expect(source).toContain("{order.orderNo}");
     expect(source).toContain("getProviderDetailPath(order)");

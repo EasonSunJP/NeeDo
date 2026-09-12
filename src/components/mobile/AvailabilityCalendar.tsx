@@ -87,6 +87,7 @@ export function AvailabilityCalendar({
   onTimeChange,
   timeOptions,
   availableDateKeys,
+  authoritativeAvailability = false,
   alwaysAvailable = false,
   className
 }: {
@@ -101,6 +102,7 @@ export function AvailabilityCalendar({
   onTimeChange: (time: string) => void;
   timeOptions: string[];
   availableDateKeys?: readonly string[];
+  authoritativeAvailability?: boolean;
   alwaysAvailable?: boolean;
   className?: string;
 }) {
@@ -185,7 +187,9 @@ export function AvailabilityCalendar({
           const selectable =
             !cell.ghost &&
             normalizeDate(date).getTime() >= today.getTime() &&
-            (availableDates
+            (authoritativeAvailability
+              ? true
+              : availableDates
               ? availableDates.has(formatDateKey(date))
               : alwaysAvailable || isAvailableDay(year, month, cell.day));
           const selected = selectable && cell.day === currentSelectedDay && year === selectedYear && month === selectedMonth;
@@ -212,8 +216,12 @@ export function AvailabilityCalendar({
               <span className={cn("availability-calendar-day text-[18px] leading-none", cell.ghost ? "text-ink/28" : "text-current", mutedDay && "availability-calendar-day-muted", selected && "availability-calendar-day-selected")}>
                 {cell.ghost ? "" : cell.day}
               </span>
-              {!availableDates && cell.day === 13 && !cell.ghost ? <span className="availability-calendar-tel mt-1.5 text-xs text-ink/35">TEL</span> : null}
-              {selectable ? <span className="mt-1.5 h-5 w-5 rounded-full border-[4px] border-[#f08a00]" /> : <span className="availability-calendar-dash mt-1.5 text-lg text-ink/20">－</span>}
+              {!authoritativeAvailability && !availableDates && cell.day === 13 && !cell.ghost ? <span className="availability-calendar-tel mt-1.5 text-xs text-ink/35">TEL</span> : null}
+              {selectable ? (
+                authoritativeAvailability && !availableDates?.has(formatDateKey(date))
+                  ? <span className="mt-3 h-2 w-2 rounded-full bg-ink/20" />
+                  : <span className="mt-1.5 h-5 w-5 rounded-full border-[4px] border-[#f08a00]" />
+              ) : <span className="availability-calendar-dash mt-1.5 text-lg text-ink/20">－</span>}
             </button>
           );
         })}

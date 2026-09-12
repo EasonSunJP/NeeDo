@@ -27,11 +27,12 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-it("allows only dates backed by formal bookable slots and never renders the legacy TEL marker", async () => {
+it("keeps future dates available for lazy formal lookup and never renders the legacy TEL marker", async () => {
   await act(async () => {
     root.render(
       <AvailabilityCalendar
         availableDateKeys={["2026-09-14"]}
+        authoritativeAvailability
         onPeopleChange={() => undefined}
         onSelectDate={() => undefined}
         onSelectDay={() => undefined}
@@ -51,7 +52,7 @@ it("allows only dates backed by formal bookable slots and never renders the lega
   const day14 = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
     .find((button) => button.querySelector(".availability-calendar-day")?.textContent === "14")!;
 
-  expect(day13.disabled).toBe(true);
+  expect(day13.disabled).toBe(false);
   expect(day14.disabled).toBe(false);
   expect(container.textContent).not.toContain("TEL");
 });
