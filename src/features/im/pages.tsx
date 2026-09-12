@@ -4787,18 +4787,47 @@ export function ImContactTagsPage() {
 
 export function ImServiceAccountsPage() {
   const { scope, store, config } = useImRuntime();
+  const { language } = useOptionalI18n();
   const navigate = useNavigate();
   const contacts = getServiceContacts(store);
+  const translate = (source: string) => translateImUiText(source, language);
+
+  const content = store.status === "error" ? (
+    <ImEmptyState
+      caption={translate("请稍后重试。")}
+      title={translate("服务号加载失败")}
+    />
+  ) : store.status !== "ready" ? (
+    <ImEmptyState
+      caption={translate("请稍候。")}
+      title={translate("正在加载服务号")}
+    />
+  ) : contacts.length === 0 ? (
+    <ImEmptyState
+      caption={translate("正式服务号能力尚未接入，当前没有可展示的服务号。")}
+      title={translate("暂无服务号")}
+    />
+  ) : (
+    contacts.map((contact) => {
+      const user = store.usersById[contact.targetUserId];
+      const contactInfoTarget = getContactInfoSettingsTarget(config, contact);
+      return user ? <ContactRow avatarTo={resolveImProfilePath(scope, user)} caption={buildContactCaption(user, contact)} contact={contact} key={contact.id} to={contactInfoTarget} user={user} /> : null;
+    })
+  );
 
   return (
     <ImStandaloneShell>
-      <ImTopBar onBack={() => navigate(config.routes.contacts)} title="服务号" />
+      <ImTopBar
+        onBack={() => navigate(config.routes.contacts)}
+        title={(
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate">{translate("服务号")}</span>
+            <TestFeatureBadge className="min-h-4 shrink-0 px-1.5 py-0 text-[8px]" />
+          </span>
+        )}
+      />
       <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-        {contacts.map((contact) => {
-          const user = store.usersById[contact.targetUserId];
-          const contactInfoTarget = getContactInfoSettingsTarget(config, contact);
-          return user ? <ContactRow avatarTo={resolveImProfilePath(scope, user)} caption={buildContactCaption(user, contact)} contact={contact} key={contact.id} to={contactInfoTarget} user={user} /> : null;
-        })}
+        {content}
       </div>
     </ImStandaloneShell>
   );
