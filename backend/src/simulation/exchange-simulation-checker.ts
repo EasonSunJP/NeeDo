@@ -1,4 +1,6 @@
 import {
+  ExchangeMatchEventType,
+  ExchangeMatchingStatus,
   ExchangePostStatus,
   ExchangePostType,
   type PrismaClient,
@@ -18,6 +20,11 @@ export interface ExchangeSimulationCheckSummary {
   likes: number;
   shares: number;
   actors: number;
+  matchings: number;
+  matchingEvents: number;
+  claims: number;
+  matchParticipants: number;
+  requestFinancials: number;
   legacyResidue: number;
   status: "ok";
 }
@@ -75,6 +82,14 @@ export const checkFormalExchangeSimulation = async (
         author: { select: { id: true, isActive: true, deletedAt: true } },
         authorIdentity: { select: actorIdentitySelect },
         demand: true,
+        claims: true,
+        matchParticipants: true,
+        requestFinancial: true,
+        feeCalculationLogs: true,
+        walletHolds: true,
+        matching: {
+          include: { events: { orderBy: [{ sequence: "asc" }, { id: "asc" }] } }
+        },
         intelligence: {
           include: {
             service: {
@@ -181,6 +196,11 @@ export const checkFormalExchangeSimulation = async (
   let comments = 0;
   let likes = 0;
   let shares = 0;
+  let matchings = 0;
+  let matchingEvents = 0;
+  let claims = 0;
+  let matchParticipants = 0;
+  let requestFinancials = 0;
   const actorIds = new Set<number>();
 
   for (const post of posts) {
@@ -208,6 +228,20 @@ export const checkFormalExchangeSimulation = async (
       `Post ${post.id} identity snapshot mismatch.`
     );
     actorIds.add(post.authorUserId);
+    claims += post.claims.length;
+    matchParticipants += post.matchParticipants.length;
+    requestFinancials += post.requestFinancial ? 1 : 0;
+    assert(post.claims.length === 0, `Simulation post ${post.id} retained Exchange claims.`);
+    assert(
+      post.matchParticipants.length === 0,
+      `Simulation post ${post.id} retained matching participants.`
+    );
+    assert(
+      post.requestFinancial === null &&
+        post.feeCalculationLogs.length === 0 &&
+        post.walletHolds.length === 0,
+      `Simulation post ${post.id} retained Request financial state.`
+    );
 
     if (post.type === ExchangePostType.DEMAND) {
       demands += 1;
@@ -221,6 +255,47 @@ export const checkFormalExchangeSimulation = async (
         post.demand.budgetMinJpy === null || post.demand.budgetMinJpy <= post.demand.budgetMaxJpy,
         `Demand ${post.id} budget is invalid.`
       );
+      const expectedEffectiveBudgetMaxJpy =
+        post.demand.budgetMode === "PER_PROVIDER"
+          ? post.demand.budgetMaxJpy * post.demand.targetProviderCount
+          : post.demand.budgetMaxJpy;
+      assert(post.matching, `Demand ${post.id} matching aggregate is missing.`);
+      assert(
+        post.matching.status === ExchangeMatchingStatus.OPEN &&
+          post.matching.effectiveTargetProviderCount === post.demand.targetProviderCount &&
+          post.matching.effectiveBudgetMaxJpy === expectedEffectiveBudgetMaxJpy &&
+          post.matching.selectedQuoteTotalJpy === 0 &&
+          post.matching.version === 1 &&
+          post.matching.matchedAt === null &&
+          post.matching.closedAt === null &&
+          post.matching.deletedAt === null,
+        `Demand ${post.id} matching aggregate is not at the seeded OPEN baseline.`
+      );
+      assert(
+        post.matching.createdAt.getTime() === post.createdAt.getTime() &&
+          post.matching.updatedAt.getTime() === post.createdAt.getTime(),
+        `Demand ${post.id} matching timestamps are stale.`
+      );
+      assert(
+        post.matching.events.length === 1,
+        `Demand ${post.id} matching event history is not reset.`
+      );
+      const openedEvent = post.matching.events[0]!;
+      assert(
+        openedEvent.sequence === 1 &&
+          openedEvent.type === ExchangeMatchEventType.OPENED &&
+          openedEvent.versionBefore === 0 &&
+          openedEvent.versionAfter === 1 &&
+          openedEvent.actorUserId === null &&
+          openedEvent.actorIdentityId === null &&
+          openedEvent.idempotencyKey === null &&
+          openedEvent.payloadFingerprint === null &&
+          openedEvent.deletedAt === null &&
+          openedEvent.createdAt.getTime() === post.createdAt.getTime(),
+        `Demand ${post.id} OPENED matching event is inconsistent.`
+      );
+      matchings += 1;
+      matchingEvents += post.matching.events.length;
     } else {
       intelligences += 1;
       assert(
@@ -234,6 +309,7 @@ export const checkFormalExchangeSimulation = async (
         `Intelligence ${post.id} subtype is missing.`
       );
       assert(!post.demand, `Intelligence ${post.id} has mixed subtype data.`);
+      assert(!post.matching, `Intelligence ${post.id} must not have Request matching state.`);
       assert(
         Array.isArray(post.intelligence.serviceAreas) &&
           post.intelligence.serviceAreas.every((area) => typeof area === "string"),
@@ -401,6 +477,11 @@ export const checkFormalExchangeSimulation = async (
     likes,
     shares,
     actors: actorIds.size,
+    matchings,
+    matchingEvents,
+    claims,
+    matchParticipants,
+    requestFinancials,
     legacyResidue,
     status: "ok"
   };
