@@ -598,6 +598,7 @@ export function PageScaffold({
 export function AppTopBar({
   title,
   info,
+  infoLabel,
   subtitle,
   onBack,
   backTo,
@@ -618,6 +619,7 @@ export function AppTopBar({
 }: {
   title: ReactNode;
   info?: ReactNode;
+  infoLabel?: string;
   subtitle?: ReactNode;
   onBack?: () => void;
   backTo?: string;
@@ -688,7 +690,7 @@ export function AppTopBar({
           <TitleWithInfo
             as="h1"
             info={info}
-            label={typeof title === "string" ? `${title} 说明` : "查看页面说明"}
+            label={infoLabel ?? (typeof title === "string" ? `${title} 说明` : "查看页面说明")}
             title={title}
             titleClassName="truncate text-[20px] font-black leading-none text-[color:var(--client-text)]"
           />

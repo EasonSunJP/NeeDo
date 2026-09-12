@@ -78,6 +78,7 @@ function SelectionIndicator({ active }: { active: boolean }) {
 export function SettingsHomePage({
   title,
   info,
+  infoLabel,
   subtitle,
   actions,
   backTo,
@@ -91,6 +92,7 @@ export function SettingsHomePage({
 }: {
   title: ReactNode;
   info?: ReactNode;
+  infoLabel?: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
   backTo?: string;
@@ -106,7 +108,7 @@ export function SettingsHomePage({
 
   return (
     <PageScaffold contentClassName={cn("space-y-5 pt-[calc(env(safe-area-inset-top)+5.75rem)]", contentClassName)} navItems={navItems} showBottomNav={false}>
-      <AppTopBar actions={actions} backTo={backTo} closeLabel={closeLabel} closeTo={closeTo} fixed info={titleInfo} onBack={onBack} onClose={onClose} title={title} />
+      <AppTopBar actions={actions} backTo={backTo} closeLabel={closeLabel} closeTo={closeTo} fixed info={titleInfo} infoLabel={infoLabel} onBack={onBack} onClose={onClose} title={title} />
       {children}
     </PageScaffold>
   );
@@ -191,11 +193,13 @@ export function SettingsSectionHeader({
   title,
   description,
   action,
+  infoLabel,
   mode = "info"
 }: {
   title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
+  infoLabel?: string;
   mode?: "default" | "info";
 }) {
   return (
@@ -207,7 +211,7 @@ export function SettingsSectionHeader({
             className="gap-2.5"
             info={description}
             infoClassName="h-5 w-5 text-[11px]"
-            label={typeof title === "string" ? `查看${title}说明` : "查看模块说明"}
+            label={infoLabel ?? (typeof title === "string" ? `查看${title}说明` : "查看模块说明")}
             title={title}
             titleClassName="text-[17px] font-black tracking-[-0.02em] text-[color:var(--client-text)]"
             variant="client"
@@ -228,6 +232,7 @@ export function SettingsSection({
   title,
   description,
   action,
+  infoLabel,
   children,
   className,
   panelClassName,
@@ -236,6 +241,7 @@ export function SettingsSection({
   title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
+  infoLabel?: string;
   children: ReactNode;
   className?: string;
   panelClassName?: string;
@@ -243,7 +249,7 @@ export function SettingsSection({
 }) {
   return (
     <section className={cn("space-y-2.5", className)}>
-      <SettingsSectionHeader action={action} description={description} mode={headerMode} title={title} />
+      <SettingsSectionHeader action={action} description={description} infoLabel={infoLabel} mode={headerMode} title={title} />
       <SurfacePanel className={cn("overflow-hidden p-0", panelClassName)}>{children}</SurfacePanel>
     </section>
   );

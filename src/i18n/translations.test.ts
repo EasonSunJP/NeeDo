@@ -824,7 +824,7 @@ describe("translations", () => {
 
   it("unwraps spreadsheet formula leftovers before rendering translations", () => {
     expect(translateText("设置", "zh-Hant")).toBe("設定");
-    expect(translateText("语言", "en")).toBe("language");
+    expect(translateText("语言", "en")).toBe("Language");
     expect(translateText("外观与系统", "ja")).toBe("外観とシステム");
     expect(translateText("设置", "zh-Hant")).not.toMatch(/^=|#NAME|__xludf/);
   });
@@ -1057,6 +1057,53 @@ describe("translations", () => {
     expect(translateText("注销账号", "ja")).toBe("退会");
     expect(translateText("利用政策", "en")).toBe("Terms of Use");
     expect(translateText("隐私政策", "ko")).toBe("개인정보 처리방침");
+  });
+
+  it("localizes every user settings home label and explanation naturally", () => {
+    const expected = {
+      "利用规约": { "zh-Hant": "利用規約", ja: "利用規約", en: "Terms of Use", ko: "이용약관" },
+      "个人信息保护方针": { "zh-Hant": "個人資訊保護方針", ja: "個人情報保護方針", en: "Privacy Policy", ko: "개인정보 처리방침" },
+      "清除当前登录会话并返回对应登录入口": { "zh-Hant": "結束目前的登入工作階段並返回對應的登入頁面", ja: "現在のログインセッションを終了し、該当するログイン画面に戻ります", en: "End the current session and return to the appropriate sign-in page", ko: "현재 로그인 세션을 종료하고 해당 로그인 화면으로 돌아갑니다" },
+      "退出": { "zh-Hant": "登出", ja: "ログアウト", en: "Log out", ko: "로그아웃" },
+      "实名、证件、本人确认": { "zh-Hant": "實名、身分證件、本人驗證", ja: "氏名・本人確認書類・本人確認", en: "Legal name, identity document, and identity verification", ko: "실명·신분증·본인 인증" },
+      "个人资料与认证": { "zh-Hant": "個人資料與驗證", ja: "プロフィール・本人確認", en: "Profile and Verification", ko: "프로필 및 본인 인증" },
+      "统一设置模块现在使用同一套首页、列表项和子页承载三端配置，仅通过身份决定显示哪些内容。": { "zh-Hant": "設定頁面在用戶、工作人員與店鋪 App 中使用相同架構，並依目前身分顯示所需內容。", ja: "設定画面はユーザー・スタッフ・店舗で共通の構成を使用し、現在の利用者区分に応じて表示内容が変わります。", en: "Settings use the same structure across the User, Staff, and Merchant apps, with content shown for the current identity.", ko: "설정 화면은 사용자, 스태프, 매장 앱에서 동일한 구조를 사용하며 현재 사용자 유형에 맞는 항목을 표시합니다." },
+      "主题、语言和身份切换统一复用用户端设置模块，三端不再各自维护一套入口。": { "zh-Hant": "主題、語言與身分切換在用戶、工作人員與店鋪 App 中共用同一設定頁面。", ja: "テーマ、言語、利用者区分の切り替えは、ユーザー・スタッフ・店舗で共通の設定画面を使用します。", en: "Theme, language, and identity switching share one settings screen across the User, Staff, and Merchant apps.", ko: "테마, 언어, 사용자 유형 전환은 사용자, 스태프, 매장 앱에서 동일한 설정 화면을 사용합니다." },
+      "统一复用同一组目录骨架，技师和店铺独有项也沿用用户端页面结构。": { "zh-Hant": "個人資料與身分驗證使用共用頁面架構，工作人員與店鋪專屬項目也以相同形式顯示。", ja: "プロフィールと本人確認は共通の画面構成を使用し、スタッフ・店舗固有の項目も同じ形式で表示します。", en: "Profile and identity verification share one page structure, including staff- and merchant-specific items.", ko: "프로필과 본인 인증은 공통 화면 구조를 사용하며 스태프와 매장 전용 항목도 같은 형식으로 표시합니다." },
+      "账户、安全、绑定关系和权限入口统一收口到同一详细页。": { "zh-Hant": "帳號、安全、連結關係與權限設定集中在同一個詳細頁面。", ja: "アカウント、セキュリティ、連携情報、権限の設定を1つの画面にまとめています。", en: "Account, security, linked services, and permissions are managed on one details page.", ko: "계정, 보안, 연결 정보, 권한 설정을 하나의 상세 화면에서 관리합니다." },
+      "通知与隐私同样复用统一页骨架，技师和商户的独有开关通过配置追加。": { "zh-Hant": "通知與隱私使用共用頁面架構，並依設定加入工作人員與店鋪專屬項目。", ja: "通知とプライバシーは共通の画面構成を使用し、スタッフ・店舗固有の項目は設定に応じて追加されます。", en: "Notifications and privacy share one page structure, with staff- and merchant-specific options added when configured.", ko: "알림과 개인정보 보호는 공통 화면 구조를 사용하며 설정에 따라 스태프와 매장 전용 항목이 추가됩니다." },
+      "帮助、关于、注销账号和退出登录保持统一入口，不再散落在各端我的页。": { "zh-Hant": "說明、關於 NeeDo、註銷帳號與登出皆集中在此頁面。", ja: "ヘルプ、NeeDoについて、退会、ログアウトは、すべてこの画面から利用できます。", en: "Help, About NeeDo, account deletion, and logout are all available from this screen.", ko: "도움말, NeeDo 소개, 계정 삭제, 로그아웃을 모두 이 화면에서 이용할 수 있습니다." },
+      "设置页面说明": { "zh-Hant": "查看設定頁面說明", ja: "設定画面の説明を表示", en: "View settings page information", ko: "설정 화면 설명 보기" },
+      "查看外观与系统说明": { "zh-Hant": "查看外觀與系統說明", ja: "外観とシステムの説明を表示", en: "View appearance and system information", ko: "화면 및 시스템 설명 보기" },
+      "查看个人资料与认证说明": { "zh-Hant": "查看個人資料與驗證說明", ja: "プロフィールと本人確認の説明を表示", en: "View profile and verification information", ko: "프로필 및 본인 인증 설명 보기" },
+      "查看账户与安全说明": { "zh-Hant": "查看帳號與安全說明", ja: "アカウントとセキュリティの説明を表示", en: "View account and security information", ko: "계정 및 보안 설명 보기" },
+      "查看通知与隐私说明": { "zh-Hant": "查看通知與隱私說明", ja: "通知とプライバシーの説明を表示", en: "View notification and privacy information", ko: "알림 및 개인정보 보호 설명 보기" },
+      "查看其他说明": { "zh-Hant": "查看其他說明", ja: "その他の説明を表示", en: "View other settings information", ko: "기타 설정 설명 보기" },
+      "UI 切换": { "zh-Hant": "介面主題", ja: "表示テーマ", en: "Theme", ko: "테마" },
+      "语言": { "zh-Hant": "語言", ja: "言語", en: "Language", ko: "언어" },
+      "身份切换": { "zh-Hant": "身分切換", ja: "利用者区分の切り替え", en: "Switch identity", ko: "사용자 유형 전환" },
+      "服务范围": { "zh-Hant": "服務範圍", ja: "サービス提供エリア", en: "Service Area", ko: "서비스 지역" },
+      "账户与安全": { "zh-Hant": "帳號與安全", ja: "アカウントとセキュリティ", en: "Account and Security", ko: "계정 및 보안" },
+      "已完善": { "zh-Hant": "已完善", ja: "設定済み", en: "Completed", ko: "설정 완료" },
+      "待完善": { "zh-Hant": "待補全", ja: "要設定", en: "Needs completion", ko: "보완 필요" },
+      "未完善": { "zh-Hant": "未完善", ja: "未設定", en: "Incomplete", ko: "미완료" },
+      "需要完善": { "zh-Hant": "需要補全", ja: "要設定", en: "Setup required", ko: "설정 필요" },
+      "开启后由屏幕宠物承接提醒气泡，首页右下角预约悬浮按钮会自动隐藏。": { "zh-Hant": "開啟後由螢幕寵物顯示提醒氣泡，首頁右下角的預約懸浮按鈕會自動隱藏。", ja: "有効にすると、ニードペットが通知を表示し、ホーム画面右下の予約ボタンは自動的に非表示になります。", en: "When enabled, NeeDo Pet shows reminders and the floating booking button on the home screen is hidden automatically.", ko: "활성화하면 니도 펫이 알림을 표시하고 홈 화면 오른쪽 아래의 예약 버튼은 자동으로 숨겨집니다." },
+      "正在下载小白资源，完成后才能开启。": { "zh-Hant": "正在下載小白資源，完成後即可開啟。", ja: "ニードペットのデータをダウンロードしています。完了後に有効にできます。", en: "Downloading NeeDo Pet assets. You can enable it when the download is complete.", ko: "니도 펫 리소스를 다운로드하고 있습니다. 완료되면 활성화할 수 있습니다." },
+      "小白资源下载进度": { "zh-Hant": "小白資源下載進度", ja: "ニードペットのダウンロード進捗", en: "NeeDo Pet download progress", ko: "니도 펫 다운로드 진행률" },
+      "关闭": { "zh-Hant": "關閉", ja: "閉じる", en: "Close", ko: "닫기" },
+      "全部通知已开启": { "zh-Hant": "所有通知已開啟", ja: "通知はすべてオン", en: "All notifications on", ko: "모든 알림 켜짐" },
+      "全部通知已关闭": { "zh-Hant": "所有通知已關閉", ja: "通知はすべてオフ", en: "All notifications off", ko: "모든 알림 꺼짐" },
+      "部分通知已开启": { "zh-Hant": "部分通知已開啟", ja: "一部の通知がオン", en: "Some notifications on", ko: "일부 알림 켜짐" },
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      expect(translations[source], source).toEqual(localized);
+      expect(translateText(source, "ja"), `${source}:ja`).toBe(localized.ja);
+      expect(translateText(source, "en"), `${source}:en`).toBe(localized.en);
+      expect(translateText(source, "ko"), `${source}:ko`).toBe(localized.ko);
+      expect(translateText(source, "zh-Hant"), `${source}:zh-Hant`).toBe(localized["zh-Hant"]);
+    }
   });
 
   it("uses staff naming for people associated with a merchant", () => {

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearPortalSettingsState, persistPortalSettingsState, type TechnicianPortalSettingsState } from "./portalSettingsState";
+import {
+  clearPortalSettingsState,
+  persistPortalSettingsState,
+  summarizePortalSettingsState,
+  type TechnicianPortalSettingsState,
+  type UserPortalSettingsState
+} from "./portalSettingsState";
 
 function makeTechnicianSettings(overrides: Partial<TechnicianPortalSettingsState> = {}): TechnicianPortalSettingsState {
   return {
@@ -12,6 +18,17 @@ function makeTechnicianSettings(overrides: Partial<TechnicianPortalSettingsState
     shareLocation: true,
     breakReminder: true,
     ...overrides
+  };
+}
+
+function settings(values: Partial<UserPortalSettingsState>): UserPortalSettingsState {
+  return {
+    message: true,
+    system: true,
+    booking: true,
+    marketing: true,
+    sound: true,
+    ...values
   };
 }
 
@@ -58,5 +75,13 @@ describe("portal settings persistence", () => {
     });
 
     expect(() => clearPortalSettingsState("technician")).not.toThrow();
+  });
+});
+
+describe("summarizePortalSettingsState", () => {
+  it("uses notification-specific summaries instead of the store closed status", () => {
+    expect(summarizePortalSettingsState(settings({}))).toBe("全部通知已开启");
+    expect(summarizePortalSettingsState(settings({ message: false, system: false, booking: false, marketing: false, sound: false }))).toBe("全部通知已关闭");
+    expect(summarizePortalSettingsState(settings({ marketing: false }))).toBe("部分通知已开启");
   });
 });
