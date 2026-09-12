@@ -40,6 +40,7 @@ import { ExchangeOrderCancellationPanel } from "../../features/exchange/Exchange
 import type { ExchangeCancellation } from "../../features/exchange/types";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getMerchantCustomerConversationId, getMerchantTechnicianConversationId, getMessagePath } from "../../lib/messageCenter";
+import { getMerchantStaffDetailPath } from "../../lib/merchantStaffRoute";
 import { readNavigationReturnTarget } from "../../lib/navigationReturn";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
@@ -1409,7 +1410,7 @@ function MerchantOrderDetailContent() {
           <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">技师 / 担当</h2>
           {assignedTechnician ? (
             <SocialProfileMiniCard
-              detailTo={`/merchant/staff/${encodeURIComponent(assignedTechnician.id)}`}
+              detailTo={getMerchantStaffDetailPath(assignedTechnician.systemId)}
               showAction={false}
               technician={assignedTechnician}
               topTags={[{ label: scenario === "restaurant" ? "门店担当" : "担当技师", tone: "green" }]}
