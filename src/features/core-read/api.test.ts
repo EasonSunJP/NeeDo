@@ -263,6 +263,15 @@ describe("core read API adapter", () => {
     });
   });
 
+  it("maps the formal home_visit service mode to home fulfillment", () => {
+    const service = mapCoreServiceToServiceItem({
+      ...coreService,
+      serviceMode: "home_visit"
+    });
+
+    expect(service.mode).toBe("home");
+  });
+
   it("maps an older shop response without additive taxonomy fields instead of crashing", () => {
     const {
       businessKeywords: _businessKeywords,

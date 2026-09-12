@@ -32,6 +32,7 @@ import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserS
 import { getJapaneseHoliday } from "../../lib/japaneseHolidays";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getScheduleOrderDetailRoute, type ScheduleDetailTargetType } from "../../lib/scheduleDetailTarget";
+import { getMerchantStaffDetailPath } from "../../lib/merchantStaffRoute";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { getScopedTechnicianDynamicPath } from "../../shared/profile-card";
@@ -1467,7 +1468,7 @@ function getParallelCalendarLanes(
         caption: technician.status === "busy" ? "服务中" : technician.status === "off" ? "休息" : "可排班",
         accent: parallelLaneAccents[index % parallelLaneAccents.length] ?? "var(--client-primary)",
         avatar: technician.avatar,
-        detailPath: `/merchant/staff/${encodeURIComponent(technician.id)}`
+        detailPath: getMerchantStaffDetailPath(technician.systemId)
       })),
       { id: "merchant:unassigned", label: "待定", caption: "未指派", accent: "color-mix(in srgb, var(--client-muted) 82%, var(--client-elevated) 18%)" }
     ];

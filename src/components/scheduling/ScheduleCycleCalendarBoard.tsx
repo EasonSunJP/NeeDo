@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AppIcon } from "../client-ui/AppScaffold";
 import { MobileFullscreenCloseButton } from "../mobile/MobileFullscreenHeader";
@@ -37,6 +37,7 @@ import {
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getScheduleOrderDetailRoute } from "../../lib/scheduleDetailTarget";
 import { cn } from "../../lib/utils";
+import { getMerchantStaffDetailPath } from "../../lib/merchantStaffRoute";
 import { useEntityStore } from "../../state/entityStore";
 import type { Customer, Store, Technician } from "../../types/domain";
 import { ScheduleViewPicker } from "./ScheduleViewPicker";
@@ -365,7 +366,7 @@ function getCycleTechnicianParticipant(technician: Technician | undefined, row: 
     avatar: technician?.avatar || row.technicianAvatar,
     meta: [technician?.identityLabel, technician?.status === "busy" ? "服务中" : technician?.status === "off" ? "休息" : "可排班"].filter(Boolean).join(" · "),
     role: "参加者",
-    to: `/merchant/staff/${encodeURIComponent(technician?.id ?? row.technicianId)}`
+    to: getMerchantStaffDetailPath(technician?.systemId)
   };
 }
 
@@ -901,6 +902,13 @@ export function ScheduleCycleCalendarBoard({
       }))
     });
   }, [cycleId, dataOverride, dispatchSnapshot.revision, language, period.dates, periodKey, storeId]);
+  const resolveTechnicianDetailPath = useCallback((technicianInternalId: string) => {
+    if (dataOverride) {
+      return dataOverride.lanes.find((lane) => lane.id === `technician:${technicianInternalId}`)?.detailPath;
+    }
+
+    return getTechnicianDetailPath?.(technicianInternalId);
+  }, [dataOverride, getTechnicianDetailPath]);
   const computedCalendarData = useMemo(
     () => buildCycleCalendarData(
       dayGrids,
@@ -911,12 +919,12 @@ export function ScheduleCycleCalendarBoard({
         stores: entitySnapshot.stores,
         technicians: entitySnapshot.technicians
       },
-      getTechnicianDetailPath,
+      resolveTechnicianDetailPath,
       normalizedSearchQuery,
       statusFilter,
       statusVisibility
     ),
-    [dayGrids, dispatchSnapshot.arrangements, entitySnapshot.customers, entitySnapshot.stores, entitySnapshot.technicians, getTechnicianDetailPath, normalizedSearchQuery, statusFilter, statusVisibility, storeId]
+    [dayGrids, dispatchSnapshot.arrangements, entitySnapshot.customers, entitySnapshot.stores, entitySnapshot.technicians, normalizedSearchQuery, resolveTechnicianDetailPath, statusFilter, statusVisibility, storeId]
   );
   const { cellByEventId, events, lanes, statusCounts } = useMemo(() => {
     if (!dataOverride) return computedCalendarData;
@@ -1067,7 +1075,7 @@ export function ScheduleCycleCalendarBoard({
               renderRowHeader={(row, context) => (
                 <CyclePeriodTechnicianHeader
                   collapsedTechnicians={context.collapsedTechnicians}
-                  getTechnicianDetailPath={getTechnicianDetailPath}
+                  getTechnicianDetailPath={resolveTechnicianDetailPath}
                   isMobileSurface={context.isMobileSurface}
                   row={row}
                 />

@@ -40,6 +40,8 @@ let root: Root;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-09-02T22:00:00.000Z"));
+  window.localStorage.setItem("needo.language", "zh");
+  window.localStorage.setItem("needo.language.mode", "manual");
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);

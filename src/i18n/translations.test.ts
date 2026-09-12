@@ -3,6 +3,7 @@ import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i
 import { contentPublicationTranslations } from "../features/content-publication/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { translateImUiText } from "../features/im/ui-copy";
+import type { Language } from "./translations";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {

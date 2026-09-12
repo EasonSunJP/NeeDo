@@ -71,6 +71,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { partitionDirectoryContacts } from "../../lib/contactDirectory";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
+import { getMerchantStaffDetailPath } from "../../lib/merchantStaffRoute";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getStoreCardDecorationConfig } from "../../lib/storeUiDecoration";
 import { getMerchantCustomerConversationId, getMerchantTechnicianConversationId, getMessagePath } from "../../lib/messageCenter";
@@ -339,10 +340,6 @@ function merchantOrderMatchesSearch(order: Order, query: string, startDate = "",
     statusLabel(order.status),
     yen(order.amount)
   ].some((value) => value.toLowerCase().includes(normalizedQuery));
-}
-
-function getMerchantStaffDetailPath(id: string) {
-  return `/merchant/staff/${encodeURIComponent(id)}`;
 }
 
 function getMerchantAddStaffPath(staffType: "fullTime" | "partTime", roleName?: string) {
@@ -2073,13 +2070,17 @@ export function MerchantPortalContent({
     }
 
     const technician = technicians.find((tech) => tech.id === staffIdParam || tech.systemId === staffIdParam);
-    if (technician) {
-      navigate(getMerchantStaffDetailPath(technician.systemId), { replace: true });
+    const detailPath = getMerchantStaffDetailPath(technician?.systemId);
+    if (detailPath) {
+      navigate(detailPath, { replace: true });
     }
   }, [activeView, navigate, staffIdParam, technicians]);
 
-  const openStaffDetail = (id: string) => {
-    navigate(getMerchantStaffDetailPath(id));
+  const openStaffDetail = (publicNeedoId: string) => {
+    const detailPath = getMerchantStaffDetailPath(publicNeedoId);
+    if (detailPath) {
+      navigate(detailPath);
+    }
   };
 
   const closeSelectedContact = () => {
@@ -2347,7 +2348,7 @@ export function MerchantPortalContent({
           meta: `${(newestTechnician.profileTags ?? newestTechnician.skills).slice(0, 2).join(" / ")} · ID ${newestTechnician.systemId}`,
           avatar: newestTechnician.avatar,
           badge: "员工",
-          onClick: () => openStaffDetail(newestTechnician.id),
+          onClick: () => openStaffDetail(newestTechnician.systemId),
           entityCardData: {
             ...buildTechnicianInfoCardData(newestTechnician),
             cardUi: technicianCardUi,

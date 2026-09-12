@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import { cn } from "../../../lib/utils";
 import type { FulfillmentMode } from "../../../types/domain";
+import { useCheckoutText, type CheckoutTextKey } from "./i18n";
 
 export type CheckoutProgressKey = "package" | "fulfillment" | "time" | "location" | "technician" | "remark";
 type CheckoutProgressIcon = "package" | "mode" | "time" | "location" | "technician" | "remark";
@@ -91,18 +92,28 @@ export function CheckoutProgressNav({
   fulfillmentMode: FulfillmentMode;
   onSelect: (index: number, key: CheckoutProgressKey) => void;
 }) {
+  const { t } = useCheckoutText();
   const steps = checkoutProgressSteps(fulfillmentMode);
+  const stepTextKeys: Record<CheckoutProgressKey, CheckoutTextKey> = {
+    package: "package",
+    fulfillment: fulfillmentMode === "store" ? "storeService" : "homeService",
+    time: "time",
+    location: "address",
+    technician: "technician",
+    remark: "remark"
+  };
 
   return (
     <div className="px-1" ref={containerRef}>
-      <nav aria-label="预约确认项目">
+      <nav aria-label={t("progressAria")} data-no-i18n>
         <div className="flex items-center">
           {steps.map((step, index) => {
             const active = index <= activeIndex;
+            const localizedLabel = t(stepTextKeys[step.key]);
             return (
               <button
                 aria-current={index === activeIndex ? "step" : undefined}
-                aria-label={`查看${step.label}`}
+                aria-label={t("viewStep", { label: localizedLabel })}
                 className="relative min-w-0 flex-1"
                 data-active={active}
                 key={step.key}
@@ -123,7 +134,7 @@ export function CheckoutProgressNav({
                   active ? "text-[#090806]" : "text-white/90"
                 )}>
                   <CheckoutProgressGlyph icon={step.icon} />
-                  <span className="max-w-full truncate px-0.5 text-[10px] font-black leading-none tracking-[0.02em]">{step.label}</span>
+                  <span className="max-w-full truncate px-0.5 text-[10px] font-black leading-none tracking-[0.02em]">{localizedLabel}</span>
                 </span>
               </button>
             );
