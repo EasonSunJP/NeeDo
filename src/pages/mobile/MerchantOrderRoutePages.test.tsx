@@ -12,8 +12,14 @@ describe("MerchantOrderRoutePages service cards", () => {
 
   it("opens the assigned technician through the canonical merchant-scoped profile path", () => {
     expect(source).toContain('getScopedTechnicianDynamicPath("merchant", technician)');
+    expect(source).toContain(
+      "detailTo={getMerchantStaffDetailPath(assignedTechnician.systemId)}"
+    );
     expect(source).not.toContain(
       'getScopedProfileDetailPath("merchant", "technician", technician.id)'
+    );
+    expect(source).not.toContain(
+      'detailTo={`/merchant/staff/${encodeURIComponent(assignedTechnician.id)}`}'
     );
   });
 

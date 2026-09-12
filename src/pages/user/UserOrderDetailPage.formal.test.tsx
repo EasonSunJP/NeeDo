@@ -678,7 +678,7 @@ describe("formal user order detail", () => {
     expect(container.querySelectorAll("button")).toHaveLength(0);
   });
 
-  it("renders status, apply, and later revoke events without operations-only notes", async () => {
+  it("renders only customer-safe status events without performance or audit notes", async () => {
     const order: BookingOrder = {
       ...makeOrder("cancelled", 31),
       cancelReason: "技师临时无法到达",
@@ -723,11 +723,12 @@ describe("formal user order detail", () => {
     await render("/orders/31");
 
     expect(container.textContent).toContain("预约状态");
-    expect(container.textContent).toContain("技师临时无法到达");
-    expect(container.textContent).toContain("特殊取消已生效");
-    expect(container.textContent).toContain("已核实不可抗力");
-    expect(container.textContent).toContain("特殊取消已撤销");
-    expect(container.textContent).toContain("用户投诉后复核恢复计入");
+    expect(container.textContent).toContain("预约已取消");
+    expect(container.textContent).not.toContain("技师临时无法到达");
+    expect(container.textContent).not.toContain("特殊取消已生效");
+    expect(container.textContent).not.toContain("已核实不可抗力");
+    expect(container.textContent).not.toContain("特殊取消已撤销");
+    expect(container.textContent).not.toContain("用户投诉后复核恢复计入");
     expect(container.textContent).not.toContain("用户端绝不能显示");
   });
 
@@ -750,6 +751,7 @@ describe("formal user order detail", () => {
     await render("/orders/31");
 
     expect(container.textContent).toContain("预约状态");
-    expect(container.textContent).toContain("技师临时无法到达");
+    expect(container.textContent).toContain("预约已取消");
+    expect(container.textContent).not.toContain("技师临时无法到达");
   });
 });

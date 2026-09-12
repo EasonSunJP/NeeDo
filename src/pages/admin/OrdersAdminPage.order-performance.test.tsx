@@ -217,14 +217,14 @@ describe("OrdersAdminPage order performance controls", () => {
     await flush();
   }
 
-  it("loads fresh detail and shows assessment plus all operations-only revisions before controls", async () => {
+  it("loads fresh detail and shows semantic revisions without raw audit notes before controls", async () => {
     await openDetail();
 
     expect(backofficeRealDataApi.orderDetail).toHaveBeenCalledWith("backoffice", 31);
     expect(container.textContent).toContain("技师原因取消");
     expect(container.textContent).toContain("正常计入");
-    expect(container.textContent).toContain("后台核验材料 A");
-    expect(container.textContent).toContain("投诉工单 C-123");
+    expect(container.textContent).not.toContain("后台核验材料 A");
+    expect(container.textContent).not.toContain("投诉工单 C-123");
     expect(container.textContent?.indexOf("订单时间线与绩效判定")).toBeLessThan(
       container.textContent?.indexOf("设为特殊取消并排除计算") ?? 0
     );

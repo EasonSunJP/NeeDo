@@ -869,7 +869,7 @@ describe("formal technician order detail route", () => {
     ));
   }
 
-  it("renders persisted order, payment, note, and every history row", async () => {
+  it("renders persisted order details and display-safe history semantics", async () => {
     await renderOrder(makeOrder("confirmed"));
     expect(container.textContent).toContain("ND202608280029");
     expect(container.textContent).toContain("Aroma 60");
@@ -877,8 +877,10 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("10:00–11:00");
     expect(container.textContent).toContain("现场支付");
     expect(container.textContent).toContain("请准备无香精用品");
-    expect(container.textContent).toContain("用户提交");
-    expect(container.textContent).toContain("正式状态记录");
+    expect(container.textContent).toContain("预约待确认");
+    expect(container.textContent).toContain("预约已确认");
+    expect(container.textContent).not.toContain("用户提交");
+    expect(container.textContent).not.toContain("正式状态记录");
     expect(container.textContent).toContain("订单追踪信息");
   });
 

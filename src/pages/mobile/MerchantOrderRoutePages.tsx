@@ -35,10 +35,12 @@ import {
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { buildFormalOrderTimelineEvents } from "../../features/order-performance/timeline";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
 import type { ExchangeCancellation } from "../../features/exchange/types";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getMerchantCustomerConversationId, getMerchantTechnicianConversationId, getMessagePath } from "../../lib/messageCenter";
+import { getMerchantStaffDetailPath } from "../../lib/merchantStaffRoute";
 import { readNavigationReturnTarget } from "../../lib/navigationReturn";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
@@ -1053,6 +1055,7 @@ function describeFormalMerchantCancellationError(error: unknown) {
 
 function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
   const navigate = useNavigate();
+  const language = useProvidedI18n()?.language ?? "zh";
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [checkout, setCheckout] = useState<OrderCheckout | null>(null);
   const [merchantOrder, setMerchantOrder] = useState<BackofficeOrderPayload | null>(null);
@@ -1281,7 +1284,7 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
             ]} />
           ) : null}
 
-          <ContactEventTimelinePanel events={buildFormalOrderTimelineEvents(order)} title="订单追踪信息" />
+          <ContactEventTimelinePanel events={buildFormalOrderTimelineEvents(order, { audience: "merchant", language })} title="订单追踪信息" />
           {order.status === "pending" || order.status === "confirmed" || order.status === "cancelled" ? (
             <ExchangeOrderCancellationPanel
               onCancellationChange={handleExchangeCancellationChange}
@@ -1407,7 +1410,7 @@ function MerchantOrderDetailContent() {
           <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">技师 / 担当</h2>
           {assignedTechnician ? (
             <SocialProfileMiniCard
-              detailTo={`/merchant/staff/${encodeURIComponent(assignedTechnician.id)}`}
+              detailTo={getMerchantStaffDetailPath(assignedTechnician.systemId)}
               showAction={false}
               technician={assignedTechnician}
               topTags={[{ label: scenario === "restaurant" ? "门店担当" : "担当技师", tone: "green" }]}

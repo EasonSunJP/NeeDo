@@ -42,6 +42,7 @@ import { emptyOrders as orders, emptyServices as services, formalMediaFallback a
 import { parseBrowserStorageJson } from "../../lib/browserStorage";
 import { clampMessageText } from "../../lib/messageTextLimits";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
+import { getMerchantStaffDetailPath } from "../../lib/merchantStaffRoute";
 import { getStorePresentationConfig } from "../../lib/storePresentation";
 import { useDocumentScrollLock, useIosScrollContainer } from "../../lib/useIosScrollContainer";
 import {
@@ -4538,9 +4539,13 @@ export function ImOrganizationContactsPage() {
           <div className="overflow-hidden rounded-[24px] bg-[color:var(--client-surface)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_14%,transparent)]">
             {contacts.map((contact) => {
               const user = store.usersById[contact.targetUserId];
-              const contactInfoTarget = user && contact.source === "merchant_technician_profile" && scope === "merchant" && user.entityId
-                ? `/merchant/staff/${encodeURIComponent(user.entityId)}`
-                : getContactInfoSettingsTarget(config, contact);
+              const technician = user?.entityId
+                ? entityStore.technicians.find((item) => item.id === user.entityId)
+                : undefined;
+              const staffDetailTarget = user && contact.source === "merchant_technician_profile" && scope === "merchant"
+                ? getMerchantStaffDetailPath(technician?.systemId)
+                : undefined;
+              const contactInfoTarget = staffDetailTarget ?? getContactInfoSettingsTarget(config, contact);
 
               return user ? (
                 <ContactRow
