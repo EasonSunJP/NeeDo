@@ -69,6 +69,7 @@ const stylesSource = readFileSync(
 
 describe("shared client application width", () => {
   it("defines one application frame and gutter authority with legacy nav aliases", () => {
+    expect(stylesSource).not.toContain("min-width: 320px;");
     expect(stylesSource).toContain("--client-app-max-width: 880px;");
     expect(stylesSource).toContain("--client-app-inline-gap: 12px;");
     expect(stylesSource).toContain(

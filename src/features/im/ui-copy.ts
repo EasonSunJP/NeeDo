@@ -230,6 +230,42 @@ const imUiTranslations: Record<string, ImUiTranslation> = {
     ko: "다음 페이지",
   },
   重试: { "zh-Hant": "重試", ja: "再試行", en: "Retry", ko: "다시 시도" },
+  暂无服务号: {
+    "zh-Hant": "暫無服務號",
+    ja: "サービスアカウントはありません",
+    en: "No service accounts",
+    ko: "서비스 계정이 없습니다",
+  },
+  "正式服务号能力尚未接入，当前没有可展示的服务号。": {
+    "zh-Hant": "正式服務號功能尚未接入，目前沒有可顯示的服務號。",
+    ja: "正式なサービスアカウント機能はまだ接続されていないため、現在表示できるサービスアカウントはありません。",
+    en: "Formal service accounts are not connected yet, so there are no service accounts to display.",
+    ko: "정식 서비스 계정 기능이 아직 연결되지 않아 현재 표시할 서비스 계정이 없습니다.",
+  },
+  服务号加载失败: {
+    "zh-Hant": "服務號載入失敗",
+    ja: "サービスアカウントを読み込めませんでした",
+    en: "Couldn't load service accounts",
+    ko: "서비스 계정을 불러오지 못했습니다",
+  },
+  "请稍后重试。": {
+    "zh-Hant": "請稍後再試。",
+    ja: "しばらくしてからもう一度お試しください。",
+    en: "Please try again later.",
+    ko: "잠시 후 다시 시도해 주세요.",
+  },
+  正在加载服务号: {
+    "zh-Hant": "正在載入服務號",
+    ja: "サービスアカウントを読み込んでいます",
+    en: "Loading service accounts",
+    ko: "서비스 계정을 불러오는 중",
+  },
+  "请稍候。": {
+    "zh-Hant": "請稍候。",
+    ja: "しばらくお待ちください。",
+    en: "Please wait.",
+    ko: "잠시만 기다려 주세요.",
+  },
   翻译: { "zh-Hant": "翻譯", ja: "翻訳", en: "Translate", ko: "번역" },
   隐藏译文: {
     "zh-Hant": "隱藏譯文",

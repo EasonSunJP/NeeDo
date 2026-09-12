@@ -24,7 +24,6 @@
 html {
   width: 100%;
   max-width: 100%;
-  min-width: 320px;
   scroll-behavior: smooth;
   overflow-x: hidden;
   overflow-x: clip;
@@ -36,7 +35,6 @@ body {
   margin: 0;
   width: 100%;
   max-width: 100%;
-  min-width: 320px;
   min-height: 100vh;
   min-height: 100dvh;
   overflow-x: hidden;
