@@ -20,12 +20,17 @@ const defaultClassification = Object.freeze({
     "public/images/needo-pet/",
     "icon",
     "logo",
+    "carousel",
+    "login",
+    "error_bg",
+    "chat_bg",
+    "timeline",
     "rank",
     "badge",
     "qr"
   ],
-  criticalMinSsim: 0.995,
-  photoMinSsim: 0.99
+  criticalMinSsim: 0.998,
+  photoMinSsim: 0.995
 });
 
 export async function loadProductionImagePolicy(policyPath = defaultPolicyPath) {
@@ -178,16 +183,7 @@ async function encodeCandidate(bytes, extension, classification, quality) {
   if (extension === ".webp") {
     return pipeline.webp({ effort: 6, quality }).toBuffer();
   }
-  if (classification.category === "critical") {
-    return pipeline.png({ adaptiveFiltering: true, compressionLevel: 9, palette: false }).toBuffer();
-  }
-  return pipeline.png({
-    adaptiveFiltering: true,
-    compressionLevel: 9,
-    effort: 10,
-    palette: true,
-    quality
-  }).toBuffer();
+  return pipeline.png({ adaptiveFiltering: true, compressionLevel: 9, palette: false }).toBuffer();
 }
 
 export async function optimizeProductionImage({ bytes, relativePath, policy: suppliedPolicy }) {
@@ -218,7 +214,7 @@ export async function optimizeProductionImage({ bytes, relativePath, policy: sup
   const classification = classifyProductionImage(relativePath, policy);
   const reference = await decodedPixels(bytes);
   const qualities = extension === ".png"
-    ? (classification.category === "critical" ? [100] : policy.pngQualities)
+    ? [100]
     : extension === ".webp"
       ? policy.webpQualities
       : policy.jpegQualities;
@@ -240,7 +236,7 @@ export async function optimizeProductionImage({ bytes, relativePath, policy: sup
     const bytesSaved = bytes.length - candidate.length;
     const savingsRatio = bytesSaved / bytes.length;
     const pixelsEqual = reference.data.equals(decoded.data);
-    const qualityPass = classification.category === "critical" && extension === ".png"
+    const qualityPass = extension === ".png"
       ? pixelsEqual
       : ssim >= classification.minSsim;
     const savingsPass =

@@ -10,11 +10,15 @@ import {
 test("classifies critical UI paths at the stricter threshold", () => {
   assert.deepEqual(
     classifyProductionImage("public/images/needo-pet/xiao-bai-revive.png"),
-    { category: "critical", minSsim: 0.995 }
+    { category: "critical", minSsim: 0.998 }
   );
   assert.deepEqual(
     classifyProductionImage("public/images/generated/profile-customer-aya.jpg"),
-    { category: "photo", minSsim: 0.99 }
+    { category: "photo", minSsim: 0.995 }
+  );
+  assert.deepEqual(
+    classifyProductionImage("public/images/carousel/needo-welcome-v1.png"),
+    { category: "critical", minSsim: 0.998 }
   );
 });
 
@@ -62,6 +66,46 @@ test("keeps dimensions and never accepts a result below the path threshold", asy
   if (result.status !== "kept-original") {
     assert.ok(result.resultBytes < result.sourceBytes);
   }
+});
+
+test("keeps PNG decoded pixels lossless to avoid gradients and text banding", async () => {
+  const width = 320;
+  const height = 180;
+  const raw = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const distance = Math.hypot(x - width * 0.75, y - height * 0.33);
+      const glow = Math.max(0, 1 - distance / (width * 0.55));
+      raw[index] = Math.round(5 + 35 * glow);
+      raw[index + 1] = Math.round(22 + 80 * glow);
+      raw[index + 2] = Math.round(30 + 22 * glow);
+      raw[index + 3] = 255;
+    }
+  }
+  const source = await sharp(raw, { raw: { width, height, channels: 4 } })
+    .png({ compressionLevel: 0, palette: false })
+    .toBuffer();
+
+  const result = await optimizeProductionImage({
+    bytes: source,
+    relativePath: "public/images/carousel/gradient-with-text.png",
+    policy: {
+      criticalPatterns: [],
+      criticalMinSsim: 0.998,
+      photoMinSsim: 0.9,
+      minimumSavingsRatio: 0,
+      minimumSavingsBytes: 0,
+      jpegQualities: [88],
+      webpQualities: [88],
+      pngQualities: [95]
+    }
+  });
+  const reference = await sharp(source).ensureAlpha().raw().toBuffer();
+  const candidate = await sharp(result.bytes).ensureAlpha().raw().toBuffer();
+
+  assert.deepEqual(candidate, reference);
+  assert.equal(result.ssim, 1);
 });
 
 test("retains a multi-frame image when animation cannot be safely rewritten", async () => {

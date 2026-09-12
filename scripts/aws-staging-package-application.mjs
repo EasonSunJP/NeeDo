@@ -144,7 +144,7 @@ async function main() {
   const evidenceBytes = await fs.readFile(environmentEvidencePath);
   const acceptedEnvironment = requireAcceptedEnvironment(JSON.parse(evidenceBytes.toString("utf8")));
 
-  await run("npm", ["run", "build", "--", "--mode", "formal"]);
+  await run("npm", ["run", "verify:production-build"]);
   await run("npm", ["run", "prisma:generate"], path.join(repositoryRoot, "backend"));
   await run("npm", ["run", "build"], path.join(repositoryRoot, "backend"));
   await assertCleanRevision(repository, revision);

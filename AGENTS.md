@@ -269,3 +269,13 @@ Database
 ## 9. 生产质量优先
 
 最终原则：**宁可拆得更细、做得更慢，也不要快速生成不可运行、不可验收、不可回滚的代码。**
+
+---
+
+## 10. 推送和部署前的图片压缩
+
+- 新增或修改的运行时 JPEG、PNG、WebP 必须在本地执行 `npm run optimize:production-images`，并通过 `npm run verify:production-images`。
+- 所有公开图片上传入口必须复用客户端图片优化器；压缩和质量比较在发起上传的浏览器或 App 本机完成。
+- 服务器仍须独立验证鉴权、授权、所有权、字节数、真实格式、解码尺寸、帧数、用途限制与 SHA-256，但不执行常规图片压缩。
+- 质量阈值、Alpha 与动画保留规则、敏感原件例外以 `docs/superpowers/specs/2026-09-11-image-compression-release-gates-design.md` 为准。
+- manifest、自动质量门禁或规定的人工视觉检查任一失败时，禁止推送或部署。
