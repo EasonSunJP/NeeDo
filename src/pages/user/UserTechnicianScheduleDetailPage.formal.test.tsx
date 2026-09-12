@@ -35,8 +35,8 @@ vi.mock("../../components/mobile/FloatingHomeHeader", () => ({
 }));
 
 vi.mock("../../components/mobile/SharedHomeHeader", () => ({
-  SharedHomeHeader: ({ avatarAlt, locationLabel }: { avatarAlt: string; locationLabel: string }) => (
-    <div>{avatarAlt} · {locationLabel}</div>
+  SharedHomeHeader: ({ avatarAlt, avatarLevelLabel, locationLabel }: { avatarAlt: string; avatarLevelLabel?: string; locationLabel: string }) => (
+    <div>{avatarAlt} · {avatarLevelLabel} · {locationLabel}</div>
   )
 }));
 
@@ -59,7 +59,7 @@ const customerProfile: CustomerSelfProfile = {
   bio: null,
   avatarUrl: null,
   membershipLevel: "free",
-  level: 1,
+  level: 72,
   gender: "private",
   age: null,
   heightCm: null,
@@ -184,5 +184,21 @@ describe("UserTechnicianScheduleDetailPage formal availability", () => {
       new Date("2026-08-29T15:00:00.000Z"),
       new Date("2026-10-10T15:00:00.000Z")
     ));
+  });
+
+  it("shows the persisted customer experience level in the shared header", async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/schedule/technicians/17?date=2026-09-01"]}>
+          <Routes>
+            <Route path="/schedule/technicians/:technicianId" element={<UserTechnicianScheduleDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("Formal Customer"));
+    expect(container.textContent).toContain(`Lv.${customerProfile.level}`);
+    expect(container.textContent).not.toContain("Lv.1");
   });
 });

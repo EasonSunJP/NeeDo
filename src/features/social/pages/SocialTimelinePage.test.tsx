@@ -143,6 +143,14 @@ describe("SocialTimelinePage", () => {
     expect(source).not.toContain('scope === "user" ? actor?.avatar');
   });
 
+  it("shows the persisted customer experience level instead of deriving a level from review score", () => {
+    expect(source).toContain("currentUserCustomer.experienceLevel");
+    expect(source).toContain("`Lv.${currentUserCustomer.experienceLevel}`");
+    expect(source).not.toContain(
+      "getCustomerLevelLabel(currentUserCustomer.activeScore)"
+    );
+  });
+
   it("uses the same formal user-home carousel as the home page", () => {
     expect(source).toContain(
       'import { PublishedCarousel } from "../../content-publication/PublishedCarousel";'
