@@ -90,6 +90,7 @@ import { StoreDetailPage } from "./pages/user/StoreDetailPage";
 import { TechnicianServicesPage } from "./pages/user/TechnicianServicesPage";
 import { SupportPage } from "./pages/user/SupportPage";
 import { UserCenterPage } from "./pages/user/UserCenterPage";
+import { CurrentMembershipBenefitsPage } from "./features/platform-membership/CurrentMembershipBenefitsPage";
 import { UserAddressesPage } from "./pages/user/UserAddressesPage";
 import { UserFavoritesRoutePage } from "./pages/user/UserFavoritesPage";
 import { UserMembershipsPage } from "./pages/user/UserMembershipsPage";
@@ -1305,6 +1306,7 @@ export default function App() {
               <Route path="/orders" element={protect("user", <UserOrdersPage />)} />
               <Route path="/orders/:orderId" element={protect("user", <UserOrderDetailPage />)} />
               <Route path="/me" element={protect("user", <UserCenterPage />)} />
+              <Route path="/me/benefits" element={protect("user", <CurrentMembershipBenefitsPage />)} />
               <Route path="/me/addresses" element={protect("user", <UserAddressesPage />)} />
               <Route path="/me/favorites" element={protect("user", <UserFavoritesRoutePage />)} />
               <Route path="/me/favorites/chat-records" element={protect("user", <Navigate replace to="/me/favorites" />)} />
