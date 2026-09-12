@@ -47,6 +47,12 @@ export type FriendRequestStatusPayload = "pending" | "accepted" | "rejected" | "
 export type SocialPostVisibilityPayload = "public" | "followers";
 export type NotificationTypePayload = "orderStatus" | "friendRequest" | "system" | "social";
 
+export interface ProfileUpdateRecipientInput {
+  userId: number;
+  identityId: number;
+  includePersonalIdentities: boolean;
+}
+
 export function toFriendshipPairKey(leftIdentityId: number, rightIdentityId: number): string {
   const [lowIdentityId, highIdentityId] = [leftIdentityId, rightIdentityId].sort(
     (left, right) => left - right
@@ -724,7 +730,7 @@ export interface RealtimeRepositoryPort {
     conversationId: number
   ) => Promise<Array<{ userId: number; identityId: number }>>;
   listProfileUpdateRecipients?: (
-    identityId: number
+    input: ProfileUpdateRecipientInput
   ) => Promise<Array<{ userId: number; identityId: number }>>;
   listConversations: (
     userId: number,
@@ -1108,14 +1114,33 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   }
 
   public listProfileUpdateRecipients(
-    identityId: number
+    input: ProfileUpdateRecipientInput
   ): Promise<Array<{ userId: number; identityId: number }>> {
     return this.client.conversationParticipant.findMany({
       where: {
         deletedAt: null,
         conversation: {
           deletedAt: null,
-          participants: { some: { identityId, deletedAt: null } }
+          participants: {
+            some: {
+              deletedAt: null,
+              OR: [
+                { identityId: input.identityId },
+                ...(input.includePersonalIdentities
+                  ? [
+                      {
+                        userId: input.userId,
+                        identity: {
+                          type: { in: PERSONAL_IDENTITY_TYPES },
+                          isActive: true,
+                          deletedAt: null
+                        }
+                      }
+                    ]
+                  : [])
+              ]
+            }
+          }
         }
       },
       distinct: ["identityId"],

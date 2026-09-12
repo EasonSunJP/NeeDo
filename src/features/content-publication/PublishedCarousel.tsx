@@ -129,6 +129,7 @@ export function PublishedCarousel({
     <FeatureCarousel
       cardHeightClassName={resolvedCardHeightClassName}
       dataNoI18n
+      language={language}
       slides={slides}
     />
   );

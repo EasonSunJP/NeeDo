@@ -9,10 +9,10 @@ import {
 } from "./FeatureCarousel";
 import featureCarouselSource from "./FeatureCarousel.tsx?raw";
 
-function renderSlide(slide: FeatureCarouselSlide) {
+function renderSlide(slide: FeatureCarouselSlide, language: "zh" | "zh-Hant" | "ja" | "en" | "ko" = "zh") {
   return renderToStaticMarkup(
     <MemoryRouter>
-      <FeatureCarousel autoRotateMs={null} slides={[slide]} />
+      <FeatureCarousel autoRotateMs={null} language={language} slides={[slide]} />
     </MemoryRouter>
   );
 }
@@ -90,6 +90,19 @@ describe("FeatureCarousel indicators", () => {
 
     expect(markup).not.toContain("查看详情");
     expect(markup).not.toContain('data-feature-carousel-cta="true"');
+  });
+
+  it("localizes fallback CTA and indicator accessibility labels in Japanese", () => {
+    const markup = renderSlide({
+      id: "ja-controls",
+      title: "東京ケア",
+      image: "/media/content/tokyo.webp"
+    }, "ja");
+
+    expect(markup).toContain("詳細を見る");
+    expect(markup).toContain('aria-label="カルーセルの1枚目に切り替える"');
+    expect(markup).not.toContain("查看详情");
+    expect(markup).not.toContain("切换到第");
   });
 
   it("exposes the shared carousel and paused state for controlled admin previews", () => {
