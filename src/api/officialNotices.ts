@@ -1,4 +1,5 @@
 import { httpClient } from "./httpClient";
+import { isOptimizableImageFile, optimizeImageUpload } from "../lib/image-upload";
 
 export const OFFICIAL_NOTICE_CHANGED_EVENT = "official-notice:changed";
 
@@ -219,12 +220,15 @@ export const officialNoticesApi = {
       body: input
     });
   },
-  uploadMedia(scope: OfficialNoticeScope, file: File, caption?: string) {
+  async uploadMedia(scope: OfficialNoticeScope, file: File, caption?: string) {
+    const upload = isOptimizableImageFile(file)
+      ? (await optimizeImageUpload(file, "official-notice")).file
+      : file;
     return httpClient.request<OfficialNoticeMediaUpload>(`${managementBase(scope)}/media`, {
       method: "POST",
-      body: file,
-      headers: { "Content-Type": file.type },
-      query: { file_name: file.name, caption }
+      body: upload,
+      headers: { "Content-Type": upload.type },
+      query: { file_name: upload.name, caption }
     });
   },
   cancelManaged(scope: OfficialNoticeScope, publicId: string, input: NoticeLifecycleInput) {

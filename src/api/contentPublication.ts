@@ -1,5 +1,6 @@
 import { httpClient } from "./httpClient";
 import { persistentResourceCache } from "../lib/persistentResourceCache";
+import { optimizeImageUpload } from "../lib/image-upload";
 
 export type ContentLocaleCode = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
 export type PublishedCarouselScene = "USER_HOME" | "AFFILIATE_HOME_NOTICE";
@@ -661,10 +662,14 @@ export const contentPublicationApi = {
     return announcementLifecycle(publicId, releaseId, "rollback", body);
   },
 
-  uploadContentImage(image: Blob, altText?: string) {
+  async uploadContentImage(image: Blob, altText?: string) {
+    const source = image instanceof File
+      ? image
+      : new File([image], "content-image", { type: image.type });
+    const optimized = await optimizeImageUpload(source, "carousel");
     return httpClient.request<ContentMediaUpload>("/backoffice/content/media", {
-      body: image,
-      headers: { "Content-Type": image.type },
+      body: optimized.file,
+      headers: { "Content-Type": optimized.mimeType },
       method: "POST",
       query: { alt_text: altText },
     });

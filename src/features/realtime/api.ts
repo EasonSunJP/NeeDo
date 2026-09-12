@@ -1,4 +1,5 @@
 import { ApiClientError, buildApiUrl, getAccessToken, httpClient } from "../../api/httpClient";
+import { optimizeImageUpload } from "../../lib/image-upload";
 import type { ImMessageRichText } from "../im/reaction-policy";
 
 export type PaginatedRealtimeData<TItem> = {
@@ -501,20 +502,22 @@ export const realtimeApi = {
   getDirectoryProfile(userId: number) {
     return httpClient.request<RealtimeDirectoryProfile>(`/im/directory/${userId}`);
   },
-  uploadConversationImage(conversationId: number, file: File) {
+  async uploadConversationImage(conversationId: number, file: File) {
+    const optimized = await optimizeImageUpload(file, "im");
     return httpClient.request<RealtimeUploadedImage>(`/im/conversations/${conversationId}/media`, {
-      body: file,
-      headers: { "Content-Type": file.type },
+      body: optimized.file,
+      headers: { "Content-Type": optimized.mimeType },
       method: "POST",
-      query: { fileName: file.name }
+      query: { fileName: optimized.file.name }
     });
   },
-  uploadSocialMedia(file: File) {
+  async uploadSocialMedia(file: File) {
+    const optimized = await optimizeImageUpload(file, "social");
     return httpClient.request<RealtimeSocialMediaUpload>("/social/media", {
-      body: file,
-      headers: { "Content-Type": file.type },
+      body: optimized.file,
+      headers: { "Content-Type": optimized.mimeType },
       method: "POST",
-      query: { fileName: file.name }
+      query: { fileName: optimized.file.name }
     });
   },
   blockContact(contactId: number) {

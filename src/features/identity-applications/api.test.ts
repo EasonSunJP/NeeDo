@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "../../api/httpClient";
 import { identityApplicationsApi, type MerchantReview } from "./api";
+import { optimizeImageUpload } from "../../lib/image-upload";
 
 vi.mock("../../api/httpClient", () => ({
   httpClient: {
@@ -8,6 +9,7 @@ vi.mock("../../api/httpClient", () => ({
     requestDataUrl: vi.fn()
   }
 }));
+vi.mock("../../lib/image-upload", () => ({ optimizeImageUpload: vi.fn() }));
 
 describe("identity application API client", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -71,6 +73,26 @@ describe("identity application API client", () => {
       headers: { "Content-Type": "image/jpeg" },
       method: "POST",
       query: { expected_version: 3, purpose: "portrait" }
+    });
+  });
+
+  it("optimizes non-sensitive showcase media before transfer", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    const original = new File(["original"], "shop.png", { type: "image/png" });
+    const optimized = new File(["optimized"], "shop.webp", { type: "image/webp" });
+    vi.mocked(optimizeImageUpload).mockResolvedValue({
+      file: optimized, height: 800, mimeType: "image/webp", resultBytes: 9,
+      sourceBytes: 8, ssim: 0.999, status: "reencoded", width: 1200
+    });
+
+    await identityApplicationsApi.uploadMedia(41, "showcase", 4, original);
+
+    expect(optimizeImageUpload).toHaveBeenCalledWith(original, "shop-presentation");
+    expect(httpClient.request).toHaveBeenCalledWith("/identity-applications/41/media", {
+      body: optimized,
+      headers: { "Content-Type": "image/webp" },
+      method: "POST",
+      query: { expected_version: 4, purpose: "showcase" }
     });
   });
 
