@@ -104,7 +104,12 @@ const platformMembershipTierLabels: Record<
   black_diamond: "黑钻会员",
 };
 
-const accountSettings = [
+const accountSettings: Array<{
+  label: string;
+  caption: string;
+  to: string;
+  test?: boolean;
+}> = [
   {
     label: "账号设置",
     caption: "手机号、邮箱、登录密码",
@@ -130,7 +135,7 @@ const accountSettings = [
     caption: "登录设备、数据授权",
     to: "/me/settings/account",
   },
-  { label: "联系客服", caption: "退款、改期、投诉风控", to: "/support" },
+  { label: "联系客服", caption: "退款、改期、投诉风控", to: "/support", test: true },
 ];
 
 const pagePanelClassName =
@@ -2002,11 +2007,14 @@ function CompleteUserCenterPage({
                   <Link
                     className={cn(
                       pageInnerCardClassName,
-                      "grid min-h-[76px] w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3",
+                      "relative grid min-h-[76px] w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3",
                     )}
                     key={entry.label}
                     to={entry.to}
                   >
+                    {entry.test ? (
+                      <TestFeatureBadge className="pointer-events-none absolute -right-1 -top-1 min-h-4 px-1.5 py-0 text-[8px]" />
+                    ) : null}
                     <div className="col-start-1 row-start-1 min-w-0 text-left">
                       <strong className="block text-sm">{entry.label}</strong>
                       <p className="mt-1 break-words text-xs leading-5 text-ink/50">
