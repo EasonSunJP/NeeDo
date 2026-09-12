@@ -125,7 +125,7 @@ function describeEstimateError(error: unknown) {
 }
 
 function resolveFulfillmentMode(serviceMode: string, requestedMode: string | null): FulfillmentMode {
-  if (serviceMode === "home" || serviceMode === "onsite") return "home";
+  if (serviceMode === "home" || serviceMode === "onsite" || serviceMode === "home_visit") return "home";
   if (serviceMode === "store") return "store";
   return requestedMode === "home" ? "home" : "store";
 }
@@ -170,7 +170,7 @@ function ensureIntelligenceCheckoutSource(post: ExchangePost, catalogRef: Checko
 }
 
 function serviceModeLabel(serviceMode: string) {
-  if (serviceMode === "home" || serviceMode === "onsite") return "上门";
+  if (serviceMode === "home" || serviceMode === "onsite" || serviceMode === "home_visit") return "上门";
   if (serviceMode === "both" || serviceMode === "flexible") return "到店或上门";
   return "到店";
 }

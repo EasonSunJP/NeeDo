@@ -19,7 +19,7 @@ export class RouteEstimateRepository implements RouteEstimateRepositoryPort {
         startsAt: { gt: at },
         status: "AVAILABLE",
         deletedAt: null,
-        service: { publicId: servicePublicId, serviceMode: { in: ["home", "both", "onsite"] }, status: "published", deletedAt: null },
+        service: { publicId: servicePublicId, serviceMode: { in: ["home", "both", "onsite", "home_visit"] }, status: "published", deletedAt: null },
         shop: { deletedAt: null, status: "published" }
       },
       select: { bookedCount: true, capacity: true, service: { select: { id: true, publicId: true, shopId: true, shop: { select: { city: true, address: true } } } } }

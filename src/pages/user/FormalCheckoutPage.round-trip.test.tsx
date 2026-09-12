@@ -734,11 +734,11 @@ describe("formal checkout technician-card round trip", () => {
       page_size: 100,
       total: 1
     });
-    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue({ ...service, serviceMode: "both" });
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue({ ...service, serviceMode: "home_visit" });
     vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
     vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: slots.length, page: 1, page_size: 100 });
 
-    await act(async () => root.render(<ClientThemeProvider><MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00&mode=home"]}><Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes></MemoryRouter></ClientThemeProvider>));
+    await act(async () => root.render(<ClientThemeProvider><MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00"]}><Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes></MemoryRouter></ClientThemeProvider>));
 
     await waitFor(() => expect(container.querySelector<HTMLSelectElement>('select[aria-label="常用地址"]')?.value).toBe("00000000-0000-4000-8000-000000000081"));
     expect(container.querySelector<HTMLInputElement>('input[aria-label="邮政编码"]')?.value).toBe("1040061");
