@@ -7,20 +7,29 @@ import {
   type EntityTarget,
 } from "../../features/entity-engagement/api";
 import { EntityShareDestinationSheet } from "../entity-share/EntityShareDestinationSheet";
+import type { Language } from "../../i18n/translations";
+import { getUnifiedCardCopy } from "../info-card-system/copy";
+
+function actionLabel(action: string, targetLabel: string, language: Language) {
+  return language === "ja" ? `${targetLabel}を${action}` : `${action} ${targetLabel}`;
+}
 
 export function ServiceFavoriteAction({
   state,
   targetLabel,
   onChange,
+  language = "zh",
 }: {
   state: EntityFavoriteState;
   targetLabel: string;
   onChange: (state: EntityFavoriteState) => void;
+  language?: Language;
 }) {
   const [pending, setPending] = useState(false);
+  const text = getUnifiedCardCopy(language);
   return (
     <button
-      aria-label={`${state.isFavorited ? "取消收藏" : "收藏"} ${targetLabel}`}
+      aria-label={actionLabel(state.isFavorited ? text.removeFavorite : text.addFavorite, targetLabel, language)}
       className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[color:var(--client-primary)] transition hover:bg-[color:var(--client-primary-soft)] disabled:opacity-40 sm:h-9 sm:w-9"
       disabled={pending}
       onClick={() => {
@@ -42,16 +51,19 @@ export function ServiceShareAction({
   onShareCountChange,
   target,
   targetLabel,
+  language = "zh",
 }: {
   onShareCountChange: (value: number) => void;
   target: EntityTarget;
   targetLabel: string;
+  language?: Language;
 }) {
   const [open, setOpen] = useState(false);
+  const text = getUnifiedCardCopy(language);
   return (
     <>
       <button
-        aria-label={`分享 ${targetLabel}`}
+        aria-label={actionLabel(text.share, targetLabel, language)}
         className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[color:var(--client-primary)] transition hover:bg-[color:var(--client-primary-soft)] sm:h-9 sm:w-9"
         onClick={() => setOpen(true)}
         type="button"

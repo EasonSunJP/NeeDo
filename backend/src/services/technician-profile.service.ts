@@ -62,7 +62,11 @@ export class TechnicianProfileService {
       this.profileUpdateNotifier &&
       (input.displayName !== undefined || input.avatarDataUrl !== undefined)
     ) {
-      await this.profileUpdateNotifier.notifyProfileUpdated({ userId, identityId });
+      await this.profileUpdateNotifier.notifyProfileUpdated({
+        userId,
+        identityId,
+        includePersonalIdentities: true
+      });
     }
     return profile;
   }
