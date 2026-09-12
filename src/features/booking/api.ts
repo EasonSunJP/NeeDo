@@ -237,6 +237,12 @@ export type BookingOrder = {
   paymentMethod: ManualPaymentMethod | CheckoutPaymentMethod;
   paymentStatus: ManualPaymentStatus;
   paymentAmountJpy: number;
+  amountSource?: "order_payment" | "checkout";
+  effectivePaymentMethod?: ManualPaymentMethod | CheckoutPaymentMethod | null;
+  otherMethodCode?: string | null;
+  otherMethodLabel?: string | null;
+  checkoutPaymentAmountNdp?: number | null;
+  ndpCurrency?: "NDP" | "TEST_NDP" | null;
   paymentConfirmedById: number | null;
   paymentConfirmedAt: string | null;
   paymentReference: string | null;
@@ -433,14 +439,24 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
     technicianName: order.technicianName ?? undefined,
     city: "东京",
     area: order.shopName,
-    amount: Number.parseFloat(order.priceAmount) || 0,
+    amount: order.paymentAmountJpy,
     paymentStatus:
       order.paymentStatus === "confirmed" || order.paymentStatus === "refundPending"
         ? "paid"
         : order.paymentStatus === "refunded"
           ? "refunded"
           : "unpaid",
-    paymentMethod: order.paymentMethod === "onsite" ? "cash" : "offline",
+    paymentMethod:
+      order.paymentMethod === "onsite" || order.paymentMethod === "cash"
+        ? "cash"
+        : order.paymentMethod === "ndp"
+          ? "platform"
+          : "offline",
+    paymentChannel: order.effectivePaymentMethod ?? undefined,
+    otherPaymentMethodCode: order.otherMethodCode ?? undefined,
+    otherPaymentMethodLabel: order.otherMethodLabel ?? undefined,
+    checkoutPaymentAmountNdp: order.checkoutPaymentAmountNdp ?? undefined,
+    ndpCurrency: order.ndpCurrency ?? undefined,
     bookedAt: formatApiOrderDateTime(order.startsAt),
     createdAt: formatApiOrderDateTime(order.createdAt),
     source: "app",

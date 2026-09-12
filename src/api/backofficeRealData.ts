@@ -268,7 +268,15 @@ export interface BackofficeOrderPayload {
   technicianName: string | null;
   fulfillmentMode: "home" | "store" | string;
   priceAmount: number;
+  totalAmountJpy: number;
+  amountSource: "order_payment" | "checkout";
   currency: string;
+  paymentMethod: "onsite" | "bank_transfer" | "cash" | "ndp" | "other";
+  effectivePaymentMethod: "onsite" | "bank_transfer" | "cash" | "ndp" | "other" | null;
+  otherMethodCode: string | null;
+  otherMethodLabel: string | null;
+  checkoutPaymentAmountNdp: number | null;
+  ndpCurrency: "NDP" | "TEST_NDP" | null;
   startsAt: string;
   endsAt: string;
   note: string | null;
@@ -2021,7 +2029,7 @@ export function mapBackofficeOrder(row: BackofficeOrderPayload): Order {
     technicianName: row.technicianName ?? undefined,
     city: "",
     area: "",
-    amount: row.priceAmount,
+    amount: row.totalAmountJpy,
     paymentStatus:
       row.paymentStatus === "confirmed" || row.paymentStatus === "refundPending"
         ? "paid"
@@ -2033,6 +2041,28 @@ export function mapBackofficeOrder(row: BackofficeOrderPayload): Order {
     source: "web",
     remark: row.note ?? row.cancelReason ?? undefined
   };
+}
+
+export function formatBackofficeOrderPaymentSummary(
+  row: Pick<
+    BackofficeOrderPayload,
+    "checkoutPaymentAmountNdp" | "effectivePaymentMethod" | "ndpCurrency" | "otherMethodLabel"
+  >
+) {
+  const paymentMethod = row.effectivePaymentMethod ?? null;
+  if (paymentMethod === null) return "";
+  if (paymentMethod === "ndp") {
+    if (row.checkoutPaymentAmountNdp !== null && row.ndpCurrency !== null) {
+      const unit = row.ndpCurrency === "TEST_NDP" ? "Test NDP" : "NDP";
+      return `${row.checkoutPaymentAmountNdp.toLocaleString("ja-JP")} ${unit}`;
+    }
+    return "NDP · UNKNOWN UNIT";
+  }
+  if (paymentMethod === "other") {
+    return row.otherMethodLabel ?? "OTHER";
+  }
+  if (paymentMethod === "bank_transfer") return "BANK TRANSFER";
+  return paymentMethod.toUpperCase();
 }
 
 export function mapBackofficeSettlement(row: BackofficeFinanceSettlementPayload): Settlement {

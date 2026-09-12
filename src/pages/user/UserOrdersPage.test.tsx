@@ -17,6 +17,8 @@ describe("UserOrdersPage", () => {
     expect(source).toContain('data-testid="user-order-service-field"');
     expect(source).toContain('data-testid="user-order-shop-field"');
     expect(source).toContain("{yen(order.amount)}");
+    expect(source).toContain("const paymentSummary = formatOrderPaymentSummary(order)");
+    expect(source).toContain('order.ndpCurrency === "TEST_NDP" ? "Test NDP" : "NDP"');
     expect(source).toContain("{order.orderNo}");
     expect(source).toContain("getProviderDetailPath(order)");
   });

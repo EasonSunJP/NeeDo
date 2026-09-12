@@ -1,4 +1,5 @@
 import { recordBookingWorkTransition } from '../domain/work-status-booking';
+import { projectOrderPayment } from "../domain/order-payment-projection";
 import { WorkStatusSession } from './work-status.repository';
 import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
 import {
@@ -17,6 +18,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import { AppError } from "../utils/app-error";
 import type { LedgerTransactionClient } from "../services/ledger.service";
+import { LedgerCurrencyService, type LedgerCurrency } from "../services/ledger-currency.service";
 import { resolveEffectiveCustomerMembershipLevel } from "../services/customer-membership.service";
 import type { JapaneseRouteAddress } from "../services/route-distance.provider";
 import {
@@ -789,6 +791,12 @@ export interface BookingOrderPayload {
   paymentMethod: ServicePaymentMethodPayload;
   paymentStatus: ServicePaymentStatusPayload;
   paymentAmountJpy: number;
+  amountSource: "order_payment" | "checkout";
+  effectivePaymentMethod: ServicePaymentMethodPayload | null;
+  otherMethodCode: string | null;
+  otherMethodLabel: string | null;
+  checkoutPaymentAmountNdp: number | null;
+  ndpCurrency: LedgerCurrency | null;
   paymentConfirmedById: number | null;
   paymentConfirmedAt: Date | null;
   paymentReference: string | null;
@@ -1219,6 +1227,23 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
       };
     };
     travelFareSnapshot: true;
+    checkout: {
+      select: {
+        checkoutAmountJpy: true;
+        payableNdp: true;
+        paymentMethod: true;
+        otherMethodCode: true;
+        otherMethodLabel: true;
+        deletedAt: true;
+        ledgerTransaction: { select: { currency: true; deletedAt: true } };
+      };
+    };
+    financial: {
+      select: {
+        ndpCurrency: true;
+        deletedAt: true;
+      };
+    };
   };
 }>;
 type CheckoutRecord = Prisma.OrderCheckoutGetPayload<Record<string, never>>;
@@ -6188,7 +6213,24 @@ export class BookingRepository implements BookingRepositoryPort {
       exchangeMatchParticipant: {
         select: { id: true }
       },
-      travelFareSnapshot: true
+      travelFareSnapshot: true,
+      checkout: {
+        select: {
+          checkoutAmountJpy: true,
+          payableNdp: true,
+          paymentMethod: true,
+          otherMethodCode: true,
+          otherMethodLabel: true,
+          deletedAt: true,
+          ledgerTransaction: { select: { currency: true, deletedAt: true } }
+        }
+      },
+      financial: {
+        select: {
+          ndpCurrency: true,
+          deletedAt: true
+        }
+      }
     };
   }
 
@@ -6288,14 +6330,33 @@ export class BookingRepository implements BookingRepositoryPort {
         left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id)
     );
 
+    const payment = projectOrderPayment({
+      orderPaymentAmountJpy: order.paymentAmountJpy,
+      orderPaymentMethod: order.paymentMethod,
+      checkout: order.checkout,
+      financial: order.financial
+    });
+
     return {
       id: order.id,
       orderNo: order.orderNo,
       orderType: this.orderTypeFromDb(order.orderType),
       status: bookingOrderStatusFromDb(order.status),
-      paymentMethod: servicePaymentMethodFromDb(order.paymentMethod),
+      paymentMethod: servicePaymentMethodFromDb(payment.paymentMethod),
       paymentStatus: this.paymentStatusFromDb(order.paymentStatus),
-      paymentAmountJpy: order.paymentAmountJpy,
+      paymentAmountJpy: payment.totalAmountJpy,
+      amountSource: payment.amountSource,
+      effectivePaymentMethod:
+        payment.effectivePaymentMethod === null
+          ? null
+          : servicePaymentMethodFromDb(payment.effectivePaymentMethod),
+      otherMethodCode: payment.otherMethodCode,
+      otherMethodLabel: payment.otherMethodLabel,
+      checkoutPaymentAmountNdp: payment.checkoutPaymentAmountNdp,
+      ndpCurrency:
+        payment.ndpCurrency !== null
+          ? LedgerCurrencyService.fromStored(payment.ndpCurrency)
+          : null,
       paymentConfirmedById: order.paymentConfirmedById,
       paymentConfirmedAt: order.paymentConfirmedAt,
       paymentReference: order.paymentReference,

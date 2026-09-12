@@ -1,4 +1,5 @@
 import { accountLogPagination } from "../domain/account-user-log";
+import { projectOrderPayment } from "../domain/order-payment-projection";
 import { buildManagedUserTierWhere } from "./managed-user-tier-filter";
 import { projectWorkStatuses } from './work-status.repository';
 import {
@@ -378,6 +379,23 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
             };
           };
         };
+      };
+    };
+    checkout: {
+      select: {
+        checkoutAmountJpy: true;
+        payableNdp: true;
+        paymentMethod: true;
+        otherMethodCode: true;
+        otherMethodLabel: true;
+        deletedAt: true;
+        ledgerTransaction: { select: { currency: true; deletedAt: true } };
+      };
+    };
+    financial: {
+      select: {
+        ndpCurrency: true;
+        deletedAt: true;
       };
     };
   };
@@ -2904,6 +2922,23 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             }
           }
         }
+      },
+      checkout: {
+        select: {
+          checkoutAmountJpy: true,
+          payableNdp: true,
+          paymentMethod: true,
+          otherMethodCode: true,
+          otherMethodLabel: true,
+          deletedAt: true,
+          ledgerTransaction: { select: { currency: true, deletedAt: true } }
+        }
+      },
+      financial: {
+        select: {
+          ndpCurrency: true,
+          deletedAt: true
+        }
       }
     } satisfies Prisma.BookingOrderInclude;
   }
@@ -3179,6 +3214,22 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   private mapOrder(order: OrderRecord): BackofficeOrderPayload {
+    const payment = projectOrderPayment({
+      orderPaymentAmountJpy: order.paymentAmountJpy,
+      orderPaymentMethod: order.paymentMethod,
+      checkout: order.checkout,
+      financial: order.financial
+    });
+    const paymentMethod = this.orderPaymentMethod(payment.paymentMethod);
+    const effectivePaymentMethod =
+      payment.effectivePaymentMethod === null
+        ? null
+        : this.orderPaymentMethod(payment.effectivePaymentMethod);
+    const ndpCurrency =
+      payment.ndpCurrency !== null
+        ? LedgerCurrencyService.fromStored(payment.ndpCurrency)
+        : null;
+
     return {
       id: order.id,
       orderNo: order.orderNo,
@@ -3197,7 +3248,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       technicianName: order.technicianProfile?.displayName ?? null,
       fulfillmentMode: order.fulfillmentMode,
       priceAmount: this.toNumber(order.priceAmount),
+      totalAmountJpy: payment.totalAmountJpy,
+      amountSource: payment.amountSource,
       currency: order.currency,
+      paymentMethod,
+      effectivePaymentMethod,
+      otherMethodCode: payment.otherMethodCode,
+      otherMethodLabel: payment.otherMethodLabel,
+      checkoutPaymentAmountNdp: payment.checkoutPaymentAmountNdp,
+      ndpCurrency,
       startsAt: order.startsAt.toISOString(),
       endsAt: order.endsAt.toISOString(),
       note: order.note,
@@ -3205,6 +3264,23 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString()
     };
+  }
+
+  private orderPaymentMethod(value: string): BackofficeOrderPayload["paymentMethod"] {
+    switch (value) {
+      case "ONSITE":
+        return "onsite";
+      case "BANK_TRANSFER":
+        return "bank_transfer";
+      case "CASH":
+        return "cash";
+      case "NDP":
+        return "ndp";
+      case "OTHER":
+        return "other";
+      default:
+        throw new Error(`Unsupported order payment method: ${value}`);
+    }
   }
 
   private mapOrderDetail(

@@ -1525,6 +1525,111 @@ serviceLocation: { source: "SHOP_LOCATION" }
     });
   });
 
+  it.each([
+    [
+      "the persisted order total before checkout",
+      { status: "CONFIRMED", paymentAmountJpy: 8_000, checkout: null },
+      8_000
+    ],
+    [
+      "the checkout total while settlement is pending",
+      {
+        status: "AWAITING_CHECKOUT",
+        paymentAmountJpy: 8_000,
+        checkout: {
+          checkoutAmountJpy: 14_500,
+          payableNdp: 14_500,
+          paymentMethod: null,
+          otherMethodCode: null,
+          otherMethodLabel: null,
+          deletedAt: null,
+          ledgerTransaction: null
+        }
+      },
+      14_500
+    ],
+    [
+      "the completed checkout total instead of mutable service income",
+      {
+        status: "COMPLETED",
+        paymentAmountJpy: 8_000,
+        checkout: {
+          checkoutAmountJpy: 14_500,
+          payableNdp: 14_500,
+          paymentMethod: "NDP",
+          otherMethodCode: null,
+          otherMethodLabel: null,
+          deletedAt: null,
+          ledgerTransaction: { currency: "NDP", deletedAt: null }
+        }
+      },
+      14_500
+    ],
+    [
+      "the persisted payment total after checkout is retired",
+      {
+        status: "CANCELLED",
+        paymentAmountJpy: 14_500,
+        checkout: {
+          checkoutAmountJpy: 14_000,
+          payableNdp: 14_000,
+          paymentMethod: "NDP",
+          otherMethodCode: null,
+          otherMethodLabel: null,
+          ledgerTransaction: null,
+          deletedAt: new Date("2026-09-10T03:00:00.000Z")
+        }
+      },
+      14_500
+    ]
+  ])("projects %s for customer order lists", async (_label, amountState, expectedAmountJpy) => {
+    const order = {
+      ...makeTransitionOrderRecord("COMPLETED"),
+      priceAmount: 8_000,
+      ...amountState
+    };
+    const repository = new BookingRepository({
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([order]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as never);
+
+    await expect(repository.listOrders({ page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{ paymentAmountJpy: expectedAmountJpy, priceAmount: "8000.00" }]
+    });
+  });
+
+  it("keeps checkout payment selection nullable and carries a custom method label", async () => {
+    const order = {
+      ...makeTransitionOrderRecord("COMPLETED"),
+      checkout: {
+        checkoutAmountJpy: 14_500,
+        payableNdp: 0,
+        paymentMethod: "OTHER",
+        otherMethodCode: "paypay",
+        otherMethodLabel: "PayPay",
+        deletedAt: null,
+        ledgerTransaction: null
+      }
+    };
+    const repository = new BookingRepository({
+      bookingOrder: {
+        findMany: jest.fn().mockResolvedValue([order]),
+        count: jest.fn().mockResolvedValue(1)
+      }
+    } as never);
+
+    await expect(repository.listOrders({ page: 1, pageSize: 20 })).resolves.toMatchObject({
+      list: [{
+        paymentMethod: "onsite",
+        effectivePaymentMethod: "other",
+        otherMethodCode: "paypay",
+        otherMethodLabel: "PayPay"
+      }]
+    });
+  });
+
   it("keeps an effective shop service on the fast rebook checkout path", async () => {
     const order = {
       ...makeTransitionOrderRecord("COMPLETED"),

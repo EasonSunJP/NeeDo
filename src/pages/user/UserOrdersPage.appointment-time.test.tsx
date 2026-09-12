@@ -165,6 +165,44 @@ describe("UserOrdersPage appointment time", () => {
     expect(actionRow).not.toBeNull();
   });
 
+  it("shows the JPY order total separately from the persisted payment channel and Test NDP unit", async () => {
+    await renderOrders([
+      order({
+        amount: 14_500,
+        paymentMethod: "platform",
+        paymentChannel: "ndp",
+        checkoutPaymentAmountNdp: 14_500,
+        ndpCurrency: "TEST_NDP"
+      })
+    ]);
+
+    const card = document.querySelector<HTMLElement>(".user-orders-provider-card");
+    const payment = card?.querySelector<HTMLElement>(".user-orders-payment-summary");
+
+    expect(card?.textContent).toContain("￥14,500");
+    expect(payment?.textContent).toBe("14,500 Test NDP");
+  });
+
+  it("hides an unselected checkout channel and shows the selected custom label", async () => {
+    await renderOrders([
+      order({ id: "1", orderNo: "ND-PENDING-CHANNEL", paymentChannel: undefined }),
+      order({
+        id: "2",
+        orderNo: "ND-CUSTOM-CHANNEL",
+        paymentChannel: "other",
+        otherPaymentMethodCode: "paypay",
+        otherPaymentMethodLabel: "PayPay"
+      })
+    ]);
+
+    const cards = Array.from(document.querySelectorAll<HTMLElement>(".user-orders-order-item"));
+    const pending = cards.find((card) => card.textContent?.includes("ND-PENDING-CHANNEL"));
+    const custom = cards.find((card) => card.textContent?.includes("ND-CUSTOM-CHANNEL"));
+
+    expect(pending?.querySelector(".user-orders-payment-summary")).toBeNull();
+    expect(custom?.querySelector(".user-orders-payment-summary")?.textContent).toBe("PayPay");
+  });
+
   it("shows the formal service and shop names as explicit visual fields", async () => {
     await renderOrders([
       order({

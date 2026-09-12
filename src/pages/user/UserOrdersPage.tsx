@@ -74,6 +74,21 @@ function getModeLabel(mode: Order["mode"]) {
   return mode === "home" ? "上门服务" : "到店服务";
 }
 
+function formatOrderPaymentSummary(order: Order) {
+  if (order.paymentChannel === "ndp") {
+    if (order.checkoutPaymentAmountNdp !== undefined && order.ndpCurrency !== undefined) {
+      const unit = order.ndpCurrency === "TEST_NDP" ? "Test NDP" : "NDP";
+      return `${order.checkoutPaymentAmountNdp.toLocaleString("ja-JP")} ${unit}`;
+    }
+    return "NDP · UNKNOWN UNIT";
+  }
+  if (order.paymentChannel === "bank_transfer") return "银行转账";
+  if (order.paymentChannel === "cash") return "现金";
+  if (order.paymentChannel === "other") return order.otherPaymentMethodLabel ?? "其他方式";
+  if (order.paymentChannel === "onsite") return "现场支付";
+  return null;
+}
+
 function getProviderName(order: Order) {
   return order.mode === "store"
     ? order.storeName ?? "服务店铺"
@@ -100,6 +115,7 @@ function OrderProviderInfoCard({ order }: { order: Order }) {
   const { language } = useOptionalI18n();
   const detailTo = getProviderDetailPath(order);
   const providerName = getProviderName(order);
+  const paymentSummary = formatOrderPaymentSummary(order);
   const serviceName = order.itemName.trim() || translateText("未设置", language);
   const shopName = order.storeName?.trim() || translateText("未设置", language);
   const appointmentTime = parseOrderDateTime(order.bookedAt) ? order.bookedAt.trim() : null;
@@ -128,6 +144,11 @@ function OrderProviderInfoCard({ order }: { order: Order }) {
           <span className="truncate">{order.city} · {order.area}</span>
           <span className="max-w-36 shrink-0 truncate font-normal">{order.orderNo}</span>
         </div>
+        {paymentSummary ? (
+          <p className="user-orders-payment-summary mt-1 text-right text-[10px] font-bold text-[color:var(--client-muted)]">
+            {paymentSummary}
+          </p>
+        ) : null}
         {appointmentTime ? (
           <dl className="user-orders-appointment-time mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 rounded-[12px] bg-[color:var(--client-primary-soft)] px-2.5 py-2 text-[11px]">
             <dt className="whitespace-nowrap font-black text-[color:var(--client-primary)]">预约时间</dt>

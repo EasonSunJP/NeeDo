@@ -39,6 +39,17 @@ describe("OrdersAdminPage formal operations workflow", () => {
     expect(source).toContain("startsAt");
   });
 
+  it("renders and confirms the authoritative order total instead of the base catalog price", () => {
+    expect(source).toContain("selectedOrder.totalAmountJpy");
+    expect(source).not.toContain("yen(selectedOrder.priceAmount)");
+  });
+
+  it("keeps the JPY total separate from the persisted payment channel and NDP unit", () => {
+    expect(source).toContain("formatBackofficeOrderPaymentSummary");
+    expect(source).toContain("selectedOrder.checkoutPaymentAmountNdp");
+    expect(source).toContain("selectedOrder.ndpCurrency");
+  });
+
   it("restores and synchronizes supported sidebar deep-link parameters", () => {
     expect(source).toContain("useSearchParams");
     expect(source).toContain('searchParams.get("status")');

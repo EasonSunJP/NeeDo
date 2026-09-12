@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
+  formatBackofficeOrderPaymentSummary,
   type BackofficeOrderDetailPayload,
   type BackofficeOrderPayload,
   type PaginatedApiPayload
@@ -261,7 +262,7 @@ export function OrdersAdminPage() {
     setMutationError("");
     try {
       await bookingApi.confirmManualPayment("backoffice", selectedOrder.id, {
-        amountJpy: Math.round(selectedOrder.priceAmount),
+        amountJpy: Math.round(selectedOrder.totalAmountJpy),
         method: paymentMethod,
         reference: paymentReference.trim() || null,
         note: "运营后台确认线下收款"
@@ -423,7 +424,13 @@ export function OrdersAdminPage() {
                 { key: "provider", title: "门店 / 技师", render: (row) => `${row.shopName} / ${row.technicianName ?? "待安排"}` },
                 { key: "created", title: "下单时间", render: (row) => formatOrderDateTime(row.createdAt) },
                 { key: "appointment", title: "预约时间", render: (row) => formatOrderDateTime(row.startsAt) },
-                { key: "payment", title: "支付", render: (row) => <Badge tone={paymentTone(row.paymentStatus)}>{paymentLabel(row.paymentStatus)}</Badge> },
+                { key: "amount", title: "金额", render: (row) => yen(row.totalAmountJpy) },
+                { key: "payment", title: "支付", render: (row) => (
+                  <span className="flex flex-col gap-1">
+                    <Badge tone={paymentTone(row.paymentStatus)}>{paymentLabel(row.paymentStatus)}</Badge>
+                    <span className="text-xs font-bold text-ink/45">{formatBackofficeOrderPaymentSummary(row)}</span>
+                  </span>
+                ) },
                 { key: "status", title: "状态", render: (row) => <Badge tone="yellow">{statusLabel(row.status)}</Badge> },
                 { key: "detail", title: "详情", render: (row) => <Button size="sm" variant="secondary" onClick={() => openOrder(row)}>查看</Button> }
               ]}
@@ -498,8 +505,18 @@ export function OrdersAdminPage() {
                   </span>
                 )
               },
-              { label: "金额", value: yen(selectedOrder.priceAmount) },
-              { label: "支付状态", value: <Badge tone={paymentTone(selectedOrder.paymentStatus)}>{paymentLabel(selectedOrder.paymentStatus)}</Badge> },
+              { label: "金额", value: yen(selectedOrder.totalAmountJpy) },
+              { label: "支付状态", value: (
+                <span className="flex flex-col gap-1">
+                  <Badge tone={paymentTone(selectedOrder.paymentStatus)}>{paymentLabel(selectedOrder.paymentStatus)}</Badge>
+                  <span className="text-xs font-bold text-ink/45">{formatBackofficeOrderPaymentSummary({
+                    effectivePaymentMethod: selectedOrder.effectivePaymentMethod,
+                    otherMethodLabel: selectedOrder.otherMethodLabel,
+                    checkoutPaymentAmountNdp: selectedOrder.checkoutPaymentAmountNdp,
+                    ndpCurrency: selectedOrder.ndpCurrency
+                  })}</span>
+                </span>
+              ) },
               { label: "预约时间", value: new Date(selectedOrder.startsAt).toLocaleString("ja-JP") },
               { label: "备注", value: selectedOrder.note ?? selectedOrder.cancelReason ?? "无备注" }
             ]} />
@@ -622,7 +639,7 @@ export function OrdersAdminPage() {
                   </select>
                   <input className="focus-ring h-10 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold text-ink" placeholder="银行流水号或收款凭证编号（可选）" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />
                   <Button disabled={mutationStatus === "saving"} onClick={() => void confirmPayment()}>
-                    {confirmIntent === "payment-confirm" ? `再次点击确认收款 ${yen(selectedOrder.priceAmount)}` : `确认已收款 ${yen(selectedOrder.priceAmount)}`}
+                    {confirmIntent === "payment-confirm" ? `再次点击确认收款 ${yen(selectedOrder.totalAmountJpy)}` : `确认已收款 ${yen(selectedOrder.totalAmountJpy)}`}
                   </Button>
                 </div>
               ) : null}

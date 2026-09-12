@@ -100,6 +100,10 @@ describe("BackofficeRepository keyword filters", () => {
         },
         fulfillmentMode: "store",
         priceAmount: { toString: () => "9800" },
+        paymentAmountJpy: 9800,
+        paymentMethod: "ONSITE",
+        checkout: null,
+        financial: null,
         currency: "JPY",
         startsAt: new Date("2026-08-25T01:00:00.000Z"),
         endsAt: new Date("2026-08-25T02:00:00.000Z"),
@@ -125,4 +129,270 @@ describe("BackofficeRepository keyword filters", () => {
       });
     }
   );
+
+  it.each([
+    [
+      "an order without checkout",
+      {
+        status: "CONFIRMED",
+        paymentStatus: "PENDING",
+        paymentAmountJpy: 8_000,
+        paymentMethod: "ONSITE",
+        checkout: null,
+        financial: null
+      },
+      {
+        totalAmountJpy: 8_000,
+        amountSource: "order_payment",
+        paymentMethod: "onsite",
+        effectivePaymentMethod: "onsite",
+        otherMethodCode: null,
+        otherMethodLabel: null,
+        checkoutPaymentAmountNdp: null,
+        ndpCurrency: null
+      }
+    ],
+    [
+      "a checkout awaiting payment-channel selection",
+      {
+        status: "AWAITING_CHECKOUT",
+        paymentStatus: "PENDING",
+        paymentAmountJpy: 8_000,
+        paymentMethod: "ONSITE",
+        checkout: {
+          checkoutAmountJpy: 14_500,
+          payableNdp: 14_500,
+          paymentMethod: null,
+          otherMethodCode: null,
+          otherMethodLabel: null,
+          deletedAt: null,
+          ledgerTransaction: null
+        },
+        financial: null
+      },
+      {
+        totalAmountJpy: 14_500,
+        amountSource: "checkout",
+        paymentMethod: "onsite",
+        effectivePaymentMethod: null,
+        otherMethodCode: null,
+        otherMethodLabel: null,
+        checkoutPaymentAmountNdp: null,
+        ndpCurrency: null
+      }
+    ],
+    [
+      "a custom checkout payment method",
+      {
+        status: "AWAITING_PAYMENT_CONFIRMATION",
+        paymentStatus: "PENDING",
+        paymentAmountJpy: 8_000,
+        paymentMethod: "ONSITE",
+        checkout: {
+          checkoutAmountJpy: 14_500,
+          payableNdp: 0,
+          paymentMethod: "OTHER",
+          otherMethodCode: "paypay",
+          otherMethodLabel: "PayPay",
+          deletedAt: null,
+          ledgerTransaction: null
+        },
+        financial: null
+      },
+      {
+        totalAmountJpy: 14_500,
+        amountSource: "checkout",
+        paymentMethod: "onsite",
+        effectivePaymentMethod: "other",
+        otherMethodCode: "paypay",
+        otherMethodLabel: "PayPay",
+        checkoutPaymentAmountNdp: null,
+        ndpCurrency: null
+      }
+    ],
+    [
+      "a pending checkout with multiple accepted add-ons",
+      {
+        status: "AWAITING_CHECKOUT",
+        paymentStatus: "PENDING",
+        paymentAmountJpy: 8_000,
+        paymentMethod: "ONSITE",
+        checkout: {
+          checkoutAmountJpy: 14_500,
+          payableNdp: 14_500,
+          paymentMethod: "NDP",
+          otherMethodCode: null,
+          otherMethodLabel: null,
+          deletedAt: null,
+          ledgerTransaction: null
+        },
+        financial: {
+          serviceAmountJpy: 8_000,
+          settlementStatus: "pending",
+          ndpCurrency: "TEST_NDP",
+          deletedAt: null
+        }
+      },
+      {
+        totalAmountJpy: 14_500,
+        amountSource: "checkout",
+        paymentMethod: "onsite",
+        effectivePaymentMethod: "ndp",
+        otherMethodCode: null,
+        otherMethodLabel: null,
+        checkoutPaymentAmountNdp: 14_500,
+        ndpCurrency: "TEST_NDP"
+      }
+    ],
+    [
+      "a completed settled checkout",
+      {
+        status: "COMPLETED",
+        paymentStatus: "CONFIRMED",
+        paymentAmountJpy: 8_000,
+        paymentMethod: "NDP",
+        checkout: {
+          checkoutAmountJpy: 14_500,
+          payableNdp: 14_500,
+          paymentMethod: "NDP",
+          otherMethodCode: null,
+          otherMethodLabel: null,
+          deletedAt: null,
+          ledgerTransaction: { currency: "NDP", deletedAt: null }
+        },
+        financial: {
+          serviceAmountJpy: 12_000,
+          settlementStatus: "settled",
+          ndpCurrency: "NDP",
+          deletedAt: null
+        }
+      },
+      {
+        totalAmountJpy: 14_500,
+        amountSource: "checkout",
+        paymentMethod: "ndp",
+        effectivePaymentMethod: "ndp",
+        otherMethodCode: null,
+        otherMethodLabel: null,
+        checkoutPaymentAmountNdp: 14_500,
+        ndpCurrency: "NDP"
+      }
+    ],
+    [
+      "a refunded settled checkout",
+      {
+        status: "COMPLETED",
+        paymentStatus: "REFUNDED",
+        paymentAmountJpy: 8_000,
+        paymentMethod: "CASH",
+        checkout: {
+          checkoutAmountJpy: 14_500,
+          payableNdp: 14_500,
+          paymentMethod: "CASH",
+          otherMethodCode: null,
+          otherMethodLabel: null,
+          deletedAt: null,
+          ledgerTransaction: null
+        },
+        financial: {
+          serviceAmountJpy: 12_000,
+          settlementStatus: "refunded",
+          ndpCurrency: "NDP",
+          deletedAt: null
+        }
+      },
+      {
+        totalAmountJpy: 14_500,
+        amountSource: "checkout",
+        paymentMethod: "cash",
+        effectivePaymentMethod: "cash",
+        otherMethodCode: null,
+        otherMethodLabel: null,
+        checkoutPaymentAmountNdp: null,
+        ndpCurrency: null
+      }
+    ],
+    [
+      "an NDP checkout whose currency provenance was retired",
+      {
+        status: "AWAITING_CHECKOUT",
+        paymentStatus: "PENDING",
+        paymentAmountJpy: 8_000,
+        paymentMethod: "ONSITE",
+        checkout: {
+          checkoutAmountJpy: 14_500,
+          payableNdp: 14_500,
+          paymentMethod: "NDP",
+          otherMethodCode: null,
+          otherMethodLabel: null,
+          deletedAt: null,
+          ledgerTransaction: {
+            currency: "TEST_NDP",
+            deletedAt: new Date("2026-09-10T03:00:00.000Z")
+          }
+        },
+        financial: {
+          serviceAmountJpy: 8_000,
+          settlementStatus: "pending",
+          ndpCurrency: "TEST_NDP",
+          deletedAt: new Date("2026-09-10T03:00:00.000Z")
+        }
+      },
+      {
+        totalAmountJpy: 14_500,
+        amountSource: "checkout",
+        paymentMethod: "onsite",
+        effectivePaymentMethod: "ndp",
+        otherMethodCode: null,
+        otherMethodLabel: null,
+        checkoutPaymentAmountNdp: 14_500,
+        ndpCurrency: null
+      }
+    ]
+  ])("projects authoritative totals and payment units for %s", async (_label, financialState, expected) => {
+    const order = {
+      id: 31,
+      orderNo: "ND202609101341243926",
+      customerUserId: 7,
+      customer: {
+        username: "Customer",
+        email: "customer@example.com",
+        customerProfile: { id: 41 }
+      },
+      serviceId: 3,
+      serviceNameSnapshot: "Formal Service",
+      service: { name: "Formal Service" },
+      shopId: 11,
+      shop: { name: "Aoyama Care Studio" },
+      technicianProfileId: 17,
+      technicianProfile: {
+        displayName: "Mika",
+        user: { identities: [{ publicIdentifier: { publicId: "s0000000017" } }] }
+      },
+      fulfillmentMode: "store",
+      priceAmount: { toString: () => "8000" },
+      currency: "JPY",
+      startsAt: new Date("2026-09-10T01:00:00.000Z"),
+      endsAt: new Date("2026-09-10T02:00:00.000Z"),
+      note: null,
+      cancelReason: null,
+      createdAt: new Date("2026-09-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-09-10T03:00:00.000Z"),
+      ...financialState
+    };
+    const repository = new BackofficeRepository({
+      bookingOrder: {
+        findMany: jest.fn(async () => [order]),
+        count: jest.fn(async () => 1)
+      }
+    } as never);
+
+    const response = await repository.listOrders({ scope: "platform", page: 1, pageSize: 20 });
+
+    expect(response.list[0]).toMatchObject({
+      priceAmount: 8_000,
+      currency: "JPY",
+      ...expected
+    });
+  });
 });
