@@ -109,8 +109,8 @@ function OrderProviderInfoCard({ order }: { order: Order }) {
       : "/images/generated/profiles/ai-profile-01.jpg";
   const card = (
     <div className="user-orders-provider-card grid grid-cols-[58px_minmax(0,1fr)] gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,var(--client-bg)_14%)] p-3 shadow-none">
-      <AvatarImage alt={providerName} className="h-[58px] w-[58px]" src={avatar} />
-      <div className="min-w-0">
+      <AvatarImage alt={providerName} className="col-start-1 row-start-1 h-[58px] w-[58px]" src={avatar} />
+      <div className="col-start-2 row-start-1 min-w-0">
         <div className="flex items-start justify-between gap-3">
           <dl className="min-w-0 flex-1 space-y-1.5">
             <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-baseline gap-2" data-testid="user-order-service-field">
