@@ -82,4 +82,16 @@ describe("UnifiedServiceInfoCard", () => {
     expect(text).toContain("暂无标签");
     expect(text).not.toContain("0km");
   });
+
+  it("localizes Japanese metric and engagement accessibility labels", () => {
+    const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(UnifiedServiceInfoCard, {
+      data: formalService, detailTo: "/services/71", language: "ja"
+    })));
+
+    expect(markup).toContain('aria-label="完了件数"');
+    expect(markup).toContain('aria-label="現在地から"');
+    expect(markup).toContain('aria-label="两小时家庭日常保洁をお気に入りに追加"');
+    expect(markup).toContain('aria-label="两小时家庭日常保洁をシェア"');
+    expect(markup).not.toMatch(/完特異|距離你|收藏|分享/u);
+  });
 });

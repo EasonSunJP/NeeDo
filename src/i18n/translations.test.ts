@@ -1454,4 +1454,20 @@ describe("translations", () => {
     });
   });
 
+  it("keeps service-search page copy natural across every supported non-source language", () => {
+    const expected = {
+      "zh-Hant": ["輸入搜尋關鍵字", "搜尋", "正在載入搜尋結果", "正在搜尋服務與分類。"],
+      ja: ["キーワードを入力", "検索", "検索結果を読み込んでいます", "サービスとカテゴリを検索しています。"],
+      en: ["Enter keywords", "Search", "Loading search results", "Searching services and categories."],
+      ko: ["검색어 입력", "검색", "검색 결과를 불러오는 중", "서비스와 카테고리를 검색하고 있습니다."]
+    } as const;
+
+    for (const [language, values] of Object.entries(expected)) {
+      expect(translateText("输入搜索关键词", language as Exclude<Language, "zh">)).toBe(values[0]);
+      expect(translateText("搜索", language as Exclude<Language, "zh">)).toBe(values[1]);
+      expect(translateText("正在载入真实数据", language as Exclude<Language, "zh">)).toBe(values[2]);
+      expect(translateText("正在从 /api/v1/search 与 /api/v1/categories 读取分类和搜索结果。", language as Exclude<Language, "zh">)).toBe(values[3]);
+    }
+  });
+
 });
