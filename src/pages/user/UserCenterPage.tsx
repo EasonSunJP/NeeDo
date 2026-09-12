@@ -890,23 +890,17 @@ function CompleteUserCenterPage({
     },
     { label: "我的评价", info: "已评价与待回复", value: "—", to: "/me" },
     {
-      label: "周期预约",
-      info: "保洁、护理、家电维护",
-      value: "—",
-      to: "/categories?type=service",
+      label: "eKYC本人确认",
+      info: "实名、证件、本人确认",
+      value: "去",
+      to: "/me/settings/verification",
     },
     {
-      label: "会员",
+      label: "店铺会员",
       info: "查看已加入店铺与会员卡状态",
       value: formalData.activeShopMembershipCount ?? "—",
       to: "/me/memberships",
       test: true,
-    },
-    {
-      label: "KYC身份验证",
-      info: "实名、证件、本人确认",
-      value: "去",
-      to: "/me/settings/verification",
     },
   ];
   const startProfileEdit = () => {
@@ -1422,7 +1416,6 @@ function CompleteUserCenterPage({
                   }
                   usageCount={usageCount}
                 />
-                <CurrentMembershipBenefits language={language} />
               </>
             ) : (
               <section
@@ -1996,6 +1989,10 @@ function CompleteUserCenterPage({
                   </div>
                 </div>
               ))}
+              <CurrentMembershipBenefits
+                className={cn(pagePanelClassName, "min-h-[74px] px-3 py-3")}
+                language={language}
+              />
             </section>
 
             <section className={pagePanelClassName} data-testid="user-center-account-settings">

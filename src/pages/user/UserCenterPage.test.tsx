@@ -37,14 +37,17 @@ describe("UserCenterPage", () => {
     expect(source).not.toContain('to: "/categories?type=store"');
     expect(source).toContain('info: "家庭、公司、常用地址"');
     expect(source).toContain('info: "已评价与待回复"');
-    expect(source).toContain('info: "保洁、护理、家电维护"');
-    expect(source).toContain('label: "会员"');
+    expect(source).not.toContain('info: "保洁、护理、家电维护"');
+    expect(source).not.toContain('label: "周期预约"');
+    expect(source).not.toContain('to: "/categories?type=service"');
+    expect(source).toContain('label: "eKYC本人确认"');
+    expect(source).toContain('label: "店铺会员"');
     expect(source).not.toContain('label: "家庭成员"');
     expect(source).toContain('info: "查看已加入店铺与会员卡状态"');
     expect(source).toContain('to: "/me/memberships"');
     expect(source).toContain("activeShopMembershipCount");
     expect(source).toContain("<TestFeatureBadge");
-    expect(source).toContain('label: "KYC身份验证"');
+    expect(source).not.toContain('label: "KYC身份验证"');
     expect(source).toContain('info: "实名、证件、本人确认"');
     expect(source).toContain('to: "/me/settings/verification"');
     expect(source).not.toContain('caption: "店铺、技师、服务"');
@@ -54,6 +57,19 @@ describe("UserCenterPage", () => {
     expect(source).not.toContain('caption: "查看已加入店铺与会员卡状态"');
     expect(source).toContain("min-h-[74px]");
     expect(source).toContain("<InfoTooltipTrigger");
+  });
+
+  it("places eKYC, shop membership and NeeDo benefits in the requested lower-grid order", () => {
+    const reviewIndex = source.indexOf('label: "我的评价"');
+    const ekycIndex = source.indexOf('label: "eKYC本人确认"');
+    const shopMembershipIndex = source.indexOf('label: "店铺会员"');
+    const needoBenefitsIndex = source.lastIndexOf("<CurrentMembershipBenefits");
+
+    expect(reviewIndex).toBeGreaterThan(-1);
+    expect(ekycIndex).toBeGreaterThan(reviewIndex);
+    expect(shopMembershipIndex).toBeGreaterThan(ekycIndex);
+    expect(needoBenefitsIndex).toBeGreaterThan(shopMembershipIndex);
+    expect(source.match(/<CurrentMembershipBenefits/g)).toHaveLength(1);
   });
 
   it("removes the bottom navigation from every user-center state", () => {

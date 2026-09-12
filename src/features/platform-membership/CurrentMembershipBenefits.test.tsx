@@ -83,9 +83,23 @@ describe("CurrentMembershipBenefits", () => {
     const toggle = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
 
     expect(toggle).not.toBeNull();
-    expect(toggle?.textContent).toContain("会员权益");
-    expect(toggle?.textContent).toContain("1/4已开启");
+    expect(toggle?.getAttribute("aria-label")).toBe("NeeDo会员权益");
+    expect(container.textContent).toContain("NeeDo会员权益");
+    expect(container.textContent).toContain("1/4已开启");
+    expect(container.textContent).not.toContain("按当前会员类型显示配置与实际可用状态");
+    expect(container.querySelector('[aria-label="查看NeeDo会员权益说明"]')).not.toBeNull();
     expect(container.textContent).not.toContain("NDP消费经验");
+  });
+
+  it("opens the benefit list in a separate detail panel so the compact grid entry stays compact", async () => {
+    await renderBenefits();
+    await click(container.querySelector('button[aria-expanded="false"]'));
+
+    const details = document.body.querySelector('[role="dialog"][aria-label="NeeDo会员权益详情"]');
+
+    expect(details).not.toBeNull();
+    expect(details?.textContent).toContain("NDP消费经验");
+    expect(details?.textContent).toContain("收起");
   });
 
   it("renders active, unavailable and globally disabled states honestly", async () => {
