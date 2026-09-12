@@ -24,6 +24,10 @@ import {
   type CoreServiceDetail,
   type CoreTechnicianCard
 } from "../../features/core-read/api";
+import {
+  customerAddressApi,
+  type CustomerAddress
+} from "../../features/customer-address/api";
 import { getExchangePost } from "../../features/exchange/api";
 import type { ExchangePost } from "../../features/exchange/types";
 import { pricingModeApi } from "../../features/pricing-mode/api";
@@ -239,6 +243,10 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   const [municipalities, setMunicipalities] = useState<AdministrativeRegionReference[]>([]);
   const [selectedAdmin1Code, setSelectedAdmin1Code] = useState("");
   const [selectedAdmin2Code, setSelectedAdmin2Code] = useState("");
+  const [savedAddresses, setSavedAddresses] = useState<CustomerAddress[]>([]);
+  const [selectedSavedAddressPublicId, setSelectedSavedAddressPublicId] = useState("");
+  const [savedAddressLoadError, setSavedAddressLoadError] = useState("");
+  const homeAddressTouchedRef = useRef(false);
   const [regionLoadError, setRegionLoadError] = useState("");
   const [municipalitiesLoading, setMunicipalitiesLoading] = useState(false);
   const [note, setNote] = useState(searchParams.get("remark") ?? "");
@@ -258,8 +266,29 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
     : undefined;
 
   const updateHomeAddress = (field: keyof JapaneseRouteAddress, value: string) => {
+    homeAddressTouchedRef.current = true;
     estimateRequestVersionRef.current += 1;
     setHomeAddress((current) => ({ ...current, [field]: value }));
+    setEstimate(null);
+    setEstimateStatus("idle");
+    setEstimateError("");
+  };
+
+  const applySavedAddress = (address: CustomerAddress) => {
+    homeAddressTouchedRef.current = true;
+    estimateRequestVersionRef.current += 1;
+    setSelectedSavedAddressPublicId(address.publicId);
+    setSelectedAdmin1Code(address.admin1Code);
+    setSelectedAdmin2Code(address.admin2Code);
+    setHomeAddress({
+      countryCode: "JP",
+      postalCode: address.postalCode,
+      prefecture: address.prefecture,
+      city: address.city,
+      addressLine1: address.addressLine1,
+      addressLine2: address.addressLine2 ?? "",
+      building: address.building ?? ""
+    });
     setEstimate(null);
     setEstimateStatus("idle");
     setEstimateError("");
@@ -481,6 +510,45 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSavedAddresses([]);
+      setSelectedSavedAddressPublicId("");
+      return undefined;
+    }
+    let active = true;
+    setSavedAddressLoadError("");
+    void customerAddressApi.list({ page: 1, pageSize: 100 })
+      .then(({ list }) => {
+        if (!active) return;
+        setSavedAddresses(list);
+        const defaultAddress = list.find((address) => address.isDefault);
+        if (defaultAddress && !homeAddressTouchedRef.current) {
+          setSelectedSavedAddressPublicId(defaultAddress.publicId);
+          setSelectedAdmin1Code(defaultAddress.admin1Code);
+          setSelectedAdmin2Code(defaultAddress.admin2Code);
+          setHomeAddress({
+            countryCode: "JP",
+            postalCode: defaultAddress.postalCode,
+            prefecture: defaultAddress.prefecture,
+            city: defaultAddress.city,
+            addressLine1: defaultAddress.addressLine1,
+            addressLine2: defaultAddress.addressLine2 ?? "",
+            building: defaultAddress.building ?? ""
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSavedAddresses([]);
+          setSavedAddressLoadError("常用地址读取失败，可继续手动填写。");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!selectedAdmin1Code) {
@@ -914,6 +982,35 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
               ) : (
                 <div className="mt-3 space-y-3">
                   <p className="text-[17px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">上门服务</p>
+                  {isAuthenticated ? (
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                      <select
+                        aria-label="常用地址"
+                        className="focus-ring w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]"
+                        onChange={(event) => {
+                          const address = savedAddresses.find((item) => item.publicId === event.target.value);
+                          if (address) applySavedAddress(address);
+                          else setSelectedSavedAddressPublicId("");
+                        }}
+                        value={selectedSavedAddressPublicId}
+                      >
+                        <option value="">选择常用地址</option>
+                        {savedAddresses.map((address) => (
+                          <option key={address.publicId} value={address.publicId}>
+                            {address.label}{address.isDefault ? " ★" : ""} · {address.prefecture}{address.city}{address.addressLine1}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="focus-ring rounded-full border border-[color:var(--client-primary)] px-4 text-xs font-black text-[color:var(--client-primary)]"
+                        onClick={() => navigate("/me/addresses")}
+                        type="button"
+                      >
+                        管理
+                      </button>
+                    </div>
+                  ) : null}
+                  {savedAddressLoadError ? <p className="text-xs font-bold text-amber-700">{savedAddressLoadError}</p> : null}
                   <div className="grid gap-2 sm:grid-cols-2">
                     <select
                       aria-label="都道府县"

@@ -172,6 +172,20 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain('Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")');
   });
 
+  it("reuses the authenticated customer's persistent addresses for home checkout", () => {
+    expect(formalSource).toContain("customerAddressApi.list");
+    expect(formalSource).toContain("applySavedAddress");
+    expect(formalSource).toContain('aria-label="常用地址"');
+    expect(formalSource).toContain('navigate("/me/addresses")');
+    expect(formalSource).not.toContain("localStorage");
+    for (const key of ["常用地址", "选择常用地址", "常用地址读取失败，可继续手动填写。"]) {
+      expect(translations[key]).toBeDefined();
+      for (const locale of ["zh-Hant", "ja", "en", "ko"] as const) {
+        expect(translations[key]?.[locale]?.trim()).toBeTruthy();
+      }
+    }
+  });
+
   it("keeps the typed home address while excluding structured home codes in store mode", () => {
     expect(formalSource).toContain("onClick={() => setFulfillmentMode(mode)}");
     expect(formalSource).not.toContain('setAddress("")');

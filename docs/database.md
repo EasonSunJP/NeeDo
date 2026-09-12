@@ -60,6 +60,12 @@ soft-deleted rows remain available for audit and restore flows.
 - Prisma config: `backend/prisma.config.ts`.
 - Prisma MySQL runtime adapter: `@prisma/adapter-mariadb`.
 
+## Customer Saved Addresses
+
+Migration `20260912100000_customer_addresses` adds `customer_addresses` as a child of `customer_profiles`. It persists the same structured Japanese address fields used by formal home-service checkout, including postal code, prefecture/municipality codes and names, street lines, building, soft-delete timestamps, and a generated public UUID.
+
+The nullable unique `default_profile_key` allows at most one active default per customer profile while remaining compatible with soft deletion. Repository writes scope both the profile and address to the authenticated user, switch defaults transactionally, promote a replacement when the default is deleted, and write the address audit row in the same transaction.
+
 The Docker dev stack already starts MySQL with UTF8MB4 defaults:
 
 ```bash

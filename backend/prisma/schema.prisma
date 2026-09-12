@@ -2609,6 +2609,7 @@ model CustomerProfile {
   receivedOrderReviews  OrderReview[]            @relation("OrderReviewCustomer")
   backofficeProfileTags BackofficeProfileTag[]   @relation("BackofficeProfileTagCustomer")
   shopMemberships       ShopCustomerMembership[]
+  addresses             CustomerAddress[]
 
   @@index([city])
   @@index([isPublic])
@@ -2617,6 +2618,33 @@ model CustomerProfile {
   @@index([membershipGrantedById], map: "customer_profiles_membership_granted_by_idx")
   @@index([deletedAt])
   @@map("customer_profiles")
+}
+
+model CustomerAddress {
+  id                Int       @id @default(autoincrement())
+  publicId          String    @unique @default(uuid()) @map("public_id") @db.Char(36)
+  customerProfileId Int       @map("customer_profile_id")
+  label             String    @db.VarChar(50)
+  countryCode       String    @default("JP") @map("country_code") @db.Char(2)
+  postalCode        String    @map("postal_code") @db.Char(7)
+  admin1Code        String    @map("admin1_code") @db.Char(2)
+  prefecture        String    @db.VarChar(32)
+  admin2Code        String    @map("admin2_code") @db.Char(5)
+  city              String    @db.VarChar(100)
+  addressLine1      String    @map("address_line_1") @db.VarChar(255)
+  addressLine2      String?   @map("address_line_2") @db.VarChar(255)
+  building          String?   @db.VarChar(255)
+  isDefault         Boolean   @default(false) @map("is_default")
+  defaultProfileKey String?   @unique @map("default_profile_key") @db.VarChar(64)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt         DateTime? @map("deleted_at") @db.DateTime(3)
+
+  customerProfile CustomerProfile @relation(fields: [customerProfileId], references: [id], onDelete: Restrict)
+
+  @@index([customerProfileId, deletedAt, isDefault], map: "customer_addresses_profile_active_default_idx")
+  @@index([deletedAt], map: "customer_addresses_deleted_idx")
+  @@map("customer_addresses")
 }
 
 model MerchantIdentityProfile {

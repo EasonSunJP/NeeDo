@@ -16,6 +16,7 @@ import {
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
 import { pricingModeApi } from "../../features/pricing-mode/api";
+import { customerAddressApi } from "../../features/customer-address/api";
 import * as exchangeApi from "../../features/exchange/api";
 import type { ExchangePost } from "../../features/exchange/types";
 import { travelFareApi } from "../../api/travelFare";
@@ -444,6 +445,7 @@ beforeEach(() => {
     page_size: 20,
     total: 0
   });
+  vi.spyOn(customerAddressApi, "list").mockResolvedValue({ list: [], page: 1, page_size: 100, total: 0 });
 });
 
 afterEach(async () => {
@@ -706,6 +708,44 @@ describe("formal checkout technician-card round trip", () => {
     expect(container.querySelector('iframe[src*="google.com/maps"]')).toBeNull();
     await click(confirmBefore);
     await waitFor(() => expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({ fulfillmentMode: "home", scheduleSlotId: 101, serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13102" }, travelEstimatePublicId: "00000000-0000-4000-8000-000000000077", fulfillmentAddress: expect.objectContaining({ countryCode: "JP", postalCode: "104-0061", prefecture: "東京都", city: "中央区", addressLine1: "銀座1-2-3" }) })));
+  });
+
+  it("prefills home checkout from the authenticated customer's persistent default address", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.mocked(customerAddressApi.list).mockResolvedValue({
+      list: [{
+        id: 81,
+        publicId: "00000000-0000-4000-8000-000000000081",
+        label: "自宅",
+        countryCode: "JP",
+        postalCode: "1040061",
+        admin1Code: "13",
+        prefecture: "東京都",
+        admin2Code: "13102",
+        city: "中央区",
+        addressLine1: "銀座1-2-3",
+        addressLine2: null,
+        building: "NeeDo 801",
+        isDefault: true,
+        createdAt: "2026-09-01T00:00:00.000Z",
+        updatedAt: "2026-09-01T00:00:00.000Z"
+      }],
+      page: 1,
+      page_size: 100,
+      total: 1
+    });
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue({ ...service, serviceMode: "both" });
+    vi.spyOn(coreReadApi, "getTechnicianDetail").mockResolvedValue(technicianDetail);
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({ list: slots, total: slots.length, page: 1, page_size: 100 });
+
+    await act(async () => root.render(<ClientThemeProvider><MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00&mode=home"]}><Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes></MemoryRouter></ClientThemeProvider>));
+
+    await waitFor(() => expect(container.querySelector<HTMLSelectElement>('select[aria-label="常用地址"]')?.value).toBe("00000000-0000-4000-8000-000000000081"));
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="邮政编码"]')?.value).toBe("1040061");
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="街道地址"]')?.value).toBe("銀座1-2-3");
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="建筑物与房间"]')?.value).toBe("NeeDo 801");
+    expect(container.querySelector<HTMLSelectElement>('select[aria-label="都道府县"]')?.value).toBe("13");
+    await waitFor(() => expect(container.querySelector<HTMLSelectElement>('select[aria-label="市区町村"]')?.value).toBe("13102"));
   });
 
   it("shows an unconfigured provider state and retries against the formal estimate API", async () => {

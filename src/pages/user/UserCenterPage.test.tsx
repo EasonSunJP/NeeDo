@@ -36,6 +36,10 @@ describe("UserCenterPage", () => {
     expect(source).toContain('zh: "已收藏的服务、店铺、技师、动态与聊天记录"');
     expect(source).not.toContain('to: "/categories?type=store"');
     expect(source).toContain('info: "家庭、公司、常用地址"');
+    expect(source).toMatch(
+      /label: "我的地址",[\s\S]*to: "\/me\/addresses"/u,
+    );
+    expect(source).not.toContain('to: "/checkout/svc-clean-1"');
     expect(source).toContain('info: "已评价与待回复"');
     expect(source).not.toContain('info: "保洁、护理、家电维护"');
     expect(source).not.toContain('label: "周期预约"');

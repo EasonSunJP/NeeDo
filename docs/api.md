@@ -330,9 +330,15 @@ The technician self-profile response also contains read-only `specialTags`, filt
 |---|---|---|---|
 | `GET` | `/api/v1/customer-profile/me` | Read the profile resolved from the authenticated customer identity | `customer-profile:read` |
 | `PATCH` | `/api/v1/customer-profile/me` | Update only editable fields on that resolved profile | `customer-profile:write` |
+| `GET` | `/api/v1/customer-profile/me/addresses` | List the current customer's saved Japanese addresses | `customer-profile:read` |
+| `POST` | `/api/v1/customer-profile/me/addresses` | Create a saved address; the first address becomes the default | `customer-profile:write` |
+| `PATCH` | `/api/v1/customer-profile/me/addresses/:publicId` | Edit an owned address or make it the default | `customer-profile:write` |
+| `DELETE` | `/api/v1/customer-profile/me/addresses/:publicId` | Soft-delete an owned address and promote a replacement default | `customer-profile:write` |
 | `GET` | `/media/customer-avatars/:contentHash.ext` | Read one immutable customer avatar image | Public, hash filename only |
 
 The self-profile response includes `id`, `displayName`, `avatarUrl`, `gender`, `age`, `heightCm`, `languages`, `bio`, `visibility`, and `membershipLevel`, plus its scoped metadata. Updates accept only non-empty partial payloads of the editable display, demographic, language, bio, visibility, and validated image-data fields. The API derives the customer-profile ID from the access token; clients cannot select another profile. Each successful update writes an audit event.
+
+Saved-address bodies are strict, Zod-validated Japanese structured addresses with `countryCode=JP`, normalized seven-digit postal code, official `admin1Code`/`admin2Code`, canonical Japanese prefecture/city names, street address, and optional address-line/building fields. The server verifies the code hierarchy and rejects a name mismatch before persistence. The profile scope always comes from the active authenticated customer identity. Cross-account IDs therefore resolve as `404`, and create/update/delete operations write audit events. At most one active address is default; the first address is promoted automatically and deleting the default promotes the most recently updated remaining address.
 
 Avatar bytes are served only when the requested filename is a SHA-256 content hash with a supported `.jpg`, `.png`, or `.webp` extension. Successful avatar responses are immutable-cacheable for one year; directory requests and arbitrary filenames return `404`.
 

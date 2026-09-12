@@ -282,6 +282,62 @@ const createFixture = async () => {
       }
     )
   };
+  let addresses = [
+    {
+      id: 71,
+      publicId: "00000000-0000-4000-8000-000000000071",
+      label: "自宅",
+      countryCode: "JP" as const,
+      postalCode: "1600022",
+      admin1Code: "13",
+      prefecture: "東京都",
+      admin2Code: "13104",
+      city: "新宿区",
+      addressLine1: "新宿1-1-1",
+      addressLine2: null,
+      building: "NeeDo 301",
+      isDefault: true,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString()
+    }
+  ];
+  const customerAddressRepository = {
+    listMine: jest.fn(async (userId: number, profileId: number, query: { page: number; pageSize: number }) => ({
+      list: userId === 11 && profileId === 41 ? addresses : [],
+      total: userId === 11 && profileId === 41 ? addresses.length : 0,
+      page: query.page,
+      page_size: query.pageSize
+    })),
+    createMine: jest.fn(async (userId: number, profileId: number, input: Record<string, unknown>) => {
+      if (userId !== 11 || profileId !== 41) throw new Error("unexpected address scope");
+      const created = { ...addresses[0], ...input, id: 72, publicId: "00000000-0000-4000-8000-000000000072", isDefault: false };
+      addresses = [...addresses, created];
+      return created;
+    }),
+    updateMine: jest.fn(async (userId: number, profileId: number, publicId: string, input: Record<string, unknown>) => {
+      if (userId !== 11 || profileId !== 41) throw new Error("unexpected address scope");
+      const current = addresses.find((address) => address.publicId === publicId);
+      if (!current) throw new Error("missing address");
+      const updated = { ...current, ...input };
+      addresses = addresses.map((address) => address.publicId === publicId ? updated : address);
+      return updated;
+    }),
+    deleteMine: jest.fn(async (userId: number, profileId: number, publicId: string) => {
+      if (userId !== 11 || profileId !== 41) throw new Error("unexpected address scope");
+      addresses = addresses.filter((address) => address.publicId !== publicId);
+    })
+  };
+  const administrativeRegionRepository = {
+    listChildren: jest.fn(async () => []),
+    resolveVerifiedScope: jest.fn(async (input: { countryCode: "JP"; admin1Code: string; admin2Code: string }) => ({
+      ...input,
+      admin1RegionId: 13,
+      admin1NameJa: "東京都",
+      admin2RegionId: 13101,
+      admin2NameJa: "千代田区",
+      datasetVersion: "N03-20260101" as const
+    }))
+  };
   const avatarDirectory = await mkdtemp(join(tmpdir(), "needo-customer-profile-api-"));
   await writeFile(
     join(avatarDirectory, `${avatarHash}.png`),
@@ -301,8 +357,10 @@ const createFixture = async () => {
         })
       },
       profileUpdatedNotificationPort,
-      customerProfileRepository
-    }
+      customerProfileRepository,
+      customerAddressRepository,
+      administrativeRegionRepository
+    } as unknown as Parameters<typeof createApp>[1]
   );
   const login = async (email: string) => {
     const response = await request(app)
@@ -312,7 +370,7 @@ const createFixture = async () => {
     return response.body.data.accessToken as string;
   };
 
-  return { app, avatarDirectory, auditLogs, customerProfileRepository, login };
+  return { app, avatarDirectory, auditLogs, customerAddressRepository, customerProfileRepository, login };
 };
 
 describe("customer profile current-user API", () => {
@@ -362,6 +420,61 @@ describe("customer profile current-user API", () => {
           metadata: { changedFields: ["displayName", "visibility"] }
         })
       );
+    } finally {
+      await rm(fixture.avatarDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("persists, reads, updates, and soft-deletes customer-scoped addresses", async () => {
+    const fixture = await createFixture();
+
+    try {
+      const token = await fixture.login("customer@example.com");
+      const technicianToken = await fixture.login("technician@example.com");
+      const authorization = { Authorization: `Bearer ${token}` };
+      await request(fixture.app)
+        .get("/api/v1/customer-profile/me/addresses")
+        .expect(401);
+      await request(fixture.app)
+        .post("/api/v1/customer-profile/me/addresses")
+        .set("Authorization", `Bearer ${technicianToken}`)
+        .send({})
+        .expect(403);
+      await request(fixture.app)
+        .get("/api/v1/customer-profile/me/addresses?page=1&pageSize=20")
+        .set(authorization)
+        .expect(200)
+        .expect(({ body }) => expect(body.data).toMatchObject({ total: 1, list: [{ label: "自宅", isDefault: true }] }));
+      const createResponse = await request(fixture.app)
+        .post("/api/v1/customer-profile/me/addresses")
+        .set(authorization)
+        .send({
+          label: "会社", countryCode: "JP", postalCode: "100-0005",
+          admin1Code: "13", prefecture: "東京都", admin2Code: "13101",
+          city: "千代田区", addressLine1: "丸の内1-1-1", building: "NeeDo 8F"
+        })
+        .expect(201);
+      const publicId = createResponse.body.data.publicId as string;
+      await request(fixture.app)
+        .patch(`/api/v1/customer-profile/me/addresses/${publicId}`)
+        .set(authorization)
+        .send({ label: "本社", isDefault: true })
+        .expect(200)
+        .expect(({ body }) => expect(body.data).toMatchObject({ label: "本社", isDefault: true }));
+      await request(fixture.app)
+        .delete(`/api/v1/customer-profile/me/addresses/${publicId}`)
+        .set(authorization)
+        .expect(200)
+        .expect(({ body }) => expect(body.data).toEqual({ deleted: true }));
+      await request(fixture.app)
+        .patch("/api/v1/customer-profile/me/addresses/00000000-0000-4000-8000-000000000071")
+        .set(authorization)
+        .send({ isDefault: false })
+        .expect(400);
+
+      expect(fixture.customerAddressRepository.createMine).toHaveBeenCalledWith(11, 41, expect.objectContaining({ postalCode: "1000005" }), expect.objectContaining({ action: "customer_address.self_create" }));
+      expect(fixture.customerAddressRepository.updateMine).toHaveBeenCalledWith(11, 41, publicId, { label: "本社", isDefault: true }, expect.any(Object));
+      expect(fixture.customerAddressRepository.deleteMine).toHaveBeenCalledWith(11, 41, publicId, expect.any(Object));
     } finally {
       await rm(fixture.avatarDirectory, { recursive: true, force: true });
     }

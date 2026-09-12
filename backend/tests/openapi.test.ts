@@ -5,6 +5,24 @@ import { createOpenApiDocument } from "../src/api/openapi";
 import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
+  it("documents authenticated customer address CRUD with the checkout address schema", () => {
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    };
+    const collection = document.paths["/api/v1/customer-profile/me/addresses"];
+    const member = document.paths["/api/v1/customer-profile/me/addresses/{publicId}"];
+
+    expect(collection?.get).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "customer-profile:read" });
+    expect(collection?.post).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "customer-profile:write" });
+    expect(member?.patch).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "customer-profile:write" });
+    expect(member?.delete).toMatchObject({ security: [{ bearerAuth: [] }], "x-required-permission": "customer-profile:write" });
+    expect(document.components.schemas.CustomerAddress).toMatchObject({
+      additionalProperties: false,
+      required: expect.arrayContaining(["publicId", "postalCode", "admin1Code", "admin2Code", "isDefault"])
+    });
+  });
+
   it("documents the paginated public service review contract", () => {
     const document = createOpenApiDocument(env) as unknown as {
       paths: Record<string, Record<string, Record<string, unknown>>>;

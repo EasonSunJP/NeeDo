@@ -885,8 +885,8 @@ function CompleteUserCenterPage({
     {
       label: "我的地址",
       info: "家庭、公司、常用地址",
-      value: "—",
-      to: "/checkout/svc-clean-1",
+      value: "管理",
+      to: "/me/addresses",
     },
     { label: "我的评价", info: "已评价与待回复", value: "—", to: "/me" },
     {

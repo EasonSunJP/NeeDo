@@ -27,7 +27,9 @@ if (runCustomerProfileRepositoryIntegration) {
   }
 
   process.env.DATABASE_URL = requireCustomerProfileRepositoryIntegrationDatabaseUrl({
-    databaseUrl: loadedEnvironment.parsed?.DATABASE_URL,
+    databaseUrl:
+      process.env.CUSTOMER_PROFILE_REPOSITORY_TEST_DATABASE_URL?.trim()
+      || loadedEnvironment.parsed?.DATABASE_URL,
     envFile
   });
 }

@@ -10991,6 +10991,79 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
+      CustomerAddress: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id", "publicId", "label", "countryCode", "postalCode", "admin1Code",
+          "prefecture", "admin2Code", "city", "addressLine1", "addressLine2",
+          "building", "isDefault", "createdAt", "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          publicId: { type: "string", format: "uuid" },
+          label: { type: "string", minLength: 1, maxLength: 50 },
+          countryCode: { type: "string", enum: ["JP"] },
+          postalCode: { type: "string", pattern: "^\\d{7}$" },
+          admin1Code: { type: "string", pattern: "^\\d{2}$" },
+          prefecture: { type: "string", minLength: 1, maxLength: 32 },
+          admin2Code: { type: "string", pattern: "^\\d{5}$" },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          addressLine1: { type: "string", minLength: 1, maxLength: 255 },
+          addressLine2: { type: ["string", "null"], maxLength: 255 },
+          building: { type: ["string", "null"], maxLength: 255 },
+          isDefault: { type: "boolean" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      CustomerAddressPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: { type: "array", items: { $ref: "#/components/schemas/CustomerAddress" } },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      CustomerAddressCreateInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label", "countryCode", "postalCode", "admin1Code", "prefecture", "admin2Code", "city", "addressLine1"],
+        properties: {
+          label: { type: "string", minLength: 1, maxLength: 50 },
+          countryCode: { type: "string", enum: ["JP"] },
+          postalCode: { type: "string", pattern: "^\\d{3}[-－]?\\d{4}$" },
+          admin1Code: { type: "string", pattern: "^\\d{2}$" },
+          prefecture: { type: "string", minLength: 1, maxLength: 32 },
+          admin2Code: { type: "string", pattern: "^\\d{5}$" },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          addressLine1: { type: "string", minLength: 1, maxLength: 255 },
+          addressLine2: { type: "string", maxLength: 255 },
+          building: { type: "string", maxLength: 255 },
+          isDefault: { type: "boolean" }
+        }
+      },
+      CustomerAddressUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        additionalProperties: false,
+        properties: {
+          label: { type: "string", minLength: 1, maxLength: 50 },
+          countryCode: { type: "string", enum: ["JP"] },
+          postalCode: { type: "string", pattern: "^\\d{3}[-－]?\\d{4}$" },
+          admin1Code: { type: "string", pattern: "^\\d{2}$" },
+          prefecture: { type: "string", minLength: 1, maxLength: 32 },
+          admin2Code: { type: "string", pattern: "^\\d{5}$" },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          addressLine1: { type: "string", minLength: 1, maxLength: 255 },
+          addressLine2: { type: ["string", "null"], maxLength: 255 },
+          building: { type: ["string", "null"], maxLength: 255 },
+          isDefault: { type: "boolean", enum: [true] }
+        }
+      },
       TechnicianSelfProfile: {
         type: "object",
         required: [
@@ -22007,6 +22080,60 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": jsonDataResponse("Updated current customer self-profile", {
             $ref: "#/components/schemas/CustomerSelfProfile"
+          }),
+          ...customerProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/addresses`]: {
+      get: {
+        tags: ["Customer Address"],
+        summary: "List addresses belonging to the authenticated customer profile",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "customer-profile:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Current customer addresses", { $ref: "#/components/schemas/CustomerAddressPage" }),
+          ...customerProfileErrorResponses
+        }
+      },
+      post: {
+        tags: ["Customer Address"],
+        summary: "Create a persisted address for the authenticated customer profile",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "customer-profile:write",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CustomerAddressCreateInput" } } } },
+        responses: {
+          "201": jsonDataResponse("Created customer address", { $ref: "#/components/schemas/CustomerAddress" }),
+          ...customerProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me/addresses/{publicId}`]: {
+      patch: {
+        tags: ["Customer Address"],
+        summary: "Update an address belonging to the authenticated customer profile",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "customer-profile:write",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CustomerAddressUpdateInput" } } } },
+        responses: {
+          "200": jsonDataResponse("Updated customer address", { $ref: "#/components/schemas/CustomerAddress" }),
+          ...customerProfileErrorResponses
+        }
+      },
+      delete: {
+        tags: ["Customer Address"],
+        summary: "Soft-delete an address belonging to the authenticated customer profile",
+        security: [{ bearerAuth: [] }],
+        "x-required-permission": "customer-profile:write",
+        parameters: [{ name: "publicId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": jsonDataResponse("Deleted customer address", {
+            type: "object", additionalProperties: false, required: ["deleted"], properties: { deleted: { type: "boolean", enum: [true] } }
           }),
           ...customerProfileErrorResponses
         }

@@ -64,6 +64,7 @@ import type { SearchQueryRecorderPort } from "./services/search-query-recorder.s
 import type { ShopTaxonomyRepositoryPort } from "./repositories/shop-taxonomy.repository";
 import type { EntityEngagementRepositoryPort } from "./repositories/entity-engagement.repository";
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
+import type { CustomerAddressRepositoryPort } from "./repositories/customer-address.repository";
 import {
   PlatformMembershipRepository,
   type PlatformMembershipRepositoryPort
@@ -209,6 +210,7 @@ import { createCoreReadRoutes } from "./routes/core-read.routes";
 import { createShopTaxonomyRoutes } from "./routes/shop-taxonomy.routes";
 import { createEntityEngagementRoutes } from "./routes/entity-engagement.routes";
 import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
+import { createCustomerAddressRoutes } from "./routes/customer-address.routes";
 import { createShopMembershipRoutes } from "./routes/shop-membership.routes";
 import { createShopMembershipCardPlanRoutes } from "./routes/shop-membership-card-plan.routes";
 import { createShopMembershipCardIssuanceRoutes } from "./routes/shop-membership-card-issuance.routes";
@@ -376,6 +378,7 @@ export interface AppDependencies {
   shopTaxonomyRepository?: ShopTaxonomyRepositoryPort;
   entityEngagementRepository?: EntityEngagementRepositoryPort;
   customerProfileRepository?: CustomerProfileRepositoryPort;
+  customerAddressRepository?: CustomerAddressRepositoryPort;
   shopMembershipRepository?: ShopMembershipRepositoryPort;
   shopMembershipCardPlanRepository?: ShopMembershipCardPlanRepositoryPort;
   shopMembershipCardIssuanceRepository?: ShopMembershipCardIssuanceRepositoryPort;
@@ -756,6 +759,7 @@ export const createApp = (
   mount(["shared", "merchant-admin"], createShopTaxonomyRoutes(config, resolvedDependencies));
   mount("shared", createEntityEngagementRoutes(config, resolvedDependencies));
   mount("merchant-admin", createCustomerProfileRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createCustomerAddressRoutes(config, resolvedDependencies));
   mount("merchant-admin", createShopMembershipRoutes(config, resolvedDependencies));
   mount(
     ["backoffice", "merchant-admin"],
