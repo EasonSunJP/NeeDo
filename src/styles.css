@@ -8298,7 +8298,7 @@ html.im-conversation-scroll-lock #root {
   height: 100dvh;
   height: var(--im-conversation-room-height, 100dvh);
   max-height: none;
-  top: var(--im-visual-viewport-top, 0px);
+  top: var(--im-visual-viewport-top, auto);
   bottom: var(--im-visual-viewport-bottom, 0px);
   left: var(--im-visual-viewport-left, 0px);
   right: var(--im-visual-viewport-right, 0px);

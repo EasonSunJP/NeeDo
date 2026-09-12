@@ -110,7 +110,6 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
           viewport!.height
         );
         const viewportHeight = `${Math.max(1, Math.ceil(viewport!.height))}px`;
-        const viewportTop = Math.max(0, Math.floor(viewport!.offsetTop));
         const viewportBottom = Math.max(
           0,
           Math.floor(layoutHeight - (viewport!.offsetTop + viewport!.height))
@@ -119,15 +118,12 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
           "--im-visual-viewport-height",
           viewportHeight
         );
-        // Pin both vertical edges to the measured visual viewport. Safari can
-        // keep a larger layout viewport while its keyboard is open; a fixed
-        // pixel height alone then leaves a gap between the composer and the
-        // keyboard during toolbar and keyboard animations.
-        element.style.setProperty("--im-conversation-room-height", "auto");
-        element.style.setProperty(
-          "--im-visual-viewport-top",
-          `${viewportTop}px`
-        );
+        // Installed iOS PWAs mis-size fixed elements that simultaneously use
+        // top, bottom, and an automatic height with viewport-fit=cover. Anchor
+        // the room from its bottom edge and give it the measured height so the
+        // composer follows the same reliable positioning model as bottom nav.
+        element.style.setProperty("--im-conversation-room-height", viewportHeight);
+        element.style.setProperty("--im-visual-viewport-top", "auto");
         element.style.setProperty("--im-visual-viewport-bottom", `${viewportBottom}px`);
         element.style.setProperty(
           "--im-visual-viewport-width",
@@ -182,8 +178,8 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
           "--im-visual-viewport-height",
           `${Math.max(1, Math.ceil(viewport!.height))}px`
         );
-        element.style.setProperty("--im-conversation-room-height", "auto");
-        element.style.setProperty("--im-visual-viewport-top", "0px");
+        element.style.setProperty("--im-conversation-room-height", "100dvh");
+        element.style.setProperty("--im-visual-viewport-top", "auto");
         element.style.setProperty("--im-visual-viewport-bottom", "0px");
         element.style.setProperty("--im-visual-viewport-width", "auto");
         element.style.setProperty("--im-visual-viewport-left", "0px");
@@ -193,8 +189,8 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
 
       element.style.setProperty("--im-visual-viewport-height", "100dvh");
       element.style.setProperty("--im-conversation-room-height", "100dvh");
-      element.style.setProperty("--im-visual-viewport-top", "0px");
-      element.style.setProperty("--im-visual-viewport-bottom", "auto");
+      element.style.setProperty("--im-visual-viewport-top", "auto");
+      element.style.setProperty("--im-visual-viewport-bottom", "0px");
       element.style.setProperty("--im-visual-viewport-width", "auto");
       element.style.setProperty("--im-visual-viewport-left", "0px");
       element.style.setProperty("--im-visual-viewport-right", "0px");
