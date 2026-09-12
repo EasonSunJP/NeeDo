@@ -4,8 +4,7 @@ export type MerchantPrimaryModuleKey = "orders" | "roster" | "staff" | "members"
 
 export type MerchantPrimaryModule = {
   key: MerchantPrimaryModuleKey;
-  labelZh: string;
-  labelJa: string;
+  label: string;
   caption: string;
   route: string;
   icon: "sparkles" | "calendar" | "shield" | "heart" | "order" | "menu" | "floor";
@@ -16,32 +15,28 @@ export type MerchantPrimaryModule = {
 export const merchantPrimaryModules: MerchantPrimaryModule[] = [
   {
     key: "orders",
-    labelZh: "预约一览",
-    labelJa: "予約一覧",
+    label: "预约一览",
     caption: "已排与未排预约",
     route: "/merchant/schedule?tab=appointments",
     icon: "sparkles"
   },
   {
     key: "roster",
-    labelZh: "排班",
-    labelJa: "シフト",
+    label: "排班",
     caption: "今日排班与自动化",
     route: "/merchant/schedule",
     icon: "calendar"
   },
   {
     key: "staff",
-    labelZh: "员工",
-    labelJa: "スタッフ",
+    label: "员工",
     caption: "员工与担当",
     route: "/merchant/staff",
     icon: "shield"
   },
   {
     key: "members",
-    labelZh: "会员",
-    labelJa: "会員",
+    label: "会员",
     caption: "会员与会员卡",
     route: "/merchant/member",
     icon: "heart",
@@ -50,8 +45,7 @@ export const merchantPrimaryModules: MerchantPrimaryModule[] = [
   },
   {
     key: "dine_order",
-    labelZh: "点菜",
-    labelJa: "オーダー",
+    label: "点菜",
     caption: "扫码店内单",
     route: "/merchant/dine/orders",
     icon: "order",
@@ -60,8 +54,7 @@ export const merchantPrimaryModules: MerchantPrimaryModule[] = [
   },
   {
     key: "menu",
-    labelZh: "菜单",
-    labelJa: "メニュー",
+    label: "菜单",
     caption: "商品与售罄",
     route: "/merchant/menu",
     icon: "menu",
@@ -70,8 +63,7 @@ export const merchantPrimaryModules: MerchantPrimaryModule[] = [
   },
   {
     key: "floor_control",
-    labelZh: "场控",
-    labelJa: "店内",
+    label: "场控",
     caption: "桌台包厢床位",
     route: "/merchant/floor",
     icon: "floor",

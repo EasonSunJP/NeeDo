@@ -128,7 +128,7 @@ export function MerchantPrimaryNavCarousel({
   return (
     <section className={cn("rounded-[28px] border border-line bg-white p-3 shadow-panel", className)}>
       <div
-        className="scrollbar-none -mt-2 flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain pt-2 md:mt-0 md:grid md:grid-cols-7 md:gap-2 md:overflow-visible md:pt-0"
+        className="scrollbar-none -mt-2 flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain pt-2"
         data-scroll-drag-ignore="true"
         data-testid="merchant-primary-module-viewport"
         onScroll={() => {
@@ -144,7 +144,7 @@ export function MerchantPrimaryNavCarousel({
         ref={viewportRef}
       >
         {pages.map((page, pageIndex) => (
-          <div className="grid min-w-full snap-start grid-cols-4 gap-2 md:contents" key={`merchant-primary-page-${pageIndex}`}>
+          <div className="grid min-w-full snap-start grid-cols-4 gap-2" key={`merchant-primary-page-${pageIndex}`}>
             {page.map((module) => (
               <Link
                 className={cn(
@@ -167,8 +167,7 @@ export function MerchantPrimaryNavCarousel({
                   <MerchantPrimaryIcon icon={module.icon} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[12px] font-black leading-[14px] min-[380px]:text-[13px] min-[380px]:leading-4">{module.labelZh}</span>
-                  <span className="mt-1 hidden truncate text-[10px] font-bold text-ink/38 sm:block">{module.labelJa}</span>
+                  <span className="block text-[12px] font-black leading-[14px] min-[380px]:text-[13px] min-[380px]:leading-4">{translateText(module.label, language)}</span>
                 </span>
               </Link>
             ))}
@@ -176,7 +175,7 @@ export function MerchantPrimaryNavCarousel({
               Array.from({ length: 4 - page.length }).map((_, index) => (
                 <div
                   aria-hidden="true"
-                  className="aspect-square rounded-[18px] border border-dashed border-line bg-paper/50 md:hidden"
+                  className="aspect-square rounded-[18px] border border-dashed border-line bg-paper/50"
                   key={`merchant-primary-empty-${pageIndex}-${index}`}
                 />
               ))
@@ -187,7 +186,7 @@ export function MerchantPrimaryNavCarousel({
       <NavigationPageIndicators
         activePage={activePage}
         ariaLabel={translateText("店铺导航分页", language)}
-        className="mt-3 md:hidden"
+        className="mt-3"
         getPageLabel={(pageNumber) => translateText("切换到第 {page} 页", language).replace("{page}", String(pageNumber))}
         onSelectPage={(pageIndex) => {
           const viewport = viewportRef.current;
