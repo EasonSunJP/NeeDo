@@ -177,7 +177,7 @@ describe("content media HTTP API", () => {
     );
   });
 
-  it("accepts APNG and valid large-dimension images under the existing content route contract", async () => {
+  it("rejects APNG and excessive decoded dimensions at the content route", async () => {
     const fixture = await createFixture(true, true);
     const validLargePng = await createValidExcessivePixelPng();
 
@@ -187,13 +187,15 @@ describe("content media HTTP API", () => {
       .set("Authorization", `Bearer ${fixture.token}`)
       .set("Content-Type", "image/png")
       .send(validTwoFrameApng)
-      .expect(201);
+      .expect(400)
+      .expect((response) => expect(response.body.message).toBe("error.content.media_invalid"));
     await request(fixture.app)
       .post("/api/v1/backoffice/content/media")
       .set("Authorization", `Bearer ${fixture.token}`)
       .set("Content-Type", "image/png")
       .send(validLargePng)
-      .expect(201);
+      .expect(400)
+      .expect((response) => expect(response.body.message).toBe("error.content.media_invalid"));
   });
 
   it("rejects empty, unsupported, and oversized uploads with stable content errors", async () => {

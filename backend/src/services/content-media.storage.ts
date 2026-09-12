@@ -2,9 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import sharp from "sharp";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
+import { ImageUploadValidator } from "./image-upload-validator.service";
+import type { ServerImageUploadPurpose } from "./image-upload-profiles";
 
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 export const CONTENT_MEDIA_MAX_DECODED_PIXELS = 25_000_000;
@@ -123,13 +124,18 @@ export type ContentMediaValidationProfile =
 export interface ContentMediaStorageInput {
   bytes: Buffer;
   mimeType: ContentMediaMimeType;
+  purpose?: Extract<ServerImageUploadPurpose, "carousel" | "shop-presentation" | "service-cover" | "social">;
   validationProfile?: ContentMediaValidationProfile;
 }
 
 export interface PreparedContentMedia {
   fileKey: string;
   checksumSha256: string;
+  hasAlpha?: boolean;
+  height?: number;
   mimeType: ContentMediaMimeType;
+  pages?: number;
+  width?: number;
 }
 
 export interface StoredContentMedia extends PreparedContentMedia {
@@ -188,6 +194,7 @@ const canonicalizeStorageDirectorySync = (directory: string): string => {
 
 export class ContentMediaFileStorage implements ContentMediaStoragePort {
   private readonly maxBytes: number;
+  private readonly validator = new ImageUploadValidator();
 
   public constructor(
     private readonly directory: string,
@@ -211,44 +218,34 @@ export class ContentMediaFileStorage implements ContentMediaStoragePort {
     if (!metadata || !metadata.matches(input.bytes)) {
       throw this.invalid();
     }
-    const validationProfile =
-      input.validationProfile ?? CONTENT_MEDIA_VALIDATION_PROFILES.signature;
-    if (validationProfile === CONTENT_MEDIA_VALIDATION_PROFILES.decodedSingleFrame) {
-      if (
-        (input.mimeType === "image/png" && hasUnsupportedPngAnimation(input.bytes)) ||
-        (input.mimeType === "image/jpeg" && hasUnsupportedJpegMultiPicture(input.bytes))
-      ) {
-        throw this.invalid();
-      }
-      try {
-        const decoder = sharp(input.bytes, {
-          failOn: "warning",
-          limitInputPixels: CONTENT_MEDIA_MAX_DECODED_PIXELS,
-          sequentialRead: true
-        });
-        const decoded = await decoder.metadata();
-        if (
-          decoded.format !== metadata.decodedFormat ||
-          !decoded.width ||
-          !decoded.height ||
-          (decoded.pages ?? 1) > 1 ||
-          decoded.width * decoded.height > CONTENT_MEDIA_MAX_DECODED_PIXELS
-        ) {
-          throw this.invalid();
-        }
-        await decoder.clone().stats();
-      } catch (error) {
-        if (error instanceof AppError) {
-          throw error;
-        }
-        throw this.invalid();
-      }
+    void input.validationProfile;
+    if (
+      (input.mimeType === "image/png" && hasUnsupportedPngAnimation(input.bytes)) ||
+      (input.mimeType === "image/jpeg" && hasUnsupportedJpegMultiPicture(input.bytes))
+    ) {
+      throw this.invalid();
     }
-    const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
+    let validated;
+    try {
+      validated = await this.validator.validate({
+        bytes: input.bytes,
+        declaredMimeType: input.mimeType,
+        purpose: input.purpose ?? "social"
+      });
+    } catch (error) {
+      if (error instanceof AppError && error.message === "error.image_upload.too_large") {
+        throw this.tooLarge();
+      }
+      throw this.invalid();
+    }
     return {
-      checksumSha256,
-      fileKey: `${checksumSha256}.${metadata.extension}`,
-      mimeType: input.mimeType
+      checksumSha256: validated.checksumSha256,
+      fileKey: `${validated.checksumSha256}.${metadata.extension}`,
+      hasAlpha: validated.hasAlpha,
+      height: validated.height,
+      mimeType: validated.mimeType,
+      pages: validated.pages,
+      width: validated.width
     };
   }
 

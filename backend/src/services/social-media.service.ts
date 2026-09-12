@@ -23,6 +23,8 @@ export interface CreateSocialMediaUploadInput {
   fileName: string;
   fileSize: number;
   checksumSha256: string;
+  width?: number | null;
+  height?: number | null;
   createdAt: Date;
   context: AuthRequestContext;
 }
@@ -55,7 +57,11 @@ export class SocialMediaService {
       : { identityId: actor.currentIdentityId ?? actor.userId };
     let stored: Awaited<ReturnType<ContentMediaStoragePort["save"]>>;
     try {
-      stored = await this.storage.save({ bytes: input.bytes, mimeType: input.mimeType });
+      stored = await this.storage.save({
+        bytes: input.bytes,
+        mimeType: input.mimeType,
+        purpose: "social"
+      });
     } catch (error) {
       throw this.normalizeStorageError(error);
     }
@@ -72,6 +78,8 @@ export class SocialMediaService {
         fileName,
         fileSize: input.bytes.length,
         checksumSha256: stored.checksumSha256,
+        width: stored.width ?? null,
+        height: stored.height ?? null,
         createdAt: input.now,
         context
       });

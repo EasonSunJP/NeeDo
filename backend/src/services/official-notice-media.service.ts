@@ -22,6 +22,8 @@ export interface CreateOfficialNoticeMediaRepositoryInput {
   fileName: string;
   altText: string | null;
   checksumSha256: string;
+  width?: number | null;
+  height?: number | null;
   createdAt: Date;
   context: AuthRequestContext;
 }
@@ -89,6 +91,8 @@ export class OfficialNoticeMediaService {
           fileName: input.fileName,
           altText: input.caption,
           checksumSha256: stored.checksumSha256,
+          width: stored.width ?? prepared.width ?? null,
+          height: stored.height ?? prepared.height ?? null,
           createdAt: input.now,
           context
         });

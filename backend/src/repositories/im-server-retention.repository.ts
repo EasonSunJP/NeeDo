@@ -23,6 +23,8 @@ export interface RegisterImMediaUploadInput {
   url: string;
   mimeType: string;
   checksumSha256: string;
+  width: number | null;
+  height: number | null;
   purgeAt: Date;
 }
 
@@ -53,6 +55,8 @@ export class ImServerRetentionRepository
         mimeType: input.mimeType,
         usageType: "im_message",
         checksumSha256: input.checksumSha256,
+        width: input.width,
+        height: input.height,
         purgeAt: input.purgeAt
       },
       select: { id: true }

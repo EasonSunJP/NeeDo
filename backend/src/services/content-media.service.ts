@@ -24,6 +24,8 @@ export interface CreateContentMediaRepositoryInput {
   fileName?: string;
   altText: string | null;
   checksumSha256: string;
+  width?: number | null;
+  height?: number | null;
   createdAt: Date;
   context: AuthRequestContext;
 }
@@ -66,9 +68,11 @@ export class ContentMediaService {
     input: UploadContentMediaInput,
     scope?: UploadContentMediaScope
   ): Promise<ContentMediaProjection> {
-    const prepared = await this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
+    const purpose = scope ? "shop-presentation" : "carousel";
+    const storageInput = { bytes: input.bytes, mimeType: input.mimeType, purpose } as const;
+    const prepared = await this.storage.prepare(storageInput);
     return this.repository.withChecksumLock(prepared.checksumSha256, async (locked) => {
-      const stored = await this.storage.save({ bytes: input.bytes, mimeType: input.mimeType });
+      const stored = await this.storage.save(storageInput);
       try {
         return await locked.create({
           entityType: scope?.entityType ?? "content_publication_upload",
@@ -81,6 +85,8 @@ export class ContentMediaService {
           usageType: scope?.usageType,
           altText: input.altText,
           checksumSha256: stored.checksumSha256,
+          width: stored.width ?? prepared.width ?? null,
+          height: stored.height ?? prepared.height ?? null,
           createdAt: input.now,
           context
         });

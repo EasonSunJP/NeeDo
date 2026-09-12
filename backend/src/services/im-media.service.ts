@@ -61,6 +61,8 @@ export class ImMediaService {
         url,
         mimeType: stored.mimeType,
         checksumSha256: stored.checksumSha256,
+        width: stored.width ?? null,
+        height: stored.height ?? null,
         purgeAt: new Date(this.now().getTime() + 60 * 60 * 1_000)
       });
     } catch (error) {

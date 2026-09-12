@@ -3,6 +3,7 @@ import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { basename, join, resolve, sep } from "node:path";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
+import { ImageUploadValidator } from "./image-upload-validator.service";
 
 const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -63,6 +64,8 @@ export interface PreparedOfficialNoticeMedia {
   fileKey: string;
   checksumSha256: string;
   mimeType: OfficialNoticeMediaMimeType;
+  width?: number | null;
+  height?: number | null;
 }
 
 export interface StoredOfficialNoticeMedia extends PreparedOfficialNoticeMedia {
@@ -77,6 +80,7 @@ export interface OfficialNoticeMediaStoragePort {
 }
 
 export class OfficialNoticeMediaFileStorage implements OfficialNoticeMediaStoragePort {
+  private readonly imageValidator = new ImageUploadValidator();
   public constructor(
     private readonly directory: string,
     private readonly maxBytes = DEFAULT_MAX_BYTES
@@ -88,11 +92,31 @@ export class OfficialNoticeMediaFileStorage implements OfficialNoticeMediaStorag
     }
     const format = metadata[input.mimeType];
     if (!format || !format.matches(input.bytes)) throw this.invalid();
+    let width: number | null = null;
+    let height: number | null = null;
+    if (input.mimeType.startsWith("image/")) {
+      try {
+        const validated = await this.imageValidator.validate({
+          bytes: input.bytes,
+          declaredMimeType: input.mimeType,
+          purpose: "official-notice"
+        });
+        width = validated.width;
+        height = validated.height;
+      } catch (error) {
+        if (error instanceof AppError && error.message === "error.image_upload.too_large") {
+          throw this.tooLarge();
+        }
+        throw this.invalid();
+      }
+    }
     const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
     return {
       checksumSha256,
       fileKey: `${checksumSha256}.${format.extension}`,
-      mimeType: input.mimeType
+      height,
+      mimeType: input.mimeType,
+      width
     };
   }
 

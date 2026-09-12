@@ -103,17 +103,15 @@ describe("ContentMediaFileStorage", () => {
     await expect(storage.read(stored.fileKey)).resolves.toEqual(bytes);
   });
 
-  it("keeps the legacy signature profile for APNG and valid images above the cover pixel limit", async () => {
+  it("rejects APNG and valid images above the public upload dimension contract", async () => {
     const storage = new ContentMediaFileStorage("/unused");
     const validLargePng = await createValidExcessivePixelPng();
 
     expect(validLargePng.length).toBeLessThanOrEqual(8 * 1024 * 1024);
-    await expect(
-      storage.prepare({ bytes: validTwoFrameApng, mimeType: "image/png" })
-    ).resolves.toMatchObject({ mimeType: "image/png" });
-    await expect(
-      storage.prepare({ bytes: validLargePng, mimeType: "image/png" })
-    ).resolves.toMatchObject({ mimeType: "image/png" });
+    await expect(storage.prepare({ bytes: validTwoFrameApng, mimeType: "image/png" }))
+      .rejects.toMatchObject({ message: "error.content.media_invalid" });
+    await expect(storage.prepare({ bytes: validLargePng, mimeType: "image/png" }))
+      .rejects.toMatchObject({ message: "error.content.media_invalid" });
   });
 
   it("accepts an ordinary progressive JPEG", async () => {

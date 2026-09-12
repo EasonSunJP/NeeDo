@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CustomerAvatarFileStorage } from "../src/services/customer-avatar.storage";
 
+const validPngBase64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
 describe("CustomerAvatarFileStorage", () => {
   it("writes validated image bytes under a content hash and returns the public URL", async () => {
     const tempDirectory = await mkdtemp(join(tmpdir(), "needo-customer-avatar-"));
@@ -13,7 +16,7 @@ describe("CustomerAvatarFileStorage", () => {
     );
 
     try {
-      const result = await storage.save("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB");
+      const result = await storage.save(`data:image/png;base64,${validPngBase64}`);
 
       expect(result.url).toMatch(
         /^http:\/\/localhost:3000\/media\/customer-avatars\/[a-f0-9]{64}\.png$/
@@ -59,12 +62,14 @@ describe("CustomerAvatarFileStorage", () => {
         statusCode: 400
       });
 
-      const imageDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
+      const imageDataUrl = `data:image/png;base64,${validPngBase64}`;
       const first = await storage.save(imageDataUrl);
       const second = await storage.save(imageDataUrl);
 
       expect(second).toEqual(first);
-      await expect(stat(first.absolutePath)).resolves.toMatchObject({ size: 24 });
+      await expect(stat(first.absolutePath)).resolves.toMatchObject({
+        size: Buffer.from(validPngBase64, "base64").length
+      });
     } finally {
       await rm(tempDirectory, { recursive: true, force: true });
     }
