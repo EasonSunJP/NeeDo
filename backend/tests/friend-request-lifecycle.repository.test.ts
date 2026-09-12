@@ -112,7 +112,17 @@ describe("RealtimeRepository friend request lifecycle", () => {
       },
       include: expect.any(Object)
     });
-    expect(tx.notification.create).toHaveBeenCalledTimes(1);
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: "FRIEND_REQUEST",
+        title: "notification.friend_request.created.title",
+        body: "notification.friend_request.created.body",
+        payload: {
+          eventCode: "im.friend_request.created",
+          friendRequestId: 19
+        }
+      })
+    });
     expect(tx.userIdentity.count).toHaveBeenCalledWith({
       where: {
         deletedAt: null,

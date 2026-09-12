@@ -370,6 +370,126 @@ export function resolveFormalNotificationText(value: string, language: Language)
   return formalNotificationTranslations[value]?.[language] ?? value;
 }
 
+const orderStatusLabels: Record<string, Record<Language, string>> = {
+  pending: { zh: "待确认", "zh-Hant": "待確認", ja: "確認待ち", en: "Pending", ko: "확인 대기" },
+  confirmed: { zh: "已确认", "zh-Hant": "已確認", ja: "確認済み", en: "Confirmed", ko: "확인됨" },
+  inService: { zh: "服务中", "zh-Hant": "服務中", ja: "サービス中", en: "In service", ko: "서비스 중" },
+  awaitingCheckout: { zh: "待结账", "zh-Hant": "待結帳", ja: "お会計待ち", en: "Awaiting checkout", ko: "결제 대기" },
+  awaitingPaymentConfirmation: { zh: "等待确认收款", "zh-Hant": "等待確認收款", ja: "入金確認待ち", en: "Awaiting payment confirmation", ko: "결제 확인 대기" },
+  completed: { zh: "已完成", "zh-Hant": "已完成", ja: "完了", en: "Completed", ko: "완료" },
+  cancelled: { zh: "已取消", "zh-Hant": "已取消", ja: "キャンセル済み", en: "Cancelled", ko: "취소됨" }
+};
+
+const notificationCopy: Record<string, Record<Language, string>> = {
+  friendRequest: {
+    zh: "你收到了新的好友申请。",
+    "zh-Hant": "你收到了新的好友申請。",
+    ja: "新しい友だち申請が届きました。",
+    en: "You have a new friend request.",
+    ko: "새 친구 요청이 도착했습니다."
+  },
+  socialMention: {
+    zh: "有人提醒你查看一条动态。",
+    "zh-Hant": "有人提醒你查看一則動態。",
+    ja: "新しい投稿を見るようメンションされました。",
+    en: "Someone mentioned you in a post.",
+    ko: "새 게시물에서 회원님을 언급했습니다."
+  },
+  orderGeneric: {
+    zh: "预约状态已更新。",
+    "zh-Hant": "預約狀態已更新。",
+    ja: "予約状況が更新されました。",
+    en: "Your booking status was updated.",
+    ko: "예약 상태가 업데이트되었습니다."
+  },
+  systemGeneric: {
+    zh: "你有一条新的系统通知。",
+    "zh-Hant": "你有一則新的系統通知。",
+    ja: "新しいシステム通知があります。",
+    en: "You have a new system notification.",
+    ko: "새 시스템 알림이 있습니다."
+  }
+};
+
+function notificationPayload(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function payloadString(payload: Record<string, unknown>, key: string, maxLength = 120): string | null {
+  const value = payload[key];
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized && normalized.length <= maxLength ? normalized : null;
+}
+
+function normalizedOrderStatus(value: string | null): string | null {
+  if (!value) return null;
+  if (value === "in_service") return "inService";
+  if (value === "awaiting_checkout") return "awaitingCheckout";
+  if (value === "awaiting_payment_confirmation") return "awaitingPaymentConfirmation";
+  return orderStatusLabels[value] ? value : null;
+}
+
+function localizedOrderStatusChange(
+  payload: Record<string, unknown>,
+  language: Language
+): string | null {
+  const fromStatus = normalizedOrderStatus(payloadString(payload, "fromStatus"));
+  const toStatus = normalizedOrderStatus(payloadString(payload, "toStatus"));
+  if (!fromStatus || !toStatus) return null;
+
+  const from = orderStatusLabels[fromStatus][language];
+  const to = orderStatusLabels[toStatus][language];
+  const serviceName = payloadString(payload, "serviceName");
+  if (language === "ja") return serviceName
+    ? `${serviceName}の状態が「${from}」から「${to}」に更新されました。`
+    : `予約状況が「${from}」から「${to}」に更新されました。`;
+  if (language === "en") return serviceName
+    ? `${serviceName} status changed from ${from} to ${to}.`
+    : `Booking status changed from ${from} to ${to}.`;
+  if (language === "ko") return serviceName
+    ? `${serviceName} 상태가 ‘${from}’에서 ‘${to}’로 변경되었습니다.`
+    : `예약 상태가 ‘${from}’에서 ‘${to}’로 변경되었습니다.`;
+  if (language === "zh-Hant") return serviceName
+    ? `${serviceName}的狀態已從「${from}」更新為「${to}」。`
+    : `預約狀態已從「${from}」更新為「${to}」。`;
+  return serviceName
+    ? `${serviceName}的状态已从“${from}”更新为“${to}”。`
+    : `预约状态已从“${from}”更新为“${to}”。`;
+}
+
+export function resolveFormalNotificationContent(
+  notification: RealtimeNotification,
+  language: Language
+): string {
+  const payload = notificationPayload(notification.payload);
+  const eventCode = payloadString(payload, "eventCode");
+  const kind = payloadString(payload, "kind");
+
+  if (kind === "official_notice") {
+    return notification.body.trim() || notification.title.trim() || notificationCopy.systemGeneric[language];
+  }
+
+  const translatedBody = formalNotificationTranslations[notification.body]?.[language];
+  if (translatedBody) return translatedBody;
+
+  if (eventCode === "booking.order_status_changed" || notification.type === "orderStatus") {
+    return localizedOrderStatusChange(payload, language) ?? notificationCopy.orderGeneric[language];
+  }
+
+  if (eventCode === "im.friend_request.created" || notification.type === "friendRequest") {
+    return notificationCopy.friendRequest[language];
+  }
+
+  if (eventCode === "social.post_mention" || kind === "post_mention") {
+    return notificationCopy.socialMention[language];
+  }
+
+  return notificationCopy.systemGeneric[language];
+}
+
 export function mapFormalNotification(
   notification: RealtimeNotification,
   profiles: Record<string, SocialProfile>,
@@ -389,7 +509,7 @@ export function mapFormalNotification(
     postId: typeof payload.postId === "number" ? String(payload.postId) : undefined,
     createdAt: notification.createdAt,
     read: Boolean(notification.readAt),
-    content: resolveFormalNotificationText(notification.body || notification.title, language)
+    content: resolveFormalNotificationContent(notification, language)
   };
 }
 

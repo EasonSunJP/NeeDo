@@ -3401,9 +3401,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           actorUserId: input.requesterUserId,
           actorIdentityId: requesterIdentityId,
           type: NotificationType.FRIEND_REQUEST,
-          title: "New friend request",
-          body: "You have a new friend request.",
-          payload: { friendRequestId: friendRequest.id }
+          title: "notification.friend_request.created.title",
+          body: "notification.friend_request.created.body",
+          payload: {
+            eventCode: "im.friend_request.created",
+            friendRequestId: friendRequest.id
+          }
         }
       });
       await tx.auditLog.create({
@@ -5191,11 +5194,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             actorUserId: input.actorUserId,
             actorIdentityId,
             type: NotificationType.ORDER_STATUS,
-            title: "Order status updated",
-            body: `${input.serviceName} changed from ${input.fromStatus} to ${input.toStatus}.`,
+            title: "notification.order_status_changed.title",
+            body: "notification.order_status_changed.body",
             payload: {
+              eventCode: "booking.order_status_changed",
               orderId: input.orderId,
               orderNo: input.orderNo,
+              serviceName: input.serviceName,
               fromStatus: input.fromStatus,
               toStatus: input.toStatus
             }
