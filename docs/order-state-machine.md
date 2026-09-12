@@ -191,6 +191,16 @@ The frontend is connected incrementally:
 
 This keeps Step 10 focused on the transaction chain without opening Request, wallet, IM, Social, or subscription flows.
 
+### Order timeline display boundary
+
+The append-only order histories, service events, performance revisions, audit logs, and their original reason fields remain the internal source of truth. Portal and operations timelines do not render those raw reason values directly.
+
+- Customer timelines show localized order-state semantics and explicitly submitted participant timeline comments. Technician-performance revisions are not customer-visible.
+- Technician timelines additionally show localized business descriptions for technician-performance revisions. A performance revision's dedicated `publicReason` may be shown when it is non-empty business prose; internal-code, QA, debug, payload, fixture, and numeric-only values fall back to the localized fixed description.
+- Operations and merchant timelines show localized event kinds and approved business snapshots such as add-on service name, duration, and amount. Status-history and service-event reasons are never rendered as public copy. Generic timeline bubbles do not render `internalNote`, numeric actor identifiers, event enums, QA references, or raw payloads.
+- Explicit `ORDER_COMMENT_ADDED` records are the participant-visible business-note channel. Internal review evidence and debugging notes remain in protected audit/API data and require a purpose-built authorized audit surface rather than the generic order timeline.
+- Unknown status values fail closed to a localized generic “order status updated” label instead of exposing the raw value.
+
 ### Service-window test override
 
 Operations administrators can change the audited `anytimeServiceTestEnabled` platform setting from System Settings. During the current test stage, the default is `true`.

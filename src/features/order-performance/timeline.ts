@@ -1,12 +1,24 @@
 import type { ContactEventTimelineEntry } from "../../components/mobile/ContactEventTimeline";
 import {
-  formatApiOrderDateTime,
   type BookingOrder
 } from "../booking/api";
-import { statusLabel } from "../../lib/utils";
+import type { Language } from "../../i18n/translations";
+import {
+  displayablePublicBusinessReason,
+  formatOrderTimelineDate,
+  orderStatusTimelineMessage,
+  orderTimelineActorName,
+  orderTimelineText,
+  performanceTimelineDisplay,
+  type OrderTimelineAudience
+} from "./timelineDisplay";
 
 export function buildFormalOrderTimelineEvents(
-  order: BookingOrder
+  order: BookingOrder,
+  options: { audience: OrderTimelineAudience; language: Language } = {
+    audience: "customer",
+    language: "zh"
+  }
 ): ContactEventTimelineEntry[] {
   const timelineEvents =
     order.timelineEvents && order.timelineEvents.length > 0
@@ -22,70 +34,51 @@ export function buildFormalOrderTimelineEvents(
         }));
 
   return [...timelineEvents]
+    .filter((event) => event.type === "ORDER_COMMENT_ADDED" || event.type === "ORDER_STATUS_CHANGED" || options.audience !== "customer")
     .sort(
       (left, right) =>
         Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
         left.id.localeCompare(right.id)
     )
     .map((event) => {
-      const actorName = event.actorUserId ? `#${event.actorUserId}` : "系统";
+      const actorName = orderTimelineActorName(null, options.language);
 
       if (event.type === "ORDER_COMMENT_ADDED") {
         return {
           actorAvatarSrc: event.actorAvatarUrl ?? undefined,
-          actorName: event.actorDisplayName,
-          actorRole: "评论",
-          atLabel: formatApiOrderDateTime(event.createdAt),
+          actorName: orderTimelineActorName(event.actorDisplayName, options.language),
+          actorRole: orderTimelineText("评论", options.language),
+          atLabel: formatOrderTimelineDate(event.createdAt, options.language),
           id: event.id,
           message: event.body,
-          title: "评论",
+          title: orderTimelineText("评论", options.language),
           tone: "green" as const
         };
       }
 
       if (event.type === "ORDER_STATUS_CHANGED") {
+        const message = orderStatusTimelineMessage(event.toStatus, options.language);
         return {
           actorName,
-          actorRole: "预约状态",
-          atLabel: formatApiOrderDateTime(event.createdAt),
+          actorRole: orderTimelineText("订单状态", options.language),
+          atLabel: formatOrderTimelineDate(event.createdAt, options.language),
           id: event.id,
-          message:
-            event.publicReason ?? `${event.fromStatus ?? "created"} → ${event.toStatus}`,
-          title: statusLabel(event.toStatus),
+          message,
+          title: message,
           tone: event.toStatus === "cancelled" ? "red" : "green"
         };
       }
 
-      const performanceCopy = {
-        TECHNICIAN_CANCEL_CLASSIFIED: {
-          role: "技师原因取消",
-          fallback: "已计入技师原因取消记录",
-          tone: "red" as const
-        },
-        TECHNICIAN_UNCOMPLETED_CLASSIFIED: {
-          role: "技师未完单",
-          fallback: "已计入技师未完单记录",
-          tone: "red" as const
-        },
-        SPECIAL_CANCELLATION_APPLIED: {
-          role: "特殊取消已生效",
-          fallback: "本单已从接单率计算中排除",
-          tone: "green" as const
-        },
-        SPECIAL_CANCELLATION_REVOKED: {
-          role: "特殊取消已撤销",
-          fallback: "本单已恢复计入接单率计算",
-          tone: "red" as const
-        }
-      }[event.type];
+      const performanceCopy = performanceTimelineDisplay(event.type, options.language);
+      const publicReason = displayablePublicBusinessReason(event.publicReason);
 
       return {
         actorName,
-        actorRole: performanceCopy.role,
-        atLabel: formatApiOrderDateTime(event.createdAt),
+        actorRole: performanceCopy.label,
+        atLabel: formatOrderTimelineDate(event.createdAt, options.language),
         id: event.id,
-        message: event.publicReason ?? performanceCopy.fallback,
-        title: performanceCopy.role,
+        message: publicReason ?? performanceCopy.message,
+        title: performanceCopy.label,
         tone: performanceCopy.tone
       };
     });
