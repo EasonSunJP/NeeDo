@@ -1172,6 +1172,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       }
       const reciprocalContactCount = await this.client.contact.count({
         where: {
+          source: "friend_request",
           deletedAt: null,
           OR: [
             {
@@ -2533,13 +2534,69 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     input: PaginationInput
   ): Promise<PaginatedResponse<ContactPayload>> {
     const pagination = toPrismaPagination(input);
+    const directConversations = await this.client.conversation.findMany({
+      where: {
+        type: ConversationType.DIRECT,
+        deletedAt: null,
+        participants: {
+          some: { identityId, hiddenAt: null, deletedAt: null }
+        }
+      },
+      select: {
+        participants: {
+          where: { deletedAt: null },
+          select: {
+            identityId: true,
+            identity: { select: { isActive: true, deletedAt: true } }
+          }
+        }
+      }
+    });
+    const directPeerIdentityIds = Array.from(
+      new Set(
+        directConversations.flatMap((conversation) => {
+          if (
+            conversation.participants.length !== 2 ||
+            conversation.participants.some(
+              (participant) => !participant.identity.isActive || participant.identity.deletedAt
+            )
+          ) {
+            return [];
+          }
+          return conversation.participants
+            .filter((participant) => participant.identityId !== identityId)
+            .map((participant) => participant.identityId);
+        })
+      )
+    );
     const where: Prisma.ContactWhereInput = {
       ownerIdentityId: identityId,
       deletedAt: null,
       contactUser: {
         deletedAt: null,
         isActive: true
-      }
+      },
+      contactIdentity: {
+        deletedAt: null,
+        isActive: true
+      },
+      OR: [
+        {
+          source: "friend_request",
+          contactIdentity: {
+            ownedContacts: {
+              some: {
+                contactIdentityId: identityId,
+                source: "friend_request",
+                deletedAt: null
+              }
+            }
+          }
+        },
+        {
+          contactIdentityId: { in: directPeerIdentityIds }
+        }
+      ]
     };
     const [list, total] = await Promise.all([
       this.client.contact.findMany({
