@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatLocalizedImChatRecordTitle } from "../../features/im/chat-records";
 import { entityEngagementApi } from "../../features/entity-engagement/api";
@@ -27,6 +27,10 @@ function favoriteAt(index: number) {
 }
 
 const favorite = favoriteAt(7);
+
+function LocationProbe() {
+  return <output data-testid="location-probe">{useLocation().pathname}</output>;
+}
 
 function formalPage(list: ReturnType<typeof favoriteAt>[], page: number) {
   return {
@@ -206,6 +210,178 @@ describe("UserFavoritesPage", () => {
       "お気に入りの削除に失敗しました。もう一度お試しください",
     );
     expect(document.body.textContent).toContain("LifeDance 港区店");
+  });
+
+  it("opens shop, technician, and service cards through their formal public-ID routes", async () => {
+    const entityRows: EntityFavoriteListItem[] = [
+      {
+        targetType: "shop",
+        publicId: "shop0000000001",
+        isFavorited: true,
+        favoriteCount: 3,
+        favoritedAt: "2026-09-09T00:00:00.000Z",
+        card: {
+          kind: "shop",
+          name: "麻布十番超级按摩",
+          description: "深夜疗愈",
+          address: "東京都港区麻布十番",
+          imageUrl: null,
+          rating: 4.9,
+          reviewCount: 32,
+          completedOrderCount: 126,
+          shareCount: 8,
+        },
+      },
+      {
+        targetType: "technician",
+        publicId: "s0000000001",
+        isFavorited: true,
+        favoriteCount: 5,
+        favoritedAt: "2026-09-09T00:00:00.000Z",
+        card: {
+          kind: "technician",
+          name: "技师 Mika",
+          description: "肩颈护理",
+          imageUrl: null,
+          languages: ["日本語"],
+          rating: 4.8,
+          completedOrderCount: 50,
+          shareCount: 4,
+        },
+      },
+      {
+        targetType: "service",
+        publicId: "11111111-1111-4111-8111-111111111111",
+        isFavorited: true,
+        favoriteCount: 7,
+        favoritedAt: "2026-09-09T00:00:00.000Z",
+        card: {
+          kind: "service",
+          name: "全身调理",
+          description: "90 分钟",
+          imageUrl: null,
+          priceAmount: 12000,
+          currency: "JPY",
+          durationMinutes: 90,
+          usageCount: 12,
+          shareCount: 2,
+          isBookable: true,
+          shopPublicId: "shop0000000001",
+          shopAddress: "東京都港区",
+          tags: ["调理"],
+        },
+      },
+    ];
+    const entityApi = {
+      listFavorites: vi.fn(async () => ({
+        list: entityRows,
+        total: entityRows.length,
+        page: 1,
+        page_size: 100,
+      })),
+      setFavorite: vi.fn(async () => ({})),
+    };
+
+    await act(async () =>
+      root.render(
+        <MemoryRouter initialEntries={["/me/favorites"]}>
+          <UserFavoritesPage api={makeApi()} entityApi={entityApi} language="zh" />
+          <LocationProbe />
+        </MemoryRouter>,
+      ),
+    );
+    await flush();
+
+    const expectedLinks = [
+      ["查看店铺 麻布十番超级按摩", "/stores/shop0000000001"],
+      ["查看技师 技师 Mika", "/profiles/technician/s0000000001"],
+      ["查看服务 全身调理", "/services/11111111-1111-4111-8111-111111111111"],
+    ] as const;
+    for (const [label, href] of expectedLinks) {
+      const link = container.querySelector<HTMLAnchorElement>(
+        `a[aria-label="${label}"]`,
+      );
+      expect(link?.getAttribute("href")).toBe(href);
+      expect(link?.tabIndex).toBe(0);
+      link?.focus();
+      expect(document.activeElement).toBe(link);
+    }
+
+    await act(async () =>
+      container
+        .querySelector<HTMLAnchorElement>('a[aria-label="查看店铺 麻布十番超级按摩"]')
+        ?.click(),
+    );
+    expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe(
+      "/stores/shop0000000001",
+    );
+  });
+
+  it("does not invent a detail route for a missing public ID and keeps removal independent", async () => {
+    const invalidFavorite = {
+      targetType: "shop",
+      publicId: "",
+      isFavorited: true,
+      favoriteCount: 1,
+      favoritedAt: "2026-09-09T00:00:00.000Z",
+      card: {
+        kind: "shop",
+        name: "缺少公开 ID 的店铺",
+        description: null,
+        address: "東京都港区",
+        imageUrl: null,
+        rating: 4.5,
+        reviewCount: 2,
+        completedOrderCount: 3,
+        shareCount: 0,
+      },
+    } as EntityFavoriteListItem;
+    const removableFavorite: EntityFavoriteListItem = {
+      ...invalidFavorite,
+      publicId: "shop0000000002",
+      card: {
+        ...invalidFavorite.card,
+        name: "可独立移除的店铺",
+      },
+    };
+    const entityApi = {
+      listFavorites: vi.fn(async () => ({
+        list: [invalidFavorite, removableFavorite],
+        total: 2,
+        page: 1,
+        page_size: 100,
+      })),
+      setFavorite: vi.fn(async () => ({})),
+    };
+
+    await act(async () =>
+      root.render(
+        <MemoryRouter initialEntries={["/me/favorites"]}>
+          <UserFavoritesPage api={makeApi()} entityApi={entityApi} language="zh" />
+          <LocationProbe />
+        </MemoryRouter>,
+      ),
+    );
+    await flush();
+
+    expect(container.textContent).toContain("缺少公开 ID 的店铺");
+    expect(
+      container.querySelector('a[aria-label="查看店铺 缺少公开 ID 的店铺"]'),
+    ).toBeNull();
+    const removableRow = Array.from(container.querySelectorAll("li")).find((row) =>
+      row.textContent?.includes("可独立移除的店铺"),
+    );
+    const remove = removableRow?.querySelector<HTMLButtonElement>("button");
+    expect(remove?.closest("a")).toBeNull();
+    await act(async () => remove?.click());
+    await flush();
+    expect(entityApi.setFavorite).toHaveBeenCalledWith(
+      { targetType: "shop", publicId: "shop0000000002" },
+      false,
+    );
+    expect(container.querySelector('[data-testid="location-probe"]')?.textContent).toBe(
+      "/me/favorites",
+    );
   });
 
   it("uses one canonical bottom-nav-free route with shared back, search, and close controls", () => {
