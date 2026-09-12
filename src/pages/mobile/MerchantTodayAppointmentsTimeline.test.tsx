@@ -204,5 +204,43 @@ describe("MerchantTodayAppointmentsTimeline", () => {
 
     expect(container.querySelector('a[href="/merchant/today-appointments"]')?.getAttribute("aria-label")).toBe("本日の予約を表示");
     expect(container.querySelector('a[href="/merchant/revenue"]')?.getAttribute("aria-label")).toBe("売上を表示");
+    expect(container.textContent).toContain("本日の予約");
+    expect(container.textContent).toContain("売上");
+    expect(container.textContent).toContain("予約可能枠");
+  });
+
+  it("distinguishes localized summary loading, failure, and empty states", async () => {
+    localeState.language = "ja";
+    const onRetry = vi.fn();
+    const renderMetrics = async (summaryStatus: "loading" | "error" | "empty") => {
+      await act(async () => {
+        root.render(
+          <MemoryRouter>
+            <MerchantWorkbenchMetrics
+              availableScheduleSlotsValue="—"
+              onRetry={onRetry}
+              onlineEmployeeValue="3 人"
+              revenueValue="—"
+              summaryStatus={summaryStatus}
+              todayAppointmentsValue="—"
+            />
+          </MemoryRouter>
+        );
+      });
+    };
+
+    await renderMetrics("loading");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("本日の店舗サマリーを読み込んでいます");
+    expect(container.textContent).not.toContain("加载中");
+
+    await renderMetrics("error");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("本日の店舗サマリーを読み込めませんでした");
+    const retry = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "本日のサマリーを再読み込み");
+    expect(retry).toBeDefined();
+    await act(async () => retry?.click());
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    await renderMetrics("empty");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("本日は予約、売上、予約可能枠がありません");
   });
 });

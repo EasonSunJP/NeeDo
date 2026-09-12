@@ -29,6 +29,8 @@ describe("formal checkout progress navigation", () => {
   });
 
   it("renders current and completed arrows as active while exposing one current step", () => {
+    window.localStorage.setItem("needo.language", "zh");
+    window.localStorage.setItem("needo.language.mode", "manual");
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);

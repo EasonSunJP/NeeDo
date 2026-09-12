@@ -3,9 +3,27 @@ import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i
 import { contentPublicationTranslations } from "../features/content-publication/i18n";
 import { affiliateMarketplaceTranslations } from "../features/affiliate-marketplace/i18n";
 import { translateImUiText } from "../features/im/ui-copy";
+import type { Language } from "./translations";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("keeps employee schedule booking states and accessibility labels as complete localized phrases", () => {
+    const expected = {
+      "待确认预约": { zh: "待确认预约", "zh-Hant": "待確認預約", ja: "確認待ちの予約", en: "Booking awaiting confirmation", ko: "확인 대기 예약" },
+      "已确认预约": { zh: "已确认预约", "zh-Hant": "已確認預約", ja: "確定済みの予約", en: "Confirmed booking", ko: "확정된 예약" },
+      "打开排班标签显示选项": { zh: "打开排班标签显示选项", "zh-Hant": "開啟排班標籤顯示選項", ja: "シフトラベルの表示設定を開く", en: "Open schedule label display options", ko: "근무표 라벨 표시 설정 열기" },
+      "关闭排班标签遮罩": { zh: "关闭排班标签遮罩", "zh-Hant": "關閉排班標籤選項", ja: "シフトラベルの表示設定を閉じる", en: "Close schedule label display options", ko: "근무표 라벨 표시 설정 닫기" },
+      "关闭显示标签": { zh: "关闭显示标签", "zh-Hant": "關閉顯示標籤", ja: "表示ラベル設定を閉じる", en: "Close label display settings", ko: "표시 라벨 설정 닫기" },
+      "切换排班展示范围": { zh: "切换排班展示范围", "zh-Hant": "切換排班顯示範圍", ja: "シフト表示範囲を切り替える", en: "Change schedule view", ko: "근무표 표시 범위 전환" },
+    } as const;
+
+    for (const [source, localized] of Object.entries(expected)) {
+      for (const { code } of languages) {
+        expect(translateText(source, code), `${source}:${code}`).toBe(localized[code]);
+      }
+    }
+  });
+
   it("localizes the disabled invoice feature explanation in all five App languages", () => {
     const expected = {
       zh: "发票功能暂未开放",
@@ -1482,6 +1500,22 @@ describe("translations", () => {
       en: "Read-only booking history",
       ko: "읽기 전용 예약 내역"
     });
+  });
+
+  it("keeps service-search page copy natural across every supported non-source language", () => {
+    const expected = {
+      "zh-Hant": ["輸入搜尋關鍵字", "搜尋", "正在載入搜尋結果", "正在搜尋服務與分類。"],
+      ja: ["キーワードを入力", "検索", "検索結果を読み込んでいます", "サービスとカテゴリを検索しています。"],
+      en: ["Enter keywords", "Search", "Loading search results", "Searching services and categories."],
+      ko: ["검색어 입력", "검색", "검색 결과를 불러오는 중", "서비스와 카테고리를 검색하고 있습니다."]
+    } as const;
+
+    for (const [language, values] of Object.entries(expected)) {
+      expect(translateText("输入搜索关键词", language as Exclude<Language, "zh">)).toBe(values[0]);
+      expect(translateText("搜索", language as Exclude<Language, "zh">)).toBe(values[1]);
+      expect(translateText("正在载入真实数据", language as Exclude<Language, "zh">)).toBe(values[2]);
+      expect(translateText("正在从 /api/v1/search 与 /api/v1/categories 读取分类和搜索结果。", language as Exclude<Language, "zh">)).toBe(values[3]);
+    }
   });
 
 });

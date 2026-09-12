@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { httpClient } from "../../api/httpClient";
-import { coreReadApi, coreReadIdFromRoute } from "../../features/core-read/api";
+import { coreReadApi, coreReadIdFromRoute, mapCoreServiceToServiceItem, type CoreServiceDetail } from "../../features/core-read/api";
 import { buildServiceTagLabels, ServiceReviewCard } from "./ServiceDetailPage";
 import serviceDetailSource from "./ServiceDetailPage.tsx?raw";
 
@@ -43,6 +43,57 @@ describe("ServiceDetailPage formal service routes", () => {
     expect(serviceDetailSource).toContain("if (!apiId)");
     expect(serviceDetailSource).toContain("serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : null");
     expect(serviceDetailSource).toContain("服务链接不可用");
+  });
+
+  it("renders a formal home_visit service through the home-service badge path", () => {
+    const service = mapCoreServiceToServiceItem({
+      id: 80,
+      publicId: "service0000000080",
+      name: "訪問リラクゼーション 90分",
+      description: "利用者の住所へ訪問する正式サービス",
+      category: {
+        id: 2,
+        code: "massage_home_visit",
+        name: "上门按摩",
+        nameJa: "訪問マッサージ",
+        nameEn: "Home-visit Massage",
+        parentId: null,
+        iconUrl: null,
+        sortOrder: 1,
+        isActive: true,
+        createdAt: "2026-09-01T00:00:00.000Z",
+        updatedAt: "2026-09-01T00:00:00.000Z"
+      },
+      shop: {
+        id: 16,
+        publicId: "shop0000000016",
+        name: "LifeDance",
+        city: "東京都",
+        address: "東京都中央区銀座1-2-3",
+        coverUrl: null,
+        reviewSummary: { ratingAverage: "5.00", reviewCount: 1, latestReviewAt: null, highlights: [] },
+        completedOrderCount: 1,
+        favoriteCount: 0,
+        shareCount: 0,
+        serviceCategories: [],
+        businessKeywords: []
+      },
+      technician: null,
+      city: "東京都",
+      priceAmount: "12000.00",
+      currency: "JPY",
+      durationMinutes: 90,
+      usageCount: 1,
+      coverUrl: null,
+      reviewSummary: { ratingAverage: "5.00", reviewCount: 1, latestReviewAt: null, highlights: [] },
+      serviceMode: "home_visit",
+      mediaAssets: [],
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z"
+    } satisfies CoreServiceDetail);
+
+    expect(service.mode).toBe("home");
+    expect(serviceDetailSource).toContain('service.mode === "home" ? "上门服务" : "到店服务"');
   });
 
   it("opens a formal technician through the canonical public profile path", () => {

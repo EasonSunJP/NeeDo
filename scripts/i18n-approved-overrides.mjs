@@ -46,6 +46,30 @@ export const approvedI18nTranslationOverrides = [
     "日程",
     { ja: "スケジュール" }
   ],
+  [
+    "待确认预约",
+    { "zh-Hant": "待確認預約", ja: "確認待ちの予約", en: "Booking awaiting confirmation", ko: "확인 대기 예약" }
+  ],
+  [
+    "已确认预约",
+    { "zh-Hant": "已確認預約", ja: "確定済みの予約", en: "Confirmed booking", ko: "확정된 예약" }
+  ],
+  [
+    "打开排班标签显示选项",
+    { "zh-Hant": "開啟排班標籤顯示選項", ja: "シフトラベルの表示設定を開く", en: "Open schedule label display options", ko: "근무표 라벨 표시 설정 열기" }
+  ],
+  [
+    "关闭排班标签遮罩",
+    { "zh-Hant": "關閉排班標籤選項", ja: "シフトラベルの表示設定を閉じる", en: "Close schedule label display options", ko: "근무표 라벨 표시 설정 닫기" }
+  ],
+  [
+    "关闭显示标签",
+    { "zh-Hant": "關閉顯示標籤", ja: "表示ラベル設定を閉じる", en: "Close label display settings", ko: "표시 라벨 설정 닫기" }
+  ],
+  [
+    "切换排班展示范围",
+    { "zh-Hant": "切換排班顯示範圍", ja: "シフト表示範囲を切り替える", en: "Change schedule view", ko: "근무표 표시 범위 전환" }
+  ],
   // Manual terminology lock: chat/privacy group wording uses グループ in Japanese.
   [
     "群",

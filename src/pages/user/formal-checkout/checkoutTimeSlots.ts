@@ -67,11 +67,19 @@ export function resolveInitialCheckoutSlotId(
   nowMs: number = Date.now()
 ) {
   const sameDay = slotsForCheckoutDate(slots, date);
-  const persisted = Number.isInteger(persistedSlotId)
-    ? sameDay.find((slot) => slot.id === persistedSlotId && isCheckoutSlotBookable(slot, nowMs))
-    : null;
-  const requested = requestedTime
-    ? sameDay.find((slot) => getTokyoSlotParts(slot.startsAt)?.time === requestedTime && isCheckoutSlotBookable(slot, nowMs))
-    : null;
-  return persisted?.id ?? requested?.id ?? sameDay.find((slot) => isCheckoutSlotBookable(slot, nowMs))?.id ?? null;
+  if (Number.isInteger(persistedSlotId)) {
+    const persisted = sameDay.find((slot) => (
+      slot.id === persistedSlotId
+      && isCheckoutSlotBookable(slot, nowMs)
+      && (!requestedTime || getTokyoSlotParts(slot.startsAt)?.time === requestedTime)
+    ));
+    return persisted?.id ?? null;
+  }
+  if (requestedTime) {
+    return sameDay.find((slot) => (
+      getTokyoSlotParts(slot.startsAt)?.time === requestedTime
+      && isCheckoutSlotBookable(slot, nowMs)
+    ))?.id ?? null;
+  }
+  return sameDay.find((slot) => isCheckoutSlotBookable(slot, nowMs))?.id ?? null;
 }

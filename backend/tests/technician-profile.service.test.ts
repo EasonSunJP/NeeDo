@@ -116,6 +116,7 @@ describe("TechnicianProfileService", () => {
     );
     expect(profileNotifier.notifyProfileUpdated).toHaveBeenCalledWith({
       identityId: 19,
+      includePersonalIdentities: true,
       userId: 9
     });
   });

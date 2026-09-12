@@ -3,7 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
   type BackofficeOrderDetailPayload,
-  type BackofficeOrderPayload
+  type BackofficeOrderPayload,
+  type PaginatedApiPayload
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import { AdminLayout } from "../../components/admin/AdminLayout";
@@ -112,9 +113,13 @@ export function OrdersAdminPage() {
   const [relatedEntity, setRelatedEntity] = useState<OrderRelatedEntity>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [detailRevision, setDetailRevision] = useState(0);
-  const [orderRows, setOrderRows] = useState<BackofficeOrderPayload[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const [orderPage, setOrderPage] = useState<PaginatedApiPayload<BackofficeOrderPayload>>({
+    list: [],
+    total: 0,
+    page: 1,
+    page_size: pageSize
+  });
+  const [requestedPage, setRequestedPage] = useState(1);
   const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -142,25 +147,28 @@ export function OrdersAdminPage() {
     setLoadStatus("loading");
     setLoadError("");
     backofficeRealDataApi.orders("backoffice", {
-      page,
+      page: requestedPage,
       pageSize,
       status: statusFilter === "all" ? undefined : statusFilter
     }).then((response) => {
       if (!current) return;
-      setOrderRows(response.list);
-      setTotal(response.total);
+      const responseTotalPages = Math.max(1, Math.ceil(response.total / response.page_size));
+      if (response.page > responseTotalPages) {
+        setRequestedPage(responseTotalPages);
+        return;
+      }
+      setOrderPage(response);
       setLoadStatus("success");
     }).catch((error: unknown) => {
       if (!current) return;
-      setOrderRows([]);
-      setTotal(0);
+      setOrderPage({ list: [], total: 0, page: requestedPage, page_size: pageSize });
       setLoadError(describeOperationsOrderError(error));
       setLoadStatus("error");
     });
     return () => {
       current = false;
     };
-  }, [page, revision, statusFilter]);
+  }, [requestedPage, revision, statusFilter]);
 
   useEffect(() => {
     if (selectedOrderId === null) return;
@@ -184,7 +192,7 @@ export function OrdersAdminPage() {
     };
   }, [detailRevision, selectedOrderId]);
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages = Math.max(1, Math.ceil(orderPage.total / orderPage.page_size));
   const openOrder = (order: BackofficeOrderPayload) => {
     setSelectedOrderId(order.id);
     setSelectedOrder(null);
@@ -364,7 +372,7 @@ export function OrdersAdminPage() {
 
   const changeFilter = (value: StatusFilter) => {
     setStatusFilter(value);
-    setPage(1);
+    setRequestedPage(1);
     setSelectedOrderId(null);
     setSelectedOrder(null);
     setDetailStatus("idle");
@@ -398,12 +406,12 @@ export function OrdersAdminPage() {
             <Button className="mt-4" onClick={() => setRevision((value) => value + 1)}>重新加载运营订单</Button>
           </section>
         ) : null}
-        {loadStatus === "success" && orderRows.length === 0 ? (
+        {loadStatus === "success" && orderPage.list.length === 0 ? (
           <section className="rounded-lg border border-dashed border-line bg-white px-5 py-10 text-center">
             <p className="text-sm font-black text-ink/55">当前没有符合条件的正式订单</p>
           </section>
         ) : null}
-        {loadStatus === "success" && orderRows.length > 0 ? (
+        {loadStatus === "success" && orderPage.list.length > 0 ? (
           <>
             <DataTable<BackofficeOrderPayload>
               columns={[
@@ -418,15 +426,16 @@ export function OrdersAdminPage() {
                 { key: "detail", title: "详情", render: (row) => <Button size="sm" variant="secondary" onClick={() => openOrder(row)}>查看</Button> }
               ]}
               footerPlacement="inline"
-              pageSize={pageSize}
-              rows={orderRows}
+              pageSize={orderPage.page_size}
+              rows={orderPage.list}
+              showFooter={false}
               showFooterActions={false}
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-4 py-3">
-              <span className="text-sm font-bold text-ink/55">服务器共 {total} 条，第 {page} / {totalPages} 页</span>
+              <span className="text-sm font-bold text-ink/55">服务器共 {orderPage.total} 条，第 {orderPage.page} / {totalPages} 页</span>
               <div className="flex gap-2">
-                <Button disabled={page <= 1} size="sm" variant="secondary" onClick={() => setPage((value) => Math.max(1, value - 1))}>上一页</Button>
-                <Button disabled={page >= totalPages} size="sm" variant="secondary" onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>下一页</Button>
+                <Button disabled={orderPage.page <= 1} size="sm" variant="secondary" onClick={() => setRequestedPage(Math.max(1, orderPage.page - 1))}>上一页</Button>
+                <Button disabled={orderPage.page >= totalPages} size="sm" variant="secondary" onClick={() => setRequestedPage(Math.min(totalPages, orderPage.page + 1))}>下一页</Button>
               </div>
             </div>
           </>

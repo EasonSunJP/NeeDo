@@ -12,6 +12,8 @@ import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { bookingApi, mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import type { Order } from "../../types/domain";
@@ -95,8 +97,11 @@ function describeOrderLoadError(error: unknown) {
 }
 
 function OrderProviderInfoCard({ order }: { order: Order }) {
+  const { language } = useOptionalI18n();
   const detailTo = getProviderDetailPath(order);
   const providerName = getProviderName(order);
+  const serviceName = order.itemName.trim() || translateText("未设置", language);
+  const shopName = order.storeName?.trim() || translateText("未设置", language);
   const appointmentTime = parseOrderDateTime(order.bookedAt) ? order.bookedAt.trim() : null;
   const avatar =
     order.mode === "store"
@@ -104,13 +109,19 @@ function OrderProviderInfoCard({ order }: { order: Order }) {
       : "/images/generated/profiles/ai-profile-01.jpg";
   const card = (
     <div className="user-orders-provider-card grid grid-cols-[58px_minmax(0,1fr)] gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,var(--client-bg)_14%)] p-3 shadow-none">
-      <AvatarImage alt={providerName} className="h-[58px] w-[58px]" src={avatar} />
-      <div className="min-w-0">
+      <AvatarImage alt={providerName} className="col-start-1 row-start-1 h-[58px] w-[58px]" src={avatar} />
+      <div className="col-start-2 row-start-1 min-w-0">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-black text-[color:var(--client-text)]">{providerName}</p>
-            <p className="mt-1 line-clamp-1 text-xs font-bold text-[color:var(--client-muted)]">{order.itemName}</p>
-          </div>
+          <dl className="min-w-0 flex-1 space-y-1.5">
+            <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-baseline gap-2" data-testid="user-order-service-field">
+              <dt className="text-[10px] font-black text-[color:var(--client-primary)]" data-no-i18n>{translateText("服务", language)}</dt>
+              <dd className="min-w-0 truncate text-sm font-black text-[color:var(--client-text)]" data-no-i18n title={serviceName}>{serviceName}</dd>
+            </div>
+            <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-baseline gap-2" data-testid="user-order-shop-field">
+              <dt className="text-[10px] font-black text-[color:var(--client-primary)]" data-no-i18n>{translateText("店铺", language)}</dt>
+              <dd className="min-w-0 truncate text-xs font-bold text-[color:var(--client-text)]" data-no-i18n title={shopName}>{shopName}</dd>
+            </div>
+          </dl>
           <strong className="shrink-0 text-sm font-black text-[color:var(--client-primary)]">{yen(order.amount)}</strong>
         </div>
         <div className="mt-2 flex min-w-0 items-center justify-between gap-3 text-[10px] font-bold text-[color:var(--client-muted)]">
