@@ -211,6 +211,119 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     );
   }
 
+  public async listPublicTechnicianProfileServices(
+    input: PaginationInput & { technicianId: number }
+  ): Promise<PaginatedResponse<TechnicianServicePayload>> {
+    const pagination = toPrismaPagination(input);
+    const now = new Date();
+    const technician = await this.client.technicianProfile.findFirst({
+      where: {
+        id: input.technicianId,
+        deletedAt: null,
+        status: "published",
+        visibility: "public",
+        user: {
+          is: {
+            isActive: true,
+            deletedAt: null,
+            identities: {
+              some: {
+                isActive: true,
+                deletedAt: null,
+                type: { in: ["technician", "service", "s"] },
+                publicIdentifier: {
+                  is: { kind: "S", status: "ACTIVE", deletedAt: null }
+                }
+              }
+            }
+          }
+        }
+      },
+      select: {
+        shopId: true,
+        technicianShopAffiliations: {
+          where: {
+            workStatus: "ACTIVE",
+            activeKey: { not: null },
+            startsAt: { lte: now },
+            OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+            deletedAt: null,
+            shop: {
+              is: {
+                status: "published",
+                deletedAt: null,
+                publicIdentifier: {
+                  is: { kind: "SHOP", status: "ACTIVE", deletedAt: null }
+                },
+                entitySuspensions: {
+                  none: { activeKey: { not: null }, status: "active", deletedAt: null }
+                }
+              }
+            }
+          },
+          select: { shopId: true }
+        }
+      }
+    });
+    const eligibleShopIds = technician
+      ? Array.from(
+          new Set([
+            ...(technician.shopId === null ? [] : [technician.shopId]),
+            ...technician.technicianShopAffiliations.map(({ shopId }) => shopId)
+          ])
+        )
+      : [];
+    if (eligibleShopIds.length === 0) {
+      return buildPaginatedResponse([], 0, input);
+    }
+
+    const where: Prisma.TechnicianServiceWhereInput = {
+      technicianId: input.technicianId,
+      shopId: { in: eligibleShopIds },
+      deletedAt: null,
+      isActive: true,
+      isBookable: true,
+      reviewStatus: "APPROVED",
+      category: { is: { isActive: true, deletedAt: null } },
+      shop: {
+        is: {
+          status: "published",
+          deletedAt: null,
+          publicIdentifier: {
+            is: { kind: "SHOP", status: "ACTIVE", deletedAt: null }
+          },
+          entitySuspensions: {
+            none: { activeKey: { not: null }, status: "active", deletedAt: null }
+          }
+        }
+      },
+      technicianProfile: {
+        is: {
+          id: input.technicianId,
+          deletedAt: null,
+          status: "published",
+          visibility: "public"
+        }
+      }
+    };
+    const [list, total] = await Promise.all([
+      this.client.technicianService.findMany({
+        where,
+        include: technicianServiceCardInclude,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ isRecommended: "desc" }, { sortOrder: "asc" }, { id: "asc" }]
+      }),
+      this.client.technicianService.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      list.map((service) => this.mapTechnicianService(service)),
+      total,
+      input
+    );
+  }
+
   public async findPrimaryTechnicianService(
     technicianId: number
   ): Promise<TechnicianServicePayload | null> {

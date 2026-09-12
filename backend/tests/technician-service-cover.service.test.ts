@@ -108,6 +108,7 @@ const createRepository = (
     listBookingNavigationShopServices: jest.fn(),
     listBookingNavigationTechnicians: jest.fn(),
     listPublicTechnicianServices: jest.fn(),
+    listPublicTechnicianProfileServices: jest.fn(),
     findTechnicianServiceCoverTarget: jest.fn(
       async (
         _input: Parameters<PricingModeRepositoryPort["findTechnicianServiceCoverTarget"]>[0]

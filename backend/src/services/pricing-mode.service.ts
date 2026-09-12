@@ -159,6 +159,9 @@ export interface PricingModeRepositoryPort {
   listTechnicianServicesByProfile: (
     input: PaginationInput & { technicianId: number; activeOnly?: boolean }
   ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
+  listPublicTechnicianProfileServices: (
+    input: PaginationInput & { technicianId: number }
+  ) => Promise<PaginatedResponse<TechnicianServicePayload>>;
   findPrimaryTechnicianService: (technicianId: number) => Promise<TechnicianServicePayload | null>;
   reorderTechnicianServices: (
     input: TechnicianServiceReorderRepositoryInput
@@ -508,6 +511,16 @@ export class PricingModeService {
     return this.repository.listPublicTechnicianServices({
       ...input,
       shopId,
+      technicianId
+    });
+  }
+
+  public listPublicTechnicianProfileServices(
+    technicianId: number,
+    input: PaginationInput
+  ): Promise<PaginatedResponse<TechnicianServicePayload>> {
+    return this.repository.listPublicTechnicianProfileServices({
+      ...input,
       technicianId
     });
   }

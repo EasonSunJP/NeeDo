@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { coreReadApi, type CoreTechnicianDetail } from "../../features/core-read/api";
+import { pricingModeApi } from "../../features/pricing-mode/api";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ProfileDetailPage } from "./ProfileDetailPage";
@@ -88,6 +89,12 @@ function renderPage(initialEntries = ["/profiles/technician/17?view=card"], init
 
 beforeEach(async () => {
   await persistentResourceCache.clearScope("public");
+  vi.spyOn(pricingModeApi, "listPublicTechnicianProfileServices").mockResolvedValue({
+    list: [],
+    total: 0,
+    page: 1,
+    page_size: 20
+  });
   window.history.replaceState({ idx: 0 }, "", "/");
   container = document.createElement("div");
   document.body.appendChild(container);

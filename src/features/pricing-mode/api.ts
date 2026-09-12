@@ -212,5 +212,15 @@ export const pricingModeApi = {
         query
       }
     );
+  },
+
+  listPublicTechnicianProfileServices(technicianId: number, query: { page?: number; pageSize?: number } = {}) {
+    return httpClient.request<PaginatedPricingData<TechnicianServicePayload>>(
+      `/technicians/${technicianId}/services`,
+      {
+        auth: false,
+        query
+      }
+    );
   }
 };

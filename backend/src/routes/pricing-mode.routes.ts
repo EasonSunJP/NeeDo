@@ -21,6 +21,7 @@ import {
   bookingNavigationQuerySchema,
   myTechnicianServiceIdParamSchema,
   pricingModeBodySchema,
+  publicTechnicianProfileServicesParamSchema,
   publicTechnicianServicesParamSchema,
   shopIdParamSchema,
   technicianServiceBodySchema,
@@ -173,6 +174,14 @@ export const createPricingModeRoutes = (
       query: bookingNavigationQuerySchema
     }),
     controller.listPublicTechnicianServices
+  );
+  router.get(
+    "/technicians/:technicianId/services",
+    validateRequest({
+      params: publicTechnicianProfileServicesParamSchema,
+      query: bookingNavigationQuerySchema
+    }),
+    controller.listPublicTechnicianProfileServices
   );
 
   return router;

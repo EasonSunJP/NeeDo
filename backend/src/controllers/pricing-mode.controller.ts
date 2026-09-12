@@ -6,6 +6,7 @@ import {
   bookingNavigationQuerySchema,
   myTechnicianServiceIdParamSchema,
   pricingModeBodySchema,
+  publicTechnicianProfileServicesParamSchema,
   publicTechnicianServicesParamSchema,
   shopIdParamSchema,
   technicianServiceBodySchema,
@@ -295,6 +296,28 @@ export class PricingModeController {
           successResponse(
             await this.service.listPublicTechnicianServices(
               shopId,
+              technicianId,
+              bookingNavigationQuerySchema.parse(request.query)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listPublicTechnicianProfileServices = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { technicianId } = publicTechnicianProfileServicesParamSchema.parse(request.params);
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.service.listPublicTechnicianProfileServices(
               technicianId,
               bookingNavigationQuerySchema.parse(request.query)
             )

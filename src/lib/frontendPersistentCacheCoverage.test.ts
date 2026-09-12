@@ -21,7 +21,7 @@ describe("front-page persistent cache coverage", () => {
 
   it("reuses cached technician information cards across every front-page entry", () => {
     expect(profileDetailSource).toContain("core:technician:");
-    expect(profileDetailSource).toContain("technician:services:");
+    expect(profileDetailSource).toContain("technician:public-profile-services:");
     expect(technicianInfoCardSource).toContain("core:technician:");
     expect(socialProfileSource).toContain("core:technician:");
   });
