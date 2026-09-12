@@ -178,7 +178,7 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf("</MobileShell>")
     );
 
-    expect(statusPanelSource).toContain('className={activeView === "me" ? "mx-4 !w-auto" : undefined}');
+    expect(statusPanelSource).toContain('className={activeView === "me" ? "client-app-margin !w-auto" : undefined}');
   });
 
   it("adds the merchant pricing mode switch beside the privacy switch", () => {

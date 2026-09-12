@@ -124,7 +124,7 @@ export function TechnicianInfoCardRoutePage({ id }: { id: number }) {
         showSpacer={false}
         title="详细信息卡"
       />
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-[calc(env(safe-area-inset-top)+86px)]">
+      <main className="client-app-gutter min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+24px)] pt-[calc(env(safe-area-inset-top)+86px)]">
         {query.data && presentation ? (
           <TechnicianPublicInfoCard
             formalData={presentation.formalData}

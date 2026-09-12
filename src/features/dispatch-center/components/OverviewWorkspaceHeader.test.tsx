@@ -72,7 +72,7 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
 
     expect(summarySource).not.toContain('t("查看详细排班表")');
     expect(source).toContain('data-testid="merchant-current-schedule-detail-action"');
-    expect(source).toContain('className="safe-bottom fixed bottom-0 left-1/2 z-[80] w-full max-w-[480px] -translate-x-1/2 px-4');
+    expect(source).toContain('className="safe-bottom client-app-frame client-app-gutter fixed inset-x-0 bottom-0 z-[80]');
     expect(source).toContain('onClick={() => setScheduleDetailOpen(true)}');
     expect(source).toContain('{formalScheduleLoading ? t("加载正式排班中") : t("查看详细排班表")}');
   });

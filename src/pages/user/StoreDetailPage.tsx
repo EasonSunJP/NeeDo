@@ -206,7 +206,7 @@ type StoreMapDetailCopy = {
 
 const baseBookingDate = new Date(2026, 3, 22);
 const storeBookingCtaButtonClassName = "h-[52px] min-w-[176px] justify-center gap-2 px-7 text-center text-sm";
-const storeBottomActionRowClassName = "mx-auto flex w-full max-w-[888px] items-center gap-3 px-4 pb-2";
+const storeBottomActionRowClassName = "client-app-frame client-app-gutter flex items-center gap-3 pb-2";
 const storeBottomSecondaryButtonClassName = "h-[52px] shrink-0 gap-2 px-5 shadow-[0_12px_26px_rgba(0,0,0,0.20)] backdrop-blur-xl";
 const storeBottomPrimaryButtonClassName = "h-[52px] flex-1 gap-2 px-5 text-sm shadow-[0_12px_30px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]";
 const merchantScheduleEditorHref = "/merchant/schedule?tab=planning";
@@ -4416,13 +4416,12 @@ export function StoreDetailExperience({
       <FloatingHomeHeader
         className="gap-0"
         frameClassName="z-40"
-        maxWidth="1600px"
         panelClassName={cn(floatingHeaderGlassPanelClassName, "border-b-transparent bg-transparent text-[color:var(--client-text)] backdrop-blur-none")}
         showSpacer={false}
         spacerGapPx={0}
       >
         <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
-          <div className="mx-auto w-full max-w-[1480px]">
+          <div className="w-full">
             <div className="flex min-h-[54px] items-start gap-3">
               <button
                 aria-label="返回"

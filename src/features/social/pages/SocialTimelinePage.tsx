@@ -485,13 +485,12 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
         <FloatingHomeHeader
           className="gap-0"
           frameClassName="z-50"
-          maxWidth="1600px"
           panelClassName={floatingHeaderGlassPanelClassName}
           spacerGapPx={0}
           stacked
         >
           <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
-            <div className="mx-auto w-full max-w-[1480px]">
+            <div className="w-full">
               <SharedHomeHeader
                 avatarAlt={
                   scope === "user"

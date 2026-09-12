@@ -139,7 +139,7 @@ export function AffiliateTaskDetailPage() {
         onBack={() => navigate(-1)}
         title={content?.name ?? t("任务详细")}
       />
-      <main className="space-y-5 px-4 pb-40 pt-3">
+      <main className="client-app-gutter space-y-5 pb-40 pt-3">
         {!validTaskId ? (
           <StatusPanel detail={t("请从推荐任务列表重新进入。")} title={t("任务链接无效")} />
         ) : loading ? (
@@ -319,7 +319,7 @@ export function AffiliateTaskDetailPage() {
       </main>
 
       {task ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[480px] border-t border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,transparent)] px-4 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-3 backdrop-blur-xl">
+        <div className="client-app-frame client-app-gutter fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,transparent)] pb-[calc(env(safe-area-inset-bottom)+18px)] pt-3 backdrop-blur-xl">
           <div className="grid grid-cols-[0.8fr_1.2fr] gap-3">
             <Link
               className="grid min-h-14 place-items-center rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] text-sm font-black text-[color:var(--client-text)]"
