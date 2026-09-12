@@ -26,6 +26,7 @@ import {
   rememberPortalAuthorization
 } from "./portalAuthorization";
 import type { AuthMePayload } from "./rbac";
+import { persistentResourceCache } from "../lib/persistentResourceCache";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -2317,6 +2318,20 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(auth.session).toBeNull();
     expect(window.localStorage.getItem(persistedAuthEnvelopeStorageKey)).toBe(previousRaw);
     expect(mocked.authApi.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("physically removes account and merchant-preview resource caches on explicit logout", async () => {
+    mocked.authApi.loginFormal.mockResolvedValue(formalLoginPayload(customerMe));
+    await renderProvider();
+    await invoke(() => auth.loginWithFormalPassword("user", "u0000000007", "secret"));
+    await persistentResourceCache.write("account:7", "calendar:week", { private: "account" });
+    await persistentResourceCache.write("account:7:merchant-preview:12", "calendar:week", { private: "preview" });
+
+    await invoke(() => auth.logout());
+
+    await expect(persistentResourceCache.read("account:7", "calendar:week")).resolves.toBeNull();
+    await expect(persistentResourceCache.read("account:7:merchant-preview:12", "calendar:week"))
+      .resolves.toBeNull();
   });
 
   it("reports the durable logout boundary when both tombstone and server revocation fail", async () => {

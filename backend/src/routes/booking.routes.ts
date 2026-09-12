@@ -7,6 +7,8 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { BookingRepository } from "../repositories/booking.repository";
+import { AuthRepository } from "../repositories/auth.repository";
+import { MerchantShopContextRepository } from "../repositories/merchant-shop-context.repository";
 import { AffiliateCheckoutRepository } from "../repositories/affiliate-checkout.repository";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { FeeRuleRepository } from "../repositories/fee-rule.repository";
@@ -14,6 +16,7 @@ import { LedgerRepository } from "../repositories/ledger.repository";
 import { NdpExchangeRateRepository } from "../repositories/ndp-exchange-rate.repository";
 import { PlatformFeePolicyRepository } from "../repositories/platform-fee-policy.repository";
 import { BookingService } from "../services/booking.service";
+import { SchedulePreloadService } from "../services/schedule-preload.service";
 import { AuditLogService } from "../services/audit-log.service";
 import { FeeCalculationService } from "../services/fee-calculation.service";
 import { LedgerService } from "../services/ledger.service";
@@ -47,6 +50,7 @@ import {
   scheduleSlotCreateBodySchema,
   scheduleSlotDeleteQuerySchema,
   scheduleSlotListQuerySchema,
+  schedulePreloadQuerySchema,
   scheduleSlotUpdateBodySchema,
   technicianManualBookingBodySchema
 } from "../validators/booking.validator";
@@ -109,9 +113,11 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
       dependencies.ndpExchangeRateRepository ?? new NdpExchangeRateRepository(),
       auditLogService
     );
-  const bookingService = new BookingService(
+  const bookingRepository =
     dependencies.bookingRepository ??
-      new BookingRepository(undefined, dependencies.administrativeRegionRepository),
+    new BookingRepository(undefined, dependencies.administrativeRegionRepository);
+  const bookingService = new BookingService(
+    bookingRepository,
     ledgerService,
     dependencies.realtimeService,
     auditLogService,
@@ -158,12 +164,23 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
         }
       }
     ));
-  const controller = new BookingController(bookingService, automationProcessor);
+  const schedulePreloadService = new SchedulePreloadService(
+    dependencies.authRepository ?? new AuthRepository(),
+    dependencies.merchantShopContextRepository ?? new MerchantShopContextRepository(),
+    bookingRepository
+  );
+  const controller = new BookingController(bookingService, automationProcessor, schedulePreloadService);
 
   router.get(
     "/schedule/availability",
     validateRequest({ query: availabilityListQuerySchema }),
     controller.listAvailableSlots
+  );
+  router.get(
+    "/schedule/preload",
+    authenticate(),
+    validateRequest({ query: schedulePreloadQuerySchema }),
+    controller.preloadSchedule
   );
   router.post(
     "/bookings",

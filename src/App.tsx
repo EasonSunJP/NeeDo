@@ -137,6 +137,7 @@ import {
 import { TechnicianApplicationPage } from "./features/identity-applications/TechnicianApplicationPage";
 import { TechnicianShopStayPage } from "./features/technician-shop-stays/TechnicianShopStayPage";
 import { technicianProfileApi } from "./features/core-read/technicianProfileApi";
+import { FormalSchedulePreloadBootstrap } from "./features/scheduling/FormalSchedulePreloadBootstrap";
 import { MerchantApplicationPage } from "./features/identity-applications/MerchantApplicationPage";
 import { AffiliateActivationPage } from "./features/identity-applications/AffiliateActivationPage";
 import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";
@@ -1186,6 +1187,7 @@ export default function App() {
     <RootErrorBoundary>
       <PlatformSettingsProvider>
       <AuthProvider>
+        <FormalSchedulePreloadBootstrap />
         <RealtimeUnreadCountsProvider>
           <I18nProvider>
           <ClientThemeProvider>

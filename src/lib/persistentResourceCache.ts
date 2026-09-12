@@ -20,6 +20,7 @@ export interface PersistentCacheDatabasePort {
   deleteEntry(scope: string, key: string): Promise<void>;
   deleteEntriesByPrefix(scope: string, keyPrefix: string): Promise<void>;
   deleteScope(scope: string): Promise<void>;
+  deleteScopesByPrefix(scopePrefix: string): Promise<void>;
   getEntry(scope: string, key: string): Promise<PersistentCacheEntry | null>;
   getKey(scope: string): Promise<CryptoKey | null>;
   putEntry(entry: PersistentCacheEntry): Promise<void>;
@@ -74,6 +75,29 @@ async function deleteScopeRecords(store: IDBObjectStore, scope: string) {
       }
       const key = cursor.primaryKey;
       if ((Array.isArray(key) && key[0] === scope) || key === scope) cursor.delete();
+      cursor.continue();
+    };
+  });
+}
+
+async function deleteScopePrefixRecords(store: IDBObjectStore, scopePrefix: string) {
+  await new Promise<void>((resolve, reject) => {
+    const request = store.openCursor();
+    request.onerror = () => reject(request.error ?? new Error("error.cache.database_cursor"));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve();
+        return;
+      }
+      const primaryKey = cursor.primaryKey;
+      const scope = Array.isArray(primaryKey) ? primaryKey[0] : primaryKey;
+      if (
+        typeof scope === "string" &&
+        (scope === scopePrefix || scope.startsWith(`${scopePrefix}:`))
+      ) {
+        cursor.delete();
+      }
       cursor.continue();
     };
   });
@@ -150,6 +174,15 @@ export function createIndexedDbPersistentCacheDatabase(factory: IDBFactory): Per
       ]);
       await transactionDone(transaction);
     },
+    async deleteScopesByPrefix(scopePrefix) {
+      const database = await open();
+      const transaction = database.transaction(["entries", "keys"], "readwrite");
+      await Promise.all([
+        deleteScopePrefixRecords(transaction.objectStore("entries"), scopePrefix),
+        deleteScopePrefixRecords(transaction.objectStore("keys"), scopePrefix)
+      ]);
+      await transactionDone(transaction);
+    },
     async getEntry(scope, key) {
       const database = await open();
       const transaction = database.transaction("entries", "readonly");
@@ -198,6 +231,16 @@ export function createMemoryPersistentCacheDatabase() {
       keys.delete(scope);
       for (const [entryKey, entry] of entries) {
         if (entry.scope === scope) entries.delete(entryKey);
+      }
+    },
+    async deleteScopesByPrefix(scopePrefix) {
+      for (const scope of [...keys.keys()]) {
+        if (scope === scopePrefix || scope.startsWith(`${scopePrefix}:`)) keys.delete(scope);
+      }
+      for (const [entryKey, entry] of entries) {
+        if (entry.scope === scopePrefix || entry.scope.startsWith(`${scopePrefix}:`)) {
+          entries.delete(entryKey);
+        }
       }
     },
     async getEntry(scope, key) {
@@ -365,6 +408,10 @@ export function createPersistentResourceCache(input: { database: PersistentCache
       this.lock(scope);
       await input.database.deleteScope(scope);
     },
+    async clearScopePrefix(scopePrefix: string) {
+      this.lockScopePrefix(scopePrefix);
+      await input.database.deleteScopesByPrefix(scopePrefix);
+    },
     async invalidate(scope: string, keyPrefix = "") {
       checkedThisSession.forEach((id) => {
         if (id.startsWith(compositeKey(scope, keyPrefix))) checkedThisSession.delete(id);
@@ -419,6 +466,10 @@ export function createPersistentResourceCache(input: { database: PersistentCache
     },
     peek<T>(scope: string, key: string) {
       return memory.get(compositeKey(scope, key))?.value as T | undefined;
+    },
+    async read<T>(scope: string, key: string): Promise<T | null> {
+      const cached = await read<T>(scope, key);
+      return cached ? cached.value as T : null;
     },
     subscribe<T>(scope: string, key: string, listener: (value: T) => void) {
       const id = compositeKey(scope, key);

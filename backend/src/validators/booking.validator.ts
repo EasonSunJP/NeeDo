@@ -469,6 +469,32 @@ export const scheduleSlotListQuerySchema = boundedDateRange(
     })
 );
 
+export const schedulePreloadQuerySchema = boundedDateRange(
+  z
+    .object({
+      ...paginationQuerySchema,
+      from: isoDateSchema,
+      to: isoDateSchema
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (value.from.getTime() >= value.to.getTime()) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "from must be earlier than to",
+          path: ["to"]
+        });
+      }
+      if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "date range must not exceed 93 days",
+          path: ["to"]
+        });
+      }
+    })
+);
+
 export const scheduleSlotCreateBodySchema = z
   .object({
     serviceId: z.coerce.number().int().positive().optional(),
@@ -550,5 +576,6 @@ export type OrderCancelBody = z.infer<typeof orderCancelBodySchema>;
 export type ManualPaymentConfirmBody = z.infer<typeof manualPaymentConfirmBodySchema>;
 export type ManualPaymentRefundBody = z.infer<typeof manualPaymentRefundBodySchema>;
 export type ScheduleSlotListQuery = z.infer<typeof scheduleSlotListQuerySchema>;
+export type SchedulePreloadQuery = z.infer<typeof schedulePreloadQuerySchema>;
 export type ScheduleSlotCreateBody = z.infer<typeof scheduleSlotCreateBodySchema>;
 export type ScheduleSlotUpdateBody = z.infer<typeof scheduleSlotUpdateBodySchema>;

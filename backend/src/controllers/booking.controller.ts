@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { BookingService } from "../services/booking.service";
+import type { SchedulePreloadService } from "../services/schedule-preload.service";
 import type { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 import { successResponse } from "../utils/api-response";
 import {
@@ -28,6 +29,7 @@ import {
   scheduleSlotCreateBodySchema,
   scheduleSlotDeleteQuerySchema,
   scheduleSlotListQuerySchema,
+  schedulePreloadQuerySchema,
   scheduleSlotUpdateBodySchema,
   technicianManualBookingBodySchema,
   technicianManualBookingIdempotencySchema
@@ -37,8 +39,29 @@ import { getAuthenticatedAccess, getRequestContext } from "../utils/request-cont
 export class BookingController {
   public constructor(
     private readonly bookingService: BookingService,
-    private readonly automationProcessor?: Pick<TechnicianAutomationProcessor, "processBooking">
+    private readonly automationProcessor?: Pick<TechnicianAutomationProcessor, "processBooking">,
+    private readonly schedulePreloadService?: SchedulePreloadService
   ) {}
+
+  public preloadSchedule = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      if (!this.schedulePreloadService) throw new Error("schedule preload service is unavailable");
+      response.status(200).json(
+        successResponse(
+          await this.schedulePreloadService.preload(
+            getAuthenticatedAccess(response),
+            schedulePreloadQuerySchema.parse(request.query)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
 
   public listAvailableSlots = async (
     request: Request,

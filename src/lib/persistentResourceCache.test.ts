@@ -138,4 +138,29 @@ describe("persistent resource cache", () => {
     expect(calendarLoad).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(cardLoad).toHaveBeenCalledTimes(1));
   });
+
+  it("reads a durable value without triggering a refresh", async () => {
+    const database = createMemoryPersistentCacheDatabase();
+    const writer = createPersistentResourceCache({ database });
+    await writer.write("account:9", "calendar:week", { slots: [9] });
+
+    const reader = createPersistentResourceCache({ database });
+    await expect(reader.read<{ slots: number[] }>("account:9", "calendar:week"))
+      .resolves.toEqual({ slots: [9] });
+  });
+
+  it("physically clears an account scope and all of its preview subscopes", async () => {
+    const database = createMemoryPersistentCacheDatabase();
+    const writer = createPersistentResourceCache({ database });
+    await writer.write("account:9", "calendar:week", { private: "account" });
+    await writer.write("account:9:merchant-preview:12", "calendar:week", { private: "preview" });
+    await writer.write("account:90", "calendar:week", { private: "other" });
+
+    await writer.clearScopePrefix("account:9");
+
+    const reader = createPersistentResourceCache({ database });
+    await expect(reader.read("account:9", "calendar:week")).resolves.toBeNull();
+    await expect(reader.read("account:9:merchant-preview:12", "calendar:week")).resolves.toBeNull();
+    await expect(reader.read("account:90", "calendar:week")).resolves.toEqual({ private: "other" });
+  });
 });

@@ -9573,3 +9573,54 @@ html.im-conversation-scroll-lock #root {
   .live-dashboard-empty { min-height: 64px; }
   .live-dashboard-first-error, .live-dashboard-placeholder { min-height: 240px; padding: 16px; }
 }
+@keyframes schedule-cache-refresh-pulse {
+  0%, 20%, 100% { opacity: 0.18; transform: scale(0.72); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.schedule-cache-refresh-ring {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  color: var(--client-primary, #765df6);
+}
+
+.schedule-cache-refresh-dot {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 999px;
+  background: currentColor;
+  transform-origin: 6px 54px;
+  transform: rotate(calc(var(--schedule-dot-index) * 30deg));
+}
+
+.schedule-cache-refresh-dot::after {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: inherit;
+  content: "";
+  animation: schedule-cache-refresh-pulse 1.2s ease-in-out infinite;
+  animation-delay: calc(var(--schedule-dot-index) * -0.1s);
+}
+
+.schedule-cache-refresh-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--client-ink, currentColor);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .schedule-cache-refresh-dot::after { animation: none; opacity: 0.72; }
+}

@@ -11501,6 +11501,50 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           durationMinutes: { type: "integer" }
         }
       },
+      SchedulePreload: {
+        type: "object",
+        additionalProperties: false,
+        required: ["fetchedAt", "merchant", "technician"],
+        properties: {
+          fetchedAt: { type: "string", format: "date-time" },
+          merchant: {
+            anyOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["identityId", "shopId", "list", "total", "page", "page_size"],
+                properties: {
+                  identityId: { type: "integer", minimum: 1 },
+                  shopId: { type: "integer", minimum: 1 },
+                  list: { type: "array", items: { $ref: "#/components/schemas/ScheduleSlot" } },
+                  total: { type: "integer", minimum: 0 },
+                  page: { type: "integer", minimum: 1 },
+                  page_size: { type: "integer", minimum: 1, maximum: 100 }
+                }
+              },
+              { type: "null" }
+            ]
+          },
+          technician: {
+            anyOf: [
+              {
+                type: "object",
+                additionalProperties: false,
+                required: ["identityId", "technicianProfileId", "list", "total", "page", "page_size"],
+                properties: {
+                  identityId: { type: "integer", minimum: 1 },
+                  technicianProfileId: { type: "integer", minimum: 1 },
+                  list: { type: "array", items: { $ref: "#/components/schemas/ScheduleSlot" } },
+                  total: { type: "integer", minimum: 0 },
+                  page: { type: "integer", minimum: 1 },
+                  page_size: { type: "integer", minimum: 1, maximum: 100 }
+                }
+              },
+              { type: "null" }
+            ]
+          }
+        }
+      },
       ScheduleSlotCreateInput: {
         type: "object",
         required: ["startsAt", "endsAt"],
@@ -30213,6 +30257,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ["expectedVersion", "rejectionReason"]
         )
       })
+    },
+    [`${config.API_PREFIX}/schedule/preload`]: {
+      get: {
+        tags: ["Schedule"],
+        summary: "Preload merchant and technician schedules linked to the authenticated account",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Account-scoped schedule preload page", {
+            $ref: "#/components/schemas/SchedulePreload"
+          }),
+          "400": { description: "Invalid or excessive date range" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Account is disabled or identity scope is invalid" }
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/schedule/slots`]: {
       get: {

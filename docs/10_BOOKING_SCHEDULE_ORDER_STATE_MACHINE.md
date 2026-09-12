@@ -99,3 +99,11 @@ Codex 完成本步后，必须输出：
 正式履约时间门禁使用服务器时间与订单持久化快照。`随时服务测试` 关闭时，已确认订单只能从 `startsAt - 30 分钟` 起开始服务；服务中订单只能在服务会话 `expectedEndsAt` 到达后结束。开始与结束分别以 `error.order.service_start_too_early` 和 `error.order.service_end_too_early` 拒绝，且不产生部分状态、会话或事件写入。
 
 运营后台显式开启开关后，仅跳过上述两个时间比较；身份归属、技师服务码、订单状态、未处理追加项目、幂等、付款与结算规则保持不变。订单事务直接读取当前激活的 `PlatformSettingVersion`，缺失设置或默认值均按关闭处理。设计与验证边界见 [Operations Anytime Service Test Design](superpowers/specs/2026-09-11-anytime-service-test-design.md)。
+
+## 2026-09-13 登录后排班预加载与缓存生命周期
+
+- `GET /api/v1/schedule/preload` 仅依据已认证账号在服务端解析其有效商户与技师身份；客户端不能传入店铺或技师作用域。
+- 登录恢复或身份切换完成后，前端异步预取当前 14 天周期，第一页完成后其余分页最多 4 路并发；排班列表查询只选择响应需要的字段。
+- 24 小时内的加密 IndexedDB 排班缓存先显示，同时后台刷新。缓存显示期间在画面中央显示 50% 透明度的 12 点 Loading，`pointer-events: none`，不阻断查看、滚动和点击。
+- 关闭页面或 PWA 不会清空缓存；明确退出登录或切换到其他账号时，会物理删除该账号及其商户预览子作用域的持久缓存。排班写操作继续失效 `calendar:` 缓存。
+- 设计与执行边界见 [设计说明](superpowers/specs/2026-09-13-schedule-login-preload-design.md) 与 [实施计划](superpowers/plans/2026-09-13-schedule-login-preload.md)。

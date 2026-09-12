@@ -7,6 +7,7 @@ import { MobileFullscreenPage } from "../mobile/MobileFullscreenPage";
 import { HolidayCornerBadge } from "./HolidayCornerBadge";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "./ScheduleDraftRangeBlock";
 import { ScheduleViewPicker } from "./ScheduleViewPicker";
+import { ScheduleCacheRefreshIndicator } from "./ScheduleCacheRefreshIndicator";
 import type {
   CalendarParticipantOption,
   CalendarParticipantTimelineRenderInput,
@@ -17,6 +18,7 @@ import { bookingApi, mapBookingOrderToDomainOrder, type BookingOrder, type Booki
 import { loadCustomerOrderWindow } from "../../features/booking/window-loaders";
 import { mapScheduleSlotToCalendarItem } from "../../features/scheduling/api";
 import { loadEveryScopedOrder, loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
+import { readFormalScheduleWindow, refreshFormalScheduleWindow } from "../../features/scheduling/formalScheduleWindowCache";
 import { calendarEventApi, type FormalCalendarEvent, type FormalCalendarEventInput } from "../../features/scheduling/calendar-event-api";
 import { availabilityWindowApi, type AvailabilityWindow } from "../../features/scheduling/availability-window-api";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
@@ -5306,6 +5308,7 @@ export function UnifiedUserCalendar({
   technicians: providedTechnicians
 }: UnifiedUserCalendarProps) {
   const navigate = useNavigate();
+  const { language } = useI18n();
   const { customers, stores, technicians: entityTechnicians } = useEntityStore();
   const technicians = providedTechnicians ?? entityTechnicians;
   const scheduleSnapshot = useScheduleStore();
@@ -5357,6 +5360,7 @@ export function UnifiedUserCalendar({
   const [formalAvailabilityWindows, setFormalAvailabilityWindows] = useState<AvailabilityWindow[]>(() => cachedFormalData?.availabilityWindows ?? []);
   const [formalCalendarEvents, setFormalCalendarEvents] = useState<FormalCalendarEvent[]>([]);
   const [formalDataLoading, setFormalDataLoading] = useState(() => cachedFormalData === undefined);
+  const [formalScheduleCacheRefreshing, setFormalScheduleCacheRefreshing] = useState(false);
   const [formalDataError, setFormalDataError] = useState("");
   const [formalDataReloadKey, setFormalDataReloadKey] = useState(0);
   const formalDataRequestId = useRef(0);
@@ -5384,6 +5388,22 @@ export function UnifiedUserCalendar({
     formalDataRequestId.current = requestId;
     let alive = true;
     const isCurrentRequest = () => alive && formalDataRequestId.current === requestId;
+    const scheduleFrom = parseDateKey(period.startDate);
+    const scheduleTo = parseDateKey(addDays(period.endDate, 1));
+    const scheduleResourceKey = activeScope === "merchant" ? currentStore?.id : currentTechnician?.id;
+    const scheduleWindowCacheInput =
+      formalCacheScope &&
+      scheduleResourceKey &&
+      activeScope !== "user" &&
+      !isMerchantAppointmentStatusMode
+        ? {
+            cacheScope: formalCacheScope,
+            from: scheduleFrom,
+            resourceKey: scheduleResourceKey,
+            scheduleScope: activeScope === "merchant" ? "merchant-admin" as const : "technician" as const,
+            to: scheduleTo
+          }
+        : null;
     const loadFormalDataFromServer = async (): Promise<FormalCalendarCacheValue> => {
       if (activeScope === "user") {
         if (formalOnly) {
@@ -5395,16 +5415,18 @@ export function UnifiedUserCalendar({
         const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
         return { orders: response.list.map(mapBookingOrderToDomainOrder), merchantOrders: [], scheduleSlots: [], availabilityWindows: [] };
       }
-      const from = parseDateKey(period.startDate);
-      const to = parseDateKey(period.endDate);
-      to.setDate(to.getDate() + 1);
+      const from = scheduleFrom;
+      const to = scheduleTo;
       if (isMerchantAppointmentStatusMode) {
         const orders = await loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" });
         return { orders: [], merchantOrders: orders, scheduleSlots: [], availabilityWindows: [] };
       }
       const scope = activeScope === "merchant" ? "merchant-admin" : "technician";
+      const loadSlots = () => loadManagedScheduleWindow(scope, { from, to });
       const [slots, orders, availabilityWindows] = await Promise.all([
-        loadManagedScheduleWindow(scope, { from, to }),
+        scheduleWindowCacheInput
+          ? refreshFormalScheduleWindow(scheduleWindowCacheInput, loadSlots)
+          : loadSlots(),
         activeScope === "technician"
           ? loadEveryScopedOrder({ from: from.toISOString(), to: to.toISOString(), dateMode: "overlaps" })
           : Promise.resolve([]),
@@ -5425,6 +5447,14 @@ export function UnifiedUserCalendar({
       ? persistentResourceCache.subscribe<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey, applyFormalData)
       : () => undefined;
     const loadFormalData = async () => {
+      if (scheduleWindowCacheInput) {
+        const cachedSchedule = await readFormalScheduleWindow(scheduleWindowCacheInput).catch(() => null);
+        if (cachedSchedule && isCurrentRequest()) {
+          setFormalScheduleSlots(cachedSchedule);
+          setFormalDataLoading(false);
+          setFormalScheduleCacheRefreshing(true);
+        }
+      }
       const cached = formalCacheScope
         ? persistentResourceCache.peek<FormalCalendarCacheValue>(formalCacheScope, formalCacheKey)
         : undefined;
@@ -5456,7 +5486,10 @@ export function UnifiedUserCalendar({
           }
         }
       } finally {
-        if (isCurrentRequest()) setFormalDataLoading(false);
+        if (isCurrentRequest()) {
+          setFormalDataLoading(false);
+          setFormalScheduleCacheRefreshing(false);
+        }
       }
     };
     void loadFormalData();
@@ -6202,6 +6235,9 @@ export function UnifiedUserCalendar({
 
   return (
     <UnifiedCalendarSurface data-unified-user-calendar="true">
+      {formalScheduleCacheRefreshing ? (
+        <ScheduleCacheRefreshIndicator label={translateText("加载正式排班中", language)} />
+      ) : null}
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {showSourceDrawer ? <button

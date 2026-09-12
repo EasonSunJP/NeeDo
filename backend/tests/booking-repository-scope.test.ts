@@ -73,6 +73,55 @@ const makeTransitionOrderRecord = (
   affiliateAttributions: []
 });
 
+describe("schedule list projection", () => {
+  it("selects only fields needed by the schedule list payload", async () => {
+    const row = {
+      id: 1,
+      serviceId: 2,
+      technicianServiceId: null,
+      shopId: 3,
+      technicianProfileId: 4,
+      startsAt: new Date("2026-09-13T00:00:00.000Z"),
+      endsAt: new Date("2026-09-13T01:00:00.000Z"),
+      capacity: 1,
+      bookedCount: 0,
+      status: "AVAILABLE",
+      availability: { sourceType: "SHOP" },
+      service: { name: "Aroma", priceAmount: 10000, currency: "JPY", durationMinutes: 60 },
+      technicianService: null,
+      shop: { name: "NeeDo" },
+      technicianProfile: { displayName: "Mika" }
+    };
+    const scheduleSlot = {
+      findMany: jest.fn(async (query: Record<string, unknown>) => {
+        void query;
+        return [row];
+      }),
+      count: jest.fn(async () => 1)
+    };
+    const repository = new BookingRepository({ scheduleSlot } as never);
+
+    await repository.listScheduleSlots({
+      scope: "merchant",
+      shopId: 3,
+      from: new Date("2026-09-13T00:00:00.000Z"),
+      to: new Date("2026-09-14T00:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    });
+
+    const query = scheduleSlot.findMany.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(query).not.toHaveProperty("include");
+    expect(query.select).toMatchObject({
+      id: true,
+      availability: { select: { sourceType: true } },
+      service: { select: { name: true, priceAmount: true, currency: true, durationMinutes: true } },
+      shop: { select: { name: true } },
+      technicianProfile: { select: { displayName: true } }
+    });
+  });
+});
+
 const createCancellationTransaction = () => {
   const current = makeTransitionOrderRecord("PENDING");
   const next = makeTransitionOrderRecord("CANCELLED");
