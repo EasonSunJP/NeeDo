@@ -59,6 +59,15 @@ describe("UserCenterPage", () => {
     expect(source).toContain("<InfoTooltipTrigger");
   });
 
+  it("marks the contact-support account entry with the shared Test badge", () => {
+    expect(source).toMatch(
+      /label: "联系客服", caption: "退款、改期、投诉风控", to: "\/support", test: true/u,
+    );
+    expect(source).toMatch(
+      /accountSettings\.map\([\s\S]*?entry\.test[\s\S]*?<TestFeatureBadge/u,
+    );
+  });
+
   it("places eKYC, shop membership and NeeDo benefits in the requested lower-grid order", () => {
     const reviewIndex = source.indexOf('label: "我的评价"');
     const ekycIndex = source.indexOf('label: "eKYC本人确认"');
