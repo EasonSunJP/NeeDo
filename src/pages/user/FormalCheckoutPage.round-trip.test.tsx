@@ -413,6 +413,8 @@ async function changeInput(label: string, value: string) {
 
 beforeEach(() => {
   window.history.replaceState({ idx: 1 }, "", "/");
+  window.localStorage.setItem("needo.language", "zh");
+  window.localStorage.setItem("needo.language.mode", "manual");
   vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
     callback(0);
     return 1;
@@ -919,6 +921,50 @@ describe("formal checkout technician-card round trip", () => {
     })));
   });
 
+  it("renders complete natural Japanese checkout copy and localized accessibility labels", async () => {
+    window.localStorage.setItem("needo.language", "ja");
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue({ ...service, technician: null });
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
+      list: [{ ...slots[0]!, technicianProfileId: null, technicianName: null }],
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00&mode=store"]}>
+            <Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("予約内容の確認"));
+    const text = container.textContent ?? "";
+    for (const expected of [
+      "担当スタッフは店舗が手配します",
+      "店舗が予約を確定すると、予約詳細に担当スタッフが表示されます。",
+      "女性スタッフを希望",
+      "事前連絡を希望",
+      "予約前に日時、住所、支払い方法をご確認ください。",
+      "予約後の状況は予約詳細で確認できます。",
+      "この予約の NDP 利用額と精算結果は、サービス完了後の正式な精算記録で確定します。",
+      "現地で支払う",
+      "この内容で予約"
+    ]) {
+      expect(text).toContain(expected);
+    }
+    for (const mixed of ["由店舗", "確定后", "スタッフ优先", "请事前", "予約前请", "提交后", "本次注文", "到着后"]) {
+      expect(text).not.toContain(mixed);
+    }
+    expect(container.querySelector('nav[aria-label="予約確認項目"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="予約時間を選択"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="予約確認を閉じる"]')).not.toBeNull();
+  });
+
   it("expires the selected slot at its start boundary and never submits the stale selection", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-02T22:59:59.000Z"));
@@ -964,6 +1010,43 @@ describe("formal checkout technician-card round trip", () => {
       .find((button) => button.textContent?.includes("确定预约"))!;
     expect(confirm.disabled).toBe(true);
     await click(confirm);
+    expect(createBooking).not.toHaveBeenCalled();
+  });
+
+  it("does not silently replace an expired route slot with another technician or time", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-02T22:00:00.000Z").getTime());
+    vi.spyOn(coreReadApi, "getServiceDetail").mockResolvedValue(service);
+    const getTechnicianDetail = vi.spyOn(coreReadApi, "getTechnicianDetail");
+    vi.spyOn(bookingApi, "listAvailability").mockResolvedValue({
+      list: [
+        { ...slots[0]!, status: "booked", bookedCount: 1 },
+        slots[1]!
+      ],
+      total: 2,
+      page: 1,
+      page_size: 100
+    });
+    const createBooking = vi.spyOn(bookingApi, "createBooking");
+
+    await act(async () => {
+      root.render(
+        <ClientThemeProvider>
+          <MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00&scheduleSlotId=101&mode=store"]}>
+            <Routes>
+              <Route element={<CheckoutPage />} path="/checkout/:serviceId" />
+            </Routes>
+          </MemoryRouter>
+        </ClientThemeProvider>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("所选预约时段已失效"));
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="选择预约时间"]')?.textContent).toContain("—");
+    expect(container.textContent).not.toContain("Haruka");
+    expect(getTechnicianDetail).not.toHaveBeenCalled();
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("确定预约"))!;
+    expect(confirm.disabled).toBe(true);
     expect(createBooking).not.toHaveBeenCalled();
   });
 });
