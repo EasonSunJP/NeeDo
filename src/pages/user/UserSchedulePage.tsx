@@ -62,7 +62,7 @@ export function UserSchedulePage() {
     <MobileShell navItems={userNavItems} showBottomNav={false}>
       {header}
 
-      <div className="space-y-3 px-4 pb-8 pt-2">
+      <div className="client-app-gutter space-y-3 pb-8 pt-2">
         <UnifiedUserCalendar
           currentCustomer={customer}
           formalOnly

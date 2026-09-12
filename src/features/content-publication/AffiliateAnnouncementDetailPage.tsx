@@ -160,7 +160,7 @@ export function AffiliateAnnouncementDetailPage() {
         onBack={() => navigate(-1)}
         title={copy.detailTitle}
       />
-      <main className="px-4 pb-28 pt-4">
+      <main className="client-app-gutter pb-28 pt-4">
         {status === "loading" ? (
           <section
             className="rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-6 text-sm font-bold text-[color:var(--client-muted)]"

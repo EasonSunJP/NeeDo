@@ -190,7 +190,7 @@ export function NdpGuidePage() {
           "--client-edge-mask-bottom-strong-stop": "70%"
         } as CSSProperties}
       />
-      <footer className="safe-nav-bottom pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-14">
+      <footer className="safe-nav-bottom client-app-frame client-app-gutter pointer-events-none fixed inset-x-0 bottom-0 z-40 pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-14">
         <PrimaryButton className="pointer-events-auto w-full" onClick={() => navigate(-1)}>
           返回预约页面
         </PrimaryButton>

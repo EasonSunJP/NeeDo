@@ -279,6 +279,12 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  "现金、NDP 与外部渠道状态": fourLanguageTranslation(
+    "現金、NDP 與外部渠道狀態",
+    "現金、NDP、外部決済の状態",
+    "Cash, NDP, and external channel status",
+    "현금, NDP 및 외부 채널 상태",
+  ),
   ...technicianAutomationTranslations,
   "实时数据大屏": fourLanguageTranslation("即時數據大屏", "リアルタイムデータ画面", "Live data screen", "실시간 데이터 화면"),
   "NeeDo 实时运营数据": fourLanguageTranslation("NeeDo 即時營運數據", "NeeDo リアルタイム運営データ", "NeeDo live operations", "NeeDo 실시간 운영 데이터"),
@@ -4230,6 +4236,7 @@ export const translations: TranslationMap = {
   "发放时间": { "zh-Hant": "發放時間", ja: "配送時間", en: "Distribution time", ko: "배포 시간" },
   "发放数量": { "zh-Hant": "發放數量", ja: "分布量", en: "Distribution quantity", ko: "유통량" },
   "发票": { "zh-Hant": "發票", ja: "請求書", en: "Bill", ko: "청구서" },
+  "发票功能暂未开放": { "zh-Hant": "發票功能暫未開放", ja: "請求書機能は現在利用できません", en: "Invoice features are not available yet", ko: "청구서 기능은 아직 사용할 수 없습니다" },
   "发票记录": { "zh-Hant": "發票記錄", ja: "請求書記録", en: "Invoice records", ko: "송장 기록" },
   "发票月度归档": { "zh-Hant": "發票月度歸檔", ja: "月次請求書ファイリング", en: "Monthly Invoice Filing", ko: "월별 청구서 정리" },
   "发起": { "zh-Hant": "發起", ja: "发起", en: "Start", ko: "시작" },
@@ -7425,7 +7432,25 @@ export const translations: TranslationMap = {
   "联系记录": { "zh-Hant": "聯系記錄", ja: "接続する記録", en: "ConnectRecord", ko: "연결하다기록" },
   "联系技师": { "zh-Hant": "聯系技師", ja: "接続するスタッフ", en: "ConnectStaff", ko: "연결하다스태프" },
   "联系建议": { "zh-Hant": "聯繫建議", ja: "連絡先の提案", en: "Contact suggestions", ko: "연락처 제안" },
-  "联系客服": { "zh-Hant": "聯絡客服", ja: "カスタマーサー…", en: "Contact customer service", ko: "고객 서비스 센…" },
+  "联系客服": { "zh-Hant": "聯絡客服", ja: "カスタマーサポートに連絡", en: "Contact customer support", ko: "고객 지원 문의" },
+  "客服功能正在准备中": fourLanguageTranslation(
+    "客服功能正在準備中",
+    "カスタマーサポート機能は準備中です",
+    "Customer support is being prepared",
+    "고객 지원 기능을 준비 중입니다",
+  ),
+  "可咨询范围": fourLanguageTranslation(
+    "可諮詢範圍",
+    "お問い合わせ対象",
+    "Topics for support",
+    "문의 가능 항목",
+  ),
+  "在线客服与工单尚未接入，当前无法在此发起咨询或创建工单。": fourLanguageTranslation(
+    "線上客服與工單尚未接入，目前無法在此發起諮詢或建立工單。",
+    "オンラインサポートとサポートチケットはまだ正式サービスに接続されていないため、現在ここからお問い合わせやチケット作成はできません。",
+    "Online support and support tickets are not connected to the live service yet, so you cannot start an inquiry or create a ticket here.",
+    "온라인 고객 지원과 지원 티켓은 아직 정식 서비스에 연결되지 않아 현재 여기에서 문의를 시작하거나 티켓을 만들 수 없습니다.",
+  ),
   "联系客人": { "zh-Hant": "聯系客人", ja: "接続するゲスト", en: "ConnectGuest", ko: "연결하다손님" },
   "联系平台": { "zh-Hant": "聯繫平台", ja: "お問い合わせ平台", en: "Contact Platform", ko: "연락처 플랫폼" },
   "联系平台支持": { "zh-Hant": "聯繫平台支持", ja: "プラットフォームサポートにお問い合わせください", en: "Contact platform support", ko: "플랫폼 지원팀에 문의하세요." },

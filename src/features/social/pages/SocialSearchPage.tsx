@@ -125,13 +125,12 @@ export function SocialSearchPage() {
       <FloatingHomeHeader
         className="gap-0"
         frameClassName="z-40"
-        maxWidth="1600px"
         panelClassName={cn(floatingHeaderGlassPanelClassName, "text-[color:var(--client-text)]")}
         spacerGapPx={0}
         stacked
       >
         <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
-          <div className="mx-auto w-full max-w-[1480px] space-y-3">
+          <div className="w-full space-y-3">
             <div className="flex min-w-0 items-center gap-2">
               <button
                 aria-label="返回"
@@ -180,7 +179,7 @@ export function SocialSearchPage() {
         items={postResults.length}
         title="搜索结果"
       >
-        <div className="-mx-4 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] sm:-mx-6">
+        <div className="client-app-breakout border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]">
           {postResults.map((post) => (
             <SocialPostItem actorKey={actorKey} key={post.id} post={post} scope={scope} />
           ))}

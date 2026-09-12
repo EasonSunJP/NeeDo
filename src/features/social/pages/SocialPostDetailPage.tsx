@@ -121,7 +121,6 @@ function SocialPostDetailHeader({ onBack, title }: { onBack: () => void; title: 
     <FloatingHomeHeader
       className="gap-0"
       frameClassName="z-40"
-      maxWidth="720px"
       panelClassName={cn(floatingHeaderGlassPanelClassName, "text-white")}
       spacerGapPx={0}
     >
@@ -567,7 +566,7 @@ export function SocialPostDetailPage() {
       <div className={shellClassName}>
         <SocialPostDetailHeader onBack={() => navigate(-1)} title="回复动态" />
 
-        <main aria-busy="true" className="mx-auto max-w-[720px] animate-pulse px-4 pb-20 pt-4">
+        <main aria-busy="true" className="client-app-frame client-app-gutter animate-pulse pb-20 pt-4">
           <div className="h-11 w-11 rounded-full bg-white/10" />
           <div className="mt-4 h-5 w-40 rounded-full bg-white/10" />
           <div className="mt-3 h-4 w-full rounded-full bg-white/[0.07]" />
@@ -582,7 +581,7 @@ export function SocialPostDetailPage() {
       <div className={shellClassName}>
         <SocialPostDetailHeader onBack={() => navigate(-1)} title="回复动态" />
 
-        <main className="mx-auto max-w-[720px] px-4 pb-20 pt-4">
+        <main className="client-app-frame client-app-gutter pb-20 pt-4">
           <SocialEmptyState
             action={<PrimaryButton to={socialPaths.timeline(scope)}>返回动态页</PrimaryButton>}
             description={translateText(
@@ -608,7 +607,7 @@ export function SocialPostDetailPage() {
     <div className={shellClassName}>
       <SocialPostDetailHeader onBack={() => navigate(-1)} title="回复动态" />
 
-      <main className="mx-auto max-w-[720px] px-4 pb-[152px] pt-4">
+      <main className="client-app-frame client-app-gutter pb-[152px] pt-4">
         {ancestors.length > 0 ? (
           <section className="space-y-3 pb-4">
             <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/42">回复上下文</p>

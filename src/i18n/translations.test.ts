@@ -6,6 +6,20 @@ import { translateImUiText } from "../features/im/ui-copy";
 import { getTranslationLookupCandidates, languages, registerTranslationEntries, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
+  it("localizes the disabled invoice feature explanation in all five App languages", () => {
+    const expected = {
+      zh: "发票功能暂未开放",
+      "zh-Hant": "發票功能暫未開放",
+      ja: "請求書機能は現在利用できません",
+      en: "Invoice features are not available yet",
+      ko: "청구서 기능은 아직 사용할 수 없습니다"
+    } as const;
+
+    for (const { code } of languages) {
+      expect(translateText("发票功能暂未开放", code), code).toBe(expected[code]);
+    }
+  });
+
   it("localizes the merchant revenue custom-date option in all five App languages", () => {
     const expected = {
       zh: "自定义日期",

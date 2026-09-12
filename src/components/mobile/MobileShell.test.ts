@@ -5,12 +5,12 @@ import mobileShellSource from "./MobileShell.tsx?raw";
 const stylesSource = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 describe("MobileShell shared navigation", () => {
-  it("uses the bottom-navigation width token for the shared app content boundary", () => {
+  it("uses the application width token for the shared content and navigation boundary", () => {
     expect(mobileShellSource).toContain("client-app-content-container");
     expect(mobileShellSource).not.toContain("min-[1601px]:max-w-[1600px]");
     expect(stylesSource).toContain(".client-shell .client-app-content-container");
     expect(stylesSource).toContain(
-      "max-width: var(--client-bottom-nav-max-width, 880px);",
+      "max-width: var(--client-app-max-width, 880px);",
     );
   });
 

@@ -101,6 +101,16 @@ describe("RealtimeRepository friendship conversation boundaries", () => {
         ]
       })
     ).resolves.toEqual({ status: "not_friends" });
+    expect(client.contact.count).toHaveBeenCalledWith({
+      where: {
+        source: "friend_request",
+        deletedAt: null,
+        OR: [
+          { ownerIdentityId: 410, contactIdentityId: 1670 },
+          { ownerIdentityId: 1670, contactIdentityId: 410 }
+        ]
+      }
+    });
     expect(conversationFindFirst).not.toHaveBeenCalled();
     expect(conversationCreate).not.toHaveBeenCalled();
   });

@@ -11,7 +11,7 @@ describe("MobileFullscreenHeader overlay modes", () => {
 
   it("lets feature selectors share the glass header at their own content width", () => {
     expect(source).toContain('maxWidth?: CSSProperties["maxWidth"]');
-    expect(source).toContain("maxWidth={maxWidth ?? \"480px\"}");
+    expect(source).toContain("maxWidth={maxWidth ?? clientAppMaxWidth}");
     expect(source).toContain("footer?: ReactNode");
     expect(source).toContain("{footer ? <div");
   });

@@ -904,7 +904,7 @@ export function CategoryPage() {
           </div>
         </FloatingHomeHeader>
 
-        <div className="space-y-4 px-4 pb-28 pt-4">
+        <div className="client-app-gutter space-y-4 pb-28 pt-4">
           <section className="space-y-3">
             <PublishedCarousel scene="user-home" cardHeightClassName="h-[204px]" />
 

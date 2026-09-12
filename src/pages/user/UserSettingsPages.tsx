@@ -15,6 +15,7 @@ import {
   UnifiedSettingsVerificationPage
 } from "../../features/settings/UnifiedSettingsPages";
 import { NdpGuidePage } from "./NdpGuidePage";
+import { UserPaymentMethodsPage } from "./UserPaymentMethodsPage";
 
 export function UserSettingsPage() {
   return <UnifiedSettingsPage portal="user" />;
@@ -46,6 +47,10 @@ export function UserSettingsServiceRangePage() {
 
 export function UserSettingsAccountPage() {
   return <UnifiedSettingsAccountPage portal="user" />;
+}
+
+export function UserSettingsPaymentMethodsPage() {
+  return <UserPaymentMethodsPage />;
 }
 
 export function UserSettingsNotificationsPage() {

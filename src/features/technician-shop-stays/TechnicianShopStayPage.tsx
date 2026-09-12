@@ -40,12 +40,11 @@ export function TechnicianShopStayPage() {
   return (
     <MobileShell navItems={[]} navPanelStyle="plain" showBottomNav={false}>
       <MobileFullscreenHeader
-        maxWidth="880px"
         onBack={returnToPreSwitchPage}
         onClose={() => navigate("/technician", { replace: true })}
         title={t("入住店铺")}
       />
-      <main className="mx-auto w-full max-w-[880px] space-y-4 px-4 pb-32 pt-4">
+      <main className="client-app-gutter w-full space-y-4 pb-32 pt-4">
         {profile.error ? (
           <section className="rounded-[22px] border border-rose-500/30 bg-rose-500/10 p-4 text-sm font-bold text-rose-600">
             {t("店铺信息暂时无法获取，请稍后重试。")}

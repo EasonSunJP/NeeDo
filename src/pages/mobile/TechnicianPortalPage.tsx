@@ -276,7 +276,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
           />
         </div>
       </FloatingHomeHeader>
-      <div className="space-y-4 px-4 pb-28 pt-2">
+      <div className="client-app-gutter space-y-4 pb-28 pt-2">
         <section className="client-feature-panel overflow-hidden rounded-[28px] border text-white shadow-[var(--client-shadow)]" data-testid="technician-formal-income-dashboard">
           <div className="relative p-5">
             <div className="client-feature-aura absolute inset-0" />
@@ -883,12 +883,11 @@ function TechnicianPortalContent({ initialSelfProfile, technician, walletSummary
         <>
           <MobileFullscreenHeader
             footer={<FeatureSegmentedTabs items={[{ label: "信息卡", value: "info" }, { label: "数据中心", value: "data" }]} onChange={(value) => updateMeTab(value as TechnicianMeTab)} value={meTab} variant="header" />}
-            maxWidth="880px"
             onBack={() => navigate("/technician")}
             onClose={() => navigate("/technician")}
             title="个人中心"
           />
-          <div className="space-y-4 px-4 pb-32 pt-4">
+          <div className="client-app-gutter space-y-4 pb-32 pt-4">
             {meTab === "info" ? (
               <>
                 <Link className={cn(surface.panel, "mb-4 flex min-h-16 items-center justify-between rounded-[18px] border px-4 py-3")} to="/technician/shop-stays">

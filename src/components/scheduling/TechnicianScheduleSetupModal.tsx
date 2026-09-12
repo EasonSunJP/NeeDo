@@ -121,14 +121,14 @@ export function TechnicianScheduleSetupModal({
   return (
     <div className="fixed inset-0 z-[90] bg-black/55">
       <button aria-label="关闭排班设定" className="absolute inset-0" onClick={onClose} type="button" />
-      <section className="relative mx-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden bg-white text-ink shadow-soft sm:my-6 sm:h-[calc(100%-48px)] sm:rounded-[24px] sm:border sm:border-line">
+      <section className="client-app-frame relative flex h-full flex-col overflow-hidden bg-white text-ink shadow-soft sm:my-6 sm:h-[calc(100%-48px)] sm:rounded-[24px] sm:border sm:border-line">
         <MobileFullscreenHeader
           info={setupCopy[type].caption}
           onClose={onClose}
           title={setupCopy[type].title}
         />
 
-        <main className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
+        <main className="client-app-gutter min-h-0 flex-1 space-y-4 overflow-y-auto py-4 pb-28">
           <section className="rounded-lg border border-line bg-paper p-4">
             <div className="grid grid-cols-3 gap-2">
               {([

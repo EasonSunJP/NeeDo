@@ -40,7 +40,7 @@ export function AffiliateMarketplacePage() {
         onBack={() => navigate(-1)}
         title={t("推荐任务")}
       />
-      <main className="space-y-5 px-4 pb-28 pt-3">
+      <main className="client-app-gutter space-y-5 pb-28 pt-3">
         <form
           className="flex min-h-13 items-center gap-2 rounded-[22px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-2 pl-4 shadow-[0_14px_34px_color-mix(in_srgb,var(--client-shadow)_12%,transparent)]"
           onSubmit={(event) => {

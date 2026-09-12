@@ -106,7 +106,7 @@ describe("identity application page chrome", () => {
     expect(applicationUiSource).toContain('headerFrameClassName="!z-[140]"');
     expect(applicationUiSource).toContain("export function ApplicationBottomAction");
     expect(applicationUiSource).toContain("fixed inset-x-0 bottom-0 z-[100]");
-    expect(applicationUiSource).toContain("--client-bottom-nav-inline-gap");
+    expect(applicationUiSource).toContain("client-app-frame client-app-gutter");
   });
 
   it("preserves the approved tilde separator in the store preview price range", () => {

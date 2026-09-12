@@ -350,7 +350,7 @@ export function UserTechnicianScheduleDetailPage() {
   if (customerLoading || technicianLoading) {
     return (
       <MobileShell navItems={userNavItems}>
-        <div className="px-4 py-10 text-center" role="status">
+        <div className="client-app-gutter py-10 text-center" role="status">
           <strong className="text-lg font-black text-[color:var(--client-text)]">正在读取正式技师日程…</strong>
         </div>
       </MobileShell>
@@ -360,7 +360,7 @@ export function UserTechnicianScheduleDetailPage() {
   if (technicianError) {
     return (
       <MobileShell navItems={userNavItems}>
-        <div className="px-4 py-10 text-center" role="alert">
+        <div className="client-app-gutter py-10 text-center" role="alert">
           <strong className="text-lg font-black text-[color:var(--client-text)]">技师资料读取失败</strong>
           <button
             className={cn(floatingHeaderControlButtonClassName, "mx-auto mt-4")}
@@ -377,7 +377,7 @@ export function UserTechnicianScheduleDetailPage() {
   if (technicianNotFound || !technician) {
     return (
       <MobileShell navItems={userNavItems}>
-        <div className="px-4 py-10 text-center" role="alert">
+        <div className="client-app-gutter py-10 text-center" role="alert">
           <strong className="text-lg font-black text-[color:var(--client-text)]">未找到技师日程</strong>
           <button className={cn(floatingHeaderControlButtonClassName, "mx-auto mt-4")} onClick={() => navigate(-1)} type="button">
             返回
@@ -390,7 +390,7 @@ export function UserTechnicianScheduleDetailPage() {
   if (customerError || !customerProfile || !customer) {
     return (
       <MobileShell navItems={userNavItems}>
-        <div className="px-4 py-10 text-center" role="alert">
+        <div className="client-app-gutter py-10 text-center" role="alert">
           <strong className="text-lg font-black text-[color:var(--client-text)]">无法读取当前账号资料</strong>
           <button className={cn(floatingHeaderControlButtonClassName, "mx-auto mt-4")} onClick={reloadCustomer} type="button">
             重新加载
@@ -403,7 +403,7 @@ export function UserTechnicianScheduleDetailPage() {
   if (availabilityLoading) {
     return (
       <MobileShell navItems={userNavItems}>
-        <div className="px-4 py-10 text-center" role="status">
+        <div className="client-app-gutter py-10 text-center" role="status">
           <strong className="text-lg font-black text-[color:var(--client-text)]">正在读取数据库可预约时段…</strong>
         </div>
       </MobileShell>
@@ -413,7 +413,7 @@ export function UserTechnicianScheduleDetailPage() {
   if (availabilityError) {
     return (
       <MobileShell navItems={userNavItems}>
-        <div className="px-4 py-10 text-center" role="alert">
+        <div className="client-app-gutter py-10 text-center" role="alert">
           <strong className="text-lg font-black text-[color:var(--client-text)]">可预约时段读取失败</strong>
           <button
             className={cn(floatingHeaderControlButtonClassName, "mx-auto mt-4")}
@@ -459,7 +459,7 @@ export function UserTechnicianScheduleDetailPage() {
         </div>
       </FloatingHomeHeader>
 
-      <div className="space-y-3 px-4 pb-28 pt-2">
+      <div className="client-app-gutter space-y-3 pb-28 pt-2">
         <section className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-3 shadow-[var(--client-shadow)]">
           <div className="flex items-center justify-between gap-2">
             <button

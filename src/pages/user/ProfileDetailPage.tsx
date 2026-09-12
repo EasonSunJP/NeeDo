@@ -120,7 +120,7 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
 
   return (
     <MobileShell showBottomNav={false}>
-      <main className="mx-auto w-full max-w-[480px] space-y-4 px-4 pb-10 pt-4">
+      <main className="client-app-gutter w-full space-y-4 pb-10 pt-4">
         <MobileFullscreenHeader onBack={handleBack} onClose={handleClose} title="详细信息卡" />
         <TechnicianProfileInfoView model={model} />
         <Link className="block text-center text-sm font-bold text-[color:var(--client-primary)]" to={socialPaths.accountProfile(scope, detail.id)}>
@@ -146,7 +146,7 @@ function TechnicianProfileStatus({
 }) {
   return (
     <MobileShell showBottomNav={false}>
-      <main className="mx-auto w-full max-w-[480px] space-y-4 px-4 pb-10 pt-4">
+      <main className="client-app-gutter w-full space-y-4 pb-10 pt-4">
         <MobileFullscreenHeader onBack={onBack} onClose={onClose} title="详细信息卡" />
         <EmptyStatePanel
           action={onRetry ? <button className="rounded-full bg-[color:var(--client-primary)] px-5 py-2.5 text-sm font-black text-[color:var(--client-primary-contrast)]" onClick={onRetry} type="button">重新加载技师资料</button> : undefined}

@@ -1797,7 +1797,6 @@ export function ImTopBar({
     <FloatingHomeHeader
       className="gap-0"
       frameClassName="z-40"
-      maxWidth="880px"
       panelClassName={cn(
         floatingHeaderGlassPanelClassName,
         "text-[color:var(--client-text)]",
@@ -2648,7 +2647,7 @@ export function ImBottomSheet({
         className={cn(
           presentation === "composer"
             ? "absolute inset-x-0 mx-auto client-liquid-glass-surface im-composer-glass im-composer-panel im-contact-card-panel p-4"
-            : "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
+            : "client-app-frame client-app-gutter absolute inset-x-0 bottom-0 rounded-t-[32px] bg-[color:var(--client-surface)] pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
           panelClassName,
         )}
         onClick={(event) => event.stopPropagation()}
