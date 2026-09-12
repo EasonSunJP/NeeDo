@@ -11,7 +11,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const apiMocks = vi.hoisted(() => ({
   getTechnicianDetail: vi.fn(),
-  listPublicTechnicianServices: vi.fn()
+  listPublicTechnicianProfileServices: vi.fn()
 }));
 
 vi.mock("../../features/core-read/api", async (importOriginal) => {
@@ -28,7 +28,7 @@ vi.mock("../../features/pricing-mode/api", async (importOriginal) => {
 
   return {
     ...actual,
-    pricingModeApi: { ...actual.pricingModeApi, listPublicTechnicianServices: apiMocks.listPublicTechnicianServices }
+    pricingModeApi: { ...actual.pricingModeApi, listPublicTechnicianProfileServices: apiMocks.listPublicTechnicianProfileServices }
   };
 });
 
@@ -60,7 +60,7 @@ describe("ProfileDetailPage formal technician rendering", () => {
   beforeEach(async () => {
     await persistentResourceCache.clearScope("public");
     apiMocks.getTechnicianDetail.mockResolvedValue(technicianDetail);
-    apiMocks.listPublicTechnicianServices.mockResolvedValue(technicianServices);
+    apiMocks.listPublicTechnicianProfileServices.mockResolvedValue(technicianServices);
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -83,12 +83,28 @@ describe("ProfileDetailPage formal technician rendering", () => {
 
     expect(apiMocks.getTechnicianDetail).toHaveBeenCalledWith("s0000000186");
     await vi.waitFor(() => {
-      expect(apiMocks.listPublicTechnicianServices).toHaveBeenCalledWith(217, 186, { page: 1, pageSize: 20 });
+      expect(apiMocks.listPublicTechnicianProfileServices).toHaveBeenCalledWith(186, { page: 1, pageSize: 20 });
       expect(container.querySelector('[data-testid="technician-profile-info-view"]')).not.toBeNull();
       expect(container.textContent).toContain("正式服务卡");
     });
     expect(container.textContent).toContain("详细信息卡");
     expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("keeps the formal no-service boundary when the public portfolio is empty", async () => {
+    apiMocks.listPublicTechnicianProfileServices.mockResolvedValue({ list: [], page: 1, page_size: 20, total: 0 });
+
+    await act(async () => {
+      root.render(<ClientThemeProvider><MemoryRouter initialEntries={["/profiles/technician/s0000000186"]}><Routes><Route element={<ProfileDetailPage />} path="/profiles/:entityType/:id" /></Routes></MemoryRouter></ClientThemeProvider>);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-testid="technician-profile-services"]')?.textContent).toContain("暂无服务信息");
+    });
   });
 
   it("keeps the optional dynamic link inside the active merchant scope", async () => {

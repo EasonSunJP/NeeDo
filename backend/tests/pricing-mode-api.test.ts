@@ -30,6 +30,36 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
     findTechnicianShopScope: jest.fn(),
     listTechnicianServices: jest.fn(),
     listTechnicianServicesByProfile: jest.fn(),
+    listPublicTechnicianProfileServices: jest.fn(async () =>
+      paginated([
+        {
+          id: 11,
+          publicId: "00000000-0000-4000-8000-000000000011",
+          shopId: 1,
+          technicianId: 3,
+          sourceShopServiceId: 21,
+          name: "公开履历护理",
+          description: null,
+          categoryId: 2,
+          priceAmount: 8800,
+          currency: "JPY",
+          durationMinutes: 60,
+          usageCount: 7,
+          coverImageUrl: null,
+          images: [],
+          tags: [],
+          shop: { publicId: "shop0000000001", name: "LifeDance", address: "东京都港区" },
+          isActive: true,
+          isBookable: true,
+          isRecommended: false,
+          sortOrder: 0,
+          reviewStatus: "approved",
+          rejectionReason: null,
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString()
+        }
+      ])
+    ),
     findPrimaryTechnicianService: jest.fn(),
     reorderTechnicianServices: jest.fn(),
     createTechnicianService: jest.fn(),
@@ -150,6 +180,36 @@ describe("pricing mode public API", () => {
       .expect(200);
     expect(servicesResponse.body.data).toEqual({ list: [], total: 0, page: 1, page_size: 20 });
     expect(pricingModeRepository.listPublicTechnicianServices).not.toHaveBeenCalled();
+  });
+
+  it("returns the public technician profile portfolio even when the shop uses merchant pricing", async () => {
+    const pricingModeRepository = createRepository();
+    pricingModeRepository.findShopPricingMode.mockResolvedValue({
+      shopId: 1,
+      pricingMode: "merchant",
+      technicianPricingRatePercent: 30,
+      updatedAt: now,
+      updatedBy: 7
+    });
+    const app = createApp(undefined, {
+      redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
+      pricingModeRepository
+    } as never);
+
+    const response = await request(app)
+      .get("/api/v1/technicians/3/services?page=1&pageSize=20")
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      total: 1,
+      list: [{ id: 11, technicianId: 3, name: "公开履历护理" }]
+    });
+    expect(pricingModeRepository.findShopPricingMode).not.toHaveBeenCalled();
+    expect(pricingModeRepository.listPublicTechnicianProfileServices).toHaveBeenCalledWith({
+      technicianId: 3,
+      page: 1,
+      pageSize: 20
+    });
   });
 
   it("lists and reorders the authenticated technician portfolio with validated commands", async () => {

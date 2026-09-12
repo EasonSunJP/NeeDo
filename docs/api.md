@@ -285,6 +285,7 @@ The authenticated technician portfolio is profile-wide rather than shop-wide:
 
 | Method | Path | Purpose | Permission |
 |---|---|---|---|
+| `GET` | `/api/v1/technicians/:technicianId/services` | Public profile portfolio backed by active approved technician-service ownership and an exact current shop affiliation | Public |
 | `GET` | `/api/v1/technicians/me/services` | Paginated service portfolio across all active shop contexts | `technician:services:list` |
 | `PUT` | `/api/v1/technicians/me/services/order` | Replace the complete service order with contiguous positions | `technician:services:write` |
 | `POST` | `/api/v1/technicians/me/shops/:shopId/services` | Create a service in one authorized shop context | `technician:services:write` |
@@ -292,6 +293,8 @@ The authenticated technician portfolio is profile-wide rather than shop-wide:
 | `DELETE` | `/api/v1/technicians/me/shops/:shopId/services/:serviceId` | Soft-delete a service in its owning shop context | `technician:services:write` |
 
 A technician may have at most five non-deleted services across all shops. The limit is enforced under the technician-profile lock, so concurrent sixth creates cannot both succeed. Every service price is integer JPY and the response declares `taxIncluded: true`; duration is integer minutes. The first eligible service after ordering by `sortOrder`, then ID, is the primary service.
+
+The public profile portfolio does not use schedule slots or completed assignments as a service qualification. It returns only the formal `TechnicianService` relation when the service is active, bookable, approved, belongs to an active category, the technician and account remain public and active, the shop remains published and unsuspended with an active public identifier, and the technician has a current active affiliation to that exact shop. Shop pricing mode only controls booking navigation; it does not erase an otherwise valid technician portfolio.
 
 ### Technician service cover
 

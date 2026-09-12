@@ -445,6 +445,12 @@ beforeEach(() => {
     page_size: 20,
     total: 0
   });
+  vi.spyOn(pricingModeApi, "listPublicTechnicianProfileServices").mockResolvedValue({
+    list: [],
+    page: 1,
+    page_size: 20,
+    total: 0
+  });
   vi.spyOn(customerAddressApi, "list").mockResolvedValue({ list: [], page: 1, page_size: 100, total: 0 });
 });
 

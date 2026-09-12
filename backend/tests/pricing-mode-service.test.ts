@@ -62,6 +62,10 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> => {
       void _input;
       return { list: [], total: 0, page: 1, page_size: 20 };
     }),
+    listPublicTechnicianProfileServices: jest.fn(async (_input) => {
+      void _input;
+      return { list: [], total: 0, page: 1, page_size: 20 };
+    }),
     findPrimaryTechnicianService: jest.fn(async (_technicianId: number) => {
       void _technicianId;
       return null;
@@ -424,6 +428,31 @@ describe("PricingModeService", () => {
 
     expect(result).toEqual({ list: [], total: 0, page: 1, page_size: 20 });
     expect(repository.listPublicTechnicianServices).not.toHaveBeenCalled();
+  });
+
+  it("lists the formal public profile portfolio independently from merchant booking navigation", async () => {
+    const repository = createRepository();
+    const publicService = await repository.createTechnicianService({} as never);
+    repository.listPublicTechnicianProfileServices.mockResolvedValueOnce({
+      list: [publicService],
+      total: 1,
+      page: 1,
+      page_size: 20
+    } as never);
+    const service = new PricingModeService(repository, { record: jest.fn() });
+
+    const result = await service.listPublicTechnicianProfileServices(3, {
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result.list).toEqual([expect.objectContaining({ technicianId: 3 })]);
+    expect(repository.findShopPricingMode).not.toHaveBeenCalled();
+    expect(repository.listPublicTechnicianProfileServices).toHaveBeenCalledWith({
+      technicianId: 3,
+      page: 1,
+      pageSize: 20
+    });
   });
 
   it("resolves the same technician independently for two shops with different pricing modes", async () => {
