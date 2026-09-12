@@ -7,7 +7,10 @@ import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { ImChatRecordRepository } from "../repositories/im-chat-record.repository";
 import { AuthRepository } from "../repositories/auth.repository";
-import { ImChatRecordMediaFileStorage } from "../services/im-chat-record-media.storage";
+import {
+  ImChatRecordMediaFileStorage,
+  resolveImChatRecordMediaDirectory
+} from "../services/im-chat-record-media.storage";
 import { ImChatRecordService } from "../services/im-chat-record.service";
 import { PersonalIdentityScopeService } from "../services/personal-identity-scope.service";
 import { SseRealtimeEventGateway } from "../services/realtime-event.gateway";
@@ -39,11 +42,19 @@ export const createImChatRecordRoutes = (
   const publicBaseUrl =
     config.IM_MEDIA_PUBLIC_BASE_URL ??
     new URL("/media/im", config.CUSTOMER_AVATAR_PUBLIC_BASE_URL).toString();
+  const contentPublicBaseUrl = new URL(
+    "/media/content",
+    config.CUSTOMER_AVATAR_PUBLIC_BASE_URL
+  ).toString();
   const repository = dependencies.imChatRecordRepository ?? new ImChatRecordRepository();
   const storage =
     dependencies.imChatRecordMediaStorage ??
     new ImChatRecordMediaFileStorage({
-      sourceRoots: [{ directory: config.IM_MEDIA_STORAGE_DIR, publicBaseUrl }]
+      directory: resolveImChatRecordMediaDirectory(config.IM_MEDIA_STORAGE_DIR),
+      sourceRoots: [
+        { directory: config.IM_MEDIA_STORAGE_DIR, publicBaseUrl },
+        { directory: config.CONTENT_MEDIA_STORAGE_DIR, publicBaseUrl: contentPublicBaseUrl }
+      ]
     });
   const service =
     dependencies.imChatRecordService ??

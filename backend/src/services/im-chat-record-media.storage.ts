@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { Dirent } from "node:fs";
 import {
   mkdir,
   readFile,
@@ -101,6 +102,9 @@ type ParsedPublicBase = {
 
 const trimTrailingSlash = (value: string): string => value.replace(/\/+$/u, "");
 
+export const resolveImChatRecordMediaDirectory = (imMediaDirectory: string): string =>
+  resolve(join(dirname(resolve(imMediaDirectory)), "im-chat-record-media"));
+
 export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePort {
   private readonly directory: string;
   private readonly sourceRoots: ParsedPublicBase[];
@@ -162,7 +166,13 @@ export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePor
     if (!metadata || !/^[a-f0-9]{64}$/u.test(checksumSha256)) throw this.unavailable();
     try {
       const checksumDirectory = resolve(join(this.directory, checksumSha256));
-      const attempts = await readdir(checksumDirectory, { withFileTypes: true });
+      let attempts: Dirent[];
+      try {
+        attempts = await readdir(checksumDirectory, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") throw error;
+        attempts = [];
+      }
       for (const attempt of attempts.sort((left, right) => left.name.localeCompare(right.name))) {
         if (!attempt.isDirectory() || !/^[0-9a-f-]{36}$/u.test(attempt.name)) continue;
         const fileKey = `${checksumSha256}/${attempt.name}/${checksumSha256}.${metadata.extension}`;
@@ -173,18 +183,66 @@ export class ImChatRecordMediaFileStorage implements ImChatRecordMediaStoragePor
           if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") continue;
           throw error;
         }
-        if (
-          createHash("sha256").update(bytes).digest("hex") === checksumSha256 &&
-          metadata.matches(bytes)
-        ) {
+        if (this.matchesDescriptor(bytes, checksumSha256, metadata.matches)) {
           return { bytes, checksumSha256, mimeType, size: bytes.length };
         }
       }
+
+      const restored = await this.restoreFromSource(
+        checksumSha256,
+        mimeType,
+        metadata.extension,
+        metadata.matches
+      );
+      if (restored) return restored;
       throw this.unavailable();
     } catch (error) {
       if (error instanceof AppError) throw error;
       throw this.unavailable(error);
     }
+  }
+
+  private async restoreFromSource(
+    checksumSha256: string,
+    mimeType: string,
+    extension: string,
+    matchesMime: (bytes: Buffer) => boolean
+  ): Promise<ChatRecordMediaRead | null> {
+    const sourceName = `${checksumSha256}.${extension}`;
+    for (const root of this.sourceRoots) {
+      let canonicalRoot: string;
+      let candidate: string;
+      try {
+        canonicalRoot = await realpath(resolve(root.directory));
+        candidate = await realpath(resolve(join(canonicalRoot, sourceName)));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") continue;
+        throw error;
+      }
+      if (!candidate.startsWith(`${canonicalRoot}${sep}`)) continue;
+      const bytes = await readFile(candidate);
+      if (!this.matchesDescriptor(bytes, checksumSha256, matchesMime)) continue;
+
+      const fileKey = `${checksumSha256}/${randomUUID()}/${sourceName}`;
+      const targetPath = this.targetPath(fileKey);
+      await mkdir(dirname(targetPath), { recursive: true, mode: 0o700 });
+      await writeFile(targetPath, bytes, { flag: "wx", mode: 0o600 });
+      return { bytes, checksumSha256, mimeType, size: bytes.length };
+    }
+    return null;
+  }
+
+  private matchesDescriptor(
+    bytes: Buffer,
+    checksumSha256: string,
+    matchesMime: (bytes: Buffer) => boolean
+  ): boolean {
+    return (
+      bytes.length > 0 &&
+      bytes.length <= this.maxBytes &&
+      createHash("sha256").update(bytes).digest("hex") === checksumSha256 &&
+      matchesMime(bytes)
+    );
   }
 
   private parsePublicBase(root: ImChatRecordMediaSourceRoot): ParsedPublicBase {

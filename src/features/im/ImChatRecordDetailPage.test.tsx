@@ -15,6 +15,7 @@ import source from "./ImChatRecordDetailPage.tsx?raw";
 import appSource from "../../App.tsx?raw";
 import type { ImChatRecordMedia } from "./chat-records";
 import { restoreImChatRecordFocus } from "./chat-record-focus";
+import { ApiClientError } from "../../api/httpClient";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -242,6 +243,53 @@ describe("ImChatRecordDetailPage", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:protected-snapshot");
     root = createRoot(container);
     vi.unstubAllGlobals();
+  });
+
+  it("renders an authoritative missing snapshot as a stable unavailable terminal state", async () => {
+    const getChatRecordMedia = vi.fn(async () => {
+      throw new ApiClientError(
+        "error.im.chat_record_media_unavailable",
+        40401,
+        404,
+      );
+    });
+    const recordApi = api({
+      getChatRecordMedia,
+      listChatRecordItems: vi.fn(async () => ({
+        ...firstPage,
+        total: 1,
+        nextCursor: null,
+        list: [{
+          ...firstPage.list[0],
+          content: null,
+          metadata: {
+            media: {
+              checksumSha256: "a".repeat(64),
+              mimeType: "image/png",
+              size: 5,
+            },
+          },
+        }],
+      })),
+    });
+
+    await act(async () => {
+      root.render(
+        themed(<MemoryRouter initialEntries={[`/messages/chat-records/${publicId}`]}>
+          <Routes>
+            <Route path="/messages/chat-records/:publicId" element={<ImChatRecordDetailPage api={recordApi} language="zh" />} />
+          </Routes>
+        </MemoryRouter>),
+      );
+    });
+    await flush();
+
+    expect(document.body.textContent).toContain("媒体不可用");
+    expect(document.body.textContent).not.toContain("媒体读取失败");
+    expect(Array.from(document.body.querySelectorAll("button")).some(
+      (button) => button.textContent?.includes("重试"),
+    )).toBe(false);
+    expect(getChatRecordMedia).toHaveBeenCalledTimes(1);
   });
 
   it("closes to the previous page and restores focus to card or favorite openers", async () => {

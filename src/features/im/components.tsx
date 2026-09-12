@@ -51,7 +51,10 @@ import {
   ImReactionValue,
 } from "./JudgementReactionIcon";
 import { ImChatRecordCard } from "./ImChatRecordCard";
-import { resolveImNoStoreMediaSource } from "./media-source";
+import {
+  classifyImMediaDeliveryFailure,
+  resolveImNoStoreMediaSource,
+} from "./media-source";
 import { SocialPostCompactCard } from "./SocialPostCompactCard";
 import { ReactionCatalog } from "./ReactionCatalog";
 import {
@@ -4113,6 +4116,45 @@ export function MessageBubble({
       : (message.ext?.url ?? message.content);
   const mediaSource = resolveImNoStoreMediaSource(rawMediaSource);
   const mediaLoad = useMediaLoadState(`${message.id}:${mediaSource}`);
+  const [mediaAvailability, setMediaAvailability] = useState<{
+    source: string;
+    state: "unknown" | "unavailable";
+  }>({ source: mediaSource, state: "unknown" });
+  const mediaFailureRevision = useRef(0);
+  const mediaUnavailable =
+    mediaAvailability.source === mediaSource && mediaAvailability.state === "unavailable";
+  useEffect(() => {
+    mediaFailureRevision.current += 1;
+    return () => {
+      mediaFailureRevision.current += 1;
+    };
+  }, [mediaSource]);
+  const onMediaError = () => {
+    mediaLoad.onError();
+    const revision = mediaFailureRevision.current + 1;
+    mediaFailureRevision.current = revision;
+    void classifyImMediaDeliveryFailure(
+      mediaSource,
+      window.location.origin,
+    ).then((classification) => {
+      if (
+        classification === "unavailable" &&
+        mediaFailureRevision.current === revision
+      ) {
+        setMediaAvailability({ source: mediaSource, state: "unavailable" });
+      }
+    });
+  };
+  const retryMedia = () => {
+    mediaFailureRevision.current += 1;
+    setMediaAvailability({ source: mediaSource, state: "unknown" });
+    mediaLoad.retry();
+  };
+  const onMediaLoad = () => {
+    mediaFailureRevision.current += 1;
+    setMediaAvailability({ source: mediaSource, state: "unknown" });
+    mediaLoad.onLoad();
+  };
   const bubbleClass = isMine
     ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
     : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
@@ -4190,8 +4232,8 @@ export function MessageBubble({
             className="max-h-[220px] w-[180px] object-cover"
             controls
             key={mediaLoad.key}
-            onError={mediaLoad.onError}
-            onLoadedMetadata={mediaLoad.onLoad}
+            onError={onMediaError}
+            onLoadedMetadata={onMediaLoad}
             preload="metadata"
             src={mediaSource}
           />
@@ -4200,8 +4242,8 @@ export function MessageBubble({
             alt={previewLabel(message.type)}
             className="max-h-[220px] w-[180px] object-cover"
             key={mediaLoad.key}
-            onError={mediaLoad.onError}
-            onLoad={mediaLoad.onLoad}
+            onError={onMediaError}
+            onLoad={onMediaLoad}
             src={mediaSource}
           />
         );
@@ -4230,13 +4272,22 @@ export function MessageBubble({
               />
               {openLocalCopy}
             </>
+          ) : mediaUnavailable ? (
+            <>
+              <MediaLoadFeedback
+                className="w-[180px]"
+                kind={message.type}
+                unavailable
+              />
+              {openLocalCopy}
+            </>
           ) : mediaLoad.failed ? (
             <>
               <button
                 className="w-[180px] rounded-2xl bg-black/10"
                 onClick={(event) => {
                   event.stopPropagation();
-                  mediaLoad.retry();
+                  retryMedia();
                 }}
                 type="button"
               >
@@ -4280,12 +4331,14 @@ export function MessageBubble({
             <div className="h-0.5 flex-1 rounded-full bg-black/20" />
             <span className="text-sm">{message.ext?.duration ?? 0}"</span>
           </div>
-          {mediaLoad.failed ? (
+          {mediaUnavailable ? (
+            <MediaLoadFeedback kind="voice" unavailable />
+          ) : mediaLoad.failed ? (
             <button
               className="block w-full rounded-2xl bg-black/10"
               onClick={(event) => {
                 event.stopPropagation();
-                mediaLoad.retry();
+                retryMedia();
               }}
               type="button"
             >
@@ -4296,8 +4349,8 @@ export function MessageBubble({
               className="block h-10 w-full"
               controls
               key={mediaLoad.key}
-              onError={mediaLoad.onError}
-              onLoadedMetadata={mediaLoad.onLoad}
+              onError={onMediaError}
+              onLoadedMetadata={onMediaLoad}
               onPlay={(event) => {
                 const audio = event.currentTarget;
                 audio.defaultMuted = false;
