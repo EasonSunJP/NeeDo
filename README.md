@@ -173,6 +173,8 @@ NeeDo Exchange now uses authenticated, persisted routes under `/api/v1/exchange`
 
 The local/test-only Exchange seed reuses existing active test users, identities, and public identifiers. It creates no account or shadow identity. A successful run contains exactly 20 demand posts and 20 intelligence posts; every post has 3–10 actor-linked comments, 10–66 unique actor-linked likes, and 2–15 unique actor-linked shares. The checker independently validates all totals, subtype ownership, actor joins, uniqueness, timestamps, and absence of old Exchange namespaces.
 
+Repeating the seed transactionally restores every resettable simulation Request to one `OPEN` matching aggregate and one `OPENED` event aligned with the refreshed post timestamp, while removing stale claims and unbooked participant reservations. It fails closed instead of rewriting any Request that already has fee calculation, wallet-hold, Request-financial, or converted-order evidence; existing Intelligence booking references remain preserved. The independent checker also requires zero Request financial/claim/participant residue and the exact matching/event baseline.
+
 ```bash
 cd backend
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:formal-exchange-test

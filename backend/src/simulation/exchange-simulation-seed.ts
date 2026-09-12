@@ -1,7 +1,10 @@
 import {
   ContentLocale,
+  ExchangeMatchEventType,
+  ExchangeMatchingStatus,
   ExchangePostStatus,
   ExchangePostType,
+  ExchangePublisherCapacitySource,
   ExchangeServiceMode,
   type Prisma,
   type PrismaClient
@@ -294,7 +297,6 @@ export const applyExchangeSimulationPlan = async (
         select: { id: true }
       });
       const legacyPostIds = legacyPosts.map(({ id }) => id);
-      await hardDeletePostGraph(transaction, legacyPostIds);
       await transaction.exchangeComment.deleteMany({
         where: {
           OR: LEGACY_EXCHANGE_SIMULATION_NAMESPACES.map((namespace) => ({
@@ -320,6 +322,21 @@ export const applyExchangeSimulationPlan = async (
         },
         select: { id: true }
       });
+      const plannedExistingPosts = await transaction.exchangePost.findMany({
+        where: { idempotencyKey: { in: plannedPostKeys } },
+        select: { id: true }
+      });
+      await assertSimulationPostGraphsResettable(
+        transaction,
+        [...legacyPostIds, ...obsoletePosts.map(({ id }) => id)],
+        true
+      );
+      await assertSimulationPostGraphsResettable(
+        transaction,
+        plannedExistingPosts.map(({ id }) => id),
+        false
+      );
+      await hardDeletePostGraph(transaction, legacyPostIds);
       await hardDeletePostGraph(
         transaction,
         obsoletePosts.map(({ id }) => id)
@@ -351,11 +368,71 @@ export const applyExchangeSimulationPlan = async (
   );
 };
 
+const assertSimulationPostGraphsResettable = async (
+  transaction: Prisma.TransactionClient,
+  postIds: number[],
+  rejectsIntelligenceBookings: boolean
+): Promise<void> => {
+  const uniquePostIds = [...new Set(postIds)];
+  if (uniquePostIds.length === 0) return;
+  const [requestFinancial, walletHold, feeCalculationLog, bookedParticipant, intelligenceBooking] =
+    await Promise.all([
+      transaction.exchangeRequestFinancial.findFirst({
+        where: { exchangePostId: { in: uniquePostIds } },
+        select: { exchangePostId: true }
+      }),
+      transaction.walletHold.findFirst({
+        where: { exchangePostId: { in: uniquePostIds } },
+        select: { exchangePostId: true }
+      }),
+      transaction.feeCalculationLog.findFirst({
+        where: { exchangePostId: { in: uniquePostIds } },
+        select: { exchangePostId: true }
+      }),
+      transaction.exchangeMatchParticipant.findFirst({
+        where: { exchangePostId: { in: uniquePostIds }, bookingOrderId: { not: null } },
+        select: { exchangePostId: true }
+      }),
+      rejectsIntelligenceBookings
+        ? transaction.bookingOrder.findFirst({
+            where: { exchangeIntelligencePostId: { in: uniquePostIds } },
+            select: { exchangeIntelligencePostId: true }
+          })
+        : Promise.resolve(null)
+    ]);
+  const protectedPostId =
+    requestFinancial?.exchangePostId ??
+    walletHold?.exchangePostId ??
+    feeCalculationLog?.exchangePostId ??
+    bookedParticipant?.exchangePostId ??
+    intelligenceBooking?.exchangeIntelligencePostId;
+  if (protectedPostId !== undefined && protectedPostId !== null) {
+    throw new Error(
+      `Exchange simulation post ${protectedPostId} has financial or booked state and cannot be reset.`
+    );
+  }
+};
+
 const hardDeletePostGraph = async (
   transaction: Prisma.TransactionClient,
   postIds: number[]
 ): Promise<void> => {
   if (postIds.length === 0) return;
+  const matchings = await transaction.exchangeRequestMatching.findMany({
+    where: { exchangePostId: { in: postIds } },
+    select: { id: true }
+  });
+  const matchingIds = matchings.map(({ id }) => id);
+  await transaction.exchangeMatchParticipant.deleteMany({
+    where: { exchangePostId: { in: postIds } }
+  });
+  await transaction.exchangeClaim.deleteMany({ where: { exchangePostId: { in: postIds } } });
+  if (matchingIds.length > 0) {
+    await transaction.exchangeMatchEvent.deleteMany({ where: { matchingId: { in: matchingIds } } });
+  }
+  await transaction.exchangeRequestMatching.deleteMany({
+    where: { exchangePostId: { in: postIds } }
+  });
   await transaction.exchangeComment.deleteMany({ where: { postId: { in: postIds } } });
   await transaction.exchangeLike.deleteMany({ where: { postId: { in: postIds } } });
   await transaction.exchangeShare.deleteMany({ where: { postId: { in: postIds } } });
@@ -387,6 +464,7 @@ const upsertSimulationPost = async (
     serviceEndAt: new Date(post.serviceEndAt),
     expiresAt: new Date(post.expiresAt),
     withdrawnAt: null,
+    payloadFingerprint: null,
     createdAt,
     updatedAt: createdAt,
     deletedAt: null
@@ -400,23 +478,39 @@ const upsertSimulationPost = async (
 
   if (post.demand) {
     await transaction.exchangeIntelligence.deleteMany({ where: { postId: record.id } });
+    const demandData = {
+      targetProviderCount: 1,
+      targetProviderLimitSnapshot: 1,
+      publisherCapacitySource: ExchangePublisherCapacitySource.CUSTOMER_MEMBERSHIP,
+      membershipLevelSnapshot: null,
+      matchMode: "QUICK" as const,
+      budgetMode: "TOTAL" as const,
+      ...post.demand,
+      addressLine1: post.areaLabel,
+      addressLine2: null,
+      addressLine3: null,
+      addressLine2Public: false,
+      addressLine3Public: false,
+      publisherIdentityPublic: false,
+      serviceMode: "STORE" as const
+    };
     await transaction.exchangeDemand.upsert({
       where: { postId: record.id },
       create: {
         postId: record.id,
-        ...post.demand,
-        addressLine1: post.areaLabel,
+        ...demandData,
         createdAt,
         updatedAt: createdAt
       },
       update: {
-        ...post.demand,
-        addressLine1: post.areaLabel,
+        ...demandData,
         deletedAt: null,
         updatedAt: createdAt
       }
     });
+    await resetSimulationRequestMatching(transaction, record.id, demandData, createdAt);
   } else if (post.intelligence) {
+    await clearSimulationRequestLifecycle(transaction, record.id);
     await transaction.exchangeDemand.deleteMany({ where: { postId: record.id } });
     const intelligence = {
       serviceId: post.intelligence.serviceId,
@@ -533,5 +627,70 @@ const upsertSimulationPost = async (
   }
   await transaction.exchangeShare.deleteMany({
     where: { postId: record.id, id: { notIn: shareIds } }
+  });
+};
+
+const clearSimulationRequestLifecycle = async (
+  transaction: Prisma.TransactionClient,
+  postId: number
+): Promise<number | null> => {
+  const matching = await transaction.exchangeRequestMatching.findUnique({
+    where: { exchangePostId: postId },
+    select: { id: true }
+  });
+  await transaction.exchangeMatchParticipant.deleteMany({ where: { exchangePostId: postId } });
+  await transaction.exchangeClaim.deleteMany({ where: { exchangePostId: postId } });
+  if (matching) {
+    await transaction.exchangeMatchEvent.deleteMany({ where: { matchingId: matching.id } });
+  }
+  return matching?.id ?? null;
+};
+
+const resetSimulationRequestMatching = async (
+  transaction: Prisma.TransactionClient,
+  postId: number,
+  demand: { targetProviderCount: number; budgetMaxJpy: number },
+  createdAt: Date
+): Promise<void> => {
+  const existingMatchingId = await clearSimulationRequestLifecycle(transaction, postId);
+  const matchingData = {
+    status: ExchangeMatchingStatus.OPEN,
+    effectiveTargetProviderCount: demand.targetProviderCount,
+    effectiveBudgetMaxJpy: demand.budgetMaxJpy,
+    selectedQuoteTotalJpy: 0,
+    version: 1,
+    matchedAt: null,
+    closedAt: null,
+    createdAt,
+    updatedAt: createdAt,
+    deletedAt: null
+  };
+  const matching = existingMatchingId
+    ? await transaction.exchangeRequestMatching.update({
+        where: { id: existingMatchingId },
+        data: matchingData,
+        select: { id: true }
+      })
+    : await transaction.exchangeRequestMatching.create({
+        data: { exchangePostId: postId, ...matchingData },
+        select: { id: true }
+      });
+  await transaction.exchangeMatchEvent.create({
+    data: {
+      matchingId: matching.id,
+      sequence: 1,
+      type: ExchangeMatchEventType.OPENED,
+      actorUserId: null,
+      actorIdentityId: null,
+      versionBefore: 0,
+      versionAfter: 1,
+      payload: {
+        exchangePostId: postId,
+        effectiveTargetProviderCount: demand.targetProviderCount,
+        effectiveBudgetMaxJpy: demand.budgetMaxJpy
+      },
+      createdAt,
+      updatedAt: createdAt
+    }
   });
 };

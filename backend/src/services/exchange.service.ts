@@ -688,6 +688,7 @@ export class ExchangeService {
   public async expireDue(now: Date, batchSize: number): Promise<number> {
     const ids = await this.repository.listDuePostIds(now, batchSize);
     let expired = 0;
+    let reportedConflict: AppError | null = null;
     for (const postId of ids) {
       try {
         if (await this.expirePost(postId, now)) expired += 1;
@@ -702,10 +703,13 @@ export class ExchangeService {
           if (!current || current.status === "withdrawn" || current.status === "expired") {
             continue;
           }
+          reportedConflict ??= error;
+          continue;
         }
         throw error;
       }
     }
+    if (reportedConflict) throw reportedConflict;
     return expired;
   }
 

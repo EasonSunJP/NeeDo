@@ -1565,6 +1565,33 @@ describe("ExchangeService", () => {
     expect(repository.lockPostForMutation).toHaveBeenCalledWith(41);
   });
 
+  it("reports a corrupt published record only after processing the rest of the bounded page", async () => {
+    const repository = createRepository();
+    repository.listDuePostIds.mockResolvedValueOnce([41, 42, 43]);
+    repository.lockPostForMutation.mockResolvedValueOnce(
+      terminalPost({ status: "published", requestFinancial: { state: "released" } })
+    );
+    const service = new ExchangeService(repository, () => now);
+    const conflict = new AppError({
+      code: ERROR_CODES.EXCHANGE_REQUEST_FINANCIAL_STATE_CONFLICT,
+      message: "error.exchange.request_financial_state_conflict",
+      statusCode: 409
+    });
+    const expirePost = jest
+      .spyOn(service, "expirePost")
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(conflict)
+      .mockResolvedValueOnce(true);
+
+    await expect(service.expireDue(now, 100)).rejects.toBe(conflict);
+    expect(expirePost.mock.calls).toEqual([
+      [41, now],
+      [42, now],
+      [43, now]
+    ]);
+    expect(repository.lockPostForMutation).toHaveBeenCalledWith(42);
+  });
+
   it("does not swallow unknown expiry failures", async () => {
     const repository = createRepository();
     repository.listDuePostIds.mockResolvedValueOnce([41]);
