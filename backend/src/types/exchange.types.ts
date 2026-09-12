@@ -51,7 +51,7 @@ export interface ExchangeDemandPayload {
 }
 
 export interface ExchangeRequestAddressPayload {
-  line1: string;
+  line1: string | null;
   line2: string | null;
   line3: string | null;
   line2GenerallyVisible: boolean;
@@ -205,6 +205,7 @@ export interface ExchangeListInput {
   page: number;
   pageSize: number;
   viewerIdentityId: number;
+  participantIdentityId?: number;
   claimProviderUserId?: number;
   authorIdentityId?: number;
   now: Date;

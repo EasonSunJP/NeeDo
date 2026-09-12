@@ -1,7 +1,8 @@
 import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
-import type { ExchangeService } from "../src/services/exchange.service";
+import { ExchangeService } from "../src/services/exchange.service";
+import type { ExchangeActorLookup } from "../src/services/exchange.service";
 import type { ExchangePostPayload } from "../src/types/exchange.types";
 import { createDirectShopContextRepository } from "./helpers/merchant-shop-context";
 
@@ -113,7 +114,7 @@ const post: ExchangePostPayload = {
   intelligence: null
 };
 
-const createFixture = async () => {
+const createFixture = async (exchangeServiceOverride?: ExchangeService) => {
   const passwordHash = await hash("Abcd@1234", 12);
   const allPermissionCodes = [
     ...authPermissions,
@@ -263,7 +264,7 @@ const createFixture = async () => {
     testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    exchangeService: service
+    exchangeService: exchangeServiceOverride ?? service
   } as never);
   const login = async (email: string): Promise<string> => {
     const response = await request(app)
@@ -279,16 +280,18 @@ describe("formal Exchange routes", () => {
   it("requires authentication and the per-route read permission", async () => {
     const { app } = await createFixture();
 
-    await request(app)
-      .get("/api/v1/exchange/posts?type=demand")
-      .expect(401)
-      .expect((response) =>
-        expect(response.body).toEqual({
-          code: 40105,
-          message: "error.auth.token_invalid",
-          data: null
-        })
-      );
+    for (const path of ["/api/v1/exchange/posts?type=demand", "/api/v1/exchange/posts/41"]) {
+      await request(app)
+        .get(path)
+        .expect(401)
+        .expect((response) =>
+          expect(response.body).toEqual({
+            code: 40105,
+            message: "error.auth.token_invalid",
+            data: null
+          })
+        );
+    }
   });
 
   it("lists and reads only the public persisted response contract", async () => {
@@ -310,6 +313,70 @@ describe("formal Exchange routes", () => {
     );
     expect(JSON.stringify(listResponse.body)).not.toContain("authorUserId");
     expect(JSON.stringify(listResponse.body)).not.toContain("authorIdentityId");
+  });
+
+  it("redacts complete Request addresses on direct API reads for independent unmatched providers", async () => {
+    const preciseAddress = "東京都渋谷区道玄坂1-12-1";
+    const generalPost: ExchangePostPayload = {
+      ...post,
+      areaLabel: preciseAddress,
+      publisher: null,
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: true,
+        canViewClaims: false,
+        canViewMatching: false
+      },
+      demand: {
+        ...post.demand!,
+        address: {
+          line1: preciseAddress,
+          line2: "渋谷マークシティ 12F",
+          line3: "受付で田中を呼び出してください",
+          line2GenerallyVisible: true,
+          line3GenerallyVisible: true,
+          disclosure: "general"
+        }
+      }
+    };
+    const repository = {
+      resolveActor: jest.fn(async (lookup: ExchangeActorLookup) => ({
+        ...lookup,
+        displayName: "独立サービス提供者",
+        avatarUrl: null,
+        isTestAccount: true,
+        customerMembership: null,
+        shopScope:
+          lookup.scopeType === "shop" && lookup.scopeId
+            ? { shopId: lookup.scopeId, status: "published" }
+            : null
+      })),
+      findPostById: jest.fn(async () => generalPost)
+    };
+    const realService = new ExchangeService(repository as never, () => now);
+    const { app, login } = await createFixture(realService);
+
+    for (const email of ["technician@example.test", "merchant-staff@example.test"]) {
+      const token = await login(email);
+      const response = await request(app)
+        .get("/api/v1/exchange/posts/41")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+      expect(response.body.data.areaLabel).toBe("東京都渋谷区");
+      expect(response.body.data.demand.address).toEqual({
+        line1: null,
+        line2: null,
+        line3: null,
+        line2GenerallyVisible: false,
+        line3GenerallyVisible: false,
+        disclosure: "general"
+      });
+      expect(JSON.stringify(response.body)).not.toContain("道玄坂1-12-1");
+      expect(JSON.stringify(response.body)).not.toContain("渋谷マークシティ");
+      expect(JSON.stringify(response.body)).not.toContain("田中");
+      expect(JSON.stringify(response.body)).not.toMatch(/phone|email|phoneNumber/i);
+    }
   });
 
   it("validates body and idempotency header, then authorizes the matching subtype", async () => {

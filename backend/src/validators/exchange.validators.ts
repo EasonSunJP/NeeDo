@@ -32,8 +32,14 @@ const demandPostSchema = z
     addressLine1: authoredText(255),
     addressLine2: authoredText(255).nullable().optional().default(null),
     addressLine3: authoredText(255).nullable().optional().default(null),
-    addressLine2Public: z.boolean().default(false),
-    addressLine3Public: z.boolean().default(false),
+    addressLine2Public: z
+      .boolean()
+      .default(false)
+      .refine((value) => !value, "Request address is private until matching"),
+    addressLine3Public: z
+      .boolean()
+      .default(false)
+      .refine((value) => !value, "Request address is private until matching"),
     publisherIdentityPublic: z.boolean().default(false)
   })
   .strict();

@@ -206,8 +206,10 @@ function publisherIdentityLabel(identityType: string, language: Language) {
 function PublisherCard({ post, language }: { post: ExchangePost; language: Language }) {
   const areas = post.intelligence?.serviceAreas ?? [];
   const intelligenceAddress = post.intelligence?.addressLabel || post.areaLabel;
-  const requestAddressLines = post.demand
-    ? [post.demand.address.line1, post.demand.address.line2, post.demand.address.line3].filter(
+  const requestAddress = post.demand?.address;
+  const requestAddressLines = requestAddress &&
+    (requestAddress.disclosure === "owner" || requestAddress.disclosure === "matched_participant")
+    ? [requestAddress.line1, requestAddress.line2, requestAddress.line3].filter(
         (line): line is string => line !== null
       )
     : [];

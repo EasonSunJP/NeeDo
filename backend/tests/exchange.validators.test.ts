@@ -124,6 +124,16 @@ describe("formal NeeDo Exchange validators", () => {
         validDemand({ addressLine3: null, addressLine3Public: true })
       ).success
     ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(
+        validDemand({ addressLine2: "道玄坂1-2-3", addressLine2Public: true })
+      ).success
+    ).toBe(false);
+    expect(
+      publishExchangePostSchema.safeParse(
+        validDemand({ addressLine3: "12F", addressLine3Public: true })
+      ).success
+    ).toBe(false);
   });
 
   it("rejects legacy demand-only fields and provider counts outside 1 through 20", () => {

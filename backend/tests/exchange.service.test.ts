@@ -342,6 +342,7 @@ describe("ExchangeService", () => {
       page: 1,
       pageSize: 20,
       viewerIdentityId: 17,
+      participantIdentityId: 17,
       authorIdentityId: 17,
       now
     });
@@ -358,6 +359,7 @@ describe("ExchangeService", () => {
       page: 1,
       pageSize: 20,
       viewerIdentityId: 17,
+      participantIdentityId: 17,
       claimProviderUserId: 7,
       now
     });
@@ -379,6 +381,69 @@ describe("ExchangeService", () => {
 
     repository.findPostById.mockResolvedValueOnce(post);
     await expect(service.getPost(access, 41)).resolves.toEqual(post);
+  });
+
+  it("fails closed when a general-view repository payload still contains a complete Request address", async () => {
+    const repository = createRepository();
+    repository.resolveActor.mockResolvedValueOnce({
+      ...actor,
+      userId: 8,
+      identityId: 18,
+      identityType: "technician",
+      scopeType: "technician_profile",
+      scopeId: 81,
+      publicId: "s0000000081",
+      customerMembership: null
+    });
+    repository.findPostById.mockResolvedValueOnce({
+      ...post,
+      areaLabel: "東京都渋谷区道玄坂1-12-1",
+      publisher: null,
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: true,
+        canViewClaims: false,
+        canViewMatching: false
+      },
+      demand: {
+        ...post.demand!,
+        address: {
+          line1: "東京都渋谷区道玄坂1-12-1",
+          line2: "渋谷マークシティ 12F",
+          line3: "受付で田中を呼び出してください",
+          line2GenerallyVisible: true,
+          line3GenerallyVisible: true,
+          disclosure: "general"
+        }
+      }
+    });
+    const service = new ExchangeService(repository, () => now);
+
+    const result = await service.getPost(
+      {
+        ...access,
+        userId: 8,
+        currentIdentityId: 18,
+        currentPublicId: "s0000000081",
+        currentIdentityType: "technician",
+        currentIdentityScopeType: "technician_profile",
+        currentIdentityScopeId: 81
+      },
+      41
+    );
+
+    expect(result.areaLabel).toBe("東京都渋谷区");
+    expect(result.demand?.address).toEqual({
+      line1: null,
+      line2: null,
+      line3: null,
+      line2GenerallyVisible: false,
+      line3GenerallyVisible: false,
+      disclosure: "general"
+    });
+    expect(JSON.stringify(result)).not.toContain("道玄坂1-12-1");
+    expect(JSON.stringify(result)).not.toContain("渋谷マークシティ");
   });
 
   it("preserves the repository's authoritative Intelligence booking projection", async () => {
@@ -950,6 +1015,7 @@ describe("ExchangeService", () => {
 
     await service.publish(affiliateAccess, demandInput, "affiliate-demand-001");
     await service.listPosts(affiliateAccess, { type: "demand", page: 1, pageSize: 20 });
+    await service.getPost(affiliateAccess, post.id);
 
     expect(repository.createPost).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -965,9 +1031,11 @@ describe("ExchangeService", () => {
       page: 1,
       pageSize: 20,
       viewerIdentityId: 17,
+      participantIdentityId: 18,
       authorIdentityId: 17,
       now
     });
+    expect(repository.findPostById).toHaveBeenLastCalledWith(post.id, 17, now, undefined, 18);
   });
 
   it.each(["technician", "merchant", "merchant_owner", "merchant_staff"])(
