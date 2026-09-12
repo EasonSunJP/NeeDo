@@ -24,6 +24,7 @@ import {
   type ManualPaymentMethod,
 } from "../../features/booking/api";
 import { mapBackofficeOrderTimeline } from "../../features/booking/backofficeOrderTimeline";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { statusLabel, yen } from "../../lib/utils";
 
 type StatusFilter = "all" | "pending" | "confirmed" | "inService" | "completed" | "cancelled";
@@ -96,6 +97,7 @@ function paymentTone(status: BackofficeOrderPayload["paymentStatus"]) {
 }
 
 export function MerchantAdminOrdersPage() {
+  const language = useProvidedI18n()?.language ?? "zh";
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderDetailPayload | null>(null);
@@ -462,7 +464,7 @@ export function MerchantAdminOrdersPage() {
 
             <AdminEventTimeline
               emptyLabel="该订单还没有时间线记录。"
-              events={mapBackofficeOrderTimeline(selectedOrder.timelineEvents)}
+              events={mapBackofficeOrderTimeline(selectedOrder.timelineEvents, language)}
               showCommentComposer={false}
               title="订单时间线"
             />

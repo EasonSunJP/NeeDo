@@ -21883,6 +21883,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/technicians/{technicianId}/services`]: {
+      get: {
+        tags: ["Pricing Mode"],
+        summary: "Public service portfolio for a technician profile",
+        description:
+          "Lists active, bookable, approved technician-owned services backed by an active exact shop affiliation. This public profile projection is independent from the shop pricing mode; merchant-priced booking navigation continues to hide technician-priced checkout entries.",
+        parameters: [
+          { name: "technicianId", in: "path", required: true, schema: { type: "integer" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated public technician profile services" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/technicians/me/services`]: {
       get: {
         tags: ["Pricing Mode"],

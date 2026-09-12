@@ -61,15 +61,14 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
   const queriedDetail = detailQuery.data;
   const detailMatchesRoute = !queriedDetail || (typeof id === "number" ? queriedDetail.id === id : queriedDetail.publicId === id);
   const detail = detailMatchesRoute ? queriedDetail : null;
-  const shopId = detail?.shop?.id ?? null;
   const technicianId = detail?.id ?? null;
   const servicesQuery = useCoreReadQuery(
-    () => shopId && technicianId ? pricingModeApi.listPublicTechnicianServices(shopId, technicianId, { page: 1, pageSize: 20 }) : null,
-    [shopId, technicianId, retryRevision],
+    () => technicianId ? pricingModeApi.listPublicTechnicianProfileServices(technicianId, { page: 1, pageSize: 20 }) : null,
+    [technicianId, retryRevision],
     {
-      enabled: Boolean(shopId && technicianId),
+      enabled: Boolean(technicianId),
       force: retryRevision > 0,
-      key: `technician:services:${shopId ?? "missing"}:${technicianId ?? "missing"}:page-1:size-20`
+      key: `technician:public-profile-services:${technicianId ?? "missing"}:page-1:size-20`
     }
   );
   const scope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
@@ -104,7 +103,7 @@ function TechnicianApiProfilePage({ id }: { id: number | string | null }) {
     return <TechnicianProfileStatus description="技师资料链接无效。" onBack={handleBack} onClose={handleClose} title="暂无技师资料" />;
   }
 
-  if (detailQuery.loading || !detailMatchesRoute || (detail?.shop && servicesQuery.loading)) {
+  if (detailQuery.loading || !detailMatchesRoute || (detail && servicesQuery.loading)) {
     return <TechnicianProfileStatus description="正在从正式资料服务读取技师信息。" onBack={handleBack} onClose={handleClose} title="正在载入技师" />;
   }
 

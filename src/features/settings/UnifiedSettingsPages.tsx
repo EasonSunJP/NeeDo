@@ -1776,6 +1776,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
       <SettingsHomePage
         closeTo={getPortalMePath(portal)}
         info={t(isBusinessPortal ? "NeeDoAfirieito 使用独立 Afirieito App 设置中心，基础设置与用户端保持同一套交互。" : "统一设置模块现在使用同一套首页、列表项和子页承载三端配置，仅通过身份决定显示哪些内容。")}
+        infoLabel={t("设置页面说明")}
         navItems={getSettingsNavItems(portal)}
         onBack={
           switchedFromPortal
@@ -1789,6 +1790,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
       >
         <SettingsSection
           description={t(isBusinessPortal ? "主题、语言和账号切换复用用户端设置模块，Afirieito 前端保存自己的显示偏好。" : "主题、语言和身份切换统一复用用户端设置模块，三端不再各自维护一套入口。")}
+          infoLabel={t("查看外观与系统说明")}
           panelClassName={settingsListDividerClassName}
           title={t("外观与系统")}
         >
@@ -1818,6 +1820,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
         {isBusinessPortal ? null : (
           <SettingsSection
             description={t("统一复用同一组目录骨架，技师和店铺独有项也沿用用户端页面结构。")}
+            infoLabel={t("查看个人资料与认证说明")}
             panelClassName={settingsListDividerClassName}
             title={t("个人资料与认证")}
           >
@@ -1845,6 +1848,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
 
         <SettingsSection
           description={t(isBusinessPortal ? "Afirieito 登录账号、推广码、收款身份和数据权限集中到这里。" : "账户、安全、绑定关系和权限入口统一收口到同一详细页。")}
+          infoLabel={t("查看账户与安全说明")}
           panelClassName={settingsListDividerClassName}
           title={t("账户与安全")}
         >
@@ -1853,6 +1857,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
 
         <SettingsSection
           description={t(isBusinessPortal ? "活动、素材、结算、风控通知按 Afirieito 使用场景追加。" : "通知与隐私同样复用统一页骨架，技师和商户的独有开关通过配置追加。")}
+          infoLabel={t("查看通知与隐私说明")}
           panelClassName={settingsListDividerClassName}
           title={t("通知与隐私")}
         >
@@ -1875,11 +1880,12 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
 
         <SettingsSection
           description={t(isBusinessPortal ? "利用规约、个人信息保护方针、退会和退出账号作为 NeeDoAfirieito App 的固定基础入口。" : "帮助、关于、注销账号和退出登录保持统一入口，不再散落在各端我的页。")}
+          infoLabel={t("查看其他说明")}
           panelClassName={settingsListDividerClassName}
           title={t("其他")}
         >
-          <SettingsListItem title={t("利用规约")} to={getSettingsPath(portal, "terms")} value={t("查看")} />
-          <SettingsListItem title={t("个人信息保护方针")} to={getSettingsPath(portal, "privacy")} value={t("查看")} />
+          <SettingsListItem title={t("利用规约")} to={getSettingsPath(portal, "terms")} value={t("查看详情")} />
+          <SettingsListItem title={t("个人信息保护方针")} to={getSettingsPath(portal, "privacy")} value={t("查看详情")} />
           <SettingsListItem title={t("帮助与反馈")} to={getSettingsPath(portal, "help")} value={t(portal === "user" ? "在线支持" : "平台支持")} />
           <SettingsListItem dataNoI18n title={t(isBusinessPortal ? "关于 NeeDoAfirieito" : "关于 NeeDo")} to={getSettingsPath(portal, "about")} value={appVersion} />
           <SettingsListItem title={t("注销账号")} to={getSettingsPath(portal, "delete-account")} />
@@ -1975,6 +1981,7 @@ export function UnifiedSettingsLanguagePage({ portal }: { portal: UnifiedSetting
       <SettingsRadioListPage<Language>
         backTo={getSettingsBasePath(portal)}
         info={t("语言切换改为三端共用的紧凑单选列表。")}
+        infoLabel={t("语言页面说明")}
         navItems={getSettingsNavItems(portal)}
         options={languages.map((item) => ({
           value: item.code as Language,
@@ -1983,6 +1990,7 @@ export function UnifiedSettingsLanguagePage({ portal }: { portal: UnifiedSetting
           dataNoI18n: true
         }))}
         sectionDescription={t("语言偏好继续保存在本地，但入口和交互已经统一。")}
+        sectionInfoLabel={t("查看可选语言说明")}
         title={t("语言")}
         value={language}
         onChange={(next) => setLanguage(next)}

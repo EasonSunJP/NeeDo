@@ -17,6 +17,13 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
     expect(source).not.toContain('useState("2026-04-20")');
   });
 
+  it("resolves fallback schedule staff links from public NeeDo ids", () => {
+    expect(source).toContain("const getTechnicianPublicDetailPath = useCallback((technicianInternalId: string) => getMerchantStaffDetailPath(");
+    expect(source).toContain("activeTechnicians.find((technician) => technician.id === technicianInternalId)?.systemId");
+    expect(source).toContain("getTechnicianDetailPath={getTechnicianPublicDetailPath}");
+    expect(source).not.toContain("getTechnicianDetailPath={getMerchantStaffDetailPath}");
+  });
+
   it("reloads and isolates formal data when switching shops", () => {
     expect(source).toContain("formalScheduleScopeKey");
     expect(source).toContain("formalScheduleResult.scopeKey === formalScheduleScopeKey");

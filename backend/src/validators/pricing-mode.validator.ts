@@ -26,6 +26,10 @@ export const publicTechnicianServicesParamSchema = shopIdParamSchema.extend({
   technicianId: z.coerce.number().int().positive()
 });
 
+export const publicTechnicianProfileServicesParamSchema = z.object({
+  technicianId: z.coerce.number().int().positive()
+});
+
 export const pricingModeBodySchema = z.object({
   pricingMode: z.enum(["merchant", "technician"]),
   technicianPricingRatePercent: z.number().int().min(10).max(100).optional()
@@ -67,6 +71,9 @@ export const technicianServiceBodySchema = z.object({
 export type ShopIdParams = z.infer<typeof shopIdParamSchema>;
 export type TechnicianServiceIdParams = z.infer<typeof technicianServiceIdParamSchema>;
 export type PublicTechnicianServicesParams = z.infer<typeof publicTechnicianServicesParamSchema>;
+export type PublicTechnicianProfileServicesParams = z.infer<
+  typeof publicTechnicianProfileServicesParamSchema
+>;
 export type PricingModeBody = z.infer<typeof pricingModeBodySchema>;
 export type TechnicianServiceListQuery = z.infer<typeof technicianServiceListQuerySchema>;
 export type TechnicianServiceOrderBody = z.infer<typeof technicianServiceOrderBodySchema>;

@@ -45,6 +45,13 @@ describe("UnifiedUserCalendar event detail page", () => {
   });
 });
 
+describe("UnifiedUserCalendar merchant staff routes", () => {
+  it("builds merchant schedule lane links from the public NeeDo technician id only", () => {
+    expect(source).toContain("detailPath: getMerchantStaffDetailPath(technician.systemId)");
+    expect(source).not.toContain("detailPath: `/merchant/staff/${encodeURIComponent(technician.id)}`");
+  });
+});
+
 describe("UnifiedUserCalendar privacy projection", () => {
   it("keeps the locked badge in compact cross-shop redacted events", () => {
     expect(source).toContain('event.visibility === "busy_redacted"');

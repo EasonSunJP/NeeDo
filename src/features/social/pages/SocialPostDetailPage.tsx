@@ -293,7 +293,7 @@ function DetailMiniPostCard({
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
             <span className="truncate font-bold text-white">{author.displayName}</span>
             <VerificationBadge status={author.verifiedStatus} />
-            <span className="text-white/46">{formatRelativeTime(post.createdAt)}</span>
+            <span className="text-white/46" data-no-i18n>{formatRelativeTime(post.createdAt, language)}</span>
           </div>
         </div>
       </div>
@@ -380,7 +380,7 @@ function ReplyListItem({
               {author.displayName}
             </Link>
             <VerificationBadge status={author.verifiedStatus} />
-            <span className="text-[13px] text-white/46">{formatRelativeTime(post.createdAt)}</span>
+            <span className="text-[13px] text-white/46" data-no-i18n>{formatRelativeTime(post.createdAt, language)}</span>
           </div>
 
           {post.text ? <UnifiedPostText allowExpand={false} className="mt-2 text-[15px] leading-7 text-white" expanded profiles={profiles} richText={post.richText} scope={scope} text={post.text} /> : null}

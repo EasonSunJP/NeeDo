@@ -18,10 +18,11 @@ describe("storeBookingRoute", () => {
       buildStoreCheckoutRoute("svc-1", {
         date: "2026-05-26",
         people: "1名",
+        scheduleSlotId: 902,
         storeId: "store-1",
         technicianId: "tech-1",
         time: "08:00"
       })
-    ).toBe("/checkout/svc-1?mode=store&store=store-1&technician=tech-1&date=2026-05-26&people=1%E5%90%8D&time=08%3A00");
+    ).toBe("/checkout/svc-1?mode=store&store=store-1&technician=tech-1&date=2026-05-26&people=1%E5%90%8D&time=08%3A00&scheduleSlotId=902");
   });
 });

@@ -90,6 +90,25 @@ describe("pricingModeApi technician portfolio", () => {
     });
   });
 
+  it("loads the public profile portfolio without a shop pricing-mode context", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({
+      list: [serviceFixture],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+
+    await pricingModeApi.listPublicTechnicianProfileServices(3, {
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(httpClient.request).toHaveBeenCalledWith("/technicians/3/services", {
+      auth: false,
+      query: { page: 1, pageSize: 20 },
+    });
+  });
+
   it("saves one complete ordered portfolio with an idempotency key", async () => {
     vi.mocked(httpClient.request).mockResolvedValue([]);
 

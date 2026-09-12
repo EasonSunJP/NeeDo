@@ -30,6 +30,7 @@ import { schedulingApi } from "../scheduling/api";
 import { availabilityWindowApi } from "../scheduling/availability-window-api";
 import { automationApi, type TechnicianAutomationContactPage } from "./automation-api";
 import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
 import type { ExchangeCancellation } from "../exchange/types";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
@@ -941,6 +942,7 @@ function checkoutEvidenceLabel(checkout: OrderCheckout | null) {
 
 function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
   const { session } = useAuth();
+  const language = useProvidedI18n()?.language ?? "zh";
   const resource = useFormalTechnicianOrderResource(session, orderId);
   const [order, setOrder] = useState<BookingOrder | null>(null);
   const [pending, setPending] = useState(false);
@@ -1261,7 +1263,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
 
         <ContactEventTimelinePanel
           title="订单追踪信息"
-          events={buildFormalOrderTimelineEvents(order)}
+          events={buildFormalOrderTimelineEvents(order, { audience: "technician", language })}
           onCommentSubmit={(body) => {
             void runFormalMutation("timeline-comment", () =>
               bookingApi.createTimelineComment(order.id, { body })

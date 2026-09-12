@@ -9,6 +9,7 @@ import {
   type CoreShopDetail,
   type CoreTechnicianDetail
 } from "../../features/core-read/api";
+import { pricingModeApi } from "../../features/pricing-mode/api";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
 import { ProfileDetailPage } from "./ProfileDetailPage";
@@ -129,6 +130,12 @@ async function renderRoute(path: string) {
 
 beforeEach(async () => {
   await persistentResourceCache.clearScope("public");
+  vi.spyOn(pricingModeApi, "listPublicTechnicianProfileServices").mockResolvedValue({
+    list: [],
+    total: 0,
+    page: 1,
+    page_size: 20
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);

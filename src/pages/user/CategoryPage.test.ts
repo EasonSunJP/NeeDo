@@ -7,6 +7,7 @@ describe("CategoryPage service preview card", () => {
     expect(categoryPageSource).toContain("UnifiedServiceInfoCard");
     expect(categoryPageSource).toContain("mapServiceItemToUnifiedData(service)");
     expect(categoryPageSource).not.toContain("getGeneratedImageThumbnailUrl(service.cover)");
+    expect(categoryPageSource).toContain("<ServicePreviewCard key={service.id} language={language} service={service} />");
   });
 });
 
@@ -64,5 +65,15 @@ describe("CategoryPage formal entity cards", () => {
     expect(categoryPageSource).not.toContain("legacyStores");
     expect(categoryPageSource).not.toContain("legacyTechnicians");
     expect(categoryPageSource).not.toContain("data/mock");
+    expect(categoryPageSource).toContain("language={language}");
+  });
+
+  it("routes search controls, states, and accessibility labels through i18n", () => {
+    expect(categoryPageSource).toContain('aria-label={t("搜索关键词")}');
+    expect(categoryPageSource).toContain('placeholder={t("输入搜索关键词")}');
+    expect(categoryPageSource).toContain('{t("搜索")}');
+    expect(categoryPageSource).toContain('aria-label={t("关闭筛选菜单")}');
+    expect(categoryPageSource).toContain('label={t("返回")}');
+    expect(categoryPageSource).not.toContain('placeholder="输入关键词后添加"');
   });
 });

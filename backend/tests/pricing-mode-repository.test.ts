@@ -113,6 +113,128 @@ describe("PricingModeRepository", () => {
     expect(query.where).not.toHaveProperty("shopId");
   });
 
+  it("publishes only active approved services backed by the exact active shop affiliation", async () => {
+    const valid = {
+      ...serviceRecord(1, 10),
+      sourceShopServiceId: 101,
+      category: { isActive: true, deletedAt: null },
+      sourceShopService: { id: 101, shopId: 10, status: "published", deletedAt: null },
+      technicianProfile: {
+        id: 3,
+        shopId: null,
+        status: "published",
+        visibility: "public",
+        deletedAt: null,
+        user: {
+          isActive: true,
+          deletedAt: null,
+          identities: [
+            {
+              isActive: true,
+              deletedAt: null,
+              publicIdentifier: { kind: "S", status: "ACTIVE", deletedAt: null }
+            }
+          ]
+        },
+        technicianShopAffiliations: [
+          {
+            shopId: 10,
+            activeKey: "technician:3:shop:10",
+            workStatus: "ACTIVE",
+            startsAt: new Date("2026-01-01T00:00:00.000Z"),
+            endsAt: null,
+            deletedAt: null
+          }
+        ]
+      }
+    };
+    const findMany = jest.fn(async () => [valid]);
+    const count = jest.fn(async () => 1);
+    const technicianFindFirst = jest.fn(async () => ({
+      shopId: null,
+      technicianShopAffiliations: [{ shopId: 10 }]
+    }));
+    const repository = new PricingModeRepository({
+      technicianProfile: { findFirst: technicianFindFirst },
+      technicianService: { findMany, count }
+    } as unknown as PrismaClient);
+
+    await expect(
+      repository.listPublicTechnicianProfileServices({
+        technicianId: 3,
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toMatchObject({
+      list: [{ id: 1, shopId: 10 }],
+      total: 1
+    });
+
+    expect(technicianFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 3, status: "published", visibility: "public" })
+      })
+    );
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          technicianId: 3,
+          shopId: { in: [10] },
+          deletedAt: null,
+          isActive: true,
+          isBookable: true,
+          reviewStatus: "APPROVED",
+          category: { is: { isActive: true, deletedAt: null } },
+          shop: expect.objectContaining({
+            is: expect.objectContaining({ status: "published", deletedAt: null })
+          }),
+          technicianProfile: expect.objectContaining({
+            is: expect.objectContaining({
+              status: "published",
+              visibility: "public",
+              deletedAt: null
+            })
+          })
+        })
+      })
+    );
+    expect(count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ technicianId: 3, shopId: { in: [10] } })
+      })
+    );
+  });
+
+  it("keeps a directly attached technician shop eligible and fails closed without any active shop", async () => {
+    const findMany = jest.fn(async () => [serviceRecord(4, 10)]);
+    const count = jest.fn(async () => 1);
+    const technicianFindFirst = jest
+      .fn()
+      .mockResolvedValueOnce({ shopId: 10, technicianShopAffiliations: [] })
+      .mockResolvedValueOnce({ shopId: null, technicianShopAffiliations: [] });
+    const repository = new PricingModeRepository({
+      technicianProfile: { findFirst: technicianFindFirst },
+      technicianService: { findMany, count }
+    } as unknown as PrismaClient);
+
+    await expect(
+      repository.listPublicTechnicianProfileServices({
+        technicianId: 3,
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toMatchObject({ list: [{ id: 4, shopId: 10 }], total: 1 });
+    await expect(
+      repository.listPublicTechnicianProfileServices({
+        technicianId: 3,
+        page: 1,
+        pageSize: 20
+      })
+    ).resolves.toMatchObject({ list: [], total: 0 });
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(count).toHaveBeenCalledTimes(1);
+  });
+
   it("versions the shop-wide compensation rule with the selected technician settlement share", async () => {
     const updatedAt = new Date("2026-09-08T00:00:00.000Z");
     const currentRule = {

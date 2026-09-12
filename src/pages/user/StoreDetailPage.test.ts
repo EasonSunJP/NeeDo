@@ -13,6 +13,9 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain('searchParams.get("technician")');
     expect(pageSource).toContain("routedBookingTechnician");
     expect(pageSource).toContain("buildStoreCheckoutRoute");
+    expect(pageSource).toContain("loadAvailabilityWindow");
+    expect(pageSource).toContain("scheduleSlotId: selectedFormalSlot?.id");
+    expect(pageSource).toContain("isCheckoutSlotBookable");
     expect(pageSource).toContain("指名");
   });
 

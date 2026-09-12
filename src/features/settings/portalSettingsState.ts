@@ -159,14 +159,14 @@ export function summarizePortalSettingsState(state: PortalSettingsState) {
   const enabledCount = values.filter(Boolean).length;
 
   if (enabledCount === values.length) {
-    return "全部开启";
+    return "全部通知已开启";
   }
 
   if (enabledCount === 0) {
-    return "已关闭";
+    return "全部通知已关闭";
   }
 
-  return "部分开启";
+  return "部分通知已开启";
 }
 
 export function usePortalSettingsState<T extends UnifiedSettingsPortal>(portal: T) {

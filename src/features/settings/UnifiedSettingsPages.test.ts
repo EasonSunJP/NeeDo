@@ -411,6 +411,32 @@ describe("UnifiedSettingsPage fullscreen exit", () => {
     expect(settingsHomeComponentSource).toContain("showBottomNav={false}");
     expect(pageScaffoldSource).toContain("showBottomNav={showBottomNav}");
   });
+
+  it("passes explicit localized labels to every settings information trigger", () => {
+    for (const label of [
+      "设置页面说明",
+      "查看外观与系统说明",
+      "查看个人资料与认证说明",
+      "查看账户与安全说明",
+      "查看通知与隐私说明",
+      "查看其他说明"
+    ]) {
+      expect(settingsHomeSource, label).toContain(`infoLabel={t("${label}")}`);
+    }
+
+    expect(settingsDirectorySource).toContain("infoLabel={infoLabel}");
+  });
+
+  it("passes explicit localized labels to the language settings information triggers", () => {
+    expect(source).toContain('infoLabel={t("语言页面说明")}');
+    expect(source).toContain('sectionInfoLabel={t("查看可选语言说明")}');
+    expect(settingsDirectorySource).toContain("sectionInfoLabel?: string");
+  });
+
+  it("uses a settings-specific details label instead of the global more-content wording", () => {
+    expect(settingsHomeSource).toContain('value={t("查看详情")}');
+    expect(settingsHomeSource).not.toContain('value={t("查看")}');
+  });
 });
 
 describe("UnifiedSettingsServiceRangePage", () => {
