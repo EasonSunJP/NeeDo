@@ -1981,6 +1981,7 @@ export function UnifiedSettingsLanguagePage({ portal }: { portal: UnifiedSetting
       <SettingsRadioListPage<Language>
         backTo={getSettingsBasePath(portal)}
         info={t("语言切换改为三端共用的紧凑单选列表。")}
+        infoLabel={t("语言页面说明")}
         navItems={getSettingsNavItems(portal)}
         options={languages.map((item) => ({
           value: item.code as Language,
@@ -1989,6 +1990,7 @@ export function UnifiedSettingsLanguagePage({ portal }: { portal: UnifiedSetting
           dataNoI18n: true
         }))}
         sectionDescription={t("语言偏好继续保存在本地，但入口和交互已经统一。")}
+        sectionInfoLabel={t("查看可选语言说明")}
         title={t("语言")}
         value={language}
         onChange={(next) => setLanguage(next)}

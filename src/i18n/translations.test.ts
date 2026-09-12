@@ -1124,6 +1124,14 @@ describe("translations", () => {
     }
   });
 
+  it("keeps approved Japanese settings copy stable when the runtime translator sees it again", () => {
+    expect(translateText("本人", "ja")).toBe("本人");
+    expect(translateText("確認", "ja")).toBe("確認");
+    expect(translateText("说明", "ja")).toBe("説明");
+    expect(translateText(translateText("个人资料与认证", "ja"), "ja")).toBe("プロフィール・本人確認");
+    expect(translateText(translateText("查看个人资料与认证说明", "ja"), "ja")).toBe("プロフィールと本人確認の説明を表示");
+  });
+
   it("uses staff naming for people associated with a merchant", () => {
     expect(translateText("员工", "ja")).toBe("スタッフ");
     expect(translateText("员工", "en")).toBe("Staff");

@@ -117,6 +117,7 @@ export function SettingsHomePage({
 export function SettingsDetailPage({
   title,
   info,
+  infoLabel,
   subtitle,
   actions,
   footer,
@@ -135,6 +136,7 @@ export function SettingsDetailPage({
 }: {
   title: ReactNode;
   info?: ReactNode;
+  infoLabel?: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
   footer?: ReactNode;
@@ -178,6 +180,7 @@ export function SettingsDetailPage({
         footerClassName={footerClassName}
         hideCloseButton={hideCloseButton}
         info={titleInfo}
+        infoLabel={infoLabel}
         frameClassName={headerFrameClassName}
         overlay={headerOverlay}
         onBack={handleBack}
@@ -375,11 +378,13 @@ export type SettingsRadioOption<T extends string> = {
 export function SettingsRadioListPage<T extends string>({
   title,
   info,
+  infoLabel,
   subtitle,
   backTo,
   onBack,
   sectionTitle = "可选项",
   sectionDescription,
+  sectionInfoLabel,
   options,
   value,
   onChange,
@@ -389,11 +394,13 @@ export function SettingsRadioListPage<T extends string>({
 }: {
   title: ReactNode;
   info?: ReactNode;
+  infoLabel?: string;
   subtitle?: ReactNode;
   backTo?: string;
   onBack?: () => void;
   sectionTitle?: ReactNode;
   sectionDescription?: ReactNode;
+  sectionInfoLabel?: string;
   options: SettingsRadioOption<T>[];
   value: T;
   onChange: (value: T) => void;
@@ -402,8 +409,8 @@ export function SettingsRadioListPage<T extends string>({
   contentClassName?: string;
 }) {
   return (
-    <SettingsDetailPage backTo={backTo} contentClassName={contentClassName} info={info} navItems={navItems} onBack={onBack} subtitle={subtitle} title={title}>
-      <SettingsSection description={sectionDescription} panelClassName="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" title={sectionTitle}>
+    <SettingsDetailPage backTo={backTo} contentClassName={contentClassName} info={info} infoLabel={infoLabel} navItems={navItems} onBack={onBack} subtitle={subtitle} title={title}>
+      <SettingsSection description={sectionDescription} infoLabel={sectionInfoLabel} panelClassName="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" title={sectionTitle}>
         {options.map((option) => {
           const active = option.value === value;
 

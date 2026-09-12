@@ -427,6 +427,12 @@ describe("UnifiedSettingsPage fullscreen exit", () => {
     expect(settingsDirectorySource).toContain("infoLabel={infoLabel}");
   });
 
+  it("passes explicit localized labels to the language settings information triggers", () => {
+    expect(source).toContain('infoLabel={t("语言页面说明")}');
+    expect(source).toContain('sectionInfoLabel={t("查看可选语言说明")}');
+    expect(settingsDirectorySource).toContain("sectionInfoLabel?: string");
+  });
+
   it("uses a settings-specific details label instead of the global more-content wording", () => {
     expect(settingsHomeSource).toContain('value={t("查看详情")}');
     expect(settingsHomeSource).not.toContain('value={t("查看")}');
