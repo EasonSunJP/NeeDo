@@ -45,11 +45,11 @@ describe("useVisualViewportFrame", () => {
 
     const frame = container.querySelector<HTMLElement>("[data-testid='frame']");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("720px");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("12px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("390px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("5px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("auto");
-    expect(frame?.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-conversation-room-height")).toBe("720px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("112px");
 
     input.blur();
@@ -62,7 +62,7 @@ describe("useVisualViewportFrame", () => {
     await act(async () => visualViewport.dispatchEvent(new Event("resize")));
 
     expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("680px");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("18px");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("380px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("8px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("auto");
@@ -70,8 +70,8 @@ describe("useVisualViewportFrame", () => {
     Object.defineProperty(visualViewport, "height", { configurable: true, value: 844 });
     await act(async () => visualViewport.dispatchEvent(new Event("resize")));
     expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("0px");
@@ -146,7 +146,7 @@ describe("useVisualViewportFrame", () => {
     await act(async () => window.dispatchEvent(new Event("pageshow")));
     expect(document.activeElement).toBe(container.querySelector("textarea"));
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     await act(async () => root.unmount());
   });
 
@@ -175,8 +175,8 @@ describe("useVisualViewportFrame", () => {
 
     const frame = container.querySelector<HTMLElement>("[data-testid='frame']");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
-    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
+    expect(frame?.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-width")).toBe("auto");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-left")).toBe("0px");
     expect(frame?.style.getPropertyValue("--im-visual-viewport-right")).toBe("0px");
@@ -215,7 +215,7 @@ describe("iPhone standalone viewport", () => {
   it("uses dynamic height for iPhone standalone without trusting screen pixel height", async () => {
     const { root, frame } = await mountIphoneFrame();
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("759px");
-    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("100dvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     await act(async () => root.unmount());
   });
@@ -225,12 +225,12 @@ describe("iPhone standalone viewport", () => {
     Object.defineProperty(viewport, "height", { value: 420, configurable: true });
     await act(async () => frame.querySelector("textarea")!.focus());
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("420px");
-    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("420px");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("339px");
     Object.defineProperty(viewport, "height", { value: 759, configurable: true });
     await act(async () => viewport.dispatchEvent(new Event("resize")));
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("759px");
-    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("100dvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     await act(async () => root.unmount());
   });
@@ -251,7 +251,7 @@ describe("iPhone standalone viewport", () => {
   it("keeps ordinary Safari constrained to the browser viewport", async () => {
     const { root, frame } = await mountIphoneFrame(false);
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("100dvh");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     await act(async () => root.unmount());
   });
 
