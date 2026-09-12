@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { ImMediaFileStorage } from "../src/services/im-media.storage";
 import { ImMediaService } from "../src/services/im-media.service";
 
-const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const pngBytes = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64"
+);
 
 describe("ImMediaService", () => {
   let directory = "";

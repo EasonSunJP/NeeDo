@@ -6518,6 +6518,8 @@ model IdentityApplicationMedia {
   applicationId Int       @map("application_id")
   mediaAssetId  Int       @map("media_asset_id")
   purpose       String    @db.VarChar(50)
+  variant       String    @default("original") @db.VarChar(20)
+  sourceMediaId Int?      @map("source_media_id")
   sortOrder     Int       @default(0) @map("sort_order")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -6525,10 +6527,14 @@ model IdentityApplicationMedia {
 
   application IdentityApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
   mediaAsset  MediaAsset          @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  sourceMedia IdentityApplicationMedia?  @relation("IdentityMediaPreviewSource", fields: [sourceMediaId], references: [id], onDelete: Restrict)
+  previews    IdentityApplicationMedia[] @relation("IdentityMediaPreviewSource")
 
   @@unique([applicationId, mediaAssetId])
   @@index([mediaAssetId])
   @@index([applicationId, purpose])
+  @@index([sourceMediaId])
+  @@unique([sourceMediaId, variant])
   @@index([deletedAt])
   @@map("identity_application_media")
 }

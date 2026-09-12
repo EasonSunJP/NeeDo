@@ -15,7 +15,7 @@ import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { getAuthenticatedPersistentCacheScope } from "../../lib/persistentCacheScope";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import type { Order } from "../../types/domain";
-import { getRebookPath } from "./rebookRoute";
+import { getRebookAction } from "./rebookRoute";
 
 const fullscreenHeaderClassName = "";
 const surfaceCardClassName =
@@ -133,29 +133,45 @@ function OrderProviderInfoCard({ order }: { order: Order }) {
 }
 
 function OrderActionButton({
+  disabled = false,
   icon,
   label,
   onClick,
   tone
 }: {
+  disabled?: boolean;
   icon: "calendar" | "check";
   label: string;
   onClick: () => void;
   tone: "primary" | "secondary";
 }) {
   const ButtonComponent = tone === "primary" ? PrimaryButton : SecondaryButton;
-
-  return (
-    <ButtonComponent
-      className={cn(
-        "user-orders-action-button h-11 w-full rounded-[16px] px-2 text-[12px]",
-        tone === "primary" && "user-orders-primary-action-button"
-      )}
-      onClick={onClick}
-    >
+  const content = (
+    <>
       <AppIcon className="h-4 w-4 shrink-0" name={icon} />
       <span className="min-w-0 truncate">{label}</span>
-    </ButtonComponent>
+    </>
+  );
+  const className = cn(
+    "user-orders-action-button h-11 w-full rounded-[16px] px-2 text-[12px]",
+    tone === "primary" && "user-orders-primary-action-button"
+  );
+
+  if (disabled) {
+    return (
+      <button
+        aria-disabled="true"
+        className={cn(className, "cursor-not-allowed opacity-55")}
+        disabled
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <ButtonComponent className={className} onClick={onClick}>{content}</ButtonComponent>
   );
 }
 
@@ -289,7 +305,7 @@ export function UserOrdersPage() {
           {queryStatus === "success" && visibleOrders.length > 0 ? (
             <section>
               {renderedOrders.map((order) => {
-                const rebookPath = getRebookPath(order);
+                const rebook = getRebookAction(order.rebook);
 
                 return (
                   <div className="user-orders-order-item mb-3 last:mb-0" key={order.id}>
@@ -303,12 +319,24 @@ export function UserOrdersPage() {
 
                       <div className="mt-2.5"><OrderProviderInfoCard order={order} /></div>
 
-                      <div className={cn("user-orders-action-row mt-2.5 grid gap-1.5", rebookPath ? "grid-cols-2" : "grid-cols-1")}>
+                      <div className="user-orders-action-row mt-2.5 grid grid-cols-2 gap-1.5">
                         <OrderActionButton icon="check" label="详细" onClick={() => navigate(`/orders/${order.id}`)} tone="secondary" />
-                        {rebookPath ? (
-                          <OrderActionButton icon="calendar" label="再次预约" onClick={() => navigate(rebookPath)} tone="primary" />
-                        ) : null}
+                        <OrderActionButton
+                          disabled={!rebook.enabled}
+                          icon="calendar"
+                          label={rebook.label}
+                          onClick={() => {
+                            if (!rebook.path) return;
+                            navigate(rebook.path, rebook.notice ? { state: { notice: rebook.notice } } : undefined);
+                          }}
+                          tone="primary"
+                        />
                       </div>
+                      {rebook.notice ? (
+                        <p className="mt-2 text-center text-[11px] font-bold text-[color:var(--client-muted)]" role="status">
+                          {rebook.notice}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 );

@@ -61,6 +61,18 @@ function hasFormalSocialMediaAsset(item: SocialMediaItem) {
 export function getSocialComposerErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
 
+  if (message.includes("error.image_upload.quality_failed")) {
+    return "图片质量验证未通过，请重新选择图片。";
+  }
+
+  if (message.includes("error.image_upload.unsupported") || message.includes("error.image_upload.invalid")) {
+    return "当前设备无法安全处理这张图片。";
+  }
+
+  if ((error instanceof DOMException && error.name === "AbortError") || message.includes("AbortError")) {
+    return "图片处理已取消。";
+  }
+
   if (
     message.includes("error.social.media_upload_unavailable") ||
     message.includes("error.social.media_not_owned") ||

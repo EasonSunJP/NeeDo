@@ -1,5 +1,6 @@
 import { httpClient } from "../../api/httpClient";
 import type { IdentityAvailability } from "./model";
+import { optimizeImageUpload } from "../../lib/image-upload";
 
 export type ContractLanguage = "zh-CN" | "ja" | "en";
 export type IdentityApplicationStatus = "draft" | "submitted" | "under_review" | "approved" | "rejected" | "withdrawn";
@@ -167,10 +168,31 @@ export const identityApplicationsApi = {
   bindMerchantBankAccount(id: number, body: BankAccountInput & { expectedVersion: number }) {
     return httpClient.request<{ applicationVersion: number; accountNumberMasked: string }>(`/identity-applications/${id}/merchant-bank-account`, { body, method: "PATCH" });
   },
-  uploadMedia(id: number, purpose: string, expectedVersion: number, file: File) {
+  async uploadMedia(id: number, purpose: string, expectedVersion: number, file: File) {
+    const upload = (await optimizeImageUpload(file, "shop-presentation")).file;
     return httpClient.request<{ id: number; applicationVersion: number }>(`/identity-applications/${id}/media`, {
-      body: file,
-      headers: { "Content-Type": file.type },
+      body: upload,
+      headers: { "Content-Type": upload.type },
+      method: "POST",
+      query: { expected_version: expectedVersion, purpose }
+    });
+  },
+  async uploadSensitiveMediaBundle(
+    id: number,
+    purpose: "portrait" | "identity_document" | "corporate_registration" | "representative_identity",
+    expectedVersion: number,
+    originalFile: File
+  ) {
+    const preview = (await optimizeImageUpload(originalFile, "identity-preview")).file;
+    const body = new FormData();
+    body.append("original", originalFile, originalFile.name);
+    body.append("preview", preview, preview.name);
+    return httpClient.request<{
+      original: { id: number };
+      preview: { id: number };
+      applicationVersion: number;
+    }>(`/identity-applications/${id}/media-bundle`, {
+      body,
       method: "POST",
       query: { expected_version: expectedVersion, purpose }
     });

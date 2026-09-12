@@ -110,5 +110,18 @@ export function merchantApplicationErrorMessage(error: unknown) {
   if (error && typeof error === "object" && "status" in error && error.status === 401) {
     return "登录状态已失效，请重新登录后继续申请。";
   }
+  return messages[message] ?? identityApplicationMediaErrorMessage(error);
+}
+
+export function identityApplicationMediaErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const messages: Record<string, string> = {
+    "error.image_upload.quality_failed": "图片质量验证未通过，请重新选择图片。",
+    "error.image_upload.unsupported": "当前设备无法安全处理这张图片。",
+    "error.image_upload.invalid": "图片无法读取，请重新选择 JPEG 或 PNG 文件。",
+    "error.identity_application.preview_mismatch": "预览图与原始材料不一致，请重新选择图片。",
+    "error.identity_application.media_invalid": "图片验证失败，请重新选择 JPEG 或 PNG 文件。",
+    "error.identity_application.media_too_large": "图片容量超过限制，请选择更小的文件。"
+  };
   return messages[message] ?? message;
 }

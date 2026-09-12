@@ -85,7 +85,11 @@ const buildMerchantReviewSelect = (includeSensitiveDocuments: boolean, now: Date
     },
     media: {
       where: includeSensitiveDocuments
-        ? { deletedAt: null, mediaAsset: { deletedAt: null, purgedAt: null } }
+        ? {
+            deletedAt: null,
+            variant: "original",
+            mediaAsset: { deletedAt: null, purgedAt: null }
+          }
         : { id: -1 },
       orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
       select: {

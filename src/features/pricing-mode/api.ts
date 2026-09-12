@@ -1,4 +1,5 @@
 import { httpClient } from "../../api/httpClient";
+import { optimizeImageUpload } from "../../lib/image-upload";
 
 export type ShopPricingMode = "merchant" | "technician";
 
@@ -188,10 +189,11 @@ export const pricingModeApi = {
     });
   },
 
-  uploadTechnicianServiceCover(shopId: number, serviceId: number, file: File) {
+  async uploadTechnicianServiceCover(shopId: number, serviceId: number, file: File) {
+    const optimized = await optimizeImageUpload(file, "service-cover");
     return httpClient.request<TechnicianServicePayload>(
       `/technicians/me/shops/${shopId}/services/${serviceId}/cover`,
-      { body: file, headers: { "Content-Type": file.type }, method: "PUT" }
+      { body: optimized.file, headers: { "Content-Type": optimized.mimeType }, method: "PUT" }
     );
   },
 

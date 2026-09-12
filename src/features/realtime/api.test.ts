@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAuthTokens, setAccessToken } from "../../api/httpClient";
+import { optimizeImageUpload } from "../../lib/image-upload";
 import { realtimeApi, subscribeRealtimeEvents } from "./api";
+
+vi.mock("../../lib/image-upload", () => ({ optimizeImageUpload: vi.fn() }));
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify({ code: 0, message: "success", data }), {
@@ -124,14 +127,23 @@ describe("formal realtime API", () => {
     const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], "album.png", {
       type: "image/png"
     });
+    const optimizedFile = new File([new Uint8Array([0xff, 0xd8, 0xff])], "album.jpg", {
+      type: "image/jpeg"
+    });
+    vi.mocked(optimizeImageUpload).mockResolvedValue({
+      file: optimizedFile, height: 480, mimeType: "image/jpeg", resultBytes: 3,
+      sourceBytes: 8, ssim: 0.999, status: "optimized", width: 640
+    });
 
     await realtimeApi.uploadConversationImage(91, file);
 
+    expect(optimizeImageUpload).toHaveBeenCalledWith(file, "im");
+
     expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/im/conversations/91/media?fileName=album.png",
+      "/api/v1/im/conversations/91/media?fileName=album.jpg",
       expect.objectContaining({
-        body: file,
-        headers: expect.objectContaining({ "Content-Type": "image/png" }),
+        body: optimizedFile,
+        headers: expect.objectContaining({ "Content-Type": "image/jpeg" }),
         method: "POST"
       })
     );
@@ -152,6 +164,13 @@ describe("formal realtime API", () => {
       "moment.png",
       { type: "image/png" }
     );
+    const optimizedFile = new File([new Uint8Array([0xff, 0xd8, 0xff])], "moment.jpg", {
+      type: "image/jpeg"
+    });
+    vi.mocked(optimizeImageUpload).mockResolvedValue({
+      file: optimizedFile, height: 900, mimeType: "image/jpeg", resultBytes: 3,
+      sourceBytes: 8, ssim: 0.999, status: "optimized", width: 1200
+    });
 
     await realtimeApi.uploadSocialMedia(file);
     await realtimeApi.createSocialPost({
@@ -163,12 +182,13 @@ describe("formal realtime API", () => {
       visibility: "public"
     });
 
+    expect(optimizeImageUpload).toHaveBeenCalledWith(file, "social");
     expect(fetch).toHaveBeenNthCalledWith(
       1,
-      "/api/v1/social/media?fileName=moment.png",
+      "/api/v1/social/media?fileName=moment.jpg",
       expect.objectContaining({
-        body: file,
-        headers: expect.objectContaining({ "Content-Type": "image/png" }),
+        body: optimizedFile,
+        headers: expect.objectContaining({ "Content-Type": "image/jpeg" }),
         method: "POST"
       })
     );

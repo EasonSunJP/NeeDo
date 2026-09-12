@@ -77,6 +77,8 @@ describe("SocialMediaService", () => {
         usageType: "social_post_public",
         fileName: "moment.png",
         fileSize: validPng.length,
+        width: 2,
+        height: 2,
         context,
         createdAt: now
       })
@@ -85,7 +87,7 @@ describe("SocialMediaService", () => {
     await expect(readFile(join(directory, fileKey))).resolves.toEqual(validPng);
   });
 
-  it("retains Social's signature-only contract for APNG and large decoded dimensions", async () => {
+  it("rejects APNG and excessive decoded dimensions before persistence", async () => {
     const repository: SocialMediaRepositoryPort = {
       createUpload: jest.fn(async (input) => ({
         publicId: input.checksumSha256,
@@ -105,7 +107,7 @@ describe("SocialMediaService", () => {
         mimeType: "image/png",
         now
       })
-    ).resolves.toMatchObject({ mimeType: "image/png", fileSize: validTwoFrameApng.length });
+    ).rejects.toMatchObject({ message: "error.social.media_invalid", statusCode: 400 });
     await expect(
       service.upload(actor, context, {
         bytes: validLargePng,
@@ -113,8 +115,8 @@ describe("SocialMediaService", () => {
         mimeType: "image/png",
         now
       })
-    ).resolves.toMatchObject({ mimeType: "image/png", fileSize: validLargePng.length });
-    expect(repository.createUpload).toHaveBeenCalledTimes(2);
+    ).rejects.toMatchObject({ message: "error.social.media_invalid", statusCode: 400 });
+    expect(repository.createUpload).not.toHaveBeenCalled();
   });
 
   it("removes a newly created file when persistence fails", async () => {

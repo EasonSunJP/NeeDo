@@ -141,7 +141,7 @@ describe("Social media HTTP API", () => {
     await rm(fixture.directory, { recursive: true, force: true });
   });
 
-  it("accepts APNG and valid large-dimension images under the existing Social route contract", async () => {
+  it("rejects APNG and excessive decoded dimensions at the Social route", async () => {
     const fixture = await createFixture(true, true);
     const validLargePng = await createValidExcessivePixelPng();
 
@@ -151,13 +151,15 @@ describe("Social media HTTP API", () => {
       .set("Authorization", `Bearer ${fixture.token}`)
       .set("Content-Type", "image/png")
       .send(validTwoFrameApng)
-      .expect(201);
+      .expect(400)
+      .expect((response) => expect(response.body.message).toBe("error.social.media_invalid"));
     await request(fixture.app)
       .post("/api/v1/social/media?fileName=large-dimensions.png")
       .set("Authorization", `Bearer ${fixture.token}`)
       .set("Content-Type", "image/png")
       .send(validLargePng)
-      .expect(201);
+      .expect(400)
+      .expect((response) => expect(response.body.message).toBe("error.social.media_invalid"));
     await rm(fixture.directory, { recursive: true, force: true });
   });
 

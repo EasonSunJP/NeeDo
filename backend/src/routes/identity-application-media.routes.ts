@@ -4,6 +4,7 @@ import type { AppConfig } from "../config/env";
 import { IdentityApplicationMediaController } from "../controllers/identity-application-media.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
+import { identityMediaBundleMiddleware } from "../middlewares/identity-media-bundle.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import {
   identityApplicationMediaReadParamSchema,
@@ -26,6 +27,17 @@ export const createIdentityApplicationMediaRoutes = (
   );
 
   router.post(
+    "/identity-applications/:id/media-bundle",
+    authenticate(),
+    createAuthorizeMiddleware("identity-application:own"),
+    validateRequest({
+      params: identityApplicationMediaUploadParamSchema,
+      query: identityApplicationMediaUploadQuerySchema
+    }),
+    identityMediaBundleMiddleware,
+    controller.uploadBundle
+  );
+  router.post(
     "/identity-applications/:id/media",
     authenticate(),
     createAuthorizeMiddleware("identity-application:own"),
@@ -33,7 +45,7 @@ export const createIdentityApplicationMediaRoutes = (
       params: identityApplicationMediaUploadParamSchema,
       query: identityApplicationMediaUploadQuerySchema
     }),
-    express.raw({ type: ["image/jpeg", "image/png"], limit: "8mb" }),
+    express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "3mb" }),
     controller.upload
   );
   router.get(

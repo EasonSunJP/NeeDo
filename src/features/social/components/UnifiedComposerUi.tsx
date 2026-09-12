@@ -246,7 +246,7 @@ export function ComposerMediaGrid({
 }: {
   media: SocialMediaItem[];
   maxMediaCount?: number;
-  uploadStateById?: Record<string, "uploading" | "failed">;
+  uploadStateById?: Record<string, "optimizing" | "uploading" | "failed" | "cancelled">;
   onOpenPicker: () => void;
   onRemove: (mediaId: string) => void;
   onRetry?: (mediaId: string) => void;
@@ -282,9 +282,9 @@ export function ComposerMediaGrid({
           </button>
           {uploadStateById?.[item.id] ? (
             <div className="pointer-events-none absolute inset-0 flex items-end bg-[color:color-mix(in_srgb,var(--client-bg)_28%,transparent)] p-2">
-              {uploadStateById[item.id] === "uploading" ? (
+              {uploadStateById[item.id] === "optimizing" || uploadStateById[item.id] === "uploading" ? (
                 <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-bg)_88%,transparent)] px-2.5 py-1 text-[11px] font-black text-[color:var(--client-text)] backdrop-blur">
-                  上传中...
+                  {uploadStateById[item.id] === "optimizing" ? "本地优化中..." : "上传中..."}
                 </span>
               ) : (
                 <button
@@ -326,7 +326,7 @@ export function ComposerMediaPicker({
   media: SocialMediaItem[];
   maxMediaCount?: number;
   error?: string;
-  uploadStateById?: Record<string, "uploading" | "failed">;
+  uploadStateById?: Record<string, "optimizing" | "uploading" | "failed" | "cancelled">;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onOpenPicker: () => void;
   onRemove: (mediaId: string) => void;

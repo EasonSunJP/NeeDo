@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { httpClient } from "./httpClient";
 import { officialNoticesApi } from "./officialNotices";
+import { optimizeImageUpload } from "../lib/image-upload";
 
 vi.mock("./httpClient", () => ({ httpClient: { request: vi.fn() } }));
+vi.mock("../lib/image-upload", () => ({
+  isOptimizableImageFile: (file: Pick<File, "type">) =>
+    ["image/jpeg", "image/png", "image/webp"].includes(file.type),
+  optimizeImageUpload: vi.fn()
+}));
 
 describe("officialNoticesApi", () => {
   beforeEach(() => vi.mocked(httpClient.request).mockReset().mockResolvedValue({}));
@@ -127,6 +133,25 @@ describe("officialNoticesApi", () => {
         query: { file_name: "guide.pdf", caption: undefined }
       }
     );
+  });
+
+  it("optimizes notice images locally while leaving non-image attachments unchanged", async () => {
+    const original = new File(["original"], "notice.png", { type: "image/png" });
+    const optimized = new File(["optimized"], "notice.webp", { type: "image/webp" });
+    vi.mocked(optimizeImageUpload).mockResolvedValue({
+      file: optimized, height: 720, mimeType: "image/webp", resultBytes: 9,
+      sourceBytes: 8, ssim: 0.999, status: "reencoded", width: 1280
+    });
+
+    await officialNoticesApi.uploadMedia("platform", original, "Notice");
+
+    expect(optimizeImageUpload).toHaveBeenCalledWith(original, "official-notice");
+    expect(httpClient.request).toHaveBeenCalledWith("/backoffice/official-notices/media", {
+      method: "POST",
+      body: optimized,
+      headers: { "Content-Type": "image/webp" },
+      query: { file_name: "notice.webp", caption: "Notice" }
+    });
   });
 
   it("uses scoped lifecycle and current-identity inbox endpoints", async () => {

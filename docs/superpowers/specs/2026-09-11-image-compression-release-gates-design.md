@@ -6,7 +6,7 @@
 
 范围：静态运行图片、用户上传图片、发布前验证
 
-目标环境：本地开发、GitHub `origin/main`、staging；不包含 production 部署
+目标环境：本地开发、私有 GitHub `origin/private`、staging；不包含 production 部署
 
 ## 1. 目标
 
@@ -164,7 +164,7 @@ Repository
 
 ## 10. 推送、部署与回滚
 
-所有图片和上传链路门禁通过后，才允许把最终 `main` 无强推地推送到私有 `origin/main`。staging 必须从该精确提交重新构建和打包，发布包不得包含设计原件、原始敏感材料、`.data` 或未登记图片。
+所有图片和上传链路门禁通过后，才允许把本地最终 `main` 的精确提交无强推地推送到私有 `origin/private`。不得覆盖 `needo-public` 或远端 `main`。staging 必须从该精确提交重新构建和打包，发布包不得包含设计原件、原始敏感材料、`.data` 或未登记图片。
 
 部署后验证三套 API readiness、HTTPS、登录、关键图片 URL、浏览器本地压缩、服务端拒绝绕过请求、浏览器渲染和上传后返回的最终 MIME/尺寸/字节数。GitHub 提交、staging 部署版本和实际健康检查分别记录。
 

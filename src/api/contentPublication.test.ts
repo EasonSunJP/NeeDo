@@ -7,12 +7,14 @@ import {
   type ContentLocaleCode,
 } from "./contentPublication";
 import { toContentLocale } from "../features/content-publication/locales";
+import { optimizeImageUpload } from "../lib/image-upload";
 
 vi.mock("./httpClient", () => ({
   httpClient: {
     request: vi.fn(),
   },
 }));
+vi.mock("../lib/image-upload", () => ({ optimizeImageUpload: vi.fn() }));
 
 const idempotencyKey = "11111111-1111-4111-8111-111111111111";
 const translation = {
@@ -497,17 +499,25 @@ describe("contentPublicationApi", () => {
     );
   });
 
-  it("uploads the original image Blob as the raw request body with its exact MIME type", async () => {
+  it("uploads only locally optimized carousel bytes", async () => {
     const image = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], {
       type: "image/jpeg",
+    });
+    const optimizedFile = new File([new Uint8Array([0xff, 0xd8])], "carousel.jpg", {
+      type: "image/jpeg",
+    });
+    vi.mocked(optimizeImageUpload).mockResolvedValue({
+      file: optimizedFile, height: 720, mimeType: "image/jpeg", resultBytes: 2,
+      sourceBytes: 3, ssim: 0.999, status: "optimized", width: 1120,
     });
 
     await contentPublicationApi.uploadContentImage(image, "Tokyo salon");
 
+    expect(optimizeImageUpload).toHaveBeenCalledWith(expect.any(File), "carousel");
     expect(httpClient.request).toHaveBeenCalledWith(
       "/backoffice/content/media",
       {
-        body: image,
+        body: optimizedFile,
         headers: { "Content-Type": "image/jpeg" },
         method: "POST",
         query: { alt_text: "Tokyo salon" },

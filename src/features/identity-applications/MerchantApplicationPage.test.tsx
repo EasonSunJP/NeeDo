@@ -57,6 +57,11 @@ describe("MerchantApplicationPage behavior", () => {
     vi.spyOn(identityApplicationsApi, "createMerchantDraft").mockResolvedValue({ ...corporateDraft, version: 1 });
     vi.spyOn(identityApplicationsApi, "updateMerchantShowcase").mockResolvedValue({ ...corporateDraft, version: 4 });
     vi.spyOn(identityApplicationsApi, "uploadMedia").mockResolvedValue({ id: 81, applicationVersion: 5 });
+    vi.spyOn(identityApplicationsApi, "uploadSensitiveMediaBundle").mockResolvedValue({
+      original: { id: 82 },
+      preview: { id: 83 },
+      applicationVersion: 5
+    });
     vi.spyOn(platformMembershipSelfApi, "getMine").mockResolvedValue({
       tierCode: "free", tierVersionPublicId: "tier-free", multiplier: 1, expiresAt: null, ekycVerified: false, benefits: [],
       theme: { detailAccentColor: "#000000", detailSurfaceColor: "#000000", detailSurfaceMiddleColor: "#000000", detailSurfaceBottomColor: "#000000", detailItemSurfaceColor: "#000000", detailOuterBorderColor: "#000000", detailItemBorderColor: "#000000", detailAvatarBorderColor: "#000000", simpleTopColor: "#000000", simpleBottomColor: "#000000" }
@@ -195,7 +200,11 @@ describe("MerchantApplicationPage behavior", () => {
     await act(async () => button("下一步：收费规则与合同").click());
     expect(identityApplicationsApi.bindMerchantBankAccount).toHaveBeenCalled();
     expect(button("提交申请")).toBeTruthy();
-    expect(vi.mocked(identityApplicationsApi.uploadMedia).mock.calls.some((call) => call[1] === "representative_identity")).toBe(false);
+    expect(
+      vi.mocked(identityApplicationsApi.uploadSensitiveMediaBundle).mock.calls.some(
+        (call) => call[1] === "representative_identity"
+      )
+    ).toBe(false);
   });
 
   const resumeBankDraft = (): IdentityApplication => ({ ...corporateDraft,
@@ -222,6 +231,7 @@ describe("MerchantApplicationPage behavior", () => {
     await act(async () => button("下一步：收费规则与合同").click());
     expect(identityApplicationsApi.bindMerchantBankAccount).not.toHaveBeenCalled();
     expect(identityApplicationsApi.uploadMedia).not.toHaveBeenCalled();
+    expect(identityApplicationsApi.uploadSensitiveMediaBundle).not.toHaveBeenCalled();
     expect(button("提交申请")).toBeTruthy();
   });
   it("reuses a saved declared account without rebinding", async () => {
@@ -245,6 +255,7 @@ describe("MerchantApplicationPage behavior", () => {
     expect(identityApplicationsApi.bindMerchantBankAccount).toHaveBeenCalledWith(71, expect.objectContaining({ expectedVersion: 4, accountNumber: "1237654", accountHolderName: "カ）サクラ" }));
     expect(JSON.stringify(vi.mocked(identityApplicationsApi.bindMerchantBankAccount).mock.calls)).not.toContain("•••");
     expect(identityApplicationsApi.uploadMedia).not.toHaveBeenCalled();
+    expect(identityApplicationsApi.uploadSensitiveMediaBundle).not.toHaveBeenCalled();
   });
 
   it("shows dismissible bank errors in the header overlay instead of the form flow", async () => {
@@ -370,10 +381,20 @@ describe("MerchantApplicationPage behavior", () => {
     Object.defineProperty(fileInput, "files", { configurable: true, value: [new File(["registration"], "registration.png", { type: "image/png" })] });
     await act(async () => fileInput.dispatchEvent(new Event("change", { bubbles: true })));
     await act(async () => button("下一步：收费规则与合同").click());
-    expect(identityApplicationsApi.uploadMedia).toHaveBeenLastCalledWith(71, "corporate_registration", 4, expect.any(File));
+    expect(identityApplicationsApi.uploadSensitiveMediaBundle).toHaveBeenLastCalledWith(
+      71,
+      "corporate_registration",
+      4,
+      expect.any(File)
+    );
     expect(identityApplicationsApi.bindMerchantBankAccount).toHaveBeenLastCalledWith(71, expect.objectContaining({ expectedVersion: 5 }));
     await act(async () => button("下一步：收费规则与合同").click());
-    expect(identityApplicationsApi.uploadMedia).toHaveBeenLastCalledWith(71, "corporate_registration", 5, expect.any(File));
+    expect(identityApplicationsApi.uploadSensitiveMediaBundle).toHaveBeenLastCalledWith(
+      71,
+      "corporate_registration",
+      5,
+      expect.any(File)
+    );
   });
 
   it("round-trips existing distinct corporate and representative names in the save payload", async () => {
@@ -477,6 +498,7 @@ describe("MerchantApplicationPage behavior", () => {
     expect.soft(identityApplicationsApi.updateMerchantShowcase).not.toHaveBeenCalled();
     expect.soft(identityApplicationsApi.createMerchantDraft).not.toHaveBeenCalled();
     expect.soft(identityApplicationsApi.uploadMedia).not.toHaveBeenCalled();
+    expect.soft(identityApplicationsApi.uploadSensitiveMediaBundle).not.toHaveBeenCalled();
   });
 
   it("does not attach a retained new form to an application created during the detour", async () => {

@@ -184,6 +184,7 @@ describe("TechnicianServiceCoverService", () => {
     const strictStorageInput = {
       bytes: jpeg,
       mimeType: "image/jpeg" as const,
+      purpose: "service-cover" as const,
       validationProfile: "decoded-single-frame" as const
     };
 
@@ -242,6 +243,7 @@ describe("TechnicianServiceCoverService", () => {
     expect(storage.save).toHaveBeenCalledWith({
       bytes: jpeg,
       mimeType: "image/jpeg",
+      purpose: "service-cover",
       validationProfile: "decoded-single-frame"
     });
     expect(repository.replaceTechnicianServiceCover).not.toHaveBeenCalled();

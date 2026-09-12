@@ -42,6 +42,7 @@ const technicianReviewSelect = {
   media: {
     where: {
       deletedAt: null,
+      variant: "original",
       mediaAsset: { deletedAt: null, purgedAt: null }
     },
     orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
