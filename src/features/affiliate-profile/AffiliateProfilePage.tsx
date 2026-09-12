@@ -249,7 +249,7 @@ export function AffiliateProfilePage() {
           title={t("联盟营销个人资料")}
         />
       </div>
-      <main className="space-y-4 px-4 pb-32 pt-4" data-no-i18n="true">
+      <main className="client-app-gutter space-y-4 pb-32 pt-4" data-no-i18n="true">
         {loading ? (
           <StatusPanel>{t("正在读取联盟营销资料")}</StatusPanel>
         ) : error && !profile ? (

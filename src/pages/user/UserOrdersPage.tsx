@@ -262,7 +262,7 @@ export function UserOrdersPage() {
           title="预约一览"
         />
 
-        <main ref={scrollRootRef} className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-8 pt-[calc(env(safe-area-inset-top)+86px)]">
+        <main ref={scrollRootRef} className="client-app-gutter scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto pb-8 pt-[calc(env(safe-area-inset-top)+86px)]">
           {queryStatus === "loading" ? (
             <section className={cn(surfaceCardClassName, "text-center")} aria-live="polite">
               <AppIcon className="mx-auto h-6 w-6 animate-spin text-[color:var(--client-primary)]" name="clock" />

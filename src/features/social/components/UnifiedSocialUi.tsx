@@ -1802,11 +1802,10 @@ export function SocialProfileTopBar({
     <FloatingHomeHeader
       className="gap-0"
       frameClassName="z-40"
-      maxWidth="1480px"
       panelClassName={floatingHeaderGlassPanelClassName}
       spacerGapPx={0}
     >
-      <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
+      <div className={floatingHeaderInnerClassName}>
         <div className="mx-auto flex min-h-[60px] w-full items-center gap-3">
           <IconButton icon="back" label="返回资料页" onClick={onBack} />
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -1977,7 +1976,7 @@ export function SocialProfileHeader({
     const entityLabel = getEntityLabel(profile.entityType);
 
     return (
-    <section className="-mx-4 border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_12%,transparent)] sm:-mx-6 lg:-mx-8">
+    <section className="client-app-breakout border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_12%,transparent)]">
         <div className="relative h-[224px] sm:h-[248px] lg:h-[296px]">
           {coverSlides.length > 1 ? (
             <FeatureCarousel

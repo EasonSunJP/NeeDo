@@ -1372,7 +1372,7 @@ function MerchantOrderDetailContent() {
         onBack={handleBack}
         title="预约订单详情"
       />
-      <main className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
+      <main className="client-app-gutter scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto py-4 pb-28">
         <OrderDynamicStatusCard order={order} providerName={order.storeName ?? store.name} />
 
         <section>
@@ -1591,7 +1591,7 @@ function MerchantOrderChangeContent() {
         onBack={() => navigate(-1)}
         title="变更预约"
       />
-      <main className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
+      <main className="client-app-gutter scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto py-4 pb-28">
         <LockedInfoRows rows={lockedRows} />
 
         <section className="space-y-3 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)_10%)] p-4 shadow-panel">
@@ -1850,7 +1850,7 @@ function MerchantOrderDispatchContent() {
         onBack={() => navigate(-1)}
         title="手动派单"
       />
-      <main className="scrollbar-none min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <main className="client-app-gutter scrollbar-none min-h-0 flex-1 space-y-3 overflow-y-auto py-4">
         <DispatchOrderMiniCard order={order} />
         {dispatchCandidates.map(({ tech, available, distanceMinutes, hasConflict }, index) => (
           <DispatchTechnicianMiniCard
