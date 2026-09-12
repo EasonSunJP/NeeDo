@@ -325,7 +325,7 @@ describe("UserCenterPage inline profile editing", () => {
     expect(invoiceEntry?.querySelector('[aria-label="Test 功能"]')).not.toBeNull();
     expect(activeLinks.map((link) => [link.querySelector("strong")?.textContent, link.getAttribute("href")])).toEqual([
       ["账号设置", "/me/settings/account"],
-      ["支付方式", "/me/settings/account"],
+      ["支付方式", "/me/settings/payment-methods"],
       ["通知设置", "/me/settings/notifications"],
       ["隐私与安全", "/me/settings/account"],
       ["联系客服", "/support"]
