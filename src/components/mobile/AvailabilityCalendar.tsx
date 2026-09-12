@@ -19,6 +19,14 @@ const peopleOptionsByLanguage = {
   ko: ["1명", "2명", "3명", "4명"]
 } as const;
 
+const emptyTimeLabelByLanguage = {
+  zh: "暂无可预约时间",
+  "zh-Hant": "暫無可預約時間",
+  ja: "予約可能な時間はありません",
+  en: "No times available",
+  ko: "예약 가능한 시간이 없습니다"
+} as const;
+
 function formatDateLabel(year: number, month: number, selectedDay: number, language: Language) {
   const date = new Date(year, month, selectedDay);
 
@@ -59,6 +67,14 @@ function normalizeDate(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
+function formatDateKey(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
 export function AvailabilityCalendar({
   title,
   selectedDay,
@@ -70,6 +86,7 @@ export function AvailabilityCalendar({
   time,
   onTimeChange,
   timeOptions,
+  availableDateKeys,
   alwaysAvailable = false,
   className
 }: {
@@ -83,6 +100,7 @@ export function AvailabilityCalendar({
   time: string;
   onTimeChange: (time: string) => void;
   timeOptions: string[];
+  availableDateKeys?: readonly string[];
   alwaysAvailable?: boolean;
   className?: string;
 }) {
@@ -102,6 +120,10 @@ export function AvailabilityCalendar({
   const selectedDaysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
   const safeSelectedDay = Math.min(currentSelectedDay, selectedDaysInMonth);
   const today = useMemo(() => normalizeDate(new Date()), []);
+  const availableDates = useMemo(
+    () => availableDateKeys ? new Set(availableDateKeys) : null,
+    [availableDateKeys]
+  );
   const monthCells = useMemo(
     () => [
       ...Array.from({ length: firstWeekday }, () => ({ day: 0, ghost: true })),
@@ -162,7 +184,10 @@ export function AvailabilityCalendar({
           const date = new Date(year, month, cell.day || 1);
           const selectable =
             !cell.ghost &&
-            (alwaysAvailable ? normalizeDate(date).getTime() >= today.getTime() : isAvailableDay(year, month, cell.day));
+            normalizeDate(date).getTime() >= today.getTime() &&
+            (availableDates
+              ? availableDates.has(formatDateKey(date))
+              : alwaysAvailable || isAvailableDay(year, month, cell.day));
           const selected = selectable && cell.day === currentSelectedDay && year === selectedYear && month === selectedMonth;
           const mutedDay = !selectable && !cell.ghost;
 
@@ -187,7 +212,7 @@ export function AvailabilityCalendar({
               <span className={cn("availability-calendar-day text-[18px] leading-none", cell.ghost ? "text-ink/28" : "text-current", mutedDay && "availability-calendar-day-muted", selected && "availability-calendar-day-selected")}>
                 {cell.ghost ? "" : cell.day}
               </span>
-              {cell.day === 13 && !cell.ghost ? <span className="availability-calendar-tel mt-1.5 text-xs text-ink/35">TEL</span> : null}
+              {!availableDates && cell.day === 13 && !cell.ghost ? <span className="availability-calendar-tel mt-1.5 text-xs text-ink/35">TEL</span> : null}
               {selectable ? <span className="mt-1.5 h-5 w-5 rounded-full border-[4px] border-[#f08a00]" /> : <span className="availability-calendar-dash mt-1.5 text-lg text-ink/20">－</span>}
             </button>
           );
@@ -210,6 +235,7 @@ export function AvailabilityCalendar({
           <span className="text-[15px] font-black text-ink/72">时间</span>
           <span className="flex h-11 items-center justify-between border border-line bg-white px-4 text-[18px] font-black">
             <select className="min-w-0 flex-1 appearance-none bg-transparent outline-none" onChange={(event) => onTimeChange(event.target.value)} value={time}>
+              {timeOptions.length === 0 ? <option value="">{emptyTimeLabelByLanguage[language]}</option> : null}
               {timeOptions.map((option) => (
                 <option key={option}>{option}</option>
               ))}

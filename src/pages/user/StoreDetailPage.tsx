@@ -48,6 +48,8 @@ import {
   mapCoreTechnicianToTechnician,
   type CoreShopDetail
 } from "../../features/core-read/api";
+import type { BookingScheduleSlot } from "../../features/booking/api";
+import { loadAvailabilityWindow } from "../../features/booking/window-loaders";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { mapBookingNavigationServiceToMenuCard } from "../../features/pricing-mode/bookingServiceCards";
@@ -62,6 +64,12 @@ import { registerTranslationEntries, translateText, type Language } from "../../
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
 import { buildStoreCheckoutRoute } from "../../lib/storeBookingRoute";
+import {
+  getTokyoDayWindow,
+  getTokyoSlotParts,
+  isCheckoutSlotBookable,
+  slotsForCheckoutDate
+} from "./formal-checkout/checkoutTimeSlots";
 import {
   detectStorePresentationIndustry,
   getStorePresentationConfig,
@@ -2749,6 +2757,9 @@ export function StoreDetailExperience({
   const displayedTechnicians = techniciansOverride ?? technicians;
   const storeApiId = useMemo(() => storeDetailRouteEntityIdToApiId(sourceStore.id), [sourceStore.id]);
   const [bookingNavigation, setBookingNavigation] = useState<BookingNavigationResponse | null>(null);
+  const [formalSlots, setFormalSlots] = useState<BookingScheduleSlot[]>([]);
+  const [formalSlotsStatus, setFormalSlotsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [formalAvailabilityNowMs, setFormalAvailabilityNowMs] = useState(() => Date.now());
   const { getActorForScope, getProfilePosts } = useSocial();
   const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
   const industry = detectStoreIndustry(sourceStore);
@@ -3051,7 +3062,100 @@ export function StoreDetailExperience({
   const favoriteCount = config.favoriteCount + (isFavorite ? 1 : 0);
   const shareCount = baseShareCount + shareBoost;
   const selectedCheckoutTarget = menuCards.some((item) => item.sourceServiceId === selectedMenuCardId) ? selectedMenuCardId : primaryCheckoutTarget;
-  const hasBookableCheckoutTarget = selectedCheckoutTarget.length > 0;
+  const formalServiceId = /^[1-9]\d*$/u.test(selectedCheckoutTarget) ? Number(selectedCheckoutTarget) : null;
+  useEffect(() => {
+    if (!formalApiOnly || isMerchantEditable || !storeApiId || !formalServiceId) {
+      setFormalSlots([]);
+      setFormalSlotsStatus("idle");
+      return;
+    }
+
+    const today = getTokyoSlotParts(new Date().toISOString())?.date;
+    const dayWindow = today ? getTokyoDayWindow(today) : null;
+    if (!dayWindow) {
+      setFormalSlots([]);
+      setFormalSlotsStatus("error");
+      return;
+    }
+
+    let active = true;
+    setFormalSlotsStatus("loading");
+    void loadAvailabilityWindow({
+      from: dayWindow.from,
+      includeUnavailable: true,
+      serviceId: formalServiceId,
+      shopId: storeApiId,
+      to: new Date(new Date(dayWindow.from).getTime() + 93 * 86_400_000).toISOString()
+    })
+      .then((slots) => {
+        if (!active) return;
+        setFormalSlots(slots.filter((slot) => slot.serviceId === formalServiceId && slot.shopId === storeApiId));
+        setFormalAvailabilityNowMs(Date.now());
+        setFormalSlotsStatus("success");
+      })
+      .catch(() => {
+        if (!active) return;
+        setFormalSlots([]);
+        setFormalSlotsStatus("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [formalApiOnly, formalServiceId, isMerchantEditable, storeApiId]);
+
+  const formalBookableSlots = useMemo(
+    () => formalSlots.filter((slot) => (
+      slot.serviceId === formalServiceId
+      && slot.shopId === storeApiId
+      && isCheckoutSlotBookable(slot, formalAvailabilityNowMs)
+    )),
+    [formalAvailabilityNowMs, formalServiceId, formalSlots, storeApiId]
+  );
+  const formalAvailableDateKeys = useMemo(
+    () => Array.from(new Set(formalBookableSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.date).filter((date): date is string => Boolean(date)))),
+    [formalBookableSlots]
+  );
+  const formalSelectedDateSlots = useMemo(() => {
+    const sameDay = slotsForCheckoutDate(formalBookableSlots, formatDateParam(selectedVisitDate));
+    return selectedTechnicianId
+      ? sameDay.filter((slot) => String(slot.technicianProfileId ?? "") === selectedTechnicianId)
+      : sameDay;
+  }, [formalBookableSlots, selectedTechnicianId, selectedVisitDate]);
+  const formalTimeOptions = useMemo(
+    () => Array.from(new Set(formalSelectedDateSlots.map((slot) => getTokyoSlotParts(slot.startsAt)?.time).filter((time): time is string => Boolean(time)))),
+    [formalSelectedDateSlots]
+  );
+  const selectedFormalSlot = useMemo(
+    () => formalSelectedDateSlots.find((slot) => getTokyoSlotParts(slot.startsAt)?.time === selectedTime) ?? null,
+    [formalSelectedDateSlots, selectedTime]
+  );
+  const hasExplicitRouteSelection = routeDateParam !== null || routeTimeParam !== null;
+
+  useEffect(() => {
+    if (!formalApiOnly || formalSlotsStatus !== "success" || selectedFormalSlot || hasExplicitRouteSelection) return;
+    const firstSlot = formalBookableSlots[0];
+    const slotParts = firstSlot ? getTokyoSlotParts(firstSlot.startsAt) : null;
+    if (!slotParts) return;
+    setSelectedVisitDate(parseStoreBookingDateParam(slotParts.date) ?? selectedVisitDate);
+    setSelectedTime(slotParts.time);
+  }, [formalApiOnly, formalBookableSlots, formalSlotsStatus, hasExplicitRouteSelection, selectedFormalSlot, selectedVisitDate]);
+
+  useEffect(() => {
+    if (!formalApiOnly) return undefined;
+    const nextBoundaryMs = formalBookableSlots.reduce<number | null>((earliest, slot) => {
+      const startsAtMs = new Date(slot.startsAt).getTime();
+      if (!Number.isFinite(startsAtMs) || startsAtMs <= formalAvailabilityNowMs) return earliest;
+      return earliest === null || startsAtMs < earliest ? startsAtMs : earliest;
+    }, null);
+    if (nextBoundaryMs === null) return undefined;
+    const timeoutId = window.setTimeout(
+      () => setFormalAvailabilityNowMs(Date.now()),
+      Math.max(0, nextBoundaryMs - Date.now())
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [formalApiOnly, formalAvailabilityNowMs, formalBookableSlots]);
+
+  const hasBookableCheckoutTarget = selectedCheckoutTarget.length > 0 && (!formalApiOnly || Boolean(selectedFormalSlot));
   const selectedBookingDurationMinutes = useMemo(
     () => parseBookingDurationMinutes(menuCards.find((item) => item.sourceServiceId === selectedCheckoutTarget)?.duration),
     [menuCards, selectedCheckoutTarget]
@@ -3059,6 +3163,18 @@ export function StoreDetailExperience({
   const unavailableTechnicianIds = useMemo(() => {
     if (isMerchantEditable) {
       return new Set<string>();
+    }
+
+    if (formalApiOnly) {
+      const availableTechnicianIds = new Set(
+        formalBookableSlots
+          .filter((slot) => (
+            getTokyoSlotParts(slot.startsAt)?.date === formatDateParam(selectedVisitDate)
+            && getTokyoSlotParts(slot.startsAt)?.time === selectedTime
+          ))
+          .map((slot) => String(slot.technicianProfileId ?? ""))
+      );
+      return new Set(storeTechnicians.filter((technician) => !availableTechnicianIds.has(technician.id)).map((technician) => technician.id));
     }
 
     return new Set(
@@ -3074,7 +3190,7 @@ export function StoreDetailExperience({
         )
         .map((technician) => technician.id)
     );
-  }, [isMerchantEditable, selectedBookingDurationMinutes, selectedTime, selectedVisitDate, store, storeTechnicians]);
+  }, [formalApiOnly, formalBookableSlots, isMerchantEditable, selectedBookingDurationMinutes, selectedTime, selectedVisitDate, store, storeTechnicians]);
   const selectedBookingTechnician = useMemo(
     () => {
       const selected = displayedTechnicians.find(
@@ -3101,15 +3217,18 @@ export function StoreDetailExperience({
     }
   }, [selectedTechnicianId, unavailableTechnicianIds]);
   const displayedTimeOptions = useMemo(
-    () => (timeOptions.includes(selectedTime) ? timeOptions : [selectedTime, ...timeOptions]),
-    [selectedTime, timeOptions]
+    () => formalApiOnly
+      ? formalTimeOptions
+      : (timeOptions.includes(selectedTime) ? timeOptions : [selectedTime, ...timeOptions]),
+    [formalApiOnly, formalTimeOptions, selectedTime, timeOptions]
   );
   const buildBookingHref = (checkoutTarget: string) =>
     buildStoreCheckoutRoute(checkoutTarget, {
       date: formatDateParam(selectedVisitDate),
       people: selectedPeople,
+      scheduleSlotId: selectedFormalSlot?.id,
       storeId: store.id,
-      technicianId: selectedBookingTechnician?.id,
+      technicianId: selectedBookingTechnician?.id ?? (selectedFormalSlot?.technicianProfileId ? String(selectedFormalSlot.technicianProfileId) : undefined),
       time: selectedTime
     });
   const bookingHref = hasBookableCheckoutTarget ? buildBookingHref(selectedCheckoutTarget) : undefined;
@@ -3855,6 +3974,7 @@ export function StoreDetailExperience({
                     onSelectDay={(day) => setSelectedVisitDate(new Date(selectedVisitDate.getFullYear(), selectedVisitDate.getMonth(), day))}
                     onTimeChange={setSelectedTime}
                     alwaysAvailable={store.alwaysBookable}
+                    availableDateKeys={formalApiOnly ? formalAvailableDateKeys : undefined}
                     people={selectedPeople}
                     selectedDate={selectedVisitDate}
                     selectedDay={selectedVisitDate.getDate()}
