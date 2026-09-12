@@ -2,10 +2,12 @@ import type { PrismaClient } from "@prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { prisma } from "../prisma/client";
 import type {
+  AttachIdentityApplicationMediaBundleRepositoryInput,
   AttachIdentityApplicationMediaRepositoryInput,
   IdentityApplicationMediaAccessRecord,
   IdentityApplicationMediaEditableContext,
   IdentityApplicationMediaProjection,
+  IdentityApplicationMediaBundleProjection,
   IdentityApplicationMediaRepositoryPort
 } from "../services/identity-application-media.service";
 import { AppError } from "../utils/app-error";
@@ -29,6 +31,7 @@ export class IdentityApplicationMediaRepository implements IdentityApplicationMe
             media: {
               where: {
                 deletedAt: null,
+                variant: "original",
                 mediaAsset: { isActive: true, deletedAt: null, purgedAt: null }
               }
             }
@@ -79,6 +82,8 @@ export class IdentityApplicationMediaRepository implements IdentityApplicationMe
           mimeType: input.mimeType,
           usageType: "identity_application_private",
           checksumSha256: input.checksumSha256,
+          width: input.width ?? null,
+          height: input.height ?? null,
           isActive: true,
           createdAt: input.createdAt
         }
@@ -88,6 +93,7 @@ export class IdentityApplicationMediaRepository implements IdentityApplicationMe
           applicationId: input.applicationId,
           mediaAssetId: mediaAsset.id,
           purpose: input.purpose,
+          variant: "original",
           createdAt: input.createdAt
         }
       });
@@ -116,6 +122,102 @@ export class IdentityApplicationMediaRepository implements IdentityApplicationMe
         mimeType: mediaAsset.mimeType,
         applicationVersion: input.expectedVersion + 1,
         createdAt: mediaAsset.createdAt
+      };
+    });
+  }
+
+  public attachBundleInTransaction(
+    input: AttachIdentityApplicationMediaBundleRepositoryInput
+  ): Promise<IdentityApplicationMediaBundleProjection> {
+    return this.client.$transaction(async (transaction) => {
+      const updated = await transaction.identityApplication.updateMany({
+        where: {
+          id: input.applicationId,
+          userId: input.userId,
+          version: input.expectedVersion,
+          status: { in: ["draft", "rejected"] },
+          deletedAt: null
+        },
+        data: { version: { increment: 1 } }
+      });
+      if (updated.count !== 1) {
+        throw new AppError({
+          code: ERROR_CODES.SAAS_BILLING_CONFLICT,
+          message: "error.identity_application.version_conflict",
+          statusCode: 409
+        });
+      }
+      const createAsset = (part: AttachIdentityApplicationMediaBundleRepositoryInput["original"]) =>
+        transaction.mediaAsset.create({
+          data: {
+            entityType: "identity_application",
+            entityId: input.applicationId,
+            ownerUserId: input.userId,
+            url: part.fileKey,
+            mimeType: part.mimeType,
+            usageType: "identity_application_private",
+            checksumSha256: part.checksumSha256,
+            width: part.width,
+            height: part.height,
+            isActive: true,
+            createdAt: input.createdAt
+          }
+        });
+      const originalAsset = await createAsset(input.original);
+      const originalLink = await transaction.identityApplicationMedia.create({
+        data: {
+          applicationId: input.applicationId,
+          mediaAssetId: originalAsset.id,
+          purpose: input.purpose,
+          variant: "original",
+          createdAt: input.createdAt
+        }
+      });
+      const previewAsset = await createAsset(input.preview);
+      await transaction.identityApplicationMedia.create({
+        data: {
+          applicationId: input.applicationId,
+          mediaAssetId: previewAsset.id,
+          purpose: input.purpose,
+          variant: "preview",
+          sourceMediaId: originalLink.id,
+          createdAt: input.createdAt
+        }
+      });
+      await transaction.auditLog.create({
+        data: {
+          actorId: input.userId,
+          action: "identity_application.media_bundle.uploaded",
+          targetType: "MediaAsset",
+          targetId: originalAsset.id,
+          ip: null,
+          userAgent: null,
+          metadata: {
+            applicationId: input.applicationId,
+            originalMediaAssetId: originalAsset.id,
+            previewMediaAssetId: previewAsset.id,
+            purpose: input.purpose,
+            version: input.expectedVersion + 1
+          },
+          createdAt: input.createdAt
+        }
+      });
+      const projection = (
+        asset: typeof originalAsset,
+        variant: "original" | "preview"
+      ): IdentityApplicationMediaProjection => ({
+        id: asset.id,
+        applicationId: input.applicationId,
+        purpose: input.purpose,
+        mimeType: asset.mimeType,
+        applicationVersion: input.expectedVersion + 1,
+        createdAt: asset.createdAt,
+        variant
+      });
+      return {
+        original: projection(originalAsset, "original"),
+        preview: projection(previewAsset, "preview"),
+        applicationVersion: input.expectedVersion + 1
       };
     });
   }

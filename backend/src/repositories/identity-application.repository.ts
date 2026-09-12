@@ -35,8 +35,16 @@ const identityApplicationInclude = {
     }
   },
   media: {
-    where: { deletedAt: null },
-    select: { purpose: true, mediaAssetId: true }
+    where: { deletedAt: null, variant: "original" },
+    select: {
+      purpose: true,
+      mediaAssetId: true,
+      previews: {
+        where: { deletedAt: null, variant: "preview" },
+        take: 1,
+        select: { mediaAssetId: true }
+      }
+    }
   },
   applicant: {
     select: {
@@ -483,7 +491,10 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
         businessKeywords: (row.businessKeywords ?? []).flatMap(item => item.businessKeyword?.translations.map(value => value.label) ?? []),
         targetShopName: row.technicianDetail?.targetShop?.name ?? null,
         targetShopPublicId: row.technicianDetail?.targetShop?.publicIdentifier?.publicId ?? null,
-        media: row.media.map(item => ({ id: item.mediaAssetId, purpose: item.purpose })),
+        media: row.media.map(item => ({
+          id: item.previews[0]?.mediaAssetId ?? item.mediaAssetId,
+          purpose: item.purpose
+        })),
         bankAccount: this.mapBankEvidence(row.merchantDetail?.bankAccount),
         contractAcceptance: row.merchantDetail?.contractAcceptance?.deletedAt === null ? {
           contractVersion: row.merchantDetail.contractAcceptance.contractVersion,

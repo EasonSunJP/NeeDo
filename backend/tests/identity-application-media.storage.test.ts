@@ -2,11 +2,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IdentityApplicationMediaFileStorage } from "../src/services/identity-application-media.storage";
-
-const png = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from("needo-test-image")
-]);
+import { validPng as png } from "./fixtures/content-images";
 
 describe("IdentityApplicationMediaFileStorage", () => {
   it("validates the signature and stores the same image under an application-isolated hash", async () => {
@@ -20,6 +16,7 @@ describe("IdentityApplicationMediaFileStorage", () => {
     });
 
     expect(first.fileKey).toMatch(/^[a-f0-9]{64}\.png$/u);
+    expect(first).toMatchObject({ width: 2, height: 2, created: true });
     expect(secondApplication.fileKey).not.toBe(first.fileKey);
     await expect(readFile(first.absolutePath)).resolves.toEqual(png);
     await expect(storage.read(first.fileKey)).resolves.toEqual(png);

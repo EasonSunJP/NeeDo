@@ -5,6 +5,7 @@ import type {
   IdentityApplicationMediaMimeType,
   IdentityApplicationMediaStoragePort
 } from "./identity-application-media.storage";
+import { IdentityPreviewComparisonService } from "./identity-preview-comparison.service";
 
 export type IdentityApplicationMediaPurpose =
   | "portrait"
@@ -30,6 +31,26 @@ export interface AttachIdentityApplicationMediaRepositoryInput {
   fileKey: string;
   mimeType: IdentityApplicationMediaMimeType;
   checksumSha256: string;
+  width?: number | null;
+  height?: number | null;
+  createdAt: Date;
+}
+
+export interface IdentityApplicationMediaBundlePart {
+  fileKey: string;
+  mimeType: IdentityApplicationMediaMimeType;
+  checksumSha256: string;
+  width: number;
+  height: number;
+}
+
+export interface AttachIdentityApplicationMediaBundleRepositoryInput {
+  applicationId: number;
+  userId: number;
+  expectedVersion: number;
+  purpose: Exclude<IdentityApplicationMediaPurpose, "showcase">;
+  original: IdentityApplicationMediaBundlePart;
+  preview: IdentityApplicationMediaBundlePart;
   createdAt: Date;
 }
 
@@ -40,6 +61,13 @@ export interface IdentityApplicationMediaProjection {
   mimeType: string;
   applicationVersion: number;
   createdAt: Date;
+  variant?: "original" | "preview";
+}
+
+export interface IdentityApplicationMediaBundleProjection {
+  original: IdentityApplicationMediaProjection;
+  preview: IdentityApplicationMediaProjection;
+  applicationVersion: number;
 }
 
 export interface IdentityApplicationMediaAccessRecord {
@@ -58,6 +86,9 @@ export interface IdentityApplicationMediaRepositoryPort {
   attachInTransaction: (
     input: AttachIdentityApplicationMediaRepositoryInput
   ) => Promise<IdentityApplicationMediaProjection>;
+  attachBundleInTransaction: (
+    input: AttachIdentityApplicationMediaBundleRepositoryInput
+  ) => Promise<IdentityApplicationMediaBundleProjection>;
   findMediaAccess: (
     applicationId: number,
     mediaAssetId: number
@@ -74,6 +105,16 @@ export interface UploadIdentityApplicationMediaInput {
   now: Date;
 }
 
+export interface UploadIdentityApplicationMediaBundleInput {
+  userId: number;
+  applicationId: number;
+  expectedVersion: number;
+  purpose: Exclude<IdentityApplicationMediaPurpose, "showcase">;
+  original: { bytes: Buffer; mimeType: IdentityApplicationMediaMimeType };
+  preview: { bytes: Buffer; mimeType: IdentityApplicationMediaMimeType };
+  now: Date;
+}
+
 const allowedPurposes: Readonly<
   Record<"technician" | "merchant", ReadonlySet<IdentityApplicationMediaPurpose>>
 > = {
@@ -84,7 +125,8 @@ const allowedPurposes: Readonly<
 export class IdentityApplicationMediaService {
   public constructor(
     private readonly repository: IdentityApplicationMediaRepositoryPort,
-    private readonly storage: IdentityApplicationMediaStoragePort
+    private readonly storage: IdentityApplicationMediaStoragePort,
+    private readonly previewComparison = new IdentityPreviewComparisonService()
   ) {}
 
   public async upload(
@@ -110,7 +152,8 @@ export class IdentityApplicationMediaService {
     const stored = await this.storage.save({
       applicationId: input.applicationId,
       bytes: input.bytes,
-      mimeType: input.mimeType
+      mimeType: input.mimeType,
+      validationPurpose: input.purpose === "showcase" ? "shop-presentation" : "identity-original"
     });
     try {
       return await this.repository.attachInTransaction({
@@ -121,12 +164,79 @@ export class IdentityApplicationMediaService {
         fileKey: stored.fileKey,
         mimeType: stored.mimeType,
         checksumSha256: stored.checksumSha256,
+        width: stored.width,
+        height: stored.height,
         createdAt: input.now
       });
     } catch (error) {
-      await this.storage.delete(stored.fileKey);
+      if (stored.created) {
+        await this.storage.delete(stored.fileKey);
+      }
       throw error;
     }
+  }
+
+  public async uploadBundle(
+    input: UploadIdentityApplicationMediaBundleInput
+  ): Promise<IdentityApplicationMediaBundleProjection> {
+    await this.assertEditable(input);
+    await this.previewComparison.assertRelated(input.original.bytes, input.preview.bytes);
+
+    const stored = [] as Awaited<ReturnType<IdentityApplicationMediaStoragePort["save"]>>[];
+    try {
+      stored.push(await this.storage.save({
+        applicationId: input.applicationId,
+        bytes: input.original.bytes,
+        mimeType: input.original.mimeType,
+        validationPurpose: "identity-original"
+      }));
+      stored.push(await this.storage.save({
+        applicationId: input.applicationId,
+        bytes: input.preview.bytes,
+        mimeType: input.preview.mimeType,
+        validationPurpose: "identity-preview"
+      }));
+      const [original, preview] = stored;
+      if (!original || !preview) {
+        throw this.validation("error.identity_application.media_invalid");
+      }
+      return await this.repository.attachBundleInTransaction({
+        applicationId: input.applicationId,
+        userId: input.userId,
+        expectedVersion: input.expectedVersion,
+        purpose: input.purpose,
+        original,
+        preview,
+        createdAt: input.now
+      });
+    } catch (error) {
+      await Promise.allSettled(
+        stored.filter((item) => item.created).map((item) => this.storage.delete(item.fileKey))
+      );
+      throw error;
+    }
+  }
+
+  private async assertEditable(
+    input: Pick<UploadIdentityApplicationMediaBundleInput, "applicationId" | "userId" | "expectedVersion" | "purpose">
+  ): Promise<IdentityApplicationMediaEditableContext> {
+    const context = await this.repository.findEditableContext(input.applicationId);
+    if (!context || context.userId !== input.userId) {
+      throw this.notFound();
+    }
+    if (!allowedPurposes[context.type].has(input.purpose)) {
+      throw this.validation("error.identity_application.media_purpose_invalid");
+    }
+    if (context.status !== "draft" && context.status !== "rejected") {
+      throw this.conflict("error.identity_application.submitted_snapshot_locked");
+    }
+    if (context.version !== input.expectedVersion) {
+      throw this.conflict("error.identity_application.version_conflict");
+    }
+    if (context.activeMediaCount >= 10) {
+      throw this.validation("error.identity_application.media_limit");
+    }
+    return context;
   }
 
   public async read(
