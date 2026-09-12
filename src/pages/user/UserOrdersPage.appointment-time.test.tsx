@@ -77,6 +77,8 @@ describe("UserOrdersPage appointment time", () => {
 
   beforeEach(async () => {
     await persistentResourceCache.clearScope("account:appointment-time");
+    window.localStorage.setItem("needo.language", "zh");
+    window.localStorage.setItem("needo.language.mode", "manual");
     testState.listOrders.mockReset();
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -155,5 +157,52 @@ describe("UserOrdersPage appointment time", () => {
     expect(appointmentLabel?.className).toContain("whitespace-nowrap");
     expect(appointmentValue?.className).toContain("whitespace-nowrap");
     expect(actionRow).not.toBeNull();
+  });
+
+  it("shows the formal service and shop names as explicit visual fields", async () => {
+    await renderOrders([
+      order({
+        itemName: "ボディケア 60分",
+        storeName: "LifeDance Wellness 渋谷"
+      })
+    ]);
+
+    const serviceField = document.querySelector<HTMLElement>("[data-testid='user-order-service-field']");
+    const shopField = document.querySelector<HTMLElement>("[data-testid='user-order-shop-field']");
+    const serviceName = serviceField?.querySelector<HTMLElement>("dd");
+    const shopName = shopField?.querySelector<HTMLElement>("dd");
+
+    expect(serviceField?.querySelector("dt")?.textContent).toBe("服务");
+    expect(serviceName?.textContent).toBe("ボディケア 60分");
+    expect(shopField?.querySelector("dt")?.textContent).toBe("店铺");
+    expect(shopName?.textContent).toBe("LifeDance Wellness 渋谷");
+  });
+
+  it("keeps long formal names bounded and exposes their complete values", async () => {
+    const longServiceName = "全身コンディショニングとボディケアを組み合わせた特別な120分コース";
+    const longShopName = "LifeDance Wellness 渋谷スクランブルスクエア特別フロア店";
+    await renderOrders([order({ itemName: longServiceName, storeName: longShopName })]);
+
+    const serviceName = document.querySelector<HTMLElement>("[data-testid='user-order-service-field'] dd");
+    const shopName = document.querySelector<HTMLElement>("[data-testid='user-order-shop-field'] dd");
+
+    expect(serviceName?.className).toContain("truncate");
+    expect(serviceName?.getAttribute("title")).toBe(longServiceName);
+    expect(shopName?.className).toContain("truncate");
+    expect(shopName?.getAttribute("title")).toBe(longShopName);
+  });
+
+  it("localizes field labels, preserves API names, and handles a missing optional shop name", async () => {
+    window.localStorage.setItem("needo.language", "ja");
+    window.localStorage.setItem("needo.language.mode", "manual");
+    await renderOrders([order({ itemName: "ボディケア 60分", storeName: "" })]);
+
+    const serviceField = document.querySelector<HTMLElement>("[data-testid='user-order-service-field']");
+    const shopField = document.querySelector<HTMLElement>("[data-testid='user-order-shop-field']");
+
+    expect(serviceField?.querySelector("dt")?.textContent).toBe("サービス");
+    expect(serviceField?.querySelector("dd")?.textContent).toBe("ボディケア 60分");
+    expect(shopField?.querySelector("dt")?.textContent).toBe("店舗");
+    expect(shopField?.querySelector("dd")?.textContent).toBe("設定されていません");
   });
 });
