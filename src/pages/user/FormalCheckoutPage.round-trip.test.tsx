@@ -741,6 +741,16 @@ describe("formal checkout technician-card round trip", () => {
     await act(async () => root.render(<ClientThemeProvider><MemoryRouter initialEntries={["/checkout/31?date=2026-09-03&time=08%3A00"]}><Routes><Route element={<CheckoutPage />} path="/checkout/:serviceId" /></Routes></MemoryRouter></ClientThemeProvider>));
 
     await waitFor(() => expect(container.querySelector<HTMLSelectElement>('select[aria-label="常用地址"]')?.value).toBe("00000000-0000-4000-8000-000000000081"));
+    const fulfillmentButtons = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .filter((button) => (
+        (button.textContent === "到店服务" || button.textContent === "上门服务")
+        && button.parentElement?.className.includes("grid-cols-2")
+      ));
+    const storeButton = fulfillmentButtons.find((button) => button.textContent === "到店服务")!;
+    const homeButton = fulfillmentButtons.find((button) => button.textContent === "上门服务")!;
+    expect(storeButton.disabled).toBe(true);
+    expect(homeButton.disabled).toBe(false);
+    expect(homeButton.className).toContain("bg-[color:var(--client-primary)]");
     expect(container.querySelector<HTMLInputElement>('input[aria-label="邮政编码"]')?.value).toBe("1040061");
     expect(container.querySelector<HTMLInputElement>('input[aria-label="街道地址"]')?.value).toBe("銀座1-2-3");
     expect(container.querySelector<HTMLInputElement>('input[aria-label="建筑物与房间"]')?.value).toBe("NeeDo 801");

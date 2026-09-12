@@ -31,6 +31,7 @@ import {
 import { getExchangePost } from "../../features/exchange/api";
 import type { ExchangePost } from "../../features/exchange/types";
 import { pricingModeApi } from "../../features/pricing-mode/api";
+import { resolveServiceFulfillmentMode, serviceFulfillmentModes } from "../../lib/serviceFulfillment";
 import { cn, yen } from "../../lib/utils";
 import {
   mapExchangeIntelligencePublisherToProfileData,
@@ -125,9 +126,10 @@ function describeEstimateError(error: unknown) {
 }
 
 function resolveFulfillmentMode(serviceMode: string, requestedMode: string | null): FulfillmentMode {
-  if (serviceMode === "home" || serviceMode === "onsite" || serviceMode === "home_visit") return "home";
-  if (serviceMode === "store") return "store";
-  return requestedMode === "home" ? "home" : "store";
+  const requestedFulfillmentMode = requestedMode === "home" || requestedMode === "store"
+    ? requestedMode
+    : null;
+  return resolveServiceFulfillmentMode(serviceMode, requestedFulfillmentMode);
 }
 
 export function slotInsideIntelligenceWindow(
@@ -170,9 +172,9 @@ function ensureIntelligenceCheckoutSource(post: ExchangePost, catalogRef: Checko
 }
 
 function serviceModeLabel(serviceMode: string) {
-  if (serviceMode === "home" || serviceMode === "onsite" || serviceMode === "home_visit") return "上门";
-  if (serviceMode === "both" || serviceMode === "flexible") return "到店或上门";
-  return "到店";
+  const modes = serviceFulfillmentModes(serviceMode);
+  if (modes.length === 2) return "到店或上门";
+  return modes[0] === "home" ? "上门" : "到店";
 }
 
 function formatTokyoDate(value: string) {
@@ -659,7 +661,9 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
   }, [estimate]);
 
   const checkoutServiceMode = intelligenceSource?.serviceMode ?? service?.serviceMode;
-  const supportsBothModes = checkoutServiceMode === "both" || checkoutServiceMode === "flexible";
+  const supportsBothModes = checkoutServiceMode
+    ? serviceFulfillmentModes(checkoutServiceMode).length === 2
+    : false;
   const canSubmitBooking = Boolean(selectedSlot) && (
     fulfillmentMode === "store" ||
     Boolean(homeAddress.addressLine1.trim() && selectedAdmin1Code && selectedAdmin2Code && estimateStatus === "success")
