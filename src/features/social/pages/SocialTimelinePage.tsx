@@ -32,7 +32,6 @@ import {
   SocialSidebarSection
 } from "../components/SocialUi";
 import { profileKey } from "../utils";
-import { getCustomerLevelLabel } from "../../../shared/profile-card/customerMembership";
 import type { SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialTimelineFilterTab } from "../types";
 
 type TimelinePanelStatus = "idle" | "loading" | "ready" | "error";
@@ -500,8 +499,10 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
                     : actor?.displayName ?? "我的头像"
                 }
                 avatarLevelLabel={
-                  scope === "user" && currentUserCustomer
-                    ? getCustomerLevelLabel(currentUserCustomer.activeScore)
+                  scope === "user"
+                    ? currentUserCustomer?.experienceLevel === undefined
+                      ? undefined
+                      : `Lv.${currentUserCustomer.experienceLevel}`
                     : getSocialProfileTextField(actor, "memberLevelLabel")
                 }
                 avatarMembershipLevel={

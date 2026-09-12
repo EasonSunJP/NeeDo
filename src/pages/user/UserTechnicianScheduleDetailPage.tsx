@@ -12,7 +12,6 @@ import {
   type TechnicianPublicAvailabilityRange
 } from "../../lib/technicianPublicAvailability";
 import { cn } from "../../lib/utils";
-import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import type { Technician } from "../../types/domain";
 import type { BookingScheduleSlot } from "../../features/booking/api";
 import { groupFormalAvailabilityByJstDate } from "../../features/booking/formal-technician-availability";
@@ -437,7 +436,11 @@ export function UserTechnicianScheduleDetailPage() {
         <div className={floatingHeaderInnerClassName}>
           <SharedHomeHeader
             avatarAlt={customer.name}
-            avatarLevelLabel={getCustomerLevelLabel(customer.activeScore)}
+            avatarLevelLabel={
+              customer.experienceLevel === undefined
+                ? undefined
+                : `Lv.${customer.experienceLevel}`
+            }
             avatarMembershipLevel={customer.memberLevel}
             avatarSrc={customer.avatar}
             avatarTo={userPortalConfig.myPath}
