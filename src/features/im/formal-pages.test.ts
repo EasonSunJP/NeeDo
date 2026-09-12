@@ -27,7 +27,8 @@ describe("formal IM routes", () => {
     );
     expect(pages).toContain("store.organizationContacts !== undefined");
     expect(pages).toContain('contact.source === "merchant_technician_profile"');
-    expect(pages).toContain('`/merchant/staff/${encodeURIComponent(user.entityId)}`');
+    expect(pages).toContain("getMerchantStaffDetailPath(technician?.systemId)");
+    expect(pages).not.toContain('`/merchant/staff/${encodeURIComponent(user.entityId)}`');
     expect(pages).toContain("avatarTo={contactInfoTarget}");
   });
 
