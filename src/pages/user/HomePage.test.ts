@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation } from "react-router-dom";
@@ -8,7 +9,10 @@ import type { BookingOrder } from "../../features/booking/api";
 import { translateText, type Language } from "../../i18n/translations";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { HomePage } from "./HomePage";
+import * as homePageModule from "./HomePage";
 import homePageSource from "./HomePage.tsx?raw";
+
+const stylesSource = readFileSync("src/styles.css", "utf8");
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -217,29 +221,34 @@ describe("HomePage quick action icon theme colors", () => {
   });
 });
 
-describe("HomePage quick action shape", () => {
-  it("keeps each action as a rounded square with centered content", () => {
-    const rendererStart = homePageSource.indexOf(
-      "{quickActionItems.map((item) => {",
-    );
-    const rendererEnd = homePageSource.indexOf("</section>", rendererStart);
-    const quickActionRenderer = homePageSource.slice(rendererStart, rendererEnd);
+describe("HomePage quick action responsive pagination", () => {
+  it("groups entries into complete four-column pages", () => {
+    expect(homePageModule).toHaveProperty("paginateQuickActions");
+    const paginateQuickActions = (
+      homePageModule as typeof homePageModule & {
+        paginateQuickActions: <T>(items: T[]) => T[][];
+      }
+    ).paginateQuickActions;
 
-    expect(rendererStart).toBeGreaterThan(-1);
-    expect(rendererEnd).toBeGreaterThan(rendererStart);
-    expect(quickActionRenderer).toContain("aspect-square");
-    expect(quickActionRenderer).toContain("before:hidden");
-    expect(quickActionRenderer).toContain("grid-rows-[24px_24px]");
-    expect(quickActionRenderer).toContain("min-[380px]:grid-rows-[30px_28px]");
-    expect(quickActionRenderer).toContain("content-center");
-    expect(quickActionRenderer).toContain("gap-0.5");
-    expect(quickActionRenderer).toContain("min-[380px]:gap-1");
-    expect(quickActionRenderer).toContain("h-[24px] w-[24px]");
-    expect(quickActionRenderer).toContain("min-[380px]:h-[30px]");
-    expect(quickActionRenderer).toContain("h-[24px] w-full");
-    expect(quickActionRenderer).toContain("min-[380px]:h-[28px]");
-    expect(quickActionRenderer).not.toContain("h-[76px]");
-    expect(quickActionRenderer).not.toContain("min-h-[28px]");
+    expect(paginateQuickActions([1, 2, 3, 4])).toEqual([[1, 2, 3, 4]]);
+    expect(paginateQuickActions([1, 2, 3, 4, 5, 6, 7, 8, 9])).toEqual([
+      [1, 2, 3, 4],
+      [5, 6, 7, 8],
+      [9],
+    ]);
+  });
+
+  it("renders one snap page per group without square card sizing", () => {
+    expect(homePageSource).toContain("home-quick-actions__viewport");
+    expect(homePageSource).toContain("home-quick-actions__page");
+    expect(homePageSource).toContain("home-quick-action-card");
+    expect(homePageSource).not.toContain("aspect-square");
+    expect(stylesSource).toMatch(
+      /\.home-quick-actions__page\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/u,
+    );
+    expect(stylesSource).toMatch(
+      /\.home-quick-action-card\s*\{[\s\S]*?height:\s*clamp\(/u,
+    );
   });
 });
 
@@ -268,7 +277,7 @@ describe("HomePage formal user-home carousel contract", () => {
       '<PublishedCarousel scene="user-home"',
     );
     const quickActionsIndex = homePageSource.indexOf(
-      "{quickActionItems.map((item) => {",
+      "{quickActionPages.map((page, pageIndex) => (",
     );
 
     expect(reminderIndex).toBeGreaterThan(-1);

@@ -1974,6 +1974,63 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   overscroll-behavior-y: auto;
 }
 
+.client-shell .client-app-content-container {
+  width: 100%;
+  max-width: var(--client-bottom-nav-max-width, 880px);
+  margin-inline: auto;
+}
+
+.home-quick-actions__viewport {
+  display: flex;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+}
+
+.home-quick-actions__page {
+  display: grid;
+  flex: 0 0 100%;
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.home-quick-action-card {
+  height: clamp(76px, 22cqw, 104px);
+}
+
+@container (max-width: 340px) {
+  .home-quick-action-card {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .home-quick-action-card__icon {
+    display: none;
+  }
+
+  .home-quick-action-card__label {
+    height: auto;
+    min-height: 0;
+  }
+
+  .home-quick-action-card__title {
+    display: -webkit-box;
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+    overflow: hidden;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    transform: none;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
 .client-floating-action-button {
   width: 58px;
   height: 58px;

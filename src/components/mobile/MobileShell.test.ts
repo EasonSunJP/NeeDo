@@ -5,6 +5,15 @@ import mobileShellSource from "./MobileShell.tsx?raw";
 const stylesSource = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 describe("MobileShell shared navigation", () => {
+  it("uses the bottom-navigation width token for the shared app content boundary", () => {
+    expect(mobileShellSource).toContain("client-app-content-container");
+    expect(mobileShellSource).not.toContain("min-[1601px]:max-w-[1600px]");
+    expect(stylesSource).toContain(".client-shell .client-app-content-container");
+    expect(stylesSource).toContain(
+      "max-width: var(--client-bottom-nav-max-width, 880px);",
+    );
+  });
+
   it("allows a page to opt out of the shared bottom navigation without deleting nav items globally", () => {
     expect(mobileShellSource).toContain("showBottomNav = true");
     expect(mobileShellSource).toContain("showBottomNav?: boolean");

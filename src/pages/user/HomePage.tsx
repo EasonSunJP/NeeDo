@@ -178,6 +178,16 @@ function getQuickActionTitleClassName(title: string) {
   return "line-clamp-2";
 }
 
+export function paginateQuickActions<T>(items: readonly T[]) {
+  const pages: T[][] = [];
+
+  for (let index = 0; index < items.length; index += 4) {
+    pages.push(items.slice(index, index + 4));
+  }
+
+  return pages;
+}
+
 const quickActionIconClassNames: Record<ClientTheme, string> = {
   "light-green":
     "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
@@ -1084,6 +1094,7 @@ export function HomePage() {
       icon: "calendar" as const,
     },
   ];
+  const quickActionPages = paginateQuickActions(quickActionItems);
 
   const activeAppointmentOrders = useMemo(
     () =>
@@ -1223,7 +1234,7 @@ export function HomePage() {
         </div>
       </FloatingHomeHeader>
 
-      <div className="space-y-5 px-4 pb-28 pt-2">
+      <div className="space-y-5 px-3 pb-28 pt-2">
         {activeReminder ? (
           <ReminderBanner
             highPriority={activeReminder.minutesUntil <= 10}
@@ -1242,40 +1253,57 @@ export function HomePage() {
         <PublishedCarousel scene="user-home" cardHeightClassName="h-[204px]" />
 
         <section className="py-0.5">
-          <div className="grid grid-cols-4 gap-2">
-            {quickActionItems.map((item) => {
-              const title = getQuickActionTitle(item.id, item.title, language);
+          <div
+            className="home-quick-actions__viewport scrollbar-none"
+            data-page-drag-ignore="true"
+          >
+            {quickActionPages.map((page, pageIndex) => (
+              <div
+                className="home-quick-actions__page"
+                key={`quick-action-page-${pageIndex}`}
+              >
+                {page.map((item) => {
+                  const title = getQuickActionTitle(
+                    item.id,
+                    item.title,
+                    language,
+                  );
 
-              return (
-                <Link
-                  className="grid aspect-square min-w-0 grid-rows-[24px_24px] content-center items-start justify-items-center gap-0.5 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_100%,transparent),color-mix(in_srgb,var(--client-surface)_86%,transparent))] px-1 py-1 text-center shadow-[0_12px_26px_rgba(0,0,0,0.09)] before:hidden min-[380px]:grid-rows-[30px_28px] min-[380px]:gap-1 min-[380px]:px-2 min-[380px]:py-1.5"
-                  key={item.id}
-                  to={item.to}
-                >
-                  <span
-                    className={cn(
-                      "inline-flex h-[24px] w-[24px] items-center justify-center rounded-[11px] min-[380px]:h-[30px] min-[380px]:w-[30px] min-[380px]:rounded-[13px]",
-                      getQuickActionIconClassName(theme),
-                    )}
-                  >
-                    <AppIcon className="h-[16px] w-[16px] min-[380px]:h-[18px] min-[380px]:w-[18px]" name={item.icon} />
-                  </span>
-                  <span
-                    className="flex h-[24px] w-full items-center justify-center overflow-hidden min-[380px]:h-[28px]"
-                    data-no-i18n
-                  >
-                    <span
-                      className={cn(
-                        "w-full text-[11px] font-black leading-3 text-[color:var(--client-text)] min-[380px]:text-[12px] min-[380px]:leading-[14px]",
-                        getQuickActionTitleClassName(title),
-                      )}
+                  return (
+                    <Link
+                      className="home-quick-action-card grid min-w-0 grid-rows-[34px_28px] content-center items-center justify-items-center gap-1.5 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_100%,transparent),color-mix(in_srgb,var(--client-surface)_86%,transparent))] px-2 py-2 text-center shadow-[0_12px_26px_rgba(0,0,0,0.09)]"
+                      key={item.id}
+                      to={item.to}
                     >
-                      {title}
-                    </span>
-                  </span>
-                </Link>
-              );
-            })}
+                      <span
+                        className={cn(
+                          "home-quick-action-card__icon inline-flex h-[34px] w-[34px] items-center justify-center rounded-[13px]",
+                          getQuickActionIconClassName(theme),
+                        )}
+                      >
+                        <AppIcon
+                          className="h-[18px] w-[18px]"
+                          name={item.icon}
+                        />
+                      </span>
+                      <span
+                        className="home-quick-action-card__label flex h-[28px] w-full items-center justify-center overflow-hidden"
+                        data-no-i18n
+                      >
+                        <span
+                          className={cn(
+                            "home-quick-action-card__title w-full text-[12px] font-black leading-[14px] text-[color:var(--client-text)]",
+                            getQuickActionTitleClassName(title),
+                          )}
+                        >
+                          {title}
+                        </span>
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </section>
 
