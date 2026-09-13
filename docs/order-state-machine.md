@@ -159,6 +159,18 @@ Oversell or conflict returns:
 }
 ```
 
+店铺到店服务还要求当前 `SHOP_LOCATION` assignment 为未删除的 JP 正式地区，且 assignment、
+ADMIN1、ADMIN2 使用同一当前 dataset version，ADMIN2 必须直属 assignment 的 ADMIN1，两个层级
+都必须保留日文官方名称。公开 availability 与店铺页只会为满足该合同的店铺返回可到店时段；
+纯上门服务仍按客户正式地址合同返回。Booking 事务会再次锁定并验证，不能用放宽行政区校验绕过。
+
+创建预约的冲突语义保持区分：
+
+- `40905 error.booking.slot_unavailable`：时段、服务、店铺或身份范围已经失效。
+- `41045 error.booking.slot_concurrent_occupancy`：容量在创建事务期间已被其他预约占用。
+- `41044 error.booking.service_location_unresolved`：到店服务的正式店铺地址无法解析；事务不创建
+  订单、不增加 `booked_count`，也不写部分历史。
+
 ## Home-service route fare
 
 - The route origin is always the persisted shop address. The customer submits a structured Japanese destination (`countryCode=JP`, postal code, prefecture, city, street, and optional building fields); a client cannot submit distance, duration, fare, shop origin, policy, or band.

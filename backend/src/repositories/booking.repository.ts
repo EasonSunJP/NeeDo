@@ -4,6 +4,7 @@ import { WorkStatusSession } from './work-status.repository';
 import { resolveCanonicalPersonalIdentityId } from "./personal-identity-scope.repository";
 import {
   BookingOrderStatus as DatabaseBookingOrderStatus,
+  ContentLocale,
   OrderPerformanceOutcome,
   OrderPerformanceRevisionAction,
   OrderPerformanceTreatment,
@@ -51,13 +52,16 @@ import {
   recalculateTechnicianSummaryInTransaction
 } from "./order-performance.repository";
 import {
+  ADMINISTRATIVE_REGION_DATASET_VERSION,
   AdministrativeRegionRepository,
   type AdministrativeRegionRepositoryPort,
   type VerifiedAdministrativeRegionScope
 } from "./administrative-region.repository";
+import { isCurrentVerifiedShopServiceLocation } from "./shop-service-location.repository";
 import type { LiveDashboardScope } from "../domain/live-dashboard";
 
 const SERVICE_CODE_DOMAIN = "needo:order-service:verification-code:v1\u0000";
+const HOME_ONLY_SERVICE_MODES = ["home", "home_visit", "onsite"] as const;
 const SERVICE_HASH_DOMAIN = "needo:order-service:verification-hash:v1\u0000";
 const SERVICE_START_EARLY_ALLOWANCE_MS = 30 * 60_000;
 
@@ -230,7 +234,9 @@ export interface AvailabilityListInput extends PaginationInput {
   to: Date;
 }
 
-const currentBookableScheduleSlotSourcesWhere = (): Prisma.ScheduleSlotWhereInput => ({
+const currentBookableScheduleSlotSourcesWhere = (): {
+  AND: Prisma.ScheduleSlotWhereInput[];
+} => ({
   AND: [
     {
       OR: [
@@ -407,6 +413,10 @@ export interface BookingIntelligenceFailureResult {
 export type BookingPriceChangedResult = {
   outcome: "price_changed";
   currentPriceAmountJpy: number;
+};
+
+export type BookingConflictFailureResult = {
+  bookingConflict: "concurrent_occupancy";
 };
 
 export type ManualPaymentScope = { scope: "merchant"; shopId: number } | { scope: "backoffice" };
@@ -1023,6 +1033,7 @@ export interface BookingRepositoryPort {
     | BookingTravelEstimateFailureResult
     | BookingIntelligenceFailureResult
     | BookingPriceChangedResult
+    | BookingConflictFailureResult
     | null
   >;
   findScheduleSlotShopId?: (scheduleSlotId: number) => Promise<number | null>;
@@ -1329,9 +1340,31 @@ export class BookingRepository implements BookingRepositoryPort {
     input: AvailabilityListInput
   ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
     const pagination = toPrismaPagination(input);
+    const currentLocationShopIds = await this.listShopsWithCurrentVerifiedServiceLocations(input);
     const where: Prisma.ScheduleSlotWhereInput = {
       deletedAt: null,
-      ...currentBookableScheduleSlotSourcesWhere(),
+      AND: [
+        ...currentBookableScheduleSlotSourcesWhere().AND,
+        {
+          OR: [
+            { shopId: { in: currentLocationShopIds } },
+            {
+              service: {
+                is: { serviceMode: { in: [...HOME_ONLY_SERVICE_MODES] } }
+              }
+            },
+            {
+              technicianService: {
+                is: {
+                  sourceShopService: {
+                    is: { serviceMode: { in: [...HOME_ONLY_SERVICE_MODES] } }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
       ...(input.includeUnavailable
         ? {}
         : {
@@ -1366,7 +1399,6 @@ export class BookingRepository implements BookingRepositoryPort {
           none: { activeKey: { not: null }, status: "active", deletedAt: null }
         }
       },
-      ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(input.technicianId ? { technicianProfileId: input.technicianId } : {})
     };
     const [list, total] = await Promise.all([
@@ -1385,6 +1417,78 @@ export class BookingRepository implements BookingRepositoryPort {
       total,
       pagination
     );
+  }
+
+  private async listShopsWithCurrentVerifiedServiceLocations(
+    input: AvailabilityListInput
+  ): Promise<number[]> {
+    const locations = await this.client.shopServiceLocation.findMany({
+      where: {
+        deletedAt: null,
+        countryCode: "JP",
+        datasetVersion: ADMINISTRATIVE_REGION_DATASET_VERSION,
+        shop: {
+          deletedAt: null,
+          status: "published",
+          scheduleSlots: {
+            some: {
+              deletedAt: null,
+              startsAt: { gte: input.from },
+              endsAt: { lte: input.to },
+              ...(input.shopId ? { shopId: input.shopId } : {}),
+              ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+              ...(input.technicianServiceId
+                ? { technicianServiceId: input.technicianServiceId }
+                : {}),
+              ...(input.technicianId ? { technicianProfileId: input.technicianId } : {})
+            }
+          }
+        }
+      },
+      select: {
+        shopId: true,
+        countryCode: true,
+        admin1RegionId: true,
+        admin2RegionId: true,
+        datasetVersion: true,
+        deletedAt: true,
+        admin1Region: {
+          select: {
+            id: true,
+            countryCode: true,
+            officialCode: true,
+            sourceVersion: true,
+            level: true,
+            parentId: true,
+            deletedAt: true,
+            locales: {
+              where: { locale: ContentLocale.JA, deletedAt: null },
+              select: { name: true }
+            }
+          }
+        },
+        admin2Region: {
+          select: {
+            id: true,
+            countryCode: true,
+            officialCode: true,
+            sourceVersion: true,
+            level: true,
+            parentId: true,
+            deletedAt: true,
+            locales: {
+              where: { locale: ContentLocale.JA, deletedAt: null },
+              select: { name: true }
+            }
+          }
+        }
+      },
+      orderBy: { shopId: "asc" }
+    });
+
+    return locations
+      .filter((location) => isCurrentVerifiedShopServiceLocation(location))
+      .map((location) => location.shopId);
   }
 
   public async findScheduleSlotShopId(scheduleSlotId: number): Promise<number | null> {
@@ -1847,6 +1951,7 @@ export class BookingRepository implements BookingRepositoryPort {
     | BookingTravelEstimateFailureResult
     | BookingIntelligenceFailureResult
     | BookingPriceChangedResult
+    | BookingConflictFailureResult
     | null
   > {
     if (Boolean(options.prepareAffiliate) !== Boolean(options.persistAffiliate)) {
@@ -2031,11 +2136,17 @@ export class BookingRepository implements BookingRepositoryPort {
               },
               include: this.slotInclude()
             });
-            if (!slot || slot.bookedCount >= slot.capacity) {
+            if (!slot) {
               if (supersededOrderIds.length > 0) {
                 throw new BookingPendingReplacementUnavailableError();
               }
               return null;
+            }
+            if (slot.bookedCount >= slot.capacity) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return { bookingConflict: "concurrent_occupancy" };
             }
 
             const pricingMode = this.pricingModeFromDb(slot.shop.pricingMode);
@@ -2263,7 +2374,7 @@ export class BookingRepository implements BookingRepositoryPort {
               if (supersededOrderIds.length > 0) {
                 throw new BookingPendingReplacementUnavailableError();
               }
-              return null;
+              return { bookingConflict: "concurrent_occupancy" };
             }
 
             const order = await tx.bookingOrder.create({
@@ -5184,7 +5295,7 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private serviceLocationUnresolvedError(): AppError {
     return new AppError({
-      code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
+      code: ERROR_CODES.BOOKING_SERVICE_LOCATION_UNRESOLVED,
       message: "error.booking.service_location_unresolved",
       statusCode: 409
     });

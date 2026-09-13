@@ -4,8 +4,10 @@ import { existsSync } from "node:fs";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { config as loadDotenv } from "dotenv";
 
-import { ADMINISTRATIVE_REGION_DATASET_VERSION } from "../src/repositories/administrative-region.repository";
-import { verifyShopServiceLocationInTransaction } from "../src/repositories/shop-service-location.repository";
+import {
+  isCurrentVerifiedShopServiceLocation,
+  verifyShopServiceLocationInTransaction
+} from "../src/repositories/shop-service-location.repository";
 
 export interface LifeDanceShopServiceLocationRepairTarget {
   shopName: string;
@@ -34,12 +36,25 @@ interface ShopLookupRow {
   owner: { email: string } | null;
   serviceLocation:
     | (PersistedLocationSnapshot & {
-        admin1Region: { id: number; officialCode: string; deletedAt: Date | null };
-        admin2Region: {
+        admin1Region: {
           id: number;
+          countryCode: string;
           officialCode: string;
+          sourceVersion: string;
+          level: "ADMIN1" | "ADMIN2";
           parentId: number | null;
           deletedAt: Date | null;
+          locales: Array<{ name: string }>;
+        };
+        admin2Region: {
+          id: number;
+          countryCode: string;
+          officialCode: string;
+          sourceVersion: string;
+          level: "ADMIN1" | "ADMIN2";
+          parentId: number | null;
+          deletedAt: Date | null;
+          locales: Array<{ name: string }>;
         };
       })
     | null;
@@ -123,22 +138,6 @@ export const parseLifeDanceShopServiceLocationRepairArguments = (
   return { mode: "apply", confirmCount };
 };
 
-const locationIsCurrent = (
-  row: ShopLookupRow["serviceLocation"],
-  target: LifeDanceShopServiceLocationRepairTarget
-): boolean =>
-  Boolean(
-    row &&
-      row.deletedAt === null &&
-      row.countryCode === target.serviceLocation.countryCode &&
-      row.datasetVersion === ADMINISTRATIVE_REGION_DATASET_VERSION &&
-      row.admin1Region.deletedAt === null &&
-      row.admin1Region.officialCode === target.serviceLocation.admin1Code &&
-      row.admin2Region.deletedAt === null &&
-      row.admin2Region.officialCode === target.serviceLocation.admin2Code &&
-      row.admin2Region.parentId === row.admin1Region.id
-  );
-
 export const buildLifeDanceShopServiceLocationRepairPlan = async (
   client: ShopLookupClient,
   targets: readonly LifeDanceShopServiceLocationRepairTarget[]
@@ -165,9 +164,35 @@ export const buildLifeDanceShopServiceLocationRepairPlan = async (
           verifiedAt: true,
           verifiedById: true,
           deletedAt: true,
-          admin1Region: { select: { id: true, officialCode: true, deletedAt: true } },
+          admin1Region: {
+            select: {
+              id: true,
+              countryCode: true,
+              officialCode: true,
+              sourceVersion: true,
+              level: true,
+              parentId: true,
+              deletedAt: true,
+              locales: {
+                where: { locale: "JA", deletedAt: null },
+                select: { name: true }
+              }
+            }
+          },
           admin2Region: {
-            select: { id: true, officialCode: true, parentId: true, deletedAt: true }
+            select: {
+              id: true,
+              countryCode: true,
+              officialCode: true,
+              sourceVersion: true,
+              level: true,
+              parentId: true,
+              deletedAt: true,
+              locales: {
+                where: { locale: "JA", deletedAt: null },
+                select: { name: true }
+              }
+            }
           }
         }
       }
@@ -190,7 +215,11 @@ export const buildLifeDanceShopServiceLocationRepairPlan = async (
       shopId: shop.id,
       shopName: target.shopName,
       ownerEmail: target.ownerEmail,
-      status: locationIsCurrent(current, target) ? "current" : current ? "invalid" : "missing",
+      status: isCurrentVerifiedShopServiceLocation(current, target.serviceLocation)
+        ? "current"
+        : current
+          ? "invalid"
+          : "missing",
       serviceLocation: target.serviceLocation,
       before: current
         ? {

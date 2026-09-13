@@ -22638,7 +22638,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           "409": {
             description:
-              "Slot unavailable, estimate expired/consumed, Intelligence unavailable/mismatched, idempotency conflict, error.booking.price_changed, or error.booking.service_location_unresolved when a store location cannot be verified"
+              "40905 error.booking.slot_unavailable for an invalid or stale slot; 41045 error.booking.slot_concurrent_occupancy when capacity is consumed during booking; estimate expired/consumed; Intelligence unavailable/mismatched; idempotency conflict; 41038 error.booking.price_changed; or 41044 error.booking.service_location_unresolved when the current JP shop assignment cannot be verified"
           },
           "422": { description: "Home estimate required, invalid, or mismatched" }
         }

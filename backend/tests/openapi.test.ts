@@ -419,7 +419,10 @@ describe("GET /api/v1/openapi.json", () => {
       ).toBe(false);
     }
     expect(operation.responses["409"].description).toContain(
-      "error.booking.service_location_unresolved"
+      "41044 error.booking.service_location_unresolved"
+    );
+    expect(operation.responses["409"].description).toContain(
+      "41045 error.booking.slot_concurrent_occupancy"
     );
   });
 

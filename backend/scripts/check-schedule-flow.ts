@@ -24,11 +24,13 @@ const main = async (): Promise<void> => {
   const [
     { BackofficeRepository },
     { BookingRepository },
+    { verifyShopServiceLocationInTransaction },
     { prisma, disconnectPrisma },
     { createFormalTestUser, deleteFormalTestUserFoundations }
   ] = await Promise.all([
     import("../src/repositories/backoffice.repository"),
     import("../src/repositories/booking.repository"),
+    import("../src/repositories/shop-service-location.repository"),
     import("../src/prisma/client"),
     import("./support/formal-test-user")
   ]);
@@ -64,6 +66,29 @@ const main = async (): Promise<void> => {
     assert(shop.ownerUserId, "shop owner user was not created");
     createdUserIds.push(shop.ownerUserId);
     await backofficeRepository.approveShop(shop.id, new Date());
+    const shopNumberPart = String(shop.id).padStart(10, "0");
+    await prisma.$transaction([
+      prisma.publicIdentifier.create({
+        data: {
+          publicId: `shop${shopNumberPart}`,
+          numberPart: shopNumberPart,
+          kind: "SHOP",
+          shopId: shop.id,
+          searchable: true,
+          status: "ACTIVE"
+        }
+      }),
+      prisma.shop.update({ where: { id: shop.id }, data: { shopNo: shopNumberPart } })
+    ]);
+    await prisma.$transaction((transaction) =>
+      verifyShopServiceLocationInTransaction(transaction, {
+        shopId: shop.id,
+        verifiedById: shop.ownerUserId!,
+        serviceLocation: { countryCode: "JP", admin1Code: "13", admin2Code: "13113" },
+        auditAction: "qa.schedule_flow.service_location.verify",
+        auditMetadata: { marker }
+      })
+    );
 
     const technicianAccount = await createFormalTestUser(prisma, {
       email: `schedule-technician-${marker}@needo.test`,
@@ -83,16 +108,28 @@ const main = async (): Promise<void> => {
         city: "Tokyo"
       }
     });
-    await backofficeRepository.updateTechnician({
-      scope: "platform",
-      technicianId: technicianProfile.id,
-      shopId: shop.id
+    const technicianIdentity = await prisma.userIdentity.create({
+      data: {
+        userId: technicianAccount.id,
+        type: "technician",
+        activeKey: `${technicianAccount.id}:technician`,
+        scopeType: "technician_profile",
+        scopeId: technicianProfile.id,
+        displayName: technicianProfile.displayName,
+        isActive: true
+      }
     });
-    await backofficeRepository.approveTechnician({
-      scope: "platform",
-      technicianId: technicianProfile.id,
-      shopId: shop.id,
-      approvedAt: new Date()
+    const technicianNumberPart = String(technicianProfile.id).padStart(10, "0");
+    await prisma.publicIdentifier.create({
+      data: {
+        publicId: `s${technicianNumberPart}`,
+        numberPart: technicianNumberPart,
+        kind: "S",
+        userIdentityId: technicianIdentity.id,
+        loginAllowed: true,
+        searchable: true,
+        status: "ACTIVE"
+      }
     });
     const technicianShopAffiliation = await prisma.technicianShopAffiliation.create({
       data: {
@@ -106,6 +143,17 @@ const main = async (): Promise<void> => {
       }
     });
     technicianShopAffiliationId = technicianShopAffiliation.id;
+    await backofficeRepository.updateTechnician({
+      scope: "platform",
+      technicianId: technicianProfile.id,
+      shopId: shop.id
+    });
+    await backofficeRepository.approveTechnician({
+      scope: "platform",
+      technicianId: technicianProfile.id,
+      shopId: shop.id,
+      approvedAt: new Date()
+    });
 
     const service = await backofficeRepository.createService({
       scope: "platform",
@@ -178,13 +226,33 @@ const main = async (): Promise<void> => {
       customerUserId: customer.id,
       serviceId: service.id,
       scheduleSlotId: primary.slot.id,
-      fulfillmentMode: "store"
+      fulfillmentMode: "store",
+      serviceLocation: { source: "SHOP_LOCATION" }
     })));
     const successfulConcurrentOrders = concurrent.filter(
-      (result): result is NonNullable<typeof result> => result !== null
+      (result): result is Extract<NonNullable<typeof result>, { order: unknown }> =>
+        result !== null && "order" in result
     );
     createdOrderIds.push(...successfulConcurrentOrders.map((result) => result.order.id));
     assert(successfulConcurrentOrders.length === 1, "capacity-one slot allowed more than one concurrent booking");
+    const createdPendingOrder = successfulConcurrentOrders[0]!.order;
+    assert(createdPendingOrder.status === "pending", "direct booking did not create a pending order");
+    const [customerOrders, merchantOrders, technicianOrders] = await Promise.all([
+      bookingRepository.listOrders({
+        customerUserId: createdPendingOrder.customerUserId,
+        page: 1,
+        pageSize: 20
+      }),
+      bookingRepository.listOrders({ shopId: shop.id, page: 1, pageSize: 20 }),
+      bookingRepository.listOrders({
+        technicianProfileId: technicianProfile.id,
+        page: 1,
+        pageSize: 20
+      })
+    ]);
+    assert(customerOrders.list.some((order) => order.id === createdPendingOrder.id), "customer order list missed the pending booking");
+    assert(merchantOrders.list.some((order) => order.id === createdPendingOrder.id), "merchant order list missed the pending booking");
+    assert(technicianOrders.list.some((order) => order.id === createdPendingOrder.id), "technician order list missed the pending booking");
     const bookedPrimary = await prisma.scheduleSlot.findUnique({ where: { id: primary.slot.id } });
     assert(bookedPrimary?.bookedCount === 1 && bookedPrimary.status === "BOOKED", "capacity-one slot state was not atomically booked");
 
@@ -206,10 +274,12 @@ const main = async (): Promise<void> => {
       customerUserId: customer.id,
       serviceId: service.id,
       scheduleSlotId: pooled.slot.id,
-      fulfillmentMode: "store"
+      fulfillmentMode: "store",
+      serviceLocation: { source: "SHOP_LOCATION" }
     })));
     const successfulPooledOrders = pooledBookings.filter(
-      (result): result is NonNullable<typeof result> => result !== null
+      (result): result is Extract<NonNullable<typeof result>, { order: unknown }> =>
+        result !== null && "order" in result
     );
     createdOrderIds.push(...successfulPooledOrders.map((result) => result.order.id));
     assert(successfulPooledOrders.length === 2, "capacity-two assigned slot did not accept two distinct customers");
@@ -263,12 +333,22 @@ const main = async (): Promise<void> => {
       technicianSchedule: { created: true, listed: true, blocked: true, restored: true, softDeleted: true },
       timezone: { exactUtcInstantPreserved: true, sourceOffsetExample: "2026-09-15T10:00:00+09:00" },
       concurrency: { capacityOneAccepted: 1, capacityTwoAccepted: 2 },
+      directBooking: {
+        pendingCreated: true,
+        slotReserved: true,
+        customerVisible: true,
+        merchantVisible: true,
+        technicianVisible: true
+      },
       status: "ok"
     }, null, 2));
   } finally {
     if (createdOrderIds.length > 0 || createdSlotIds.length > 0 || createdUserIds.length > 0 || shopId) {
       await prisma.$transaction(async (transaction) => {
         if (createdOrderIds.length > 0) {
+          await transaction.bookingServiceLocation.deleteMany({
+            where: { bookingOrderId: { in: createdOrderIds } }
+          });
           await transaction.orderStatusHistory.deleteMany({ where: { bookingOrderId: { in: createdOrderIds } } });
           await transaction.bookingOrder.deleteMany({ where: { id: { in: createdOrderIds } } });
         }
@@ -287,6 +367,7 @@ const main = async (): Promise<void> => {
         await transaction.publicIdentifier.deleteMany({
           where: shopId ? { shopId } : { id: { in: [] } }
         });
+        if (shopId) await transaction.shopServiceLocation.deleteMany({ where: { shopId } });
         if (technicianShopAffiliationId) {
           await transaction.technicianShopAffiliation.deleteMany({
             where: { id: technicianShopAffiliationId }
@@ -303,6 +384,6 @@ const main = async (): Promise<void> => {
 };
 
 void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
+  console.error(error instanceof Error ? error.stack ?? error.message : error);
   process.exitCode = 1;
 });
