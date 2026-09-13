@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
   type BackofficeFinanceSettlementPayload,
@@ -26,6 +27,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { downloadCsvExport, type CsvExportEnvelope } from "../../lib/downloadCsvExport";
 import { yen } from "../../lib/utils";
 import { getFinanceNdpCopy } from "./financeNdpCopy";
+import { RefundDisputeReview } from "./RefundDisputeReview";
 
 const settlementPageSize = 20;
 
@@ -37,6 +39,17 @@ const emptySettlementPage = (page = 1): PaginatedApiPayload<BackofficeFinanceSet
 });
 
 export function FinancePage() {
+  const [searchParams] = useSearchParams();
+  const module = searchParams.get("module");
+
+  if (module === "refunds" || module === "refund-review") {
+    return <RefundDisputeReview />;
+  }
+
+  return <FinanceSettlementOverview />;
+}
+
+function FinanceSettlementOverview() {
   const { language } = useI18n();
   const ndpCopy = getFinanceNdpCopy(language);
   const [selected, setSelected] = useState<BackofficeFinanceSettlementPayload | null>(null);
