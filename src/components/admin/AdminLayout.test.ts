@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import source from "./AdminLayout.tsx?raw";
+import globalSearchSource from "./AdminGlobalSearch.tsx?raw";
 import { routeMatches } from "./AdminLayout";
 
 describe("AdminLayout navigation", () => {
@@ -115,7 +116,8 @@ describe("AdminLayout navigation", () => {
       expect(source).toContain(`label: "${label}", to: "${to}"`);
     }
     expect(source.match(/permission: "backoffice:[^"]+:read"/g)?.length).toBeGreaterThanOrEqual(5);
-    expect(source).toContain('placeholder="搜索订单、用户、门店、技师"');
+    expect(source).toContain("<AdminGlobalSearch hasPermission={hasPermission}");
+    expect(globalSearchSource).toContain('translateText("搜索订单、用户、门店、技师", language)');
     expect(source).not.toContain('label: "账号管理"');
     expect(source).not.toContain('label: "用户资料"');
     expect(source).not.toContain('label: "用户 CRM"');

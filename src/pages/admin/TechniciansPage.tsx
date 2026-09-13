@@ -36,6 +36,7 @@ export function TechniciansPage({ embeddedDetail }: {
   const { language } = useOptionalI18n();
   const translate = useCallback((text: string) => translateText(text, language), [language]);
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchKeyword = (searchParams.get("keyword") ?? "").trim().slice(0, 100);
   const detailTechnicianId = embeddedDetail?.id ?? readPositiveIntegerSearchParam(searchParams, "detailTechnicianId");
   const isReviewMode = searchParams.get("module") === "review";
   const isRankingMode = searchParams.get("module") === "ranking";
@@ -72,6 +73,7 @@ export function TechniciansPage({ embeddedDetail }: {
       }
       const [technicianPage, shopPage] = await Promise.all([
         backofficeRealDataApi.technicians("backoffice", {
+          keyword: searchKeyword || undefined,
           page: 1,
           pageSize: 100,
           status: isReviewMode ? "pending_review" : undefined
@@ -87,7 +89,7 @@ export function TechniciansPage({ embeddedDetail }: {
     } finally {
       if (requestId === listRequest.current) setLoading(false);
     }
-  }, [isRankingMode, isReviewMode, embeddedDetail?.id]);
+  }, [isRankingMode, isReviewMode, embeddedDetail?.id, searchKeyword]);
 
   const technicianDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeTechnicianDetailPayload>({
     onError: (detailError) => {

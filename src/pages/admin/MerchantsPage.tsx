@@ -54,8 +54,10 @@ export function MerchantsPage({ embeddedDetail }: {
   const { language } = useI18n();
   const t = (source: string) => translateMerchantBillingText(source, language);
   const [searchParams, setSearchParams] = useSearchParams();
+  const detailShopId = embeddedDetail ? null : readPositiveIntegerSearchParam(searchParams, "detailShopId");
   const detailServiceId = embeddedDetail?.id ?? readPositiveIntegerSearchParam(searchParams, "detailServiceId");
   const detailServiceType = embeddedDetail?.type ?? searchParams.get("detailServiceType");
+  const searchKeyword = (searchParams.get("keyword") ?? "").trim().slice(0, 100);
   const navigate = useNavigate();
   const [active, setActive] = useState(
     searchParams.get("module") === "categories"
@@ -84,6 +86,7 @@ export function MerchantsPage({ embeddedDetail }: {
   const [createShopOpen, setCreateShopOpen] = useState(false);
   const [createServiceOpen, setCreateServiceOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadedSearchKeyword, setLoadedSearchKeyword] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -105,7 +108,7 @@ export function MerchantsPage({ embeddedDetail }: {
         return;
       }
       const [shopPage, servicePage, categoryPage, billingPage] = await Promise.all([
-        backofficeRealDataApi.shops("backoffice", { page: 1, pageSize: 100 }),
+        backofficeRealDataApi.shops("backoffice", { keyword: searchKeyword || undefined, page: 1, pageSize: 100 }),
         backofficeRealDataApi.services("backoffice", { page: 1, pageSize: 100 }),
         coreReadApi.listCategories({ page: 1, pageSize: 100 }),
         merchantSaasBillingApi.listAccounts({ page: 1, pageSize: 100 })
@@ -114,12 +117,13 @@ export function MerchantsPage({ embeddedDetail }: {
       setServices(servicePage.list);
       setCategories(categoryPage.list);
       setBillingAccounts(billingPage.list);
+      setLoadedSearchKeyword(searchKeyword);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     } finally {
       setLoading(false);
     }
-  }, [embeddedDetail?.id]);
+  }, [embeddedDetail?.id, searchKeyword]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -167,6 +171,23 @@ export function MerchantsPage({ embeddedDetail }: {
   const openShop = (shop: BackofficeShopPayload) => {
     setSelectedShop(shop);
     setShopDraft({ name: shop.name, city: shop.city, address: shop.address });
+  };
+
+  useEffect(() => {
+    if (detailShopId === null || loading || error || loadedSearchKeyword !== searchKeyword) return;
+    const shop = shops.find((shop) => shop.id === detailShopId);
+    if (shop) {
+      openShop(shop);
+    } else {
+      setError("未找到可访问的正式店铺");
+    }
+  }, [detailShopId, error, loadedSearchKeyword, loading, searchKeyword, shops]);
+
+  const closeShop = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("detailShopId");
+    setSearchParams(params, { replace: true });
+    setSelectedShop(null);
   };
 
   const createShop = (event: FormEvent<HTMLFormElement>) => {
@@ -361,7 +382,7 @@ export function MerchantsPage({ embeddedDetail }: {
         </form>
       </Drawer>
 
-      <Drawer open={Boolean(selectedShop)} title="店铺集中详情" onClose={() => setSelectedShop(null)}>
+      <Drawer open={Boolean(selectedShop)} title="店铺集中详情" onClose={closeShop}>
         {selectedShop ? <div className="space-y-5">
           <DetailGrid items={[{ label: "店铺 ID", value: selectedShop.id }, { label: "负责人账号", value: selectedShop.ownerEmail ?? "未绑定" }, { label: "状态", value: selectedShop.status }, { label: "电话", value: selectedShop.phone ?? "未设置" }, { label: "推荐", value: selectedShop.isRecommended ? "是" : "否" }, { label: "创建时间", value: selectedShop.createdAt }]} />
           {(["name", "city", "address"] as const).map((field) => <label className="block" key={field}><span className="mb-2 block text-sm font-black">{field}</span><input className={inputClassName} onChange={(event) => setShopDraft((current) => ({ ...current, [field]: event.target.value }))} value={shopDraft[field]} /></label>)}
