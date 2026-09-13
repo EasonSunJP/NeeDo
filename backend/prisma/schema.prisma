@@ -4317,6 +4317,7 @@ model BookingOrder {
   @@index([exchangeIntelligencePostId, createdAt], map: "booking_orders_exchange_intelligence_created_idx")
   @@unique([customerUserId, createIdempotencyKey], map: "booking_orders_customer_create_idempotency_key")
   @@index([status, paymentStatus, deletedAt, paymentConfirmedAt, shopId, id], map: "booking_orders_ranking_window_idx")
+  @@index([fulfillmentMode, status, createdAt, deletedAt, id], map: "booking_orders_field_job_projection_idx")
   @@index([deletedAt])
   @@map("booking_orders")
   sosAlerts SosAlert[]
