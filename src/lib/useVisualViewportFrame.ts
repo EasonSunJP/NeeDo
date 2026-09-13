@@ -15,6 +15,7 @@ const installedIosPwaMinimumRestingViewportTolerance = 120;
 const installedIosPwaMaximumRestingViewportTolerance = 240;
 const installedIosPwaRestingViewportToleranceRatio = 0.22;
 const installedPwaKeyboardReleaseSettleMs = 180;
+const installedPwaKeyboardExpansionSequenceMs = 240;
 
 const getInstalledIosPwaRestingViewportTolerance = (referenceHeight: number): number =>
   Math.min(
@@ -50,6 +51,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
     let keyboardViewportMinimumHeight: number | null = null;
     let keyboardViewportLastHeight: number | null = null;
     let keyboardViewportExpansionFrames = 0;
+    let keyboardViewportLastExpansionAt: number | null = null;
     let keyboardReleaseTimer: number | null = null;
     let installedMobileRestingHeight: number | null = null;
 
@@ -110,12 +112,20 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
           keyboardViewportLastHeight !== null &&
           viewport!.height > keyboardViewportLastHeight
         ) {
-          keyboardViewportExpansionFrames += 1;
+          const expansionAt = Date.now();
+          keyboardViewportExpansionFrames =
+            keyboardViewportLastExpansionAt !== null &&
+            expansionAt - keyboardViewportLastExpansionAt <=
+              installedPwaKeyboardExpansionSequenceMs
+              ? keyboardViewportExpansionFrames + 1
+              : 1;
+          keyboardViewportLastExpansionAt = expansionAt;
         } else if (
           keyboardViewportLastHeight !== null &&
           viewport!.height < keyboardViewportLastHeight
         ) {
           keyboardViewportExpansionFrames = 0;
+          keyboardViewportLastExpansionAt = null;
         }
         keyboardViewportLastHeight = viewport!.height;
         keyboardViewportMinimumHeight = Math.min(
@@ -169,6 +179,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
             keyboardViewportMinimumHeight = null;
             keyboardViewportLastHeight = null;
             keyboardViewportExpansionFrames = 0;
+            keyboardViewportLastExpansionAt = null;
             installedMobileRestingHeight = currentViewport.height;
             updateFrame(true);
           }, installedPwaKeyboardReleaseSettleMs);
@@ -179,6 +190,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       keyboardViewportMinimumHeight = null;
       keyboardViewportLastHeight = null;
       keyboardViewportExpansionFrames = 0;
+      keyboardViewportLastExpansionAt = null;
       if (useInstalledMobileViewport) {
         installedMobileRestingHeight = viewport!.height;
         // The home navigation is fixed to the viewport bottom. Use the same
@@ -219,6 +231,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       keyboardViewportMinimumHeight = null;
       keyboardViewportLastHeight = null;
       keyboardViewportExpansionFrames = 0;
+      keyboardViewportLastExpansionAt = null;
       installedMobileRestingHeight = null;
       updateFrame();
     };
@@ -235,6 +248,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         keyboardViewportMinimumHeight = null;
         keyboardViewportLastHeight = null;
         keyboardViewportExpansionFrames = 0;
+        keyboardViewportLastExpansionAt = null;
         updateFrame(true);
         return;
       }
