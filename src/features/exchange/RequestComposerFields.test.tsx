@@ -24,8 +24,12 @@ vi.mock("./api", () => ({
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function setInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
-  const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+function setInputValue(input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
+  const prototype = input instanceof HTMLSelectElement
+    ? HTMLSelectElement.prototype
+    : input instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -128,6 +132,33 @@ describe("RequestComposerFields formal publication contract", () => {
     expect(review?.textContent).toContain("简体中文");
     expect(review?.textContent).toContain("1,000 Test NDP");
     expect(publishExchangePost).not.toHaveBeenCalled();
+  });
+
+  it("lets the author choose the content language while keeping the post type fixed to Request", async () => {
+    await renderAndOpen();
+    await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
+
+    const locale = document.body.querySelector<HTMLSelectElement>('select[name="contentLocale"]');
+    expect(locale).not.toBeNull();
+    expect(locale?.disabled).toBe(false);
+    expect(document.body.querySelector('[data-testid="exchange-post-type-selector"]')).toBeNull();
+
+    await act(async () => setInputValue(locale!, "ja"));
+    fillValidRequestDraft();
+    await act(async () => clickAction("composer-next"));
+
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')?.textContent).toContain("日本語");
+  });
+
+  it("treats a language-only change as a dirty draft before closing", async () => {
+    await renderAndOpen();
+    await waitFor(() => expect(document.body.querySelector('select[name="contentLocale"]')).not.toBeNull());
+
+    await act(async () => setInputValue(document.body.querySelector<HTMLSelectElement>('select[name="contentLocale"]')!, "ja"));
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[aria-label="关闭"]')?.click());
+
+    expect(document.body.textContent).toContain("放弃本次编辑？");
+    expect(document.body.querySelector('select[name="contentLocale"]')).not.toBeNull();
   });
 
   it("does not offer pre-match disclosure controls for exact address lines", async () => {

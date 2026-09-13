@@ -106,9 +106,17 @@ export function RequestComposerFields({
     >
       <div className="grid gap-4">
         <Field label={t("authoredLanguage")} required>
-          <div className="flex min-h-12 items-center rounded-2xl border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-4 text-sm font-black text-[color:var(--client-text)]">
-            {localeLabels[draft.contentLocale]}
-          </div>
+          <select
+            aria-label={t("authoredLanguage")}
+            className={fieldClassName}
+            name="contentLocale"
+            onChange={(event) => onChange({ contentLocale: event.target.value as RequestComposerDraft["contentLocale"] })}
+            value={draft.contentLocale}
+          >
+            {Object.entries(localeLabels).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
         </Field>
 
         <Field label={t("postType")} required>
