@@ -7,7 +7,7 @@ const translations = {
   customerIdentity: { zh: "用户", "zh-Hant": "用戶", ja: "利用者", en: "Customer", ko: "사용자" },
   technicianIdentity: { zh: "技师", "zh-Hant": "技師", ja: "技術者", en: "Technician", ko: "기술자" },
   merchantIdentity: { zh: "店铺", "zh-Hant": "店舖", ja: "店舗", en: "Merchant", ko: "매장" },
-  bookable: { zh: "可预约", "zh-Hant": "可預約", ja: "予約可能", en: "Bookable", ko: "예약 가능" },
+  bookable: { zh: "可预约", "zh-Hant": "可預約", ja: "予約可", en: "Bookable", ko: "예약 가능" },
   currentUnavailable: { zh: "当前不可预约", "zh-Hant": "目前無法預約", ja: "現在予約不可", en: "Currently unavailable", ko: "현재 예약 불가" },
   rating: { zh: "服务评分", "zh-Hant": "服務評分", ja: "サービス評価", en: "Rating", ko: "서비스 평점" },
   reviews: { zh: "评价", "zh-Hant": "評價", ja: "レビュー", en: "Reviews", ko: "리뷰" },
