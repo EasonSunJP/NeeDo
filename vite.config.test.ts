@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import type { ProxyOptions } from "vite";
+import { describe, expect, it, vi } from "vitest";
 import {
   createPortalApiProxyConfig,
   createLegacyAuthProxyConfig,
@@ -9,6 +10,22 @@ import {
   resolveLegacyAuthProxyTarget,
   resolveNeedoApiProxyTarget
 } from "./vite.config";
+
+function expectSameOriginProxyRemovesBrowserOrigin(config: ProxyOptions) {
+  const on = vi.fn();
+
+  config.configure?.({ on } as never, config);
+
+  expect(on).toHaveBeenCalledWith("proxyReq", expect.any(Function));
+  const listener = on.mock.calls.find(([event]) => event === "proxyReq")?.[1] as
+    | ((request: { removeHeader(name: string): void }) => void)
+    | undefined;
+  const removeHeader = vi.fn();
+
+  expect(listener).toBeTypeOf("function");
+  listener?.({ removeHeader });
+  expect(removeHeader).toHaveBeenCalledWith("origin");
+}
 
 describe("Needo API proxy config", () => {
   it("proxies operations and merchant API prefixes to different listeners", () => {
@@ -46,18 +63,30 @@ describe("Needo API proxy config", () => {
   });
 
   it("adds dev and preview proxies for formal API and media requests", () => {
-    expect(createNeedoApiProxyConfig("http://127.0.0.1:3000")).toEqual({
-      "/api/v1": {
-        changeOrigin: true,
-        secure: false,
-        target: "http://127.0.0.1:3000"
-      },
-      "/media": {
-        changeOrigin: true,
-        secure: false,
-        target: "http://127.0.0.1:3000"
-      }
+    const proxy = createNeedoApiProxyConfig("http://127.0.0.1:3000");
+
+    expect(proxy["/api/v1"]).toMatchObject({
+      changeOrigin: true,
+      secure: false,
+      target: "http://127.0.0.1:3000"
     });
+    expect(proxy["/media"]).toMatchObject({
+      changeOrigin: true,
+      secure: false,
+      target: "http://127.0.0.1:3000"
+    });
+    expectSameOriginProxyRemovesBrowserOrigin(proxy["/api/v1"]);
+    expectSameOriginProxyRemovesBrowserOrigin(proxy["/media"]);
+  });
+
+  it("removes browser origins before proxying every portal API from a LAN device", () => {
+    const proxy = createPortalApiProxyConfig(
+      "http://127.0.0.1:3001",
+      "http://127.0.0.1:3002"
+    );
+
+    expectSameOriginProxyRemovesBrowserOrigin(proxy["/ops-api/v1"]);
+    expectSameOriginProxyRemovesBrowserOrigin(proxy["/merchant-api/v1"]);
   });
 
   it("keeps legacy auth proxy disabled unless a target is configured", () => {
