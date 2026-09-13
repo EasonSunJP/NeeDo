@@ -92,6 +92,52 @@ references, and regressions beyond the current main/i18n JavaScript budgets.
 `npm run build:static` is a separate compatibility artifact and must never be
 uploaded to a formal environment.
 
+### Staging frontend asset compatibility
+
+Staging replaces HTML on every release and serves it with `Cache-Control:
+no-store`, but an already-open browser or installed PWA may still execute the
+previous release's JavaScript. A later identity or route transition can then
+request a lazy Vite chunk whose content-hashed filename came from that previous
+release. Replacing the web image alone must not make that asset return `404`.
+
+`deploy/staging/deploy-release.sh` therefore publishes the previous active
+release's `dist/assets` and then the incoming release's `dist/assets` into the
+append-only host directory `/srv/needo/frontend-assets` before recreating the
+web container. Importing the previous release is required when this contract is
+first introduced and the durable directory is still empty. The container mounts
+that directory read-only at `/usr/share/nginx/html/assets`, and Nginx serves
+those versioned resources with a one-year `immutable` cache policy. If a release
+attempts to reuse an existing asset path with different bytes, publication fails
+before the application transition. HTML remains release-local and `no-store`;
+it is never copied into the durable asset directory. The immutable header is
+limited to successful asset responses, so a missing asset's `404` is not given a
+one-year public cache lifetime.
+
+The managed deploy command pins `NEEDO_FRONTEND_ASSETS_DIR` to that host
+directory. A direct local `docker compose -f deploy/staging/docker-compose.yml
+up` instead defaults the mount to the checkout's current `dist/assets`, so it
+cannot hide the image assets behind an empty `/srv/needo` bind mount; that local
+shortcut does not provide cross-release retention.
+
+Rollback restores the captured previous web image through the incoming
+release's Compose definition. This keeps the durable asset mount active even on
+the first rollback from a release that predates this contract. It also retains
+the incoming release's compatible edge configuration so direct asset misses
+remain `404` and existing assets keep the immutable and HTTPS security headers;
+the captured previous image restores the previous HTML and application bundle,
+while both old and new hash-addressed chunks remain readable.
+
+The publisher rejects symbolic links in the destination path, including its
+existing ancestors, before creating the durable directory. This prevents a
+privileged deployment from following a redirected `/srv/needo` or nested asset
+path outside the intended storage tree.
+
+Do not delete files from `/srv/needo/frontend-assets` as routine release
+cleanup. No automated asset deletion is currently authorized. Until a separate
+cleanup tool can prove retained-release references and archived access-log
+absence and can create a recoverable backup, operators must only monitor the
+directory's byte/file growth and expand its volume before capacity is exhausted.
+
 After updating the frontend bundle and Nginx, verify from outside the server:
 
 ```bash
