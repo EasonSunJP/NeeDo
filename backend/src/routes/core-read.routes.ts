@@ -2,11 +2,13 @@ import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { CoreReadController } from "../controllers/core-read.controller";
+import { createOptionalAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { CoreReadRepository } from "../repositories/core-read.repository";
 import { SearchQueryRecorderRepository } from "../repositories/search-query-recorder.repository";
 import { CoreReadService } from "../services/core-read.service";
 import { SearchQueryRecorderService } from "../services/search-query-recorder.service";
+import { createAuthServiceForRoutes } from "./auth-service.factory";
 import {
   categoryListQuerySchema,
   coreReadCoordinateQuerySchema,
@@ -32,6 +34,9 @@ export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDepende
       )
   );
   const controller = new CoreReadController(coreReadService);
+  const optionalAuthenticate = createOptionalAuthenticateMiddleware(
+    createAuthServiceForRoutes(config, dependencies)
+  );
 
   router.get(
     "/categories",
@@ -71,6 +76,7 @@ export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDepende
   );
   router.get(
     "/profiles/customers/:id",
+    optionalAuthenticate,
     validateRequest({ params: coreReadIdParamSchema }),
     controller.getCustomerProfile
   );

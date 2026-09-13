@@ -26,6 +26,10 @@ import {
   loadTechnicianReviewTagSummary,
   type TechnicianReviewTagSummaryPayload
 } from "./technician-review-tag-summary.repository";
+import {
+  CustomerProfileVisibilityRepository,
+  type CustomerProfileViewer
+} from "./customer-profile-visibility.repository";
 
 const PUBLISHED_STATUS = "published";
 const DEFAULT_HOME_LIMIT = 6;
@@ -263,7 +267,10 @@ export interface CoreReadRepositoryPort {
     id: number | string,
     coordinates?: { latitude?: number; longitude?: number }
   ) => Promise<TechnicianDetailPayload | null>;
-  findCustomerProfile: (id: number) => Promise<CustomerProfilePayload | null>;
+  findCustomerProfile: (
+    id: number,
+    viewer?: CustomerProfileViewer
+  ) => Promise<CustomerProfilePayload | null>;
 }
 
 type ShopCardRecord = Shop & {
@@ -356,7 +363,10 @@ type DecimalLike = {
 };
 
 export class CoreReadRepository implements CoreReadRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(
+    private readonly client: PrismaClient = prisma,
+    private readonly customerProfileVisibility = new CustomerProfileVisibilityRepository(client)
+  ) {}
 
   public async listCategories(
     input: CategoryListInput
@@ -862,12 +872,15 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
     );
   }
 
-  public async findCustomerProfile(id: number): Promise<CustomerProfilePayload | null> {
+  public async findCustomerProfile(
+    id: number,
+    viewer?: CustomerProfileViewer
+  ): Promise<CustomerProfilePayload | null> {
     const customer = await this.client.customerProfile.findFirst({
       where: {
         id,
         deletedAt: null,
-        isPublic: true
+        user: { is: { isActive: true, deletedAt: null } }
       },
       include: {
         mediaAssets: activeMediaArgs,
@@ -876,7 +889,17 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       }
     });
 
-    return customer ? this.mapCustomerProfile(customer) : null;
+    if (!customer) return null;
+    const canView = await this.customerProfileVisibility.canView(
+      {
+        profileId: customer.id,
+        userId: customer.userId,
+        visibility: customer.visibility,
+        isPublic: customer.isPublic
+      },
+      viewer
+    );
+    return canView ? this.mapCustomerProfile(customer) : null;
   }
 
   private serviceCardInclude() {

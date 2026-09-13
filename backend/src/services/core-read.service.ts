@@ -16,6 +16,7 @@ import type {
   TechnicianCardPayload,
   TechnicianDetailPayload
 } from "../repositories/core-read.repository";
+import type { CustomerProfileViewer } from "../repositories/customer-profile-visibility.repository";
 import {
   minimumCandidateDistanceKm,
   rankNearbyTechnicians,
@@ -188,8 +189,11 @@ export class CoreReadService {
     return technician;
   }
 
-  public async getCustomerProfile(id: number): Promise<CustomerProfilePayload> {
-    const customer = await this.repository.findCustomerProfile(id);
+  public async getCustomerProfile(
+    id: number,
+    viewer?: CustomerProfileViewer
+  ): Promise<CustomerProfilePayload> {
+    const customer = await this.repository.findCustomerProfile(id, viewer);
 
     if (!customer) {
       throw this.notFoundError("error.customer_profile.not_found");

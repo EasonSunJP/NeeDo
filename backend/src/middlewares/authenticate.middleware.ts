@@ -25,6 +25,23 @@ export const createAuthenticateMiddleware =
     }
   };
 
+export const createOptionalAuthenticateMiddleware =
+  (authService: AuthService): RequestHandler =>
+  async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    if (!request.get("authorization")) {
+      next();
+      return;
+    }
+
+    try {
+      const token = getBearerToken(request);
+      response.locals.auth = await authService.authenticateAccessToken(token);
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+
 const merchantPreviewHeader = "x-needo-merchant-preview-shop-id";
 const safePreviewMethods = new Set(["GET", "HEAD", "OPTIONS"]);
 

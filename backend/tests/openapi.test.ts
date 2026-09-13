@@ -1095,6 +1095,10 @@ describe("GET /api/v1/openapi.json", () => {
       }
     });
     expect(response.body.paths).toHaveProperty("/api/v1/profiles/customers/{id}");
+    expect(response.body.paths["/api/v1/profiles/customers/{id}"].get).toMatchObject({
+      security: [{}, { bearerAuth: [] }],
+      description: expect.stringMatching(/privateAll.*limited.*network.*404/is)
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/schedule/availability");
     expect(response.body.paths["/api/v1/schedule/availability"].get.description).toEqual(
       expect.stringMatching(/technicianId.*without a service filter/i)

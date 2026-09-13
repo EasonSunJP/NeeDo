@@ -15,6 +15,7 @@ import {
 } from "./api";
 import { mapCoreShopToUnifiedData } from "../../shared/shop-card/mappers";
 import { mapStoreToUnifiedEntityData } from "../../shared/profile-card/unifiedEntityMappers";
+import { clearAuthTokens, setAuthTokens } from "../../api/httpClient";
 
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -103,6 +104,7 @@ describe("core read API adapter", () => {
   });
 
   afterEach(() => {
+    clearAuthTokens();
     vi.unstubAllGlobals();
   });
 
@@ -232,6 +234,22 @@ describe("core read API adapter", () => {
       "/api/v1/shops/shop5831047296",
       expect.objectContaining({
         headers: expect.not.objectContaining({ Authorization: expect.any(String) })
+      })
+    );
+  });
+
+  it("sends the current viewer credential for visibility-scoped customer profiles", async () => {
+    setAuthTokens({ accessToken: "viewer-access-token" });
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ code: 0, message: "success", data: {} })
+    );
+
+    await coreReadApi.getCustomerProfile(248);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/profiles/customers/248",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer viewer-access-token" })
       })
     );
   });

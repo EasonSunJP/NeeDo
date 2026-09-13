@@ -480,6 +480,7 @@ describe("Step 08 core read API", () => {
     expect(JSON.stringify(customerResponse.body)).not.toContain("passwordHash");
     expect(JSON.stringify(customerResponse.body)).not.toContain("email");
     expect(JSON.stringify(customerResponse.body)).not.toContain("phone");
+    expect(fixture.coreReadRepository.findCustomerProfile).toHaveBeenCalledWith(1, undefined);
   });
 
   it("resolves Service UUIDs to the same public detail while keeping numeric strings numeric", async () => {

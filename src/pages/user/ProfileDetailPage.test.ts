@@ -13,4 +13,14 @@ describe("ProfileDetailPage technician routes", () => {
     expect(profileDetailSource).toContain("coreReadApi.getTechnicianDetail");
     expect(profileDetailSource).toContain("TechnicianProfileInfoView");
   });
+
+  it("does not reuse a public persistent cache for relationship-scoped customer profiles", () => {
+    const customerPageSource = profileDetailSource.slice(
+      profileDetailSource.indexOf("function CustomerApiProfilePage"),
+      profileDetailSource.indexOf("function ShopApiProfilePage")
+    );
+
+    expect(customerPageSource).not.toContain("core:customer-profile:");
+    expect(customerPageSource).toContain("coreReadApi.getCustomerProfile(id)");
+  });
 });
