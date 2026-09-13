@@ -14,8 +14,6 @@ const installedPwaRestingViewportTolerance = 96;
 const installedIosPwaMinimumRestingViewportTolerance = 120;
 const installedIosPwaMaximumRestingViewportTolerance = 240;
 const installedIosPwaRestingViewportToleranceRatio = 0.22;
-const installedPwaKeyboardReleaseExpansionRatio = 0.15;
-const installedPwaKeyboardReleaseMinimumExpansion = 120;
 const installedPwaKeyboardReleaseSettleMs = 180;
 
 const getInstalledIosPwaRestingViewportTolerance = (referenceHeight: number): number =>
@@ -135,15 +133,12 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         );
         element.style.setProperty("--im-visual-viewport-right", "auto");
 
-        const releaseExpansion = viewport!.height - keyboardViewportMinimumHeight;
-        const releaseExpansionThreshold = Math.max(
-          installedPwaKeyboardReleaseMinimumExpansion,
-          Math.round(keyboardReferenceHeight * installedPwaKeyboardReleaseExpansionRatio)
-        );
+        const viewportExpandedFromKeyboardMinimum =
+          viewport!.height > keyboardViewportMinimumHeight;
         if (
           useInstalledMobileViewport &&
           viewport!.offsetTop <= 2 &&
-          releaseExpansion >= releaseExpansionThreshold
+          viewportExpandedFromKeyboardMinimum
         ) {
           const candidateHeight = viewport!.height;
           const candidateOffsetTop = viewport!.offsetTop;
@@ -210,13 +205,28 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
     };
 
     const handleFrameChange = () => updateFrame();
+    const handleFocusOut = () => {
+      const installPlatform = detectPwaInstallPlatform(window.navigator);
+      const installedMobilePwa =
+        isPwaStandaloneWindow(window) &&
+        (installPlatform === "ios" || installPlatform === "android");
+
+      if (installedMobilePwa) {
+        keyboardFrameActive = false;
+        keyboardViewportMinimumHeight = null;
+        updateFrame(true);
+        return;
+      }
+
+      updateFrame();
+    };
 
     updateFrame();
     window.addEventListener("resize", handleFrameChange);
     window.addEventListener("pageshow", refreshRestoredFrame);
     document.addEventListener("visibilitychange", refreshRestoredFrame);
     document.addEventListener("focusin", handleFrameChange);
-    document.addEventListener("focusout", handleFrameChange);
+    document.addEventListener("focusout", handleFocusOut);
     window.visualViewport?.addEventListener("resize", handleFrameChange);
     window.visualViewport?.addEventListener("scroll", handleFrameChange, { passive: true });
 
@@ -226,7 +236,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       window.removeEventListener("pageshow", refreshRestoredFrame);
       document.removeEventListener("visibilitychange", refreshRestoredFrame);
       document.removeEventListener("focusin", handleFrameChange);
-      document.removeEventListener("focusout", handleFrameChange);
+      document.removeEventListener("focusout", handleFocusOut);
       window.visualViewport?.removeEventListener("resize", handleFrameChange);
       window.visualViewport?.removeEventListener("scroll", handleFrameChange);
 

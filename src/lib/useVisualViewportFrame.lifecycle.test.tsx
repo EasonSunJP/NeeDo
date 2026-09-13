@@ -170,6 +170,54 @@ describe("chat visual viewport lifecycle", () => {
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
+  it("releases a focused installed PWA keyboard frame after any stable viewport expansion", async () => {
+    vi.useFakeTimers();
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(520);
+      viewport.dispatchEvent(new Event("resize"));
+      setViewport(610);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(roomHeightOf(frame)).toBe("610px");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(220);
+    });
+
+    expect(document.activeElement).toBe(editor);
+    expect(roomHeightOf(frame)).toBe("100lvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+  });
+
+  it("releases an installed PWA keyboard frame immediately when the editor loses focus", async () => {
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(520);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(roomHeightOf(frame)).toBe("520px");
+
+    await act(async () => editor.blur());
+
+    expect(roomHeightOf(frame)).toBe("100lvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+  });
+
   it("bounds an installed Android PWA room to the visible viewport when the keyboard is closed", async () => {
     document.documentElement.dataset.needoDisplayMode = "standalone";
     vi.stubGlobal("navigator", {

@@ -854,6 +854,14 @@ describe("formal profile realtime refresh", () => {
     expect(bootstrap).toHaveBeenCalledTimes(2);
     expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
     expect(getConversationDisplayName(store!, store!.conversations[0]!)).toBe("CutGirl");
+
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "refresh" });
+      await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(3));
+    });
+
+    expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
+    expect(getConversationDisplayName(store!, store!.conversations[0]!)).toBe("CutGirl");
   });
 
   it("replaces cached conversation and directory names after a profile event", async () => {
