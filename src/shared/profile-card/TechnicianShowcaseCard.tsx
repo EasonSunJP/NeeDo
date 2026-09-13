@@ -181,7 +181,7 @@ function getTechnicianCardCopy(language: Language) {
       recommended: "おすすめ",
       recommendedService: "おすすめサービス",
       serviceFallback: "予約サービス",
-      favorite: "保存",
+      favorite: "お気に入り",
       minuteSuffix: "分",
       pricePending: "価格確認中",
       share: "共有",
