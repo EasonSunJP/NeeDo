@@ -5,6 +5,10 @@ import { releasePublicationOpenApiPaths } from "./release-publication.openapi";
 import { workStatusOpenApiPaths } from "./work-status.openapi";
 import { calendarEventOpenApiPaths } from "./calendar-event.openapi";
 import { sosOpenApiPaths } from "./sos.openapi";
+import {
+  exchangeOperationsOpenApiPaths,
+  exchangeOperationsOpenApiSchemas
+} from "./exchange-operations.openapi";
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "../config/env";
@@ -3281,6 +3285,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     schemas: {
+      ...exchangeOperationsOpenApiSchemas,
       ...shopMembershipCardPlanOpenApiSchemas,
       ...orderRefundOpenApiSchemas,
       ShopTravelFareBand: {
@@ -17255,6 +17260,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     ...createShopMembershipCardPlanOpenApiPaths(config),
     ...createCarouselOpenApiPaths(config),
     ...createExchangeOpenApiPaths(config),
+    ...exchangeOperationsOpenApiPaths(config.API_PREFIX),
     ...createOrderRefundCaseOpenApiPaths(config),
     [`${config.API_PREFIX}/merchant-admin/shop/presentation`]: {
       get: {

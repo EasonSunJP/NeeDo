@@ -1550,8 +1550,8 @@ export default function App() {
               <Route path="/admin/badges" element={protect("admin", <AvatarBadgesPage />)} />
               <Route path="/admin/technicians" element={protect("admin", <TechniciansPage />)} />
               <Route path="/admin/orders" element={protect("admin", <Suspense fallback={null}><OrdersAdminPage /></Suspense>)} />
-              <Route path="/admin/orders/demands" element={protect("admin", <NeedoDemandAdminPage />)} />
-              <Route path="/admin/orders/info" element={protect("admin", <NeedoInfoAdminPage />)} />
+              <Route path="/admin/orders/demands" element={protectPermission("admin", "backoffice:exchange:read", <NeedoDemandAdminPage />)} />
+              <Route path="/admin/orders/info" element={protectPermission("admin", "backoffice:exchange:read", <NeedoInfoAdminPage />)} />
               <Route path="/admin/dispatch" element={protect("admin", <AdminDispatchPage />)} />
               <Route path="/admin/field-jobs" element={protect("admin", <FieldJobsPage />)} />
               <Route path="/admin/crm" element={protect("admin", <LegacyUserManagementRedirect source="crm" />)} />

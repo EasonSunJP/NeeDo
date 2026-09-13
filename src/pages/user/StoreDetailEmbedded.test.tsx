@@ -3,10 +3,11 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { UnifiedFormalStoreDetail } from "./StoreDetailPage";
+import { StoreDetailExperience, UnifiedFormalStoreDetail } from "./StoreDetailPage";
 import { coreReadApi, type CoreShopDetail } from "../../features/core-read/api";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
 import { bookingApi, type BookingScheduleSlot } from "../../features/booking/api";
+import type { Store, Technician } from "../../types/domain";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: vi.fn() });
@@ -17,6 +18,11 @@ vi.mock("../../i18n/I18nProvider", () => ({ useI18n: () => locale, useOptionalI1
 vi.mock("../../state/entityStore", () => ({ useEntityStore: () => ({ customers: [], technicians: [] }) }));
 vi.mock("../../features/social/context", () => ({ useSocial: () => ({ getActorForScope: () => null, getProfilePosts: () => [] }) }));
 vi.mock("../../features/pricing-mode/api", () => ({ pricingModeApi: pricingModeMock }));
+vi.mock("../../api/backofficeRealData", () => ({
+  backofficeRealDataApi: {
+    merchantShopPresentation: vi.fn(() => new Promise(() => {}))
+  }
+}));
 
 let container: HTMLDivElement;
 let root: Root;
@@ -31,6 +37,92 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); });
 async function render() {
   await act(async () => root.render(<MemoryRouter><UnifiedFormalStoreDetail shopId={21} scope="user" embedded /></MemoryRouter>));
+}
+
+async function renderFormalMerchantPreview() {
+  const store = {
+    id: "21",
+    systemId: "shop7507769538",
+    merchantId: "merchant-21",
+    name: "麻布十番超级按摩",
+    area: "東京都",
+    address: "港区",
+    rating: 0,
+    reviewCount: 0,
+    priceLabel: "预约确认",
+    tags: [],
+    openStatus: "open",
+    nextSlot: "可预约",
+    alwaysBookable: true,
+    cover: "/images/generated/stores/store-cafe-consult.jpg",
+    gallery: ["/images/generated/stores/store-cafe-consult.jpg"],
+    description: "正式店铺",
+    rankLabel: "公开店铺",
+    businessHours: "请以店铺确认为准",
+    mode: "store",
+    paymentMethods: []
+  } satisfies Store;
+  const technician = {
+    id: "501",
+    systemId: "s0000000501",
+    name: "正式技师一号",
+    storeId: "21",
+    role: "therapist",
+    status: "available",
+    rating: 0,
+    orderCount: 0,
+    income: 0,
+    skills: [],
+    serviceAreas: ["東京都"],
+    acceptRate: 0,
+    cancelRate: 0,
+    reviewCount: 0,
+    favoriteCount: 0,
+    shareCount: 0,
+    languages: ["日本語"],
+    avatar: "/images/generated/profiles/ai-profile-01.jpg"
+  } satisfies Technician;
+
+  await act(async () => root.render(
+    <MemoryRouter>
+      <StoreDetailExperience
+        embedded
+        formalApiOnly
+        presentationOverride={{
+          subtitle: "legacy",
+          favoriteCount: 0,
+          distance: "legacy",
+          station: "legacy",
+          access: "legacy",
+          seatLabel: "环境",
+          menuLabel: "服务项目",
+          peopleLabel: "预约人数",
+          paymentMethods: [],
+          equipment: [],
+          parking: "legacy",
+          routeGuide: "legacy",
+          seatFilters: [],
+          offers: [],
+          menuCards: [{
+            id: "legacy-service",
+            sourceServiceId: "svc-fallback",
+            name: "标准到店服务",
+            subtitle: "legacy",
+            duration: "60 分钟",
+            priceLabel: "￥0",
+            audience: "legacy",
+            tags: ["可预约"],
+            cover: store.cover,
+            highlights: []
+          }]
+        }}
+        scope="merchant"
+        serviceCardsOverride={[]}
+        store={store}
+        techniciansOverride={[technician]}
+      />
+    </MemoryRouter>
+  ));
 }
 async function waitForText(text: string) {
   for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -79,6 +171,16 @@ it("localizes the embedded loading state", async () => {
   await render();
   expect(container.querySelector('[role="status"]')?.textContent).toBe("実店舗情報を読み込み中");
   expect(container.querySelector("nav")).toBeNull();
+});
+
+it("rejects legacy service cards while keeping the formal technician projection in merchant preview", async () => {
+  await renderFormalMerchantPreview();
+
+  expect(container.textContent).toContain("正式技师一号");
+  expect(container.textContent).toContain("暂无可预约服务");
+  expect(container.textContent).not.toContain("标准到店服务");
+  expect(container.textContent).not.toContain("￥0");
+  expect(container.querySelector('a[href*="svc-fallback"]')).toBeNull();
 });
 
 it("builds checkout actions only from an exact future formal slot", async () => {
