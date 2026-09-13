@@ -80,8 +80,8 @@ const navSections: AdminNavSection[] = [
     title: "订单",
     items: [
       { label: "订单管理", to: "/admin/orders", icon: "单", children: ["服务订单", "拒单管理", "加钟订单"] },
-      { label: "需求中心", to: "/admin/orders/demands", icon: "需", children: ["用户需求", "抢单响应", "发布审核"] },
-      { label: "情报中心", to: "/admin/orders/info", icon: "情", children: ["商户情报", "技师情报", "发布审核"] },
+      { label: "需求中心", to: "/admin/orders/demands", icon: "需", permission: "backoffice:exchange:read", children: ["用户需求", "抢单响应", "匹配记录"] },
+      { label: "情报中心", to: "/admin/orders/info", icon: "情", permission: "backoffice:exchange:read", children: ["商户情报", "技师情报", "匹配记录"] },
       { label: "退款管理", to: "/admin/finance?module=refunds", icon: "退" },
       { label: "评价管理", to: "/admin/reviews", icon: "评", children: ["评价列表", "评价标签"] },
       { label: "订单设置", to: "/admin/orders?module=settings", icon: "设" },

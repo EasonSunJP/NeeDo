@@ -32,5 +32,8 @@ describe("formal Exchange matched-booking database checker", () => {
     ]) {
       expect(source).toContain(token);
     }
+    expect(source.indexOf("bookingServiceLocation.deleteMany")).toBeLessThan(
+      source.indexOf("bookingOrder.deleteMany")
+    );
   });
 });

@@ -606,6 +606,9 @@ export async function cleanupExchangeBookingFixture(client: any, fixture: Exchan
   await client.exchangeMatchEvent.deleteMany({ where: { matchingId: fixture.matchingId } });
   await client.exchangeMatchParticipant.deleteMany({ where: { id: { in: fixture.participantIds } } });
   if (orderIds.length > 0) {
+    await client.bookingServiceLocation.deleteMany({
+      where: { bookingOrderId: { in: orderIds } }
+    });
     await client.orderStatusHistory.deleteMany({ where: { bookingOrderId: { in: orderIds } } });
     await client.orderFinancial.deleteMany({ where: { bookingOrderId: { in: orderIds } } });
     await client.bookingOrder.deleteMany({ where: { id: { in: orderIds } } });
