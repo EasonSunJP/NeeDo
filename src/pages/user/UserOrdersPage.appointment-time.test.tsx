@@ -247,6 +247,6 @@ describe("UserOrdersPage appointment time", () => {
     expect(serviceField?.querySelector("dt")?.textContent).toBe("サービス");
     expect(serviceField?.querySelector("dd")?.textContent).toBe("ボディケア 60分");
     expect(shopField?.querySelector("dt")?.textContent).toBe("店舗");
-    expect(shopField?.querySelector("dd")?.textContent).toBe("設定されていません");
+    expect(shopField?.querySelector("dd")?.textContent).toBe("未設定");
   });
 });

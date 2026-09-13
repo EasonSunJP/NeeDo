@@ -298,12 +298,14 @@ describe("UserCenterPage inline profile editing", () => {
     expect(section).not.toBeNull();
     expect(rows).toHaveLength(6);
     rows.forEach((row) => {
-      const textColumn = row.querySelector<HTMLElement>(":scope > .col-start-1");
-      const accessory = row.querySelector<HTMLElement>(":scope > .col-start-2");
+      const contentGrid = row.querySelector<HTMLElement>(":scope > .relative.z-10");
+      const textColumn = contentGrid?.firstElementChild as HTMLElement | null;
+      const accessory = contentGrid?.lastElementChild as HTMLElement | null;
 
-      expect(row.className).toContain("grid-cols-[minmax(0,1fr)_auto]");
+      expect(contentGrid?.className).toContain("grid-cols-[minmax(0,1fr)_auto]");
       expect(textColumn?.className).toContain("min-w-0");
       expect(textColumn?.className).toContain("text-left");
+      expect(textColumn?.querySelector('button[aria-label$="说明"]')).not.toBeNull();
       expect(accessory).not.toBeNull();
     });
   });
@@ -316,20 +318,25 @@ describe("UserCenterPage inline profile editing", () => {
     const activeLinks = Array.from(section?.querySelectorAll<HTMLAnchorElement>("a") ?? []);
 
     expect(invoiceEntry?.tagName).toBe("DIV");
-    expect(invoiceEntry?.getAttribute("aria-disabled")).toBe("true");
+    expect(invoiceEntry?.getAttribute("aria-disabled")).toBeNull();
+    expect(invoiceEntry?.getAttribute("data-disabled")).toBe("true");
     expect(invoiceEntry?.querySelector("a")).toBeNull();
     expect(invoiceEntry?.getAttribute("href")).toBeNull();
     expect(invoiceEntry?.tabIndex).toBe(-1);
     expect(invoiceEntry?.textContent).toContain("发票记录");
-    expect(invoiceEntry?.textContent).toContain("发票功能暂未开放");
+    expect(invoiceEntry?.textContent).not.toContain("企业抬头与历史发票");
     expect(invoiceEntry?.querySelector('[aria-label="Test 功能"]')).not.toBeNull();
-    expect(activeLinks.map((link) => [link.querySelector("strong")?.textContent, link.getAttribute("href")])).toEqual([
+    expect(invoiceEntry?.querySelector('[aria-label="查看发票记录说明"]')?.className).toContain("before:-inset-3");
+    expect(activeLinks.map((link) => [link.getAttribute("aria-label"), link.getAttribute("href")])).toEqual([
       ["账号设置", "/me/settings/account"],
       ["支付方式", "/me/settings/payment-methods"],
       ["通知设置", "/me/settings/notifications"],
       ["隐私与安全", "/me/settings/account"],
       ["联系客服", "/support"]
     ]);
+
+    await click(invoiceEntry?.querySelector<HTMLButtonElement>('[aria-label="查看发票记录说明"]')!);
+    expect(document.body.textContent).toContain("企业抬头与历史发票");
 
     await click(invoiceEntry!);
     await act(async () => {
@@ -374,7 +381,7 @@ describe("UserCenterPage inline profile editing", () => {
     await click(privacySwitch!);
     expect(container.querySelector('[data-testid="privacy-mode-confirm-dialog"]')).not.toBeNull();
 
-    await click(findButton("确定"));
+    await click(findButton("开启"));
 
     await waitFor(() => expect(testState.updateMine).toHaveBeenCalledWith({ visibility: "privateAll" }));
     await waitFor(() => expect(container.textContent).toContain("对所有人不可见"));
@@ -412,7 +419,7 @@ describe("UserCenterPage inline profile editing", () => {
 
     const privacySwitch = container.querySelector<HTMLButtonElement>('button[aria-label="开启隐私模式"][role="switch"]');
     await click(privacySwitch!);
-    await click(findButton("确定"));
+    await click(findButton("开启"));
 
     await waitFor(() => expect(container.textContent).toContain("隐私模式保存失败，请重试"));
     expect(container.textContent).toContain("公开可见");

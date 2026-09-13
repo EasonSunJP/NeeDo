@@ -1,8 +1,8 @@
-export const privacyModeConfirmMessage = "打开隐私模式后，本账号将不会在检索结果中显示，确定要开启吗？";
+export const privacyModeConfirmMessage = "开启隐私模式后，你的账号将不会显示在搜索结果中。确定要开启吗？";
 
 export function PrivacyModeConfirmDialog({
   cancelLabel = "取消",
-  confirmLabel = "确定",
+  confirmLabel = "开启",
   message = privacyModeConfirmMessage,
   onCancel,
   onConfirm,

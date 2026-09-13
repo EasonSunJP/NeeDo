@@ -88,6 +88,9 @@ describe("UnifiedServiceInfoCard", () => {
       data: formalService, detailTo: "/services/71", language: "ja"
     })));
 
+    expect(markup).toContain('aria-label="予約可"');
+    expect(markup).toContain(">予約可<");
+    expect(markup).not.toContain("予約可能");
     expect(markup).toContain('aria-label="完了件数"');
     expect(markup).toContain('aria-label="現在地から"');
     expect(markup).toContain('aria-label="两小时家庭日常保洁をお気に入りに追加"');

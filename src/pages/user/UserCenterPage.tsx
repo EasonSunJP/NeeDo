@@ -90,7 +90,7 @@ const emptyFormalOrderCounts: FormalOrderCounts = {
 const userCenterCollectionInfo: Record<Language, string> = {
   zh: "已收藏的服务、店铺、技师、动态与聊天记录",
   "zh-Hant": "已收藏的服務、店鋪、技師、動態與聊天記錄",
-  ja: "お気に入りのサービス・店舗・技術者・投稿・チャット履歴",
+  ja: "お気に入りのサービス・店舗・スタッフ・投稿・チャット履歴",
   en: "Favorite services, shops, technicians, posts and chat records",
   ko: "즐겨찾기 서비스, 매장, 기술자, 게시물 및 채팅 기록",
 };
@@ -105,37 +105,37 @@ const platformMembershipTierLabels: Record<
 };
 
 const accountSettings: Array<{
-  caption: string;
+  info: string;
   label: string;
   test?: boolean;
   to?: string;
 }> = [
   {
     label: "账号设置",
-    caption: "手机号、邮箱、登录密码",
+    info: "手机号、邮箱、登录密码",
     to: "/me/settings/account",
   },
   {
     label: "支付方式",
-    caption: "现金、NDP 与外部渠道状态",
+    info: "银行卡、PayPay、现金",
     to: "/me/settings/payment-methods",
   },
   {
     label: "发票记录",
-    caption: "发票功能暂未开放",
+    info: "企业抬头与历史发票",
     test: true,
   },
   {
     label: "通知设置",
-    caption: "订单、营销、客服提醒",
+    info: "订单、营销、客服提醒",
     to: "/me/settings/notifications",
   },
   {
     label: "隐私与安全",
-    caption: "登录设备、数据授权",
+    info: "登录设备、数据授权",
     to: "/me/settings/account",
   },
-  { label: "联系客服", caption: "退款、改期、投诉风控", to: "/support", test: true },
+  { label: "联系客服", info: "退款、改期、投诉风控", to: "/support", test: true },
 ];
 
 const pagePanelClassName =
@@ -897,7 +897,7 @@ function CompleteUserCenterPage({
     {
       label: "eKYC本人确认",
       info: "实名、证件、本人确认",
-      value: "去",
+      value: "去认证",
       to: "/me/settings/verification",
     },
     {
@@ -1942,21 +1942,30 @@ function CompleteUserCenterPage({
                   </Link>
                 ))}
               </div>
-              <Link
+              <div
                 className={cn(
                   pageInnerCardClassName,
-                  "mt-3 flex items-center justify-between px-3 py-3",
+                  "relative mt-3 px-3 py-3",
                 )}
-                to="/orders"
               >
-                <div>
-                  <strong className="text-sm">预约一览</strong>
-                  <p className="mt-1 text-xs text-ink/50">
-                    查看全部预约、订单状态和详情跳转
-                  </p>
+                <Link
+                  aria-label="预约一览"
+                  className="absolute inset-0 rounded-[24px]"
+                  to="/orders"
+                />
+                <div className="pointer-events-none relative z-10 flex min-h-8 items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <strong className="text-sm">预约一览</strong>
+                    <InfoTooltipTrigger
+                      className="pointer-events-auto relative h-4 w-4 shrink-0 border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] text-[10px] text-ink/45 before:absolute before:-inset-3 before:content-[''] hover:text-ink/80"
+                      content="查看全部预约、订单状态和详情跳转"
+                      label="查看预约一览说明"
+                      panelMode="tooltip"
+                    />
+                  </div>
+                  <span className="text-lg font-black text-ink/25">›</span>
                 </div>
-                <span className="text-lg font-black text-ink/25">›</span>
-              </Link>
+              </div>
             </section>
 
             <section className="grid grid-cols-2 gap-3">
@@ -1981,7 +1990,7 @@ function CompleteUserCenterPage({
                       <div className="flex min-w-0 items-center gap-1.5">
                         <h3 className="min-w-0 font-black">{entry.label}</h3>
                         <InfoTooltipTrigger
-                          className="pointer-events-auto h-4 w-4 border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] text-[10px] text-ink/45 hover:text-ink/80"
+                          className="pointer-events-auto relative h-4 w-4 border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] text-[10px] text-ink/45 before:absolute before:-inset-3 before:content-[''] hover:text-ink/80"
                           content={entry.info}
                           label="查看说明"
                           panelMode="tooltip"
@@ -2004,44 +2013,46 @@ function CompleteUserCenterPage({
               <h2 className="font-black">账号与服务</h2>
               <div className="mt-3 grid gap-2">
                 {accountSettings.map((entry) => {
-                  const content = (
-                    <>
+                  const className = cn(
+                    pageInnerCardClassName,
+                    "relative min-h-[64px] w-full px-4 py-3",
+                  );
+
+                  return (
+                    <div
+                      className={cn(
+                        className,
+                        !entry.to && "opacity-65",
+                      )}
+                      data-disabled={entry.to ? undefined : "true"}
+                      data-testid={entry.to ? undefined : "user-center-invoice-entry"}
+                      key={entry.label}
+                    >
                       {entry.test ? (
                         <TestFeatureBadge className="pointer-events-none absolute -right-1 -top-1 z-20 min-h-4 px-1.5 py-0 text-[8px]" />
                       ) : null}
-                      <div className="col-start-1 row-start-1 min-w-0 text-left">
-                        <strong className="block text-sm">{entry.label}</strong>
-                        <p className="mt-1 break-words text-xs leading-5 text-ink/50">
-                          {entry.caption}
-                        </p>
+                      {entry.to ? (
+                        <Link
+                          aria-label={entry.label}
+                          className="absolute inset-0 rounded-[24px]"
+                          to={entry.to}
+                        />
+                      ) : null}
+                      <div className="pointer-events-none relative z-10 grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                        <div className="flex min-w-0 items-center gap-1.5 text-left">
+                          <strong className="min-w-0 text-sm">{entry.label}</strong>
+                          <InfoTooltipTrigger
+                            className="pointer-events-auto relative h-4 w-4 shrink-0 border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] text-[10px] text-ink/45 before:absolute before:-inset-3 before:content-[''] hover:text-ink/80"
+                            content={entry.info}
+                            label={`查看${entry.label}说明`}
+                            panelMode="tooltip"
+                          />
+                        </div>
+                        <span className="justify-self-end text-sm font-black text-ink/35">
+                          {entry.to ? "›" : "—"}
+                        </span>
                       </div>
-                      <span className="col-start-2 row-start-1 justify-self-end text-sm font-black text-ink/35">
-                        {entry.to ? "›" : "—"}
-                      </span>
-                    </>
-                  );
-                  const className = cn(
-                    pageInnerCardClassName,
-                    "relative grid min-h-[76px] w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3",
-                  );
-
-                  if (!entry.to) {
-                    return (
-                      <div
-                        aria-disabled="true"
-                        className={cn(className, "cursor-not-allowed opacity-65")}
-                        data-testid="user-center-invoice-entry"
-                        key={entry.label}
-                      >
-                        {content}
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <Link className={className} key={entry.label} to={entry.to}>
-                      {content}
-                    </Link>
+                    </div>
                   );
                 })}
               </div>

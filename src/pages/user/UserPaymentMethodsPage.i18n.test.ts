@@ -18,7 +18,7 @@ describe("user payment-method i18n", () => {
 
   it("registers the personal-center payment entry copy with the shared runtime i18n", () => {
     expect(translateText("现金、NDP 与外部渠道状态", "ja")).toBe(
-      "現金、NDP、外部決済の状態",
+      "現金・NDP・外部決済の状況",
     );
     expect(translateText("现金、NDP 与外部渠道状态", "en")).toBe(
       "Cash, NDP, and external channel status",
