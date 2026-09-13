@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
 
@@ -19,6 +21,7 @@ test("staging compose exposes only the web edge and binds durable data to /srv/n
   assert.match(compose, /\/srv\/needo\/mysql:\/var\/lib\/mysql/);
   assert.match(compose, /\/srv\/needo\/redis:\/data/);
   assert.match(compose, /\/srv\/needo\/media:\/app\/runtime/);
+  assert.match(compose, /\$\{NEEDO_FRONTEND_ASSETS_DIR:-\.\.\/\.\.\/dist\/assets\}:\/usr\/share\/nginx\/html\/assets:ro/);
   assert.match(compose, /IM_MEDIA_STORAGE_DIR:\s*\/app\/runtime\/im-media/);
   assert.match(compose, /CONTENT_MEDIA_STORAGE_DIR:\s*\/app\/runtime\/content-media/);
   assert.match(compose, /ALLOW_STAGING_ADMIN_BOOTSTRAP:\s*"true"/);
@@ -34,12 +37,25 @@ test("HTTP and HTTPS Nginx configs preserve portal entries and deny public metri
     assert.match(config, /proxy_pass http:\/\/needo_ops_api\/api\/v1\//);
     assert.match(config, /proxy_pass http:\/\/needo_merchant_api\/api\/v1\//);
     assert.match(config, /location ~\* \\.html\$[\s\S]*Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;/);
+    assert.match(config, /location \^~ \/assets\/[\s\S]*Cache-Control "public, max-age=31536000, immutable";[\s\S]*try_files \$uri =404;/);
+    assert.match(config, /location ~ \^\/(?:[\s\S]*?)\/assets\/\(\.\+\)\$[\s\S]*Cache-Control "public, max-age=31536000, immutable";[\s\S]*try_files \/assets\/\$1 =404;/);
+    assert.doesNotMatch(config, /Cache-Control "public, max-age=31536000, immutable" always/);
     assert.match(config, /\/merchant-admin[\s\S]*\/store-admin\.html/);
     assert.match(config, /\/admin[\s\S]*\/pf-admin\.html/);
     assert.match(config, /\/shop[\s\S]*\/merchant\.html/);
     assert.match(config, /\/technician[\s\S]*\/technician\.html/);
   }
-  assert.match(read("./nginx-https.conf"), /ssl_certificate \/etc\/letsencrypt\/live\/staging\.needo\.life\/fullchain\.pem/);
+  const httpsConfig = read("./nginx-https.conf");
+  assert.match(httpsConfig, /ssl_certificate \/etc\/letsencrypt\/live\/staging\.needo\.life\/fullchain\.pem/);
+  for (const assetLocation of [
+    /location \^~ \/assets\/ \{[\s\S]*?\n  \}/,
+    /location ~ \^\/(?:[\s\S]*?)\/assets\/\(\.\+\)\$ \{[\s\S]*?\n  \}/,
+  ]) {
+    const block = httpsConfig.match(assetLocation)?.[0];
+    assert.ok(block);
+    assert.match(block, /add_header X-Content-Type-Options nosniff always;/);
+    assert.match(block, /add_header Referrer-Policy strict-origin-when-cross-origin always;/);
+  }
 });
 
 test("runtime Dockerfiles consume only locked dependencies and prebuilt outputs", () => {
@@ -91,6 +107,80 @@ test("release provisioning keeps the ACME webroot public while certificate state
   );
 });
 
+test("staging publishes hashed frontend assets append-only before replacing the web container", () => {
+  const releaseScript = read("./deploy-release.sh");
+  const previousPublishCall = 'bash "$release_dir/deploy/staging/publish-frontend-assets.sh" "$previous_release/dist/assets" /srv/needo/frontend-assets';
+  const currentPublishCall = 'bash "$release_dir/deploy/staging/publish-frontend-assets.sh" "$release_dir/dist/assets" /srv/needo/frontend-assets';
+  const webStart = 'compose_for "$release_dir" up -d --no-build --wait backend ops-api merchant-api web';
+  const firstProvisioningInstall = releaseScript.indexOf("install -d -m 0750 /srv/needo/config");
+  const ancestorGuard = releaseScript.indexOf("refuse_unsafe_directory_path /srv/needo");
+  assert.ok(ancestorGuard > 0 && ancestorGuard < firstProvisioningInstall);
+  assert.doesNotMatch(releaseScript, /install -d -m 0755 \/srv\/needo\/frontend-assets/);
+  assert.match(releaseScript, /NEEDO_FRONTEND_ASSETS_DIR=\/srv\/needo\/frontend-assets[\s\\]*docker compose/);
+  assert.match(releaseScript, /if \[\[ -n "\$previous_release" && -d "\$previous_release" \]\]; then[\s\S]*publish-frontend-assets\.sh" "\$previous_release\/dist\/assets"/);
+  assert.ok(releaseScript.indexOf(previousPublishCall) > 0);
+  assert.ok(releaseScript.indexOf(previousPublishCall) < releaseScript.indexOf(currentPublishCall));
+  assert.ok(releaseScript.indexOf(currentPublishCall) < releaseScript.indexOf(webStart));
+
+  const root = mkdtempSync("/private/tmp/needo-frontend-assets-");
+  const firstAssets = join(root, "first", "dist", "assets");
+  const secondAssets = join(root, "second", "dist", "assets");
+  const collisionAssets = join(root, "collision", "dist", "assets");
+  const nestedAssets = join(root, "nested", "dist", "assets");
+  const durableAssets = join(root, "durable");
+  const outsideAssets = join(root, "outside");
+  const linkedDestination = join(root, "linked-destination");
+  const publisher = fileURLToPath(new URL("./publish-frontend-assets.sh", import.meta.url));
+
+  try {
+    mkdirSync(firstAssets, { recursive: true });
+    mkdirSync(secondAssets, { recursive: true });
+    mkdirSync(collisionAssets, { recursive: true });
+    mkdirSync(join(nestedAssets, "nested"), { recursive: true });
+    mkdirSync(outsideAssets, { recursive: true });
+    writeFileSync(join(firstAssets, "TechnicianPortalPage-old.js"), "old-technician-chunk");
+    writeFileSync(join(secondAssets, "TechnicianPortalPage-new.js"), "new-technician-chunk");
+    writeFileSync(join(collisionAssets, "TechnicianPortalPage-old.js"), "different-bytes");
+    writeFileSync(join(nestedAssets, "nested", "TechnicianPortalPage-nested.js"), "nested-chunk");
+
+    assert.equal(spawnSync("bash", [publisher, firstAssets, durableAssets]).status, 0);
+    assert.equal(spawnSync("bash", [publisher, secondAssets, durableAssets]).status, 0);
+    assert.equal(readFileSync(join(durableAssets, "TechnicianPortalPage-old.js"), "utf8"), "old-technician-chunk");
+    assert.equal(readFileSync(join(durableAssets, "TechnicianPortalPage-new.js"), "utf8"), "new-technician-chunk");
+
+    const collision = spawnSync("bash", [publisher, collisionAssets, durableAssets], { encoding: "utf8" });
+    assert.equal(collision.status, 65);
+    assert.match(collision.stderr, /refusing frontend asset hash collision: TechnicianPortalPage-old\.js/);
+    assert.equal(readFileSync(join(durableAssets, "TechnicianPortalPage-old.js"), "utf8"), "old-technician-chunk");
+
+    symlinkSync(outsideAssets, linkedDestination, "dir");
+    const linkedRoot = spawnSync("bash", [publisher, firstAssets, linkedDestination], { encoding: "utf8" });
+    assert.equal(linkedRoot.status, 65);
+    assert.match(linkedRoot.stderr, /refusing symbolic link in frontend asset destination/);
+
+    const linkedAncestor = join(root, "linked-ancestor");
+    symlinkSync(outsideAssets, linkedAncestor, "dir");
+    const ancestorDestination = join(linkedAncestor, "needo", "frontend-assets");
+    const linkedAncestorResult = spawnSync("bash", [publisher, firstAssets, ancestorDestination], { encoding: "utf8" });
+    assert.equal(linkedAncestorResult.status, 65);
+    assert.match(linkedAncestorResult.stderr, /refusing symbolic link in frontend asset destination/);
+    assert.equal(existsSync(join(outsideAssets, "needo", "frontend-assets", "TechnicianPortalPage-old.js")), false);
+
+    mkdirSync(join(root, "durable-with-linked-parent"), { recursive: true });
+    symlinkSync(outsideAssets, join(root, "durable-with-linked-parent", "nested"), "dir");
+    const linkedParent = spawnSync(
+      "bash",
+      [publisher, nestedAssets, join(root, "durable-with-linked-parent")],
+      { encoding: "utf8" },
+    );
+    assert.equal(linkedParent.status, 65);
+    assert.match(linkedParent.stderr, /refusing symbolic link in frontend asset destination/);
+    assert.equal(existsSync(join(outsideAssets, "TechnicianPortalPage-nested.js")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("staging migration backup avoids privileged tablespace reads", () => {
   const releaseScript = read("./deploy-release.sh");
   assert.match(releaseScript, /mysqldump --single-transaction --routines --triggers --no-tablespaces/);
@@ -100,7 +190,7 @@ test("staging web preserves an existing TLS edge for deploy and rollback", () =>
   const releaseScript = read("./deploy-release.sh");
   assert.match(releaseScript, /nginx_config_for\(\)/);
   assert.match(releaseScript, /fullchain\.pem[\s\S]*privkey\.pem[\s\S]*nginx-https\.conf/);
-  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$previous_release"\)"[\s\S]{0,420}up -d --no-build --no-deps --force-recreate --wait web/);
+  assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$release_dir"\)"[\s\S]{0,420}up -d --no-build --no-deps --force-recreate --wait web/);
   assert.match(releaseScript, /install -m 0644 "\$\(nginx_config_for "\$release_dir"\)"[\s\S]{0,3400}up -d --no-deps --force-recreate --wait web/);
   assert.match(releaseScript, /edge_base_url="https:\/\/\$hostname"/);
   assert.match(releaseScript, /--resolve "\$\{hostname\}:443:127\.0\.0\.1"/);
@@ -153,7 +243,7 @@ test("a command failure inside a deployment function reaches the rollback trap",
 test("rollback restores applications without rerunning data initialization", () => {
   const rollback = read("./deploy-release.sh").split("rollback_application() {")[1].split("trap cleanup EXIT")[0];
   assert.match(rollback, /up -d --no-build --no-deps --wait backend ops-api merchant-api/);
-  assert.match(rollback, /up -d --no-build --no-deps --force-recreate --wait web/);
+  assert.match(rollback, /compose_for "\$release_dir" --file "\$rollback_images_file" up -d --no-build --no-deps --force-recreate --wait web/);
 });
 
 test("staging backs up and snapshots rollback images before stopping APIs and serial builds", () => {
@@ -202,6 +292,7 @@ ${rollback}
 deployment_complete=false
 application_transition_started=true
 previous_release=.
+release_dir=failed-release
 rollback_images_file=captured-images.yml
 nginx_config_for() { printf old-nginx; }
 install() { :; }
@@ -211,5 +302,5 @@ compose_for() { printf '%s\\n' "$*"; }
 trap rollback_application ERR
 false`], { encoding: "utf8" });
   assert.equal(result.status, 1);
-  assert.equal(result.stdout, ". --file captured-images.yml up -d --no-build --no-deps --wait backend ops-api merchant-api\n. --file captured-images.yml up -d --no-build --no-deps --force-recreate --wait web\n");
+  assert.equal(result.stdout, ". --file captured-images.yml up -d --no-build --no-deps --wait backend ops-api merchant-api\nfailed-release --file captured-images.yml up -d --no-build --no-deps --force-recreate --wait web\n");
 });
