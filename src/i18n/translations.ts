@@ -6962,7 +6962,7 @@ export const translations: TranslationMap = {
   "可与平台积分叠加": { "zh-Hant": "可與平台積分疊加", ja: "プラットフォームポイントと組み合わせることが可能", en: "Can be combined with platform points", ko: "플랫폼 포인트와 조합하여 사용할 수 있습니다." },
   "可与平台券叠加一次": { "zh-Hant": "可與平台券疊加一次", ja: "プラットフォームクーポンとの併用は1回まで可能です。", en: "Can be combined with platform coupons once.", ko: "플랫폼 쿠폰과 1회 중복 사용 가능합니다." },
   "可与新人券叠加": { "zh-Hant": "可與新人券疊加", ja: "新規ユーザー向けクーポンと併用可能", en: "Can be combined with new user coupons", ko: "신규 사용자 쿠폰과 함께 사용할 수 있습니다." },
-  "可预约": { "zh-Hant": "可預約", ja: "予約可能", en: "Bookable", ko: "예약 가능" },
+  "可预约": { "zh-Hant": "可預約", ja: "予約可", en: "Bookable", ko: "예약 가능" },
   "可预约店铺": { "zh-Hant": "可預約店鋪", ja: "予約可能な店舗", en: "Stores available for reservation", ko: "예약 가능한 매장" },
   "可预约服务": { "zh-Hant": "可預約服務", ja: "予約サービスをご利用いただけます", en: "Appointment service available", ko: "예약 서비스 이용 가능" },
   "可预约服务列表": { "zh-Hant": "可預約服務列表", ja: "予約可能なサービス一覧", en: "List of services available for booking", ko: "예약 가능한 서비스 목록" },

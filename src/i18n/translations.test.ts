@@ -1083,6 +1083,7 @@ describe("translations", () => {
   });
 
   it("uses approved short Japanese labels on user-facing cards", () => {
+    expect(translateText("可预约", "ja")).toBe("予約可");
     expect(translateText("当前可约", "ja")).toBe("予約可能");
     expect(translateText("东京站", "ja")).toBe("東京駅");
     expect(translateText("深度清洁", "ja")).toBe("大掃除");

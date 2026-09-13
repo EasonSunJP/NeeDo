@@ -2639,7 +2639,7 @@ export const approvedI18nTranslationOverrides = [
   ["附近技师", { "zh-Hant": "附近技師", "ja": "スタッフ探し", "en": "Find staff", "ko": "주변 기사 찾기" }],
   ["查找服务", { "zh-Hant": "查找服務", "ja": "サービス探し", "en": "Find services", "ko": "서비스 찾기" }],
   ["我的日程", { "zh-Hant": "我的行程", "ja": "スケジュール", "en": "My schedule", "ko": "내 일정" }],
-  ["可预约", { "zh-Hant": "可預約", "ja": "予約可能", "en": "Bookable", "ko": "예약 가능" }],
+  ["可预约", { "zh-Hant": "可預約", "ja": "予約可", "en": "Bookable", "ko": "예약 가능" }],
   ["日程 / 行程（用户端）", { "zh-Hant": "行程", "ja": "スケジュール", "en": "Schedule", "ko": "일정" }],
   ["日程 / 行程（技师端、商户端）", { "zh-Hant": "行程", "ja": "シフト", "en": "Shift", "ko": "근무표" }],
   ["排班", { "zh-Hant": "排班", "ja": "シフト", "en": "Shift", "ko": "근무표" }],
