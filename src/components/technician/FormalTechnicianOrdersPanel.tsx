@@ -1,30 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ApiClientError } from "../../api/httpClient";
 import {
   bookingApi,
   formatApiOrderDateTime,
   type BookingOrder,
   type BookingOrderStatus
 } from "../../features/booking/api";
+import { describeBookingOrderMutationError } from "../../features/booking/orderMutationError";
 import { loadEveryTechnicianOrder } from "../../features/scheduling/window-loader";
+import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { cn, yen } from "../../lib/utils";
 import { Button } from "../ui/Button";
 
 type OrderFilter = "active" | "completed" | "cancelled";
 type OrderAction = "confirm" | "cancel";
-
-function describeTechnicianOrderError(error: unknown) {
-  if (error instanceof ApiClientError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录";
-    if (error.status === 403) return "当前身份没有处理该订单的权限";
-    if (error.status === 404) return "订单不存在或已不可见";
-    if (error.status === 409) return "订单状态已变化，请重新加载后再操作";
-    if (error.status >= 500) return "订单服务暂时不可用，请稍后重试";
-  }
-
-  return "订单加载失败，请检查网络后重试";
-}
 
 function orderMatchesFilter(status: BookingOrderStatus, filter: OrderFilter) {
   if (filter === "completed") return status === "completed";
@@ -60,6 +49,7 @@ function paymentLabel(order: BookingOrder) {
 }
 
 export function FormalTechnicianOrdersPanel() {
+  const language = useProvidedI18n()?.language ?? "zh";
   const [orders, setOrders] = useState<BookingOrder[]>([]);
   const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
   const [loadError, setLoadError] = useState("");
@@ -83,14 +73,14 @@ export function FormalTechnicianOrdersPanel() {
       .catch((error: unknown) => {
         if (!active) return;
         setOrders([]);
-        setLoadError(describeTechnicianOrderError(error));
+        setLoadError(describeBookingOrderMutationError(error, language));
         setLoadStatus("error");
       });
 
     return () => {
       active = false;
     };
-  }, [revision]);
+  }, [language, revision]);
 
   const visibleOrders = useMemo(
     () => orders
@@ -111,7 +101,7 @@ export function FormalTechnicianOrdersPanel() {
       setOrders((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setCancelConfirmOrderId(null);
     } catch (error) {
-      setActionError(describeTechnicianOrderError(error));
+      setActionError(describeBookingOrderMutationError(error, language));
     } finally {
       setActionOrderId(null);
     }
@@ -169,7 +159,7 @@ export function FormalTechnicianOrdersPanel() {
       {actionError ? (
         <section className="rounded-[20px] border border-red-400/30 bg-red-500/10 px-4 py-3" role="alert">
           <p className="text-xs font-black text-red-300">{actionError}</p>
-          {actionError === "订单状态已变化，请重新加载后再操作" ? (
+          {actionError ? (
             <Button className="mt-3 w-full" onClick={() => setRevision((current) => current + 1)} size="sm" variant="secondary">
               重新加载订单
             </Button>

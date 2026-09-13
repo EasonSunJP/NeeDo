@@ -1090,7 +1090,7 @@ describe("formal technician order detail route", () => {
       code.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await click("验证并开始服务");
-    await waitFor(() => expect(container.textContent).toContain("正式订单操作失败"));
+    await waitFor(() => expect(container.textContent).toContain("提交内容不符合要求，请检查后重试"));
     expect(container.textContent).toContain("已确认");
     expect(container.textContent).not.toContain("服务中");
   });
@@ -1240,7 +1240,7 @@ describe("formal technician order detail route", () => {
     await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalledWith(30));
     await waitFor(() => expect(textButton("提交评价").disabled).toBe(false));
     await click("提交评价");
-    await waitFor(() => expect(container.textContent).toContain("评价提交失败：正式订单操作失败，请检查网络后重试"));
+    await waitFor(() => expect(container.textContent).toContain("评价提交失败：订单操作失败，请检查网络后重试"));
     const orderBKey = mocks.createReview.mock.calls[1]?.[1]?.idempotencyKey;
 
     await act(async () => {
@@ -1249,7 +1249,7 @@ describe("formal technician order detail route", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain("评价提交失败：正式订单操作失败，请检查网络后重试");
+    expect(container.textContent).toContain("评价提交失败：订单操作失败，请检查网络后重试");
     expect(container.textContent).toContain("提交评价");
     expect(textButton("提交评价").disabled).toBe(false);
     await click("提交评价");
@@ -1264,7 +1264,7 @@ describe("formal technician order detail route", () => {
     mocks.getOwnReview.mockRejectedValueOnce(new Error("review projection unavailable")).mockResolvedValueOnce({ review: null });
     await renderOrder(makeOrder("completed"));
 
-    await waitFor(() => expect(container.textContent).toContain("正式订单操作失败"));
+    await waitFor(() => expect(container.textContent).toContain("订单操作失败，请检查网络后重试"));
     expect(container.textContent).not.toContain("提交评价");
     await click("重新读取评价状态");
     await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalledTimes(2));

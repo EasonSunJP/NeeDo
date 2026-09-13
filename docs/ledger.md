@@ -64,11 +64,11 @@ Home-service travel fare is also a JPY checkout component, not a new wallet or l
 
 - Confirm order: calculates the Booking platform fee at stage `hold`, creates a `wallet_holds` row, and freezes the calculated hold amount from the shop wallet.
   - Idempotency key: `booking:{orderId}:accept:freeze`
-- Customer/platform normal cancellation after confirm: releases the remaining frozen amount from the active hold back to the shop wallet.
+- Customer/platform normal cancellation after confirm: releases the verifiably frozen amount from the original platform-fee hold back to its owner wallet. A historical missing hold or a hold whose remaining amount exceeds the wallet's frozen balance no longer blocks cancellation; the financial timeline records the expected, actual, and shortfall amounts, and no synthetic NDP is created.
   - Idempotency key: `booking:{orderId}:cancel:unfreeze`
 - Complete order: calculates the Booking platform fee at stage `capture`, deducts the actual fee from the shop's frozen hold, releases any hold surplus, and credits the customer reward if the user reward rule returns a positive amount.
   - Idempotency key: `booking:{orderId}:complete:settlement`
-- Merchant-side forced cancellation after confirm: calculates the Booking penalty/compensation rule, deducts the actual penalty from the shop's frozen hold, releases any surplus, and credits the customer compensation if positive.
+- Merchant/technician-side forced cancellation after confirm: first applies the same evidence-bounded hold release, then calculates the Booking penalty/compensation rule. The full rule amount debits the shop's available wallet and credits the customer in the same transaction. When the shop cannot fund the debit, its existing wallet balance is allowed to become negative; the transaction, audit metadata, and order financial timeline record the balance before/after and newly created debt instead of blocking the cancellation or reducing customer compensation.
   - Idempotency key: `booking:{orderId}:merchant-cancel:compensation`
 
 ## Request Dispatch Fee
@@ -82,6 +82,8 @@ Home-service travel fare is also a JPY checkout component, not a new wallet or l
   - Idempotency key: `booking:{orderId}:complete:settlement`
 
 These mutations run inside the same Prisma transaction as the booking state transition. If ledger settlement fails, the order transition rolls back.
+
+For a confirmed cancellation, that transaction also contains the order status change, slot-capacity release, status-history row, any technician performance classification, and the payment transition from `confirmed` to `refundPending`. Historical-data recovery never invents a hold, frozen balance, or zero-value ledger entry. `NDP` and `TEST_NDP` remain isolated; Test NDP creates no formal reconciliation row.
 
 ## Exchange Matching Financial Boundary
 

@@ -22,6 +22,7 @@ import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { bookingApi, type ManualPaymentMethod } from "../../features/booking/api";
 import { mapBackofficeOrderTimeline } from "../../features/booking/backofficeOrderTimeline";
+import { describeBookingOrderMutationError } from "../../features/booking/orderMutationError";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { statusLabel, yen } from "../../lib/utils";
 
@@ -52,17 +53,6 @@ function readOrderId(searchParams: URLSearchParams) {
   if (!value || !/^\d+$/.test(value)) return null;
   const id = Number(value);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
-}
-
-function describeOperationsOrderError(error: unknown) {
-  if (error instanceof ApiClientError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录";
-    if (error.status === 403) return "当前身份没有管理全平台订单的权限";
-    if (error.status === 404) return "订单不存在或已不可见";
-    if (error.status === 409) return "订单或支付状态已经变化，请重新加载后再操作";
-    if (error.status >= 500) return "运营订单服务暂时不可用，请稍后重试";
-  }
-  return "运营订单操作失败，请检查网络后重试";
 }
 
 function paymentLabel(status: BackofficeOrderPayload["paymentStatus"]) {
@@ -165,13 +155,13 @@ export function OrdersAdminPage() {
     }).catch((error: unknown) => {
       if (!current) return;
       setOrderPage({ list: [], total: 0, page: requestedPage, page_size: pageSize });
-      setLoadError(describeOperationsOrderError(error));
+      setLoadError(describeBookingOrderMutationError(error, language));
       setLoadStatus("error");
     });
     return () => {
       current = false;
     };
-  }, [requestedPage, revision, statusFilter]);
+  }, [language, requestedPage, revision, statusFilter]);
 
   useEffect(() => {
     if (selectedOrderId === null) return;
@@ -187,13 +177,13 @@ export function OrdersAdminPage() {
       .catch((error: unknown) => {
         if (!current) return;
         setSelectedOrder(null);
-        setMutationError(describeOperationsOrderError(error));
+        setMutationError(describeBookingOrderMutationError(error, language));
         setDetailStatus("error");
       });
     return () => {
       current = false;
     };
-  }, [detailRevision, selectedOrderId]);
+  }, [detailRevision, language, selectedOrderId]);
 
   const totalPages = Math.max(1, Math.ceil(orderPage.total / orderPage.page_size));
   const openOrder = (order: BackofficeOrderPayload) => {
@@ -245,7 +235,7 @@ export function OrdersAdminPage() {
       else await bookingApi.cancelOrder(selectedOrder.id, cancelReason.trim() || "运营取消正式预约");
       finishMutation();
     } catch (error: unknown) {
-      setMutationError(describeOperationsOrderError(error));
+      setMutationError(describeBookingOrderMutationError(error, language));
       setConfirmIntent(null);
     } finally {
       setMutationStatus("idle");
@@ -269,7 +259,7 @@ export function OrdersAdminPage() {
       });
       finishMutation();
     } catch (error: unknown) {
-      setMutationError(describeOperationsOrderError(error));
+      setMutationError(describeBookingOrderMutationError(error, language));
       setConfirmIntent(null);
     } finally {
       setMutationStatus("idle");
@@ -291,7 +281,7 @@ export function OrdersAdminPage() {
       });
       finishMutation();
     } catch (error: unknown) {
-      setMutationError(describeOperationsOrderError(error));
+      setMutationError(describeBookingOrderMutationError(error, language));
       setConfirmIntent(null);
     } finally {
       setMutationStatus("idle");
@@ -356,7 +346,7 @@ export function OrdersAdminPage() {
         setMutationError("订单绩效版本已经变化。已保留填写内容，请查看最新记录后确认再提交。");
         setDetailRevision((value) => value + 1);
       } else {
-        setMutationError(describeOperationsOrderError(error));
+        setMutationError(describeBookingOrderMutationError(error, language));
       }
     } finally {
       setMutationStatus("idle");

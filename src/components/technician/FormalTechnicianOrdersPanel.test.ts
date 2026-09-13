@@ -33,10 +33,13 @@ describe("FormalTechnicianOrdersPanel", () => {
   });
 
   it("exposes loading, retry, empty, conflict, and in-flight states", () => {
+    expect(panelSource).toContain("describeBookingOrderMutationError(error, language)");
+    expect(panelSource).not.toContain(
+      'if (error.status === 409) return "订单状态已变化，请重新加载后再操作"'
+    );
     expect(panelSource).toContain("正在加载正式订单");
     expect(panelSource).toContain("重新加载订单");
     expect(panelSource).toContain("当前没有正式订单");
-    expect(panelSource).toContain("订单状态已变化，请重新加载后再操作");
     expect(panelSource).toContain("操作处理中");
   });
 });

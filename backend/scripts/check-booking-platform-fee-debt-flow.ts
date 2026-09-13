@@ -667,6 +667,12 @@ const main = async (): Promise<void> => {
       payerType: "SHOP",
       initialBalance: LOW_BALANCE_NDP
     });
+    const historicalCancellation = await createScenario({
+      label: "historical-cancellation",
+      feeEnabled: true,
+      payerType: "SHOP",
+      initialBalance: 100
+    });
     const delayed = await createScenario({
       label: "delayed",
       feeEnabled: true,
@@ -917,6 +923,143 @@ const main = async (): Promise<void> => {
         reversedFinancial.platformFeeOutstandingNdp === 0 &&
         reversedFinancial.userRewardStatus === "DISABLED",
       "cancellation reversal did not restore the original payer state"
+    );
+
+    const historicalCancellationBooking = await createBooking(
+      historicalCancellation,
+      immediateCustomer.id
+    );
+    const historicalShopWalletBefore = await prisma.wallet.findUniqueOrThrow({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "SHOP",
+          ownerId: historicalCancellation.shopId,
+          currency: "NDP"
+        }
+      }
+    });
+    const historicalCustomerWalletBefore = await prisma.wallet.findUnique({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "USER",
+          ownerId: immediateCustomer.id,
+          currency: "NDP"
+        }
+      }
+    });
+    await ledger.compensateCustomerForMerchantCancellation(historicalCancellationBooking);
+    const [
+      historicalShopWalletAfter,
+      historicalCustomerWalletAfter,
+      historicalFinancial,
+      historicalHoldCount,
+      historicalTransactions,
+      historicalEntries,
+      historicalReconciliations
+    ] = await Promise.all([
+      prisma.wallet.findUniqueOrThrow({ where: { id: historicalShopWalletBefore.id } }),
+      prisma.wallet.findUniqueOrThrow({
+        where: {
+          ownerType_ownerId_currency: {
+            ownerType: "USER",
+            ownerId: immediateCustomer.id,
+            currency: "NDP"
+          }
+        }
+      }),
+      prisma.orderFinancial.findUniqueOrThrow({
+        where: { bookingOrderId: historicalCancellationBooking.bookingOrderId }
+      }),
+      prisma.walletHold.count({
+        where: { bookingOrderId: historicalCancellationBooking.bookingOrderId }
+      }),
+      prisma.ledgerTransaction.findMany({
+        where: {
+          referenceType: "booking_order",
+          referenceId: historicalCancellationBooking.bookingOrderId
+        },
+        select: { id: true, currency: true }
+      }),
+      prisma.walletLedger.findMany({
+        where: {
+          transaction: {
+            referenceType: "booking_order",
+            referenceId: historicalCancellationBooking.bookingOrderId
+          }
+        },
+        select: {
+          availableDelta: true,
+          frozenDelta: true,
+          transaction: { select: { currency: true } }
+        }
+      }),
+      prisma.financeReconciliation.findMany({
+        where: {
+          transaction: {
+            referenceType: "booking_order",
+            referenceId: historicalCancellationBooking.bookingOrderId
+          }
+        },
+        select: { expectedAmount: true, actualAmount: true, currency: true }
+      })
+    ]);
+    const historicalTimeline = Array.isArray(historicalFinancial.moneyTimelineJson)
+      ? historicalFinancial.moneyTimelineJson
+      : [];
+    assert(
+      historicalShopWalletAfter.availableBalance === -400 &&
+        historicalShopWalletAfter.frozenBalance === 0 &&
+        historicalCustomerWalletAfter.availableBalance ===
+          (historicalCustomerWalletBefore?.availableBalance ?? 0) + FEE_NDP &&
+        historicalFinancial.releasedNdp === 0 &&
+        historicalFinancial.penaltyNdp === FEE_NDP &&
+        historicalFinancial.compensationToUserNdp === FEE_NDP &&
+        historicalFinancial.settlementStatus === "compensated" &&
+        historicalHoldCount === 0 &&
+        historicalTransactions.length === 1 &&
+        historicalTransactions[0]?.currency === "NDP" &&
+        historicalEntries.length === 2 &&
+        historicalEntries.reduce((sum, entry) => sum + entry.availableDelta, 0) === 0 &&
+        historicalEntries.every(
+          (entry) => entry.frozenDelta === 0 && entry.transaction.currency === "NDP"
+        ) &&
+        historicalReconciliations.length === 1 &&
+        historicalReconciliations[0]?.expectedAmount === FEE_NDP &&
+        historicalReconciliations[0]?.actualAmount === FEE_NDP &&
+        historicalReconciliations[0]?.currency === "NDP" &&
+        historicalTimeline.some(
+          (event) =>
+            typeof event === "object" &&
+            event !== null &&
+            "action" in event &&
+            event.action === "booking_cancel_missing_hold"
+        ) &&
+        historicalTimeline.some(
+          (event) =>
+            typeof event === "object" &&
+            event !== null &&
+            "action" in event &&
+            event.action === "booking_merchant_cancel_compensation"
+        ),
+      `historical cancellation did not preserve the exact debt, compensation, or audit trail: ${JSON.stringify(
+        {
+          shopBefore: historicalShopWalletBefore.availableBalance,
+          shopAfter: historicalShopWalletAfter.availableBalance,
+          customerBefore: historicalCustomerWalletBefore?.availableBalance ?? null,
+          customerAfter: historicalCustomerWalletAfter.availableBalance,
+          financial: {
+            releasedNdp: historicalFinancial.releasedNdp,
+            penaltyNdp: historicalFinancial.penaltyNdp,
+            compensationToUserNdp: historicalFinancial.compensationToUserNdp,
+            settlementStatus: historicalFinancial.settlementStatus
+          },
+          holdCount: historicalHoldCount,
+          transactionCurrencies: historicalTransactions.map((row) => row.currency),
+          entries: historicalEntries,
+          reconciliations: historicalReconciliations,
+          timeline: historicalTimeline
+        }
+      )}`
     );
 
     const operatorActor: AuthenticatedAccessContext = {
@@ -1301,6 +1444,7 @@ const main = async (): Promise<void> => {
             insufficientAttemptRolledBack: true,
             explicitNegativeBalance: true,
             cancellationReversed: true,
+            historicalCancellationWithoutHold: true,
             consecutiveDebtMatchesWalletDeficit: true,
             completionFirstConcurrencySerialized: true,
             topupFirstConcurrencySerialized: true,

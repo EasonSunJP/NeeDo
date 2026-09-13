@@ -27,6 +27,10 @@ describe("MerchantAdminOrdersPage formal workflow", () => {
   });
 
   it("provides explicit resilient and confirmation states", () => {
+    expect(source).toContain("describeBookingOrderMutationError(error, language)");
+    expect(source).not.toContain(
+      'if (error.status === 409) return "订单或支付状态已经变化，请重新加载后再操作"'
+    );
     expect(source).toContain("正在加载本店正式订单");
     expect(source).toContain("重新加载本店订单");
     expect(source).toContain("本店当前没有符合条件的正式订单");

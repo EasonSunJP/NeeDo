@@ -24,10 +24,13 @@ describe("OrdersAdminPage formal operations workflow", () => {
   });
 
   it("renders load, empty, retry, conflict, and two-step destructive states", () => {
+    expect(source).toContain("describeBookingOrderMutationError(error, language)");
+    expect(source).not.toContain(
+      'if (error.status === 409) return "订单或支付状态已经变化，请重新加载后再操作"'
+    );
     expect(source).toContain("正在加载全平台正式订单");
     expect(source).toContain("重新加载运营订单");
     expect(source).toContain("当前没有符合条件的正式订单");
-    expect(source).toContain("订单或支付状态已经变化，请重新加载后再操作");
     expect(source).toContain("再次点击确认取消订单");
     expect(source).toContain("再次点击确认退款");
   });

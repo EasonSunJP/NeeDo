@@ -13,10 +13,16 @@ describe("UserOrderDetailPage header", () => {
   });
 
   it("routes numeric orders through the formal API detail and cancellation workflow", () => {
+    expect(source).toContain("describeBookingOrderMutationError(error, language)");
+    expect(source).not.toContain(
+      'if (error.status === 409) return "预约状态已经变化，请重新加载后再操作"'
+    );
     expect(source).toContain("function FormalUserOrderDetailPage");
     expect(source).toContain("bookingApi.getOrder(orderId)");
     expect(source).toContain("bookingApi.cancelOrder(orderId");
-    expect(source).toContain("buildFormalOrderTimelineEvents(order)");
+    expect(source).toContain(
+      'buildFormalOrderTimelineEvents(order, { audience: "customer", language })'
+    );
     expect(source).toContain("重新加载预约详情");
     expect(source).toContain("isBookingApiId(orderId) ? <FormalUserOrderDetailPage");
   });
