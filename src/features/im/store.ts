@@ -438,19 +438,41 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   let entityRefreshGeneration = 0;
   let persistScheduled = false;
   let snapshot = createInitialSnapshot();
+  const authoritativeDirectoryUsers = new Map<string, ImUser>();
+  const latestDirectoryProfileRequests = new Map<string, Promise<DirectoryProfile>>();
   const failedTerminalMediaPurges = new Set<string>();
   const pendingTerminalMediaPurges = new Map<string, PendingTerminalMediaPurge>();
   const tracelessMessageIdsByConversation = new Map<string, Set<string>>();
 
+  function applyAuthoritativeDirectoryUsers(users: ImUser[]) {
+    const reconciled = new Map(users.map((user) => [user.id, user]));
+
+    for (const [userId, authoritativeUser] of authoritativeDirectoryUsers) {
+      const incomingUser = reconciled.get(userId);
+      if (
+        incomingUser &&
+        incomingUser.nickname === authoritativeUser.nickname &&
+        incomingUser.avatar === authoritativeUser.avatar
+      ) {
+        authoritativeDirectoryUsers.delete(userId);
+        continue;
+      }
+      reconciled.set(userId, authoritativeUser);
+    }
+
+    return Array.from(reconciled.values());
+  }
+
   function applyCachedState(cached: CachedImState) {
+    const users = applyAuthoritativeDirectoryUsers(cached.users);
     snapshot = {
       ...snapshot,
       status: "ready",
       error: undefined,
       currentUserId: cached.currentUserId,
       config: cached.config,
-      users: cached.users,
-      usersById: toUserRecord(cached.users),
+      users,
+      usersById: toUserRecord(users),
       contacts: cached.contacts,
       organizationContacts: cached.organizationContacts,
       friendRequests: cached.friendRequests,
@@ -943,6 +965,18 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
               if (update.type !== "message.recalled") {
                 void refreshBootstrap();
               }
+              return;
+            }
+
+            if (update.type === "profile.updated") {
+              // Conversation bootstrap participants can lag behind the
+              // identity directory immediately after a rename. Refresh the
+              // conversation snapshot first, then let the directory profile
+              // be the final authoritative user record used by the list,
+              // room header, and information card.
+              void refreshBootstrap()
+                .then(() => getDirectoryProfile(update.userId))
+                .catch(() => undefined);
               return;
             }
 
@@ -1703,22 +1737,33 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   async function getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
     await hydrateStore();
-    const profile = await api.getDirectoryProfile(userId);
-    entityRefreshGeneration += 1;
-    mergeUsers([profile.user]);
-    if (profile.friendRequest) {
-      snapshot = {
-        ...snapshot,
-        friendRequests: [
-          profile.friendRequest,
-          ...snapshot.friendRequests.filter(
-            (request) => request.id !== profile.friendRequest?.id,
-          ),
-        ],
-      };
-    }
-    emit();
-    return profile;
+    let operation: Promise<DirectoryProfile>;
+    operation = api.getDirectoryProfile(userId)
+      .then(async (profile) => {
+        const latestOperation = latestDirectoryProfileRequests.get(userId);
+        if (latestOperation !== operation) {
+          return latestOperation ?? profile;
+        }
+
+        entityRefreshGeneration += 1;
+        authoritativeDirectoryUsers.set(profile.user.id, profile.user);
+        mergeUsers([profile.user]);
+        if (profile.friendRequest) {
+          snapshot = {
+            ...snapshot,
+            friendRequests: [
+              profile.friendRequest,
+              ...snapshot.friendRequests.filter(
+                (request) => request.id !== profile.friendRequest?.id,
+              ),
+            ],
+          };
+        }
+        emit();
+        return profile;
+      });
+    latestDirectoryProfileRequests.set(userId, operation);
+    return operation;
   }
 
   async function sendFriendRequest(targetUserId: string, message?: string) {
@@ -1897,12 +1942,13 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         const bootstrap = await api.bootstrap();
         // A recall invalidates pre-recall counters as well as message previews.
         if (generation !== entityRefreshGeneration) continue;
+        const users = applyAuthoritativeDirectoryUsers(bootstrap.users);
         snapshot = {
           ...snapshot,
           currentUserId: bootstrap.currentUserId,
           config: bootstrap.config,
-          users: bootstrap.users,
-          usersById: toUserRecord(bootstrap.users),
+          users,
+          usersById: toUserRecord(users),
           contacts: bootstrap.contacts,
           organizationContacts: bootstrap.organizationContacts,
           friendRequests: bootstrap.friendRequests,

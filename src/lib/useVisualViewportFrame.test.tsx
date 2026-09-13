@@ -215,7 +215,7 @@ describe("iPhone standalone viewport", () => {
   it("uses dynamic height for iPhone standalone without trusting screen pixel height", async () => {
     const { root, frame } = await mountIphoneFrame();
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("759px");
-    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     await act(async () => root.unmount());
   });
@@ -230,7 +230,7 @@ describe("iPhone standalone viewport", () => {
     Object.defineProperty(viewport, "height", { value: 759, configurable: true });
     await act(async () => viewport.dispatchEvent(new Event("resize")));
     expect(frame.style.getPropertyValue("--im-visual-viewport-height")).toBe("759px");
-    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-conversation-room-height")).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
     await act(async () => root.unmount());
   });

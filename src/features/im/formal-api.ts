@@ -1342,6 +1342,21 @@ export function toFormalImStoreUpdate(
   event: FormalRealtimeEvent,
 ): ImStoreUpdate {
   if (
+    event.type === "profile.updated" &&
+    event.payload &&
+    typeof event.payload === "object"
+  ) {
+    const { userId } = event.payload as { userId?: unknown };
+    if (
+      typeof userId === "number" &&
+      Number.isSafeInteger(userId) &&
+      userId > 0
+    ) {
+      return { type: "profile.updated", userId: String(userId) };
+    }
+  }
+
+  if (
     event.type === "message.deleted" &&
     event.payload &&
     typeof event.payload === "object"

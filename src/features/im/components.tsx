@@ -1625,11 +1625,9 @@ export function ImChatComposer({
 export function ImStandaloneShell({
   children,
   className,
-  viewportOverlay,
 }: {
   children: ReactNode;
   className?: string;
-  viewportOverlay?: ReactNode;
 }) {
   const { theme, isNight } = useClientTheme();
   const location = useLocation();
@@ -1709,7 +1707,6 @@ export function ImStandaloneShell({
       >
         {children}
       </div>
-      {viewportOverlay}
     </div>
   );
 }

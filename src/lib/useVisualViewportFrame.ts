@@ -14,9 +14,8 @@ const installedPwaRestingViewportTolerance = 96;
 const installedIosPwaMinimumRestingViewportTolerance = 120;
 const installedIosPwaMaximumRestingViewportTolerance = 240;
 const installedIosPwaRestingViewportToleranceRatio = 0.22;
-const installedPwaKeyboardReleaseExpansionRatio = 0.15;
-const installedPwaKeyboardReleaseMinimumExpansion = 120;
 const installedPwaKeyboardReleaseSettleMs = 180;
+const installedPwaKeyboardExpansionSequenceMs = 240;
 
 const getInstalledIosPwaRestingViewportTolerance = (referenceHeight: number): number =>
   Math.min(
@@ -50,6 +49,9 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
 
     let keyboardFrameActive = false;
     let keyboardViewportMinimumHeight: number | null = null;
+    let keyboardViewportLastHeight: number | null = null;
+    let keyboardViewportExpansionFrames = 0;
+    let keyboardViewportLastExpansionAt: number | null = null;
     let keyboardReleaseTimer: number | null = null;
     let installedMobileRestingHeight: number | null = null;
 
@@ -101,10 +103,31 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       );
 
       // Panning changes the origin, not the amount of visible height. Keep a
-      // detected keyboard frame through blur until the viewport expands again.
+      // detected keyboard frame until an installed PWA reports a close
+      // lifecycle below, or an ordinary browser viewport recovers.
       keyboardFrameActive = keyboardOpen;
 
       if (keyboardOpen) {
+        if (
+          keyboardViewportLastHeight !== null &&
+          viewport!.height > keyboardViewportLastHeight
+        ) {
+          const expansionAt = Date.now();
+          keyboardViewportExpansionFrames =
+            keyboardViewportLastExpansionAt !== null &&
+            expansionAt - keyboardViewportLastExpansionAt <=
+              installedPwaKeyboardExpansionSequenceMs
+              ? keyboardViewportExpansionFrames + 1
+              : 1;
+          keyboardViewportLastExpansionAt = expansionAt;
+        } else if (
+          keyboardViewportLastHeight !== null &&
+          viewport!.height < keyboardViewportLastHeight
+        ) {
+          keyboardViewportExpansionFrames = 0;
+          keyboardViewportLastExpansionAt = null;
+        }
+        keyboardViewportLastHeight = viewport!.height;
         keyboardViewportMinimumHeight = Math.min(
           keyboardViewportMinimumHeight ?? viewport!.height,
           viewport!.height
@@ -135,15 +158,10 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
         );
         element.style.setProperty("--im-visual-viewport-right", "auto");
 
-        const releaseExpansion = viewport!.height - keyboardViewportMinimumHeight;
-        const releaseExpansionThreshold = Math.max(
-          installedPwaKeyboardReleaseMinimumExpansion,
-          Math.round(keyboardReferenceHeight * installedPwaKeyboardReleaseExpansionRatio)
-        );
         if (
           useInstalledMobileViewport &&
           viewport!.offsetTop <= 2 &&
-          releaseExpansion >= releaseExpansionThreshold
+          keyboardViewportExpansionFrames >= 2
         ) {
           const candidateHeight = viewport!.height;
           const candidateOffsetTop = viewport!.offsetTop;
@@ -159,6 +177,9 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
             }
             keyboardFrameActive = false;
             keyboardViewportMinimumHeight = null;
+            keyboardViewportLastHeight = null;
+            keyboardViewportExpansionFrames = 0;
+            keyboardViewportLastExpansionAt = null;
             installedMobileRestingHeight = currentViewport.height;
             updateFrame(true);
           }, installedPwaKeyboardReleaseSettleMs);
@@ -167,6 +188,9 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       }
 
       keyboardViewportMinimumHeight = null;
+      keyboardViewportLastHeight = null;
+      keyboardViewportExpansionFrames = 0;
+      keyboardViewportLastExpansionAt = null;
       if (useInstalledMobileViewport) {
         installedMobileRestingHeight = viewport!.height;
         // The home navigation is fixed to the viewport bottom. Use the same
@@ -178,7 +202,12 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
           "--im-visual-viewport-height",
           `${Math.max(1, Math.ceil(viewport!.height))}px`
         );
-        element.style.setProperty("--im-conversation-room-height", "100dvh");
+        // Installed mobile browsers can retain a shortened `dvh` after the
+        // software keyboard is dismissed or when the PWA is restored. `lvh`
+        // is independent of that transient keyboard frame, so the closed room
+        // continues to the display bottom while its composer handles the
+        // safe-area inset on both iOS and Android.
+        element.style.setProperty("--im-conversation-room-height", "100lvh");
         element.style.setProperty("--im-visual-viewport-top", "auto");
         element.style.setProperty("--im-visual-viewport-bottom", "0px");
         element.style.setProperty("--im-visual-viewport-width", "auto");
@@ -200,18 +229,39 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       clearKeyboardReleaseTimer();
       keyboardFrameActive = false;
       keyboardViewportMinimumHeight = null;
+      keyboardViewportLastHeight = null;
+      keyboardViewportExpansionFrames = 0;
+      keyboardViewportLastExpansionAt = null;
       installedMobileRestingHeight = null;
       updateFrame();
     };
 
     const handleFrameChange = () => updateFrame();
+    const handleFocusOut = () => {
+      const installPlatform = detectPwaInstallPlatform(window.navigator);
+      const installedMobilePwa =
+        isPwaStandaloneWindow(window) &&
+        (installPlatform === "ios" || installPlatform === "android");
+
+      if (installedMobilePwa) {
+        keyboardFrameActive = false;
+        keyboardViewportMinimumHeight = null;
+        keyboardViewportLastHeight = null;
+        keyboardViewportExpansionFrames = 0;
+        keyboardViewportLastExpansionAt = null;
+        updateFrame(true);
+        return;
+      }
+
+      updateFrame();
+    };
 
     updateFrame();
     window.addEventListener("resize", handleFrameChange);
     window.addEventListener("pageshow", refreshRestoredFrame);
     document.addEventListener("visibilitychange", refreshRestoredFrame);
     document.addEventListener("focusin", handleFrameChange);
-    document.addEventListener("focusout", handleFrameChange);
+    document.addEventListener("focusout", handleFocusOut);
     window.visualViewport?.addEventListener("resize", handleFrameChange);
     window.visualViewport?.addEventListener("scroll", handleFrameChange, { passive: true });
 
@@ -221,7 +271,7 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
       window.removeEventListener("pageshow", refreshRestoredFrame);
       document.removeEventListener("visibilitychange", refreshRestoredFrame);
       document.removeEventListener("focusin", handleFrameChange);
-      document.removeEventListener("focusout", handleFrameChange);
+      document.removeEventListener("focusout", handleFocusOut);
       window.visualViewport?.removeEventListener("resize", handleFrameChange);
       window.visualViewport?.removeEventListener("scroll", handleFrameChange);
 

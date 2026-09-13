@@ -4,7 +4,7 @@ import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ImApi } from "./contract";
-import type { Conversation, ConversationMessage, ImStoreUpdate } from "./model";
+import type { Conversation, ConversationMessage, DirectoryProfile, ImStoreUpdate } from "./model";
 import storeSource from "./store.ts?raw";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -54,6 +54,7 @@ vi.mock("./local-cache/service", () => ({
 import {
   buildCachedImSearchResults,
   fetchImOpenedMediaBlob,
+  getConversationDisplayName,
   getIncomingPendingFriendRequestCount,
   getMessageFailureReason,
   getForwardableMessagePayload,
@@ -789,6 +790,158 @@ describe("chat-record store facade", () => {
 });
 
 describe("formal profile realtime refresh", () => {
+  it("ignores an older directory response that finishes after a newer rename response", async () => {
+    mocked.session = {
+      activePublicId: "u0000987656",
+      avatarUrl: null,
+      id: 987656,
+      primaryPublicId: "u0000987656",
+      username: "profile-race-viewer",
+    };
+    const baseUser = {
+      accountId: "partner-account",
+      avatar: "",
+      id: "201",
+      nickname: "Original",
+      profileKind: "user" as const,
+      searchableFields: ["Original"],
+      sortKey: "O",
+      status: "online" as const,
+      tags: [],
+      userIdLabel: "NeeDo ID: u0000000201",
+    };
+    const oldProfile = {
+      user: { ...baseUser, nickname: "First rename" },
+      relationship: "friend" as const,
+      identityCard: {
+        entityType: "user" as const,
+        displayName: "First rename",
+        verified: false,
+        creditReviewCount: 0,
+        languages: [],
+      },
+    };
+    const newProfile = {
+      ...oldProfile,
+      user: { ...baseUser, nickname: "Latest rename" },
+      identityCard: { ...oldProfile.identityCard, displayName: "Latest rename" },
+    };
+    const olderResponse = deferred<typeof oldProfile>();
+    const newerResponse = deferred<typeof newProfile>();
+    const getDirectoryProfile = vi.fn()
+      .mockImplementationOnce(() => olderResponse.promise)
+      .mockImplementationOnce(() => newerResponse.promise);
+    mocked.api = {
+      bootstrap: vi.fn().mockResolvedValue({
+        currentUserId: "987656",
+        config: {},
+        users: [baseUser],
+        contacts: [],
+        organizationContacts: [],
+        friendRequests: [],
+        conversations: [],
+        members: [],
+      }),
+      getDirectoryProfile,
+    };
+
+    await renderStore();
+    const olderRequest = store!.getDirectoryProfile("201");
+    await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledTimes(1));
+    const newerRequest = store!.getDirectoryProfile("201");
+    await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledTimes(2));
+
+    let newerResult: DirectoryProfile | undefined;
+    await act(async () => {
+      newerResponse.resolve(newProfile);
+      newerResult = await newerRequest;
+    });
+    expect(newerResult?.user.nickname).toBe("Latest rename");
+
+    let olderResult: DirectoryProfile | undefined;
+    await act(async () => {
+      olderResponse.resolve(oldProfile);
+      olderResult = await olderRequest;
+    });
+
+    expect(olderResult?.user.nickname).toBe("Latest rename");
+    expect(store?.usersById["201"]?.nickname).toBe("Latest rename");
+  });
+
+  it("uses the directory profile as the final name source when a bootstrap snapshot is stale", async () => {
+    mocked.session = {
+      activePublicId: "u0000987655",
+      avatarUrl: null,
+      id: 987655,
+      primaryPublicId: "u0000987655",
+      username: "profile-refresh-viewer",
+    };
+    const oldUser = {
+      accountId: "partner-account",
+      avatar: "",
+      id: "201",
+      nickname: "LifeDance 管理员 2",
+      profileKind: "user" as const,
+      searchableFields: ["LifeDance 管理员 2"],
+      sortKey: "L",
+      status: "online" as const,
+      tags: [],
+      userIdLabel: "NeeDo ID: u0000000201",
+    };
+    const updatedUser = {
+      ...oldUser,
+      nickname: "CutGirl",
+      searchableFields: ["CutGirl"],
+      sortKey: "C",
+    };
+    const bootstrapState = {
+      currentUserId: "987655",
+      config: {},
+      users: [oldUser],
+      contacts: [],
+      organizationContacts: [],
+      friendRequests: [],
+      conversations: [conversation({
+        contactUserId: "201",
+        memberIds: ["987655", "201"],
+        title: oldUser.nickname,
+      })],
+      members: [],
+    };
+    const bootstrap = vi.fn().mockResolvedValue(bootstrapState);
+    const getDirectoryProfile = vi.fn().mockResolvedValue({
+      user: updatedUser,
+      relationship: "friend",
+      identityCard: {
+        entityType: "user",
+        displayName: "CutGirl",
+        verified: false,
+        creditReviewCount: 0,
+        languages: [],
+      },
+    });
+    mocked.api = { bootstrap, getDirectoryProfile };
+
+    await renderStore();
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "profile.updated", userId: "201" });
+      await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledWith("201"));
+      await vi.waitFor(() => expect(store?.usersById["201"]?.nickname).toBe("CutGirl"));
+    });
+
+    expect(bootstrap).toHaveBeenCalledTimes(2);
+    expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
+    expect(getConversationDisplayName(store!, store!.conversations[0]!)).toBe("CutGirl");
+
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "refresh" });
+      await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(3));
+    });
+
+    expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
+    expect(getConversationDisplayName(store!, store!.conversations[0]!)).toBe("CutGirl");
+  });
+
   it("replaces cached conversation and directory names after a profile event", async () => {
     mocked.session = {
       activePublicId: "u0000987654",

@@ -44,6 +44,24 @@ const heightOf = (frame: HTMLElement) => frame.style.getPropertyValue("--im-visu
 const roomHeightOf = (frame: HTMLElement) => frame.style.getPropertyValue("--im-conversation-room-height");
 
 describe("chat visual viewport lifecycle", () => {
+  it("uses the stable large viewport when an installed iPhone PWA mounts after a stale keyboard frame", async () => {
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"
+    });
+    const { viewport, setViewport, frame } = await setup();
+
+    await act(async () => {
+      setViewport(704);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+
+    expect(roomHeightOf(frame)).toBe("100lvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+  });
+
   it("anchors an installed iPhone PWA room from one bottom edge instead of WebKit's broken fixed inset pair", async () => {
     document.documentElement.dataset.needoDisplayMode = "standalone";
     vi.stubGlobal("navigator", {
@@ -52,7 +70,7 @@ describe("chat visual viewport lifecycle", () => {
     });
     const { viewport, setViewport, frame, editor } = await setup();
 
-    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(roomHeightOf(frame)).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
 
@@ -81,7 +99,7 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("876px");
-    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(roomHeightOf(frame)).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
@@ -117,7 +135,7 @@ describe("chat visual viewport lifecycle", () => {
     });
     expect(document.activeElement).toBe(editor);
     expect(heightOf(frame)).toBe("759px");
-    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(roomHeightOf(frame)).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
@@ -148,7 +166,104 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("704px");
-    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(roomHeightOf(frame)).toBe("100lvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+  });
+
+  it("releases a focused installed PWA keyboard frame after a stable expansion sequence", async () => {
+    vi.useFakeTimers();
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(520);
+      viewport.dispatchEvent(new Event("resize"));
+      setViewport(560);
+      viewport.dispatchEvent(new Event("resize"));
+      setViewport(610);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(roomHeightOf(frame)).toBe("610px");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(220);
+    });
+
+    expect(document.activeElement).toBe(editor);
+    expect(roomHeightOf(frame)).toBe("100lvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+  });
+
+  it("keeps an installed PWA keyboard frame through one isolated keyboard-layout expansion", async () => {
+    vi.useFakeTimers();
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(520);
+      viewport.dispatchEvent(new Event("resize"));
+      setViewport(521);
+      viewport.dispatchEvent(new Event("resize"));
+      await vi.advanceTimersByTimeAsync(220);
+    });
+
+    expect(roomHeightOf(frame)).toBe("521px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("435px");
+  });
+
+  it("does not combine keyboard-layout expansions separated by a long pause", async () => {
+    vi.useFakeTimers();
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(520);
+      viewport.dispatchEvent(new Event("resize"));
+      setViewport(521);
+      viewport.dispatchEvent(new Event("resize"));
+      await vi.advanceTimersByTimeAsync(500);
+      setViewport(522);
+      viewport.dispatchEvent(new Event("resize"));
+      await vi.advanceTimersByTimeAsync(220);
+    });
+
+    expect(roomHeightOf(frame)).toBe("522px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("434px");
+  });
+
+  it("releases an installed PWA keyboard frame immediately when the editor loses focus", async () => {
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(520);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(roomHeightOf(frame)).toBe("520px");
+
+    await act(async () => editor.blur());
+
+    expect(roomHeightOf(frame)).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
@@ -166,8 +281,25 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("876px");
-    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(roomHeightOf(frame)).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+  });
+
+  it("uses the stable large viewport when an installed Android PWA restores a stale keyboard frame", async () => {
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
+    });
+    const { viewport, setViewport, frame } = await setup();
+
+    await act(async () => {
+      setViewport(704);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+
+    expect(roomHeightOf(frame)).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
@@ -194,7 +326,7 @@ describe("chat visual viewport lifecycle", () => {
       viewport.dispatchEvent(new Event("resize"));
     });
     expect(heightOf(frame)).toBe("876px");
-    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(roomHeightOf(frame)).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
