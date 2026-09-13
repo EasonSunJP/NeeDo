@@ -18,7 +18,11 @@ import {
 } from "../src/repositories/booking.repository";
 import type { BookingLedgerSettlementPort } from "../src/services/ledger.service";
 import type { OrderStatusNotificationPort } from "../src/services/realtime.service";
-import { BookingService, type BookingCreateInput } from "../src/services/booking.service";
+import {
+  BookingService,
+  type AuthenticatedBookingActor,
+  type BookingCreateInput
+} from "../src/services/booking.service";
 import type { AuthenticatedAccessContext } from "../src/services/auth.service";
 import type {
   AffiliateCheckoutPrepared,
@@ -1459,6 +1463,86 @@ describe("BookingService state machine", () => {
       expect.anything()
     );
   });
+
+  it.each([
+    ["customer", actor, "pending", "release"],
+    [
+      "merchant",
+      {
+        userId: 2,
+        roles: ["merchant_owner"],
+        currentIdentityType: "merchant_owner",
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: 1
+      },
+      "confirmed",
+      "compensate"
+    ],
+    [
+      "technician",
+      {
+        userId: 3,
+        roles: ["technician"],
+        currentIdentityId: 303,
+        currentIdentityType: "technician",
+        currentIdentityScopeType: "technician_profile",
+        currentIdentityScopeId: 1
+      },
+      "pending",
+      "compensate"
+    ],
+    [
+      "operations",
+      {
+        userId: 4,
+        roles: ["operator"],
+        currentIdentityType: "platform",
+        currentIdentityScopeType: "global"
+      },
+      "confirmed",
+      "release"
+    ]
+  ] as Array<
+    [
+      string,
+      AuthenticatedBookingActor,
+      BookingOrderPayload["paymentStatus"],
+      "release" | "compensate"
+    ]
+  >)(
+    "keeps confirmed cancellation atomic for the %s actor with %s payment",
+    async (_label, cancellationActor, paymentStatus, expectedSettlement) => {
+      const order = { ...makeOrder("confirmed"), paymentStatus } as BookingOrderPayload;
+      const repository = createRepository(order);
+      const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+        freezeBookingAcceptance: jest.fn(),
+        releaseBookingHold: jest.fn().mockResolvedValue(undefined),
+        settleBookingCompletion: jest.fn(),
+        compensateCustomerForMerchantCancellation: jest.fn().mockResolvedValue(undefined)
+      };
+
+      await expect(
+        new BookingService(repository, ledgerService).transitionOrder(
+          cancellationActor,
+          order.id,
+          "cancel",
+          `${_label} cancellation`
+        )
+      ).resolves.toMatchObject({ status: "cancelled" });
+
+      expect(repository.transitionOrder).toHaveBeenCalledTimes(1);
+      expect(
+        expectedSettlement === "compensate"
+          ? ledgerService.compensateCustomerForMerchantCancellation
+          : ledgerService.releaseBookingHold
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        expectedSettlement === "compensate"
+          ? ledgerService.releaseBookingHold
+          : ledgerService.compensateCustomerForMerchantCancellation
+      ).not.toHaveBeenCalled();
+    }
+  );
 
   it("emits an order status notification after a successful transition", async () => {
     const notificationService: jest.Mocked<OrderStatusNotificationPort> = {

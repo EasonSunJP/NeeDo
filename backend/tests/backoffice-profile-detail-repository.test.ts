@@ -15,6 +15,7 @@ const booking = (id: number, status: string, shopId = 11) => ({
   id,
   orderNo: `ND20260825${id}`,
   status,
+  paymentMethod: "ONSITE",
   paymentStatus: "CONFIRMED",
   customerUserId: 51,
   customer: {

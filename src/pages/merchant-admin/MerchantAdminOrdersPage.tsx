@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   backofficeRealDataApi,
   formatBackofficeOrderPaymentSummary,
@@ -24,11 +24,12 @@ import {
   type ManualPaymentMethod,
 } from "../../features/booking/api";
 import { mapBackofficeOrderTimeline } from "../../features/booking/backofficeOrderTimeline";
+import { describeBookingOrderMutationError } from "../../features/booking/orderMutationError";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { statusLabel, yen } from "../../lib/utils";
 
 type StatusFilter = "all" | "pending" | "confirmed" | "inService" | "completed" | "cancelled";
-type ConfirmIntent = "cancel" | "payment-confirm" | "payment-refund" | null;
+type ConfirmIntent = "cancel" | "service-end" | "payment-confirm" | "payment-refund" | null;
 type PlatformFeeAcceptanceWarning = {
   availableBalanceNdp: number;
   feeAmountNdp: number;
@@ -47,15 +48,8 @@ const statusFilters: Array<{ label: string; value: StatusFilter }> = [
   { label: "已取消", value: "cancelled" }
 ];
 
-function describeOrderError(error: unknown) {
-  if (error instanceof ApiClientError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录";
-    if (error.status === 403) return "当前身份没有管理本店订单的权限";
-    if (error.status === 404) return "订单不存在或不属于当前店铺";
-    if (error.status === 409) return "订单或支付状态已经变化，请重新加载后再操作";
-    if (error.status >= 500) return "本店订单服务暂时不可用，请稍后重试";
-  }
-  return "本店订单操作失败，请检查网络后重试";
+function isAmbiguousOrderMutationError(error: unknown) {
+  return !(error instanceof ApiClientError) || error.status === 408 || error.status === 429 || error.status >= 500;
 }
 
 function readPlatformFeeAcceptanceWarning(
@@ -118,6 +112,9 @@ export function MerchantAdminOrdersPage() {
   const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("onsite");
   const [paymentReference, setPaymentReference] = useState("");
   const [refundReason, setRefundReason] = useState("已核实退款原因并完成线下退款");
+  const [verificationCode, setVerificationCode] = useState("");
+  const transitionInFlightRef = useRef(false);
+  const transitionKeys = useRef(new Map<"start" | "complete", { key: string; semantics: string }>());
 
   useEffect(() => {
     let current = true;
@@ -136,13 +133,13 @@ export function MerchantAdminOrdersPage() {
       if (!current) return;
       setOrderRows([]);
       setTotal(0);
-      setLoadError(describeOrderError(error));
+      setLoadError(describeBookingOrderMutationError(error, language));
       setLoadStatus("error");
     });
     return () => {
       current = false;
     };
-  }, [page, revision, statusFilter]);
+  }, [language, page, revision, statusFilter]);
 
   useEffect(() => {
     if (selectedOrderId === null) return;
@@ -158,11 +155,11 @@ export function MerchantAdminOrdersPage() {
       .catch((error: unknown) => {
         if (!current) return;
         setSelectedOrder(null);
-        setMutationError(describeOrderError(error));
+        setMutationError(describeBookingOrderMutationError(error, language));
         setDetailStatus("error");
       });
     return () => { current = false; };
-  }, [detailRevision, selectedOrderId]);
+  }, [detailRevision, language, selectedOrderId]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const openOrder = (order: BackofficeOrderPayload) => {
@@ -174,6 +171,7 @@ export function MerchantAdminOrdersPage() {
     setAcceptanceWarning(null);
     setConfirmIntent(null);
     setPaymentReference("");
+    setVerificationCode("");
   };
   const closeOrder = () => {
     if (mutationStatus === "saving") return;
@@ -184,6 +182,7 @@ export function MerchantAdminOrdersPage() {
     setMutationError("");
     setAcceptanceWarning(null);
     setConfirmIntent(null);
+    setVerificationCode("");
   };
   const finishMutation = () => {
     setParticipant(null);
@@ -193,15 +192,36 @@ export function MerchantAdminOrdersPage() {
     setConfirmIntent(null);
     setMutationError("");
     setAcceptanceWarning(null);
+    setVerificationCode("");
     setRevision((value) => value + 1);
   };
 
+  const retainedTransitionKey = (action: "start" | "complete", semantics: string) => {
+    const retained = transitionKeys.current.get(action);
+    if (retained?.semantics === semantics) return retained.key;
+    const key = createBookingIdempotencyKey();
+    transitionKeys.current.set(action, { key, semantics });
+    return key;
+  };
+
   const runTransition = async (action: "confirm" | "start" | "complete" | "cancel") => {
-    if (!selectedOrder || mutationStatus === "saving") return;
+    if (!selectedOrder || mutationStatus === "saving" || transitionInFlightRef.current) return;
     if (action === "cancel" && confirmIntent !== "cancel") {
       setConfirmIntent("cancel");
       return;
     }
+    if (action === "complete" && confirmIntent !== "service-end") {
+      setConfirmIntent("service-end");
+      return;
+    }
+    const serviceAction = action === "start" || action === "complete" ? action : null;
+    const serviceKey = serviceAction
+      ? retainedTransitionKey(
+          serviceAction,
+          JSON.stringify([selectedOrder.id, serviceAction, serviceAction === "start" ? verificationCode : "店铺确认服务已结束"])
+        )
+      : null;
+    transitionInFlightRef.current = true;
     setMutationStatus("saving");
     setMutationError("");
     try {
@@ -218,9 +238,20 @@ export function MerchantAdminOrdersPage() {
               }
             : undefined
         );
-      } else if (action === "start") await bookingApi.startOrder(selectedOrder.id);
-      else if (action === "complete") await bookingApi.completeOrder(selectedOrder.id);
+      } else if (action === "start") {
+        await bookingApi.startService(selectedOrder.id, {
+          actor: "merchant",
+          verificationCode,
+          idempotencyKey: serviceKey!
+        });
+      } else if (action === "complete") {
+        await bookingApi.endService(selectedOrder.id, {
+          reason: "店铺确认服务已结束",
+          idempotencyKey: serviceKey!
+        });
+      }
       else await bookingApi.cancelOrder(selectedOrder.id, cancelReason.trim() || "店铺取消正式预约");
+      if (serviceAction) transitionKeys.current.delete(serviceAction);
       finishMutation();
     } catch (error: unknown) {
       const warning = action === "confirm" ? readPlatformFeeAcceptanceWarning(error) : null;
@@ -233,10 +264,14 @@ export function MerchantAdminOrdersPage() {
               : createBookingIdempotencyKey()
         }));
       } else {
-        setMutationError(describeOrderError(error));
+        if (serviceAction && !isAmbiguousOrderMutationError(error)) {
+          transitionKeys.current.delete(serviceAction);
+        }
+        setMutationError(describeBookingOrderMutationError(error, language));
         setConfirmIntent(null);
       }
     } finally {
+      transitionInFlightRef.current = false;
       setMutationStatus("idle");
     }
   };
@@ -258,7 +293,7 @@ export function MerchantAdminOrdersPage() {
       });
       finishMutation();
     } catch (error: unknown) {
-      setMutationError(describeOrderError(error));
+      setMutationError(describeBookingOrderMutationError(error, language));
       setConfirmIntent(null);
     } finally {
       setMutationStatus("idle");
@@ -280,7 +315,7 @@ export function MerchantAdminOrdersPage() {
       });
       finishMutation();
     } catch (error: unknown) {
-      setMutationError(describeOrderError(error));
+      setMutationError(describeBookingOrderMutationError(error, language));
       setConfirmIntent(null);
     } finally {
       setMutationStatus("idle");
@@ -473,8 +508,27 @@ export function MerchantAdminOrdersPage() {
               <h3 className="font-black text-ink">订单状态</h3>
               <div className="mt-3 flex flex-wrap gap-2">
                 {selectedOrder.status === "pending" ? <Button disabled={mutationStatus === "saving"} onClick={() => void runTransition("confirm")}>{acceptanceWarning ? "余额不足，仍确认预约" : "确认预约"}</Button> : null}
-                {selectedOrder.status === "confirmed" ? <Button disabled={mutationStatus === "saving"} onClick={() => void runTransition("start")}>开始服务</Button> : null}
-                {selectedOrder.status === "inService" ? <Button disabled={mutationStatus === "saving"} onClick={() => void runTransition("complete")}>完成服务</Button> : null}
+                {selectedOrder.status === "confirmed" ? (
+                  <div className="w-full space-y-2">
+                    <label className="block text-xs font-black text-ink/60" htmlFor="merchant-service-verification-code">用户服务验证码</label>
+                    <input
+                      autoComplete="one-time-code"
+                      className="focus-ring h-10 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold text-ink"
+                      id="merchant-service-verification-code"
+                      inputMode="numeric"
+                      maxLength={6}
+                      onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="输入 6 位验证码"
+                      value={verificationCode}
+                    />
+                    <Button disabled={mutationStatus === "saving" || !/^\d{6}$/.test(verificationCode)} onClick={() => void runTransition("start")}>开始服务</Button>
+                  </div>
+                ) : null}
+                {selectedOrder.status === "inService" ? (
+                  <Button disabled={mutationStatus === "saving"} onClick={() => void runTransition("complete")}>
+                    {confirmIntent === "service-end" ? "再次点击确认完成服务" : "完成服务"}
+                  </Button>
+                ) : null}
                 {selectedOrder.status === "pending" || selectedOrder.status === "confirmed" ? (
                   <Button disabled={mutationStatus === "saving"} variant="danger" onClick={() => void runTransition("cancel")}>
                     {confirmIntent === "cancel" ? "再次点击确认取消订单" : "取消订单"}

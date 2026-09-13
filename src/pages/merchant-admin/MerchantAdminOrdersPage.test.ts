@@ -19,14 +19,30 @@ describe("MerchantAdminOrdersPage formal workflow", () => {
     expect(source).toContain("createBookingIdempotencyKey()");
     expect(source).toContain("余额不足，仍确认预约");
     expect(source).toContain("店铺平台费余额不足");
-    expect(source).toContain("bookingApi.startOrder(selectedOrder.id)");
-    expect(source).toContain("bookingApi.completeOrder(selectedOrder.id)");
+    expect(source).toContain("bookingApi.startService(selectedOrder.id");
+    expect(source).toContain('actor: "merchant"');
+    expect(source).toContain("verificationCode");
+    expect(source).toContain("bookingApi.endService(selectedOrder.id");
+    expect(source).toContain('reason: "店铺确认服务已结束"');
+    expect(source).not.toContain("bookingApi.startOrder(selectedOrder.id)");
+    expect(source).not.toContain("bookingApi.completeOrder(selectedOrder.id)");
     expect(source).toContain("bookingApi.cancelOrder(selectedOrder.id");
     expect(source).toContain('bookingApi.confirmManualPayment("merchant-admin"');
     expect(source).toContain('bookingApi.refundManualPayment("merchant-admin"');
   });
 
+  it("uses retained idempotency keys and blocks duplicate transition submissions", () => {
+    expect(source).toContain("transitionInFlightRef.current");
+    expect(source).toContain("transitionKeys.current");
+    expect(source).toContain("createBookingIdempotencyKey()");
+    expect(source).toContain("isAmbiguousOrderMutationError");
+  });
+
   it("provides explicit resilient and confirmation states", () => {
+    expect(source).toContain("describeBookingOrderMutationError(error, language)");
+    expect(source).not.toContain(
+      'if (error.status === 409) return "订单或支付状态已经变化，请重新加载后再操作"'
+    );
     expect(source).toContain("正在加载本店正式订单");
     expect(source).toContain("重新加载本店订单");
     expect(source).toContain("本店当前没有符合条件的正式订单");

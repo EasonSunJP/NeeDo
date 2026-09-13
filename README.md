@@ -689,9 +689,10 @@ Only an order transition from `inService` to `completed` can settle an affiliate
 
 The settlement idempotency key is stable per task and Booking. Repeated or concurrent completion cannot duplicate money, Reward, counters, or audit evidence. Claim/customer completion limits invalidate the current Attribution and release its allocation without blocking the service order's completion. Snapshot mismatch, missing finance links, or insufficient frozen NDP is a financial-integrity error and rolls back the complete order transition.
 
-Formal endpoint:
+Formal transition and settlement endpoints:
 
-- `POST /api/v1/orders/:id/complete`
+- `POST /api/v1/orders/:id/service/end` moves the in-service order to checkout.
+- `POST /api/v1/orders/:id/checkout/pay/ndp` or `POST /api/v1/orders/:id/checkout/confirm-receipt` performs the applicable completion settlement.
 
 Verify the full transaction contract against a local non-production MySQL database:
 
@@ -741,6 +742,8 @@ The operations and merchant inventory routes are explicit production capability 
 The operations and merchant floor-control routes are also explicit production capability gates. They do not expose sample rooms, beds, workstations, utilization, revenue, booking occupancy, or browser-local layout edits. Activation requires versioned floor-area and resource records, shop-scoped draft/publish/rollback APIs, coordinate validation, optimistic locking, RBAC and audit evidence, and live occupancy derived from formal Booking and Schedule data.
 
 The common Booking order API now enforces the same active-identity boundary for reads and state transitions: customers see their own orders, merchant identities see only their current shop, technician identities see only their assigned profile, and only global platform identities can operate across shops. Out-of-scope detail and mutation requests are returned as not found.
+
+Merchant order-center fulfillment now uses the same formal `POST /orders/:id/service/start` and `POST /orders/:id/service/end` contracts as the existing participant flow. Starting requires the customer's six-digit verification code and an idempotency key; ending requires a reason and an idempotency key. The backend derives the merchant's active shop from the signed identity, preserves the service-window or audited anytime-test gate, and keeps add-on, timeline, payment, settlement, and retry invariants in the existing transaction. The legacy `/orders/:id/start` and `/orders/:id/complete` endpoints remain retired.
 
 Operations and merchant order aggregates now carry the persisted manual-payment state instead of returning a hard-coded unpaid value, so confirmed payments, refund-pending orders, and refunded orders remain accurate on every formal admin surface.
 

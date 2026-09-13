@@ -24,6 +24,12 @@ const order: BookingOrderPayload = {
   paymentMethod: "onsite",
   paymentStatus: "pending",
   paymentAmountJpy: 8800,
+  amountSource: "order_payment",
+  effectivePaymentMethod: "onsite",
+  otherMethodCode: null,
+  otherMethodLabel: null,
+  checkoutPaymentAmountNdp: null,
+  ndpCurrency: null,
   paymentConfirmedById: null,
   paymentConfirmedAt: null,
   paymentReference: null,
@@ -92,6 +98,16 @@ const createFixture = () => {
         currentIdentityType: "technician",
         currentIdentityScopeType: "technician_profile",
         currentIdentityScopeId: 702
+      };
+    }
+    if (token === "merchant" || token === "cross-shop-merchant") {
+      return {
+        ...base,
+        userId: 303,
+        roles: ["merchant_owner"],
+        currentIdentityType: "merchant_owner",
+        currentIdentityScopeType: "shop",
+        currentIdentityScopeId: token === "merchant" ? 12 : 99
       };
     }
     return base;
@@ -204,6 +220,37 @@ describe("formal order fulfillment API", () => {
     expect(fixture.repository.endService).not.toHaveBeenCalled();
   });
 
+  it("lets the owning merchant start and end through the formal contract but hides cross-shop orders", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/orders/41/service/start")
+      .set("Authorization", "Bearer merchant")
+      .send({
+        actor: "merchant",
+        verificationCode: "482931",
+        idempotencyKey: "merchant-api-start01"
+      })
+      .expect(200);
+    await request(fixture.app)
+      .post("/api/v1/orders/41/service/end")
+      .set("Authorization", "Bearer merchant")
+      .send({ reason: "店铺确认服务已结束", idempotencyKey: "merchant-api-end0001" })
+      .expect(200);
+    await request(fixture.app)
+      .post("/api/v1/orders/41/service/start")
+      .set("Authorization", "Bearer cross-shop-merchant")
+      .send({
+        actor: "merchant",
+        verificationCode: "482931",
+        idempotencyKey: "merchant-cross-shop1"
+      })
+      .expect(404);
+
+    expect(fixture.repository.startService).toHaveBeenCalledTimes(1);
+    expect(fixture.repository.endService).toHaveBeenCalledTimes(1);
+  });
+
   it("returns 404 for both retired generic fulfillment routes", async () => {
     const fixture = createFixture();
     await request(fixture.app)
@@ -254,7 +301,7 @@ describe("formal order fulfillment API", () => {
     expect(fixture.repository.createOrderTimelineComment).not.toHaveBeenCalled();
   });
 
-  it("assigns the exact route permissions only to customer and technician roles", () => {
+  it("assigns service transitions to customers, technicians, and merchant operators only", () => {
     const rolePermissions = buildRolePermissionAssignments();
     expect(BOOKING_ROUTE_PERMISSIONS).toMatchObject({
       serviceStart: "order:service:start",
@@ -264,7 +311,13 @@ describe("formal order fulfillment API", () => {
     for (const permission of fulfillmentPermissions) {
       expect(rolePermissions.customer).toContain(permission);
       expect(rolePermissions.technician).toContain(permission);
-      expect(rolePermissions.merchant_owner).not.toContain(permission);
+      if (permission === "order:service:start" || permission === "order:service:end") {
+        expect(rolePermissions.merchant_owner).toContain(permission);
+        expect(rolePermissions.merchant_staff).toContain(permission);
+      } else {
+        expect(rolePermissions.merchant_owner).not.toContain(permission);
+        expect(rolePermissions.merchant_staff).not.toContain(permission);
+      }
       expect(rolePermissions.operator).not.toContain(permission);
     }
   });

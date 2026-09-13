@@ -113,7 +113,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
       oneOf: expect.any(Array),
       discriminator: { propertyName: "actor" }
     });
-    expect(start.oneOf).toHaveLength(2);
+    expect(start.oneOf).toHaveLength(3);
     expect(start.oneOf[0]).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -125,6 +125,13 @@ describe("formal order fulfillment OpenAPI contract", () => {
       required: ["actor", "verificationCode", "idempotencyKey"]
     });
     expect(start.oneOf[1].properties.verificationCode.pattern).toBe("^[0-9]{6}$");
+    expect(start.oneOf[2]).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["actor", "verificationCode", "idempotencyKey"],
+      properties: { actor: { type: "string", enum: ["merchant"] } }
+    });
+    expect(start.oneOf[2].properties.verificationCode.pattern).toBe("^[0-9]{6}$");
 
     const proposal = bodySchema("post", "/api/v1/orders/{id}/add-ons");
     expect(proposal).toMatchObject({
@@ -520,7 +527,7 @@ describe("formal order fulfillment OpenAPI contract", () => {
         "400",
         [
           "40001 error.validation — strict request validation failed",
-          "40108 error.order.verification_code_invalid — the assigned technician supplied an invalid service verification code"
+          "40108 error.order.verification_code_invalid — the assigned technician or owning merchant supplied an invalid service verification code"
         ]
       ],
       [

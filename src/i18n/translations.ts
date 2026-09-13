@@ -279,6 +279,12 @@ export const authTrustGatewayTranslations: TranslationMap = {
 };
 
 export const translations: TranslationMap = {
+  "服务验证码错误，请向用户重新确认": fourLanguageTranslation("服務驗證碼錯誤，請向用戶重新確認", "サービス認証コードが正しくありません。ユーザーに再確認してください", "The service verification code is incorrect. Confirm it with the customer", "서비스 인증 코드가 올바르지 않습니다. 고객에게 다시 확인하세요"),
+  "尚未到可开始服务时间": fourLanguageTranslation("尚未到可開始服務時間", "サービス開始可能時刻前です", "The service cannot start yet", "아직 서비스를 시작할 수 있는 시간이 아닙니다"),
+  "尚未到预计结束时间": fourLanguageTranslation("尚未到預計結束時間", "予定終了時刻前です", "The scheduled end time has not arrived", "아직 예정 종료 시간이 되지 않았습니다"),
+  "用户服务验证码": fourLanguageTranslation("用戶服務驗證碼", "ユーザーのサービス認証コード", "Customer service verification code", "고객 서비스 인증 코드"),
+  "输入 6 位验证码": fourLanguageTranslation("輸入 6 位驗證碼", "6桁の認証コードを入力", "Enter the 6-digit verification code", "6자리 인증 코드를 입력하세요"),
+  "再次点击确认完成服务": fourLanguageTranslation("再次點擊確認完成服務", "もう一度押してサービス完了を確認", "Click again to confirm service completion", "서비스 완료를 확인하려면 다시 누르세요"),
   "图片正在本地优化并上传…": fourLanguageTranslation("圖片正在本機最佳化並上傳…", "画像を端末内で最適化してアップロードしています…", "Optimizing the image on this device and uploading…", "기기에서 이미지를 최적화하고 업로드하는 중…"),
   "图片质量验证未通过，请重新选择图片。": fourLanguageTranslation("圖片品質驗證未通過，請重新選擇圖片。", "画像の品質検証に合格しませんでした。別の画像を選択してください。", "The image did not pass quality verification. Choose another image.", "이미지 품질 검증을 통과하지 못했습니다. 다른 이미지를 선택해 주세요."),
   "当前设备无法安全处理这张图片。": fourLanguageTranslation("目前裝置無法安全處理這張圖片。", "この端末では画像を安全に処理できません。", "This device cannot process the image safely.", "현재 기기에서 이 이미지를 안전하게 처리할 수 없습니다."),

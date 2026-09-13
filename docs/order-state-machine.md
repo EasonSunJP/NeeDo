@@ -85,8 +85,8 @@ Authenticated:
 - `GET /api/v1/orders/:id`
 - `POST /api/v1/orders/:id/confirm`
 - `POST /api/v1/orders/:id/cancel`
-- `POST /api/v1/orders/:id/start`
-- `POST /api/v1/orders/:id/complete`
+- `POST /api/v1/orders/:id/service/start`
+- `POST /api/v1/orders/:id/service/end`
 - `GET /api/v1/shops/:shopId/pricing-mode`
 - `PUT /api/v1/shops/:shopId/pricing-mode`
 - `GET|POST /api/v1/merchant-admin/schedule/slots`
@@ -98,7 +98,7 @@ Authenticated:
 - `POST /api/v1/backoffice/orders/:id/payment/confirm`
 - `POST /api/v1/backoffice/orders/:id/payment/refund`
 
-Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_PERMISSIONS`, such as `booking:create`, `order:list`, `order:read`, `order:confirm`, `order:cancel`, `order:start`, `order:complete`, `schedule:slots:list`, and `schedule:slots:write`.
+Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_PERMISSIONS`, such as `booking:create`, `order:list`, `order:read`, `order:confirm`, `order:cancel`, `order:service:start`, `order:service:end`, `schedule:slots:list`, and `schedule:slots:write`.
 
 Access boundary:
 
@@ -108,6 +108,16 @@ Access boundary:
 - Only platform identities with global operations roles can list or operate across shops.
 - Merchant schedule mutations derive `shop_id` from the authenticated shop identity and ignore client-supplied shop scope.
 - Technician schedule mutations derive `technician_profile_id` from the authenticated technician identity and ignore client-supplied technician scope.
+
+Merchant and technician fulfillment share the formal service-transition endpoints. A merchant start request uses
+`actor=merchant`, the six-digit customer-visible verification code, and an idempotency key; a merchant end request
+uses `actor=merchant`, a business reason, and an idempotency key. The merchant API resolves the active signed shop
+server-side and returns `error.order.not_found` for another shop's order. The retired `/orders/:id/start` and
+`/orders/:id/complete` routes are not restored.
+
+Migration `20260913103000_merchant_order_service_transitions` grants the already-existing service start/end
+permissions to `merchant_owner` and `merchant_staff` idempotently. Its targeted rollback soft-deletes only those
+four role-permission grants.
 
 ## State Machine
 
@@ -188,6 +198,9 @@ ADMIN1、ADMIN2 使用同一当前 dataset version，ADMIN2 必须直属 assignm
 - Merchant mutations are restricted to the authenticated shop. Operations/finance mutations require a platform identity and the backoffice payment-write permission.
 - Repeating the exact same confirmation or refund returns the existing order without another mutation or audit event. A different retry returns a stable conflict.
 - Cancelling a confirmed paid order changes payment status to `refundPending`; the direct merchant/backoffice payment-refund endpoints may finalize only that cancelled `refundPending` pre-completion path. A `COMPLETED` + `CONFIRMED` order must use the formal `OrderRefundCase` workflow and becomes `REFUNDED` only when its customer confirms receipt.
+- A confirmed cancellation cannot be rejected solely because historical platform-fee hold data is absent, the recorded hold exceeds the wallet's currently frozen balance, or the provider shop lacks available NDP for the cancellation compensation. The ledger releases only verifiable frozen NDP, records any release shortfall, and books the provider compensation as an exact shop debit/customer credit; a funding shortfall becomes a visible negative shop-wallet balance and audited debt rather than a partial compensation.
+- Order status, payment transition, slot release, status history, technician cancellation classification, wallet/hold changes, order financial timeline, reconciliation, and audit writes share the repository transaction. Any genuine mutation failure rolls back the entire cancellation; no partial order state is returned.
+- Customer, merchant, technician, and operations order surfaces preserve stable API error meanings. Known `409` errors distinguish invalid order state, Exchange bilateral-cancellation requirements, payment conflicts, schedule conflicts, acceptance pauses, and wallet inconsistencies instead of presenting every conflict as an order-state race.
 - Confirmation and refund update the order plus `order_financials` money timeline in one database transaction. Each applied action also writes an audit log.
 
 ## Frontend Integration
@@ -220,6 +233,7 @@ Operations administrators can change the audited `anytimeServiceTestEnabled` pla
 - When disabled, service start is rejected before `startsAt - 30 minutes`, and service completion is rejected before `expectedEndsAt`.
 - The exact start boundary (`startsAt - 30 minutes`) and exact completion boundary (`expectedEndsAt`) are allowed.
 - When enabled, those two time-window checks are bypassed for testing; authorization, order state, service code, add-on, idempotency, and audit requirements remain unchanged.
+- The override applies identically to customer, technician, and owning-merchant service transitions; it does not broaden a merchant's shop scope.
 - Fulfillment reads the active persisted setting inside the same transaction as the order mutation. A missing setting row uses the current test-stage default and is treated as enabled.
 - Before production release, operations must explicitly disable the setting and verify the active persisted version is off.
 

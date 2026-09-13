@@ -55,6 +55,7 @@ describe("MerchantOrderRoutePages service cards", () => {
     expect(formalDetail).toContain("<OrderDetailSection");
     expect(formalDetail).toContain("<OrderDetailFactGrid");
     expect(formalDetail).toContain("<DangerConfirmDialog");
+    expect(formalDetail).toContain("describeBookingOrderMutationError(error, language)");
     expect(formalDetail).toContain("联系用户");
     expect(formalDetail).toContain("联系技师");
     expect(formalDetail).toContain('detailTo={`/merchant/stores/${store.id}`}');
