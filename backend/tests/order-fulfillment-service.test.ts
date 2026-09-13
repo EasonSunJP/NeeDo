@@ -31,6 +31,14 @@ const assignedTechnician = {
   currentIdentityScopeType: "technician_profile",
   currentIdentityScopeId: 702
 };
+const owningMerchant = {
+  userId: 303,
+  roles: ["merchant_owner"],
+  currentIdentityId: 1803,
+  currentIdentityType: "merchant_owner",
+  currentIdentityScopeType: "shop",
+  currentIdentityScopeId: 12
+};
 
 const makeOrder = (
   status: BookingOrderPayload["status"],
@@ -43,6 +51,12 @@ const makeOrder = (
   paymentMethod: "onsite",
   paymentStatus: "pending",
   paymentAmountJpy: 8_800,
+  amountSource: "order_payment",
+  effectivePaymentMethod: "onsite",
+  otherMethodCode: null,
+  otherMethodLabel: null,
+  checkoutPaymentAmountNdp: null,
+  ndpCurrency: null,
   paymentConfirmedById: null,
   paymentConfirmedAt: null,
   paymentReference: null,
@@ -177,6 +191,84 @@ describe("formal order fulfillment service", () => {
       message: "error.order.verification_code_invalid",
       statusCode: 400
     });
+  });
+
+  it("lets the owning merchant start with verification and end through the formal service state machine", async () => {
+    const started = makeOrder("inService");
+    const repository = createRepository(makeOrder("confirmed"), ok(started));
+    const service = new BookingService(repository);
+
+    await expect(
+      service.startService(
+        owningMerchant,
+        41,
+        {
+          actor: "merchant",
+          verificationCode: "829104",
+          idempotencyKey: "merchant-start-00001"
+        },
+        context
+      )
+    ).resolves.toEqual(started);
+    expect(repository.startService).toHaveBeenCalledWith({
+      orderId: 41,
+      actorUserId: owningMerchant.userId,
+      actor: "merchant",
+      technicianProfileId: null,
+      shopId: 12,
+      verificationCode: "829104",
+      idempotencyKey: "merchant-start-00001",
+      requestContext: context
+    });
+
+    repository.findOrderById.mockResolvedValue(makeOrder("inService"));
+    repository.endService.mockResolvedValue(ok(makeOrder("awaitingCheckout")));
+    await service.endService(
+      owningMerchant,
+      41,
+      { reason: "店铺确认服务已结束", idempotencyKey: "merchant-end-000001" },
+      context
+    );
+    expect(repository.endService).toHaveBeenCalledWith(expect.objectContaining({
+      actor: "merchant",
+      actorUserId: owningMerchant.userId,
+      shopId: 12,
+      reason: "店铺确认服务已结束"
+    }));
+  });
+
+  it("hides another shop's order from a merchant service transition", async () => {
+    const repository = createRepository(makeOrder("confirmed"));
+    const service = new BookingService(repository);
+
+    await expect(
+      service.startService(
+        { ...owningMerchant, currentIdentityScopeId: 99 },
+        41,
+        {
+          actor: "merchant",
+          verificationCode: "829104",
+          idempotencyKey: "cross-shop-start-01"
+        },
+        context
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND, statusCode: 404 });
+    expect(repository.startService).not.toHaveBeenCalled();
+  });
+
+  it("does not broaden merchant access to participant-only add-on commands", async () => {
+    const repository = createRepository(makeOrder("inService"));
+    const service = new BookingService(repository);
+
+    await expect(
+      service.createOrderAddOn(
+        owningMerchant,
+        41,
+        { serviceId: 11, idempotencyKey: "merchant-addon-denied" },
+        context
+      )
+    ).rejects.toMatchObject({ code: ERROR_CODES.FORBIDDEN, statusCode: 403 });
+    expect(repository.createOrderAddOn).not.toHaveBeenCalled();
   });
 
   it("returns the narrow overdue appointment projection when start is blocked", async () => {
@@ -1364,6 +1456,60 @@ describe("formal order fulfillment repository transactions", () => {
       applied: true,
       order: { status: "inService" }
     });
+  });
+
+  it("lets only the owning shop merchant start with the derived code and records the merchant actor", async () => {
+    const owning = createRepositoryHarness({ anytimeServiceTestEnabled: true });
+    const input = {
+      actorUserId: owningMerchant.userId,
+      actor: "merchant" as const,
+      technicianProfileId: null,
+      shopId: 12,
+      requestContext: context,
+      orderId: 41,
+      verificationCode: deriveOrderServiceVerificationCode(41),
+      idempotencyKey: "repository-merchant-start"
+    };
+
+    await expect(owning.repository.startService(input)).resolves.toMatchObject({
+      outcome: "ok",
+      applied: true,
+      order: { status: "inService" }
+    });
+    expect(owning.events).toHaveLength(1);
+    expect(owning.events[0]?.metadata).toMatchObject({ actor: "merchant" });
+    const endInput = {
+      actorUserId: owningMerchant.userId,
+      actor: "merchant" as const,
+      technicianProfileId: null,
+      shopId: 12,
+      requestContext: context,
+      orderId: 41,
+      reason: "店铺确认服务已结束",
+      idempotencyKey: "repository-merchant-end01"
+    };
+    await expect(owning.repository.endService(endInput)).resolves.toMatchObject({
+      outcome: "ok",
+      applied: true,
+      order: { status: "awaitingCheckout" }
+    });
+    await expect(owning.repository.endService(endInput)).resolves.toMatchObject({
+      outcome: "ok",
+      applied: false,
+      order: { status: "awaitingCheckout" }
+    });
+    expect(owning.events).toHaveLength(2);
+    expect(owning.dbOrder.statusHistory).toHaveLength(2);
+
+    const crossShop = createRepositoryHarness();
+    await expect(
+      crossShop.repository.startService({
+        ...input,
+        shopId: 99,
+        idempotencyKey: "repository-merchant-cross"
+      })
+    ).resolves.toEqual({ outcome: "forbidden" });
+    expect(crossShop.events).toHaveLength(0);
   });
 
   it("rejects a wrong technician code before replaying a successful start key", async () => {

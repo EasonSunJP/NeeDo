@@ -2,8 +2,23 @@ import {
   availabilityListQuerySchema,
   availabilityWindowListQuerySchema,
   bookingCreateBodySchema,
-  orderListQuerySchema
+  orderListQuerySchema,
+  startServiceBodySchema
 } from "../src/validators/booking.validator";
+
+describe("startServiceBodySchema", () => {
+  it("accepts an owning merchant only with the customer-visible verification code", () => {
+    expect(startServiceBodySchema.safeParse({
+      actor: "merchant",
+      verificationCode: "482931",
+      idempotencyKey: "merchant-start-00001"
+    }).success).toBe(true);
+    expect(startServiceBodySchema.safeParse({
+      actor: "merchant",
+      idempotencyKey: "merchant-start-00001"
+    }).success).toBe(false);
+  });
+});
 
 describe("availabilityWindowListQuerySchema", () => {
   it("accepts a bounded range and rejects reversed or unbounded calendar reads", () => {

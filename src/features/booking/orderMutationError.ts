@@ -3,10 +3,13 @@ import type { Language } from "../../i18n/translations";
 
 type MessageKey =
   | "validation"
+  | "verificationCodeInvalid"
   | "unauthorized"
   | "forbidden"
   | "notFound"
   | "invalidTransition"
+  | "serviceStartTooEarly"
+  | "serviceEndTooEarly"
   | "exchangeCancellationRequired"
   | "paymentInvalidState"
   | "paymentAmountMismatch"
@@ -25,10 +28,13 @@ type MessageKey =
 const copy: Record<Language, Record<MessageKey, string>> = {
   zh: {
     validation: "提交内容不符合要求，请检查后重试",
+    verificationCodeInvalid: "服务验证码错误，请向用户重新确认",
     unauthorized: "登录状态已失效，请重新登录",
     forbidden: "当前身份没有处理该订单的权限",
     notFound: "订单不存在或已不可见",
     invalidTransition: "订单状态已经变化，请重新加载后再操作",
+    serviceStartTooEarly: "尚未到可开始服务时间",
+    serviceEndTooEarly: "尚未到预计结束时间",
     exchangeCancellationRequired: "该订单必须通过 NeeDo Exchange 双方取消流程处理",
     paymentInvalidState: "当前支付状态不允许执行此操作",
     paymentAmountMismatch: "收款金额与订单金额不一致，请重新核对",
@@ -46,10 +52,13 @@ const copy: Record<Language, Record<MessageKey, string>> = {
   },
   "zh-Hant": {
     validation: "提交內容不符合要求，請檢查後重試",
+    verificationCodeInvalid: "服務驗證碼錯誤，請向用戶重新確認",
     unauthorized: "登入狀態已失效，請重新登入",
     forbidden: "目前身分沒有處理此訂單的權限",
     notFound: "訂單不存在或已不可見",
     invalidTransition: "訂單狀態已變更，請重新載入後再操作",
+    serviceStartTooEarly: "尚未到可開始服務時間",
+    serviceEndTooEarly: "尚未到預計結束時間",
     exchangeCancellationRequired: "此訂單必須透過 NeeDo Exchange 雙方取消流程處理",
     paymentInvalidState: "目前付款狀態不允許執行此操作",
     paymentAmountMismatch: "收款金額與訂單金額不一致，請重新核對",
@@ -67,10 +76,13 @@ const copy: Record<Language, Record<MessageKey, string>> = {
   },
   ja: {
     validation: "入力内容が要件を満たしていません。確認してから再試行してください",
+    verificationCodeInvalid: "サービス認証コードが正しくありません。ユーザーに再確認してください",
     unauthorized: "ログインの有効期限が切れました。再度ログインしてください",
     forbidden: "現在の権限ではこの注文を操作できません",
     notFound: "注文が存在しないか、表示できなくなりました",
     invalidTransition: "注文状態が更新されています。再読み込みしてから操作してください",
+    serviceStartTooEarly: "サービス開始可能時刻前です",
+    serviceEndTooEarly: "予定終了時刻前です",
     exchangeCancellationRequired: "この注文は NeeDo Exchange の双方キャンセル手続きが必要です",
     paymentInvalidState: "現在の支払い状態ではこの操作を実行できません",
     paymentAmountMismatch: "受取金額が注文金額と一致しません。再確認してください",
@@ -89,10 +101,13 @@ const copy: Record<Language, Record<MessageKey, string>> = {
   },
   en: {
     validation: "The submitted information is invalid. Check it and try again",
+    verificationCodeInvalid: "The service verification code is incorrect. Confirm it with the customer",
     unauthorized: "Your session has expired. Sign in again",
     forbidden: "The current identity cannot manage this order",
     notFound: "The order does not exist or is no longer visible",
     invalidTransition: "The order status has changed. Reload it before trying again",
+    serviceStartTooEarly: "The service cannot start yet",
+    serviceEndTooEarly: "The scheduled end time has not arrived",
     exchangeCancellationRequired: "This order must use the bilateral NeeDo Exchange cancellation flow",
     paymentInvalidState: "The current payment status does not allow this action",
     paymentAmountMismatch: "The received amount does not match the order total. Check it again",
@@ -111,10 +126,13 @@ const copy: Record<Language, Record<MessageKey, string>> = {
   },
   ko: {
     validation: "제출 내용이 요구 사항에 맞지 않습니다. 확인한 뒤 다시 시도해 주세요",
+    verificationCodeInvalid: "서비스 인증 코드가 올바르지 않습니다. 고객에게 다시 확인하세요",
     unauthorized: "로그인 세션이 만료되었습니다. 다시 로그인해 주세요",
     forbidden: "현재 권한으로는 이 주문을 처리할 수 없습니다",
     notFound: "주문이 없거나 더 이상 표시할 수 없습니다",
     invalidTransition: "주문 상태가 변경되었습니다. 새로고침한 뒤 다시 시도해 주세요",
+    serviceStartTooEarly: "아직 서비스를 시작할 수 있는 시간이 아닙니다",
+    serviceEndTooEarly: "아직 예정 종료 시간이 되지 않았습니다",
     exchangeCancellationRequired: "이 주문은 NeeDo Exchange 양측 취소 절차로 처리해야 합니다",
     paymentInvalidState: "현재 결제 상태에서는 이 작업을 실행할 수 없습니다",
     paymentAmountMismatch: "수납 금액이 주문 금액과 일치하지 않습니다. 다시 확인해 주세요",
@@ -134,6 +152,8 @@ const copy: Record<Language, Record<MessageKey, string>> = {
 
 const conflictMessageKeys: Partial<Record<string, MessageKey>> = {
   "error.order.invalid_transition": "invalidTransition",
+  "error.order.service_start_too_early": "serviceStartTooEarly",
+  "error.order.service_end_too_early": "serviceEndTooEarly",
   "error.exchange.match_cancellation_required": "exchangeCancellationRequired",
   "error.payment.invalid_state": "paymentInvalidState",
   "error.payment.amount_mismatch": "paymentAmountMismatch",
@@ -157,7 +177,11 @@ export function describeBookingOrderMutationError(
   if (!(error instanceof ApiClientError)) {
     return messages.fallback;
   }
-  if (error.status === 400) return messages.validation;
+  if (error.status === 400) {
+    return error.message === "error.order.verification_code_invalid"
+      ? messages.verificationCodeInvalid
+      : messages.validation;
+  }
   if (error.status === 401) return messages.unauthorized;
   if (error.status === 403) return messages.forbidden;
   if (error.status === 404) return messages.notFound;

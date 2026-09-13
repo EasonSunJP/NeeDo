@@ -99,6 +99,7 @@ export type OrderConfirmInput = {
 export type StartServiceInput = BookingIdempotencyInput & (
   | { actor: "customer"; verificationCode?: never }
   | { actor: "technician"; verificationCode: string }
+  | { actor: "merchant"; verificationCode: string }
 );
 export type OverdueAppointmentResolutionKind =
   | "actually_completed"

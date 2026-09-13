@@ -85,8 +85,8 @@ Authenticated:
 - `GET /api/v1/orders/:id`
 - `POST /api/v1/orders/:id/confirm`
 - `POST /api/v1/orders/:id/cancel`
-- `POST /api/v1/orders/:id/start`
-- `POST /api/v1/orders/:id/complete`
+- `POST /api/v1/orders/:id/service/start`
+- `POST /api/v1/orders/:id/service/end`
 - `GET /api/v1/shops/:shopId/pricing-mode`
 - `PUT /api/v1/shops/:shopId/pricing-mode`
 - `GET|POST /api/v1/merchant-admin/schedule/slots`
@@ -98,7 +98,7 @@ Authenticated:
 - `POST /api/v1/backoffice/orders/:id/payment/confirm`
 - `POST /api/v1/backoffice/orders/:id/payment/refund`
 
-Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_PERMISSIONS`, such as `booking:create`, `order:list`, `order:read`, `order:confirm`, `order:cancel`, `order:start`, `order:complete`, `schedule:slots:list`, and `schedule:slots:write`.
+Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_PERMISSIONS`, such as `booking:create`, `order:list`, `order:read`, `order:confirm`, `order:cancel`, `order:service:start`, `order:service:end`, `schedule:slots:list`, and `schedule:slots:write`.
 
 Access boundary:
 
@@ -108,6 +108,16 @@ Access boundary:
 - Only platform identities with global operations roles can list or operate across shops.
 - Merchant schedule mutations derive `shop_id` from the authenticated shop identity and ignore client-supplied shop scope.
 - Technician schedule mutations derive `technician_profile_id` from the authenticated technician identity and ignore client-supplied technician scope.
+
+Merchant and technician fulfillment share the formal service-transition endpoints. A merchant start request uses
+`actor=merchant`, the six-digit customer-visible verification code, and an idempotency key; a merchant end request
+uses `actor=merchant`, a business reason, and an idempotency key. The merchant API resolves the active signed shop
+server-side and returns `error.order.not_found` for another shop's order. The retired `/orders/:id/start` and
+`/orders/:id/complete` routes are not restored.
+
+Migration `20260913103000_merchant_order_service_transitions` grants the already-existing service start/end
+permissions to `merchant_owner` and `merchant_staff` idempotently. Its targeted rollback soft-deletes only those
+four role-permission grants.
 
 ## State Machine
 
@@ -223,6 +233,7 @@ Operations administrators can change the audited `anytimeServiceTestEnabled` pla
 - When disabled, service start is rejected before `startsAt - 30 minutes`, and service completion is rejected before `expectedEndsAt`.
 - The exact start boundary (`startsAt - 30 minutes`) and exact completion boundary (`expectedEndsAt`) are allowed.
 - When enabled, those two time-window checks are bypassed for testing; authorization, order state, service code, add-on, idempotency, and audit requirements remain unchanged.
+- The override applies identically to customer, technician, and owning-merchant service transitions; it does not broaden a merchant's shop scope.
 - Fulfillment reads the active persisted setting inside the same transaction as the order mutation. A missing setting row uses the current test-stage default and is treated as enabled.
 - Before production release, operations must explicitly disable the setting and verify the active persisted version is off.
 
