@@ -28,6 +28,7 @@ export type ExchangeViewerState = {
   canClaim: boolean;
   canViewClaims: boolean;
   canViewMatching?: boolean;
+  claimUnavailableReason?: "self_published" | null;
 };
 
 export type ExchangeClaimStatus =

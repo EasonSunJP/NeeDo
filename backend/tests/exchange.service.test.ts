@@ -69,7 +69,8 @@ const post: ExchangePostPayload = {
     canWithdraw: true,
     canClaim: false,
     canViewClaims: true,
-    canViewMatching: true
+    canViewMatching: true,
+    claimUnavailableReason: null
   },
   demand: {
     serviceMode: "store",
@@ -371,7 +372,8 @@ describe("ExchangeService", () => {
         canWithdraw: false,
         canClaim: false,
         canViewClaims: false,
-        canViewMatching: false
+        canViewMatching: false,
+        claimUnavailableReason: null
       }
     });
     await expect(service.getPost(access, 41)).rejects.toMatchObject({
@@ -404,7 +406,8 @@ describe("ExchangeService", () => {
         canWithdraw: false,
         canClaim: true,
         canViewClaims: false,
-        canViewMatching: false
+        canViewMatching: false,
+        claimUnavailableReason: null
       },
       demand: {
         ...post.demand!,
@@ -493,7 +496,8 @@ describe("ExchangeService", () => {
         canWithdraw: false,
         canClaim: true,
         canViewClaims: false,
-        canViewMatching: false
+        canViewMatching: false,
+        claimUnavailableReason: null
       },
       demand: { ...post.demand!, matchMode: "selective" as const }
     };
@@ -528,7 +532,8 @@ describe("ExchangeService", () => {
             canWithdraw: false,
             canClaim: true,
             canViewClaims: false,
-            canViewMatching: false
+            canViewMatching: false,
+            claimUnavailableReason: null
           }
         }
       ]
@@ -545,7 +550,8 @@ describe("ExchangeService", () => {
         canWithdraw: true,
         canClaim: false,
         canViewClaims: false,
-        canViewMatching: true
+        canViewMatching: true,
+        claimUnavailableReason: null
       }
     });
     await expect(service.getPost(access, 41)).resolves.toMatchObject({
@@ -554,7 +560,8 @@ describe("ExchangeService", () => {
         canWithdraw: true,
         canClaim: false,
         canViewClaims: true,
-        canViewMatching: true
+        canViewMatching: true,
+        claimUnavailableReason: null
       }
     });
   });
@@ -569,7 +576,8 @@ describe("ExchangeService", () => {
         canWithdraw: false,
         canClaim: true,
         canViewClaims: false,
-        canViewMatching: false
+        canViewMatching: false,
+        claimUnavailableReason: null
       }
     };
     repository.resolveActor.mockResolvedValue({
@@ -600,7 +608,8 @@ describe("ExchangeService", () => {
         canWithdraw: true,
         canClaim: false,
         canViewClaims: true,
-        canViewMatching: true
+        canViewMatching: true,
+        claimUnavailableReason: null
       }
     });
     await expect(service.getPost(access, 41)).resolves.toMatchObject({
@@ -619,7 +628,8 @@ describe("ExchangeService", () => {
         canWithdraw: false,
         canClaim: false,
         canViewClaims: true,
-        canViewMatching: true
+        canViewMatching: true,
+        claimUnavailableReason: null
       },
       demand: { ...post.demand!, matchMode: "selective" as const }
     };
@@ -637,7 +647,8 @@ describe("ExchangeService", () => {
         canWithdraw: false,
         canClaim: false,
         canViewClaims: false,
-        canViewMatching: false
+        canViewMatching: false,
+        claimUnavailableReason: null
       }
     });
     const service = new ExchangeService(repository, () => now);

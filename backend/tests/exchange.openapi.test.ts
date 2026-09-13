@@ -278,12 +278,17 @@ describe("formal Exchange OpenAPI contract", () => {
       "liked",
       "canWithdraw",
       "canClaim",
-      "canViewClaims"
+      "canViewClaims",
+      "claimUnavailableReason"
     ]);
     expect(schemas.ExchangeViewerState.properties).toEqual(
       expect.objectContaining({
         canClaim: { type: "boolean" },
-        canViewClaims: { type: "boolean" }
+        canViewClaims: { type: "boolean" },
+        claimUnavailableReason: {
+          type: ["string", "null"],
+          enum: ["self_published", null]
+        }
       })
     );
   });

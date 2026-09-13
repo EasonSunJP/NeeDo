@@ -1723,6 +1723,8 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       row.matchParticipants.length > 0;
     const claimableByProviderUser =
       claimProviderUserId !== undefined && row.authorUserId !== claimProviderUserId;
+    const selfPublishedByProviderUser =
+      claimProviderUserId !== undefined && row.authorUserId === claimProviderUserId;
     const matchingOpen =
       row.matching?.status === DatabaseExchangeMatchingStatus.OPEN &&
       row.matching.deletedAt === null;
@@ -1810,7 +1812,15 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           status !== "withdrawn" &&
           status !== "expired" &&
           Boolean(row.demand),
-        canViewMatching: ownerView || matchedParticipantView
+        canViewMatching: ownerView || matchedParticipantView,
+        claimUnavailableReason:
+          selfPublishedByProviderUser &&
+          status === "published" &&
+          Boolean(row.demand) &&
+          matchingOpen &&
+          matchingHasCapacity
+            ? "self_published"
+            : null
       },
       ...(priority ? { priority } : {}),
       demand,

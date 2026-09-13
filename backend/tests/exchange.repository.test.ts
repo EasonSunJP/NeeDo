@@ -592,7 +592,8 @@ describe("ExchangePostRepository", () => {
             canWithdraw: true,
             canClaim: false,
             canViewClaims: true,
-            canViewMatching: true
+            canViewMatching: true,
+            claimUnavailableReason: null
           },
           demand: {
             serviceMode: "store",
@@ -879,7 +880,8 @@ describe("ExchangePostRepository", () => {
           canWithdraw: false,
           canClaim: false,
           canViewClaims: false,
-          canViewMatching: false
+          canViewMatching: false,
+          claimUnavailableReason: null
         },
         demand: expect.objectContaining({
           address: {
@@ -929,7 +931,8 @@ describe("ExchangePostRepository", () => {
         canWithdraw: false,
         canClaim: false,
         canViewClaims: false,
-        canViewMatching: true
+        canViewMatching: true,
+        claimUnavailableReason: null
       }
     });
     expect(findFirst).toHaveBeenCalledWith(
@@ -960,10 +963,10 @@ describe("ExchangePostRepository", () => {
     } as never);
 
     await expect(repository.findPostById(41, 99, now, 7)).resolves.toMatchObject({
-      viewer: { canClaim: false }
+      viewer: { canClaim: false, claimUnavailableReason: "self_published" }
     });
     await expect(repository.findPostById(41, 99, now, 8)).resolves.toMatchObject({
-      viewer: { canClaim: true }
+      viewer: { canClaim: true, claimUnavailableReason: null }
     });
   });
 
@@ -990,6 +993,7 @@ describe("ExchangePostRepository", () => {
       .mockResolvedValueOnce(quickBelowTarget)
       .mockResolvedValueOnce(quickAtTarget)
       .mockResolvedValueOnce(selective)
+      .mockResolvedValueOnce(quickAtTarget)
       .mockResolvedValueOnce(quickAtTarget);
     const repository = new ExchangePostRepository({ exchangePost: { findFirst } } as never);
 
@@ -1004,6 +1008,9 @@ describe("ExchangePostRepository", () => {
     });
     await expect(repository.findPostById(41, 17, now, 7)).resolves.toMatchObject({
       viewer: { canClaim: false, canViewClaims: true }
+    });
+    await expect(repository.findPostById(41, 99, now, 7)).resolves.toMatchObject({
+      viewer: { canClaim: false, claimUnavailableReason: null }
     });
   });
 
@@ -1027,7 +1034,8 @@ describe("ExchangePostRepository", () => {
           canWithdraw: false,
           canClaim: false,
           canViewClaims: false,
-          canViewMatching: true
+          canViewMatching: true,
+          claimUnavailableReason: null
         }
       })
     );

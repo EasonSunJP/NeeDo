@@ -651,6 +651,8 @@ export function ExchangePostDetailPage({ context }: { context: MessageCenterCont
               ? t(post.demand?.matchMode === "quick" ? "quickMatchingStatus" : "matchingSelectProviders")
               : active && post.viewer.canClaim
                 ? t("claimSubmit")
+                : active && post.viewer.claimUnavailableReason === "self_published"
+                  ? t("claimSelfPublished")
                 : t(post.status === "matched" ? "matchingCompleted" : "claimStatusMatchingClosed")}
           </button>
         ) : (

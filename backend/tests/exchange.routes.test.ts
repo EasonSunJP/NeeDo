@@ -90,7 +90,8 @@ const post: ExchangePostPayload = {
     canWithdraw: true,
     canClaim: false,
     canViewClaims: true,
-    canViewMatching: true
+    canViewMatching: true,
+    claimUnavailableReason: null
   },
   demand: {
     serviceMode: "store",
@@ -326,7 +327,8 @@ describe("formal Exchange routes", () => {
         canWithdraw: false,
         canClaim: true,
         canViewClaims: false,
-        canViewMatching: false
+        canViewMatching: false,
+        claimUnavailableReason: null
       },
       demand: {
         ...post.demand!,

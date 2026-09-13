@@ -530,6 +530,21 @@ describe("ExchangePostDetailPage", () => {
     expect(document.body.querySelector<HTMLButtonElement>('[data-action="matching-inbox"]')?.disabled).toBe(true);
   });
 
+  it("keeps the persisted matching-closed state copy unchanged", async () => {
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      status: "closed",
+      viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false }
+    });
+
+    await renderDetail();
+    await waitFor(() => expect(document.body.textContent).toContain("这条需求的匹配已关闭"));
+
+    expect(
+      document.body.querySelector<HTMLButtonElement>('[data-action="matching-inbox"]')?.textContent
+    ).toBe("匹配已关闭");
+  });
+
   it("requires confirmation and renders the server-authoritative withdrawn state", async () => {
     vi.mocked(getExchangePost).mockResolvedValue(demandPost);
     vi.mocked(withdrawExchangePost).mockResolvedValue({ ...demandPost, status: "withdrawn", viewer: { liked: false, canWithdraw: false, canClaim: false, canViewClaims: false } });
@@ -558,6 +573,35 @@ describe("ExchangePostDetailPage", () => {
     await waitFor(() => expect(document.body.querySelector('[data-testid="formal-claim-panel"]')).not.toBeNull());
 
     expect(document.body.querySelector('[data-testid="formal-received-claims"]')).toBeNull();
+  });
+
+  it.each([
+    ["zh", "不能参与自己发布的需求"],
+    ["zh-Hant", "不能參與自己發布的需求"],
+    ["ja", "自分が投稿した依頼には応募できません"],
+    ["en", "You can't participate in your own request"],
+    ["ko", "직접 게시한 요청에는 참여할 수 없습니다"]
+  ] as const)("labels a live self-published Request accurately in %s", async (language, expected) => {
+    mockI18n.language = language;
+    vi.mocked(getExchangePost).mockResolvedValue({
+      ...demandPost,
+      viewer: {
+        liked: false,
+        canWithdraw: false,
+        canClaim: false,
+        canViewClaims: false,
+        canViewMatching: false,
+        claimUnavailableReason: "self_published"
+      }
+    } as ExchangePost);
+
+    await renderDetail("/technician/needo/posts/41", "technician");
+    await waitFor(() => expect(document.body.textContent).toContain(expected));
+
+    const action = document.body.querySelector<HTMLButtonElement>('[data-action="matching-inbox"]');
+    expect(action?.disabled).toBe(true);
+    expect(action?.textContent).toBe(expected);
+    expect(action?.textContent).not.toBe("匹配已关闭");
   });
 
   it("composes the formal matching inbox only from the owner capability flag", async () => {

@@ -4990,12 +4990,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       ExchangeViewerState: {
         type: "object",
         additionalProperties: false,
-        required: ["liked", "canWithdraw", "canClaim", "canViewClaims"],
+        required: ["liked", "canWithdraw", "canClaim", "canViewClaims", "claimUnavailableReason"],
         properties: {
           liked: { type: "boolean" },
           canWithdraw: { type: "boolean" },
           canClaim: { type: "boolean" },
-          canViewClaims: { type: "boolean" }
+          canViewClaims: { type: "boolean" },
+          claimUnavailableReason: {
+            type: ["string", "null"],
+            enum: ["self_published", null]
+          }
         }
       },
       ExchangePriority: {

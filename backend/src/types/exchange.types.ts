@@ -30,6 +30,7 @@ export interface ExchangeViewerState {
   canClaim: boolean;
   canViewClaims: boolean;
   canViewMatching: boolean;
+  claimUnavailableReason: "self_published" | null;
 }
 
 export interface ExchangePriorityPayload {
