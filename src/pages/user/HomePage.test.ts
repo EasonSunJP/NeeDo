@@ -6,8 +6,16 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PublishedCarouselPayload } from "../../api/contentPublication";
 import type { BookingOrder } from "../../features/booking/api";
+import type {
+  CoreHomeRecommendations,
+  CoreServiceCard,
+} from "../../features/core-read/api";
 import { translateText, type Language } from "../../i18n/translations";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
+import type {
+  HomeLayoutConfig,
+  HomeServiceModuleConfig,
+} from "../../state/homeLayoutStore";
 import { HomePage } from "./HomePage";
 import * as homePageModule from "./HomePage";
 import homePageSource from "./HomePage.tsx?raw";
@@ -27,6 +35,7 @@ const apiMocks = vi.hoisted(() => ({
 const homeMocks = vi.hoisted(() => ({
   language: "zh" as Language,
   petEnabled: false,
+  recommendations: null as CoreHomeRecommendations | null,
   config: {
     selectedLocationId: "tokyo",
     locations: [{ id: "tokyo", label: "东京", city: "东京", area: "港区" }],
@@ -83,10 +92,17 @@ vi.mock("../../features/booking/api", async () => {
 });
 
 vi.mock("../../auth/AuthProvider", () => ({
-  useAuth: () => ({ isAuthenticated: true, session: null }),
+  useAuth: () => ({
+    isAuthenticated: true,
+    session: { avatarUrl: "/images/generated/profiles/ai-profile-30.jpg" },
+  }),
 }));
 vi.mock("../../features/core-read/hooks", () => ({
-  useCoreReadQuery: () => ({ data: null, error: null, loading: false }),
+  useCoreReadQuery: () => ({
+    data: homeMocks.recommendations,
+    error: null,
+    loading: false,
+  }),
 }));
 vi.mock("../../features/core-read/useCustomerSelfProfile", () => ({
   useCustomerSelfProfile: () => ({
@@ -101,7 +117,8 @@ vi.mock("../../i18n/I18nProvider", () => ({
   useI18n: () => ({ language: homeMocks.language }),
   useOptionalI18n: () => ({ language: homeMocks.language }),
 }));
-vi.mock("../../state/homeLayoutStore", () => ({
+vi.mock("../../state/homeLayoutStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../state/homeLayoutStore")>()),
   useHomeLayoutStore: () => ({ config: homeMocks.config }),
 }));
 vi.mock("../../state/homeLocationStore", () => ({
@@ -375,6 +392,267 @@ async function waitFor(assertion: () => void) {
   }
   throw lastError;
 }
+
+const serviceReviewSummary = {
+  ratingAverage: "4.80",
+  reviewCount: 10,
+  latestReviewAt: "2026-09-13T00:00:00.000Z",
+  highlights: [],
+};
+
+function formalService(input: {
+  id: number;
+  name: string;
+  categoryCode: string;
+  city?: string;
+  serviceMode?: string;
+}): CoreServiceCard & { serviceMode: string } {
+  const city = input.city ?? "横滨";
+  const categoryId = input.categoryCode === "massage" ? 3 : input.categoryCode === "cleaning" ? 4 : 5;
+
+  return {
+    id: input.id,
+    publicId: `00000000-0000-4000-8000-${String(input.id).padStart(12, "0")}`,
+    name: input.name,
+    description: `${input.name} 正式服务`,
+    category: {
+      id: categoryId,
+      code: input.categoryCode,
+      name: input.categoryCode,
+      nameJa: input.categoryCode,
+      nameEn: input.categoryCode,
+      parentId: null,
+      iconUrl: null,
+      sortOrder: categoryId,
+      isActive: true,
+      createdAt: "2026-09-13T00:00:00.000Z",
+      updatedAt: "2026-09-13T00:00:00.000Z",
+    },
+    shop: {
+      id: input.id,
+      publicId: `shop${String(input.id).padStart(10, "0")}`,
+      name: `${input.name} 店铺`,
+      city,
+      address: `${city} 正式地址`,
+      coverUrl: null,
+      reviewSummary: serviceReviewSummary,
+      completedOrderCount: 10,
+      favoriteCount: 0,
+      shareCount: 0,
+      serviceCategories: [],
+      businessKeywords: [],
+    },
+    technician: null,
+    city,
+    priceAmount: "8800.00",
+    currency: "JPY",
+    durationMinutes: 60,
+    usageCount: input.id,
+    favoriteCount: 0,
+    shareCount: 0,
+    isBookable: true,
+    coverUrl: null,
+    reviewSummary: serviceReviewSummary,
+    serviceMode: input.serviceMode ?? "home_visit",
+  };
+}
+
+describe("HomePage formal service modules", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  const renderModules = async (
+    serviceModules: HomeServiceModuleConfig[],
+    services: Array<CoreServiceCard & { serviceMode: string }>,
+  ) => {
+    (homeMocks.config as HomeLayoutConfig).serviceModules = serviceModules;
+    homeMocks.recommendations = {
+      categories: [],
+      services,
+      shops: [],
+      technicians: [],
+    };
+
+    await act(async () => {
+      root.render(
+        createElement(MemoryRouter, null, createElement(HomePage)),
+      );
+    });
+  };
+
+  const moduleConfig = (
+    overrides: Partial<HomeServiceModuleConfig> = {},
+  ): HomeServiceModuleConfig => ({
+    id: "home-module-cleaning",
+    title: "家事代行",
+    categoryIds: ["cleaning", "deep", "appliance"],
+    targetTo: "/categories?type=service&category=cleaning&mode=home",
+    maxItems: 4,
+    enabled: true,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    apiMocks.listOrders.mockResolvedValue({
+      list: [],
+      page: 1,
+      page_size: 100,
+      total: 0,
+    });
+    apiMocks.getUserHomeCarousel.mockResolvedValue(
+      publishedPayload("正式轮播", "zh-CN"),
+    );
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    homeMocks.recommendations = null;
+    (homeMocks.config as HomeLayoutConfig).serviceModules = [];
+  });
+
+  it("hides a zero-result module instead of filling it with unrelated recommendations", async () => {
+    await renderModules(
+      [moduleConfig()],
+      [
+        formalService({ id: 1, name: "ボディケア A", categoryCode: "massage" }),
+        formalService({ id: 2, name: "ボディケア B", categoryCode: "massage" }),
+        formalService({ id: 3, name: "ボディケア C", categoryCode: "massage" }),
+        formalService({ id: 4, name: "ボディケア D", categoryCode: "massage" }),
+      ],
+    );
+
+    expect(container.textContent).not.toContain("家事代行");
+    expect(container.querySelector('img[alt^="ボディケア"]')).toBeNull();
+  });
+
+  it("renders exactly one category-and-mode match", async () => {
+    await renderModules(
+      [moduleConfig()],
+      [
+        formalService({ id: 10, name: "訪問クリーニング", categoryCode: "cleaning" }),
+        formalService({ id: 11, name: "店内クリーニング", categoryCode: "cleaning", serviceMode: "store" }),
+      ],
+    );
+
+    expect(container.querySelectorAll('img[alt="訪問クリーニング"]')).toHaveLength(1);
+    expect(container.querySelector('img[alt="店内クリーニング"]')).toBeNull();
+  });
+
+  it.each([4, 5])("renders at most four matching services when %i are available", async (count) => {
+    const services = Array.from({ length: count }, (_, index) =>
+      formalService({
+        id: 20 + index,
+        name: `清掃 ${index + 1}`,
+        categoryCode: "cleaning",
+      }),
+    );
+
+    await renderModules([moduleConfig()], services);
+
+    expect(container.querySelectorAll('img[alt^="清掃 "]')).toHaveLength(4);
+  });
+
+  it("keeps massage and cleaning modules isolated by category and home-visit mode", async () => {
+    await renderModules(
+      [
+        moduleConfig({
+          id: "home-module-massage",
+          title: "出張マッサージ",
+          categoryIds: ["massage"],
+          targetTo: "/categories?type=service&category=massage&tag=tag-massage-door&mode=home",
+        }),
+        moduleConfig(),
+      ],
+      [
+        formalService({ id: 31, name: "出張ボディケア", categoryCode: "massage" }),
+        formalService({ id: 32, name: "店内ボディケア", categoryCode: "massage", serviceMode: "store" }),
+        formalService({ id: 33, name: "家事サポート", categoryCode: "cleaning" }),
+      ],
+    );
+
+    const massageSection = container.querySelector('section[data-service-module-id="home-module-massage"]');
+    const cleaningSection = container.querySelector('section[data-service-module-id="home-module-cleaning"]');
+    expect(massageSection?.querySelectorAll("img")).toHaveLength(1);
+    expect(massageSection?.textContent).toContain("出張ボディケア");
+    expect(cleaningSection?.querySelectorAll("img")).toHaveLength(1);
+    expect(cleaningSection?.textContent).toContain("家事サポート");
+  });
+
+  it("honors a custom module target category and service mode", async () => {
+    const targetTo = "/categories?type=service&category=beauty&mode=store";
+    await renderModules(
+      [
+        moduleConfig({
+          id: "custom-beauty",
+          title: "ビューティー",
+          categoryIds: ["beauty", "massage"],
+          targetTo,
+        }),
+      ],
+      [
+        formalService({ id: 41, name: "店内ネイル", categoryCode: "beauty", serviceMode: "store" }),
+        formalService({ id: 42, name: "訪問ネイル", categoryCode: "beauty" }),
+        formalService({ id: 43, name: "店内マッサージ", categoryCode: "massage", serviceMode: "store" }),
+      ],
+    );
+
+    const customSection = container.querySelector('section[data-service-module-id="custom-beauty"]');
+    expect(customSection?.querySelectorAll("img")).toHaveLength(1);
+    expect(customSection?.textContent).toContain("店内ネイル");
+    expect(
+      Array.from(customSection?.querySelectorAll("a") ?? []).filter(
+        (link) => link.getAttribute("href") === targetTo,
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("uses the module fulfillment mode when a legacy target omits it", async () => {
+    const legacyTarget = "/categories?type=service&category=cleaning";
+    await renderModules(
+      [
+        moduleConfig({
+          targetTo: legacyTarget,
+          serviceMode: "home",
+        }),
+      ],
+      [
+        formalService({ id: 44, name: "訪問家事", categoryCode: "cleaning" }),
+        formalService({ id: 45, name: "店内家事", categoryCode: "cleaning", serviceMode: "store" }),
+      ],
+    );
+
+    const section = container.querySelector('section[data-service-module-id="home-module-cleaning"]');
+    expect(section?.textContent).toContain("訪問家事");
+    expect(section?.textContent).not.toContain("店内家事");
+    expect(
+      Array.from(section?.querySelectorAll("a") ?? []).filter(
+        (link) => link.getAttribute("href")?.includes("mode=home"),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("sorts scoped matches by the selected area before applying the limit", async () => {
+    await renderModules(
+      [moduleConfig({ maxItems: 1 })],
+      [
+        formalService({ id: 51, name: "横滨家事", categoryCode: "cleaning", city: "横滨" }),
+        formalService({ id: 52, name: "东京家事", categoryCode: "cleaning", city: "东京" }),
+      ],
+    );
+
+    expect(container.querySelector('img[alt="东京家事"]')).not.toBeNull();
+    expect(container.querySelector('img[alt="横滨家事"]')).toBeNull();
+  });
+});
 
 describe("HomePage formal carousel integration", () => {
   let container: HTMLDivElement;

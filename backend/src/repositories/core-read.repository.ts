@@ -159,6 +159,7 @@ export interface ServiceCardPayload {
   shop: ShopCardPayload;
   technician: TechnicianCardPayload | null;
   city: string;
+  serviceMode: string;
   priceAmount: string;
   currency: string;
   durationMinutes: number;
@@ -1423,7 +1424,16 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(input.technicianId ? { technicianProfileId: input.technicianId } : {}),
       ...(input.city ? { city: input.city } : {}),
-      ...(input.serviceMode ? { serviceMode: input.serviceMode } : {}),
+      ...(input.serviceMode
+        ? {
+            serviceMode:
+              input.serviceMode === "home"
+                ? { in: ["home", "home_visit", "onsite", "both", "flexible"] }
+                : input.serviceMode === "store"
+                  ? { in: ["store", "both", "flexible"] }
+                  : input.serviceMode
+          }
+        : {}),
       ...(priceAmount ? { priceAmount } : {}),
       ...(searchBranches.length > 0 ? { OR: searchBranches } : {})
     };
@@ -1493,6 +1503,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
           ? this.mapTechnicianCard(service.technicianProfile)
           : null,
       city: service.city,
+      serviceMode: service.serviceMode,
       priceAmount: this.formatDecimal(service.priceAmount, 2),
       currency: service.currency,
       durationMinutes: service.durationMinutes,

@@ -363,6 +363,16 @@ describe("CategoryPage formal category state", () => {
     expect(queryHarness.queries.service).not.toHaveProperty("latitude");
   });
 
+  it("keeps a service module fulfillment mode in the category-page API queries", () => {
+    resetQueryStates();
+    renderCategoryPage("/categories?type=service&category=cleaning&mode=home");
+
+    expect(queryHarness.queries.service).toMatchObject({
+      categoryIds: [4],
+      serviceMode: "home",
+    });
+  });
+
   it("shows location guidance separately when technician ranking has no origin", () => {
     resetQueryStates();
     locationHarness.config = {
