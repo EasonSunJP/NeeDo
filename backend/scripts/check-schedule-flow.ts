@@ -66,6 +66,20 @@ const main = async (): Promise<void> => {
     assert(shop.ownerUserId, "shop owner user was not created");
     createdUserIds.push(shop.ownerUserId);
     await backofficeRepository.approveShop(shop.id, new Date());
+    const shopNumberPart = String(shop.id).padStart(10, "0");
+    await prisma.$transaction([
+      prisma.publicIdentifier.create({
+        data: {
+          publicId: `shop${shopNumberPart}`,
+          numberPart: shopNumberPart,
+          kind: "SHOP",
+          shopId: shop.id,
+          searchable: true,
+          status: "ACTIVE"
+        }
+      }),
+      prisma.shop.update({ where: { id: shop.id }, data: { shopNo: shopNumberPart } })
+    ]);
     await prisma.$transaction((transaction) =>
       verifyShopServiceLocationInTransaction(transaction, {
         shopId: shop.id,
@@ -117,17 +131,6 @@ const main = async (): Promise<void> => {
         status: "ACTIVE"
       }
     });
-    await backofficeRepository.updateTechnician({
-      scope: "platform",
-      technicianId: technicianProfile.id,
-      shopId: shop.id
-    });
-    await backofficeRepository.approveTechnician({
-      scope: "platform",
-      technicianId: technicianProfile.id,
-      shopId: shop.id,
-      approvedAt: new Date()
-    });
     const technicianShopAffiliation = await prisma.technicianShopAffiliation.create({
       data: {
         technicianProfileId: technicianProfile.id,
@@ -140,6 +143,17 @@ const main = async (): Promise<void> => {
       }
     });
     technicianShopAffiliationId = technicianShopAffiliation.id;
+    await backofficeRepository.updateTechnician({
+      scope: "platform",
+      technicianId: technicianProfile.id,
+      shopId: shop.id
+    });
+    await backofficeRepository.approveTechnician({
+      scope: "platform",
+      technicianId: technicianProfile.id,
+      shopId: shop.id,
+      approvedAt: new Date()
+    });
 
     const service = await backofficeRepository.createService({
       scope: "platform",
