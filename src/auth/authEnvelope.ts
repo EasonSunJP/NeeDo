@@ -28,6 +28,18 @@ export type AuthEnvelopeLockAdapter = {
 };
 
 let authEnvelopeLockAdapterOverride: AuthEnvelopeLockAdapter | null | undefined;
+let developmentAuthEnvelopeLockTail = Promise.resolve();
+
+const developmentAuthEnvelopeLockAdapter: AuthEnvelopeLockAdapter = {
+  request: async (_name, _options, callback) => {
+    const result = developmentAuthEnvelopeLockTail.then(callback, callback);
+    developmentAuthEnvelopeLockTail = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return await result;
+  }
+};
 
 export function setAuthEnvelopeLockAdapter(
   adapter: AuthEnvelopeLockAdapter | null | undefined
@@ -39,7 +51,13 @@ function getAuthEnvelopeLockAdapter(): AuthEnvelopeLockAdapter | null {
   if (authEnvelopeLockAdapterOverride !== undefined) {
     return authEnvelopeLockAdapterOverride;
   }
-  if (typeof navigator === "undefined" || !navigator.locks) return null;
+  if (typeof navigator === "undefined") return null;
+  if (!navigator.locks) {
+    // LAN device testing uses an insecure HTTP origin, where Safari does not
+    // expose Web Locks. Keep production fail-closed while serializing writes
+    // within the local development page so a valid login can be persisted.
+    return import.meta.env.DEV ? developmentAuthEnvelopeLockAdapter : null;
+  }
   return {
     request: async (name, options, callback) =>
       await navigator.locks.request(name, options, async () => await callback())
