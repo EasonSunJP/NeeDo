@@ -1,7 +1,10 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearPortalSettingsState,
+  getStoredPortalSettingsState,
   persistPortalSettingsState,
+  subscribePortalSettingsState,
   summarizePortalSettingsState,
   type TechnicianPortalSettingsState,
   type UserPortalSettingsState
@@ -75,6 +78,20 @@ describe("portal settings persistence", () => {
     });
 
     expect(() => clearPortalSettingsState("technician")).not.toThrow();
+  });
+
+  it("notifies same-tab subscribers after the portal sound preference is persisted", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribePortalSettingsState("technician", listener);
+    const next = { ...getStoredPortalSettingsState("technician"), sound: false };
+
+    persistPortalSettingsState("technician", next);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ sound: false }));
+    unsubscribe();
+    persistPortalSettingsState("technician", { ...next, sound: true });
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -42,6 +42,11 @@ export type PortalSettingsStateMap = {
 export type PortalSettingsState<T extends UnifiedSettingsPortal = UnifiedSettingsPortal> = PortalSettingsStateMap[T];
 
 const portalSettingsStoragePrefix = "needo.settings.portal";
+const portalSettingsChangedEvent = "needo:portal-settings-changed";
+
+type PortalSettingsChangedDetail = {
+  portal: UnifiedSettingsPortal;
+};
 
 const defaultPortalSettingsState: PortalSettingsStateMap = {
   user: {
@@ -96,6 +101,11 @@ export function persistPortalSettingsState<T extends UnifiedSettingsPortal>(port
 
   try {
     window.localStorage.setItem(getPortalSettingsStorageKey(portal), JSON.stringify(value));
+    if (typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent<PortalSettingsChangedDetail>(portalSettingsChangedEvent, {
+        detail: { portal }
+      }));
+    }
   } catch {
     // iPhone Safari can reject storage writes in private / restricted contexts.
   }
@@ -140,6 +150,25 @@ export function getStoredPortalSettingsState<T extends UnifiedSettingsPortal>(po
   } catch {
     return cloneDefaultPortalSettings(portal);
   }
+}
+
+export function subscribePortalSettingsState<T extends UnifiedSettingsPortal>(
+  portal: T,
+  listener: (value: PortalSettingsStateMap[T]) => void
+) {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  const handleChange = (event: Event) => {
+    const detail = (event as CustomEvent<PortalSettingsChangedDetail>).detail;
+    if (detail?.portal === portal) {
+      listener(getStoredPortalSettingsState(portal));
+    }
+  };
+
+  window.addEventListener(portalSettingsChangedEvent, handleChange);
+  return () => window.removeEventListener(portalSettingsChangedEvent, handleChange);
 }
 
 export function clearPortalSettingsState(portal: UnifiedSettingsPortal) {
