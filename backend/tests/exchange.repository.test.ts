@@ -685,6 +685,130 @@ describe("ExchangePostRepository", () => {
     expect(JSON.stringify(response)).not.toContain("authorIdentityId");
   });
 
+  it("redacts a precise Request address for unmatched viewers even when legacy public flags are set", async () => {
+    const preciseAddressRow = {
+      ...demandRow,
+      areaLabel: "東京都渋谷区道玄坂1-12-1",
+      demand: {
+        ...demandRow.demand,
+        addressLine1: "東京都渋谷区道玄坂1-12-1",
+        addressLine2: "渋谷マークシティ 12F",
+        addressLine3: "受付で田中を呼び出してください",
+        addressLine2Public: true,
+        addressLine3Public: true
+      },
+      matchParticipants: []
+    };
+    const findFirst = jest.fn(async () => preciseAddressRow);
+    const repository = new ExchangePostRepository({
+      exchangePost: { findFirst }
+    } as never);
+
+    const result = await repository.findPostById(41, 999, now);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        areaLabel: "東京都渋谷区",
+        demand: expect.objectContaining({
+          address: {
+            line1: null,
+            line2: null,
+            line3: null,
+            line2GenerallyVisible: false,
+            line3GenerallyVisible: false,
+            disclosure: "general"
+          }
+        })
+      })
+    );
+    expect(JSON.stringify(result)).not.toContain("道玄坂1-12-1");
+    expect(JSON.stringify(result)).not.toContain("渋谷マークシティ");
+    expect(JSON.stringify(result)).not.toContain("田中");
+  });
+
+  it("returns the complete Request address only to the publisher and exact matched identity", async () => {
+    const preciseAddressRow = {
+      ...demandRow,
+      areaLabel: "東京都渋谷区道玄坂1-12-1",
+      demand: {
+        ...demandRow.demand,
+        addressLine1: "東京都渋谷区道玄坂1-12-1",
+        addressLine2: "渋谷マークシティ 12F",
+        addressLine3: "受付で田中を呼び出してください",
+        addressLine2Public: false,
+        addressLine3Public: false
+      }
+    };
+    const findFirst = jest
+      .fn()
+      .mockResolvedValueOnce({ ...preciseAddressRow, matchParticipants: [] })
+      .mockResolvedValueOnce({
+        ...preciseAddressRow,
+        status: "MATCHED",
+        matching: {
+          status: "MATCHED",
+          effectiveTargetProviderCount: 1,
+          deletedAt: null
+        },
+        matchParticipants: [{ id: 501 }]
+      })
+      .mockResolvedValueOnce({ ...preciseAddressRow, matchParticipants: [] });
+    const repository = new ExchangePostRepository({
+      exchangePost: { findFirst }
+    } as never);
+
+    const publisher = await repository.findPostById(41, demandRow.ownerIdentityId, now);
+    const matchedParticipant = await repository.findPostById(41, 88, now);
+    const introducerButNotParticipant = await repository.findPostById(41, 77, now);
+
+    for (const authorized of [publisher, matchedParticipant]) {
+      expect(authorized?.areaLabel).toBe("東京都渋谷区道玄坂1-12-1");
+      expect(authorized?.demand?.address).toEqual(
+        expect.objectContaining({
+          line1: "東京都渋谷区道玄坂1-12-1",
+          line2: "渋谷マークシティ 12F",
+          line3: "受付で田中を呼び出してください"
+        })
+      );
+    }
+    expect(introducerButNotParticipant?.areaLabel).toBe("東京都渋谷区");
+    expect(introducerButNotParticipant?.demand?.address).toEqual(
+      expect.objectContaining({
+        line1: null,
+        line2: null,
+        line3: null,
+        disclosure: "general"
+      })
+    );
+  });
+
+  it("keeps the address private when a participant relation exists before matching is complete", async () => {
+    const findFirst = jest.fn(async () => ({
+      ...demandRow,
+      areaLabel: "東京都渋谷区道玄坂1-12-1",
+      demand: {
+        ...demandRow.demand,
+        addressLine1: "東京都渋谷区道玄坂1-12-1",
+        addressLine2: "渋谷マークシティ 12F"
+      },
+      status: "PUBLISHED",
+      matching: {
+        status: "OPEN",
+        effectiveTargetProviderCount: 1,
+        deletedAt: null
+      },
+      matchParticipants: [{ id: 501 }]
+    }));
+    const repository = new ExchangePostRepository({ exchangePost: { findFirst } } as never);
+
+    const result = await repository.findPostById(41, 88, now);
+
+    expect(result?.areaLabel).toBe("東京都渋谷区");
+    expect(result?.demand?.address).toEqual(
+      expect.objectContaining({ line1: null, line2: null, disclosure: "general" })
+    );
+  });
+
   it("orders the public Request marketplace by the live priority benefit without N+1 membership reads", async () => {
     const blackDiamond = {
       ...demandRow,
@@ -759,17 +883,18 @@ describe("ExchangePostRepository", () => {
         },
         demand: expect.objectContaining({
           address: {
-            line1: "渋谷区",
+            line1: null,
             line2: null,
-            line3: "Prince Tower 12F",
+            line3: null,
             line2GenerallyVisible: false,
-            line3GenerallyVisible: true,
+            line3GenerallyVisible: false,
             disclosure: "general"
           }
         })
       })
     );
     expect(JSON.stringify(result)).not.toContain("道玄坂1-2-3");
+    expect(JSON.stringify(result)).not.toContain("Prince Tower 12F");
     expect(JSON.stringify(result)).not.toMatch(/phone|email|phoneNumber/i);
   });
 
@@ -777,11 +902,16 @@ describe("ExchangePostRepository", () => {
     const findFirst = jest.fn(async () => ({
       ...demandRow,
       status: "MATCHED",
+      matching: {
+        status: "MATCHED",
+        effectiveTargetProviderCount: 1,
+        deletedAt: null
+      },
       matchParticipants: [{ id: 71 }]
     }));
     const repository = new ExchangePostRepository({ exchangePost: { findFirst } } as never);
 
-    await expect(repository.findPostById(41, 18, now, 8)).resolves.toMatchObject({
+    await expect(repository.findPostById(41, 18, now, 8, 88)).resolves.toMatchObject({
       status: "matched",
       publisher: {
         publicId: "NC12345678",
@@ -806,7 +936,11 @@ describe("ExchangePostRepository", () => {
       expect.objectContaining({
         include: expect.objectContaining({
           matchParticipants: {
-            where: { participantIdentityId: 18, deletedAt: null },
+            where: {
+              participantIdentityId: 88,
+              deletedAt: null,
+              matching: { is: { status: "MATCHED", deletedAt: null } }
+            },
             select: { id: true },
             take: 1
           }

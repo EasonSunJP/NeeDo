@@ -130,19 +130,12 @@ describe("RequestComposerFields formal publication contract", () => {
     expect(publishExchangePost).not.toHaveBeenCalled();
   });
 
-  it("clears visibility when an optional address is emptied", async () => {
+  it("does not offer pre-match disclosure controls for exact address lines", async () => {
     await renderAndOpen();
     await waitFor(() => expect(document.body.querySelector('[name="addressLine2"]')).not.toBeNull());
-    const address = document.body.querySelector<HTMLInputElement>('[name="addressLine2"]')!;
-    const visible = document.body.querySelector<HTMLInputElement>('[name="addressLine2Public"]')!;
-
-    await act(async () => setInputValue(address, "Room 1201"));
-    await act(async () => visible.click());
-    expect(visible.checked).toBe(true);
-
-    await act(async () => setInputValue(address, ""));
-    expect(visible.disabled).toBe(true);
-    expect(visible.checked).toBe(false);
+    expect(document.body.querySelector('[name="addressLine2Public"]')).toBeNull();
+    expect(document.body.querySelector('[name="addressLine3Public"]')).toBeNull();
+    expect(document.body.textContent).toContain("匹配成功后，参与者全员可查看所有已填写地址");
   });
 
   it("keeps Next disabled until the server returns publication authority", async () => {
@@ -179,7 +172,6 @@ describe("RequestComposerFields formal publication contract", () => {
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
     fillValidRequestDraft();
     const minimum = document.body.querySelector<HTMLInputElement>('[name="budgetMinJpy"]')!;
-    const line2Visible = document.body.querySelector<HTMLInputElement>('[name="addressLine2Public"]')!;
     const selective = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((button) => button.textContent === "选配");
     const perProvider = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((button) => button.textContent === "单价");
     const home = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((button) => button.textContent === "上门");
@@ -189,13 +181,12 @@ describe("RequestComposerFields formal publication contract", () => {
     await act(async () => selective.click());
     await act(async () => perProvider.click());
     await act(async () => home.click());
-    await act(async () => line2Visible.click());
     await act(async () => clickAction("composer-next"));
 
     expect(document.body.textContent).toContain("选配");
     expect(document.body.textContent).toContain("单价");
     expect(document.body.textContent).toContain("上门");
-    expect(document.body.textContent).toContain("3-2-1 · 匹配前可见");
+    expect(document.body.textContent).toContain("3-2-1 · 匹配成功后可见");
     expect(document.body.textContent).toContain("¥30,000");
     expect(publishExchangePost).not.toHaveBeenCalled();
   });

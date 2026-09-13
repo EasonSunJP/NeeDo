@@ -44,6 +44,29 @@ const heightOf = (frame: HTMLElement) => frame.style.getPropertyValue("--im-visu
 const roomHeightOf = (frame: HTMLElement) => frame.style.getPropertyValue("--im-conversation-room-height");
 
 describe("chat visual viewport lifecycle", () => {
+  it("anchors an installed iPhone PWA room from one bottom edge instead of WebKit's broken fixed inset pair", async () => {
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+
+    await act(async () => {
+      editor.focus();
+      setViewport(540, 44);
+      viewport.dispatchEvent(new Event("resize"));
+    });
+
+    expect(roomHeightOf(frame)).toBe("540px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("372px");
+  });
+
   it("bounds an installed iPhone PWA room to the visible viewport when the keyboard is closed", async () => {
     document.documentElement.dataset.needoDisplayMode = "standalone";
     vi.stubGlobal("navigator", {
@@ -58,8 +81,8 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("876px");
-    expect(roomHeightOf(frame)).toBe("auto");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
@@ -94,7 +117,7 @@ describe("chat visual viewport lifecycle", () => {
     });
     expect(document.activeElement).toBe(editor);
     expect(heightOf(frame)).toBe("759px");
-    expect(roomHeightOf(frame)).toBe("auto");
+    expect(roomHeightOf(frame)).toBe("100dvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
@@ -125,7 +148,7 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("704px");
-    expect(roomHeightOf(frame)).toBe("auto");
+    expect(roomHeightOf(frame)).toBe("100dvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
@@ -143,8 +166,8 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("876px");
-    expect(roomHeightOf(frame)).toBe("auto");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("0px");
+    expect(roomHeightOf(frame)).toBe("100dvh");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
@@ -162,7 +185,7 @@ describe("chat visual viewport lifecycle", () => {
       viewport.dispatchEvent(new Event("resize"));
     });
     expect(heightOf(frame)).toBe("540px");
-    expect(roomHeightOf(frame)).toBe("auto");
+    expect(roomHeightOf(frame)).toBe("540px");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("416px");
 
     await act(async () => {
@@ -171,7 +194,7 @@ describe("chat visual viewport lifecycle", () => {
       viewport.dispatchEvent(new Event("resize"));
     });
     expect(heightOf(frame)).toBe("876px");
-    expect(roomHeightOf(frame)).toBe("auto");
+    expect(roomHeightOf(frame)).toBe("100dvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
@@ -189,7 +212,7 @@ describe("chat visual viewport lifecycle", () => {
 
     expect(heightOf(frame)).toBe("100dvh");
     expect(roomHeightOf(frame)).toBe("100dvh");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("auto");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
   it("keeps the room inside a keyboard viewport even when focus pans its top edge", async () => {
@@ -200,8 +223,8 @@ describe("chat visual viewport lifecycle", () => {
       viewport.dispatchEvent(new Event("resize"));
     });
     expect(heightOf(frame)).toBe("600px");
-    expect(roomHeightOf(frame)).toBe("auto");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("300px");
+    expect(roomHeightOf(frame)).toBe("600px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("56px");
   });
 
@@ -219,8 +242,8 @@ describe("chat visual viewport lifecycle", () => {
     });
 
     expect(heightOf(frame)).toBe("518px");
-    expect(roomHeightOf(frame)).toBe("auto");
-    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("72px");
+    expect(roomHeightOf(frame)).toBe("518px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-top")).toBe("auto");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("366px");
   });
 

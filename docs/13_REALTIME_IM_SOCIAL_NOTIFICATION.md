@@ -509,6 +509,14 @@
 - Social 时间线、动态详情、草稿和通知列表统一通过 `Intl.RelativeTimeFormat` / `Intl.DateTimeFormat` 按当前 `zh`、`zh-Hant`、`ja`、`en`、`ko` 语言格式化相对时间和日期，并标记为已本地化内容，避免运行时 i18n 对动态时间进行二次替换。
 - 本切片不新增 API 路径、数据库字段、数据表或 migration；通知 API 响应形状保持不变，只为新通知的 JSON payload 增加稳定事件码和结构化展示参数。
 
+## 6.35 iPhone PWA 聊天房间底边单锚点修复（2026-09-13，本地）
+
+- iPhone 镜像中的现有版本在无键盘状态即可稳定复现：聊天列表底部导航贴近系统安全区，进入同一会话后输入条却整体上移约 50–60px；退出会话再进入后仍然存在。这排除了“键盘收起事件未触发”和输入框自身 safe-area padding 作为主因。
+- 根因是聊天房间使用 `position: fixed` 时同时设置 `top`、`bottom` 和 `height: auto`。WebKit 的 standalone PWA 与 `viewport-fit=cover` 组合会错误解算这种双边固定约束；普通底部导航只使用单一 `bottom` 锚点，因此没有同样的上移。该现象与 WebKit 237961 中记录的 fixed inset 底部空白一致。
+- 聊天房间改为与底部导航一致的单一底边锚定：键盘关闭时使用 `height: 100dvh; bottom: 0; top: auto`；键盘打开时使用明确的 `visualViewport.height` 和计算后的 `bottom`，同样保持 `top: auto`。`visualViewport` 只提供键盘可见区域的尺寸，不再参与上下双边拉伸。
+- 正式构建 CSS 的浏览器几何回归中，869px 布局视口的关闭态房间和输入区底边均为 869px；模拟 540px 可见高度与 44px 顶部位移后，房间范围为 44–584px，输入区底边为 584px，验证单边锚定的实际级联和定位结果。
+- 新增 iOS 26 standalone 生命周期回归，并同步覆盖 iPhone/Android PWA、普通 Safari、键盘位移和页面恢复。修改不涉及 IM API、数据库、migration、消息数据、safe-area 视觉值或远程环境。镜像用于确认旧版本根因；新版本仍须在获授权发布后于已安装 PWA 完成最终真机验收。
+
 ---
 
 ## 7. 给 Codex 的命令

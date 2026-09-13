@@ -5027,14 +5027,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "disclosure"
         ],
         properties: {
-          line1: { type: "string", minLength: 1, maxLength: 255 },
+          line1: {
+            type: ["string", "null"],
+            minLength: 1,
+            maxLength: 255,
+            description:
+              "Null before matching; returned only to the publisher or an exact participant of a completed match."
+          },
           line2: { type: ["string", "null"], minLength: 1, maxLength: 255 },
           line3: { type: ["string", "null"], minLength: 1, maxLength: 255 },
           line2GenerallyVisible: { type: "boolean" },
           line3GenerallyVisible: { type: "boolean" },
           disclosure: {
             type: "string",
-            enum: ["owner", "matched_participant", "general"]
+            enum: ["owner", "matched_participant", "general"],
+            description:
+              "Server-authoritative address scope. General responses contain no exact address lines."
           }
         }
       },
@@ -5560,7 +5568,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           title: { type: "string", minLength: 1, maxLength: 120 },
           detail: { type: "string", minLength: 1, maxLength: 10000 },
           contentLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
-          areaLabel: { type: "string", minLength: 1, maxLength: 120 },
+          areaLabel: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            description:
+              "Coarse administrative service area for unmatched Request viewers; the publisher and completed-match participants may receive the stored address snapshot."
+          },
           serviceStartAt: { type: "string", format: "date-time" },
           serviceEndAt: { type: "string", format: "date-time" },
           expiresAt: { type: "string", format: "date-time" },
@@ -6169,8 +6183,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             maxLength: 255,
             default: null
           },
-          addressLine2Public: { type: "boolean", default: false },
-          addressLine3Public: { type: "boolean", default: false },
+          addressLine2Public: { type: "boolean", const: false, default: false },
+          addressLine3Public: { type: "boolean", const: false, default: false },
           publisherIdentityPublic: { type: "boolean", default: false }
         }
       },

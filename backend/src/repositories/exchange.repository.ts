@@ -53,6 +53,7 @@ import type {
 } from "../types/exchange-intelligence-booking.types";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import { toAuditLogCreateData } from "./audit-log.repository";
+import { projectExchangeRequestAddress } from "../domain/exchange-address-privacy";
 
 const typeToDatabase: Record<ExchangePostType, DatabaseExchangePostType> = {
   demand: DatabaseExchangePostType.DEMAND,
@@ -202,7 +203,7 @@ const intelligenceShopInclude = {
   }
 };
 
-const postInclude = (viewerIdentityId: number) =>
+const postInclude = (viewerIdentityId: number, participantIdentityId = viewerIdentityId) =>
   ({
     demand: { where: { deletedAt: null } },
     authorIdentity: {
@@ -293,7 +294,13 @@ const postInclude = (viewerIdentityId: number) =>
       take: 1
     },
     matchParticipants: {
-      where: { participantIdentityId: viewerIdentityId, deletedAt: null },
+      where: {
+        participantIdentityId,
+        deletedAt: null,
+        matching: {
+          is: { status: DatabaseExchangeMatchingStatus.MATCHED, deletedAt: null }
+        }
+      },
       select: { id: true },
       take: 1
     },
@@ -484,7 +491,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             skip: pagination.skip,
             take: pagination.take,
-            include: postInclude(input.viewerIdentityId)
+            include: postInclude(input.viewerIdentityId, input.participantIdentityId)
           })
           .then((records) => records.map((record) => ({ record })));
     const [rows, total] = await Promise.all([
@@ -594,7 +601,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
 
     const records = await this.client.exchangePost.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      include: postInclude(input.viewerIdentityId)
+      include: postInclude(input.viewerIdentityId, input.participantIdentityId)
     });
     const recordsById = new Map(records.map((record) => [record.id, record]));
     return ranked.flatMap((row) => {
@@ -607,11 +614,12 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
     postId: number,
     viewerIdentityId: number,
     now: Date,
-    claimProviderUserId?: number
+    claimProviderUserId?: number,
+    participantIdentityId = viewerIdentityId
   ): Promise<ExchangePostPayload | null> {
     const row = await this.client.exchangePost.findFirst({
       where: { id: postId, deletedAt: null },
-      include: postInclude(viewerIdentityId)
+      include: postInclude(viewerIdentityId, participantIdentityId)
     });
 
     return row ? this.mapPost(row, viewerIdentityId, now, undefined, claimProviderUserId) : null;
@@ -1708,7 +1716,11 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       row.expiresAt.getTime() <= now.getTime();
     const status = expired ? "expired" : statusFromDatabase[row.status];
     const ownerView = row.ownerIdentityId === viewerIdentityId;
-    const matchedParticipantView = row.matchParticipants.length > 0;
+    const matchedParticipantView =
+      row.status === DatabaseExchangePostStatus.MATCHED &&
+      row.matching?.status === DatabaseExchangeMatchingStatus.MATCHED &&
+      row.matching.deletedAt === null &&
+      row.matchParticipants.length > 0;
     const claimableByProviderUser =
       claimProviderUserId !== undefined && row.authorUserId !== claimProviderUserId;
     const matchingOpen =
@@ -1722,6 +1734,24 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
         activeClaimCount < row.matching!.effectiveTargetProviderCount);
     const intelligence = this.mapIntelligence(row, status, now);
 
+    const requestAddressDisclosure = ownerView
+      ? ("owner" as const)
+      : matchedParticipantView
+        ? ("matched_participant" as const)
+        : ("general" as const);
+    const projectedRequestAddress = row.demand
+      ? projectExchangeRequestAddress({
+          areaLabel: row.areaLabel,
+          address: {
+            line1: row.demand.addressLine1,
+            line2: row.demand.addressLine2,
+            line3: row.demand.addressLine3,
+            line2GenerallyVisible: row.demand.addressLine2Public,
+            line3GenerallyVisible: row.demand.addressLine3Public,
+            disclosure: requestAddressDisclosure
+          }
+        })
+      : null;
     const demand = row.demand
       ? {
           serviceMode: demandServiceModeFromDatabase[row.demand.serviceMode],
@@ -1735,24 +1765,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
           budgetMode: budgetModeFromDatabase[row.demand.budgetMode],
           budgetMinJpy: row.demand.budgetMinJpy,
           budgetMaxJpy: row.demand.budgetMaxJpy,
-          address: {
-            line1: row.demand.addressLine1,
-            line2:
-              ownerView || matchedParticipantView || row.demand.addressLine2Public
-                ? row.demand.addressLine2
-                : null,
-            line3:
-              ownerView || matchedParticipantView || row.demand.addressLine3Public
-                ? row.demand.addressLine3
-                : null,
-            line2GenerallyVisible: row.demand.addressLine2Public,
-            line3GenerallyVisible: row.demand.addressLine3Public,
-            disclosure: ownerView
-              ? ("owner" as const)
-              : matchedParticipantView
-                ? ("matched_participant" as const)
-                : ("general" as const)
-          }
+          address: projectedRequestAddress!.address
         }
       : null;
     const showPublisher =
@@ -1765,7 +1778,7 @@ export class ExchangePostRepository implements ExchangeRepositoryPort {
       title: row.title,
       detail: row.detail,
       contentLocale: localeFromDatabase[row.contentLocale],
-      areaLabel: row.areaLabel,
+      areaLabel: projectedRequestAddress?.areaLabel ?? row.areaLabel,
       serviceStartAt: row.serviceStartAt.toISOString(),
       serviceEndAt: row.serviceEndAt.toISOString(),
       expiresAt: row.expiresAt.toISOString(),
