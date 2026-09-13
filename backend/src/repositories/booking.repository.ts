@@ -841,7 +841,7 @@ export interface BookingOrderPayload {
   paymentMethod: ServicePaymentMethodPayload;
   paymentStatus: ServicePaymentStatusPayload;
   paymentAmountJpy: number;
-  amountSource: "order_payment" | "checkout";
+  amountSource: "order_payment" | "order_price" | "checkout";
   effectivePaymentMethod: ServicePaymentMethodPayload | null;
   otherMethodCode: string | null;
   otherMethodLabel: string | null;
@@ -6590,6 +6590,7 @@ export class BookingRepository implements BookingRepositoryPort {
     );
 
     const payment = projectOrderPayment({
+      orderPriceAmountJpy: Number(order.priceAmount),
       orderPaymentAmountJpy: order.paymentAmountJpy,
       orderPaymentMethod: order.paymentMethod,
       checkout: order.checkout,

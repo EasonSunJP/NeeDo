@@ -158,6 +158,27 @@ describe("BackofficeRepository keyword filters", () => {
 
   it.each([
     [
+      "a legacy pre-checkout order whose payment snapshot kept the database default",
+      {
+        status: "CONFIRMED",
+        paymentStatus: "PENDING",
+        paymentAmountJpy: 0,
+        paymentMethod: "ONSITE",
+        checkout: null,
+        financial: null
+      },
+      {
+        totalAmountJpy: 8_000,
+        amountSource: "order_price",
+        paymentMethod: "onsite",
+        effectivePaymentMethod: "onsite",
+        otherMethodCode: null,
+        otherMethodLabel: null,
+        checkoutPaymentAmountNdp: null,
+        ndpCurrency: null
+      }
+    ],
+    [
       "an order without checkout",
       {
         status: "CONFIRMED",

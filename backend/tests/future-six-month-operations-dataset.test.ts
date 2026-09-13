@@ -48,6 +48,8 @@ describe("future operations dataset contract", () => {
     const source = readFileSync(datasetPath, "utf8");
     expect(source).toContain("orderStatusHistory.createMany");
     expect(source).toContain("notification.createMany");
+    expect(source).toContain("paymentAmountJpy: booking.priceAmountJpy");
+    expect(source).not.toContain("paymentAmountJpy: 0");
     expect(source).not.toMatch(
       /(?:orderFinancial|walletHold|walletLedger|payRun|payslip|orderReview)\.(?:create|createMany)/
     );
@@ -65,6 +67,7 @@ describe("future operations dataset contract", () => {
     const checker = readFileSync(checkerPath, "utf8");
     for (const required of [
       "months",
+      "paymentAmountJpy",
       "technicianOverlapCount",
       "customerOverlapCount",
       "duplicateOrderNoCount",

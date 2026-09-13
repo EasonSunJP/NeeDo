@@ -172,6 +172,8 @@ const main = async (): Promise<void> => {
           startsAt: true,
           endsAt: true,
           status: true,
+          priceAmount: true,
+          paymentAmountJpy: true,
           createdAt: true,
           updatedAt: true,
           serviceSnapshotJson: true,
@@ -282,6 +284,8 @@ const main = async (): Promise<void> => {
         row.startsAt.toISOString(),
         row.endsAt.toISOString(),
         row.status,
+        Number(row.priceAmount),
+        row.paymentAmountJpy,
         snapshot?.slotKey,
         snapshot?.namespace
       ].join("|");
@@ -295,6 +299,8 @@ const main = async (): Promise<void> => {
         row.startsAt,
         row.endsAt,
         row.status,
+        row.priceAmountJpy,
+        row.priceAmountJpy,
         row.slotKey,
         FUTURE_OPERATIONS_NAMESPACE
       ].join("|")
@@ -414,6 +420,7 @@ const main = async (): Promise<void> => {
         slot.serviceId !== booking.serviceId ||
         slot.startsAt.getTime() !== booking.startsAt.getTime() ||
         slot.endsAt.getTime() !== booking.endsAt.getTime() ||
+        Number(booking.priceAmount) !== booking.paymentAmountJpy ||
         (booking.status === BookingOrderStatus.CANCELLED
           ? slot.status !== "AVAILABLE" || slot.bookedCount !== 0
           : slot.status !== "BOOKED" || slot.bookedCount !== 1)

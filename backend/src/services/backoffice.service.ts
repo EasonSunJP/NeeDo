@@ -342,7 +342,7 @@ export interface BackofficeOrderPayload {
   fulfillmentMode: string;
   priceAmount: number;
   totalAmountJpy: number;
-  amountSource: "order_payment" | "checkout";
+  amountSource: "order_payment" | "order_price" | "checkout";
   currency: string;
   paymentMethod: "onsite" | "bank_transfer" | "cash" | "ndp" | "other";
   effectivePaymentMethod: "onsite" | "bank_transfer" | "cash" | "ndp" | "other" | null;

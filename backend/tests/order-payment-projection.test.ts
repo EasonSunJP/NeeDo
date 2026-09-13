@@ -3,6 +3,7 @@ import { projectOrderPayment } from "../src/domain/order-payment-projection";
 describe("projectOrderPayment", () => {
   it("uses the persisted payment total before checkout", () => {
     expect(projectOrderPayment({
+      orderPriceAmountJpy: 8_000,
       orderPaymentAmountJpy: 8_000,
       orderPaymentMethod: "ONSITE",
       checkout: null,
@@ -21,6 +22,7 @@ describe("projectOrderPayment", () => {
 
   it("does not report the order default while checkout payment selection is pending", () => {
     expect(projectOrderPayment({
+      orderPriceAmountJpy: 8_000,
       orderPaymentAmountJpy: 8_000,
       orderPaymentMethod: "ONSITE",
       checkout: {
@@ -43,6 +45,7 @@ describe("projectOrderPayment", () => {
 
   it("carries the active checkout custom payment identity", () => {
     expect(projectOrderPayment({
+      orderPriceAmountJpy: 8_000,
       orderPaymentAmountJpy: 8_000,
       orderPaymentMethod: "ONSITE",
       checkout: {
@@ -65,6 +68,7 @@ describe("projectOrderPayment", () => {
 
   it("uses the checkout total and active Test NDP ledger provenance", () => {
     expect(projectOrderPayment({
+      orderPriceAmountJpy: 8_000,
       orderPaymentAmountJpy: 8_000,
       orderPaymentMethod: "ONSITE",
       checkout: {
@@ -91,6 +95,7 @@ describe("projectOrderPayment", () => {
 
   it("falls back to an active financial currency when no ledger exists", () => {
     expect(projectOrderPayment({
+      orderPriceAmountJpy: 8_000,
       orderPaymentAmountJpy: 8_000,
       orderPaymentMethod: "ONSITE",
       checkout: {
@@ -110,6 +115,7 @@ describe("projectOrderPayment", () => {
     const retiredAt = new Date("2026-09-10T03:00:00.000Z");
 
     expect(projectOrderPayment({
+      orderPriceAmountJpy: 14_500,
       orderPaymentAmountJpy: 14_500,
       orderPaymentMethod: "NDP",
       checkout: {

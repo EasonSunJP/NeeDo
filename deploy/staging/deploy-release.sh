@@ -35,6 +35,24 @@ expected_release_dir="/srv/needo/releases/${revision}-${archive_sha256:0:16}"
 [[ -f "$release_dir/release-notes.json" ]]
 [[ -f "$release_dir/backend/dist/cli/record-release.js" ]]
 
+refuse_unsafe_directory_path() {
+  local directory_path="$1"
+  local current_path=""
+  local component
+  local -a components
+
+  [[ "$directory_path" == /* && "$directory_path" != "/" ]]
+  IFS='/' read -r -a components <<<"${directory_path#/}"
+  for component in "${components[@]}"; do
+    [[ -n "$component" && "$component" != "." && "$component" != ".." ]]
+    current_path="$current_path/$component"
+    [[ ! -L "$current_path" ]]
+    [[ ! -e "$current_path" || -d "$current_path" ]]
+  done
+}
+
+refuse_unsafe_directory_path /srv/needo
+install -d -m 0755 /srv/needo
 install -d -m 0750 /srv/needo/config /srv/needo/mysql /srv/needo/redis
 install -d -m 0750 /srv/needo/certbot/conf
 install -d -m 0755 /srv/needo/certbot/www
@@ -59,7 +77,8 @@ cleanup() {
 compose_for() {
   local target_release="$1"
   shift
-  docker compose \
+  NEEDO_FRONTEND_ASSETS_DIR=/srv/needo/frontend-assets \
+    docker compose \
     --env-file "$env_file" \
     --project-name needo-staging \
     --file "$target_release/deploy/staging/docker-compose.yml" \
@@ -102,9 +121,10 @@ rollback_application() {
   local status=$?
   trap - ERR
   if [[ "$deployment_complete" != true && "$application_transition_started" == true && -n "$previous_release" && -d "$previous_release" ]]; then
-    install -m 0644 "$(nginx_config_for "$previous_release")" /srv/needo/config/nginx.conf
+    # The current edge contract retains immutable cross-release assets while exact previous images are restored.
+    install -m 0644 "$(nginx_config_for "$release_dir")" /srv/needo/config/nginx.conf
     compose_for "$previous_release" --file "$rollback_images_file" up -d --no-build --no-deps --wait backend ops-api merchant-api || true
-    compose_for "$previous_release" --file "$rollback_images_file" up -d --no-build --no-deps --force-recreate --wait web || true
+    compose_for "$release_dir" --file "$rollback_images_file" up -d --no-build --no-deps --force-recreate --wait web || true
     ln -sfn "$previous_release" /srv/needo/current.rollback
     mv -Tf /srv/needo/current.rollback /srv/needo/current
   fi
@@ -166,6 +186,10 @@ chmod 0600 "$env_file"
 install -m 0644 "$(nginx_config_for "$release_dir")" /srv/needo/config/nginx.conf
 
 compose_for "$release_dir" config --quiet
+if [[ -n "$previous_release" && -d "$previous_release" ]]; then
+  bash "$release_dir/deploy/staging/publish-frontend-assets.sh" "$previous_release/dist/assets" /srv/needo/frontend-assets
+fi
+bash "$release_dir/deploy/staging/publish-frontend-assets.sh" "$release_dir/dist/assets" /srv/needo/frontend-assets
 compose_for "$release_dir" up -d --no-build --wait mysql redis
 
 has_existing_schema="$(compose_for "$release_dir" exec -T mysql sh -c \
