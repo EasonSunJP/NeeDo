@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import type { BookingOrder, BookingScheduleSlot } from "../../features/booking/api";
 import type { Customer, Store, Technician } from "../../types/domain";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
@@ -269,6 +270,24 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     expect(container.querySelector('img[alt="山崎 俊介"]')?.getAttribute("src")).toBe("/media/formal-avatar.jpg");
     expect(container.textContent).toContain("已排预约");
     expect(container.textContent).toContain("未排预约");
+  });
+
+  it("keeps the appointment filters on one row and provides concise Japanese labels", async () => {
+    await renderMerchant();
+
+    const filter = container.querySelector('[data-testid="merchant-appointment-status-filter"]');
+    const buttons = Array.from(filter?.querySelectorAll("button") ?? []);
+
+    expect(buttons.map((button) => button.textContent)).toEqual(["全预约", "已排预约", "未排预约"]);
+    expect([
+      translateText("全预约", "ja"),
+      translateText("已排预约", "ja"),
+      translateText("未排预约", "ja")
+    ]).toEqual(["すべて", "手配済み", "手配待ち"]);
+    expect(filter?.className).toContain("grid-cols-3");
+    buttons.forEach((button) => {
+      expect(button.className).toContain("whitespace-nowrap");
+    });
   });
 
   it("loads later real order pages and retains assigned orders under the status filter", async () => {

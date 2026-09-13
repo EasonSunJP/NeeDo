@@ -86,15 +86,25 @@ export function resolveNeedoApiProxyTarget(env: EnvMap) {
   return stripApiPrefix(target);
 }
 
+export const configureSameOriginProxy: NonNullable<ProxyOptions["configure"]> = (proxy) => {
+  proxy.on("proxyReq", (proxyRequest) => {
+    // The browser is talking to Vite on the same origin. Do not forward its
+    // device-specific LAN origin to the backend's direct-access CORS boundary.
+    proxyRequest.removeHeader("origin");
+  });
+};
+
 export function createNeedoApiProxyConfig(target: string): Record<string, ProxyOptions> {
   return {
     "/api/v1": {
       changeOrigin: true,
+      configure: configureSameOriginProxy,
       secure: false,
       target
     },
     "/media": {
       changeOrigin: true,
+      configure: configureSameOriginProxy,
       secure: false,
       target
     }
@@ -122,6 +132,7 @@ export function createPortalApiProxyConfig(
 ): Record<string, ProxyOptions> {
   const createEntry = (prefix: string, target: string): ProxyOptions => ({
     changeOrigin: true,
+    configure: configureSameOriginProxy,
     rewrite: (path) => path.replace(new RegExp(`^${escapeRegExp(prefix)}`), "/api/v1"),
     secure: false,
     target

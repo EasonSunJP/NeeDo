@@ -212,6 +212,7 @@ describe("ExchangeComposer publication", () => {
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
     expect(publishExchangePost).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')?.textContent).toContain("日本語");
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-publish"]')?.click());
     await waitFor(() => expect(onPublished).toHaveBeenCalledWith(publishedPost));
 
