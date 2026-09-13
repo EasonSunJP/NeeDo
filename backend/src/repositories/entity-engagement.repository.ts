@@ -2,6 +2,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
+import { ShopVisibilityRepository, type ShopVisibilityViewer } from "./shop-visibility.repository";
+import type { ShopVisibilityRepositoryPort } from "../services/shop-visibility.service";
 
 export type EntityTargetType = "shop" | "technician" | "service" | "technician_service";
 
@@ -78,6 +80,7 @@ export interface RecordSystemEntityShareInput {
   target: EntityTarget;
   idempotencyKey: string;
   requestFingerprint: string;
+  viewer?: ShopVisibilityViewer;
 }
 
 export type RecordEntityShareOutcome =
@@ -90,17 +93,19 @@ export interface EntityFavoriteListInput extends PaginationInput {
   page: number;
   pageSize: number;
   targetType?: EntityTargetType;
+  viewer?: ShopVisibilityViewer;
 }
 
 export interface EntityEngagementRepositoryPort {
   setFavorite(
     userId: number,
     target: EntityTarget,
-    isFavorited: boolean
+    isFavorited: boolean,
+    viewer?: ShopVisibilityViewer
   ): Promise<EntityFavoriteState | null>;
-  getFavoriteStatuses(userId: number, targets: EntityTarget[]): Promise<EntityFavoriteState[]>;
+  getFavoriteStatuses(userId: number, targets: EntityTarget[], viewer?: ShopVisibilityViewer): Promise<EntityFavoriteState[]>;
   listFavorites(input: EntityFavoriteListInput): Promise<PaginatedResponse<EntityFavoriteListItem>>;
-  resolveTarget(target: EntityTarget): Promise<ResolvedEntityTarget | null>;
+  resolveTarget(target: EntityTarget, viewer?: ShopVisibilityViewer): Promise<ResolvedEntityTarget | null>;
   recordSystemShare(input: RecordSystemEntityShareInput): Promise<RecordEntityShareOutcome>;
 }
 
@@ -109,7 +114,10 @@ interface ResolvedFavoriteListTarget extends ResolvedEntityTarget {
   card: EntityFavoriteCard;
 }
 
-const activeShopWhere = (publicIds: string[]): Prisma.ShopWhereInput => ({
+const activeShopWhere = (
+  publicIds: string[],
+  visibilityWhere: Prisma.ShopWhereInput
+): Prisma.ShopWhereInput => ({
   deletedAt: null,
   status: "published",
   publicIdentifier: {
@@ -120,7 +128,8 @@ const activeShopWhere = (publicIds: string[]): Prisma.ShopWhereInput => ({
       searchable: true,
       deletedAt: null
     }
-  }
+  },
+  ...visibilityWhere
 });
 
 const activeTechnicianWhere = (publicIds: string[]): Prisma.TechnicianProfileWhereInput => ({
@@ -148,19 +157,29 @@ const activeTechnicianWhere = (publicIds: string[]): Prisma.TechnicianProfileWhe
   }
 });
 
-const activeServiceWhere = (publicIds: string[]): Prisma.ServiceWhereInput => ({
+const activeServiceWhere = (
+  publicIds: string[],
+  visibilityWhere: Prisma.ShopWhereInput
+): Prisma.ServiceWhereInput => ({
   deletedAt: null,
   status: "published",
   ...(publicIds.length > 0 ? { publicId: { in: publicIds } } : {}),
-  shop: { is: { deletedAt: null, status: "published" } }
+  shop: { is: { deletedAt: null, status: "published", ...visibilityWhere } }
 });
 
-const activeTechnicianServiceWhere = (publicIds: string[]): Prisma.TechnicianServiceWhereInput => ({
+const activeTechnicianServiceWhere = (
+  publicIds: string[],
+  visibilityWhere: Prisma.ShopWhereInput
+): Prisma.TechnicianServiceWhereInput => ({
   deletedAt: null,
   isActive: true,
   reviewStatus: "APPROVED",
   ...(publicIds.length > 0 ? { publicId: { in: publicIds } } : {}),
-  technicianProfile: { is: activeTechnicianWhere([]) }
+  technicianProfile: { is: activeTechnicianWhere([]) },
+  OR: [
+    { shopId: null },
+    { shop: { is: { deletedAt: null, status: "published", ...visibilityWhere } } }
+  ]
 });
 
 const favoriteTargetWhere = (target: ResolvedEntityTarget): Prisma.EntityFavoriteWhereInput => {
@@ -192,14 +211,18 @@ const activeKeyFor = (userId: number, target: ResolvedEntityTarget): string =>
   `${userId}:${target.targetType}:${resolvedInternalId(target)}`;
 
 export class EntityEngagementRepository implements EntityEngagementRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(
+    private readonly client: PrismaClient = prisma,
+    private readonly shopVisibility: ShopVisibilityRepositoryPort = new ShopVisibilityRepository(client)
+  ) {}
 
   public async setFavorite(
     userId: number,
     target: EntityTarget,
-    isFavorited: boolean
+    isFavorited: boolean,
+    viewer?: ShopVisibilityViewer
   ): Promise<EntityFavoriteState | null> {
-    const [resolved] = await this.resolveTargets([target]);
+    const [resolved] = await this.resolveTargets([target], viewer);
     if (!resolved) {
       return null;
     }
@@ -257,9 +280,10 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
 
   public async getFavoriteStatuses(
     userId: number,
-    targets: EntityTarget[]
+    targets: EntityTarget[],
+    viewer?: ShopVisibilityViewer
   ): Promise<EntityFavoriteState[]> {
-    const resolved = await this.resolveTargets(targets);
+    const resolved = await this.resolveTargets(targets, viewer);
     return this.readFavoriteStates(userId, resolved);
   }
 
@@ -267,17 +291,20 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
     input: EntityFavoriteListInput
   ): Promise<PaginatedResponse<EntityFavoriteListItem>> {
     const pagination = toPrismaPagination(input);
+    const visibilityWhere = await this.shopVisibility.buildVisibilityWhere(
+      input.viewer
+    ) as Prisma.ShopWhereInput;
     const shopVisibility: Prisma.EntityFavoriteWhereInput = {
-      shop: { is: activeShopWhere([]) }
+      shop: { is: activeShopWhere([], visibilityWhere) }
     };
     const technicianVisibility: Prisma.EntityFavoriteWhereInput = {
       technicianProfile: { is: activeTechnicianWhere([]) }
     };
     const serviceVisibility: Prisma.EntityFavoriteWhereInput = {
-      service: { is: activeServiceWhere([]) }
+      service: { is: activeServiceWhere([], visibilityWhere) }
     };
     const technicianServiceVisibility: Prisma.EntityFavoriteWhereInput = {
-      technicianService: { is: activeTechnicianServiceWhere([]) }
+      technicianService: { is: activeTechnicianServiceWhere([], visibilityWhere) }
     };
     const visibilityByType: Record<EntityTargetType, Prisma.EntityFavoriteWhereInput> = {
       shop: shopVisibility,
@@ -560,14 +587,17 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
     );
   }
 
-  public async resolveTarget(target: EntityTarget): Promise<ResolvedEntityTarget | null> {
-    return (await this.resolveTargets([target]))[0] ?? null;
+  public async resolveTarget(
+    target: EntityTarget,
+    viewer?: ShopVisibilityViewer
+  ): Promise<ResolvedEntityTarget | null> {
+    return (await this.resolveTargets([target], viewer))[0] ?? null;
   }
 
   public async recordSystemShare(
     input: RecordSystemEntityShareInput
   ): Promise<RecordEntityShareOutcome> {
-    const target = await this.resolveTarget(input.target);
+    const target = await this.resolveTarget(input.target, input.viewer);
     if (!target) {
       return { status: "target_not_found" };
     }
@@ -651,7 +681,10 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
     }
   }
 
-  private async resolveTargets(targets: EntityTarget[]): Promise<ResolvedEntityTarget[]> {
+  private async resolveTargets(
+    targets: EntityTarget[],
+    viewer?: ShopVisibilityViewer
+  ): Promise<ResolvedEntityTarget[]> {
     if (targets.length === 0) {
       return [];
     }
@@ -679,10 +712,11 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
           .map((target) => target.publicId)
       )
     ];
+    const visibilityWhere = await this.shopVisibility.buildVisibilityWhere(viewer) as Prisma.ShopWhereInput;
     const [shops, technicians, services, technicianServices] = await Promise.all([
       shopPublicIds.length > 0
         ? this.client.shop.findMany({
-            where: activeShopWhere(shopPublicIds),
+            where: activeShopWhere(shopPublicIds, visibilityWhere),
             select: { id: true, publicIdentifier: { select: { publicId: true } } }
           })
         : [],
@@ -717,13 +751,13 @@ export class EntityEngagementRepository implements EntityEngagementRepositoryPor
         : [],
       servicePublicIds.length > 0
         ? this.client.service.findMany({
-            where: activeServiceWhere(servicePublicIds),
+            where: activeServiceWhere(servicePublicIds, visibilityWhere),
             select: { id: true, publicId: true }
           })
         : [],
       technicianServicePublicIds.length > 0
         ? this.client.technicianService.findMany({
-            where: activeTechnicianServiceWhere(technicianServicePublicIds),
+            where: activeTechnicianServiceWhere(technicianServicePublicIds, visibilityWhere),
             select: { id: true, publicId: true }
           })
         : []

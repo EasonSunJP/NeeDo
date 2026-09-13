@@ -238,7 +238,8 @@ describe("Step 08 core read API", () => {
         categoryId: 1,
         city: "Tokyo",
         sort: "rating_desc"
-      })
+      }),
+      undefined
     );
   });
 
@@ -259,14 +260,17 @@ describe("Step 08 core read API", () => {
       .expect(200);
 
     expect(fixture.coreReadRepository.listServices).toHaveBeenCalledWith(
-      expect.objectContaining({ latitude: 35.6812, longitude: 139.7671 })
+      expect.objectContaining({ latitude: 35.6812, longitude: 139.7671 }),
+      undefined
     );
     expect(fixture.coreReadRepository.getHomeRecommendations).toHaveBeenCalledWith(
-      expect.objectContaining({ latitude: 35.6812, longitude: 139.7671 })
+      expect.objectContaining({ latitude: 35.6812, longitude: 139.7671 }),
+      undefined
     );
     expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenCalledWith(
       "s1234567890",
-      expect.objectContaining({ latitude: 35.6812, longitude: 139.7671 })
+      expect.objectContaining({ latitude: 35.6812, longitude: 139.7671 }),
+      undefined
     );
   });
 
@@ -299,7 +303,8 @@ describe("Step 08 core read API", () => {
         keyword: "shiatsu",
         categoryId: 1,
         city: "Tokyo"
-      })
+      }),
+      undefined
     );
     expect(fixture.searchQueryRecorder.recordSuccessfulSearch).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -338,7 +343,8 @@ describe("Step 08 core read API", () => {
         entityType: "shop",
         keywords: ["LifeDance", "家政"],
         categoryIds: [3, 9]
-      })
+      }),
+      undefined
     );
 
     const technicianResponse = await request(fixture.app)
@@ -349,7 +355,8 @@ describe("Step 08 core read API", () => {
     expect(technicianResponse.body.data.list[0]).not.toHaveProperty("nearbyRank");
     expect(technicianResponse.body.data.list[0]).not.toHaveProperty("resolvedRadiusKm");
     expect(fixture.coreReadRepository.searchTechnicians).toHaveBeenCalledWith(
-      expect.objectContaining({ entityType: "technician", keywords: ["ひかり"] })
+      expect.objectContaining({ entityType: "technician", keywords: ["ひかり"] }),
+      undefined
     );
   });
 
@@ -359,7 +366,8 @@ describe("Step 08 core read API", () => {
     await request(fixture.app).get("/api/v1/search?keyword=shiatsu").expect(200);
 
     expect(fixture.coreReadRepository.search).toHaveBeenCalledWith(
-      expect.objectContaining({ entityType: "service", keyword: "shiatsu" })
+      expect.objectContaining({ entityType: "service", keyword: "shiatsu" }),
+      undefined
     );
   });
 
@@ -406,22 +414,27 @@ describe("Step 08 core read API", () => {
       1,
       expect.objectContaining({ keywords: ["massage"], categoryIds: [3] }),
       { latitude: 35.6762, longitude: 139.6503 },
-      3
+      3,
+      undefined
     );
     expect(fixture.coreReadRepository.findEligibleTechniciansWithinBounds).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ keywords: ["massage"], categoryIds: [3] }),
       { latitude: 35.6762, longitude: 139.6503 },
-      4
+      6,
+      undefined
     );
-    expect(fixture.coreReadRepository.loadTechnicianCardsByRankedIds).toHaveBeenCalledWith([1]);
+    expect(fixture.coreReadRepository.loadTechnicianCardsByRankedIds).toHaveBeenCalledWith(
+      [1],
+      undefined
+    );
     expect(response.body.data).toEqual({
       list: [
         expect.objectContaining({
           id: 1,
           distanceKm: 0,
           nearbyRank: 2,
-          resolvedRadiusKm: 4
+          resolvedRadiusKm: 6
         })
       ],
       total: 3,
@@ -493,10 +506,11 @@ describe("Step 08 core read API", () => {
       .expect(200);
 
     expect(publicResponse.body.data).toEqual(legacyResponse.body.data);
-    expect(fixture.coreReadRepository.findServiceDetail).toHaveBeenNthCalledWith(1, 1);
+    expect(fixture.coreReadRepository.findServiceDetail).toHaveBeenNthCalledWith(1, 1, undefined);
     expect(fixture.coreReadRepository.findServiceDetail).toHaveBeenNthCalledWith(
       2,
-      servicePublicId
+      servicePublicId,
+      undefined
     );
   });
 
@@ -512,14 +526,17 @@ describe("Step 08 core read API", () => {
 
     expect(numericResponse.body.data).toEqual(serviceReviews);
     expect(publicResponse.body.data).toEqual(serviceReviews);
-    expect(fixture.coreReadRepository.listServiceReviews).toHaveBeenNthCalledWith(1, 1, {
-      page: 1,
-      pageSize: 20
-    });
+    expect(fixture.coreReadRepository.listServiceReviews).toHaveBeenNthCalledWith(
+      1,
+      1,
+      { page: 1, pageSize: 20 },
+      undefined
+    );
     expect(fixture.coreReadRepository.listServiceReviews).toHaveBeenNthCalledWith(
       2,
       serviceCard.publicId,
-      { page: 1, pageSize: 20 }
+      { page: 1, pageSize: 20 },
+      undefined
     );
     expect(JSON.stringify(publicResponse.body)).not.toContain("needoId");
     expect(JSON.stringify(publicResponse.body)).not.toContain("email");
@@ -561,7 +578,11 @@ describe("Step 08 core read API", () => {
       name: "Aoyama Care Studio",
       completedOrderCount: 1999
     });
-    expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(shopCard.publicId);
+    expect(fixture.coreReadRepository.findShopDetail).toHaveBeenCalledWith(
+      shopCard.publicId,
+      undefined,
+      undefined
+    );
   });
 
   it("resolves formal technician identifiers to the same complete public detail", async () => {
@@ -583,11 +604,17 @@ describe("Step 08 core read API", () => {
       acceptanceRatePercent: 98,
       reviewTagSummary
     });
-    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(1, 1, {});
+    expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(
+      1,
+      1,
+      {},
+      undefined
+    );
     expect(fixture.coreReadRepository.findTechnicianDetail).toHaveBeenNthCalledWith(
       2,
       technicianCard.publicId,
-      {}
+      {},
+      undefined
     );
   });
 
@@ -615,7 +642,7 @@ describe("Step 08 core read API", () => {
     expect(fixture.coreReadRepository.findServiceDetail).not.toHaveBeenCalled();
 
     await request(fixture.app).get("/api/v1/services/123").expect(200);
-    expect(fixture.coreReadRepository.findServiceDetail).toHaveBeenCalledWith(123);
+    expect(fixture.coreReadRepository.findServiceDetail).toHaveBeenCalledWith(123, undefined);
     expect(fixture.coreReadRepository.findServiceDetail).not.toHaveBeenCalledWith("123");
   });
 });

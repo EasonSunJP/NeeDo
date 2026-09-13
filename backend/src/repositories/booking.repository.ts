@@ -279,6 +279,45 @@ const currentBookableScheduleSlotSourcesWhere = (): {
   ]
 });
 
+const publicTechnicianProfileWhere = (): Prisma.TechnicianProfileWhereInput => ({
+  deletedAt: null,
+  status: "published",
+  visibility: "public",
+  user: {
+    is: {
+      deletedAt: null,
+      isActive: true,
+      identities: {
+        some: {
+          deletedAt: null,
+          isActive: true,
+          type: { in: ["technician", "service", "s"] },
+          publicIdentifier: {
+            is: { kind: "S", status: "ACTIVE", deletedAt: null }
+          }
+        }
+      }
+    }
+  }
+});
+
+const currentPublicTechnicianProfileWhere = (
+  shopId: number,
+  now: Date
+): Prisma.TechnicianProfileWhereInput => ({
+  ...publicTechnicianProfileWhere(),
+  technicianShopAffiliations: {
+    some: {
+      shopId,
+      activeKey: { not: null },
+      workStatus: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      deletedAt: null
+    }
+  }
+});
+
 export type AvailabilityWindowPayload = {
   id: number;
   shopId: number;
@@ -1012,7 +1051,8 @@ export type OrderTransitionGuardedResult =
 export interface BookingRepositoryPort {
   findActiveCustomerUserIdByIdentityId?: (identityId: number) => Promise<number | null>;
   listAvailableSlots: (
-    input: AvailabilityListInput
+    input: AvailabilityListInput,
+    shopVisibilityWhere?: Record<string, unknown>
   ) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
   listAvailabilityWindows?: (
     input: AvailabilityWindowListInput
@@ -1339,10 +1379,38 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   public async listAvailableSlots(
-    input: AvailabilityListInput
+    input: AvailabilityListInput,
+    shopVisibilityWhere: Record<string, unknown> = { visibility: "public" }
   ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
     const pagination = toPrismaPagination(input);
-    const currentLocationShopIds = await this.listShopsWithCurrentVerifiedServiceLocations(input);
+    const now = new Date();
+    let resolvedShopId = input.shopId;
+    if (input.serviceId) {
+      const service = await this.client.service.findFirst({
+        where: {
+          id: input.serviceId,
+          deletedAt: null,
+          status: "published",
+          category: { is: { deletedAt: null, isActive: true } },
+          shop: {
+            is: {
+              deletedAt: null,
+              status: "published",
+              publicIdentifier: {
+                is: { kind: "SHOP", status: "ACTIVE", deletedAt: null }
+              }
+            }
+          },
+          ...(input.shopId ? { shopId: input.shopId } : {})
+        },
+        select: { shopId: true }
+      });
+      if (!service) return buildPaginatedResponse([], 0, pagination);
+      resolvedShopId = service.shopId;
+    }
+
+    const scopedInput = { ...input, shopId: resolvedShopId };
+    const currentLocationShopIds = await this.listShopsWithCurrentVerifiedServiceLocations(scopedInput);
     const where: Prisma.ScheduleSlotWhereInput = {
       deletedAt: null,
       AND: [
@@ -1365,7 +1433,21 @@ export class BookingRepository implements BookingRepositoryPort {
               }
             }
           ]
-        }
+        },
+        ...(input.serviceId && resolvedShopId
+          ? [
+              {
+                OR: [
+                  { technicianProfileId: null },
+                  {
+                    technicianProfile: {
+                      is: currentPublicTechnicianProfileWhere(resolvedShopId, now)
+                    }
+                  }
+                ]
+              }
+            ]
+          : [])
       ],
       ...(input.includeUnavailable
         ? {}
@@ -1373,8 +1455,13 @@ export class BookingRepository implements BookingRepositoryPort {
             status: "AVAILABLE",
             bookedCount: { lt: this.client.scheduleSlot.fields.capacity }
           }),
-      ...(input.serviceId ? { serviceId: input.serviceId } : {}),
-      ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
+      ...(input.serviceId
+        ? { serviceId: input.serviceId, technicianServiceId: null }
+        : {}),
+      ...(input.technicianServiceId
+        ? { technicianServiceId: input.technicianServiceId, serviceId: null }
+        : {}),
+      ...(resolvedShopId ? { shopId: resolvedShopId } : {}),
       startsAt: { gte: input.from },
       endsAt: { lte: input.to },
       ...(input.serviceId
@@ -1397,6 +1484,7 @@ export class BookingRepository implements BookingRepositoryPort {
       shop: {
         deletedAt: null,
         status: "published",
+        ...(shopVisibilityWhere as Prisma.ShopWhereInput),
         entitySuspensions: {
           none: { activeKey: { not: null }, status: "active", deletedAt: null }
         }
@@ -2154,7 +2242,12 @@ export class BookingRepository implements BookingRepositoryPort {
             const pricingMode = this.pricingModeFromDb(slot.shop.pricingMode);
             if (
               slot.technicianProfileId &&
-              !(await this.hasActiveScheduleAffiliation(tx, slot.shopId, slot.technicianProfileId))
+              !(await this.hasActiveScheduleAffiliation(
+                tx,
+                slot.shopId,
+                slot.technicianProfileId,
+                { requirePublic: true }
+              ))
             ) {
               return null;
             }
@@ -4444,7 +4537,8 @@ export class BookingRepository implements BookingRepositoryPort {
             !(await this.hasActiveScheduleAffiliation(
               tx,
               current.shopId,
-              current.technicianProfileId
+              current.technicianProfileId,
+              { requirePublic: true }
             ))
           ) {
             return { outcome: "invalid_state" as const };
@@ -5155,18 +5249,22 @@ export class BookingRepository implements BookingRepositoryPort {
   private async hasActiveScheduleAffiliation(
     transaction: Prisma.TransactionClient,
     shopId: number,
-    technicianProfileId: number
+    technicianProfileId: number,
+    options?: { requirePublic?: boolean }
   ): Promise<boolean> {
+    const now = new Date();
     const affiliation = await transaction.technicianShopAffiliation.findFirst({
       where: {
         shopId,
         technicianProfileId,
         activeKey: { not: null },
         workStatus: "ACTIVE",
-        startsAt: { lte: new Date() },
-        endsAt: null,
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
         deletedAt: null,
-        technicianProfile: { deletedAt: null, status: "published" },
+        technicianProfile: options?.requirePublic
+          ? publicTechnicianProfileWhere()
+          : { deletedAt: null, status: "published" },
         shop: {
           deletedAt: null,
           status: "published",

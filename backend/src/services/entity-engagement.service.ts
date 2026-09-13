@@ -16,6 +16,7 @@ import type {
 } from "./personal-identity-scope.service";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
+import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
 
 export type { EntityEngagementRepositoryPort } from "../repositories/entity-engagement.repository";
 
@@ -37,7 +38,8 @@ export class EntityEngagementService {
     const result = await this.repository.setFavorite(
       auth.userId,
       { targetType, publicId },
-      isFavorited
+      isFavorited,
+      this.visibilityViewer(auth)
     );
     if (!result) {
       throw this.targetNotFound();
@@ -49,7 +51,11 @@ export class EntityEngagementService {
     auth: AuthenticatedAccessContext,
     targets: EntityTarget[]
   ): Promise<EntityFavoriteState[]> {
-    const states = await this.repository.getFavoriteStatuses(auth.userId, targets);
+    const states = await this.repository.getFavoriteStatuses(
+      auth.userId,
+      targets,
+      this.visibilityViewer(auth)
+    );
     if (states.length !== targets.length) {
       throw this.targetNotFound();
     }
@@ -60,7 +66,11 @@ export class EntityEngagementService {
     auth: AuthenticatedAccessContext,
     input: { page: number; pageSize: number; targetType?: EntityTargetType }
   ): Promise<PaginatedResponse<EntityFavoriteListItem>> {
-    return this.repository.listFavorites({ ...input, userId: auth.userId });
+    return this.repository.listFavorites({
+      ...input,
+      userId: auth.userId,
+      viewer: this.visibilityViewer(auth)
+    });
   }
 
   public async recordNeedoShare(
@@ -72,7 +82,10 @@ export class EntityEngagementService {
       idempotencyKey: string;
     }
   ): Promise<EntityShareReceipt> {
-    const target = await this.repository.resolveTarget({ targetType, publicId });
+    const target = await this.repository.resolveTarget(
+      { targetType, publicId },
+      this.visibilityViewer(auth)
+    );
     if (!target) {
       throw this.targetNotFound();
     }
@@ -114,7 +127,8 @@ export class EntityEngagementService {
         actorIdentityId,
         targetType,
         publicId
-      })
+      }),
+      viewer: this.visibilityViewer(auth)
     });
     if (outcome.status === "target_not_found") {
       throw this.targetNotFound();
@@ -146,5 +160,16 @@ export class EntityEngagementService {
 
   private shareFingerprint(payload: Record<string, string | number>): string {
     return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  }
+
+  private visibilityViewer(auth: AuthenticatedAccessContext): ShopVisibilityViewer {
+    const selectedShopId = auth.selectedMerchantShopId ?? auth.merchantPreviewShopId;
+    return {
+      userId: auth.userId,
+      identityId: auth.currentIdentityId,
+      identityType: auth.currentIdentityType,
+      identityScopeType: selectedShopId ? "shop" : auth.currentIdentityScopeType,
+      identityScopeId: selectedShopId ?? auth.currentIdentityScopeId
+    };
   }
 }

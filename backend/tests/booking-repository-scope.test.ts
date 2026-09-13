@@ -643,6 +643,7 @@ describe("BookingRepository order list scope", () => {
       shop: {
         deletedAt: null,
         status: "published",
+        visibility: "public",
         entitySuspensions: {
           none: { activeKey: { not: null }, status: "active", deletedAt: null }
         }
@@ -748,7 +749,11 @@ describe("BookingRepository order list scope", () => {
         }
       ])
     };
-    const repository = new BookingRepository({ scheduleSlot, shopServiceLocation } as never);
+    const repository = new BookingRepository({
+      service: { findFirst: jest.fn(async () => ({ shopId: 16 })) },
+      scheduleSlot,
+      shopServiceLocation
+    } as never);
 
     await repository.listAvailableSlots({
       serviceId: 79,
@@ -773,6 +778,111 @@ describe("BookingRepository order list scope", () => {
     expect(scheduleSlot.count).toHaveBeenCalledWith({ where });
   });
 
+  it("keeps shop-service technician slots on the service shop and a current public affiliation", async () => {
+    const capacityField = Symbol("capacity");
+    const scheduleSlot = {
+      fields: { capacity: capacityField },
+      findMany: jest.fn(async (args: { where: Record<string, unknown> }) => {
+        void args;
+        return [];
+      }),
+      count: jest.fn(async () => 0)
+    };
+    const service = {
+      findFirst: jest.fn(async () => ({ shopId: 16 }))
+    };
+    const repository = new BookingRepository({
+      service,
+      scheduleSlot,
+      shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(16)]) }
+    } as never);
+
+    await repository.listAvailableSlots({
+      serviceId: 79,
+      from: new Date("2026-09-13T00:00:00.000Z"),
+      to: new Date("2026-09-14T00:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    });
+
+    expect(service.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 79, deletedAt: null, status: "published" }),
+      select: { shopId: true }
+    }));
+    const where = scheduleSlot.findMany.mock.calls[0]?.[0]?.where;
+    expect(where).toEqual(expect.objectContaining({
+      serviceId: 79,
+      technicianServiceId: null,
+      shopId: 16
+    }));
+    expect(where.AND).toEqual(expect.arrayContaining([
+      {
+        OR: [
+          { technicianProfileId: null },
+          {
+            technicianProfile: {
+              is: expect.objectContaining({
+                deletedAt: null,
+                status: "published",
+                visibility: "public",
+                user: {
+                  is: expect.objectContaining({
+                    deletedAt: null,
+                    isActive: true,
+                    identities: {
+                      some: expect.objectContaining({
+                        deletedAt: null,
+                        isActive: true,
+                        publicIdentifier: {
+                          is: { kind: "S", status: "ACTIVE", deletedAt: null }
+                        }
+                      })
+                    }
+                  })
+                },
+                technicianShopAffiliations: {
+                  some: expect.objectContaining({
+                    shopId: 16,
+                    activeKey: { not: null },
+                    workStatus: "ACTIVE",
+                    startsAt: { lte: expect.any(Date) },
+                    OR: [{ endsAt: null }, { endsAt: { gt: expect.any(Date) } }],
+                    deletedAt: null
+                  })
+                }
+              })
+            }
+          }
+        ]
+      }
+    ]));
+  });
+
+  it("returns no public slots when the requested shop service is not currently publishable", async () => {
+    const scheduleSlot = {
+      fields: { capacity: Symbol("capacity") },
+      findMany: jest.fn(async () => []),
+      count: jest.fn(async () => 0)
+    };
+    const shopServiceLocation = { findMany: jest.fn(async () => []) };
+    const repository = new BookingRepository({
+      service: { findFirst: jest.fn(async () => null) },
+      scheduleSlot,
+      shopServiceLocation
+    } as never);
+
+    await expect(repository.listAvailableSlots({
+      serviceId: 79,
+      from: new Date("2026-09-13T00:00:00.000Z"),
+      to: new Date("2026-09-14T00:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    })).resolves.toEqual({ list: [], total: 0, page: 1, page_size: 100 });
+    expect(shopServiceLocation.findMany).not.toHaveBeenCalled();
+    expect(scheduleSlot.findMany).not.toHaveBeenCalled();
+    expect(scheduleSlot.count).not.toHaveBeenCalled();
+  });
+
   it("requires every present source relation to remain currently bookable", async () => {
     const scheduleSlot = {
       fields: { capacity: Symbol("capacity") },
@@ -783,6 +893,7 @@ describe("BookingRepository order list scope", () => {
       count: jest.fn(async () => 0)
     };
     const repository = new BookingRepository({
+      service: { findFirst: jest.fn(async () => ({ shopId: 11 })) },
       scheduleSlot,
       shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(11)]) }
     } as never);
@@ -838,6 +949,7 @@ describe("BookingRepository order list scope", () => {
       count: jest.fn(async () => 0)
     };
     const repository = new BookingRepository({
+      service: { findFirst: jest.fn(async () => ({ shopId: 11 })) },
       scheduleSlot,
       shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(11)]) }
     } as never);

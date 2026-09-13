@@ -66,6 +66,27 @@ export type UserReviewAmendmentInput = {
   expectedVersion: number;
 };
 
+export type OperationsReviewStatus = "original" | "amended" | "system";
+
+export type OperationsReview = Omit<ReceivedUserReview, "targetType"> & {
+  targetType: "customer" | "technician";
+  status: OperationsReviewStatus;
+  customer: { needoId: string; displayName: string };
+  shop: { id: number; publicId: string | null; name: string };
+  technician: { id: number; publicId: string; displayName: string } | null;
+};
+
+export type OperationsReviewQuery = {
+  page?: number;
+  page_size?: 20;
+  keyword?: string;
+  rating?: 1 | 2 | 3 | 4 | 5;
+  status?: OperationsReviewStatus;
+  targetType?: "customer" | "technician";
+  from?: string;
+  to?: string;
+};
+
 export type UserUsagePeriod = "last7days" | "thisWeek" | "last30days" | "thisMonth" | "thisYear" | "custom";
 export type UserUsageQuery = {
   page?: number;

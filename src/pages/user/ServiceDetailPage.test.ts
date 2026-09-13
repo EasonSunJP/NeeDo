@@ -3,8 +3,19 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { httpClient } from "../../api/httpClient";
-import { coreReadApi, coreReadIdFromRoute, mapCoreServiceToServiceItem, type CoreServiceDetail } from "../../features/core-read/api";
-import { buildServiceTagLabels, ServiceReviewCard } from "./ServiceDetailPage";
+import {
+  coreReadApi,
+  coreReadIdFromRoute,
+  mapCoreServiceToServiceItem,
+  type CoreServiceDetail,
+  type CoreTechnicianCard
+} from "../../features/core-read/api";
+import type { BookingScheduleSlot } from "../../features/booking/api";
+import {
+  buildServiceTagLabels,
+  resolveBookableServiceTechnicians,
+  ServiceReviewCard
+} from "./ServiceDetailPage";
 import serviceDetailSource from "./ServiceDetailPage.tsx?raw";
 
 const clientStyles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
@@ -23,7 +34,7 @@ describe("ServiceDetailPage formal service routes", () => {
 
     expect(id).toBe(17);
     await coreReadApi.getServiceDetail(id!);
-    expect(httpClient.request).toHaveBeenCalledWith("/services/17", { auth: false });
+    expect(httpClient.request).toHaveBeenCalledWith("/services/17");
   });
 
   it("preserves a valid service UUID instead of coercing it to NaN", async () => {
@@ -32,7 +43,7 @@ describe("ServiceDetailPage formal service routes", () => {
 
     expect(id).toBe(uuid);
     await coreReadApi.getServiceDetail(id!);
-    expect(httpClient.request).toHaveBeenCalledWith(`/services/${uuid}`, { auth: false });
+    expect(httpClient.request).toHaveBeenCalledWith(`/services/${uuid}`);
     expect(httpClient.request).not.toHaveBeenCalledWith("/services/NaN", expect.anything());
   });
 
@@ -99,6 +110,69 @@ describe("ServiceDetailPage formal service routes", () => {
   it("opens a formal technician through the canonical public profile path", () => {
     expect(serviceDetailSource).toContain("getTechnicianDynamicPath(technician)");
     expect(serviceDetailSource).not.toContain('to={`/profiles/technician/${technician.id}`}');
+  });
+
+  it("derives selectable technicians from the same formal availability used by checkout", () => {
+    expect(serviceDetailSource).toContain("loadAvailabilityWindow");
+    expect(serviceDetailSource).toContain("resolveBookableServiceTechnicians");
+    expect(serviceDetailSource).toContain("shopId: formalService.shop.id");
+    expect(serviceDetailSource).not.toContain("serviceQuery.data?.technician ?");
+  });
+
+  it("deduplicates current same-service same-shop technician slots against public shop cards", () => {
+    const technician = (id: number): CoreTechnicianCard => ({
+      id,
+      publicId: `S${id}`,
+      displayName: `技师 ${id}`,
+      city: "東京都",
+      avatarUrl: null,
+      reviewSummary: { ratingAverage: "5.00", reviewCount: 1, latestReviewAt: null, highlights: [] },
+      age: null,
+      favoriteCount: 0,
+      shareCount: 0,
+      completedOrderCount: 1,
+      acceptanceRatePercent: 100,
+      primaryService: null
+    });
+    const slot = (
+      id: number,
+      serviceId: number,
+      shopId: number,
+      technicianProfileId: number | null,
+      technicianServiceId: number | null = null
+    ): BookingScheduleSlot => ({
+      id,
+      serviceId,
+      technicianServiceId,
+      shopId,
+      technicianProfileId,
+      startsAt: "2026-09-13T12:00:00.000Z",
+      endsAt: "2026-09-13T13:00:00.000Z",
+      capacity: 1,
+      bookedCount: 0,
+      status: "available",
+      serviceName: "ボディケア 60分",
+      shopName: "LifeDance",
+      technicianName: technicianProfileId ? `技师 ${technicianProfileId}` : null,
+      priceAmount: "6000.00",
+      currency: "JPY",
+      durationMinutes: 60
+    });
+
+    expect(
+      resolveBookableServiceTechnicians(
+        79,
+        16,
+        [
+          slot(1, 79, 16, 7),
+          slot(2, 79, 16, 7),
+          slot(3, 80, 16, 8),
+          slot(4, 79, 17, 9),
+          slot(5, 79, 16, 10, 1928)
+        ],
+        [technician(7), technician(8), technician(9), technician(10)]
+      ).map((item) => item.id)
+    ).toEqual(["7"]);
   });
 
   it("deduplicates overlapping service areas and tags before rendering keyed chips", () => {

@@ -3,7 +3,10 @@ import { Router } from "express";
 import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { BookingController } from "../controllers/booking.controller";
-import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
+import {
+  createAuthenticateMiddleware,
+  createOptionalAuthenticateMiddleware
+} from "../middlewares/authenticate.middleware";
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { BookingRepository } from "../repositories/booking.repository";
@@ -57,6 +60,7 @@ import {
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 import { createUserExperienceServiceForRoutes } from "./user-experience-service.factory";
 import { TechnicianAutomationRepository } from "../repositories/technician-automation.repository";
+import { ShopVisibilityRepository } from "../repositories/shop-visibility.repository";
 import { TechnicianAutomationProcessor } from "../services/technician-automation-processor";
 
 export const BOOKING_ROUTE_PERMISSIONS = {
@@ -86,6 +90,7 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
   const router = Router();
   const authService = createAuthServiceForRoutes(config, dependencies);
   const authenticate = createAuthenticateMiddleware(authService);
+  const optionalAuthenticate = createOptionalAuthenticateMiddleware(authService);
   const authorize = createAuthorizeMiddleware;
   const feeCalculationService = new FeeCalculationService(
     dependencies.feeRuleRepository ?? new FeeRuleRepository()
@@ -136,7 +141,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     dependencies.userPolicyEnforcementService,
     dependencies.platformAccessPolicyService,
     dependencies.workStatusService??new WorkStatusService(undefined,undefined,dependencies.realtimeEventGateway),
-    dependencies.liveDashboardEventGateway
+    dependencies.liveDashboardEventGateway,
+    dependencies.shopVisibilityRepository ?? new ShopVisibilityRepository()
   );
   const automationProcessor =
     dependencies.technicianAutomationProcessor ??
@@ -173,6 +179,7 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
 
   router.get(
     "/schedule/availability",
+    optionalAuthenticate,
     validateRequest({ query: availabilityListQuerySchema }),
     controller.listAvailableSlots
   );

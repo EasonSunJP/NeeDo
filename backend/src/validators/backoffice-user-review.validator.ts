@@ -19,6 +19,28 @@ export const backofficeUserReviewListQuerySchema = z
   })
   .strict();
 
+export const backofficeOperationsReviewListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().default(1),
+    page_size: z.coerce
+      .number()
+      .int()
+      .refine((value) => value === 20, { message: "page_size must be 20" })
+      .default(20),
+    keyword: z.string().trim().min(1).max(100).optional(),
+    rating: z.coerce.number().int().min(1).max(5).optional(),
+    status: z.enum(["original", "amended", "system"]).optional(),
+    targetType: z.enum(["customer", "technician"]).optional(),
+    from: z.string().date().optional(),
+    to: z.string().date().optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.from && value.to && value.from > value.to) {
+      context.addIssue({ code: "custom", message: "from must not be after to" });
+    }
+  });
+
 export const backofficeUserReviewAmendmentBodySchema = z
   .object({
     rating: z.number().int().min(1).max(5).optional(),
@@ -35,6 +57,9 @@ export const backofficeUserReviewAmendmentBodySchema = z
   );
 
 export type BackofficeUserReviewListQuery = z.infer<typeof backofficeUserReviewListQuerySchema>;
+export type BackofficeOperationsReviewListQuery = z.infer<
+  typeof backofficeOperationsReviewListQuerySchema
+>;
 export type BackofficeUserReviewAmendmentBody = z.infer<
   typeof backofficeUserReviewAmendmentBodySchema
 >;

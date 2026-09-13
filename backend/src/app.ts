@@ -182,6 +182,7 @@ import type { PayrollRepositoryPort } from "./services/payroll.service";
 import type { PayrollSchedulePolicyRepositoryPort } from "./services/payroll-schedule-policy.service";
 import type { PermissionRepositoryPort } from "./repositories/permission.repository";
 import type { PricingModeRepositoryPort } from "./services/pricing-mode.service";
+import type { ShopVisibilityRepositoryPort } from "./services/shop-visibility.service";
 import type { PublicIdentifierRepositoryPort } from "./services/public-identifier.service";
 import type { PlatformPartnerRepositoryPort } from "./services/platform-partner.service";
 import type { TechnicianShopAffiliationRepositoryPort } from "./services/technician-shop-affiliation.service";
@@ -272,6 +273,7 @@ import { createPayrollRoutes } from "./routes/payroll.routes";
 import { createPayrollSchedulePolicyRoutes } from "./routes/payroll-schedule-policy.routes";
 import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
+import { createShopVisibilityRoutes } from "./routes/shop-visibility.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createExchangeRoutes } from "./routes/exchange.routes";
 import { createExchangeIntelligenceServiceRoutes } from "./routes/exchange-intelligence-service.routes";
@@ -367,6 +369,7 @@ export interface AppDependencies {
   auditLogRepository?: AuditLogRepositoryPort;
   permissionRepository?: PermissionRepositoryPort;
   pricingModeRepository?: PricingModeRepositoryPort;
+  shopVisibilityRepository?: ShopVisibilityRepositoryPort;
   publicIdentifierRepository?: PublicIdentifierRepositoryPort;
   platformPartnerRepository?: PlatformPartnerRepositoryPort;
   technicianShopAffiliationRepository?: TechnicianShopAffiliationRepositoryPort;
@@ -485,7 +488,11 @@ export interface AppDependencies {
   backofficeUserReviewRepository?: BackofficeUserReviewRepositoryPort;
   backofficeUserReviewService?: Pick<
     BackofficeUserReviewService,
-    "listForOperations" | "listForMerchant" | "amend"
+    | "listOperationsReviews"
+    | "getOperationsReview"
+    | "listForOperations"
+    | "listForMerchant"
+    | "amend"
   >;
   backofficeUserUsageRepository?: BackofficeUserUsageRepositoryPort;
   backofficeUserUsageService?: Pick<
@@ -786,6 +793,7 @@ export const createApp = (
   mount("merchant-admin", createMerchantProfileRoutes(config, resolvedDependencies));
   mount("merchant-admin", createShopPresentationRoutes(config, resolvedDependencies));
   mount("merchant-admin", createPricingModeRoutes(config, resolvedDependencies));
+  mount("merchant-admin", createShopVisibilityRoutes(config, resolvedDependencies));
   mount("shared", createFeeRuleRoutes(config, resolvedDependencies));
   mount(
     ["backoffice", "merchant-admin"],

@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import type { PricingModeService } from "../services/pricing-mode.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
+import type { AuthenticatedAccessContext } from "../services/auth.service";
 import {
   bookingNavigationQuerySchema,
   myTechnicianServiceIdParamSchema,
@@ -274,7 +275,8 @@ export class PricingModeController {
           successResponse(
             await this.service.getBookingNavigation(
               shopId,
-              bookingNavigationQuerySchema.parse(request.query)
+              bookingNavigationQuerySchema.parse(request.query),
+              this.shopVisibilityViewer(response)
             )
           )
         );
@@ -297,7 +299,8 @@ export class PricingModeController {
             await this.service.listPublicTechnicianServices(
               shopId,
               technicianId,
-              bookingNavigationQuerySchema.parse(request.query)
+              bookingNavigationQuerySchema.parse(request.query),
+              this.shopVisibilityViewer(response)
             )
           )
         );
@@ -319,7 +322,8 @@ export class PricingModeController {
           successResponse(
             await this.service.listPublicTechnicianProfileServices(
               technicianId,
-              bookingNavigationQuerySchema.parse(request.query)
+              bookingNavigationQuerySchema.parse(request.query),
+              this.shopVisibilityViewer(response)
             )
           )
         );
@@ -327,4 +331,17 @@ export class PricingModeController {
       next(error);
     }
   };
+
+  private shopVisibilityViewer(response: Response) {
+    const auth = response.locals.auth as AuthenticatedAccessContext | undefined;
+    if (!auth) return undefined;
+    const selectedShopId = auth.selectedMerchantShopId ?? auth.merchantPreviewShopId;
+    return {
+      userId: auth.userId,
+      identityId: auth.currentIdentityId,
+      identityType: auth.currentIdentityType,
+      identityScopeType: selectedShopId ? "shop" : auth.currentIdentityScopeType,
+      identityScopeId: selectedShopId ?? auth.currentIdentityScopeId
+    };
+  }
 }

@@ -3,6 +3,7 @@ import type { BackofficeUserReviewService } from "../services/backoffice-user-re
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
+  backofficeOperationsReviewListQuerySchema,
   backofficeUserReviewAmendmentBodySchema,
   backofficeUserReviewListQuerySchema,
   backofficeUserReviewParamSchema,
@@ -11,6 +12,30 @@ import {
 
 export class BackofficeUserReviewController {
   public constructor(private readonly service: BackofficeUserReviewService) {}
+
+  public listOperationsReviews = this.handle(async (request, response) => {
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.listOperationsReviews(
+            getAuthenticatedAccess(response),
+            backofficeOperationsReviewListQuerySchema.parse(request.query)
+          )
+        )
+      );
+  });
+
+  public getOperationsReview = this.handle(async (request, response) => {
+    const { reviewId } = backofficeUserReviewParamSchema.parse(request.params);
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.getOperationsReview(getAuthenticatedAccess(response), reviewId)
+        )
+      );
+  });
 
   public listForOperations = this.handle(async (request, response) => {
     const { userId } = backofficeUserReviewUserParamSchema.parse(request.params);

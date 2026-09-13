@@ -6,6 +6,7 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { EntityEngagementRepository } from "../repositories/entity-engagement.repository";
+import { ShopVisibilityRepository } from "../repositories/shop-visibility.repository";
 import { EntityEngagementService } from "../services/entity-engagement.service";
 import {
   entityFavoriteListQuerySchema,
@@ -32,7 +33,11 @@ export const createEntityEngagementRoutes = (
     createAuthServiceForRoutes(config, dependencies)
   );
   const service = new EntityEngagementService(
-    dependencies.entityEngagementRepository ?? new EntityEngagementRepository(),
+    dependencies.entityEngagementRepository ??
+      new EntityEngagementRepository(
+        undefined,
+        dependencies.shopVisibilityRepository ?? new ShopVisibilityRepository()
+      ),
     dependencies.realtimeService,
     dependencies.personalIdentityScopeService
   );

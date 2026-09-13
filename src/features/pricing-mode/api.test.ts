@@ -39,6 +39,46 @@ describe("pricingModeApi technician portfolio", () => {
     updatedAt: "2026-09-01T00:00:00.000Z"
   } satisfies TechnicianServicePayload;
 
+  it("reads and updates the formal merchant shop visibility setting", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({
+      shopId: 71,
+      visibility: "network",
+      updatedAt: "2026-09-13T06:00:00.000Z",
+      updatedBy: 7
+    });
+
+    await pricingModeApi.getShopVisibility(71);
+    await pricingModeApi.updateShopVisibility(71, "limited");
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/merchant-admin/shops/71/visibility"
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/merchant-admin/shops/71/visibility",
+      { body: { visibility: "limited" }, method: "PUT" }
+    );
+  });
+
+  it("keeps optional viewer credentials enabled on shop-scoped public reads", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await pricingModeApi.getBookingNavigation(71);
+    await pricingModeApi.listPublicTechnicianServices(71, 3);
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/shops/71/booking-navigation",
+      { query: {} }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/shops/71/technicians/3/services",
+      { query: {} }
+    );
+  });
+
   it("types formal technician service identity, utilization, and public shop metadata", () => {
     const service = {
       id: 31,
@@ -104,7 +144,6 @@ describe("pricingModeApi technician portfolio", () => {
     });
 
     expect(httpClient.request).toHaveBeenCalledWith("/technicians/3/services", {
-      auth: false,
       query: { page: 1, pageSize: 20 },
     });
   });

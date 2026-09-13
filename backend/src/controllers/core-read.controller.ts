@@ -47,7 +47,10 @@ export class CoreReadController {
         .status(200)
         .json(
           successResponse(
-            await this.coreReadService.listServices(serviceListQuerySchema.parse(request.query))
+            await this.coreReadService.listServices(
+              serviceListQuerySchema.parse(request.query),
+              this.shopVisibilityViewer(response)
+            )
           )
         );
     } catch (error) {
@@ -64,7 +67,12 @@ export class CoreReadController {
       response
         .status(200)
         .json(
-          successResponse(await this.coreReadService.getServiceDetail(this.getServiceId(request)))
+          successResponse(
+            await this.coreReadService.getServiceDetail(
+              this.getServiceId(request),
+              this.shopVisibilityViewer(response)
+            )
+          )
         );
     } catch (error) {
       next(error);
@@ -83,7 +91,8 @@ export class CoreReadController {
           successResponse(
             await this.coreReadService.listServiceReviews(
               this.getServiceId(request),
-              serviceReviewListQuerySchema.parse(request.query)
+              serviceReviewListQuerySchema.parse(request.query),
+              this.shopVisibilityViewer(response)
             )
           )
         );
@@ -103,7 +112,8 @@ export class CoreReadController {
         .json(
           successResponse(
             await this.coreReadService.getHomeRecommendations(
-              homeRecommendationsQuerySchema.parse(request.query)
+              homeRecommendationsQuerySchema.parse(request.query),
+              this.shopVisibilityViewer(response)
             )
           )
         );
@@ -124,7 +134,8 @@ export class CoreReadController {
           successResponse(
             await this.coreReadService.search(
               coreSearchQuerySchema.parse(request.query),
-              this.getSearchSessionId(request)
+              this.getSearchSessionId(request),
+              this.shopVisibilityViewer(response)
             )
           )
         );
@@ -148,7 +159,8 @@ export class CoreReadController {
         .status(200)
         .json(successResponse(await this.coreReadService.getShopDetail(
           this.getShopId(request),
-          coreReadShopDetailQuerySchema.parse(request.query).locale
+          coreReadShopDetailQuerySchema.parse(request.query).locale,
+          this.shopVisibilityViewer(response)
         )));
     } catch (error) {
       next(error);
@@ -168,7 +180,8 @@ export class CoreReadController {
           successResponse(
             await this.coreReadService.getTechnicianDetail(
               this.getTechnicianId(request),
-              coordinates
+              coordinates,
+              this.shopVisibilityViewer(response)
             )
           )
         );
@@ -189,7 +202,7 @@ export class CoreReadController {
           successResponse(
             await this.coreReadService.getCustomerProfile(
               this.getId(request),
-              this.customerProfileViewer(response)
+              this.shopVisibilityViewer(response)
             )
           )
         );
@@ -202,7 +215,7 @@ export class CoreReadController {
     return coreReadIdParamSchema.parse(request.params).id;
   }
 
-  private customerProfileViewer(response: Response) {
+  private shopVisibilityViewer(response: Response) {
     const auth = response.locals.auth as AuthenticatedAccessContext | undefined;
     if (!auth) return undefined;
     const selectedShopId = auth.selectedMerchantShopId ?? auth.merchantPreviewShopId;

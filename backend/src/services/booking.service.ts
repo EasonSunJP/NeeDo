@@ -71,6 +71,8 @@ import type { UserPolicyEnforcementService } from "./user-policy-enforcement.ser
 import type { PlatformPaymentMethod } from "../domain/platform-settings";
 import type { LiveDashboardEventPublisher } from "./live-dashboard-event.gateway";
 import { LiveDashboardOrderChangePublisher } from "./live-dashboard-order-change.publisher";
+import type { ShopVisibilityRepositoryPort } from "./shop-visibility.service";
+import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -188,7 +190,11 @@ export class BookingService {
     policy?: Pick<UserPolicyEnforcementService, "assertServiceEkyc">,
     platformPaymentPolicy?: PlatformPaymentPolicyPort,
     private readonly workStatusNotifier?: {notifyTechnician:(id:number)=>Promise<void>},
-    private readonly liveDashboardEventPublisher?: LiveDashboardEventPublisher
+    private readonly liveDashboardEventPublisher?: LiveDashboardEventPublisher,
+    private readonly shopVisibility?: Pick<
+      ShopVisibilityRepositoryPort,
+      "canView" | "buildVisibilityWhere"
+    >
   ) {
     if (rateOrExperience && "resolveEffectiveRate" in rateOrExperience) {
       this.ndpExchangeRateService = rateOrExperience;
@@ -206,8 +212,36 @@ export class BookingService {
     this.platformPaymentPolicy = platformPaymentPolicy;
   }
 
-  public listAvailableSlots(input: AvailabilityListInput) {
-    return this.repository.listAvailableSlots(input);
+  public async listAvailableSlots(input: AvailabilityListInput, viewer?: ShopVisibilityViewer) {
+    return this.repository.listAvailableSlots(
+      input,
+      this.shopVisibility
+        ? await this.shopVisibility.buildVisibilityWhere(viewer)
+        : { visibility: "public" }
+    );
+  }
+
+  private async assertShopVisible(
+    shopId: number | null,
+    actor: AuthenticatedBookingActor
+  ): Promise<void> {
+    if (
+      this.shopVisibility &&
+      (shopId === null ||
+        !(await this.shopVisibility.canView(shopId, {
+          userId: actor.userId,
+          identityId: actor.currentIdentityId,
+          identityType: actor.currentIdentityType,
+          identityScopeType: actor.currentIdentityScopeType,
+          identityScopeId: actor.currentIdentityScopeId
+        })))
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.shop.not_found",
+        statusCode: 404
+      });
+    }
   }
 
   public listAvailabilityWindows(
@@ -418,9 +452,10 @@ export class BookingService {
       }
       idempotencyKey = parsedKey.data;
     }
-    await this.assertShopNotSuspended(
-      (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null
-    );
+    const targetShopId =
+      (await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId)) ?? null;
+    await this.assertShopVisible(targetShopId, actor);
+    await this.assertShopNotSuspended(targetShopId);
     const repositoryInput: BookingCreateRepositoryInput = {
       customerUserId: authority?.customerUserId ?? actor.userId,
       createdByUserId: authority?.createdByUserId ?? actor.userId,

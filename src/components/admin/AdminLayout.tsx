@@ -12,6 +12,7 @@ import { contentPublicationEditorText } from "../../features/content-publication
 import { translateText } from "../../i18n/translations";
 import { AdminOperatorSummary } from "./AdminOperatorSummary";
 import { resolveAdminDisplayName, resolveAdminRoleLabel } from "./adminOperatorSummaryModel";
+import { AdminGlobalSearch } from "./AdminGlobalSearch";
 
 const themeStorageKey = "needo.admin.theme";
 const themePreferenceModeStorageKey = "needo.admin.theme.mode";
@@ -82,7 +83,7 @@ const navSections: AdminNavSection[] = [
       { label: "订单管理", to: "/admin/orders", icon: "单", children: ["服务订单", "拒单管理", "加钟订单"] },
       { label: "需求中心", to: "/admin/orders/demands", icon: "需", permission: "backoffice:exchange:read", children: ["用户需求", "抢单响应", "匹配记录"] },
       { label: "情报中心", to: "/admin/orders/info", icon: "情", permission: "backoffice:exchange:read", children: ["商户情报", "技师情报", "匹配记录"] },
-      { label: "评价管理", to: "/admin/reviews", icon: "评", children: ["评价列表", "评价标签"] },
+      { label: "评价管理", to: "/admin/reviews", icon: "评", permission: "backoffice:users:read", children: ["评价列表", "评价标签"] },
       { label: "订单设置", to: "/admin/settings/system?tab=basic", icon: "设", permission: "backoffice:system-settings:read" },
       { label: "上门工单", to: "/admin/field-jobs", icon: "工", permission: "backoffice:field-jobs:read" }
     ]
@@ -326,13 +327,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
           <AdminOperatorSummary hasPermission={hasPermission} language={language} session={session} />
 
-          <section className="admin-sidebar-search mt-4 rounded-lg border border-line bg-paper p-3">
-            <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-ink/40">全局搜索</p>
-            <label className="admin-search flex h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm">
-              <span className="text-ink/45">⌕</span>
-              <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="搜索订单、用户、门店、技师" />
-            </label>
-          </section>
+          <AdminGlobalSearch hasPermission={hasPermission} />
 
           <nav className="admin-nav mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
             <div className="mb-4 rounded-lg border border-line bg-paper p-3">

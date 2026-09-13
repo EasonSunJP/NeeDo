@@ -15,13 +15,17 @@ import {
   coreReadIdFromRoute,
   mapCoreServiceToServiceItem,
   mapCoreTechnicianToTechnician,
-  type CoreServiceReview
+  type CoreServiceReview,
+  type CoreTechnicianCard
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import type { BookingScheduleSlot } from "../../features/booking/api";
+import { loadAvailabilityWindow } from "../../features/booking/window-loaders";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
 import { getTechnicianDynamicPath } from "../../shared/profile-card";
 import type { ServiceItem, Technician } from "../../types/domain";
+import { getTokyoDayWindow, getTokyoSlotParts } from "./formal-checkout/checkoutTimeSlots";
 
 const servicePriceHighlightClassName = "text-[color:var(--client-primary)]";
 
@@ -37,6 +41,28 @@ export function formatServiceReviewDate(value: string) {
     month: "long",
     day: "numeric"
   }).format(date);
+}
+
+export function resolveBookableServiceTechnicians(
+  serviceId: number,
+  shopId: number,
+  slots: BookingScheduleSlot[],
+  shopTechnicians: CoreTechnicianCard[]
+): Technician[] {
+  const technicianIds = new Set(
+    slots.flatMap((slot) =>
+      slot.serviceId === serviceId &&
+      slot.technicianServiceId === null &&
+      slot.shopId === shopId &&
+      slot.technicianProfileId !== null
+        ? [slot.technicianProfileId]
+        : []
+    )
+  );
+
+  return shopTechnicians
+    .filter((technician) => technicianIds.has(technician.id))
+    .map(mapCoreTechnicianToTechnician);
 }
 
 export function ServiceReviewCard({ review }: { review: CoreServiceReview }) {
@@ -214,6 +240,33 @@ function ServiceDetailContent() {
     () => (serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : null),
     [serviceQuery.data]
   );
+  const selectableTechniciansQuery = useCoreReadQuery(
+    () => {
+      const formalService = serviceQuery.data;
+      if (!formalService) return null;
+      const now = new Date();
+      const today = getTokyoSlotParts(now.toISOString())!.date;
+      const availabilityWindow = getTokyoDayWindow(today)!;
+
+      return Promise.all([
+        loadAvailabilityWindow({
+          serviceId: formalService.id,
+          shopId: formalService.shop.id,
+          from: now.toISOString(),
+          to: availabilityWindow.to
+        }),
+        coreReadApi.getShopDetail(formalService.shop.id)
+      ]).then(([slots, shop]) =>
+        resolveBookableServiceTechnicians(
+          formalService.id,
+          formalService.shop.id,
+          slots,
+          shop.technicians
+        )
+      );
+    },
+    [serviceQuery.data?.id, serviceQuery.data?.shop.id]
+  );
   const [selectedPackageId, setSelectedPackageId] = useState("");
   const [favorited, setFavorited] = useState(false);
   const [forwarded, setForwarded] = useState(false);
@@ -228,10 +281,7 @@ function ServiceDetailContent() {
     () => service?.packages.find((item) => item.id === selectedPackageId) ?? service?.packages[0],
     [selectedPackageId, service?.packages]
   );
-  const selectedTechnicians = useMemo(
-    () => (serviceQuery.data?.technician ? [mapCoreTechnicianToTechnician(serviceQuery.data.technician)] : []),
-    [serviceQuery.data?.technician]
-  );
+  const selectedTechnicians = selectableTechniciansQuery.data ?? [];
   const checkoutHref = service && selectedPackage ? `/checkout/${service.id}?package=${selectedPackage.id}` : service ? `/checkout/${service.id}` : "/categories";
 
   if (apiId && serviceQuery.loading) {
@@ -354,10 +404,24 @@ function ServiceDetailContent() {
         <section className={mobileDetailCardClassName}>
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-black">可选技师</h2>
-            <Badge tone="blue">{service.technicianCount} 人</Badge>
+            <Badge tone="blue">
+              {selectableTechniciansQuery.loading
+                ? "…"
+                : selectableTechniciansQuery.error
+                  ? "—"
+                  : `${selectedTechnicians.length} 人`}
+            </Badge>
           </div>
           <div className="mt-3 space-y-2">
-            {selectedTechnicians.length > 0 ? (
+            {selectableTechniciansQuery.loading ? (
+              <p className="rounded-[18px] bg-paper p-3 text-xs leading-5 text-ink/55" role="status">
+                正在载入服务
+              </p>
+            ) : selectableTechniciansQuery.error ? (
+              <p className="rounded-[18px] bg-paper p-3 text-xs leading-5 text-ink/55" role="alert">
+                服务读取失败
+              </p>
+            ) : selectedTechnicians.length > 0 ? (
               selectedTechnicians.map((technician) => (
                 <Link className={cn(mobileDetailInnerCardClassName, "flex items-center gap-3")} key={technician.id} to={getTechnicianDynamicPath(technician)}>
                   <AvatarImage alt={technician.name} className="h-12 w-12" src={technician.avatar} />
