@@ -101,7 +101,7 @@
     "seed:formal-social-test": "tsx scripts/seed-formal-social-test.ts",
     "seed:formal-exchange-test": "tsx scripts/seed-formal-exchange-test.ts",
     "check:formal-exchange-test": "tsx scripts/check-formal-exchange-test.ts",
-    "check:field-job-projection": "ENV_FILE=.env.dev node --import tsx scripts/check-field-job-projection.ts",
+    "check:field-job-projection": "ENV_FILE=${ENV_FILE:-.env.dev} node --import tsx scripts/check-field-job-projection.ts",
     "check:exchange-selective-claim-flow": "tsx scripts/check-exchange-selective-claim-flow.ts",
     "check:exchange-selective-matching-flow": "tsx scripts/check-exchange-selective-matching-flow.ts",
     "check:exchange-quick-matching-flow": "tsx scripts/check-exchange-quick-matching-flow.ts",

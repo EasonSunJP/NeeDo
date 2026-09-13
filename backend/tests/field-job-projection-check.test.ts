@@ -37,7 +37,7 @@ describe("field-job projection local formal-data checker", () => {
   it("is exposed as the read-only package verification command", () => {
     const packageJson = readFileSync(resolve(process.cwd(), "package.json"), "utf8");
     expect(packageJson).toContain(
-      '"check:field-job-projection": "ENV_FILE=.env.dev node --import tsx scripts/check-field-job-projection.ts"'
+      '"check:field-job-projection": "ENV_FILE=${ENV_FILE:-.env.dev} node --import tsx scripts/check-field-job-projection.ts"'
     );
   });
 });
