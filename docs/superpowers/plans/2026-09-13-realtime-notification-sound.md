@@ -374,7 +374,7 @@ git commit -m "feat(settings): publish portal sound preference changes"
 ### Task 3: Browser audio adapter and global SSE subscriber
 
 **Files:**
-- Create: `src/features/realtime/RealtimeNotificationSound.tsx`
+- Create: `src/features/realtime/RealtimeNotificationSoundProvider.tsx`
 - Test: `src/features/realtime/RealtimeNotificationSound.test.tsx`
 - Modify: `src/App.tsx`
 - Create: `public/audio/new-message.mp3`
@@ -413,7 +413,7 @@ vi.mock("../settings/portalSettingsState", () => ({
 import {
   RealtimeNotificationSound,
   createBrowserNotificationSound
-} from "./RealtimeNotificationSound";
+} from "./RealtimeNotificationSoundProvider";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -513,7 +513,7 @@ Expected: FAIL because `RealtimeNotificationSound.tsx` does not exist.
 
 - [ ] **Step 3: Implement the browser adapter and component**
 
-Create `src/features/realtime/RealtimeNotificationSound.tsx`. Use this public surface and lifecycle:
+Create `src/features/realtime/RealtimeNotificationSoundProvider.tsx`. Use this public surface and lifecycle:
 
 ```tsx
 import { useEffect, useRef, useState } from "react";
@@ -650,7 +650,7 @@ Expected: `cmp` exits 0 and `file` reports an MPEG Layer III audio file.
 Add the import next to `RealtimeUnreadCountsProvider` in `src/App.tsx`:
 
 ```tsx
-import { RealtimeNotificationSound } from "./features/realtime/RealtimeNotificationSound";
+import { RealtimeNotificationSound } from "./features/realtime/RealtimeNotificationSoundProvider";
 ```
 
 Mount it immediately inside `AuthProvider`, before `RealtimeUnreadCountsProvider`, so it exists during login gestures but still reads authenticated state from the provider:
@@ -674,7 +674,7 @@ Expected: all four files pass, the shared SSE API test still proves one browser 
 - [ ] **Step 7: Commit Task 3**
 
 ```bash
-git add public/audio/new-message.mp3 src/App.tsx src/features/realtime/RealtimeNotificationSound.tsx src/features/realtime/RealtimeNotificationSound.test.tsx
+git add public/audio/new-message.mp3 src/App.tsx src/features/realtime/RealtimeNotificationSoundProvider.tsx src/features/realtime/RealtimeNotificationSound.test.tsx
 git commit -m "feat(realtime): play sound for incoming alerts"
 ```
 

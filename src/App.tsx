@@ -191,6 +191,7 @@ import {
 } from "./features/im/route-pages";
 import { ImScopeProvider } from "./features/im/scope";
 import { SocialProvider } from "./features/social/context";
+import { RealtimeNotificationSound } from "./features/realtime/RealtimeNotificationSoundProvider";
 import { RealtimeUnreadCountsProvider } from "./features/realtime/useRealtimeUnreadCounts";
 import { AccountComplianceGate } from "./features/auth/AccountComplianceGate";
 import {
@@ -1189,6 +1190,7 @@ export default function App() {
       <PlatformSettingsProvider>
       <AuthProvider>
         <FormalSchedulePreloadBootstrap />
+        <RealtimeNotificationSound />
         <RealtimeUnreadCountsProvider>
           <I18nProvider>
           <ClientThemeProvider>
