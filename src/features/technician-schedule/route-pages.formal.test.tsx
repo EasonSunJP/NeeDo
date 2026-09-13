@@ -563,12 +563,12 @@ describe("formal technician schedule routes", () => {
     expect(mocks.retrySchedule).toHaveBeenCalledTimes(1);
   });
 
-  it("renders an unaffiliated technician schedule and keeps creation unavailable", async () => {
+  it("renders a shop-affiliated technician schedule and keeps creation unavailable", async () => {
     mocks.scheduleResource.mockReturnValue({
       data: {
-        profile: { id: 31, displayName: "独立技师", avatarUrl: null },
+        profile: { id: 31, displayName: "店铺所属技师", avatarUrl: null },
         shopId: null,
-        shopName: "独立技师",
+        shopName: "合作店铺",
         services: [],
         slot: null
       },
@@ -579,7 +579,7 @@ describe("formal technician schedule routes", () => {
 
     await render("/technician/schedule");
 
-    expect(container.textContent).toContain("独立技师:独立技师");
+    expect(container.textContent).toContain("店铺所属技师:合作店铺");
     expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="formal-technician-schedule-workspace"]')?.getAttribute("data-can-create")).toBe("false");
     expect(container.querySelector('input[aria-label="搜索排班"]')).not.toBeNull();
@@ -606,9 +606,9 @@ describe("formal technician schedule routes", () => {
   it("blocks the direct new-schedule route when the technician has no active shop", async () => {
     mocks.scheduleResource.mockReturnValue({
       data: {
-        profile: { id: 31, displayName: "独立技师", avatarUrl: null },
+        profile: { id: 31, displayName: "店铺所属技师", avatarUrl: null },
         shopId: null,
-        shopName: "独立技师",
+        shopName: "合作店铺",
         services: [],
         slot: null
       },

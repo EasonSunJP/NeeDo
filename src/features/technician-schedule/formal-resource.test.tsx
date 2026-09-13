@@ -330,21 +330,25 @@ describe("formal technician schedule resources", () => {
     expect(apiMocks.getTechnicianSlot).toHaveBeenCalledWith(17);
   });
 
-  it("loads the formal schedule context for an independent technician without a shop", async () => {
-    apiMocks.getMine.mockResolvedValue({ ...selfProfile, shopId: null });
+  it("rejects a technician schedule context without a formal shop affiliation", async () => {
+    apiMocks.getMine.mockResolvedValue({
+      ...selfProfile,
+      shopId: null,
+      shopAccessStatus: "requires_shop",
+      shopAffiliations: []
+    });
     apiMocks.listMyTechnicianServices.mockResolvedValue({
       list: [makeService(102, 1, { shopId: null, shop: null })], total: 1, page: 1, page_size: 100
     });
 
     await act(async () => root.render(<ScheduleProbe slotId={null} />));
-    await waitFor(() => expect(container.querySelector('[data-testid="services"]')?.textContent).toBe("102"));
+    await waitFor(() => expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("error.technician_shop.required"));
 
     expect(apiMocks.getMine).toHaveBeenCalledTimes(1);
     expect(apiMocks.getTechnicianDetail).not.toHaveBeenCalled();
-    expect(apiMocks.listMyTechnicianServices).toHaveBeenCalledTimes(1);
+    expect(apiMocks.listMyTechnicianServices).not.toHaveBeenCalled();
     expect(apiMocks.getTechnicianSlot).not.toHaveBeenCalled();
-    expect(container.querySelector('[data-testid="shop"]')?.textContent).toBe("独立技师");
-    expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("null");
+    expect(container.querySelector('[data-testid="shop"]')?.textContent).toBe("null");
   });
 
   it("keeps schedule data empty after an API error and retries the formal request", async () => {

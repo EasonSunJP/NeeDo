@@ -15,6 +15,6 @@ describe("merchant staff formal employment types", () => {
   it("labels every persisted employment type", () => {
     expect(getMerchantStaffEmploymentLabel("fullTime")).toBe("正社员");
     expect(getMerchantStaffEmploymentLabel("partTime")).toBe("临时工");
-    expect(getMerchantStaffEmploymentLabel("independent")).toBe("独立技师");
+    expect(getMerchantStaffEmploymentLabel("independent")).toBe("合作技师");
   });
 });

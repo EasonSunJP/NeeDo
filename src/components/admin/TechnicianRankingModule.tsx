@@ -680,7 +680,7 @@ function RankingRow({
       </td>
       <td className="px-4 py-4 align-middle">
         <p className="max-w-[220px] truncate text-sm font-black text-ink">
-          {row.shopName ?? translate("个人技师")}
+          {row.shopName ?? translate("归属店铺待确认")}
         </p>
         <p className="mt-1 text-xs font-bold text-ink/45">
           {[row.city, row.serviceArea].filter(Boolean).join(" · ")}

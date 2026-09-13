@@ -311,7 +311,7 @@ function buildFormalTechnicianProfileCard(
       bio: identityCard.bio,
       identityLabel: identityCard.identityLabel === "店铺所属技师"
         ? "店铺所属技师"
-        : "个人技师",
+        : "待归属",
     },
     formalData: {
       metrics: {
@@ -2480,7 +2480,7 @@ export function ImContactsListPage() {
 
       if (user.entityType === "technician" && user.entityId) {
         updateTechnicianEntity(user.entityId, (technician) => ({
-          identityLabel: addStaffType === "partTime" ? "个人技师" : "店铺所属技师",
+          identityLabel: "店铺所属技师",
           profileTags: mergeTags([addStaffLabel, addStaffRoleName], technician.profileTags ?? technician.skills),
           storeId: currentUser?.entityType === "shop" && currentUser.entityId ? currentUser.entityId : technician.storeId
         }));
@@ -3446,7 +3446,7 @@ function resolveOrganizationStaffFilter(contact: ContactRelation, user: ImUser, 
 
   const technician = user.entityId ? entityStore.technicians.find((item) => item.id === user.entityId) : undefined;
 
-  return technician?.identityLabel === "个人技师" ? "partTime" : "fullTime";
+  return "fullTime";
 }
 
 function getOrganizationContactRoleNames(contact: ContactRelation, user: ImUser, roleOptions: string[], technicianRoleName: string) {

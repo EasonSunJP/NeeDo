@@ -2299,7 +2299,7 @@ export function MerchantPortalContent({
 
     updateTechnicianEntity(technicianId, (technician) => ({
       storeId: technician.storeId === store.id ? merchantDetachedTechnicianStoreId : technician.storeId,
-      identityLabel: "个人技师",
+      identityLabel: "待归属",
       profileTags: (technician.profileTags ?? technician.skills).filter((tag) => !roleTagsToRemove.has(tag))
     }));
 

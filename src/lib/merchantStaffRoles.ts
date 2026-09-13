@@ -15,7 +15,7 @@ export function getMerchantStaffEmploymentLabel(employmentType: MerchantStaffEmp
     return "临时工";
   }
 
-  return employmentType === "independent" ? "独立技师" : "正社员";
+  return employmentType === "independent" ? "合作技师" : "正社员";
 }
 
 export function toMerchantStaffEmploymentType(value: string): MerchantStaffEmploymentType | null {

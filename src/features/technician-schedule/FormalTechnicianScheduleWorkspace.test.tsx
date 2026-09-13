@@ -147,9 +147,9 @@ describe("FormalTechnicianScheduleWorkspace", () => {
         <FormalTechnicianScheduleWorkspace
           profileAvatarUrl={null}
           profileId={31}
-          profileName="独立技师"
+          profileName="店铺所属技师"
           shopId={null}
-          shopName="独立技师"
+          shopName="合作店铺"
           tab="calendar"
         />
       </MemoryRouter>
@@ -167,9 +167,9 @@ describe("FormalTechnicianScheduleWorkspace", () => {
         <FormalTechnicianScheduleWorkspace
           profileAvatarUrl={null}
           profileId={31}
-          profileName="独立技师"
+          profileName="店铺所属技师"
           shopId={null}
-          shopName="独立技师"
+          shopName="合作店铺"
           tab="requestSettings"
         />
       </MemoryRouter>

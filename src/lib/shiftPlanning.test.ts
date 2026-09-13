@@ -157,11 +157,11 @@ function makeResponse(): TechnicianScheduleResponse {
 }
 
 describe("shift planning schedule context", () => {
-  it("treats technicians without an active store affiliation as independent self-final", () => {
+  it("keeps the legacy no-shop schedule context fail-closed behind the affiliation gate", () => {
     const context = resolveScheduleContext({
       technician: makeTechnician({
         storeId: "",
-        identityLabel: "个人技师"
+        identityLabel: "待归属"
       }),
       modeConfigs: []
     });

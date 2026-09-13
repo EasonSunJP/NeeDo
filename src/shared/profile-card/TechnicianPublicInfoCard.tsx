@@ -44,7 +44,7 @@ function mapContactService(service: TechnicianFormalContactService): UnifiedServ
 
 function mapCompatibilityModel(technician: Technician, formalData?: TechnicianFormalContactCardData): TechnicianProfileInfoModel {
   const details = formalData?.contactDetails;
-  const identityLabel = technician.identityLabel === "店铺所属技师" ? "店铺所属" : "个人技师";
+  const identityLabel = technician.identityLabel === "店铺所属技师" ? "店铺所属" : "待归属";
 
   return {
     publicId: technician.systemId,

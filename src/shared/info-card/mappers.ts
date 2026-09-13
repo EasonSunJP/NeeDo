@@ -136,7 +136,7 @@ export function buildTechnicianInfoCardData(technician: Technician): TechnicianI
     coverImage: technician.avatar,
     avatar: technician.avatar,
     displayName: technician.nickname || technician.name,
-    subtitle: technician.identityLabel || "个人技师",
+    subtitle: technician.identityLabel || "归属店铺待确认",
     region: technician.serviceAreas[0] || "东京",
     serviceArea: technician.serviceAreas.join("、"),
     status: status.label,

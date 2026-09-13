@@ -41,6 +41,7 @@ describe("technician profile information mappers", () => {
       languages: ["日本語", "中文"],
       bio: "预约前请联系。",
       employmentType: "full_time",
+      shopAffiliations: [{ id: 1, shopId: 71 }],
       yearsExperience: 8,
       reviewTagSummary
     } as TechnicianSelfProfile;
@@ -64,6 +65,27 @@ describe("technician profile information mappers", () => {
     });
   });
 
+  it("derives shop ownership from formal affiliations instead of the legacy employment type", () => {
+    const selfProfile = {
+      publicId: "s0000000081",
+      displayName: "小林技师",
+      avatarUrl: "/avatar.jpg",
+      gender: "female",
+      age: 29,
+      heightCm: 168,
+      languages: ["日本語"],
+      bio: null,
+      employmentType: "independent",
+      shopAffiliations: [{ id: 1, shopId: 71 }],
+      yearsExperience: 8,
+      reviewTagSummary
+    } as TechnicianSelfProfile;
+
+    expect(fromTechnicianSelfProfile(selfProfile, null, [])).toMatchObject({
+      identityLabel: "店铺所属"
+    });
+  });
+
   it("maps the formal public technician detail without reading legacy profile tags", () => {
     const detail = {
       publicId: "s0000000081",
@@ -83,7 +105,7 @@ describe("technician profile information mappers", () => {
     } as CoreTechnicianDetail;
 
     expect(fromCoreTechnicianDetail(detail, [service])).toMatchObject({
-      identityLabel: "个人技师",
+      identityLabel: "待归属",
       ratingAverage: 4.9,
       reviewTagSummary,
       services: [{ id: "91" }]

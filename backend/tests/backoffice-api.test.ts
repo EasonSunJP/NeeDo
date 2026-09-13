@@ -1051,6 +1051,12 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ employmentType: "contractor" })
       .expect(400);
+
+    await request(fixture.app)
+      .patch("/api/v1/backoffice/technicians/7")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ employmentType: "independent" })
+      .expect(400);
   });
 
   it("serves the completed-order technician leaderboard in a Tokyo custom period", async () => {

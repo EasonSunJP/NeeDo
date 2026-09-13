@@ -15,7 +15,9 @@ User
 - `TechnicianProfile` 是全局唯一的技师资料，不因从属多个店铺而复制。
 - 员工对外账号只使用 canonical `s` 加十位数字的技师 NeeDoID。
 - `TechnicianShopAffiliation` 是新员工 API 的店铺关系权威。
+- 当前产品不存在“独立技师”身份：正式 Auth 只向客户端投影至少有一个有效店铺从属的技师身份；没有有效从属时必须重新提交目标店铺申请，不能进入技师工作端或以“独立技师”继续接单。
 - `TechnicianProfile.shopId`、`employmentType`、`employmentStartedAt` 暂时保留为旧页面兼容与回滚来源；新员工 API 不从这些字段判断当前从属。
+- legacy `INDEPENDENT` 仅是历史存储/回填兼容值，不是当前可创建、可选择或可展示的产品分类；运营更新接口不再接受该值。
 - `TechnicianProfile.status` 表示资料发布状态；`TechnicianShopAffiliation.workStatus` 表示本店在职/合作状态，两者不能互换。
 
 ## 关系与状态
