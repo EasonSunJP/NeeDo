@@ -296,9 +296,17 @@ const authUserInclude = {
     select: {
       technicianShopAffiliations: {
         where: {
-          workStatus: { in: ["ACTIVE" as const, "ON_LEAVE" as const, "SUSPENDED" as const] },
+          activeKey: { not: null },
+          workStatus: "ACTIVE" as const,
+          endsAt: null,
           deletedAt: null,
-          shop: { deletedAt: null }
+          shop: {
+            deletedAt: null,
+            status: { not: "archived" },
+            publicIdentifier: {
+              is: { kind: "SHOP", status: "ACTIVE", deletedAt: null }
+            }
+          }
         },
         select: { id: true }
       }
@@ -346,7 +354,7 @@ const authUserInclude = {
       }
     }
   }
-};
+} satisfies Prisma.UserInclude;
 
 type AuthUserPrismaRecord = Prisma.UserGetPayload<{ include: typeof authUserInclude }>;
 

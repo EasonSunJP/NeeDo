@@ -91,10 +91,12 @@ export class WorkStatusSession {
               technicianShopAffiliations: {
                 some: {
                   shopId: scope.shopId,
+                  activeKey: { not: null },
                   deletedAt: null,
-                  workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
+                  workStatus: "ACTIVE",
                   startsAt: { lte: now },
-                  OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+                  OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+                  shop: { status: "published", deletedAt: null }
                 }
               }
             }
@@ -254,10 +256,12 @@ export class WorkStatusSession {
       where: {
         technicianProfileId: id,
         shopId,
+        activeKey: { not: null },
         deletedAt: null,
         workStatus: "ACTIVE",
         startsAt: { lte: now },
-        OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+        shop: { status: "published", deletedAt: null }
       },
       select: { id: true }
     });
@@ -266,10 +270,12 @@ export class WorkStatusSession {
     return this.db.technicianShopAffiliation.findFirst({
       where: {
         technicianProfileId: id,
+        activeKey: { not: null },
         deletedAt: null,
         workStatus: "ACTIVE",
         startsAt: { lte: now },
-        OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+        shop: { status: "published", deletedAt: null }
       },
       select: { id: true }
     });

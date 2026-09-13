@@ -2014,7 +2014,12 @@ export function getBookingConflictEventIds(events: UnifiedCalendarEvent[]): Set<
     const left = bookings[leftIndex]!;
     for (let rightIndex = leftIndex + 1; rightIndex < bookings.length; rightIndex += 1) {
       const right = bookings[rightIndex]!;
-      if (left.date !== right.date || left.orderId === right.orderId) continue;
+      if (
+        left.date !== right.date ||
+        left.orderId === right.orderId ||
+        !left.calendarId ||
+        left.calendarId !== right.calendarId
+      ) continue;
       if (timeToMinutes(left.startTime) < timeToMinutes(right.endTime) && timeToMinutes(right.startTime) < timeToMinutes(left.endTime)) {
         conflicts.add(left.id);
         conflicts.add(right.id);

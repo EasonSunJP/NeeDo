@@ -100,9 +100,17 @@ export interface TechnicianProfileRepositoryPort {
 const profileInclude = {
   technicianShopAffiliations: {
     where: {
+      activeKey: { not: null },
       deletedAt: null,
-      workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
-      shop: { deletedAt: null }
+      endsAt: null,
+      workStatus: "ACTIVE",
+      shop: {
+        deletedAt: null,
+        status: { not: "archived" },
+        publicIdentifier: {
+          is: { kind: "SHOP", status: "ACTIVE", deletedAt: null }
+        }
+      }
     },
     orderBy: [{ startsAt: "asc" as const }, { id: "asc" as const }],
     select: {

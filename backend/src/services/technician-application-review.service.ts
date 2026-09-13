@@ -168,25 +168,23 @@ export class TechnicianApplicationReviewService {
     input: ApproveTechnicianApplicationInput
   ): Promise<TechnicianApprovalResult> {
     const application = await this.loadForShop(input.applicationId, input.reviewerShopId);
-    if (application.status === "approved") {
-      return {
-        applicationId: application.applicationId,
-        status: "approved",
-        version: application.version
-      };
+    const alreadyApproved = application.status === "approved";
+    if (!alreadyApproved) {
+      this.assertReviewable(application.status);
+      this.assertVersion(application.version, input.expectedVersion);
     }
-    this.assertReviewable(application.status);
-    this.assertVersion(application.version, input.expectedVersion);
-    const ekyc = await this.ekycPolicy.evaluateApplicationEkyc(application.applicantUserId, "technician", input.now);
-    if (ekyc.required && !ekyc.verified) throw new AppError({ code: ERROR_CODES.SAAS_BILLING_CONFLICT, message: "error.identity_application.ekyc_required", statusCode: 409 });
-
+    const ekyc = alreadyApproved
+      ? { required: false, verified: true, policyVersionPublicId: "approval-reconciliation" }
+      : await this.ekycPolicy.evaluateApplicationEkyc(application.applicantUserId, "technician", input.now);
+    if (!alreadyApproved && ekyc.required && !ekyc.verified)
+      throw new AppError({ code: ERROR_CODES.SAAS_BILLING_CONFLICT, message: "error.identity_application.ekyc_required", statusCode: 409 });
 
     return this.repository.approveInTransaction({
       applicationId: application.applicationId,
       applicantUserId: application.applicantUserId,
       targetShopId: application.targetShopId,
       reviewerUserId: input.reviewerUserId,
-      expectedVersion: input.expectedVersion,
+      expectedVersion: alreadyApproved ? application.version : input.expectedVersion,
       applicantName: application.applicantName,
       ekycPolicy: ekyc,
       city: application.city,

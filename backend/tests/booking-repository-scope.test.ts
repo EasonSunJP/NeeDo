@@ -543,6 +543,34 @@ describe("BookingRepository order list scope", () => {
     });
   });
 
+  it("rejects merchant schedule creation when profile.shopId has no formal affiliation", async () => {
+    const startsAt = new Date("2026-08-29T13:00:00.000Z");
+    const endsAt = new Date("2026-08-29T14:00:00.000Z");
+    const tx = {
+      entitySuspension: { findFirst: jest.fn().mockResolvedValue(null) },
+      shop: { findFirst: jest.fn().mockResolvedValue({ id: 16 }) },
+      service: { findFirst: jest.fn().mockResolvedValue({ id: 20, durationMinutes: 60 }) },
+      technicianShopAffiliation: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(repository.createScheduleSlot({
+      scope: "merchant", shopId: 16, serviceId: 20, technicianProfileId: 47,
+      startsAt, endsAt, capacity: 1
+    })).resolves.toEqual({ outcome: "not_found" });
+  });
+
+  it("does not resolve profile.shopId as an effective technician affiliation", async () => {
+    const technicianProfile = { findFirst: jest.fn().mockResolvedValue({
+      shopId: 16,
+      technicianShopAffiliations: []
+    }) };
+    const repository = new BookingRepository({ technicianProfile } as never);
+    await expect(repository.findTechnicianShopId(47)).resolves.toBeNull();
+  });
+
   it("publishes technician-owned availability to affiliated shops", async () => {
     const source = readFileSync(
       require.resolve("../src/repositories/booking.repository.ts"),
@@ -1315,6 +1343,7 @@ serviceLocation: { source: "SHOP_LOCATION" }
           }
         ])
       },
+      technicianShopAffiliation: { findFirst: jest.fn().mockResolvedValue({ id: 701 }) },
       technicianProfile: { update: jest.fn() }
     };
     const repository = new BookingRepository({
@@ -1348,6 +1377,33 @@ serviceLocation: { source: "SHOP_LOCATION" }
     expect(settle).not.toHaveBeenCalled();
   });
 
+  it("rejects order confirmation when the assigned technician has no active shop affiliation", async () => {
+    const settle = jest.fn();
+    const updateMany = jest.fn();
+    const tx = {
+      bookingOrder: {
+        findFirst: jest.fn().mockResolvedValue({ id: 101, status: "PENDING", shopId: 16, technicianProfileId: 47 }),
+        updateMany
+      },
+      technicianShopAffiliation: { findFirst: jest.fn().mockResolvedValue(null) },
+      orderAcceptancePause: { findMany: jest.fn() }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(repository.transitionOrderWithScheduleGuard({
+      id: 101,
+      actorUserId: 707,
+      actor: { userId: 707, identityId: 61, identityType: "technician" },
+      fromStatus: "pending",
+      toStatus: "confirmed"
+    }, { settle })).resolves.toEqual({ outcome: "invalid_state" });
+    expect(tx.orderAcceptancePause.findMany).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
+  });
+
   it("locks the technician and rejects a concurrent confirmed overlap before mutation", async () => {
     const settle = jest.fn();
     const updateMany = jest.fn();
@@ -1370,6 +1426,7 @@ serviceLocation: { source: "SHOP_LOCATION" }
         .mockResolvedValueOnce([{ id: 16 }])
         .mockResolvedValueOnce([]),
       bookingOrder: { findFirst: bookingFindFirst, updateMany },
+      technicianShopAffiliation: { findFirst: jest.fn().mockResolvedValue({ id: 701 }) },
       orderAcceptancePause: { findMany: jest.fn().mockResolvedValue([]) },
       technicianProfile: { update: technicianUpdate }
     };
@@ -1425,6 +1482,7 @@ serviceLocation: { source: "SHOP_LOCATION" }
         findFirst: jest.fn().mockResolvedValueOnce(current).mockResolvedValueOnce(null),
         updateMany
       },
+      technicianShopAffiliation: { findFirst: jest.fn().mockResolvedValue({ id: 701 }) },
       exchangeMatchParticipant: {
         findFirst: jest.fn().mockResolvedValue({ id: 71 })
       },
