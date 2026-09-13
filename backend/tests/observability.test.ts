@@ -65,7 +65,7 @@ describe("observability middleware", () => {
     expect(response.text).toContain('needo_dependency_pool_healthy{dependency="redis"} 3');
   });
 
-  it("sets public cache headers only for anonymous read APIs", () => {
+  it("requires revalidation and varies by authorization for visibility-sensitive reads", () => {
     const setHeader = jest.fn();
     const next = jest.fn();
 
@@ -80,10 +80,8 @@ describe("observability middleware", () => {
       next
     );
 
-    expect(setHeader).toHaveBeenCalledWith(
-      "Cache-Control",
-      "public, max-age=30, stale-while-revalidate=120"
-    );
+    expect(setHeader).toHaveBeenCalledWith("Vary", "Authorization");
+    expect(setHeader).toHaveBeenCalledWith("Cache-Control", "public, no-cache");
     expect(next).toHaveBeenCalledTimes(1);
   });
 
@@ -98,6 +96,25 @@ describe("observability middleware", () => {
     );
 
     expect(setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("never publicly caches optional-auth shop reads when a viewer credential is present", () => {
+    const setHeader = jest.fn();
+    const next = jest.fn();
+
+    createCacheHeadersMiddleware(env)(
+      {
+        method: "GET",
+        path: "/api/v1/shops/shop0000000001",
+        get: (name: string) => (name.toLowerCase() === "authorization" ? "Bearer token" : undefined)
+      } as never,
+      { setHeader } as never,
+      next
+    );
+
+    expect(setHeader).toHaveBeenCalledWith("Cache-Control", "private, no-store");
+    expect(setHeader).toHaveBeenCalledWith("Vary", "Authorization");
     expect(next).toHaveBeenCalledTimes(1);
   });
 });

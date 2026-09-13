@@ -64,13 +64,23 @@ describe("EntityEngagementService", () => {
       1,
       42,
       { targetType: "shop", publicId: "shop0000000001" },
-      true
+      true,
+      expect.objectContaining({
+        userId: 42,
+        identityId: 10,
+        identityType: "customer"
+      })
     );
     expect(repository.setFavorite).toHaveBeenNthCalledWith(
       2,
       42,
       { targetType: "shop", publicId: "shop0000000001" },
-      false
+      false,
+      expect.objectContaining({
+        userId: 42,
+        identityId: 11,
+        identityType: "technician"
+      })
     );
   });
 

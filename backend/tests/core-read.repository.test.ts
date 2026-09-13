@@ -38,6 +38,8 @@ const inactiveTechnicianIdentifier = {
 
 const publishedShopWithoutServices = {
   id: 21,
+  ownerUserId: 100,
+  visibility: "public",
   name: "LifeDance Wellness 渋谷",
   city: "Tokyo",
   address: "1-2-3 Shibuya",
@@ -370,7 +372,12 @@ describe("CoreReadRepository multi-entity search", () => {
               deletedAt: null,
               isActive: true,
               isBookable: true,
-              reviewStatus: "APPROVED"
+              reviewStatus: "APPROVED",
+              shop: {
+                deletedAt: null,
+                status: "published",
+                visibility: "public"
+              }
             },
             orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
             take: 1
@@ -652,7 +659,8 @@ describe("CoreReadRepository multi-entity search", () => {
       repository.findEligibleTechniciansWithinBounds(
         { entityType: "technician", keywords: ["massage"], categoryIds: [3] },
         { latitude: 35.6762, longitude: 139.6503 },
-        3
+        3,
+        undefined
       )
     ).resolves.toEqual([
       {
@@ -723,7 +731,10 @@ describe("CoreReadRepository multi-entity search", () => {
         ])
       }
     };
-    const repository = new CoreReadRepository(client as never);
+    const repository = new CoreReadRepository(client as never, undefined, {
+      buildVisibilityWhere: jest.fn(async () => ({ visibility: "public" })),
+      canViewTarget: jest.fn(async () => true)
+    } as never);
 
     await expect(repository.findTechnicianDetail(41, {
       latitude: 35.658034,
@@ -962,7 +973,12 @@ describe("CoreReadRepository public service reviews", () => {
       where: {
         publicId: "83b6d591-d7ca-4ca0-b975-7a44363e1f3a",
         deletedAt: null,
-        status: "published"
+        status: "published",
+        shop: {
+          deletedAt: null,
+          status: "published",
+          visibility: "public"
+        }
       },
       select: { id: true }
     });

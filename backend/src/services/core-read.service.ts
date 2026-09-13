@@ -17,6 +17,7 @@ import type {
   TechnicianDetailPayload
 } from "../repositories/core-read.repository";
 import type { CustomerProfileViewer } from "../repositories/customer-profile-visibility.repository";
+import type { ShopVisibilityViewer } from "../repositories/shop-visibility.repository";
 import {
   minimumCandidateDistanceKm,
   rankNearbyTechnicians,
@@ -43,12 +44,12 @@ export class CoreReadService {
     return this.repository.listCategories(input);
   }
 
-  public listServices(input: ServiceListInput): Promise<PaginatedResponse<ServiceCardPayload>> {
-    return this.repository.listServices(input);
+  public listServices(input: ServiceListInput, viewer?: ShopVisibilityViewer): Promise<PaginatedResponse<ServiceCardPayload>> {
+    return this.repository.listServices(input, viewer);
   }
 
-  public async getServiceDetail(id: number | string): Promise<ServiceDetailPayload> {
-    const service = await this.repository.findServiceDetail(id);
+  public async getServiceDetail(id: number | string, viewer?: ShopVisibilityViewer): Promise<ServiceDetailPayload> {
+    const service = await this.repository.findServiceDetail(id, viewer);
 
     if (!service) {
       throw this.notFoundError("error.service.not_found");
@@ -59,9 +60,10 @@ export class CoreReadService {
 
   public async listServiceReviews(
     id: number | string,
-    input: { page?: number; pageSize?: number }
+    input: { page?: number; pageSize?: number },
+    viewer?: ShopVisibilityViewer
   ): Promise<PaginatedResponse<ServiceReviewPayload>> {
-    const reviews = await this.repository.listServiceReviews(id, input);
+    const reviews = await this.repository.listServiceReviews(id, input, viewer);
 
     if (!reviews) {
       throw this.notFoundError("error.service.not_found");
@@ -71,29 +73,31 @@ export class CoreReadService {
   }
 
   public getHomeRecommendations(
-    input: HomeRecommendationsInput
+    input: HomeRecommendationsInput,
+    viewer?: ShopVisibilityViewer
   ): Promise<HomeRecommendationsPayload> {
-    return this.repository.getHomeRecommendations(input);
+    return this.repository.getHomeRecommendations(input, viewer);
   }
 
   public async search(
     input: CoreSearchInput,
-    anonymousSessionId?: string
+    anonymousSessionId?: string,
+    viewer?: ShopVisibilityViewer
   ): Promise<CoreSearchResponse> {
     let result: CoreSearchResponse;
     if (input.entityType === "shop") {
-      result = await this.repository.searchShops(input);
+      result = await this.repository.searchShops(input, viewer);
     } else if (input.entityType === "technician") {
       if (input.latitude !== undefined && input.longitude !== undefined) {
         result = await this.searchNearbyTechnicians(input, {
           latitude: input.latitude,
           longitude: input.longitude
-        });
+        }, viewer);
       } else {
-        result = await this.repository.searchTechnicians(input);
+        result = await this.repository.searchTechnicians(input, viewer);
       }
     } else {
-      result = await this.repository.search(input);
+      result = await this.repository.search(input, viewer);
     }
 
     if (input.keyword || input.keywords.length > 0) {
@@ -108,9 +112,10 @@ export class CoreReadService {
 
   private async searchNearbyTechnicians(
     input: CoreSearchInput,
-    origin: Coordinates
+    origin: Coordinates,
+    viewer?: ShopVisibilityViewer
   ): Promise<PaginatedResponse<TechnicianCardPayload>> {
-    const eligibleCount = await this.repository.countEligibleLocatedTechnicians(input);
+    const eligibleCount = await this.repository.countEligibleLocatedTechnicians(input, viewer);
     if (eligibleCount === 0) {
       return buildPaginatedResponse([], 0, input);
     }
@@ -121,7 +126,8 @@ export class CoreReadService {
       const boundedCandidates = await this.repository.findEligibleTechniciansWithinBounds(
         input,
         origin,
-        radiusKm
+        radiusKm,
+        viewer
       );
       candidates = boundedCandidates.filter((candidate) => {
         const distanceKm = minimumCandidateDistanceKm(origin, candidate.locations);
@@ -134,7 +140,7 @@ export class CoreReadService {
       ) {
         break;
       }
-      radiusKm += 1;
+      radiusKm = Math.min(MAX_NEARBY_RADIUS_KM, radiusKm * 2);
     }
 
     const ranked = rankNearbyTechnicians(origin, candidates).map((candidate) => ({
@@ -145,7 +151,8 @@ export class CoreReadService {
     const start = (pagination.page - 1) * pagination.pageSize;
     const pageCandidates = ranked.slice(start, start + pagination.pageSize);
     const cardsById = await this.repository.loadTechnicianCardsByRankedIds(
-      pageCandidates.map(({ technicianProfileId }) => technicianProfileId)
+      pageCandidates.map(({ technicianProfileId }) => technicianProfileId),
+      viewer
     );
     const cards = pageCandidates.flatMap((candidate) => {
       const card = cardsById.get(candidate.technicianProfileId);
@@ -164,10 +171,10 @@ export class CoreReadService {
     return buildPaginatedResponse(cards, ranked.length, pagination);
   }
 
-  public async getShopDetail(id: number | string, locale?: ContentLocaleCode): Promise<ShopDetailPayload> {
+  public async getShopDetail(id: number | string, locale?: ContentLocaleCode, viewer?: ShopVisibilityViewer): Promise<ShopDetailPayload> {
     const shop = locale === undefined
-      ? await this.repository.findShopDetail(id)
-      : await this.repository.findShopDetail(id, locale);
+      ? await this.repository.findShopDetail(id, undefined, viewer)
+      : await this.repository.findShopDetail(id, locale, viewer);
 
     if (!shop) {
       throw this.notFoundError("error.shop.not_found");
@@ -178,9 +185,10 @@ export class CoreReadService {
 
   public async getTechnicianDetail(
     id: number | string,
-    coordinates: { latitude?: number; longitude?: number } = {}
+    coordinates: { latitude?: number; longitude?: number } = {},
+    viewer?: ShopVisibilityViewer
   ): Promise<TechnicianDetailPayload> {
-    const technician = await this.repository.findTechnicianDetail(id, coordinates);
+    const technician = await this.repository.findTechnicianDetail(id, coordinates, viewer);
 
     if (!technician) {
       throw this.notFoundError("error.technician.not_found");

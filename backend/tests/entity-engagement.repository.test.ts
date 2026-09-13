@@ -6,6 +6,34 @@ import {
 const target: EntityTarget = { targetType: "shop", publicId: "shop0000000001" };
 
 describe("EntityEngagementRepository", () => {
+  it("applies the shared shop visibility filter to favorite cards before pagination", async () => {
+    const entityFavorite = {
+      findMany: jest.fn(async () => []),
+      count: jest.fn(async () => 0)
+    };
+    const visibilityWhere = { OR: [{ visibility: "public" }, { ownerUserId: 42 }] };
+    const repository = new EntityEngagementRepository(
+      { entityFavorite } as never,
+      { buildVisibilityWhere: jest.fn(async () => visibilityWhere) } as never
+    );
+
+    await repository.listFavorites({
+      userId: 42,
+      viewer: { userId: 42, identityId: 10, identityType: "customer" },
+      page: 1,
+      pageSize: 20,
+      targetType: "shop"
+    });
+
+    expect(entityFavorite.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ shop: { is: expect.objectContaining(visibilityWhere) } }]
+        })
+      })
+    );
+  });
+
   it.each([
     ["service", "11111111-1111-4111-8111-111111111111", "serviceId", 17],
     ["technician_service", "22222222-2222-4222-8222-222222222222", "technicianServiceId", 18]

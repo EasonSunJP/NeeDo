@@ -45,32 +45,43 @@ export const createCoreReadRoutes = (config: AppConfig, dependencies: AppDepende
   );
   router.get(
     "/services",
+    optionalAuthenticate,
     validateRequest({ query: serviceListQuerySchema }),
     controller.listServices
   );
   router.get(
     "/services/:id",
+    optionalAuthenticate,
     validateRequest({ params: coreReadServiceIdParamSchema }),
     controller.getServiceDetail
   );
   router.get(
     "/services/:id/reviews",
+    optionalAuthenticate,
     validateRequest({ params: coreReadServiceIdParamSchema, query: serviceReviewListQuerySchema }),
     controller.listServiceReviews
   );
   router.get(
     "/home/recommendations",
+    optionalAuthenticate,
     validateRequest({ query: homeRecommendationsQuerySchema }),
     controller.getHomeRecommendations
   );
-  router.get("/search", validateRequest({ query: coreSearchQuerySchema }), controller.search);
+  router.get(
+    "/search",
+    optionalAuthenticate,
+    validateRequest({ query: coreSearchQuerySchema }),
+    controller.search
+  );
   router.get(
     "/shops/:id",
+    optionalAuthenticate,
     validateRequest({ params: coreReadShopIdParamSchema, query: coreReadShopDetailQuerySchema }),
     controller.getShopDetail
   );
   router.get(
     "/technicians/:id",
+    optionalAuthenticate,
     validateRequest({ params: coreReadTechnicianIdParamSchema, query: coreReadCoordinateQuerySchema }),
     controller.getTechnicianDetail
   );

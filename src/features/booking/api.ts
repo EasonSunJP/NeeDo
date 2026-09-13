@@ -482,7 +482,6 @@ export const bookingApi = {
   },
   listAvailability(query: AvailabilityQuery) {
     return httpClient.request<PaginatedBookingData<BookingScheduleSlot>>("/schedule/availability", {
-      auth: false,
       query
     });
   },
