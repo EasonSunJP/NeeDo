@@ -202,7 +202,7 @@ describe("localized carousel backoffice routes", () => {
   });
 });
 
-describe("NeeDo exchange administration production capability gate", () => {
+describe("NeeDo exchange administration formal read workspace", () => {
   it("does not build demand or information records from the demo feed", () => {
     expect(exchangeSource).not.toContain("../../data/mock");
     expect(exchangeSource).not.toContain("../mobile/NeedoExchangePage");
@@ -210,13 +210,15 @@ describe("NeeDo exchange administration production capability gate", () => {
     expect(exchangeSource).not.toContain("buildPhone");
   });
 
-  it("states the persisted exchange lifecycle prerequisites", () => {
-    expect(exchangeSource).toContain("正式需求与情报中心尚未启用");
-    expect(exchangeSource).toContain("ExchangePost、Demand、Offer 与 ExchangeReply 表和 migration");
-    expect(exchangeSource).toContain("创建、审核、发布、过期、驳回与撤回状态机 API");
-    expect(exchangeSource).toContain("发布身份、联系方式脱敏与范围 RBAC");
-    expect(exchangeSource).toContain("匹配、预约、支付、审计、分页与导出合同");
-    expect(exchangeSource).toContain("当前不会展示模拟需求、情报、发布主体、联系方式、互动或支付履约数据");
+  it("uses the formal read API behind one dedicated permission", () => {
+    expect(exchangeSource).toMatch(/exchangeOperationsApi\s*\.list/);
+    expect(exchangeSource).toMatch(/exchangeOperationsApi\s*\.detail/);
+    expect(exchangeSource).toContain("只读");
+    expect(exchangeSource).not.toContain("正式需求与情报中心尚未启用");
+    expect(appSource).toContain('path="/admin/orders/demands" element={protectPermission("admin", "backoffice:exchange:read"');
+    expect(appSource).toContain('path="/admin/orders/info" element={protectPermission("admin", "backoffice:exchange:read"');
+    expect(adminLayoutSource).toContain('to: "/admin/orders/demands", icon: "需", permission: "backoffice:exchange:read"');
+    expect(adminLayoutSource).toContain('to: "/admin/orders/info", icon: "情", permission: "backoffice:exchange:read"');
   });
 });
 

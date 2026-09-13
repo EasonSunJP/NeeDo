@@ -191,6 +191,10 @@ export const EXCHANGE_REQUEST_FEE_PERMISSIONS = {
   write: "backoffice:exchange-request-fee:write"
 } as const;
 
+export const EXCHANGE_OPERATIONS_PERMISSIONS = {
+  read: "backoffice:exchange:read"
+} as const;
+
 export const TECHNICIAN_AUTOMATION_PERMISSIONS = {
   read: "technician:automation-settings:read",
   write: "technician:automation-settings:write"
@@ -2136,6 +2140,13 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "exchange",
     "创建需求发布费用的乐观锁版本"
+  ),
+  createPermission(
+    EXCHANGE_OPERATIONS_PERMISSIONS.read,
+    "运营需求情报核验",
+    "api",
+    "exchange",
+    "分页读取脱敏的正式需求、情报、抢单、匹配、发布费与审计证据"
   )
 ] as const satisfies readonly SystemPermissionDefinition[];
 
@@ -2210,6 +2221,10 @@ const EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES = [
 const EXCHANGE_REQUEST_FEE_WRITE_PERMISSION_CODES = [
   ...EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES,
   EXCHANGE_REQUEST_FEE_PERMISSIONS.write
+] as const satisfies readonly SystemPermissionCode[];
+
+const EXCHANGE_OPERATIONS_READ_PERMISSION_CODES = [
+  EXCHANGE_OPERATIONS_PERMISSIONS.read
 ] as const satisfies readonly SystemPermissionCode[];
 
 const AUTH_AND_DASHBOARD_PERMISSION_CODES = [
@@ -2601,6 +2616,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...BACKOFFICE_AFFILIATE_OPERATOR_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_FEE_RULE_READ_PERMISSION_CODES,
     ...EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES,
+    ...EXCHANGE_OPERATIONS_READ_PERMISSION_CODES,
     ...CONTENT_PUBLICATION_OPERATION_PERMISSION_CODES,
     ...OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES,
     "page:backoffice-membership-reward-fee",
@@ -2747,6 +2763,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_FEE_RULE_READ_PERMISSION_CODES,
     ...EXCHANGE_REQUEST_FEE_READ_PERMISSION_CODES,
+    ...EXCHANGE_OPERATIONS_READ_PERMISSION_CODES,
     ...CONTENT_PUBLICATION_READ_PERMISSION_CODES
   ]
 });
