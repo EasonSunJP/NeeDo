@@ -7953,7 +7953,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           totalAmountJpy: { type: "integer", minimum: 0 },
           amountSource: {
             type: "string",
-            enum: ["order_payment", "checkout"]
+            enum: ["order_payment", "order_price", "checkout"]
           },
           currency: { type: "string" },
           paymentMethod: {
@@ -12193,7 +12193,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           paymentAmountJpy: { type: "integer", minimum: 0 },
           amountSource: {
             type: "string",
-            enum: ["order_payment", "checkout"]
+            enum: ["order_payment", "order_price", "checkout"]
           },
           effectivePaymentMethod: {
             type: ["string", "null"],

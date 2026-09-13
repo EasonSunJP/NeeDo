@@ -1,4 +1,5 @@
 export interface OrderPaymentProjectionInput<TPaymentMethod extends string = string> {
+  orderPriceAmountJpy: number;
   orderPaymentAmountJpy: number;
   orderPaymentMethod: TPaymentMethod;
   checkout: {
@@ -21,7 +22,7 @@ export interface OrderPaymentProjectionInput<TPaymentMethod extends string = str
 
 export interface OrderPaymentProjection<TPaymentMethod extends string = string> {
   totalAmountJpy: number;
-  amountSource: "order_payment" | "checkout";
+  amountSource: "order_payment" | "order_price" | "checkout";
   paymentMethod: TPaymentMethod;
   effectivePaymentMethod: TPaymentMethod | null;
   otherMethodCode: string | null;
@@ -42,10 +43,18 @@ export function projectOrderPayment<TPaymentMethod extends string>(
     activeCheckout?.ledgerTransaction?.deletedAt === null
       ? activeCheckout.ledgerTransaction.currency
       : null;
+  const usesLegacyOrderPrice =
+    !activeCheckout && input.orderPaymentAmountJpy === 0 && input.orderPriceAmountJpy > 0;
 
   return {
-    totalAmountJpy: activeCheckout?.checkoutAmountJpy ?? input.orderPaymentAmountJpy,
-    amountSource: activeCheckout ? "checkout" : "order_payment",
+    totalAmountJpy:
+      activeCheckout?.checkoutAmountJpy ??
+      (usesLegacyOrderPrice ? input.orderPriceAmountJpy : input.orderPaymentAmountJpy),
+    amountSource: activeCheckout
+      ? "checkout"
+      : usesLegacyOrderPrice
+        ? "order_price"
+        : "order_payment",
     paymentMethod: input.orderPaymentMethod,
     effectivePaymentMethod,
     otherMethodCode:

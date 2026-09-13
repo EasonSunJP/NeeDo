@@ -764,3 +764,11 @@ FORMAL_BACKEND_ENV_FILE=/absolute/path/to/.env.dev LIVE_DASHBOARD_CHECK_ROLLBACK
 页面按当前会话权限显示只读或可裁定状态，写操作需要二次点击确认。最终授权、身份范围、状态机、乐观版本、幂等、Affiliate 已结算奖励不撤回约束及审计仍全部由现有后端事务执行。页面不调用普通财务结算列表来推断退款案件，也不扩大直接支付退款接口的适用范围。
 
 本微步骤没有新增 API、schema 或 migration，没有修改退款、支付、账本、RBAC 或审计后端契约，也没有新增 mock/fake/placeholder 数据。
+
+## 订单金额历史兼容与跨端一致性（2026-09-13）
+
+运营与商户订单接口继续共用 `projectOrderPayment`。存在有效 checkout 时，`checkoutAmountJpy` 始终是最终金额；无 checkout 时优先使用 `BookingOrder.paymentAmountJpy`。对于历史数据中 `paymentAmountJpy = 0`、但持久化 `priceAmount > 0` 的订单，接口读取同一订单的 `priceAmount` 作为兼容金额，并以 `amountSource = order_price` 明确标记来源，避免把兼容值伪装成已保存的支付金额。
+
+新的正式 Booking 创建路径仍同时写入 `priceAmount` 与 `paymentAmountJpy`。未来六个月运营数据生成器也改为写入相同的持久化价格，并由独立 checker 对 `priceAmount`、`paymentAmountJpy` 和计划金额三方一致性进行核对。前端只格式化 API 返回的 `totalAmountJpy`，不使用常量、服务目录现价或浏览器 mock 兜底。
+
+本微步骤没有 schema 或 migration 变化，没有改动支付状态机、RBAC、审计或金额写接口，也没有直接修订 staging/production 历史记录。
