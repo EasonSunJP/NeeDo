@@ -787,6 +787,80 @@ describe("CoreReadRepository multi-entity search", () => {
   });
 });
 
+describe("CoreReadRepository customer profile visibility", () => {
+  const customer = {
+    id: 248,
+    userId: 249,
+    displayName: "CutGirl",
+    bio: "private biography",
+    city: "Tokyo",
+    membershipLevel: "standard",
+    membershipGrantMode: "SELF_SERVICE",
+    membershipDurationUnit: null,
+    membershipDurationValue: null,
+    membershipStartsAt: null,
+    membershipExpiresAt: null,
+    membershipGrantedById: null,
+    platformMembershipLockVersion: 1,
+    isPublic: false,
+    gender: "private",
+    age: null,
+    heightCm: null,
+    languages: [],
+    visibility: "limited",
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+    mediaAssets: [],
+    reviewSummary: null,
+    user: {
+      avatarBootstrapUrl: null,
+      avatarUrl: "/private-avatar.jpg",
+      needoId: "needo0000000002"
+    }
+  };
+
+  it("returns no customer payload when the relationship policy denies access", async () => {
+    const canView = jest.fn(async () => false);
+    const client = { customerProfile: { findFirst: jest.fn(async () => customer) } };
+    const repository = new CoreReadRepository(client as never, { canView } as never);
+    const viewer = { userId: 901, identityId: 902, identityType: "merchant_owner" };
+
+    await expect(repository.findCustomerProfile(customer.id, viewer)).resolves.toBeNull();
+    expect(canView).toHaveBeenCalledWith(
+      {
+        profileId: customer.id,
+        userId: customer.userId,
+        visibility: customer.visibility,
+        isPublic: false
+      },
+      viewer
+    );
+  });
+
+  it("maps only the customer identity payload when relationship access is allowed", async () => {
+    const canView = jest.fn(async () => true);
+    const client = { customerProfile: { findFirst: jest.fn(async () => customer) } };
+    const repository = new CoreReadRepository(client as never, { canView } as never);
+
+    await expect(
+      repository.findCustomerProfile(customer.id, {
+        userId: 903,
+        identityId: 904,
+        identityType: "technician",
+        identityScopeType: "technician_profile",
+        identityScopeId: 134
+      })
+    ).resolves.toMatchObject({
+      id: 248,
+      displayName: "CutGirl",
+      bio: "private biography",
+      avatarUrl: "/private-avatar.jpg",
+      publicId: "needo0000000002"
+    });
+  });
+});
+
 describe("CoreReadRepository public service reviews", () => {
   it("lists only completed persisted reviews with effective amendments and active media", async () => {
     const originalCreatedAt = new Date("2026-08-30T09:00:00.000Z");

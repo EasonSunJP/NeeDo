@@ -36,6 +36,7 @@ import {
   contactCardRequestFingerprint,
   persistImContactCardInTransaction
 } from "./im-contact-card-send.transaction";
+import { CustomerProfileVisibilityRepository } from "./customer-profile-visibility.repository";
 
 const PUBLISHED_STATUS = "published";
 const PERSONAL_IDENTITY_TYPES = ["customer", "user", "u", "technician", "scout"];
@@ -935,6 +936,19 @@ const imParticipantUserSelect = {
   }
 } satisfies Prisma.UserSelect;
 
+const directorySearchUserSelect = {
+  id: true,
+  needoId: true,
+  username: true,
+  avatarUrl: true,
+  customerProfile: {
+    select: { displayName: true, visibility: true, isPublic: true, deletedAt: true }
+  },
+  technicianProfile: {
+    select: { displayName: true, visibility: true, status: true, deletedAt: true }
+  }
+} satisfies Prisma.UserSelect;
+
 const imParticipantIdentitySelect = {
   id: true,
   type: true,
@@ -1080,7 +1094,10 @@ function toDirectoryLanguages(value: unknown): string[] {
 }
 
 export class RealtimeRepository implements RealtimeRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(
+    private readonly client: PrismaClient = prisma,
+    private readonly customerProfileVisibility = new CustomerProfileVisibilityRepository(client)
+  ) {}
 
   public async findActiveUserIds(ids: number[]): Promise<number[]> {
     const uniqueIds = Array.from(new Set(ids));
@@ -2740,6 +2757,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   ): Promise<PaginatedResponse<ParticipantPayload>> {
     const pagination = toPrismaPagination(input);
     const query = input.query.trim();
+    const publicCustomerProfile = {
+      visibility: "public",
+      isPublic: true,
+      deletedAt: null
+    } satisfies Prisma.CustomerProfileWhereInput;
+    const publicTechnicianProfile = {
+      visibility: "public",
+      status: PUBLISHED_STATUS,
+      deletedAt: null
+    } satisfies Prisma.TechnicianProfileWhereInput;
     const where: Prisma.UserWhereInput = {
       id: { not: userId },
       isActive: true,
@@ -2751,28 +2778,50 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           deletedAt: null
         }
       },
-      OR: [
-        { username: { contains: query } },
-        { needoId: { contains: query } },
+      AND: [
         {
-          customerProfile: {
-            is: { displayName: { contains: query }, deletedAt: null }
-          }
-        },
-        {
-          technicianProfile: {
-            is: { displayName: { contains: query }, deletedAt: null }
-          }
-        },
-        {
-          identities: {
-            some: {
-              displayName: { contains: query },
-              type: { in: PERSONAL_IDENTITY_TYPES },
-              isActive: true,
-              deletedAt: null
+          OR: [
+            {
+              customerProfile: { is: publicCustomerProfile },
+              OR: [
+                { username: { contains: query } },
+                { needoId: { contains: query } },
+                { customerProfile: { is: { ...publicCustomerProfile, displayName: { contains: query } } } },
+                {
+                  identities: {
+                    some: {
+                      displayName: { contains: query },
+                      type: { in: ["customer", "user", "u"] },
+                      isActive: true,
+                      deletedAt: null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              technicianProfile: { is: publicTechnicianProfile },
+              OR: [
+                { username: { contains: query } },
+                { needoId: { contains: query } },
+                {
+                  technicianProfile: {
+                    is: { ...publicTechnicianProfile, displayName: { contains: query } }
+                  }
+                },
+                {
+                  identities: {
+                    some: {
+                      displayName: { contains: query },
+                      type: "technician",
+                      isActive: true,
+                      deletedAt: null
+                    }
+                  }
+                }
+              ]
             }
-          }
+          ]
         }
       ],
       NOT: {
@@ -2785,10 +2834,10 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       }
     };
     const select = {
-      ...imParticipantUserSelect,
+      ...directorySearchUserSelect,
       identities: {
         where: {
-          type: { in: PERSONAL_IDENTITY_TYPES },
+          type: { in: ["customer", "user", "u", "technician"] },
           isActive: true,
           deletedAt: null
         },
@@ -2812,7 +2861,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         this.mapParticipant(
           user,
           undefined,
-          this.findCanonicalParticipantIdentity(user.identities)
+          user.customerProfile?.deletedAt === null &&
+          user.customerProfile.visibility === "public" &&
+          user.customerProfile.isPublic
+            ? this.findCanonicalParticipantIdentity(user.identities)
+            : user.identities.find((identity) => identity.type === "technician")
         )
       ),
       total,
@@ -3220,7 +3273,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     if (!resolvedTargetIdentityId) {
       return null;
     }
-    const identityCard = await this.buildDirectoryIdentityCard(user, resolvedTargetIdentityId);
+    const customerProfileAllowed = user.customerProfile
+      ? await this.customerProfileVisibility.canView(
+          {
+            profileId: user.customerProfile.id,
+            userId: user.id,
+            visibility: user.customerProfile.visibility,
+            isPublic: user.customerProfile.isPublic
+          },
+          { userId: viewerUserId, identityId: viewerIdentityId }
+        )
+      : false;
+    const identityCard = await this.buildDirectoryIdentityCard(
+      user,
+      resolvedTargetIdentityId,
+      customerProfileAllowed
+    );
     const directoryParticipant = this.mapParticipant({
       ...user,
       username: identityCard.displayName
@@ -3242,6 +3310,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             where: {
               ownerIdentityId: viewerIdentityId,
               contactIdentityId: resolvedTargetIdentityId,
+              source: "friend_request",
               deletedAt: null,
               blockedAt: null
             },
@@ -5845,7 +5914,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
   private async buildDirectoryIdentityCard(
     user: DirectoryProfileUserRecord,
-    targetIdentityId: number
+    targetIdentityId: number,
+    customerProfileAllowed: boolean
   ): Promise<DirectoryIdentityCardPayload> {
     const identity =
       user.identities.find((item) => item.id === targetIdentityId) ??
@@ -5890,8 +5960,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       if (
         !profile ||
         profile.deletedAt !== null ||
-        !profile.isPublic ||
-        profile.visibility !== "public"
+        !customerProfileAllowed
       ) {
         return fallback;
       }

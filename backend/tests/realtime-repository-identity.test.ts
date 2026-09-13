@@ -170,7 +170,12 @@ describe("RealtimeRepository formal identity payloads", () => {
             username: "旧账号名",
             avatarUrl: null,
             identities: [{ id: 2370, type: "customer", displayName: "旧身份名", isDefault: true }],
-            customerProfile: { displayName: "Eason", deletedAt: null },
+            customerProfile: {
+              displayName: "Eason",
+              visibility: "public",
+              isPublic: true,
+              deletedAt: null
+            },
             technicianProfile: null
           }
         ]),
@@ -189,23 +194,86 @@ describe("RealtimeRepository formal identity payloads", () => {
     expect(client.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: expect.arrayContaining([
-            { customerProfile: { is: { displayName: { contains: "Eason" }, deletedAt: null } } },
-            {
-              technicianProfile: {
-                is: { displayName: { contains: "Eason" }, deletedAt: null }
-              }
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({
+                  customerProfile: {
+                    is: expect.objectContaining({ visibility: "public", isPublic: true })
+                  },
+                  OR: expect.arrayContaining([
+                    {
+                      customerProfile: {
+                        is: expect.objectContaining({ displayName: { contains: "Eason" } })
+                      }
+                    }
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      })
+    );
+  });
+
+  it("does not use a private customer identity to bypass a published technician identity", async () => {
+    const client = {
+      user: {
+        findMany: jest.fn(async () => [
+          {
+            id: 249,
+            needoId: "needo0000000002",
+            username: "account fallback",
+            avatarUrl: "/technician-avatar.jpg",
+            identities: [
+              { id: 250, type: "customer", displayName: "CutGirl", isDefault: true },
+              { id: 251, type: "technician", displayName: "CutGirl Tech", isDefault: false }
+            ],
+            customerProfile: {
+              displayName: "private customer name",
+              visibility: "privateAll",
+              isPublic: false,
+              deletedAt: null
             },
-            {
-              identities: {
-                some: {
-                  displayName: { contains: "Eason" },
-                  type: { in: ["customer", "user", "u", "technician", "scout"] },
-                  isActive: true,
-                  deletedAt: null
-                }
-              }
+            technicianProfile: {
+              displayName: "CutGirl Tech",
+              visibility: "public",
+              status: "published",
+              deletedAt: null
             }
+          }
+        ]),
+        count: jest.fn(async () => 1)
+      }
+    } as unknown as PrismaClient;
+
+    const result = await new RealtimeRepository(client).searchDirectory(137, {
+      ownerIdentityId: 1370,
+      query: "CutGirl",
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(result.list[0]?.username).toBe("CutGirl Tech");
+    expect(client.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({
+                  customerProfile: {
+                    is: expect.objectContaining({ visibility: "public", isPublic: true })
+                  }
+                }),
+                expect.objectContaining({
+                  technicianProfile: {
+                    is: expect.objectContaining({ visibility: "public", status: "published" })
+                  }
+                })
+              ])
+            })
           ])
         })
       })
@@ -234,8 +302,18 @@ describe("RealtimeRepository formal identity payloads", () => {
               },
               { id: 2370, type: "customer", displayName: "旧身份名", isDefault: false }
             ],
-            customerProfile: { displayName: "José", deletedAt: null },
-            technicianProfile: { displayName: "旧技师名", deletedAt: null }
+            customerProfile: {
+              displayName: "José",
+              visibility: "public",
+              isPublic: true,
+              deletedAt: null
+            },
+            technicianProfile: {
+              displayName: "旧技师名",
+              visibility: "public",
+              status: "published",
+              deletedAt: null
+            }
           }
         ]),
         count: jest.fn(async () => 1)
@@ -1020,6 +1098,7 @@ describe("RealtimeRepository technician contact privacy", () => {
       where: {
         ownerIdentityId: 10,
         contactIdentityId: 20,
+        source: "friend_request",
         deletedAt: null,
         blockedAt: null
       },
