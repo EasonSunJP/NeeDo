@@ -282,6 +282,25 @@ describe("PersistedAuthEnvelopeV8", () => {
     expect(readPersistedAuthEnvelope()).toBeNull();
   });
 
+  it("persists in local development when an insecure LAN origin has no Web Locks API", async () => {
+    setAuthEnvelopeLockAdapter(undefined);
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: undefined
+    });
+    const envelope = createCommittedAuthEnvelope({
+      authInstanceId: "00000000-0000-4000-8000-000000000108",
+      credentialVersion: 108,
+      refreshToken: "lan-device-refresh",
+      session: session()
+    });
+
+    await expect(
+      writePersistedAuthEnvelope(envelope, { expectedRaw: null })
+    ).resolves.toBe(true);
+    expect(readPersistedAuthEnvelope()).toEqual(envelope);
+  });
+
   it.each(["commit-first", "logout-first"] as const)(
     "serializes same-instance commit/logout interleaving with terminal state winning (%s)",
     async (order) => {
