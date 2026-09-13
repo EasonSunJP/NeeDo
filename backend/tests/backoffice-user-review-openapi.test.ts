@@ -33,6 +33,10 @@ describe("backoffice received-review OpenAPI", () => {
     expect(amendmentPath.post).toMatchObject({
       "x-permission": "backoffice:customers:write"
     });
+    expect(amendmentPath.post.summary).toContain("customer or technician review");
+    expect(amendmentPath.post.responses["404"].description).toBe(
+      "Completed user-authored customer or technician review not found"
+    );
     expect(amendmentPath.delete).toBeUndefined();
     const order = response.body.components.schemas.BackofficeReceivedUserReview.properties.order;
     expect(order.required).toEqual(expect.arrayContaining(["paymentMethod", "paymentStatus", "paymentCurrency", "otherPaymentMethod", "addOnMinutes", "addOnCount", "note"]));

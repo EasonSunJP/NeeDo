@@ -345,7 +345,7 @@ Migration 为 `20260901040000_shop_membership_card_topup`。本地 `needo_dev` �
 
 ## 21. 2026-09-13 运营评价中心正式数据
 
-运营后台 `/pf-admin.html#/admin/reviews` 已移除过时的能力门禁，复用现有 `OrderReview`、`OrderReviewAmendment`、标签、订单和身份关系。正式接口为 `GET /api/v1/backoffice/reviews` 与 `GET /api/v1/backoffice/reviews/:reviewId`，均要求平台或全局运营身份及 `backoffice:users:read`；原有追加式修订接口继续要求 `backoffice:customers:write`，不改写历史记录。
+运营后台 `/pf-admin.html#/admin/reviews` 已移除过时的能力门禁，复用现有 `OrderReview`、`OrderReviewAmendment`、标签、订单和身份关系。正式接口为 `GET /api/v1/backoffice/reviews` 与 `GET /api/v1/backoffice/reviews/:reviewId`，均要求平台或全局运营身份及 `backoffice:users:read`；追加式修订接口继续要求 `backoffice:customers:write`，支持用户创建的客户评价和技师评价，不改写历史记录，系统生成评价保持只读。
 
 列表固定每页 20 条，支持评价/订单/用户/店铺/技师关键词、最新有效评分、持久化事实状态、评价对象与东京自然日筛选。`original`、`amended`、`system` 分别表示用户原始记录、存在不可变修订、系统生成；没有虚构回复、审核或风控状态。详情显示订单、评价人、客户、店铺、技师、支付事实、当前有效内容和完整修订原因/经办人/版本历史。
 

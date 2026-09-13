@@ -339,7 +339,9 @@ describe("BackofficeUserReviewRepository", () => {
       orderReview: {
         findFirst: jest.fn(async () => ({
           id: 77,
+          targetType: OrderReviewTargetType.CUSTOMER,
           customerProfile: { userId: 41 },
+          technicianProfile: null,
           bookingOrder: { shopId: 11 },
           rating: 5,
           comment: "Original",
@@ -383,6 +385,76 @@ describe("BackofficeUserReviewRepository", () => {
     expect(auditCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         metadata: expect.objectContaining({ userId: 41, shopId: 11, reviewId: 77 })
+      })
+    });
+  });
+
+  it("creates an audited amendment for a user-authored technician review", async () => {
+    const amendmentCreate = jest.fn(async () => ({ id: 102, version: 2 }));
+    const auditCreate = jest.fn(async () => ({}));
+    const findFirst = jest.fn(async () => ({
+      id: 78,
+      targetType: OrderReviewTargetType.TECHNICIAN,
+      customerProfile: null,
+      technicianProfile: { userId: 52 },
+      bookingOrder: { shopId: 11 },
+      rating: 5,
+      comment: "Original technician review",
+      tags: [{ label: "professional" }],
+      amendments: [
+        {
+          version: 1,
+          rating: 4,
+          comment: "First correction",
+          tags: [{ label: "professional" }]
+        }
+      ]
+    }));
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 78 }]),
+      orderReview: { findFirst },
+      orderReviewAmendment: { create: amendmentCreate },
+      auditLog: { create: auditCreate }
+    };
+    const repository = new BackofficeUserReviewRepository({
+      $transaction: jest.fn(async (callback: (tx: typeof transaction) => unknown) =>
+        callback(transaction)
+      )
+    } as never);
+
+    await expect(
+      repository.createAmendmentWithAudit({
+        actorId: 9,
+        reviewId: 78,
+        rating: 3,
+        reason: "Technician service evidence confirmed",
+        expectedVersion: 1,
+        audit: { actorId: 9, action: "review.amend", targetType: "OrderReview" }
+      })
+    ).resolves.toMatchObject({ kind: "created", value: { reviewId: 78, version: 2 } });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({ targetType: OrderReviewTargetType.CUSTOMER })
+      })
+    );
+    expect(amendmentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          orderReviewId: 78,
+          version: 2,
+          rating: 3,
+          comment: "First correction"
+        })
+      })
+    );
+    expect(auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        metadata: expect.objectContaining({
+          userId: 52,
+          shopId: 11,
+          reviewId: 78,
+          targetType: "technician"
+        })
       })
     });
   });
