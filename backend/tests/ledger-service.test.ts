@@ -1503,6 +1503,215 @@ describe("LedgerService wallet mutations", () => {
     );
   });
 
+  it.each([
+    ["NDP" as const, false],
+    ["TEST_NDP" as const, true]
+  ])(
+    "cancels a historical confirmed booking without a hold in %s and keeps compensation exact",
+    async (currency, isTestAccount) => {
+      const repository = new InMemoryLedgerRepository();
+      repository.accountClassifications.set(3, isTestAccount);
+      repository.seedWallet({
+        ownerType: "shop",
+        ownerId: 10,
+        availableBalance: 0,
+        currency
+      });
+      const service = new LedgerService(
+        repository,
+        createFeeService(),
+        undefined,
+        () => now,
+        createPolicyResolver()
+      );
+      const input = bookingInput({
+        bookingOrderId: isTestAccount ? 208 : 207,
+        shopId: 10,
+        actorUserId: 2,
+        customerUserId: 3
+      });
+
+      await expect(
+        service.compensateCustomerForMerchantCancellation({ ...input, customerUserId: 3 })
+      ).resolves.toMatchObject({ currency });
+
+      expect(repository.wallets.get(`shop:10:${currency}`)).toMatchObject({
+        availableBalance: -500,
+        frozenBalance: 0
+      });
+      expect(repository.wallets.get(`user:3:${currency}`)).toMatchObject({
+        availableBalance: 500,
+        frozenBalance: 0
+      });
+      expect(repository.financials.get(input.bookingOrderId)).toMatchObject({
+        ndpCurrency: currency,
+        releasedNdp: 0,
+        penaltyNdp: 500,
+        compensationToUserNdp: 500,
+        settlementStatus: "compensated",
+        timelineEvent: expect.objectContaining({
+          action: "booking_merchant_cancel_compensation",
+          merchantBalanceBeforeNdp: 0,
+          merchantBalanceAfterNdp: -500,
+          merchantDebtCreatedNdp: 500
+        })
+      });
+      expect(repository.entries.map((entry) => entry.reason)).toEqual([
+        "booking_merchant_cancel_penalty",
+        "booking_merchant_cancel_customer_compensation"
+      ]);
+      expect(repository.reconciliationRows).toHaveLength(isTestAccount ? 0 : 1);
+    }
+  );
+
+  it("lets a customer cancel a historical confirmed booking without a financial snapshot or hold", async () => {
+    const repository = new InMemoryLedgerRepository();
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = bookingInput({
+      bookingOrderId: 209,
+      shopId: 10,
+      actorUserId: 3,
+      customerUserId: 3
+    });
+
+    await expect(service.releaseBookingHold(input)).resolves.toBeUndefined();
+
+    expect(repository.wallets.size).toBe(0);
+    expect(repository.transactions.size).toBe(0);
+    expect(repository.entries).toHaveLength(0);
+    expect(repository.financials.get(209)).toMatchObject({
+      ndpCurrency: "NDP",
+      releasedNdp: 0,
+      settlementStatus: "cancelled",
+      timelineEvent: expect.objectContaining({
+        action: "booking_cancel_missing_hold",
+        expectedReleaseNdp: 0,
+        releasedNdp: 0,
+        releaseShortfallNdp: 0
+      })
+    });
+  });
+
+  it("releases only verifiably frozen NDP when a historical hold exceeds the wallet frozen balance", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1_000 });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = bookingInput({
+      bookingOrderId: 210,
+      shopId: 10,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+    await service.freezeBookingAcceptance(input);
+    const wallet = repository.wallets.get("shop:10:NDP");
+    if (!wallet) throw new Error("expected seeded shop wallet");
+    wallet.frozenBalance = 100;
+
+    await expect(
+      service.compensateCustomerForMerchantCancellation({ ...input, customerUserId: 3 })
+    ).resolves.toMatchObject({ currency: "NDP" });
+
+    expect(wallet).toMatchObject({ availableBalance: 100, frozenBalance: 0 });
+    expect(repository.wallets.get("user:3:NDP")).toMatchObject({
+      availableBalance: 500,
+      frozenBalance: 0
+    });
+    expect(repository.financials.get(210)).toMatchObject({
+      releasedNdp: 100,
+      penaltyNdp: 500,
+      compensationToUserNdp: 500,
+      settlementStatus: "compensated"
+    });
+    expect(repository.entries.map((entry) => entry.reason)).toEqual(
+      expect.arrayContaining([
+        "booking_cancel_unfreeze",
+        "booking_merchant_cancel_penalty",
+        "booking_merchant_cancel_customer_compensation"
+      ])
+    );
+  });
+
+  it("uses the existing negative wallet balance as provider-cancellation debt when the shop cannot fund compensation", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.technicianUsers.set(9, 77);
+    repository.seedWallet({ ownerType: "user", ownerId: 77, availableBalance: 700 });
+    repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 100 });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver({ payerType: "technician" })
+    );
+    const input = bookingInput({
+      bookingOrderId: 211,
+      shopId: 10,
+      technicianProfileId: 9,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+    await service.freezeBookingAcceptance(input);
+
+    await expect(
+      service.compensateCustomerForMerchantCancellation({ ...input, customerUserId: 3 })
+    ).resolves.toMatchObject({ currency: "NDP" });
+
+    expect(repository.wallets.get("user:77:NDP")).toMatchObject({
+      availableBalance: 700,
+      frozenBalance: 0
+    });
+    expect(repository.wallets.get("shop:10:NDP")).toMatchObject({
+      availableBalance: -400,
+      frozenBalance: 0
+    });
+    expect(repository.wallets.get("user:3:NDP")).toMatchObject({ availableBalance: 500 });
+  });
+
+  it("keeps provider compensation active when the booking platform fee is disabled", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 100 });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver({ feeEnabled: false })
+    );
+    const input = bookingInput({
+      bookingOrderId: 212,
+      shopId: 10,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+    await service.freezeBookingAcceptance(input);
+
+    await expect(
+      service.compensateCustomerForMerchantCancellation({ ...input, customerUserId: 3 })
+    ).resolves.toMatchObject({ currency: "NDP" });
+
+    expect(repository.holds.size).toBe(0);
+    expect(repository.wallets.get("shop:10:NDP")).toMatchObject({ availableBalance: -400 });
+    expect(repository.wallets.get("user:3:NDP")).toMatchObject({ availableBalance: 500 });
+    expect(repository.financials.get(212)).toMatchObject({
+      platformFeeEnabledSnapshot: false,
+      penaltyNdp: 500,
+      compensationToUserNdp: 500,
+      settlementStatus: "compensated"
+    });
+  });
+
   it("releases a frozen booking hold or pays forced-cancel compensation from frozen NDP", async () => {
     const releaseRepository = new InMemoryLedgerRepository();
     releaseRepository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1000 });

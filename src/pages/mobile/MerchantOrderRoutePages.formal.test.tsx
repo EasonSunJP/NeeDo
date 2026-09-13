@@ -320,7 +320,9 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
 
   it("keeps the warning open and shows the formal API error when cancellation fails", async () => {
     mocks.getOrder.mockResolvedValue({ ...order, status: "confirmed", paymentStatus: "pending", paymentMethod: "onsite" });
-    mocks.cancelOrder.mockRejectedValue(new ApiClientError("error.booking.conflict", 409, 409));
+    mocks.cancelOrder.mockRejectedValue(
+      new ApiClientError("error.order.invalid_transition", 40912, 409)
+    );
 
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/merchant/orders/46397"]}><Routes><Route path="/merchant/orders/:orderId" element={<MerchantOrderDetailRoutePage />} /></Routes></MemoryRouter>);
@@ -334,7 +336,9 @@ describe("MerchantOrderDetailRoutePage formal order", () => {
     await act(async () => confirmButton!.click());
 
     expect(container.querySelector('[role="alertdialog"]')).not.toBeNull();
-    expect(container.querySelector('[role="alert"]')?.textContent).toMatch(/预约状态已经变化|reservation status has changed/iu);
+    expect(container.querySelector('[role="alert"]')?.textContent).toMatch(
+      /订单状态已经变化|order status(?: has changed|已经变化)/iu
+    );
   });
 
   it("shows the order price before payment and does not invent payment selection", async () => {

@@ -134,7 +134,7 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 | `GET` | `/api/v1/search` | Typed shop, technician, or service search | Public |
 | `GET` | `/api/v1/shops/:id` | Public shop detail | Public |
 | `GET` | `/api/v1/technicians/:id` | Public technician detail | Public |
-| `GET` | `/api/v1/profiles/customers/:id` | Public customer profile without account credentials | Public |
+| `GET` | `/api/v1/profiles/customers/:id` | Customer profile filtered by its saved visibility policy | Optional bearer |
 
 For public technician navigation, `:id` is canonically the lowercase NeeDoID
 `s##########`. A positive numeric `TechnicianProfile.id` remains accepted only
@@ -256,6 +256,9 @@ Both share commands require a UUID `idempotencyKey`. Replaying the same key and 
 
 - `id`, `displayName`, `city`, `bio`, `avatarUrl`, `membershipLevel`, `reviewSummary`, `createdAt`, `updatedAt`
 - Account credentials and private fields such as `email`, `phone`, `passwordHash`, tokens, and OTP values are never returned.
+- `public` profiles are readable anonymously. `privateAll` profiles are readable only by the profile owner. `limited` additionally permits an active reciprocal friend contact. `network` additionally permits an active non-friend business contact, a qualifying affiliate relationship, the current merchant shop, or the current technician when a non-deleted booking establishes that relationship.
+- A supplied bearer token is validated and contributes only its selected identity and shop scope; an invalid supplied token returns `401`. Missing profiles and profiles hidden from the current viewer both return the same `404 error.customer_profile.not_found` response to avoid disclosing that a private profile exists.
+- Customer profile responses use `Cache-Control: no-store`. Clients must not place these relationship-scoped responses in a shared or public persistent cache.
 
 ## Order Performance And Special Cancellation
 

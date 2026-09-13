@@ -31,7 +31,7 @@ const currentShopServiceLocation = (shopId: number, admin2RegionId = 725) => ({
 });
 
 const makeTransitionOrderRecord = (
-  status: "PENDING" | "IN_SERVICE" | "COMPLETED" | "CANCELLED"
+  status: "PENDING" | "CONFIRMED" | "IN_SERVICE" | "COMPLETED" | "CANCELLED"
 ) => ({
   id: 701,
   orderNo: "ND202609010701",
@@ -1314,6 +1314,75 @@ serviceLocation: { source: "SHOP_LOCATION" }
     expect(tx.orderPerformanceAssessmentRevision.create).not.toHaveBeenCalled();
     expect(tx.technicianPerformanceSummary.upsert).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["PENDING", undefined],
+    ["CONFIRMED", "REFUND_PENDING"]
+  ] as const)(
+    "commits a confirmed cancellation with %s payment through the shared settlement transaction",
+    async (paymentStatus, expectedPaymentStatus) => {
+      const tx = createCancellationTransaction();
+      const current = {
+        ...makeTransitionOrderRecord("CONFIRMED"),
+        paymentStatus,
+        exchangeMatchParticipant: null
+      };
+      const next = {
+        ...makeTransitionOrderRecord("CANCELLED"),
+        paymentStatus: expectedPaymentStatus ?? paymentStatus,
+        exchangeMatchParticipant: null
+      };
+      tx.bookingOrder.findFirst = jest
+        .fn()
+        .mockResolvedValueOnce(current)
+        .mockResolvedValueOnce(next);
+      const settle = jest.fn().mockResolvedValue(undefined);
+      const repository = new BookingRepository({
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never);
+
+      await expect(
+        repository.transitionOrderWithScheduleGuard(
+          {
+            id: 701,
+            actorUserId: 202,
+            actor: { userId: 202, identityId: 16, identityType: "merchant_owner" },
+            fromStatus: "confirmed",
+            toStatus: "cancelled",
+            reason: "商户无法履约"
+          },
+          { settle }
+        )
+      ).resolves.toMatchObject({ outcome: "ok", order: { status: "cancelled" } });
+
+      expect(tx.bookingOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 701, deletedAt: null, status: "CONFIRMED" },
+        data: {
+          status: "CANCELLED",
+          cancelReason: "商户无法履约",
+          paymentStatus: expectedPaymentStatus
+        }
+      });
+      expect(tx.scheduleSlot.updateMany).toHaveBeenCalledWith({
+        where: { id: 501, bookedCount: { gt: 0 } },
+        data: { bookedCount: { decrement: 1 }, status: "AVAILABLE" }
+      });
+      expect(tx.orderStatusHistory.create).toHaveBeenCalledWith({
+        data: {
+          bookingOrderId: 701,
+          fromStatus: "CONFIRMED",
+          toStatus: "CANCELLED",
+          actorUserId: 202,
+          reason: "商户无法履约"
+        }
+      });
+      expect(settle).toHaveBeenCalledWith({
+        transactionClient: tx,
+        order: expect.objectContaining({ id: 701 })
+      });
+      expect(tx.orderPerformanceAssessment.create).not.toHaveBeenCalled();
+    }
+  );
 
   it("returns an active acceptance pause before mutating or settling a confirmation", async () => {
     const settle = jest.fn();

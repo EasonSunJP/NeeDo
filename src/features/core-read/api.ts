@@ -597,6 +597,6 @@ export const coreReadApi = {
   },
 
   getCustomerProfile(id: number) {
-    return httpClient.request<CoreCustomerProfile>(`/profiles/customers/${id}`, { auth: false });
+    return httpClient.request<CoreCustomerProfile>(`/profiles/customers/${id}`);
   }
 };

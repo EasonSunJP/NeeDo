@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { CoreReadService } from "../services/core-read.service";
+import type { AuthenticatedAccessContext } from "../services/auth.service";
 import { successResponse } from "../utils/api-response";
 import {
   categoryListQuerySchema,
@@ -184,7 +185,14 @@ export class CoreReadController {
     try {
       response
         .status(200)
-        .json(successResponse(await this.coreReadService.getCustomerProfile(this.getId(request))));
+        .json(
+          successResponse(
+            await this.coreReadService.getCustomerProfile(
+              this.getId(request),
+              this.customerProfileViewer(response)
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }
@@ -192,6 +200,19 @@ export class CoreReadController {
 
   private getId(request: Request): number {
     return coreReadIdParamSchema.parse(request.params).id;
+  }
+
+  private customerProfileViewer(response: Response) {
+    const auth = response.locals.auth as AuthenticatedAccessContext | undefined;
+    if (!auth) return undefined;
+    const selectedShopId = auth.selectedMerchantShopId ?? auth.merchantPreviewShopId;
+    return {
+      userId: auth.userId,
+      identityId: auth.currentIdentityId,
+      identityType: auth.currentIdentityType,
+      identityScopeType: selectedShopId ? "shop" : auth.currentIdentityScopeType,
+      identityScopeId: selectedShopId ?? auth.currentIdentityScopeId
+    };
   }
 
   private getServiceId(request: Request): number | string {

@@ -8,8 +8,7 @@ const CACHEABLE_READ_PATTERNS = [
   /^\/home\/recommendations$/,
   /^\/search$/,
   /^\/shops\/[^/]+$/,
-  /^\/technicians\/[^/]+$/,
-  /^\/profiles\/customers\/[^/]+$/
+  /^\/technicians\/[^/]+$/
 ];
 
 const toApiPath = (config: AppConfig, path: string): string =>

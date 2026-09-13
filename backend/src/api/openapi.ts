@@ -22205,7 +22205,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/profiles/customers/{id}`]: {
       get: {
         tags: ["Core Read"],
-        summary: "Public customer profile",
+        summary: "Visibility-scoped customer profile",
+        description:
+          "Returns public profiles anonymously. privateAll is visible only to the owner; limited also allows reciprocal friends; network additionally allows persisted introducer and active provider/shop relationships. Unauthorized reads return the same 404 response as a missing profile.",
+        security: [{}, { bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: {
           "200": { description: "Customer profile without account credentials" },

@@ -175,8 +175,7 @@ function ProfileStatus({
 function CustomerApiProfilePage({ id }: { id: number }) {
   const query = useCoreReadQuery(
     () => coreReadApi.getCustomerProfile(id),
-    [id],
-    { key: `core:customer-profile:${id}` }
+    [id]
   );
 
   if (query.loading) {

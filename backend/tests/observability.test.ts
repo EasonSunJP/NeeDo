@@ -86,4 +86,18 @@ describe("observability middleware", () => {
     );
     expect(next).toHaveBeenCalledTimes(1);
   });
+
+  it("never publicly caches relationship-scoped customer profile responses", () => {
+    const setHeader = jest.fn();
+    const next = jest.fn();
+
+    createCacheHeadersMiddleware(env)(
+      { method: "GET", path: "/api/v1/profiles/customers/248" } as never,
+      { setHeader } as never,
+      next
+    );
+
+    expect(setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
+    expect(next).toHaveBeenCalledTimes(1);
+  });
 });
