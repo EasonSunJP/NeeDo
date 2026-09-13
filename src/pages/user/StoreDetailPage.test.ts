@@ -34,7 +34,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("setSelectedMenuCardId(item.sourceServiceId);");
     expect(pageSource).toContain("selectLabel={serviceSelectLabel}");
     expect(pageSource).not.toContain('cardUi?.cta ?? "预约"');
-    expect(pageSource).toContain("const sourceCards = formalApiOnly && !isMerchantEditable");
+    expect(pageSource).toContain("const sourceCards = formalApiOnly");
+    expect(pageSource).not.toContain("formalApiOnly && !isMerchantEditable");
     expect(pageSource).toContain("return sourceCards.map((menuCard) => ({");
   });
 
@@ -583,6 +584,7 @@ describe("StoreDetailPage formal route isolation", () => {
 
   it("never sends a formal shop without persisted services through the legacy fallback checkout", () => {
     expect(pageSource).toContain("formalApiOnly");
+    expect(pageSource).toContain("serviceInfoById.has(menuCard.sourceServiceId)");
     expect(pageSource).toContain("hasBookableCheckoutTarget");
     expect(pageSource).toContain("暂无可预约服务");
     expect(pageSource).toContain("formalApiOnly={true}");

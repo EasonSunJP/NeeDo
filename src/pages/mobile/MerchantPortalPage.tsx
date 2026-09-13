@@ -49,7 +49,8 @@ import { emptyOrders as orders, emptySettlements as settlements, formalMediaFall
 import {
   coreReadApi,
   mapCoreShopToStore,
-  mapCoreTechnicianToTechnician
+  mapCoreTechnicianToTechnician,
+  type CoreShopDetail
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { DispatchOverviewWorkspace } from "../../features/dispatch-center/components/OverviewWorkspace";
@@ -88,7 +89,7 @@ import {
 } from "../../lib/merchantStaffRoles";
 import { SocialProfileMiniCard, buildTechnicianInfoCardData, buildUserInfoCardData } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
-import { UnifiedServiceInfoCard } from "../../shared/service-card";
+import { mapCoreServiceCardToUnifiedData, UnifiedServiceInfoCard } from "../../shared/service-card";
 import { updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import type { Order, Store, Technician } from "../../types/domain";
@@ -1813,14 +1814,22 @@ function MerchantPortalDataGate() {
     storeId: store.id
   }));
 
-  return <MerchantPortalContent store={store} technicians={technicians} />;
+  return (
+    <MerchantPortalContent
+      store={store}
+      storeServices={formalStoreQuery.data.services}
+      technicians={technicians}
+    />
+  );
 }
 
 export function MerchantPortalContent({
   store,
+  storeServices = [],
   technicians
 }: {
   store: Store;
+  storeServices?: CoreShopDetail["services"];
   technicians: Technician[];
 }) {
   const merchantPortalConfig = roleBasedTabConfig.merchant;
@@ -3086,11 +3095,14 @@ export function MerchantPortalContent({
               {activeMeTab === "service" ? (
                 <StoreDetailExperience
                   embedded
+                  formalApiOnly
                   pricingControl={storePricingModeControl}
                   pricingMode={storePricingMode}
                   privacyControl={storePrivacyControl}
                   scope="merchant"
+                  serviceCardsOverride={storeServices.map(mapCoreServiceCardToUnifiedData)}
                   store={store}
+                  techniciansOverride={storeTechnicians}
                 />
               ) : null}
 

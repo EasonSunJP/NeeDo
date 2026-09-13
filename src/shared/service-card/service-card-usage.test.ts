@@ -80,7 +80,8 @@ describe("unified service-information-card usage", () => {
     expect(source.shopDetail).toContain(
       "mapStoreMenuConfigToUnifiedData(menuCard, store)",
     );
-    expect(source.shopDetail).toContain("const sourceCards = formalApiOnly && !isMerchantEditable");
+    expect(source.shopDetail).toContain("const sourceCards = formalApiOnly");
+    expect(source.shopDetail).toContain("serviceInfoById.has(menuCard.sourceServiceId)");
     expect(source.shopDetail).toContain("return sourceCards.map((menuCard) => ({");
   });
 

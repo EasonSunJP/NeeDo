@@ -11,8 +11,22 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("mapCoreTechnicianToTechnician(technician)");
     expect(merchantSource).toContain("[storeApiId, activeView]");
     expect(merchantSource).toContain("force: true");
-    expect(merchantSource).toContain("<MerchantPortalContent store={store} technicians={technicians} />");
+    expect(merchantSource).toContain("storeServices={formalStoreQuery.data.services}");
+    expect(merchantSource).toContain("<MerchantPortalContent");
+    expect(merchantSource).toContain("technicians={technicians}");
     expect(merchantSource).not.toContain("stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0]");
+  });
+
+  it("keeps merchant store preview services and technicians on the formal shop projection", () => {
+    const servicePreviewSource = merchantSource.slice(
+      merchantSource.indexOf('{activeMeTab === "service" ? ('),
+      merchantSource.indexOf('{activeMeTab === "data" ? (')
+    );
+
+    expect(merchantSource).toContain("mapCoreServiceCardToUnifiedData");
+    expect(servicePreviewSource).toContain("formalApiOnly");
+    expect(servicePreviewSource).toContain("serviceCardsOverride={storeServices.map(mapCoreServiceCardToUnifiedData)}");
+    expect(servicePreviewSource).toContain("techniciansOverride={storeTechnicians}");
   });
 
   it("uses one fullscreen toolbar and hides the shared bottom nav across all merchant schedule tabs", () => {
@@ -277,7 +291,8 @@ describe("MerchantPortalPage store privacy control", () => {
       merchantSource.indexOf('{activeView === "staff" && (')
     );
 
-    expect(merchantSource).toContain('import { UnifiedServiceInfoCard } from "../../shared/service-card"');
+    expect(merchantSource).toContain('from "../../shared/service-card"');
+    expect(merchantSource).toContain("UnifiedServiceInfoCard");
     expect(dashboardAppointments).toContain("<UnifiedServiceInfoCard");
     expect(dashboardAppointments).toContain("data={buildOrderServiceMiniCardData(order)}");
     expect(dashboardAppointments).not.toContain("<OrderServiceMiniCard");

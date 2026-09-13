@@ -2883,8 +2883,10 @@ export function StoreDetailExperience({
     [serviceCardsOverride]
   );
   const menuCards = useMemo(() => {
-    const sourceCards = formalApiOnly && !isMerchantEditable
-      ? baseMenuCards
+    const sourceCards = formalApiOnly
+      ? isMerchantEditable
+        ? mergeMenuCardOverrides([], config.menuCards).filter((menuCard) => serviceInfoById.has(menuCard.sourceServiceId))
+        : baseMenuCards
       : mergeMenuCardOverrides(baseMenuCards, config.menuCards);
 
     return sourceCards.map((menuCard) => ({
