@@ -4935,6 +4935,10 @@ html[data-needo-display-mode="standalone"] .client-shell .im-composer-input-shel
     min-height: 220px;
   }
 
+  .admin-login-bg-image {
+    object-position: center top;
+  }
+
   .admin-login-panel {
     min-height: 64dvh;
     padding: 32px 22px 24px;

@@ -4,6 +4,7 @@ import source from "./UserCenterPage.tsx?raw";
 describe("UserCenterPage", () => {
   it("links the collection entry to the formal dynamics and chat-record favorites hub", () => {
     expect(source).toContain('zh: "已收藏的服务、店铺、技师、动态与聊天记录"');
+    expect(source).toContain('ja: "お気に入りのサービス・店舗・スタッフ・投稿・チャット履歴"');
     expect(source).toMatch(
       /label: "我的收藏",[\s\S]*info: userCenterCollectionInfo\[language\],[\s\S]*to: "\/me\/favorites"/u,
     );
@@ -13,7 +14,7 @@ describe("UserCenterPage", () => {
 
   it("routes payment-method management to its own settings page", () => {
     expect(source).toMatch(
-      /label: "支付方式",[^}]*caption: "现金、NDP 与外部渠道状态",[^}]*to: "\/me\/settings\/payment-methods"/u,
+      /label: "支付方式",[^}]*info: "银行卡、PayPay、现金",[^}]*to: "\/me\/settings\/payment-methods"/u,
     );
     expect(source).not.toMatch(
       /label: "支付方式",[^}]*to: "\/me\/settings\/account"/u,
@@ -74,11 +75,55 @@ describe("UserCenterPage", () => {
 
   it("marks the contact-support account entry with the shared Test badge", () => {
     expect(source).toMatch(
-      /label: "联系客服", caption: "退款、改期、投诉风控", to: "\/support", test: true/u,
+      /label: "联系客服", info: "退款、改期、投诉风控", to: "\/support", test: true/u,
     );
     expect(source).toMatch(
       /accountSettings\.map\([\s\S]*?entry\.test[\s\S]*?<TestFeatureBadge/u,
     );
+  });
+
+  it("moves every account explanation behind a title-side info trigger", () => {
+    const accountSettingsSource = source.match(
+      /const accountSettings: Array<\{[\s\S]*?> = \[([\s\S]*?)\n\];/u,
+    )?.[1];
+
+    expect(accountSettingsSource).toBeDefined();
+    expect(source).toMatch(
+      /const accountSettings: Array<\{[\s\S]*?info: string;[\s\S]*?> = \[[\s\S]*?label: "账号设置",[\s\S]*?info: "手机号、邮箱、登录密码"/u,
+    );
+    [
+      ["账号设置", "手机号、邮箱、登录密码"],
+      ["支付方式", "银行卡、PayPay、现金"],
+      ["发票记录", "企业抬头与历史发票"],
+      ["通知设置", "订单、营销、客服提醒"],
+      ["隐私与安全", "登录设备、数据授权"],
+      ["联系客服", "退款、改期、投诉风控"],
+    ].forEach(([label, info]) => {
+      expect(accountSettingsSource).toMatch(
+        new RegExp(`label: "${label}",[\\s\\S]*?info: "${info}"`, "u"),
+      );
+    });
+    expect(source).toMatch(
+      /accountSettings\.map\([\s\S]*?<strong[^>]*>\{entry\.label\}<\/strong>[\s\S]*?<InfoTooltipTrigger[\s\S]*?content=\{entry\.info\}[\s\S]*?label=\{`查看\$\{entry\.label\}说明`\}/u,
+    );
+    expect(source).not.toContain("entry.caption");
+    expect(source).not.toMatch(/const accountSettings: Array<\{[\s\S]*?caption: string;/u);
+  });
+
+  it("moves the reservation-list helper copy behind its title info trigger", () => {
+    expect(source).toMatch(
+      /<strong[^>]*>预约一览<\/strong>[\s\S]*?<InfoTooltipTrigger[\s\S]*?content="查看全部预约、订单状态和详情跳转"[\s\S]*?label="查看预约一览说明"/u,
+    );
+    expect(source).not.toMatch(
+      /<p[^>]*>[\s\S]*?查看全部预约、订单状态和详情跳转[\s\S]*?<\/p>/u,
+    );
+  });
+
+  it("uses a localized action key instead of a raw Chinese-only eKYC value", () => {
+    expect(source).toMatch(
+      /label: "eKYC本人确认",[\s\S]*?value: "去认证",[\s\S]*?to: "\/me\/settings\/verification"/u,
+    );
+    expect(source).not.toMatch(/label: "eKYC本人确认",[\s\S]*?value: "(?:去|查看)"/u);
   });
 
   it("places eKYC, shop membership and NeeDo benefits in the requested lower-grid order", () => {

@@ -2,9 +2,13 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminLoginPortal } from "../../auth/adminLogin";
 import adminLoginSource from "./AdminLoginPage.tsx?raw";
+
+const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 
 const mocked = vi.hoisted(() => ({
   auth: {
@@ -99,6 +103,18 @@ describe("AdminLoginPage formal password surface", () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     setter?.call(input, value);
   }
+
+  it("keeps the baked-in hero copy visible on narrow screens", () => {
+    const narrowMedia = styles.match(
+      /@media \(max-width: 920px\) \{([\s\S]*?)\n\}\n\n@media \(max-width: 640px\)/u
+    )?.[1];
+
+    expect(narrowMedia).toBeDefined();
+    expect(styles).toMatch(/\.admin-login-bg-image\s*\{[\s\S]*?object-fit:\s*cover;/u);
+    expect(narrowMedia).toMatch(
+      /\.admin-login-bg-image\s*\{\s*object-position:\s*center top;\s*\}/u
+    );
+  });
 
   it("defaults browser password saving on with native autofill metadata", () => {
     const account = container.querySelector<HTMLInputElement>('input[placeholder="admin@example.com"]');
