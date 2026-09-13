@@ -237,7 +237,7 @@ export type ExchangeDemand = {
 };
 
 export type ExchangeRequestAddress = {
-  line1: string;
+  line1: string | null;
   line2: string | null;
   line3: string | null;
   line2GenerallyVisible: boolean;

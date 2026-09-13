@@ -80,6 +80,19 @@ describe("TechnicianProfileRepository", () => {
         custom: [{ label: "手法细致", count: 2 }]
       }
     });
+    expect(client.technicianProfile.findFirst).toHaveBeenCalledWith({
+      where: { id: 31, userId: 9, deletedAt: null },
+      include: expect.objectContaining({
+        technicianShopAffiliations: expect.objectContaining({
+          where: expect.objectContaining({
+            activeKey: { not: null },
+            workStatus: "ACTIVE",
+            endsAt: null,
+            deletedAt: null
+          })
+        })
+      })
+    });
   });
 
   it("updates only the scoped profile and persists avatar ownership on the current identity", async () => {

@@ -4,10 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
-import type { BookingScheduleSlot } from "../../features/booking/api";
+import type { BookingOrder, BookingScheduleSlot } from "../../features/booking/api";
 import type { Customer, Store, Technician } from "../../types/domain";
 import { persistentResourceCache } from "../../lib/persistentResourceCache";
-import { getBookingConflictEventIds, getFormalAvailabilityWindowEvents, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedCalendarEventDetailPage, UnifiedUserCalendar, type UnifiedCalendarEvent } from "./UnifiedUserCalendar";
+import { getBookingConflictEventIds, getFormalAvailabilityWindowEvents, getFormalMerchantOrderEvents, getFormalScheduleEvents, UnifiedCalendarEventCard, UnifiedCalendarEventDetailPage, UnifiedUserCalendar, type UnifiedCalendarEvent } from "./UnifiedUserCalendar";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -134,6 +134,46 @@ const technicianFixture = {
   name: "山崎 俊介",
   storeId: "17"
 };
+
+function makeFormalBookingOrder(input: Partial<BookingOrder> = {}): BookingOrder {
+  return {
+    id: 1864,
+    orderNo: "LDF26-0001864",
+    orderType: "booking",
+    status: "confirmed",
+    paymentMethod: "onsite",
+    paymentStatus: "pending",
+    paymentAmountJpy: 8_800,
+    paymentConfirmedById: null,
+    paymentConfirmedAt: null,
+    paymentReference: null,
+    paymentNote: null,
+    paymentRefundedById: null,
+    paymentRefundedAt: null,
+    paymentRefundReference: null,
+    paymentRefundReason: null,
+    customerUserId: 7,
+    serviceId: 12,
+    technicianServiceId: 112,
+    shopId: 17,
+    technicianProfileId: 48,
+    scheduleSlotId: 904,
+    fulfillmentMode: "store",
+    serviceName: "整体护理",
+    shopName: "LifeDance Wellness 渋谷",
+    technicianName: "渡辺里奈",
+    priceAmount: "8800",
+    currency: "JPY",
+    startsAt: "2026-09-13T16:00:00+09:00",
+    endsAt: "2026-09-13T16:45:00+09:00",
+    note: null,
+    cancelReason: null,
+    createdAt: "2026-09-13T00:00:00Z",
+    updatedAt: "2026-09-13T00:00:00Z",
+    statusHistory: [],
+    ...input
+  };
+}
 
 function todayKey() {
   const today = new Date();
@@ -300,6 +340,49 @@ describe("UnifiedUserCalendar formal-only mode", () => {
     const availability = { ...base, id: "availability", orderId: undefined, scheduleSlotId: 3, startTime: "18:00", endTime: "24:00", title: "自由排班" };
     expect([...getBookingConflictEventIds([bookingA, bookingB, privateEvent, availability])].sort()).toEqual(["booking-a", "booking-b"]);
     expect(getBookingConflictEventIds([bookingA, privateEvent, availability])).toEqual(new Set());
+  });
+
+  it("allows simultaneous pending and confirmed bookings assigned to different technicians", () => {
+    const events = getFormalMerchantOrderEvents([
+      makeFormalBookingOrder(),
+      makeFormalBookingOrder({
+        id: 1865,
+        orderNo: "LDF26-0001865",
+        status: "pending",
+        technicianProfileId: 49,
+        technicianName: "山本葵",
+        scheduleSlotId: 905,
+        endsAt: "2026-09-13T17:00:00+09:00"
+      })
+    ]);
+
+    expect(events.map((event) => event.calendarId)).toEqual(["technician:48", "technician:49"]);
+    expect(getBookingConflictEventIds(events)).toEqual(new Set());
+  });
+
+  it("marks overlapping pending and confirmed bookings assigned to the same technician", () => {
+    const events = getFormalMerchantOrderEvents([
+      makeFormalBookingOrder(),
+      makeFormalBookingOrder({
+        id: 1865,
+        orderNo: "LDF26-0001865",
+        status: "pending",
+        scheduleSlotId: 905,
+        endsAt: "2026-09-13T17:00:00+09:00"
+      })
+    ]);
+
+    expect([...getBookingConflictEventIds(events)].sort()).toEqual([
+      "formal-order-1864-2026-09-13",
+      "formal-order-1865-2026-09-13"
+    ]);
+  });
+
+  it("does not mark duplicate projections of the same order as a conflict", () => {
+    const [event] = getFormalMerchantOrderEvents([makeFormalBookingOrder()]);
+    const duplicateProjection = { ...event!, id: `${event!.id}-duplicate` };
+
+    expect(getBookingConflictEventIds([event!, duplicateProjection])).toEqual(new Set());
   });
 
   it("projects a full independent availability range without subtracting its booking occupancy", () => {

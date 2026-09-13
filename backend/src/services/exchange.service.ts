@@ -31,6 +31,7 @@ import type {
   ExchangeIntelligencePublicationServiceResolution,
   ExchangeIntelligenceServiceRef
 } from "../types/exchange-intelligence-booking.types";
+import { enforceExchangeRequestAddressPrivacy } from "../domain/exchange-address-privacy";
 
 export interface ExchangeActorLookup {
   userId: number;
@@ -143,6 +144,7 @@ export interface ExchangeRepositoryPort {
     page: number;
     pageSize: number;
     viewerIdentityId: number;
+    participantIdentityId: number;
     claimProviderUserId?: number;
     authorIdentityId?: number;
     now: Date;
@@ -151,7 +153,8 @@ export interface ExchangeRepositoryPort {
     postId: number,
     viewerIdentityId: number,
     now: Date,
-    claimProviderUserId?: number
+    claimProviderUserId?: number,
+    participantIdentityId?: number
   ): Promise<ExchangePostPayload | null>;
   listComments(
     postId: number,
@@ -300,13 +303,19 @@ export class ExchangeService {
     const page = await this.repository.listPosts({
       ...input,
       viewerIdentityId: ownerIdentityId,
+      participantIdentityId: actor.identityId,
       ...(CLAIM_PROVIDER_IDENTITIES.has(actor.identityType)
         ? { claimProviderUserId: actor.userId }
         : {}),
       ...(privateAuthorIdentityId ? { authorIdentityId: privateAuthorIdentityId } : {}),
       now: this.now()
     });
-    return { ...page, list: page.list.map((post) => this.decorateClaimCapabilities(post, actor)) };
+    return {
+      ...page,
+      list: page.list.map((post) =>
+        this.decorateClaimCapabilities(enforceExchangeRequestAddressPrivacy(post), actor)
+      )
+    };
   }
 
   public async getPost(
@@ -318,11 +327,12 @@ export class ExchangeService {
       postId,
       actor.ownerIdentityId ?? actor.identityId,
       this.now(),
-      CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) ? actor.userId : undefined
+      CLAIM_PROVIDER_IDENTITIES.has(actor.identityType) ? actor.userId : undefined,
+      actor.identityId
     );
     if (!post) throw this.postNotFound();
     this.assertCanReadPost(actor, post);
-    return this.decorateClaimCapabilities(post, actor);
+    return this.decorateClaimCapabilities(enforceExchangeRequestAddressPrivacy(post), actor);
   }
 
   public async publish(
@@ -958,7 +968,9 @@ export class ExchangeService {
     const post = await this.repository.findPostById(
       postId,
       actor.ownerIdentityId ?? actor.identityId,
-      this.now()
+      this.now(),
+      undefined,
+      actor.identityId
     );
     if (!post) throw this.postNotFound();
     this.assertCanReadPost(actor, post);
