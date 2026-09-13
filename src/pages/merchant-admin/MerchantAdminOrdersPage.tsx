@@ -376,10 +376,8 @@ export function MerchantAdminOrdersPage() {
                 { key: "amount", title: "金额", render: (row) => yen(row.totalAmountJpy) },
                 { key: "detail", title: "详情", render: (row) => <Button size="sm" variant="secondary" onClick={() => openOrder(row)}>查看</Button> }
               ]}
-              footerPlacement="inline"
-              pageSize={pageSize}
+              paginationMode="server"
               rows={orderRows}
-              showFooterActions={false}
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-4 py-3">
               <span className="text-sm font-bold text-ink/55">服务器共 {total} 条，第 {page} / {totalPages} 页</span>

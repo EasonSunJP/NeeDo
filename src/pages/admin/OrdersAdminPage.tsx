@@ -424,11 +424,8 @@ export function OrdersAdminPage() {
                 { key: "status", title: "状态", render: (row) => <Badge tone="yellow">{statusLabel(row.status)}</Badge> },
                 { key: "detail", title: "详情", render: (row) => <Button size="sm" variant="secondary" onClick={() => openOrder(row)}>查看</Button> }
               ]}
-              footerPlacement="inline"
-              pageSize={orderPage.page_size}
+              paginationMode="server"
               rows={orderPage.list}
-              showFooter={false}
-              showFooterActions={false}
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-4 py-3">
               <span className="text-sm font-bold text-ink/55">服务器共 {orderPage.total} 条，第 {orderPage.page} / {totalPages} 页</span>

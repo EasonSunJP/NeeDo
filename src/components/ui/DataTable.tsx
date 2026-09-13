@@ -82,6 +82,7 @@ export function DataTable<T>({
   onView,
   frozenDetailLabel,
   pageSize = 8,
+  paginationMode = "client",
   showFooter = true,
   showFooterActions = footerPlacement === "fixed"
 }: {
@@ -92,6 +93,7 @@ export function DataTable<T>({
   onView?: (row: T) => void;
   frozenDetailLabel?: string;
   pageSize?: number;
+  paginationMode?: "client" | "server";
   showFooter?: boolean;
   showFooterActions?: boolean;
 }) {
@@ -113,20 +115,27 @@ export function DataTable<T>({
   const [columnFilters, setColumnFilters] = useState<DataTableFilters>({});
   const [columnSearch, setColumnSearch] = useState<DataTableSearch>({});
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
+  const usesClientProcessing = paginationMode === "client";
   const getColumnLabel = (column: Column<T>, row: T) => valueToLabel(column.filterValue ? column.filterValue(row) : nodeToText(column.render(row)));
   const getColumnSortValue = (column: Column<T>, row: T) => column.sortValue?.(row) ?? column.filterValue?.(row) ?? getColumnLabel(column, row);
   const columnFilterOptions = useMemo(
     () =>
-      columns.reduce(
-        (options, column) => ({
-          ...options,
-          [column.key]: sortLabels(Array.from(new Set(rows.map((row) => getColumnLabel(column, row)))))
-        }),
-        {} as Record<string, string[]>
-      ),
-    [columns, rows]
+      usesClientProcessing
+        ? columns.reduce(
+            (options, column) => ({
+              ...options,
+              [column.key]: sortLabels(Array.from(new Set(rows.map((row) => getColumnLabel(column, row)))))
+            }),
+            {} as Record<string, string[]>
+          )
+        : {},
+    [columns, rows, usesClientProcessing]
   );
   const processedRows = useMemo(() => {
+    if (!usesClientProcessing) {
+      return rows;
+    }
+
     const filteredRows = rows.filter((row) =>
       columns.every((column) => {
         const selectedValues = columnFilters[column.key];
@@ -153,13 +162,17 @@ export function DataTable<T>({
         return result || left.index - right.index;
       })
       .map(({ row }) => row);
-  }, [columnFilters, columns, rows, sortState]);
+  }, [columnFilters, columns, rows, sortState, usesClientProcessing]);
   const totalPages = Math.max(1, Math.ceil(processedRows.length / safePageSize));
   const visibleRows = useMemo(() => {
+    if (!usesClientProcessing) {
+      return processedRows;
+    }
+
     const start = (currentPage - 1) * safePageSize;
 
     return processedRows.slice(start, start + safePageSize);
-  }, [currentPage, processedRows, safePageSize]);
+  }, [currentPage, processedRows, safePageSize, usesClientProcessing]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -354,7 +367,7 @@ export function DataTable<T>({
         >
           <thead className="bg-paper text-xs font-semibold uppercase text-ink/55">
             <tr>
-              {columns.map((column, index) => (
+              {columns.map((column, index) => usesClientProcessing ? (
                 <TableColumnHeader
                   className="border-b border-line px-4 py-3"
                   filterOptions={columnFilterOptions[column.key] ?? []}
@@ -374,6 +387,10 @@ export function DataTable<T>({
                   onToggleAll={(visibleOptions) => toggleColumnFilterOptions(column.key, visibleOptions)}
                   onToggleValue={(value) => toggleColumnFilterValue(column.key, value)}
                 />
+              ) : (
+                <th className="border-b border-line px-4 py-3" key={column.key} style={{ width: column.width }}>
+                  {column.title}
+                </th>
               ))}
               {onView && <th className={`${frozenDetailLabel ? "table-frozen-action " : ""}border-b border-line px-4 py-3`}>{frozenDetailLabel ?? "操作"}</th>}
             </tr>
@@ -424,8 +441,8 @@ export function DataTable<T>({
           </tbody>
         </table>
       </HorizontalScrollArea>
-      {showFooter && footerPlacement === "fixed" ? <div className="h-24" aria-hidden="true" /> : null}
-      {showFooter ? footer : null}
+      {showFooter && usesClientProcessing && footerPlacement === "fixed" ? <div className="h-24" aria-hidden="true" /> : null}
+      {showFooter && usesClientProcessing ? footer : null}
     </div>
   );
 }
