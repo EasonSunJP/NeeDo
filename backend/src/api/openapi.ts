@@ -8468,6 +8468,87 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", enum: [10] }
         }
       },
+      BackofficeOperationsReview: {
+        type: "object",
+        required: [
+          "reviewId",
+          "status",
+          "targetType",
+          "rating",
+          "comment",
+          "tags",
+          "createdAt",
+          "amendmentVersion",
+          "amendmentHistory",
+          "order",
+          "reviewer",
+          "customer",
+          "shop",
+          "technician"
+        ],
+        properties: {
+          reviewId: { type: "integer", minimum: 1 },
+          status: { type: "string", enum: ["original", "amended", "system"] },
+          targetType: { type: "string", enum: ["customer", "technician"] },
+          rating: { type: "integer", minimum: 1, maximum: 5 },
+          comment: { type: ["string", "null"] },
+          tags: { type: "array", items: { type: "string" } },
+          createdAt: { type: "string", format: "date-time" },
+          amendmentVersion: { type: "integer", minimum: 0 },
+          amendmentHistory: {
+            description: "Immutable administrative successors in descending version order",
+            type: "array",
+            items: { type: "object" }
+          },
+          order: { type: "object" },
+          reviewer: { type: "object" },
+          customer: {
+            type: "object",
+            required: ["needoId", "displayName"],
+            properties: {
+              needoId: { type: "string" },
+              displayName: { type: "string" }
+            }
+          },
+          shop: {
+            type: "object",
+            required: ["id", "publicId", "name"],
+            properties: {
+              id: { type: "integer", minimum: 1 },
+              publicId: { type: ["string", "null"] },
+              name: { type: "string" }
+            }
+          },
+          technician: {
+            oneOf: [
+              {
+                type: "object",
+                required: ["id", "publicId", "displayName"],
+                properties: {
+                  id: { type: "integer", minimum: 1 },
+                  publicId: { type: "string" },
+                  displayName: { type: "string" }
+                }
+              },
+              { type: "null" }
+            ]
+          }
+        }
+      },
+      BackofficeOperationsReviewPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeOperationsReview" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", enum: [20] }
+        }
+      },
       BackofficeUserReviewAmendmentInput: {
         type: "object",
         additionalProperties: false,
@@ -25023,6 +25104,53 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Authentication required" },
           "403": { description: "Permission denied" },
           "404": { description: "User not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/reviews`]: {
+      get: {
+        operationId: "listBackofficeReviews",
+        tags: ["Review Management"],
+        summary: "List formal completed-order reviews for operations",
+        description:
+          "Server-paginated review list. Rating uses the latest immutable amendment when present; date filters are inclusive Tokyo calendar dates.",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:users:read",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", enum: [20], default: 20 } },
+          { name: "keyword", in: "query", schema: { type: "string", minLength: 1, maxLength: 100 } },
+          { name: "rating", in: "query", schema: { type: "integer", minimum: 1, maximum: 5 } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["original", "amended", "system"] } },
+          { name: "targetType", in: "query", schema: { type: "string", enum: ["customer", "technician"] } },
+          { name: "from", in: "query", schema: { type: "string", format: "date" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date" } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated operations review page", {
+            $ref: "#/components/schemas/BackofficeOperationsReviewPage"
+          }),
+          "400": { description: "Invalid filter or pagination" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/reviews/{reviewId}`]: {
+      get: {
+        operationId: "getBackofficeReview",
+        tags: ["Review Management"],
+        summary: "Read one formal completed-order review and immutable amendments",
+        security: [{ bearerAuth: [] }],
+        "x-permission": "backoffice:users:read",
+        parameters: [idPathParameter("reviewId")],
+        responses: {
+          "200": jsonDataResponse("Operations review detail", {
+            $ref: "#/components/schemas/BackofficeOperationsReview"
+          }),
+          "401": { description: "Authentication required" },
+          "403": { description: "Permission denied" },
+          "404": { description: "Completed review not found" }
         }
       }
     },

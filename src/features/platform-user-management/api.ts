@@ -5,6 +5,8 @@ import {
   platformBenefitCodes,
   platformTierCodes,
   type NdpExperienceCampaign,
+  type OperationsReview,
+  type OperationsReviewQuery,
   type Paginated,
   type PlatformBenefitAdministration,
   type PlatformBenefitCode,
@@ -376,13 +378,17 @@ const decodeExperienceEntry = (value: unknown): UserExperienceEntry => {
   };
 };
 
-const decodeReceivedUserReview = (value: unknown): ReceivedUserReview => {
+type DecodedReviewBase = Omit<ReceivedUserReview, "targetType"> & {
+  targetType: "customer" | "technician";
+};
+
+const decodeReviewBase = (value: unknown): DecodedReviewBase => {
   const raw = record(value);
   const order = record(raw.order);
   const reviewer = record(raw.reviewer);
   return {
     reviewId: integer(raw.reviewId),
-    targetType: enumValue(raw.targetType, ["customer"] as const),
+    targetType: enumValue(raw.targetType, ["customer", "technician"] as const),
     rating: integer(raw.rating),
     comment: nullableString(raw.comment),
     tags: array(raw.tags).map(string),
@@ -420,6 +426,40 @@ const decodeReceivedUserReview = (value: unknown): ReceivedUserReview => {
       displayName: string(reviewer.displayName),
       avatarUrl: nullableString(reviewer.avatarUrl)
     }
+  };
+};
+
+const decodeReceivedUserReview = (value: unknown): ReceivedUserReview => {
+  const review = decodeReviewBase(value);
+  if (review.targetType !== "customer") return invalid();
+  return { ...review, targetType: "customer" };
+};
+
+const decodeOperationsReview = (value: unknown): OperationsReview => {
+  const review = decodeReviewBase(value);
+  const raw = record(value);
+  const customer = record(raw.customer);
+  const shop = record(raw.shop);
+  const technician = raw.technician === null ? null : record(raw.technician);
+  return {
+    ...review,
+    status: enumValue(raw.status, ["original", "amended", "system"] as const),
+    customer: {
+      needoId: string(customer.needoId),
+      displayName: string(customer.displayName)
+    },
+    shop: {
+      id: integer(shop.id),
+      publicId: nullableString(shop.publicId),
+      name: string(shop.name)
+    },
+    technician: technician
+      ? {
+          id: integer(technician.id),
+          publicId: string(technician.publicId),
+          displayName: string(technician.displayName)
+        }
+      : null
   };
 };
 
@@ -513,6 +553,19 @@ export const platformUserManagementApi = {
     return httpClient.request<{ reviewId: number; version: number }>(
       `/backoffice/reviews/${reviewId}/amendments`,
       { method: "POST", body }
+    );
+  },
+  async listOperationsReviews(query: OperationsReviewQuery = {}) {
+    return decodePage(
+      await httpClient.request<unknown>("/backoffice/reviews", {
+        query: { ...query, page: query.page ?? 1, page_size: 20 }
+      }),
+      decodeOperationsReview
+    );
+  },
+  async getOperationsReview(reviewId: number) {
+    return decodeOperationsReview(
+      await httpClient.request<unknown>(`/backoffice/reviews/${reviewId}`)
     );
   },
   async listUsage(scope: UserDirectoryScope, userId: number, query: UserUsageQuery = {}) {

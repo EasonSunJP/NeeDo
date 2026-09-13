@@ -52,11 +52,41 @@ export interface ReceivedUserReviewPage {
   page_size: 10;
 }
 
+export type OperationsReviewStatus = "original" | "amended" | "system";
+
+export type OperationsReview = Omit<ReceivedUserReview, "targetType"> & {
+  targetType: "customer" | "technician";
+  status: OperationsReviewStatus;
+  customer: { needoId: string; displayName: string };
+  shop: { id: number; publicId: string | null; name: string };
+  technician: { id: number; publicId: string; displayName: string } | null;
+};
+
+export interface OperationsReviewPage {
+  list: OperationsReview[];
+  total: number;
+  page: number;
+  page_size: 20;
+}
+
+export interface OperationsReviewListInput {
+  page: number;
+  pageSize: 20;
+  keyword?: string;
+  rating?: number;
+  status?: OperationsReviewStatus;
+  targetType?: "customer" | "technician";
+  from?: Date;
+  to?: Date;
+}
+
 export type ReviewAmendmentMutationResult =
   | { kind: "created"; value: { reviewId: number; version: number } }
   | { kind: "not_found" | "version_conflict" };
 
 export interface BackofficeUserReviewRepositoryPort {
+  listOperationsReviews(input: OperationsReviewListInput): Promise<OperationsReviewPage>;
+  getOperationsReview(reviewId: number): Promise<OperationsReview | null>;
   isUserVisibleInMerchantScope(userId: number, shopId: number): Promise<boolean>;
   listReceivedReviews(
     input: UserReviewScope & {
@@ -79,6 +109,7 @@ export interface BackofficeUserReviewRepositoryPort {
 
 const reviewSelect = Prisma.validator<Prisma.OrderReviewSelect>()({
   id: true,
+  authorType: true,
   targetType: true,
   rating: true,
   comment: true,
@@ -115,7 +146,21 @@ const reviewSelect = Prisma.validator<Prisma.OrderReviewSelect>()({
       note: true,
       paymentMethod: true,
       paymentStatus: true,
-      shop: { select: { name: true } },
+      shop: { select: { id: true, shopNo: true, name: true } },
+      customer: {
+        select: {
+          needoId: true,
+          username: true,
+          customerProfile: { select: { displayName: true } }
+        }
+      },
+      technicianProfile: {
+        select: {
+          id: true,
+          displayName: true,
+          user: { select: { needoId: true } }
+        }
+      },
       addOns: {
         where: { deletedAt: null, status: OrderAddOnStatus.ACCEPTED },
         select: { durationMinutes: true }
@@ -139,6 +184,19 @@ const reviewSelect = Prisma.validator<Prisma.OrderReviewSelect>()({
       customerProfile: { select: { displayName: true } },
       technicianProfile: { select: { displayName: true } }
     }
+  },
+  customerProfile: {
+    select: {
+      displayName: true,
+      user: { select: { needoId: true } }
+    }
+  },
+  technicianProfile: {
+    select: {
+      id: true,
+      displayName: true,
+      user: { select: { needoId: true } }
+    }
   }
 });
 
@@ -146,6 +204,59 @@ type ReviewRecord = Prisma.OrderReviewGetPayload<{ select: typeof reviewSelect }
 
 export class BackofficeUserReviewRepository implements BackofficeUserReviewRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
+
+  public async listOperationsReviews(
+    input: OperationsReviewListInput
+  ): Promise<OperationsReviewPage> {
+    const filter = this.operationsReviewFilter(input);
+    const offset = (input.page - 1) * input.pageSize;
+    const totals = await this.client.$queryRaw<Array<{ total: bigint | number }>>(Prisma.sql`
+      ${this.operationsReviewCte()}
+      SELECT COUNT(*) AS total
+      FROM eligible_reviews AS review
+      WHERE ${filter}
+    `);
+    const total = Number(totals[0]?.total ?? 0);
+    if (!Number.isSafeInteger(total) || total < 0) {
+      throw new RangeError("Invalid operations review total");
+    }
+    const ids = await this.client.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      ${this.operationsReviewCte()}
+      SELECT review.id
+      FROM eligible_reviews AS review
+      WHERE ${filter}
+      ORDER BY review.created_at DESC, review.id DESC
+      LIMIT ${input.pageSize}
+      OFFSET ${offset}
+    `);
+    const rows = ids.length
+      ? await this.client.orderReview.findMany({
+          where: { id: { in: ids.map((item) => item.id) } },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: input.pageSize,
+          select: reviewSelect
+        })
+      : [];
+
+    return {
+      list: rows.map((row) => this.mapOperationsReview(row)),
+      total,
+      page: input.page,
+      page_size: 20
+    };
+  }
+
+  public async getOperationsReview(reviewId: number): Promise<OperationsReview | null> {
+    const row = await this.client.orderReview.findFirst({
+      where: {
+        id: reviewId,
+        deletedAt: null,
+        bookingOrder: { status: BookingOrderStatus.COMPLETED, deletedAt: null }
+      },
+      select: reviewSelect
+    });
+    return row ? this.mapOperationsReview(row) : null;
+  }
 
   public async isUserVisibleInMerchantScope(userId: number, shopId: number): Promise<boolean> {
     const user = await this.client.user.findFirst({
@@ -342,6 +453,158 @@ export class BackofficeUserReviewRepository implements BackofficeUserReviewRepos
           }
         : { needoId: "system", displayName: "NeeDo System", avatarUrl: null }
     };
+  }
+
+  private mapOperationsReview(row: ReviewRecord): OperationsReview {
+    const base = this.mapReview(row);
+    const technician = row.bookingOrder.technicianProfile ?? row.technicianProfile;
+    return {
+      ...base,
+      targetType: row.targetType.toLowerCase() as OperationsReview["targetType"],
+      status:
+        row.authorType === "SYSTEM"
+          ? "system"
+          : row.amendments.length > 0
+            ? "amended"
+            : "original",
+      customer: {
+        needoId: row.bookingOrder.customer.needoId,
+        displayName:
+          row.bookingOrder.customer.customerProfile?.displayName ??
+          row.bookingOrder.customer.username
+      },
+      shop: {
+        id: row.bookingOrder.shop.id,
+        publicId: row.bookingOrder.shop.shopNo,
+        name: row.bookingOrder.shop.name
+      },
+      technician: technician
+        ? {
+            id: technician.id,
+            publicId: technician.user.needoId,
+            displayName: technician.displayName
+          }
+        : null
+    };
+  }
+
+  private operationsReviewCte(): Prisma.Sql {
+    return Prisma.sql`
+      WITH ranked_amendments AS (
+        SELECT
+          amendment.order_review_id,
+          amendment.version,
+          amendment.rating,
+          amendment.comment,
+          ROW_NUMBER() OVER (
+            PARTITION BY amendment.order_review_id
+            ORDER BY amendment.version DESC, amendment.id DESC
+          ) AS amendment_rank
+        FROM order_review_amendments AS amendment
+        WHERE amendment.deleted_at IS NULL
+      ),
+      eligible_reviews AS (
+        SELECT
+          review.id,
+          review.author_type,
+          review.target_type,
+          review.rating,
+          review.comment,
+          review.created_at,
+          latest.version AS amendment_version,
+          latest.rating AS amendment_rating,
+          latest.comment AS amendment_comment,
+          booking.order_no,
+          booking.service_name_snapshot,
+          service.name AS service_name,
+          shop.name AS shop_name,
+          reviewer.needo_id AS reviewer_needo_id,
+          reviewer.username AS reviewer_username,
+          reviewer_customer.display_name AS reviewer_customer_name,
+          reviewer_technician.display_name AS reviewer_technician_name,
+          customer.needo_id AS customer_needo_id,
+          customer.username AS customer_username,
+          customer_profile.display_name AS customer_name,
+          assigned_technician.display_name AS assigned_technician_name,
+          assigned_technician_user.needo_id AS assigned_technician_needo_id,
+          target_customer.display_name AS target_customer_name,
+          target_technician.display_name AS target_technician_name
+        FROM order_reviews AS review
+        INNER JOIN booking_orders AS booking
+          ON booking.id = review.booking_order_id
+         AND booking.deleted_at IS NULL
+         AND booking.status = ${"completed"}
+        INNER JOIN shops AS shop
+          ON shop.id = booking.shop_id
+        LEFT JOIN services AS service
+          ON service.id = booking.service_id
+        LEFT JOIN users AS reviewer
+          ON reviewer.id = review.reviewer_user_id
+        LEFT JOIN customer_profiles AS reviewer_customer
+          ON reviewer_customer.user_id = reviewer.id
+         AND reviewer_customer.deleted_at IS NULL
+        LEFT JOIN technician_profiles AS reviewer_technician
+          ON reviewer_technician.user_id = reviewer.id
+         AND reviewer_technician.deleted_at IS NULL
+        INNER JOIN users AS customer
+          ON customer.id = booking.customer_user_id
+        LEFT JOIN customer_profiles AS customer_profile
+          ON customer_profile.user_id = customer.id
+         AND customer_profile.deleted_at IS NULL
+        LEFT JOIN technician_profiles AS assigned_technician
+          ON assigned_technician.id = booking.technician_profile_id
+        LEFT JOIN users AS assigned_technician_user
+          ON assigned_technician_user.id = assigned_technician.user_id
+        LEFT JOIN customer_profiles AS target_customer
+          ON target_customer.id = review.customer_profile_id
+        LEFT JOIN technician_profiles AS target_technician
+          ON target_technician.id = review.technician_profile_id
+        LEFT JOIN ranked_amendments AS latest
+          ON latest.order_review_id = review.id
+         AND latest.amendment_rank = 1
+        WHERE review.deleted_at IS NULL
+      )
+    `;
+  }
+
+  private operationsReviewFilter(input: OperationsReviewListInput): Prisma.Sql {
+    const filters: Prisma.Sql[] = [Prisma.sql`1 = 1`];
+    if (input.keyword) {
+      const keyword = `%${input.keyword}%`;
+      filters.push(Prisma.sql`(
+        review.order_no LIKE ${keyword}
+        OR COALESCE(review.service_name_snapshot, review.service_name, ${""}) LIKE ${keyword}
+        OR review.shop_name LIKE ${keyword}
+        OR COALESCE(review.amendment_comment, review.comment, ${""}) LIKE ${keyword}
+        OR COALESCE(review.reviewer_needo_id, ${""}) LIKE ${keyword}
+        OR COALESCE(review.reviewer_username, ${""}) LIKE ${keyword}
+        OR COALESCE(review.reviewer_customer_name, ${""}) LIKE ${keyword}
+        OR COALESCE(review.reviewer_technician_name, ${""}) LIKE ${keyword}
+        OR review.customer_needo_id LIKE ${keyword}
+        OR review.customer_username LIKE ${keyword}
+        OR COALESCE(review.customer_name, ${""}) LIKE ${keyword}
+        OR COALESCE(review.assigned_technician_name, ${""}) LIKE ${keyword}
+        OR COALESCE(review.assigned_technician_needo_id, ${""}) LIKE ${keyword}
+        OR COALESCE(review.target_customer_name, ${""}) LIKE ${keyword}
+        OR COALESCE(review.target_technician_name, ${""}) LIKE ${keyword}
+      )`);
+    }
+    if (input.rating !== undefined) {
+      filters.push(Prisma.sql`COALESCE(review.amendment_rating, review.rating) = ${input.rating}`);
+    }
+    if (input.status === "original") {
+      filters.push(Prisma.sql`review.author_type = ${"user"} AND review.amendment_version IS NULL`);
+    } else if (input.status === "amended") {
+      filters.push(Prisma.sql`review.author_type = ${"user"} AND review.amendment_version IS NOT NULL`);
+    } else if (input.status === "system") {
+      filters.push(Prisma.sql`review.author_type = ${"system"}`);
+    }
+    if (input.targetType) {
+      filters.push(Prisma.sql`review.target_type = ${input.targetType}`);
+    }
+    if (input.from) filters.push(Prisma.sql`review.created_at >= ${input.from}`);
+    if (input.to) filters.push(Prisma.sql`review.created_at < ${input.to}`);
+    return Prisma.join(filters, " AND ");
   }
 
   private metadataObject(value: unknown): Record<string, unknown> {

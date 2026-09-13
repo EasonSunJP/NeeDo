@@ -2,8 +2,64 @@ import request from "supertest";
 import { createStep06Fixture } from "./helpers/step06-fixture";
 
 describe("backoffice received-review API", () => {
+  it("serves the paginated operations review center and review detail with existing RBAC", async () => {
+    const service = {
+      listOperationsReviews: jest.fn(async () => ({
+        list: [{ reviewId: 77, rating: 5, status: "original" }],
+        total: 1,
+        page: 1,
+        page_size: 20
+      })),
+      getOperationsReview: jest.fn(async () => ({
+        reviewId: 77,
+        rating: 5,
+        status: "original",
+        amendmentHistory: []
+      })),
+      listForOperations: jest.fn(),
+      listForMerchant: jest.fn(),
+      amend: jest.fn()
+    };
+    const fixture = await createStep06Fixture({ backofficeUserReviewService: service } as never);
+    fixture.replaceAdminPermissions(["backoffice:users:read"]);
+    const token = await fixture.loginAsAdmin();
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/reviews?page=1&page_size=20&rating=5&status=original&targetType=technician&from=2026-09-10&to=2026-09-10")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(service.listOperationsReviews).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: expect.any(Number) }),
+      {
+        page: 1,
+        page_size: 20,
+        rating: 5,
+        status: "original",
+        targetType: "technician",
+        from: "2026-09-10",
+        to: "2026-09-10"
+      }
+    );
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/reviews/77")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(service.getOperationsReview).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: expect.any(Number) }),
+      77
+    );
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/reviews?from=2026-09-11&to=2026-09-10")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
+  });
+
   it("returns exactly ten-per-page reviews and forwards audited amendments", async () => {
     const service = {
+      listOperationsReviews: jest.fn(),
+      getOperationsReview: jest.fn(),
       listForOperations: jest.fn(async () => ({
         list: [
           {

@@ -10,6 +10,21 @@ describe("backoffice received-review OpenAPI", () => {
     const merchantPath =
       response.body.paths["/api/v1/merchant-admin/users/{userId}/received-reviews"];
     const amendmentPath = response.body.paths["/api/v1/backoffice/reviews/{reviewId}/amendments"];
+    const reviewListPath = response.body.paths["/api/v1/backoffice/reviews"];
+    const reviewDetailPath = response.body.paths["/api/v1/backoffice/reviews/{reviewId}"];
+
+    expect(reviewListPath.get).toMatchObject({
+      operationId: "listBackofficeReviews",
+      "x-permission": "backoffice:users:read"
+    });
+    expect(reviewDetailPath.get).toMatchObject({
+      operationId: "getBackofficeReview",
+      "x-permission": "backoffice:users:read"
+    });
+    const reviewQueryNames = reviewListPath.get.parameters.map((parameter: { name: string }) => parameter.name);
+    expect(reviewQueryNames).toEqual(
+      expect.arrayContaining(["page", "page_size", "keyword", "rating", "status", "targetType", "from", "to"])
+    );
 
     expect(operationsPath.get).toMatchObject({ "x-permission": "backoffice:users:read" });
     expect(merchantPath.get).toMatchObject({

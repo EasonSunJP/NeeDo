@@ -178,6 +178,21 @@ comment (including the latest review amendment), the reviewer display identity,
 the first effective review tag as the optional title, and active image media
 attached to that review. Account credentials and non-image attachments are not
 exposed.
+
+### Operations review management
+
+| Method | Path | Description | Permission |
+|---|---|---|---|
+| `GET` | `/api/v1/backoffice/reviews` | Server-paginated formal completed-order reviews | `backoffice:users:read` |
+| `GET` | `/api/v1/backoffice/reviews/:reviewId` | One formal review with related order, user, shop, technician and immutable amendments | `backoffice:users:read` |
+| `POST` | `/api/v1/backoffice/reviews/:reviewId/amendments` | Append an audited immutable amendment for a customer review | `backoffice:customers:write` |
+
+The global list has a fixed `page_size=20` and accepts `keyword`, effective
+`rating`, persisted-fact `status` (`original`, `amended`, or `system`),
+`targetType`, and inclusive Tokyo calendar dates `from` / `to`. Effective rating
+and comment come from the latest non-deleted amendment when one exists. The
+response includes only reviews attached to non-deleted completed orders; it does
+not invent reply, moderation, or risk states that are absent from persistence.
 | `page` / `pageSize` | integer | Same pagination contract as above. |
 
 `GET /search`
