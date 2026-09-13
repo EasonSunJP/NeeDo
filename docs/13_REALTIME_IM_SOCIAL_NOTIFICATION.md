@@ -533,6 +533,15 @@
 - 正式构建 CSS 的浏览器几何回归中，869px 布局视口的关闭态房间和输入区底边均为 869px；模拟 540px 可见高度与 44px 顶部位移后，房间范围为 44–584px，输入区底边为 584px，验证单边锚定的实际级联和定位结果。
 - 新增 iOS 26 standalone 生命周期回归，并同步覆盖 iPhone/Android PWA、普通 Safari、键盘位移和页面恢复。修改不涉及 IM API、数据库、migration、消息数据、safe-area 视觉值或远程环境。镜像用于确认旧版本根因；新版本仍须在获授权发布后于已安装 PWA 完成最终真机验收。
 
+## 6.36 iPhone PWA 输入区脱离聊天房间视口（2026-09-13，本地）
+
+- 6.35 合并后的 iPhone 镜像仍显示相同底部大块空白，因此“只把聊天房间改为单底边锚点即可修复”的判断已被真机结果否定。无键盘时返回聊天列表，底部导航贴合安全区；进入同一会话，输入区仍明显上移。两者使用同一套 safe-area 规则，差异在于底部导航直接固定到应用视口，而输入区仍是 `.im-conversation-room-shell` 内的普通 flex 子项。
+- 根因是输入区的最终位置仍依赖 iOS standalone PWA 中不可靠的聊天房间固定布局。只要 WebKit 把房间绘制得比真实可视区域短，或由房间的 `overflow: hidden` 截断底部，房间内部的输入区就必然一起上移；继续修改 `VisualViewport` 容差、`100dvh` 或房间 `top/bottom/height` 组合只能改变同一失效依赖，不能消除它。
+- 会话输入区及回复预览现通过 `ImStandaloneShell.viewportOverlay` 渲染为外层 `.client-shell` 的直接子节点，与已在镜像中验证位置正确的底部导航处于相同层级；`.im-conversation-composer-dock` 独立使用 fixed 底边和已有键盘 bottom 偏移，不再位于聊天房间内部，也不会被房间高度或 overflow 裁剪。消息滚动区继续由 `ResizeObserver` 读取整个 dock（含回复预览）的真实高度并预留底部空间。
+- 正式构建 CSS 的浏览器几何验证故意把聊天房间底边截短 96px：757px 可视高度下房间底边为 661px，输入 dock 底边仍为 757px；设置 280px 键盘偏移后 dock 底边为 477px，与预期可视底边一致。该验证证明输入区定位已与错误房间高度解耦，而不是再次依赖模拟的房间尺寸。
+- 新增回归先在旧结构上失败，再在外层 dock 结构上通过；IM 与视口相关 43 个文件、541 项及前端全量 581 个文件、3,928 项通过，TypeScript lint 与正式 build 通过。
+- 本节不修改 `VisualViewport` 阈值、safe-area 数值、IM API、数据库、migration 或消息数据。iPhone 镜像用于否定旧方案并确定工作/失效布局差异；由于本批次禁止远程部署，新代码仍须发布后在已安装 PWA 上完成最终验收。
+
 ---
 
 ## 7. 给 Codex 的命令

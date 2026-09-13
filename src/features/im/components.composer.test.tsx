@@ -894,6 +894,9 @@ describe("ImChatComposer", () => {
     );
     expect(stylesSource).toMatch(/\.im-chat-composer-root:has\(\.im-composer-panel\) \.im-chat-composer-stack \{[^}]*gap: 4px;/s);
     expect(stylesSource).toMatch(/\.im-composer-panel \{[^}]*min-height: min\(232px, calc\(var\(--im-visual-viewport-height, 100dvh\) \* 0\.42\)\);/s);
+    expect(stylesSource).toMatch(
+      /\.im-conversation-composer-dock \{[^}]*position: fixed;[^}]*bottom: var\(--im-visual-viewport-bottom, 0px\);/s,
+    );
 
     await act(async () => root.unmount());
   });

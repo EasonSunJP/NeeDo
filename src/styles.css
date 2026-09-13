@@ -8334,6 +8334,21 @@ html.im-conversation-scroll-lock #root {
   scroll-padding-bottom: calc(var(--im-composer-overlay-height, 85px) + 12px);
 }
 
+.im-conversation-layout--viewport-docked .im-conversation-scroll--glass-underlay {
+  margin-bottom: 0;
+}
+
+.im-conversation-composer-dock {
+  position: fixed;
+  z-index: 30;
+  right: var(--im-visual-viewport-right, 0px);
+  bottom: var(--im-visual-viewport-bottom, 0px);
+  left: var(--im-visual-viewport-left, 0px);
+  width: var(--im-visual-viewport-width, auto);
+  max-width: min(880px, 100%);
+  margin-inline: auto;
+}
+
 .im-pinned-message-container {
   background: color-mix(in srgb, var(--client-elevated) 50%, transparent);
   box-shadow:

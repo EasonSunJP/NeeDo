@@ -953,6 +953,38 @@ function roomMessage(overrides: Record<string, unknown>) {
   };
 }
 
+describe("ImConversationRoomPage viewport composer dock", () => {
+  it("anchors the composer in its own viewport dock instead of the iOS PWA room frame", async () => {
+    installConversationRoomDomStubs();
+    localStorage.setItem("needo.language", "zh");
+    const store = buildConversationRoomStore();
+    store.messagesByConversation["conversation-room"] = [roomMessage({})];
+    const view = await renderConversationRoom(store);
+
+    const room = view.container.querySelector<HTMLElement>(".im-conversation-room-shell");
+    const layout = view.container.querySelector<HTMLElement>("[data-im-conversation-layout='true']");
+    const dock = view.container.querySelector<HTMLElement>("[data-im-conversation-composer-dock='true']");
+    const composer = view.container.querySelector<HTMLElement>("[data-im-composer-root='true']");
+
+    expect(room).not.toBeNull();
+    expect(layout?.classList.contains("im-conversation-layout--viewport-docked")).toBe(true);
+    expect(dock).not.toBeNull();
+    expect(dock?.classList.contains("im-conversation-composer-dock")).toBe(true);
+    expect(dock?.contains(composer ?? null)).toBe(true);
+    expect(room?.contains(dock ?? null)).toBe(false);
+    expect(dock?.parentElement?.classList.contains("safe-screen-shell")).toBe(true);
+    expect(dock?.parentElement).not.toBe(room?.parentElement);
+    expect(layout?.style.getPropertyValue("--im-composer-overlay-height")).toBe("0px");
+
+    await openActionMenuForText("消息一");
+    clickMenuButton("回复");
+    await act(async () => { await Promise.resolve(); });
+    expect(dock?.textContent).toContain("回复消息");
+
+    await act(async () => view.root.unmount());
+  });
+});
+
 describe("ImConversationRoomPage formal message multiselect", () => {
   it("cancels a stationary chat-record-card tap without activating its underlying route", async () => {
     installConversationRoomDomStubs();

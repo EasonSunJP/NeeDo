@@ -1364,13 +1364,19 @@ export function ImChatComposer({
 
   useLayoutEffect(() => {
     const root = composerRootRef.current;
-    const conversationLayout = root?.closest<HTMLElement>(
-      "[data-im-conversation-layout='true']",
+    const standaloneShell = root?.closest<HTMLElement>(
+      "[data-im-standalone-shell='true']",
     );
+    const conversationLayout =
+      root?.closest<HTMLElement>("[data-im-conversation-layout='true']") ??
+      standaloneShell?.querySelector<HTMLElement>("[data-im-conversation-layout='true']");
 
     if (!root || !conversationLayout) {
       return undefined;
     }
+
+    const composerOverlay =
+      root.closest<HTMLElement>("[data-im-conversation-composer-dock='true']") ?? root;
 
     let frame: number | undefined;
     const updateComposerInset = () => {
@@ -1386,7 +1392,7 @@ export function ImChatComposer({
 
       conversationLayout.style.setProperty(
         "--im-composer-overlay-height",
-        `${Math.ceil(root.getBoundingClientRect().height)}px`,
+        `${Math.ceil(composerOverlay.getBoundingClientRect().height)}px`,
       );
 
       if (messageScroller && shouldKeepLatestMessageVisible) {
@@ -1404,7 +1410,7 @@ export function ImChatComposer({
       typeof ResizeObserver === "undefined"
         ? undefined
         : new ResizeObserver(updateComposerInset);
-    resizeObserver?.observe(root);
+    resizeObserver?.observe(composerOverlay);
 
     return () => {
       resizeObserver?.disconnect();
@@ -1619,9 +1625,11 @@ export function ImChatComposer({
 export function ImStandaloneShell({
   children,
   className,
+  viewportOverlay,
 }: {
   children: ReactNode;
   className?: string;
+  viewportOverlay?: ReactNode;
 }) {
   const { theme, isNight } = useClientTheme();
   const location = useLocation();
@@ -1691,6 +1699,7 @@ export function ImStandaloneShell({
         className,
       )}
       data-page-drag-ignore="true"
+      data-im-standalone-shell="true"
       data-scroll-drag-ignore="true"
       ref={shellRef}
     >
@@ -1700,6 +1709,7 @@ export function ImStandaloneShell({
       >
         {children}
       </div>
+      {viewportOverlay}
     </div>
   );
 }

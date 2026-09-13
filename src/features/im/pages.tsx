@@ -6695,8 +6695,68 @@ export function ImConversationRoomPage({
     );
   }
 
+  const conversationComposerDock = !mediaPreview && !multiSelect.active ? (
+    <div
+      aria-hidden={voiceRecording.phase !== "idle" ? "true" : undefined}
+      className="im-conversation-composer-dock"
+      data-im-conversation-composer-dock="true"
+      inert={voiceRecording.phase !== "idle" || undefined}
+    >
+      {quotedMessage ? (
+        <div className={cn("relative z-10 px-4 py-2 text-xs", quotedBarClass)}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-medium">回复消息</p>
+              <ImQuotedMessagePreview message={quotedMessage} />
+            </div>
+            <button className="text-ink/32" onClick={() => setQuotedMessageId(undefined)} type="button">
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <ImChatComposer
+        actions={availableMoreActions}
+        blocked={blocked}
+        draft={draft}
+        isNight={isNight}
+        onDraftChange={(value) => {
+          const nextDraft = clampMessageText(value);
+          setDraft(nextDraft);
+          store.setDraft(conversationId, nextDraft);
+        }}
+        onOpenVoiceRecording={() => {
+          setPanel(null);
+          void voiceRecording.open();
+        }}
+        onPanelChange={setPanel}
+        onRemovePendingImage={clearPendingImage}
+        onSend={() => void sendText()}
+        panel={panel}
+        pendingImage={pendingImage}
+        sending={imageSending}
+        textareaRef={textareaRef}
+        voiceButtonRef={voiceButtonRef}
+        voiceInputAriaLabel={translateText("录制语音", language)}
+      />
+      <input
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        disabled={imageSending}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          void prepareSelectedImage(file);
+        }}
+        ref={imageInputRef}
+        type="file"
+      />
+    </div>
+  ) : null;
+
   return (
-    <ImStandaloneShell>
+    <ImStandaloneShell viewportOverlay={conversationComposerDock}>
       <div
         aria-hidden={voiceRecording.phase !== "idle" ? "true" : undefined}
         className="im-conversation-room-shell fixed inset-x-0 inset-y-0 z-20 mx-auto flex h-[100dvh] w-full min-w-0 max-w-full flex-col overflow-hidden overscroll-none [overflow-x:clip]"
@@ -6740,7 +6800,7 @@ export function ImConversationRoomPage({
         />
 
         <div
-          className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none pt-[calc(env(safe-area-inset-top)+70px)]"
+          className="im-conversation-layout--viewport-docked relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none pt-[calc(env(safe-area-inset-top)+70px)]"
           data-im-conversation-layout="true"
         >
           <div aria-hidden="true" className="im-conversation-wallpaper pointer-events-none absolute inset-0 overflow-hidden">
@@ -6994,61 +7054,6 @@ export function ImConversationRoomPage({
                 </>
               );
             })()
-          ) : null}
-
-          {!mediaPreview && !multiSelect.active ? (
-            <>
-              {quotedMessage ? (
-                <div className={cn("relative z-10 px-4 py-2 text-xs", quotedBarClass)}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">回复消息</p>
-                      <ImQuotedMessagePreview message={quotedMessage} />
-                    </div>
-                    <button className="text-ink/32" onClick={() => setQuotedMessageId(undefined)} type="button">
-                      取消
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-
-              <ImChatComposer
-                actions={availableMoreActions}
-                blocked={blocked}
-                draft={draft}
-                isNight={isNight}
-                onDraftChange={(value) => {
-                  const nextDraft = clampMessageText(value);
-                  setDraft(nextDraft);
-                  store.setDraft(conversationId, nextDraft);
-                }}
-                onOpenVoiceRecording={() => {
-                  setPanel(null);
-                  void voiceRecording.open();
-                }}
-                onPanelChange={setPanel}
-                onRemovePendingImage={clearPendingImage}
-                onSend={() => void sendText()}
-                panel={panel}
-                pendingImage={pendingImage}
-                sending={imageSending}
-                textareaRef={textareaRef}
-                voiceButtonRef={voiceButtonRef}
-                voiceInputAriaLabel={translateText("录制语音", language)}
-              />
-              <input
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                disabled={imageSending}
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  event.currentTarget.value = "";
-                  void prepareSelectedImage(file);
-                }}
-                ref={imageInputRef}
-                type="file"
-              />
-            </>
           ) : null}
 
           {multiSelect.active ? (
