@@ -313,7 +313,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className={cn("admin-shell min-h-screen bg-paper text-ink", `admin-theme-${theme}`)}>
-      <aside className="admin-sidebar fixed left-0 top-0 hidden h-screen w-64 border-r border-line bg-white p-4 lg:block">
+      <aside className="admin-sidebar fixed left-0 top-0 z-[90] hidden h-screen w-64 border-r border-line bg-white p-4 lg:block">
         <div className="flex h-full flex-col">
           <div className="admin-brand rounded-lg p-4 text-white">
             <div className="flex items-center gap-3">
