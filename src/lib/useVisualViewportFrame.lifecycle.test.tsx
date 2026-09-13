@@ -170,7 +170,7 @@ describe("chat visual viewport lifecycle", () => {
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
   });
 
-  it("releases a focused installed PWA keyboard frame after any stable viewport expansion", async () => {
+  it("releases a focused installed PWA keyboard frame after a stable expansion sequence", async () => {
     vi.useFakeTimers();
     document.documentElement.dataset.needoDisplayMode = "standalone";
     vi.stubGlobal("navigator", {
@@ -182,6 +182,8 @@ describe("chat visual viewport lifecycle", () => {
     await act(async () => {
       editor.focus();
       setViewport(520);
+      viewport.dispatchEvent(new Event("resize"));
+      setViewport(560);
       viewport.dispatchEvent(new Event("resize"));
       setViewport(610);
       viewport.dispatchEvent(new Event("resize"));
@@ -195,6 +197,28 @@ describe("chat visual viewport lifecycle", () => {
     expect(document.activeElement).toBe(editor);
     expect(roomHeightOf(frame)).toBe("100lvh");
     expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("0px");
+  });
+
+  it("keeps an installed PWA keyboard frame through one isolated keyboard-layout expansion", async () => {
+    vi.useFakeTimers();
+    document.documentElement.dataset.needoDisplayMode = "standalone";
+    vi.stubGlobal("navigator", {
+      ...window.navigator,
+      userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
+    });
+    const { viewport, setViewport, frame, editor } = await setup();
+
+    await act(async () => {
+      editor.focus();
+      setViewport(520);
+      viewport.dispatchEvent(new Event("resize"));
+      setViewport(521);
+      viewport.dispatchEvent(new Event("resize"));
+      await vi.advanceTimersByTimeAsync(220);
+    });
+
+    expect(roomHeightOf(frame)).toBe("521px");
+    expect(frame.style.getPropertyValue("--im-visual-viewport-bottom")).toBe("435px");
   });
 
   it("releases an installed PWA keyboard frame immediately when the editor loses focus", async () => {

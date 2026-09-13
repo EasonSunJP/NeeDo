@@ -439,6 +439,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   let persistScheduled = false;
   let snapshot = createInitialSnapshot();
   const authoritativeDirectoryUsers = new Map<string, ImUser>();
+  const latestDirectoryProfileRequests = new Map<string, Promise<DirectoryProfile>>();
   const failedTerminalMediaPurges = new Set<string>();
   const pendingTerminalMediaPurges = new Map<string, PendingTerminalMediaPurge>();
   const tracelessMessageIdsByConversation = new Map<string, Set<string>>();
@@ -1736,23 +1737,33 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   async function getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
     await hydrateStore();
-    const profile = await api.getDirectoryProfile(userId);
-    entityRefreshGeneration += 1;
-    authoritativeDirectoryUsers.set(profile.user.id, profile.user);
-    mergeUsers([profile.user]);
-    if (profile.friendRequest) {
-      snapshot = {
-        ...snapshot,
-        friendRequests: [
-          profile.friendRequest,
-          ...snapshot.friendRequests.filter(
-            (request) => request.id !== profile.friendRequest?.id,
-          ),
-        ],
-      };
-    }
-    emit();
-    return profile;
+    let operation: Promise<DirectoryProfile>;
+    operation = api.getDirectoryProfile(userId)
+      .then(async (profile) => {
+        const latestOperation = latestDirectoryProfileRequests.get(userId);
+        if (latestOperation !== operation) {
+          return latestOperation ?? profile;
+        }
+
+        entityRefreshGeneration += 1;
+        authoritativeDirectoryUsers.set(profile.user.id, profile.user);
+        mergeUsers([profile.user]);
+        if (profile.friendRequest) {
+          snapshot = {
+            ...snapshot,
+            friendRequests: [
+              profile.friendRequest,
+              ...snapshot.friendRequests.filter(
+                (request) => request.id !== profile.friendRequest?.id,
+              ),
+            ],
+          };
+        }
+        emit();
+        return profile;
+      });
+    latestDirectoryProfileRequests.set(userId, operation);
+    return operation;
   }
 
   async function sendFriendRequest(targetUserId: string, message?: string) {
