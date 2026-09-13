@@ -53,6 +53,7 @@ import {
   getTechnicianDynamicPath,
 } from "../../shared/profile-card";
 import {
+  getHomeServiceModuleTargetTo,
   useHomeLayoutStore,
   type HomeLocationOption,
   type HomeRecommendationTabKey,
@@ -162,6 +163,41 @@ function sortByLocation<T>(
       getLocationScore(getLocationValues(right), location) -
       getLocationScore(getLocationValues(left), location),
   );
+}
+
+function getServiceModuleFilters(moduleConfig: HomeServiceModuleConfig) {
+  const targetTo = getHomeServiceModuleTargetTo(moduleConfig);
+  const queryStart = targetTo.indexOf("?");
+  const searchParams = new URLSearchParams(
+    queryStart >= 0 ? targetTo.slice(queryStart + 1) : "",
+  );
+  const targetCategoryId = searchParams.get("category")?.trim() || null;
+  const requestedMode = searchParams.get("mode");
+  const targetMode =
+    moduleConfig.serviceMode ??
+    (requestedMode === "home" || requestedMode === "store"
+      ? requestedMode
+      : null);
+
+  return { targetCategoryId, targetMode };
+}
+
+function matchesServiceModule(
+  service: ServiceItem,
+  moduleConfig: HomeServiceModuleConfig,
+) {
+  const { targetCategoryId, targetMode } =
+    getServiceModuleFilters(moduleConfig);
+
+  if (!moduleConfig.categoryIds.includes(service.categoryId)) {
+    return false;
+  }
+
+  if (targetCategoryId && service.categoryId !== targetCategoryId) {
+    return false;
+  }
+
+  return !targetMode || service.mode === targetMode;
 }
 
 function getQuickActionTitleClassName(title: string) {
@@ -365,8 +401,13 @@ function ServiceModule({
   moduleConfig: HomeServiceModuleConfig;
   items: ServiceItem[];
 }) {
+  const targetTo = getHomeServiceModuleTargetTo(moduleConfig);
+
   return (
-    <section className="space-y-4">
+    <section
+      className="space-y-4"
+      data-service-module-id={moduleConfig.id}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -386,7 +427,7 @@ function ServiceModule({
         </div>
         <Link
           className="inline-flex shrink-0 items-center gap-1 text-[12px] font-black text-[color:var(--client-primary)]"
-          to={moduleConfig.targetTo}
+          to={targetTo}
         >
           查看
           <ChevronIcon className="h-3.5 w-3.5" />
@@ -398,7 +439,7 @@ function ServiceModule({
           <Link
             className="group relative block h-[132px] overflow-hidden rounded-[22px] bg-black"
             key={service.id}
-            to={moduleConfig.targetTo}
+            to={targetTo}
           >
             <img
               alt={service.name}
@@ -799,7 +840,7 @@ export function HomePage() {
   const apiServices = useMemo(
     () =>
       homeRecommendationsQuery.data?.services.map(
-        mapCoreServiceToServiceItem,
+        (service) => mapCoreServiceToServiceItem(service, "home"),
       ) ?? [],
     [homeRecommendationsQuery.data],
   );
@@ -1008,10 +1049,10 @@ export function HomePage() {
         .slice(0, 2)
         .map((moduleConfig) => {
           const scopedServices = apiServices.filter((service) =>
-            moduleConfig.categoryIds.includes(service.categoryId),
+            matchesServiceModule(service, moduleConfig),
           );
           const matched = sortByLocation(
-            scopedServices.length > 0 ? scopedServices : apiServices,
+            scopedServices,
             (item) => [
               ...item.serviceAreas,
               item.name,

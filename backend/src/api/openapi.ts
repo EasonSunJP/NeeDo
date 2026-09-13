@@ -10738,6 +10738,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "shop",
           "technician",
           "city",
+          "serviceMode",
           "priceAmount",
           "currency",
           "durationMinutes",
@@ -10759,6 +10760,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             anyOf: [{ $ref: "#/components/schemas/TechnicianCard" }, { type: "null" }]
           },
           city: { type: "string" },
+          serviceMode: { type: "string" },
           priceAmount: { type: "string", example: "8800.00" },
           currency: { type: "string", example: "JPY" },
           durationMinutes: { type: "integer" },

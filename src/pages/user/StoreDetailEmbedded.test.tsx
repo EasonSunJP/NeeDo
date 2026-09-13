@@ -218,6 +218,7 @@ it("builds checkout actions only from an exact future formal slot", async () => 
     },
     technician: null,
     city: "東京都",
+    serviceMode: "store",
     priceAmount: "8800",
     currency: "JPY",
     durationMinutes: 60,

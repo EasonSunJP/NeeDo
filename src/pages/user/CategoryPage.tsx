@@ -302,6 +302,11 @@ export function CategoryPage() {
   const t = (text: string) => translateText(text, language);
   const [searchParams, setSearchParams] = useSearchParams();
   const initialCategoryId = searchParams.get("category");
+  const requestedServiceMode = searchParams.get("mode");
+  const serviceMode =
+    requestedServiceMode === "home" || requestedServiceMode === "store"
+      ? requestedServiceMode
+      : undefined;
   const entityFilter = normalizeEntityFilter(searchParams.get("type"));
   const initialTagIds = getTagIdsFromSearchParams(searchParams);
   const [activeCategoryId, setActiveCategoryId] = useState<HomeCategoryId>(
@@ -368,10 +373,11 @@ export function CategoryPage() {
     () => ({
       keywords: appliedCustomLabels,
       categoryIds: searchCategoryIds,
+      ...(serviceMode ? { serviceMode } : {}),
       pageSize: 40,
       sort: "rating_desc" as const
     }),
-    [appliedCustomLabels, searchCategoryIds]
+    [appliedCustomLabels, searchCategoryIds, serviceMode]
   );
   const technicianCoreSearchQuery = useMemo(
     () => ({
@@ -385,9 +391,10 @@ export function CategoryPage() {
   const searchTermsKey = useMemo(
     () => JSON.stringify({
       categoryIds: [...searchCategoryIds].sort((left, right) => left - right),
-      keywords: [...appliedCustomLabels].sort()
+      keywords: [...appliedCustomLabels].sort(),
+      serviceMode
     }),
-    [appliedCustomLabels, searchCategoryIds]
+    [appliedCustomLabels, searchCategoryIds, serviceMode]
   );
   const [shopRetryKey, setShopRetryKey] = useState(0);
   const [technicianRetryKey, setTechnicianRetryKey] = useState(0);

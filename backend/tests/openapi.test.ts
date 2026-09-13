@@ -1825,6 +1825,10 @@ describe("GET /api/v1/openapi.json", () => {
       type: "integer",
       minimum: 0
     });
+    expect(response.body.components.schemas.ServiceCard.required).toContain("serviceMode");
+    expect(response.body.components.schemas.ServiceCard.properties.serviceMode).toEqual({
+      type: "string"
+    });
     expect(response.body.components.schemas.TechnicianService.required).toEqual(
       expect.arrayContaining(["publicId", "usageCount", "shop"])
     );
