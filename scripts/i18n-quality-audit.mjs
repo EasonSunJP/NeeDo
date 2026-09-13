@@ -18,6 +18,8 @@ const orderPerformanceTranslationsPath = path.join(workspaceRoot, "src", "featur
 const travelFareTranslationsPath = path.join(workspaceRoot, "src", "features", "travel-fare", "i18n.ts");
 const technicianAutomationTranslationsPath = path.join(workspaceRoot, "src", "features", "technician-schedule", "automation-i18n.ts");
 const calendarParticipantTranslationsPath = path.join(workspaceRoot, "src", "features", "scheduling", "calendar-participant-i18n.ts");
+const authTranslationsPath = path.join(workspaceRoot, "src", "features", "auth", "i18n.ts");
+const platformReviewTranslationsPath = path.join(workspaceRoot, "src", "features", "platform-reviews", "i18n.ts");
 const outputDir = path.join(workspaceRoot, "exports", "i18n");
 const jsonReportPath = path.join(outputDir, "i18n-quality-report.json");
 const markdownReportPath = path.join(outputDir, "i18n-quality-report.md");
@@ -134,6 +136,8 @@ async function loadTranslations() {
   const travelFareSource = await fs.readFile(travelFareTranslationsPath, "utf8");
   const technicianAutomationSource = await fs.readFile(technicianAutomationTranslationsPath, "utf8");
   const calendarParticipantSource = await fs.readFile(calendarParticipantTranslationsPath, "utf8");
+  const authSource = await fs.readFile(authTranslationsPath, "utf8");
+  const platformReviewSource = await fs.readFile(platformReviewTranslationsPath, "utf8");
   const compilerOptions = {
     module: ts.ModuleKind.ES2022,
     target: ts.ScriptTarget.ES2022
@@ -177,6 +181,12 @@ async function loadTranslations() {
   const transpiledCalendarParticipantTranslations = ts.transpileModule(calendarParticipantSource, {
     compilerOptions
   }).outputText;
+  const transpiledAuthTranslations = ts.transpileModule(authSource, {
+    compilerOptions
+  }).outputText;
+  const transpiledPlatformReviewTranslations = ts.transpileModule(platformReviewSource, {
+    compilerOptions
+  }).outputText;
   const tempToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const identityApplicationTempFileName = `identity-application-translations-quality-${tempToken}.mjs`;
   const ekycTempFileName = `ekyc-translations-quality-${tempToken}.mjs`;
@@ -191,6 +201,8 @@ async function loadTranslations() {
   const travelFareTempFileName = `travel-fare-translations-quality-${tempToken}.mjs`;
   const technicianAutomationTempFileName = `technician-automation-translations-quality-${tempToken}.mjs`;
   const calendarParticipantTempFileName = `calendar-participant-translations-quality-${tempToken}.mjs`;
+  const authTempFileName = `auth-translations-quality-${tempToken}.mjs`;
+  const platformReviewTempFileName = `platform-review-translations-quality-${tempToken}.mjs`;
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       ...compilerOptions
@@ -205,7 +217,9 @@ async function loadTranslations() {
     .replace("../features/platform-user-management/i18n", `./${platformUserManagementTempFileName}`)
     .replace("../features/order-performance/i18n", `./${orderPerformanceTempFileName}`)
     .replace("../features/travel-fare/i18n", `./${travelFareTempFileName}`)
-    .replace("../features/technician-schedule/automation-i18n", `./${technicianAutomationTempFileName}`);
+    .replace("../features/technician-schedule/automation-i18n", `./${technicianAutomationTempFileName}`)
+    .replaceAll("../features/auth/i18n", `./${authTempFileName}`)
+    .replace("../features/platform-reviews/i18n", `./${platformReviewTempFileName}`);
   const tempFile = path.join(outputDir, `translations-quality-${tempToken}.mjs`);
   const identityApplicationTempFile = path.join(outputDir, identityApplicationTempFileName);
   const ekycTempFile = path.join(outputDir, ekycTempFileName);
@@ -220,6 +234,8 @@ async function loadTranslations() {
   const travelFareTempFile = path.join(outputDir, travelFareTempFileName);
   const technicianAutomationTempFile = path.join(outputDir, technicianAutomationTempFileName);
   const calendarParticipantTempFile = path.join(outputDir, calendarParticipantTempFileName);
+  const authTempFile = path.join(outputDir, authTempFileName);
+  const platformReviewTempFile = path.join(outputDir, platformReviewTempFileName);
 
   await fs.mkdir(outputDir, { recursive: true });
   await fs.writeFile(ekycTempFile, transpiledEkycTranslations, "utf8");
@@ -242,6 +258,8 @@ async function loadTranslations() {
   await fs.writeFile(travelFareTempFile, transpiledTravelFareTranslations, "utf8");
   await fs.writeFile(technicianAutomationTempFile, transpiledTechnicianAutomationTranslations, "utf8");
   await fs.writeFile(calendarParticipantTempFile, transpiledCalendarParticipantTranslations, "utf8");
+  await fs.writeFile(authTempFile, transpiledAuthTranslations, "utf8");
+  await fs.writeFile(platformReviewTempFile, transpiledPlatformReviewTranslations, "utf8");
   await fs.writeFile(tempFile, transpiled, "utf8");
 
   try {
@@ -276,6 +294,8 @@ async function loadTranslations() {
     await fs.unlink(travelFareTempFile).catch(() => {});
     await fs.unlink(technicianAutomationTempFile).catch(() => {});
     await fs.unlink(calendarParticipantTempFile).catch(() => {});
+    await fs.unlink(authTempFile).catch(() => {});
+    await fs.unlink(platformReviewTempFile).catch(() => {});
   }
 }
 

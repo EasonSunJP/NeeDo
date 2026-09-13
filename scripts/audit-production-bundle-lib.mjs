@@ -13,7 +13,7 @@ const forbiddenRuntimeMarkers = [
 ];
 const defaultBudgets = {
   main: 4_000_000,
-  i18n: 3_725_800
+  i18n: 3_708_400
 };
 
 const nonRuntimeExtension = /\.(psd|psb|ai|sketch|fig|md|docx|zip|rar|7z|bak|orig|tmp|pem|key|p12|pfx)$/i;
