@@ -740,7 +740,9 @@ describe("ImNewConversationPage directory query handoff", () => {
     expect(infoSource).toContain('conversationFriendActions.includes("accept")');
     expect(infoSource).toContain("store.sendFriendRequest");
     expect(infoSource).toContain("store.acceptFriendRequest");
-    expect(infoSource).toContain('contact?.id, formalActivityTargetUserId');
+    expect(infoSource).toContain("contact?.id,");
+    expect(infoSource).toContain("formalActivityTargetUserId,");
+    expect(infoSource).toContain("user?.nickname,");
     expect(infoSource).toContain('{t("添加好友")}');
   });
 });
@@ -954,7 +956,7 @@ function roomMessage(overrides: Record<string, unknown>) {
 }
 
 describe("ImConversationRoomPage viewport composer dock", () => {
-  it("anchors the composer in its own viewport dock instead of the iOS PWA room frame", async () => {
+  it("anchors the composer to the same room frame as the wallpaper", async () => {
     installConversationRoomDomStubs();
     let dockHeight = 98;
     const resizeObservers: Array<{
@@ -997,9 +999,8 @@ describe("ImConversationRoomPage viewport composer dock", () => {
     expect(dock).not.toBeNull();
     expect(dock?.classList.contains("im-conversation-composer-dock")).toBe(true);
     expect(dock?.contains(composer ?? null)).toBe(true);
-    expect(room?.contains(dock ?? null)).toBe(false);
-    expect(dock?.parentElement?.classList.contains("safe-screen-shell")).toBe(true);
-    expect(dock?.parentElement).not.toBe(room?.parentElement);
+    expect(room?.contains(dock ?? null)).toBe(true);
+    expect(dock?.parentElement).toBe(room);
     const dockObserver = [...resizeObservers]
       .reverse()
       .find((observer) => dock != null && observer.observed.includes(dock));

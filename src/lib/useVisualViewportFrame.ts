@@ -178,7 +178,14 @@ export function useVisualViewportFrame<T extends HTMLElement>(ref: RefObject<T |
           "--im-visual-viewport-height",
           `${Math.max(1, Math.ceil(viewport!.height))}px`
         );
-        element.style.setProperty("--im-conversation-room-height", "100dvh");
+        // Safari can retain a shortened `dvh` after the software keyboard is
+        // dismissed or when an installed PWA is restored. `lvh` is independent
+        // of that transient keyboard frame, so the closed room continues to
+        // the display bottom while its composer handles the safe-area inset.
+        element.style.setProperty(
+          "--im-conversation-room-height",
+          installPlatform === "ios" ? "100lvh" : "100dvh"
+        );
         element.style.setProperty("--im-visual-viewport-top", "auto");
         element.style.setProperty("--im-visual-viewport-bottom", "0px");
         element.style.setProperty("--im-visual-viewport-width", "auto");

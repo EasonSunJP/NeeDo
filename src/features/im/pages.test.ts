@@ -648,7 +648,8 @@ describe("IM pages", () => {
     expect(openMenuSource).not.toContain("setVoiceMode(false)");
     expect(menuStart).toBeGreaterThan(-1);
     expect(composerGateStart).toBeGreaterThan(openMenuEnd);
-    expect(componentSource).toContain("viewportOverlay={conversationComposerDock}");
+    expect(componentSource).toContain("{conversationComposerDock}");
+    expect(componentSource).not.toContain("viewportOverlay={conversationComposerDock}");
     expect(composerSource).toContain("<ImChatComposer");
     expect(composerSource).toContain("quotedMessage ?");
     expect(composerSource).not.toContain("menuState");

@@ -54,6 +54,7 @@ vi.mock("./local-cache/service", () => ({
 import {
   buildCachedImSearchResults,
   fetchImOpenedMediaBlob,
+  getConversationDisplayName,
   getIncomingPendingFriendRequestCount,
   getMessageFailureReason,
   getForwardableMessagePayload,
@@ -789,6 +790,72 @@ describe("chat-record store facade", () => {
 });
 
 describe("formal profile realtime refresh", () => {
+  it("uses the directory profile as the final name source when a bootstrap snapshot is stale", async () => {
+    mocked.session = {
+      activePublicId: "u0000987655",
+      avatarUrl: null,
+      id: 987655,
+      primaryPublicId: "u0000987655",
+      username: "profile-refresh-viewer",
+    };
+    const oldUser = {
+      accountId: "partner-account",
+      avatar: "",
+      id: "201",
+      nickname: "LifeDance 管理员 2",
+      profileKind: "user" as const,
+      searchableFields: ["LifeDance 管理员 2"],
+      sortKey: "L",
+      status: "online" as const,
+      tags: [],
+      userIdLabel: "NeeDo ID: u0000000201",
+    };
+    const updatedUser = {
+      ...oldUser,
+      nickname: "CutGirl",
+      searchableFields: ["CutGirl"],
+      sortKey: "C",
+    };
+    const bootstrapState = {
+      currentUserId: "987655",
+      config: {},
+      users: [oldUser],
+      contacts: [],
+      organizationContacts: [],
+      friendRequests: [],
+      conversations: [conversation({
+        contactUserId: "201",
+        memberIds: ["987655", "201"],
+        title: oldUser.nickname,
+      })],
+      members: [],
+    };
+    const bootstrap = vi.fn().mockResolvedValue(bootstrapState);
+    const getDirectoryProfile = vi.fn().mockResolvedValue({
+      user: updatedUser,
+      relationship: "friend",
+      identityCard: {
+        entityType: "user",
+        displayName: "CutGirl",
+        verified: false,
+        creditReviewCount: 0,
+        languages: [],
+      },
+    });
+    mocked.api = { bootstrap, getDirectoryProfile };
+
+    await renderStore();
+    await act(async () => {
+      mocked.subscriptionListener?.({ type: "profile.updated", userId: "201" });
+      await vi.waitFor(() => expect(getDirectoryProfile).toHaveBeenCalledWith("201"));
+      await vi.waitFor(() => expect(store?.usersById["201"]?.nickname).toBe("CutGirl"));
+    });
+
+    expect(bootstrap).toHaveBeenCalledTimes(2);
+    expect(store?.usersById["201"]?.nickname).toBe("CutGirl");
+    expect(getConversationDisplayName(store!, store!.conversations[0]!)).toBe("CutGirl");
+  });
+
   it("replaces cached conversation and directory names after a profile event", async () => {
     mocked.session = {
       activePublicId: "u0000987654",

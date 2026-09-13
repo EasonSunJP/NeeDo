@@ -488,6 +488,7 @@ export type ImStoreUpdate =
   | { type: "message.created"; message: ConversationMessage }
   | { type: "message.updated"; message: ConversationMessage }
   | { type: "message.recalled"; message: ConversationMessage }
+  | { type: "profile.updated"; userId: string }
   | {
       type: "message.deleted";
       conversationId: string;

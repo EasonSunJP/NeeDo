@@ -946,6 +946,18 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
               return;
             }
 
+            if (update.type === "profile.updated") {
+              // Conversation bootstrap participants can lag behind the
+              // identity directory immediately after a rename. Refresh the
+              // conversation snapshot first, then let the directory profile
+              // be the final authoritative user record used by the list,
+              // room header, and information card.
+              void refreshBootstrap()
+                .then(() => getDirectoryProfile(update.userId))
+                .catch(() => undefined);
+              return;
+            }
+
             void refreshBootstrap();
             if (snapshot.activeConversationId) {
               void loadMessages(snapshot.activeConversationId, { force: true, reset: true, limit: 40 });

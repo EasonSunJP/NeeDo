@@ -6756,7 +6756,7 @@ export function ImConversationRoomPage({
   ) : null;
 
   return (
-    <ImStandaloneShell viewportOverlay={conversationComposerDock}>
+    <ImStandaloneShell>
       <div
         aria-hidden={voiceRecording.phase !== "idle" ? "true" : undefined}
         className="im-conversation-room-shell fixed inset-x-0 inset-y-0 z-20 mx-auto flex h-[100dvh] w-full min-w-0 max-w-full flex-col overflow-hidden overscroll-none [overflow-x:clip]"
@@ -7075,6 +7075,7 @@ export function ImConversationRoomPage({
             />
           ) : null}
         </div>
+        {conversationComposerDock}
       </div>
 
       {voiceRecording.phase !== "idle" ? (
@@ -7745,7 +7746,13 @@ export function ImConversationInfoPage() {
     return () => {
       cancelled = true;
     };
-  }, [contact?.id, formalActivityTargetUserId, store.getDirectoryProfile]);
+  }, [
+    contact?.id,
+    formalActivityTargetUserId,
+    store.getDirectoryProfile,
+    user?.avatar,
+    user?.nickname,
+  ]);
 
   useEffect(() => {
     if (!conversation) {
