@@ -9,6 +9,7 @@ import {
 import { describeBookingOrderMutationError } from "../../features/booking/orderMutationError";
 import { loadEveryTechnicianOrder } from "../../features/scheduling/window-loader";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { cn, yen } from "../../lib/utils";
 import { Button } from "../ui/Button";
 
@@ -50,6 +51,7 @@ function paymentLabel(order: BookingOrder) {
 
 export function FormalTechnicianOrdersPanel() {
   const language = useProvidedI18n()?.language ?? "zh";
+  const t = (source: string) => translateText(source, language);
   const [orders, setOrders] = useState<BookingOrder[]>([]);
   const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
   const [loadError, setLoadError] = useState("");
@@ -190,9 +192,14 @@ export function FormalTechnicianOrdersPanel() {
                   <h3 className="mt-3 text-base font-black text-white">{order.serviceName}</h3>
                   <p className="mt-1 text-xs font-bold text-white/55">{order.shopName} · 用户 #{order.customerUserId}</p>
                 </div>
-                <strong className="shrink-0 text-base font-black text-[color:var(--client-primary)]">
-                  {yen(Number(order.priceAmount))}
-                </strong>
+                <div className="shrink-0 text-right">
+                  <span className="block text-[10px] font-bold text-white/45">
+                    {t(order.amountSource === "checkout" || order.amountSource === "order_payment" ? "顾客支付总额" : "订单金额")}
+                  </span>
+                  <strong className="mt-1 block text-base font-black text-[color:var(--client-primary)]">
+                    {yen(order.paymentAmountJpy)}
+                  </strong>
+                </div>
               </div>
 
               <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">

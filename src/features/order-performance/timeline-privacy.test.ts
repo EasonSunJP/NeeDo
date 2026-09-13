@@ -125,6 +125,48 @@ describe("order timeline display privacy", () => {
     expect(JSON.stringify(events)).toContain(expected);
   });
 
+  it("projects persisted add-on proposal and acceptance facts into the technician timeline", () => {
+    const order = makeOrder([]);
+    order.serviceSession = {
+      startedAt: "2026-09-10T01:00:00.000Z",
+      expectedEndsAt: "2026-09-10T02:30:00.000Z",
+      endedAt: "2026-09-10T02:30:00.000Z",
+      addOns: [{
+        id: 6501,
+        serviceId: 81,
+        status: "accepted",
+        serviceNameSnapshot: "加钟 30 分钟",
+        priceAmountJpy: 6_500,
+        currency: "JPY",
+        durationMinutes: 30,
+        serviceSnapshot: {},
+        proposedBy: "technician",
+        proposedAt: "2026-09-10T01:20:00.000Z",
+        resolvedBy: "customer",
+        resolvedAt: "2026-09-10T01:22:00.000Z",
+        resolutionReason: null
+      }]
+    };
+
+    const events = buildFormalOrderTimelineEvents(order, {
+      audience: "technician",
+      language: "zh"
+    });
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        actorName: "技师",
+        message: "加钟 30 分钟 · +30分钟 · ￥6,500",
+        title: "提出加钟"
+      }),
+      expect.objectContaining({
+        actorName: "用户",
+        message: "加钟 30 分钟 · +30分钟 · ￥6,500",
+        title: "加钟已确认"
+      })
+    ]));
+  });
+
   it.each([
     ["pending", "Reservation pending confirmation"],
     ["confirmed", "Reservation confirmed"],

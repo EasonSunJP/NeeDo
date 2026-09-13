@@ -6,12 +6,24 @@ import type { Language } from "../../i18n/translations";
 import {
   displayablePublicBusinessReason,
   formatOrderTimelineDate,
+  formatOrderTimelineDuration,
   orderStatusTimelineMessage,
   orderTimelineActorName,
   orderTimelineText,
   performanceTimelineDisplay,
   type OrderTimelineAudience
 } from "./timelineDisplay";
+import { yen } from "../../lib/utils";
+
+type TechnicianAddOnTimelineEvent = {
+  type: "ADD_ON_PROPOSED" | "ADD_ON_ACCEPTED" | "ADD_ON_REJECTED";
+  id: string;
+  createdAt: string;
+  actor: "customer" | "technician" | null;
+  serviceName: string;
+  priceAmountJpy: number;
+  durationMinutes: number;
+};
 
 export function buildFormalOrderTimelineEvents(
   order: BookingOrder,
@@ -33,7 +45,35 @@ export function buildFormalOrderTimelineEvents(
           publicReason: history.reason
         }));
 
-  return [...timelineEvents]
+  const technicianAddOnEvents: TechnicianAddOnTimelineEvent[] =
+    options.audience === "technician"
+      ? (order.serviceSession?.addOns ?? []).flatMap((addOn) => {
+          const proposed: TechnicianAddOnTimelineEvent = {
+            type: "ADD_ON_PROPOSED",
+            id: `add-on:${addOn.id}:proposed`,
+            createdAt: addOn.proposedAt,
+            actor: addOn.proposedBy,
+            serviceName: addOn.serviceNameSnapshot,
+            priceAmountJpy: addOn.priceAmountJpy,
+            durationMinutes: addOn.durationMinutes
+          };
+          if (!addOn.resolvedAt || addOn.status === "proposed") return [proposed];
+          return [
+            proposed,
+            {
+              type: addOn.status === "accepted" ? "ADD_ON_ACCEPTED" : "ADD_ON_REJECTED",
+              id: `add-on:${addOn.id}:resolved`,
+              createdAt: addOn.resolvedAt,
+              actor: addOn.resolvedBy,
+              serviceName: addOn.serviceNameSnapshot,
+              priceAmountJpy: addOn.priceAmountJpy,
+              durationMinutes: addOn.durationMinutes
+            }
+          ];
+        })
+      : [];
+
+  return [...timelineEvents, ...technicianAddOnEvents]
     .filter((event) => event.type === "ORDER_COMMENT_ADDED" || event.type === "ORDER_STATUS_CHANGED" || options.audience !== "customer")
     .sort(
       (left, right) =>
@@ -42,6 +82,32 @@ export function buildFormalOrderTimelineEvents(
     )
     .map((event) => {
       const actorName = orderTimelineActorName(null, options.language);
+
+      if (
+        event.type === "ADD_ON_PROPOSED" ||
+        event.type === "ADD_ON_ACCEPTED" ||
+        event.type === "ADD_ON_REJECTED"
+      ) {
+        const title = orderTimelineText(
+          event.type === "ADD_ON_PROPOSED"
+            ? "提出加钟"
+            : event.type === "ADD_ON_ACCEPTED"
+              ? "加钟已确认"
+              : "加钟已拒绝",
+          options.language
+        );
+        return {
+          actorName: event.actor
+            ? orderTimelineText(event.actor === "technician" ? "技师" : "用户", options.language)
+            : actorName,
+          actorRole: title,
+          atLabel: formatOrderTimelineDate(event.createdAt, options.language),
+          id: event.id,
+          message: `${event.serviceName} · ${formatOrderTimelineDuration(event.durationMinutes, options.language)} · ${yen(event.priceAmountJpy)}`,
+          title,
+          tone: event.type === "ADD_ON_REJECTED" ? "red" as const : "green" as const
+        };
+      }
 
       if (event.type === "ORDER_COMMENT_ADDED") {
         return {
@@ -70,7 +136,9 @@ export function buildFormalOrderTimelineEvents(
       }
 
       const performanceCopy = performanceTimelineDisplay(event.type, options.language);
-      const publicReason = displayablePublicBusinessReason(event.publicReason);
+      const publicReason = displayablePublicBusinessReason(
+        "publicReason" in event ? event.publicReason : null
+      );
 
       return {
         actorName,

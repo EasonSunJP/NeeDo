@@ -26,8 +26,11 @@ import {
   type TechnicianProfileVisibility,
   type TechnicianSelfProfile
 } from "../../features/core-read/technicianProfileApi";
-import type { TechnicianDataCenterPeriod } from "../../features/core-read/technicianDataCenterApi";
-import type { TechnicianDataCenterPayload } from "../../features/core-read/technicianDataCenterApi";
+import {
+  technicianDataCenterApi,
+  type TechnicianDataCenterPayload,
+  type TechnicianDataCenterPeriod
+} from "../../features/core-read/technicianDataCenterApi";
 import {
   pricingModeApi,
   type ShopPricingMode,
@@ -191,6 +194,8 @@ function TechnicianPortalDataGate() {
 }
 
 function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; technician: CoreTechnicianDetail | null }) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
   const rating = technician ? Number(technician.reviewSummary.ratingAverage || 0) : 0;
   const shopName = technician?.shop?.name ?? (profile.shopId ? "关联店铺" : "个人技师");
   const [tasksPanelTab, setTasksPanelTab] = useState<"schedule" | "orders">("schedule");
@@ -229,6 +234,14 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
       scope: cacheScope
     }
   );
+  const monthlyIncomeQuery = useCoreReadQuery(
+    () => technicianDataCenterApi.getMine("month"),
+    [profile.id, monthFromIso, monthToIso],
+    {
+      key: `technician:data-center:${profile.id}:month:${monthFromIso}`,
+      scope: cacheScope
+    }
+  );
   const orders: BookingOrder[] = tasksQuery.data?.orders ?? [];
   const slots: BookingScheduleSlot[] = tasksQuery.data?.slots ?? [];
   const loading = tasksQuery.loading;
@@ -239,9 +252,7 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
     .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
   const acceptedOrders = orders.filter((order) => ["confirmed", "inService", "completed"].includes(order.status));
   const decidedOrders = orders.filter((order) => order.status !== "pending");
-  const completedRevenue = orders
-    .filter((order) => order.status === "completed")
-    .reduce((sum, order) => sum + (Number(order.priceAmount) || 0), 0);
+  const completedRevenue = monthlyIncomeQuery.data?.summary.recognizedIncomeJpy ?? null;
   const acceptRate = decidedOrders.length > 0 ? Math.round(acceptedOrders.length / decidedOrders.length * 100) : null;
   const nextOrder = todayOrders.find((order) => order.status === "inService")
     ?? todayOrders.find((order) => order.status === "confirmed" || order.status === "pending")
@@ -287,8 +298,8 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
                     <p className="truncate text-xs font-bold text-white/60">{shopName}</p>
                     <Badge tone="green">{profile.employmentType === "independent" ? "个人技师" : "店铺所属"}</Badge>
                   </div>
-                  <p className="mt-4 text-xs font-bold text-white/50">本月收入</p>
-                  <p className="mt-1 text-[34px] font-black tracking-[-0.05em]">{yen(completedRevenue)}</p>
+                  <p className="mt-4 text-xs font-bold text-white/50">{t("本月确认收入")}</p>
+                  <p className="mt-1 text-[34px] font-black tracking-[-0.05em]">{completedRevenue === null ? "—" : yen(completedRevenue)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <KycVerifiedBadge size="label" />
@@ -356,8 +367,10 @@ function TasksView({ profile, technician }: { profile: TechnicianSelfProfile; te
                       <p className="mt-1 text-xs font-bold text-white/55">预计结束：{dateTime(nextOrder.endsAt)}</p>
                     </div>
                     <div className="rounded-[18px] border border-white/10 bg-white/[0.08] px-4 py-3 text-right">
-                      <p className="text-[10px] font-bold text-white/50">预估收入</p>
-                      <strong className="mt-1 block text-lg font-black text-[color:var(--client-primary)]">{yen(Number(nextOrder.priceAmount) || 0)}</strong>
+                      <p className="text-[10px] font-bold text-white/50">
+                        {t(nextOrder.amountSource === "checkout" || nextOrder.amountSource === "order_payment" ? "顾客支付总额" : "订单金额")}
+                      </p>
+                      <strong className="mt-1 block text-lg font-black text-[color:var(--client-primary)]">{yen(nextOrder.paymentAmountJpy)}</strong>
                     </div>
                   </div>
                   <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-3">
