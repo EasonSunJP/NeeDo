@@ -571,6 +571,7 @@ export interface OrderStatusHistoryPayload {
 
 export type OrderAddOnStatusPayload = "proposed" | "accepted" | "rejected";
 export type FulfillmentParticipant = "customer" | "technician";
+export type FulfillmentCommandActor = FulfillmentParticipant | "merchant";
 
 export interface OrderAddOnPayload {
   id: number;
@@ -907,8 +908,9 @@ export interface FulfillmentRequestContext {
 
 export interface FulfillmentActorInput {
   actorUserId: number;
-  actor: FulfillmentParticipant;
+  actor: FulfillmentCommandActor;
   technicianProfileId: number | null;
+  shopId?: number | null;
   requestContext: FulfillmentRequestContext;
 }
 
@@ -3112,7 +3114,7 @@ export class BookingRepository implements BookingRepositoryPort {
         if (!current) return { outcome: "not_found" };
         if (!this.fulfillmentActorMatches(current, input)) return { outcome: "forbidden" };
         if (
-          input.actor === "technician" &&
+          input.actor !== "customer" &&
           (!input.verificationCode ||
             !serviceVerificationCodeMatches(current.id, input.verificationCode))
         ) {
@@ -3126,7 +3128,7 @@ export class BookingRepository implements BookingRepositoryPort {
         return { outcome: "invalid_transition" };
       }
       if (
-        input.actor === "technician" &&
+        input.actor !== "customer" &&
         (!input.verificationCode ||
           !serviceVerificationCodeMatches(current.id, input.verificationCode))
       ) {
@@ -5759,6 +5761,9 @@ export class BookingRepository implements BookingRepositoryPort {
     if (!order.technicianProfileId || !order.technicianProfile) return false;
     if (input.actor === "customer") {
       return input.technicianProfileId === null && order.customerUserId === input.actorUserId;
+    }
+    if (input.actor === "merchant") {
+      return input.technicianProfileId === null && input.shopId === order.shopId;
     }
     return (
       input.technicianProfileId === order.technicianProfileId &&

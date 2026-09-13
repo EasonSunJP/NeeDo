@@ -18,6 +18,7 @@ import type {
   CheckoutMutationResult,
   OrderCheckoutPayload,
   FulfillmentActorInput,
+  FulfillmentParticipant,
   FulfillmentMutationResult,
   ManualPaymentMutationResult,
   ManualPaymentScope,
@@ -690,12 +691,12 @@ export class BookingService {
     input: StartServiceInput,
     context: AuthRequestContext
   ): Promise<BookingOrderPayload> {
-    const fulfillmentActor = this.getFulfillmentActor(actor, input.actor);
+    const fulfillmentActor = this.getFulfillmentActor(actor, input.actor, true);
     await this.assertFulfillmentOrderAccess(actor, orderId, fulfillmentActor.actor);
     const result = await this.repository.startService({
       ...fulfillmentActor,
       orderId,
-      verificationCode: input.actor === "technician" ? input.verificationCode : null,
+      verificationCode: input.actor === "customer" ? null : input.verificationCode,
       idempotencyKey: input.idempotencyKey,
       requestContext: this.fulfillmentRequestContext(context)
     });
@@ -830,7 +831,7 @@ export class BookingService {
     input: EndServiceInput,
     context: AuthRequestContext
   ): Promise<BookingOrderPayload> {
-    const fulfillmentActor = this.getFulfillmentActor(actor);
+    const fulfillmentActor = this.getFulfillmentActor(actor, undefined, true);
     await this.assertFulfillmentOrderAccess(actor, orderId, fulfillmentActor.actor);
     const result = await this.repository.endService({
       ...fulfillmentActor,
@@ -1457,16 +1458,30 @@ export class BookingService {
 
   private getFulfillmentActor(
     actor: AuthenticatedBookingActor,
-    requestedActor?: "customer" | "technician"
+    requestedActor?: FulfillmentParticipant
+  ): Omit<FulfillmentActorInput, "requestContext" | "actor"> & {
+    actor: FulfillmentParticipant;
+  };
+  private getFulfillmentActor(
+    actor: AuthenticatedBookingActor,
+    requestedActor: "customer" | "technician" | "merchant" | undefined,
+    allowMerchant: true
+  ): Omit<FulfillmentActorInput, "requestContext">;
+  private getFulfillmentActor(
+    actor: AuthenticatedBookingActor,
+    requestedActor?: "customer" | "technician" | "merchant",
+    allowMerchant = false
   ): Omit<FulfillmentActorInput, "requestContext"> {
     const actorType =
       actor.currentIdentityScopeType === "technician_profile" &&
       actor.currentIdentityScopeId &&
       actor.currentIdentityType === "technician"
         ? "technician"
-        : this.isCustomerFulfillmentIdentity(actor)
-          ? "customer"
-          : null;
+        : allowMerchant && this.isMerchantShopActor(actor)
+          ? "merchant"
+          : this.isCustomerFulfillmentIdentity(actor)
+            ? "customer"
+            : null;
     if (!actorType || (requestedActor && requestedActor !== actorType)) {
       throw new AppError({
         code: ERROR_CODES.FORBIDDEN,
@@ -1478,21 +1493,27 @@ export class BookingService {
       actorUserId: actor.userId,
       actor: actorType,
       technicianProfileId:
-        actorType === "technician" ? (actor.currentIdentityScopeId ?? null) : null
+        actorType === "technician" ? (actor.currentIdentityScopeId ?? null) : null,
+      ...(actorType === "merchant"
+        ? { shopId: requireMerchantShopId(actor as AuthenticatedAccessContext) }
+        : {})
     };
   }
 
   private async assertFulfillmentOrderAccess(
     actor: AuthenticatedBookingActor,
     orderId: number,
-    participant: "customer" | "technician"
+    participant: "customer" | "technician" | "merchant"
   ): Promise<void> {
     const order = await this.repository.findOrderById(orderId);
     const allowed =
-      order?.technicianProfileId &&
+      order !== null &&
+      order.technicianProfileId !== null &&
       (participant === "customer"
         ? order.customerUserId === actor.userId
-        : order.technicianProfileId === actor.currentIdentityScopeId);
+        : participant === "technician"
+          ? order.technicianProfileId === actor.currentIdentityScopeId
+          : order.shopId === requireMerchantShopId(actor as AuthenticatedAccessContext));
     if (!allowed) throw this.notFoundError();
   }
 

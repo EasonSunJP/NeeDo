@@ -22848,9 +22848,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         operationId: "startOrderService",
         tags: ["Booking Fulfillment"],
-        summary: "Start service as the owning customer or assigned technician",
+        summary: "Start service as the owning customer, assigned technician, or owning merchant",
         description:
-          "The service derives actor identity from authentication. A technician supplies the six-digit customer-visible verification code; the code and its hash are never returned here. Unless Operations explicitly enables anytime service testing, start is allowed only from 30 minutes before startsAt. When overdue appointment gating is enabled, the same transaction locks and rejects the earliest unresolved overdue appointment for the customer or assigned technician.",
+          "The service derives actor identity from authentication. A technician or owning merchant supplies the six-digit customer-visible verification code; the code and its hash are never returned here. Merchant access is constrained to the active shop scope. Unless Operations explicitly enables anytime service testing, start is allowed only from 30 minutes before startsAt. When overdue appointment gating is enabled, the same transaction locks and rejects the earliest unresolved overdue appointment for the customer or assigned technician.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:service:start",
         parameters: [idPathParameter()],
@@ -22882,6 +22882,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                         $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey"
                       }
                     }
+                  },
+                  {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["actor", "verificationCode", "idempotencyKey"],
+                    properties: {
+                      actor: { type: "string", enum: ["merchant"] },
+                      verificationCode: { type: "string", pattern: "^[0-9]{6}$" },
+                      idempotencyKey: {
+                        $ref: "#/components/schemas/TrimmedVisibleIdempotencyKey"
+                      }
+                    }
                   }
                 ],
                 discriminator: { propertyName: "actor" }
@@ -22895,7 +22907,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           ...formalOrderCommonErrorResponses,
           "400": jsonErrorResponse(
-            "40001 error.validation — strict request validation failed; 40108 error.order.verification_code_invalid — the assigned technician supplied an invalid service verification code"
+            "40001 error.validation — strict request validation failed; 40108 error.order.verification_code_invalid — the assigned technician or owning merchant supplied an invalid service verification code"
           ),
           "403": fulfillmentForbiddenResponse,
           "409": fulfillmentConflictResponse
@@ -23042,7 +23054,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking Fulfillment"],
         summary: "End service and enter awaiting checkout",
         description:
-          "Pending add-ons block service end. The authenticated participant is derived server-side. Unless Operations explicitly enables anytime service testing, end is allowed only at or after the persisted expectedEndsAt.",
+          "Pending add-ons block service end. The authenticated participant or owning merchant shop scope is derived server-side. Unless Operations explicitly enables anytime service testing, end is allowed only at or after the persisted expectedEndsAt.",
         security: [{ bearerAuth: [] }],
         "x-required-permission": "order:service:end",
         parameters: [idPathParameter()],
