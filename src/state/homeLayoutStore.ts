@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { readBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import type { Coordinates } from "../lib/location";
+import type { FulfillmentMode } from "../types/domain";
 
 export type HomeRecommendationTabKey = "stores" | "technicians" | "services";
 export type HomeMetricIcon = "clock" | "map" | "sparkles" | "shield" | "calendar" | "star";
@@ -26,6 +27,7 @@ export interface HomeServiceModuleConfig {
   title: string;
   badge?: string;
   categoryIds: string[];
+  serviceMode?: FulfillmentMode;
   targetTo: string;
   maxItems: number;
   enabled: boolean;
@@ -139,7 +141,8 @@ const defaultConfig: HomeLayoutConfig = {
       title: "上门按摩",
       badge: "热门可约",
       categoryIds: ["massage"],
-      targetTo: "/categories?type=service&category=massage&tag=tag-massage-door",
+      serviceMode: "home",
+      targetTo: "/categories?type=service&category=massage&tag=tag-massage-door&mode=home",
       maxItems: 4,
       enabled: true
     },
@@ -148,7 +151,8 @@ const defaultConfig: HomeLayoutConfig = {
       title: "上门保洁",
       badge: "多商户可选",
       categoryIds: ["cleaning", "deep", "appliance"],
-      targetTo: "/categories?type=service&category=cleaning",
+      serviceMode: "home",
+      targetTo: "/categories?type=service&category=cleaning&mode=home",
       maxItems: 4,
       enabled: true
     }
@@ -232,6 +236,27 @@ function normalizeInternalSearchPath(value: unknown, fallback: string) {
   return next;
 }
 
+export function getHomeServiceModuleTargetTo(
+  moduleConfig: Pick<HomeServiceModuleConfig, "targetTo" | "serviceMode">,
+) {
+  const { targetTo, serviceMode } = moduleConfig;
+  if (!serviceMode) {
+    return targetTo;
+  }
+
+  const hashIndex = targetTo.indexOf("#");
+  const hash = hashIndex >= 0 ? targetTo.slice(hashIndex) : "";
+  const pathAndQuery = hashIndex >= 0 ? targetTo.slice(0, hashIndex) : targetTo;
+  const queryIndex = pathAndQuery.indexOf("?");
+  const path = queryIndex >= 0 ? pathAndQuery.slice(0, queryIndex) : pathAndQuery;
+  const params = new URLSearchParams(
+    queryIndex >= 0 ? pathAndQuery.slice(queryIndex + 1) : "",
+  );
+  params.set("mode", serviceMode);
+
+  return `${path}?${params.toString()}${hash}`;
+}
+
 function normalizeBoolean(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -274,12 +299,20 @@ function normalizeServiceModule(base: HomeServiceModuleConfig, raw?: Partial<Hom
     return clone(base);
   }
 
+  const serviceMode = raw.serviceMode === "home" || raw.serviceMode === "store"
+    ? raw.serviceMode
+    : base.serviceMode;
+
   return {
     id: base.id,
     title: normalizeString(raw.title, base.title),
     badge: normalizeString(raw.badge, base.badge ?? ""),
     categoryIds: normalizeStringArray(raw.categoryIds, base.categoryIds),
-    targetTo: normalizeInternalSearchPath(raw.targetTo, base.targetTo),
+    serviceMode,
+    targetTo: getHomeServiceModuleTargetTo({
+      targetTo: normalizeInternalSearchPath(raw.targetTo, base.targetTo),
+      serviceMode,
+    }),
     maxItems: normalizeNumber(raw.maxItems, base.maxItems, 2, 4),
     enabled: normalizeBoolean(raw.enabled, base.enabled)
   };

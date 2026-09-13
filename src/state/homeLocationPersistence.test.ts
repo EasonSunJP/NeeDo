@@ -26,4 +26,34 @@ describe("manual home service area persistence", () => {
     void syncHomeDeviceLocationForAppOpen([], "default-area");
     expect(getCurrentPosition).not.toHaveBeenCalled();
   });
+
+  it("upgrades legacy service modules with their formal fulfillment mode", async () => {
+    const initial = await import("./homeLayoutStore");
+    const legacyConfig = initial.getDefaultHomeLayoutConfig();
+    legacyConfig.serviceModules = legacyConfig.serviceModules.map((moduleConfig) => ({
+      ...moduleConfig,
+      targetTo: moduleConfig.targetTo.replace("&mode=home", ""),
+    }));
+    localStorage.setItem("needo.home.layout.v1", JSON.stringify(legacyConfig));
+
+    vi.resetModules();
+    const reloaded = await import("./homeLayoutStore");
+    reloaded.updateHomeLayoutConfig({});
+    const stored = JSON.parse(localStorage.getItem("needo.home.layout.v1")!);
+
+    expect(stored.serviceModules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "home-module-massage",
+          serviceMode: "home",
+          targetTo: expect.stringContaining("mode=home"),
+        }),
+        expect.objectContaining({
+          id: "home-module-cleaning",
+          serviceMode: "home",
+          targetTo: expect.stringContaining("mode=home"),
+        }),
+      ]),
+    );
+  });
 });

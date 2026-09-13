@@ -103,6 +103,7 @@ export type CoreServiceCard = {
   shop: CoreShopCard;
   technician: CoreTechnicianCard | null;
   city: string;
+  serviceMode: string;
   priceAmount: string;
   currency: string;
   durationMinutes: number;
@@ -316,9 +317,12 @@ function firstServiceMode(services?: CoreServiceCard[]): FulfillmentMode {
   return resolveServiceFulfillmentMode(mode ?? "store");
 }
 
-function serviceModeToFulfillmentMode(service: CoreServiceCard | CoreServiceDetail): FulfillmentMode {
+function serviceModeToFulfillmentMode(
+  service: CoreServiceCard | CoreServiceDetail,
+  requestedMode: FulfillmentMode | null = null,
+): FulfillmentMode {
   const mode = "serviceMode" in service ? service.serviceMode : undefined;
-  return resolveServiceFulfillmentMode(mode ?? "store");
+  return resolveServiceFulfillmentMode(mode ?? "store", requestedMode);
 }
 
 export function isCoreReadApiId(id: string | number | null | undefined) {
@@ -365,7 +369,17 @@ export function mapCoreCategoryToServiceCategory(category: CoreCategory): Servic
   };
 }
 
-export function mapCoreServiceToServiceItem(service: CoreServiceCard | CoreServiceDetail): ServiceItem {
+export function mapCoreServiceToServiceItem(
+  service: CoreServiceCard | CoreServiceDetail,
+): ServiceItem;
+export function mapCoreServiceToServiceItem(
+  service: CoreServiceCard | CoreServiceDetail,
+  requestedMode: FulfillmentMode | null,
+): ServiceItem;
+export function mapCoreServiceToServiceItem(
+  service: CoreServiceCard | CoreServiceDetail,
+  requestedMode: FulfillmentMode | null = null,
+): ServiceItem {
   const price = parseAmount(service.priceAmount);
   const categoryName = categoryDisplayName(service.category);
   const tags = uniqueStrings([categoryName, service.city, ...service.reviewSummary.highlights]).slice(0, 4);
@@ -375,7 +389,7 @@ export function mapCoreServiceToServiceItem(service: CoreServiceCard | CoreServi
     id: String(service.id),
     categoryId: getCoreCategoryHomeId(service.category),
     name: service.name,
-    mode: serviceModeToFulfillmentMode(service),
+    mode: serviceModeToFulfillmentMode(service, requestedMode),
     priceFrom: price,
     rating: parseRating(service.reviewSummary),
     sales: service.usageCount,

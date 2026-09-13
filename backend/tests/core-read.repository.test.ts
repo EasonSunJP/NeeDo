@@ -222,6 +222,27 @@ function createRepositoryFixture() {
 }
 
 describe("CoreReadRepository multi-entity search", () => {
+  it("treats the public home filter as every home-capable persisted service mode", async () => {
+    const fixture = createRepositoryFixture();
+
+    await fixture.repository.search({
+      entityType: "service",
+      keywords: [],
+      categoryIds: [],
+      serviceMode: "home",
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(fixture.serviceFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          serviceMode: { in: ["home", "home_visit", "onsite", "both", "flexible"] }
+        })
+      })
+    );
+  });
+
   it("searches published shops directly without requiring a service", async () => {
     const fixture = createRepositoryFixture();
 
@@ -512,7 +533,7 @@ describe("CoreReadRepository multi-entity search", () => {
         pageSize: 20
       })
     ).resolves.toMatchObject({
-      list: [{ technician: null, usageCount: 18 }]
+      list: [{ technician: null, usageCount: 18, serviceMode: "store" }]
     });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({

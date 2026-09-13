@@ -290,6 +290,15 @@ describe("core read API adapter", () => {
     expect(service.mode).toBe("home");
   });
 
+  it("maps a flexible service to the requested home fulfillment context", () => {
+    const service = mapCoreServiceToServiceItem(
+      { ...coreService, serviceMode: "flexible" },
+      "home",
+    );
+
+    expect(service.mode).toBe("home");
+  });
+
   it("maps an older shop response without additive taxonomy fields instead of crashing", () => {
     const {
       businessKeywords: _businessKeywords,
