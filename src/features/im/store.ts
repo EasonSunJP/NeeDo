@@ -439,7 +439,9 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   let persistScheduled = false;
   let snapshot = createInitialSnapshot();
   const authoritativeDirectoryUsers = new Map<string, ImUser>();
+  const directoryProfiles = new Map<string, DirectoryProfile>();
   const latestDirectoryProfileRequests = new Map<string, Promise<DirectoryProfile>>();
+  const directoryProfileRequestGenerations = new Map<string, number>();
   const failedTerminalMediaPurges = new Set<string>();
   const pendingTerminalMediaPurges = new Map<string, PendingTerminalMediaPurge>();
   const tracelessMessageIdsByConversation = new Map<string, Set<string>>();
@@ -461,6 +463,35 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     }
 
     return Array.from(reconciled.values());
+  }
+
+  function invalidateDirectoryProfile(userId: string) {
+    directoryProfileRequestGenerations.set(
+      userId,
+      (directoryProfileRequestGenerations.get(userId) ?? 0) + 1,
+    );
+    directoryProfiles.delete(userId);
+    latestDirectoryProfileRequests.delete(userId);
+    authoritativeDirectoryUsers.delete(userId);
+    entityRefreshGeneration += 1;
+  }
+
+  function invalidateAllDirectoryProfiles() {
+    const userIds = new Set([
+      ...directoryProfiles.keys(),
+      ...latestDirectoryProfileRequests.keys(),
+      ...authoritativeDirectoryUsers.keys(),
+    ]);
+    for (const userId of userIds) {
+      directoryProfileRequestGenerations.set(
+        userId,
+        (directoryProfileRequestGenerations.get(userId) ?? 0) + 1,
+      );
+    }
+    directoryProfiles.clear();
+    latestDirectoryProfileRequests.clear();
+    authoritativeDirectoryUsers.clear();
+    entityRefreshGeneration += 1;
   }
 
   function applyCachedState(cached: CachedImState) {
@@ -969,17 +1000,29 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
             }
 
             if (update.type === "profile.updated") {
-              // Conversation bootstrap participants can lag behind the
-              // identity directory immediately after a rename. Refresh the
-              // conversation snapshot first, then let the directory profile
-              // be the final authoritative user record used by the list,
-              // room header, and information card.
-              void refreshBootstrap()
-                .then(() => getDirectoryProfile(update.userId))
+              invalidateDirectoryProfile(update.userId);
+              void loadDirectoryProfile(update.userId, true)
                 .catch(() => undefined);
               return;
             }
 
+            if (update.type === "reconnected") {
+              const profilesToRefresh = Array.from(new Set([
+                ...directoryProfiles.keys(),
+                ...latestDirectoryProfileRequests.keys(),
+                ...authoritativeDirectoryUsers.keys(),
+              ]));
+              invalidateAllDirectoryProfiles();
+              const profileRefreshes = profilesToRefresh.map((userId) =>
+                loadDirectoryProfile(userId, true),
+              );
+              void Promise.allSettled([refreshBootstrap(), ...profileRefreshes]);
+              return;
+            }
+
+            if (update.invalidateDirectoryProfiles) {
+              invalidateAllDirectoryProfiles();
+            }
             void refreshBootstrap();
             if (snapshot.activeConversationId) {
               void loadMessages(snapshot.activeConversationId, { force: true, reset: true, limit: 40 });
@@ -1735,17 +1778,39 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return response.conversation;
   }
 
-  async function getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
-    await hydrateStore();
+  async function loadDirectoryProfile(
+    userId: string,
+    force: boolean,
+  ): Promise<DirectoryProfile> {
+    if (!hydrated) await hydrateStore();
+    const cachedProfile = directoryProfiles.get(userId);
+    if (!force && cachedProfile) {
+      return cachedProfile;
+    }
+    const pendingProfile = latestDirectoryProfileRequests.get(userId);
+    if (!force && pendingProfile) {
+      return pendingProfile;
+    }
+
+    const generation = (directoryProfileRequestGenerations.get(userId) ?? 0) + 1;
+    directoryProfileRequestGenerations.set(userId, generation);
     let operation: Promise<DirectoryProfile>;
     operation = api.getDirectoryProfile(userId)
       .then(async (profile) => {
+        if (directoryProfileRequestGenerations.get(userId) !== generation) {
+          const latestOperation = latestDirectoryProfileRequests.get(userId);
+          if (latestOperation && latestOperation !== operation) return latestOperation;
+          const latestProfile = directoryProfiles.get(userId);
+          if (latestProfile) return latestProfile;
+          throw new Error("error.im.directory_profile_stale");
+        }
         const latestOperation = latestDirectoryProfileRequests.get(userId);
         if (latestOperation !== operation) {
-          return latestOperation ?? profile;
+          return latestOperation ?? directoryProfiles.get(userId) ?? profile;
         }
 
         entityRefreshGeneration += 1;
+        directoryProfiles.set(userId, profile);
         authoritativeDirectoryUsers.set(profile.user.id, profile.user);
         mergeUsers([profile.user]);
         if (profile.friendRequest) {
@@ -1761,9 +1826,18 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         }
         emit();
         return profile;
+      })
+      .finally(() => {
+        if (latestDirectoryProfileRequests.get(userId) === operation) {
+          latestDirectoryProfileRequests.delete(userId);
+        }
       });
     latestDirectoryProfileRequests.set(userId, operation);
     return operation;
+  }
+
+  function getDirectoryProfile(userId: string): Promise<DirectoryProfile> {
+    return loadDirectoryProfile(userId, false);
   }
 
   async function sendFriendRequest(targetUserId: string, message?: string) {
@@ -1779,37 +1853,44 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       ],
     };
     emit();
+    invalidateDirectoryProfile(targetUserId);
     await refreshBootstrap();
     return response;
   }
 
   async function blockContact(contactId: string) {
     await hydrateStore();
+    const targetUserId = snapshot.contacts.find((contact) => contact.id === contactId)?.targetUserId;
     const response = await api.blockContact(contactId);
     snapshot = {
       ...snapshot,
       contacts: snapshot.contacts.map((contact) => (contact.id === contactId ? response.contact : contact))
     };
+    if (targetUserId) invalidateDirectoryProfile(targetUserId);
     emit();
   }
 
   async function unblockContact(contactId: string) {
     await hydrateStore();
+    const targetUserId = snapshot.contacts.find((contact) => contact.id === contactId)?.targetUserId;
     const response = await api.unblockContact(contactId);
     snapshot = {
       ...snapshot,
       contacts: snapshot.contacts.map((contact) => (contact.id === contactId ? response.contact : contact))
     };
+    if (targetUserId) invalidateDirectoryProfile(targetUserId);
     emit();
   }
 
   async function deleteContact(contactId: string) {
     await hydrateStore();
+    const targetUserId = snapshot.contacts.find((contact) => contact.id === contactId)?.targetUserId;
     const response = await api.deleteContact(contactId);
     snapshot = {
       ...snapshot,
       contacts: snapshot.contacts.filter((contact) => contact.id !== contactId),
     };
+    if (targetUserId) invalidateDirectoryProfile(targetUserId);
     if (response.deletedConversationId) {
       removeConversationLocally(response.deletedConversationId);
       return response;
@@ -1820,12 +1901,20 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   async function acceptFriendRequest(requestId: string) {
     await hydrateStore();
+    const pendingRequest = snapshot.friendRequests.find((request) => request.id === requestId);
     const response = await api.acceptFriendRequest(requestId);
     snapshot = {
       ...snapshot,
       friendRequests: snapshot.friendRequests.map((request) => (request.id === requestId ? response.request : request)),
       contacts: response.contact ? [response.contact, ...snapshot.contacts.filter((contact) => contact.id !== response.contact?.id)] : snapshot.contacts
     };
+    if (pendingRequest) {
+      invalidateDirectoryProfile(
+        pendingRequest.fromUserId === snapshot.currentUserId
+          ? pendingRequest.toUserId
+          : pendingRequest.fromUserId,
+      );
+    }
     emit();
     await refreshBootstrap();
     return response;
@@ -1833,11 +1922,19 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   async function rejectFriendRequest(requestId: string) {
     await hydrateStore();
+    const pendingRequest = snapshot.friendRequests.find((request) => request.id === requestId);
     const response = await api.rejectFriendRequest(requestId);
     snapshot = {
       ...snapshot,
       friendRequests: snapshot.friendRequests.map((request) => (request.id === requestId ? response.friendRequest : request))
     };
+    if (pendingRequest) {
+      invalidateDirectoryProfile(
+        pendingRequest.fromUserId === snapshot.currentUserId
+          ? pendingRequest.toUserId
+          : pendingRequest.fromUserId,
+      );
+    }
     emit();
     await refreshBootstrap();
     return response;

@@ -489,13 +489,14 @@ export type ImStoreUpdate =
   | { type: "message.updated"; message: ConversationMessage }
   | { type: "message.recalled"; message: ConversationMessage }
   | { type: "profile.updated"; userId: string }
+  | { type: "reconnected" }
   | {
       type: "message.deleted";
       conversationId: string;
       messageId: string;
       reason: "privacy_expired" | "traceless_recall";
     }
-  | { type: "refresh" };
+  | { type: "refresh"; invalidateDirectoryProfiles?: boolean };
 
 export type ReadCursor = {
   id: string;

@@ -974,20 +974,16 @@ const contactInclude = {
 
 const friendRequestInclude = {
   requester: {
-    select: {
-      id: true,
-      needoId: true,
-      username: true,
-      avatarUrl: true
-    }
+    select: imParticipantUserSelect
+  },
+  requesterIdentity: {
+    select: imParticipantIdentitySelect
   },
   target: {
-    select: {
-      id: true,
-      needoId: true,
-      username: true,
-      avatarUrl: true
-    }
+    select: imParticipantUserSelect
+  },
+  targetIdentity: {
+    select: imParticipantIdentitySelect
   }
 } satisfies Prisma.FriendRequestInclude;
 
@@ -2762,6 +2758,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   ): Promise<PaginatedResponse<ParticipantPayload>> {
     const pagination = toPrismaPagination(input);
     const query = input.query.trim();
+    const exactNeedoIdQuery = /^(?:u|s|b|o|needo)\d{10}$/iu.test(query);
     const publicCustomerProfile = {
       visibility: "public",
       isPublic: true,
@@ -2788,55 +2785,53 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           OR: [
             {
               customerProfile: { is: publicCustomerProfile },
-              OR: [
-                { username: { contains: query } },
-                { needoId: { contains: query } },
-                { customerProfile: { is: { ...publicCustomerProfile, displayName: { contains: query } } } },
-                {
-                  identities: {
-                    some: {
-                      displayName: { contains: query },
-                      type: { in: ["customer", "user", "u"] },
-                      isActive: true,
-                      deletedAt: null
+              OR: exactNeedoIdQuery
+                ? [{ needoId: { equals: query } }]
+                : [
+                    { username: { contains: query } },
+                    {
+                      customerProfile: {
+                        is: { ...publicCustomerProfile, displayName: { contains: query } }
+                      }
+                    },
+                    {
+                      identities: {
+                        some: {
+                          displayName: { contains: query },
+                          type: { in: ["customer", "user", "u"] },
+                          isActive: true,
+                          deletedAt: null
+                        }
+                      }
                     }
-                  }
-                }
-              ]
+                  ]
             },
             {
               technicianProfile: { is: publicTechnicianProfile },
-              OR: [
-                { username: { contains: query } },
-                { needoId: { contains: query } },
-                {
-                  technicianProfile: {
-                    is: { ...publicTechnicianProfile, displayName: { contains: query } }
-                  }
-                },
-                {
-                  identities: {
-                    some: {
-                      displayName: { contains: query },
-                      type: "technician",
-                      isActive: true,
-                      deletedAt: null
+              OR: exactNeedoIdQuery
+                ? [{ needoId: { equals: query } }]
+                : [
+                    { username: { contains: query } },
+                    {
+                      technicianProfile: {
+                        is: { ...publicTechnicianProfile, displayName: { contains: query } }
+                      }
+                    },
+                    {
+                      identities: {
+                        some: {
+                          displayName: { contains: query },
+                          type: "technician",
+                          isActive: true,
+                          deletedAt: null
+                        }
+                      }
                     }
-                  }
-                }
-              ]
+                  ]
             }
           ]
         }
-      ],
-      NOT: {
-        contactEntries: {
-          some: {
-            ownerIdentityId: input.ownerIdentityId ?? userId,
-            deletedAt: null
-          }
-        }
-      }
+      ]
     };
     const select = {
       ...directorySearchUserSelect,
@@ -6198,8 +6193,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       requesterIdentityId: friendRequest.requesterIdentityId,
       targetUserId: friendRequest.targetUserId,
       targetIdentityId: friendRequest.targetIdentityId,
-      requester: this.mapParticipant(friendRequest.requester),
-      target: this.mapParticipant(friendRequest.target),
+      requester: this.mapParticipant(
+        friendRequest.requester,
+        undefined,
+        friendRequest.requesterIdentity
+      ),
+      target: this.mapParticipant(friendRequest.target, undefined, friendRequest.targetIdentity),
       status: effectivelyExpired ? "expired" : this.friendRequestStatusFromDb(friendRequest.status),
       message: friendRequest.message,
       respondedAt: friendRequest.respondedAt,

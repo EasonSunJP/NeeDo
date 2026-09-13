@@ -1948,6 +1948,11 @@ describe("formal IM adapter", () => {
     };
     expect(shouldForwardFormalImEvent(reactionEvent)).toBe(true);
     expect(shouldForwardFormalImEvent({ id: "3", payload: {}, type: "friendship.deleted" })).toBe(true);
+    expect(toFormalImStoreUpdate({
+      id: "3",
+      payload: { actorUserId: 201, counterpartUserId: 202 },
+      type: "friendship.deleted",
+    })).toEqual({ type: "refresh", invalidateDirectoryProfiles: true });
     expect(shouldForwardFormalImEvent({ id: "4", payload: { identityId: 1670 }, type: "profile.updated" })).toBe(true);
     expect(toFormalImStoreUpdate({
       id: "4",
