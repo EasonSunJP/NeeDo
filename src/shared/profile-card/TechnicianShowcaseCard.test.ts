@@ -127,6 +127,8 @@ describe("TechnicianShowcaseCard recommendation tile", () => {
     expect(markup).not.toContain('data-testid="unified-card-actions"');
     expect(markup).toContain("aspect-[3/4]");
     expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain("お気に入り");
+    expect(markup).not.toContain(">保存<");
   });
 
   it("stays independent from the unified business-card and simple-info-card design", () => {

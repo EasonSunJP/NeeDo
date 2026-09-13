@@ -21,7 +21,7 @@ export type EntitySearchCardActionsProps = EntityTarget & {
 const actionCopyByLanguage: Record<Language, { favorite: string; removeFavorite: string; share: string }> = {
   zh: { favorite: "收藏", removeFavorite: "取消收藏", share: "分享" },
   "zh-Hant": { favorite: "收藏", removeFavorite: "取消收藏", share: "分享" },
-  ja: { favorite: "お気に入り", removeFavorite: "お気に入り解除", share: "シェア" },
+  ja: { favorite: "お気に入り", removeFavorite: "お気に入りから削除", share: "シェア" },
   en: { favorite: "Favorite", removeFavorite: "Remove favorite", share: "Share" },
   ko: { favorite: "즐겨찾기", removeFavorite: "즐겨찾기 해제", share: "공유" }
 };

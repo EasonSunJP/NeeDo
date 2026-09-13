@@ -153,13 +153,13 @@ const imUiTranslations: Record<string, ImUiTranslation> = {
   },
   保存的聊天记录: {
     "zh-Hant": "已儲存的聊天記錄",
-    ja: "保存したチャット履歴",
+    ja: "お気に入りのチャット履歴",
     en: "Saved chat records",
     ko: "저장된 채팅 기록",
   },
   保存的服务与名片: {
     "zh-Hant": "已儲存的服務與名片",
-    ja: "保存したサービスとカード",
+    ja: "お気に入りのサービス・カード",
     en: "Saved services and cards",
     ko: "저장된 서비스와 카드",
   },
@@ -186,6 +186,12 @@ const imUiTranslations: Record<string, ImUiTranslation> = {
     ja: "お気に入りを読み込めませんでした",
     en: "Couldn't load favorites",
     ko: "즐겨찾기를 불러오지 못했습니다",
+  },
+  "收藏失败，请稍后重试": {
+    "zh-Hant": "收藏失敗，請稍後再試",
+    ja: "お気に入りに追加できませんでした。しばらくしてからもう一度お試しください。",
+    en: "Couldn't add to favorites. Try again later.",
+    ko: "즐겨찾기에 추가하지 못했습니다. 잠시 후 다시 시도하세요",
   },
   暂无收藏的聊天记录: {
     "zh-Hant": "暫無收藏的聊天記錄",
