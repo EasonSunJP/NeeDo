@@ -640,18 +640,18 @@ describe("IM pages", () => {
     const openMenuEnd = componentSource.indexOf("const toggleMessageReaction", openMenuStart);
     const openMenuSource = componentSource.slice(openMenuStart, openMenuEnd);
     const menuStart = componentSource.indexOf("{menuState ? (");
-    const composerGateStart = componentSource.indexOf("{!mediaPreview && !multiSelect.active ? (", menuStart);
-    const mediaViewerStart = componentSource.indexOf("{mediaPreview && typeof document", composerGateStart);
-    const composerSource = componentSource.slice(composerGateStart, mediaViewerStart);
+    const composerGateStart = componentSource.indexOf("const conversationComposerDock = !mediaPreview && !multiSelect.active ? (");
+    const composerSource = componentSource.slice(composerGateStart, componentSource.indexOf("return (", composerGateStart));
 
     expect(openMenuStart).toBeGreaterThan(-1);
     expect(openMenuSource).not.toContain("setPanel(null)");
     expect(openMenuSource).not.toContain("setVoiceMode(false)");
     expect(menuStart).toBeGreaterThan(-1);
-    expect(composerGateStart).toBeGreaterThan(menuStart);
-    expect(componentSource.slice(menuStart, composerGateStart)).toContain(") : null}");
+    expect(composerGateStart).toBeGreaterThan(openMenuEnd);
+    expect(componentSource).toContain("viewportOverlay={conversationComposerDock}");
     expect(composerSource).toContain("<ImChatComposer");
     expect(composerSource).toContain("quotedMessage ?");
+    expect(composerSource).not.toContain("menuState");
   });
 
   it("uses the same media-aware preview for the reply composer instead of exposing attachment URLs", () => {
