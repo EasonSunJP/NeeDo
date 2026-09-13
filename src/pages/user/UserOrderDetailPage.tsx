@@ -33,6 +33,7 @@ import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { ExchangeOrderCancellationPanel } from "../../features/exchange/ExchangeOrderCancellationPanel";
 import type { ExchangeCancellation } from "../../features/exchange/types";
 import { useOrderRealtimeRefresh } from "../../features/booking/useOrderRealtimeRefresh";
+import { describeBookingOrderMutationError } from "../../features/booking/orderMutationError";
 import { statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { OrderDetailFactGrid, OrderDetailSection } from "../../shared/order-detail/OrderDetailSections";
@@ -45,18 +46,6 @@ import {
   type UnifiedServiceInfoCardData
 } from "../../shared/service-card";
 import { useUserOrders } from "../../state/userOrderStore";
-
-function describeFormalOrderError(error: unknown) {
-  if (error instanceof ApiClientError) {
-    if (error.status === 400) return "提交内容不符合要求，请检查后重试";
-    if (error.status === 401) return "登录状态已失效，请重新登录";
-    if (error.status === 403) return "当前身份没有处理该预约的权限";
-    if (error.status === 404) return "预约或结算记录不存在";
-    if (error.status === 409) return "预约状态已经变化，请重新加载后再操作";
-    if (error.status >= 500) return "预约服务暂时不可用，请稍后重试";
-  }
-  return "预约操作失败，请检查网络后重试";
-}
 
 function isAmbiguousMutationError(error: unknown) {
   return !(error instanceof ApiClientError) || error.status === 408 || error.status === 429 || error.status >= 500;
@@ -273,7 +262,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       .catch((error: unknown) => {
         if (!active) return;
         setOrder(null);
-        setQueryError(describeFormalOrderError(error));
+        setQueryError(describeBookingOrderMutationError(error, language));
         setQueryStatus("error");
       });
     return () => { active = false; };
@@ -326,7 +315,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setCheckoutError(describeFormalOrderError(error));
+        setCheckoutError(describeBookingOrderMutationError(error, language));
         setCheckoutStatus("error");
       });
     return () => { active = false; };
@@ -356,7 +345,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setReviewError(describeFormalOrderError(error));
+        setReviewError(describeBookingOrderMutationError(error, language));
         setReviewStatus("error");
       });
     return () => { active = false; };
@@ -370,7 +359,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
     let active = true;
     coreReadApi.listServices({ shopId: order.shopId, page: 1, pageSize: 100 })
       .then((data) => { if (active) setServices(data.list); })
-      .catch((error: unknown) => { if (active) setActionError(describeFormalOrderError(error)); });
+      .catch((error: unknown) => { if (active) setActionError(describeBookingOrderMutationError(error, language)); });
     return () => { active = false; };
   }, [order?.shopId, order?.status]);
 
@@ -394,7 +383,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       if (!isAmbiguousMutationError(error)) mutationKeys.current.delete(slot);
       const blocked = readOverdueAppointment(error);
       if (blocked) setOverdueAppointment(blocked);
-      setActionError(describeFormalOrderError(error));
+      setActionError(describeBookingOrderMutationError(error, language));
     } finally {
       setPendingAction(null);
     }
@@ -481,7 +470,7 @@ function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
       setProfileRevision((revision) => revision + 1);
     } catch (error) {
       if (!isAmbiguousMutationError(error)) retainedReviewCommand.current = null;
-      setReviewError(`评价提交失败：${describeFormalOrderError(error)}`);
+      setReviewError(`评价提交失败：${describeBookingOrderMutationError(error, language)}`);
     } finally {
       setReviewPending(false);
     }

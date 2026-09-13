@@ -23,6 +23,7 @@ import {
   type BookingOrder,
   type OrderCheckout
 } from "../../features/booking/api";
+import { describeBookingOrderMutationError } from "../../features/booking/orderMutationError";
 import {
   coreReadApi,
   mapCoreCustomerToCustomer,
@@ -1042,17 +1043,6 @@ function formalCheckoutEvidenceLabel(evidence: OrderCheckout["paymentEvidence"])
   return "尚无收款凭证";
 }
 
-function describeFormalMerchantCancellationError(error: unknown) {
-  if (error instanceof ApiClientError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录";
-    if (error.status === 403) return "当前身份没有取消该预约的权限";
-    if (error.status === 404) return "预约不存在或已不可见";
-    if (error.status === 409) return "预约状态已经变化，请重新加载后再操作";
-    if (error.status >= 500) return "预约取消失败，请稍后重试";
-  }
-  return "预约取消失败，请稍后重试";
-}
-
 function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
   const navigate = useNavigate();
   const language = useProvidedI18n()?.language ?? "zh";
@@ -1148,7 +1138,7 @@ function FormalMerchantOrderDetailContent({ orderId }: { orderId: number }) {
       setOrder(cancelled);
       setCancelConfirmOpen(false);
     } catch (error) {
-      setCancelError(describeFormalMerchantCancellationError(error));
+      setCancelError(describeBookingOrderMutationError(error, language));
     } finally {
       setCancelPending(false);
     }

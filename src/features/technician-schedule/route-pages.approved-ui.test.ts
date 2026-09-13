@@ -53,4 +53,11 @@ describe("approved formal technician schedule UI", () => {
     expect(combinedSource).not.toContain("shiftPlanningStore");
     expect(combinedSource).not.toContain("technicianScheduleStore");
   });
+
+  it("keeps financial and state conflicts distinct for formal order mutations", () => {
+    expect(routeSource).toContain("describeBookingOrderMutationError(error, language)");
+    expect(routeSource).not.toContain(
+      'if (error.status === 409) return "订单状态已变化，请重新加载后再操作"'
+    );
+  });
 });

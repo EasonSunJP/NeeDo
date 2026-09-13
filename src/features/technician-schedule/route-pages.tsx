@@ -31,6 +31,7 @@ import { availabilityWindowApi } from "../scheduling/availability-window-api";
 import { automationApi, type TechnicianAutomationContactPage } from "./automation-api";
 import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
+import { describeBookingOrderMutationError } from "../booking/orderMutationError";
 import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
 import type { ExchangeCancellation } from "../exchange/types";
 import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
@@ -860,16 +861,6 @@ function orderPaymentLabel(order: BookingOrder): string {
   return `${method} · ${status}`;
 }
 
-function orderMutationError(error: unknown): string {
-  if (error instanceof ApiClientError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录";
-    if (error.status === 403) return "当前技师身份没有处理该订单的权限";
-    if (error.status === 404) return "订单不存在或已不属于当前技师";
-    if (error.status === 409) return "订单状态已变化，请重新加载后再操作";
-  }
-  return "正式订单操作失败，请检查网络后重试";
-}
-
 function isAmbiguousOrderMutationError(error: unknown) {
   return !(error instanceof ApiClientError) || error.status === 408 || error.status === 429 || error.status >= 500;
 }
@@ -999,7 +990,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
     let active = true;
     bookingApi.getCheckout(order.id)
       .then((data) => { if (active) setCheckout(data); })
-      .catch((error: unknown) => { if (active) setActionError(orderMutationError(error)); });
+      .catch((error: unknown) => { if (active) setActionError(describeBookingOrderMutationError(error, language)); });
     return () => { active = false; };
   }, [order]);
 
@@ -1026,7 +1017,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
       })
       .catch((error: unknown) => {
         if (!active) return;
-        setReviewError(orderMutationError(error));
+        setReviewError(describeBookingOrderMutationError(error, language));
         setReviewStatus("error");
       });
     return () => { active = false; };
@@ -1078,7 +1069,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
       if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete(slot);
       const blocked = readOverdueAppointment(error);
       if (blocked) setOverdueAppointment(blocked);
-      setActionError(orderMutationError(error));
+      setActionError(describeBookingOrderMutationError(error, language));
     } finally {
       setPending(false);
     }
@@ -1111,7 +1102,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
       setOrder(updatedOrder);
     } catch (error) {
       if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete(slot);
-      setActionError(orderMutationError(error));
+      setActionError(describeBookingOrderMutationError(error, language));
     } finally {
       setPending(false);
     }
@@ -1144,7 +1135,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
               : createBookingIdempotencyKey()
         }));
       } else {
-        setActionError(orderMutationError(error));
+        setActionError(describeBookingOrderMutationError(error, language));
       }
     } finally {
       setPending(false);
@@ -1180,7 +1171,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
       setReviewStatus("success");
     } catch (error) {
       if (!isAmbiguousOrderMutationError(error)) mutationKeys.current.delete("submit-review");
-      setReviewError(`评价提交失败：${orderMutationError(error)}`);
+      setReviewError(`评价提交失败：${describeBookingOrderMutationError(error, language)}`);
     } finally {
       setReviewPending(false);
     }
@@ -1198,7 +1189,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
       setOrder(await bookingApi.cancelOrder(order.id, "技师端取消正式预约"));
       setCancelArmed(false);
     } catch (error) {
-      setActionError(orderMutationError(error));
+      setActionError(describeBookingOrderMutationError(error, language));
     } finally {
       setPending(false);
     }

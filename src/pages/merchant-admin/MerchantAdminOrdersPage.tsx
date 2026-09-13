@@ -24,6 +24,7 @@ import {
   type ManualPaymentMethod,
 } from "../../features/booking/api";
 import { mapBackofficeOrderTimeline } from "../../features/booking/backofficeOrderTimeline";
+import { describeBookingOrderMutationError } from "../../features/booking/orderMutationError";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { statusLabel, yen } from "../../lib/utils";
 
@@ -46,17 +47,6 @@ const statusFilters: Array<{ label: string; value: StatusFilter }> = [
   { label: "已完成", value: "completed" },
   { label: "已取消", value: "cancelled" }
 ];
-
-function describeOrderError(error: unknown) {
-  if (error instanceof ApiClientError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录";
-    if (error.status === 403) return "当前身份没有管理本店订单的权限";
-    if (error.status === 404) return "订单不存在或不属于当前店铺";
-    if (error.status === 409) return "订单或支付状态已经变化，请重新加载后再操作";
-    if (error.status >= 500) return "本店订单服务暂时不可用，请稍后重试";
-  }
-  return "本店订单操作失败，请检查网络后重试";
-}
 
 function readPlatformFeeAcceptanceWarning(
   error: unknown
@@ -136,13 +126,13 @@ export function MerchantAdminOrdersPage() {
       if (!current) return;
       setOrderRows([]);
       setTotal(0);
-      setLoadError(describeOrderError(error));
+      setLoadError(describeBookingOrderMutationError(error, language));
       setLoadStatus("error");
     });
     return () => {
       current = false;
     };
-  }, [page, revision, statusFilter]);
+  }, [language, page, revision, statusFilter]);
 
   useEffect(() => {
     if (selectedOrderId === null) return;
@@ -158,11 +148,11 @@ export function MerchantAdminOrdersPage() {
       .catch((error: unknown) => {
         if (!current) return;
         setSelectedOrder(null);
-        setMutationError(describeOrderError(error));
+        setMutationError(describeBookingOrderMutationError(error, language));
         setDetailStatus("error");
       });
     return () => { current = false; };
-  }, [detailRevision, selectedOrderId]);
+  }, [detailRevision, language, selectedOrderId]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const openOrder = (order: BackofficeOrderPayload) => {
@@ -233,7 +223,7 @@ export function MerchantAdminOrdersPage() {
               : createBookingIdempotencyKey()
         }));
       } else {
-        setMutationError(describeOrderError(error));
+        setMutationError(describeBookingOrderMutationError(error, language));
         setConfirmIntent(null);
       }
     } finally {
@@ -258,7 +248,7 @@ export function MerchantAdminOrdersPage() {
       });
       finishMutation();
     } catch (error: unknown) {
-      setMutationError(describeOrderError(error));
+      setMutationError(describeBookingOrderMutationError(error, language));
       setConfirmIntent(null);
     } finally {
       setMutationStatus("idle");
@@ -280,7 +270,7 @@ export function MerchantAdminOrdersPage() {
       });
       finishMutation();
     } catch (error: unknown) {
-      setMutationError(describeOrderError(error));
+      setMutationError(describeBookingOrderMutationError(error, language));
       setConfirmIntent(null);
     } finally {
       setMutationStatus("idle");

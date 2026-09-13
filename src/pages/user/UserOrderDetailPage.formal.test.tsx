@@ -580,7 +580,7 @@ describe("formal user order detail", () => {
     await waitFor(() => expect(mocks.getOwnReview).toHaveBeenCalledWith(89));
     await waitFor(() => expect(button("提交评价").disabled).toBe(false));
     await click("提交评价");
-    await waitFor(() => expect(container.textContent).toContain("评价提交失败：预约操作失败，请检查网络后重试"));
+    await waitFor(() => expect(container.textContent).toContain("评价提交失败：订单操作失败，请检查网络后重试"));
     const orderBKey = mocks.createReview.mock.calls[1]?.[1]?.idempotencyKey;
 
     await act(async () => {
@@ -589,7 +589,7 @@ describe("formal user order detail", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain("评价提交失败：预约操作失败，请检查网络后重试");
+    expect(container.textContent).toContain("评价提交失败：订单操作失败，请检查网络后重试");
     expect(container.textContent).toContain("提交评价");
     expect(button("提交评价").disabled).toBe(false);
     await click("提交评价");
@@ -649,7 +649,7 @@ describe("formal user order detail", () => {
     await render();
     await click("开始服务");
     await click("开始计算");
-    await waitFor(() => expect(container.textContent).toContain("预约状态已经变化"));
+    await waitFor(() => expect(container.textContent).toContain("订单状态已经变化"));
     expect(container.textContent).toContain("服务验证码");
     expect(container.textContent).not.toContain("追加正式服务");
   });
