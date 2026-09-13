@@ -1,6 +1,35 @@
 import { readFileSync } from "node:fs";
 import { BookingRepository } from "../src/repositories/booking.repository";
 
+const currentShopServiceLocation = (shopId: number, admin2RegionId = 725) => ({
+  shopId,
+  countryCode: "JP",
+  admin1RegionId: 14,
+  admin2RegionId,
+  datasetVersion: "N03-20260101",
+  deletedAt: null,
+  admin1Region: {
+    id: 14,
+    countryCode: "JP",
+    officialCode: "13",
+    sourceVersion: "N03-20260101",
+    level: "ADMIN1",
+    parentId: 1,
+    deletedAt: null,
+    locales: [{ name: "東京都" }]
+  },
+  admin2Region: {
+    id: admin2RegionId,
+    countryCode: "JP",
+    officialCode: admin2RegionId === 725 ? "13113" : "13103",
+    sourceVersion: "N03-20260101",
+    level: "ADMIN2",
+    parentId: 14,
+    deletedAt: null,
+    locales: [{ name: admin2RegionId === 725 ? "渋谷区" : "港区" }]
+  }
+});
+
 const makeTransitionOrderRecord = (
   status: "PENDING" | "IN_SERVICE" | "COMPLETED" | "CANCELLED"
 ) => ({
@@ -563,7 +592,10 @@ describe("BookingRepository order list scope", () => {
       findMany: jest.fn(async () => []),
       count: jest.fn(async () => 0)
     };
-    const repository = new BookingRepository({ scheduleSlot } as never);
+    const repository = new BookingRepository({
+      scheduleSlot,
+      shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(11)]) }
+    } as never);
 
     await repository.listAvailableSlots({
       technicianId: 17,
@@ -625,7 +657,22 @@ describe("BookingRepository order list scope", () => {
             }
           ]
         },
-        { OR: [{ serviceId: { not: null } }, { technicianServiceId: { not: null } }] }
+        { OR: [{ serviceId: { not: null } }, { technicianServiceId: { not: null } }] },
+        {
+          OR: [
+            { shopId: { in: [11] } },
+            { service: { is: { serviceMode: { in: ["home", "home_visit", "onsite"] } } } },
+            {
+              technicianService: {
+                is: {
+                  sourceShopService: {
+                    is: { serviceMode: { in: ["home", "home_visit", "onsite"] } }
+                  }
+                }
+              }
+            }
+          ]
+        }
       ]
     });
     expect(scheduleSlot.findMany).toHaveBeenCalledWith(
@@ -634,6 +681,68 @@ describe("BookingRepository order list scope", () => {
       })
     );
     expect(scheduleSlot.count).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
+  it("filters store-capable slots by current shop location while retaining home-only sources", async () => {
+    const capacityField = Symbol("capacity");
+    const scheduleSlot = {
+      fields: { capacity: capacityField },
+      findMany: jest.fn(async (args: { where: Record<string, unknown> }) => {
+        void args;
+        return [];
+      }),
+      count: jest.fn(async () => 0)
+    };
+    const shopServiceLocation = {
+      findMany: jest.fn(async () => [
+        currentShopServiceLocation(11, 725),
+        currentShopServiceLocation(16, 715),
+        { ...currentShopServiceLocation(21, 725), datasetVersion: "N03-20250101" },
+        {
+          ...currentShopServiceLocation(22, 725),
+          admin2Region: { ...currentShopServiceLocation(22, 725).admin2Region, parentId: 99 }
+        },
+        { ...currentShopServiceLocation(23, 725), deletedAt: new Date("2026-09-01T00:00:00.000Z") },
+        { ...currentShopServiceLocation(24, 725), countryCode: "US" },
+        {
+          ...currentShopServiceLocation(25, 725),
+          admin1Region: {
+            ...currentShopServiceLocation(25, 725).admin1Region,
+            sourceVersion: "N03-20250101"
+          }
+        },
+        {
+          ...currentShopServiceLocation(26, 725),
+          admin2Region: {
+            ...currentShopServiceLocation(26, 725).admin2Region,
+            locales: [{ name: "" }]
+          }
+        }
+      ])
+    };
+    const repository = new BookingRepository({ scheduleSlot, shopServiceLocation } as never);
+
+    await repository.listAvailableSlots({
+      serviceId: 79,
+      from: new Date("2026-09-13T00:00:00.000Z"),
+      to: new Date("2026-09-14T00:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    });
+
+    expect(shopServiceLocation.findMany).toHaveBeenCalledTimes(1);
+    const where = scheduleSlot.findMany.mock.calls[0]?.[0]?.where;
+    expect(where).toEqual(expect.objectContaining({
+      AND: expect.arrayContaining([
+        {
+          OR: expect.arrayContaining([
+            { shopId: { in: [11, 16] } },
+            { service: { is: { serviceMode: { in: ["home", "home_visit", "onsite"] } } } }
+          ])
+        }
+      ])
+    }));
+    expect(scheduleSlot.count).toHaveBeenCalledWith({ where });
   });
 
   it("requires every present source relation to remain currently bookable", async () => {
@@ -645,7 +754,10 @@ describe("BookingRepository order list scope", () => {
       }),
       count: jest.fn(async () => 0)
     };
-    const repository = new BookingRepository({ scheduleSlot } as never);
+    const repository = new BookingRepository({
+      scheduleSlot,
+      shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(11)]) }
+    } as never);
 
     await repository.listAvailableSlots({
       serviceId: 12,
@@ -697,7 +809,10 @@ describe("BookingRepository order list scope", () => {
       }),
       count: jest.fn(async () => 0)
     };
-    const repository = new BookingRepository({ scheduleSlot } as never);
+    const repository = new BookingRepository({
+      scheduleSlot,
+      shopServiceLocation: { findMany: jest.fn(async () => [currentShopServiceLocation(11)]) }
+    } as never);
 
     await repository.listAvailableSlots({
       serviceId: 12,

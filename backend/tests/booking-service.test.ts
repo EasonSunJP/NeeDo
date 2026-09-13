@@ -90,6 +90,12 @@ const makeOrder = (
   paymentMethod: "onsite",
   paymentStatus: "pending",
   paymentAmountJpy: 8800,
+  amountSource: "order_payment",
+  effectivePaymentMethod: "onsite",
+  otherMethodCode: null,
+  otherMethodLabel: null,
+  checkoutPaymentAmountNdp: null,
+  ndpCurrency: null,
   paymentConfirmedById: null,
   paymentConfirmedAt: null,
   paymentReference: null,
@@ -776,6 +782,27 @@ describe("BookingService state machine", () => {
     ).rejects.toMatchObject({
       code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
       message: "error.booking.slot_unavailable"
+    });
+  });
+
+  it("reports a capacity race separately from a generally unavailable slot", async () => {
+    const repository = createRepository(null);
+    repository.createBooking.mockResolvedValue({
+      bookingConflict: "concurrent_occupancy"
+    });
+    const service = new BookingService(repository);
+
+    await expect(
+      service.createBooking(actor, {
+        expectedPriceAmountJpy: 8_800,
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.BOOKING_SLOT_CONCURRENT_OCCUPANCY,
+      message: "error.booking.slot_concurrent_occupancy",
+      statusCode: 409
     });
   });
 

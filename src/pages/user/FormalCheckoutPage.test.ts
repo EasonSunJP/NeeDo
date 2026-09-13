@@ -65,6 +65,22 @@ describe("formal customer checkout", () => {
     expect(formalSource).toContain('"bookingStateChanged"');
   });
 
+  it("keeps location, unavailable-slot, and concurrent-occupancy failures distinct in every locale", () => {
+    expect(formalSource).toContain('error.message === "error.booking.service_location_unresolved"');
+    expect(formalSource).toContain('error.message === "error.booking.slot_unavailable"');
+    expect(formalSource).toContain('error.message === "error.booking.slot_concurrent_occupancy"');
+
+    for (const key of [
+      "storeLocationUnavailable",
+      "invalidCheckoutSlot",
+      "slotConcurrentOccupancy"
+    ] as const) {
+      for (const locale of ["zh", "zh-Hant", "ja", "en", "ko"] satisfies readonly Language[]) {
+        expect(checkoutText(key as CheckoutTextKey, locale).trim()).toBeTruthy();
+      }
+    }
+  });
+
   it("keeps the production confirmation structure while using formal data", () => {
     for (const label of ["套餐", "到店服务", "时间", "地址", "技师", "备注"]) {
       expect(progressSource).toContain(`label: "${label}"`);

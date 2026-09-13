@@ -119,6 +119,13 @@ function describeCheckoutError(error: unknown): CheckoutTextKey {
   if (error instanceof CheckoutSourceError) return error.copyKey;
   if (error instanceof ApiClientError) {
     if (error.code === 41038) return "priceUpdated";
+    if (error.message === "error.booking.service_location_unresolved") {
+      return "storeLocationUnavailable";
+    }
+    if (error.message === "error.booking.slot_concurrent_occupancy") {
+      return "slotConcurrentOccupancy";
+    }
+    if (error.message === "error.booking.slot_unavailable") return "invalidCheckoutSlot";
     if (error.status === 401) return "loginExpired";
     if (error.status === 403) return "permissionDenied";
     if (error.status === 404) return "serviceUnavailable";
@@ -910,10 +917,14 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
         state: { notice: t("bookingCreated") }
       });
     } catch (error) {
-      setSubmitError(describeCheckoutError(error));
-      if (error instanceof ApiClientError && error.status === 409) {
+      const errorKey = describeCheckoutError(error);
+      setSubmitError(errorKey);
+      if (
+        error instanceof ApiClientError &&
+        ["bookingStateChanged", "invalidCheckoutSlot", "slotConcurrentOccupancy", "storeLocationUnavailable"].includes(errorKey)
+      ) {
         setSelectedSlotId(null);
-        setSlotSelectionInvalid(true);
+        setSlotSelectionInvalid(errorKey !== "storeLocationUnavailable");
       }
       if (error instanceof ApiClientError && error.code === 41038) {
         setRevision((current) => current + 1);
@@ -1286,7 +1297,7 @@ export function FormalCheckoutPage({ catalogRef }: { catalogRef: CheckoutCatalog
             <div role="alert">
               <SurfacePanel className="border-red-400/35 bg-red-500/10 p-4">
                 <p className="text-sm font-black text-red-500" data-no-i18n>{t(submitError)}</p>
-                {submitError === "bookingStateChanged" ? (
+                {["bookingStateChanged", "invalidCheckoutSlot", "slotConcurrentOccupancy"].includes(submitError) ? (
                   <SecondaryButton className="mt-3 w-full" onClick={() => setRevision((current) => current + 1)}>
                     <span data-no-i18n>{t("reloadAvailableTimes")}</span>
                   </SecondaryButton>

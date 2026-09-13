@@ -528,6 +528,13 @@ export class BookingService {
       }[result.intelligenceBookingError] as [number, string];
       throw new AppError({ code: details[0], message: details[1], statusCode: 409 });
     }
+    if ("bookingConflict" in result) {
+      throw new AppError({
+        code: ERROR_CODES.BOOKING_SLOT_CONCURRENT_OCCUPANCY,
+        message: "error.booking.slot_concurrent_occupancy",
+        statusCode: 409
+      });
+    }
     if ("outcome" in result) {
       throw new AppError({
         code: ERROR_CODES.BOOKING_PRICE_CHANGED,
