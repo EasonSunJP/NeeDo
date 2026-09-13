@@ -86,6 +86,9 @@ describe("ExchangeComposer identity boundary", () => {
     expect(merchant).not.toContain("发布需求");
     expect(technician).toContain("发布情报");
     expect(customer + merchant + technician).not.toContain("切换发布身份");
+
+    authHasPermission.mockImplementation((permission) => permission === "exchange:posts:create-demand");
+    expect(renderToStaticMarkup(<ExchangeComposer context="merchant" onPublished={vi.fn()} />)).toBe("");
   });
 
   it("provides every control label in all five UI languages", () => {
@@ -107,6 +110,11 @@ describe("ExchangeComposer identity boundary", () => {
       expect(exchangeText("home", language)).toBeTruthy();
       expect(exchangeText("ekycRequired", language)).toBeTruthy();
     }
+
+    expect(exchangeText("tellPlatform", "ja")).toBe("需要設定");
+    expect(exchangeText("demandComposerIntro", "ja")).toBe("希望条件をご記入ください。");
+    expect(exchangeText("required", "ja")).toBe("「＊」のついた必須項目を必ずご記入ください。");
+    expect(exchangeText("authoredLanguage", "ja")).toBe("言語");
   });
 });
 
@@ -196,6 +204,9 @@ describe("ExchangeComposer publication", () => {
 
     await waitFor(() => expect(document.body.querySelector('[name="targetProviderCount"]')).not.toBeNull());
 
+    await act(async () =>
+      setInputValue(document.body.querySelector<HTMLSelectElement>('select[name="contentLocale"]')!, "ja")
+    );
     fillDemandForm(document.body);
 
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-action="composer-next"]')?.click());
@@ -220,7 +231,7 @@ describe("ExchangeComposer publication", () => {
         addressLine2Public: false,
         addressLine3Public: false,
         publisherIdentityPublic: false,
-        contentLocale: "zh-CN"
+        contentLocale: "ja"
       }),
       "123e4567-e89b-42d3-a456-426614174000"
     );
@@ -328,7 +339,7 @@ describe("ExchangeComposer publication", () => {
     expect(document.body.innerHTML).not.toMatch(/localStorage|needoExchangeBridge|findNeedoPost/u);
   });
 
-  it("lets only a merchant with both permissions choose Request or Intelligence", async () => {
+  it("keeps merchant publication fixed to Intelligence even with both permissions", async () => {
     authHasPermission.mockImplementation((permission) => [
       "exchange:posts:create-demand",
       "exchange:posts:create-intelligence"
@@ -336,6 +347,9 @@ describe("ExchangeComposer publication", () => {
     await act(async () => root.render(<ExchangeComposer context="merchant" onPublished={vi.fn()} />));
     await act(async () => container.querySelector<HTMLButtonElement>('[data-action="open-composer"]')?.click());
 
-    expect(document.body.querySelector('[data-testid="exchange-post-type-selector"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="exchange-post-type-selector"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="exchange-intelligence-composer-fields"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("情报");
+    expect(document.body.textContent).not.toContain("需求 *");
   });
 });

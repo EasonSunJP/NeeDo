@@ -53,6 +53,9 @@ describe("IntelligenceComposerFields", () => {
     expect(html).toContain("六本木店");
     expect(html).toContain("東京都港区六本木 3-2-1");
     expect(html).toContain("¥10,000");
+    expect(html).toContain('name="contentLocale"');
+    expect(html).toContain('<option value="ja">日本語</option>');
+    expect(html).not.toContain('name="contentLocale" disabled=""');
     expect(html).not.toMatch(/name="(?:serviceMode|areaLabel|addressLabel|serviceAreas|originalPriceJpy)"/u);
   });
 

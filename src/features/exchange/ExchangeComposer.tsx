@@ -30,7 +30,6 @@ import type {
   PublishExchangePostInput
 } from "./types";
 
-const CREATE_DEMAND_PERMISSION = "exchange:posts:create-demand";
 const CREATE_INTELLIGENCE_PERMISSION = "exchange:posts:create-intelligence";
 
 export function getExchangeComposerMode(context: MessageCenterContext): ExchangePostType {
@@ -120,12 +119,20 @@ function formatComposerDateTime(value: string, language: Language) {
   }).format(date);
 }
 
-function isRequestDraftDirty(draft: RequestComposerDraft) {
+function hasRequestDraftContent(draft: RequestComposerDraft) {
   return JSON.stringify(draft) !== JSON.stringify(createEmptyRequestDraft(draft.contentLocale));
 }
 
-function isIntelligenceDraftDirty(draft: IntelligenceComposerDraft) {
+function hasIntelligenceDraftContent(draft: IntelligenceComposerDraft) {
   return JSON.stringify(draft) !== JSON.stringify(createEmptyIntelligenceDraft(draft.contentLocale));
+}
+
+function isRequestDraftDirty(draft: RequestComposerDraft, initialLocale: ExchangeContentLocale) {
+  return JSON.stringify(draft) !== JSON.stringify(createEmptyRequestDraft(initialLocale));
+}
+
+function isIntelligenceDraftDirty(draft: IntelligenceComposerDraft, initialLocale: ExchangeContentLocale) {
+  return JSON.stringify(draft) !== JSON.stringify(createEmptyIntelligenceDraft(initialLocale));
 }
 
 function errorKeyFromPublicationFailure(error: unknown): ExchangeComposerErrorKey {
@@ -154,21 +161,10 @@ export function ExchangeComposer({
 }) {
   const { language } = useI18n();
   const auth = useOptionalAuth();
-  const merchantCanPublishRequest = context === "merchant" && Boolean(auth?.hasPermission(CREATE_DEMAND_PERMISSION));
   const merchantCanPublishIntelligence = context === "merchant" && Boolean(auth?.hasPermission(CREATE_INTELLIGENCE_PERMISSION));
-  const availableTypes: ExchangePostType[] = context === "user"
-    ? ["demand"]
-    : context === "technician"
-      ? ["intelligence"]
-      : [
-          ...(merchantCanPublishRequest ? ["demand" as const] : []),
-          ...(merchantCanPublishIntelligence ? ["intelligence" as const] : [])
-        ];
-  const defaultType = availableTypes.includes(getExchangeComposerMode(context))
-    ? getExchangeComposerMode(context)
-    : availableTypes[0] ?? getExchangeComposerMode(context);
+  const type = getExchangeComposerMode(context);
+  const canPublishDefaultType = context !== "merchant" || merchantCanPublishIntelligence;
   const contentLocale = contentLocaleForLanguage(language);
-  const [type, setType] = useState<ExchangePostType>(defaultType);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<ExchangeComposerStep>("edit");
   const [pending, setPending] = useState(false);
@@ -185,13 +181,6 @@ export function ExchangeComposer({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const publicationAttempt = useRef<{ serializedPayload: string; idempotencyKey: string } | null>(null);
   const t = (key: Parameters<typeof exchangeText>[0]) => exchangeText(key, language);
-  const availableTypeKey = availableTypes.join(":");
-
-  useEffect(() => {
-    if (availableTypes.includes(type)) return;
-    const nextType = availableTypes[0];
-    if (nextType) setType(nextType);
-  }, [availableTypeKey, type]);
 
   useEffect(() => {
     if (!open || type !== "demand") return;
@@ -255,8 +244,8 @@ export function ExchangeComposer({
   }, [open, intelligenceServicesVersion, type]);
 
   const openComposer = () => {
-    setRequestDraft((current) => isRequestDraftDirty(current) ? current : createEmptyRequestDraft(contentLocale));
-    setIntelligenceDraft((current) => isIntelligenceDraftDirty(current) ? current : createEmptyIntelligenceDraft(contentLocale));
+    setRequestDraft((current) => hasRequestDraftContent(current) ? current : createEmptyRequestDraft(contentLocale));
+    setIntelligenceDraft((current) => hasIntelligenceDraftContent(current) ? current : createEmptyIntelligenceDraft(contentLocale));
     if (type === "demand") {
       setRequestContext(null);
       setRequestContextStatus("loading");
@@ -292,21 +281,6 @@ export function ExchangeComposer({
     resetDrafts();
     setOpen(false);
     focusTrigger();
-  };
-
-  const selectType = (nextType: ExchangePostType) => {
-    if (!availableTypes.includes(nextType) || nextType === type) return;
-    setType(nextType);
-    setNormalizedPayload(null);
-    setErrorKey(null);
-    setStep("edit");
-    publicationAttempt.current = null;
-    if (nextType === "demand") {
-      setRequestContext(null);
-      setRequestContextStatus("loading");
-    } else {
-      setIntelligenceServicesStatus("loading");
-    }
   };
 
   const next = () => {
@@ -371,11 +345,9 @@ export function ExchangeComposer({
     }
   };
 
-  const dirty = availableTypes.length > 1
-    ? isRequestDraftDirty(requestDraft) || isIntelligenceDraftDirty(intelligenceDraft)
-    : type === "demand"
-      ? isRequestDraftDirty(requestDraft)
-      : isIntelligenceDraftDirty(intelligenceDraft);
+  const dirty = type === "demand"
+    ? isRequestDraftDirty(requestDraft, contentLocale)
+    : isIntelligenceDraftDirty(intelligenceDraft, contentLocale);
   const title = t(type === "demand" ? "sendDemand" : "sendIntelligence");
   const introTitle = t(type === "demand" ? "tellPlatform" : "fillIntelligence");
   const introDescription = t(type === "demand" ? "demandComposerIntro" : "intelligenceComposerIntro");
@@ -447,7 +419,7 @@ export function ExchangeComposer({
     </>
   ) : null;
 
-  if (availableTypes.length === 0) return null;
+  if (!canPublishDefaultType) return null;
 
   return (
     <>
@@ -490,30 +462,6 @@ export function ExchangeComposer({
           step={step}
           title={title}
         >
-          {availableTypes.length === 2 ? (
-            <section
-              aria-label={t("choosePostType")}
-              className="grid grid-cols-2 gap-1 rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-1 shadow-panel"
-              data-testid="exchange-post-type-selector"
-              role="radiogroup"
-            >
-              {availableTypes.map((availableType) => (
-                <button
-                  aria-checked={type === availableType}
-                  className={type === availableType
-                    ? "focus-ring min-h-12 rounded-[10px] bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)]"
-                    : "focus-ring min-h-12 rounded-[10px] text-sm font-black text-[color:var(--client-muted)]"}
-                  data-action={`select-${availableType}`}
-                  key={availableType}
-                  onClick={() => selectType(availableType)}
-                  role="radio"
-                  type="button"
-                >
-                  {t(availableType)}
-                </button>
-              ))}
-            </section>
-          ) : null}
           {errorKey && step === "edit" ? (
             <p className="rounded-2xl bg-[color:var(--client-primary-soft)] px-4 py-3 text-sm font-bold text-[color:var(--client-text)]" role="alert">
               {t(errorKey)}

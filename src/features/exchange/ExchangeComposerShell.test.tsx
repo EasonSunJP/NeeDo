@@ -64,8 +64,12 @@ const publishedIntelligence: ExchangePost = {
   }
 };
 
-function setInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
-  const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+function setInputValue(input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
+  const prototype = input instanceof HTMLSelectElement
+    ? HTMLSelectElement.prototype
+    : input instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -184,6 +188,7 @@ describe("ExchangeComposer approved shared shell", () => {
     await waitFor(() =>
       expect(document.body.querySelector('[data-service-ref="technician:31"]')).not.toBeNull()
     );
+    await act(async () => setInputValue(document.body.querySelector<HTMLSelectElement>('select[name="contentLocale"]')!, "ja"));
     await act(async () =>
       document.body.querySelector<HTMLButtonElement>('[data-service-ref="technician:31"]')?.click()
     );
@@ -192,12 +197,14 @@ describe("ExchangeComposer approved shared shell", () => {
     await act(async () => clickAction("composer-next"));
     expect(publishExchangePost).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-testid="exchange-publication-review"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="exchange-publication-review"]')?.textContent).toContain("日本語");
 
     await act(async () => clickAction("composer-publish"));
     await waitFor(() => expect(publishExchangePost).toHaveBeenCalledTimes(1));
     expect(publishExchangePost).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "intelligence",
+        contentLocale: "ja",
         serviceRef: "technician:31",
         campaignPriceJpy: 12800
       }),
@@ -210,6 +217,14 @@ describe("ExchangeComposer approved shared shell", () => {
         originalPriceJpy: expect.anything()
       })
     );
+  });
+
+  it("keeps technician publication fixed to Intelligence with no type selector", async () => {
+    await renderAndOpen("technician");
+
+    expect(document.body.querySelector('[data-testid="exchange-post-type-selector"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="exchange-intelligence-composer-fields"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("情报");
   });
 
   it("splits date and time controls and removes unavailable upload controls", async () => {
