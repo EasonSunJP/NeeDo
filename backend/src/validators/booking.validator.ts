@@ -264,6 +264,13 @@ export const startServiceBodySchema = z.discriminatedUnion("actor", [
       verificationCode: z.string().regex(/^\d{6}$/),
       idempotencyKey: idempotencyKeySchema
     })
+    .strict(),
+  z
+    .object({
+      actor: z.literal("merchant"),
+      verificationCode: z.string().regex(/^\d{6}$/),
+      idempotencyKey: idempotencyKeySchema
+    })
     .strict()
 ]);
 

@@ -609,6 +609,26 @@ describe("bookingApi", () => {
     expect(requestBodyAt(8)).toEqual({ reason: "已当面确认收到现金", idempotencyKey: "idem-receipt-000001" });
   });
 
+  it("starts service for a merchant through the formal route and strict provider body", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
+
+    await bookingApi.startService(88, {
+      actor: "merchant",
+      verificationCode: "482931",
+      idempotencyKey: "merchant-start-00001"
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/orders/88/service/start",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(lastRequestBody()).toEqual({
+      actor: "merchant",
+      verificationCode: "482931",
+      idempotencyKey: "merchant-start-00001"
+    });
+  });
+
   it("submits an idempotent overdue appointment resolution command", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       code: 0,

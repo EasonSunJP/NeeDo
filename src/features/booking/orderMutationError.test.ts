@@ -5,6 +5,8 @@ import { describeBookingOrderMutationError } from "./orderMutationError";
 describe("describeBookingOrderMutationError", () => {
   it.each([
     ["error.order.invalid_transition", 40912, "订单状态已经变化，请重新加载后再操作"],
+    ["error.order.service_start_too_early", 41041, "尚未到可开始服务时间"],
+    ["error.order.service_end_too_early", 41042, "尚未到预计结束时间"],
     [
       "error.exchange.match_cancellation_required",
       40941,
@@ -45,6 +47,15 @@ describe("describeBookingOrderMutationError", () => {
         "zh"
       )
     ).toBe(expected);
+  });
+
+  it("explains an invalid service verification code without exposing the internal key", () => {
+    expect(
+      describeBookingOrderMutationError(
+        new ApiClientError("error.order.verification_code_invalid", 40108, 400),
+        "zh"
+      )
+    ).toBe("服务验证码错误，请向用户重新确认");
   });
 
   it("localizes exact financial and Exchange conflicts", () => {
