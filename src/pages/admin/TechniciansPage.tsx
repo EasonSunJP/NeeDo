@@ -238,7 +238,7 @@ export function TechniciansPage({ embeddedDetail }: {
             detail={technicianDetail}
             editContent={<div className="space-y-4">
               {(["displayName", "city", "serviceArea"] as const).map((field) => <label className="block" key={field}><span className="mb-2 block text-sm font-black">{field}</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))} value={draft[field]} /></label>)}
-              <label className="block"><span className="mb-2 block text-sm font-black">所属店铺</span><select className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, shopId: event.target.value }))} value={draft.shopId}><option value="">未分配</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select></label>
+              <label className="block"><span className="mb-2 block text-sm font-black">{translate("主展示店铺（不建立合作关系）")}</span><select className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, shopId: event.target.value }))} value={draft.shopId}><option value="">{translate("未分配")}</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select><small className="mt-2 block text-xs font-bold text-ink/50">{translate("正式合作绑定需由目标店铺在技师申请审核中批准；此处只能选择已有的有效合作店铺作为主展示店铺。")}</small></label>
               <Button disabled={saving} onClick={() => void mutate(technicianDetail.id, () => backofficeRealDataApi.updateTechnician("backoffice", technicianDetail.id, { displayName: draft.displayName, city: draft.city, serviceArea: draft.serviceArea || null, shopId: draft.shopId ? Number(draft.shopId) : null }))}>保存资料</Button>
             </div>}
           />

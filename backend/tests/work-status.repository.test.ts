@@ -42,10 +42,41 @@ it("checks for an active shop affiliation at the requested instant", async () =>
   expect(findFirst).toHaveBeenCalledWith({
     where: {
       technicianProfileId: 12,
+      activeKey: { not: null },
       deletedAt: null,
       workStatus: "ACTIVE",
       startsAt: { lte: now },
-      OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      shop: { status: "published", deletedAt: null }
+    },
+    select: { id: true }
+  });
+});
+
+it("scopes attendance to the canonical active shop affiliation", async () => {
+  const findFirst = jest.fn().mockResolvedValue({ id: 12 });
+  const db = { technicianProfile: { findFirst } };
+  const now = new Date("2026-09-13T04:30:00.000Z");
+
+  await new WorkStatusSession(
+    db as unknown as ConstructorParameters<typeof WorkStatusSession>[0]
+  ).assertScope({ technicianProfileId: 12, shopId: 16 }, now);
+
+  expect(findFirst).toHaveBeenCalledWith({
+    where: {
+      id: 12,
+      deletedAt: null,
+      technicianShopAffiliations: {
+        some: {
+          shopId: 16,
+          activeKey: { not: null },
+          deletedAt: null,
+          workStatus: "ACTIVE",
+          startsAt: { lte: now },
+          OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+          shop: { status: "published", deletedAt: null }
+        }
+      }
     },
     select: { id: true }
   });

@@ -1554,16 +1554,28 @@ export class BookingRepository implements BookingRepositoryPort {
     const technician = await this.client.technicianProfile.findFirst({
       where: { id: technicianProfileId, deletedAt: null },
       select: {
-        shopId: true,
         technicianShopAffiliations: {
-          where: { workStatus: "ACTIVE", endsAt: null, deletedAt: null, shop: { is: { deletedAt: null } } },
+          where: {
+            activeKey: { not: null },
+            workStatus: "ACTIVE",
+            startsAt: { lte: new Date() },
+            endsAt: null,
+            deletedAt: null,
+            shop: {
+              is: {
+                status: "published",
+                deletedAt: null,
+                publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } }
+              }
+            }
+          },
           select: { shopId: true },
           orderBy: { id: "asc" },
           take: 1
         }
       }
     });
-    return technician?.shopId ?? technician?.technicianShopAffiliations[0]?.shopId ?? null;
+    return technician?.technicianShopAffiliations[0]?.shopId ?? null;
   }
 
   public async isShopSuspended(shopId: number): Promise<boolean> {
@@ -4314,6 +4326,16 @@ export class BookingRepository implements BookingRepositoryPort {
         }
 
         if (input.toStatus === "confirmed") {
+          if (
+            current.technicianProfileId &&
+            !(await this.hasActiveScheduleAffiliation(
+              tx,
+              current.shopId,
+              current.technicianProfileId
+            ))
+          ) {
+            return { outcome: "invalid_state" as const };
+          }
           const pauses = await this.findActiveAcceptancePauses(tx, current.shopId);
           if (pauses.length > 0) {
             return { outcome: "acceptance_paused" as const, pauses };
@@ -4719,14 +4741,20 @@ export class BookingRepository implements BookingRepositoryPort {
       where: { id: input.technicianProfileId, status: "published", deletedAt: null },
       select: {
         id: true,
-        shopId: true,
         technicianShopAffiliations: {
           where: {
+            activeKey: { not: null },
             workStatus: "ACTIVE",
             startsAt: { lte: new Date() },
             endsAt: null,
             deletedAt: null,
-            shop: { is: { status: "published", deletedAt: null } }
+            shop: {
+              is: {
+                status: "published",
+                deletedAt: null,
+                publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } }
+              }
+            }
           },
           select: { shopId: true },
           orderBy: { id: "asc" },
@@ -4734,7 +4762,7 @@ export class BookingRepository implements BookingRepositoryPort {
         }
       }
     });
-    const shopId = profile?.shopId ?? profile?.technicianShopAffiliations[0]?.shopId ?? null;
+    const shopId = profile?.technicianShopAffiliations[0]?.shopId ?? null;
     return profile && shopId ? { shopId, technicianProfileId: profile.id } : null;
   }
 
@@ -4793,13 +4821,34 @@ export class BookingRepository implements BookingRepositoryPort {
         where: {
           id: scope.technicianProfileId,
           deletedAt: null,
-          status: "published",
-          shopId: { not: null }
+          status: "published"
         },
-        select: { id: true, shopId: true }
+        select: {
+          id: true,
+          technicianShopAffiliations: {
+            where: {
+              activeKey: { not: null },
+              workStatus: "ACTIVE",
+              startsAt: { lte: new Date() },
+              endsAt: null,
+              deletedAt: null,
+              shop: {
+                is: {
+                  status: "published",
+                  deletedAt: null,
+                  publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } }
+                }
+              }
+            },
+            select: { shopId: true },
+            orderBy: { id: "asc" },
+            take: 1
+          }
+        }
       });
-      if (!technician?.shopId) return null;
-      shopId = technician.shopId;
+      const affiliatedShopId = technician?.technicianShopAffiliations[0]?.shopId;
+      if (!affiliatedShopId) return null;
+      shopId = affiliatedShopId;
       technicianProfileId = technician.id;
     } else {
       shopId = scope.shopId;
@@ -4996,28 +5045,24 @@ export class BookingRepository implements BookingRepositoryPort {
     technicianProfileId: number
   ): Promise<boolean> {
     const affiliation = await transaction.technicianShopAffiliation.findFirst({
-        where: {
-          shopId,
-          technicianProfileId,
-          activeKey: { not: null },
-          workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
-          endsAt: null,
-          deletedAt: null,
-          technicianProfile: { deletedAt: null, status: "published" }
-        },
-        select: { id: true, relationshipType: true }
-      });
-    if (affiliation) return true;
-
-    return Boolean(await transaction.technicianProfile.findFirst({
       where: {
-        id: technicianProfileId,
         shopId,
+        technicianProfileId,
+        activeKey: { not: null },
+        workStatus: "ACTIVE",
+        startsAt: { lte: new Date() },
+        endsAt: null,
         deletedAt: null,
-        status: "published"
+        technicianProfile: { deletedAt: null, status: "published" },
+        shop: {
+          deletedAt: null,
+          status: "published",
+          publicIdentifier: { is: { kind: "SHOP", status: "ACTIVE", deletedAt: null } }
+        }
       },
       select: { id: true }
-    }));
+    });
+    return Boolean(affiliation);
   }
 
   private async hasConfirmedBookingOverlap(
