@@ -1779,6 +1779,42 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     );
   });
 
+  it("validates and forwards operations finance search, status, period, city and pagination", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/finance/settlements")
+      .query({
+        keyword: "ND202609101341243926",
+        status: "ready_for_payroll",
+        period: "week",
+        city: "東京都",
+        page: 2,
+        pageSize: 20
+      })
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(fixture.backofficeRepository.listFinanceSettlements).toHaveBeenCalledWith({
+      scope: "platform",
+      keyword: "ND202609101341243926",
+      status: "ready_for_payroll",
+      city: "東京都",
+      page: 2,
+      pageSize: 20,
+      from: expect.any(Date),
+      to: expect.any(Date)
+    });
+
+    fixture.backofficeRepository.listFinanceSettlements.mockClear();
+    await request(fixture.app)
+      .get("/api/v1/backoffice/finance/settlements?status=paid")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
+    expect(fixture.backofficeRepository.listFinanceSettlements).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["orders", "listOrders"],
     ["schedule", "listSchedule"],

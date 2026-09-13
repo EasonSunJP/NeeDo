@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   backofficeRealDataApi,
   type BackofficeFinanceSettlementPayload,
-  type BackofficeNdpSummaryPayload
+  type BackofficeNdpSummaryPayload,
+  type PaginatedApiPayload
 } from "../../api/backofficeRealData";
 import {
   merchantFinanceCenterApi,
@@ -26,16 +27,36 @@ import { downloadCsvExport, type CsvExportEnvelope } from "../../lib/downloadCsv
 import { yen } from "../../lib/utils";
 import { getFinanceNdpCopy } from "./financeNdpCopy";
 
+const settlementPageSize = 20;
+
+const emptySettlementPage = (page = 1): PaginatedApiPayload<BackofficeFinanceSettlementPayload> => ({
+  list: [],
+  total: 0,
+  page,
+  page_size: settlementPageSize
+});
+
 export function FinancePage() {
   const { language } = useI18n();
   const ndpCopy = getFinanceNdpCopy(language);
   const [selected, setSelected] = useState<BackofficeFinanceSettlementPayload | null>(null);
   const [selectedOrderFinance, setSelectedOrderFinance] = useState<OrderFinanceDetailPayload | null>(null);
-  const [settlementRows, setSettlementRows] = useState<BackofficeFinanceSettlementPayload[]>([]);
+  const [settlementPage, setSettlementPage] = useState<PaginatedApiPayload<BackofficeFinanceSettlementPayload>>(
+    () => emptySettlementPage()
+  );
+  const [requestedSettlementPage, setRequestedSettlementPage] = useState(1);
+  const [settlementLoadStatus, setSettlementLoadStatus] = useState<"loading" | "success" | "error">("loading");
+  const [settlementRevision, setSettlementRevision] = useState(0);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [periodFilter, setPeriodFilter] = useState<"" | "week" | "month">("");
+  const [cityFilter, setCityFilter] = useState("");
   const [payRunRows, setPayRunRows] = useState<PayRunPayload[]>([]);
   const [ndpSummary, setNdpSummary] = useState<BackofficeNdpSummaryPayload | null>(null);
   const [ndpSummaryError, setNdpSummaryError] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const settlementRows = settlementPage.list;
   const financeSummary = useMemo(() => {
     const estimatedServiceGmv = settlementRows.reduce((sum, row) => sum + row.estimatedServiceGmvJpy, 0);
     const unknownIncome = settlementRows.reduce((sum, row) => sum + row.unknownOrUnreportedServiceAmountJpy, 0);
@@ -69,15 +90,37 @@ export function FinancePage() {
   useEffect(() => {
     let activeRequest = true;
 
-    backofficeRealDataApi.financeSettlements("backoffice").then((response) => {
-      if (activeRequest) {
-        setSettlementRows(response.list);
+    setSettlementLoadStatus("loading");
+    backofficeRealDataApi.financeSettlements("backoffice", {
+      page: requestedSettlementPage,
+      pageSize: settlementPageSize,
+      keyword: keyword || undefined,
+      status: statusFilter || undefined,
+      period: periodFilter || undefined,
+      city: cityFilter || undefined
+    }).then((response) => {
+      if (!activeRequest) return;
+      const responseTotalPages = Math.max(1, Math.ceil(response.total / response.page_size));
+      if (response.page > responseTotalPages) {
+        setRequestedSettlementPage(responseTotalPages);
+        return;
       }
+      setSettlementPage(response);
+      setSettlementLoadStatus("success");
     }).catch(() => {
-      if (activeRequest) {
-        setSettlementRows([]);
-      }
+      if (!activeRequest) return;
+      setSettlementPage(emptySettlementPage(requestedSettlementPage));
+      setSettlementLoadStatus("error");
     });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, [cityFilter, keyword, periodFilter, requestedSettlementPage, settlementRevision, statusFilter]);
+
+  useEffect(() => {
+    let activeRequest = true;
+
     setNdpSummaryError(false);
     backofficeRealDataApi.ndpSummary({ date: getTokyoCalendarDate() }).then((response) => {
       if (activeRequest) {
@@ -103,6 +146,12 @@ export function FinancePage() {
       activeRequest = false;
     };
   }, []);
+
+  const settlementTotalPages = Math.max(1, Math.ceil(settlementPage.total / settlementPage.page_size));
+  const submitSettlementSearch = () => {
+    setRequestedSettlementPage(1);
+    setKeyword(searchDraft.trim());
+  };
 
   const openSettlement = (row: BackofficeFinanceSettlementPayload) => {
     setSelected(row);
@@ -222,32 +271,93 @@ export function FinancePage() {
 
         <div className="mt-5">
           <FilterBar
-            searchPlaceholder="搜索商家、结算单、周期"
+            searchLabel="搜索结算"
+            searchPlaceholder="搜索商家、订单号、结算单号"
+            searchValue={searchDraft}
+            onSearchChange={setSearchDraft}
+            onSearchSubmit={submitSettlementSearch}
             filters={[
-              { label: "状态", options: [{ label: "待审核", value: "pending" }, { label: "审核中", value: "reviewing" }, { label: "已打款", value: "paid" }] },
-              { label: "周期", options: [{ label: "周结", value: "week" }, { label: "月结", value: "month" }] },
-              { label: "城市", options: [{ label: "东京", value: "tokyo" }, { label: "大阪", value: "osaka" }] }
+              {
+                label: "状态",
+                value: statusFilter,
+                onChange: (value) => { setRequestedSettlementPage(1); setStatusFilter(value); },
+                options: [
+                  { label: "待结算", value: "pending" },
+                  { label: "冻结中", value: "holding" },
+                  { label: "待生成工资单", value: "ready_for_payroll" },
+                  { label: "工资已审核", value: "payroll_approved" },
+                  { label: "已结算", value: "settled" },
+                  { label: "已退款", value: "refunded" },
+                  { label: "已取消", value: "cancelled" },
+                  { label: "已赔付", value: "compensated" }
+                ]
+              },
+              {
+                label: "周期",
+                value: periodFilter,
+                onChange: (value) => { setRequestedSettlementPage(1); setPeriodFilter(value as "" | "week" | "month"); },
+                options: [{ label: "本周", value: "week" }, { label: "本月", value: "month" }]
+              },
+              {
+                label: "城市",
+                value: cityFilter,
+                onChange: (value) => { setRequestedSettlementPage(1); setCityFilter(value); },
+                options: [{ label: "东京", value: "東京都" }, { label: "大阪", value: "大阪府" }]
+              }
             ]}
           />
         </div>
         <div className="mt-4">
-          <DataTable<BackofficeFinanceSettlementPayload>
-            columns={[
-               { key: "merchant", title: "商家 / 订单", render: (row) => `${row.shopName} / ${row.orderNo}` },
-               { key: "orderType", title: "类型", render: (row) => row.orderType },
-               { key: "gross", title: "估算服务 GMV", render: (row) => yen(row.estimatedServiceGmvJpy) },
-               { key: "platform", title: "平台 NDP 收入", render: (row) => formatNdpCurrency(row.platformNdpRevenue, row.ndpCurrency) },
-               { key: "requestFee", title: "Request 费用", render: (row) => formatNdpCurrency(row.requestFeeNdpRevenue, row.ndpCurrency) },
-               { key: "reward", title: "返点成本", render: (row) => formatNdpCurrency(row.userRewardNdpCost, row.ndpCurrency) },
-              { key: "hold", title: "冻结 / 释放", render: (row) => `${formatNdpCurrency(row.pendingHoldNdp, row.ndpCurrency)} / ${formatNdpCurrency(row.releasedNdp, row.ndpCurrency)}` },
-              { key: "technician", title: "技师收入", render: (row) => `${row.technicianName ?? "-"} / ${yen(row.technicianEstimatedIncomeJpy)}` },
-              { key: "income", title: "服务收入", render: (row) => <Badge tone={row.serviceIncomeStatus === "confirmed" ? "green" : row.serviceIncomeStatus === "reported" ? "yellow" : "red"}>{row.serviceIncomeStatus}</Badge> },
-              { key: "rules", title: "命中规则", render: (row) => row.appliedFeeRuleIds.slice(0, 2).join(" / ") || "-" },
-              { key: "status", title: "钱路状态", render: (row) => <Badge tone={row.moneyTimelineStatus === "complete" ? "green" : "yellow"}>{row.moneyTimelineStatus}</Badge> }
-            ]}
-            rows={settlementRows}
-            onView={openSettlement}
-          />
+          {settlementLoadStatus === "loading" ? (
+            <section className="rounded-lg border border-line bg-white px-5 py-10 text-center shadow-panel" aria-live="polite">
+              <p className="text-sm font-black text-ink">正在加载正式结算数据</p>
+            </section>
+          ) : null}
+          {settlementLoadStatus === "error" ? (
+            <section className="rounded-lg border border-coral/30 bg-coral/5 px-5 py-8 text-center shadow-panel" role="alert">
+              <p className="text-sm font-black text-ink">结算数据加载失败</p>
+              <Button className="mt-4" onClick={() => setSettlementRevision((value) => value + 1)}>重新加载</Button>
+            </section>
+          ) : null}
+          {settlementLoadStatus === "success" ? (
+            <>
+              {settlementRows.length ? (
+                <DataTable<BackofficeFinanceSettlementPayload>
+                  columns={[
+                    { key: "settlement", title: "结算单 / 周期", render: (row) => `#${row.id} / ${row.createdAt.slice(0, 10)}` },
+                    { key: "merchant", title: "商家 / 订单", render: (row) => `${row.shopName} / ${row.orderNo}` },
+                    { key: "orderType", title: "类型", render: (row) => row.orderType },
+                    { key: "gross", title: "估算服务 GMV", render: (row) => yen(row.estimatedServiceGmvJpy) },
+                    { key: "platform", title: "平台 NDP 收入", render: (row) => formatNdpCurrency(row.platformNdpRevenue, row.ndpCurrency) },
+                    { key: "requestFee", title: "Request 费用", render: (row) => formatNdpCurrency(row.requestFeeNdpRevenue, row.ndpCurrency) },
+                    { key: "reward", title: "返点成本", render: (row) => formatNdpCurrency(row.userRewardNdpCost, row.ndpCurrency) },
+                    { key: "hold", title: "冻结 / 释放", render: (row) => `${formatNdpCurrency(row.pendingHoldNdp, row.ndpCurrency)} / ${formatNdpCurrency(row.releasedNdp, row.ndpCurrency)}` },
+                    { key: "technician", title: "技师收入", render: (row) => `${row.technicianName ?? "-"} / ${yen(row.technicianEstimatedIncomeJpy)}` },
+                    { key: "income", title: "服务收入", render: (row) => <Badge tone={row.serviceIncomeStatus === "confirmed" ? "green" : row.serviceIncomeStatus === "reported" ? "yellow" : "red"}>{row.serviceIncomeStatus}</Badge> },
+                    { key: "rules", title: "命中规则", render: (row) => row.appliedFeeRuleIds.slice(0, 2).join(" / ") || "-" },
+                    { key: "status", title: "结算状态", render: (row) => <Badge tone={row.status === "settled" ? "green" : "yellow"}>{row.status}</Badge> }
+                  ]}
+                  footerPlacement="inline"
+                  pageSize={settlementPage.page_size}
+                  rows={settlementRows}
+                  showFooter={false}
+                  showFooterActions={false}
+                  onView={openSettlement}
+                />
+              ) : (
+                <section className="rounded-lg border border-dashed border-line bg-white px-5 py-10 text-center">
+                  <p className="text-sm font-black text-ink/55">当前没有符合条件的正式结算记录</p>
+                </section>
+              )}
+              <div aria-label="结算分页" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-4 py-3">
+                <span className="text-sm font-bold text-ink/55">服务器共 {settlementPage.total} 条，第 {settlementPage.page} / {settlementTotalPages} 页</span>
+                <div className="flex gap-2">
+                  <Button disabled={settlementPage.page <= 1} size="sm" variant="secondary" onClick={() => setRequestedSettlementPage(Math.max(1, settlementPage.page - 1))}>上一页</Button>
+                  <Button disabled={settlementPage.page >= settlementTotalPages} size="sm" variant="secondary" onClick={() => setRequestedSettlementPage(Math.min(settlementTotalPages, settlementPage.page + 1))}>下一页</Button>
+                </div>
+              </div>
+            </>
+          ) : null}
         </div>
       </ModuleShell>
 

@@ -336,3 +336,9 @@ Migration 为 `20260901040000_shop_membership_card_topup`。本地 `needo_dev` �
 ## 2026-09-07 用户分组与详情抽屉补充
 
 运营成员创建、统一分组详情、全屏遮罩、账号 LOG 日期/生成事件，以及用户和技师动态插页的接口与验证范围见 [实现与验收记录](superpowers/plans/2026-09-07-operations-member-create.md)。无数据库结构变更，日志和动态保持商户范围隔离。
+
+## 20. 2026-09-13 财务结算搜索、筛选与服务端分页
+
+运营后台 `/pf-admin.html#/admin/finance` 的结算表复用现有 `FilterBar`、`DataTable` 和正式 `GET /api/v1/backoffice/finance/settlements`。搜索提交后按商家名、订单号或数字结算单 ID 查询；状态只接受已持久化的结算状态；周期按服务端当前时间解析为东京时区本周或本月；城市按订单所属店铺的持久化 `city` 字段精确过滤。
+
+列表每页请求 20 条，以 API 返回的 `total`、`page` 和 `page_size` 显示唯一的服务端分页器。提交搜索或改变任一筛选条件都会回到第 1 页，空结果与请求失败有明确页面状态。OpenAPI 同步声明 `keyword`、`status`、`period`、`city`、`page` 和 `pageSize`；本微步骤没有新增 schema、migration、mock 或财务写入能力。

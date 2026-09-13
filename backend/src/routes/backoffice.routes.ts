@@ -28,6 +28,7 @@ import {
   backofficeDashboardQuerySchema,
   backofficeDashboardMetricParamSchema,
   backofficeEntityIdParamSchema,
+  backofficeFinanceListQuerySchema,
   backofficeListQuerySchema,
   backofficeManagedUserListQuerySchema,
   backofficeManagedUserDetailQuerySchema,
@@ -211,7 +212,7 @@ export const createBackofficeRoutes = (
     "/backoffice/finance/settlements",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.finance),
-    validateRequest({ query: backofficeListQuerySchema }),
+    validateRequest({ query: backofficeFinanceListQuerySchema }),
     controller.platformFinance
   );
   router.get(
@@ -225,7 +226,7 @@ export const createBackofficeRoutes = (
     "/backoffice/finance/settlements/export",
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.financeExport),
-    validateRequest({ query: backofficeListQuerySchema }),
+    validateRequest({ query: backofficeFinanceListQuerySchema }),
     controller.platformFinanceExport
   );
   router.get(

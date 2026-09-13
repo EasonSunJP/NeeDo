@@ -1318,6 +1318,15 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/schedule");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements/export");
+    expect(
+      response.body.paths["/api/v1/backoffice/finance/settlements"].get.parameters
+        .map((parameter: { name: string }) => parameter.name)
+        .sort()
+    ).toEqual(["city", "keyword", "page", "pageSize", "period", "status"]);
+    expect(
+      response.body.paths["/api/v1/backoffice/finance/settlements"].get.parameters
+        .find((parameter: { name: string }) => parameter.name === "period").schema.enum
+    ).toEqual(["week", "month"]);
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/ndp-summary");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technician-rankings");

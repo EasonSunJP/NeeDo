@@ -9,6 +9,7 @@ import {
   backofficeDashboardQuerySchema,
   backofficeDashboardMetricParamSchema,
   backofficeEntityIdParamSchema,
+  backofficeFinanceListQuerySchema,
   backofficeListQuerySchema,
   backofficeManagedUserListQuerySchema,
   backofficeManagedUserDetailQuerySchema,
@@ -238,7 +239,7 @@ export class BackofficeController {
     service.listPlatformFinance(
       getAuthenticatedAccess(response),
       getRequestContext(request),
-      backofficeListQuerySchema.parse(request.query)
+      backofficeFinanceListQuerySchema.parse(request.query)
     )
   );
 
@@ -262,7 +263,7 @@ export class BackofficeController {
     service.exportPlatformFinance(
       getAuthenticatedAccess(response),
       getRequestContext(request),
-      backofficeListQuerySchema.parse(request.query)
+      backofficeFinanceListQuerySchema.parse(request.query)
     )
   );
 
