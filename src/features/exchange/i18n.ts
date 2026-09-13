@@ -214,6 +214,7 @@ const translations = {
   claimQuote: { zh: "报价", "zh-Hant": "報價", ja: "見積金額", en: "Quote", ko: "견적" },
   claimMessageOptional: { zh: "留言（可选）", "zh-Hant": "留言（選填）", ja: "メッセージ（任意）", en: "Message (optional)", ko: "메시지(선택)" },
   claimMessagePlaceholder: { zh: "补充服务说明或注意事项", "zh-Hant": "補充服務說明或注意事項", ja: "サービス内容や注意事項を入力", en: "Add service details or notes", ko: "서비스 설명 또는 유의사항 입력" },
+  claimViewOptions: { zh: "查看抢单选项", "zh-Hant": "查看搶單選項", ja: "応募条件を確認", en: "View claim options", ko: "수주 신청 옵션 보기" },
   claimSubmit: { zh: "提交抢单", "zh-Hant": "提交搶單", ja: "応募を送信", en: "Submit claim", ko: "수주 신청 제출" },
   claimSelfPublished: { zh: "不能参与自己发布的需求", "zh-Hant": "不能參與自己發布的需求", ja: "自分が投稿した依頼には応募できません", en: "You can't participate in your own request", ko: "직접 게시한 요청에는 참여할 수 없습니다" },
   claimSubmitting: { zh: "正在提交…", "zh-Hant": "正在提交…", ja: "送信中…", en: "Submitting…", ko: "제출 중…" },
