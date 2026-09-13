@@ -44,7 +44,13 @@ function requestCustomerSelfProfile(scope: string | null, force = false) {
     platformMembershipSelfApi.getMine().catch(() => null)
   ]).then(([profile, membership]) => ({ ...profile, membershipLevel: membership?.tierCode ?? "" }));
   const request = scope
-    ? persistentResourceCache.load({ force, key: "customer:self", load: serverRequest, scope })
+    ? persistentResourceCache.load({
+        deduplicate: !force,
+        force,
+        key: "customer:self",
+        load: serverRequest,
+        scope
+      })
     : serverRequest();
   customerSelfProfileRequestsInFlight.set(requestScope, request);
   const clearRequest = () => {

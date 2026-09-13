@@ -15708,7 +15708,6 @@ const coreReadApiSourceTranslationOverrides: Record<string, LocalizedText> = {
   "返回": { zh: "返回", "zh-Hant": "返回", ja: "戻る", en: "Back", ko: "뒤로" },
   "对象与人气标签": { zh: "对象与人气标签", "zh-Hant": "搜尋對象與熱門標籤", ja: "検索対象と人気タグ", en: "Search types and popular tags", ko: "검색 대상 및 인기 태그" },
   "先选店铺、技师或服务，也可以继续多选分类标签刷新下方内容。": { zh: "先选店铺、技师或服务，也可以继续多选分类标签刷新下方内容。", "zh-Hant": "先選擇店鋪、技師或服務，也可以繼續多選分類標籤來更新下方內容。", ja: "店舗・スタッフ・サービスを選び、カテゴリタグを複数選択して結果を絞り込めます。", en: "Choose shops, technicians, or services, then select category tags to refine the results below.", ko: "매장, 스태프 또는 서비스를 선택한 뒤 카테고리 태그를 여러 개 선택해 결과를 좁힐 수 있습니다." },
-  "收起": { zh: "收起", "zh-Hant": "收起", ja: "閉じる", en: "Close", ko: "닫기" },
   "暂无生效标签": { zh: "暂无生效标签", "zh-Hant": "目前沒有套用的標籤", ja: "適用中のタグはありません", en: "No active tags", ko: "적용 중인 태그 없음" },
   "正在载入真实数据": { zh: "正在载入真实数据", "zh-Hant": "正在載入搜尋結果", ja: "検索結果を読み込んでいます", en: "Loading search results", ko: "검색 결과를 불러오는 중" },
   "正在从 /api/v1/search 与 /api/v1/categories 读取分类和搜索结果。": { zh: "正在从 /api/v1/search 与 /api/v1/categories 读取分类和搜索结果。", "zh-Hant": "正在搜尋服務與分類。", ja: "サービスとカテゴリを検索しています。", en: "Searching services and categories.", ko: "서비스와 카테고리를 검색하고 있습니다." },

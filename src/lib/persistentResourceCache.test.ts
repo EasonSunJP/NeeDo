@@ -153,6 +153,36 @@ describe("persistent resource cache", () => {
     ]);
   });
 
+  it("allows an explicit refresh to supersede an older in-flight request", async () => {
+    const database = createMemoryPersistentCacheDatabase();
+    const cache = createPersistentResourceCache({ database });
+    let resolveOlder!: (value: { publicId: string }) => void;
+    const olderServer = new Promise<{ publicId: string }>((resolve) => {
+      resolveOlder = resolve;
+    });
+    const older = cache.load({
+      force: true,
+      key: "customer:self",
+      load: () => olderServer,
+      scope: "account:70"
+    });
+
+    const latest = cache.load({
+      deduplicate: false,
+      force: true,
+      key: "customer:self",
+      load: async () => ({ publicId: "u0000000008" }),
+      scope: "account:70"
+    });
+
+    await expect(latest).resolves.toEqual({ publicId: "u0000000008" });
+    resolveOlder({ publicId: "u0000000007" });
+    await expect(older).resolves.toEqual({ publicId: "u0000000007" });
+    expect(cache.peek("account:70", "customer:self")).toEqual({
+      publicId: "u0000000008"
+    });
+  });
+
   it("invalidates matching durable entries even when they are not loaded in memory", async () => {
     const database = createMemoryPersistentCacheDatabase();
     const writer = createPersistentResourceCache({ database });
