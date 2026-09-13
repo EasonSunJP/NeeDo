@@ -136,6 +136,12 @@ describe("translations", () => {
     }
   });
 
+  it("uses distinct Japanese language names and a natural post label", () => {
+    expect(translateText("简体中文", "ja")).toBe("中国語（簡体字）");
+    expect(translateText("繁體中文", "ja")).toBe("中国語（繁体字）");
+    expect(translateText("投稿", "ja")).toBe("投稿");
+  });
+
   it("localizes authoritative server pagination summaries in every supported UI language", () => {
     const source = "服务器共 20476 条，第 1 / 1024 页";
 

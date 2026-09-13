@@ -59,7 +59,7 @@ describe("UserCenterPage", () => {
     expect(source).not.toContain('label: "家庭成员"');
     expect(source).toContain('info: "查看已加入店铺与会员卡状态"');
     expect(source).toContain('to: "/me/memberships"');
-    expect(source).toContain("activeShopMembershipCount");
+    expect(source).not.toContain("activeShopMembershipCount");
     expect(source).toContain("<TestFeatureBadge");
     expect(source).not.toContain('label: "KYC身份验证"');
     expect(source).toContain('info: "实名、证件、本人确认"');
@@ -119,11 +119,18 @@ describe("UserCenterPage", () => {
     );
   });
 
-  it("uses a localized action key instead of a raw Chinese-only eKYC value", () => {
-    expect(source).toMatch(
-      /label: "eKYC本人确认",[\s\S]*?value: "去认证",[\s\S]*?to: "\/me\/settings\/verification"/u,
-    );
-    expect(source).not.toMatch(/label: "eKYC本人确认",[\s\S]*?value: "(?:去|查看)"/u);
+  it("keeps shortcut cards title-only without trailing status or action badges", () => {
+    const serviceToolsSource = source.match(
+      /const serviceTools: Array<\{[\s\S]*?\n  \}> = \[([\s\S]*?)\n  \];/u,
+    )?.[0];
+
+    expect(serviceToolsSource).toBeDefined();
+    expect(serviceToolsSource).not.toContain("value:");
+    expect(source).not.toContain("entry.value");
+    expect(source).not.toContain('value: "查看"');
+    expect(source).not.toContain('value: "管理"');
+    expect(source).not.toContain('value: "去认证"');
+    expect(source).not.toContain("activeShopMembershipCount");
   });
 
   it("places eKYC, shop membership and NeeDo benefits in the requested lower-grid order", () => {

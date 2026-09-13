@@ -4,7 +4,6 @@ import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import {
-  currentMembershipBenefitsApi,
   type CurrentMembershipBenefitItem,
   type CurrentMembershipBenefitsPayload
 } from "./currentMembershipBenefitsApi";
@@ -134,13 +133,10 @@ export function useCurrentMembershipBenefits(
 export function CurrentMembershipBenefits({
   className,
   language,
-  load = currentMembershipBenefitsApi.getMine
 }: {
   className?: string;
   language: Language;
-  load?: (language: Language) => Promise<CurrentMembershipBenefitsPayload>;
 }) {
-  const { payload, status } = useCurrentMembershipBenefits(language, load);
   const text = currentMembershipBenefitsCopy[language];
 
   return (
@@ -156,7 +152,7 @@ export function CurrentMembershipBenefits({
         className="focus-ring absolute inset-0 rounded-[28px]"
         to="/me/benefits"
       />
-      <div className="pointer-events-none relative z-10 flex min-h-[50px] flex-col justify-center gap-1">
+      <div className="pointer-events-none relative z-10 flex min-h-[50px] items-center">
         <div className="flex min-w-0 items-center gap-1">
           <h3 className="min-w-0 whitespace-nowrap text-sm font-black text-[color:var(--client-text)]">
             {text.title}
@@ -167,15 +163,6 @@ export function CurrentMembershipBenefits({
             label={text.infoLabel}
             panelMode="tooltip"
           />
-        </div>
-        <div className="flex justify-end">
-          <span className="shrink-0 rounded-md bg-mint/20 px-1 py-1 text-[10px] font-black leading-none text-moss">
-            {status === "ready" && payload
-              ? `${payload.list.filter((item) => item.effective).length}/${payload.list.length}${text.enabled}`
-              : status === "error"
-                ? text.retry
-                : "…"}
-          </span>
         </div>
       </div>
     </section>

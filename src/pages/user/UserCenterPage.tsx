@@ -38,7 +38,6 @@ import {
   formatWalletAmount,
   hasTestNdpWallet,
 } from "../../features/wallet/presentation";
-import { customerShopMembershipApi } from "../../features/shop-member/api";
 import {
   platformMembershipSelfApi,
   type MyExperienceSummary,
@@ -71,7 +70,6 @@ const formalOrderStatuses = [
 ] as const satisfies readonly BookingOrderStatus[];
 type FormalOrderCounts = Record<(typeof formalOrderStatuses)[number], number>;
 type FormalUserCenterData = {
-  activeShopMembershipCount: number | null;
   experience: MyExperienceSummary;
   membership: MyPlatformMembership;
   orderCounts: FormalOrderCounts;
@@ -714,7 +712,6 @@ function FormalUserCenterDataGate({
         profile,
         wallet,
         counts,
-        activeShopMembershipCount,
         experience,
         membership,
       ] = await Promise.all([
@@ -730,10 +727,6 @@ function FormalUserCenterDataGate({
             return [status, page.total] as const;
           }),
         ),
-        customerShopMembershipApi
-          .list({ page: 1, pageSize: 1, status: "active" })
-          .then((result) => result.total)
-          .catch(() => null),
         platformMembershipSelfApi.getMyExperience(),
         platformMembershipSelfApi.getMine(),
       ]);
@@ -743,7 +736,6 @@ function FormalUserCenterDataGate({
       }
 
       return {
-        activeShopMembershipCount,
         experience,
         membership,
         profile,
@@ -877,33 +869,28 @@ function CompleteUserCenterPage({
   const serviceTools: Array<{
     label: string;
     info: string;
-    value: number | string;
     to: string;
     test?: boolean;
   }> = [
     {
       label: "我的收藏",
       info: userCenterCollectionInfo[language],
-      value: "查看",
       to: "/me/favorites",
     },
     {
       label: "我的地址",
       info: "家庭、公司、常用地址",
-      value: "管理",
       to: "/me/addresses",
     },
-    { label: "我的评价", info: "已评价与待回复", value: "—", to: "/me" },
+    { label: "我的评价", info: "已评价与待回复", to: "/me" },
     {
       label: "eKYC本人确认",
       info: "实名、证件、本人确认",
-      value: "去认证",
       to: "/me/settings/verification",
     },
     {
       label: "店铺会员",
       info: "查看已加入店铺与会员卡状态",
-      value: formalData.activeShopMembershipCount ?? "—",
       to: "/me/memberships",
       test: true,
     },
@@ -1985,21 +1972,16 @@ function CompleteUserCenterPage({
                     className="absolute inset-0 rounded-[28px]"
                     to={entry.to}
                   />
-                  <div className="pointer-events-none relative z-10 flex min-h-[50px] items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <h3 className="min-w-0 font-black">{entry.label}</h3>
-                        <InfoTooltipTrigger
-                          className="pointer-events-auto relative h-4 w-4 border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] text-[10px] text-ink/45 before:absolute before:-inset-3 before:content-[''] hover:text-ink/80"
-                          content={entry.info}
-                          label="查看说明"
-                          panelMode="tooltip"
-                        />
-                      </div>
+                  <div className="pointer-events-none relative z-10 flex min-h-[50px] items-center">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <h3 className="min-w-0 text-sm font-black">{entry.label}</h3>
+                      <InfoTooltipTrigger
+                        className="pointer-events-auto relative h-4 w-4 shrink-0 border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] text-[10px] text-ink/45 before:absolute before:-inset-3 before:content-[''] hover:text-ink/80"
+                        content={entry.info}
+                        label="查看说明"
+                        panelMode="tooltip"
+                      />
                     </div>
-                    <span className="shrink-0 rounded-md bg-mint/20 px-2 py-1 text-xs font-black text-moss">
-                      {entry.value}
-                    </span>
                   </div>
                 </div>
               ))}

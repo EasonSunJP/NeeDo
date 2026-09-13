@@ -14,7 +14,6 @@ const testState = vi.hoisted(() => ({
   getMyWalletSummary: vi.fn(),
   getMyExperience: vi.fn(),
   getPlatformMembership: vi.fn(),
-  listShopMemberships: vi.fn(),
   listOrders: vi.fn(),
   updateMine: vi.fn(),
   refreshSession: vi.fn(),
@@ -57,12 +56,6 @@ vi.mock("../../features/platform-membership/api", () => ({
   platformMembershipSelfApi: {
     getMyExperience: testState.getMyExperience,
     getMine: testState.getPlatformMembership
-  }
-}));
-
-vi.mock("../../features/shop-member/api", () => ({
-  customerShopMembershipApi: {
-    list: testState.listShopMemberships
   }
 }));
 
@@ -211,7 +204,6 @@ describe("UserCenterPage inline profile editing", () => {
       testNdp: { available: 0, frozen: 0 }
     });
     testState.listOrders.mockResolvedValue({ list: [], page: 1, page_size: 1, total: 0 });
-    testState.listShopMemberships.mockResolvedValue({ list: [], page: 1, page_size: 1, total: 0 });
     testState.getMyExperience.mockResolvedValue({
       level: 1,
       totalExp: "0",
@@ -252,7 +244,6 @@ describe("UserCenterPage inline profile editing", () => {
     expect(testState.getMine).toHaveBeenCalledTimes(1);
     expect(testState.getMyWalletSummary).toHaveBeenCalledTimes(1);
     expect(testState.listOrders).toHaveBeenCalledTimes(formalOrderStatusCount);
-    expect(testState.listShopMemberships).toHaveBeenCalledTimes(1);
     expect(testState.getMyExperience).toHaveBeenCalledTimes(1);
     expect(testState.getPlatformMembership).toHaveBeenCalledTimes(1);
 
@@ -271,7 +262,6 @@ describe("UserCenterPage inline profile editing", () => {
     expect(testState.getMine).toHaveBeenCalledTimes(1);
     expect(testState.getMyWalletSummary).toHaveBeenCalledTimes(1);
     expect(testState.listOrders).toHaveBeenCalledTimes(formalOrderStatusCount);
-    expect(testState.listShopMemberships).toHaveBeenCalledTimes(1);
     expect(testState.getMyExperience).toHaveBeenCalledTimes(1);
     expect(testState.getPlatformMembership).toHaveBeenCalledTimes(1);
   });
