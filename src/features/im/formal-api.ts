@@ -1385,6 +1385,15 @@ export function toFormalImStoreUpdate(
   }
 
   if (
+    event.type.startsWith("friend_request.") ||
+    event.type.startsWith("contact.") ||
+    event.type.startsWith("friendship.") ||
+    event.type.startsWith("social.follow.")
+  ) {
+    return { type: "refresh", invalidateDirectoryProfiles: true };
+  }
+
+  if (
     ![
       "message.created",
       "message.updated",
@@ -2322,6 +2331,14 @@ export function subscribeFormalImUpdates(
 ) {
   return subscribeRealtimeEvents({
     onEvent(event) {
+      if (event.type === "connected") {
+        // The underlying SSE connection is shared across feature subscribers.
+        // A late IM subscriber may not observe its initial marker, so every
+        // connection marker must trigger the same idempotent catch-up path.
+        onUpdate({ type: "reconnected" });
+        return;
+      }
+
       if (shouldForwardFormalImEvent(event)) {
         onUpdate(toFormalImStoreUpdate(event));
       }
