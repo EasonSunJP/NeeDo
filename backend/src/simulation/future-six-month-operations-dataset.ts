@@ -392,6 +392,8 @@ const persistedPlanMatches = async (
         startsAt: true,
         endsAt: true,
         status: true,
+        priceAmount: true,
+        paymentAmountJpy: true,
         serviceSnapshotJson: true
       }
     })
@@ -458,6 +460,8 @@ const persistedPlanMatches = async (
       booking.startsAt,
       booking.endsAt,
       booking.status,
+      booking.priceAmountJpy,
+      booking.priceAmountJpy,
       booking.slotKey,
       FUTURE_OPERATIONS_NAMESPACE
     ].join("|")
@@ -474,6 +478,8 @@ const persistedPlanMatches = async (
       booking.startsAt.toISOString(),
       booking.endsAt.toISOString(),
       booking.status,
+      Number(booking.priceAmount),
+      booking.paymentAmountJpy,
       snapshot?.slotKey,
       snapshot?.namespace
     ].join("|");
@@ -718,7 +724,7 @@ export const applyFutureOperationsPlan = async (
               cancelReason: booking.cancelReason,
               paymentMethod: ServicePaymentMethod.ONSITE,
               paymentStatus: ServicePaymentStatus.PENDING,
-              paymentAmountJpy: 0,
+              paymentAmountJpy: booking.priceAmountJpy,
               createdAt: new Date(booking.createdAt)
             })
           )

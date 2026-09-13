@@ -3265,6 +3265,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   private mapOrder(order: OrderRecord): BackofficeOrderPayload {
     const payment = projectOrderPayment({
+      orderPriceAmountJpy: this.toNumber(order.priceAmount),
       orderPaymentAmountJpy: order.paymentAmountJpy,
       orderPaymentMethod: order.paymentMethod,
       checkout: order.checkout,
