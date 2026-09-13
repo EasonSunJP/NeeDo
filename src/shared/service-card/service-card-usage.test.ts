@@ -156,7 +156,10 @@ describe("unified service-information-card usage", () => {
     );
 
     expect(tile).toContain("图像化入口，点击进入对应服务列表");
-    expect(tile).toContain("to={moduleConfig.targetTo}");
+    expect(tile).toContain(
+      "const targetTo = getHomeServiceModuleTargetTo(moduleConfig)",
+    );
+    expect(tile).toContain("to={targetTo}");
     expect(tile).toContain("<img");
     expect(tile).not.toMatch(
       /利用回数|店铺 ID|店铺地址|priceAmount|durationMinutes/u,

@@ -33,6 +33,7 @@ type MemoryValue = {
 };
 
 type PersistentResourceLoad<T> = {
+  deduplicate?: boolean;
   force?: boolean;
   key: string;
   load: () => Promise<T>;
@@ -422,12 +423,19 @@ export function createPersistentResourceCache(input: { database: PersistentCache
       }
       await input.database.deleteEntriesByPrefix(scope, keyPrefix);
     },
-    async load<T>({ force = false, key, load, onRefresh, scope }: PersistentResourceLoad<T>): Promise<T> {
+    async load<T>({
+      deduplicate = true,
+      force = false,
+      key,
+      load,
+      onRefresh,
+      scope
+    }: PersistentResourceLoad<T>): Promise<T> {
       const id = compositeKey(scope, key);
       const cached = await read<T>(scope, key);
       if (force || !cached) {
         checkedThisSession.add(id);
-        return refresh(scope, key, load, true);
+        return refresh(scope, key, load, deduplicate);
       }
       if (!checkedThisSession.has(id)) {
         checkedThisSession.add(id);
