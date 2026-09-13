@@ -33,6 +33,23 @@ describe("AdminLayout navigation", () => {
     expect(source).not.toContain("module=big-screen");
   });
 
+  it("routes order settings to the permission-gated formal platform settings workspace", () => {
+    expect(source).toContain(
+      '{ label: "订单设置", to: "/admin/settings/system?tab=basic", icon: "设", permission: "backoffice:system-settings:read" }'
+    );
+    expect(source).not.toContain('/admin/orders?module=settings');
+    expect(routeMatches(
+      { label: "订单设置", to: "/admin/settings/system?tab=basic", icon: "设" },
+      "/admin/settings/system",
+      "?tab=basic"
+    )).toBe(true);
+    expect(routeMatches(
+      { label: "系统设置", to: "/admin/settings/system", icon: "系" },
+      "/admin/settings/system",
+      "?tab=basic"
+    )).toBe(false);
+  });
+
   it("renames operations and keeps disabled TEST partner sections in the top navigation", () => {
     expect(source).toContain('title: "运营"');
     expect(source).toContain('title: "加盟商"');
