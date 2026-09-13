@@ -99,6 +99,8 @@ function createPerformanceIdempotencyKey() {
 
 export function OrdersAdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchKeyword = (searchParams.get("keyword") ?? "").trim().slice(0, 100);
+  const searchParamsKey = searchParams.toString();
   const language = useProvidedI18n()?.language ?? "zh";
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => readStatusFilter(searchParams));
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(() => readOrderId(searchParams));
@@ -130,10 +132,17 @@ export function OrdersAdminPage() {
 
   const writeRouteState = (status: StatusFilter, orderId: number | null) => {
     const next = new URLSearchParams();
+    if (searchKeyword) next.set("keyword", searchKeyword);
     if (status !== "all") next.set("status", status);
     if (orderId !== null) next.set("orderId", String(orderId));
     setSearchParams(next, { replace: true });
   };
+
+  useEffect(() => {
+    setStatusFilter(readStatusFilter(searchParams));
+    setSelectedOrderId(readOrderId(searchParams));
+    setRequestedPage(1);
+  }, [searchParamsKey]);
 
   useEffect(() => {
     let current = true;
@@ -142,6 +151,7 @@ export function OrdersAdminPage() {
     backofficeRealDataApi.orders("backoffice", {
       page: requestedPage,
       pageSize,
+      keyword: searchKeyword || undefined,
       status: statusFilter === "all" ? undefined : statusFilter
     }).then((response) => {
       if (!current) return;
@@ -161,7 +171,7 @@ export function OrdersAdminPage() {
     return () => {
       current = false;
     };
-  }, [language, requestedPage, revision, statusFilter]);
+  }, [language, requestedPage, revision, searchKeyword, statusFilter]);
 
   useEffect(() => {
     if (selectedOrderId === null) return;

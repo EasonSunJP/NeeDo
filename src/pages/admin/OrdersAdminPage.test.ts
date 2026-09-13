@@ -10,6 +10,12 @@ describe("OrdersAdminPage formal operations workflow", () => {
     expect(source).not.toContain("../../data/mock");
   });
 
+  it("restores a global-search keyword into the formal paginated order query", () => {
+    expect(source).toContain('searchParams.get("keyword")');
+    expect(source).toContain('keyword: searchKeyword || undefined');
+    expect(source).toContain('if (searchKeyword) next.set("keyword", searchKeyword)');
+  });
+
   it("exposes only implemented state and payment mutations", () => {
     expect(source).toContain("bookingApi.confirmOrder(selectedOrder.id)");
     expect(source).toContain("bookingApi.startOrder(selectedOrder.id)");
