@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
+import { Drawer } from "../ui/Drawer";
 import { AdminLayout } from "./AdminLayout";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -116,6 +117,23 @@ describe("AdminLayout global search", () => {
     expect(container.querySelector('[data-testid="location"]')?.textContent).toBe(
       "/admin/orders?keyword=ND202609101341243926&orderId=3926"
     );
+  });
+
+  it("keeps the desktop global search above an open base detail drawer", async () => {
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={["/admin/orders?orderId=3926"]}>
+        <I18nProvider>
+          <AdminLayout>
+            <Drawer onClose={() => undefined} open title="订单详情">详情</Drawer>
+          </AdminLayout>
+        </I18nProvider>
+      </MemoryRouter>
+    ));
+
+    const sidebar = container.querySelector(".admin-sidebar");
+    const drawer = container.querySelector(".fixed.inset-0.overflow-hidden");
+    expect(drawer?.classList.contains("z-[80]")).toBe(true);
+    expect(sidebar?.classList.contains("z-[90]")).toBe(true);
   });
 
   it("shows grouped formal results and opens the existing shop detail flow", async () => {
