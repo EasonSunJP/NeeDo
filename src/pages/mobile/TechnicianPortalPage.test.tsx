@@ -39,7 +39,7 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).toContain("technician:tasks:");
     expect(tasksSource).toContain('data-testid="technician-formal-income-dashboard"');
     expect(tasksSource).toContain("<WorkStatusControls");
-    expect(tasksSource).toContain("本月收入");
+    expect(tasksSource).toContain("本月确认收入");
     expect(tasksSource).toContain("接单率");
     expect(tasksSource).toContain("服务评价");
     expect(tasksSource).toContain("本月订单");
@@ -50,6 +50,21 @@ describe("TechnicianPortalPage formal approved UI", () => {
     expect(tasksSource).toContain("technician.reviewSummary.ratingAverage");
     expect(tasksSource).not.toContain("formalRuntimeFallbacks");
     expect(tasksSource).not.toContain("technicianScheduleStore");
+  });
+
+  it("uses recognized compensation for monthly income and customer totals for today orders", () => {
+    const tasksStart = source.indexOf("function TasksView");
+    const tasksEnd = source.indexOf("type TechnicianProfileDraft", tasksStart);
+    const tasksSource = source.slice(tasksStart, tasksEnd);
+
+    expect(source).toContain("technicianDataCenterApi,");
+    expect(tasksSource).toContain('technicianDataCenterApi.getMine("month")');
+    expect(tasksSource).toContain("monthlyIncomeQuery.data?.summary.recognizedIncomeJpy");
+    expect(tasksSource).toContain("本月确认收入");
+    expect(tasksSource).toContain("顾客支付总额");
+    expect(tasksSource).toContain("nextOrder.paymentAmountJpy");
+    expect(tasksSource).not.toContain("预估收入");
+    expect(tasksSource).not.toContain("sum + (Number(order.priceAmount)");
   });
 
   it("matches the deployed formal today heading contract", () => {

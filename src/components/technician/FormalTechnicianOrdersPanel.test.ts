@@ -42,4 +42,11 @@ describe("FormalTechnicianOrdersPanel", () => {
     expect(panelSource).toContain("当前没有正式订单");
     expect(panelSource).toContain("操作处理中");
   });
+
+  it("labels the customer order total and never presents the base price as technician income", () => {
+    expect(panelSource).toContain("顾客支付总额");
+    expect(panelSource).toContain("order.paymentAmountJpy");
+    expect(panelSource).not.toContain("yen(Number(order.priceAmount))");
+    expect(panelSource).not.toContain("预估收入");
+  });
 });

@@ -65,6 +65,10 @@ export function getAnalyticsMetricInfoLabel(title: string, language: Language) {
 
 export const translations: TranslationMap = {
   ...platformReviewTranslations,
+  "顾客支付总额": fourLanguageTranslation("顧客支付總額", "お客様支払総額", "Customer payment total", "고객 결제 총액"),
+  "基础服务金额": fourLanguageTranslation("基礎服務金額", "基本サービス料金", "Base service amount", "기본 서비스 금액"),
+  "加钟金额": fourLanguageTranslation("加鐘金額", "延長料金", "Extension amount", "연장 금액"),
+  "本月确认收入": fourLanguageTranslation("本月確認收入", "今月の確定収入", "Confirmed income this month", "이번 달 확정 수입"),
   "服务验证码错误，请向用户重新确认": fourLanguageTranslation("服務驗證碼錯誤，請向用戶重新確認", "サービス認証コードが正しくありません。ユーザーに再確認してください", "The service verification code is incorrect. Confirm it with the customer", "서비스 인증 코드가 올바르지 않습니다. 고객에게 다시 확인하세요"),
   "尚未到可开始服务时间": fourLanguageTranslation("尚未到可開始服務時間", "サービス開始可能時刻前です", "The service cannot start yet", "아직 서비스를 시작할 수 있는 시간이 아닙니다"),
   "尚未到预计结束时间": fourLanguageTranslation("尚未到預計結束時間", "予定終了時刻前です", "The scheduled end time has not arrived", "아직 예정 종료 시간이 되지 않았습니다"),

@@ -884,6 +884,63 @@ describe("formal technician order detail route", () => {
     expect(container.textContent).toContain("订单追踪信息");
   });
 
+  it("shows the authoritative completed total, checkout breakdown, and accepted add-on timeline", async () => {
+    const completedCheckout = {
+      ...checkout,
+      status: "completed" as const,
+      baseAmountJpy: 8_000,
+      addOnAmountJpy: 6_500,
+      checkoutAmountJpy: 14_500,
+      payableNdp: 14_500,
+      paymentMethod: "ndp" as const,
+      paymentEvidence: "ndp_ledger" as const,
+      calculation: {
+        ...checkout.calculation,
+        baseAmountJpy: 8_000,
+        addOnAmountJpy: 6_500,
+        checkoutAmountJpy: 14_500
+      }
+    };
+    const completedOrder = {
+      ...makeOrder("completed"),
+      amountSource: "checkout" as const,
+      paymentAmountJpy: 14_500,
+      priceAmount: "8000.00",
+      serviceSession: {
+        startedAt: "2026-09-01T10:00:00.000+09:00",
+        expectedEndsAt: "2026-09-01T11:30:00.000+09:00",
+        endedAt: "2026-09-01T11:30:00.000+09:00",
+        addOns: [{
+          id: 301,
+          serviceId: 45,
+          status: "accepted" as const,
+          serviceNameSnapshot: "加钟 30 分钟",
+          priceAmountJpy: 6_500,
+          currency: "JPY" as const,
+          durationMinutes: 30,
+          serviceSnapshot: {},
+          proposedBy: "technician" as const,
+          proposedAt: "2026-09-01T10:15:00.000+09:00",
+          resolvedBy: "customer" as const,
+          resolvedAt: "2026-09-01T10:17:00.000+09:00",
+          resolutionReason: null
+        }]
+      }
+    };
+    mocks.getCheckout.mockResolvedValue(completedCheckout);
+
+    await renderOrder(completedOrder);
+    await waitFor(() => expect(container.textContent).toContain("顾客支付总额"));
+
+    expect(container.textContent).toContain("¥14,500");
+    expect(container.textContent).toContain("基础服务金额");
+    expect(container.textContent).toContain("¥8,000");
+    expect(container.textContent).toContain("加钟金额");
+    expect(container.textContent).toContain("¥6,500");
+    expect(container.textContent).toContain("提出加钟");
+    expect(container.textContent).toContain("加钟已确认");
+  });
+
   it("renders the formal customer with the unified user name-card fields", async () => {
     await renderOrder(makeOrder("confirmed"));
 

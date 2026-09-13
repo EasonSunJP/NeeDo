@@ -30,6 +30,7 @@ import { schedulingApi } from "../scheduling/api";
 import { availabilityWindowApi } from "../scheduling/availability-window-api";
 import { automationApi, type TechnicianAutomationContactPage } from "./automation-api";
 import { buildFormalOrderTimelineEvents } from "../order-performance/timeline";
+import { orderTimelineText } from "../order-performance/timelineDisplay";
 import { useProvidedI18n } from "../../i18n/I18nProvider";
 import { describeBookingOrderMutationError } from "../booking/orderMutationError";
 import { ExchangeOrderCancellationPanel } from "../exchange/ExchangeOrderCancellationPanel";
@@ -1219,7 +1220,17 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
               <h2 className="mt-3 text-xl font-black">{order.serviceName}</h2>
               <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{order.orderNo}</p>
             </div>
-            <strong className="text-lg font-black">¥{Number(order.priceAmount).toLocaleString("ja-JP")}</strong>
+            <div className="shrink-0 text-right">
+              <span className="block text-[10px] font-bold text-[color:var(--client-muted)]">
+                {orderTimelineText(
+                  order.amountSource === "checkout" || order.amountSource === "order_payment"
+                    ? "顾客支付总额"
+                    : "订单金额",
+                  language
+                )}
+              </span>
+              <strong className="mt-1 block text-lg font-black">¥{order.paymentAmountJpy.toLocaleString("ja-JP")}</strong>
+            </div>
           </div>
           <dl className="mt-4 grid gap-2 sm:grid-cols-2">
             <DetailRow label="店铺" value={order.shopName} />
@@ -1311,7 +1322,7 @@ function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
 
         {order.status === "awaitingCheckout" ? <section className={panelClass}><h2 className="text-base font-black">等待客户结账</h2><p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">客户需要选择现金、NDP 或其他支付方式。</p></section> : null}
 
-        {checkout ? <section className={panelClass}><h2 className="text-base font-black">正式结算</h2><dl className="mt-3 grid gap-2 sm:grid-cols-2"><DetailRow label="应付金额" value={`¥${checkout.checkoutAmountJpy.toLocaleString("ja-JP")}`} /><DetailRow label="应付 NDP" value={`${checkout.payableNdp.toLocaleString("ja-JP")} NDP`} /><DetailRow label="支付方式" value={checkout.paymentMethod === "cash" ? "现金" : checkout.paymentMethod === "other" ? checkout.otherMethod?.label ?? "其他方式" : checkout.paymentMethod === "ndp" ? "NDP" : "未选择"} /><DetailRow label="支付凭证" value={checkoutEvidenceLabel(checkout)} /></dl></section> : null}
+        {checkout ? <section className={panelClass}><h2 className="text-base font-black">正式结算</h2><dl className="mt-3 grid gap-2 sm:grid-cols-2"><DetailRow label={orderTimelineText("基础服务金额", language)} value={`¥${checkout.baseAmountJpy.toLocaleString("ja-JP")}`} /><DetailRow label={orderTimelineText("加钟金额", language)} value={`¥${checkout.addOnAmountJpy.toLocaleString("ja-JP")}`} /><DetailRow label="应付金额" value={`¥${checkout.checkoutAmountJpy.toLocaleString("ja-JP")}`} /><DetailRow label="应付 NDP" value={`${checkout.payableNdp.toLocaleString("ja-JP")} NDP`} /><DetailRow label="支付方式" value={checkout.paymentMethod === "cash" ? "现金" : checkout.paymentMethod === "other" ? checkout.otherMethod?.label ?? "其他方式" : checkout.paymentMethod === "ndp" ? "NDP" : "未选择"} /><DetailRow label="支付凭证" value={checkoutEvidenceLabel(checkout)} /></dl></section> : null}
 
         {order.status === "awaitingPaymentConfirmation" && checkout && (checkout.paymentMethod === "cash" || checkout.paymentMethod === "other") ? (
           <section className={panelClass}>
